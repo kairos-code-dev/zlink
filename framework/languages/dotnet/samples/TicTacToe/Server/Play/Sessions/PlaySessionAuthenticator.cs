@@ -25,13 +25,13 @@ internal sealed class PlaySessionAuthenticator(
                 SampleChannels.Api,
                 new AuthenticatePlayerReq(authenticate.AccessToken))
             .WithTimeout(SampleTimeouts.Request)
-            .Async<AuthenticatePlayerRes>(cancellationToken);
+            .Submit<AuthenticatePlayerRes>(cancellationToken);
 
         var actor = (PlayActor)await actorFactory.CreateAsync(reply.ActorId, cancellationToken)
             .ConfigureAwait(false);
         await ((IZLinkSessionActorAttachmentContext)context).AttachActorAsync(actor, cancellationToken);
         await context.Reply(new AuthenticateRes(reply.ActorId))
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
 
         logger.LogInformation(
             "api -> play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}, actor={ActorId}",

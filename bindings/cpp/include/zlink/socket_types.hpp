@@ -9,6 +9,7 @@
 #include "error.hpp"
 
 #include <chrono>
+#include <future>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -402,41 +403,7 @@ class pair_socket_t : public message_socket_t
   public:
     explicit pair_socket_t (context_t &ctx_) : message_socket_t (ctx_, socket_type::pair) {}
 
-    bool send (message_t &part_, send_flags_t flags_ = send_flags_t::none)
-    {
-        if (flags_ == send_flags_t::dontwait) {
-            send_result_t result = send_result_t::sent;
-            if (base_socket_t::send_no_wait_result (result, part_) != 0)
-                detail::throw_submit_error_from_errno (zlink_errno ());
-            if (result == send_result_t::not_ready)
-                throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
-            return result == send_result_t::sent;
-        }
-
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::send (part_, flags_));
-        if (rc != submit_result_t::ok)
-            throw submit_error_t (rc, zlink_errno ());
-        return true;
-    }
-
-    bool send (std::vector<message_t> &parts_, send_flags_t flags_ = send_flags_t::none)
-    {
-        if (flags_ == send_flags_t::dontwait) {
-            send_result_t result = send_result_t::sent;
-            if (base_socket_t::send_no_wait_result (result, parts_) != 0)
-                detail::throw_submit_error_from_errno (zlink_errno ());
-            if (result == send_result_t::not_ready)
-                throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
-            return result == send_result_t::sent;
-        }
-
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::send (parts_, flags_));
-        if (rc != submit_result_t::ok)
-            throw submit_error_t (rc, zlink_errno ());
-        return true;
-    }
+    service::send_op_t send ();
 
     // Receive one message into a caller-provided received_t.
     // Returns 0 on success, -1 on error (errno set).
@@ -460,7 +427,6 @@ class pair_socket_t : public message_socket_t
 
   private:
     using message_socket_t::recv;
-    using message_socket_t::send;
 };
 
 class dealer_socket_t : public message_socket_t
@@ -472,41 +438,7 @@ class dealer_socket_t : public message_socket_t
     {
     }
 
-    bool send (message_t &part_, send_flags_t flags_ = send_flags_t::none)
-    {
-        if (flags_ == send_flags_t::dontwait) {
-            send_result_t result = send_result_t::sent;
-            if (base_socket_t::send_no_wait_result (result, part_) != 0)
-                detail::throw_submit_error_from_errno (zlink_errno ());
-            if (result == send_result_t::not_ready)
-                throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
-            return result == send_result_t::sent;
-        }
-
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::send (part_, flags_));
-        if (rc != submit_result_t::ok)
-            throw submit_error_t (rc, zlink_errno ());
-        return true;
-    }
-
-    bool send (std::vector<message_t> &parts_, send_flags_t flags_ = send_flags_t::none)
-    {
-        if (flags_ == send_flags_t::dontwait) {
-            send_result_t result = send_result_t::sent;
-            if (base_socket_t::send_no_wait_result (result, parts_) != 0)
-                detail::throw_submit_error_from_errno (zlink_errno ());
-            if (result == send_result_t::not_ready)
-                throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
-            return result == send_result_t::sent;
-        }
-
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::send (parts_, flags_));
-        if (rc != submit_result_t::ok)
-            throw submit_error_t (rc, zlink_errno ());
-        return true;
-    }
+    service::send_op_t send ();
 
     // Receive one message into a caller-provided received_t.
     // Returns 0 on success, -1 on error (errno set).
@@ -528,102 +460,7 @@ class dealer_socket_t : public message_socket_t
         base_socket_t::on_send_ready (std::move (handler_));
     }
 
-    async_result_t<std::vector<message_t>> request (message_t &part_,
-                                                    std::chrono::milliseconds timeout_ = {})
-    {
-        std::vector<message_t> parts;
-        parts.push_back (std::move (part_));
-        return request (parts, timeout_);
-    }
-
-    async_result_t<std::vector<message_t>>
-    request (std::vector<message_t> &parts_,
-             std::chrono::milliseconds timeout_ = {})
-    {
-        detail::request_state_t *state = detail::make_future_request_state ();
-        std::future<std::vector<message_t>> future =
-          state->promise->get_future ();
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts_, native) != 0) {
-            delete state;
-            throw last_error ();
-        }
-        size_t failed_index = 0;
-        const int rc = detail::submit_native_parts (
-          native, failed_index,
-          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
-              return zlink_dealer_request_part (
-                handle (), part_out_, ZLINK_SEND_FLAGS_NONE, part_flag_,
-                is_final_
-                  ? static_cast<uint32_t> (
-                      detail::resolve_timeout (timeout_, _default_request_timeout)
-                        .count ())
-                  : 0u,
-                is_final_ ? &detail::request_callback_trampoline : NULL,
-                is_final_ ? state : NULL);
-          });
-        if (rc != 0) {
-            detail::close_native_parts (native, failed_index);
-            delete state;
-            throw last_error ();
-        }
-        return async_result_t<std::vector<message_t>> (
-          std::move (future), detail::make_socket_request_progress (handle ()));
-    }
-
-    bool request (message_t &part_,
-                  std::function<void(request_result_t, std::vector<message_t>)> callback_,
-                  send_flags_t flags_ = send_flags_t::none,
-                  std::chrono::milliseconds timeout_ = {})
-    {
-        std::vector<message_t> parts;
-        parts.push_back (std::move (part_));
-        const bool submitted =
-          request (parts, std::move (callback_), flags_, timeout_);
-        if (!submitted && !parts.empty ())
-            part_ = std::move (parts.front ());
-        return submitted;
-    }
-
-    bool request (std::vector<message_t> &parts_,
-                  std::function<void(request_result_t, std::vector<message_t>)> callback_,
-                  send_flags_t flags_ = send_flags_t::none,
-                  std::chrono::milliseconds timeout_ = {})
-    {
-        detail::request_state_t *state =
-          detail::make_callback_request_state (std::move (callback_));
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts_, native) != 0) {
-            delete state;
-            throw last_error ();
-        }
-        size_t failed_index = 0;
-        const int rc = detail::submit_native_parts (
-          native, failed_index,
-          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
-              return zlink_dealer_request_part (
-                handle (), part_out_, static_cast<zlink_send_flags_t> (flags_),
-                part_flag_,
-                is_final_
-                  ? static_cast<uint32_t> (
-                      detail::resolve_timeout (timeout_, _default_request_timeout)
-                        .count ())
-                  : 0u,
-                is_final_ ? &detail::request_callback_trampoline : NULL,
-                is_final_ ? state : NULL);
-          });
-        if (rc != 0) {
-            detail::close_native_parts (native, failed_index);
-            delete state;
-            const submit_error_t err (
-              static_cast<submit_result_t> (rc), zlink_errno ());
-            if (flags_ == send_flags_t::dontwait
-                && err.result () == submit_result_t::backpressured)
-                return false;
-            throw err;
-        }
-        return true;
-    }
+    service::request_op_t request ();
 
     void set_routing_id (const routing_id_t &routing_id_)
     {
@@ -679,7 +516,6 @@ class dealer_socket_t : public message_socket_t
   private:
     std::chrono::milliseconds _default_request_timeout;
     using message_socket_t::recv;
-    using message_socket_t::send;
 };
 
 class router_socket_t : public routed_message_socket_t
@@ -691,64 +527,7 @@ class router_socket_t : public routed_message_socket_t
     {
     }
 
-    bool send (const routing_id_t &target_rid_, message_t &part_,
-               send_flags_t flags_ = send_flags_t::none)
-    {
-        if (!part_.valid ())
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-
-        if (flags_ == send_flags_t::dontwait) {
-            // Pass the wrapper's native handle directly to zlink. On success
-            // zlink takes ownership of the data and the native msg becomes
-            // empty; we only need to drop the wrapper's valid flag. On
-            // failure zlink leaves the msg untouched, so no rollback work
-            // is needed.
-            const int rc = zlink_send_part_rid (
-              handle (),
-              zlink::detail::routing_id_native (target_rid_),
-              detail::native_handle (part_),
-              ZLINK_DONTWAIT, ZLINK_PART_FINAL);
-            if (rc == 0) {
-                detail::mark_sent (part_);
-                return true;
-            }
-
-            const int err = zlink_errno ();
-            send_result_t result = send_result_t::sent;
-            if (detail::classify_nonblocking_send_errno (err, result)) {
-                if (result == send_result_t::backpressured)
-                    return false;
-                if (result == send_result_t::not_ready)
-                    throw submit_error_t (submit_result_t::not_connected, err);
-            }
-            throw submit_error_t (detail::submit_result_from_errno (err), err);
-        }
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::send (target_rid_, part_,
-                                flags_));
-        if (rc != submit_result_t::ok)
-            throw submit_error_t (rc, zlink_errno ());
-        return true;
-    }
-
-    bool send (const routing_id_t &target_rid_, std::vector<message_t> &parts_,
-               send_flags_t flags_ = send_flags_t::none)
-    {
-        if (flags_ == send_flags_t::dontwait) {
-            send_result_t result = send_result_t::sent;
-            if (base_socket_t::send_no_wait_result (result, target_rid_, parts_) != 0)
-                detail::throw_submit_error_from_errno (zlink_errno ());
-            if (result == send_result_t::not_ready)
-                throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
-            return result == send_result_t::sent;
-        }
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::send (target_rid_, parts_,
-                                flags_));
-        if (rc != submit_result_t::ok)
-            throw submit_error_t (rc, zlink_errno ());
-        return true;
-    }
+    service::send_op_t send (const routing_id_t &target_rid_);
 
     // Receive one message into a caller-provided received_t.
     // Returns 0 on success, -1 on error (errno set; EAGAIN/EWOULDBLOCK on
@@ -902,140 +681,9 @@ class router_socket_t : public routed_message_socket_t
         base_socket_t::on_send_ready (std::move (handler_));
     }
 
-    async_result_t<std::vector<message_t>> request (const routing_id_t &routing_id_,
-                                                    message_t &part_,
-                                                    std::chrono::milliseconds timeout_ = {})
-    {
-        std::vector<message_t> parts;
-        parts.push_back (std::move (part_));
-        return request (routing_id_, parts, timeout_);
-    }
-
-    async_result_t<std::vector<message_t>>
-    request (const routing_id_t &routing_id_,
-             std::vector<message_t> &parts_,
-             std::chrono::milliseconds timeout_ = {})
-    {
-        detail::request_state_t *state = detail::make_future_request_state ();
-        std::future<std::vector<message_t>> future =
-          state->promise->get_future ();
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts_, native) != 0) {
-            delete state;
-            throw last_error ();
-        }
-        size_t failed_index = 0;
-        const int rc = detail::submit_native_parts (
-          native, failed_index,
-          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
-              return zlink_router_request_part (
-                handle (), zlink::detail::routing_id_native (routing_id_), part_out_,
-                ZLINK_SEND_FLAGS_NONE, part_flag_,
-                is_final_
-                  ? static_cast<uint32_t> (
-                      detail::resolve_timeout (timeout_, _default_request_timeout)
-                        .count ())
-                  : 0u,
-                is_final_ ? &detail::request_callback_trampoline : NULL,
-                is_final_ ? state : NULL);
-          });
-        if (rc != 0) {
-            detail::close_native_parts (native, failed_index);
-            delete state;
-            throw last_error ();
-        }
-        return async_result_t<std::vector<message_t>> (
-          std::move (future), detail::make_socket_request_progress (handle ()));
-    }
-
-    bool request (const routing_id_t &routing_id_,
-                  message_t &part_,
-                  std::function<void(request_result_t, std::vector<message_t>)> callback_,
-                  send_flags_t flags_ = send_flags_t::none,
-                  std::chrono::milliseconds timeout_ = {})
-    {
-        std::vector<message_t> parts;
-        parts.push_back (std::move (part_));
-        const bool submitted =
-          request (routing_id_, parts, std::move (callback_), flags_, timeout_);
-        if (!submitted && !parts.empty ())
-            part_ = std::move (parts.front ());
-        return submitted;
-    }
-
-    bool request (const routing_id_t &routing_id_,
-                  std::vector<message_t> &parts_,
-                  std::function<void(request_result_t, std::vector<message_t>)> callback_,
-                  send_flags_t flags_ = send_flags_t::none,
-                  std::chrono::milliseconds timeout_ = {})
-    {
-        detail::request_state_t *state =
-          detail::make_callback_request_state (std::move (callback_));
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts_, native) != 0) {
-            delete state;
-            throw last_error ();
-        }
-        size_t failed_index = 0;
-        const int rc = detail::submit_native_parts (
-          native, failed_index,
-          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
-              return zlink_router_request_part (
-                handle (), zlink::detail::routing_id_native (routing_id_), part_out_,
-                static_cast<zlink_send_flags_t> (flags_), part_flag_,
-                is_final_
-                  ? static_cast<uint32_t> (
-                      detail::resolve_timeout (timeout_, _default_request_timeout)
-                        .count ())
-                  : 0u,
-                is_final_ ? &detail::request_callback_trampoline : NULL,
-                is_final_ ? state : NULL);
-          });
-        if (rc != 0) {
-            detail::close_native_parts (native, failed_index);
-            delete state;
-            const submit_error_t err (
-              static_cast<submit_result_t> (rc), zlink_errno ());
-            if (flags_ == send_flags_t::dontwait
-                && err.result () == submit_result_t::backpressured)
-                return false;
-            throw err;
-        }
-        return true;
-    }
-
-    void reply (const routing_id_t &routing_id_,
-                uint64_t request_seq_,
-                message_t &part_,
-                send_flags_t flags_ = send_flags_t::none)
-    {
-        std::vector<message_t> parts;
-        parts.push_back (std::move (part_));
-        reply (routing_id_, request_seq_, parts, flags_);
-    }
-
-    void reply (const routing_id_t &routing_id_,
-                uint64_t request_seq_,
-                std::vector<message_t> &parts_,
-                send_flags_t flags_ = send_flags_t::none)
-    {
-        detail::throw_if_reply_flags_unsupported (flags_);
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts_, native) != 0)
-            throw last_error ();
-        size_t failed_index = 0;
-        const int rc = detail::submit_native_parts (
-          native, failed_index,
-          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-              return zlink_router_reply_part (
-                handle (), zlink::detail::routing_id_native (routing_id_), request_seq_,
-                part_out_, part_flag_);
-          });
-        if (rc != 0) {
-            detail::restore_parts_from_native (parts_, native, failed_index);
-            throw last_error ();
-        }
-    }
+    service::request_op_t request (const routing_id_t &routing_id_);
+    service::reply_op_t reply (const routing_id_t &routing_id_,
+                               uint64_t request_seq_);
 
     void set_routing_id (const routing_id_t &routing_id_)
     {
@@ -1051,161 +699,14 @@ class router_socket_t : public routed_message_socket_t
             detail::throw_config_error_from_errno (zlink_errno ());
     }
 
-    bool send_to_spot (const routing_id_t &dest_node_rid_,
-                       const routing_id_t &dest_spot_rid_,
-                       message_t &part_,
-                       send_flags_t flags_ = send_flags_t::none)
-    {
-        std::vector<message_t> parts;
-        parts.push_back (std::move (part_));
-        const bool submitted =
-          send_to_spot (dest_node_rid_, dest_spot_rid_, parts, flags_);
-        if (!submitted && !parts.empty ())
-            part_ = std::move (parts.front ());
-        return submitted;
-    }
-
-    bool send_to_spot (const routing_id_t &dest_node_rid_,
-                       const routing_id_t &dest_spot_rid_,
-                       std::vector<message_t> &parts_,
-                       send_flags_t flags_ = send_flags_t::none)
-    {
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts_, native) != 0)
-            throw last_error ();
-        size_t failed_index = 0;
-        const submit_result_t rc = static_cast<submit_result_t> (
-          detail::submit_native_parts (
-            native, failed_index,
-            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-                return zlink_router_send_spot_part (
-                  handle (), zlink::detail::routing_id_native (dest_node_rid_),
-                  zlink::detail::routing_id_native (dest_spot_rid_), part_out_,
-                  static_cast<zlink_send_flags_t> (flags_), part_flag_);
-            }));
-        if (rc != submit_result_t::ok) {
-            detail::restore_parts_from_native (parts_, native, failed_index);
-            if (flags_ == send_flags_t::dontwait
-                && rc == submit_result_t::backpressured)
-                return false;
-            throw submit_error_t (rc, zlink_errno ());
-        }
-        return true;
-    }
-
-    async_result_t<std::vector<message_t>>
-    request_to_spot (const routing_id_t &dest_node_rid_,
-                     const routing_id_t &dest_spot_rid_,
-                     message_t message_,
-                     std::chrono::milliseconds timeout_ = {})
-    {
-        detail::request_state_t *state = detail::make_future_request_state ();
-        std::future<std::vector<message_t>> future =
-          state->promise->get_future ();
-        std::vector<message_t> parts;
-        parts.push_back (std::move (message_));
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts, native) != 0) {
-            delete state;
-            throw last_error ();
-        }
-        size_t failed_index = 0;
-        const submit_result_t rc = static_cast<submit_result_t> (
-          detail::submit_native_parts (
-            native, failed_index,
-            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
-                return zlink_router_request_spot_part (
-                  handle (), zlink::detail::routing_id_native (dest_node_rid_),
-                  zlink::detail::routing_id_native (dest_spot_rid_), part_out_,
-                  is_final_ ? &detail::request_callback_trampoline : NULL,
-                  is_final_ ? state : NULL, ZLINK_SEND_FLAGS_NONE, part_flag_,
-                  is_final_
-                    ? static_cast<uint32_t> (
-                        detail::resolve_timeout (timeout_, _default_request_timeout)
-                          .count ())
-                    : 0u);
-            }));
-        if (rc != submit_result_t::ok) {
-            detail::close_native_parts (native, failed_index);
-            delete state;
-            throw submit_error_t (rc, zlink_errno ());
-        }
-        return async_result_t<std::vector<message_t>> (
-          std::move (future), detail::make_socket_request_progress (handle ()));
-    }
-
-    bool request_to_spot (
+    service::send_op_t send_to_spot (const routing_id_t &dest_node_rid_,
+                                     const routing_id_t &dest_spot_rid_);
+    service::request_op_t request_to_spot (
       const routing_id_t &dest_node_rid_,
-      const routing_id_t &dest_spot_rid_,
-      message_t message_,
-      std::function<void(request_result_t, std::vector<message_t>)> callback_,
-      send_flags_t flags_ = send_flags_t::none,
-      std::chrono::milliseconds timeout_ = {})
-    {
-        detail::request_state_t *state =
-          detail::make_callback_request_state (std::move (callback_));
-        std::vector<message_t> parts;
-        parts.push_back (std::move (message_));
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts, native) != 0) {
-            delete state;
-            throw last_error ();
-        }
-        size_t failed_index = 0;
-        const submit_result_t rc = static_cast<submit_result_t> (
-          detail::submit_native_parts (
-            native, failed_index,
-            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
-                return zlink_router_request_spot_part (
-                  handle (), zlink::detail::routing_id_native (dest_node_rid_),
-                  zlink::detail::routing_id_native (dest_spot_rid_), part_out_,
-                  is_final_ ? &detail::request_callback_trampoline : NULL,
-                  is_final_ ? state : NULL,
-                  static_cast<zlink_send_flags_t> (flags_), part_flag_,
-                  is_final_
-                    ? static_cast<uint32_t> (
-                        detail::resolve_timeout (timeout_, _default_request_timeout)
-                          .count ())
-                    : 0u);
-            }));
-        if (rc != submit_result_t::ok) {
-            detail::close_native_parts (native, failed_index);
-            delete state;
-            if (flags_ == send_flags_t::dontwait
-                && rc == submit_result_t::backpressured)
-                return false;
-            throw submit_error_t (rc, zlink_errno ());
-        }
-        return true;
-    }
-
-    void reply_to_spot (const routing_id_t &dest_node_rid_,
-                        const routing_id_t &dest_spot_rid_,
-                        uint64_t request_seq_,
-                        message_t message_,
-                        send_flags_t flags_ = send_flags_t::none)
-    {
-        detail::throw_if_reply_flags_unsupported (flags_);
-        std::vector<message_t> parts;
-        parts.push_back (std::move (message_));
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts, native) != 0)
-            throw last_error ();
-        size_t failed_index = 0;
-        const submit_result_t rc = static_cast<submit_result_t> (
-          detail::submit_native_parts (
-            native, failed_index,
-            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-                return zlink_router_reply_spot_part (
-                  handle (), zlink::detail::routing_id_native (dest_node_rid_),
-                  zlink::detail::routing_id_native (dest_spot_rid_), request_seq_, part_out_,
-                  part_flag_);
-            }));
-        if (rc != submit_result_t::ok) {
-            detail::close_native_parts (native, failed_index);
-            throw submit_error_t (rc, zlink_errno ());
-        }
-    }
+      const routing_id_t &dest_spot_rid_);
+    service::reply_op_t reply_to_spot (const routing_id_t &dest_node_rid_,
+                                       const routing_id_t &dest_spot_rid_,
+                                       uint64_t request_seq_);
 
     template<typename DiscoveryT>
     void attach_discovery (DiscoveryT &discovery_)
@@ -1222,7 +723,6 @@ class router_socket_t : public routed_message_socket_t
   private:
     std::chrono::milliseconds _default_request_timeout;
     using routed_message_socket_t::recv;
-    using routed_message_socket_t::send;
 };
 
 class stream_socket_t : public routed_message_socket_t
@@ -1233,60 +733,7 @@ class stream_socket_t : public routed_message_socket_t
     {
     }
 
-    bool send (const routing_id_t &target_rid_, message_t &part_,
-               send_flags_t flags_ = send_flags_t::none)
-    {
-        if (flags_ == send_flags_t::dontwait) {
-            if (!part_.valid ())
-                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-
-            zlink_msg_t native_part;
-            detail::move_to_native (part_, &native_part);
-
-            const int rc = zlink_send_part_rid (
-              handle (), zlink::detail::routing_id_native (target_rid_),
-              &native_part, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
-            if (rc == 0)
-                return true;
-
-            const int err = zlink_errno ();
-            part_.adopt (&native_part);
-
-            send_result_t result = send_result_t::sent;
-            if (detail::classify_nonblocking_send_errno (err, result)) {
-                if (result == send_result_t::backpressured)
-                    return false;
-                if (result == send_result_t::not_ready)
-                    throw submit_error_t (submit_result_t::not_connected, err);
-            }
-            throw submit_error_t (detail::submit_result_from_errno (err), err);
-        }
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::send (target_rid_, part_,
-                                flags_));
-        if (rc != submit_result_t::ok)
-            throw submit_error_t (rc, zlink_errno ());
-        return true;
-    }
-
-    bool send (const routing_id_t &target_rid_, std::vector<message_t> &parts_,
-               send_flags_t flags_ = send_flags_t::none)
-    {
-        if (flags_ == send_flags_t::dontwait) {
-            send_result_t result = send_result_t::sent;
-            if (base_socket_t::send_no_wait_result (result, target_rid_, parts_) != 0)
-                detail::throw_submit_error_from_errno (zlink_errno ());
-            if (result == send_result_t::not_ready)
-                throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
-            return result == send_result_t::sent;
-        }
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::send (target_rid_, parts_,
-                                flags_));
-        if (rc != submit_result_t::ok)
-            throw submit_error_t (rc, zlink_errno ());
-        return true;
-    }
+    service::send_op_t send (const routing_id_t &target_rid_);
 
     // Receive one message into a caller-provided received_t.
     // Returns 0 on success, -1 on error (errno set).
@@ -1332,83 +779,16 @@ class stream_socket_t : public routed_message_socket_t
         return stream_socket_options_t (handle ());
     }
 
-    template<typename SpotNodeT>
-    void bind_actor (SpotNodeT &node_,
-                     const routing_id_t &session_rid_,
-                     const actor_ref_t &actor_,
-                     std::chrono::milliseconds timeout_ = {})
-    {
-        detail::throw_if_failed<request_error_t> (
-          static_cast<request_result_t> (
-            zlink_stream_bind_actor (
-              zlink::detail::native_handle (node_), handle (), zlink::detail::routing_id_native (session_rid_),
-              zlink::detail::actor_ref_native (actor_),
-              static_cast<uint32_t> (timeout_.count ()))));
-    }
+    service::actor_bind_op_t bind_actor (const routing_id_t &session_rid_,
+                                         const actor_ref_t &actor_);
 
-    template<typename SpotNodeT>
-    void unbind_actor (SpotNodeT &node_,
-                       const routing_id_t &session_rid_,
-                       const std::string &actor_id_,
-                       std::chrono::milliseconds timeout_ = {})
-    {
-        detail::validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
-                                   "actor_id");
-        detail::throw_if_failed<request_error_t> (
-          static_cast<request_result_t> (
-            zlink_stream_unbind_actor (
-              zlink::detail::native_handle (node_), handle (), zlink::detail::routing_id_native (session_rid_),
-              actor_id_.c_str (), static_cast<uint32_t> (timeout_.count ()))));
-    }
+    service::actor_unbind_op_t unbind_actor (
+      const routing_id_t &session_rid_,
+      const std::string &actor_id_);
 
-    template<typename SpotNodeT>
-    bool send_bound_actor (SpotNodeT &node_,
-                           const routing_id_t &session_rid_,
-                           const std::string &actor_id_,
-                           message_t &part_,
-                           send_flags_t flags_ = send_flags_t::none)
-    {
-        std::vector<message_t> parts;
-        parts.push_back (std::move (part_));
-        const bool submitted =
-          send_bound_actor (node_, session_rid_, actor_id_, parts, flags_);
-        if (!submitted && !parts.empty ())
-            part_ = std::move (parts.front ());
-        return submitted;
-    }
-
-    template<typename SpotNodeT>
-    bool send_bound_actor (SpotNodeT &node_,
-                           const routing_id_t &session_rid_,
-                           const std::string &actor_id_,
-                           std::vector<message_t> &parts_,
-                           send_flags_t flags_ = send_flags_t::none)
-    {
-        detail::validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
-                                   "actor_id");
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts_, native) != 0)
-            throw last_error ();
-        size_t failed_index = 0;
-        const submit_result_t rc = static_cast<submit_result_t> (
-          detail::submit_native_parts (
-            native, failed_index,
-            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-                return zlink_stream_send_bound_actor_part (
-                  zlink::detail::native_handle (node_), handle (),
-                  zlink::detail::routing_id_native (session_rid_),
-                  actor_id_.c_str (), part_out_,
-                  static_cast<zlink_send_flags_t> (flags_), part_flag_);
-            }));
-        if (rc != submit_result_t::ok) {
-            detail::restore_parts_from_native (parts_, native, failed_index);
-            if (flags_ == send_flags_t::dontwait
-                && rc == submit_result_t::backpressured)
-                return false;
-            throw submit_error_t (rc, zlink_errno ());
-        }
-        return true;
-    }
+    service::send_op_t send_bound_actor (
+      const routing_id_t &session_rid_,
+      const std::string &actor_id_);
 
   private:
     static void packet_trampoline (void *,
@@ -1466,7 +846,6 @@ class stream_socket_t : public routed_message_socket_t
 
     std::unique_ptr<packet_handler_base_t> _packet_handler;
     using routed_message_socket_t::recv;
-    using routed_message_socket_t::send;
     using base_socket_t::connect;
     using base_socket_t::disconnect;
     using base_socket_t::disconnect_rid;
@@ -1480,37 +859,7 @@ class pub_socket_t : public publisher_socket_t
     {
     }
 
-    bool publish (const std::string &topic_id_, message_t &part_,
-                  send_flags_t flags_ = send_flags_t::none)
-    {
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::publish (topic_id_, part_,
-                                  flags_));
-        if (rc != submit_result_t::ok)
-        {
-            if (flags_ == send_flags_t::dontwait
-                && rc == submit_result_t::backpressured)
-                return false;
-            throw submit_error_t (rc, zlink_errno ());
-        }
-        return true;
-    }
-
-    bool publish (const std::string &topic_id_, std::vector<message_t> &parts_,
-                  send_flags_t flags_ = send_flags_t::none)
-    {
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::publish (topic_id_, parts_,
-                                  flags_));
-        if (rc != submit_result_t::ok)
-        {
-            if (flags_ == send_flags_t::dontwait
-                && rc == submit_result_t::backpressured)
-                return false;
-            throw submit_error_t (rc, zlink_errno ());
-        }
-        return true;
-    }
+    service::send_op_t publish (const std::string &topic_id_);
 
     void on_send_ready (std::function<void()> handler_)
     {
@@ -1531,7 +880,6 @@ class pub_socket_t : public publisher_socket_t
 
   private:
     using publisher_socket_t::on_send_ready;
-    using publisher_socket_t::publish;
 };
 
 class xpub_socket_t : public publisher_socket_t
@@ -1542,37 +890,7 @@ class xpub_socket_t : public publisher_socket_t
     {
     }
 
-    bool publish (const std::string &topic_id_, message_t &part_,
-                  send_flags_t flags_ = send_flags_t::none)
-    {
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::publish (topic_id_, part_,
-                                  flags_));
-        if (rc != submit_result_t::ok)
-        {
-            if (flags_ == send_flags_t::dontwait
-                && rc == submit_result_t::backpressured)
-                return false;
-            throw submit_error_t (rc, zlink_errno ());
-        }
-        return true;
-    }
-
-    bool publish (const std::string &topic_id_, std::vector<message_t> &parts_,
-                  send_flags_t flags_ = send_flags_t::none)
-    {
-        const submit_result_t rc = static_cast<submit_result_t> (
-          base_socket_t::publish (topic_id_, parts_,
-                                  flags_));
-        if (rc != submit_result_t::ok)
-        {
-            if (flags_ == send_flags_t::dontwait
-                && rc == submit_result_t::backpressured)
-                return false;
-            throw submit_error_t (rc, zlink_errno ());
-        }
-        return true;
-    }
+    service::send_op_t publish (const std::string &topic_id_);
 
     void on_send_ready (std::function<void()> handler_)
     {
@@ -1623,7 +941,6 @@ class xpub_socket_t : public publisher_socket_t
 
   private:
     using publisher_socket_t::on_send_ready;
-    using publisher_socket_t::publish;
 };
 
 class sub_socket_t : public subscriber_socket_t

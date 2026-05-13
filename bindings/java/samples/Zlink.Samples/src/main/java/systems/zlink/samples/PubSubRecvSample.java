@@ -24,7 +24,7 @@ public final class PubSubRecvSample {
             SampleSupport.waitPubSubReady(pubMonitor, subMonitor);
 
             try (Message payload = Message.copyOfUtf8(SampleSupport.PUBSUB_PAYLOAD)) {
-                pub.publish(SampleSupport.PUBSUB_TOPIC, payload);
+                pub.publish(SampleSupport.PUBSUB_TOPIC).message(payload).submit();
             }
 
             try (var received = sub.subscribe()) {

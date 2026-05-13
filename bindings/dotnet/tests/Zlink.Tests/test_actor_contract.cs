@@ -18,13 +18,11 @@ public sealed class test_actor_contract
         using var node = new SpotNode(ctx);
         using var spot = node.CreateSpot();
         using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
-        using var stream = new StreamSocket(ctx);
-        RoutingId sessionRid = CoreTestSupport.RoutingIdUtf8("actor-session");
-        stream.BindActor(node, sessionRid, actor.Ref, TimeSpan.FromSeconds(2));
         using Message joinMessage = Message.FromString("join:hello");
 
-        Task<IReadOnlyList<Message>> joinTask = actor.Join(spot,
-            joinMessage, TimeSpan.FromSeconds(2));
+        Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
+            actor.Join(spot).Message(joinMessage)
+                .Timeout(TimeSpan.FromSeconds(2)).SubmitAsync();
 
         ActorJoinRequest? request = null;
         Assert.True(CoreTestSupport.WaitUntil(() =>
@@ -41,10 +39,10 @@ public sealed class test_actor_contract
         Assert.Equal(actor.Ref.ActorId, request.Info.TargetActor.ActorId);
 
         using Message reply = Message.FromString("join:accepted");
-        spot.ReplyActorJoin(request, accepted: true, reply);
+        spot.ReplyActorJoin(request, accepted: true).Message(reply).Submit();
 
         IReadOnlyList<Message> replies =
-            await joinTask.WaitAsync(TimeSpan.FromSeconds(5));
+            (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts;
         Assert.Single(replies);
         using (replies[0])
         {
@@ -53,7 +51,63 @@ public sealed class test_actor_contract
 
         Assert.Contains(spot.ActorsSnapshot(),
             entry => entry.ActorId == actor.Ref.ActorId);
-        actor.Leave(spot);
+        Zlink.MultipartClose(await actor.Leave(spot)
+            .SubmitAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task spot_actor_lifecycle_callbacks_observe_join_and_leave()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var spot = node.CreateSpot();
+        using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
+        using Message joinMessage = Message.FromString("join:lifecycle");
+        var joined = new TaskCompletionSource<SpotActorLifecycleInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var left = new TaskCompletionSource<SpotActorLifecycleInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        spot.OnActorLifecycle(
+            info => joined.TrySetResult(info),
+            info => left.TrySetResult(info));
+
+        Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
+            actor.Join(spot).Message(joinMessage)
+                .Timeout(TimeSpan.FromSeconds(2)).SubmitAsync();
+
+        ActorJoinRequest? request = null;
+        Assert.True(CoreTestSupport.WaitUntil(() =>
+        {
+            request = spot.RecvActorJoin(RecvFlags.DontWait);
+            return request != null;
+        }, 2000));
+
+        request!.Message.Dispose();
+        using Message reply = Message.FromString("join:accepted");
+        spot.ReplyActorJoin(request, accepted: true).Message(reply).Submit();
+        IReadOnlyList<Message> replies =
+            (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts;
+        foreach (Message message in replies)
+            message.Dispose();
+
+        SpotActorLifecycleInfo joinInfo =
+            await joined.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(actor.Ref, joinInfo.CurrentActor);
+        Assert.Equal(spot.RoutingId, joinInfo.CurrentSpotRid);
+        Assert.True(joinInfo.JoinEpoch > 0);
+
+        Zlink.MultipartClose(await actor.Leave(spot)
+            .SubmitAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+
+        SpotActorLifecycleInfo leaveInfo =
+            await left.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(actor.Ref, leaveInfo.PreviousActor);
+        Assert.Equal(spot.RoutingId, leaveInfo.PreviousSpotRid);
+        Assert.True(leaveInfo.JoinEpoch > 0);
     }
 
     [Fact]

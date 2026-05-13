@@ -1,17 +1,18 @@
 use std::ffi::c_void;
 use std::mem::MaybeUninit;
+use std::ptr;
 use std::time::Duration;
 
 use crate::ctx::Context;
 use crate::domain::Received;
-use crate::error::{
-    ConfigError, HandlerError, RecvError, SubmitError, check_config_rc, check_handler_rc,
-};
+use crate::error::{ConfigError, HandlerError, RecvError, check_config_rc, check_handler_rc};
 use crate::ffi;
-use crate::flags::{RecvFlags, SendFlags};
-use crate::message::{IntoMultipart, Message, RoutingId};
+use crate::flags::RecvFlags;
+use crate::message::{Message, RoutingId};
 use crate::options::{CommonSocketOptions, StreamSocketOptions};
-use crate::service::{ActorRef, SpotNode, check_request_result};
+use crate::service::{
+    ActorBindOp, ActorRef, ActorUnbindOp, Empty, SendOp,
+};
 
 use super::{
     SendHandle, SocketInner, impl_base_socket, impl_recv_options, impl_routing_id_options,
@@ -36,25 +37,8 @@ impl StreamSocket {
         })
     }
 
-    pub fn send(&self, target: &RoutingId, parts: impl IntoMultipart) -> Result<(), SubmitError> {
-        self.inner.send_to(target, parts)
-    }
-
-    pub fn try_send(
-        &self,
-        target: &RoutingId,
-        parts: impl IntoMultipart,
-    ) -> Result<bool, SubmitError> {
-        self.inner.try_send_to(target, parts)
-    }
-
-    pub fn send_with_flags(
-        &self,
-        target: &RoutingId,
-        parts: impl IntoMultipart,
-        flags: SendFlags,
-    ) -> Result<bool, SubmitError> {
-        self.inner.send_to_with_flags(target, parts, flags)
+    pub fn send(&self, target: &RoutingId) -> SendOp<Empty> {
+        crate::service::socket_send_to_op(self.inner.handle, target.clone())
     }
 
     /// Canonical caller-provided storage recv. See
@@ -107,83 +91,86 @@ impl StreamSocket {
         SendHandle::new(self.inner.handle)
     }
 
+    /// Async Actor bind (operation builder).
     pub fn bind_actor(
         &self,
-        node: &SpotNode,
         session_rid: &RoutingId,
         actor: &ActorRef,
-        timeout: Duration,
-    ) -> Result<(), crate::error::RequestError> {
-        let raw_actor = actor.to_raw().map_err(|err| {
-            crate::error::RequestError::new(
-                crate::error::RequestResult::InvalidArgument,
-                err.internal_errno(),
-            )
-        })?;
-        check_request_result(unsafe {
-            ffi::zlink_stream_bind_actor(
-                node.raw(),
-                self.inner.handle,
-                session_rid.as_raw(),
-                &raw_actor,
-                timeout_to_timeout_ms(timeout),
-            )
-        })
+    ) -> ActorBindOp<Empty> {
+        let raw_actor = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
+            node_rid: ffi::zlink_routing_id_t {
+                size: 0,
+                data: [0; 255],
+            },
+            actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
+            generation: 0,
+        });
+        crate::service::actor_bind_op_new(
+            self.inner.handle,
+            session_rid.clone(),
+            raw_actor,
+        )
     }
 
+    /// Async Actor unbind (operation builder).
     pub fn unbind_actor(
         &self,
-        node: &SpotNode,
         session_rid: &RoutingId,
         actor_id: &str,
-        timeout: Duration,
-    ) -> Result<(), crate::error::RequestError> {
-        let c_actor_id = std::ffi::CString::new(actor_id).map_err(|_| {
-            crate::error::RequestError::new(
-                crate::error::RequestResult::InvalidArgument,
-                libc::EINVAL,
-            )
-        })?;
-        check_request_result(unsafe {
-            ffi::zlink_stream_unbind_actor(
-                node.raw(),
-                self.inner.handle,
-                session_rid.as_raw(),
-                c_actor_id.as_ptr(),
-                timeout_to_timeout_ms(timeout),
-            )
-        })
+    ) -> ActorUnbindOp<Empty> {
+        let c_actor_id =
+            std::ffi::CString::new(actor_id).unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
+        crate::service::actor_unbind_op_new(
+            self.inner.handle,
+            session_rid.clone(),
+            c_actor_id,
+        )
     }
 
+    /// Session-bound relay send (operation builder).
     pub fn send_bound_actor_part(
         &self,
-        node: &SpotNode,
         session_rid: &RoutingId,
         actor_id: &str,
-        parts: impl IntoMultipart,
-        flags: SendFlags,
-    ) -> Result<(), SubmitError> {
-        let c_actor_id = std::ffi::CString::new(actor_id).map_err(|_| {
-            crate::error::SubmitError::new(
-                crate::error::SubmitResult::InvalidArgument,
-                libc::EINVAL,
-            )
-        })?;
-        let mut parts = parts.into_parts();
-        let mut native = super::prepare_send_parts(&mut parts)?;
-        let rc = super::submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-            ffi::zlink_stream_send_bound_actor_part(
-                node.raw(),
+    ) -> SendOp<Empty> {
+        let c_actor_id =
+            std::ffi::CString::new(actor_id).unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
+        crate::service::stream_bound_actor_send_op(
+            self.inner.handle,
+            session_rid.clone(),
+            c_actor_id,
+        )
+    }
+
+    pub fn bound_actors(
+        &self,
+        session_rid: &RoutingId,
+    ) -> Result<Vec<ActorRef>, ConfigError> {
+        let mut count: usize = 0;
+        check_config_rc(unsafe {
+            ffi::zlink_stream_bound_actors(
                 self.inner.handle,
                 session_rid.as_raw(),
-                c_actor_id.as_ptr(),
-                part,
-                flags.bits(),
-                part_flag,
+                ptr::null_mut(),
+                &mut count,
             )
         })?;
-        drop(parts);
-        crate::error::check_submit_rc(rc)
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut entries = vec![unsafe { std::mem::zeroed::<ffi::zlink_actor_ref_t>() }; count];
+        let mut actual = count;
+        check_config_rc(unsafe {
+            ffi::zlink_stream_bound_actors(
+                self.inner.handle,
+                session_rid.as_raw(),
+                entries.as_mut_ptr(),
+                &mut actual,
+            )
+        })?;
+        entries.truncate(std::cmp::min(entries.len(), actual));
+        Ok(entries.iter().map(ActorRef::from_raw).collect())
     }
 
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self> {

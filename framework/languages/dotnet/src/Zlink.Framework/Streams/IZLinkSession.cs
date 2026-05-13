@@ -56,7 +56,14 @@ public interface IZLinkSessionActorDispatchContext
         string actorType,
         CancellationToken cancellationToken = default);
 
+    [Obsolete("Remote actor creation is no longer a framework operation. Use CreateActorHandleAsync for a target-node handle, or CreateActorAsync on the node that owns the actor.")]
     ValueTask<IZLinkActorRef> CreateRemoteActorAsync(
+        RoutingId actorNodeId,
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActorRef> CreateActorHandleAsync(
         RoutingId actorNodeId,
         string actorId,
         string actorType,
@@ -107,7 +114,7 @@ public interface IZLinkSessionSendCall
 
     IZLinkSessionSendCall Compress();
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionReplyCall
@@ -116,5 +123,5 @@ public interface IZLinkSessionReplyCall
 
     IZLinkSessionReplyCall Compress();
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }

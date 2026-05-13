@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework C++ Channel Messaging](cpp-channel-messaging.ko.md) | [다음: C++ Stage Wrapper On SPOT](stage-wrapper-on-spot.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md)

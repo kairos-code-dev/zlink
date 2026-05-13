@@ -492,7 +492,7 @@ int discovery_bootstrap_runtime_t::bootstrap_registry (
         return 1;
     }
 
-    std::vector<zlink_msg_t> frames;
+    scoped_msg_frames_t frames;
     if (!recv_msg_sequence_socket_wait (dealer, &frames, 500)) {
         if (errno == EAGAIN)
             return 1;
@@ -517,7 +517,6 @@ int discovery_bootstrap_runtime_t::bootstrap_registry (
         registry_id = rep.registry_id;
         feature_flags = rep.feature_flags;
         if (rep.status_errno != 0) {
-            close_msg_frames (&frames);
             errno = static_cast<int> (rep.status_errno);
             discovery_debugf ("bootstrap rejected errno=%d", errno);
             return -1;
@@ -526,7 +525,6 @@ int discovery_bootstrap_runtime_t::bootstrap_registry (
         uplink_endpoint = rep.uplink_endpoint;
         ok = msg_id == discovery_protocol::msg_bootstrap_rep;
     }
-    close_msg_frames (&frames);
     (void) registry_id;
     (void) feature_flags;
 

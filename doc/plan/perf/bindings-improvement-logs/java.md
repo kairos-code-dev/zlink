@@ -753,3 +753,29 @@
     도달했고, DR 256/1024B와 RR 전체는 아직 미달이다.
   - 남은 병목은 Java FFM downcall 왕복, per-recv `Message` wrapper/native memory
     lifecycle, routed receive source id byte[] 생성 비용으로 본다.
+
+### 2026-05-12 Java round 22 — Poller int tag 일괄 복사 실험, 적용 보류
+
+- 선택한 병목 가설:
+  - `PerfSocketPollSet`가 ready 이벤트마다 `readyTag()`와 `readyHasEvent()`를
+    여러 번 호출하고, 네 개 boolean 배열을 매 poll마다 초기화한다.
+  - package-private helper로 int tag와 revents mask를 한 번에 복사하면 poll loop
+    wrapper 비용을 줄일 수 있다고 보았다.
+- 실험한 변경:
+  - `Poller`에 package-private `pollIntTags(...)`를 추가했다.
+  - `PerfSocketPollSet`의 ready 상태를 boolean 배열 네 개에서 revents mask 배열로
+    바꿨다.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :compileJava :perf-multi:compileJava :perf-single:compileJava`
+  - `bindings/java/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag java_poll_int_tags_20260512`
+- 결과:
+  - build 통과.
+  - latest report: `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_222913_java_poll_int_tags_20260512.txt`
+  - RR 64/256/1024B: `232.238/228.825/224.920` Kops/s.
+  - DR 64/256/1024B: `307.401/303.459/297.377` Kops/s.
+- 판단:
+  - round 21 결과(`RR 237.525/231.971/229.981`, `DR 313.713/306.929/300.592`)
+    대비 전체적으로 하락했다.
+  - 이 실험 변경은 되돌렸다. Java poller ready cache 조회보다 `pollCount` 내부의
+    FFM downcall, native event decode, recv/send message lifecycle 쪽이 더 큰
+    후보로 남는다.

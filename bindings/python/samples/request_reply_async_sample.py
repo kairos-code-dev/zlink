@@ -24,14 +24,14 @@ async def main():
                             wait_connected(router_monitor, dealer_monitor)
 
                     pending_reply = asyncio.create_task(
-                        dealer_socket.request([b"ping"], timeout=2.0)
+                        dealer_socket.request().message(b"ping").timeout(2.0).submit_async()
                     )
                     with await asyncio.to_thread(router_socket.recv) as received:
                         if received.routing_id != zlink.RoutingId(b"REQ-CLIENT"):
                             raise AssertionError("unexpected request routing id")
                         if received.request_seq is None:
                             raise AssertionError("missing request sequence")
-                        router_socket.reply(received.routing_id, received.request_seq, [b"pong"])
+                        router_socket.reply(received.routing_id, received.request_seq).message(b"pong").submit()
 
                     reply = await pending_reply
                     try:

@@ -33,7 +33,7 @@ internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
                         joined.Mark.ToContract(),
                         joined.Snapshot.ToContract()))
                 .WithPacketName(SampleNames.OpponentJoinedPacket)
-                .Async(cancellationToken),
+                .Submit(cancellationToken),
             TurnChangedGameEvent turn => proxy
                 .Send(
                     turn.RecipientActorId,
@@ -42,7 +42,7 @@ internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
                         turn.Snapshot.TurnActorId,
                         turn.Snapshot.ToContract()))
                 .WithPacketName(SampleNames.TurnChangedPacket)
-                .Async(cancellationToken),
+                .Submit(cancellationToken),
             GameEndedGameEvent ended => proxy
                 .Send(
                     ended.RecipientActorId,
@@ -52,7 +52,7 @@ internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
                         ended.Snapshot.Status == TicTacToeGameStatus.Draw,
                         ended.Snapshot.ToContract()))
                 .WithPacketName(SampleNames.GameEndedPacket)
-                .Async(cancellationToken),
+                .Submit(cancellationToken),
             _ => throw new InvalidOperationException($"Unsupported game event '{gameEvent.GetType().Name}'.")
         };
     }

@@ -1,4 +1,4 @@
-import * as zlink from '..';
+import * as zlink from '@zlink-systems/zlink';
 
 const ctx = new zlink.Context();
 const routingId = zlink.RoutingId.fromBytes(Buffer.from('id'));
@@ -11,8 +11,6 @@ zlink.SocketType.Pair;
 const typedAutoConnect: zlink.AutoConnectType = zlink.AutoConnectType.SpotMesh;
 const typedSpotDispatchEvent: zlink.SpotDispatchEvent = zlink.SpotDispatchEvent.TimerReadable;
 const typedSpotDispatchSubjectKind: zlink.SpotDispatchSubjectKind = zlink.SpotDispatchSubjectKind.Timer;
-const typedActorStatus: zlink.ActorCreateStatus = zlink.ActorCreateStatus.Created;
-const typedAdmission: zlink.ActorAdmissionResult = zlink.ActorAdmissionResult.Accept;
 const typedPollEvent: zlink.PollEventFlagValue = zlink.PollEventFlag.PollIn;
 const typedRidPolicy: zlink.RidDuplicatePolicyValue = zlink.RidDuplicatePolicy.Reject;
 const typedSendFlag: zlink.SendFlags = zlink.SendFlags.None;
@@ -22,8 +20,6 @@ const typedRequestResult: zlink.RequestResult = zlink.RequestResult.Ok;
 void typedAutoConnect;
 void typedSpotDispatchEvent;
 void typedSpotDispatchSubjectKind;
-void typedActorStatus;
-void typedAdmission;
 void typedPollEvent;
 void typedRidPolicy;
 void typedSendFlag;
@@ -59,7 +55,7 @@ void monitorHandler;
 const pub = new zlink.PubSocket(ctx);
 const baseSocket: zlink.BaseSocket = pub;
 void baseSocket;
-pub.publish('topic', 'ok');
+pub.publish('topic').message('ok').submit();
 pub.onSendReady(() => {});
 pub.attachDiscovery(new zlink.Discovery(ctx, AUTO_CONNECT_FANOUT, 'pub-service'));
 pub.setTlsServer('cert', 'key');
@@ -77,7 +73,7 @@ sub.options.topicsCount;
 
 const dealerReceived = new zlink.Received();
 const dealer = new zlink.DealerSocket(ctx);
-dealer.send('ok');
+dealer.send().message('ok').submit();
 dealer.recv(dealerReceived);
 dealer.onSendReady(() => {});
 dealer.setRoutingId(routingId);
@@ -96,15 +92,15 @@ router.getRoutingId();
 router.attachDiscovery(new zlink.Discovery(ctx, AUTO_CONNECT_ROUTE_MESH, 'router-service'));
 router.setTlsServer('cert', 'key');
 router.setTlsClient('ca', 'host');
-router.send(routingId, 'ok');
-router.reply(routingId, 1n, 'ok');
+router.send(routingId).message('ok').submit();
+router.reply(routingId, 1n).message('ok').submit();
 router.options.mandatory = true;
 router.options.setConnectRoutingId(peerRoutingId);
 
-const streamReceived = new zlink.Received();
 const stream = new zlink.StreamSocket(ctx);
-stream.send(routingId, 'ok');
-stream.recv(streamReceived);
+stream.send(routingId).message('ok').submit();
+const streamAllocReceived = stream.recv();
+streamAllocReceived?.close();
 stream.onPacket((sourceRid, header, body) => {
   sourceRid.toString();
   header.data();
@@ -118,7 +114,7 @@ stream.setTlsClient('ca', 'host');
 stream.options.notify = true;
 
 const xpub = new zlink.XPubSocket(ctx);
-xpub.publish('topic', 'ok');
+xpub.publish('topic').message('ok').submit();
 xpub.receiveSubscriptionEvent();
 xpub.onSendReady(() => {});
 xpub.options.verbose = true;
@@ -144,17 +140,16 @@ const actor = spotNode.createActor('typed-actor');
 const actorRef = actor.ref();
 actorRef.generation;
 spotNode.actorLookup('typed-actor');
-zlink.SpotNode.remoteActorRef(routingId, 'typed-actor');
-spotNode.onActorAdmission((_actorId, _message) => zlink.ActorAdmissionResult.Accept);
-spotNode.joinActor(actorRef, routingId, routingId, 'join', (_result, _parts) => {});
-spotNode.leaveActor(actorRef, routingId);
+spotNode.remoteActorGetRef(routingId, 'typed-actor').submit((_result) => {});
+spotNode.joinActor(actorRef, routingId, routingId).message('join').submit((_result, _parts) => {});
+spotNode.leaveActor(actorRef, routingId).submit((_result, _parts) => {});
 spotNode.spotsSnapshot();
 spotNode.actorsSnapshot();
 const entrySpot = spotNode.entrySpot();
 const lookedUpSpot = spotNode.spotLookup(entrySpot.routingId);
-stream.bindActor(spotNode, routingId, actorRef);
-stream.unbindActor(spotNode, routingId, 'typed-actor');
-stream.sendBoundActor(spotNode, routingId, 'typed-actor', 'payload');
+stream.bindActor(routingId, actorRef).submit((_result, _parts) => {});
+stream.unbindActor(routingId, 'typed-actor').submit((_result, _parts) => {});
+stream.sendBoundActor(routingId, 'typed-actor').message('payload').submit();
 spot.setRoutingId(routingId);
 spot.routingId;
 spot.publish('topic').message('ok').submit();
@@ -179,7 +174,7 @@ spot.onRoutedReceive((message) => {
 });
 const actorJoin = spot.recvActorJoin(zlink.RecvFlags.DontWait);
 if (actorJoin) {
-  spot.replyActorJoin(actorJoin, true, 'ok');
+  spot.replyActorJoin(actorJoin, true).message('ok').submit();
 }
 spot.actorsSnapshot();
 spotNode.attachPubIngress(pub);
@@ -215,6 +210,25 @@ diagnosticMessage.refCount();
 diagnosticMessage.close();
 constructedMessage.data();
 constructedMessage.close();
+
+// @ts-expect-error send payloads must go through operation builders.
+dealer.send('direct-payload');
+// @ts-expect-error publish payloads must go through operation builders.
+pub.publish('topic', 'direct-payload');
+// @ts-expect-error routed send payloads must go through operation builders.
+router.send(routingId, 'direct-payload');
+// @ts-expect-error stream send payloads must go through operation builders.
+stream.send(routingId, 'direct-payload');
+// @ts-expect-error request payloads must go through operation builders.
+dealer.request('direct-payload');
+// @ts-expect-error reply payloads must go through operation builders.
+router.reply(routingId, 1n, 'direct-payload');
+// @ts-expect-error spot publish payloads must go through operation builders.
+spot.publish('topic', 'direct-payload');
+// @ts-expect-error channel send payloads must go through operation builders.
+spot.sendChannel('svc', 'direct-payload');
+// @ts-expect-error channel request payloads must go through operation builders.
+spot.requestChannel('svc', 'direct-payload');
 
 registry.close();
 discovery.close();

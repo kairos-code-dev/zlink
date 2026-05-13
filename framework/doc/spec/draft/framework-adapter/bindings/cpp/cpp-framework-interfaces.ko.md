@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework C++ Policy](cpp-framework-policy.ko.md) | [다음: ZLink Framework C++ Interface Alignment](handler-interfaces.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md)

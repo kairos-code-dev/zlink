@@ -3,7 +3,7 @@
 #include "../common/perf_single_metric_header.hpp"
 #include "../common/perf_single_monitor.hpp"
 #include "../common/perf_single_phase.hpp"
-#include <zlink_c.h>
+#include <zlink.h>
 
 #include <algorithm>
 #include <atomic>
@@ -70,7 +70,7 @@ bool perform_router_router_handshake (void *receiver_,
             return false;
         std::memcpy (zlink_msg_data (&ping), "PING", 4);
 
-        if (zlink_send_rid (sender_, &target_rid, &ping, 1, ZLINK_DONTWAIT)
+        if (perf_zlink_send_rid_parts (sender_, &target_rid, &ping, 1, ZLINK_DONTWAIT)
             != 0) {
             zlink_msg_close (&ping);
             const int err = zlink_errno ();
@@ -132,7 +132,7 @@ bool perform_router_router_handshake (void *receiver_,
     if (zlink_msg_init_size (&pong, 4) != 0)
         return false;
     std::memcpy (zlink_msg_data (&pong), "PONG", 4);
-    if (zlink_send_rid (receiver_, &sender_actual_rid, &pong, 1,
+    if (perf_zlink_send_rid_parts (receiver_, &sender_actual_rid, &pong, 1,
                         ZLINK_SEND_FLAGS_NONE)
         != 0) {
         zlink_msg_close (&pong);
@@ -395,7 +395,7 @@ bool send_router_stop_token (void *sender_, const zlink_routing_id_t *target_rid
             return false;
         std::memcpy (zlink_msg_data (&part), k_stop_token,
                      std::strlen (k_stop_token));
-        if (zlink_send_rid (sender_, target_rid_, &part, 1,
+        if (perf_zlink_send_rid_parts (sender_, target_rid_, &part, 1,
                             ZLINK_SEND_FLAGS_NONE)
             == 0)
             return true;
@@ -441,7 +441,7 @@ bool send_router_samples (void *sender_,
             std::memcpy (
               zlink_msg_data (&part), payload_->data (), payload_->size ());
 
-        if (zlink_send_rid (sender_, &state_->target_rid, &part, 1,
+        if (perf_zlink_send_rid_parts (sender_, &state_->target_rid, &part, 1,
                             ZLINK_SEND_FLAGS_NONE)
             != 0) {
             const int err = zlink_errno ();
@@ -493,7 +493,7 @@ int send_router_probe_once (void *sender_,
           zlink_msg_data (&part), payload_->data (), payload_->size ());
     }
 
-    if (zlink_send_rid (sender_, &target_rid, &part, 1, ZLINK_DONTWAIT) == 0)
+    if (perf_zlink_send_rid_parts (sender_, &target_rid, &part, 1, ZLINK_DONTWAIT) == 0)
         return 1;
 
     const int err = zlink_errno ();

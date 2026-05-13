@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 const REQUEST_PAYLOAD = 'spot-ping';
 const REPLY_PAYLOAD = 'spot-pong';
@@ -45,11 +45,9 @@ async function main() {
       assert.notEqual(received.requestSeq, null);
       assert.equal(received.parts.length, 1);
       assert.equal(received.parts[0].data().toString(), REQUEST_PAYLOAD);
-      responderRouter.reply(
-        received.routingId,
-        received.requestSeq,
-        zlink.Message.from(Buffer.from(REPLY_PAYLOAD))
-      );
+      responderRouter.reply(received.routingId, received.requestSeq)
+        .message(Buffer.from(REPLY_PAYLOAD))
+        .submit();
     } finally {
       received.close();
     }

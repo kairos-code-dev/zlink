@@ -19,7 +19,7 @@ public interface IZLinkActorClientSendCall
         string key,
         string value);
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorClientRequestCall
@@ -32,7 +32,7 @@ public interface IZLinkActorClientRequestCall
 
     IZLinkActorClientRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorPlayRouteResolver

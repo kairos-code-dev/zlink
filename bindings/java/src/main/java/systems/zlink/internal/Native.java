@@ -242,18 +242,25 @@ public final class Native {
             "zlink_stream_bind_actor",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STREAM_UNBIND_ACTOR = downcall(
             "zlink_stream_unbind_actor",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STREAM_SEND_BOUND_ACTOR_PART = downcall(
             "zlink_stream_send_bound_actor_part",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_STREAM_BOUND_ACTORS = downcall(
+            "zlink_stream_bound_actors",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_SETSOCKOPT = downcall("zlink_set_option",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_GETSOCKOPT = downcall("zlink_get_option",
@@ -648,6 +655,10 @@ public final class Native {
       "zlink_spot_actors_snapshot",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_ACTOR_LIFECYCLE_HANDLER = downcall(
+      "zlink_spot_actor_lifecycle_handler",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_REG_NEW = downcall("zlink_registry_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -838,6 +849,7 @@ public final class Native {
     private static final MethodHandle MH_SPOT_NODE_ACTOR_DESTROY = downcall(
             "zlink_spot_node_actor_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_NODE_ACTOR_LOOKUP = downcall(
             "zlink_spot_node_actor_lookup",
@@ -846,18 +858,9 @@ public final class Native {
     private static final MethodHandle MH_REMOTE_ACTOR_GET_REF = downcall(
             "zlink_remote_actor_get_ref",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_CREATE_REMOTE_ACTOR = downcall(
-            "zlink_spot_node_create_remote_actor",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_NODE_ACTOR_ADMISSION_HANDLER = downcall(
-            "zlink_spot_node_actor_admission_handler",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_ACTOR_JOIN_SPOT = downcall(
             "zlink_spot_node_actor_join_spot",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -870,6 +873,7 @@ public final class Native {
     private static final MethodHandle MH_SPOT_NODE_ACTOR_LEAVE_SPOT = downcall(
             "zlink_spot_node_actor_leave_spot",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_NODE_ACTOR_RECV_PART = downcall(
@@ -1538,40 +1542,43 @@ public final class Native {
         }
     }
 
-    public static int streamBindActor(MemorySegment node, MemorySegment stream,
+    public static int streamBindActor(MemorySegment stream,
                                       MemorySegment sessionRid,
                                       MemorySegment actor,
+                                      MemorySegment handler,
+                                      MemorySegment userdata,
                                       int timeoutMs) {
         try {
-            return (int) MH_STREAM_BIND_ACTOR.invokeExact(node, stream,
-              sessionRid, actor, timeoutMs);
+            return (int) MH_STREAM_BIND_ACTOR.invokeExact(stream,
+              sessionRid, actor, handler, userdata, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_stream_bind_actor failed", t);
         }
     }
 
-    public static int streamUnbindActor(MemorySegment node, MemorySegment stream,
+    public static int streamUnbindActor(MemorySegment stream,
                                         MemorySegment sessionRid,
                                         MemorySegment actorId,
+                                        MemorySegment handler,
+                                        MemorySegment userdata,
                                         int timeoutMs) {
         try {
-            return (int) MH_STREAM_UNBIND_ACTOR.invokeExact(node, stream,
-              sessionRid, actorId, timeoutMs);
+            return (int) MH_STREAM_UNBIND_ACTOR.invokeExact(stream,
+              sessionRid, actorId, handler, userdata, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_stream_unbind_actor failed", t);
         }
     }
 
-    public static int streamSendBoundActorPart(MemorySegment node,
-                                               MemorySegment stream,
+    public static int streamSendBoundActorPart(MemorySegment stream,
                                                MemorySegment sessionRid,
                                                MemorySegment actorId,
                                                MemorySegment msg,
                                                int flags,
                                                int partFlag) {
         try {
-            return (int) MH_STREAM_SEND_BOUND_ACTOR_PART.invokeExact(node,
-              stream, sessionRid, actorId, msg, flags, partFlag);
+            return (int) MH_STREAM_SEND_BOUND_ACTOR_PART.invokeExact(stream,
+              sessionRid, actorId, msg, flags, partFlag);
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_stream_send_bound_actor_part failed", t);
@@ -3265,10 +3272,12 @@ public final class Native {
 
     public static int spotNodeActorDestroy(MemorySegment node,
                                            MemorySegment actor,
+                                           MemorySegment handler,
+                                           MemorySegment userdata,
                                            int timeoutMs) {
         try {
             return (int) MH_SPOT_NODE_ACTOR_DESTROY.invokeExact(node, actor,
-              timeoutMs);
+              handler, userdata, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_spot_node_actor_destroy failed", t);
@@ -3286,42 +3295,42 @@ public final class Native {
         }
     }
 
-    public static int remoteActorGetRef(MemorySegment targetNodeRid,
+    public static int remoteActorGetRef(MemorySegment node,
+                                        MemorySegment targetNodeRid,
                                         MemorySegment actorId,
-                                        MemorySegment out) {
+                                        MemorySegment handler,
+                                        MemorySegment userdata,
+                                        int timeoutMs) {
         try {
-            return (int) MH_REMOTE_ACTOR_GET_REF.invokeExact(targetNodeRid,
-              actorId, out);
+            return (int) MH_REMOTE_ACTOR_GET_REF.invokeExact(node,
+              targetNodeRid, actorId, handler, userdata, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_remote_actor_get_ref failed", t);
         }
     }
 
-    public static int spotNodeCreateRemoteActor(MemorySegment node,
-                                                MemorySegment targetNodeRid,
-                                                MemorySegment actorId,
-                                                MemorySegment parts,
-                                                long partCount,
-                                                MemorySegment out,
-                                                int timeoutMs) {
+    public static int streamBoundActors(MemorySegment stream,
+                                        MemorySegment sessionRid,
+                                        MemorySegment entries,
+                                        MemorySegment count) {
         try {
-            return (int) MH_SPOT_NODE_CREATE_REMOTE_ACTOR.invokeExact(node,
-              targetNodeRid, actorId, parts, partCount, out, timeoutMs);
+            return (int) MH_STREAM_BOUND_ACTORS.invokeExact(stream, sessionRid,
+              entries, count);
         } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_create_remote_actor failed", t);
+            throw new RuntimeException("zlink_stream_bound_actors failed", t);
         }
     }
 
-    public static int spotNodeActorAdmissionHandler(MemorySegment node,
-                                                    MemorySegment handler,
-                                                    MemorySegment userdata) {
+    public static int spotActorLifecycleHandler(MemorySegment spot,
+                                                MemorySegment onJoin,
+                                                MemorySegment onLeave,
+                                                MemorySegment userdata) {
         try {
-            return (int) MH_SPOT_NODE_ACTOR_ADMISSION_HANDLER.invokeExact(node,
-              handler, userdata);
+            return (int) MH_SPOT_ACTOR_LIFECYCLE_HANDLER.invokeExact(spot,
+              onJoin, onLeave, userdata);
         } catch (Throwable t) {
             throw new RuntimeException(
-              "zlink_spot_node_actor_admission_handler failed", t);
+              "zlink_spot_actor_lifecycle_handler failed", t);
         }
     }
 
@@ -3348,10 +3357,12 @@ public final class Native {
     public static int spotNodeActorLeaveSpot(MemorySegment node,
                                              MemorySegment actor,
                                              MemorySegment destSpotRid,
+                                             MemorySegment handler,
+                                             MemorySegment userdata,
                                              int timeoutMs) {
         try {
             return (int) MH_SPOT_NODE_ACTOR_LEAVE_SPOT.invokeExact(node, actor,
-              destSpotRid, timeoutMs);
+              destSpotRid, handler, userdata, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_spot_node_actor_leave_spot failed", t);

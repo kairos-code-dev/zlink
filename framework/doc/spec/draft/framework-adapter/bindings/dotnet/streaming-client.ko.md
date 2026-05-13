@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET Session Actor Dispatch](session-actor-dispatch.ko.md) | [다음: ZLink Stream Connector For Unity](unity-stream-connector.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Unity Stream Connector](./unity-stream-connector.ko.md) | [공통 Stream Connector](../../../streaming-client.ko.md)
@@ -11,10 +15,10 @@
 ## 1. 목적
 
 이 문서는 [공통 stream connector 초안](../../../streaming-client.ko.md)을 `.NET`
-표면으로 내린다. 핵심 목표는 서버 framework의 STREAM packet callback과 같은
-`header + body` 메시지를 `.NET` client에서도 보내고 받을 수 있게 하는 것이다.
-서버 framework 계약은 바꾸지 않는다. typed API와 fluent API는 client 쪽에서
-`header, body`를 만들어 주는 helper 계층이다.
+표면으로 내린다. 핵심 목표는 서버 framework의 STREAM packet 모델과 같은 메시지를
+`.NET` client에서도 보내고 받을 수 있게 하는 것이다. 서버 framework callback은
+`IZLinkSessionPacket`을 받으며, connector의 typed API와 fluent API는 client 쪽에서
+wire header/body를 만들어 주는 helper 계층이다.
 
 이 client는 게임 도메인을 포함하지 않는다. 사용자는 이 위에 채팅, 게임, 장비 제어,
 알림 같은 자기 protocol을 얹는다.
@@ -41,9 +45,9 @@ ASP.NET Core adapter, SPOT, Stage wrapper 같은 서버 framework package에 의
 안 된다. 필요한 의존성은 transport, codec, compression처럼 connector 실행에 필요한
 client-side runtime dependency로 제한한다.
 
-서버 framework package가 Stream Connector를 참조해야 하는 것은 아니다. 서버는 기존
-STREAM `header, body` callback 계약을 유지하고, connector package는 외부 client가 그
-계약에 맞는 packet을 만들고 해석하도록 돕는다.
+서버 framework package가 Stream Connector를 참조해야 하는 것은 아니다. 서버는
+framework session packet 계약을 유지하고, connector package는 외부 client가 그 계약에
+맞는 wire packet을 만들고 해석하도록 돕는다.
 
 ## 3. Transport
 
@@ -169,7 +173,8 @@ public sealed record ZlinkStreamMessage<TBody>(
 `ZlinkStreamMessage`는 helper 모델이다. 실제 transport framing은 항상
 `ReadOnlyMemory<byte> Header`와 `ReadOnlyMemory<byte> Body`를 기준으로 한다. helper는
 `Name`, `Metadata`, codec 정보, request correlation 정보를 byte header로
-인코딩한다. 서버는 이 결과를 기존 STREAM callback에서 `header, body`로 받는다.
+인코딩한다. 서버 framework는 이 결과를 `IZLinkSessionPacket`으로 감싸 session
+callback에 전달한다.
 
 STREAM frame의 앞쪽 `2B`는 connector helper header가 아니라 `header_size`다.
 따라서 `.NET` helper가 만든 packet도 wire에서는 아래 순서를 따른다.
@@ -452,8 +457,8 @@ client
 ```
 
 `.Compress()`는 body만 압축하고 helper header `flags`에 `body compressed`를 표시한다.
-서버 framework는 기존처럼 `header, body`를 받는다. 서버 쪽 helper나 actor adapter는
-helper header를 보고 필요하면 body를 압축 해제한다.
+서버 framework는 wire header/body를 `IZLinkSessionPacket`으로 감싼다. 서버 쪽 helper나
+actor adapter는 packet metadata를 보고 필요하면 body를 압축 해제한다.
 
 ## 10. Result / Error API 초안
 

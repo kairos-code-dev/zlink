@@ -71,10 +71,12 @@ fn main() {
 	                    };
 	                    let reply_bytes = common::message_payload(received.parts()).to_vec();
 	                    if pending.is_empty() {
-	                        match received.send_with_flags(
-	                            vec![Message::copy_from(&reply_bytes).expect("reply")],
-	                            SendFlags::DONT_WAIT,
-	                        ) {
+                        match received
+                            .send()
+                            .message(Message::copy_from(&reply_bytes).expect("reply"))
+                            .flags(SendFlags::DONT_WAIT)
+                            .submit()
+                        {
 	                            Ok(true) => {
 	                                progressed = true;
 	                                continue;
@@ -91,10 +93,12 @@ fn main() {
             }
         }
         while let Some((rid, reply_bytes)) = pending.pop_front() {
-            match router.try_send(
-                &rid,
-                vec![Message::copy_from(&reply_bytes).expect("pending reply")],
-            ) {
+            match router
+                .send(&rid)
+                .message(Message::copy_from(&reply_bytes).expect("pending reply"))
+                .flags(SendFlags::DONT_WAIT)
+                .submit()
+            {
                 Ok(true) => progressed = true,
                 Ok(false) => {
                     pending.push_front((rid, reply_bytes));

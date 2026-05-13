@@ -59,12 +59,10 @@ func main() {
 			serverDone <- fmt.Errorf("unexpected spot request payload")
 			return
 		}
-		_, replyErr := responderRouter.Reply(
+		replyErr := responderRouter.Reply(
 			received.RoutingID(),
 			received.RequestSeq(),
-			zlink.SendFlagsNone,
-			samplecommon.Message(replyPayload),
-		)
+		).Message(samplecommon.Message(replyPayload)).Submit(nil)
 		serverDone <- replyErr
 	}()
 

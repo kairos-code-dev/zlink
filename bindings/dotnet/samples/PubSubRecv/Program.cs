@@ -16,7 +16,7 @@ SampleSupport.WaitConnected(publisherMonitor, subscriberMonitor);
 subscriber.SetSubscription("prices");
 
 using (Message message = Message.FromString("101.25"))
-    publisher.Publish("prices", message);
+    publisher.Publish("prices").Message(message).Submit();
 string payload = SampleSupport.SubscribeUtf8(subscriber, out string topic, 2000);
 Console.WriteLine(
     $"[pubsub/recv] publish: \"prices/101.25\" -> subscribe: \"{topic}/{payload}\"");

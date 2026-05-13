@@ -158,10 +158,10 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         {
             NativeSpot.OnDispatchEvent(info =>
             {
-                if (info.Event == ZLinkBackendSpotDispatchEvent.RoutedReadable)
+                if (info.Event == ZLinkBackendSpotDispatchEvent.RouteReadable)
                 {
                     QueueSerialized(
-                        static (activation, ct) => activation.DispatchRoutedDrainAsync(ct));
+                        static (activation, ct) => activation.DispatchRouteDrainAsync(ct));
                 }
                 else if (info.Event == ZLinkBackendSpotDispatchEvent.ChannelReplyReadable)
                 {
@@ -405,16 +405,37 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
+        var previousActivation =
+            _runtime.GetOrCreateActorState(actor.ActorId).Activation;
         _actors.Add(SpotName, actor);
         await _runtime.JoinActorToSpotAsync(this, actor, cancellationToken);
+        if (!ReferenceEquals(previousActivation, this))
+        {
+            await InvokeLifecycleCallbackAsync(
+                    static (spot, info, ct) =>
+                        spot.OnActorJoinedAsync(info, ct),
+                    ToPublicLifecycleInfo(actor, previousActivation, this),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private async ValueTask LeaveActorCoreAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
+        var wasCurrent = ReferenceEquals(
+            _runtime.GetOrCreateActorState(actor.ActorId).Activation, this);
         _actors.RemoveIfCurrent(actor);
         await _runtime.LeaveActorFromSpotAsync(this, actor, cancellationToken);
+        if (wasCurrent)
+        {
+            await InvokeLifecycleCallbackAsync(
+                    static (spot, info, ct) => spot.OnActorLeftAsync(info, ct),
+                    ToPublicLifecycleInfo(actor, this, currentActivation: null),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -460,6 +481,56 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         {
             throw new InvalidOperationException(
                 "SPOT handler registration is only allowed while IZLinkSpot.Configure is running.");
+        }
+    }
+
+    private ZLinkSpotActorLifecycleInfo ToPublicLifecycleInfo(
+        ZLinkBackendSpotActorLifecycleInfo info)
+    {
+        return new ZLinkSpotActorLifecycleInfo(
+            info.PreviousActor?.ActorId,
+            info.CurrentActor?.ActorId,
+            info.PreviousActor?.NodeRid,
+            info.CurrentActor?.NodeRid,
+            info.PreviousSpotRid,
+            info.CurrentSpotRid,
+            info.JoinEpoch,
+            info.Flags);
+    }
+
+    private static ZLinkSpotActorLifecycleInfo ToPublicLifecycleInfo(
+        IZLinkActor actor,
+        ZLinkSpotActivation? previousActivation,
+        ZLinkSpotActivation? currentActivation)
+    {
+        return new ZLinkSpotActorLifecycleInfo(
+            previousActivation is null ? null : actor.ActorId,
+            currentActivation is null ? null : actor.ActorId,
+            previousActivation?.NodeRid,
+            currentActivation?.NodeRid,
+            previousActivation?.SpotRid,
+            currentActivation?.SpotRid,
+            JoinEpoch: 0,
+            Flags: 0);
+    }
+
+    private async ValueTask InvokeLifecycleCallbackAsync(
+        Func<IZLinkSpot, ZLinkSpotActorLifecycleInfo, CancellationToken, ValueTask> callback,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await callback(Spot, info, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // Lifecycle hooks are notifications after membership has changed.
+            // A failing hook must not roll back or stall actor join/leave.
         }
     }
 
@@ -608,7 +679,7 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         }
     }
 
-    private async ValueTask DispatchRoutedAsync(Received received, CancellationToken cancellationToken)
+    private async ValueTask DispatchRouteAsync(Received received, CancellationToken cancellationToken)
     {
         using (received)
         {
@@ -647,14 +718,14 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         }
     }
 
-    private async ValueTask DispatchRoutedDrainAsync(CancellationToken cancellationToken)
+    private async ValueTask DispatchRouteDrainAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
             Received received;
             try
             {
-                received = NativeSpot.RecvRouted(RecvFlags.DontWait);
+                received = NativeSpot.RecvRoute(RecvFlags.DontWait);
             }
             catch (ZlinkRecvException ex)
                 when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
@@ -662,7 +733,7 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
                 return;
             }
 
-            await DispatchRoutedAsync(received, cancellationToken);
+            await DispatchRouteAsync(received, cancellationToken);
         }
     }
 

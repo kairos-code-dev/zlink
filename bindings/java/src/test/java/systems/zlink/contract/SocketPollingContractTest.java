@@ -33,7 +33,7 @@ public class SocketPollingContractTest {
             poller.add(server, PollEventFlag.POLLIN);
 
             try (Message outbound = Message.copyOfUtf8("poller")) {
-                client.send(outbound);
+                client.send().message(outbound).submit();
             }
 
             PollEvent event = poller.wait(

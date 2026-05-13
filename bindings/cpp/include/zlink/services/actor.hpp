@@ -62,86 +62,31 @@ class actor_t
         if (!_active)
             return;
 
-        detail::throw_if_failed<request_error_t> (
-          static_cast<request_result_t> (
-            zlink_spot_node_actor_destroy (
-              zlink::detail::native_handle (*_node), zlink::detail::actor_ref_native (_ref),
-              static_cast<uint32_t> (timeout_.count ()))));
-        _active = false;
-    }
-
-    async_result_t<std::vector<message_t>>
-    join (spot_t &spot_,
-          message_t &message_,
-          std::chrono::milliseconds timeout_ = {})
-    {
         detail::request_state_t *state = detail::make_future_request_state ();
         std::future<std::vector<message_t>> future =
           state->promise->get_future ();
-        zlink_msg_t native;
-        zlink::detail::move_to_native (message_, &native);
-        const routing_id_t dest_node_rid = _node->routing_id ();
-        const routing_id_t dest_spot_rid = spot_.routing_id ();
         const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_spot_node_actor_join_spot (
-            zlink::detail::native_handle (*_node), zlink::detail::actor_ref_native (_ref),
-            zlink::detail::routing_id_native (dest_node_rid),
-            zlink::detail::routing_id_native (dest_spot_rid), &native, 1,
+          zlink_spot_node_actor_destroy (
+            zlink::detail::native_handle (*_node),
+            zlink::detail::actor_ref_native (_ref),
             &detail::request_callback_trampoline, state,
-            ZLINK_SEND_FLAGS_NONE,
             static_cast<uint32_t> (timeout_.count ())));
         if (rc != submit_result_t::ok) {
             delete state;
-            message_.init ();
-            (void) zlink_msg_move (zlink::detail::native_handle (message_), &native);
             throw submit_error_t (rc, zlink_errno ());
         }
-        return async_result_t<std::vector<message_t>> (
-          std::move (future),
-          detail::make_spot_request_progress (zlink::detail::native_handle (spot_)));
+        (void) future.get ();
+        _active = false;
     }
 
-    bool join (spot_t &spot_,
-               message_t &message_,
-               std::function<void(request_result_t, std::vector<message_t>)> callback_,
-               send_flags_t flags_ = send_flags_t::none,
-               std::chrono::milliseconds timeout_ = {})
+    actor_join_op_t join (spot_t &spot_)
     {
-        zlink_msg_t native;
-        zlink::detail::move_to_native (message_, &native);
-        detail::request_state_t *state =
-          detail::make_callback_request_state (std::move (callback_));
-        const routing_id_t dest_node_rid = _node->routing_id ();
-        const routing_id_t dest_spot_rid = spot_.routing_id ();
-        const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_spot_node_actor_join_spot (
-            zlink::detail::native_handle (*_node), zlink::detail::actor_ref_native (_ref),
-            zlink::detail::routing_id_native (dest_node_rid),
-            zlink::detail::routing_id_native (dest_spot_rid), &native, 1,
-            &detail::request_callback_trampoline, state,
-            static_cast<zlink_send_flags_t> (flags_),
-            static_cast<uint32_t> (timeout_.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
-            message_.init ();
-            (void) zlink_msg_move (zlink::detail::native_handle (message_), &native);
-            if (flags_ == send_flags_t::dontwait
-                && rc == submit_result_t::backpressured)
-                return false;
-            throw submit_error_t (rc, zlink_errno ());
-        }
-        return true;
+        return _node->join_actor (_ref, _node->routing_id (), spot_.routing_id ());
     }
 
-    void leave (spot_t &spot_, std::chrono::milliseconds timeout_ = {})
+    actor_leave_op_t leave (spot_t &spot_)
     {
-        const routing_id_t current_spot_rid = spot_.routing_id ();
-        detail::throw_if_failed<request_error_t> (
-          static_cast<request_result_t> (
-            zlink_spot_node_actor_leave_spot (
-              zlink::detail::native_handle (*_node), zlink::detail::actor_ref_native (_ref),
-              zlink::detail::routing_id_native (current_spot_rid),
-              static_cast<uint32_t> (timeout_.count ()))));
+        return _node->leave_actor (_ref, spot_.routing_id ());
     }
 
     std::optional<actor_part_t> recv_part (
@@ -171,34 +116,9 @@ class actor_t
           has_more != ZLINK_PART_FINAL);
     }
 
-    bool send_bound_session (message_t &message_,
-                             send_flags_t flags_ = send_flags_t::none)
+    send_op_t send_bound_session ()
     {
-        zlink_msg_t native;
-        zlink::detail::move_to_native (message_, &native);
-        const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_spot_node_actor_send_bound_session_msg (
-            zlink::detail::native_handle (*_node), zlink::detail::actor_ref_native (_ref), &native,
-            static_cast<zlink_send_flags_t> (flags_)));
-        if (rc != submit_result_t::ok) {
-            message_.init ();
-            (void) zlink_msg_move (zlink::detail::native_handle (message_), &native);
-            if (flags_ == send_flags_t::dontwait
-                && rc == submit_result_t::backpressured)
-                return false;
-            throw submit_error_t (rc, zlink_errno ());
-        }
-        return true;
-    }
-
-    bool send_bound_session (std::vector<message_t> &parts_,
-                             send_flags_t flags_ = send_flags_t::none)
-    {
-        for (size_t i = 0; i < parts_.size (); ++i) {
-            if (!send_bound_session (parts_[i], flags_))
-                return false;
-        }
-        return true;
+        return _node->send_bound_session_msg (_ref);
     }
 
     void close_bound_session (std::chrono::milliseconds timeout_ = {})

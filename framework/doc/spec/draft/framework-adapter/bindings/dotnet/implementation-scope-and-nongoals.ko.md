@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET Lifecycle And Failure Semantics](lifecycle-and-failure-semantics.ko.md) | [다음: ZLink Framework .NET Backend Dependency Policy](backend-dependency-policy.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md)

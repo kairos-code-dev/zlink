@@ -45,40 +45,34 @@ internal sealed class ZLinkBackendStreamSocketWrapper(StreamSocket nativeSocket)
     }
 
     public void BindActor(
-        IZLinkBackendSpotNode node,
         RoutingId sessionRid,
         ZLinkBackendActorRef actor,
         TimeSpan timeout)
     {
         nativeSocket.BindActor(
-            node.RequireNative<SpotNode>(),
             sessionRid,
             actor.ToNative(),
             timeout);
     }
 
     public void UnbindActor(
-        IZLinkBackendSpotNode node,
         RoutingId sessionRid,
         string actorId,
         TimeSpan timeout)
     {
         nativeSocket.UnbindActor(
-            node.RequireNative<SpotNode>(),
             sessionRid,
             actorId,
             timeout);
     }
 
     public bool SendBoundActor(
-        IZLinkBackendSpotNode node,
         RoutingId sessionRid,
         string actorId,
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
         return nativeSocket.SendBoundActor(
-            node.RequireNative<SpotNode>(),
             sessionRid,
             actorId,
             parts,

@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework Python STREAM Samples](../python/stream-samples.ko.md) | [다음: ZLink Framework C++ Policy](cpp-framework-policy.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [Framework Adapter 정책](../../policy/README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./cpp-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [STREAM open items](./stream-open-items.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)

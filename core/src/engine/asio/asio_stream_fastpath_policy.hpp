@@ -212,6 +212,30 @@ inline size_t encoder_max_write_target (const zlink::options_t &options_)
     return encoder_max_write_target (options_, 0, initial_target_cap ());
 }
 
+inline size_t next_stream_target_after_full_hit (size_t current_,
+                                                size_t max_,
+                                                size_t *full_hits_,
+                                                size_t required_hits_)
+{
+    if (!full_hits_ || current_ >= max_)
+        return 0;
+
+    ++(*full_hits_);
+    if (*full_hits_ < required_hits_)
+        return 0;
+    *full_hits_ = 0;
+
+    size_t grown = current_;
+    if (grown > max_ / 2)
+        grown = max_;
+    else
+        grown *= 2;
+
+    if (grown > max_)
+        grown = max_;
+    return grown > current_ ? grown : 0;
+}
+
 template <typename Engine>
 inline size_t output_target_batch (const Engine &engine_,
                                    const zlink::options_t &options_)

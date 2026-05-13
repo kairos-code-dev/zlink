@@ -76,7 +76,7 @@ inline bool publish_once (void *server,
         return false;
     std::memcpy (zlink_msg_data (&payload_part), payload.data (), send_size);
 
-    if (::zlink_publish (
+    if (::perf_zlink_publish_parts (
           server, k_pubsub_topic, &payload_part, 1, ZLINK_DONTWAIT)
         == ZLINK_SUBMIT_OK) {
         if (publish_ok_count)

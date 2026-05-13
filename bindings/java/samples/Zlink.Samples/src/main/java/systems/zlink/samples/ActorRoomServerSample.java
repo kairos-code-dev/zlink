@@ -2,7 +2,6 @@ package systems.zlink.samples;
 
 import systems.zlink.Context;
 import systems.zlink.Message;
-import systems.zlink.RequestCallback;
 import systems.zlink.MonitorEventType;
 import systems.zlink.RecvFlags;
 import systems.zlink.RequestResult;
@@ -44,7 +43,9 @@ public final class ActorRoomServerSample {
                     }
                     joins.add(request.message().toUtf8String());
                     try (Message reply = Message.copyOfUtf8("joined")) {
-                        spot.replyActorJoin(request, true, reply);
+                        spot.replyActorJoin(request, true)
+                          .message(reply)
+                          .submit();
                     }
                 }
             });
@@ -58,14 +59,20 @@ public final class ActorRoomServerSample {
                     stream.recv(received, systems.zlink.RecvFlags.NONE);
                     sessionRid = received.routingId().orElseThrow();
                 }
-                stream.bindActor(node, sessionRid, actorRef,
-                  Duration.ofSeconds(2));
+                stream.bindActor(sessionRid, actorRef)
+                  .timeout(Duration.ofSeconds(2))
+                  .submitAsync()
+                  .join()
+                  .forEach(Message::close);
 
                 try (Message request = Message.copyOfUtf8("join-room")) {
-                    actor.join(spot, request, (RequestCallback) (result, messages) -> {
-                        replies.add(result);
+                    actor.join(spot)
+                      .message(request)
+                      .timeout(Duration.ofSeconds(2))
+                      .submit((result, messages) -> {
+                        replies.add(result.result());
                         messages.forEach(Message::close);
-                    }, Duration.ofSeconds(2));
+                    });
                 }
                 SampleSupport.waitUntil("actor join", () -> !replies.isEmpty());
 
@@ -74,7 +81,7 @@ public final class ActorRoomServerSample {
                     || spot.actorsSnapshot().isEmpty()) {
                     throw new IllegalStateException("actor room join failed");
                 }
-                actor.leave(spot);
+                actor.leave(spot).submitAsync().join().forEach(Message::close);
                 actor.close();
             }
             System.out.println("[actor/room] join accepted");

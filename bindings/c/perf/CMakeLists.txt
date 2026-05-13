@@ -1,7 +1,7 @@
 # bindings/c/perf - current zlink C binding benchmark targets
 
 if(NOT TARGET zlink_c)
-    message(FATAL_ERROR "zlink_c target not found. Build bindings/c first.")
+    message(FATAL_ERROR "C binding target not found. Build bindings/c first.")
 endif()
 
 find_package(Threads REQUIRED)
@@ -25,72 +25,66 @@ set(PERF_BENCH_SINGLE_COMMON_DIR
 set(PERF_BENCH_MULTI_COMMON_DIR
     "${ZLINK_C_BINDINGS_DIR}/bench/with_zmq/multi/common")
 
-if(EXISTS "${PERF_BINDINGS_C_INCLUDE_DIR}/zlink_c.h")
-    if(MSVC)
-        set(PERF_CXX_FLAGS "/O2")
-    else()
-        set(PERF_CXX_FLAGS "-O3")
+if(MSVC)
+    set(PERF_CXX_FLAGS "/O2")
+else()
+    set(PERF_CXX_FLAGS "-O3")
+endif()
+
+function(configure_current_bench_runtime target_name)
+    if(WIN32)
+        target_link_libraries(${target_name} PRIVATE Psapi)
     endif()
+endfunction()
 
-    function(copy_zlink_c_runtime target_name)
-        if(WIN32)
-            target_link_libraries(${target_name} PRIVATE Psapi)
-            add_custom_command(TARGET ${target_name} POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "$<TARGET_FILE:zlink_c>"
-                "$<TARGET_FILE_DIR:${target_name}>/$<TARGET_FILE_NAME:zlink_c>"
-            )
-        endif()
-    endfunction()
+function(add_current_bench_single name source)
+    add_executable(${name} ${source})
+    target_link_libraries(${name} PRIVATE zlink_c Threads::Threads)
+    if(NOT WIN32)
+        target_link_libraries(${name} PRIVATE dl)
+    endif()
+    target_include_directories(${name} PRIVATE
+        ${PERF_BINDINGS_C_INCLUDE_DIR}
+        ${PERF_CORE_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/single/common
+        ${PERF_EXTERNAL_INCLUDE_DIR})
+    target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
+    target_compile_features(${name} PRIVATE cxx_std_11)
+    configure_current_bench_runtime(${name})
+endfunction()
 
-    function(add_current_bench_single name source)
-        add_executable(${name} ${source})
-        target_link_libraries(${name} PRIVATE zlink_c Threads::Threads)
-        if(NOT WIN32)
-            target_link_libraries(${name} PRIVATE dl)
-        endif()
-        target_include_directories(${name} PRIVATE
-            ${PERF_BINDINGS_C_INCLUDE_DIR}
-            ${PERF_CORE_INCLUDE_DIR}
-            ${CMAKE_CURRENT_SOURCE_DIR}/single/common
-            ${PERF_EXTERNAL_INCLUDE_DIR})
-        target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
-        target_compile_features(${name} PRIVATE cxx_std_11)
-        copy_zlink_c_runtime(${name})
-    endfunction()
+function(add_current_bench_single_recv name source)
+    add_executable(${name} ${source})
+    target_link_libraries(${name} PRIVATE zlink_c Threads::Threads)
+    if(NOT WIN32)
+        target_link_libraries(${name} PRIVATE dl)
+    endif()
+    target_include_directories(${name} PRIVATE
+        ${PERF_BINDINGS_C_INCLUDE_DIR}
+        ${PERF_CORE_INCLUDE_DIR}
+        ${PERF_BENCH_SINGLE_COMMON_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/single/common
+        ${PERF_EXTERNAL_INCLUDE_DIR})
+    target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
+    target_compile_features(${name} PRIVATE cxx_std_11)
+    configure_current_bench_runtime(${name})
+endfunction()
 
-    function(add_current_bench_single_recv name source)
-        add_executable(${name} ${source})
-        target_link_libraries(${name} PRIVATE zlink_c Threads::Threads)
-        if(NOT WIN32)
-            target_link_libraries(${name} PRIVATE dl)
-        endif()
-        target_include_directories(${name} PRIVATE
-            ${PERF_BINDINGS_C_INCLUDE_DIR}
-            ${PERF_CORE_INCLUDE_DIR}
-            ${PERF_BENCH_SINGLE_COMMON_DIR}
-            ${CMAKE_CURRENT_SOURCE_DIR}/single/common
-            ${PERF_EXTERNAL_INCLUDE_DIR})
-        target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
-        target_compile_features(${name} PRIVATE cxx_std_11)
-        copy_zlink_c_runtime(${name})
-    endfunction()
-
-    function(add_current_bench_multi name source)
-        add_executable(${name} ${source})
-        target_link_libraries(${name} PRIVATE zlink_c Threads::Threads)
-        if(NOT WIN32)
-            target_link_libraries(${name} PRIVATE dl)
-        endif()
-        target_include_directories(${name} PRIVATE
-            ${PERF_BINDINGS_C_INCLUDE_DIR}
-            ${PERF_CORE_INCLUDE_DIR}
-            ${CMAKE_CURRENT_SOURCE_DIR}/multi/common
-            ${PERF_BENCH_MULTI_COMMON_DIR})
-        target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
-        target_compile_features(${name} PRIVATE cxx_std_11)
-        copy_zlink_c_runtime(${name})
-    endfunction()
+function(add_current_bench_multi name source)
+    add_executable(${name} ${source})
+    target_link_libraries(${name} PRIVATE zlink_c Threads::Threads)
+    if(NOT WIN32)
+        target_link_libraries(${name} PRIVATE dl)
+    endif()
+    target_include_directories(${name} PRIVATE
+        ${PERF_BINDINGS_C_INCLUDE_DIR}
+        ${PERF_CORE_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/multi/common
+        ${PERF_BENCH_MULTI_COMMON_DIR})
+    target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
+    target_compile_features(${name} PRIVATE cxx_std_11)
+    configure_current_bench_runtime(${name})
+endfunction()
 
     add_current_bench_single(perf_pair single/src/perf_pair.cpp)
     add_current_bench_single(perf_pubsub single/src/perf_pubsub.cpp)
@@ -144,8 +138,5 @@ if(EXISTS "${PERF_BINDINGS_C_INCLUDE_DIR}/zlink_c.h")
                            multi/src/perf_multi_spot_sendsend_client.cpp)
     add_current_bench_multi(comp_src_stream_server
                            multi/src/perf_multi_stream_server.cpp)
-    target_compile_definitions(comp_src_stream_server PRIVATE
-                               PERF_MULTI_STREAM_PATTERN_NAME="MULTI_STREAM")
-else()
-    message(WARNING "zlink_c headers not found at ${PERF_BINDINGS_C_INCLUDE_DIR}")
-endif()
+target_compile_definitions(comp_src_stream_server PRIVATE
+                           PERF_MULTI_STREAM_PATTERN_NAME="MULTI_STREAM")

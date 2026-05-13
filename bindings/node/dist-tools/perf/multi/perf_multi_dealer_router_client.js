@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWait, resolveMultiLatencySampleCap, sendStopTokenWithRetry, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');

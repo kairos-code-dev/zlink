@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use zlink::{
-    ActorAdmissionResult, Context, Message, RecvFlags, RecvResult, SendFlags, SpotDispatchEvent,
+    Context, Message, RecvFlags, RecvResult, SendFlags, SpotDispatchEvent,
     SpotDispatchSubject, SpotNode,
 };
 
@@ -12,29 +12,15 @@ mod sample_support;
 fn main() {
     let ctx = Context::new().expect("context creation failed");
     let gateway_node = SpotNode::new(&ctx).expect("gateway node failed");
-    let mut play_node = SpotNode::new(&ctx).expect("play node failed");
+    let play_node = SpotNode::new(&ctx).expect("play node failed");
     let mut play_spot = play_node.create_spot().expect("play spot failed");
     play_spot
         .set_routing_id(&zlink::RoutingId::from_bytes(b"play-spot"))
         .unwrap();
 
-    play_node
-        .on_actor_admission(|actor_id, message| {
-            assert_eq!(actor_id, "play-session-actor");
-            assert_eq!(message.as_str().unwrap(), "spawn");
-            ActorAdmissionResult::Accept
-        })
-        .expect("admission handler failed");
-
-    let created = gateway_node
-        .create_remote_actor(
-            &play_node.routing_id().unwrap(),
-            "play-session-actor",
-            Message::copy_from(b"spawn").unwrap(),
-            Duration::from_secs(1),
-        )
-        .expect("remote actor create failed");
-    assert_eq!(created.actor.actor_id, "play-session-actor");
+    let actor = gateway_node
+        .create_actor("play-session-actor")
+        .expect("actor create failed");
 
     let received_payload = Arc::new(Mutex::new(None::<String>));
     let received_payload_cb = Arc::clone(&received_payload);
@@ -54,25 +40,27 @@ fn main() {
         })
         .expect("dispatch handler failed");
 
-    let actor_ref = play_node
-        .actor_lookup("play-session-actor")
-        .expect("actor lookup failed");
+    let actor_ref = actor.actor_ref().expect("actor ref failed");
     let stream = ctx.stream_socket().expect("stream socket failed");
     let session = zlink::RoutingId::from_bytes(b"gateway-session");
+    let (bind_tx, bind_rx) = mpsc::channel();
     stream
-        .bind_actor(&gateway_node, &session, &actor_ref, Duration::from_secs(1))
+        .bind_actor(&session, &actor_ref)
+        .timeout(Duration::from_secs(1))
+        .submit(move |result| bind_tx.send(result).unwrap())
         .expect("remote stream actor bind failed");
+    bind_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
     let (join_tx, join_rx) = mpsc::channel();
     gateway_node
-        .join_actor_callback(
+        .join_actor(
             &actor_ref,
             &play_node.routing_id().unwrap(),
             &play_spot.routing_id().unwrap(),
-            Message::copy_from(b"join-play").unwrap(),
-            move |result| join_tx.send(result).unwrap(),
-            SendFlags::DONT_WAIT,
-            Duration::from_secs(1),
         )
+        .message(Message::copy_from(b"join-play").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .timeout(Duration::from_secs(1))
+        .submit(move |result, parts| join_tx.send((result, parts)).unwrap())
         .expect("remote actor join submit failed");
 
     sample_support::wait_until(
@@ -80,7 +68,9 @@ fn main() {
             Ok(Some(request)) => {
                 assert_eq!(request.message.as_str().unwrap(), "join-play");
                 play_spot
-                    .reply_actor_join(&request, true, Message::copy_from(b"accepted").unwrap())
+                    .reply_actor_join(&request, true)
+                    .message(Message::copy_from(b"accepted").unwrap())
+                    .submit()
                     .unwrap();
                 true
             }
@@ -94,16 +84,13 @@ fn main() {
     join_rx
         .recv_timeout(Duration::from_secs(2))
         .unwrap()
-        .unwrap();
+        .0;
 
     stream
-        .send_bound_actor_part(
-            &gateway_node,
-            &session,
-            "play-session-actor",
-            Message::copy_from(b"client-input").unwrap(),
-            SendFlags::DONT_WAIT,
-        )
+        .send_bound_actor_part(&session, "play-session-actor")
+        .message(Message::copy_from(b"client-input").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .submit()
         .expect("gateway relay send failed");
 
     sample_support::wait_until(
@@ -113,13 +100,17 @@ fn main() {
     );
 
     gateway_node
-        .leave_actor(
-            &actor_ref,
-            &play_spot.routing_id().unwrap(),
-            Duration::from_secs(1),
-        )
+        .leave_actor(&actor_ref, &play_spot.routing_id().unwrap())
+        .timeout(Duration::from_secs(1))
+        .submit(|result| {
+            result.unwrap();
+        })
         .unwrap();
     gateway_node
-        .destroy_actor(&actor_ref, Duration::from_secs(1))
+        .destroy_actor(&actor_ref)
+        .timeout(Duration::from_secs(1))
+        .submit(|result| {
+            result.unwrap();
+        })
         .unwrap();
 }

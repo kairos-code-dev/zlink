@@ -16,7 +16,8 @@ bool send_single_part (void *userdata_, const void *data_, size_t size_)
         return false;
 
     zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
-    return msg.valid () && socket->send (msg, ZLINK_DONTWAIT) == 0;
+    return msg.valid ()
+           && perf::send_socket (*socket, msg, ZLINK_DONTWAIT) == 0;
 }
 
 bool record_dealer_payload (const zlink::received_t &received,
@@ -145,7 +146,7 @@ bool run_pattern_dealer_dealer (const std::string &transport,
           std::strlen (perf::single::k_stop_token));
         for (int retry = 0; retry < 100 && stop_msg.valid (); ++retry) {
             try {
-                if (conn_socket.sock ().send (stop_msg, 0) == 0)
+                if (perf::send_socket (conn_socket.sock (), stop_msg, 0) == 0)
                     break;
             }
             catch (const zlink::zlink_error_t &) {

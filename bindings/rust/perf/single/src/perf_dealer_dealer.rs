@@ -68,13 +68,15 @@ fn main() {
     let active_deadline = std::time::Instant::now() + active;
     let send_thread = std::thread::spawn(move || {
         common::send_loop(active_deadline, config.size, common::PHASE_ACTIVE, |msg| {
-            match sender.try_send(msg) {
+            match sender.send().message(msg).flags(zlink::SendFlags::DONT_WAIT).submit() {
                 Ok(sent) => sent,
                 Err(err) if err.code() == SubmitResult::NotConnected => false,
                 Err(err) => panic!("active send: {err}"),
             }
         });
-        common::send_stop_token(|msg| sender.send(msg).map_err(Into::into));
+        common::send_stop_token(|msg| {
+            sender.send().message(msg).submit().map(|_| ()).map_err(Into::into)
+        });
     });
 
     let mut received = zlink::Received::empty();

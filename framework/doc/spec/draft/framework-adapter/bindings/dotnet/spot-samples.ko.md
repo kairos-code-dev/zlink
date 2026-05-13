@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET Channel Messaging Samples](channel-messaging-samples.ko.md) | [다음: ZLink Framework .NET STREAM Samples](stream-samples.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md)
@@ -28,8 +32,8 @@ timer가 함께 나오기 때문에 설명만 보면 감이 잘 안 올 수 있�
   framework core public surface에 맞춘 샘플이다.
 - 3.2.1의 actor/session membership 예시는 stage wrapper 같은 상위 확장 아이디어
   메모다. 현재 framework core public surface가 아니다.
-- `targetRid + spotRid` direct routed 호출 예시도 같은 이유로 현재 core 계약으로
-  읽지 않는다.
+- `targetRid + spotRid` direct routed 호출은 framework public surface에 두지 않는다.
+  spot name/id 기반 호출은 `IZLinkSpotClient`가 resolver를 통해 처리한다.
 
 ## 2. 인터페이스 초안
 
@@ -83,9 +87,29 @@ public interface IZLinkSpotContext
     {
     }
 
+    void AddActorPacket<THandler, TActor>()
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+    }
+
     IZLinkPublishCall Publish<TEvent>(
         string topic,
         TEvent message)
+    {
+        return default!;
+    }
+
+    IZLinkSendCall SendSpot<TMessage>(
+        string spotName,
+        TMessage message)
+    {
+        return default!;
+    }
+
+    IZLinkRequestCall RequestSpot<TRequest>(
+        string spotName,
+        TRequest request)
     {
         return default!;
     }
@@ -187,6 +211,22 @@ public interface IZLinkClient
 
 public interface IZLinkSpotClient
 {
+    IZLinkSendCall SendSpot<TMessage>(
+        string spotName,
+        TMessage message);
+
+    IZLinkSendCall SendSpot<TMessage>(
+        RoutingId spotRid,
+        TMessage message);
+
+    IZLinkRequestCall RequestSpot<TMessage>(
+        string spotName,
+        TMessage request);
+
+    IZLinkRequestCall RequestSpot<TMessage>(
+        RoutingId spotRid,
+        TMessage request);
+
     IZLinkSendCall SendChannel<TMessage>(
         string channelName,
         TMessage message);
@@ -336,8 +376,6 @@ app.Run();
 
 - `AttachClientServerChannelClient("orders")`
   - stage spot이 `orders` channel로 send/request 할 outbound client를 붙인다.
-  - standalone `AddSpotNode(...)` 빌더에는 같은 경로를 가리키는 legacy alias
-    `AttachChannelClient(...)`도 남아 있지만, mesh 노드 빌더는 `AttachClientServerChannelClient`만 가진다.
 - `EnableRouter()`
   - 같은 SPOT channel의 다른 `SpotNode`와 routed packet을 주고받는 local router를
     켠다.
@@ -346,13 +384,10 @@ app.Run();
 - `AttachSpotMeshPublisherClient("game.stage")`
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     별도 publisher client를 붙인다.
-  - standalone `AddSpotNode(...)` 빌더에는 같은 경로를 가리키는 legacy alias
-    `AttachSpotPublisherClient(...)`도 남아 있지만, mesh 노드 빌더는
-    `AttachSpotMeshPublisherClient`만 가진다.
 - `ConfigureSocket(...)`, `ConfigureRouting(...)`,
   `ConfigurePublisherOptions(...)`, `ConfigureSubscriberOptions(...)`
-  - 실제 `.NET` 바인딩의 `CommonSocketOptions`, routed peer 옵션,
-    outbound peer 옵션, `SpotNodePublisherOptions`,
+  - 실제 `.NET` 바인딩의 `CommonSocketOptions`, route policy 옵션,
+    outbound route policy 옵션, `SpotNodePublisherOptions`,
     `SpotNodeSubscriberOptions`와 같은 typed facade를 capability별로 등록한다.
   - 호출 단위 `WithTimeout(...)`과 달리 runtime 기본 동작을 정하는 설정이다.
 - `AddSpotFactory<SampleSpot>("sample")`
@@ -551,8 +586,8 @@ builder.Services.AddZLinkFramework(options =>
   capability 표면으로 끌어온다.
 - `router.ConfigureSocket(...)`, `client.ConfigureSocket(...)` 같은 표면은 실제
   `CommonSocketOptions`와 같은 공통 socket 기본 동작을 정한다.
-- `router.ConfigureRouting(...)`, `client.ConfigureRouting(...)`은 실제
-  routed peer 옵션과 outbound peer 옵션에 대응하는 capability 전용 facade다.
+- `router.ConfigureRouting(...)`, `client.ConfigureRouting(...)`은 실제 route policy와
+  outbound route policy에 대응하는 capability 전용 facade다.
 - `RequestChannel(...).WithTimeout(...)` 같은 호출 단위 옵션은 특정 호출 하나에만
   적용되고, 위 설정은 runtime 기본값이다.
 
@@ -593,6 +628,8 @@ local `SpotNode`와 local spot runtime을 열지 않고, 다른 channel이나 �
 outbound 호출하는 앱이 있을 수 있다. 이런 경우의 기본 outbound 표면은
 `IZLinkClient`다. local `SpotNode`가 없으면 attach된 channel client 경로도 없으므로
 `IZLinkSpotClient.RequestChannel(...)` 같은 표면을 바로 쓰는 모델로 설명하면 안 된다.
+spot name/id 기반 routed 호출이 필요하면 local `SpotNode`가 있는 서버에서
+`IZLinkSpotClient.SendSpot(...)` / `RequestSpot(...)`을 사용한다.
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
@@ -712,6 +749,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
         Context.AddPacket<SampleGetStateHandler>();
         Context.AddPacket<SampleReportStateHandler>();
         Context.AddActorJoin<SampleJoinRoomHandler, SampleActor, SampleJoinRoomRequest, SampleJoinRoomReply>();
+        Context.AddActorPacket<SampleMoveActorHandler, SampleActor>();
 
         Context.AddSubscribe<SampleStateUpdatedHandler>(
             "sample.state.updated");
@@ -785,7 +823,7 @@ session handler는 인증과 재연결을 맡는 ingress adapter이고, 실제 l
 actor는 room에 남아 있을 수 있고, 새 stream이 같은
 `accountId`로 다시 들어오면 같은 actor에 다시 연결할 수 있다.
 그리고 이 모델이 public 계약으로 보이려면 actor join은 `IZLinkSpot` override가
-아니라 session의 `CreateActorAsync(...)` 또는 `CreateRemoteActorAsync(...)`,
+아니라 session의 `CreateActorAsync(...)` 또는 `CreateActorHandleAsync(...)`,
 `IZLinkActorContext.JoinSpot(...)`,
 `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` 조합으로 보여야 한다.
 join 승인과 membership 기록은 반드시 target `Spot` 실행 문맥에서 함께 처리되어야
@@ -817,8 +855,8 @@ public interface IZLinkActor
   - actor 생성 시 constructor로 주입되는 framework context다. actor는 이 context를
     외부에 공개하지 않고, 필요한 동작을 자기 method 안에서 감싼다.
 - `IZLinkActor.Configure()`
-  - actor가 생성된 뒤 한 번 호출된다. actor가 받을 packet handler는 이 안에서
-    constructor로 받은 context의 `AddPacket<THandler>()`로 등록한다.
+  - actor가 생성된 뒤 한 번 호출된다. actor 자체 초기화에만 사용하고, actor packet
+    handler 등록은 `IZLinkSpotContext.AddActorPacket<THandler, TActor>()`로 한다.
 - `IZLinkActorContext.GetSpot<TSpot>()`
   - 현재 들어가 있는 room instance를 가져온다. room에 아직 안 들어갔으면 실패한다.
 - stream attach/disconnect와 room join/leave는 다른 수명이다.
@@ -897,6 +935,7 @@ public sealed class SampleSpot(
         Context.AddPacket<SampleGetStateHandler>();
         Context.AddPacket<SampleReportStateHandler>();
         Context.AddActorJoin<SampleJoinRoomHandler, SampleActor, SampleJoinRoomRequest, SampleJoinRoomReply>();
+        Context.AddActorPacket<SampleMoveActorHandler, SampleActor>();
 
         Context.AddSubscribe<SampleStateUpdatedHandler>(
             "sample.state.updated");
@@ -1060,11 +1099,6 @@ public sealed class SampleActor : IZLinkActor
 
     public DateTimeOffset? DisconnectedAt { get; private set; }
 
-    public void Configure()
-    {
-        _context.AddPacket<SampleMoveActorHandler>();
-    }
-
     public async ValueTask SendSnapshotAsync(
         CancellationToken cancellationToken)
     {
@@ -1140,14 +1174,14 @@ public sealed class SampleActor : IZLinkActor
 }
 
 public sealed class SampleMoveActorHandler
-    : IZLinkActorPacketHandler<SampleActor, SampleMoveActorCommand>
+    : IZLinkSpotActorSendHandler<SampleSpot, SampleActor, SampleMoveActorCommand>
 {
     public ValueTask HandleAsync(
+        SampleSpot room,
         SampleActor actor,
         SampleMoveActorCommand message,
         CancellationToken cancellationToken)
     {
-        SampleSpot room = actor.GetRoom();
         actor.MarkSeen(DateTimeOffset.UtcNow);
         room.PublishSampleState();
         return actor.ReplyAsync(new SampleMoveActorReply
@@ -1209,14 +1243,13 @@ public sealed class SampleSession
     }
 
     public async ValueTask OnDispatchAsync(
-        ZLinkStreamHeader header,
-        Message body,
+        IZLinkSessionPacket packet,
         CancellationToken cancellationToken)
     {
         if (Actor is null)
         {
             if (!string.Equals(
-                header.Name,
+                packet.PacketName,
                 "SampleAuthenticateRequest",
                 StringComparison.Ordinal))
             {
@@ -1225,7 +1258,7 @@ public sealed class SampleSession
             }
 
             SampleAuthenticateRequest authRequest =
-                body.Parse<SampleAuthenticateRequest>();
+                packet.Decode<SampleAuthenticateRequest>();
 
             SampleAuthenticationResult auth =
                 await _authVerifier.VerifyAsync(
@@ -1256,12 +1289,12 @@ public sealed class SampleSession
         }
 
         if (string.Equals(
-            header.Name,
+            packet.PacketName,
             "SampleJoinRoomRequest",
             StringComparison.Ordinal))
         {
             SampleJoinRoomRequest join =
-                body.Parse<SampleJoinRoomRequest>();
+                packet.Decode<SampleJoinRoomRequest>();
 
             SampleSpot room =
                 await _rooms.GetRequiredAsync(
@@ -1287,8 +1320,7 @@ public sealed class SampleSession
 
         await Context.DispatchToActorAsync(
             ActorRef ?? throw new InvalidOperationException("Actor is not bound."),
-            header,
-            body,
+            packet,
             cancellationToken);
     }
 }
@@ -1381,9 +1413,9 @@ public sealed record SampleAuthenticationResult(
    `SampleSendRoomChatCommand` 같은 패킷은 framework 내부 `SubmitAsync(...)`를 통해
    actor가 붙은 `Spot` 문맥으로 제출된다.
 9. 같은 `Spot` 실행 문맥 안에서 실제 처리는
-   `IZLinkActorContext.AddPacket(...)`으로 등록한 actor packet handler가 맡는다.
-10. room 전체 로직이 필요하면 handler가 actor method를 통해 현재 `SampleSpot`을
-    가져와 이어서 처리한다.
+   `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 actor packet handler가 맡는다.
+10. room 전체 로직이 필요하면 handler가 인자로 받은 `SampleSpot`과 actor method를
+    함께 사용해 이어서 처리한다.
 
 즉 room은 actor만 붙잡고, session handler는 room 밖에서 인증과 재연결을 처리한다.
 이 구조로 보면 "같은 account의 actor는 유지하고 stream만 교체"하는 reconnect 정책이

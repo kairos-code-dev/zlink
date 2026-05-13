@@ -19,7 +19,7 @@ public interface IZLinkSessionProxySendCall
         string key,
         string value);
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionProxyRequestCall
@@ -32,5 +32,5 @@ public interface IZLinkSessionProxyRequestCall
 
     IZLinkSessionProxyRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }

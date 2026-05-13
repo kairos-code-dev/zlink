@@ -268,7 +268,7 @@ send_status_t try_publish_locked(spot_server_state_t *state,
             return -1;
         }
 
-        const int rc = zlink_spot_publish(state->pub, k_topic, &part, 1, flags);
+        const int rc = perf_zlink_spot_publish_parts (state->pub, k_topic, &part, 1, flags);
         *saved_errno_out = rc == 0 ? 0 : errno;
         return rc;
     };

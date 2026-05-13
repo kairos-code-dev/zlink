@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 function recvSubscriptionEventMaybe(socket) {
   try {

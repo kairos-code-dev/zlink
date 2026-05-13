@@ -2,7 +2,7 @@
 #ifndef ZLINK_C_SAMPLES_COMMON_SAMPLE_COMMON_H_INCLUDED
 #define ZLINK_C_SAMPLES_COMMON_SAMPLE_COMMON_H_INCLUDED
 
-#include <zlink_c.h>
+#include <zlink.h>
 
 #include <assert.h>
 #include <stdint.h>
@@ -237,11 +237,10 @@ static inline int wait_for_subscription_event (void *subject_,
         if (rc <= 0)
             continue;
 
-        zlink_routing_id_t source_rid;
-        memset (&source_rid, 0, sizeof (source_rid));
-        rc = zlink_subscription_event (
+        const zlink_routing_id_t *source_rid = NULL;
+        rc = zlink_xpub_recv_part (
           subject_, &source_rid, subscribed_out_, topic_id_out_,
-          topic_id_len_out_, ZLINK_DONTWAIT);
+          *topic_id_len_out_, topic_id_len_out_, ZLINK_DONTWAIT);
         if (rc == ZLINK_RECV_OK) {
             zlink_poller_destroy (&poller);
             return 1;

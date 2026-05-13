@@ -43,7 +43,7 @@ public sealed partial class StreamConnectorTests
 
         await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
             .WithPacketName("h")
-            .Async();
+            .Submit();
 
         await server;
     }
@@ -137,7 +137,7 @@ public sealed partial class StreamConnectorTests
 
         await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "wb"u8.ToArray()))
             .WithPacketName("wh")
-            .Async();
+            .Submit();
 
         await server;
     }
@@ -170,7 +170,7 @@ public sealed partial class StreamConnectorTests
 
         await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "tb"u8.ToArray()))
             .WithPacketName("th")
-            .Async();
+            .Submit();
 
         await server;
     }

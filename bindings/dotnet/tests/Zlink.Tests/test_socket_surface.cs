@@ -145,27 +145,22 @@ public sealed class test_socket_surface
             nameof(SpotNode.CreateActor), typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
             nameof(SpotNode.ActorLookup), typeof(string)));
-        Assert.NotNull(typeof(SpotNode).GetMethod(nameof(SpotNode.RemoteActorRef),
-            BindingFlags.Static | BindingFlags.Public, binder: null,
-            types: new[] { typeof(RoutingId), typeof(string) },
-            modifiers: null));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.RemoteActorGetRef), typeof(RoutingId),
+            typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
             nameof(SpotNode.JoinActor), typeof(ActorRef), typeof(RoutingId),
-            typeof(RoutingId), typeof(Message),
-            typeof(RequestCallback),
-            typeof(SendFlags), typeof(TimeSpan?)));
+            typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.RecvActorJoin), typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
-            nameof(Spot.ReplyActorJoin), typeof(ActorJoinRequest), typeof(bool),
-            typeof(Message)));
+            nameof(Spot.ReplyActorJoin), typeof(ActorJoinRequest), typeof(bool)));
         Assert.True(HasPublicInstanceMethod(typeof(StreamSocket),
-            nameof(StreamSocket.BindActor), typeof(SpotNode), typeof(RoutingId),
-            typeof(ActorRef), typeof(TimeSpan)));
+            nameof(StreamSocket.BindActor), typeof(RoutingId),
+            typeof(ActorRef)));
         Assert.True(HasPublicInstanceMethod(typeof(StreamSocket),
-            nameof(StreamSocket.SendBoundActor), typeof(SpotNode),
-            typeof(RoutingId), typeof(string), typeof(Message),
-            typeof(SendFlags)));
+            nameof(StreamSocket.SendBoundActor), typeof(RoutingId),
+            typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             nameof(Discovery.ResolveActor), typeof(string)));
         Assert.True(typeof(ActorRef).GetProperty(nameof(ActorRef.IsUnchecked))
@@ -206,10 +201,11 @@ public sealed class test_socket_surface
         Assert.NotNull(typeof(ContextOptions).GetProperty("ThreadNamePrefix",
             BindingFlags.Instance | BindingFlags.Public));
 
-        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
-            typeof(Message), typeof(SendFlags)));
-        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
-            typeof(IReadOnlyList<Message>), typeof(SendFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send"));
+        Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
+            typeof(Message)));
+        Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
+            typeof(IReadOnlyList<Message>)));
         Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Recv",
             typeof(Received), typeof(RecvFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "TrySend",
@@ -219,17 +215,23 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "TryRecv",
             typeof(Received).MakeByRefType()));
         Assert.True(HasPublicInstanceMethod(typeof(PublisherSocketBase), "Publish",
-            typeof(string), typeof(Message), typeof(SendFlags)));
-        MethodInfo receivedReplySingle = typeof(Received).GetMethod(
-            nameof(Received.Reply),
-            new[] { typeof(Message), typeof(SendFlags) })!;
-        MethodInfo receivedReplyMulti = typeof(Received).GetMethod(
-            nameof(Received.Reply),
-            new[] { typeof(IReadOnlyList<Message>), typeof(SendFlags) })!;
-        Assert.NotNull(receivedReplySingle);
-        Assert.NotNull(receivedReplyMulti);
-        Assert.True(receivedReplySingle.GetParameters()[1].HasDefaultValue);
-        Assert.True(receivedReplyMulti.GetParameters()[1].HasDefaultValue);
+            typeof(string)));
+        Assert.False(HasPublicInstanceMethod(typeof(PublisherSocketBase),
+            "Publish", typeof(string), typeof(Message)));
+        Assert.False(HasPublicInstanceMethod(typeof(PublisherSocketBase),
+            "Publish", typeof(string), typeof(IReadOnlyList<Message>)));
+        Assert.False(HasPublicInstanceMethod(typeof(DealerSocket), "Request",
+            typeof(Message)));
+        Assert.False(HasPublicInstanceMethod(typeof(RouterSocket), "Reply",
+            typeof(RoutingId), typeof(ulong), typeof(Message)));
+        Assert.False(HasPublicInstanceMethod(typeof(Spot), "Publish",
+            typeof(string), typeof(Message)));
+        Assert.False(HasPublicInstanceMethod(typeof(Spot), "SendChannel",
+            typeof(string), typeof(Message)));
+        Assert.False(HasPublicInstanceMethod(typeof(Spot), "RequestChannel",
+            typeof(string), typeof(Message)));
+        Assert.NotNull(typeof(Received).GetMethod(nameof(Received.Reply),
+            Type.EmptyTypes));
         Assert.Null(typeof(Received).GetMethod(nameof(Received.Reply),
             new[] { typeof(Message) }));
         Assert.Null(typeof(Received).GetMethod(nameof(Received.Reply),
@@ -244,7 +246,7 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode),
             "SetActorHighWaterMark"));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "DestroyActor",
-            typeof(ActorRef), typeof(TimeSpan)));
+            typeof(ActorRef)));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode),
             "SetRouterHighWaterMark"));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode),
@@ -300,10 +302,6 @@ public sealed class test_socket_surface
         Assert.Equal(5, (int)SpotDispatchEvent.ActorReadable);
         Assert.Equal(6, (int)SpotDispatchEvent.ActorJoinReadable);
         Assert.Equal(4, (int)SpotDispatchSubjectKind.Actor);
-        Assert.Equal(1, (int)ActorCreateStatus.Created);
-        Assert.Equal(2, (int)ActorCreateStatus.Existing);
-        Assert.Equal(1, (int)ActorAdmissionResult.Accept);
-        Assert.Equal(2, (int)ActorAdmissionResult.Reject);
     }
 
     [Fact]
@@ -330,28 +328,17 @@ public sealed class test_socket_surface
     public void request_reply_surface_uses_canonical_socket_methods()
     {
         Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
-            nameof(DealerSocket.Request), typeof(Message),
-            typeof(System.Threading.CancellationToken)));
-        Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
-            nameof(DealerSocket.Request), typeof(Message),
-            typeof(RequestCallback),
-            typeof(SendFlags), typeof(TimeSpan?)));
+            nameof(DealerSocket.Request)));
         Assert.False(HasPublicInstanceMethod(typeof(DealerSocket),
             nameof(DealerSocket.OnReceive), typeof(SocketRecvHandler)));
         Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
-            nameof(RouterSocket.Request), typeof(RoutingId),
-            typeof(Message), typeof(System.Threading.CancellationToken)));
+            nameof(RouterSocket.Request), typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
-            nameof(RouterSocket.Request), typeof(RoutingId), typeof(Message),
-            typeof(RequestCallback),
-            typeof(SendFlags), typeof(TimeSpan?)));
-        Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
-            nameof(RouterSocket.Reply), typeof(RoutingId), typeof(ulong),
-            typeof(Message), typeof(SendFlags)));
+            nameof(RouterSocket.Reply), typeof(RoutingId), typeof(ulong)));
         Assert.False(HasPublicInstanceMethod(typeof(RouterSocket), "RecvSpot"));
         Assert.False(HasPublicInstanceMethod(typeof(RouterSocket), "OnSpotReceive"));
         Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "Send",
-            typeof(RoutingId), typeof(Message), typeof(SendFlags)));
+            typeof(RoutingId)));
         Assert.False(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "Send",
             typeof(string), typeof(Message), typeof(SendFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "Recv",
@@ -383,16 +370,26 @@ public sealed class test_socket_surface
         string[] expected =
         {
             typeof(Actor).FullName!,
-            typeof(ActorAdmissionHandler).FullName!,
-            typeof(ActorAdmissionResult).FullName!,
-            typeof(ActorCreateResult).FullName!,
-            typeof(ActorCreateStatus).FullName!,
+            typeof(ActorBindOperation).FullName!,
+            typeof(ActorDestroyOperation).FullName!,
             typeof(ActorJoinInfo).FullName!,
+            typeof(ActorJoinCallbackSubmitOperation).FullName!,
+            typeof(ActorJoinHandler).FullName!,
+            typeof(ActorJoinOperation).FullName!,
+            typeof(ActorJoinReplyOperation).FullName!,
             typeof(ActorJoinRequest).FullName!,
+            typeof(ActorJoinResult).FullName!,
+            typeof(ActorJoinSubmitOperation).FullName!,
+            typeof(ActorLeaveOperation).FullName!,
+            typeof(ActorLifecycleHandler).FullName!,
+            typeof(ActorLookupHandler).FullName!,
+            typeof(ActorLookupOperation).FullName!,
+            typeof(ActorLookupResult).FullName!,
             typeof(ActorPart).FullName!,
             typeof(ActorRecvInfo).FullName!,
             typeof(ActorRef).FullName!,
             typeof(ActorRoute).FullName!,
+            typeof(ActorUnbindOperation).FullName!,
             typeof(AtomicCounter).FullName!,
             typeof(AutoConnectType).FullName!,
             typeof(AutoHwmProfile).FullName!,
@@ -431,6 +428,7 @@ public sealed class test_socket_surface
             typeof(RegistryTopologyEntry).FullName!,
             typeof(RegistryTopologyFilter).FullName!,
             typeof(ReplyOperation).FullName!,
+            typeof(ReplyHandler).FullName!,
             typeof(ReplySubmitOperation).FullName!,
             typeof(RequestCallback).FullName!,
             typeof(RequestCallbackSubmitOperation).FullName!,
@@ -452,6 +450,7 @@ public sealed class test_socket_surface
             typeof(SocketMonitor).FullName!,
             typeof(SocketType).FullName!,
             typeof(Spot).FullName!,
+            typeof(SpotActorLifecycleInfo).FullName!,
             typeof(SpotDispatchEvent).FullName!,
             typeof(SpotDispatchInfo).FullName!,
             typeof(SpotDispatchSubjectKind).FullName!,
@@ -583,6 +582,18 @@ public sealed class test_socket_surface
                 .ReturnParameter).ReadState);
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.OnDispatchEvent), typeof(Action<SpotDispatchInfo>)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.OnActorLifecycle),
+            typeof(Action<SpotActorLifecycleInfo>),
+            typeof(Action<SpotActorLifecycleInfo>)));
+        Assert.Equal(typeof(ActorRef),
+            typeof(SpotActorLifecycleInfo)
+                .GetProperty(nameof(SpotActorLifecycleInfo.PreviousActor))!
+                .PropertyType);
+        Assert.Equal(typeof(ActorRef),
+            typeof(SpotActorLifecycleInfo)
+                .GetProperty(nameof(SpotActorLifecycleInfo.CurrentActor))!
+                .PropertyType);
         Assert.False(HasPublicInstanceMethod(typeof(Spot),
             "DrainChannelReplyFrom", typeof(IntPtr)));
         Assert.Null(typeof(SpotDispatchInfo).GetProperty("Subject"));

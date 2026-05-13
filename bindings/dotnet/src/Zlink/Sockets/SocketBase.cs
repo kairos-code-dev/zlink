@@ -166,11 +166,6 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
     [EditorBrowsable(EditorBrowsableState.Never)]
     internal int GetOption(SocketOptionKey<int> option)
     {
-        if (PerfRawSocketCompat.TryGetInt32Option(this, option,
-                out int compatValue))
-        {
-            return compatValue;
-        }
         return _kernel.GetOption(option);
     }
 

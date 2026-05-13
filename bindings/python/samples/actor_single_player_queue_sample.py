@@ -1,7 +1,12 @@
 import socket
 
 import zlink
-from sample_support import tcp_endpoint, wait_socket_monitor_event, wait_until
+from sample_support import (
+    submit_request_op,
+    tcp_endpoint,
+    wait_socket_monitor_event,
+    wait_until,
+)
 
 
 def main():
@@ -23,7 +28,9 @@ def main():
                             return
                         join_info, message = item
                         message.close()
-                        current_spot.reply_actor_join(join_info, True, b"ok")
+                        current_spot.reply_actor_join(join_info, True).message(
+                            b"ok"
+                        ).submit()
                     elif info.event == zlink.SpotDispatchEvent.ACTOR_READABLE:
                         while True:
                             part = info.recv_actor_part(flags=zlink.RecvFlags.DONT_WAIT)
@@ -44,33 +51,36 @@ def main():
                             client.sendall(b"seed")
                             with stream.recv() as stream_msg:
                                 session_rid = stream_msg.routing_id
-                            stream.bind_actor(node, session_rid, actor_ref, timeout=2)
-                            actor.join(
-                                spot,
-                                b"join",
+                            submit_request_op(
+                                stream.bind_actor(session_rid, actor_ref),
+                                description="stream actor bind",
+                            )
+                            actor.join(spot).message(b"join").timeout(2).submit(
                                 lambda result, messages: (
                                     replies.append(result),
                                     [message.close() for message in messages],
                                 ),
-                                timeout=2,
                             )
                             wait_until(lambda: replies, timeout_ms=5000, description="actor join")
-                            actor.leave(spot)
-                            stream.send_bound_actor(node, session_rid, "solo", b"queued")
+                            submit_request_op(
+                                actor.leave(spot), description="actor leave"
+                            )
+                            stream.send_bound_actor(session_rid, "solo").message(
+                                b"queued"
+                            ).submit()
 
-                            actor.join(
-                                spot,
-                                b"rejoin",
+                            actor.join(spot).message(b"rejoin").timeout(2).submit(
                                 lambda result, messages: (
                                     replies.append(result),
                                     [message.close() for message in messages],
                                 ),
-                                timeout=2,
                             )
                             wait_until(lambda: payloads, timeout_ms=5000, description="queued actor payload")
                             if payloads != [b"queued"]:
                                 raise AssertionError("queued payload was not preserved")
-                            actor.leave(spot)
+                            submit_request_op(
+                                actor.leave(spot), description="actor leave"
+                            )
                 actor.close()
                 print("[actor/solo] queued payload preserved across leave")
 

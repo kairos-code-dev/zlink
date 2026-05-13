@@ -44,11 +44,17 @@ SampleSupport.SendStreamPacket(client.GetStream(), "hello-gateway"u8);
 if (!sessionReady.Wait(5000) || sessionRid == null)
     throw new TimeoutException("stream session");
 
-stream.BindActor(node, sessionRid.Value, actor.Ref, TimeSpan.FromSeconds(2));
+Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor.Ref)
+    .Timeout(TimeSpan.FromSeconds(2))
+    .SubmitAsync()
+    .WaitAsync(TimeSpan.FromSeconds(5)));
 
 using Message joinMessage = Message.FromString("join:gateway");
-Task<IReadOnlyList<Message>> joinTask = actor.Join(spot, joinMessage,
-    TimeSpan.FromSeconds(2));
+Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
+    actor.Join(spot)
+        .Message(joinMessage)
+        .Timeout(TimeSpan.FromSeconds(2))
+        .SubmitAsync();
 ActorJoinRequest? request = null;
 SampleSupport.WaitOrThrow(() =>
 {
@@ -56,18 +62,25 @@ SampleSupport.WaitOrThrow(() =>
     return request != null;
 }, 2000, "actor join request");
 using Message joinReply = Message.FromString("accepted:gateway");
-spot.ReplyActorJoin(request!, accepted: true, joinReply);
-foreach (Message reply in await joinTask.WaitAsync(TimeSpan.FromSeconds(5)))
+spot.ReplyActorJoin(request!, accepted: true).Message(joinReply).Submit();
+foreach (Message reply in (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
     reply.Dispose();
 
 using Message relayed = Message.FromString("relay:hello-gateway");
-stream.SendBoundActor(node, sessionRid.Value, actor.Ref.ActorId, relayed);
+stream.SendBoundActor(sessionRid.Value, actor.Ref.ActorId)
+    .Message(relayed)
+    .Submit();
 SampleSupport.WaitOrThrow(
     () => receivedPayload == "relay:hello-gateway",
     5000,
     "actor relay");
 
 Console.WriteLine("[actor/gateway] relayed stream session to actor");
-actor.Leave(spot);
-stream.UnbindActor(node, sessionRid.Value, actor.Ref.ActorId,
-    TimeSpan.FromSeconds(2));
+Zlink.MultipartClose(await actor.Leave(spot)
+    .Timeout(TimeSpan.FromSeconds(2))
+    .SubmitAsync()
+    .WaitAsync(TimeSpan.FromSeconds(5)));
+Zlink.MultipartClose(await stream.UnbindActor(sessionRid.Value, actor.Ref.ActorId)
+    .Timeout(TimeSpan.FromSeconds(2))
+    .SubmitAsync()
+    .WaitAsync(TimeSpan.FromSeconds(5)));

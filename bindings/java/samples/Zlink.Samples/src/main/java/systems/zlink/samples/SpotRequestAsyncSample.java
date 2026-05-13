@@ -34,7 +34,7 @@ public final class SpotRequestAsyncSample {
                         throw new IllegalStateException("unexpected spot request");
                     }
                     try (Message reply = Message.copyOfUtf8("spot-pong")) {
-                        received.reply(reply);
+                        received.reply().message(reply).submit();
                     }
                 }
             }, "spot-request-async-responder");

@@ -22,7 +22,7 @@ public final class DealerRouterRecvSample {
             SampleSupport.waitConnected(routerMonitor, dealerMonitor);
 
             try (Message request = Message.copyOfUtf8(SampleSupport.DEALER_REQUEST)) {
-                dealer.send(request);
+                dealer.send().message(request).submit();
             }
 
             try (systems.zlink.Received received = new systems.zlink.Received()) {
@@ -32,7 +32,7 @@ public final class DealerRouterRecvSample {
                     throw new IllegalStateException("unexpected request: " + value);
                 }
                 try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
-                    received.send(reply);
+                    received.send().message(reply).submit();
                 }
             }
 

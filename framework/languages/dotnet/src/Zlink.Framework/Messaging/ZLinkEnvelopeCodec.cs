@@ -11,7 +11,7 @@ internal enum ZLinkMessageKind
     Request = 1,
     Response = 2,
     Command = 3,
-    Event = 4,
+    Publish = 4,
     Error = 5,
 }
 

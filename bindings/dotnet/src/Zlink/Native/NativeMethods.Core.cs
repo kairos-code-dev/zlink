@@ -57,6 +57,7 @@ internal static partial class NativeMethods
         "zlink_stream_bind_actor",
         "zlink_stream_unbind_actor",
         "zlink_stream_send_bound_actor_part",
+        "zlink_stream_bound_actors",
         "zlink_spot_node_actor_send_bound_session_msg",
         "zlink_spot_node_actor_close_bound_session",
         "zlink_spot_send_channel_part",
@@ -74,13 +75,12 @@ internal static partial class NativeMethods
         "zlink_spot_node_actor_destroy",
         "zlink_spot_node_actor_lookup",
         "zlink_remote_actor_get_ref",
-        "zlink_spot_node_create_remote_actor",
-        "zlink_spot_node_actor_admission_handler",
         "zlink_spot_node_actor_join_spot",
         "zlink_spot_actor_join_recv",
         "zlink_spot_actor_join_reply",
         "zlink_spot_node_actor_leave_spot",
         "zlink_spot_node_actor_recv_part",
+        "zlink_spot_actor_lifecycle_handler",
         "zlink_spot_node_entry_spot",
         "zlink_spot_node_spot_lookup",
         "zlink_spot_node_spots_snapshot",
@@ -207,6 +207,14 @@ internal static partial class NativeMethods
         nuint partCount, IntPtr userData);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkActorJoinHandlerDelegate(IntPtr result,
+        IntPtr parts, nuint partCount, IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkActorLookupHandlerDelegate(IntPtr result,
+        IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal unsafe delegate void ZlinkSpotRequestHandlerDelegate(
         ZlinkRoutingId* sourceRoutingId, ZlinkRoutingId* spotRoutingId,
         ulong requestSeq, IntPtr parts, nuint partCount, IntPtr userData);
@@ -214,6 +222,10 @@ internal static partial class NativeMethods
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal unsafe delegate void ZlinkSpotDispatchEventHandlerDelegate(
         IntPtr spot, ZlinkSpotDispatchInfoNative* info, IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal unsafe delegate void ZlinkSpotActorLifecycleHandlerDelegate(
+        IntPtr spot, ZlinkSpotActorLifecycleInfo* info, IntPtr userData);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_dealer_request_part(IntPtr dealer,

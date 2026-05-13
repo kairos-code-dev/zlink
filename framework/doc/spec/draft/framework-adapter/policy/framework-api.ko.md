@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Channel Topology](channel-topology.ko.md) | [다음: ZLink Framework Actor Model](actor-model.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../README.ko.md)
 
 [초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [검증](../usecase-validation.ko.md) | [.NET](../bindings/dotnet/README.ko.md) | [Java](../bindings/java/README.ko.md) | [Node.js](../bindings/node/README.ko.md) | [Python](../bindings/python/README.ko.md) | [C++](../bindings/cpp/README.ko.md)
@@ -118,13 +122,17 @@ source별 구현 차이를 숨긴 typed runtime event surface를 제공하는 �
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableServer();
+    });
+
+    options.AddFanoutChannel("profile.events", channel =>
+    {
         channel.EnableSubscriber();
     });
 
-    options.AddChannel("account", channel =>
+    options.AddClientServerChannel("account", channel =>
     {
         channel.EnableClient(client =>
         {

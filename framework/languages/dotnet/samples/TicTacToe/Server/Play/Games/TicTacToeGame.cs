@@ -230,7 +230,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
         var message = new GameStateNotify(state);
         foreach (var player in _players.Values)
         {
-            await player.Actor.Context.Send(message).Async(cancellationToken);
+            await player.Actor.Context.Send(message).Submit(cancellationToken);
         }
     }
 
@@ -253,7 +253,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
                 continue;
             }
 
-            await player.Actor.Context.Send(message).Async(cancellationToken);
+            await player.Actor.Context.Send(message).Submit(cancellationToken);
         }
     }
 

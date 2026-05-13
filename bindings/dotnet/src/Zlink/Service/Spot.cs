@@ -154,8 +154,6 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         new(StringComparer.Ordinal);
     private readonly HashSet<Spot> _spots = new();
     private readonly object _spotsGate = new();
-    private ActorAdmissionHandler? _actorAdmissionHandler;
-    private NativeMethods.ZlinkActorAdmissionHandlerDelegate? _actorAdmissionNative;
     private Action? _sendReadyHandler;
     private SynchronizationContext? _sendReadyHandlerContext;
     private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
@@ -450,48 +448,30 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         return ActorInterop.FromNative(ref actor);
     }
 
-    public static ActorRef RemoteActorRef(RoutingId targetNodeRid, string actorId)
+    internal static ActorRef RemoteActorRef(RoutingId targetNodeRid, string actorId)
         => ActorRef.Remote(targetNodeRid, actorId);
 
-    public ActorCreateResult CreateRemoteActor(RoutingId targetNodeRid,
-        string actorId, Message message, TimeSpan timeout = default)
+    public ActorLookupOperation RemoteActorGetRef(RoutingId targetNodeRid,
+        string actorId)
     {
         ActorInterop.ValidateActorId(actorId, nameof(actorId));
-        if (message == null)
-            throw new ArgumentNullException(nameof(message));
         EnsureNotDisposed();
-        ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(
-            targetNodeRid.ToByteArray());
-        ZlinkMsg nativeMessage = default;
-        bool submitted = false;
-        try
-        {
-            message.Copy().MoveTo(ref nativeMessage);
-            int rc = NativeMethods.zlink_spot_node_create_remote_actor(_handle,
-                ref nodeRid, actorId, ref nativeMessage,
-                1,
-                out ZlinkActorCreateResult result,
-                ActorInterop.NormalizeTimeout(timeout));
-            submitted = true;
-            if (rc != 0)
-                throw ZlinkException.CreateRequestException(
-                    NativeMethods.zlink_errno());
-            return new ActorCreateResult(result.Status,
-                ActorInterop.FromNative(ref result.Actor));
-        }
-        finally
-        {
-            if (!submitted)
-                NativeMethods.zlink_msg_close(ref nativeMessage);
-        }
+        return new ActorLookupOperationImpl(this, targetNodeRid, actorId);
     }
 
-    public void DestroyActor(ActorRef actor, TimeSpan timeout = default)
+    public ActorDestroyOperation DestroyActor(ActorRef actor)
+    {
+        EnsureNotDisposed();
+        return new ActorDestroyOperationImpl(this, actor);
+    }
+
+    internal void DestroyActor(ActorRef actor, TimeSpan timeout = default)
     {
         EnsureNotDisposed();
         ZlinkActorRef nativeActor = ActorInterop.ToNative(actor);
         int rc = NativeMethods.zlink_spot_node_actor_destroy(_handle,
-            ref nativeActor, ActorInterop.NormalizeTimeout(timeout));
+            ref nativeActor, ActorInterop.NoopReplyHandlerPtr, IntPtr.Zero,
+            ActorInterop.NormalizeTimeout(timeout));
         if (rc != 0)
             throw ZlinkException.CreateRequestException(NativeMethods.zlink_errno());
     }
@@ -518,32 +498,26 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         _sendReadyHandlerNative = native;
     }
 
-    public void OnActorAdmission(ActorAdmissionHandler handler)
-    {
-        if (handler == null)
-            throw new ArgumentNullException(nameof(handler));
-        EnsureNotDisposed();
-        NativeMethods.ZlinkActorAdmissionHandlerDelegate native =
-            OnNativeActorAdmission;
-        int rc = NativeMethods.zlink_spot_node_actor_admission_handler(_handle,
-            native, IntPtr.Zero);
-        ZlinkException.ThrowHandlerIfError(rc);
-        _actorAdmissionHandler = handler;
-        _actorAdmissionNative = native;
-    }
-
     internal Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,
         RoutingId destSpotRid, Message message, TimeSpan timeout = default,
         SendFlags flags = SendFlags.None, CancellationToken ct = default)
         => JoinActor(actor, RoutingId, destSpotRid, message, timeout,
             flags, ct);
 
-    public Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,
+    internal Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,
         RoutingId destNodeRid, RoutingId destSpotRid, Message message,
         TimeSpan timeout = default,
         CancellationToken ct = default)
         => JoinActor(actor, destNodeRid, destSpotRid, message, timeout,
             SendFlags.None, ct);
+
+    public ActorJoinOperation JoinActor(ActorRef actor, RoutingId destNodeRid,
+        RoutingId destSpotRid)
+    {
+        EnsureNotDisposed();
+        return new ActorJoinOperationImpl(this, actor, destNodeRid,
+            destSpotRid);
+    }
 
     internal Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,
         RoutingId destNodeRid, RoutingId destSpotRid, Message message,
@@ -578,7 +552,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
 
             int rc = NativeMethods.zlink_spot_node_actor_join_spot(_handle,
                 ref nativeActor, ref nativeNodeRid, ref nativeSpotRid,
-                ref nativeMessage, 1, ActorInterop.ReplyHandlerPtr,
+                ref nativeMessage, 1, ActorInterop.JoinHandlerPtr,
                 GCHandle.ToIntPtr(handle), (int)flags, timeoutMs);
             nativeMessage = default;
             if (rc != 0)
@@ -618,7 +592,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         }
     }
 
-    public bool JoinActor(ActorRef actor, RoutingId destNodeRid,
+    internal bool JoinActor(ActorRef actor, RoutingId destNodeRid,
         RoutingId destSpotRid, Message message,
         RequestCallback callback,
         SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
@@ -641,7 +615,14 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         }
     }
 
-    public void LeaveActor(ActorRef actor, RoutingId destSpotRid,
+    public ActorLeaveOperation LeaveActor(ActorRef actor,
+        RoutingId currentSpotRid)
+    {
+        EnsureNotDisposed();
+        return new ActorLeaveOperationImpl(this, actor, currentSpotRid);
+    }
+
+    internal void LeaveActor(ActorRef actor, RoutingId destSpotRid,
         TimeSpan timeout = default)
     {
         EnsureNotDisposed();
@@ -650,6 +631,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             destSpotRid.ToByteArray());
         int rc = NativeMethods.zlink_spot_node_actor_leave_spot(_handle,
             ref nativeActor, ref nativeSpotRid,
+            ActorInterop.NoopReplyHandlerPtr, IntPtr.Zero,
             ActorInterop.NormalizeTimeout(timeout));
         if (rc != 0)
             throw ZlinkException.CreateRequestException(NativeMethods.zlink_errno());
@@ -1024,8 +1006,6 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
 
         lock (_channelDealers)
             _channelDealers.Clear();
-        _actorAdmissionHandler = null;
-        _actorAdmissionNative = null;
         _sendReadyHandler = null;
         _sendReadyHandlerContext = null;
         _sendReadyHandlerNative = null;
@@ -1180,30 +1160,6 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         }
     }
 
-    private ActorAdmissionResult OnNativeActorAdmission(IntPtr node,
-        string actorId, IntPtr parts, nuint partCount, IntPtr userData)
-    {
-        ActorAdmissionHandler? handler = _actorAdmissionHandler;
-        if (handler == null)
-            return ActorAdmissionResult.Reject;
-        Message managedMessage = partCount > 0
-            ? ActorInterop.CopyMessageFromPointer(parts)
-            : new Message();
-        try
-        {
-            return handler(actorId, managedMessage);
-        }
-        catch (Exception ex)
-        {
-            Runtime.ReportUnhandledCallbackException(ex);
-            return ActorAdmissionResult.Reject;
-        }
-        finally
-        {
-            managedMessage.Dispose();
-        }
-    }
-
     private static unsafe void WriteFixedString(string value, byte* destination,
         int capacity)
     {
@@ -1249,11 +1205,15 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     private Action? _sendReadyHandler;
     private Action<Received>? _routedReceiveHandler;
     private Action<SpotDispatchInfo>? _dispatchEventHandler;
+    private Action<SpotActorLifecycleInfo>? _actorJoinHandler;
+    private Action<SpotActorLifecycleInfo>? _actorLeaveHandler;
     private SynchronizationContext? _sendReadyHandlerContext;
     private SynchronizationContext? _routedReceiveHandlerContext;
     private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
     private NativeMethods.ZlinkSpotRequestHandlerDelegate? _routedReceiveHandlerNative;
     private NativeMethods.ZlinkSpotDispatchEventHandlerDelegate? _dispatchEventHandlerNative;
+    private NativeMethods.ZlinkSpotActorLifecycleHandlerDelegate? _actorJoinHandlerNative;
+    private NativeMethods.ZlinkSpotActorLifecycleHandlerDelegate? _actorLeaveHandlerNative;
     internal IntPtr Handle => _handle;
     internal SpotOptions Options { get; }
 
@@ -1775,7 +1735,9 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         byte[] spotRidBytes = RoutingIdCodec.FromRoutingId(destSpotRid);
         ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(nodeRidBytes);
         ZlinkRoutingId spotRid = NativeHelpers.WriteRoutingId(spotRidBytes);
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        Message[] cloned = new Message[parts.Count];
+        for (int i = 0; i < parts.Count; i++)
+            cloned[i] = RequestReplySupport.CloneMessage(parts[i]);
         try
         {
             for (int i = 0; i < cloned.Length; i++)
@@ -2017,39 +1979,51 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         return new ActorJoinRequest(info, message);
     }
 
-    public void ReplyActorJoin(ActorJoinRequest request, bool accepted,
-        Message message)
+    public ActorJoinReplyOperation ReplyActorJoin(ActorJoinRequest request,
+        bool accepted)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
-        ReplyActorJoin(request.Info, accepted, message);
+        return new ActorJoinReplyOperationImpl(this, request, accepted);
     }
 
-    internal void ReplyActorJoin(ActorJoinInfo info, bool accepted,
-        Message message)
+    internal void ReplyActorJoinInternal(ActorJoinInfo info, bool accepted,
+        IReadOnlyList<Message> parts)
     {
         if (info == null)
             throw new ArgumentNullException(nameof(info));
-        if (message == null)
-            throw new ArgumentNullException(nameof(message));
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
         EnsureNotDisposed();
         ZlinkActorJoinInfo nativeInfo = info.NativeInfo;
-        ZlinkMsg nativeMessage = default;
-        bool submitted = false;
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        ZlinkMsg[] nativeParts = new ZlinkMsg[cloned.Length];
+        bool[] submitted = new bool[cloned.Length];
         try
         {
-            message.Copy().MoveTo(ref nativeMessage);
-            int rc = NativeMethods.zlink_spot_actor_join_reply(_handle,
-                ref nativeInfo, accepted ? 1u : 0u, ref nativeMessage, 1);
-            submitted = true;
+            for (int i = 0; i < cloned.Length; i++)
+                cloned[i].MoveTo(ref nativeParts[i]);
+
+            int rc = nativeParts.Length == 0
+                ? NativeMethods.zlink_spot_actor_join_reply_empty(_handle,
+                    ref nativeInfo, accepted ? 1u : 0u, IntPtr.Zero, 0)
+                : NativeMethods.zlink_spot_actor_join_reply(_handle,
+                    ref nativeInfo, accepted ? 1u : 0u, ref nativeParts[0],
+                    (nuint)nativeParts.Length);
+            Array.Fill(submitted, true);
             if (rc != 0)
                 throw ZlinkException.CreateSubmitException(
                     NativeMethods.zlink_errno());
         }
         finally
         {
-            if (!submitted)
-                NativeMethods.zlink_msg_close(ref nativeMessage);
+            for (int i = 0; i < nativeParts.Length; i++)
+            {
+                if (!submitted[i])
+                    NativeMethods.zlink_msg_close(ref nativeParts[i]);
+            }
+            foreach (Message message in cloned)
+                message.Dispose();
         }
     }
 
@@ -2113,6 +2087,24 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
     }
 
+    public unsafe void OnActorLifecycle(
+        Action<SpotActorLifecycleInfo>? onJoin,
+        Action<SpotActorLifecycleInfo>? onLeave)
+    {
+        EnsureNotDisposed();
+        _actorJoinHandler = onJoin;
+        _actorLeaveHandler = onLeave;
+        _actorJoinHandlerNative = onJoin == null ? null : OnNativeActorJoin;
+        _actorLeaveHandlerNative = onLeave == null ? null : OnNativeActorLeave;
+        int rc = NativeMethods.zlink_spot_actor_lifecycle_handler(
+            _handle,
+            _actorJoinHandlerNative,
+            _actorLeaveHandlerNative,
+            IntPtr.Zero);
+        if (rc != 0)
+            throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
+    }
+
     internal void DrainChannelReplyFrom(IntPtr dealerSubject)
     {
         EnsureNotDisposed();
@@ -2172,11 +2164,15 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         _sendReadyHandler = null;
         _routedReceiveHandler = null;
         _dispatchEventHandler = null;
+        _actorJoinHandler = null;
+        _actorLeaveHandler = null;
         _sendReadyHandlerContext = null;
         _routedReceiveHandlerContext = null;
         _sendReadyHandlerNative = null;
         _routedReceiveHandlerNative = null;
         _dispatchEventHandlerNative = null;
+        _actorJoinHandlerNative = null;
+        _actorLeaveHandlerNative = null;
         _node.UnregisterSpot(this);
     }
 
@@ -2580,6 +2576,36 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         try
         {
             handler(dispatchInfo);
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+        }
+    }
+
+    private unsafe void OnNativeActorJoin(IntPtr spot,
+        ZlinkSpotActorLifecycleInfo* info, IntPtr userData)
+    {
+        DispatchActorLifecycle(_actorJoinHandler, info);
+    }
+
+    private unsafe void OnNativeActorLeave(IntPtr spot,
+        ZlinkSpotActorLifecycleInfo* info, IntPtr userData)
+    {
+        DispatchActorLifecycle(_actorLeaveHandler, info);
+    }
+
+    private static unsafe void DispatchActorLifecycle(
+        Action<SpotActorLifecycleInfo>? handler,
+        ZlinkSpotActorLifecycleInfo* info)
+    {
+        if (handler == null || info == null)
+            return;
+
+        SpotActorLifecycleInfo managed = ActorInterop.FromNative(ref *info);
+        try
+        {
+            handler(managed);
         }
         catch (Exception ex)
         {

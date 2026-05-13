@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 test('version matches core', () => {
     const versionFile = fs.readFileSync(path.join(process.cwd(), '..', '..', 'VERSION'), 'utf8');
     const major = Number(versionFile.match(/^LIBZLINK_VERSION_MAJOR=(\d+)$/m)[1]);

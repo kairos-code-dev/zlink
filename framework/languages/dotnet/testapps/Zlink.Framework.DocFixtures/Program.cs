@@ -218,7 +218,7 @@ internal sealed class FixtureSpotTimerHandler(IZLinkSpotClient spotClient)
     public async ValueTask HandleAsync(FixtureStageSpot spot, CancellationToken cancellationToken)
     {
         await spotClient.Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
     }
 }
 
@@ -398,7 +398,7 @@ internal sealed class FixtureActorPacketSession(
         var created = await spotManager.CreateAsync("fixture-actor-stage", cancellationToken);
         _ = await _actor.Context
             .JoinSpot(created.SpotRid, new FixtureActorJoinRequest("fixture-room"))
-            .Async<FixtureActorJoinReply>(cancellationToken);
+            .Submit<FixtureActorJoinReply>(cancellationToken);
     }
 
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)

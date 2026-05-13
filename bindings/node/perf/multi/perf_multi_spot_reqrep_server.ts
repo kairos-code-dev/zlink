@@ -3,7 +3,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
@@ -86,7 +86,9 @@ async function main() {
           continue;
         }
         try {
-          received.reply(received.parts);
+          let reply = received.reply();
+          for (const part of received.parts) reply = reply.message(part);
+          reply.submit();
         } finally {
           received.close();
         }

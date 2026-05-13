@@ -63,7 +63,7 @@ public sealed class ChannelMessagingIntegrationTests
         var recorder = serverHost.Services.GetRequiredService<ProfileCommandRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetProfileRequest { UserId = "discovery" }).Async<ProfileReply>(),
+            async () => await client.Request("api", new GetProfileRequest { UserId = "discovery" }).Submit<ProfileReply>(),
             static result => result.Name == "user:discovery");
 
         Assert.Equal("user:discovery", reply.Name);
@@ -71,7 +71,7 @@ public sealed class ChannelMessagingIntegrationTests
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () =>
             {
-                await client.Send("api", new RefreshProfileCacheCommand { UserId = "discovery" }).Async();
+                await client.Send("api", new RefreshProfileCacheCommand { UserId = "discovery" }).Submit();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },
@@ -119,7 +119,7 @@ public sealed class ChannelMessagingIntegrationTests
         var recorder = serverHost.Services.GetRequiredService<ProfileCommandRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetProfileRequest { UserId = "alice" }).Async<ProfileReply>(),
+            async () => await client.Request("api", new GetProfileRequest { UserId = "alice" }).Submit<ProfileReply>(),
             static result => result.Name == "user:alice");
 
         Assert.Equal("user:alice", reply.Name);
@@ -127,7 +127,7 @@ public sealed class ChannelMessagingIntegrationTests
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () =>
             {
-                await client.Send("api", new RefreshProfileCacheCommand { UserId = "alice" }).Async();
+                await client.Send("api", new RefreshProfileCacheCommand { UserId = "alice" }).Submit();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },
@@ -176,7 +176,7 @@ public sealed class ChannelMessagingIntegrationTests
         Assert.Contains(apiEndpoint, await connections.ListConnectionsAsync());
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetProfileRequest { UserId = "manager" }).Async<ProfileReply>(),
+            async () => await client.Request("api", new GetProfileRequest { UserId = "manager" }).Submit<ProfileReply>(),
             static result => result.Name == "user:manager");
 
         Assert.Equal("user:manager", reply.Name);
@@ -229,7 +229,7 @@ public sealed class ChannelMessagingIntegrationTests
                 await publisher.Publish(
                     "profile",
                     "profile.cache-invalidated",
-                    new ProfileInvalidated { UserId = "alice" }).Async();
+                    new ProfileInvalidated { UserId = "alice" }).Submit();
                 await Task.Yield();
                 return recorder.Events.Count;
             },
@@ -279,7 +279,7 @@ public sealed class ChannelMessagingIntegrationTests
         var recorder = serverHost.Services.GetRequiredService<FilterOrderRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetFilterOrderRequest()).Async<FilterOrderReply>(),
+            async () => await client.Request("api", new GetFilterOrderRequest()).Submit<FilterOrderReply>(),
             static result => result.Sequence.Count == 5);
 
         Assert.Equal(
@@ -329,7 +329,7 @@ public sealed class ChannelMessagingIntegrationTests
             {
                 var userId = context.Request.Query["userId"].ToString();
                 var reply = await client.Request("api", new GetProfileRequest { UserId = userId })
-                    .Async<ProfileReply>(cancellationToken);
+                    .Submit<ProfileReply>(cancellationToken);
                 return Results.Text(reply.Name);
             }).RequestDelegate;
 

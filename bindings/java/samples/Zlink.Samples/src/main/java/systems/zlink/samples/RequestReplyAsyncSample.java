@@ -42,7 +42,7 @@ public final class RequestReplyAsyncSample {
                         throw new IllegalStateException("missing request sequence");
                     }
                     try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
-                        received.reply(reply);
+                        received.reply().message(reply).submit();
                     }
                     requestHandled.countDown();
                     replyHandled.complete(null);
@@ -58,7 +58,10 @@ public final class RequestReplyAsyncSample {
 
             CompletableFuture<Void> roundTrip;
             try (Message request = Message.copyOfUtf8(SampleSupport.DEALER_REQUEST)) {
-                roundTrip = dealerSocket.request(request, Duration.ofSeconds(2))
+                roundTrip = dealerSocket.request()
+                    .message(request)
+                    .timeout(Duration.ofSeconds(2))
+                    .submitAsync()
                     .thenAccept(reply -> {
                         try {
                             String value = reply.get(0).toUtf8String();

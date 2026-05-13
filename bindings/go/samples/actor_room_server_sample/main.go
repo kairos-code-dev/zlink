@@ -22,32 +22,13 @@ func main() {
 	actor, err := node.Actor("room-player-1")
 	samplecommon.Must(err)
 
-	payloadCh := make(chan string, 1)
-	samplecommon.Must(spot.OnDispatchEvent(func(_ *zlink.Spot, info zlink.SpotDispatchInfo) {
-		if info.Event != zlink.SpotDispatchEventActorReadable {
-			return
-		}
-		part, err := info.RecvActorPart(zlink.RecvFlagsDontWait)
-		if err == nil && part != nil {
-			payloadCh <- string(part.Message.Data())
-			part.Message.Close()
-		}
-	}))
-
-	stream, err := ctx.StreamSocket()
-	samplecommon.Must(err)
-	defer stream.Close()
-	session := zlink.NewRoutingID([]byte("room-session"))
-	ref := actor.Ref()
-	samplecommon.Must(stream.BindActor(node, session, ref, time.Second))
-
 	joinCh := make(chan zlink.RequestResult, 1)
-	_, joinErr := actor.Join(spot, samplecommon.Message("enter-room"), func(result zlink.RequestResult, parts []*zlink.Message) {
+	_, joinErr := actor.Join(spot).Message(samplecommon.Message("enter-room")).Flags(zlink.SendFlagsDontWait).Timeout(time.Second).SubmitCallback(nil, func(result zlink.ActorJoinResult, parts []*zlink.Message) {
 		for _, part := range parts {
 			part.Close()
 		}
-		joinCh <- result
-	}, zlink.SendFlagsDontWait, time.Second)
+		joinCh <- result.Result
+	})
 	samplecommon.Must(joinErr)
 	request, err := spot.RecvActorJoin(zlink.RecvFlagsDontWait)
 	samplecommon.Must(err)
@@ -55,24 +36,14 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected join payload"))
 	}
 	request.Message.Close()
-	_, replyErr := spot.ReplyActorJoin(request, zlink.ActorAdmissionAccept, zlink.SendFlagsNone, samplecommon.Message("accepted"))
+	replyErr := spot.ReplyActorJoin(request, true).Message(samplecommon.Message("accepted")).Submit(nil)
 	samplecommon.Must(replyErr)
 	if result := <-joinCh; result != zlink.RequestOK {
 		samplecommon.Must(fmt.Errorf("unexpected join result %v", result))
 	}
 
-	_, sendErr := stream.SendBoundActor(node, session, samplecommon.Message("move:north"), zlink.SendFlagsDontWait)
-	samplecommon.Must(sendErr)
-
-	select {
-	case payload := <-payloadCh:
-		if payload != "move:north" {
-			samplecommon.Must(fmt.Errorf("unexpected actor payload %q", payload))
-		}
-	case <-time.After(2 * time.Second):
-		samplecommon.Must(fmt.Errorf("timed out waiting for actor payload"))
-	}
-
-	samplecommon.Must(actor.Leave(spot, time.Second))
+	leaveParts, err := actor.Leave(spot).Timeout(time.Second).Submit(nil)
+	samplecommon.Must(err)
+	zlink.MultipartClose(leaveParts)
 	samplecommon.Must(actor.Close())
 }

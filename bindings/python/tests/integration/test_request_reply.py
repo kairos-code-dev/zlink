@@ -39,7 +39,7 @@ class RequestReplyScenarioTest(unittest.TestCase):
                             handled.set()
 
                     threading.Thread(target=responder, daemon=True).start()
-                    reply = await dealer_socket.request([b"ping"], timeout=2.0)
+                    reply = await dealer_socket.request().message(b"ping").timeout(2.0).submit_async()
                     try:
                         self.assertEqual([part.to_bytes() for part in reply], [b"pong"])
                     finally:
@@ -69,7 +69,7 @@ class RequestReplyScenarioTest(unittest.TestCase):
                         dealer_socket.connect(ep)
                         wait_connected(router_mon, dealer_mon)
 
-                dealer_socket.send([b"plain-data"])
+                dealer_socket.send().message(b"plain-data").submit()
                 received = router_socket.recv()
                 try:
                     self.assertEqual(received.to_bytes_list(), [b"plain-data"])

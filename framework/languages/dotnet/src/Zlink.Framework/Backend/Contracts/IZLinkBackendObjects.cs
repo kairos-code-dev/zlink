@@ -5,7 +5,7 @@ namespace Zlink.Framework.Backend.Contracts;
 internal enum ZLinkBackendSpotDispatchEvent
 {
     Internal = 0,
-    RoutedReadable = 1,
+    RouteReadable = 1,
     ChannelReplyReadable = 2,
     ActorJoinReadable = 3,
     ActorReadable = 4,
@@ -15,6 +15,14 @@ internal readonly record struct ZLinkBackendActorRef(
     RoutingId NodeRid,
     string ActorId,
     ulong Generation);
+
+internal readonly record struct ZLinkBackendSpotActorLifecycleInfo(
+    ZLinkBackendActorRef? PreviousActor,
+    ZLinkBackendActorRef? CurrentActor,
+    RoutingId? PreviousSpotRid,
+    RoutingId? CurrentSpotRid,
+    ulong JoinEpoch,
+    uint Flags);
 
 internal sealed record ZLinkBackendActorPart(
     ZLinkBackendActorRef Actor,
@@ -157,19 +165,16 @@ internal interface IZLinkBackendStreamSocket : IZLinkBackendSocket
     void DisconnectPeer(RoutingId routingId);
 
     void BindActor(
-        IZLinkBackendSpotNode node,
         RoutingId sessionRid,
         ZLinkBackendActorRef actor,
         TimeSpan timeout);
 
     void UnbindActor(
-        IZLinkBackendSpotNode node,
         RoutingId sessionRid,
         string actorId,
         TimeSpan timeout);
 
     bool SendBoundActor(
-        IZLinkBackendSpotNode node,
         RoutingId sessionRid,
         string actorId,
         IReadOnlyList<Message> parts,
@@ -258,7 +263,6 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         ZLinkBackendActorRef actor,
         TimeSpan timeout);
 
-    void OnActorAdmission(Func<string, Message, bool> handler);
 }
 
 internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
@@ -271,9 +275,13 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
 
     TopicMessage? Subscribe(RecvFlags flags);
 
-    Received RecvRouted(RecvFlags flags);
+    Received RecvRoute(RecvFlags flags);
 
     void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler);
+
+    void OnActorLifecycle(
+        Action<ZLinkBackendSpotActorLifecycleInfo>? onJoin,
+        Action<ZLinkBackendSpotActorLifecycleInfo>? onLeave);
 
     void OnSendReady(Action handler);
 

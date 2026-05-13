@@ -18,7 +18,7 @@ int main ()
 
     const std::string sent = detail::k_pair_payload;
     zlink::message_t outbound = detail::make_message (sent);
-    client.send (outbound);
+    client.send ().message (outbound).submit ();
 
     zlink::received_t inbound;
     assert (server.recv (inbound) == 0);

@@ -22,7 +22,7 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         return nativeSpot.Subscribe(flags);
     }
 
-    public Received RecvRouted(RecvFlags flags)
+    public Received RecvRoute(RecvFlags flags)
     {
         return nativeSpot.RecvRouted(flags)
             ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.NoData);
@@ -31,6 +31,15 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
     public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)
     {
         nativeSpot.OnDispatchEvent(info => handler(info.ToFramework()));
+    }
+
+    public void OnActorLifecycle(
+        Action<ZLinkBackendSpotActorLifecycleInfo>? onJoin,
+        Action<ZLinkBackendSpotActorLifecycleInfo>? onLeave)
+    {
+        nativeSpot.OnActorLifecycle(
+            onJoin == null ? null : info => onJoin(info.ToFramework()),
+            onLeave == null ? null : info => onLeave(info.ToFramework()));
     }
 
     public void OnSendReady(Action handler)

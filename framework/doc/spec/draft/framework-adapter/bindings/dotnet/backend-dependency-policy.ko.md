@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET Implementation Scope And Non-Goals](implementation-scope-and-nongoals.ko.md) | [다음: ZLink Framework .NET Channel Messaging Samples](channel-messaging-samples.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md)

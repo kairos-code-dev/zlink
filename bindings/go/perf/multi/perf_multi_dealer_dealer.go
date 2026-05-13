@@ -119,7 +119,7 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 			payload := perfcommon.PreparePayload(cfg.msgSize)
 			for time.Now().Before(window.StopAt) {
 				perfcommon.StampWindowPayload(payload, window.ActiveAt)
-				_, err := socket.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
+				_, err := socket.Send().Message(perfcommon.NewMessage(payload)).Submit(nil)
 				if err != nil {
 					if perfcommon.IsTransient(err) {
 						continue
@@ -147,7 +147,7 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 // the cpp / java / dotnet implementations.
 func sendMultiDealerStopToken(socket *zlink.DealerSocket) {
 	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
-		sent, err := socket.Send(zlink.SendFlagsNone, perfcommon.NewMessage(perfcommon.StopToken))
+		sent, err := socket.Send().Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
 		if err == nil && sent {
 			return
 		}

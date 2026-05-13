@@ -18,7 +18,7 @@ int main ()
 
     const std::string sent = detail::k_dealer_router_request;
     zlink::message_t outbound = detail::make_message (sent);
-    dealer.send (outbound);
+    dealer.send ().message (outbound).submit ();
 
     zlink::received_t inbound;
     assert (router.recv (inbound) == 0);
@@ -29,7 +29,7 @@ int main ()
 
     const std::string reply_payload = detail::k_dealer_router_reply;
     zlink::message_t reply = detail::make_message (reply_payload);
-    inbound.send (reply);
+    inbound.send ().message (reply).submit ();
     inbound.close ();
 
     zlink::received_t echoed;

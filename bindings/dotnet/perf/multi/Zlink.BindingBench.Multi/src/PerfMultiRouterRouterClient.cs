@@ -289,10 +289,20 @@ internal static class PerfMultiRouterRouterClient
 
     private static bool TrySend(RouterRouterClientSlot slot)
     {
-        // The payload is only re-stamped after the previous reply arrives, so
-        // the borrowed buffer is not mutated while a send is in flight.
-        return ((RouterSocket)slot.Socket).SendBorrowedSingleNoWaitResult(
-            slot.ServerRoutingId, slot.Payload) == SendResult.Sent;
+        Message message = Message.FromBytes(slot.Payload);
+        try
+        {
+            bool sent = ((RouterSocket)slot.Socket).Send(slot.ServerRoutingId)
+                .Message(message).Flags(SendFlags.DontWait).Submit();
+            if (!sent)
+                message.Dispose();
+            return sent;
+        }
+        catch
+        {
+            message.Dispose();
+            throw;
+        }
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)
@@ -321,8 +331,8 @@ internal static class PerfMultiRouterRouterClient
             {
                 using Message message = Message.FromBytes(MultiStopToken);
                 ((RouterSocket)activeClients[i]).Send(
-                    RoutingId.FromBytes(serverRoutingId), message,
-                    SendFlags.DontWait);
+                    RoutingId.FromBytes(serverRoutingId)).Message(message)
+                    .Flags(SendFlags.DontWait).Submit();
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno)

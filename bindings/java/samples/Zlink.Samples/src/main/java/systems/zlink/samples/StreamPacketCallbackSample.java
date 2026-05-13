@@ -31,7 +31,10 @@ public final class StreamPacketCallbackSample {
                          Message replyBody = Message.copyOfUtf8(
                              SampleSupport.STREAM_PAYLOAD);
                          Message reply = frame(replyHeader, replyBody)) {
-                        if (!server.send(routingId, reply, SendFlags.DONT_WAIT)) {
+                        if (!server.send(routingId)
+                            .message(reply)
+                            .flags(SendFlags.DONT_WAIT)
+                            .submit()) {
                             throw new IllegalStateException(
                                 "stream reply backpressured");
                         }

@@ -1,6 +1,10 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](README.ko.md) | [이전: Draft Use Case -- Workflow Orchestration](use-cases/09-workflow-orchestration.ko.md) | [다음: ZLink Framework For .NET](bindings/dotnet/README.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../README.ko.md)
 
-[초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [.NET](./dotnet/README.ko.md) | [Java](./java/README.ko.md) | [Node.js](./node/README.ko.md) | [Python](./python/README.ko.md) | [C++](./cpp/README.ko.md)
+[초안 묶음](./README.ko.md) | [개요](./policy/overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./policy/interaction-model.ko.md) | [메시지 모델](./policy/message-model.ko.md) | [channel topology](./policy/channel-topology.ko.md) | [framework API](./policy/framework-api.ko.md) | [.NET](./bindings/dotnet/README.ko.md) | [Java](./bindings/java/README.ko.md) | [Node.js](./bindings/node/README.ko.md) | [Python](./bindings/python/README.ko.md) | [C++](./bindings/cpp/README.ko.md)
 
 # Draft -- ZLink Framework Use Case Validation
 

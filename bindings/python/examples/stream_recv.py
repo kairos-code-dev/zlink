@@ -15,7 +15,7 @@ def main():
             with socket.create_connection(("127.0.0.1", port), timeout=3.0) as client:
                 client.sendall(b"hello-stream")
                 with server.recv() as received:
-                    server.send(b"hello-stream", routing_id=received.routing_id)
+                    received.send().message(b"hello-stream").submit()
                 echo = client.recv(64).decode("utf-8")
                 print(f'[stream/recv] send: "hello-stream" \u2192 recv: "{echo}"')
 

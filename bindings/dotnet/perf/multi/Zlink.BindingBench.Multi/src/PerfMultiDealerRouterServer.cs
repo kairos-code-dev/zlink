@@ -77,7 +77,8 @@ internal static class PerfMultiDealerRouterServer
                 }
 
                 if (pendingReplies.Count == 0
-                    && receivedBuffer.Send(bodyMessage, SendFlags.DontWait))
+                    && receivedBuffer.Send().Message(bodyMessage)
+                        .Flags(SendFlags.DontWait).Submit())
                 {
                     continue;
                 }
@@ -104,7 +105,8 @@ internal static class PerfMultiDealerRouterServer
     {
         if (pendingReplies.Count == 0)
         {
-            if (server.Send(routingId, reply, SendFlags.DontWait))
+            if (server.Send(routingId).Message(reply)
+                .Flags(SendFlags.DontWait).Submit())
             {
                 reply.Dispose();
                 return true;
@@ -121,8 +123,8 @@ internal static class PerfMultiDealerRouterServer
         while (pendingReplies.Count > 0)
         {
             PendingReply pending = pendingReplies.Peek();
-            if (server.Send(pending.RoutingId, pending.Message,
-                    SendFlags.DontWait))
+            if (server.Send(pending.RoutingId).Message(pending.Message)
+                    .Flags(SendFlags.DontWait).Submit())
             {
                 pendingReplies.Dequeue();
                 pending.Dispose();

@@ -161,7 +161,13 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
                       // echo: reply with the same payload through the
                       // received_t.reply() helper, which routes back to
                       // the originating spot via the spot mesh.
-                      received->reply (received->parts ());
+                      std::vector<zlink::message_t> &parts =
+                        received->parts ();
+                      zlink::service::reply_ready_op_t reply =
+                        received->reply ().message (parts[0]);
+                      for (size_t i = 1; i < parts.size (); ++i)
+                          reply = std::move (reply).message (parts[i]);
+                      std::move (reply).submit ();
                   }
                   catch (const zlink::submit_error_t &err) {
                       const zlink::submit_result_t result = err.result ();

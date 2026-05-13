@@ -3,6 +3,9 @@
 package systems.zlink;
 
 import systems.zlink.service.discovery.Discovery;
+import systems.zlink.service.spot.ReplyOp;
+import systems.zlink.service.spot.RequestOp;
+import systems.zlink.service.spot.SendOp;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -30,10 +33,14 @@ public final class RouterSocket extends Socket {
     public void attachDiscovery(Discovery discovery) { super.attachDiscovery(discovery); }
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
     public RoutingId routingId() { return super.routingId(); }
-    public boolean send(RoutingId rid, Message part) { return super.send(rid, part); }
-    public boolean send(RoutingId rid, Message part, SendFlags flags) { return super.send(rid, part, SendFlag.fromValue(flags.value())); }
-    public boolean send(RoutingId rid, List<Message> parts) { return super.send(rid, parts); }
-    public boolean send(RoutingId rid, List<Message> parts, SendFlags flags) { return super.send(rid, parts, SendFlag.fromValue(flags.value())); }
+    public SendOp send(RoutingId rid) {
+        return SocketOperations.send((parts, flags) ->
+            sendInternal(rid, parts, flags));
+    }
+
+    boolean sendInternal(RoutingId rid, List<Message> parts, SendFlags flags) {
+        return super.send(rid, parts, SendFlag.fromValue(flags.value()));
+    }
     SendResult sendNoWaitResult(RoutingId rid, Message part) {
         return super.sendNoWaitResult(rid, part);
     }
@@ -63,78 +70,27 @@ public final class RouterSocket extends Socket {
         }
     }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
-    public CompletableFuture<List<Message>> request(RoutingId rid, Message part) {
-        return request(rid, List.of(part));
+
+    public RequestOp request(RoutingId rid) {
+        return SocketOperations.request(
+            (parts, flags, timeout) -> requestAsync(rid, parts, flags, timeout),
+            (parts, callback, flags, timeout) ->
+                requestCallback(rid, parts, callback, flags, timeout));
     }
-    private CompletableFuture<List<Message>> request(RoutingId rid, Message part,
-                                                     SendFlags flags) {
-        return request(rid, List.of(part), flags);
-    }
-    public CompletableFuture<List<Message>> request(RoutingId rid, Message part,
-                                                    Duration timeout) {
-        return request(rid, List.of(part), timeout);
-    }
-    private CompletableFuture<List<Message>> request(RoutingId rid, Message part,
-                                                     SendFlags flags,
-                                                     Duration timeout) {
-        return request(rid, List.of(part), flags, timeout);
-    }
-    public CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts) {
-        return request(rid, parts, SendFlags.NONE);
-    }
-    private CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts,
-                                                     SendFlags flags) {
-        return request(rid, parts, flags,
-            Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
-    }
-    public CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts,
-                                                    Duration timeout) {
-        return request(rid, parts, SendFlags.NONE, timeout);
-    }
-    private CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts,
-                                                     SendFlags flags,
-                                                     Duration timeout) {
+
+    private CompletableFuture<List<Message>> requestAsync(RoutingId rid,
+                                                          List<Message> parts,
+                                                          SendFlags flags,
+                                                          Duration timeout) {
         return routedRequests.request(rid, parts, flags, timeout).thenApply(reply ->
             RequestReplySupport.takeReceivedParts(reply));
     }
-    public boolean request(RoutingId rid, Message part,
-                        RequestCallback callback) {
-        return request(rid, List.of(part), callback);
-    }
-    public boolean request(RoutingId rid, Message part,
-                        RequestCallback callback,
-                        Duration timeout) {
-        return request(rid, List.of(part), callback, SendFlags.NONE, timeout);
-    }
-    public boolean request(RoutingId rid, List<Message> parts,
-                        RequestCallback callback,
-                        Duration timeout) {
-        return request(rid, parts, callback, SendFlags.NONE, timeout);
-    }
-    public boolean request(RoutingId rid, Message part,
-                        RequestCallback callback,
-                        SendFlags flags) {
-        return request(rid, List.of(part), callback, flags);
-    }
-    public boolean request(RoutingId rid, Message part,
-                        RequestCallback callback,
-                        SendFlags flags, Duration timeout) {
-        return request(rid, List.of(part), callback, flags, timeout);
-    }
-    public boolean request(RoutingId rid, List<Message> parts,
-                        RequestCallback callback) {
-        return request(rid, parts, callback, SendFlags.NONE,
-            Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
-    }
-    public boolean request(RoutingId rid, List<Message> parts,
-                        RequestCallback callback,
-                        SendFlags flags) {
-        return request(rid, parts, callback, flags,
-            Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
-    }
-    public boolean request(RoutingId rid, List<Message> parts,
-                        RequestCallback callback,
-                        SendFlags flags, Duration timeout) {
+
+    private boolean requestCallback(RoutingId rid,
+                                    List<Message> parts,
+                                    RequestCallback callback,
+                                    SendFlags flags,
+                                    Duration timeout) {
         try {
             routedRequests.request(rid, parts, (result, reply) -> {
                 List<Message> payload = List.of();
@@ -152,157 +108,62 @@ public final class RouterSocket extends Socket {
             throw ex;
         }
     }
-    public void reply(RoutingId rid, long requestSequence, Message part) {
-        reply(rid, requestSequence, List.of(part));
+
+    public ReplyOp reply(RoutingId rid, long requestSequence) {
+        return SocketOperations.reply((parts, flags) ->
+            routedRequests.reply(rid, requestSequence, parts, flags));
     }
-    public void reply(RoutingId rid, long requestSequence, Message part,
-                      SendFlags flags) {
-        reply(rid, requestSequence, List.of(part), flags);
+
+    public SendOp sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid) {
+        return SocketOperations.send((parts, flags) ->
+            sendToSpotInternal(destNodeRid, destSpotRid, parts, flags));
     }
-    public void reply(RoutingId rid, long requestSequence, List<Message> parts) {
-        routedRequests.reply(rid, requestSequence, parts);
-    }
-    public void reply(RoutingId rid, long requestSequence, List<Message> parts,
-                      SendFlags flags) {
-        routedRequests.reply(rid, requestSequence, parts, flags);
-    }
-    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                           Message part) {
-        return sendToSpot(destNodeRid, destSpotRid, List.of(part), SendFlags.NONE);
-    }
-    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                           Message part, SendFlags flags) {
-        return sendToSpot(destNodeRid, destSpotRid, List.of(part), flags);
-    }
-    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                           List<Message> parts) {
-        return sendToSpot(destNodeRid, destSpotRid, parts, SendFlags.NONE);
-    }
-    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                           List<Message> parts, SendFlags flags) {
+
+    boolean sendToSpotInternal(RoutingId destNodeRid, RoutingId destSpotRid,
+                               List<Message> parts, SendFlags flags) {
         return spotSupport.sendToSpot(destNodeRid, destSpotRid, parts, flags);
     }
-    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                          RoutingId destSpotRid,
-                                                          Message part) {
-        return requestToSpot(destNodeRid, destSpotRid, List.of(part));
+
+    public RequestOp requestToSpot(RoutingId destNodeRid,
+                                   RoutingId destSpotRid) {
+        return SocketOperations.request(
+            (parts, flags, timeout) ->
+                requestToSpotAsync(destNodeRid, destSpotRid, parts, flags,
+                  timeout),
+            (parts, callback, flags, timeout) ->
+                requestToSpotCallback(destNodeRid, destSpotRid, parts,
+                  callback, flags, timeout));
     }
-    private CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                           RoutingId destSpotRid,
-                                                           Message part,
-                                                           SendFlags flags) {
-        return requestToSpot(destNodeRid, destSpotRid, List.of(part), flags);
-    }
-    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                          RoutingId destSpotRid,
-                                                          Message part,
-                                                          Duration timeout) {
-        return requestToSpot(destNodeRid, destSpotRid, List.of(part), timeout);
-    }
-    private CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                           RoutingId destSpotRid,
-                                                           Message part,
-                                                           SendFlags flags,
-                                                           Duration timeout) {
-        return requestToSpot(destNodeRid, destSpotRid, List.of(part), flags,
-          timeout);
-    }
-    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                          RoutingId destSpotRid,
-                                                          List<Message> parts) {
-        return requestToSpot(destNodeRid, destSpotRid, parts, SendFlags.NONE);
-    }
-    private CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                           RoutingId destSpotRid,
-                                                           List<Message> parts,
-                                                           SendFlags flags) {
-        return requestToSpot(destNodeRid, destSpotRid, parts, flags,
-          Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
-    }
-    public CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                          RoutingId destSpotRid,
-                                                          List<Message> parts,
-                                                          Duration timeout) {
-        return requestToSpot(destNodeRid, destSpotRid, parts, SendFlags.NONE,
-          timeout);
-    }
-    private CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                                           RoutingId destSpotRid,
-                                                           List<Message> parts,
-                                                           SendFlags flags,
-                                                           Duration timeout) {
+
+    private CompletableFuture<List<Message>> requestToSpotAsync(
+            RoutingId destNodeRid,
+            RoutingId destSpotRid,
+            List<Message> parts,
+            SendFlags flags,
+            Duration timeout) {
         return spotSupport.requestToSpot(destNodeRid, destSpotRid, parts,
           timeout, flags);
     }
-    public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                              Message part,
-                              RequestCallback callback) {
-        return requestToSpot(destNodeRid, destSpotRid, List.of(part), callback);
-    }
-    public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                              Message part,
-                              RequestCallback callback,
-                              Duration timeout) {
-        return requestToSpot(destNodeRid, destSpotRid, List.of(part), callback,
-          SendFlags.NONE, timeout);
-    }
-    public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                              List<Message> parts,
-                              RequestCallback callback,
-                              Duration timeout) {
-        return requestToSpot(destNodeRid, destSpotRid, parts, callback,
-          SendFlags.NONE, timeout);
-    }
-    public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                              Message part,
-                              RequestCallback callback,
-                              SendFlags flags) {
-        return requestToSpot(destNodeRid, destSpotRid, List.of(part), callback, flags);
-    }
-    public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                              Message part,
-                              RequestCallback callback,
-                              SendFlags flags, Duration timeout) {
-        return requestToSpot(destNodeRid, destSpotRid, List.of(part), callback, flags,
-          timeout);
-    }
-    public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                              List<Message> parts,
-                              RequestCallback callback) {
-        return requestToSpot(destNodeRid, destSpotRid, parts, callback, SendFlags.NONE,
-          Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
-    }
-    public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                              List<Message> parts,
-                              RequestCallback callback,
-                              SendFlags flags) {
-        return requestToSpot(destNodeRid, destSpotRid, parts, callback, flags,
-          Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
-    }
-    public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                              List<Message> parts,
-                              RequestCallback callback,
-                              SendFlags flags, Duration timeout) {
+
+    private boolean requestToSpotCallback(RoutingId destNodeRid,
+                                          RoutingId destSpotRid,
+                                          List<Message> parts,
+                                          RequestCallback callback,
+                                          SendFlags flags,
+                                          Duration timeout) {
         return spotSupport.requestToSpot(destNodeRid, destSpotRid, parts,
           callback::onComplete, flags, timeout);
     }
-    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                            long requestSeq, Message message) {
-        replyToSpot(destNodeRid, destSpotRid, requestSeq, List.of(message),
-          SendFlags.NONE);
+
+    public ReplyOp replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                               long requestSeq) {
+        return SocketOperations.reply((parts, flags) ->
+            spotSupport.replyToSpot(destNodeRid, destSpotRid, requestSeq,
+              parts, flags));
     }
-    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                            long requestSeq, Message message, SendFlags flags) {
-        replyToSpot(destNodeRid, destSpotRid, requestSeq, List.of(message),
-          flags);
-    }
-    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                            long requestSeq, List<Message> parts) {
-        replyToSpot(destNodeRid, destSpotRid, requestSeq, parts, SendFlags.NONE);
-    }
-    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                            long requestSeq, List<Message> parts,
-                            SendFlags flags) {
+
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                     long requestSeq, List<Message> parts, SendFlags flags) {
         spotSupport.replyToSpot(destNodeRid, destSpotRid, requestSeq, parts,
           flags);
     }

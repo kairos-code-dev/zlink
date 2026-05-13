@@ -6,23 +6,52 @@ package zlink
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include "zlink.h"
 
-extern zlink_actor_admission_result_t goZlinkActorAdmissionTrampoline(void *node_, const char *actor_id_, const zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
+extern void goZlinkActorJoinTrampoline(zlink_actor_join_result_t *result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
+extern void goZlinkActorLookupTrampoline(zlink_actor_lookup_result_t *result_, uintptr_t userdata_);
+extern void goZlinkSpotActorLifecycleJoinTrampoline(void *spot_, zlink_spot_actor_lifecycle_info_t *info_, uintptr_t userdata_);
+extern void goZlinkSpotActorLifecycleLeaveTrampoline(void *spot_, zlink_spot_actor_lifecycle_info_t *info_, uintptr_t userdata_);
 
-static inline int zlink_spot_node_actor_admission_handler_go(void *node, uintptr_t userdata) {
-    return zlink_spot_node_actor_admission_handler(node, (zlink_actor_admission_handler_fn)goZlinkActorAdmissionTrampoline, (void *)userdata);
+static inline int zlink_spot_node_actor_destroy_close(void *node, const zlink_actor_ref_t *actor, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_node_actor_destroy(node, actor, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, timeout_ms);
 }
 
-static inline int zlink_spot_node_actor_join_spot_go(void *node, const zlink_actor_ref_t *actor, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
-    return zlink_spot_node_actor_join_spot(node, actor, dest_node_rid, dest_spot_rid, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
+static inline int zlink_remote_actor_get_ref_go(void *node, const zlink_routing_id_t *target_node_rid, const char *actor_id, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_remote_actor_get_ref(node, target_node_rid, actor_id, (zlink_actor_lookup_handler_fn)goZlinkActorLookupTrampoline, (void *)userdata, timeout_ms);
+}
+
+static inline int zlink_spot_node_actor_join_spot_go_ops(void *node, const zlink_actor_ref_t *actor, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_node_actor_join_spot(node, actor, dest_node_rid, dest_spot_rid, parts, part_count, (zlink_actor_join_handler_fn)goZlinkActorJoinTrampoline, (void *)userdata, flags, timeout_ms);
+}
+
+static inline int zlink_spot_node_actor_destroy_go_ops(void *node, const zlink_actor_ref_t *actor, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_node_actor_destroy(node, actor, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, timeout_ms);
+}
+
+static inline int zlink_spot_node_actor_leave_spot_go_ops(void *node, const zlink_actor_ref_t *actor, const zlink_routing_id_t *spot, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_node_actor_leave_spot(node, actor, spot, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, timeout_ms);
+}
+
+static inline int zlink_stream_bind_actor_go_ops(void *stream, const zlink_routing_id_t *session, const zlink_actor_ref_t *actor, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_stream_bind_actor(stream, session, actor, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, timeout_ms);
+}
+
+static inline int zlink_stream_unbind_actor_go_ops(void *stream, const zlink_routing_id_t *session, const char *actor_id, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_stream_unbind_actor(stream, session, actor_id, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, timeout_ms);
+}
+
+static inline int zlink_spot_actor_lifecycle_handler_go(void *spot, int with_join, int with_leave, uintptr_t userdata) {
+    zlink_spot_actor_lifecycle_handler_fn join_fn = with_join ? (zlink_spot_actor_lifecycle_handler_fn)goZlinkSpotActorLifecycleJoinTrampoline : NULL;
+    zlink_spot_actor_lifecycle_handler_fn leave_fn = with_leave ? (zlink_spot_actor_lifecycle_handler_fn)goZlinkSpotActorLifecycleLeaveTrampoline : NULL;
+    return zlink_spot_actor_lifecycle_handler(spot, join_fn, leave_fn, (void *)userdata);
 }
 */
 import "C"
 
 import (
-	"errors"
 	"runtime/cgo"
 	"strings"
 	"time"
@@ -31,6 +60,8 @@ import (
 
 const actorIDMax = int(C.ZLINK_ACTOR_ID_MAX)
 
+// ActorRef identifies one logical actor. Generation==0 marks an unchecked
+// remote ref.
 type ActorRef struct {
 	NodeRID    RoutingID
 	ActorID    string
@@ -41,36 +72,21 @@ func (r ActorRef) IsUnchecked() bool {
 	return r.Generation == 0
 }
 
-type ActorCreateStatus int
-
-const (
-	ActorCreateCreated  ActorCreateStatus = ActorCreateStatus(C.ZLINK_ACTOR_CREATE_CREATED)
-	ActorCreateExisting ActorCreateStatus = ActorCreateStatus(C.ZLINK_ACTOR_CREATE_EXISTING)
-)
-
-type ActorAdmissionResult int
-
-const (
-	ActorAdmissionAccept ActorAdmissionResult = ActorAdmissionResult(C.ZLINK_ACTOR_ADMISSION_ACCEPT)
-	ActorAdmissionReject ActorAdmissionResult = ActorAdmissionResult(C.ZLINK_ACTOR_ADMISSION_REJECT)
-)
-
-type ActorCreateResult struct {
-	Status ActorCreateStatus
-	Actor  ActorRef
-}
-
+// ActorRoute is the resolution result from Discovery.ResolveActor.
 type ActorRoute struct {
 	Actor         ActorRef
 	Joined        bool
 	JoinedSpotRID *RoutingID
 }
 
+// ActorJoinRequest is the value yielded by Spot.RecvActorJoin. The Message
+// carries the single join state payload.
 type ActorJoinRequest struct {
 	Info    ActorJoinInfo
 	Message *Message
 }
 
+// ActorRecvInfo describes the routing context of a received actor part.
 type ActorRecvInfo struct {
 	Actor            ActorRef
 	SourceNodeRID    RoutingID
@@ -78,6 +94,7 @@ type ActorRecvInfo struct {
 	Flags            uint32
 }
 
+// ActorJoinInfo captures both sides of an actor join exchange.
 type ActorJoinInfo struct {
 	SourceActor   ActorRef
 	TargetActor   ActorRef
@@ -90,12 +107,14 @@ type ActorJoinInfo struct {
 	raw           C.zlink_actor_join_info_t
 }
 
+// ActorPart is one part of an actor-routed multipart message.
 type ActorPart struct {
 	Info    ActorRecvInfo
 	Message *Message
 	More    bool
 }
 
+// SpotNodeSpotEntry is an entry from SpotNode.SpotsSnapshot.
 type SpotNodeSpotEntry struct {
 	SpotRID                 RoutingID
 	DispatchHandlerAttached bool
@@ -105,6 +124,7 @@ type SpotNodeSpotEntry struct {
 	LastChangedMs           uint64
 }
 
+// SpotNodeActorEntry is an entry from SpotNode.ActorsSnapshot.
 type SpotNodeActorEntry struct {
 	Actor               ActorRef
 	Joined              bool
@@ -114,12 +134,16 @@ type SpotNodeActorEntry struct {
 	LastChangedMs       uint64
 }
 
+// Actor represents one local actor identity owned by a SpotNode.
 type Actor struct {
 	node   *SpotNode
 	ref    ActorRef
 	closed bool
 }
 
+// --- SpotNode actor methods ---
+
+// Actor creates a local actor on this node.
 func (n *SpotNode) Actor(actorID string) (*Actor, error) {
 	handle, err := n.handleOrError()
 	if err != nil {
@@ -134,6 +158,7 @@ func (n *SpotNode) Actor(actorID string) (*Actor, error) {
 	})
 }
 
+// ActorLookup returns a checked ref for a local actor by id.
 func (n *SpotNode) ActorLookup(actorID string) (ActorRef, error) {
 	handle, err := n.handleOrError()
 	if err != nil {
@@ -148,126 +173,112 @@ func (n *SpotNode) ActorLookup(actorID string) (ActorRef, error) {
 	})
 }
 
+// RemoteActorRef builds an unchecked remote actor ref.
 func RemoteActorRef(targetNodeRID RoutingID, actorID string) (ActorRef, error) {
-	node := targetNodeRID.toC()
-	return withActorIDCString(actorID, func(actorIDC *C.char) (ActorRef, error) {
-		var raw C.zlink_actor_ref_t
-		if err := configErrorFromResult(C.zlink_remote_actor_get_ref(&node, actorIDC, &raw)); err != nil {
-			return ActorRef{}, err
+	return ActorRef{NodeRID: targetNodeRID, ActorID: actorID}, nil
+}
+
+// RemoteActorGetRef returns an async lookup builder for a remote actor. The
+// completion delivers ActorLookupResult with a checked ref on success.
+func (n *SpotNode) RemoteActorGetRef(targetNodeRID RoutingID, actorID string) ActorLookupOp {
+	return newActorLookupOp(func(timeout time.Duration, cb actorLookupCallback) error {
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
 		}
-		return actorRefFromC(raw), nil
+		target := targetNodeRID.toC()
+		return withActorIDCStringErr(actorID, func(actorIDC *C.char) error {
+			return submitActorLookupNative(nil, func(stateHandle cgo.Handle) error {
+				return submitErrorFromResult(C.zlink_remote_actor_get_ref_go(handle, &target, actorIDC, C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(stateHandle)))
+			}, cb)
+		})
 	})
 }
 
-func (n *SpotNode) CreateRemoteActor(targetNodeRID RoutingID, actorID string, message *Message, timeout time.Duration) (ActorCreateResult, error) {
-	handle, err := n.handleOrError()
-	if err != nil {
-		return ActorCreateResult{}, err
-	}
-	if message == nil || message.closed {
-		return ActorCreateResult{}, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	node := targetNodeRID.toC()
-	return withActorIDCString(actorID, func(actorIDC *C.char) (ActorCreateResult, error) {
-		cloned, err := message.clone()
+// DestroyActor returns an async builder that destroys an Actor. Succeeds only
+// when the Actor is in the Entry Spot.
+func (n *SpotNode) DestroyActor(actor ActorRef) ActorDestroyOp {
+	return newActorDestroyOp(nil, func(timeout time.Duration, cb requestPartsCallback) error {
+		handle, err := n.handleOrError()
 		if err != nil {
-			return ActorCreateResult{}, err
+			return err
 		}
-		prepared, err := prepareMultipart([]*Message{cloned})
+		rawActor, err := actor.toC()
 		if err != nil {
-			_ = cloned.Close()
-			return ActorCreateResult{}, err
+			return err
 		}
-		var raw C.zlink_actor_create_result_t
-		rc := C.zlink_spot_node_create_remote_actor(handle, &node, actorIDC, prepared.ptr(), prepared.count(), &raw, C.uint32_t(requestTimeoutMillis(timeout)))
-		if err := requestErrorFromResult(rc); err != nil {
-			_ = prepared.restore()
-			return ActorCreateResult{}, err
-		}
-		prepared.commit()
-		message.moved()
-		return ActorCreateResult{Status: ActorCreateStatus(raw.status), Actor: actorRefFromC(raw.actor)}, nil
+		return submitActorRequestNative(nil, func(stateHandle cgo.Handle) error {
+			return submitErrorFromResult(C.zlink_spot_node_actor_destroy_go_ops(handle, &rawActor, C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(stateHandle)))
+		}, cb)
 	})
 }
 
-func (n *SpotNode) DestroyActor(actor ActorRef, timeout time.Duration) error {
-	return n.DestroyRemoteActor(actor, timeout)
+// DestroyRemoteActor is an alias retained for surface compatibility; it
+// returns the same async builder as DestroyActor.
+func (n *SpotNode) DestroyRemoteActor(actor ActorRef) ActorDestroyOp {
+	return n.DestroyActor(actor)
 }
 
-func (n *SpotNode) DestroyRemoteActor(actor ActorRef, timeout time.Duration) error {
-	handle, err := n.handleOrError()
-	if err != nil {
-		return err
-	}
-	raw, err := actor.toC()
-	if err != nil {
-		return err
-	}
-	return requestErrorFromResult(C.zlink_spot_node_actor_destroy(handle, &raw, C.uint32_t(requestTimeoutMillis(timeout))))
-}
-
-func (n *SpotNode) OnActorAdmission(handler func(string, *Message) ActorAdmissionResult) error {
-	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	handle, err := n.handleOrError()
-	if err != nil {
-		return err
-	}
-	state := newActorAdmissionCallbackState(handler)
-	cb := cgo.NewHandle(state)
-	if err := handlerErrorFromResult(C.zlink_spot_node_actor_admission_handler_go(handle, C.uintptr_t(cb))); err != nil {
-		cb.Delete()
-		return err
-	}
-	n.mu.Lock()
-	old := n.admissionHandle
-	n.admissionHandle = cb
-	n.mu.Unlock()
-	if old != 0 {
-		releaseCallbackHandle(old)
-	}
-	return nil
-}
-
-func (n *SpotNode) JoinActor(actor ActorRef, destNodeRID RoutingID, destSpotRID RoutingID, message *Message, callback RequestReplyCallback, flags SendFlags, timeout time.Duration) (bool, error) {
-	handle, err := n.handleOrError()
-	if err != nil {
-		return false, err
-	}
-	if callback == nil || message == nil || message.closed {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	rawActor, err := actor.toC()
-	if err != nil {
-		return false, err
-	}
-	rawSpot := destSpotRID.toC()
-	rawNode := destNodeRID.toC()
-	if err := submitActorJoin(message, nil, func(part *C.zlink_msg_t, cb cgo.Handle) error {
-		return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go(handle, &rawActor, &rawNode, &rawSpot, part, 1, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(cb)))
-	}, callback); err != nil {
-		var submitErr *SubmitError
-		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
-			return false, nil
+// JoinActor returns a user-Spot join builder. Completion delivers
+// ActorJoinResult plus reply parts. destSpotRID must be a user Spot.
+func (n *SpotNode) JoinActor(actor ActorRef, destNodeRID, destSpotRID RoutingID) ActorJoinOp {
+	return newActorJoinOp(func(parts []*Message, flags SendFlags, timeout time.Duration, cb actorJoinCallback) error {
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
 		}
-		return false, err
-	}
-	return true, nil
+		rawActor, err := actor.toC()
+		if err != nil {
+			return err
+		}
+		rawNode := destNodeRID.toC()
+		rawSpot := destSpotRID.toC()
+		return submitActorJoinNative(parts, nil, func(nativeParts *C.zlink_msg_t, partCount C.size_t, stateHandle cgo.Handle) error {
+			return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go_ops(handle, &rawActor, &rawNode, &rawSpot, nativeParts, partCount, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(stateHandle)))
+		}, cb)
+	})
 }
 
-func (n *SpotNode) LeaveActor(actor ActorRef, destSpotRID RoutingID, timeout time.Duration) error {
-	handle, err := n.handleOrError()
-	if err != nil {
-		return err
-	}
-	rawActor, err := actor.toC()
-	if err != nil {
-		return err
-	}
-	rawSpot := destSpotRID.toC()
-	return requestErrorFromResult(C.zlink_spot_node_actor_leave_spot(handle, &rawActor, &rawSpot, C.uint32_t(requestTimeoutMillis(timeout))))
+// LeaveActor returns an async builder that moves an Actor to the same node's
+// Entry Spot.
+func (n *SpotNode) LeaveActor(actor ActorRef, currentSpotRID RoutingID) ActorLeaveOp {
+	return newActorLeaveOp(func(timeout time.Duration, cb requestPartsCallback) error {
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
+		}
+		rawActor, err := actor.toC()
+		if err != nil {
+			return err
+		}
+		rawSpot := currentSpotRID.toC()
+		return submitActorRequestNative(nil, func(stateHandle cgo.Handle) error {
+			return submitErrorFromResult(C.zlink_spot_node_actor_leave_spot_go_ops(handle, &rawActor, &rawSpot, C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(stateHandle)))
+		}, cb)
+	})
 }
+
+// SendBoundSessionMsg returns an actor-to-session relay send builder. The
+// underlying native call is synchronous; the builder model matches the rest
+// of the spot send surface.
+func (n *SpotNode) SendBoundSessionMsg(actor ActorRef) SendOp {
+	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
+		}
+		rawActor, err := actor.toC()
+		if err != nil {
+			return err
+		}
+		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			_ = partFlag
+			return submitErrorFromResult(C.zlink_spot_node_actor_send_bound_session_msg(handle, &rawActor, part, C.zlink_send_flags_t(flags)))
+		})
+	})
+}
+
+// --- Actor methods ---
 
 func (a *Actor) Ref() ActorRef {
 	if a == nil || a.closed || a.node == nil {
@@ -276,84 +287,61 @@ func (a *Actor) Ref() ActorRef {
 	return a.ref
 }
 
-func (a *Actor) CloseWithTimeout(timeout time.Duration) error {
-	if a == nil || a.closed {
-		return nil
-	}
-	node, err := a.node.handleOrError()
-	if err != nil {
-		return err
-	}
-	raw, err := a.ref.toC()
-	if err != nil {
-		return err
-	}
-	if err := requestErrorFromResult(C.zlink_spot_node_actor_destroy(node, &raw, C.uint32_t(requestTimeoutMillis(timeout)))); err != nil {
-		return err
-	}
-	a.closed = true
-	return nil
-}
-
-func (a *Actor) Close() error {
-	return a.CloseWithTimeout(0)
-}
-
-func (a *Actor) Join(spot *Spot, message *Message, callback RequestReplyCallback, flags SendFlags, timeout time.Duration) (bool, error) {
-	if a == nil || a.closed || a.node == nil || spot == nil || spot.core == nil || spot.core.closed {
-		return false, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	if callback == nil || message == nil || message.closed {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	node, err := a.node.handleOrError()
-	if err != nil {
-		return false, err
-	}
-	rawActor, err := a.ref.toC()
-	if err != nil {
-		return false, err
-	}
-	destNode, err := a.node.RoutingID()
-	if err != nil {
-		return false, err
-	}
-	destSpot, err := spot.RoutingID()
-	if err != nil {
-		return false, err
-	}
-	rawNode := destNode.toC()
-	rawSpot := destSpot.toC()
-	if err := submitActorJoin(message, spot.raw(), func(part *C.zlink_msg_t, cb cgo.Handle) error {
-		return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go(node, &rawActor, &rawNode, &rawSpot, part, 1, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(cb)))
-	}, callback); err != nil {
-		var submitErr *SubmitError
-		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
-			return false, nil
+// Join returns a user-Spot join builder bound to this Actor and the given
+// destination Spot. The destination is resolved at submit time.
+func (a *Actor) Join(spot *Spot) ActorJoinOp {
+	return newActorJoinOp(func(parts []*Message, flags SendFlags, timeout time.Duration, cb actorJoinCallback) error {
+		if a == nil || a.closed || a.node == nil || spot == nil || spot.core == nil || spot.core.closed {
+			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 		}
-		return false, err
-	}
-	return true, nil
+		nodeHandle, err := a.node.handleOrError()
+		if err != nil {
+			return err
+		}
+		rawActor, err := a.ref.toC()
+		if err != nil {
+			return err
+		}
+		destNode, err := a.node.RoutingID()
+		if err != nil {
+			return err
+		}
+		destSpot, err := spot.RoutingID()
+		if err != nil {
+			return err
+		}
+		rawNode := destNode.toC()
+		rawSpot := destSpot.toC()
+		return submitActorJoinNative(parts, spot.raw(), func(nativeParts *C.zlink_msg_t, partCount C.size_t, stateHandle cgo.Handle) error {
+			return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go_ops(nodeHandle, &rawActor, &rawNode, &rawSpot, nativeParts, partCount, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(stateHandle)))
+		}, cb)
+	})
 }
 
-func (a *Actor) Leave(spot *Spot, timeout time.Duration) error {
-	if a == nil || a.closed || a.node == nil || spot == nil || spot.core == nil || spot.core.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	node, err := a.node.handleOrError()
-	if err != nil {
-		return err
-	}
-	rawActor, err := a.ref.toC()
-	if err != nil {
-		return err
-	}
-	destSpot, err := spot.RoutingID()
-	if err != nil {
-		return err
-	}
-	rawSpot := destSpot.toC()
-	return requestErrorFromResult(C.zlink_spot_node_actor_leave_spot(node, &rawActor, &rawSpot, C.uint32_t(requestTimeoutMillis(timeout))))
+// Leave returns an async builder that returns this Actor to its node's
+// Entry Spot.
+func (a *Actor) Leave(spot *Spot) ActorLeaveOp {
+	return newActorLeaveOp(func(timeout time.Duration, cb requestPartsCallback) error {
+		if a == nil || a.closed || a.node == nil || spot == nil || spot.core == nil || spot.core.closed {
+			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		}
+		nodeHandle, err := a.node.handleOrError()
+		if err != nil {
+			return err
+		}
+		rawActor, err := a.ref.toC()
+		if err != nil {
+			return err
+		}
+		destSpot, err := spot.RoutingID()
+		if err != nil {
+			return err
+		}
+		rawSpot := destSpot.toC()
+		return submitActorRequestNative(nil, func(stateHandle cgo.Handle) error {
+			return submitErrorFromResult(C.zlink_spot_node_actor_leave_spot_go_ops(nodeHandle, &rawActor, &rawSpot, C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(stateHandle)))
+		}, cb)
+	})
 }
 
 func (a *Actor) RecvPart(flags RecvFlags) (*ActorPart, error) {
@@ -367,41 +355,29 @@ func (a *Actor) RecvPart(flags RecvFlags) (*ActorPart, error) {
 	return recvActorPart(node, a.ref, flags)
 }
 
-func (a *Actor) SendBoundSession(message *Message, flags SendFlags) (bool, error) {
-	if a == nil || a.closed || a.node == nil || message == nil || message.closed {
-		return false, &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	node, err := a.node.handleOrError()
-	if err != nil {
-		return false, err
-	}
-	rawActor, err := a.ref.toC()
-	if err != nil {
-		return false, err
-	}
-	cloned, err := message.clone()
-	if err != nil {
-		return false, err
-	}
-	prepared, err := prepareMultipart([]*Message{cloned})
-	if err != nil {
-		_ = cloned.Close()
-		return false, err
-	}
-	submitErr := submitErrorFromResult(C.zlink_spot_node_actor_send_bound_session_msg(node, &rawActor, prepared.ptr(), C.zlink_send_flags_t(flags)))
-	if submitErr != nil {
-		_ = prepared.restore()
-		var se *SubmitError
-		if errors.As(submitErr, &se) && se.Result == SubmitBackpressured {
-			return false, nil
+// SendBoundSession returns an actor-to-session relay send builder for the
+// session that this Actor is currently bound to.
+func (a *Actor) SendBoundSession() SendOp {
+	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		if a == nil || a.closed || a.node == nil {
+			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
 		}
-		return false, submitErr
-	}
-	prepared.commit()
-	message.moved()
-	return true, nil
+		nodeHandle, err := a.node.handleOrError()
+		if err != nil {
+			return err
+		}
+		rawActor, err := a.ref.toC()
+		if err != nil {
+			return err
+		}
+		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			_ = partFlag
+			return submitErrorFromResult(C.zlink_spot_node_actor_send_bound_session_msg(nodeHandle, &rawActor, part, C.zlink_send_flags_t(flags)))
+		})
+	})
 }
 
+// CloseBoundSession closes the bound session of this Actor.
 func (a *Actor) CloseBoundSession(timeout time.Duration) error {
 	if a == nil || a.closed || a.node == nil {
 		return &RequestError{Result: RequestTerminated, internalErrno: int(C.EFAULT)}
@@ -418,6 +394,36 @@ func (a *Actor) CloseBoundSession(timeout time.Duration) error {
 	return requestErrorFromResult(C.zlink_spot_node_actor_close_bound_session(node, &rawActor, C.uint32_t(timeoutMs)))
 }
 
+// CloseWithTimeout destroys the Actor synchronously with the given timeout.
+func (a *Actor) CloseWithTimeout(timeout time.Duration) error {
+	if a == nil || a.closed {
+		return nil
+	}
+	node, err := a.node.handleOrError()
+	if err != nil {
+		return err
+	}
+	raw, err := a.ref.toC()
+	if err != nil {
+		return err
+	}
+	if err := waitActorReply(func(cb cgo.Handle) error {
+		return submitErrorFromResult(C.zlink_spot_node_actor_destroy_close(node, &raw, C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(cb)))
+	}); err != nil {
+		return err
+	}
+	a.closed = true
+	return nil
+}
+
+// Close destroys the Actor synchronously with the default request timeout.
+func (a *Actor) Close() error {
+	return a.CloseWithTimeout(0)
+}
+
+// --- Spot actor-side methods ---
+
+// RecvActorJoin receives the next pending actor-join request on this Spot.
 func (s *Spot) RecvActorJoin(flags RecvFlags) (*ActorJoinRequest, error) {
 	if s == nil || s.core == nil || s.core.closed {
 		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
@@ -445,38 +451,83 @@ func (s *Spot) RecvActorJoin(flags RecvFlags) (*ActorJoinRequest, error) {
 	return &ActorJoinRequest{Info: *info, Message: msg}, nil
 }
 
-func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, result ActorAdmissionResult, flags SendFlags, message *Message) (bool, error) {
-	if s == nil || s.core == nil || s.core.closed || request == nil || message == nil || message.closed {
-		return false, &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	_ = flags // flags not used in C API
-	cloned, err := message.clone()
-	if err != nil {
-		return false, err
-	}
-	prepared, err := prepareMultipart([]*Message{cloned})
-	if err != nil {
-		_ = cloned.Close()
-		return false, err
-	}
-	var accept C.uint32_t
-	if result == ActorAdmissionAccept {
-		accept = 1
-	}
-	submitErr := submitErrorFromResult(C.zlink_spot_actor_join_reply(s.raw(), &request.Info.raw, accept, prepared.ptr(), prepared.count()))
-	if submitErr != nil {
-		_ = prepared.restore()
-		var se *SubmitError
-		if errors.As(submitErr, &se) && se.Result == SubmitBackpressured {
-			return false, nil
+// ReplyActorJoin returns a builder for the reply to a previously received
+// actor-join request. accepted: true=accept, false=reject. The reply payload
+// is optional.
+func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, accepted bool) ActorJoinReplyOp {
+	return newActorJoinReplyOp(func(parts []*Message) error {
+		if s == nil || s.core == nil || s.core.closed || request == nil {
+			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
 		}
-		return false, submitErr
-	}
-	prepared.commit()
-	message.moved()
-	return true, nil
+		var accept C.uint32_t
+		if accepted {
+			accept = 1
+		}
+		if len(parts) == 0 {
+			return submitErrorFromResult(C.zlink_spot_actor_join_reply(s.raw(), &request.Info.raw, accept, nil, 0))
+		}
+		cloned, err := cloneParts(parts)
+		if err != nil {
+			return err
+		}
+		prepared, err := prepareMultipart(cloned)
+		if err != nil {
+			closeMessageSlice(cloned)
+			return err
+		}
+		submitErr := submitErrorFromResult(C.zlink_spot_actor_join_reply(s.raw(), &request.Info.raw, accept, prepared.ptr(), prepared.count()))
+		if submitErr != nil {
+			_ = prepared.restore()
+			return submitErr
+		}
+		prepared.commit()
+		markPartsMoved(parts)
+		return nil
+	})
 }
 
+// OnActorLifecycle registers join/leave callbacks for this Spot. Passing nil
+// for both removes the registration.
+func (s *Spot) OnActorLifecycle(
+	onJoin func(spot *Spot, info SpotActorLifecycleInfo),
+	onLeave func(spot *Spot, info SpotActorLifecycleInfo)) error {
+	if s == nil || s.core == nil || s.core.closed {
+		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EFAULT)}
+	}
+	if onJoin == nil && onLeave == nil {
+		// Pass NULL handlers to clear the registration.
+		if err := handlerErrorFromResult(C.zlink_spot_actor_lifecycle_handler_go(s.raw(), 0, 0, 0)); err != nil {
+			return err
+		}
+		if s.core.lifecycleHandle != 0 {
+			releaseCallbackHandle(s.core.lifecycleHandle)
+			s.core.lifecycleHandle = 0
+		}
+		return nil
+	}
+	state := newSpotActorLifecycleCallbackState(s, onJoin, onLeave)
+	handle := cgo.NewHandle(state)
+	withJoin := C.int(0)
+	if onJoin != nil {
+		withJoin = 1
+	}
+	withLeave := C.int(0)
+	if onLeave != nil {
+		withLeave = 1
+	}
+	if err := handlerErrorFromResult(C.zlink_spot_actor_lifecycle_handler_go(s.raw(), withJoin, withLeave, C.uintptr_t(handle))); err != nil {
+		state.close()
+		handle.Delete()
+		return err
+	}
+	if s.core.lifecycleHandle != 0 {
+		releaseCallbackHandle(s.core.lifecycleHandle)
+	}
+	s.core.lifecycleHandle = handle
+	return nil
+}
+
+// ActorsSnapshot lists actors currently joined to this Spot.
 func (s *Spot) ActorsSnapshot() ([]ActorRef, error) {
 	if s == nil || s.core == nil || s.core.closed {
 		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
@@ -485,10 +536,10 @@ func (s *Spot) ActorsSnapshot() ([]ActorRef, error) {
 	if err := configErrorFromResult(C.zlink_spot_actors_snapshot(s.raw(), nil, &count)); err != nil {
 		return nil, err
 	}
-	entries := make([]C.zlink_actor_ref_t, int(count))
 	if count == 0 {
 		return []ActorRef{}, nil
 	}
+	entries := make([]C.zlink_actor_ref_t, int(count))
 	if err := configErrorFromResult(C.zlink_spot_actors_snapshot(s.raw(), &entries[0], &count)); err != nil {
 		return nil, err
 	}
@@ -499,6 +550,8 @@ func (s *Spot) ActorsSnapshot() ([]ActorRef, error) {
 	return out, nil
 }
 
+// --- SpotNode snapshots ---
+
 func (n *SpotNode) SpotsSnapshot() ([]SpotNodeSpotEntry, error) {
 	handle, err := n.handleOrError()
 	if err != nil {
@@ -508,10 +561,10 @@ func (n *SpotNode) SpotsSnapshot() ([]SpotNodeSpotEntry, error) {
 	if err := configErrorFromResult(C.zlink_spot_node_spots_snapshot(handle, nil, &count)); err != nil {
 		return nil, err
 	}
-	entries := make([]C.zlink_spot_node_spot_entry_t, int(count))
 	if count == 0 {
 		return []SpotNodeSpotEntry{}, nil
 	}
+	entries := make([]C.zlink_spot_node_spot_entry_t, int(count))
 	if err := configErrorFromResult(C.zlink_spot_node_spots_snapshot(handle, &entries[0], &count)); err != nil {
 		return nil, err
 	}
@@ -531,10 +584,10 @@ func (n *SpotNode) ActorsSnapshot() ([]SpotNodeActorEntry, error) {
 	if err := configErrorFromResult(C.zlink_spot_node_actors_snapshot(handle, nil, &count)); err != nil {
 		return nil, err
 	}
-	entries := make([]C.zlink_spot_node_actor_entry_t, int(count))
 	if count == 0 {
 		return []SpotNodeActorEntry{}, nil
 	}
+	entries := make([]C.zlink_spot_node_actor_entry_t, int(count))
 	if err := configErrorFromResult(C.zlink_spot_node_actors_snapshot(handle, &entries[0], &count)); err != nil {
 		return nil, err
 	}
@@ -544,6 +597,8 @@ func (n *SpotNode) ActorsSnapshot() ([]SpotNodeActorEntry, error) {
 	}
 	return out, nil
 }
+
+// --- Discovery ---
 
 func (d *Discovery) ResolveActor(actorID string) (ActorRoute, error) {
 	if d == nil || d.closed {
@@ -558,113 +613,175 @@ func (d *Discovery) ResolveActor(actorID string) (ActorRoute, error) {
 	})
 }
 
-func (s *StreamSocket) BindActor(node *SpotNode, sessionRID RoutingID, actor ActorRef, timeout time.Duration) error {
-	if node == nil || s == nil || s.core == nil || s.core.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	nodeHandle, err := node.handleOrError()
-	if err != nil {
-		return err
-	}
-	session := sessionRID.toC()
-	rawActor, err := actor.toC()
-	if err != nil {
-		return err
-	}
-	if err := requestErrorFromResult(C.zlink_stream_bind_actor(nodeHandle, s.raw(), &session, &rawActor, C.uint32_t(requestTimeoutMillis(timeout)))); err != nil {
-		return err
-	}
-	s.boundSessions.Store(sessionRID.Hex(), actor.ActorID)
-	return nil
+// --- StreamSocket actor methods ---
+
+// BindActor returns an Actor bind operation builder. The stream is bound to
+// the given session_rid; the session does not need to be joined to a Spot.
+func (s *StreamSocket) BindActor(sessionRID RoutingID, actor ActorRef) ActorBindOp {
+	return newActorBindOp(func(timeout time.Duration, cb requestPartsCallback) error {
+		if s == nil || s.core == nil || s.core.closed {
+			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		}
+		session := sessionRID.toC()
+		rawActor, err := actor.toC()
+		if err != nil {
+			return err
+		}
+		return submitActorRequestNative(nil, func(stateHandle cgo.Handle) error {
+			return submitErrorFromResult(C.zlink_stream_bind_actor_go_ops(s.raw(), &session, &rawActor, C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(stateHandle)))
+		}, cb)
+	})
 }
 
-func (s *StreamSocket) UnbindActor(node *SpotNode, sessionRID RoutingID, timeout time.Duration) error {
-	if node == nil || s == nil || s.core == nil || s.core.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	nodeHandle, err := node.handleOrError()
-	if err != nil {
-		return err
-	}
-	key := sessionRID.Hex()
-	actorIDVal, ok := s.boundSessions.Load(key)
-	if !ok {
-		return &ConfigError{Result: ConfigNotFound, internalErrno: int(C.ENOENT)}
-	}
-	actorID := actorIDVal.(string)
-	session := sessionRID.toC()
-	if err := withActorIDCStringErr(actorID, func(actorIDC *C.char) error {
-		return requestErrorFromResult(C.zlink_stream_unbind_actor(nodeHandle, s.raw(), &session, actorIDC, C.uint32_t(requestTimeoutMillis(timeout))))
-	}); err != nil {
-		return err
-	}
-	s.boundSessions.Delete(key)
-	return nil
-}
-
-func (s *StreamSocket) SendBoundActor(node *SpotNode, sessionRID RoutingID, message *Message, flags SendFlags) (bool, error) {
-	if node == nil || s == nil || s.core == nil || s.core.closed {
-		return false, &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	if message == nil || message.closed {
-		return false, &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	nodeHandle, err := node.handleOrError()
-	if err != nil {
-		return false, err
-	}
-	key := sessionRID.Hex()
-	actorIDVal, ok := s.boundSessions.Load(key)
-	if !ok {
-		return false, &SubmitError{Result: SubmitNotFound, internalErrno: int(C.ENOENT)}
-	}
-	actorID := actorIDVal.(string)
-	session := sessionRID.toC()
-	submitErr := withActorIDCStringErr(actorID, func(actorIDC *C.char) error {
-		return submitMultipartFromClones([]*Message{message}, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-			return submitErrorFromResult(C.zlink_stream_send_bound_actor_part(nodeHandle, s.raw(), &session, actorIDC, part, C.zlink_send_flags_t(flags), partFlag))
+// UnbindActor returns an Actor unbind operation builder for the given session
+// and actor id.
+func (s *StreamSocket) UnbindActor(sessionRID RoutingID, actorID string) ActorUnbindOp {
+	return newActorUnbindOp(func(timeout time.Duration, cb requestPartsCallback) error {
+		if s == nil || s.core == nil || s.core.closed {
+			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		}
+		session := sessionRID.toC()
+		return withActorIDCStringErr(actorID, func(actorIDC *C.char) error {
+			return submitActorRequestNative(nil, func(stateHandle cgo.Handle) error {
+				return submitErrorFromResult(C.zlink_stream_unbind_actor_go_ops(s.raw(), &session, actorIDC, C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(stateHandle)))
+			}, cb)
 		})
 	})
-	if submitErr != nil {
-		var se *SubmitError
-		if errors.As(submitErr, &se) && se.Result == SubmitBackpressured {
-			return false, nil
-		}
-		return false, submitErr
-	}
-	return true, nil
 }
 
-func submitActorJoin(message *Message, progressSpot unsafe.Pointer, submit func(*C.zlink_msg_t, cgo.Handle) error, callback RequestReplyCallback) error {
-	cloned, err := message.clone()
-	if err != nil {
-		return err
+// SendBoundActor returns a session-bound relay send operation builder.
+func (s *StreamSocket) SendBoundActor(sessionRID RoutingID, actorID string) SendOp {
+	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		if s == nil || s.core == nil || s.core.closed {
+			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+		}
+		session := sessionRID.toC()
+		return withActorIDCStringErr(actorID, func(actorIDC *C.char) error {
+			return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+				return submitErrorFromResult(C.zlink_stream_send_bound_actor_part(s.raw(), &session, actorIDC, part, C.zlink_send_flags_t(flags), partFlag))
+			})
+		})
+	})
+}
+
+// BoundActors returns the snapshot of Actor refs attached to the given session
+// on this stream socket.
+func (s *StreamSocket) BoundActors(sessionRID RoutingID) ([]ActorRef, error) {
+	if s == nil || s.core == nil || s.core.closed {
+		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	prepared, err := prepareMultipart([]*Message{cloned})
-	if err != nil {
-		_ = cloned.Close()
-		return err
+	session := sessionRID.toC()
+	var count C.size_t
+	if err := configErrorFromResult(C.zlink_stream_bound_actors(s.raw(), &session, nil, &count)); err != nil {
+		return nil, err
 	}
+	if count == 0 {
+		return []ActorRef{}, nil
+	}
+	entries := make([]C.zlink_actor_ref_t, int(count))
+	if err := configErrorFromResult(C.zlink_stream_bound_actors(s.raw(), &session, &entries[0], &count)); err != nil {
+		return nil, err
+	}
+	out := make([]ActorRef, int(count))
+	for i := range out {
+		out[i] = actorRefFromC(entries[i])
+	}
+	return out, nil
+}
+
+// --- internal helpers ---
+
+func waitActorReply(submit func(cgo.Handle) error) error {
 	state := &replyCallbackState{
 		result: make(chan requestResult, 1),
 		done:   make(chan struct{}),
 	}
 	handle := cgo.NewHandle(state)
-	if err := submit(prepared.ptr(), handle); err != nil {
+	if err := submit(handle); err != nil {
 		handle.Delete()
-		_ = prepared.restore()
 		return err
 	}
-	prepared.commit()
-	message.moved()
-	if progressSpot != nil {
-		startSpotRequestProgress(progressSpot, state)
+	result := <-state.result
+	if result.result != RequestOK {
+		return requestErrorFromResult(C.zlink_request_result_t(result.result))
 	}
-	go func() {
-		result := <-state.result
-		callback(result.result, result.parts)
-	}()
+	closeMessageSlice(result.parts)
 	return nil
+}
+
+//export goZlinkActorJoinTrampoline
+func goZlinkActorJoinTrampoline(result *C.zlink_actor_join_result_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
+	handle := cgo.Handle(userdata)
+	value, ok := safeHandleValue(userdata)
+	if !ok {
+		return
+	}
+	defer handle.Delete()
+	state, ok := value.(*replyCallbackState)
+	if !ok || state == nil {
+		return
+	}
+	var resultCode RequestResult
+	if result == nil {
+		resultCode = RequestInternalError
+	} else {
+		resultCode = RequestResult(result.result)
+		if meta, ok := state.metadata.(*actorJoinMetadata); ok && meta != nil {
+			meta.joinResult = ActorJoinResult{
+				Result:        resultCode,
+				Actor:         actorRefFromC(result.actor),
+				JoinedSpotRID: routingIDFromC(result.joined_spot_rid),
+				JoinEpoch:     uint64(result.join_epoch),
+				Flags:         uint32(result.flags),
+			}
+		}
+	}
+	if resultCode == RequestOK {
+		clonedParts, err := takeParts(parts, partCount)
+		if err != nil {
+			state.complete(requestResult{result: RequestProtocolError})
+			return
+		}
+		state.complete(requestResult{result: RequestOK, parts: clonedParts})
+		return
+	}
+	state.complete(requestResult{result: resultCode, parts: nil})
+}
+
+//export goZlinkSpotActorLifecycleJoinTrampoline
+func goZlinkSpotActorLifecycleJoinTrampoline(_ unsafe.Pointer, info *C.zlink_spot_actor_lifecycle_info_t, userdata C.uintptr_t) {
+	dispatchSpotActorLifecycle(true, info, userdata)
+}
+
+//export goZlinkSpotActorLifecycleLeaveTrampoline
+func goZlinkSpotActorLifecycleLeaveTrampoline(_ unsafe.Pointer, info *C.zlink_spot_actor_lifecycle_info_t, userdata C.uintptr_t) {
+	dispatchSpotActorLifecycle(false, info, userdata)
+}
+
+func dispatchSpotActorLifecycle(isJoin bool, info *C.zlink_spot_actor_lifecycle_info_t, userdata C.uintptr_t) {
+	value, ok := safeHandleValue(userdata)
+	if !ok || info == nil {
+		return
+	}
+	state, ok := value.(*spotActorLifecycleCallbackState)
+	if !ok || state == nil {
+		return
+	}
+	lifecycle := SpotActorLifecycleInfo{
+		PreviousActor: actorRefFromC(info.previous_actor),
+		CurrentActor:  actorRefFromC(info.current_actor),
+		JoinEpoch:     uint64(info.join_epoch),
+		Flags:         uint32(info.flags),
+	}
+	prevSpot := routingIDFromC(info.previous_spot_rid)
+	if prevSpot.Size() > 0 {
+		lifecycle.PreviousSpotRID = &prevSpot
+	}
+	currSpot := routingIDFromC(info.current_spot_rid)
+	if currSpot.Size() > 0 {
+		lifecycle.CurrentSpotRID = &currSpot
+	}
+	state.dispatch(isJoin, lifecycle)
 }
 
 func recvActorPart(node unsafe.Pointer, actor ActorRef, flags RecvFlags) (*ActorPart, error) {

@@ -3,7 +3,7 @@
 'use strict';
 
 const { parentPort, workerData } = require('node:worker_threads');
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const {
   createPayload,
   stampPayload
@@ -53,7 +53,7 @@ async function connectSender(kind, socket, endpoint, transport) {
 async function handshakeRouterSender(port, sender, receiverRoutingId) {
   port.postMessage({ type: 'connected' });
   await waitForCommand(port, 'handshake');
-  sender.send(receiverRoutingId, Buffer.from('PING'));
+  sender.send(receiverRoutingId).message(Buffer.from('PING')).submit();
   const reply = new zlink.Received();
   sender.recv(reply);
   try {
@@ -77,11 +77,11 @@ function sendStopToken(kind, socket, receiverRoutingId, topic) {
   for (let retry = 0; retry < 100; retry += 1) {
     try {
       if (kind === 'pubsub') {
-        socket.publish(topic, STOP_TOKEN_BYTES);
+        socket.publish(topic).message(STOP_TOKEN_BYTES).submit();
       } else if (kind === 'router_router') {
-        socket.send(receiverRoutingId, STOP_TOKEN_BYTES);
+        socket.send(receiverRoutingId).message(STOP_TOKEN_BYTES).submit();
       } else {
-        socket.send(STOP_TOKEN_BYTES);
+        socket.send().message(STOP_TOKEN_BYTES).submit();
       }
       trace(`sendStopToken sent kind=${kind} retry=${retry}`);
       return;
@@ -106,21 +106,21 @@ function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, rec
   while (process.hrtime.bigint() < activeStopNs) {
     stampPayload(payload, { phase: 1, runId, msgSize, seq });
     if (kind === 'pubsub') {
-      socket.publish(topic, payload, zlink.SendFlags.DontWait);
+      socket.publish(topic).message(payload).flags(zlink.SendFlags.DontWait).submit();
     } else if (kind === 'router_router') {
-      socket.send(receiverRoutingId, payload);
+      socket.send(receiverRoutingId).message(payload).submit();
     } else {
-      socket.send(payload);
+      socket.send().message(payload).submit();
     }
     seq += 1n;
   }
   stampPayload(payload, { phase: 2, runId, msgSize, seq });
   if (kind === 'pubsub') {
-    socket.publish(topic, payload, zlink.SendFlags.DontWait);
+    socket.publish(topic).message(payload).flags(zlink.SendFlags.DontWait).submit();
   } else if (kind === 'router_router') {
-    socket.send(receiverRoutingId, payload);
+    socket.send(receiverRoutingId).message(payload).submit();
   } else {
-    socket.send(payload);
+    socket.send().message(payload).submit();
   }
   sendStopToken(kind, socket, receiverRoutingId, topic);
 }

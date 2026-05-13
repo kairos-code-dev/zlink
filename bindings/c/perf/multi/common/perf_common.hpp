@@ -22,11 +22,7 @@
 #include <climits>
 #include <mutex>
 #include <new>
-#if defined(ZLINK_PERF_STD_COMPAT)
 #include <zlink.h>
-#else
-#include <zlink_c.h>
-#endif
 #include "perf_common_multi.hpp"
 #include "../../common/perf_tls_setup.hpp"
 #include "perf_multi_metrics.hpp"

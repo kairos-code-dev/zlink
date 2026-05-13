@@ -554,7 +554,7 @@ inline bool publish_control_payload(void *control_pub,
             return false;
         std::memcpy(zlink_msg_data(&part), payload.data(), payload.size());
 
-        const int rc = zlink_publish(control_pub,
+        const int rc = perf_zlink_publish_parts (control_pub,
                                      topic,
                                      &part,
                                      1,
@@ -615,7 +615,7 @@ inline bool receive_control_payload(void *control_sub,
     char topic[256];
     size_t topic_len = sizeof(topic) - 1;
     const int rc =
-      zlink_subscribe(control_sub,
+      perf_zlink_subscribe_parts (control_sub,
                       NULL,
                       &parts,
                       &part_count,

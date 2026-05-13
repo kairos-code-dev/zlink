@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 function recvMaybe(socket) {
   const received = new zlink.Received();
@@ -23,7 +23,7 @@ test('pair messaging uses Message and Received by default', () => {
 
   sender.bind('inproc://pair-contract');
   receiver.connect('inproc://pair-contract');
-  sender.send('ping');
+  sender.send().message('ping').submit();
 
   const received = new zlink.Received();
   receiver.recv(received);
@@ -56,7 +56,7 @@ test('recvHandler delivers multipart Message instances', () => {
   sender.bind('inproc://pair-handler-contract');
   receiver.connect('inproc://pair-handler-contract');
 
-  sender.send(['left', 'right']);
+  sender.send().message('left').message('right').submit();
   const received = new zlink.Received();
   receiver.recv(received);
 

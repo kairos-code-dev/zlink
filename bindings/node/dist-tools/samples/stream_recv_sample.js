@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 async function reservePort() {
     const server = net.createServer();
     server.listen(0, '127.0.0.1');
@@ -25,13 +25,13 @@ async function main() {
         await once(client, 'connect');
         const sent = 'hello-stream';
         client.write(Buffer.from(sent));
-        const received = new zlink.Received();
-        stream.recv(received);
+        const received = stream.recv();
+        assert.ok(received);
         try {
             assert.ok(received.routingId instanceof zlink.RoutingId);
             const recv = received.parts[0].data().toString();
             assert.equal(recv, sent);
-            received.send(Buffer.from(sent));
+            received.send().message(Buffer.from(sent)).submit();
             const [reply] = await once(client, 'data');
             assert.equal(reply.toString(), sent);
             console.log(`[stream/recv] send: "${sent}" \u2192 recv: "${recv}"`);

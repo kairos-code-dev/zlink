@@ -195,7 +195,7 @@ int recv_spot_header_flags (void *subscriber_,
     size_t part_count = 0;
     char topic[256];
     size_t topic_len = sizeof (topic);
-    const int rc = zlink_spot_subscribe (
+    const int rc = perf_zlink_spot_subscribe_parts (
       subscriber_, NULL, &parts, &part_count, topic, &topic_len,
       static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0) {
@@ -258,7 +258,7 @@ bool publish_metric_payload (void *publisher_,
     if (zlink_msg_init_size (&part, payload_->size ()) != 0)
         return false;
     std::memcpy (zlink_msg_data (&part), payload_->data (), payload_->size ());
-    if (zlink_spot_publish (
+    if (perf_zlink_spot_publish_parts (
           publisher_, k_topic, &part, 1, static_cast<zlink_send_flags_t> (flags_))
         != 0) {
         const int err = zlink_errno ();
@@ -370,7 +370,7 @@ bool send_spot_stop_token (void *publisher_)
             return false;
         std::memcpy (zlink_msg_data (&part), k_stop_token,
                      std::strlen (k_stop_token));
-        if (zlink_spot_publish (publisher_, k_topic, &part, 1,
+        if (perf_zlink_spot_publish_parts (publisher_, k_topic, &part, 1,
                                 ZLINK_SEND_FLAGS_NONE)
             == 0)
             return true;

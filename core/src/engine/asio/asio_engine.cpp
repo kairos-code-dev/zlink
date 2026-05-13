@@ -918,24 +918,12 @@ void zlink::asio_engine_t::maybe_grow_stream_decoder_read_target (
         return;
     }
 
-    ++_pipeline.stream_decoder_read_target_full_hits;
-    if (_pipeline.stream_decoder_read_target_full_hits < 2)
-        return;
-    _pipeline.stream_decoder_read_target_full_hits = 0;
-
-    size_t grown = _pipeline.stream_decoder_read_target_size;
-    if (grown >= _pipeline.stream_decoder_read_target_max)
-        return;
-
-    if (grown > _pipeline.stream_decoder_read_target_max / 2)
-        grown = _pipeline.stream_decoder_read_target_max;
-    else
-        grown *= 2;
-
-    if (grown > _pipeline.stream_decoder_read_target_max)
-        grown = _pipeline.stream_decoder_read_target_max;
-
-    if (grown <= _pipeline.stream_decoder_read_target_size)
+    const size_t grown =
+      zlink::asio_stream_fastpath_policy::next_stream_target_after_full_hit (
+        _pipeline.stream_decoder_read_target_size,
+        _pipeline.stream_decoder_read_target_max,
+        &_pipeline.stream_decoder_read_target_full_hits, 2);
+    if (grown == 0)
         return;
 
     _pipeline.stream_decoder_read_target_size = grown;
@@ -966,21 +954,12 @@ void zlink::asio_engine_t::maybe_schedule_stream_encoder_growth (
         return;
     }
 
-    ++_pipeline.stream_encoder_write_target_full_hits;
-    if (_pipeline.stream_encoder_write_target_full_hits < 2)
-        return;
-    _pipeline.stream_encoder_write_target_full_hits = 0;
-
-    size_t grown = _pipeline.stream_encoder_write_target_size;
-    if (grown > _pipeline.stream_encoder_write_target_max / 2)
-        grown = _pipeline.stream_encoder_write_target_max;
-    else
-        grown *= 2;
-
-    if (grown > _pipeline.stream_encoder_write_target_max)
-        grown = _pipeline.stream_encoder_write_target_max;
-
-    if (grown <= _pipeline.stream_encoder_write_target_size)
+    const size_t grown =
+      zlink::asio_stream_fastpath_policy::next_stream_target_after_full_hit (
+        _pipeline.stream_encoder_write_target_size,
+        _pipeline.stream_encoder_write_target_max,
+        &_pipeline.stream_encoder_write_target_full_hits, 2);
+    if (grown == 0)
         return;
 
     _pipeline.stream_encoder_pending_resize_size = grown;

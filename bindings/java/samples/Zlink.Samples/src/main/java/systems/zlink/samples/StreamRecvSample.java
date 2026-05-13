@@ -34,7 +34,7 @@ public final class StreamRecvSample {
 
                     try (Message reply = Message.copyOfUtf8(
                              SampleSupport.STREAM_PAYLOAD)) {
-                        received.send(reply);
+                        received.send().message(reply).submit();
                     }
                 }
 

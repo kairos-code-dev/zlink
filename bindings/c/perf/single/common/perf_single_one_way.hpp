@@ -150,7 +150,7 @@ inline send_step_t send_socket_active_message (void *sender_,
     if (!sender_ || !part_)
         return send_step_fatal;
 
-    if (zlink_send (
+    if (perf_zlink_send_parts (
           sender_, part_, 1, static_cast<zlink_send_flags_t> (flags_))
         == 0) {
         return send_step_sent;
@@ -224,7 +224,7 @@ inline int send_stop_token_socket (void *sender_)
     if (zlink_msg_init_size (&part, stop_token_size ()) != 0)
         return -1;
     std::memcpy (zlink_msg_data (&part), k_stop_token, stop_token_size ());
-    if (zlink_send (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) == 0)
+    if (perf_zlink_send_parts (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) == 0)
         return 0;
     const int err = zlink_errno ();
     zlink_msg_close (&part);

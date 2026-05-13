@@ -53,7 +53,7 @@ class SpotRequestAsyncTests(unittest.TestCase):
                     self.assertIsNotNone(received.routing_id)
                     self.assertIsNotNone(received.spot_rid)
                     self.assertGreater(received.request_seq, 0)
-                    received.reply([b"spot-pong"])
+                    received.reply().message(b"spot-pong").submit()
                 handled.set()
 
             responder.on_routed_receive(on_routed_receive)

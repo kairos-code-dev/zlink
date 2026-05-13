@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../README.ko.md) | [이전: Draft Use Case -- Domain Event Fanout](04-domain-event-fanout.ko.md) | [다음: Draft Use Case -- Stage State Sync](06-stage-state-sync.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [use case 목록](./README.ko.md) | [Framework 초안 묶음](../README.ko.md) | [검증](../usecase-validation.ko.md)

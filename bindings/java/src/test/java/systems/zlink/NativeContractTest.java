@@ -21,7 +21,10 @@ public class NativeContractTest {
 
             byte[] payload = "native".getBytes(StandardCharsets.UTF_8);
             try (Message outbound = Message.copyOf(payload)) {
-                assertTrue(right.send(outbound, SendFlags.NONE));
+                assertTrue(right.send()
+                    .message(outbound)
+                    .flags(SendFlags.NONE)
+                    .submit());
             }
 
             try (systems.zlink.Received inbound = new systems.zlink.Received()) {

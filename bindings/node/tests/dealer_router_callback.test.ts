@@ -4,7 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 test('router can send reply in a synchronous request-reply exchange', () => {
   const ctx = new zlink.Context();
@@ -14,12 +14,12 @@ test('router can send reply in a synchronous request-reply exchange', () => {
   router.bind('inproc://dealer-router-callback');
   dealer.connect('inproc://dealer-router-callback');
 
-  dealer.send('request');
+  dealer.send().message('request').submit();
   const request = new zlink.Received();
   router.recv(request);
   assert.ok(request.routingId instanceof zlink.RoutingId);
   assert.equal(request.parts[0].data().toString(), 'request');
-  router.send(request.routingId, 'reply');
+  router.send(request.routingId).message('reply').submit();
 
   const response = new zlink.Received();
   dealer.recv(response);
@@ -42,12 +42,12 @@ test('router can send multiple replies in a synchronous request-reply loop', () 
   let roundsCompleted = 0;
 
   for (let i = 0; i < ROUND_COUNT; i += 1) {
-    dealer.send(`request-${i}`);
+    dealer.send().message(`request-${i}`).submit();
     const request = new zlink.Received();
     router.recv(request);
     assert.ok(request.routingId instanceof zlink.RoutingId);
     assert.equal(request.parts[0].data().toString(), `request-${i}`);
-    router.send(request.routingId, `reply-${i}`);
+    router.send(request.routingId).message(`reply-${i}`).submit();
     const reply = new zlink.Received();
     dealer.recv(reply);
     assert.equal(reply.parts[0].data().toString(), `reply-${i}`);
@@ -69,14 +69,14 @@ test('router recv + send works as synchronous request-reply', () => {
   router.bind('inproc://dealer-router-sync-rr');
   dealer.connect('inproc://dealer-router-sync-rr');
 
-  dealer.send('sync-request');
+  dealer.send().message('sync-request').submit();
 
   const request = new zlink.Received();
   router.recv(request);
   assert.ok(request.routingId instanceof zlink.RoutingId);
   assert.equal(request.parts[0].data().toString(), 'sync-request');
 
-  router.send(request.routingId, 'sync-reply');
+  router.send(request.routingId).message('sync-reply').submit();
 
   const response = new zlink.Received();
   dealer.recv(response);

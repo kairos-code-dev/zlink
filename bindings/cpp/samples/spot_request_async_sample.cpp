@@ -32,7 +32,7 @@ int main ()
         assert (received.request_seq ().has_value ());
         assert (received.parts ()[0].to_string () == "spot-ping");
         zlink::message_t reply = detail::make_message ("spot-pong");
-        received.reply (reply);
+        received.reply ().message (reply).submit ();
         received.close ();
     });
 

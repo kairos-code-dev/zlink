@@ -33,8 +33,10 @@ public class ReceivedContractTest {
             router.bind(endpoint);
             dealer.connect(endpoint);
 
-            dealer.send(List.of(Message.copyOfUtf8("part-1"),
-                Message.copyOfUtf8("part-2")));
+            dealer.send()
+                .message(Message.copyOfUtf8("part-1"))
+                .message(Message.copyOfUtf8("part-2"))
+                .submit();
 
             try (systems.zlink.Received inbound = new systems.zlink.Received()) {
 
@@ -51,7 +53,9 @@ public class ReceivedContractTest {
                     inbound.firstPart().toByteArray());
                 assertTrue(inbound.requestSeq().isEmpty());
                 SubmitException ex = assertThrows(SubmitException.class,
-                    () -> inbound.reply(List.of(Message.copyOfUtf8("ack"))));
+                    () -> inbound.reply()
+                        .message(Message.copyOfUtf8("ack"))
+                        .submit());
                 assertEquals(SubmitResult.INVALID_STATE, ex.getResult());
             }
         }

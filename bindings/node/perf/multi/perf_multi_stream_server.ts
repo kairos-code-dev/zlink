@@ -3,7 +3,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
   applyAutoHwmMsgUnit,
@@ -24,7 +24,7 @@ async function main() {
     ctx.recalculateAutoHwm();
     stream.bind(options.endpoint);
     stream.onPacket((routingId, header, body) => {
-      stream.send(routingId, body.data());
+      stream.send(routingId).message(body.data()).submit();
     });
     console.log(`READY,${options.endpoint}`);
 

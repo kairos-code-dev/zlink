@@ -99,7 +99,7 @@ final class PerfDealerRouter {
 
             try (var probe = PerfUtil.payload(config.size(),
                      (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                sender.send(probe);
+                sender.send().message(probe).submit();
             }
             PerfUtil.await(routed, "dealer/router self-check",
                 Duration.ofSeconds(10));
@@ -112,13 +112,13 @@ final class PerfDealerRouter {
                     while (System.nanoTime() < activeEnd) {
                         try (Message active = PerfUtil.payload(config.size(),
                                  (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            sender.send(active);
+                            sender.send().message(active).submit();
                         }
                     }
                     // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
                     // blocking stop-token send.
                     try (Message stop = PerfStopToken.newMessage()) {
-                        sender.send(stop);
+                        sender.send().message(stop).submit();
                     }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);

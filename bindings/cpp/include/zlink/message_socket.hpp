@@ -10,19 +10,7 @@ namespace zlink
 
 class message_socket_t : public base_socket_t
 {
-  public:
-    void send (message_t &part_)
-    {
-        const int rc = base_socket_t::send (part_);
-        throw_on_error (rc);
-    }
-
-    void send (std::vector<message_t> &parts_)
-    {
-        const int rc = base_socket_t::send (parts_);
-        throw_on_error (rc);
-    }
-
+  protected:
     ZLINK_CPP_NODISCARD received_t recv ()
     {
         received_t received;
@@ -43,22 +31,6 @@ class message_socket_t : public base_socket_t
 
 class routed_message_socket_t : public message_socket_t
 {
-  public:
-    using message_socket_t::send;
-
-    void send (const routing_id_t &target_rid_, message_t &part_)
-    {
-        const int rc = base_socket_t::send (target_rid_, part_);
-        throw_on_error (rc);
-    }
-
-    void send (const routing_id_t &target_rid_,
-               std::vector<message_t> &parts_)
-    {
-        const int rc = base_socket_t::send (target_rid_, parts_);
-        throw_on_error (rc);
-    }
-
   protected:
     routed_message_socket_t (context_t &ctx_, socket_type type_)
         : message_socket_t (ctx_, type_)

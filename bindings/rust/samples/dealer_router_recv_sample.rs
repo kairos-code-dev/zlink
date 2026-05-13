@@ -61,7 +61,7 @@ fn main() {
     drop(dealer_mon);
 
     let req = Message::copy_from(b"ping").expect("message failed");
-    dealer.send(req).expect("send failed");
+    dealer.send().message(req).submit().expect("send failed");
 
     let mut received = zlink::Received::empty();
     router
@@ -71,7 +71,11 @@ fn main() {
     assert_eq!(received.parts()[0].as_str().unwrap(), "ping");
 
     let resp = Message::copy_from(b"pong").expect("message failed");
-    received.send(vec![resp]).expect("received send failed");
+    received
+        .send()
+        .message(resp)
+        .submit()
+        .expect("received send failed");
 
     let mut response = zlink::Received::empty();
     dealer

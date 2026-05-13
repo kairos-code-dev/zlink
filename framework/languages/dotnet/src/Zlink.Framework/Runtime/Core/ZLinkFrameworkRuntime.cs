@@ -49,7 +49,7 @@ internal sealed class ZLinkFrameworkRuntime
 
     internal IServiceProvider Services => _services;
 
-    internal IZLinkRoutedClient RoutedClient => _services.GetRequiredService<IZLinkRoutedClient>();
+    internal IZLinkRouteClient RouteClient => _services.GetRequiredService<IZLinkRouteClient>();
 
     public bool IsStarted => _state is not null;
 
@@ -76,7 +76,7 @@ internal sealed class ZLinkFrameworkRuntime
                 _channels.InitializeInboundChannels(state, channelAdapter);
                 _channels.InitializePublisherChannels(state, channelAdapter);
                 _channels.InitializeClientChannels(state);
-                _channels.InitializeRoutedChannels(state, channelAdapter);
+                _channels.InitializeRouteChannels(state, channelAdapter);
                 _streams.InitializeStreamNodes(state);
                 _spots.InitializeSpotNodes(state);
             }
@@ -132,10 +132,10 @@ internal sealed class ZLinkFrameworkRuntime
         return _channels.GetOrCreatePublisherBundle(state, channelName);
     }
 
-    internal ZLinkRoutedChannelRuntime GetRoutedChannel(string routerChannelId)
+    internal ZLinkRouteChannelRuntime GetRouteChannel(string routerChannelId)
     {
         var state = GetOrStartState();
-        return _channels.GetRoutedChannel(state, routerChannelId);
+        return _channels.GetRouteChannel(state, routerChannelId);
     }
 
     internal ZLinkSpotPublisherBundle GetSpotPublisherBundle(string channelName)
@@ -342,12 +342,12 @@ internal sealed class ZLinkFrameworkRuntime
 
     internal string ResolveDefaultRouterChannelId()
     {
-        if (_registration.RoutedChannels.Count != 1)
+        if (_registration.RouteChannels.Count != 1)
         {
             throw new InvalidOperationException("Exactly one routed channel is required for session actor dispatch.");
         }
 
-        return _registration.RoutedChannels.Keys.Single();
+        return _registration.RouteChannels.Keys.Single();
     }
 
     internal ZLinkActorRoute ResolveLocalActorRoute()
@@ -358,10 +358,10 @@ internal sealed class ZLinkFrameworkRuntime
 
     internal RoutingId ResolveSessionRouterId(string routerChannelId)
     {
-        if (!_registration.RoutedChannels.TryGetValue(routerChannelId, out var routed)
+        if (!_registration.RouteChannels.TryGetValue(routerChannelId, out var routed)
             || routed.RoutingOptions.RoutingId.Size == 0)
         {
-            throw new InvalidOperationException($"Routed channel '{routerChannelId}' must configure a routing id.");
+            throw new InvalidOperationException($"Route channel '{routerChannelId}' must configure a routing id.");
         }
 
         return routed.RoutingOptions.RoutingId;

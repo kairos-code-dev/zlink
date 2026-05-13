@@ -6,6 +6,7 @@
 #include "core/internal_defs.hpp"
 #include "core/send_internal.hpp"
 #include "core/msg.hpp"
+#include "services/discovery/route_limits_internal.hpp"
 #include "zlink_enum.h"
 #include "utils/err.hpp"
 #include "utils/stdint.hpp"
@@ -374,6 +375,380 @@ inline void read_bytes (const zlink_msg_t &msg_,
     if (size > 0)
         memcpy (&(*out_)[0], zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)),
                 size);
+}
+
+struct status_ack_t
+{
+    status_ack_t () :
+        status (status_invalid),
+        source_registry (0),
+        registration_id (0)
+    {
+    }
+
+    uint8_t status;
+    std::string resolved_endpoint;
+    uint32_t source_registry;
+    uint64_t registration_id;
+    std::string error;
+};
+
+struct service_provider_record_t
+{
+    service_provider_record_t () :
+        service_role (0),
+        source_registry (0),
+        registration_id (0),
+        provider_update_seq (0),
+        weight (0),
+        value (0)
+    {
+        memset (&routing_id, 0, sizeof (routing_id));
+    }
+
+    uint16_t service_role;
+    std::string endpoint;
+    zlink_routing_id_t routing_id;
+    uint32_t source_registry;
+    uint64_t registration_id;
+    uint64_t provider_update_seq;
+    uint16_t weight;
+    int64_t value;
+    std::vector<unsigned char> metadata;
+};
+
+struct service_record_t
+{
+    uint16_t auto_connect_type;
+    std::string channel_name;
+    uint64_t contract_created_at;
+    std::vector<service_provider_record_t> providers;
+
+    service_record_t () :
+        auto_connect_type (0),
+        contract_created_at (0)
+    {
+    }
+};
+
+struct service_list_t
+{
+    service_list_t () :
+        registry_id (0),
+        list_seq (0)
+    {
+    }
+
+    uint32_t registry_id;
+    uint64_t list_seq;
+    std::vector<service_record_t> services;
+};
+
+struct route_record_t
+{
+    route_record_t () :
+        raw_kind (0),
+        owner_service_role (0),
+        owner_source_registry (0),
+        owner_registration_id (0),
+        updated_at_ms (0)
+    {
+        memset (&owner_routing_id, 0, sizeof (owner_routing_id));
+    }
+
+    std::string channel_name;
+    uint32_t raw_kind;
+    std::vector<unsigned char> key;
+    std::vector<unsigned char> value;
+    std::string owner_channel_name;
+    uint16_t owner_service_role;
+    std::vector<unsigned char> owner_routing_id_key;
+    uint32_t owner_source_registry;
+    uint64_t owner_registration_id;
+    uint64_t updated_at_ms;
+    zlink_routing_id_t owner_routing_id;
+};
+
+struct route_list_t
+{
+    route_list_t () :
+        registry_id (0),
+        list_seq (0),
+        chunk_index (0),
+        chunk_count (0)
+    {
+    }
+
+    uint32_t registry_id;
+    uint64_t list_seq;
+    uint32_t chunk_index;
+    uint32_t chunk_count;
+    std::vector<route_record_t> routes;
+};
+
+inline bool decode_status_ack (const std::vector<zlink_msg_t> &frames_,
+                               uint16_t expected_msg_id_,
+                               status_ack_t *out_)
+{
+    if (!out_) {
+        errno = EINVAL;
+        return false;
+    }
+
+    uint16_t msg_id = 0;
+    if (frames_.size () < 2 || !read_u16 (frames_[0], &msg_id)
+        || msg_id != expected_msg_id_ || !read_u8 (frames_[1], &out_->status)) {
+        errno = EPROTO;
+        return false;
+    }
+
+    out_->resolved_endpoint.clear ();
+    out_->source_registry = 0;
+    out_->registration_id = 0;
+    out_->error.clear ();
+
+    if (expected_msg_id_ == msg_register_ack) {
+        if (frames_.size () >= 3)
+            out_->resolved_endpoint = read_string (frames_[2]);
+        if (frames_.size () >= 4 && !read_u32 (frames_[3],
+                                               &out_->source_registry)) {
+            errno = EPROTO;
+            return false;
+        }
+        if (frames_.size () >= 5 && !read_u64 (frames_[4],
+                                               &out_->registration_id)) {
+            errno = EPROTO;
+            return false;
+        }
+        if (frames_.size () >= 6)
+            out_->error = read_string (frames_[5]);
+    } else if (expected_msg_id_ == msg_unregister_ack && frames_.size () >= 3) {
+        out_->error = read_string (frames_[2]);
+    }
+    return true;
+}
+
+inline bool decode_service_list (const std::vector<zlink_msg_t> &frames_,
+                                 service_list_t *out_)
+{
+    if (!out_) {
+        errno = EINVAL;
+        return false;
+    }
+
+    out_->services.clear ();
+    uint16_t msg_id = 0;
+    uint32_t service_count = 0;
+    if (frames_.size () < 4 || !read_u16 (frames_[0], &msg_id)
+        || msg_id != msg_service_list || !read_u32 (frames_[1],
+                                                    &out_->registry_id)
+        || !read_u64 (frames_[2], &out_->list_seq)
+        || !read_u32 (frames_[3], &service_count)) {
+        errno = EPROTO;
+        return false;
+    }
+
+    size_t index = 4;
+    out_->services.reserve (service_count);
+    for (uint32_t i = 0; i < service_count; ++i) {
+        if (index + 3 >= frames_.size ()) {
+            errno = EPROTO;
+            return false;
+        }
+
+        service_record_t service;
+        uint32_t provider_count = 0;
+        if (!read_u16 (frames_[index++], &service.auto_connect_type)
+            || !is_valid_auto_connect_type (service.auto_connect_type)) {
+            errno = EPROTO;
+            return false;
+        }
+        service.channel_name = read_string (frames_[index++]);
+        if (!read_u64 (frames_[index++], &service.contract_created_at)
+            || !read_u32 (frames_[index++], &provider_count)) {
+            errno = EPROTO;
+            return false;
+        }
+
+        service.providers.reserve (provider_count);
+        for (uint32_t p = 0; p < provider_count; ++p) {
+            if (index + 8 >= frames_.size ()) {
+                errno = EPROTO;
+                return false;
+            }
+
+            service_provider_record_t provider;
+            if (!read_u16 (frames_[index++], &provider.service_role)
+                || !auto_connect_type_allows_role (service.auto_connect_type,
+                                                   provider.service_role)) {
+                errno = EPROTO;
+                return false;
+            }
+            provider.endpoint = read_string (frames_[index++]);
+            if (!read_routing_id (frames_[index++], &provider.routing_id)
+                || !read_u32 (frames_[index++], &provider.source_registry)
+                || !read_u64 (frames_[index++], &provider.registration_id)
+                || !read_u64 (frames_[index++], &provider.provider_update_seq)
+                || !read_u16 (frames_[index++], &provider.weight)
+                || !read_i64 (frames_[index++], &provider.value)) {
+                errno = EPROTO;
+                return false;
+            }
+            read_bytes (frames_[index++], &provider.metadata);
+            service.providers.push_back (provider);
+        }
+        out_->services.push_back (service);
+    }
+
+    if (index != frames_.size ()) {
+        errno = EPROTO;
+        return false;
+    }
+    return true;
+}
+
+inline bool decode_route_list (const std::vector<zlink_msg_t> &frames_,
+                               route_list_t *out_)
+{
+    if (!out_) {
+        errno = EINVAL;
+        return false;
+    }
+
+    out_->routes.clear ();
+    uint16_t msg_id = 0;
+    uint32_t route_count = 0;
+    if (frames_.size () < 6 || !read_u16 (frames_[0], &msg_id)
+        || msg_id != msg_registry_sync || !read_u32 (frames_[1],
+                                                     &out_->registry_id)
+        || !read_u64 (frames_[2], &out_->list_seq)
+        || !read_u32 (frames_[3], &out_->chunk_index)
+        || !read_u32 (frames_[4], &out_->chunk_count)
+        || !read_u32 (frames_[5], &route_count)
+        || out_->chunk_count == 0 || out_->chunk_index >= out_->chunk_count) {
+        errno = EPROTO;
+        return false;
+    }
+
+    size_t index = 6;
+    out_->routes.reserve (route_count);
+    for (uint32_t i = 0; i < route_count; ++i) {
+        if (index + 10 >= frames_.size ()) {
+            errno = EPROTO;
+            return false;
+        }
+
+        route_record_t route;
+        route.channel_name = read_string (frames_[index++]);
+        if (!read_u32 (frames_[index++], &route.raw_kind)) {
+            errno = EPROTO;
+            return false;
+        }
+        read_bytes (frames_[index++], &route.key);
+        if (route.key.empty () || route.key.size () > ZLINK_ROUTE_KEY_MAX) {
+            errno = EPROTO;
+            return false;
+        }
+        read_bytes (frames_[index++], &route.value);
+        if (route.value.size () > ZLINK_ROUTE_VALUE_MAX) {
+            errno = EPROTO;
+            return false;
+        }
+        route.owner_channel_name = read_string (frames_[index++]);
+        if (!read_u16 (frames_[index++], &route.owner_service_role)) {
+            errno = EPROTO;
+            return false;
+        }
+        read_bytes (frames_[index++], &route.owner_routing_id_key);
+        if (route.owner_routing_id_key.size ()
+            > sizeof (route.owner_routing_id.data)) {
+            errno = EPROTO;
+            return false;
+        }
+        if (!read_u32 (frames_[index++], &route.owner_source_registry)
+            || !read_u64 (frames_[index++], &route.owner_registration_id)
+            || !read_u64 (frames_[index++], &route.updated_at_ms)
+            || !read_routing_id (frames_[index++], &route.owner_routing_id)) {
+            errno = EPROTO;
+            return false;
+        }
+        out_->routes.push_back (route);
+    }
+
+    if (index != frames_.size ()) {
+        errno = EPROTO;
+        return false;
+    }
+    return true;
+}
+
+inline bool decode_topology_reply (
+  const std::vector<zlink_msg_t> &frames_,
+  std::vector<zlink_registry_topology_entry_t> *entries_out_)
+{
+    if (!entries_out_) {
+        errno = EINVAL;
+        return false;
+    }
+
+    entries_out_->clear ();
+    uint16_t msg_id = 0;
+    uint32_t count = 0;
+    if (frames_.size () < 2 || !read_u16 (frames_[0], &msg_id)
+        || msg_id != msg_topology_reply || !read_u32 (frames_[1], &count)
+        || frames_.size () != static_cast<size_t> (count) + 2) {
+        errno = EPROTO;
+        return false;
+    }
+
+    entries_out_->reserve (count);
+    for (uint32_t i = 0; i < count; ++i) {
+        zlink_registry_topology_entry_t entry;
+        memset (&entry, 0, sizeof (entry));
+        if (zlink_msg_size (&frames_[i + 2]) != sizeof (entry)) {
+            errno = EPROTO;
+            return false;
+        }
+        memcpy (&entry, zlink_msg_data (const_cast<zlink_msg_t *> (
+                         &frames_[i + 2])),
+                sizeof (entry));
+        entries_out_->push_back (entry);
+    }
+    return true;
+}
+
+inline bool decode_route_reply (const std::vector<zlink_msg_t> &frames_,
+                                zlink_routing_id_t *owner_rid_out_,
+                                zlink_msg_t *value_out_)
+{
+    uint16_t msg_id = 0;
+    uint8_t status = status_invalid;
+    if (frames_.size () < 5 || !read_u16 (frames_[0], &msg_id)
+        || msg_id != msg_resolve_route_reply || !read_u8 (frames_[1],
+                                                          &status)) {
+        errno = EPROTO;
+        return false;
+    }
+
+    if (status != status_ok) {
+        errno = route_status_errno (status);
+        return false;
+    }
+
+    if (owner_rid_out_ && !read_routing_id (frames_[2], owner_rid_out_)) {
+        errno = EPROTO;
+        return false;
+    }
+    if (value_out_) {
+        const size_t value_size = zlink_msg_size (&frames_[3]);
+        if (zlink_msg_init_size (value_out_, value_size) != 0)
+            return false;
+        if (value_size > 0)
+            memcpy (zlink_msg_data (value_out_),
+                    zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[3])),
+                    value_size);
+    }
+    return true;
 }
 }
 }

@@ -10,11 +10,17 @@ using var spot = node.CreateSpot();
 using var actor = node.CreateActor("room-player-1");
 using var stream = new StreamSocket(ctx);
 RoutingId sessionRid = SampleSupport.RoutingIdUtf8("room-session");
-stream.BindActor(node, sessionRid, actor.Ref, TimeSpan.FromSeconds(2));
+Zlink.MultipartClose(await stream.BindActor(sessionRid, actor.Ref)
+    .Timeout(TimeSpan.FromSeconds(2))
+    .SubmitAsync()
+    .WaitAsync(TimeSpan.FromSeconds(5)));
 using Message joinMessage = Message.FromString("join:lobby");
 
-Task<IReadOnlyList<Message>> joinTask = actor.Join(spot, joinMessage,
-    TimeSpan.FromSeconds(2));
+Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
+    actor.Join(spot)
+        .Message(joinMessage)
+        .Timeout(TimeSpan.FromSeconds(2))
+        .SubmitAsync();
 ActorJoinRequest? request = null;
 SampleSupport.WaitOrThrow(() =>
 {
@@ -29,9 +35,9 @@ using (request!.Message)
 }
 
 using Message reply = Message.FromString("accepted:lobby");
-spot.ReplyActorJoin(request, accepted: true, reply);
+spot.ReplyActorJoin(request, accepted: true).Message(reply).Submit();
 IReadOnlyList<Message> replies =
-    await joinTask.WaitAsync(TimeSpan.FromSeconds(5));
+    (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts;
 using (replies[0])
 {
     SampleSupport.EnsureEqual("accepted:lobby", replies[0].GetString(),
@@ -39,4 +45,7 @@ using (replies[0])
 }
 
 Console.WriteLine("[actor/room] joined actor room-player-1");
-actor.Leave(spot);
+Zlink.MultipartClose(await actor.Leave(spot)
+    .Timeout(TimeSpan.FromSeconds(2))
+    .SubmitAsync()
+    .WaitAsync(TimeSpan.FromSeconds(5)));

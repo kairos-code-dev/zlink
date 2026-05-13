@@ -18,8 +18,6 @@ import systems.zlink.service.registry.ServiceKind;
 import systems.zlink.service.registry.ServiceRole;
 import systems.zlink.service.registry.TopologySource;
 import systems.zlink.service.registry.TopologyState;
-import systems.zlink.service.spot.ActorAdmissionResult;
-import systems.zlink.service.spot.ActorCreateStatus;
 import systems.zlink.service.spot.SpotNodeMode;
 import systems.zlink.service.spot.SpotNodeSocketOwner;
 import systems.zlink.service.spot.SpotNodeState;
@@ -402,28 +400,6 @@ public final class EnumCodecs {
             case 5 -> TopologyState.ERROR;
             case 6 -> TopologyState.STOPPED;
             default -> throw invalid("TopologyState", value);
-        };
-    }
-
-    public static int actorAdmissionResultValue(ActorAdmissionResult value) {
-        return switch (value) {
-            case ACCEPT -> 1;
-            case REJECT -> 2;
-        };
-    }
-
-    public static ActorCreateStatus actorCreateStatusFromValue(int value) {
-        return switch (value) {
-            case 1 -> ActorCreateStatus.CREATED;
-            case 2 -> ActorCreateStatus.EXISTING;
-            default -> throw invalid("ActorCreateStatus", value);
-        };
-    }
-
-    public static int actorCreateStatusValue(ActorCreateStatus value) {
-        return switch (value) {
-            case CREATED -> 1;
-            case EXISTING -> 2;
         };
     }
 

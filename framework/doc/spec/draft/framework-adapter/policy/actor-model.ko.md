@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework API](framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](session-gateway-usability.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../README.ko.md)
 
 [초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [Session Actor Dispatch 사용성](./session-gateway-usability.ko.md)
@@ -11,7 +15,7 @@
 
 ## 1. 목적
 
-zlink core가 [SPOT Actor Guide](../../../../guide/07-4-actor.md)에서 정의한 actor
+zlink core가 [SPOT Actor Guide](../../../../../../doc/guide/07-4-actor.md)에서 정의한 actor
 개념을 모든 framework binding이 같은 의미로 노출하도록 고정한다. 언어별 표면은
 이 문서의 의미를 어겨서는 안 되고, 다음만 자유롭게 정한다.
 
@@ -31,8 +35,8 @@ framework에서 **actor**는 ID로 식별되는 application object다. 다음 �
 - `SpotNode`에 소속된다. actor는 어딘가의 spot에 항상 있다.
 - 같은 `actorId`로 들어오는 모든 메시지는 같은 인스턴스가 받는다 (stateful).
 - 인스턴스는 application이 등록한 **factory**가 만든다.
-- 자기에게 들어올 packet의 handler 묶음은 actor 자신이 `Configure()` 시점에
-  등록한다.
+- 자기에게 들어올 packet의 handler 묶음은 현재 실행 문맥의 registry가 정한다.
+  Entry Spot과 user Spot은 서로 다른 registry를 가진다.
 
 이 점이 일반 handler와 다르다. 일반 handler는 stateless가 기본이고, 매 메시지마다
 새 DI scope에서 resolve되며, packet 매핑은 channel 등록이 담당한다. actor는 stateful
@@ -45,7 +49,7 @@ actor의 라이프 상태는 두 축으로 본다.
 | 축 | 값 | 의미 |
 | --- | --- | --- |
 | **위치** | Entry Spot ↔ user Spot | 생성 직후 `Entry Spot` 에 있고, application이 `JoinSpot(...)`을 호출하면 user Spot으로 옮겨 간다. user Spot에서 다시 Entry Spot으로 돌아가려면 leave (framework 자동), 완전히 제거하려면 destroy (Entry에서만 가능). |
-| **session binding** | unbound ↔ bound | 생성 직후 STREAM session에 묶이지 않은 상태다. 인증 등을 거쳐 framework가 actor를 STREAM session에 bind하면 그 session으로 들어오는 packet이 이 actor로 dispatch되고, discovery에 actor route가 publish된다. |
+| **session binding** | unbound ↔ bound | 생성 직후 STREAM session에 묶이지 않은 상태다. 인증 등을 거쳐 framework가 actor를 STREAM session에 bind하면 그 session으로 들어오는 packet이 이 actor로 dispatch된다. session binding은 actor 위치나 discovery active route를 결정하지 않는다. |
 
 application 입장에서 자주 보는 두 조합:
 
@@ -59,37 +63,50 @@ application 입장에서 자주 보는 두 조합:
 
 zlink core의 actor 모델에서 다음 제약은 모든 binding이 그대로 따른다.
 
-- **user Spot join은 bound session이 있어야 한다.** unbound actor는 Entry Spot에
-  머무를 수만 있다.
+- **user Spot join은 bound session을 요구하지 않는다.** Actor 위치 이동과 STREAM
+  session binding은 서로 독립된 상태 전이다.
 - **destroy는 actor가 Entry Spot에 있을 때만 가능.** user Spot에 있으면 leave가
   먼저 끝나야 destroy가 허용된다.
-- **discovery actor route publish는 session bind 성공 후에만.** unbound actor는
-  다른 노드에서 `actorId`로 찾을 수 없다.
+- **discovery actor route publish는 user Spot join 성공 뒤에 갱신된다.** session
+  bind / unbind는 active route를 만들거나 제거하지 않는다.
 - **1 session ↔ N actor / 1 actor ↔ ≤1 session.** 한 session은 여러 actor를 묶을
   수 있지만, 한 actor는 동시에 두 session에 묶이지 않는다.
 
 ## 3. application 로직 vs framework 자동 처리
 
-`Entry Spot`, leave, destroy 같은 core 메커니즘은 framework가 자동으로 관리하고
-application 표면에 직접 노출하지 않는다. 그러나 그 단계에서 어떤 application 로직이
-도는지는 application이 정한다. 두 가지를 구분해서 본다.
+`Entry Spot`, leave, destroy 같은 core 메커니즘은 framework가 자동으로 관리한다.
+application은 raw Entry Spot handle을 직접 소유하지 않지만, Entry Spot에서 실행될
+message handler와 lifecycle callback handler는 별도 표면으로 설정한다. 두 가지를
+구분해서 본다.
 
 ### 3.1 framework가 자동으로 관리하는 것
 
 - `Entry Spot` 자체의 생성과 소멸 (binding이 raw API를 직접 호출하지 않는다)
 - user Spot → Entry Spot leave (disconnect 시점에 자동)
 - actor destroy (disconnect 시점에 자동)
-- discovery actor route publish (session bind 성공 시 자동)
+- discovery actor route 갱신 (user Spot join / leave 성공 시 core active route 기준)
 
 framework는 위 시점에 알아서 적절한 core API를 호출하고, application은 결과만
 보면 된다.
 
+user Spot의 actor join/leave commit 알림은 spot lifecycle callback으로 전달한다.
+각 binding은 core의 `on_join` / `on_leave` 의미를 보존하되, framework public surface에
+native actor ref를 그대로 드러내지 않는다. application은 actor id와 이동 전/후
+spot 위치를 보고 room/stage 상태 정리나 운영 event 기록을 수행한다. native commit
+epoch를 얻을 수 있는 binding은 그 값을 함께 전달하고, framework membership 변경만으로
+만든 알림은 epoch를 `0`으로 둔다.
+
 ### 3.2 application이 구현하는 Entry Spot 로직
 
 actor가 `Entry Spot`에 있는 동안 받는 packet의 handler는 application이 정한다.
-**별도의 "entry handler" 등록 표면은 두지 않는다.** 같은 actor 클래스의 `Configure()`
-에서 등록한 handler들이 그 actor가 entry 단계에 있을 때나 user Spot에 있을 때나
-같은 dispatch 묶음으로 동작한다.
+이 handler 묶음은 user Spot handler와 별도로 등록한다. Entry 단계와 user Spot 단계는
+같은 actor 객체를 보더라도 의미가 다르기 때문이다. 예를 들어 인증, 입장 대상 선택,
+초기 session metadata 설정은 Entry Spot에서 처리하고, room/stage 안의 move나 state
+update는 user Spot에서 처리한다.
+
+framework는 Entry Spot 자체의 생성과 raw handle 관리는 자동으로 맡지만, Entry Spot의
+message handler와 `on_join` / `on_leave` lifecycle callback handler는 application이
+별도로 설정할 수 있어야 한다.
 
 이 단계에서 자주 구현하는 로직:
 
@@ -120,15 +137,15 @@ context의 join 상태 (예: `IsJoined`, `SpotName` 노출) 로 확인한다. `R
 | 단계 | framework가 하는 일 |
 | --- | --- |
 | 생성 | application factory 호출, actor의 context 주입, `Configure()` 호출 |
-| session bind | session ↔ actor 묶음 등록, discovery에 actor route publish, application location writer 호출 |
+| session bind | session ↔ actor 묶음을 framework/core 내부 binding으로 등록한다. discovery active route는 session bind가 아니라 user Spot join / leave 결과를 따른다 |
 | JoinSpot | target spot에 join 요청 전송, accept/reject 결과를 application에 반환 |
 | leave | (자동) user Spot → Entry Spot 이동, spot 쪽에 leave 통보 |
-| destroy | (자동) actor 정리, location writer에 unbind 통보, `OnDisconnectedAsync` 호출 |
-| session-bound actor 등록 | **session-bound 경로에서는 actor 생성과 session bind를 `CreateActorAsync(...)` 한 번에 atomic하게 묶는다.** unbound standalone actor는 별도 actor node 측 등록 표면(예: actor factory + actor node side `CreateActor` helper)을 통한다. session callback 안에서 unbound actor를 만드는 표면은 두지 않는다. |
+| destroy | (자동) actor 정리, 내부 actor-session binding 해제, `OnDisconnectedAsync` 호출 |
+| session-bound actor 등록 | session-bound 경로에서는 local `SpotNode` actor runtime의 actor 생성 또는 handle 준비와 session bind를 `CreateActorAsync(...)` / `CreateActorHandleAsync(...)`로 묶는다. session 표면은 remote node를 직접 지정하는 actor 생성 API를 제공하지 않는다. |
 
 application은 위 시점에 다음만 책임진다: factory 코드, actor 클래스의
-`Configure()` / handler 코드, location resolver / writer 구현, 그리고 actor 안에서
-호출하는 `JoinSpot(...)`.
+`Configure()` / handler 코드, actor/spot route resolver 구현, 그리고 actor 안에서 호출하는
+`JoinSpot(...)`.
 
 ## 5. Dispatch 모델
 
@@ -138,9 +155,10 @@ actor packet dispatch의 key는 다음 셋이다.
 - **message kind** (`request` / `command` / `event`). response는 client측 reply correlation 전용이라 dispatch key로 쓰지 않는다.
 - **packet name** (default: payload 타입 이름)
 
-actor가 받을 packet handler는 actor 자신이 `Configure()`에서 등록한다. 즉
-"actor의 handler namespace는 actor 인스턴스에 속한다". 다른 actor 인스턴스(같은
-type이라도 다른 id)는 별도 handler namespace를 가진다.
+actor가 받을 packet handler는 현재 실행 문맥이 등록한다. 즉 handler namespace는
+Entry Spot 또는 user Spot type에 속한다. 같은 actor type이라도 Entry Spot에 있을 때와
+user Spot에 있을 때 서로 다른 packet handler와 lifecycle callback handler를 가질 수
+있다.
 
 같은 actor 안에서 같은 `kind + packet name` 조합이 둘 이상 매핑되면 startup
 validation 오류로 막는다.
@@ -156,12 +174,12 @@ actor handler 표면에 노출하지 않는다. `spotName -> RoutingId` 변환�
 spot route resolver가 푼다. application 코드는 `gameId`, `matchId`, `roomId` 같은
 domain key를 그대로 들고 다니면 된다.
 
-framework는 application이 등록한 두 resolver에 라우팅을 위임한다.
+framework는 application이 등록한 actor/spot resolver에 라우팅을 위임한다.
 
 | resolver | 책임 |
 | --- | --- |
-| play route resolver | actor id → 그 actor가 사는 routed channel + 노드 routing id |
-| session route resolver | actor id → 그 actor의 client가 묶인 session 노드 routing id (server → client push에 필요) |
+| actor route resolver | actor id → 그 actor가 사는 routed channel + 노드 routing id |
+| spot route resolver | spot name 또는 spot id → user Spot 위치 |
 
 application 저장소(in-memory cache, Redis, registry 등)는 application이 소유한다.
 framework는 그 저장소를 만들지 않는다.
@@ -173,16 +191,14 @@ gameplay 로직은 **Play 서버**의 actor가 처리한다. 그러면서도 cli
 연결을 유지하고, Play 서버 actor가 client에 push할 때도 그 stream으로 도달해야
 한다.
 
-이 패턴의 핵심 표면 네 개:
+이 패턴의 핵심 표면:
 
-- **play route resolver** -- "이 actor id는 어느 play node에 있다"
-- **session route resolver** -- "이 actor id의 client는 지금 어느 session node에
-  묶여 있다"
-- **session location writer** -- session bind / unbind 시점에 application 저장소에
-  위치를 기록하는 표면
+- **actor route resolver** -- "이 actor id는 어느 actor/play node에 있다"
+- **spot route resolver** -- "이 spot name/id는 어느 user Spot에 있다"
+- **actor-session binding** -- "이 actor는 현재 어떤 stream session에 묶여 있다".
+  이 상태는 framework/core runtime 내부 상태이며 별도 public resolver가 아니다.
 - **session proxy** -- Play 서버 actor가 자기 client에게 push를 보낼 때 쓰는
-  표면. 내부적으로 session resolver로 풀어서 routed channel을 통해 Session
-  서버까지 보낸다
+  표면. 내부적으로 actor-session binding을 사용해 현재 client stream으로 보낸다
 
 이 use case의 사용성과 typed handler / route resolver 결정은
 [session-gateway-usability.ko.md](./session-gateway-usability.ko.md)에 정리되어
@@ -196,9 +212,8 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
 | 의미 | 누가 등록하나 | 무엇을 한다 |
 | --- | --- | --- |
 | actor factory | actor를 만드는 서버 (Play / SPOT host) | actorType 키로 factory 매핑 |
-| play route resolver | actor를 외부에서 부르는 모든 서버 | actor id → play node routing |
-| session route resolver | actor가 client에 push할 수 있는 서버 (보통 Play) | actor id → session node routing |
-| session location writer | session을 받는 서버 (보통 Session) | session bind / unbind 시 위치 기록 |
+| actor route resolver | actor를 외부에서 부르는 모든 서버 | actor id → actor node routing |
+| spot route resolver | spot을 이름/id로 부르는 서버 | spot name/id → spot routing |
 
 언어별 실제 API 이름과 시그니처는 binding 디렉토리의 상세 문서에 둔다 (예:
 .NET은 `AddActorFactory<>`, `AddActorPlayRouteResolver<>` 등).
@@ -217,18 +232,20 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
 ## 10. 결정된 기준
 
 - actor는 ID로 식별되는 stateful object이고, `SpotNode`에 소속된다.
-- actor의 packet handler는 actor 자신이 `Configure()`에서 등록한다. 일반 channel
-  handler의 attribute scan / 그룹 매핑 모델은 actor에 적용하지 않는다.
-- entry-stage 로직(인증, target Spot 선택)을 위해 별도 entry handler 등록 표면을
-  두지 않는다. actor의 동일한 handler 묶음이 그 역할을 한다.
-- `Entry Spot` 자체, leave, destroy, discovery route publish는 framework가
+- actor message handler는 actor 객체가 아니라 현재 실행 문맥의 registry에 등록한다.
+  Entry Spot과 user Spot은 서로 다른 registry를 가진다.
+- entry-stage 로직(인증, target Spot 선택)을 위해 별도 Entry Spot handler 등록
+  표면을 둔다. 일반 user Spot의 handler와 섞지 않는다.
+- Entry Spot과 user Spot 모두 `on_join` / `on_leave` lifecycle callback handler를
+  별도로 등록할 수 있어야 한다.
+- `Entry Spot` 자체, leave, destroy, discovery active route 갱신은 framework가
   자동으로 관리한다. application은 raw API를 직접 호출하지 않는다.
-- user Spot join은 bound session이 있어야 한다. unbound actor가 user Spot에 join
-  하는 흐름은 application 표면에 두지 않는다.
-- actor 위치 저장소는 application이 소유한다. framework는 resolver / writer
+- user Spot join은 bound session을 요구하지 않는다. application state machine은
+  join completion이 반환한 최종 actor ref를 기준으로 후속 attach나 dispatch를 결정한다.
+- actor/spot 위치 저장소는 application이 소유한다. framework는 actor와 spot resolver
   인터페이스만 제공한다.
 - server → client push는 반드시 session proxy를 통한다. actor가 stream socket을
   직접 들고 있지 않다.
-- session-bound actor의 생성 + bind는 `CreateActorAsync(...)` (또는
-  `CreateRemoteActorAsync(...)`)가 atomic하게 묶는다. unbound standalone actor 생성은
-  session 표면이 아니라 actor node 측 등록 표면을 통해 따로 다룬다.
+- session-bound actor의 local 생성 또는 handle 준비 + bind는 `CreateActorAsync(...)`와
+  `CreateActorHandleAsync(...)`가 묶는다. 두 API 모두 local `SpotNode` actor runtime을
+  대상으로 하며 remote node를 직접 지정하지 않는다.

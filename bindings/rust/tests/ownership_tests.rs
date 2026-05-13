@@ -19,7 +19,7 @@ fn send_consumes_message_ownership() {
     // After send, the message is consumed (moved into native).
     // Rust's move semantics prevent reuse at compile time.
     let msg = Message::copy_from(b"owned-data").unwrap();
-    a.send(msg).unwrap();
+    a.send().message(msg).submit().unwrap();
     // `msg` cannot be used here – Rust ownership enforced
 
     let mut received = Received::empty();
@@ -42,7 +42,13 @@ fn send_multipart_consumes_all_parts() {
         Message::copy_from(b"part-b").unwrap(),
     ];
     // Vec is consumed by send
-    a.send(parts).unwrap();
+    let mut iter = parts.into_iter();
+    let first = iter.next().unwrap();
+    let mut op = a.send().message(first);
+    for part in iter {
+        op = op.message(part);
+    }
+    op.submit().unwrap();
 }
 
 #[test]
@@ -56,7 +62,7 @@ fn recv_ownership_transfers_to_caller() {
     thread::sleep(Duration::from_millis(50));
 
     let msg = Message::copy_from(b"recv-test").unwrap();
-    b.send(msg).unwrap();
+    b.send().message(msg).submit().unwrap();
 
     let mut received = Received::empty();
     a.recv(&mut received, RecvFlags::NONE).unwrap();
@@ -92,7 +98,7 @@ fn send_failure_does_not_leak() {
 
     let rid = RoutingId::from_bytes(b"ghost");
     let msg = Message::copy_from(b"will-fail").unwrap();
-    let _ = router.send(&rid, msg);
+    let _ = router.send(&rid).message(msg).submit();
     // msg is consumed regardless of success/failure – no native leak
 }
 
@@ -113,7 +119,13 @@ fn multipart_recv_shape_matches_callback_shape() {
         Message::copy_from(b"frame-x").unwrap(),
         Message::copy_from(b"frame-y").unwrap(),
     ];
-    b1.send(parts).unwrap();
+    let mut iter = parts.into_iter();
+    let first = iter.next().unwrap();
+    let mut op = b1.send().message(first);
+    for part in iter {
+        op = op.message(part);
+    }
+    op.submit().unwrap();
     let mut direct = Received::empty();
     a1.recv(&mut direct, RecvFlags::NONE).unwrap();
     let direct_count = direct.parts().len();
@@ -135,7 +147,13 @@ fn multipart_recv_shape_matches_callback_shape() {
         Message::copy_from(b"frame-x").unwrap(),
         Message::copy_from(b"frame-y").unwrap(),
     ];
-    b2.send(parts).unwrap();
+    let mut iter = parts.into_iter();
+    let first = iter.next().unwrap();
+    let mut op = b2.send().message(first);
+    for part in iter {
+        op = op.message(part);
+    }
+    op.submit().unwrap();
     let mut callback_received = Received::empty();
     a2.recv(&mut callback_received, RecvFlags::NONE).unwrap();
     let callback_data: Vec<Vec<u8>> = callback_received
@@ -162,7 +180,7 @@ fn callback_receives_owned_parts() {
     thread::sleep(Duration::from_millis(50));
 
     let msg = Message::copy_from(b"cb-payload").unwrap();
-    client.send(msg).unwrap();
+    client.send().message(msg).submit().unwrap();
     let mut received = Received::empty();
     server.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"cb-payload");

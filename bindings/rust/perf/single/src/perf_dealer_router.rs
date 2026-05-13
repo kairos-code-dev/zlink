@@ -65,7 +65,9 @@ fn main() {
     common::wait_monitor_ready(&mut router_mon, ready_timeout, "dealer-router router");
     common::wait_monitor_ready(&mut mon, ready_timeout, "dealer-router dealer");
     dealer
-        .send(Message::copy_from(b"PING").expect("dealer ping"))
+        .send()
+        .message(Message::copy_from(b"PING").expect("dealer ping"))
+        .submit()
         .expect("dealer handshake send");
     let mut handshake = zlink::Received::empty();
     if let Err(err) = router.recv(&mut handshake, zlink::RecvFlags::NONE) {
@@ -77,10 +79,9 @@ fn main() {
         .clone();
     assert_eq!(handshake.parts()[0].as_bytes(), b"PING");
     router
-        .send(
-            &reply_rid,
-            Message::copy_from(b"PONG").expect("router pong"),
-        )
+        .send(&reply_rid)
+        .message(Message::copy_from(b"PONG").expect("router pong"))
+        .submit()
         .expect("router handshake reply");
     let mut handshake_reply = zlink::Received::empty();
     if let Err(err) = dealer.recv(&mut handshake_reply, zlink::RecvFlags::NONE) {
@@ -94,13 +95,15 @@ fn main() {
     let active_deadline = std::time::Instant::now() + active;
     let send_thread = std::thread::spawn(move || {
         common::send_loop(active_deadline, config.size, common::PHASE_ACTIVE, |msg| {
-            match dealer.try_send(msg) {
+            match dealer.send().message(msg).flags(zlink::SendFlags::DONT_WAIT).submit() {
                 Ok(sent) => sent,
                 Err(err) if err.code() == SubmitResult::NotConnected => false,
                 Err(err) => panic!("active send: {err}"),
             }
         });
-        common::send_stop_token(|msg| dealer.send(msg).map_err(Into::into));
+        common::send_stop_token(|msg| {
+            dealer.send().message(msg).submit().map(|_| ()).map_err(Into::into)
+        });
     });
 
     let mut received = zlink::Received::empty();

@@ -72,15 +72,21 @@ fn main() {
             expected_routing_id.as_bytes()
         );
         received
-            .reply(vec![
-                Message::copy_from(b"pong").expect("reply message failed"),
-            ])
+            .reply()
+            .message(Message::copy_from(b"pong").expect("reply message failed"))
+            .submit()
             .expect("reply send failed");
         request_done_tx.send(()).expect("request done send failed");
     });
 
-    let reply = block_on(dealer_socket.request(&[b"ping"], Some(Duration::from_secs(2))))
-        .expect("dealer request failed");
+    let reply = block_on(
+        dealer_socket
+            .request()
+            .message(Message::copy_from(b"ping").expect("request message failed"))
+            .timeout(Duration::from_secs(2))
+            .submit(),
+    )
+    .expect("dealer request failed");
     assert_eq!(reply[0].as_str().unwrap_or("?"), "pong");
     request_done_rx
         .recv_timeout(Duration::from_secs(2))

@@ -16,11 +16,11 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
         return this;
     }
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var header = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Event,
+            ZLinkMessageKind.Publish,
             activation.ChannelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             ZLinkEnvelopeCodec.DefaultContentType,
@@ -58,12 +58,12 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
         return this;
     }
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);
         var header = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Event,
+            ZLinkMessageKind.Publish,
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             ZLinkEnvelopeCodec.DefaultContentType,

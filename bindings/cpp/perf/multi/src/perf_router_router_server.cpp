@@ -113,8 +113,11 @@ bool perf_router_router_server (const std::string &lib_name,
         while (!pending_replies.empty ()) {
             pending_reply_t &front = pending_replies.front ();
             try {
-                if (server.send (front.rid, front.payload,
-                                 zlink::send_flags_t::dontwait)) {
+                zlink::message_t attempt = front.payload;
+                if (server.send (front.rid)
+                      .message (attempt)
+                      .flags (ZLINK_DONTWAIT)
+                      .submit ()) {
                     pending_replies.pop_front ();
                     continue;
                 }
@@ -226,7 +229,11 @@ bool perf_router_router_server (const std::string &lib_name,
             }
 
             try {
-                if (!received.send (*part, zlink::send_flags_t::dontwait)) {
+                zlink::message_t attempt = *part;
+                if (!server.send (*source_rid)
+                       .message (attempt)
+                       .flags (ZLINK_DONTWAIT)
+                       .submit ()) {
                     pending_replies.push_back (pending_reply_t {
                       *source_rid, std::move (*part) });
                 }

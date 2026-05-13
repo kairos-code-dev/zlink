@@ -2,7 +2,12 @@ import socket
 
 import zlink
 
-from sample_support import tcp_endpoint, wait_socket_monitor_event, wait_until
+from sample_support import (
+    submit_request_op,
+    tcp_endpoint,
+    wait_socket_monitor_event,
+    wait_until,
+)
 
 
 def main():
@@ -24,7 +29,9 @@ def main():
                     join_info, message = item
                     joins.append(message.to_bytes())
                     message.close()
-                    current_spot.reply_actor_join(join_info, True, b"joined")
+                    current_spot.reply_actor_join(join_info, True).message(
+                        b"joined"
+                    ).submit()
 
                 spot.on_dispatch_event(on_dispatch)
 
@@ -43,9 +50,14 @@ def main():
                             client.sendall(b"seed")
                             with stream.recv() as stream_msg:
                                 session_rid = stream_msg.routing_id
-                            stream.bind_actor(node, session_rid, actor_ref, timeout=2)
+                            submit_request_op(
+                                stream.bind_actor(session_rid, actor_ref),
+                                description="stream actor bind",
+                            )
 
-                            actor.join(spot, b"join-room", on_reply, timeout=2)
+                            actor.join(spot).message(b"join-room").timeout(2).submit(
+                                on_reply
+                            )
                             wait_until(lambda: replies, timeout_ms=5000, description="actor join")
 
                             if joins != [b"join-room"]:
@@ -54,7 +66,9 @@ def main():
                                 raise AssertionError("unexpected join reply")
                             if spot.actors_snapshot()[0].actor_id != "room-1":
                                 raise AssertionError("joined actor snapshot missing")
-                            actor.leave(spot)
+                            submit_request_op(
+                                actor.leave(spot), description="actor leave"
+                            )
                 actor.close()
                 print("[actor/room] join accepted")
 

@@ -1,7 +1,6 @@
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import threading
 import zlink
 from sample_common import tcp_endpoint, wait_connected
 
@@ -18,30 +17,12 @@ def main():
                         dealer.connect(endpoint)
                         wait_connected(rtr_mon, dlr_mon)
 
-                request_done = threading.Event()
-                reply_done = threading.Event()
-                req = {}
-                rep = {}
-
-                def on_request(received):
-                    req["rid"] = received.routing_id
-                    request_done.set()
-
-                def on_reply(received):
-                    rep["data"] = received.to_bytes_list()[0].decode("utf-8")
-                    reply_done.set()
-
-                router.on_receive(on_request)
-                dealer.on_receive(on_reply)
-
-                dealer.send(b"ping")
-                if not request_done.wait(3.0):
-                    raise TimeoutError("router callback did not receive request")
-
-                router.send(b"pong", routing_id=req["rid"])
-                if not reply_done.wait(3.0):
-                    raise TimeoutError("dealer callback did not receive reply")
-                print(f'[dealer-router/callback] send: "ping" \u2192 recv: "{rep["data"]}"')
+                dealer.send().message(b"ping").submit()
+                with router.recv() as request:
+                    request.send().message(b"pong").submit()
+                with dealer.recv() as reply:
+                    data = reply.to_bytes_list()[0].decode("utf-8")
+                print(f'[dealer-router/recv] send: "ping" \u2192 recv: "{data}"')
 
 
 if __name__ == "__main__":

@@ -26,7 +26,8 @@ Task responderTask = Task.Run(() =>
     string requestPayload = received.Parts[0].GetString();
     SampleSupport.EnsureEqual("spot-ping", requestPayload, "request");
     using var reply = Message.FromString("spot-pong");
-    responderRouter.Reply(routingId, received.RequestSeq ?? 0UL, reply);
+    responderRouter.Reply(routingId, received.RequestSeq ?? 0UL)
+        .Message(reply).Submit();
 });
 
 using var request = Message.FromString("spot-ping");

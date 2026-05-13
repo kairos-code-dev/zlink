@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Interaction Model](interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](channel-topology.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../README.ko.md)
 
 [초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](../usecase-validation.ko.md) | [.NET](../bindings/dotnet/README.ko.md) | [Java](../bindings/java/README.ko.md) | [Node.js](../bindings/node/README.ko.md) | [Python](../bindings/python/README.ko.md) | [C++](../bindings/cpp/README.ko.md)

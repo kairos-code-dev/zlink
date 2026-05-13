@@ -39,7 +39,7 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
         return this;
     }
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var header = new ZLinkEnvelopeHeader(
@@ -77,7 +77,7 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
         return this;
     }
 
-    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default)
     {
         var timeout = _timeout ?? activation.DefaultTimeout;
         var header = new ZLinkEnvelopeHeader(

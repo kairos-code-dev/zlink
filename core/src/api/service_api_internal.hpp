@@ -5,7 +5,6 @@
 
 #include "api/service_handle_internal.hpp"
 #include "api/service_mode_internal.hpp"
-#include "api/service_surface_internal.hpp"
 
 namespace zlink
 {

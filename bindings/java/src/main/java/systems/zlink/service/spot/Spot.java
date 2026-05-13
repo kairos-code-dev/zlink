@@ -867,24 +867,119 @@ public final class Spot implements AutoCloseable {
         return recvActorJoin(RecvFlags.NONE);
     }
 
-    public void replyActorJoin(ActorJoinRequest request,
-                               boolean accepted,
-                               Message message) {
+    /**
+     * Reply to an Actor join admission request. Returns a multipart-reply
+     * builder; a zero-message submit is allowed.
+     */
+    public ActorJoinReplyOp replyActorJoin(ActorJoinRequest request,
+                                           boolean accepted) {
         Objects.requireNonNull(request, "request");
-        Objects.requireNonNull(message, "message");
         ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeInfo = arena.allocate(
-              NativeLayouts.ACTOR_JOIN_INFO_LAYOUT);
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            writeActorJoinInfo(nativeInfo, request.info());
-            InternalAccess.messageCopyTo(message, nativeMsg);
-            int rc = Native.spotActorJoinReply(handle, nativeInfo,
-              accepted ? 1 : 0, nativeMsg, 1L);
-            if (rc != 0) {
-                NativeMsg.msgClose(nativeMsg);
-                throw new SubmitException(SubmitResult.fromValue(rc));
+        return new ActorJoinReplyBuilder(request, accepted);
+    }
+
+    /**
+     * Register Actor lifecycle callbacks on this Spot. Passing {@code null}
+     * for both removes the registration.
+     */
+    public void onActorLifecycle(ActorLifecycleHandler onJoin,
+                                 ActorLifecycleHandler onLeave) {
+        ensureOpen();
+        if (onJoin == null && onLeave == null) {
+            long old = lifecycleRegistrationId;
+            lifecycleRegistrationId = 0L;
+            if (old != 0L) {
+                int rc = Native.spotActorLifecycleHandler(handle,
+                  MemorySegment.NULL, MemorySegment.NULL,
+                  MemorySegment.NULL);
+                ActorRequestCallbacks.unregisterLifecycle(old);
+                if (rc != 0) {
+                    throw new systems.zlink.HandlerException(
+                      systems.zlink.HandlerResult.fromValue(rc));
+                }
             }
+            return;
+        }
+        Spot self = this;
+        long id = ActorRequestCallbacks.registerLifecycle(
+          onJoin == null ? null : (spotHandle, info) ->
+            onJoin.onLifecycleEvent(self, info),
+          onLeave == null ? null : (spotHandle, info) ->
+            onLeave.onLifecycleEvent(self, info));
+        long previous = lifecycleRegistrationId;
+        int rc = Native.spotActorLifecycleHandler(handle,
+          onJoin == null ? MemorySegment.NULL
+            : ActorRequestCallbacks.ACTOR_LIFECYCLE_JOIN_CALLBACK,
+          onLeave == null ? MemorySegment.NULL
+            : ActorRequestCallbacks.ACTOR_LIFECYCLE_LEAVE_CALLBACK,
+          MemorySegment.ofAddress(id));
+        if (rc != 0) {
+            ActorRequestCallbacks.unregisterLifecycle(id);
+            throw new systems.zlink.HandlerException(
+              systems.zlink.HandlerResult.fromValue(rc));
+        }
+        if (previous != 0L) {
+            ActorRequestCallbacks.unregisterLifecycle(previous);
+        }
+        lifecycleRegistrationId = id;
+    }
+
+    private long lifecycleRegistrationId;
+
+    private final class ActorJoinReplyBuilder implements ActorJoinReplyOp {
+        private final ActorJoinRequest request;
+        private final boolean accepted;
+        private final ArrayList<Message> parts = new ArrayList<>();
+        private boolean submitted;
+
+        ActorJoinReplyBuilder(ActorJoinRequest request, boolean accepted) {
+            this.request = request;
+            this.accepted = accepted;
+        }
+
+        @Override
+        public ActorJoinReplyOp message(Message part) {
+            ensureNotSubmitted();
+            parts.add(Objects.requireNonNull(part, "part"));
+            return this;
+        }
+
+        @Override
+        public void submit() {
+            ensureNotSubmitted();
+            submitted = true;
+            ensureOpen();
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment nativeInfo = arena.allocate(
+                  NativeLayouts.ACTOR_JOIN_INFO_LAYOUT);
+                writeActorJoinInfo(nativeInfo, request.info());
+                MemorySegment partsArr = MemorySegment.NULL;
+                int allocated = 0;
+                if (!parts.isEmpty()) {
+                    partsArr = arena.allocate(NativeLayouts.MSG_LAYOUT,
+                      parts.size());
+                    long stride = NativeLayouts.MSG_LAYOUT.byteSize();
+                    for (int i = 0; i < parts.size(); i++) {
+                        InternalAccess.messageCopyTo(parts.get(i),
+                          partsArr.asSlice(i * stride, stride));
+                        allocated++;
+                    }
+                }
+                int rc = Native.spotActorJoinReply(handle, nativeInfo,
+                  accepted ? 1 : 0, partsArr, parts.size());
+                if (rc != 0) {
+                    long stride = NativeLayouts.MSG_LAYOUT.byteSize();
+                    for (int i = 0; i < allocated; i++) {
+                        NativeMsg.msgClose(partsArr.asSlice(i * stride, stride));
+                    }
+                    throw new SubmitException(SubmitResult.fromValue(rc));
+                }
+            }
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
         }
     }
 

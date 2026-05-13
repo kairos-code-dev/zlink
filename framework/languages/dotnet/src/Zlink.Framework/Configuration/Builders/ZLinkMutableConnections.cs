@@ -3,7 +3,7 @@ namespace Zlink.Framework.Configuration.Builders;
 internal sealed class ZLinkMutableConnections(List<string> endpoints)
     : IChannelClientConnections,
       IChannelSubscriberConnections,
-      IRoutedChannelConnections,
+      IRouteChannelConnections,
       ISpotRouterConnections,
       ISpotPubSubConnections,
       ISpotPublisherConnections

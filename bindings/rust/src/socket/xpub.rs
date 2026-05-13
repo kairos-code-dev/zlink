@@ -3,11 +3,12 @@ use std::time::Duration;
 
 use crate::ctx::Context;
 use crate::domain::SubscriptionEvent;
-use crate::error::{ConfigError, HandlerError, RecvError, SubmitError, check_config_rc};
+use crate::error::{ConfigError, HandlerError, RecvError, check_config_rc};
 use crate::ffi;
-use crate::flags::{RecvFlags, SendFlags};
-use crate::message::{IntoMultipart, Message, RoutingId};
+use crate::flags::RecvFlags;
+use crate::message::{Message, RoutingId};
 use crate::options::{CommonSocketOptions, PubSocketOptions};
+use crate::service::{Empty, SendOp};
 
 use super::pub_socket::{get_pub_bool, get_pub_int, get_pub_message, set_pub_bytes};
 use super::{SocketInner, impl_base_socket, impl_connect, impl_recv_options, impl_send_options};
@@ -27,17 +28,10 @@ impl XPubSocket {
         })
     }
 
-    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError> {
-        self.inner.publish(topic, parts)
-    }
-
-    pub fn publish_with_flags(
-        &self,
-        topic: &str,
-        parts: impl IntoMultipart,
-        flags: SendFlags,
-    ) -> Result<bool, SubmitError> {
-        self.inner.publish_with_flags(topic, parts, flags)
+    pub fn publish(&self, topic: &str) -> SendOp<Empty> {
+        let topic = std::ffi::CString::new(topic)
+            .unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
+        crate::service::socket_publish_op(self.inner.handle, topic)
     }
 
     pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError> {

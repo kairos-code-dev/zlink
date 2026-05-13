@@ -1,7 +1,6 @@
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import threading
 import zlink
 from sample_common import tcp_endpoint, wait_connected
 
@@ -17,18 +16,10 @@ def main():
                         client.connect(endpoint)
                         wait_connected(srv_mon, cli_mon)
 
-                done = threading.Event()
-                result = {}
-
-                def on_message(received):
-                    result["data"] = received.to_bytes_list()[0].decode("utf-8")
-                    done.set()
-
-                server.on_receive(on_message)
-                client.send(b"hello-pair")
-                if not done.wait(3.0):
-                    raise TimeoutError("pair callback did not receive a message")
-                print(f'[pair/callback] send: "hello-pair" \u2192 recv: "{result["data"]}"')
+                client.send().message(b"hello-pair").submit()
+                with server.recv() as received:
+                    data = received.to_bytes_list()[0].decode("utf-8")
+                print(f'[pair/recv] send: "hello-pair" \u2192 recv: "{data}"')
 
 
 if __name__ == "__main__":

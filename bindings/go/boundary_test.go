@@ -89,7 +89,7 @@ func TestNilInputValidation(t *testing.T) {
 	socket, _ := ctx.PairSocket()
 	defer socket.Close()
 
-	if _, err := socket.Send(zlink.SendFlagsNone, nil); err == nil {
+	if _, err := socket.Send().Message(nil).Submit(nil); err == nil {
 		t.Fatalf("Send(nil) should fail")
 	}
 	stream, _ := ctx.StreamSocket()

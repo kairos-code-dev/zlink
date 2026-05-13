@@ -24,6 +24,45 @@ func hasMethod(target any, name string) bool {
 	return ok
 }
 
+func methodType(target any, name string) reflect.Type {
+	typ := reflect.TypeOf(target)
+	method, ok := typ.MethodByName(name)
+	if !ok {
+		return nil
+	}
+	return method.Type
+}
+
+func TestSurfaceCanonicalBuilderSignatures(t *testing.T) {
+	assertReturn := func(target any, name string, want reflect.Type) {
+		t.Helper()
+		method := methodType(target, name)
+		if method == nil {
+			t.Fatalf("%T should expose %s", target, name)
+		}
+		if method.NumOut() != 1 || method.Out(0) != want {
+			t.Fatalf("%T.%s return = %v, want %v", target, name, method, want)
+		}
+	}
+
+	sendOp := reflect.TypeOf((*zlink.SendOp)(nil)).Elem()
+	requestOp := reflect.TypeOf((*zlink.RequestOp)(nil)).Elem()
+	replyOp := reflect.TypeOf((*zlink.ReplyOp)(nil)).Elem()
+	actorJoinOp := reflect.TypeOf((*zlink.ActorJoinOp)(nil)).Elem()
+	actorBindOp := reflect.TypeOf((*zlink.ActorBindOp)(nil)).Elem()
+
+	assertReturn((*zlink.PairSocket)(nil), "Send", sendOp)
+	assertReturn((*zlink.DealerSocket)(nil), "Send", sendOp)
+	assertReturn((*zlink.PubSocket)(nil), "Publish", sendOp)
+	assertReturn((*zlink.XPubSocket)(nil), "Publish", sendOp)
+	assertReturn((*zlink.RouterSocket)(nil), "SendTo", sendOp)
+	assertReturn((*zlink.RouterSocket)(nil), "Request", requestOp)
+	assertReturn((*zlink.RouterSocket)(nil), "Reply", replyOp)
+	assertReturn((*zlink.StreamSocket)(nil), "SendTo", sendOp)
+	assertReturn((*zlink.Actor)(nil), "Join", actorJoinOp)
+	assertReturn((*zlink.StreamSocket)(nil), "BindActor", actorBindOp)
+}
+
 func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.PairSocket)(nil), "Send") {
 		t.Fatalf("PairSocket should expose Send")
@@ -31,11 +70,11 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.PairSocket)(nil), "Recv") {
 		t.Fatalf("PairSocket should expose Recv")
 	}
-	if !hasMethod((*zlink.PairSocket)(nil), "TrySend") {
-		t.Fatalf("PairSocket should expose TrySend")
+	if hasMethod((*zlink.PairSocket)(nil), "TrySend") {
+		t.Fatalf("PairSocket should not expose TrySend")
 	}
-	if !hasMethod((*zlink.PairSocket)(nil), "TryRecv") {
-		t.Fatalf("PairSocket should expose TryRecv")
+	if hasMethod((*zlink.PairSocket)(nil), "TryRecv") {
+		t.Fatalf("PairSocket should not expose TryRecv")
 	}
 	if hasMethod((*zlink.PubSocket)(nil), "Recv") {
 		t.Fatalf("PubSocket should not expose Recv")
@@ -58,8 +97,8 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.RouterSocket)(nil), "SendTo") {
 		t.Fatalf("RouterSocket should expose SendTo")
 	}
-	if !hasMethod((*zlink.DealerSocket)(nil), "TryRequestCallback") {
-		t.Fatalf("DealerSocket should expose TryRequestCallback")
+	if hasMethod((*zlink.DealerSocket)(nil), "TryRequestCallback") {
+		t.Fatalf("DealerSocket should not expose TryRequestCallback")
 	}
 	if !hasMethod((*zlink.RouterSocket)(nil), "SetRoutingID") {
 		t.Fatalf("RouterSocket should expose SetRoutingID")
@@ -70,11 +109,11 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.RouterSocket)(nil), "RoutingID") {
 		t.Fatalf("RouterSocket should expose RoutingID")
 	}
-	if !hasMethod((*zlink.RouterSocket)(nil), "TrySendTo") {
-		t.Fatalf("RouterSocket should expose TrySendTo")
+	if hasMethod((*zlink.RouterSocket)(nil), "TrySendTo") {
+		t.Fatalf("RouterSocket should not expose TrySendTo")
 	}
-	if !hasMethod((*zlink.RouterSocket)(nil), "TryRequestCallback") {
-		t.Fatalf("RouterSocket should expose TryRequestCallback")
+	if hasMethod((*zlink.RouterSocket)(nil), "TryRequestCallback") {
+		t.Fatalf("RouterSocket should not expose TryRequestCallback")
 	}
 	if hasMethod((*zlink.RouterSocket)(nil), "Send") {
 		t.Fatalf("RouterSocket should not expose Send")
@@ -312,14 +351,8 @@ func TestSurfaceActorCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "ActorLookup") {
 		t.Fatalf("SpotNode should expose ActorLookup")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "CreateRemoteActor") {
-		t.Fatalf("SpotNode should expose CreateRemoteActor")
-	}
 	if !hasMethod((*zlink.SpotNode)(nil), "DestroyRemoteActor") {
 		t.Fatalf("SpotNode should expose DestroyRemoteActor")
-	}
-	if !hasMethod((*zlink.SpotNode)(nil), "OnActorAdmission") {
-		t.Fatalf("SpotNode should expose OnActorAdmission")
 	}
 	if !hasMethod((*zlink.SpotNode)(nil), "JoinActor") {
 		t.Fatalf("SpotNode should expose JoinActor")
@@ -490,8 +523,8 @@ func TestSurfaceCallbackCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.DealerSocket)(nil), "Request") {
 		t.Fatalf("DealerSocket should expose Request")
 	}
-	if !hasMethod((*zlink.DealerSocket)(nil), "RequestCallback") {
-		t.Fatalf("DealerSocket should expose RequestCallback")
+	if hasMethod((*zlink.DealerSocket)(nil), "RequestCallback") {
+		t.Fatalf("DealerSocket should not expose RequestCallback")
 	}
 	if hasMethod((*zlink.DealerSocket)(nil), "OnSubscribe") {
 		t.Fatalf("DealerSocket should not expose OnSubscribe")
@@ -515,8 +548,8 @@ func TestSurfaceCallbackCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.RouterSocket)(nil), "Request") {
 		t.Fatalf("RouterSocket should expose Request")
 	}
-	if !hasMethod((*zlink.RouterSocket)(nil), "RequestCallback") {
-		t.Fatalf("RouterSocket should expose RequestCallback")
+	if hasMethod((*zlink.RouterSocket)(nil), "RequestCallback") {
+		t.Fatalf("RouterSocket should not expose RequestCallback")
 	}
 	if !hasMethod((*zlink.RouterSocket)(nil), "Reply") {
 		t.Fatalf("RouterSocket should expose Reply")
@@ -524,8 +557,8 @@ func TestSurfaceCallbackCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.RouterSocket)(nil), "RequestToSpot") {
 		t.Fatalf("RouterSocket should expose RequestToSpot")
 	}
-	if !hasMethod((*zlink.RouterSocket)(nil), "TryRequestToSpot") {
-		t.Fatalf("RouterSocket should expose TryRequestToSpot")
+	if hasMethod((*zlink.RouterSocket)(nil), "TryRequestToSpot") {
+		t.Fatalf("RouterSocket should not expose TryRequestToSpot")
 	}
 	if !hasMethod((*zlink.RouterSocket)(nil), "ReplyToSpot") {
 		t.Fatalf("RouterSocket should expose ReplyToSpot")

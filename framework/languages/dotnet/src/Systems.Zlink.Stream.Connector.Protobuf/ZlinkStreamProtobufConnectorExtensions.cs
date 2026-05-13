@@ -85,8 +85,8 @@ public sealed class ZlinkStreamProtobufSendBuilder
         return this;
     }
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
-        => _inner.Async(cancellationToken);
+    public ValueTask Submit(CancellationToken cancellationToken = default)
+        => _inner.Submit(cancellationToken);
 }
 
 public sealed class ZlinkStreamProtobufRequestBuilder
@@ -128,21 +128,21 @@ public sealed class ZlinkStreamProtobufRequestBuilder
         return this;
     }
 
-    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default)
         where TReply : IMessage<TReply>, new()
     {
-        var reply = await _inner.Async(cancellationToken).ConfigureAwait(false);
+        var reply = await _inner.Submit(cancellationToken).ConfigureAwait(false);
         return reply.FromProto<TReply>();
     }
 
-    public void Async(Action<ZlinkStreamResult> callback)
-        => _inner.Async(callback);
+    public void Submit(Action<ZlinkStreamResult> callback)
+        => _inner.Submit(callback);
 
-    public void Async<TReply>(Action<ZlinkStreamResult<TReply>> callback)
+    public void Submit<TReply>(Action<ZlinkStreamResult<TReply>> callback)
         where TReply : IMessage<TReply>, new()
     {
         ArgumentNullException.ThrowIfNull(callback);
-        _inner.Async(result =>
+        _inner.Submit(result =>
         {
             if (!result.IsSuccess)
             {

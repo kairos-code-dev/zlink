@@ -51,7 +51,7 @@ class CallbackSendTests(unittest.TestCase):
                 self.assertIsNotNone(routing_id)
                 self.assertEqual(header.to_bytes(), b"")
                 self.assertEqual(body.to_bytes(), b"ping")
-                stream.send(routing_id, b"pong")
+                stream.send(routing_id).message(b"pong").submit()
             except Exception as exc:
                 callback_error.append(exc)
             finally:

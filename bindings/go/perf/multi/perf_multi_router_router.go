@@ -178,11 +178,7 @@ func validateMultiRouterRoutes(serverID zlink.RoutingID, clients []multiRouterCl
 	for index, client := range clients {
 		payload := perfcommon.PreparePayload(msgSize)
 		perfcommon.StampProbePayload(payload)
-		_, sendErr := client.socket.SendTo(
-			serverID,
-			zlink.SendFlagsNone,
-			perfcommon.NewMessage(payload),
-		)
+		_, sendErr := client.socket.SendTo(serverID).Message(perfcommon.NewMessage(payload)).Submit(nil)
 		perfcommon.Must(sendErr)
 
 		poller := perfcommon.NewSocketPoller(client.socket, perfcommon.ZLinkPollIn)
@@ -283,10 +279,8 @@ func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, done chan<- st
 					_ = received.Close()
 					break
 				}
-					if len(pending) == 0 {
-						sent, sendErr := received.SendWithFlags(
-							[]*zlink.Message{perfcommon.NewMessage(part.Data())},
-							zlink.SendFlagsDontWait)
+				if len(pending) == 0 {
+					sent, sendErr := received.Send().Message(perfcommon.NewMessage(part.Data())).Flags(zlink.SendFlagsDontWait).Submit(nil)
 					if sendErr != nil {
 						_ = received.Close()
 						perfcommon.Must(fmt.Errorf("multi router/router server send: %w", sendErr))
@@ -326,7 +320,7 @@ func startMultiRouterEchoServer(server *zlink.RouterSocket) (chan struct{}, chan
 // transient backpressure.
 func sendMultiRouterStopToken(socket *zlink.RouterSocket, serverID zlink.RoutingID) {
 	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
-		sent, err := socket.SendTo(serverID, zlink.SendFlagsNone, perfcommon.NewMessage(perfcommon.StopToken))
+		sent, err := socket.SendTo(serverID).Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
 		if err == nil && sent {
 			return
 		}
@@ -366,5 +360,5 @@ func drainRouterReplies(
 }
 
 func tryRouterSend(socket *zlink.RouterSocket, target zlink.RoutingID, payload []byte) (bool, error) {
-	return socket.SendTo(target, zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+	return socket.SendTo(target).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
 }

@@ -33,7 +33,7 @@ public class CallbackModeContractTest {
             right.connect(endpoint);
 
             try (Message outbound = Message.copyOfUtf8("callback-body")) {
-                right.send(outbound);
+                right.send().message(outbound).submit();
             }
 
             try (systems.zlink.Received received = new systems.zlink.Received()) {

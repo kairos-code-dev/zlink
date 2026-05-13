@@ -98,10 +98,11 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 			for time.Now().Before(window.StopAt) {
 				perfcommon.StampPayload(payload)
 				replyDone := make(chan error, 1)
-				ok, requestErr := socket.TryRequestToSpot(
-					multiSpotReqRepNodeRID,
-					multiSpotReqRepSpotRID,
-					func(result zlink.RequestResult, parts []*zlink.Message) {
+				ok, requestErr := socket.RequestToSpot(multiSpotReqRepNodeRID, multiSpotReqRepSpotRID).
+					Message(perfcommon.NewMessage(payload)).
+					Flags(zlink.SendFlagsDontWait).
+					Timeout(perfcommon.MultiRecvTimeout()).
+					SubmitCallback(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
 						defer func() {
 							for _, part := range parts {
 								_ = part.Close()
@@ -115,10 +116,7 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 							stats.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()) / 2.0)
 						}
 						replyDone <- nil
-					},
-					perfcommon.MultiRecvTimeout(),
-					perfcommon.NewMessage(payload),
-				)
+					})
 				if requestErr != nil {
 					if perfcommon.IsTransient(requestErr) {
 						continue
@@ -146,10 +144,11 @@ func waitMultiSpotReqRepReady(
 	payload := perfcommon.PreparePayload(msgSize)
 	perfcommon.StampProbePayload(payload)
 	ready := make(chan error, 1)
-	ok, err := requester.TryRequestToSpot(
-		nodeRID,
-		spotRID,
-		func(result zlink.RequestResult, parts []*zlink.Message) {
+	ok, err := requester.RequestToSpot(nodeRID, spotRID).
+		Message(perfcommon.NewMessage(payload)).
+		Flags(zlink.SendFlagsDontWait).
+		Timeout(perfcommon.MultiRecvTimeout()).
+		SubmitCallback(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
 			defer func() {
 				for _, part := range parts {
 					_ = part.Close()
@@ -164,10 +163,7 @@ func waitMultiSpotReqRepReady(
 				return
 			}
 			ready <- nil
-		},
-		perfcommon.MultiRecvTimeout(),
-		perfcommon.NewMessage(payload),
-	)
+		})
 	if err != nil {
 		perfcommon.Must(err)
 	}

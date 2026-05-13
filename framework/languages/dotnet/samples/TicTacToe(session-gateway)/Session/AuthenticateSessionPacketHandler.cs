@@ -28,7 +28,7 @@ internal sealed class AuthenticateSessionPacketHandler(
                     SampleNames.ApiChannel,
                     new AuthenticateActorReq(request.ActorId))
                 .WithTimeout(SampleTimings.RequestTimeout)
-                .Async<AuthenticateActorRes>(cancellationToken)
+                .Submit<AuthenticateActorRes>(cancellationToken)
                 .ConfigureAwait(false);
             if (!authenticated.Accepted || string.IsNullOrWhiteSpace(authenticated.ActorId))
             {
@@ -46,7 +46,7 @@ internal sealed class AuthenticateSessionPacketHandler(
                 .ConfigureAwait(false);
 
             await context.Stream.Reply(new AuthenticateRes(authenticated.ActorId))
-                .Async(cancellationToken)
+                .Submit(cancellationToken)
                 .ConfigureAwait(false);
         }
     }

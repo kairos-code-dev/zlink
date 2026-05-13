@@ -11,13 +11,13 @@
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/request_timeout_scheduler_internal.hpp"
 #include "api/service_api_internal.hpp"
+#include "api/service_spot_request_reply_channel_bridge_internal.hpp"
 #include "api/service_spot_routed_protocol_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/service_spot_request_reply_utils_internal.hpp"
 #include "api/service_mode_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
-#include "api/socket_request_reply_internal.hpp"
 #include "api/submit_result_internal.hpp"
 #include "core/internal_defs.hpp"
 #include "core/multipart_send_txn.hpp"
@@ -28,7 +28,6 @@
 
 namespace
 {
-namespace reqrep = zlink::socket_reqrep_internal;
 namespace routed_protocol = zlink::spot_routed_protocol;
 
 using zlink::spot_reqrep_internal::bind_router_state_rid;
@@ -73,14 +72,6 @@ int resolve_router_send_timeout_ms (void *router_)
     return timeout;
 }
 
-struct channel_reply_bridge_ctx_t
-{
-    std::weak_ptr<spot_request_reply_state_t> state;
-    void *dealer;
-    zlink_reply_handler_fn handler;
-    void *userdata;
-};
-
 int validate_request_send_flags (zlink_send_flags_t flags_)
 {
     if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
@@ -88,25 +79,6 @@ int validate_request_send_flags (zlink_send_flags_t flags_)
         return -1;
     }
     return 0;
-}
-
-int request_result_to_errno (zlink_request_result_t result_)
-{
-    switch (result_) {
-    case ZLINK_REQUEST_OK:
-        return 0;
-    case ZLINK_REQUEST_TIMED_OUT:
-        return ETIMEDOUT;
-    case ZLINK_REQUEST_NOT_FOUND:
-        return ENOENT;
-    case ZLINK_REQUEST_TERMINATED:
-        return ETERM;
-    case ZLINK_REQUEST_PROTOCOL_ERROR:
-        return EPROTO;
-    case ZLINK_REQUEST_INTERNAL_ERROR:
-    default:
-        return EIO;
-    }
 }
 
 bool has_local_spot_route_target (uint8_t destination_class_,
@@ -355,32 +327,6 @@ int start_router_request_to_spot (void *router_,
     zlink::request_reply::close_built_parts (&combined);
     return 0;
 }
-
-void channel_reply_bridge_completion (zlink_request_result_t result_,
-                                      zlink_msg_t *parts_,
-                                      size_t part_count_,
-                                      void *userdata_)
-{
-    std::unique_ptr<channel_reply_bridge_ctx_t> bridge (
-      static_cast<channel_reply_bridge_ctx_t *> (userdata_));
-    if (!bridge.get ())
-        return;
-
-    std::shared_ptr<spot_request_reply_state_t> state = bridge->state.lock ();
-    if (!state)
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        if (state->completion_state.pending_channel_requests > 0)
-            --state->completion_state.pending_channel_requests;
-    }
-
-    const int errnum = request_result_to_errno (result_);
-    (void) zlink::spot_reqrep_internal::queue_spot_channel_reply_completion (
-      state, bridge->dealer, bridge->handler, bridge->userdata, errnum, parts_,
-      part_count_);
-}
 }
 
 zlink_submit_result_t spot_send_channel_impl (void *spot_,
@@ -452,50 +398,9 @@ zlink_submit_result_t spot_request_channel_impl (
     if (!router)
         return zlink::submit_result_internal::from_errno (errno);
 
-    std::shared_ptr<spot_request_reply_state_t> state =
-      find_or_create_spot_state (spot_);
-    if (!state)
-        return zlink::submit_result_internal::from_errno (errno);
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        if (state->completion_state.channel_reply_sources.count (router) == 0) {
-            state->completion_state.channel_reply_sources[router] =
-              std::shared_ptr<zlink::spot_reqrep_internal::spot_channel_reply_source_t> (
-                new zlink::spot_reqrep_internal::spot_channel_reply_source_t (
-                  router));
-        }
-        ++state->completion_state.pending_channel_requests;
-    }
-
-    std::shared_ptr<reqrep::socket_request_reply_state_t> socket_state =
-      reqrep::find_or_create_request_reply_state (make_socket_handle (router));
-    reqrep::register_spot_channel_dispatch_observer (socket_state, spot_);
-
-    std::unique_ptr<channel_reply_bridge_ctx_t> bridge (
-      new (std::nothrow) channel_reply_bridge_ctx_t ());
-    if (!bridge.get ()) {
-        {
-            std::lock_guard<std::mutex> lock (state->mutex);
-            if (state->completion_state.pending_channel_requests > 0)
-                --state->completion_state.pending_channel_requests;
-        }
-        errno = ENOMEM;
-        return zlink::submit_result_internal::from_errno (errno);
-    }
-    bridge->state = state;
-    bridge->dealer = router;
-    bridge->handler = handler_;
-    bridge->userdata = userdata_;
-
-    const int rc = reqrep::start_request (
-      make_socket_handle (router), NULL, parts_, part_count_, flags_,
-      timeout_ms_, &channel_reply_bridge_completion, bridge.release ());
-    if (rc != 0) {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        if (state->completion_state.pending_channel_requests > 0)
-            --state->completion_state.pending_channel_requests;
-    }
-    return zlink::submit_result_internal::from_request_submit_rc (rc);
+    return zlink::spot_reqrep_internal::start_spot_channel_request_bridge (
+      spot_, router, parts_, part_count_, handler_, userdata_, flags_,
+      timeout_ms_);
 }
 
 zlink_submit_result_t spot_request_spot_impl (

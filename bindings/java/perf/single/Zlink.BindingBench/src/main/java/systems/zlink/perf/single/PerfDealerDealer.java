@@ -95,14 +95,14 @@ final class PerfDealerDealer {
                     while (System.nanoTime() < activeEnd) {
                         try (Message active = PerfUtil.payload(config.size(),
                                  (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            sender.send(active);
+                            sender.send().message(active).submit();
                         }
                     }
                     // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
                     // blocking stop-token send. Bounded backpressure retry is
                     // handled by the blocking send semantics of the socket.
                     try (Message stop = PerfStopToken.newMessage()) {
-                        sender.send(stop);
+                        sender.send().message(stop).submit();
                     }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);

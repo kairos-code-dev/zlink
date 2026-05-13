@@ -856,6 +856,7 @@ set(api-sources
     src/api/service_spot_request_reply_local_reply.cpp
     src/api/service_spot_request_reply_local_request.cpp
     src/api/service_spot_request_reply_local_direct.cpp
+    src/api/service_spot_request_reply_channel_bridge.cpp
     src/api/service_spot_request_reply_completion.cpp
     src/api/service_spot_request_reply_callback_api.cpp
     src/api/service_spot_request_reply_ingress_api.cpp
@@ -949,6 +950,7 @@ set(discovery-sources
     src/services/discovery/registry_state.cpp
     src/services/discovery/discovery.cpp
     src/services/discovery/discovery_bootstrap.cpp
+    src/services/discovery/discovery_registry_rpc.cpp
     src/services/discovery/discovery_registry_client.cpp
     src/services/discovery/discovery_service_state.cpp
     src/services/discovery/socket_discovery_attachment.cpp

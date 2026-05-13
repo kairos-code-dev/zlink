@@ -80,9 +80,9 @@ public sealed class ZLinkSendContext : ZLinkHandlerContext
     }
 }
 
-public sealed class ZLinkEventContext : ZLinkHandlerContext
+public sealed class ZLinkPublishContext : ZLinkHandlerContext
 {
-    internal ZLinkEventContext(
+    internal ZLinkPublishContext(
         string? channelName,
         string? packetName,
         string? contentType,

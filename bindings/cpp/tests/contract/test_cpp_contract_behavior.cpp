@@ -132,7 +132,7 @@ void test_pair_send_without_peer_preserves_submit_surface ()
     sender.bind (zlink_cpp_contract::unique_inproc ("pair-send"));
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("payload");
-    (void) sender.send (outbound, ZLINK_DONTWAIT);
+    (void) sender.send ().message (outbound).flags (ZLINK_DONTWAIT).submit ();
 }
 
 void test_router_send_throws_for_closed_socket ()
@@ -145,7 +145,9 @@ void test_router_send_throws_for_closed_socket ()
     zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
       reinterpret_cast<const uint8_t *> (rid_text.data ()), rid_text.size ());
     zlink::message_t outbound = zlink_cpp_contract::make_message ("no-route");
-    expect_runtime_error ([&] { router.send (routing_id, outbound); });
+    expect_runtime_error ([&] {
+        router.send (routing_id).message (outbound).submit ();
+    });
 }
 
 void test_send_throws_on_general_error ()
@@ -155,7 +157,9 @@ void test_send_throws_on_general_error ()
     socket.close ();
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("send-error");
-    expect_runtime_error ([&] { socket.send (outbound); });
+    expect_runtime_error ([&] {
+        socket.send ().message (outbound).submit ();
+    });
 }
 
 void test_publish_throws_on_general_error ()
@@ -166,7 +170,9 @@ void test_publish_throws_on_general_error ()
 
     zlink::message_t outbound =
       zlink_cpp_contract::make_message ("publish-error");
-    expect_runtime_error ([&] { socket.publish ("topic:error", outbound); });
+    expect_runtime_error ([&] {
+        socket.publish ("topic:error").message (outbound).submit ();
+    });
 }
 
 void test_stream_receive_returns_busy_in_packet_callback_mode ()

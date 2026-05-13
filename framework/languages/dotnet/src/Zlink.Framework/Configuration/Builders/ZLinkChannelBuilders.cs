@@ -87,7 +87,7 @@ internal sealed class ZLinkChannelServerCapabilityBuilder(ZLinkChannelServerCapa
         configure(registration.SocketOptions);
     }
 
-    public void ConfigureRouting(Action<IRoutedPeerOptions> configure)
+    public void ConfigureRouting(Action<IRoutePeerOptions> configure)
     {
         configure(registration.RoutingOptions);
     }

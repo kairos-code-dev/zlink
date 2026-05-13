@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 async function reservePort() {
   const server = net.createServer();
@@ -67,34 +67,48 @@ async function main() {
       client.write(frame(Buffer.from('open')));
     });
 
-    stream.bindActor(node, session, actor.ref(), 2000);
+    stream.bindActor(session, actor.ref()).timeout(2000).submit(() => {});
     const joinReply = new Promise((resolve) => {
-      actor.join(spot, Buffer.from('join-gateway'), (result, parts) => {
+      actor.join(spot).message(Buffer.from('join-gateway')).timeout(2000).submit((result, parts) => {
         resolve({ result, parts });
-      }, zlink.SendFlags.None, 2000);
+      });
     });
     const joinRequest = waitForJoin(spot);
-    spot.replyActorJoin(joinRequest, true, Buffer.from('ok'));
+    spot.replyActorJoin(joinRequest, true).message(Buffer.from('ok')).submit();
     await joinReply;
-    stream.sendBoundActor(node, session, 'gateway-player-1', Buffer.from('relay'));
+    stream.sendBoundActor(session, 'gateway-player-1').message(Buffer.from('relay')).submit();
 
     for (let i = 0; i < 100 && payloads.length === 0; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert.deepEqual(payloads, ['relay']);
+    actor.leave(spot).submit(() => {});
     console.log('[actor/gateway] stream relayed payload to actor: "relay"');
   } finally {
     if (session) {
       try {
-        stream.unbindActor(node, session, 'gateway-player-1', 2000);
+        stream.unbindActor(session, 'gateway-player-1').timeout(2000).submit(() => {});
       } catch (_) {
       }
     }
     if (client) client.destroy();
     stream.close();
-    if (actor) actor.close(2000);
-    if (spot) spot.close();
-    node.close();
+    if (actor) {
+      try {
+        actor.close(2000);
+      } catch (_) {
+      }
+    }
+    if (spot) {
+      try {
+        spot.close();
+      } catch (_) {
+      }
+    }
+    try {
+      node.close();
+    } catch (_) {
+    }
     ctx.close();
   }
 }

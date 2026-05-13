@@ -147,7 +147,7 @@ inline bool try_send_reply_now (void *server,
     if (would_block)
         *would_block = false;
 
-    const zlink_submit_result_t send_rc = ::zlink_send_rid (
+    const zlink_submit_result_t send_rc = ::perf_zlink_send_rid_parts (
       server,
       source_rid,
       parts,
@@ -219,7 +219,7 @@ inline bool drain_recv_and_relay (void *server,
         uint64_t request_seq = 0;
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
-        const zlink_recv_result_t rc = ::zlink_router_recv (
+        const zlink_recv_result_t rc = ::perf_zlink_router_recv_parts (
           server,
           &source_rid,
           &source_spot_rid,

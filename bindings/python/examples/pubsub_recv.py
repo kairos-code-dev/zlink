@@ -17,7 +17,7 @@ def main():
                         sub.set_subscription(b"prices")
                         wait_connected(pub_mon, sub_mon)
 
-                pub.publish(b"prices", b"101.25")
+                pub.publish(b"prices").message(b"101.25").submit()
                 with sub.subscribe() as received:
                     topic = received.topic
                     data = received.to_bytes_list()[0].decode("utf-8")

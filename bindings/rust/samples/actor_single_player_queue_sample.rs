@@ -15,7 +15,9 @@ fn accept_join(spot: &Spot, expected: &'static [u8]) {
         || match spot.recv_actor_join_with_flags(RecvFlags::DONT_WAIT) {
             Ok(Some(request)) => {
                 assert_eq!(request.message.as_bytes(), expected);
-                spot.reply_actor_join(&request, true, Message::copy_from(b"accepted").unwrap())
+                spot.reply_actor_join(&request, true)
+                    .message(Message::copy_from(b"accepted").unwrap())
+                    .submit()
                     .unwrap();
                 true
             }
@@ -39,44 +41,46 @@ fn main() {
     let stream = ctx.stream_socket().expect("stream socket failed");
     let session = zlink::RoutingId::from_bytes(b"single-player-session");
     let actor_ref = actor.actor_ref().unwrap();
+    let (bind_tx, bind_rx) = mpsc::channel();
     stream
-        .bind_actor(&node, &session, &actor_ref, Duration::from_secs(1))
+        .bind_actor(&session, &actor_ref)
+        .timeout(Duration::from_secs(1))
+        .submit(move |result| bind_tx.send(result).unwrap())
         .expect("stream actor bind failed");
+    bind_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
 
     let (first_tx, first_rx) = mpsc::channel();
     actor
-        .join_callback(
-            &first_spot,
-            Message::copy_from(b"join-first").unwrap(),
-            move |result| first_tx.send(result).unwrap(),
-            SendFlags::DONT_WAIT,
-            Duration::from_secs(1),
-        )
+        .join(&first_spot)
+        .message(Message::copy_from(b"join-first").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .timeout(Duration::from_secs(1))
+        .submit(move |result, parts| first_tx.send((result, parts)).unwrap())
         .expect("first join submit failed");
     accept_join(&first_spot, b"join-first");
     first_rx
         .recv_timeout(Duration::from_secs(2))
         .unwrap()
-        .unwrap();
+        .0;
 
     stream
-        .send_bound_actor_part(
-            &node,
-            &session,
-            "single-player",
-            Message::copy_from(b"before").unwrap(),
-            SendFlags::DONT_WAIT,
-        )
+        .send_bound_actor_part(&session, "single-player")
+        .message(Message::copy_from(b"before").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .submit()
         .expect("before send failed");
-    actor.leave(&first_spot).unwrap();
+    let (leave_tx, leave_rx) = mpsc::channel();
+    actor
+        .leave(&first_spot)
+        .timeout(Duration::from_secs(1))
+        .submit(move |result| leave_tx.send(result).unwrap())
+        .unwrap();
+    leave_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
     stream
-        .send_bound_actor_part(
-            &node,
-            &session,
-            "single-player",
-            Message::copy_from(b"between").unwrap(),
-            SendFlags::DONT_WAIT,
-        )
+        .send_bound_actor_part(&session, "single-player")
+        .message(Message::copy_from(b"between").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .submit()
         .expect("between send failed");
 
     let payloads = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -104,19 +108,17 @@ fn main() {
 
     let (second_tx, second_rx) = mpsc::channel();
     actor
-        .join_callback(
-            &second_spot,
-            Message::copy_from(b"join-second").unwrap(),
-            move |result| second_tx.send(result).unwrap(),
-            SendFlags::DONT_WAIT,
-            Duration::from_secs(1),
-        )
+        .join(&second_spot)
+        .message(Message::copy_from(b"join-second").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .timeout(Duration::from_secs(1))
+        .submit(move |result, parts| second_tx.send((result, parts)).unwrap())
         .expect("second join submit failed");
     accept_join(&second_spot, b"join-second");
     second_rx
         .recv_timeout(Duration::from_secs(2))
         .unwrap()
-        .unwrap();
+        .0;
 
     sample_support::wait_until(
         || payloads.lock().unwrap().len() >= 2,
@@ -125,6 +127,12 @@ fn main() {
     );
     assert_eq!(*payloads.lock().unwrap(), ["before", "between"]);
 
-    actor.leave(&second_spot).unwrap();
+    let (leave_tx, leave_rx) = mpsc::channel();
+    actor
+        .leave(&second_spot)
+        .timeout(Duration::from_secs(1))
+        .submit(move |result| leave_tx.send(result).unwrap())
+        .unwrap();
+    leave_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
     actor.close().unwrap();
 }

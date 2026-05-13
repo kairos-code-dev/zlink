@@ -90,7 +90,7 @@ internal sealed class ZLinkActorContext(
         TRequest request,
         CancellationToken cancellationToken = default)
     {
-        return JoinSpot(spotRid, request).Async<TReply>(cancellationToken);
+        return JoinSpot(spotRid, request).Submit<TReply>(cancellationToken);
     }
 }
 
@@ -110,7 +110,7 @@ internal sealed class ZLinkActorChannelSendCall<TMessage>(
         return this;
     }
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         IZLinkSendCall inner = state.Activation is { IsDisposed: false } activation
             ? new ZLinkCurrentSpotSendCall<TMessage>(activation, channelName, message)
@@ -121,7 +121,7 @@ internal sealed class ZLinkActorChannelSendCall<TMessage>(
             inner.WithPacketName(_messageName ?? string.Empty);
         }
 
-        return inner.Async(cancellationToken);
+        return inner.Submit(cancellationToken);
     }
 }
 
@@ -148,7 +148,7 @@ internal sealed class ZLinkActorChannelRequestCall<TRequest>(
         return this;
     }
 
-    public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    public ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default)
     {
         IZLinkRequestCall inner = state.Activation is { IsDisposed: false } activation
             ? new ZLinkCurrentSpotRequestCall<TRequest>(activation, channelName, request)
@@ -164,7 +164,7 @@ internal sealed class ZLinkActorChannelRequestCall<TRequest>(
             inner.WithTimeout(timeout);
         }
 
-        return inner.Async<TReply>(cancellationToken);
+        return inner.Submit<TReply>(cancellationToken);
     }
 }
 
@@ -182,7 +182,7 @@ internal sealed class ZLinkActorJoinSpotCall<TRequest>(
         return this;
     }
 
-    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default)
     {
         var timeout = _timeout ?? runtime.Registration.DefaultTimeout;
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

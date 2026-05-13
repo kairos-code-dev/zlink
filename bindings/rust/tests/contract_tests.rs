@@ -167,18 +167,10 @@ fn all_socket_types_create_successfully() {
 #[test]
 fn request_reply_surface_exists() {
     let _dealer_request = DealerSocket::request;
-    let _dealer_request_callback =
-        DealerSocket::request_callback::<fn(Result<Vec<Message>, RequestError>)>;
     let _router_request = RouterSocket::request;
-    let _router_request_callback =
-        RouterSocket::request_callback::<fn(Result<Vec<Message>, RequestError>)>;
     let _router_reply = |socket: &RouterSocket, rid: &RoutingId, seq: u64, msg: Message| {
-        socket.reply(rid, seq, msg)
+        socket.reply(rid, seq).message(msg).submit()
     };
-    let _router_reply_with_flags =
-        |socket: &RouterSocket, rid: &RoutingId, seq: u64, msg: Message, flags: SendFlags| {
-            socket.reply_with_flags(rid, seq, msg, flags)
-        };
 }
 
 #[test]
@@ -194,7 +186,9 @@ fn request_router_exposes_request_sequence() {
         .unwrap();
 
     dealer_socket
-        .send(Message::copy_from(b"plain-data").unwrap())
+        .send()
+        .message(Message::copy_from(b"plain-data").unwrap())
+        .submit()
         .unwrap();
 
     let mut received = Received::empty();
@@ -212,12 +206,10 @@ fn router_reply_with_non_empty_flags_fails_explicitly() {
     let router = ctx.router_socket().unwrap();
     let rid = RoutingId::from_bytes(b"peer-42");
     let err = router
-        .reply_with_flags(
-            &rid,
-            1,
-            Message::copy_from(b"pong").unwrap(),
-            SendFlags::DONT_WAIT,
-        )
+        .reply(&rid, 1)
+        .message(Message::copy_from(b"pong").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .submit()
         .unwrap_err();
     assert_eq!(err.code(), SubmitResult::NotSupported);
 }

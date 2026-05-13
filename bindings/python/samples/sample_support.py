@@ -71,6 +71,22 @@ def wait_until(predicate, timeout_ms=5000, description="condition"):
     raise TimeoutError(f"timed out waiting for {description}")
 
 
+def submit_request_op(op, *, timeout=2, description="request"):
+    replies = []
+
+    def on_reply(result, messages):
+        replies.append((result, [message.to_bytes() for message in messages]))
+        for message in messages:
+            message.close()
+
+    op.timeout(timeout).submit(on_reply)
+    wait_until(lambda: replies, timeout_ms=int(timeout * 1000), description=description)
+    result, messages = replies[0]
+    if result != zlink.RequestResult.OK:
+        raise RuntimeError(f"{description} failed: {result!r}")
+    return messages
+
+
 def wait_spot_peer_connected(node, timeout_ms=5000):
     wait_until(
         lambda: node.status_snapshot().connected_peer_count >= 1,

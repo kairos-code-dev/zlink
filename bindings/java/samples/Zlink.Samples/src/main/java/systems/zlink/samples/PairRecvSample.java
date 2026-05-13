@@ -21,7 +21,7 @@ public final class PairRecvSample {
             SampleSupport.waitConnected(serverMonitor, clientMonitor);
 
             try (Message outbound = Message.copyOfUtf8(SampleSupport.PAIR_PAYLOAD)) {
-                client.send(outbound);
+                client.send().message(outbound).submit();
             }
 
             try (systems.zlink.Received received = new systems.zlink.Received()) {

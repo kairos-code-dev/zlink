@@ -3,10 +3,10 @@ use std::time::Duration;
 
 use crate::ctx::Context;
 use crate::domain::Received;
-use crate::error::{ConfigError, HandlerError, RecvError, SubmitError};
+use crate::error::{ConfigError, HandlerError, RecvError};
 use crate::ffi;
-use crate::flags::{RecvFlags, SendFlags};
-use crate::message::IntoMultipart;
+use crate::flags::RecvFlags;
+use crate::service::{Empty, SendOp};
 use crate::options::CommonSocketOptions;
 
 use super::{
@@ -27,20 +27,8 @@ impl PairSocket {
         })
     }
 
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError> {
-        self.inner.send(parts)
-    }
-
-    pub fn try_send(&self, parts: impl IntoMultipart) -> Result<bool, SubmitError> {
-        self.inner.try_send(parts)
-    }
-
-    pub fn send_with_flags(
-        &self,
-        parts: impl IntoMultipart,
-        flags: SendFlags,
-    ) -> Result<bool, SubmitError> {
-        self.inner.send_with_flags(parts, flags)
+    pub fn send(&self) -> SendOp<Empty> {
+        crate::service::socket_send_op(self.inner.handle)
     }
 
     /// Canonical caller-provided storage recv.

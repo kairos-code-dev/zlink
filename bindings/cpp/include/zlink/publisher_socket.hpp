@@ -10,19 +10,6 @@ namespace zlink
 
 class publisher_socket_t : public base_socket_t
 {
-  public:
-    void publish (const std::string &topic_id_, message_t &part_)
-    {
-        const int rc = base_socket_t::publish (topic_id_, part_);
-        throw_on_error (rc);
-    }
-
-    void publish (const std::string &topic_id_, std::vector<message_t> &parts_)
-    {
-        const int rc = base_socket_t::publish (topic_id_, parts_);
-        throw_on_error (rc);
-    }
-
   protected:
     publisher_socket_t (context_t &ctx_, socket_type type_) : base_socket_t (ctx_, type_) {}
 };

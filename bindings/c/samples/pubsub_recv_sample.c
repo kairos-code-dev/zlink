@@ -14,21 +14,21 @@ typedef struct
 static void pubsub_subscriber_thread (void *arg_)
 {
     pubsub_sample_t *sample = (pubsub_sample_t *) arg_;
-    zlink_routing_id_t rid;
-    zlink_msg_t *parts = NULL;
-    size_t count = 0;
+    const zlink_routing_id_t *rid = NULL;
+    zlink_msg_t part;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     size_t topic_len = sizeof (sample->topic);
 
-    memset (&rid, 0, sizeof (rid));
-    assert (zlink_subscribe (sample->subscriber, &rid, &parts, &count,
-                             sample->topic, &topic_len, 0)
+    assert (zlink_msg_init (&part) == 0);
+    assert (zlink_subscribe_part (sample->subscriber, &rid, sample->topic,
+                                  topic_len, &topic_len, &part, &has_more, 0)
             == ZLINK_RECV_OK);
-    assert (count == 1);
-    sample->payload_len = zlink_msg_size (&parts[0]);
+    assert (has_more == ZLINK_PART_FINAL);
+    sample->payload_len = zlink_msg_size (&part);
     assert (sample->payload_len == strlen (k_pubsub_payload));
-    memcpy (sample->payload, zlink_msg_data (&parts[0]), sample->payload_len);
+    memcpy (sample->payload, zlink_msg_data (&part), sample->payload_len);
     sample->payload[sample->payload_len] = '\0';
-    zlink_multipart_close (parts, count);
+    zlink_msg_close (&part);
 }
 
 static void pubsub_publisher_thread (void *arg_)
@@ -37,7 +37,8 @@ static void pubsub_publisher_thread (void *arg_)
     zlink_msg_t outbound;
 
     make_message (&outbound, k_pubsub_payload);
-    assert (zlink_publish (sample->publisher, k_pubsub_topic, &outbound, 1, 0)
+    assert (zlink_publish_part (sample->publisher, k_pubsub_topic, &outbound,
+                                0, ZLINK_PART_FINAL)
             == ZLINK_SUBMIT_OK);
 }
 

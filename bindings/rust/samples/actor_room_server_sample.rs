@@ -15,7 +15,9 @@ fn accept_next_join(spot: &zlink::Spot) {
         || match spot.recv_actor_join_with_flags(RecvFlags::DONT_WAIT) {
             Ok(Some(request)) => {
                 assert_eq!(request.message.as_str().unwrap(), "enter-room");
-                spot.reply_actor_join(&request, true, Message::copy_from(b"accepted").unwrap())
+                spot.reply_actor_join(&request, true)
+                    .message(Message::copy_from(b"accepted").unwrap())
+                    .submit()
                     .unwrap();
                 true
             }
@@ -38,25 +40,30 @@ fn main() {
     let stream = ctx.stream_socket().expect("stream socket failed");
     let session = zlink::RoutingId::from_bytes(b"room-session");
     let actor_ref = actor.actor_ref().unwrap();
+    let (bind_tx, bind_rx) = mpsc::channel();
     stream
-        .bind_actor(&node, &session, &actor_ref, Duration::from_secs(1))
+        .bind_actor(&session, &actor_ref)
+        .timeout(Duration::from_secs(1))
+        .submit(move |result| bind_tx.send(result).unwrap())
         .expect("stream actor bind failed");
+    bind_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
 
     let (tx, rx) = mpsc::channel();
     actor
-        .join_callback(
-            &spot,
-            Message::copy_from(b"enter-room").unwrap(),
-            move |result| {
-                tx.send(result).unwrap();
+        .join(&spot)
+        .message(Message::copy_from(b"enter-room").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .timeout(Duration::from_secs(1))
+        .submit(
+            move |result, parts| {
+                tx.send((result, parts)).unwrap();
             },
-            SendFlags::DONT_WAIT,
-            Duration::from_secs(1),
         )
         .expect("actor join submit failed");
     accept_next_join(&spot);
     let join_result = rx.recv_timeout(Duration::from_secs(2)).unwrap();
-    assert_eq!(join_result.unwrap()[0].as_str().unwrap(), "accepted");
+    assert_eq!(join_result.0.result, zlink::RequestResult::Ok);
+    assert_eq!(join_result.1[0].as_str().unwrap(), "accepted");
 
     let payload = Arc::new(Mutex::new(None::<String>));
     let payload_cb = Arc::clone(&payload);
@@ -77,13 +84,10 @@ fn main() {
     .expect("dispatch handler failed");
 
     stream
-        .send_bound_actor_part(
-            &node,
-            &session,
-            "room-player-1",
-            Message::copy_from(b"move:north").unwrap(),
-            SendFlags::DONT_WAIT,
-        )
+        .send_bound_actor_part(&session, "room-player-1")
+        .message(Message::copy_from(b"move:north").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .submit()
         .expect("stream actor send failed");
 
     sample_support::wait_until(
@@ -92,7 +96,13 @@ fn main() {
         "actor payload",
     );
 
-    actor.leave(&spot).unwrap();
+    let (leave_tx, leave_rx) = mpsc::channel();
+    actor
+        .leave(&spot)
+        .timeout(Duration::from_secs(1))
+        .submit(move |result| leave_tx.send(result).unwrap())
+        .unwrap();
+    leave_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
     actor.close().unwrap();
     drop(stream);
 }

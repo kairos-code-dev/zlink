@@ -190,25 +190,32 @@ internal static partial class NativeMethods
         IntPtr discovery);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_stream_bind_actor(IntPtr node,
-        IntPtr stream,
+    internal static extern int zlink_stream_bind_actor(IntPtr stream,
         ref ZlinkRoutingId sessionRid,
         ref ZlinkActorRef actor,
+        IntPtr handler,
+        IntPtr userData,
         uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_stream_unbind_actor(IntPtr node,
-        IntPtr stream,
+    internal static extern int zlink_stream_unbind_actor(IntPtr stream,
         ref ZlinkRoutingId sessionRid,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
+        IntPtr handler,
+        IntPtr userData,
         uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_stream_send_bound_actor_part(IntPtr node,
-        IntPtr stream,
+    internal static extern int zlink_stream_send_bound_actor_part(IntPtr stream,
         ref ZlinkRoutingId sessionRid,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
         ref ZlinkMsg part,
         int flags,
         ZlinkPartFlag partFlag);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_stream_bound_actors(IntPtr stream,
+        ref ZlinkRoutingId sessionRid,
+        IntPtr entries,
+        ref nuint count);
 }

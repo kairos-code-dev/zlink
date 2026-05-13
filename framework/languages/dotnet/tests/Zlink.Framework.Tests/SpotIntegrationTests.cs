@@ -226,7 +226,7 @@ public sealed class SpotIntegrationTests
 	                            "game.stage",
 	                            "stage.external",
 	                            new ExternalStageEvent("external"))
-	                        .Async();
+	                        .Submit();
 	                    await Task.Yield();
 	                    return recorder.ExternalEvents.Count;
 	                },
@@ -242,7 +242,7 @@ public sealed class SpotIntegrationTests
             var rawReceived = "probe-unavailable";
             using (var probeEnvelope = ZLinkEnvelopeCodec.Encode(
                        new ZLinkEnvelopeHeader(
-                           ZLinkMessageKind.Event,
+                           ZLinkMessageKind.Publish,
                            "game.stage",
                            nameof(ExternalStageEvent),
                            ZLinkEnvelopeCodec.DefaultContentType,
@@ -354,7 +354,7 @@ public sealed class SpotIntegrationTests
 	                            "game.stage",
 	                            "stage.external",
 	                            new ExternalStageEvent("raw"))
-	                        .Async();
+	                        .Submit();
 	                    await Task.Yield();
 
                     try
@@ -433,6 +433,10 @@ public sealed class SpotIntegrationTests
         Assert.Equal("room-2", secondReply.RoomId);
         Assert.Equal(second.SpotRid, actor.Spot?.Context.SpotRid);
         Assert.Equal(second.SpotRid, actor.Context.SpotRid);
+        await RetryAsync(
+            () => recorder.SpotActorJoins.Contains($"actor-1@{second.SpotRid.ToHex()}")
+                && recorder.SpotActorLeaves.Contains($"actor-1@{first.SpotRid.ToHex()}"),
+            TimeSpan.FromSeconds(5));
 
         var contextActor = new TestActor("actor-context", recorder);
         await actorRuntime.AttachActorAsync(contextActor, new TestStream("session-context"));
@@ -759,7 +763,7 @@ public sealed class SpotIntegrationTests
         {
             _events.RecordInitialized(Context.SpotRid, _scopeMarker.Id);
 
-            await _spotClient.SendChannel("orders", new StageBootCommand(_scopeMarker.Id)).Async(cancellationToken);
+            await _spotClient.SendChannel("orders", new StageBootCommand(_scopeMarker.Id)).Submit(cancellationToken);
         }
 
         public ValueTask OnClosingAsync(CancellationToken cancellationToken)
@@ -828,6 +832,34 @@ public sealed class SpotIntegrationTests
             await Context.LeaveActorAsync(actor, cancellationToken);
             actor.DetachSpot(this);
             actor.CurrentRoomId = null;
+        }
+
+        public ValueTask OnActorJoinedAsync(
+            ZLinkSpotActorLifecycleInfo info,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            if (info.CurrentActorId is { } actorId
+                && info.CurrentSpotRid is { } spotRid)
+            {
+                _recorder.SpotActorJoins.Enqueue($"{actorId}@{spotRid.ToHex()}");
+            }
+
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnActorLeftAsync(
+            ZLinkSpotActorLifecycleInfo info,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            if (info.PreviousActorId is { } actorId
+                && info.PreviousSpotRid is { } spotRid)
+            {
+                _recorder.SpotActorLeaves.Enqueue($"{actorId}@{spotRid.ToHex()}");
+            }
+
+            return ValueTask.CompletedTask;
         }
 
         private sealed class ScopeLease(ActorStageSpot spot) : IDisposable
@@ -915,7 +947,7 @@ public sealed class SpotIntegrationTests
                     "actor-pre-api",
                     new ActorContextChannelReq(message))
                 .WithTimeout(TimeSpan.FromSeconds(5))
-                .Async<ActorContextChannelRes>(cancellationToken);
+                .Submit<ActorContextChannelRes>(cancellationToken);
 
             actor.Recorder.ChannelReplies.Enqueue($"before:{reply.Value}");
         }
@@ -933,7 +965,7 @@ public sealed class SpotIntegrationTests
                     "actor-post-api",
                     new ActorContextChannelReq(message))
                 .WithTimeout(TimeSpan.FromSeconds(5))
-                .Async<ActorContextChannelRes>(cancellationToken);
+                .Submit<ActorContextChannelRes>(cancellationToken);
 
             actor.Recorder.ChannelReplies.Enqueue($"after:{reply.Value}");
         }
@@ -951,7 +983,7 @@ public sealed class SpotIntegrationTests
                     global::Systems.Zlink.RoutingId.FromString(message),
                     new JoinStageRequest("room-context"))
                 .WithTimeout(TimeSpan.FromSeconds(5))
-                .Async<JoinStageReply>(cancellationToken);
+                .Submit<JoinStageReply>(cancellationToken);
 
             actor.CurrentRoomId = reply.RoomId;
         }
@@ -1038,6 +1070,10 @@ public sealed class SpotIntegrationTests
         public ConcurrentQueue<string> ChannelReplies { get; } = new();
 
         public ConcurrentQueue<string> ScopeViolations { get; } = new();
+
+        public ConcurrentQueue<string> SpotActorJoins { get; } = new();
+
+        public ConcurrentQueue<string> SpotActorLeaves { get; } = new();
 
         public volatile bool ConcurrentViolation;
 
@@ -1178,7 +1214,7 @@ public sealed class SpotIntegrationTests
         {
             recorder.RecordTick();
             await spotClient.Publish("stage.local", new LocalStageEvent(spot.Context.SpotRid.ToString()))
-                .Async(cancellationToken);
+                .Submit(cancellationToken);
         }
     }
 

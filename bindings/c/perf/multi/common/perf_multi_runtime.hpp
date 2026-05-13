@@ -745,7 +745,7 @@ inline int zlink_stream_send_msg(void *socket_,
                                  int flags_)
 {
     const size_t size = zlink_msg_size(msg_);
-    return ::zlink_send_rid(
+    return ::perf_zlink_send_rid_parts (
              socket_, rid_, msg_, 1,
              static_cast<zlink_send_flags_t>(flags_))
              == 0
@@ -753,14 +753,14 @@ inline int zlink_stream_send_msg(void *socket_,
              : -1;
 }
 
-inline int zlink_subscribe(void *sub_,
+inline int perf_zlink_subscribe_parts (void *sub_,
                            zlink_msg_t **parts_,
                            size_t *part_count_,
                            int flags_,
                            char *topic_id_out_,
                            size_t *topic_id_len_)
 {
-    return ::zlink_subscribe(
+    return ::perf_zlink_subscribe_parts (
       sub_,
       NULL,
       parts_,

@@ -190,18 +190,6 @@ public enum RequestResult
 public delegate void RequestCallback(RequestResult result,
     IReadOnlyList<Message> parts);
 
-public enum ActorCreateStatus
-{
-    Created = 1,
-    Existing = 2
-}
-
-public enum ActorAdmissionResult
-{
-    Accept = 1,
-    Reject = 2
-}
-
 internal enum RecvResult
 {
     Ok = 0,

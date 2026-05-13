@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 if(NOT TARGET zlink_c)
-  message(FATAL_ERROR "zlink_c target not found. Build bindings/c first.")
+  message(FATAL_ERROR "C binding target not found. Build bindings/c first.")
 endif()
 
 get_filename_component(ZLINK_C_BINDINGS_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
@@ -19,10 +19,10 @@ function(add_c_sample target_name source_file)
     ${ZLINK_CORE_INCLUDE_DIR})
   if(UNIX AND NOT WIN32)
     set_target_properties(${target_name} PROPERTIES
-      BUILD_RPATH "$<TARGET_FILE_DIR:zlink_c>;${ZLINK_C_CORE_RUNTIME_DIR}")
+      BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")
   elseif(APPLE)
     set_target_properties(${target_name} PROPERTIES
-      BUILD_RPATH "$<TARGET_FILE_DIR:zlink_c>;${ZLINK_C_CORE_RUNTIME_DIR}")
+      BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")
   endif()
   if(MSVC)
     target_compile_options(${target_name} PRIVATE /UNDEBUG)
@@ -47,7 +47,7 @@ function(add_c_sample target_name source_file)
     )
     if(WIN32)
       set_tests_properties(sample_smoke_${target_name} PROPERTIES
-        ENVIRONMENT "PATH=$<TARGET_FILE_DIR:zlink_c>;${ZLINK_C_CORE_RUNTIME_DIR};$ENV{PATH}")
+        ENVIRONMENT "PATH=${ZLINK_C_CORE_RUNTIME_DIR};$ENV{PATH}")
     endif()
   endif()
 endfunction()

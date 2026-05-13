@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 async function reservePort() {
   const server = net.createServer();

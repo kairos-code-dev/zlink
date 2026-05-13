@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET SPOT Samples](spot-samples.ko.md) | [다음: TicTacToe Game Sample 초안](tictactoe-game-sample.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [인터페이스](./handler-interfaces.ko.md)
@@ -55,6 +59,15 @@ public readonly record struct ZLinkStreamDiagnostic(
     int NativeCode,
     string? Message);
 
+public interface IZLinkSessionPacket
+{
+    string PacketName { get; }
+
+    IReadOnlyDictionary<string, string> Metadata { get; }
+
+    TMessage Decode<TMessage>();
+}
+
 public interface IZLinkSession
 {
     IZLinkSessionContext Context { get; set; }
@@ -68,8 +81,7 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        ZLinkStreamHeader header,
-        Message body,
+        IZLinkSessionPacket packet,
         CancellationToken cancellationToken);
 }
 
@@ -80,8 +92,7 @@ public interface IZLinkSessionActorDispatchContext
         string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> CreateRemoteActorAsync(
-        RoutingId actorNodeId,
+    ValueTask<IZLinkActorRef> CreateActorHandleAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
@@ -89,14 +100,12 @@ public interface IZLinkSessionActorDispatchContext
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
 
     ValueTask DispatchToActorAsync(
-        ZLinkStreamHeader header,
-        Message body,
+        IZLinkSessionPacket packet,
         CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
-        ZLinkStreamHeader header,
-        Message body,
+        IZLinkSessionPacket packet,
         CancellationToken cancellationToken = default);
 }
 
@@ -138,8 +147,8 @@ public interface IZLinkSessionContext :
 
 ## 3. header session 샘플
 
-아래 샘플은 `playhouse`의 `RouteHeader + Payload`처럼, header는 고정 메타데이터로
-읽고 body는 `header.MsgId`를 보고 각 packet 타입으로 다시 parse하는 방향이다.
+아래 샘플은 `playhouse`의 `RouteHeader + Payload`처럼, framework가 header를 읽어 만든
+packet name을 기준으로 각 payload 타입을 decode하는 방향이다.
 
 ```csharp
 using Gateway.Protocol; // protoc generated
@@ -181,15 +190,14 @@ public sealed class ClientHeaderSession
     }
 
     public async ValueTask OnDispatchAsync(
-        ZLinkStreamHeader header,
-        Message body,
+        IZLinkSessionPacket packet,
         CancellationToken cancellationToken)
     {
-        switch (header.Name)
+        switch (packet.PacketName)
         {
             case "ClientInput":
             {
-                ClientInput input = body.Parse<ClientInput>();
+                ClientInput input = packet.Decode<ClientInput>();
 
                 await Context
                     .SendChannel(
@@ -205,7 +213,7 @@ public sealed class ClientHeaderSession
 
             case "Ping":
             {
-                Ping ping = body.Parse<Ping>();
+                Ping ping = packet.Decode<Ping>();
 
                 await Context
                     .SendChannel(
@@ -233,15 +241,14 @@ public sealed class ClientHeaderSession
 
 이 샘플을 읽을 때 중요한 점은 아래와 같다.
 
-- application은 `ZLinkStreamHeader.Name`을 dispatch 기준으로 쓴다.
-- body는 고정 타입 하나로 바로 올리지 않는다.
-- header session이 `header.MsgId`를 보고 `ClientInput`, `Ping` 같은 각 packet
-  타입으로
-  parse한다.
+- application은 `IZLinkSessionPacket.PacketName`을 dispatch 기준으로 쓴다.
+- packet은 고정 타입 하나로 바로 올리지 않는다.
+- header session이 내부 header를 해석해 `ClientInput`, `Ping` 같은 packet name을
+  만들고, application은 그 이름에 맞는 타입으로 decode한다.
 - application은 recv loop 대신 session callback만 구현한다.
 - 다른 서버로의 outbound 호출은 session이 `Context.SendChannel(...)` 또는
   `Context.RequestChannel(...)`로 처리한다.
-- body parse는 `body.Parse<T>()` 같은 extension helper를 통해 처리한다.
+- packet decode는 `packet.Decode<T>()` 같은 helper를 통해 처리한다.
 - protobuf generated 타입은 `IMessage<T>` 계열인지 보고 protobuf로 해석한다.
 - 그 밖의 일반 class는 json으로 해석하는 규칙을 샘플 기본값으로 둔다.
 - 이 helper는 내부에서 `Message.AsReadOnlySpan()`를 사용해서 추가 복사를 가능한 한
@@ -255,19 +262,22 @@ public sealed class ClientHeaderSession
 - `RouteHeader.MsgId`를 dispatch 기준으로 쓴다.
 - `packet.Payload`를 각 protobuf 타입으로 parse한다.
 
-예를 들면 serializer extension은 아래처럼 하나로 둘 수 있다.
+예를 들면 session packet decode는 아래처럼 target type 기준으로 serializer를 고를 수
+있다. 실제 body bytes 접근은 framework packet 내부 구현에 숨긴다.
 
 ```csharp
-public static class MessageExtensions
+public sealed class ZLinkSessionPacket : IZLinkSessionPacket
 {
-    public static T Parse<T>(this Message message)
+    public string PacketName { get; }
+
+    public IReadOnlyDictionary<string, string> Metadata { get; }
+
+    public T Decode<T>()
     {
         if (IsGeneratedProtoMessage(typeof(T)))
-            return ParseGeneratedProto<T>(message);
+            return DecodeGeneratedProto<T>();
 
-        return JsonSerializer.Deserialize<T>(message.AsReadOnlySpan())
-            ?? throw new InvalidOperationException(
-                $"Failed to deserialize {typeof(T).Name}");
+        return DecodeJson<T>();
     }
 
     private static bool IsGeneratedProtoMessage(Type type)
@@ -277,13 +287,17 @@ public static class MessageExtensions
             && iface.GetGenericTypeDefinition() == typeof(IMessage<>)
             && iface.GenericTypeArguments[0] == type);
     }
+
+    private T DecodeGeneratedProto<T>() => throw new NotImplementedException();
+
+    private T DecodeJson<T>() => throw new NotImplementedException();
 }
 ```
 
 즉 이 샘플은 아래 규칙을 전제로 한다.
 
-- protobuf generated 타입이면 `body.Parse<T>()`가 protobuf parser를 고른다.
-- 일반 POCO class면 `body.Parse<T>()`가 json parser를 고른다.
+- protobuf generated 타입이면 `packet.Decode<T>()`가 protobuf parser를 고른다.
+- 일반 POCO class면 `packet.Decode<T>()`가 json parser를 고른다.
 - application은 serializer 이름보다 "이 payload를 어떤 타입으로 읽는가"에 더
   집중한다.
 
@@ -293,7 +307,7 @@ public static class MessageExtensions
 
 ## 4. header session 샘플
 
-아래 샘플은 framework가 decode한 Header와 body를 그대로 처리하는 경우다.
+아래 샘플은 framework가 decode한 packet을 그대로 처리하는 경우다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -329,8 +343,7 @@ public sealed class ClientHeaderSession : IZLinkSession
     }
 
     public ValueTask OnDispatchAsync(
-        ZLinkStreamHeader header,
-        Message payload,
+        IZLinkSessionPacket packet,
         CancellationToken cancellationToken)
     {
         return Context
@@ -342,18 +355,18 @@ public sealed class ClientHeaderSession : IZLinkSession
 
 이 샘플은 아래 상황에 더 가깝다.
 
-- framework가 decode한 header/body packet을 그대로 응답하고 싶다.
+- framework가 decode한 session packet을 그대로 응답하고 싶다.
 - 그래도 recv loop는 직접 만들고 싶지 않다.
 - 필요하면 현재 session에서 `Context.Reply(...)`로 응답을 보낼 수 있어야 한다.
 
 ## 5. session 처리 수준
 
 - header session
-  - C API가 이미 잘라 준 `header/body` packet 처리
+  - C API가 이미 잘라 준 stream frame을 framework packet으로 감싼 뒤 처리
   - session lifecycle과 packet callback을 함께 구현
-  - body는 `msgId`를 보고 각 packet 타입으로 parse
+  - packet name을 보고 각 packet 타입으로 decode
 
-현재 구현의 stream session 표면은 header/body packet 처리에 맞춘다.
+현재 구현의 stream session 표면은 framework session packet 처리에 맞춘다.
 raw chunk를 직접 다루는 표면은 MVP 범위에 넣지 않는다.
 
 ## 6. recv 방식은 왜 샘플에 없는가
@@ -374,7 +387,7 @@ raw chunk를 직접 다루는 표면은 MVP 범위에 넣지 않는다.
 - `OnConnectedAsync(...)`는 `ConnectionReady` 기준으로 읽는다.
 - `OnErrorAsync(...)`는 session-correlatable transport 오류만 받고, handshake 실패와
   socket/node 단위 오류는 monitoring으로 분리한다.
-- body parse와 encode helper는 framework 본체가 아니라 serializer 확장 패키지가
+- packet decode와 encode helper는 framework 본체가 아니라 serializer 확장 패키지가
   맡는다.
 - `Message.AsReadOnlySpan()` 기반 helper를 기본으로 해서 불필요한 복사를 줄인다.
 - protobuf/json/messagepack serializer는 확장 패키지로 분리한다.

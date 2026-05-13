@@ -29,7 +29,10 @@ public final class PerfStreamHooks {
         try (packet) {
             SendFlags effectiveFlags =
                 flags == SendFlags.NONE ? SendFlags.DONT_WAIT : flags;
-            if (!socket.send(routingId, packet, effectiveFlags)) {
+            if (!socket.send(routingId)
+                .message(packet)
+                .flags(effectiveFlags)
+                .submit()) {
                 throw new SubmitException(SubmitResult.BACKPRESSURED);
             }
         }

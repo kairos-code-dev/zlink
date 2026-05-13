@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET Interface Catalog](handler-interfaces.ko.md) | [다음: ZLink Framework ASP.NET Core SPOT Integration](aspnet-core-spot.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Registry](./aspnet-core-registry.ko.md)
@@ -607,13 +611,12 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | `IZLinkClient` | `AddClientServerChannel` | `channelName` | 1:1 request / send (DEALER 측) |
 | `IZLinkEventPublisher` | `AddFanoutChannel` | `channelName + topic` | 이벤트 publish (PUB 측) |
-| `IZLinkRouteClient` | `AddRouteChannel` / `AddRouteMeshChannel` | `routerChannelId + targetNodeRid` | 명시적 노드 라우팅 (DEALER↔ROUTER) |
 
-세 client 모두 `IZLinkClient`와 같은 fluent builder 결을 따른다 -- 호출 chain
+두 client 모두 `IZLinkClient`와 같은 fluent builder 결을 따른다 -- 호출 chain
 끝의 `.Submit(...)` 또는 `.Submit<TReply>(...)`로 마무리한다. `PacketName`,
 `Timeout` 같은 변형은 그 사이에 이어 붙인다.
 
-세 인터페이스의 전체 정의는
+두 인터페이스의 전체 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 §5에 모여 있다.
 
 ### 5.2 IZLinkClient
@@ -623,8 +626,8 @@ sequenceDiagram
 
 - 기본 packet key는 request / message 타입 이름이다.
 - 특정 채널의 ROUTER(server)를 `rid`로 직접 지정해 호출하는 표면은 두지 않는다.
-  `rid`로 직접 보내는 경로는 routed 채널(`IZLinkRouteClient`)이나 SPOT의
-  spot-to-spot 호출에서만 다룬다.
+  `rid`로 직접 보내는 경로는 framework backend 또는 별도 adapter package의 internal
+  route transport helper에서만 다룬다.
 - `IZLinkClient`를 쓴다고 해서 local ROUTER(server)가 반드시 필요한 것은 아니다.
   local handler를 등록하지 않은 앱은 dealer-only outbound runtime만으로 충분히
   동작한다. 다만 그 경우에도 **어떤** remote 채널에 접근할지는 startup 단계에서
@@ -659,56 +662,25 @@ app.MapPost("/profiles/refresh", async (
 });
 ```
 
-### 5.4 IZLinkRouteClient
+### 5.4 routed channel transport helper
 
-`AddRouteChannel(...)` / `AddRouteMeshChannel(...)`로 선언한 routed 채널에서 쓴다.
-일반 채널과 달리 호출 시점에 **목적지 노드의 `RoutingId`를 직접 지정**한다.
-호출 키는 **`routerChannelId + targetNodeRid`** 두 축이다.
+`AddRouteChannel(...)` / `AddRouteMeshChannel(...)`로 선언한 routed 채널은 actor,
+spot, session actor dispatch 같은 framework 기능이 내부 transport로 사용한다. 이
+경로는 `routerChannelId + targetNodeRid`를 알아야 하므로 application public client로
+노출하지 않는다. application code는 `IZLinkActorClient`, `IZLinkSpotClient`,
+`IZLinkSessionProxy`처럼 resolver나 actor-session binding이 위치값을 숨기는 표면을
+사용한다.
 
-- routed 채널은 같은 routerChannelId를 공유하는 노드 집합 안에서 서로 임의 방향
-  으로 send / request를 보낼 수 있다. 어느 노드를 지정할지는 호출자가 application
-  로직으로 정한다 (예: `IZLinkActorPlayRouteResolver` 같은 resolver를 통해 actor
-  id → `RoutingId`로 풀어 옴).
-- 일반 채널(`IZLinkClient`)과 달리 같은 routed 채널 안에서 자동 + 수동 연결을
-  섞으면 startup validation 오류다 (§3.1 표 끝의 인용 참고).
-- handler 쪽에서는 들어온 메시지의 source `RoutingId`를
-  `ZLinkRouteSendContext.SourceNodeRid` / `ZLinkRouteRequestContext.SourceNodeRid`
-  에서 읽는다.
-
-```csharp
-public sealed class PlayDispatchHandlers
-{
-    private readonly IZLinkRouteClient _route;
-    private readonly IZLinkActorPlayRouteResolver _resolver;
-
-    public PlayDispatchHandlers(
-        IZLinkRouteClient route,
-        IZLinkActorPlayRouteResolver resolver)
-    {
-        _route = route;
-        _resolver = resolver;
-    }
-
-    public async ValueTask SendToActorAsync(
-        string actorId,
-        PlaceMarkCommand command,
-        CancellationToken cancellationToken)
-    {
-        var route = await _resolver.ResolvePlayRouteAsync(actorId, cancellationToken);
-
-        await _route
-            .SendTo(route.RouterChannelId, route.TargetNodeRid, command)
-            .Submit(cancellationToken);
-    }
-}
-```
+handler 쪽에서 source `RoutingId`가 필요한 backend adapter는
+`ZLinkRouteSendContext.SourceNodeRid` / `ZLinkRouteRequestContext.SourceNodeRid`를 읽을
+수 있지만, 일반 application handler의 기본 모델은 channel name, actor id, spot key를
+중심으로 둔다.
 
 ### 5.5 HTTP handler에서의 사용
 
-§5.2–5.4의 세 client는 ZLink handler 안에서만 쓰는 것이 아니다. 기존
+§5.2–5.3의 두 client는 ZLink handler 안에서만 쓰는 것이 아니다. 기존
 `ASP.NET Core` HTTP handler에서도 그대로 DI로 주입받아 쓸 수 있어야 한다.
-아래는 `IZLinkClient` 예시지만, `IZLinkEventPublisher`와 `IZLinkRouteClient`도
-같은 방식으로 주입한다.
+아래는 `IZLinkClient` 예시지만, `IZLinkEventPublisher`도 같은 방식으로 주입한다.
 
 ```csharp
 app.MapPost("/profiles/get", async (

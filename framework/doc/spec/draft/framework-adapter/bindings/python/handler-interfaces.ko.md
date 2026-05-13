@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework For Python](README.ko.md) | [다음: ZLink Framework FastAPI Channel Messaging](fastapi-channel-messaging.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [Python 묶음](./README.ko.md) | [channel](./fastapi-channel-messaging.ko.md) | [SPOT](./fastapi-spot.ko.md) | [STREAM](./fastapi-stream.ko.md) | [Monitoring](./fastapi-monitoring.ko.md) | [Registry](./fastapi-registry.ko.md)

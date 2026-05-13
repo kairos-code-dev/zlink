@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET Backend Dependency Policy](backend-dependency-policy.ko.md) | [다음: ZLink Framework .NET SPOT Samples](spot-samples.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md)
@@ -174,7 +178,7 @@ public sealed class WarmupService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         IZLinkEndpointConnections profileConnections = await _connections
-            .GetClientAsync("profile", stoppingToken);
+            .GetClientServerClientAsync("profile", stoppingToken);
 
         await profileConnections.ConnectAsync(
             "tcp://10.0.10.17:7101",

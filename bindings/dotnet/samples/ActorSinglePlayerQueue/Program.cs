@@ -7,8 +7,11 @@ if (!SampleSupport.IsNativeAvailable())
 static async Task JoinAndAccept(Spot spot, Actor actor)
 {
     using Message joinMessage = Message.FromString("join:queue");
-    Task<IReadOnlyList<Message>> joinTask = actor.Join(spot, joinMessage,
-        TimeSpan.FromSeconds(2));
+    Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
+        actor.Join(spot)
+            .Message(joinMessage)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .SubmitAsync();
     ActorJoinRequest? request = null;
     SampleSupport.WaitOrThrow(() =>
     {
@@ -16,8 +19,8 @@ static async Task JoinAndAccept(Spot spot, Actor actor)
         return request != null;
     }, 2000, "actor queue join request");
     using Message reply = Message.FromString("accepted:queue");
-    spot.ReplyActorJoin(request!, accepted: true, reply);
-    foreach (Message part in await joinTask.WaitAsync(TimeSpan.FromSeconds(5)))
+    spot.ReplyActorJoin(request!, accepted: true).Message(reply).Submit();
+    foreach (Message part in (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
         part.Dispose();
 }
 
@@ -55,20 +58,30 @@ using var client = SampleSupport.ConnectRawClient(port);
 SampleSupport.SendStreamPacket(client.GetStream(), "open"u8);
 if (!sessionReady.Wait(5000) || sessionRid == null)
     throw new TimeoutException("stream session");
-stream.BindActor(node, sessionRid.Value, actor.Ref, TimeSpan.FromSeconds(2));
+Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor.Ref)
+    .Timeout(TimeSpan.FromSeconds(2))
+    .SubmitAsync()
+    .WaitAsync(TimeSpan.FromSeconds(5)));
 
 await JoinAndAccept(spot, actor);
 
 using Message first = Message.FromString("queue:first");
-stream.SendBoundActor(node, sessionRid.Value, actor.Ref.ActorId, first);
+stream.SendBoundActor(sessionRid.Value, actor.Ref.ActorId)
+    .Message(first)
+    .Submit();
 SampleSupport.WaitOrThrow(
     () => actorMessages.Contains("queue:first"),
     5000,
     "first actor message");
 
-actor.Leave(spot);
+Zlink.MultipartClose(await actor.Leave(spot)
+    .Timeout(TimeSpan.FromSeconds(2))
+    .SubmitAsync()
+    .WaitAsync(TimeSpan.FromSeconds(5)));
 using Message second = Message.FromString("queue:second");
-stream.SendBoundActor(node, sessionRid.Value, actor.Ref.ActorId, second);
+stream.SendBoundActor(sessionRid.Value, actor.Ref.ActorId)
+    .Message(second)
+    .Submit();
 await JoinAndAccept(spot, actor);
 SampleSupport.WaitOrThrow(
     () => actorMessages.Contains("queue:second"),
@@ -76,6 +89,11 @@ SampleSupport.WaitOrThrow(
     "queued actor message");
 
 Console.WriteLine("[actor/queue] preserved actor message across rejoin");
-actor.Leave(spot);
-stream.UnbindActor(node, sessionRid.Value, actor.Ref.ActorId,
-    TimeSpan.FromSeconds(2));
+Zlink.MultipartClose(await actor.Leave(spot)
+    .Timeout(TimeSpan.FromSeconds(2))
+    .SubmitAsync()
+    .WaitAsync(TimeSpan.FromSeconds(5)));
+Zlink.MultipartClose(await stream.UnbindActor(sessionRid.Value, actor.Ref.ActorId)
+    .Timeout(TimeSpan.FromSeconds(2))
+    .SubmitAsync()
+    .WaitAsync(TimeSpan.FromSeconds(5)));

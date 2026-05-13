@@ -49,7 +49,19 @@ fn request_spot_reply(
     msg: Message,
     timeout: Duration,
 ) -> Option<Vec<Message>> {
-    match spot.request_to_spot(node_rid, spot_rid, vec![msg], timeout) {
+    let (tx, rx) = mpsc::channel();
+    let submit = spot
+        .request_to_spot(node_rid, spot_rid)
+        .message(msg)
+        .timeout(timeout)
+        .submit_callback(move |result| {
+            let _ = tx.send(result);
+        });
+    match submit.and_then(|_| {
+        rx.recv()
+            .map_err(|_| SubmitError::new(SubmitResult::InternalError, libc::EINVAL))?
+            .map_err(|err| SubmitError::new(SubmitResult::InternalError, err.internal_errno()))
+    }) {
         Ok(parts) => Some(parts),
         Err(err) => {
             if std::env::var("PERF_RUST_MULTI_SPOT_REQREP_TRACE")

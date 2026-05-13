@@ -696,7 +696,6 @@ class Message:
     def to_bytes(self) -> bytes: ...                                         # Raises: ConfigError
     def get_property(self, name: str) -> str | None: ...                     # Raises: ConfigError
     def ref_count(self) -> int: ...                                          # Raises: ConfigError
-    def send(self, socket) -> None: ...                                      # Raises: SubmitError
     def close(self) -> None: ...                                             # Raises: CloseError
     # supports `with` and `async with` — __exit__ raises CloseError
 ```

@@ -40,6 +40,108 @@ interface SendContext {
   send(parts: readonly Message[], flags: SendFlags): boolean;
 }
 
+/**
+ * Minimal interfaces used by Received.send()/reply() to return operation
+ * builders. Defined locally to avoid a dependency cycle with canonical.ts.
+ */
+interface ReceivedSendOp {
+  message(message: Message | BufferLike): ReceivedSendSubmitOp;
+}
+interface ReceivedSendSubmitOp {
+  message(message: Message | BufferLike): ReceivedSendSubmitOp;
+  flags(flags: SendFlags): ReceivedSendSubmitOp;
+  submit(): boolean;
+}
+interface ReceivedReplyOp {
+  message(message: Message | BufferLike): ReceivedReplySubmitOp;
+}
+interface ReceivedReplySubmitOp {
+  message(message: Message | BufferLike): ReceivedReplySubmitOp;
+  flags(flags: SendFlags): ReceivedReplySubmitOp;
+  submit(): void;
+}
+
+class ReceivedOpPayload {
+  private readonly _parts: Array<Message | BufferLike> = [];
+  private _submitted = false;
+
+  append(message: Message | BufferLike): void {
+    this.ensureOpen();
+    this._parts.push(message);
+  }
+
+  ensureOpen(): void {
+    if (this._submitted) {
+      throw new TypeError('operation has already been submitted');
+    }
+  }
+
+  consume(): readonly (Message | BufferLike)[] {
+    this.ensureOpen();
+    if (this._parts.length === 0) {
+      throw new TypeError('operation requires at least one message');
+    }
+    this._submitted = true;
+    return this._parts;
+  }
+}
+
+function asMessage(value: Message | BufferLike): Message {
+  return value instanceof Message ? value : Message.from(value);
+}
+
+class ReceivedSendOperation implements ReceivedSendOp, ReceivedSendSubmitOp {
+  private readonly _invoke: (parts: readonly Message[], flags: SendFlags) => boolean;
+  private readonly _payload = new ReceivedOpPayload();
+  private _flags: SendFlags = SendFlags.None;
+
+  constructor(invoke: (parts: readonly Message[], flags: SendFlags) => boolean) {
+    this._invoke = invoke;
+  }
+
+  message(message: Message | BufferLike): ReceivedSendSubmitOp {
+    this._payload.append(message);
+    return this;
+  }
+
+  flags(flags: SendFlags): ReceivedSendSubmitOp {
+    this._payload.ensureOpen();
+    this._flags = flags;
+    return this;
+  }
+
+  submit(): boolean {
+    const parts = this._payload.consume().map(asMessage);
+    return this._invoke(parts, this._flags);
+  }
+}
+
+class ReceivedReplyOperation implements ReceivedReplyOp, ReceivedReplySubmitOp {
+  private readonly _invoke: (parts: readonly Message[], flags: SendFlags) => void;
+  private readonly _payload = new ReceivedOpPayload();
+  private _flags: SendFlags = SendFlags.None;
+
+  constructor(invoke: (parts: readonly Message[], flags: SendFlags) => void) {
+    this._invoke = invoke;
+  }
+
+  message(message: Message | BufferLike): ReceivedReplySubmitOp {
+    this._payload.append(message);
+    return this;
+  }
+
+  flags(flags: SendFlags): ReceivedReplySubmitOp {
+    this._payload.ensureOpen();
+    this._flags = flags;
+    return this;
+  }
+
+  submit(): void {
+    const parts = this._payload.consume().map(asMessage);
+    this._invoke(parts, this._flags);
+  }
+}
+
 function freezeMessageParts(parts: readonly Message[]): Message[] {
   return Object.freeze(parts.slice()) as Message[];
 }
@@ -371,24 +473,20 @@ export class Received {
     return this.parts[0];
   }
 
-  reply(part: Message, flags?: SendFlags): void;
-  reply(parts: Message[], flags?: SendFlags): void;
-  reply(partOrParts: Message | readonly Message[], flags: SendFlags = SendFlags.None): void {
+  reply(): ReceivedReplyOp {
     if (!this.requestSeq || !this._replyContext) {
       throw invalidReplyContextError();
     }
-    const parts = Array.isArray(partOrParts) ? partOrParts : [partOrParts];
-    this._replyContext.reply(parts, flags);
+    const replyContext = this._replyContext;
+    return new ReceivedReplyOperation((parts, flags) => replyContext.reply(parts, flags));
   }
 
-  send(part: Message, flags?: SendFlags): boolean;
-  send(parts: Message[], flags?: SendFlags): boolean;
-  send(partOrParts: Message | readonly Message[], flags: SendFlags = SendFlags.None): boolean {
+  send(): ReceivedSendOp {
     if (!this._sendContext) {
       throw invalidSendContextError();
     }
-    const parts = Array.isArray(partOrParts) ? partOrParts : [partOrParts];
-    return this._sendContext.send(parts, flags);
+    const sendContext = this._sendContext;
+    return new ReceivedSendOperation((parts, flags) => sendContext.send(parts, flags));
   }
 
   close(): void {

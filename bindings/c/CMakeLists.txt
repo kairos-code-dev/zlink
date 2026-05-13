@@ -77,20 +77,9 @@ endfunction()
 
 zlink_c_ensure_core_target(ZLINK_C_CORE_TARGET ZLINK_C_CORE_RUNTIME_DIR)
 
-add_library(zlink_c SHARED src/zlink_c.c)
-target_include_directories(zlink_c
-  PUBLIC include
-  PRIVATE "${ZLINK_CORE_DIR}/include")
-target_link_libraries(zlink_c PUBLIC ${ZLINK_C_CORE_TARGET})
-set_target_properties(
-  zlink_c PROPERTIES VERSION 1.0.0 SOVERSION 1 LINKER_LANGUAGE CXX)
-if(UNIX AND NOT WIN32)
-  set_target_properties(zlink_c PROPERTIES
-    BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")
-elseif(APPLE)
-  set_target_properties(zlink_c PROPERTIES
-    BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")
-endif()
+add_library(zlink_c INTERFACE)
+target_include_directories(zlink_c INTERFACE include "${ZLINK_CORE_DIR}/include")
+target_link_libraries(zlink_c INTERFACE ${ZLINK_C_CORE_TARGET})
 
 if(NOT DEFINED ZLINK_C_REGISTER_CTEST)
   option(

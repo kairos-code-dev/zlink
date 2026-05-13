@@ -29,7 +29,7 @@ public interface IZLinkCommonSocketOptions
     bool Immediate { get; set; }
 }
 
-public interface IRoutedPeerOptions
+public interface IRoutePeerOptions
 {
     RoutingId RoutingId { get; set; }
 
@@ -116,7 +116,7 @@ internal sealed class ZLinkCommonSocketOptions : IZLinkCommonSocketOptions
     }
 }
 
-internal sealed class ZLinkRoutedPeerOptions : IRoutedPeerOptions
+internal sealed class ZLinkRoutePeerOptions : IRoutePeerOptions
 {
     public RoutingId RoutingId { get; set; }
 

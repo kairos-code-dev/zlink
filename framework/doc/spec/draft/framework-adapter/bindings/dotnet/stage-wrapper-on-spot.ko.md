@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework ASP.NET Core SPOT Integration](aspnet-core-spot.ko.md) | [다음: ZLink Framework ASP.NET Core STREAM Integration](aspnet-core-stream.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [인터페이스](./handler-interfaces.ko.md)
@@ -160,7 +164,7 @@
    정규화한다.
 5. 정규화된 packet을 해당 actor가 attach된 `Spot` runtime inbox로 넣는다.
 6. 그 `Spot` inbox를 소비하는 실행기는 하나뿐이라고 가정한다.
-7. 그 실행기 안에서만 `IZLinkActorContext.AddPacket(...)`으로 등록한 handler가
+7. 그 실행기 안에서만 `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 handler가
    수행된다.
 8. actor가 room 상태를 바꾸거나 `Spot` 메서드를 호출해도, 이미 같은 `Spot`
    실행 문맥 안이므로 추가 lock이 필요 없다.

@@ -18,7 +18,7 @@ def main():
                 event = publisher.receive_subscription_event()
                 if not event.subscribed or event.topic != "prices":
                     raise AssertionError("unexpected subscription event")
-                publisher.publish(b"prices", b"101.25")
+                publisher.publish(b"prices").message(b"101.25").submit()
                 with subscriber.subscribe() as received:
                     if received.topic != "prices":
                         raise AssertionError(f"unexpected pubsub topic: {received.topic!r}")

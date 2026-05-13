@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 async function reservePort() {
     const srv = net.createServer();
     srv.listen(0, '127.0.0.1');
@@ -38,7 +38,7 @@ async function main() {
         const deadline = Date.now() + 5000;
         let received = null;
         while (Date.now() < deadline) {
-            pub.publish(topic, Buffer.from(sent));
+            pub.publish(topic).message(Buffer.from(sent)).submit();
             try {
                 received = sub.subscribe(zlink.RecvFlags.DontWait);
                 if (received) {

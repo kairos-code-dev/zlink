@@ -11,7 +11,7 @@ public interface IChannelServerCapabilityBuilder
 
     void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
 
-    void ConfigureRouting(Action<IRoutedPeerOptions> configure);
+    void ConfigureRouting(Action<IRoutePeerOptions> configure);
 }
 
 public interface IChannelClientCapabilityBuilder
@@ -46,7 +46,7 @@ public interface ISpotRouterCapabilityBuilder
 {
     void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
 
-    void ConfigureRouting(Action<IRoutedPeerOptions> configure);
+    void ConfigureRouting(Action<IRoutePeerOptions> configure);
 
     void UseManualConnections(Action<ISpotRouterConnections> configure);
 }
@@ -76,7 +76,7 @@ public interface ISpotChannelClientCapabilityBuilder
     void UseManualConnections(Action<IChannelClientConnections> configure);
 }
 
-public interface IRoutedChannelConnections
+public interface IRouteChannelConnections
 {
     void Connect(string endpoint);
 
@@ -85,24 +85,24 @@ public interface IRoutedChannelConnections
     IReadOnlyList<string> ListConnections();
 }
 
-public interface IZLinkRoutedChannelBuilder
+public interface IZLinkRouteChannelBuilder
 {
     void Bind(string endpoint);
 
     void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
 
-    void ConfigureRouting(Action<IRoutedPeerOptions> configure);
+    void ConfigureRouting(Action<IRoutePeerOptions> configure);
 
-    void UseManualConnections(Action<IRoutedChannelConnections> configure);
+    void UseManualConnections(Action<IRouteChannelConnections> configure);
 
     void AddSendHandler<THandler, TMessage>(string? packetName = null)
-        where THandler : class, IZLinkRoutedSendHandler<TMessage>;
+        where THandler : class, IZLinkRouteSendHandler<TMessage>;
 
     void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
-        where THandler : class, IZLinkRoutedRequestHandler<TRequest, TReply>;
+        where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>;
 }
 
-public interface IZLinkRouteMeshChannelBuilder : IZLinkRoutedChannelBuilder
+public interface IZLinkRouteMeshChannelBuilder : IZLinkRouteChannelBuilder
 {
 }
 
@@ -237,9 +237,9 @@ public interface IZLinkFrameworkOptions
         string channelName,
         Action<IZLinkDealerMeshChannelBuilder> configure);
 
-    void AddRoutedChannel(
+    void AddRouteChannel(
         string routerChannelId,
-        Action<IZLinkRoutedChannelBuilder> configure);
+        Action<IZLinkRouteChannelBuilder> configure);
 
     void AddRouteMeshChannel(
         string channelName,

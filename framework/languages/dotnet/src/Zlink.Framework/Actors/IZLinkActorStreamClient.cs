@@ -15,7 +15,7 @@ public interface IZLinkActorSendCall
 
     IZLinkActorSendCall Compress();
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorReplyCall
@@ -24,5 +24,5 @@ public interface IZLinkActorReplyCall
 
     IZLinkActorReplyCall Compress();
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }

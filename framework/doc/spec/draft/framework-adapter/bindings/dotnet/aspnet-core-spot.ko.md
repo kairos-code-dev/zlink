@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework ASP.NET Core Channel Messaging](aspnet-core-channel-messaging.ko.md) | [다음: Stage Wrapper On SPOT](stage-wrapper-on-spot.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [STREAM](./aspnet-core-stream.ko.md)
@@ -73,6 +77,9 @@ publish/subscribe는 그 안에서 함께 쓰일 수 있는 한 가지 사용 �
 - `SpotNode.router`는 peer topology와 내부 routed delivery를 위해 남기되, 현재
   framework core의 public high-level API에서는 `targetRid + spotRid`를 직접
   받는 direct routed 호출 표면을 두지 않는다.
+- spot name 또는 spot id를 다른 node의 user Spot 위치로 바꿔야 하면
+  `IZLinkSpotRouteResolver`를 사용한다. resolver 구현체만 `RoutingId`를 알고,
+  application handler는 spot name/id를 기준으로 호출한다.
 - 외부 `PUB -> Spot` 입력은 generic pub/sub attach가 아니라 별도 ingress 표면으로
   분리한다.
 
@@ -105,6 +112,8 @@ builder.Services.AddZLinkFramework(options =>
             node.AddSpotFactory<StageSpot>("stage");
         });
     });
+
+    options.AddSpotRouteResolver<RegistrySpotRouteStore>();
 });
 ```
 
@@ -118,6 +127,7 @@ builder.Services.AddZLinkFramework(options =>
 - local SPOT pub/sub capability 활성화
 - 다른 channel 호출용 client attach
 - 필요하면 외부 노드용 spot publish client attach
+- spot name/id 기반 호출이나 actor `JoinSpot(...)` 경로에서 쓸 spot route resolver 등록
 - host shutdown 시 lifecycle 정리
 
 `AddSpotMesh(...)`는 같은 channel에 속하는 여러 `SpotNode`를 한 묶음으로 등록한다.
@@ -142,15 +152,9 @@ mesh 기능을 켜는데 standalone 등록을 쓰면 시작 시점에 `AddSpotMe
     `IZLinkSpotClient.Publish(...)`를 쓸 수 있으려면 이 capability가 필요하다.
 - `AttachClientServerChannelClient("orders")`
   - `orders` channel로 outbound send/request를 보낼 `DEALER(client)` 경로를 붙인다.
-  - 기존 `AttachChannelClient("orders")`는 standalone `SpotNode` 빌더에서 같은
-    경로를 가리키는 legacy alias로 남아 있다. mesh 노드 빌더에는 `AttachClientServerChannelClient`만
-    있다.
 - `AttachSpotMeshPublisherClient("game.stage")`
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     별도 publisher client를 붙인다.
-  - 기존 `AttachSpotPublisherClient("game.stage")`는 standalone `SpotNode` 빌더에서
-    같은 경로를 가리키는 legacy alias다. mesh 노드 빌더에는
-    `AttachSpotMeshPublisherClient`만 있다.
 - `AddSpotFactory<StageSpot>("stage")`
   - 이 node가 생성하고 소유할 `StageSpot` factory를 `stage` 이름으로 등록한다.
   - 같은 `SpotNode`에 여러 spot factory를 둘 수 있다면, 생성 시에는 이 이름으로
@@ -248,6 +252,34 @@ builder.Services.AddZLinkFramework(options =>
   파라미터로 받지 않는다.
 - `pub/sub` manual 연결에서 등록하는 주소는 다른 `SpotNode`의 mesh publish bind
   주소다. local `SUB/XSUB` 쪽이 그 주소로 붙는다.
+
+### 4.2 Spot route resolver
+
+`IZLinkSpotRouteResolver`는 spot name 또는 spot id를 현재 user Spot이 있는 node와
+spot rid로 바꾼다. framework는 resolver가 registry, Redis, memory cache 중 무엇을
+쓰는지 알지 않는다. handler와 actor code는 `RoutingId`를 직접 들고 다니지 않는다.
+
+```csharp
+public interface IZLinkSpotRouteResolver
+{
+    ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        string spotName,
+        CancellationToken cancellationToken);
+
+    ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        RoutingId spotRid,
+        CancellationToken cancellationToken);
+}
+
+public readonly record struct ZLinkSpotRoute(
+    string RouterChannelId,
+    RoutingId TargetNodeRid,
+    RoutingId SpotRid);
+```
+
+resolver 입력은 spot key 하나로 제한한다. packet name, metadata, request body를
+resolver에 넘기지 않는다. 그런 값이 필요하면 application placement code가 먼저
+spot name 또는 spot id를 결정해야 한다.
 - `pub/sub`, spot publisher client manual 연결은 endpoint 집합만 등록한다.
   다만 전자는 peer `SpotNode` mesh 주소이고, 후자는 외부 publish ingress 주소다.
 
@@ -385,7 +417,7 @@ channel reply completion 과 timer callback 이 같은 spot 실행 계약 안에
   도 spot state 에 대해 별도 lock 없이 접근할 수 있다.
 - binding 이 attached dealer 별 별도 progress pump 를 돌리지 않아도 된다.
   `Spot` progress loop 하나로 channel reply completion 까지 처리된다.
-- actor가 `Spot`에 join된 뒤에는 `IZLinkActorContext.AddPacket(...)`으로 등록한
+- actor가 `Spot`에 join된 뒤에는 `IZLinkSpotContext.AddActorPacket(...)`으로 등록한
   actor packet handler도 같은 spot execution context에서 실행된다. stream session은
   packet ingress를 맡고, actor가 room 또는 stage 상태를 다루는 코드는 `Spot` 실행
   문맥으로 들어간다.
@@ -469,34 +501,28 @@ framework 기본 계약처럼 적기보다 wrapper 확장 후보로 따로 다�
 
 ## 5. SPOT outbound 모델 초안
 
-현재 방향에서는 아래 두 종류를 구분하는 편이 더 자연스럽다.
+현재 방향에서는 아래 세 종류를 구분하는 편이 더 자연스럽다.
 
 - 현재 SPOT channel 안의 topic publish
 - attach된 다른 channel client를 통한 channel send/request
+- spot name/id 기반 routed spot send/request
 
 `SendChannel(...)` / `RequestChannel(...)`는 attach된 channel client를 사용한다.
-`SpotNode.router`는 peer topology와 내부 transport를 위해 남지만, 현재 framework
-public surface는 `SpotId` 기반 routed spot send/request를 구현 계약으로 제공하지
-않는다. `targetRid + spotRid`를 직접 받는 raw 호출은 하부 바인딩에 남아 있어도,
+`SendSpot(...)` / `RequestSpot(...)`는 spot route resolver가 찾은 target route를
+사용한다. `targetRid + spotRid`를 직접 받는 raw 호출은 하부 바인딩에 남아 있어도,
 application guide의 기본 API로 문서화하지 않는다.
 
 `IZLinkSpotClient` 인터페이스 전체 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5.2를
-참고한다. 현재 방향에서는 `SendChannel(...)`,
-`RequestChannel(...)`, `Publish(...)`를 함께 제공하고, timer는
+참고한다. 현재 방향에서는 `SendSpot(...)`, `RequestSpot(...)`,
+`SendChannel(...)`, `RequestChannel(...)`, `Publish(...)`를 함께 제공하고, timer는
 `IZLinkSpotContext.AddTimer<THandler>(...)`처럼 spot lifecycle registration 표면으로
 두는 쪽이 더 자연스럽다.
 
-현재 `.NET` 바인딩의 raw `Spot` 표면도 이 구분을 그대로 가진다.
-
-- channel 이름 기준 호출:
-  `Spot.SendChannel(...)`, `Spot.RequestChannel(...)`
-- SPOT routed 호출:
-  `Spot.SendToRouter(...)`, `Spot.RequestToRouterAsync(...)`,
-  `Spot.ReplyToSpot(...)`
-
-즉 "spot용 routed 함수"와 "channelName으로 호출하는 함수"가 둘 다 있고, 둘은
-서로 다른 경로를 뜻한다.
+현재 `.NET` framework 표면은 channel 이름 기준 호출과 spot key 기반 호출을 나눈다.
+`targetRid + spotRid`를 직접 받는 raw route 함수가 하부 바인딩에 있더라도, framework
+application 문서에서는 backend/internal transport helper로만 다룬다. 일반 application은
+`IZLinkSpotRouteResolver`가 숨긴 위치값을 직접 보지 않는다.
 
 예를 들면 아래처럼 쓸 수 있다.
 
@@ -513,6 +539,12 @@ var reply = await client
         new GetStageStateRequest())
     .WithTimeout(TimeSpan.FromMilliseconds(200))
     .Submit<GetStageStateReply>(cancellationToken);
+
+await client
+    .SendSpot(
+        "stage-17",
+        new StageNoticeMessage())
+    .Submit(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 모델을 생각하면 timer도 같이 필요하다.
@@ -524,8 +556,8 @@ var reply = await client
 하지만 이것을 `IZLinkClient` 위에 `IZLinkSpotClient`를 얹는 관계로 설명하면 안
 된다. 두 인터페이스는 하부에서 서로 다른 C API를 감싼다. 현재 방향에서는
 `IZLinkClient`가 일반 channel messaging을 맡고, `IZLinkSpotClient`는 current
-SPOT channel publish와 다른 channel send/request를 맡는 식으로 책임을 나누는
-편이 더 자연스럽다.
+SPOT channel publish, 다른 channel send/request, spot-routed send/request를 맡는
+식으로 책임을 나누는 편이 더 자연스럽다.
 
 `IZLinkSpot` 기반 클래스의 `protected Publish(topic, message)` 편의 메서드는
 `IZLinkSpotClient.Publish(...)`를 내부적으로 위임한다.
@@ -547,15 +579,16 @@ constructor injection해서 호출하는 것은 같은 경로를 사용한다.
 - `spotRid`: 특정 room/stage/zone 인스턴스를 가리키는 논리 주소
 - `topic`: 여러 subscriber가 함께 듣는 fan-out 주제 이름
 
-현재 topology 초안에서는 framework 기본 표면을 `targetRid + spotRid` routed
-호출 중심으로 설명하지 않는다. high-level framework 문서는 아래 두 축을 먼저
+현재 topology 초안에서는 framework 기본 표면을 `targetRid + spotRid` direct
+호출 중심으로 설명하지 않는다. high-level framework 문서는 아래 세 축을 먼저
 보여 주는 편이 더 자연스럽다.
 
 - 같은 channel 안의 publish/subscribe
 - attach된 다른 channel client를 통한 send/request
+- spot name/id 기반 routed send/request
 
-이때 channel send/request와 topic publish는 일반 channel messaging과 비슷한
-builder 감각으로 읽히는 편이 자연스럽다.
+이때 channel send/request, spot send/request, topic publish는 일반 channel
+messaging과 비슷한 builder 감각으로 읽히는 편이 자연스럽다.
 
 ```csharp
 var reply = await spotClient
@@ -564,6 +597,12 @@ var reply = await spotClient
         new GetStageStateRequest())
     .WithTimeout(TimeSpan.FromMilliseconds(200))
     .Submit<GetStageStateReply>(cancellationToken);
+
+await spotClient
+    .SendSpot(
+        "stage-17",
+        new StageNoticeMessage())
+    .Submit(cancellationToken);
 
 await spotClient
     .Publish(

@@ -27,11 +27,11 @@ class DealerRouterScenarioTest(unittest.TestCase):
                         router.bind(ep)
                         dealer.connect(ep)
                         wait_connected(router_mon, dealer_mon)
-                dealer.send(b"hello")
+                dealer.send().message(b"hello").submit()
                 with router.recv() as received:
                     self.assertEqual(received.to_bytes_list(), [b"hello"])
                     self.assertIsNotNone(received.routing_id)
-                    router.send(received.routing_id, b"world")
+                    router.send(received.routing_id).message(b"world").submit()
                 with dealer.recv() as response:
                     self.assertEqual(response.to_bytes_list(), [b"world"])
                 dealer.close()

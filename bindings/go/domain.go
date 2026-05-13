@@ -276,35 +276,43 @@ func (r *Received) SinglePartOrError() (*Message, error) {
 	return r.parts[0], nil
 }
 
-func (r *Received) Reply(parts []*Message) error {
-	return r.ReplyWithFlags(parts, SendFlagsNone)
+// Reply returns an operation builder for replying to this received request.
+// Only valid when HasRequestSeq() is true; otherwise Submit returns
+// *SubmitError. RoutingID/SpotRID/RequestSeq are encapsulated.
+func (r *Received) Reply() ReplyOp {
+	return newReplyBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		if r == nil {
+			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+		}
+		if !r.hasRequestSeq || r.reply == nil {
+			return &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		if err := validateReplyFlags(flags); err != nil {
+			return err
+		}
+		return r.reply(flags, parts)
+	})
 }
 
-func (r *Received) ReplyWithFlags(parts []*Message, flags SendFlags) error {
-	if r == nil {
-		return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	if !r.hasRequestSeq || r.reply == nil {
-		return &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	if err := validateReplyFlags(flags); err != nil {
-		return err
-	}
-	return r.reply(flags, parts)
-}
-
-func (r *Received) Send(parts []*Message) (bool, error) {
-	return r.SendWithFlags(parts, SendFlagsNone)
-}
-
-func (r *Received) SendWithFlags(parts []*Message, flags SendFlags) (bool, error) {
-	if r == nil {
-		return false, &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	if r.send == nil {
-		return false, &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	return r.send(flags, parts)
+// Send returns an operation builder for a regular routed message back to
+// the sender of this Received. Source rid / spot rid are encapsulated.
+func (r *Received) Send() SendOp {
+	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		if r == nil {
+			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+		}
+		if r.send == nil {
+			return &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		sent, err := r.send(flags, parts)
+		if err != nil {
+			return err
+		}
+		if !sent {
+			return &SubmitError{Result: SubmitBackpressured}
+		}
+		return nil
+	})
 }
 
 func validateReplyFlags(flags SendFlags) error {
@@ -430,12 +438,19 @@ func receivedSendToRouter(send func(RoutingID, SendFlags, ...*Message) (bool, er
 }
 
 type routerSenderToSpot interface {
-	SendToSpot(RoutingID, RoutingID, SendFlags, ...*Message) (bool, error)
+	SendToSpot(RoutingID, RoutingID) SendOp
 }
 
 func receivedSendToSpotPeer(socket routerSenderToSpot, nodeRID RoutingID, spotRID RoutingID) func(SendFlags, []*Message) (bool, error) {
 	return func(flags SendFlags, parts []*Message) (bool, error) {
-		return socket.SendToSpot(nodeRID, spotRID, flags, parts...)
+		if len(parts) == 0 {
+			return false, &SubmitError{Result: SubmitInvalidArgument}
+		}
+		submitOp := socket.SendToSpot(nodeRID, spotRID).Message(parts[0])
+		for _, part := range parts[1:] {
+			submitOp = submitOp.Message(part)
+		}
+		return submitOp.Flags(flags).Submit(nil)
 	}
 }
 
@@ -461,13 +476,19 @@ func receivedSendFromSpot(socket *Spot, routingID RoutingID, spotRID RoutingID) 
 }
 
 type routerReplier interface {
-	ReplyToSpot(RoutingID, RoutingID, uint64, SendFlags, ...*Message) (bool, error)
+	ReplyToSpot(RoutingID, RoutingID, uint64) ReplyOp
 }
 
 func receivedReplyToSpotPeer(socket routerReplier, nodeRID RoutingID, spotRID RoutingID, requestSeq uint64) func(SendFlags, []*Message) error {
 	return func(flags SendFlags, parts []*Message) error {
-		_, err := socket.ReplyToSpot(nodeRID, spotRID, requestSeq, flags, parts...)
-		return err
+		if len(parts) == 0 {
+			return &SubmitError{Result: SubmitInvalidArgument}
+		}
+		submitOp := socket.ReplyToSpot(nodeRID, spotRID, requestSeq).Message(parts[0])
+		for _, part := range parts[1:] {
+			submitOp = submitOp.Message(part)
+		}
+		return submitOp.Flags(flags).Submit(nil)
 	}
 }
 
@@ -479,6 +500,9 @@ func receivedReplyToSpot(socket *Spot, routingID RoutingID, spotRID RoutingID, r
 			}
 			replyOp := socket.ReplyToRouter(routingID, requestSeq)
 			submitOp := replyOp.Message(parts[0])
+			for _, part := range parts[1:] {
+				submitOp = submitOp.Message(part)
+			}
 			submitOp = submitOp.Flags(flags)
 			return submitOp.Submit(nil)
 		}
@@ -489,6 +513,9 @@ func receivedReplyToSpot(socket *Spot, routingID RoutingID, spotRID RoutingID, r
 		}
 		replyOp := socket.ReplyToSpot(routingID, spotRID, requestSeq)
 		submitOp := replyOp.Message(parts[0])
+		for _, part := range parts[1:] {
+			submitOp = submitOp.Message(part)
+		}
 		submitOp = submitOp.Flags(flags)
 		return submitOp.Submit(nil)
 	}

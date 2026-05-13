@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
@@ -34,49 +35,6 @@ public sealed class StreamSocket : RoutedMessageSocketBase
         Kernel.AttachStreamPacket(handler);
     }
 
-    internal void OnPacket(Func<string, Message, int> handler)
-    {
-        if (handler == null)
-            throw new ArgumentNullException(nameof(handler));
-        Kernel.AttachStreamRaw((routingId, payload) =>
-            handler(routingId, payload));
-    }
-
-    internal void OnPacket(StreamUInt32PacketHandler handler)
-    {
-        Kernel.AttachStreamRaw(handler);
-    }
-
-    internal void OnFramedPacket(StreamFramedPacketHandler handler)
-    {
-        Kernel.AttachStreamPacket(handler);
-    }
-
-    internal void OnFramedPacket(Action<string, Message, Message> handler)
-    {
-        if (handler == null)
-            throw new ArgumentNullException(nameof(handler));
-        Kernel.AttachStreamPacket((routingId, header, body) =>
-            handler(routingId, header, body));
-    }
-
-    internal void OnFramedPacket(StreamUInt32FramedPacketHandler handler)
-    {
-        Kernel.AttachStreamPacket(handler);
-    }
-
-    internal void Send(uint routingId, Message message,
-        SendFlags flags = SendFlags.None)
-    {
-        Kernel.Send(routingId, message, flags);
-    }
-
-    internal void Send(uint routingId, byte[] payload,
-        SendFlags flags = SendFlags.None)
-    {
-        Kernel.SendBorrowedSingle(routingId, payload, (int)flags);
-    }
-
     public void DisconnectRid(RoutingId peerRid)
     {
         Kernel.DisconnectRid(peerRid);
@@ -87,46 +45,75 @@ public sealed class StreamSocket : RoutedMessageSocketBase
         Kernel.DetachStream();
     }
 
-    public void BindActor(SpotNode node, RoutingId sessionRid,
-        ActorRef actor, TimeSpan timeout = default)
+    /// <summary>
+    /// Async Actor bind (operation builder).
+    /// </summary>
+    public ActorBindOperation BindActor(RoutingId sessionRid, ActorRef actor)
     {
-        if (node == null)
-            throw new ArgumentNullException(nameof(node));
-        ZlinkRoutingId nativeSession = NativeHelpers.WriteRoutingId(
-            sessionRid.ToByteArray());
-        ZlinkActorRef nativeActor = ActorInterop.ToNative(actor);
-        int rc = NativeMethods.zlink_stream_bind_actor(node.Handle, Handle,
-            ref nativeSession, ref nativeActor,
-            ActorInterop.NormalizeTimeout(timeout));
-        if (rc != 0)
-            throw ZlinkException.CreateRequestException(NativeMethods.zlink_errno());
+        return new ActorBindOperationImpl(this, sessionRid, actor);
     }
 
-    public void UnbindActor(SpotNode node, RoutingId sessionRid,
-        string actorId, TimeSpan timeout = default)
+    /// <summary>
+    /// Async Actor unbind (operation builder).
+    /// </summary>
+    public ActorUnbindOperation UnbindActor(RoutingId sessionRid,
+        string actorId)
     {
-        if (node == null)
-            throw new ArgumentNullException(nameof(node));
         ActorInterop.ValidateActorId(actorId, nameof(actorId));
-        ZlinkRoutingId nativeSession = NativeHelpers.WriteRoutingId(
-            sessionRid.ToByteArray());
-        int rc = NativeMethods.zlink_stream_unbind_actor(node.Handle, Handle,
-            ref nativeSession, actorId, ActorInterop.NormalizeTimeout(timeout));
-        if (rc != 0)
-            throw ZlinkException.CreateRequestException(NativeMethods.zlink_errno());
+        return new ActorUnbindOperationImpl(this, sessionRid, actorId);
     }
 
-    public bool SendBoundActor(SpotNode node, RoutingId sessionRid,
-        string actorId, Message message, SendFlags flags = SendFlags.None)
-        => SendBoundActor(node, sessionRid, actorId, new[] { message }, flags);
-
-    public bool SendBoundActor(SpotNode node, RoutingId sessionRid,
-        string actorId, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
+    /// <summary>
+    /// Session-bound relay send (operation builder).
+    /// </summary>
+    public SendOperation SendBoundActor(RoutingId sessionRid, string actorId)
     {
-        if (node == null)
-            throw new ArgumentNullException(nameof(node));
         ActorInterop.ValidateActorId(actorId, nameof(actorId));
+        return new StreamSendOperation(this, sessionRid, actorId);
+    }
+
+    /// <summary>
+    /// Snapshot of Actor refs attached to the given session (local mapping
+    /// only).
+    /// </summary>
+    public IReadOnlyList<ActorRef> BoundActors(RoutingId sessionRid)
+    {
+        ZlinkRoutingId nativeSession = NativeHelpers.WriteRoutingId(
+            sessionRid.ToByteArray());
+        nuint count = 0;
+        int rc = NativeMethods.zlink_stream_bound_actors(Handle,
+            ref nativeSession, IntPtr.Zero, ref count);
+        ZlinkException.ThrowConfigIfError(rc);
+        if (count == 0)
+            return Array.Empty<ActorRef>();
+        int entrySize = Marshal.SizeOf<ZlinkActorRef>();
+        IntPtr entries = Marshal.AllocHGlobal(
+            checked((int)(count * (nuint)entrySize)));
+        try
+        {
+            nuint actual = count;
+            rc = NativeMethods.zlink_stream_bound_actors(Handle,
+                ref nativeSession, entries, ref actual);
+            ZlinkException.ThrowConfigIfError(rc);
+            ActorRef[] result = new ActorRef[(int)actual];
+            for (int i = 0; i < result.Length; i++)
+            {
+                ZlinkActorRef native =
+                    Marshal.PtrToStructure<ZlinkActorRef>(
+                        IntPtr.Add(entries, i * entrySize));
+                result[i] = ActorInterop.FromNative(ref native);
+            }
+            return result;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(entries);
+        }
+    }
+
+    internal bool SendBoundActorCore(RoutingId sessionRid, string actorId,
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+    {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
         if (parts.Count == 0)
@@ -146,7 +133,7 @@ public sealed class StreamSocket : RoutedMessageSocketBase
                 try
                 {
                     int rc = NativeMethods.zlink_stream_send_bound_actor_part(
-                        node.Handle, Handle, ref nativeSession, actorId,
+                        Handle, ref nativeSession, actorId,
                         ref nativePart, (int)flags,
                         i + 1 < cloned.Length
                             ? NativeMethods.ZlinkPartFlag.More

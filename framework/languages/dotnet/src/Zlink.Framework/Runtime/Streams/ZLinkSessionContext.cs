@@ -70,19 +70,22 @@ internal sealed class ZLinkSessionContext(
             cancellationToken).ConfigureAwait(false);
     }
 
+    [Obsolete("Remote actor creation is no longer a framework operation. Use CreateActorHandleAsync for a target-node handle, or CreateActorAsync on the node that owns the actor.")]
     public async ValueTask<IZLinkActorRef> CreateRemoteActorAsync(
+        RoutingId actorNodeId,
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default)
+        => await CreateActorHandleAsync(actorNodeId, actorId, actorType, cancellationToken)
+            .ConfigureAwait(false);
+
+    public async ValueTask<IZLinkActorRef> CreateActorHandleAsync(
         RoutingId actorNodeId,
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default)
     {
         var routerChannelId = runtime.ResolveDefaultRouterChannelId();
-        var packet = new ZLinkActorCreatePacket(actorId, actorType);
-        _ = await runtime.RoutedClient.RequestTo(routerChannelId, actorNodeId, packet)
-            .WithPacketName(ZLinkInternalPacketNames.ActorCreate)
-            .WithTimeout(runtime.Registration.DefaultTimeout)
-            .Async<byte[]>(cancellationToken)
-            .ConfigureAwait(false);
         return await _actorBindings.BindAsync(
             this,
             SessionId,
@@ -132,7 +135,7 @@ internal sealed class ZLinkSessionContext(
             using var encodedHeader = Message.FromBytes(HeaderCodec.Encode(header).Span);
             using (body)
             {
-                managedStream.SendBoundActor(node, actor.ActorId, [encodedHeader, body]);
+                managedStream.SendBoundActor(actor.ActorId, [encodedHeader, body]);
             }
             return ValueTask.CompletedTask;
         }
@@ -164,11 +167,11 @@ internal sealed class ZLinkSessionContext(
                 byte[] reply;
                 try
                 {
-                    reply = await runtime.RoutedClient
+                    reply = await runtime.RouteClient
                         .RequestTo(actorRef.RouterChannelId, actorRef.TargetNodeRid, packet)
                         .WithPacketName(ZLinkInternalPacketNames.ActorDispatch)
                         .WithTimeout(runtime.Registration.DefaultTimeout)
-                        .Async<byte[]>(cancellationToken)
+                        .Submit<byte[]>(cancellationToken)
                         .ConfigureAwait(false);
                 }
                 catch (TimeoutException ex)
@@ -195,10 +198,10 @@ internal sealed class ZLinkSessionContext(
                 return;
             }
 
-            await runtime.RoutedClient
+            await runtime.RouteClient
                 .SendTo(actorRef.RouterChannelId, actorRef.TargetNodeRid, packet)
                 .WithPacketName(ZLinkInternalPacketNames.ActorDispatch)
-                .Async(cancellationToken)
+                .Submit(cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -489,7 +492,7 @@ internal sealed class ZLinkSessionSendCall<TMessage>(
     IZLinkSessionSendCall IZLinkSessionSendCall.Compress()
         => (IZLinkSessionSendCall)Compress();
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         return ExecuteAsync(cancellationToken);
     }
@@ -523,7 +526,7 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
     IZLinkSessionReplyCall IZLinkSessionReplyCall.Compress()
         => (IZLinkSessionReplyCall)Compress();
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         return ExecuteAsync(cancellationToken);
     }

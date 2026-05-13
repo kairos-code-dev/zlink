@@ -32,7 +32,7 @@ def _send_stop_token(sock):
 
     for _ in range(100):
         try:
-            sock.send(STOP_TOKEN)
+            sock.send().message(STOP_TOKEN).submit()
             return
         except zlink.SubmitError as exc:
             if exc.result != zlink.SubmitResult.BACKPRESSURED:
@@ -49,7 +49,7 @@ def main(argv=None):
     def send_loop(dealer):
         active_end = time.perf_counter() + args.duration
         while time.perf_counter() < active_end:
-            dealer.send(stamp_payload(payload, phase=1, run_id=run_id))
+            dealer.send().message(stamp_payload(payload, phase=1, run_id=run_id)).submit()
         _send_stop_token(dealer)
 
     with zlink.Context() as ctx:

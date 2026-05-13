@@ -40,7 +40,7 @@ void test_request_dealer_router_roundtrip ()
     std::this_thread::sleep_for (std::chrono::milliseconds (50));
 
     zlink::message_t warmup = make_request_message ("warmup");
-    dealer_socket.send (warmup);
+    assert (dealer_socket.send ().message (warmup).submit ());
     std::this_thread::sleep_for (std::chrono::milliseconds (50));
     zlink::received_t warmup_received;
     assert (router_socket.recv (warmup_received) == 0);
@@ -57,11 +57,14 @@ void test_request_dealer_router_roundtrip ()
           assert (*request.request_seq () != 0u);
 
           zlink::message_t reply = make_request_message ("reply:ok");
-          request.reply (reply);
+          request.reply ().message (reply).submit ();
       });
 
     zlink::async_result_t<std::vector<zlink::message_t>> future =
-      dealer_socket.request (request, std::chrono::milliseconds (5000));
+      dealer_socket.request ()
+        .message (request)
+        .timeout (std::chrono::milliseconds (5000))
+        .submit_async ();
     const std::vector<zlink::message_t> reply = future.get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == "reply:ok");
@@ -97,11 +100,14 @@ void test_request_wait_for_zero_pumps_progress ()
           assert (request.request_seq ().has_value ());
 
           zlink::message_t reply = make_request_message ("reply:wait-zero");
-          request.reply (reply);
+          request.reply ().message (reply).submit ();
       });
 
     zlink::async_result_t<std::vector<zlink::message_t>> future =
-      dealer_socket.request (request, std::chrono::milliseconds (5000));
+      dealer_socket.request ()
+        .message (request)
+        .timeout (std::chrono::milliseconds (5000))
+        .submit_async ();
 
     bool ready = false;
     const std::chrono::steady_clock::time_point deadline =
@@ -143,7 +149,7 @@ void test_request_router_preserves_data_recv_surface ()
     std::this_thread::sleep_for (std::chrono::milliseconds (50));
 
     zlink::message_t data = make_request_message ("plain-data");
-    dealer_socket.send (data);
+    assert (dealer_socket.send ().message (data).submit ());
 
     zlink::received_t received;
     assert (router_socket.recv (received) == 0);
@@ -186,7 +192,7 @@ void test_received_reply_rejects_non_none_flags ()
 
           zlink::message_t rejected = make_request_message ("reply:rejected");
           try {
-              received.reply (rejected, ZLINK_DONTWAIT);
+              received.reply ().message (rejected).flags (ZLINK_DONTWAIT).submit ();
               assert (false && "reply flags must be rejected");
           } catch (const zlink::submit_error_t &error) {
               assert (error.result () == zlink::submit_result_t::not_supported);
@@ -194,11 +200,14 @@ void test_received_reply_rejects_non_none_flags ()
           }
 
           zlink::message_t accepted = make_request_message ("reply:ok");
-          received.reply (accepted);
+          received.reply ().message (accepted).submit ();
       });
 
     zlink::async_result_t<std::vector<zlink::message_t>> future =
-      dealer_socket.request (request, std::chrono::milliseconds (5000));
+      dealer_socket.request ()
+        .message (request)
+        .timeout (std::chrono::milliseconds (5000))
+        .submit_async ();
     const std::vector<zlink::message_t> reply = future.get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == "reply:ok");

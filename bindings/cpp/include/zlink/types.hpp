@@ -25,14 +25,34 @@ class actor_ref_t;
 class received_t;
 class topic_message_t;
 class base_socket_t;
+class pair_socket_t;
 class dealer_socket_t;
 class router_socket_t;
+class stream_socket_t;
+class pub_socket_t;
+class xpub_socket_t;
 class timer_t;
 namespace service
 {
 class spot_node_t;
 class spot_t;
-}
+class send_op_t;
+class send_ready_op_t;
+class request_op_t;
+class request_ready_op_t;
+class request_callback_ready_op_t;
+class reply_op_t;
+class reply_ready_op_t;
+class actor_join_op_t;
+class actor_join_ready_op_t;
+class actor_join_callback_ready_op_t;
+class actor_join_reply_op_t;
+class actor_leave_op_t;
+class actor_destroy_op_t;
+class actor_lookup_op_t;
+class actor_bind_op_t;
+class actor_unbind_op_t;
+} // namespace service
 
 enum class socket_type : int
 {
@@ -1139,18 +1159,6 @@ inline bool routing_id_empty (const routing_id_t &routing_id_) noexcept
 
 template<size_t N> inline std::string fixed_string_to_string (const char (&src_)[N]);
 
-enum class actor_create_status_t : int
-{
-    created = ZLINK_ACTOR_CREATE_CREATED,
-    existing = ZLINK_ACTOR_CREATE_EXISTING
-};
-
-enum class actor_admission_result_t : int
-{
-    accept = ZLINK_ACTOR_ADMISSION_ACCEPT,
-    reject = ZLINK_ACTOR_ADMISSION_REJECT
-};
-
 class actor_ref_t
 {
   public:
@@ -1280,6 +1288,7 @@ struct actor_join_info_t
 
     void *_request;
     friend class service::spot_t;
+    friend class service::actor_join_reply_op_t;
 };
 
 class actor_join_request_t
@@ -1299,19 +1308,99 @@ class actor_join_request_t
     message_t _message;
 };
 
-struct actor_create_result_t
+struct actor_join_result_t
 {
-    actor_create_result_t () : status (actor_create_status_t::created), actor () {}
-
-    explicit actor_create_result_t (const zlink_actor_create_result_t &native_)
-        : status (static_cast<actor_create_status_t> (native_.status)),
-          actor (native_.actor)
+    actor_join_result_t ()
+        : result (request_result_t::ok),
+          actor (),
+          joined_spot_rid (detail::unchecked_empty_routing_id ()),
+          join_epoch (0),
+          flags (0)
     {
     }
 
-    actor_create_status_t status;
+    explicit actor_join_result_t (const zlink_actor_join_result_t &native_)
+        : result (static_cast<request_result_t> (native_.result)),
+          actor (native_.actor),
+          joined_spot_rid (detail::native_routing_id (native_.joined_spot_rid)),
+          join_epoch (native_.join_epoch),
+          flags (native_.flags)
+    {
+    }
+
+    request_result_t result;
     actor_ref_t actor;
+    routing_id_t joined_spot_rid;
+    uint64_t join_epoch;
+    uint32_t flags;
 };
+
+struct actor_lookup_result_t
+{
+    actor_lookup_result_t ()
+        : result (request_result_t::ok), actor (), flags (0)
+    {
+    }
+
+    explicit actor_lookup_result_t (const zlink_actor_lookup_result_t &native_)
+        : result (static_cast<request_result_t> (native_.result)),
+          actor (native_.actor),
+          flags (native_.flags)
+    {
+    }
+
+    request_result_t result;
+    actor_ref_t actor;
+    uint32_t flags;
+};
+
+struct spot_actor_lifecycle_info_t
+{
+    spot_actor_lifecycle_info_t ()
+        : previous_actor (),
+          current_actor (),
+          previous_spot_rid (std::nullopt),
+          current_spot_rid (std::nullopt),
+          join_epoch (0),
+          flags (0)
+    {
+    }
+
+    explicit spot_actor_lifecycle_info_t (
+      const zlink_spot_actor_lifecycle_info_t &native_)
+        : previous_actor (native_.previous_actor),
+          current_actor (native_.current_actor),
+          previous_spot_rid (
+            native_.previous_spot_rid.size > 0
+              ? std::optional<routing_id_t> (
+                  detail::native_routing_id (native_.previous_spot_rid))
+              : std::nullopt),
+          current_spot_rid (
+            native_.current_spot_rid.size > 0
+              ? std::optional<routing_id_t> (
+                  detail::native_routing_id (native_.current_spot_rid))
+              : std::nullopt),
+          join_epoch (native_.join_epoch),
+          flags (native_.flags)
+    {
+    }
+
+    actor_ref_t previous_actor;
+    actor_ref_t current_actor;
+    std::optional<routing_id_t> previous_spot_rid;
+    std::optional<routing_id_t> current_spot_rid;
+    uint64_t join_epoch;
+    uint32_t flags;
+};
+
+using actor_join_callback_t =
+  std::function<void(const actor_join_result_t &, std::vector<message_t>)>;
+
+using actor_lookup_callback_t =
+  std::function<void(const actor_lookup_result_t &)>;
+
+using spot_actor_lifecycle_callback_t =
+  std::function<void(service::spot_t &, const spot_actor_lifecycle_info_t &)>;
 
 struct actor_route_t
 {
@@ -1472,14 +1561,13 @@ class received_t
     }
     message_t &first_part ();
     message_t single_part_or_throw ();
-    void reply (message_t &part) const;
-	    void reply (message_t &part, send_flags_t flags) const;
-	    void reply (std::vector<message_t> &parts) const;
-	    void reply (std::vector<message_t> &parts, send_flags_t flags) const;
-	    bool send (message_t &part) const;
-	    bool send (message_t &part, send_flags_t flags) const;
-	    bool send (std::vector<message_t> &parts) const;
-	    bool send (std::vector<message_t> &parts, send_flags_t flags) const;
+    /// Send context (routing_id / spot_rid) is encapsulated. Returns an
+    /// operation builder; accumulate payload via `.message(...)`.
+    service::send_op_t send ();
+    /// Reply context (routing_id, spot_rid, request_seq) is encapsulated.
+    /// Returns an operation builder; accumulate reply payload via
+    /// `.message(...)`. Submit throws if there is no valid reply context.
+    service::reply_op_t reply ();
 	    void close ();
 
     void set_reply_fn (
@@ -1497,6 +1585,10 @@ class received_t
   private:
     friend class base_socket_t;
     friend class router_socket_t;
+    friend class service::send_op_t;
+    friend class service::send_ready_op_t;
+    friend class service::reply_op_t;
+    friend class service::reply_ready_op_t;
 
     enum class send_context_kind_t
     {

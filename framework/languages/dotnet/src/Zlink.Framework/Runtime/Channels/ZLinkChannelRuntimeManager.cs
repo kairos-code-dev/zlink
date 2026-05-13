@@ -96,13 +96,13 @@ internal sealed class ZLinkChannelRuntimeManager(
         }
     }
 
-    public ZLinkRoutedChannelRuntime GetRoutedChannel(
+    public ZLinkRouteChannelRuntime GetRouteChannel(
         ZLinkFrameworkRuntimeState state,
         string routerChannelId)
     {
-        return state.RoutedChannels.TryGetValue(routerChannelId, out var routed)
+        return state.RouteChannels.TryGetValue(routerChannelId, out var routed)
             ? routed
-            : throw new InvalidOperationException($"Routed channel '{routerChannelId}' is not registered.");
+            : throw new InvalidOperationException($"Route channel '{routerChannelId}' is not registered.");
     }
 
     public void InitializeInboundChannels(
@@ -166,11 +166,11 @@ internal sealed class ZLinkChannelRuntimeManager(
         }
     }
 
-    public void InitializeRoutedChannels(
+    public void InitializeRouteChannels(
         ZLinkFrameworkRuntimeState state,
         IZLinkChannelBackendAdapter adapter)
     {
-        foreach (var routedRegistration in registration.RoutedChannels.Values)
+        foreach (var routedRegistration in registration.RouteChannels.Values)
         {
             var router = adapter.CreateRouterSocket(state.Context);
             router.SetChannelName(routedRegistration.RouterChannelId);
@@ -193,14 +193,14 @@ internal sealed class ZLinkChannelRuntimeManager(
                 router.AttachDiscovery(discovery);
             }
 
-            var handlers = new ZLinkRoutedHandlerRegistry(CreateRoutedHandlerDescriptors(routedRegistration));
-            var runtime = new ZLinkRoutedChannelRuntime(
+            var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));
+            var runtime = new ZLinkRouteChannelRuntime(
                 services,
                 routedRegistration,
                 router,
                 discovery,
                 handlers,
-                new ZLinkSessionActorDispatchRoutedPacketDispatcher(services),
+                new ZLinkSessionActorDispatchRoutePacketDispatcher(services),
                 state.StopTokenSource.Token);
             foreach (var endpoint in routedRegistration.ManualConnections)
             {
@@ -208,7 +208,7 @@ internal sealed class ZLinkChannelRuntimeManager(
             }
 
             runtime.Start();
-            state.RoutedChannels.Add(routedRegistration.RouterChannelId, runtime);
+            state.RouteChannels.Add(routedRegistration.RouterChannelId, runtime);
         }
     }
 
@@ -412,31 +412,31 @@ internal sealed class ZLinkChannelRuntimeManager(
             : ZLinkAutoConnectType.ClientServer;
     }
 
-    private static IEnumerable<ZLinkRoutedHandlerDescriptor> CreateRoutedHandlerDescriptors(
-        ZLinkRoutedChannelRegistration routedRegistration)
+    private static IEnumerable<ZLinkRouteHandlerDescriptor> CreateRouteHandlerDescriptors(
+        ZLinkRouteChannelRegistration routedRegistration)
     {
         foreach (var handler in routedRegistration.SendHandlers)
         {
-            yield return new ZLinkRoutedHandlerDescriptor(
+            yield return new ZLinkRouteHandlerDescriptor(
                 ZLinkMessageKind.Command,
                 routedRegistration.RouterChannelId,
                 handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
                 handler.HandlerType,
                 handler.MessageType,
                 null,
-                handler.HandlerType.GetMethod(nameof(IZLinkRoutedSendHandler<object>.HandleAsync))!);
+                handler.HandlerType.GetMethod(nameof(IZLinkRouteSendHandler<object>.HandleAsync))!);
         }
 
         foreach (var handler in routedRegistration.RequestHandlers)
         {
-            yield return new ZLinkRoutedHandlerDescriptor(
+            yield return new ZLinkRouteHandlerDescriptor(
                 ZLinkMessageKind.Request,
                 routedRegistration.RouterChannelId,
                 handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
                 handler.HandlerType,
                 handler.MessageType,
                 handler.ReplyType,
-                handler.HandlerType.GetMethod(nameof(IZLinkRoutedRequestHandler<object, object>.HandleAsync))!);
+                handler.HandlerType.GetMethod(nameof(IZLinkRouteRequestHandler<object, object>.HandleAsync))!);
         }
     }
 

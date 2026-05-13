@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 const AUTO_CONNECT_SPOT_MESH = 5;
 const AUTO_CONNECT_CLIENT_SERVER = 2;

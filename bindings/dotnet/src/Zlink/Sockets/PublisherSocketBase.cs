@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using Systems.Zlink.Sockets.Internal;
@@ -19,7 +20,17 @@ public abstract class PublisherSocketBase : ConnectableSocketBase
     {
     }
 
-    public bool Publish(string topic, Message message,
+    /// <summary>
+    /// Start a topic publish operation (operation builder).
+    /// </summary>
+    public SendOperation Publish(string topic)
+    {
+        if (topic == null)
+            throw new ArgumentNullException(nameof(topic));
+        return new PublisherSendOperation(this, topic);
+    }
+
+    internal bool PublishCore(string topic, Message message,
         SendFlags flags = SendFlags.None)
     {
         if ((flags & SendFlags.DontWait) != 0)
@@ -32,9 +43,11 @@ public abstract class PublisherSocketBase : ConnectableSocketBase
         return true;
     }
 
-    public bool Publish(string topic, IReadOnlyList<Message> parts,
+    internal bool PublishCore(string topic, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
+        if (parts.Count == 1)
+            return PublishCore(topic, parts[0], flags);
         if ((flags & SendFlags.DontWait) != 0)
         {
             return SocketKernel.TrySendOrThrow(Kernel.PublishNoWaitResult(topic,
@@ -50,7 +63,8 @@ public abstract class PublisherSocketBase : ConnectableSocketBase
         return Kernel.PublishNoWaitResult(topic, message);
     }
 
-    internal SendResult PublishNoWaitResult(string topic, IReadOnlyList<Message> parts)
+    internal SendResult PublishNoWaitResult(string topic,
+        IReadOnlyList<Message> parts)
     {
         return Kernel.PublishNoWaitResult(topic, parts);
     }

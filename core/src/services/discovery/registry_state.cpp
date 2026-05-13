@@ -76,7 +76,7 @@ void registry_t::remove_channel_providers_locked (
 
 void registry_t::handle_peer (void *sub_)
 {
-    std::vector<zlink_msg_t> frames;
+    scoped_msg_frames_t frames;
     while (true) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
@@ -99,18 +99,15 @@ void registry_t::handle_peer (void *sub_)
         memcpy (&req, zlink_msg_data (&frames[0]), sizeof (req));
         msg_id = req.msg_id;
     } else if (!discovery_protocol::read_u16 (frames[0], &msg_id)) {
-        close_msg_frames (&frames);
         return;
     }
 
     if (msg_id != discovery_protocol::msg_service_list
         && msg_id != discovery_protocol::msg_registry_sync) {
-        close_msg_frames (&frames);
         return;
     }
 
     if (frames.size () < 4) {
-        close_msg_frames (&frames);
         return;
     }
 
@@ -121,7 +118,6 @@ void registry_t::handle_peer (void *sub_)
         || !discovery_protocol::read_u64 (frames[2], &list_seq)
         || (msg_id == discovery_protocol::msg_service_list
             && !discovery_protocol::read_u32 (frames[3], &service_count))) {
-        close_msg_frames (&frames);
         return;
     }
 
@@ -137,7 +133,6 @@ void registry_t::handle_peer (void *sub_)
             local_registry_id = 1;
 
         if (peer_registry_id == local_registry_id) {
-            close_msg_frames (&frames);
             return;
         }
 
@@ -148,91 +143,52 @@ void registry_t::handle_peer (void *sub_)
           _projection_state.peer_route_seq.find (peer_registry_id);
         if (msg_id == discovery_protocol::msg_service_list
             && it != _projection_state.peer_seq.end () && list_seq <= it->second) {
-            close_msg_frames (&frames);
             return;
         }
         if (msg_id == discovery_protocol::msg_registry_sync
             && route_it != _projection_state.peer_route_seq.end ()
             && list_seq <= route_it->second) {
-            close_msg_frames (&frames);
             return;
         }
     }
 
     if (msg_id == discovery_protocol::msg_registry_sync) {
-        if (frames.size () < 6) {
-            close_msg_frames (&frames);
-            return;
-        }
-
-        uint32_t chunk_index = 0;
-        uint32_t chunk_count = 0;
-        uint32_t route_count = 0;
-        if (!discovery_protocol::read_u32 (frames[3], &chunk_index)
-            || !discovery_protocol::read_u32 (frames[4], &chunk_count)
-            || !discovery_protocol::read_u32 (frames[5], &route_count)
-            || chunk_count == 0 || chunk_index >= chunk_count) {
-            close_msg_frames (&frames);
+        discovery_protocol::route_list_t route_list;
+        if (!discovery_protocol::decode_route_list (frames, &route_list)) {
             return;
         }
 
         std::vector<route_entry_t> incoming_routes;
         size_t incoming_memory = 0;
-        size_t route_index = 6;
-        for (uint32_t i = 0; i < route_count && route_index < frames.size ();
-             ++i) {
-            if (route_index + 10 >= frames.size ())
-                break;
-
-            const std::string channel_name =
-              discovery_protocol::read_string (frames[route_index++]);
-            uint32_t raw_kind = 0;
-            if (!discovery_protocol::read_u32 (frames[route_index++],
-                                               &raw_kind))
-                break;
-
+        for (size_t i = 0; i < route_list.routes.size (); ++i) {
+            const discovery_protocol::route_record_t &record =
+              route_list.routes[i];
             route_key_t route_key;
-            if (!read_route_key (raw_kind, frames[route_index++],
-                                 channel_name, &route_key))
-                break;
+            route_key.channel_name = record.channel_name;
+            route_key.kind = static_cast<zlink_route_kind_t> (record.raw_kind);
+            if (route_key.channel_name.empty ()
+                || route_key.kind == ZLINK_ROUTE_KIND_INVALID
+                || record.key.empty () || record.key.size () > ZLINK_ROUTE_KEY_MAX) {
+                return;
+            }
+            route_key.key.assign (
+              reinterpret_cast<const char *> (&record.key[0]),
+              record.key.size ());
 
             route_entry_t route;
             route.key = route_key;
-            const size_t value_size = zlink_msg_size (&frames[route_index]);
-            if (value_size > ZLINK_ROUTE_VALUE_MAX)
-                break;
-            if (value_size > 0) {
-                const unsigned char *value_data =
-                  static_cast<const unsigned char *> (
-                    zlink_msg_data (
-                      const_cast<zlink_msg_t *> (&frames[route_index])));
-                route.value.assign (value_data, value_data + value_size);
+            route.value = record.value;
+            route.owner.channel_name = record.owner_channel_name;
+            route.owner.service_role = record.owner_service_role;
+            if (!record.owner_routing_id_key.empty ()) {
+                route.owner.routing_id_key.assign (
+                  reinterpret_cast<const char *> (
+                    &record.owner_routing_id_key[0]),
+                  record.owner_routing_id_key.size ());
             }
-            ++route_index;
-
-            route.owner.channel_name =
-              discovery_protocol::read_string (frames[route_index++]);
-            if (!discovery_protocol::read_u16 (
-                  frames[route_index++], &route.owner.service_role))
-                break;
-            const size_t owner_rid_size = zlink_msg_size (&frames[route_index]);
-            if (owner_rid_size > sizeof (((zlink_routing_id_t *) 0)->data))
-                break;
-            route.owner.routing_id_key.assign (
-              static_cast<const char *> (
-                zlink_msg_data (const_cast<zlink_msg_t *> (
-                  &frames[route_index]))),
-              owner_rid_size);
-            ++route_index;
-            if (!discovery_protocol::read_u32 (
-                  frames[route_index++], &route.owner.source_registry)
-                || !discovery_protocol::read_u64 (
-                  frames[route_index++], &route.owner.registration_id))
-                break;
-            if (!discovery_protocol::read_u64 (
-                  frames[route_index++], &route.updated_at_ms))
-                break;
-            ++route_index;
+            route.owner.source_registry = record.owner_source_registry;
+            route.owner.registration_id = record.owner_registration_id;
+            route.updated_at_ms = record.updated_at_ms;
             if (route.updated_at_ms == 0)
                 route.updated_at_ms = now;
             route.advertising_registry = peer_registry_id;
@@ -247,27 +203,25 @@ void registry_t::handle_peer (void *sub_)
             if (peer_registry_id == local_registry_id
                 || (route_it != _projection_state.peer_route_seq.end ()
                     && list_seq <= route_it->second)) {
-                close_msg_frames (&frames);
                 return;
             }
 
             route_snapshot_staging_t &staging =
               _projection_state.route_snapshot_staging[peer_registry_id];
-            const bool starts_snapshot = chunk_index == 0;
+            const bool starts_snapshot = route_list.chunk_index == 0;
             if (starts_snapshot) {
                 staging = route_snapshot_staging_t ();
                 staging.seq = list_seq;
-                staging.chunk_count = chunk_count;
+                staging.chunk_count = route_list.chunk_count;
                 staging.active = true;
             }
             if (!staging.active || staging.seq != list_seq
-                || staging.chunk_count != chunk_count
-                || staging.next_chunk_index != chunk_index
+                || staging.chunk_count != route_list.chunk_count
+                || staging.next_chunk_index != route_list.chunk_index
                 || staging.memory_bytes + incoming_memory
                      > _projection_state.route_limits.staging_memory_budget_bytes) {
                 _projection_state.route_snapshot_staging.erase (peer_registry_id);
                 _projection_state.route_stats.snapshot_staging_abort_count++;
-                close_msg_frames (&frames);
                 return;
             }
 
@@ -283,7 +237,7 @@ void registry_t::handle_peer (void *sub_)
             staging.memory_bytes += incoming_memory;
             staging.next_chunk_index++;
 
-            if (chunk_index + 1 == chunk_count) {
+            if (route_list.chunk_index + 1 == route_list.chunk_count) {
                 route_key_set_t dirty_routes;
                 cleanup_advertised_route_records_locked (peer_registry_id);
                 for (route_observation_map_t::const_iterator it =
@@ -294,7 +248,6 @@ void registry_t::handle_peer (void *sub_)
                                                      &route_error)) {
                         _projection_state.route_snapshot_staging.erase (peer_registry_id);
                         _projection_state.route_stats.snapshot_staging_abort_count++;
-                        close_msg_frames (&frames);
                         return;
                     }
                     upsert_route_observation_locked (it->second,
@@ -306,74 +259,44 @@ void registry_t::handle_peer (void *sub_)
                 _coordination_state.list_seq++;
             }
         }
-
-        close_msg_frames (&frames);
         return;
     }
 
-    size_t index = 4;
-    for (uint32_t i = 0; i < service_count && index < frames.size (); ++i) {
-        if (index + 3 >= frames.size ())
-            break;
-        uint16_t auto_connect_type = 0;
-        if (!discovery_protocol::read_u16 (frames[index++],
-                                           &auto_connect_type)
-            || !discovery_protocol::is_valid_auto_connect_type (
-              auto_connect_type))
-            break;
-        const std::string channel_name =
-          discovery_protocol::read_string (frames[index++]);
-        uint64_t contract_created_at = 0;
-        if (!discovery_protocol::read_u64 (frames[index++],
-                                           &contract_created_at))
-            break;
-        uint32_t provider_count = 0;
-        if (!discovery_protocol::read_u32 (frames[index++], &provider_count))
-            break;
-
+    discovery_protocol::service_list_t service_list;
+    if (!discovery_protocol::decode_service_list (frames, &service_list)) {
+        return;
+    }
+    for (size_t i = 0; i < service_list.services.size (); ++i) {
+        const discovery_protocol::service_record_t &record =
+          service_list.services[i];
         service_key_t service_key;
-        service_key.channel_name = channel_name;
+        service_key.channel_name = record.channel_name;
         channel_contract_t contract;
-        contract.auto_connect_type = auto_connect_type;
-        contract.created_at = contract_created_at;
+        contract.auto_connect_type = record.auto_connect_type;
+        contract.created_at = record.contract_created_at;
         contract.owner_registry_id = peer_registry_id == 0 ? 1
                                                            : peer_registry_id;
-        incoming_contracts[channel_name] = contract;
+        incoming_contracts[record.channel_name] = contract;
 
         service_entry_t &service = incoming[service_key];
-        service.auto_connect_type = auto_connect_type;
-        for (uint32_t p = 0; p < provider_count && index + 8 < frames.size ();
-             ++p) {
+        service.auto_connect_type = record.auto_connect_type;
+        for (size_t p = 0; p < record.providers.size (); ++p) {
+            const discovery_protocol::service_provider_record_t &provider =
+              record.providers[p];
             provider_entry_t entry;
-            if (!discovery_protocol::read_u16 (frames[index++],
-                                               &entry.service_role))
-                break;
-            if (!discovery_protocol::auto_connect_type_allows_role (
-                  auto_connect_type, entry.service_role))
-                break;
-            entry.endpoint = discovery_protocol::read_string (frames[index++]);
-            discovery_protocol::read_routing_id (frames[index++],
-                                                 &entry.routing_id);
-            uint32_t source_registry = 0;
-            discovery_protocol::read_u32 (frames[index++], &source_registry);
-            discovery_protocol::read_u64 (frames[index++],
-                                          &entry.registration_id);
-            discovery_protocol::read_u64 (frames[index++],
-                                          &entry.provider_update_seq);
-            uint16_t raw_weight = 0;
-            if (!discovery_protocol::read_u16 (frames[index++],
-                                               &raw_weight))
-                break;
-            entry.weight = raw_weight <= 100 ? raw_weight : 100;
-            int64_t value = 0;
-            discovery_protocol::read_i64 (frames[index++], &value);
-            entry.value = value;
-            discovery_protocol::read_bytes (frames[index], &entry.metadata);
-            ++index;
+            entry.service_role = provider.service_role;
+            entry.endpoint = provider.endpoint;
+            entry.routing_id = provider.routing_id;
+            entry.registration_id = provider.registration_id;
+            entry.provider_update_seq = provider.provider_update_seq;
+            entry.weight = provider.weight <= 100 ? provider.weight : 100;
+            entry.value = provider.value;
+            entry.metadata = provider.metadata;
             entry.registered_at = now;
             entry.last_heartbeat = now;
             entry.source_registry =
-              source_registry == 0 ? peer_registry_id : source_registry;
+              provider.source_registry == 0 ? peer_registry_id
+                                            : provider.source_registry;
             if (!entry.endpoint.empty ()) {
                 provider_key_t provider_key;
                 provider_key.service_role = entry.service_role;
@@ -390,7 +313,6 @@ void registry_t::handle_peer (void *sub_)
           _projection_state.peer_seq.find (peer_registry_id);
         if (peer_registry_id == local_registry_id
             || (it != _projection_state.peer_seq.end () && list_seq <= it->second)) {
-            close_msg_frames (&frames);
             return;
         }
 
@@ -482,7 +404,6 @@ void registry_t::handle_peer (void *sub_)
 
         if (!changed) {
             _projection_state.peer_seq[peer_registry_id] = list_seq;
-            close_msg_frames (&frames);
             return;
         }
 
@@ -545,8 +466,6 @@ void registry_t::handle_peer (void *sub_)
         _projection_state.peer_seq[peer_registry_id] = list_seq;
         _coordination_state.list_seq++;
     }
-
-    close_msg_frames (&frames);
 }
 
 void registry_t::handle_register (void *router_,

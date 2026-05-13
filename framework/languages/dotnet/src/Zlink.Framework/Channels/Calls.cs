@@ -4,7 +4,7 @@ public interface IZLinkSendCall
 {
     IZLinkSendCall WithPacketName(string messageName);
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkRequestCall
@@ -13,12 +13,12 @@ public interface IZLinkRequestCall
 
     IZLinkRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkPublishCall
 {
     IZLinkPublishCall WithPacketName(string messageName);
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }

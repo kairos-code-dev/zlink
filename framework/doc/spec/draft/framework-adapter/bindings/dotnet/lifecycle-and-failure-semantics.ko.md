@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET Regression Test Matrix](regression-test-matrix.ko.md) | [다음: ZLink Framework .NET Implementation Scope And Non-Goals](implementation-scope-and-nongoals.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md)

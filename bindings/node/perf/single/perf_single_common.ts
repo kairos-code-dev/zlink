@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
 const { Worker } = require('node:worker_threads');
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const {
   MonitorEventType,
   RecvFlags,

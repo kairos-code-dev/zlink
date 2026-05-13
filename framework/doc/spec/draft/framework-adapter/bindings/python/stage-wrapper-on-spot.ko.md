@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework FastAPI SPOT](fastapi-spot.ko.md) | [다음: ZLink Framework FastAPI STREAM](fastapi-stream.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [Python 묶음](./README.ko.md) | [SPOT](./fastapi-spot.ko.md)

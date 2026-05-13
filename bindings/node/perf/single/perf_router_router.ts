@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
   createRunId,
@@ -48,7 +48,7 @@ async function handshakeReceiver(receiver) {
     throw new Error('router-router handshake receive failed');
   }
 
-  receiver.send(SENDER_ROUTING_ID, Buffer.from('PONG'));
+  receiver.send(SENDER_ROUTING_ID).message(Buffer.from('PONG')).submit();
 }
 
 async function runRouterRouterBenchmark(msgSize, options) {

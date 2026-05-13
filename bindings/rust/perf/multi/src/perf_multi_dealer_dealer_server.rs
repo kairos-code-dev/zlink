@@ -72,7 +72,7 @@ fn main() {
         if !pending {
             common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
             let msg = Message::copy_from(&buf).expect("msg");
-            match server.send_with_flags(msg, SendFlags::DONT_WAIT) {
+            match server.send().message(msg).flags(SendFlags::DONT_WAIT).submit() {
                 Ok(true) => {
                     seq += 1;
                     continue;
@@ -102,7 +102,7 @@ fn main() {
     // token (blocking send, deadline ignored). Receiver exits on token arrival.
     for _ in 0..100 {
         let token = Message::copy_from(common::STOP_TOKEN).expect("stop token");
-        match server.send(token) {
+        match server.send().message(token).submit().map(|_| ()) {
             Ok(()) => break,
             Err(_) => std::thread::sleep(Duration::from_millis(1)),
         }

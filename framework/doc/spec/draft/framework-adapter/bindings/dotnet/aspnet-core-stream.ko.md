@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: Stage Wrapper On SPOT](stage-wrapper-on-spot.ko.md) | [다음: ZLink Framework ASP.NET Core Actor](aspnet-core-actor.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md)
@@ -27,8 +31,10 @@ session 방식으로 정리하는 것이다.
 `STREAM`은 일반 channel messaging handler와 같은 감각으로 억지로 맞추지 않는다.
 특히 아래 원칙을 둔다.
 
-- framework가 decode한 `ZLinkStreamHeader`와 `Message body` packet 단위를 처리한다.
-- `playhouse`처럼 header는 고정 메타데이터이고, body는 `header.Name`을 보고 각 packet 타입으로 decode하는 방식을 자연스러운 기본 모델로 본다.
+- framework가 decode한 stream frame을 `IZLinkSessionPacket`으로 감싼 뒤 처리한다.
+- `playhouse`처럼 header는 framework 내부에서 packet name과 metadata로 해석하고,
+  application은 `packet.PacketName`을 보고 각 packet 타입으로 decode하는 방식을
+  자연스러운 기본 모델로 본다.
 - 이 decode helper는 `playhouse/extensions`처럼 transport 본체에 넣기보다,
   `Message` 위에 얹는 serializer extension 계층으로 두는 쪽을 기본으로 본다.
 - recv loop는 application 표면에 직접 올리지 않는다.
@@ -84,6 +90,15 @@ public readonly record struct ZLinkStreamDiagnostic(
     int NativeCode,
     string? Message);
 
+public interface IZLinkSessionPacket
+{
+    string PacketName { get; }
+
+    IReadOnlyDictionary<string, string> Metadata { get; }
+
+    TMessage Decode<TMessage>();
+}
+
 public interface IZLinkSession
 {
     IZLinkSessionContext Context { get; set; }
@@ -97,8 +112,7 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        ZLinkStreamHeader header,
-        Message body,
+        IZLinkSessionPacket packet,
         CancellationToken cancellationToken);
 }
 
@@ -109,8 +123,7 @@ public interface IZLinkSessionActorDispatchContext
         string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> CreateRemoteActorAsync(
-        RoutingId actorNodeId,
+    ValueTask<IZLinkActorRef> CreateActorHandleAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
@@ -118,14 +131,12 @@ public interface IZLinkSessionActorDispatchContext
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
 
     ValueTask DispatchToActorAsync(
-        ZLinkStreamHeader header,
-        Message body,
+        IZLinkSessionPacket packet,
         CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
-        ZLinkStreamHeader header,
-        Message body,
+        IZLinkSessionPacket packet,
         CancellationToken cancellationToken = default);
 }
 
@@ -170,10 +181,10 @@ public interface IZLinkSessionContext :
 - actor stream 연결과 해제는 별도 `IZLinkSessionActorAttachmentContext` 표면으로
   분리한다.
 - `CloseAsync(...)`는 현재 stream client 연결을 서버 쪽에서 끊는다.
-- header session은 C API가 이미 header/body로 나눈 framed packet을 받는다.
-- body는 보통 고정 타입 하나로 바로 올리지 않고, header 안의 `msgId` 같은 값을 보고
-  각 packet 타입으로 decode한다.
-- 이 decode 과정은 가능하면 `Message.AsReadOnlySpan()`이나 그 위에 얹는 helper를
+- header session은 C API가 나눈 stream frame을 framework가 `IZLinkSessionPacket`으로
+  감싼 뒤 받는다.
+- application은 packet name을 보고 각 packet 타입으로 decode한다.
+- 이 decode 과정은 가능하면 packet 내부의 `Message.AsReadOnlySpan()` 기반 helper를
   사용해서 추가 복사를 피하는 쪽을 기본으로 본다.
 - `IZLinkStream`의 `SessionId`, `RoutingId`, `LocalAddr`, `RemoteAddr`로 peer와
   connection metadata를 읽는다.
@@ -238,15 +249,15 @@ builder.Services.AddZLinkFramework(options =>
 예를 들면:
 
 ```csharp
-ClientInput input = body.Parse<ClientInput>();
-ChatRequest request = body.Parse<ChatRequest>();
+ClientInput input = packet.Decode<ClientInput>();
+ChatRequest request = packet.Decode<ChatRequest>();
 ```
 
 이 구조의 장점은 아래와 같다.
 
 - protobuf/json/messagepack dependency를 transport core에 고정하지 않는다.
 - serializer를 추가 패키지로 분리하기 쉽다.
-- `Message.AsReadOnlySpan()` 기반 helper를 써서 불필요한 복사를 줄이기 쉽다.
+- packet 내부의 `Message.AsReadOnlySpan()` 기반 helper를 써서 불필요한 복사를 줄이기 쉽다.
 - `playhouse/extensions`와 비슷한 사용 경험을 만들 수 있다.
 
 ## 6. recv 방식은 왜 기본에서 빼는가
@@ -265,7 +276,7 @@ application 표면으로는 올리지 않는다**는 뜻이다.
 
 - stream session 등록은 attribute 기반으로 열지 않는다.
   `AddStreamNode(...).AddHeaderSession<T>()` 같은 명시 등록만 기본 표면으로 둔다.
-- body decode helper와 encode helper는 framework 본체가 아니라 serializer 확장
+- packet decode helper와 encode helper는 framework 본체가 아니라 serializer 확장
   패키지가 맡는다.
   framework core는 `Message`, `AsReadOnlySpan()`, session contract까지만 책임진다.
 - protobuf/json/messagepack serializer는 확장 패키지로 분리한다.
@@ -274,4 +285,4 @@ application 표면으로는 올리지 않는다**는 뜻이다.
   handshake 실패와 socket/node 단위 오류는 runtime monitoring에서 다루고, session
   callback에는 올리지 않는다.
 - raw chunk 직접 처리 표면은 현재 공개 계약에 넣지 않는다. 현 단계의 session은
-  framework가 decode한 `ZLinkStreamHeader`와 `Message body`를 받는 계약으로 둔다.
+  framework가 decode한 `IZLinkSessionPacket`을 받는 계약으로 둔다.

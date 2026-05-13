@@ -4,7 +4,7 @@
 #include "../common/perf_single_monitor.hpp"
 #include "../common/perf_single_one_way.hpp"
 #include "../common/perf_single_phase.hpp"
-#include <zlink_c.h>
+#include <zlink.h>
 
 #include <algorithm>
 #include <vector>

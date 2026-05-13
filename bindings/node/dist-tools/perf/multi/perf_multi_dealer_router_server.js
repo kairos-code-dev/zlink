@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { isStopTokenParts } = require('../perf_stop_token');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWait, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
@@ -59,7 +59,10 @@ async function main() {
                             received.close();
                             continue;
                         }
-                        if (pending.length === 0 && received.send(received.parts, zlink.SendFlags.DontWait)) {
+                        let send = received.send();
+                        for (const part of received.parts)
+                            send = send.message(part);
+                        if (pending.length === 0 && send.flags(zlink.SendFlags.DontWait).submit()) {
                             received.close();
                             continue;
                         }

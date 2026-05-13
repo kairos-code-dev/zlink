@@ -772,7 +772,7 @@ bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
     size_t part_count = 0;
     char topic[256];
     size_t topic_len = sizeof(topic) - 1;
-    const int rc = zlink_spot_subscribe(
+    const int rc = perf_zlink_spot_subscribe_parts (
       slot->handle,
       NULL,
       &parts,

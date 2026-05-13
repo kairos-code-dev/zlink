@@ -69,7 +69,7 @@ public class SocketSubscriptionContractTest {
             assertEquals("topic-a", event.topic());
 
             try (Message part = Message.copyOfUtf8("payload")) {
-                pub.publish("topic-a", part);
+                pub.publish("topic-a").message(part).submit();
             }
 
             try (TopicMessage received = sub.subscribe()) {
@@ -99,7 +99,7 @@ public class SocketSubscriptionContractTest {
                 MonitorEventType.CONNECTION_READY);
 
             try (Message part = Message.copyOfUtf8("payload-b")) {
-                pub.publish("topic-b", part);
+                pub.publish("topic-b").message(part).submit();
             }
 
             try (TopicMessage received = sub.subscribe()) {

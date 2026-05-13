@@ -3,6 +3,8 @@
 package systems.zlink;
 
 import systems.zlink.service.discovery.Discovery;
+import systems.zlink.service.spot.RequestOp;
+import systems.zlink.service.spot.SendOp;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -31,10 +33,10 @@ public final class DealerSocket extends Socket {
     public String getChannelName() { return super.getChannelName(); }
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
     public RoutingId routingId() { return super.routingId(); }
-    public boolean send(Message part) { return super.send(part); }
-    public boolean send(Message part, SendFlags flags) { return super.send(part, SendFlag.fromValue(flags.value())); }
-    public boolean send(List<Message> parts) { return super.send(parts); }
-    public boolean send(List<Message> parts, SendFlags flags) { return super.send(parts, SendFlag.fromValue(flags.value())); }
+    public SendOp send() {
+        return SocketOperations.send((parts, flags) ->
+            super.send(parts, SendFlag.fromValue(flags.value())));
+    }
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
     SendResult sendNoWaitResult(List<Message> parts) { return super.sendNoWaitResult(parts); }
     /**
@@ -51,64 +53,21 @@ public final class DealerSocket extends Socket {
         return super.recvInto(result, ReceiveFlag.fromValue(flags.value()));
     }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
-    public CompletableFuture<List<Message>> request(Message part) { return request(List.of(part)); }
-    private CompletableFuture<List<Message>> request(Message part, SendFlags flags) {
-        return request(List.of(part), flags);
+    public RequestOp request() {
+        return SocketOperations.request(this::requestAsync, this::requestCallback);
     }
-    public CompletableFuture<List<Message>> request(Message part, Duration timeout) {
-        return request(List.of(part), timeout);
-    }
-    private CompletableFuture<List<Message>> request(Message part, SendFlags flags,
-                                                     Duration timeout) {
-        return request(List.of(part), flags, timeout);
-    }
-    public CompletableFuture<List<Message>> request(List<Message> parts) {
-        return request(parts, SendFlags.NONE);
-    }
-    private CompletableFuture<List<Message>> request(List<Message> parts,
-                                                     SendFlags flags) {
-        return request(parts, flags,
-            Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
-    }
-    public CompletableFuture<List<Message>> request(List<Message> parts, Duration timeout) {
-        return request(parts, SendFlags.NONE, timeout);
-    }
-    private CompletableFuture<List<Message>> request(List<Message> parts,
-                                                     SendFlags flags,
-                                                     Duration timeout) {
+
+    private CompletableFuture<List<Message>> requestAsync(List<Message> parts,
+                                                          SendFlags flags,
+                                                          Duration timeout) {
         return dealerRequests.request(parts, timeout, flags).thenApply(reply ->
             RequestReplySupport.takeReceivedParts(reply));
     }
-    public boolean request(Message part, RequestCallback callback) {
-        return request(List.of(part), callback);
-    }
-    public boolean request(List<Message> parts, RequestCallback callback) {
-        return request(parts, callback, SendFlags.NONE,
-            Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
-    }
-    public boolean request(Message part, RequestCallback callback,
-                        Duration timeout) {
-        return request(List.of(part), callback, SendFlags.NONE, timeout);
-    }
-    public boolean request(List<Message> parts, RequestCallback callback,
-                        Duration timeout) {
-        return request(parts, callback, SendFlags.NONE, timeout);
-    }
-    public boolean request(Message part, RequestCallback callback,
-                        SendFlags flags) {
-        return request(List.of(part), callback, flags);
-    }
-    public boolean request(List<Message> parts, RequestCallback callback,
-                        SendFlags flags) {
-        return request(parts, callback, flags,
-            Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
-    }
-    public boolean request(Message part, RequestCallback callback,
-                        SendFlags flags, Duration timeout) {
-        return request(List.of(part), callback, flags, timeout);
-    }
-    public boolean request(List<Message> parts, RequestCallback callback,
-                        SendFlags flags, Duration timeout) {
+
+    private boolean requestCallback(List<Message> parts,
+                                    RequestCallback callback,
+                                    SendFlags flags,
+                                    Duration timeout) {
         try {
             dealerRequests.request(parts, (result, reply) -> {
                 List<Message> payload = List.of();

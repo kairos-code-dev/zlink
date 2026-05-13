@@ -69,7 +69,7 @@ public class CallbackSendContractTest {
                     assertNotNull(rid,
                         "router must receive routing id from dealer");
                     try (Message reply = Message.copyOfUtf8("pong")) {
-                        received.reply(reply);
+                        received.reply().message(reply).submit();
                     }
                 } catch (Throwable t) {
                     callbackError.set(t);
@@ -78,7 +78,11 @@ public class CallbackSendContractTest {
             routerThread.start();
 
             try (Message request = Message.copyOfUtf8("ping")) {
-                dealer.request(request,
+                dealer.request()
+                    .message(request)
+                    .flags(SendFlags.NONE)
+                    .timeout(Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS))
+                    .submit(
                     (result, received) -> {
                         try {
                             assertEquals(RequestResult.OK, result);
@@ -89,8 +93,7 @@ public class CallbackSendContractTest {
                             Message.closeAll(received);
                             replyReceived.countDown();
                         }
-                    }, SendFlags.NONE,
-                    Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS));
+                    });
             }
 
             assertTrue(replyReceived.await(
@@ -132,7 +135,7 @@ public class CallbackSendContractTest {
                     assertEquals("ping",
                         new String(data, StandardCharsets.UTF_8));
                     try (Message reply = Message.copyOfUtf8("pong")) {
-                        right.send(reply, SendFlags.DONT_WAIT);
+                        right.send().message(reply).flags(SendFlags.DONT_WAIT).submit();
                     }
                 } catch (Throwable t) {
                     callbackError.set(t);
@@ -154,7 +157,7 @@ public class CallbackSendContractTest {
             leftThread.start();
 
             try (Message request = Message.copyOfUtf8("ping")) {
-                left.send(request);
+                left.send().message(request).submit();
             }
 
             assertTrue(replyReceived.await(
@@ -211,7 +214,7 @@ public class CallbackSendContractTest {
                                 "request-".length());
                             try (Message reply = Message.copyOfUtf8(
                                      "reply-" + requestIndex)) {
-                                received.reply(reply);
+                                received.reply().message(reply).submit();
                             }
                         } catch (Throwable t) {
                             if (callbackError.get() == null)
@@ -223,7 +226,11 @@ public class CallbackSendContractTest {
                     routerThread.start();
 
                     try (Message request = Message.copyOfUtf8("request-" + index)) {
-                        dealer.request(request,
+                        dealer.request()
+                            .message(request)
+                            .flags(SendFlags.NONE)
+                            .timeout(Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS))
+                            .submit(
                             (result, received) -> {
                                 try {
                                     assertEquals(RequestResult.OK, result);
@@ -241,8 +248,7 @@ public class CallbackSendContractTest {
                                     roundDone.countDown();
                                     allReplies.countDown();
                                 }
-                            }, SendFlags.NONE,
-                            Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS));
+                            });
                     }
 
                     assertTrue(roundDone.await(
@@ -289,7 +295,10 @@ public class CallbackSendContractTest {
                         return;
                     try (Message reply = frame(Message.copyOf(new byte[0]),
                             payload)) {
-                        server.send(routingId, reply, SendFlags.DONT_WAIT);
+                        server.send(routingId)
+                            .message(reply)
+                            .flags(SendFlags.DONT_WAIT)
+                            .submit();
                     }
                     echoed.countDown();
                 } catch (Throwable t) {

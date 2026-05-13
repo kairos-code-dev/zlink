@@ -302,7 +302,7 @@ public sealed class StreamIntegrationTests
                     new GatewayPing("from-play"))
                 .WithPacketName("client.echo")
                 .WithTimeout(TimeSpan.FromSeconds(10))
-                .Async<GatewayPong>();
+                .Submit<GatewayPong>();
 
             await clientReplyTask;
             Assert.Equal("client:from-play", gatewayReply.Value);
@@ -315,7 +315,7 @@ public sealed class StreamIntegrationTests
                 .WithPacketName("relay.echo")
                 .WithMetadata("trace-id", "trace-actor-client")
                 .WithTimeout(TimeSpan.FromSeconds(10))
-                .Async<GatewayPong>();
+                .Submit<GatewayPong>();
 
             Assert.Equal("play:from-actor-client", actorClientReply.Value);
             Assert.Equal("relay.echo", proxyRecorder.LastPacketName);
@@ -619,7 +619,7 @@ public sealed class StreamIntegrationTests
             }
 
             return Context.Reply("pong")
-                .Async(cancellationToken);
+                .Submit(cancellationToken);
         }
     }
 
@@ -755,7 +755,7 @@ public sealed class StreamIntegrationTests
             Message payload,
             CancellationToken cancellationToken)
         {
-            _actor ??= await Context.CreateRemoteActorAsync(
+            _actor ??= await Context.CreateActorHandleAsync(
                 settings.PlayRid,
                 "player-1",
                 "player",

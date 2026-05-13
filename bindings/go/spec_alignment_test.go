@@ -130,7 +130,7 @@ func TestReceivedReplyHelpersCarryCanonicalMetadata(t *testing.T) {
 	if got := received.SpotRID(); !got.Equal(NewRoutingID([]byte("spot"))) {
 		t.Fatalf("SpotRID() = %v, want %v", got, NewRoutingID([]byte("spot")))
 	}
-	if err := received.Reply([]*Message{replyPart}); err != nil {
+	if err := received.Reply().Message(replyPart).Submit(nil); err != nil {
 		t.Fatalf("Reply() error = %v", err)
 	}
 	if gotFlags != SendFlagsNone {
@@ -144,7 +144,7 @@ func TestReceivedReplyHelpersCarryCanonicalMetadata(t *testing.T) {
 	}
 }
 
-func TestReceivedReplyWithFlagsRejectsUnsupportedFlags(t *testing.T) {
+func TestReceivedReplyBuilderRejectsUnsupportedFlags(t *testing.T) {
 	replyPart, err := NewMessage([]byte("reply"))
 	if err != nil {
 		t.Fatalf("NewMessage() error = %v", err)
@@ -161,25 +161,30 @@ func TestReceivedReplyWithFlagsRejectsUnsupportedFlags(t *testing.T) {
 		},
 	}
 
-	err = received.ReplyWithFlags([]*Message{replyPart}, SendFlagsDontWait)
+	err = received.Reply().Message(replyPart).Flags(SendFlagsDontWait).Submit(nil)
 	if err == nil {
-		t.Fatalf("ReplyWithFlags() should reject unsupported flags")
+		t.Fatalf("Reply() should reject unsupported flags")
 	}
 	var submitErr *SubmitError
 	if !errors.As(err, &submitErr) {
-		t.Fatalf("ReplyWithFlags() error type = %T, want *SubmitError", err)
+		t.Fatalf("Reply() error type = %T, want *SubmitError", err)
 	}
 	if submitErr.Result != SubmitNotSupported {
-		t.Fatalf("ReplyWithFlags() result = %v, want %v", submitErr.Result, SubmitNotSupported)
+		t.Fatalf("Reply() result = %v, want %v", submitErr.Result, SubmitNotSupported)
 	}
 	if called {
-		t.Fatalf("ReplyWithFlags() should not invoke the reply callback for unsupported flags")
+		t.Fatalf("Reply() should not invoke the reply callback for unsupported flags")
 	}
 }
 
 func TestReceivedReplyRequiresValidContext(t *testing.T) {
 	received := &Received{}
-	err := received.Reply(nil)
+	msg, err := NewMessage([]byte("reply"))
+	if err != nil {
+		t.Fatalf("NewMessage() error = %v", err)
+	}
+	defer msg.Close()
+	err = received.Reply().Message(msg).Submit(nil)
 	if err == nil {
 		t.Fatalf("Reply() should fail without a request context")
 	}

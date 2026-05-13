@@ -10,6 +10,7 @@
 #include "services/spot/spot_runtime.hpp"
 
 #include "api/service_api_internal.hpp"
+#include "api/service_spot_dispatch_surface_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 
 #include "services/common/monitor_decode.hpp"

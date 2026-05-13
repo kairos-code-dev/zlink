@@ -50,39 +50,27 @@ public sealed class DealerSocket : MessageSocketBase
         return GetChannelNameCore();
     }
 
-    public Task<IReadOnlyList<Message>> Request(Message part,
-        CancellationToken ct = default)
-        => Request(new[] { part }, ct);
-
-    public Task<IReadOnlyList<Message>> Request(Message part,
-        TimeSpan timeout, CancellationToken ct = default)
-        => Request(new[] { part }, timeout, ct);
-
-    public async Task<IReadOnlyList<Message>> Request(
-        IReadOnlyList<Message> parts, CancellationToken ct = default)
+    /// <summary>
+    /// Start a dealer request (operation builder).
+    /// </summary>
+    public RequestOperation Request()
     {
-        Received received = await RequestAsyncCore(parts, DefaultRequestTimeout, ct)
-            .ConfigureAwait(false);
-        return received.Parts;
+        return new DealerRequestOperation(this);
     }
 
-    public async Task<IReadOnlyList<Message>> Request(
+    internal async Task<IReadOnlyList<Message>> RequestCore(
         IReadOnlyList<Message> parts, TimeSpan timeout,
         CancellationToken ct = default)
     {
-        Received received = await RequestAsyncCore(parts, timeout, ct)
+        Received received = await RequestAsyncCore(parts,
+            timeout == TimeSpan.Zero ? DefaultRequestTimeout : timeout, ct)
             .ConfigureAwait(false);
         return received.Parts;
     }
 
-    public bool Request(Message part,
-        RequestCallback callback,
-        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
-        => Request(new[] { part }, callback, flags, timeout);
-
-    public bool Request(IReadOnlyList<Message> parts,
-        RequestCallback callback,
-        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
+    internal bool RequestCallbackCore(IReadOnlyList<Message> parts,
+        RequestCallback callback, SendFlags flags = SendFlags.None,
+        TimeSpan? timeout = null)
     {
         try
         {

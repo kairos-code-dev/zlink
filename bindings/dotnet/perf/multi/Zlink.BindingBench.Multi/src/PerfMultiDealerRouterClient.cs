@@ -291,10 +291,20 @@ internal static class PerfMultiDealerRouterClient
 
     private static bool TrySend(DealerRouterClientSlot slot)
     {
-        // The payload is only re-stamped after the previous reply arrives, so
-        // the borrowed buffer is not mutated while a send is in flight.
-        return ((DealerSocket)slot.Socket).SendBorrowedSingleNoWaitResult(
-            slot.Payload) == SendResult.Sent;
+        Message message = Message.FromBytes(slot.Payload);
+        try
+        {
+            bool sent = ((DealerSocket)slot.Socket).Send().Message(message)
+                .Flags(SendFlags.DontWait).Submit();
+            if (!sent)
+                message.Dispose();
+            return sent;
+        }
+        catch
+        {
+            message.Dispose();
+            throw;
+        }
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)

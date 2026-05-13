@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework NestJS SPOT](nestjs-spot.ko.md) | [다음: ZLink Framework NestJS STREAM](nestjs-stream.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [Node.js 묶음](./README.ko.md) | [SPOT](./nestjs-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md)

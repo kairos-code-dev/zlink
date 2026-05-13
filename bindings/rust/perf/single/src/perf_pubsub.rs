@@ -66,13 +66,25 @@ fn main() {
     let active_deadline = std::time::Instant::now() + active;
     let send_thread = std::thread::spawn(move || {
         common::send_loop(active_deadline, config.size, common::PHASE_ACTIVE, |msg| {
-            match pub_sock.publish_with_flags("P", msg, SendFlags::DONT_WAIT) {
+            match pub_sock
+                .publish("P")
+                .message(msg)
+                .flags(SendFlags::DONT_WAIT)
+                .submit()
+            {
                 Ok(sent) => sent,
                 Err(err) if err.code() == SubmitResult::NotConnected => false,
                 Err(err) => panic!("active publish: {err}"),
             }
         });
-        common::send_stop_token(|msg| pub_sock.publish("P", msg).map_err(Into::into));
+        common::send_stop_token(|msg| {
+            pub_sock
+                .publish("P")
+                .message(msg)
+                .submit()
+                .map(|_| ())
+                .map_err(Into::into)
+        });
     });
 
     loop {

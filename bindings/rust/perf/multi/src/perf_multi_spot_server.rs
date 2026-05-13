@@ -191,13 +191,13 @@ fn main() {
     common::encode_header(&mut warmup, common::PHASE_WARMUP, args.msg_size as u32, 0);
     let ready_deadline = Instant::now() + ready_timeout;
     while Instant::now() < ready_deadline && ready_count < settings.clients {
-        match spot.publish_with_flags(
-            CHANNEL_NAME,
-            TOPIC,
-            Message::copy_from(&warmup).expect("warmup message"),
-            SendFlags::DONT_WAIT,
-        ) {
-            Ok(()) => {}
+        match spot
+            .publish(TOPIC)
+            .message(Message::copy_from(&warmup).expect("warmup message"))
+            .flags(SendFlags::DONT_WAIT)
+            .submit()
+        {
+            Ok(_) => {}
             Err(err)
                 if matches!(
                     err.code(),
@@ -255,17 +255,14 @@ fn main() {
     while Instant::now() < deadline {
         common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
         seq += 1;
-        spot.publish(
-            CHANNEL_NAME,
-            TOPIC,
-            Message::copy_from(&buf).expect("publish msg"),
-        )
+        spot.publish(TOPIC)
+            .message(Message::copy_from(&buf).expect("publish msg"))
+            .submit()
         .expect("spot publish");
     }
     common::encode_header(&mut buf, common::PHASE_COOLDOWN, args.msg_size as u32, seq);
-    let _ = spot.publish(
-        CHANNEL_NAME,
-        TOPIC,
-        Message::copy_from(&buf).expect("cooldown msg"),
-    );
+    let _ = spot
+        .publish(TOPIC)
+        .message(Message::copy_from(&buf).expect("cooldown msg"))
+        .submit();
 }

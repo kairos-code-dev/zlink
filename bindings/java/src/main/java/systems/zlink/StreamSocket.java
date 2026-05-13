@@ -8,13 +8,22 @@ import systems.zlink.internal.Native;
 import systems.zlink.internal.NativeHelpers;
 import systems.zlink.internal.NativeLayouts;
 import systems.zlink.internal.NativeMsg;
+import systems.zlink.internal.RequestProgressPump;
+import systems.zlink.service.spot.ActorBindOp;
 import systems.zlink.service.spot.ActorRef;
-import systems.zlink.service.spot.SpotNode;
+import systems.zlink.service.spot.ActorRequestCallbacks;
+import systems.zlink.service.spot.ActorUnbindOp;
+import systems.zlink.service.spot.ReplyHandler;
+import systems.zlink.service.spot.SendOp;
+import systems.zlink.service.spot.SendSubmitOp;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 public final class StreamSocket extends Socket {
     private final StreamSocketOptions options = new StreamSocketOptions(this);
@@ -36,8 +45,6 @@ public final class StreamSocket extends Socket {
     SendResult sendNoWaitResult(int rid, Message part) {
         return super.sendNoWaitResult(RoutingId.fromU32(rid), part);
     }
-    public boolean send(RoutingId rid, Message part) { return super.send(rid, part); }
-    public boolean send(RoutingId rid, Message part, SendFlags flags) { return super.send(rid, part, SendFlag.fromValue(flags.value())); }
     SendResult sendNoWaitResult(RoutingId rid, Message part) {
         return super.sendNoWaitResult(rid, part);
     }
@@ -48,10 +55,12 @@ public final class StreamSocket extends Socket {
                    SendFlags flags) {
         return super.sendCopied(rid, payload, length, flags.value());
     }
-    public boolean send(RoutingId rid, List<Message> parts) { return super.send(rid, parts); }
-    public boolean send(RoutingId rid, List<Message> parts, SendFlags flags) { return super.send(rid, parts, SendFlag.fromValue(flags.value())); }
     SendResult sendNoWaitResult(RoutingId rid, List<Message> parts) {
         return super.sendNoWaitResult(rid, parts);
+    }
+    public SendOp send(RoutingId rid) {
+        Objects.requireNonNull(rid, "rid");
+        return new RoutedSendBuilder(rid);
     }
     /** Canonical caller-provided storage recv. See doc/spec/bindings/README.md. */
     public boolean recv(Received result, RecvFlags flags) {
@@ -61,8 +70,8 @@ public final class StreamSocket extends Socket {
         if (fresh == null) return false;
         result.adoptFrom(fresh);
         result.routingId().ifPresent(rid ->
-            result.setSendSender((parts, sendFlags) -> send(rid, parts,
-                sendFlags)));
+            result.setSendSender((parts, sendFlags) -> super.send(rid, parts,
+                SendFlag.fromValue(sendFlags.value()))));
         return true;
     }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
@@ -85,115 +94,147 @@ public final class StreamSocket extends Socket {
         super.attachStreamPacket(handler);
     }
     void detachStream() { super.detachStream(); }
-    public void bindActor(SpotNode node, RoutingId sessionRid, ActorRef actor,
-                          Duration timeout) {
-        Objects.requireNonNull(node, "node");
+    public ActorBindOp bindActor(RoutingId sessionRid, ActorRef actor) {
         Objects.requireNonNull(sessionRid, "sessionRid");
         Objects.requireNonNull(actor, "actor");
+        return new ActorBindBuilder(sessionRid, actor);
+    }
+
+    public ActorUnbindOp unbindActor(RoutingId sessionRid, String actorId) {
+        Objects.requireNonNull(sessionRid, "sessionRid");
+        Objects.requireNonNull(actorId, "actorId");
+        return new ActorUnbindBuilder(sessionRid, actorId);
+    }
+
+    public SendOp sendBoundActor(RoutingId sessionRid, String actorId) {
+        Objects.requireNonNull(sessionRid, "sessionRid");
+        Objects.requireNonNull(actorId, "actorId");
+        return new BoundActorSendBuilder(sessionRid, actorId);
+    }
+
+    public List<ActorRef> boundActors(RoutingId sessionRid) {
+        Objects.requireNonNull(sessionRid, "sessionRid");
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.streamBindActor(
-              InternalAccess.spotNodeHandle(node),
-              handle(),
+            long capacity = 256L;
+            MemorySegment entries = arena.allocate(
+              NativeLayouts.ACTOR_REF_LAYOUT, capacity);
+            MemorySegment count =
+              arena.allocate(java.lang.foreign.ValueLayout.JAVA_LONG);
+            count.set(java.lang.foreign.ValueLayout.JAVA_LONG, 0, capacity);
+            int rc = Native.streamBoundActors(handle(),
+              ActorInterop.nativeRoutingId(arena, sessionRid), entries, count);
+            if (rc != 0) {
+                throw new ConfigException(ConfigResult.fromValue(rc));
+            }
+            long actual = count.get(java.lang.foreign.ValueLayout.JAVA_LONG, 0);
+            ArrayList<ActorRef> refs = new ArrayList<>((int) actual);
+            long stride = NativeLayouts.ACTOR_REF_LAYOUT.byteSize();
+            for (int i = 0; i < actual; i++) {
+                refs.add(ActorInterop.actorRefFromNative(
+                  entries.asSlice(i * stride, stride)));
+            }
+            return List.copyOf(refs);
+        }
+    }
+
+    @Override public StreamSocketOptions options() { return options; }
+
+    private CompletableFuture<List<Message>> submitBindAsync(
+      RoutingId sessionRid, ActorRef actor, Duration timeout) {
+        CompletableFuture<List<Message>> future = new CompletableFuture<>();
+        submitBind(sessionRid, actor, timeout, (result, parts) -> {
+            if (result == RequestResult.OK) {
+                future.complete(parts);
+            } else {
+                future.completeExceptionally(new RequestException(result));
+                parts.forEach(Message::close);
+            }
+        });
+        return future;
+    }
+
+    private boolean submitBind(RoutingId sessionRid, ActorRef actor,
+                               Duration timeout, ReplyHandler callback) {
+        Objects.requireNonNull(callback, "callback");
+        ActorRequestCallbacks.PendingToken token =
+          ActorRequestCallbacks.register(callback::onReply);
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.streamBindActor(handle(),
               ActorInterop.nativeRoutingId(arena, sessionRid),
               ActorInterop.actorRefToNative(arena, actor),
-              timeoutMillis(timeout));
+              ActorRequestCallbacks.REPLY_CALLBACK,
+              MemorySegment.ofAddress(token.id()), timeoutMillis(timeout));
             if (rc != 0) {
-                throw new RequestException(RequestResult.fromValue(rc));
-            }
-        }
-    }
-
-    public void bindActor(SpotNode node, RoutingId sessionRid, ActorRef actor) {
-        bindActor(node, sessionRid, actor, Duration.ofMillis(5_000L));
-    }
-
-    public void unbindActor(SpotNode node, RoutingId sessionRid,
-                            String actorId, Duration timeout) {
-        Objects.requireNonNull(node, "node");
-        Objects.requireNonNull(sessionRid, "sessionRid");
-        Objects.requireNonNull(actorId, "actorId");
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.streamUnbindActor(
-              InternalAccess.spotNodeHandle(node),
-              handle(),
-              ActorInterop.nativeRoutingId(arena, sessionRid),
-              NativeHelpers.toCString(arena, actorId),
-              timeoutMillis(timeout));
-            if (rc != 0) {
-                throw new RequestException(RequestResult.fromValue(rc));
-            }
-        }
-    }
-
-    public void unbindActor(SpotNode node, RoutingId sessionRid,
-                            String actorId) {
-        unbindActor(node, sessionRid, actorId, Duration.ofMillis(5_000L));
-    }
-
-    public boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
-                                  String actorId, Message part,
-                                  SendFlags flags) {
-        Objects.requireNonNull(node, "node");
-        Objects.requireNonNull(sessionRid, "sessionRid");
-        Objects.requireNonNull(actorId, "actorId");
-        Objects.requireNonNull(part, "part");
-        Objects.requireNonNull(flags, "flags");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            InternalAccess.messageCopyTo(part, nativeMsg);
-            int rc = Native.streamSendBoundActorPart(
-              InternalAccess.spotNodeHandle(node),
-              handle(),
-              ActorInterop.nativeRoutingId(arena, sessionRid),
-              NativeHelpers.toCString(arena, actorId),
-              nativeMsg, flags.value(), Native.PART_FINAL);
-            if (rc != 0) {
-                NativeMsg.msgClose(nativeMsg);
-                if (flags == SendFlags.DONT_WAIT
-                    && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
-                    return false;
-                }
+                ActorRequestCallbacks.remove(token.id());
                 throw new SubmitException(SubmitResult.fromValue(rc));
             }
+            RequestProgressPump.trackSocketRequest(token.future(), handle(),
+              "zlink-stream-bind-actor-progress");
             return true;
         }
     }
 
-    public boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
-                                  String actorId, Message part) {
-        return sendBoundActor(node, sessionRid, actorId, part, SendFlags.NONE);
+    private CompletableFuture<List<Message>> submitUnbindAsync(
+      RoutingId sessionRid, String actorId, Duration timeout) {
+        CompletableFuture<List<Message>> future = new CompletableFuture<>();
+        submitUnbind(sessionRid, actorId, timeout, (result, parts) -> {
+            if (result == RequestResult.OK) {
+                future.complete(parts);
+            } else {
+                future.completeExceptionally(new RequestException(result));
+                parts.forEach(Message::close);
+            }
+        });
+        return future;
     }
 
-    public boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
-                                  String actorId, List<Message> parts,
-                                  SendFlags flags) {
+    private boolean submitUnbind(RoutingId sessionRid, String actorId,
+                                 Duration timeout, ReplyHandler callback) {
+        Objects.requireNonNull(callback, "callback");
+        ActorRequestCallbacks.PendingToken token =
+          ActorRequestCallbacks.register(callback::onReply);
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.streamUnbindActor(handle(),
+              ActorInterop.nativeRoutingId(arena, sessionRid),
+              NativeHelpers.toCString(arena, actorId),
+              ActorRequestCallbacks.REPLY_CALLBACK,
+              MemorySegment.ofAddress(token.id()), timeoutMillis(timeout));
+            if (rc != 0) {
+                ActorRequestCallbacks.remove(token.id());
+                throw new SubmitException(SubmitResult.fromValue(rc));
+            }
+            RequestProgressPump.trackSocketRequest(token.future(), handle(),
+              "zlink-stream-unbind-actor-progress");
+            return true;
+        }
+    }
+
+    private boolean sendBoundActorParts(RoutingId sessionRid, String actorId,
+                                        List<Message> parts, SendFlags flags) {
         Objects.requireNonNull(parts, "parts");
         if (parts.isEmpty()) {
-            throw new IllegalArgumentException("parts must not be empty");
+            throw new IllegalArgumentException("at least one message required");
         }
         for (int i = 0; i < parts.size(); i++) {
             Objects.requireNonNull(parts.get(i), "parts[" + i + "]");
         }
-        Objects.requireNonNull(node, "node");
-        Objects.requireNonNull(sessionRid, "sessionRid");
-        Objects.requireNonNull(actorId, "actorId");
         Objects.requireNonNull(flags, "flags");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeSessionRid =
               ActorInterop.nativeRoutingId(arena, sessionRid);
             MemorySegment nativeActorId =
               NativeHelpers.toCString(arena, actorId);
-            MemorySegment nodeHandle = InternalAccess.spotNodeHandle(node);
             MemorySegment socketHandle = handle();
             for (int i = 0; i < parts.size(); i++) {
-                MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+                MemorySegment nativeMsg =
+                  arena.allocate(NativeLayouts.MSG_LAYOUT);
                 InternalAccess.messageCopyTo(parts.get(i), nativeMsg);
                 int more = i + 1 < parts.size()
                   ? Native.PART_MORE
                   : Native.PART_FINAL;
-                int rc = Native.streamSendBoundActorPart(nodeHandle,
-                  socketHandle, nativeSessionRid, nativeActorId, nativeMsg,
-                  flags.value(), more);
+                int rc = Native.streamSendBoundActorPart(socketHandle,
+                  nativeSessionRid, nativeActorId, nativeMsg, flags.value(),
+                  more);
                 if (rc != 0) {
                     NativeMsg.msgClose(nativeMsg);
                     if (flags == SendFlags.DONT_WAIT
@@ -207,11 +248,166 @@ public final class StreamSocket extends Socket {
         }
     }
 
-    public boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
-                                  String actorId, List<Message> parts) {
-        return sendBoundActor(node, sessionRid, actorId, parts, SendFlags.NONE);
+    private final class RoutedSendBuilder implements SendOp, SendSubmitOp {
+        private final RoutingId rid;
+        private final ArrayList<Message> parts = new ArrayList<>();
+        private SendFlags flags = SendFlags.NONE;
+        private boolean submitted;
+
+        RoutedSendBuilder(RoutingId rid) {
+            this.rid = rid;
+        }
+
+        @Override
+        public SendSubmitOp message(Message part) {
+            ensureNotSubmitted();
+            parts.add(Objects.requireNonNull(part, "part"));
+            return this;
+        }
+
+        @Override
+        public SendSubmitOp flags(SendFlags value) {
+            ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
+        public boolean submit() {
+            ensureNotSubmitted();
+            submitted = true;
+            if (parts.isEmpty())
+                throw new IllegalArgumentException("at least one message required");
+            return StreamSocket.super.send(rid, parts,
+                SendFlag.fromValue(flags.value()));
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
+        }
     }
-    @Override public StreamSocketOptions options() { return options; }
+
+    private final class BoundActorSendBuilder implements SendOp, SendSubmitOp {
+        private final RoutingId sessionRid;
+        private final String actorId;
+        private final ArrayList<Message> parts = new ArrayList<>();
+        private SendFlags flags = SendFlags.NONE;
+        private boolean submitted;
+
+        BoundActorSendBuilder(RoutingId sessionRid, String actorId) {
+            this.sessionRid = sessionRid;
+            this.actorId = actorId;
+        }
+
+        @Override
+        public SendSubmitOp message(Message part) {
+            ensureNotSubmitted();
+            parts.add(Objects.requireNonNull(part, "part"));
+            return this;
+        }
+
+        @Override
+        public SendSubmitOp flags(SendFlags value) {
+            ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
+        public boolean submit() {
+            ensureNotSubmitted();
+            submitted = true;
+            return sendBoundActorParts(sessionRid, actorId, parts, flags);
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
+        }
+    }
+
+    private final class ActorBindBuilder implements ActorBindOp {
+        private final RoutingId sessionRid;
+        private final ActorRef actor;
+        private Duration timeout = Duration.ofMillis(5_000L);
+        private boolean submitted;
+
+        ActorBindBuilder(RoutingId sessionRid, ActorRef actor) {
+            this.sessionRid = sessionRid;
+            this.actor = actor;
+        }
+
+        @Override
+        public ActorBindOp timeout(Duration value) {
+            ensureNotSubmitted();
+            timeout = Objects.requireNonNull(value, "timeout");
+            return this;
+        }
+
+        @Override
+        public CompletableFuture<List<Message>> submitAsync() {
+            markSubmitted();
+            return submitBindAsync(sessionRid, actor, timeout);
+        }
+
+        @Override
+        public boolean submit(ReplyHandler callback) {
+            markSubmitted();
+            return submitBind(sessionRid, actor, timeout, callback);
+        }
+
+        private void markSubmitted() {
+            ensureNotSubmitted();
+            submitted = true;
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
+        }
+    }
+
+    private final class ActorUnbindBuilder implements ActorUnbindOp {
+        private final RoutingId sessionRid;
+        private final String actorId;
+        private Duration timeout = Duration.ofMillis(5_000L);
+        private boolean submitted;
+
+        ActorUnbindBuilder(RoutingId sessionRid, String actorId) {
+            this.sessionRid = sessionRid;
+            this.actorId = actorId;
+        }
+
+        @Override
+        public ActorUnbindOp timeout(Duration value) {
+            ensureNotSubmitted();
+            timeout = Objects.requireNonNull(value, "timeout");
+            return this;
+        }
+
+        @Override
+        public CompletableFuture<List<Message>> submitAsync() {
+            markSubmitted();
+            return submitUnbindAsync(sessionRid, actorId, timeout);
+        }
+
+        @Override
+        public boolean submit(ReplyHandler callback) {
+            markSubmitted();
+            return submitUnbind(sessionRid, actorId, timeout, callback);
+        }
+
+        private void markSubmitted() {
+            ensureNotSubmitted();
+            submitted = true;
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
+        }
+    }
 
     private static int timeoutMillis(Duration timeout) {
         if (timeout == null || timeout.isZero()) {
@@ -219,5 +415,17 @@ public final class StreamSocket extends Socket {
         }
         long millis = Math.max(1L, timeout.toMillis());
         return millis >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) millis;
+    }
+
+    private static void awaitActorRequest(
+      ActorRequestCallbacks.PendingToken token) {
+        try {
+            token.future().join();
+        } catch (CompletionException ex) {
+            if (ex.getCause() instanceof RequestException request) {
+                throw request;
+            }
+            throw ex;
+        }
     }
 }

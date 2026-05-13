@@ -2,20 +2,10 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal static class ZLinkInternalPacketNames
 {
-    public const string ActorCreate = "ZLink.ActorCreate";
-
     public const string ActorDispatch = "ZLink.ActorDispatch";
 
     public const string SessionProxy = "ZLink.SessionProxy";
 }
-
-internal sealed record ZLinkActorCreatePacket(
-    string ActorId,
-    string ActorType);
-
-internal sealed record ZLinkActorCreateResult(
-    string ActorId,
-    string ActorType);
 
 internal sealed record ZLinkActorDispatchPacket(
     string ActorId,

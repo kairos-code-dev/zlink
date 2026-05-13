@@ -186,32 +186,41 @@ void refresh_fixed_poller_interest_local (
     }
 }
 
+void refresh_target_pollout_interest_local (
+  spot_data_plane_runtime_state_t *state_,
+  socket_base_t *socket_,
+  const std::deque<uint64_t> &pending_message_ids_,
+  bool *pollout_armed_)
+{
+    if (!state_ || !state_->poller || !socket_ || !pollout_armed_)
+        return;
+    const bool need_pollout = !pending_message_ids_.empty ();
+    if (need_pollout == *pollout_armed_)
+        return;
+    (void) state_->poller->modify (socket_, need_pollout ? ZLINK_POLLOUT : 0);
+    *pollout_armed_ = need_pollout;
+}
+
 void refresh_local_target_pollout_interest_local (
   spot_data_plane_runtime_state_t *state_,
   spot_data_plane_runtime_state_t::local_target_state_t *target_)
 {
-    if (!state_ || !state_->poller || !target_ || !target_->relay_socket)
+    if (!target_)
         return;
-    const bool need_pollout = !target_->pending_message_ids.empty ();
-    if (need_pollout == target_->pollout_armed)
-        return;
-    (void) state_->poller->modify (target_->relay_socket,
-                                   need_pollout ? ZLINK_POLLOUT : 0);
-    target_->pollout_armed = need_pollout;
+    refresh_target_pollout_interest_local (
+      state_, target_->relay_socket, target_->pending_message_ids,
+      &target_->pollout_armed);
 }
 
 void refresh_remote_target_pollout_interest_local (
   spot_data_plane_runtime_state_t *state_,
   spot_data_plane_runtime_state_t::remote_target_state_t *target_)
 {
-    if (!state_ || !state_->poller || !target_ || !target_->sender_socket)
+    if (!target_)
         return;
-    const bool need_pollout = !target_->pending_message_ids.empty ();
-    if (need_pollout == target_->pollout_armed)
-        return;
-    (void) state_->poller->modify (target_->sender_socket,
-                                   need_pollout ? ZLINK_POLLOUT : 0);
-    target_->pollout_armed = need_pollout;
+    refresh_target_pollout_interest_local (
+      state_, target_->sender_socket, target_->pending_message_ids,
+      &target_->pollout_armed);
 }
 
 size_t publish_message_unit_bytes (spot_runtime_t *runtime_,
@@ -296,6 +305,131 @@ bool wait_for_queue_room (std::condition_variable &cv_,
             return false;
     }
     return true;
+}
+
+spot_data_plane_runtime_state_t::local_target_state_t *
+find_local_target_by_socket_local (spot_data_plane_runtime_state_t *state_,
+                                   socket_base_t *relay_socket_)
+{
+    if (!state_ || !relay_socket_)
+        return NULL;
+
+    std::unordered_map<socket_base_t *, uint64_t>::iterator socket_it =
+      state_->local_fanout.target_by_socket.find (relay_socket_);
+    if (socket_it == state_->local_fanout.target_by_socket.end ())
+        return NULL;
+
+    spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
+      iterator target_it =
+        state_->local_fanout.targets.find (socket_it->second);
+    if (target_it == state_->local_fanout.targets.end ()
+        || !target_it->second.relay_socket)
+        return NULL;
+
+    return &target_it->second;
+}
+
+int flush_local_target_pending_local (
+  spot_data_plane_runtime_state_t *state_,
+  spot_data_plane_runtime_state_t::local_target_state_t *target_)
+{
+    if (!state_ || !target_ || !target_->relay_socket)
+        return 0;
+
+    while (!target_->pending_message_ids.empty ()) {
+        const uint64_t message_id = target_->pending_message_ids.front ();
+        spot_data_plane_runtime_state_t::local_fanout_state_t::pending_message_map_t::
+          iterator msg_it =
+            state_->local_fanout.pending_messages.find (message_id);
+        if (msg_it == state_->local_fanout.pending_messages.end ()) {
+            target_->pending_message_ids.pop_front ();
+            continue;
+        }
+
+        spot_data_plane_forwarder_t::pump_socket_commands (
+          target_->relay_socket);
+        if (spot_publish_msg_parts (target_->relay_socket, msg_it->second.topic,
+                                    msg_it->second.parts)
+            != 0) {
+            if (errno == EAGAIN)
+                break;
+            return -1;
+        }
+
+        target_->pending_message_ids.pop_front ();
+        spot_data_plane_pending_t::release_local_pending_ref (state_,
+                                                              message_id);
+    }
+
+    return 0;
+}
+
+int flush_mesh_broadcast_pending_local (
+  spot_data_plane_runtime_state_t *state_)
+{
+    if (!state_)
+        return 0;
+
+    while (!state_->remote_mesh.broadcast_pending_message_ids.empty ()) {
+        const uint64_t message_id =
+          state_->remote_mesh.broadcast_pending_message_ids.front ();
+        spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::
+          iterator msg_it =
+            state_->remote_mesh.pending_messages.find (message_id);
+        if (msg_it == state_->remote_mesh.pending_messages.end ()) {
+            state_->remote_mesh.broadcast_pending_message_ids.pop_front ();
+            continue;
+        }
+
+        spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_pub);
+        if (spot_publish_msg_parts (state_->mesh_pub, msg_it->second.topic,
+                                    msg_it->second.parts)
+            != 0) {
+            if (errno == EAGAIN)
+                break;
+            return -1;
+        }
+
+        state_->remote_mesh.broadcast_pending_message_ids.pop_front ();
+        spot_data_plane_pending_t::release_mesh_pending_ref (state_,
+                                                             message_id);
+    }
+
+    return 0;
+}
+
+int flush_remote_target_pending_local (
+  spot_data_plane_runtime_state_t *state_,
+  spot_data_plane_runtime_state_t::remote_target_state_t *target_)
+{
+    if (!state_ || !target_ || !target_->sender_socket)
+        return 0;
+
+    while (!target_->pending_message_ids.empty ()) {
+        const uint64_t message_id = target_->pending_message_ids.front ();
+        spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::
+          iterator msg_it =
+            state_->remote_mesh.pending_messages.find (message_id);
+        if (msg_it == state_->remote_mesh.pending_messages.end ()) {
+            target_->pending_message_ids.pop_front ();
+            continue;
+        }
+
+        if (send_remote_mesh_message_local (target_->sender_socket,
+                                            msg_it->second.topic,
+                                            msg_it->second.parts)
+            != 0) {
+            if (errno == EAGAIN)
+                break;
+            return -1;
+        }
+
+        target_->pending_message_ids.pop_front ();
+        spot_data_plane_pending_t::release_mesh_pending_ref (state_,
+                                                             message_id);
+    }
+
+    return 0;
 }
 
 int copy_raw_parts_to_owned (zlink_msg_t *parts_,
@@ -907,52 +1041,20 @@ int spot_data_plane_forwarder_t::flush_local_fanout_pending (
         return 0;
 
     if (relay_socket_) {
-        std::unordered_map<socket_base_t *, uint64_t>::iterator socket_it =
-          state_->local_fanout.target_by_socket.find (relay_socket_);
-        if (socket_it == state_->local_fanout.target_by_socket.end ()) {
-            if (state_->poller)
-                refresh_fixed_poller_interest_local (state_);
-            return 0;
-        }
-        spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
-          iterator target_it =
-            state_->local_fanout.targets.find (socket_it->second);
-        if (target_it == state_->local_fanout.targets.end ()
-            || !target_it->second.relay_socket) {
+        spot_data_plane_runtime_state_t::local_target_state_t *target =
+          find_local_target_by_socket_local (state_, relay_socket_);
+        if (!target) {
             if (state_->poller)
                 refresh_fixed_poller_interest_local (state_);
             return 0;
         }
 
-        spot_data_plane_runtime_state_t::local_target_state_t &target =
-          target_it->second;
-        while (!target.pending_message_ids.empty ()) {
-            const uint64_t message_id = target.pending_message_ids.front ();
-            spot_data_plane_runtime_state_t::local_fanout_state_t::pending_message_map_t::
-              iterator msg_it =
-                state_->local_fanout.pending_messages.find (message_id);
-            if (msg_it == state_->local_fanout.pending_messages.end ()) {
-                target.pending_message_ids.pop_front ();
-                continue;
-            }
-
-            pump_socket_commands (target.relay_socket);
-            if (spot_publish_msg_parts (target.relay_socket, msg_it->second.topic,
-                                        msg_it->second.parts)
-                != 0) {
-                if (errno == EAGAIN)
-                    break;
-                return -1;
-            }
-
-            target.pending_message_ids.pop_front ();
-            spot_data_plane_pending_t::release_local_pending_ref (state_,
-                                                                  message_id);
-        }
+        if (flush_local_target_pending_local (state_, target) != 0)
+            return -1;
 
         if (state_->poller) {
             refresh_fixed_poller_interest_local (state_);
-            refresh_local_target_pollout_interest_local (state_, &target);
+            refresh_local_target_pollout_interest_local (state_, target);
         }
         return 0;
     }
@@ -966,28 +1068,8 @@ int spot_data_plane_forwarder_t::flush_local_fanout_pending (
             continue;
         }
 
-        while (!target.pending_message_ids.empty ()) {
-            const uint64_t message_id = target.pending_message_ids.front ();
-            spot_data_plane_runtime_state_t::local_fanout_state_t::pending_message_map_t::
-              iterator msg_it = state_->local_fanout.pending_messages.find (message_id);
-            if (msg_it == state_->local_fanout.pending_messages.end ()) {
-                target.pending_message_ids.pop_front ();
-                continue;
-            }
-
-            pump_socket_commands (target.relay_socket);
-            if (spot_publish_msg_parts (target.relay_socket, msg_it->second.topic,
-                                        msg_it->second.parts)
-                != 0) {
-                if (errno == EAGAIN)
-                    break;
-                return -1;
-            }
-
-            target.pending_message_ids.pop_front ();
-            spot_data_plane_pending_t::release_local_pending_ref (state_,
-                                                                  message_id);
-        }
+        if (flush_local_target_pending_local (state_, &target) != 0)
+            return -1;
     }
 
     refresh_poller_interest (state_);
@@ -1003,29 +1085,8 @@ int spot_data_plane_forwarder_t::flush_mesh_pub_pending (
         return 0;
 
     if (!sender_socket_ || sender_socket_ == state_->mesh_pub) {
-        while (!state_->remote_mesh.broadcast_pending_message_ids.empty ()) {
-            const uint64_t message_id =
-              state_->remote_mesh.broadcast_pending_message_ids.front ();
-            spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::
-              iterator msg_it = state_->remote_mesh.pending_messages.find (message_id);
-            if (msg_it == state_->remote_mesh.pending_messages.end ()) {
-                state_->remote_mesh.broadcast_pending_message_ids.pop_front ();
-                continue;
-            }
-
-            pump_socket_commands (state_->mesh_pub);
-            if (spot_publish_msg_parts (state_->mesh_pub, msg_it->second.topic,
-                                        msg_it->second.parts)
-                != 0) {
-                if (errno == EAGAIN)
-                    break;
-                return -1;
-            }
-
-            state_->remote_mesh.broadcast_pending_message_ids.pop_front ();
-            spot_data_plane_pending_t::release_mesh_pending_ref (state_,
-                                                                 message_id);
-        }
+        if (flush_mesh_broadcast_pending_local (state_) != 0)
+            return -1;
     }
 
     for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::
@@ -1038,28 +1099,8 @@ int spot_data_plane_forwarder_t::flush_mesh_pub_pending (
             continue;
         }
 
-        while (!target.pending_message_ids.empty ()) {
-            const uint64_t message_id = target.pending_message_ids.front ();
-            spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::
-              iterator msg_it = state_->remote_mesh.pending_messages.find (message_id);
-            if (msg_it == state_->remote_mesh.pending_messages.end ()) {
-                target.pending_message_ids.pop_front ();
-                continue;
-            }
-
-            if (send_remote_mesh_message_local (target.sender_socket,
-                                                msg_it->second.topic,
-                                                msg_it->second.parts)
-                != 0) {
-                if (errno == EAGAIN)
-                    break;
-                return -1;
-            }
-
-            target.pending_message_ids.pop_front ();
-            spot_data_plane_pending_t::release_mesh_pending_ref (state_,
-                                                                 message_id);
-        }
+        if (flush_remote_target_pending_local (state_, &target) != 0)
+            return -1;
     }
 
     refresh_poller_interest (state_);

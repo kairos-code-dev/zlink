@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 async function reservePort() {
     const server = net.createServer();
     server.listen(0, '127.0.0.1');
@@ -31,10 +31,10 @@ function waitForJoin(spot) {
 }
 async function acceptJoin(actor, spot, payload) {
     const replyPromise = new Promise((resolve) => {
-        actor.join(spot, Buffer.from(payload), (result, parts) => resolve({ result, parts }), zlink.SendFlags.None, 2000);
+        actor.join(spot).message(Buffer.from(payload)).timeout(2000).submit((result, parts) => resolve({ result, parts }));
     });
     const request = waitForJoin(spot);
-    spot.replyActorJoin(request, true, Buffer.from('ok'));
+    spot.replyActorJoin(request, true).message(Buffer.from('ok')).submit();
     const reply = await replyPromise;
     assert.equal(reply.result, zlink.RequestResult.Ok);
 }
@@ -70,22 +70,22 @@ async function main() {
             stream.onPacket((sourceRid) => resolve(sourceRid));
             client.write(frame(Buffer.from('open')));
         });
-        stream.bindActor(node, session, actor.ref(), 2000);
+        stream.bindActor(session, actor.ref()).timeout(2000).submit(() => { });
         await acceptJoin(actor, spot, 'first-join');
-        actor.leave(spot);
-        stream.sendBoundActor(node, session, 'queue-player-1', Buffer.from('queued'));
+        actor.leave(spot).submit(() => { });
+        stream.sendBoundActor(session, 'queue-player-1').message(Buffer.from('queued')).submit();
         await acceptJoin(actor, spot, 'second-join');
         for (let i = 0; i < 100 && payloads.length === 0; i += 1) {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
         assert.deepEqual(payloads, ['queued']);
-        actor.leave(spot);
+        actor.leave(spot).submit(() => { });
         console.log('[actor/queue] queued payload survived leave and rejoin');
     }
     finally {
         if (session) {
             try {
-                stream.unbindActor(node, session, 'queue-player-1', 2000);
+                stream.unbindActor(session, 'queue-player-1').timeout(2000).submit(() => { });
             }
             catch (_) {
             }
@@ -100,9 +100,18 @@ async function main() {
             catch (_) {
             }
         }
-        if (spot)
-            spot.close();
-        node.close();
+        if (spot) {
+            try {
+                spot.close();
+            }
+            catch (_) {
+            }
+        }
+        try {
+            node.close();
+        }
+        catch (_) {
+        }
         ctx.close();
     }
 }

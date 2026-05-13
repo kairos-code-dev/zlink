@@ -72,15 +72,20 @@ final class PerfMultiDealerRouter {
                             continue;
                         }
                         if (pendingReplies.isEmpty()
-                            && receivedBuffer.send(receivedBuffer.firstPart(),
-                                SendFlags.DONT_WAIT)) {
+                            && receivedBuffer.send()
+                                .message(receivedBuffer.firstPart())
+                                .flags(SendFlags.DONT_WAIT)
+                                .submit()) {
                             continue;
                         }
                         RoutingId rid = receivedBuffer.routingId().orElseThrow();
                         Message reply = receivedBuffer.firstPart().move();
                         receivedBuffer.close();
                         if (pendingReplies.isEmpty()
-                            && server.send(rid, reply, SendFlags.DONT_WAIT)) {
+                            && server.send(rid)
+                                .message(reply)
+                                .flags(SendFlags.DONT_WAIT)
+                                .submit()) {
                             reply.close();
                         } else {
                             pendingReplies.addLast(new PendingReply(rid, reply));
@@ -219,7 +224,7 @@ final class PerfMultiDealerRouter {
 
     private static boolean trySendPayload(DealerSocket client, byte[] payload) {
         try (Message message = Message.copyOf(payload)) {
-            return client.send(message, SendFlags.DONT_WAIT);
+            return client.send().message(message).flags(SendFlags.DONT_WAIT).submit();
         }
     }
 
@@ -292,7 +297,7 @@ final class PerfMultiDealerRouter {
                                       Message part,
                                       long deadlineNs) {
         while (true) {
-            if (client.send(part, SendFlags.DONT_WAIT)) {
+            if (client.send().message(part).flags(SendFlags.DONT_WAIT).submit()) {
                 return;
             }
             if (System.nanoTime() >= deadlineNs) {
@@ -331,8 +336,10 @@ final class PerfMultiDealerRouter {
             if (pending == null) {
                 return;
             }
-            if (!server.send(pending.routingId(), pending.payload(),
-                SendFlags.DONT_WAIT)) {
+            if (!server.send(pending.routingId())
+                .message(pending.payload())
+                .flags(SendFlags.DONT_WAIT)
+                .submit()) {
                 return;
             }
             pendingReplies.removeFirst();

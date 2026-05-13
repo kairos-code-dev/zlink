@@ -25,7 +25,10 @@ bool send_single_part (void *userdata_, const void *data_, size_t size_)
     if (!msg.valid ())
         return false;
     try {
-        if (!socket->send (msg, zlink::send_flags_t::dontwait)) {
+        if (!socket->send ()
+               .message (msg)
+               .flags (ZLINK_DONTWAIT)
+               .submit ()) {
             errno = EAGAIN;
             return false;
         }

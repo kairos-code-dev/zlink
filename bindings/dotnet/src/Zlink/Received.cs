@@ -228,14 +228,15 @@ public sealed class Received : IDisposable
         return PartsCollection.TakeMessages();
     }
 
-    public void Reply(Message part, SendFlags flags = SendFlags.None)
+    /// <summary>
+    /// Start a reply (operation builder).
+    /// </summary>
+    public ReplyOperation Reply()
     {
-        if (part == null)
-            throw new ArgumentNullException(nameof(part));
-        Reply(new[] { part }, flags);
+        return new ReceivedReplyOperationImpl(this);
     }
 
-    public void Reply(IReadOnlyList<Message> parts,
+    internal void ReplyCore(IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
         if (parts == null)
@@ -250,7 +251,15 @@ public sealed class Received : IDisposable
         replyHandler(parts, flags);
     }
 
-    public bool Send(Message part, SendFlags flags = SendFlags.None)
+    /// <summary>
+    /// Start a send (operation builder).
+    /// </summary>
+    public SendOperation Send()
+    {
+        return new ReceivedSendOperationImpl(this);
+    }
+
+    internal bool SendCore(Message part, SendFlags flags = SendFlags.None)
     {
         if (part == null)
             throw new ArgumentNullException(nameof(part));
@@ -261,14 +270,16 @@ public sealed class Received : IDisposable
         }
         if (_sendSingleHandler != null)
             return _sendSingleHandler(part, flags);
-        return Send(new[] { part }, flags);
+        return SendCore(new[] { part }, flags);
     }
 
-    public bool Send(IReadOnlyList<Message> parts,
+    internal bool SendCore(IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
+        if (parts.Count == 1)
+            return SendCore(parts[0], flags);
         if (_sendKernel != null)
         {
             return _sendKernel.SendReceivedParts(_sendRoutingIdSnapshot,

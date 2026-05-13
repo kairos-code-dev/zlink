@@ -6,7 +6,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 async function reservePort() {
   const server = net.createServer();
@@ -50,7 +50,7 @@ test('router requestToSpot promise resolves through spot routed reply', async ()
             assert.notEqual(received.requestSeq, null);
             assert.equal(received.parts.length, 1);
             assert.equal(received.parts[0].data().toString(), 'spot-ping');
-            received.reply(zlink.Message.from(Buffer.from('spot-pong')));
+            received.reply().message(Buffer.from('spot-pong')).submit();
             resolve(null);
           } finally {
             received.close();
@@ -68,10 +68,8 @@ test('router requestToSpot promise resolves through spot routed reply', async ()
 
     const reply = await requester.requestToSpot(
       responderNode.routingId,
-      responder.routingId,
-      Buffer.from('spot-ping'),
-      2000
-    );
+      responder.routingId
+    ).message(Buffer.from('spot-ping')).timeout(2000).submitAsync();
     assert.equal(reply.length, 1);
     assert.equal(reply[0].data().toString(), 'spot-pong');
     await handled;

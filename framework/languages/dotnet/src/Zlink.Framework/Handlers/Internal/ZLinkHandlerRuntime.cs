@@ -21,13 +21,13 @@ internal sealed class ZLinkHandlerRegistry
 {
     private readonly IReadOnlyDictionary<string, ZLinkHandlerEndpointDescriptor> _requests;
     private readonly IReadOnlyDictionary<string, ZLinkHandlerEndpointDescriptor> _commands;
-    private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _events;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _publishes;
 
     public ZLinkHandlerRegistry(IEnumerable<ZLinkHandlerEndpointDescriptor> endpoints)
     {
         var requests = new Dictionary<string, ZLinkHandlerEndpointDescriptor>(StringComparer.Ordinal);
         var commands = new Dictionary<string, ZLinkHandlerEndpointDescriptor>(StringComparer.Ordinal);
-        var events = new Dictionary<string, List<ZLinkHandlerEndpointDescriptor>>(StringComparer.Ordinal);
+        var publishes = new Dictionary<string, List<ZLinkHandlerEndpointDescriptor>>(StringComparer.Ordinal);
 
         foreach (var endpoint in endpoints)
         {
@@ -49,11 +49,11 @@ internal sealed class ZLinkHandlerRegistry
                     }
 
                     break;
-                case ZLinkMessageKind.Event:
-                    if (!events.TryGetValue(endpoint.MessageName, out var list))
+                case ZLinkMessageKind.Publish:
+                    if (!publishes.TryGetValue(endpoint.MessageName, out var list))
                     {
                         list = [];
-                        events.Add(endpoint.MessageName, list);
+                        publishes.Add(endpoint.MessageName, list);
                     }
 
                     list.Add(endpoint);
@@ -63,7 +63,7 @@ internal sealed class ZLinkHandlerRegistry
 
         _requests = requests;
         _commands = commands;
-        _events = events.ToDictionary(
+        _publishes = publishes.ToDictionary(
             entry => entry.Key,
             entry => (IReadOnlyList<ZLinkHandlerEndpointDescriptor>)entry.Value,
             StringComparer.Ordinal);
@@ -83,9 +83,9 @@ internal sealed class ZLinkHandlerRegistry
             : throw new InvalidOperationException($"No send handler is registered for '{messageName}'.");
     }
 
-    public IReadOnlyList<ZLinkHandlerEndpointDescriptor> GetEvents(string messageName)
+    public IReadOnlyList<ZLinkHandlerEndpointDescriptor> GetPublishes(string messageName)
     {
-        return _events.TryGetValue(messageName, out var endpoints)
+        return _publishes.TryGetValue(messageName, out var endpoints)
             ? endpoints
             : Array.Empty<ZLinkHandlerEndpointDescriptor>();
     }
@@ -195,16 +195,16 @@ internal sealed class ZLinkHandlerDispatcher(
                 send.Deadline,
                 services,
                 send.ConnectionAborted),
-            ZLinkEventContext @event => new ZLinkEventContext(
-                @event.ChannelName,
-                @event.PacketName,
-                @event.ContentType,
-                @event.CorrelationId,
-                @event.Deadline,
-                @event.Topic,
-                @event.Source,
+            ZLinkPublishContext publish => new ZLinkPublishContext(
+                publish.ChannelName,
+                publish.PacketName,
+                publish.ContentType,
+                publish.CorrelationId,
+                publish.Deadline,
+                publish.Topic,
+                publish.Source,
                 services,
-                @event.ConnectionAborted),
+                publish.ConnectionAborted),
             _ => throw new InvalidOperationException("Unknown handler context type."),
         };
     }

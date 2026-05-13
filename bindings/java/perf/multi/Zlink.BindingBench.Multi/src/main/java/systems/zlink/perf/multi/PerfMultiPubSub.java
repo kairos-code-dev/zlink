@@ -39,7 +39,7 @@ final class PerfMultiPubSub {
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    pub.publish(TOPIC, active, SendFlags.DONT_WAIT);
+                    pub.publish(TOPIC).message(active).flags(SendFlags.DONT_WAIT).submit();
                 }
             }
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
@@ -50,7 +50,7 @@ final class PerfMultiPubSub {
             int sent = 0;
             while (sent < 3 && System.nanoTime() < stopBurstEnd) {
                 try (Message stop = PerfStopToken.newMessage()) {
-                    if (pub.publish(TOPIC, stop, SendFlags.DONT_WAIT)) {
+                    if (pub.publish(TOPIC).message(stop).flags(SendFlags.DONT_WAIT).submit()) {
                         sent++;
                     }
                 }

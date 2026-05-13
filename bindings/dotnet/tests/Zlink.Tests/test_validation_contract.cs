@@ -69,12 +69,10 @@ public sealed class test_validation_contract
         using var routedMessage = Message.FromString("x");
         using var publishedMessage = Message.FromString("x");
 
-        Assert.Throws<ArgumentNullException>(() => pair.Send((Message)null!));
-        Assert.Throws<ArgumentException>(() => pair.Send(Array.Empty<Message>()));
         Assert.Throws<ArgumentNullException>(() =>
-            router.Send((string)null!, routedMessage));
+            pair.Send().Message((Message)null!));
         Assert.Throws<ArgumentNullException>(() =>
-            pub.Publish((string)null!, publishedMessage));
+            pub.Publish((string)null!).Message(publishedMessage).Submit());
     }
 
     [Fact]
@@ -118,7 +116,7 @@ public sealed class test_validation_contract
         Assert.Throws<ArgumentException>(() =>
             pair.Connect("tcp://127.0.0.1:5555\0"));
         Assert.Throws<ArgumentException>(() =>
-            pub.Publish("topic\0", message));
+            pub.Publish("topic\0").Message(message).Submit());
         Assert.Throws<ArgumentException>(() =>
             sub.SetSubscription("topic\0"));
         Assert.Throws<ArgumentException>(() =>
@@ -147,7 +145,7 @@ public sealed class test_validation_contract
         using var message = Message.FromString("x");
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            pub.Publish(overlong, message));
+            pub.Publish(overlong).Message(message).Submit());
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             sub.SetSubscription(overlong));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
@@ -215,11 +213,9 @@ public sealed class test_validation_contract
         TimeSpan negative = TimeSpan.FromMilliseconds(-1);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            dealer.Request(message, negative));
+            dealer.Request().Message(message).Timeout(negative).SubmitAsync());
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            dealer.Request(message, (_, parts) =>
-            {
-                Zlink.MultipartClose(parts);
-            }, timeout: negative));
+            dealer.Request().Message(message).Timeout(negative).Submit(
+                (_, parts) => Zlink.MultipartClose(parts)));
     }
 }

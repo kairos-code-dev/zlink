@@ -189,12 +189,12 @@ internal sealed class ZLinkChannelMessagePump(
         }
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(topicMessage.Parts[0]);
-        var endpoints = handlerRegistry.GetEvents(header.MessageName);
+        var endpoints = handlerRegistry.GetPublishes(header.MessageName);
 
         foreach (var endpoint in endpoints)
         {
             var message = ZLinkEnvelopeCodec.DecodeBody(topicMessage.Parts[0], endpoint.MessageType);
-            var context = new ZLinkEventContext(
+            var context = new ZLinkPublishContext(
                 channelName,
                 header.MessageName,
                 header.ContentType,

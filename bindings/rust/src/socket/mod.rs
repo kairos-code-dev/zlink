@@ -24,16 +24,15 @@ use std::ptr;
 use std::time::Duration;
 
 use crate::ctx::duration_to_millis;
-use crate::domain::{Received, SendResult, SubscriptionEvent, TopicMessage};
+use crate::domain::{Received, SubscriptionEvent, TopicMessage};
 use crate::error::{
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,
     SubmitError, check_bind_rc, check_close_rc, check_config_rc, check_connect_rc,
-    check_handler_rc, check_recv_rc, check_submit_rc, config_validation_error, last_errno,
-    submit_validation_error,
+    check_handler_rc, check_recv_rc, config_validation_error, last_errno, submit_validation_error,
 };
 use crate::ffi;
-use crate::flags::{RecvFlags, SendFlags};
-use crate::message::{IntoMultipart, Message, RoutingId};
+use crate::flags::RecvFlags;
+use crate::message::{Message, RoutingId};
 use crate::service::Discovery;
 
 // ---------------------------------------------------------------------------
@@ -154,112 +153,6 @@ impl SocketInner {
         Ok(cstr_buf_to_string(&buf, len))
     }
 
-    // -- Send (non-routed) -------------------------------------------------
-
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError> {
-        self.send_with_flags(parts, SendFlags::NONE).map(|_| ())
-    }
-
-    pub fn send_with_flags(
-        &self,
-        parts: impl IntoMultipart,
-        flags: SendFlags,
-    ) -> Result<bool, SubmitError> {
-        let mut parts = parts.into_parts();
-        let mut native = prepare_send_parts(&mut parts)?;
-        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-            ffi::zlink_send_part(self.handle, part, flags.bits(), part_flag)
-        })?;
-        // Native took ownership, close the empty source messages
-        drop(parts);
-        check_send_flags_rc(rc)
-    }
-
-    pub(crate) fn send_no_wait_result(
-        &self,
-        parts: impl IntoMultipart,
-    ) -> Result<SendResult, SubmitError> {
-        let mut parts = parts.into_parts();
-        let mut native = prepare_send_parts(&mut parts)?;
-        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-            ffi::zlink_send_part(self.handle, part, ffi::ZLINK_DONTWAIT, part_flag)
-        })?;
-        drop(parts);
-        check_send_result(rc)
-    }
-
-    pub(crate) fn try_send(&self, parts: impl IntoMultipart) -> Result<bool, SubmitError> {
-        match self.send_no_wait_result(parts)? {
-            SendResult::Sent => Ok(true),
-            SendResult::Backpressured => Ok(false),
-            SendResult::NotReady => Err(SubmitError::new(
-                crate::error::SubmitResult::NotConnected,
-                libc::ENOTCONN,
-            )),
-        }
-    }
-
-    // -- Send (routed) -----------------------------------------------------
-
-    pub fn send_to(
-        &self,
-        target: &RoutingId,
-        parts: impl IntoMultipart,
-    ) -> Result<(), SubmitError> {
-        self.send_to_with_flags(target, parts, SendFlags::NONE)
-            .map(|_| ())
-    }
-
-    pub fn send_to_with_flags(
-        &self,
-        target: &RoutingId,
-        parts: impl IntoMultipart,
-        flags: SendFlags,
-    ) -> Result<bool, SubmitError> {
-        let mut parts = parts.into_parts();
-        let mut native = prepare_send_parts(&mut parts)?;
-        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-            ffi::zlink_send_part_rid(self.handle, target.as_raw(), part, flags.bits(), part_flag)
-        })?;
-        drop(parts);
-        check_send_flags_rc(rc)
-    }
-
-    pub(crate) fn send_no_wait_result_to(
-        &self,
-        target: &RoutingId,
-        parts: impl IntoMultipart,
-    ) -> Result<SendResult, SubmitError> {
-        let mut parts = parts.into_parts();
-        let mut native = prepare_send_parts(&mut parts)?;
-        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-            ffi::zlink_send_part_rid(
-                self.handle,
-                target.as_raw(),
-                part,
-                ffi::ZLINK_DONTWAIT,
-                part_flag,
-            )
-        })?;
-        drop(parts);
-        check_send_result(rc)
-    }
-
-    pub(crate) fn try_send_to(
-        &self,
-        target: &RoutingId,
-        parts: impl IntoMultipart,
-    ) -> Result<bool, SubmitError> {
-        match self.send_no_wait_result_to(target, parts)? {
-            SendResult::Sent => Ok(true),
-            SendResult::Backpressured => Ok(false),
-            SendResult::NotReady => Err(SubmitError::new(
-                crate::error::SubmitResult::NotConnected,
-                libc::ENOTCONN,
-            )),
-        }
-    }
-
     // -- Recv (direct) -----------------------------------------------------
 
     /// Canonical caller-provided storage recv. Pass a long-lived
@@ -282,50 +175,6 @@ impl SocketInner {
     pub(crate) fn recv_no_wait(&self) -> Result<Option<Received>, RecvError> {
         recv_basic_parts(self.handle, ffi::ZLINK_DONTWAIT)
             .map(|opt| opt.map(|(routing_id, parts)| Received::new(routing_id, parts)))
-    }
-
-    // -- Publish -----------------------------------------------------------
-
-    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError> {
-        self.publish_with_flags(topic, parts, SendFlags::NONE)
-            .map(|_| ())
-    }
-
-    pub fn publish_with_flags(
-        &self,
-        topic: &str,
-        parts: impl IntoMultipart,
-        flags: SendFlags,
-    ) -> Result<bool, SubmitError> {
-        let c_topic = CString::new(topic).map_err(|_| submit_validation_error())?;
-        let mut parts = parts.into_parts();
-        let mut native = prepare_send_parts(&mut parts)?;
-        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-            ffi::zlink_publish_part(self.handle, c_topic.as_ptr(), part, flags.bits(), part_flag)
-        })?;
-        drop(parts);
-        check_send_flags_rc(rc)
-    }
-
-    pub(crate) fn publish_no_wait_result(
-        &self,
-        topic: &str,
-        parts: impl IntoMultipart,
-    ) -> Result<SendResult, SubmitError> {
-        let c_topic = CString::new(topic).map_err(|_| submit_validation_error())?;
-        let mut parts = parts.into_parts();
-        let mut native = prepare_send_parts(&mut parts)?;
-        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-            ffi::zlink_publish_part(
-                self.handle,
-                c_topic.as_ptr(),
-                part,
-                ffi::ZLINK_DONTWAIT,
-                part_flag,
-            )
-        })?;
-        drop(parts);
-        check_send_result(rc)
     }
 
     // -- Subscribe (blocking recv) -----------------------------------------
@@ -1027,36 +876,6 @@ pub(crate) fn recv_subscribed_parts(
             return Ok(Some((routing_id, topic, parts)));
         }
         recv_flags = ffi::ZLINK_DONTWAIT;
-    }
-}
-
-/// Map the return code from a DONTWAIT send to `SendResult`.
-///
-/// When `zlink_send` / `zlink_send_rid` / `zlink_publish` is called with
-/// `ZLINK_DONTWAIT`, the return value is the public `zlink_submit_result_t`
-/// enum (0 = Sent, 1 = Backpressured, 2 = NotReady, other non-zero values are
-/// submit failures).
-pub(crate) fn check_send_result(rc: i32) -> Result<SendResult, SubmitError> {
-    match rc {
-        0 => Ok(SendResult::Sent),
-        1 => Ok(SendResult::Backpressured),
-        2 => Ok(SendResult::NotReady),
-        _ => Err(SubmitError::new(
-            crate::error::SubmitResult::InternalError,
-            last_errno(),
-        )),
-    }
-}
-
-/// Map a send return code to `Result<bool, SubmitError>`.
-///
-/// Returns `Ok(true)` when sent, `Ok(false)` on temporary backpressure
-/// (rc=1 / EAGAIN with DontWait), and `Err` for all other failures.
-pub(crate) fn check_send_flags_rc(rc: i32) -> Result<bool, SubmitError> {
-    match rc {
-        0 => Ok(true),
-        1 => Ok(false),
-        _ => check_submit_rc(rc).map(|_| true),
     }
 }
 

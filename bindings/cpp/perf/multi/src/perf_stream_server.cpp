@@ -119,8 +119,10 @@ bool try_send_packet (stream_handler_context_t &ctx_,
 {
     try {
         const bool sent =
-          ctx_.server->send (
-            source_rid_, packet_, zlink::send_flags_t::dontwait);
+          std::move (ctx_.server->send (source_rid_))
+            .message (packet_)
+            .flags (zlink::send_flags_t::dontwait)
+            .submit ();
         if (sent)
             return true;
         errno = EAGAIN;

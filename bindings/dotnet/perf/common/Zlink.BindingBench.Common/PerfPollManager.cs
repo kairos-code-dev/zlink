@@ -56,7 +56,7 @@ public sealed class MonitorReadyPoller : IDisposable
 public sealed class SocketReadyPoller : IDisposable
 {
     private PollEventFlags[] _revents = Array.Empty<PollEventFlags>();
-    private PollEvent[] _events = Array.Empty<PollEvent>();
+    private PollEventFlags[] _readyEvents = Array.Empty<PollEventFlags>();
     private int[] _readyIndexes = Array.Empty<int>();
     private Poller? _poller;
     private SocketBase[] _registeredSockets = Array.Empty<SocketBase>();
@@ -82,7 +82,8 @@ public sealed class SocketReadyPoller : IDisposable
             if (_poller == null || _activePollerSize == 0)
                 return 0;
 
-            int written = _poller.Wait(_events.AsSpan(0, count),
+            int written = _poller.WaitReadyTags(_readyIndexes.AsSpan(0, count),
+                _readyEvents.AsSpan(0, count),
                 TimeSpan.FromMilliseconds(timeoutMs), out _);
             if (written == 0)
                 return 0;
@@ -90,15 +91,15 @@ public sealed class SocketReadyPoller : IDisposable
             int ready = 0;
             for (int i = 0; i < written; i++)
             {
-                PollEvent pollEvent = _events[i];
-                if (pollEvent.Tag is not int index
-                    || (uint)index >= (uint)count
+                int index = _readyIndexes[i];
+                PollEventFlags revents = _readyEvents[i];
+                if ((uint)index >= (uint)count
                     || _registeredMasks[index] == PollEventFlags.None)
                     continue;
-                if (pollEvent.Revents == PollEventFlags.None)
+                if (revents == PollEventFlags.None)
                     continue;
 
-                _revents[index] = pollEvent.Revents;
+                _revents[index] = revents;
                 _readyIndexes[ready] = index;
                 ready++;
             }
@@ -163,8 +164,8 @@ public sealed class SocketReadyPoller : IDisposable
     {
         if (_revents.Length < count)
             _revents = new PollEventFlags[count];
-        if (_events.Length < count)
-            _events = new PollEvent[count];
+        if (_readyEvents.Length < count)
+            _readyEvents = new PollEventFlags[count];
         if (_readyIndexes.Length < count)
             _readyIndexes = new int[count];
         if (_registeredSockets.Length < count)

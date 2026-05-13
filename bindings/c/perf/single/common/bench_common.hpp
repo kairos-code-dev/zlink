@@ -22,11 +22,7 @@
 #include <thread>
 #include <fstream>
 #include <climits>
-#if defined(ZLINK_PERF_STD_COMPAT)
 #include <zlink.h>
-#else
-#include <zlink_c.h>
-#endif
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>

@@ -6,7 +6,7 @@
 
 #include "api/service_handle_internal.hpp"
 #include "api/service_mode_internal.hpp"
-#include "api/service_surface_internal.hpp"
+#include "api/service_option_surface_internal.hpp"
 #include "core/c_api_copy_internal.hpp"
 #include "core/recv_tls_view.hpp"
 

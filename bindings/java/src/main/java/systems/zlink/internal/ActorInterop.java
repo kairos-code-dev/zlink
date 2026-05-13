@@ -2,11 +2,14 @@
 
 package systems.zlink.internal;
 
+import systems.zlink.RequestResult;
 import systems.zlink.RoutingId;
-import systems.zlink.service.spot.ActorCreateResult;
+import systems.zlink.service.spot.ActorJoinResult;
+import systems.zlink.service.spot.ActorLookupResult;
 import systems.zlink.service.spot.ActorRecvInfo;
 import systems.zlink.service.spot.ActorRef;
 import systems.zlink.service.spot.ActorRoute;
+import systems.zlink.service.spot.SpotActorLifecycleInfo;
 import systems.zlink.service.spot.SpotNodeActorEntry;
 import systems.zlink.service.spot.SpotNodeSpotEntry;
 import java.lang.foreign.Arena;
@@ -90,18 +93,6 @@ public final class ActorInterop {
             NativeLayouts.ACTOR_RECV_INFO_FLAGS_OFFSET));
     }
 
-    public static ActorCreateResult actorCreateResultFromNative(
-      MemorySegment segment) {
-        MemorySegment view = segment.reinterpret(
-          NativeLayouts.ACTOR_CREATE_RESULT_LAYOUT.byteSize());
-        return new ActorCreateResult(
-          EnumCodecs.actorCreateStatusFromValue(view.get(ValueLayout.JAVA_INT,
-            NativeLayouts.ACTOR_CREATE_RESULT_STATUS_OFFSET)),
-          actorRefFromNative(view.asSlice(
-            NativeLayouts.ACTOR_CREATE_RESULT_ACTOR_OFFSET,
-            NativeLayouts.ACTOR_REF_LAYOUT.byteSize())));
-    }
-
     public static ActorRoute actorRouteFromNative(MemorySegment segment) {
         MemorySegment view = segment.reinterpret(
           NativeLayouts.ACTOR_ROUTE_LAYOUT.byteSize());
@@ -160,6 +151,63 @@ public final class ActorInterop {
             NativeLayouts.SPOT_NODE_ACTOR_ENTRY_PENDING_MESSAGE_COUNT_OFFSET),
           view.get(ValueLayout.JAVA_LONG_UNALIGNED,
             NativeLayouts.SPOT_NODE_ACTOR_ENTRY_LAST_CHANGED_MS_OFFSET));
+    }
+
+    public static ActorJoinResult actorJoinResultFromNative(MemorySegment segment) {
+        MemorySegment view = segment.reinterpret(
+          NativeLayouts.ACTOR_JOIN_RESULT_LAYOUT.byteSize());
+        return new ActorJoinResult(
+          RequestResult.fromValue(view.get(ValueLayout.JAVA_INT,
+            NativeLayouts.ACTOR_JOIN_RESULT_RESULT_OFFSET)),
+          actorRefFromNative(view.asSlice(
+            NativeLayouts.ACTOR_JOIN_RESULT_ACTOR_OFFSET,
+            NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+          readRoutingId(view.asSlice(
+            NativeLayouts.ACTOR_JOIN_RESULT_JOINED_SPOT_RID_OFFSET,
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+          view.get(ValueLayout.JAVA_LONG_UNALIGNED,
+            NativeLayouts.ACTOR_JOIN_RESULT_JOIN_EPOCH_OFFSET),
+          view.get(ValueLayout.JAVA_INT,
+            NativeLayouts.ACTOR_JOIN_RESULT_FLAGS_OFFSET));
+    }
+
+    public static ActorLookupResult actorLookupResultFromNative(MemorySegment segment) {
+        MemorySegment view = segment.reinterpret(
+          NativeLayouts.ACTOR_LOOKUP_RESULT_LAYOUT.byteSize());
+        return new ActorLookupResult(
+          RequestResult.fromValue(view.get(ValueLayout.JAVA_INT,
+            NativeLayouts.ACTOR_LOOKUP_RESULT_RESULT_OFFSET)),
+          actorRefFromNative(view.asSlice(
+            NativeLayouts.ACTOR_LOOKUP_RESULT_ACTOR_OFFSET,
+            NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+          view.get(ValueLayout.JAVA_INT,
+            NativeLayouts.ACTOR_LOOKUP_RESULT_FLAGS_OFFSET));
+    }
+
+    public static SpotActorLifecycleInfo lifecycleInfoFromNative(MemorySegment segment) {
+        MemorySegment view = segment.reinterpret(
+          NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.byteSize());
+        RoutingId previousSpotRid = readRoutingId(view.asSlice(
+          NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_PREVIOUS_SPOT_RID_OFFSET,
+          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()));
+        RoutingId currentSpotRid = readRoutingId(view.asSlice(
+          NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_CURRENT_SPOT_RID_OFFSET,
+          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()));
+        return new SpotActorLifecycleInfo(
+          actorRefFromNative(view.asSlice(
+            NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_PREVIOUS_ACTOR_OFFSET,
+            NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+          actorRefFromNative(view.asSlice(
+            NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_CURRENT_ACTOR_OFFSET,
+            NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+          previousSpotRid == null || previousSpotRid.size() == 0
+            ? Optional.empty() : Optional.of(previousSpotRid),
+          currentSpotRid == null || currentSpotRid.size() == 0
+            ? Optional.empty() : Optional.of(currentSpotRid),
+          view.get(ValueLayout.JAVA_LONG_UNALIGNED,
+            NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_JOIN_EPOCH_OFFSET),
+          view.get(ValueLayout.JAVA_INT,
+            NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_FLAGS_OFFSET));
     }
 
     public static String readCString(MemorySegment segment, int maxLen) {

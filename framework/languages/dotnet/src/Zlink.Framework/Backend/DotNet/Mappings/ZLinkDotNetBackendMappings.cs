@@ -153,7 +153,7 @@ internal static class ZLinkDotNetBackendMappings
         return new ZLinkBackendSpotDispatchInfo(
             info.Event switch
             {
-                SpotDispatchEvent.RoutedReadable => ZLinkBackendSpotDispatchEvent.RoutedReadable,
+                SpotDispatchEvent.RoutedReadable => ZLinkBackendSpotDispatchEvent.RouteReadable,
                 SpotDispatchEvent.ChannelReplyReadable => ZLinkBackendSpotDispatchEvent.ChannelReplyReadable,
                 SpotDispatchEvent.ActorJoinReadable => ZLinkBackendSpotDispatchEvent.ActorJoinReadable,
                 SpotDispatchEvent.ActorReadable => ZLinkBackendSpotDispatchEvent.ActorReadable,
@@ -170,6 +170,22 @@ internal static class ZLinkDotNetBackendMappings
             part.Info.SourceSessionRid,
             part.Message,
             part.More);
+    }
+
+    public static ZLinkBackendSpotActorLifecycleInfo ToFramework(
+        this SpotActorLifecycleInfo info)
+    {
+        return new ZLinkBackendSpotActorLifecycleInfo(
+            info.PreviousActor is { } previousActor
+                ? previousActor.ToBackend()
+                : null,
+            info.CurrentActor is { } currentActor
+                ? currentActor.ToBackend()
+                : null,
+            info.PreviousSpotRid,
+            info.CurrentSpotRid,
+            info.JoinEpoch,
+            info.Flags);
     }
 
     public static ZLinkBackendActorRef ToBackend(this ActorRef actorRef)

@@ -63,7 +63,11 @@ fn main() {
     drop(sub_mon);
 
     let msg = Message::copy_from(b"101.25").expect("message failed");
-    pub_sock.publish("prices", msg).expect("publish failed");
+    pub_sock
+        .publish("prices")
+        .message(msg)
+        .submit()
+        .expect("publish failed");
 
     let topic_msg = sub_sock.subscribe().expect("subscribe recv failed");
     assert_eq!(topic_msg.topic(), "prices");

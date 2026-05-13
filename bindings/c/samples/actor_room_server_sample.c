@@ -25,13 +25,6 @@ int main (void)
                                                &capture)
             == ZLINK_HANDLER_OK);
 
-    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
-    assert (stream != NULL);
-    zlink_routing_id_t session;
-    actor_sample_set_rid (&session, "room-session");
-    assert (zlink_stream_bind_actor (node, stream, &session, &actor, 1000)
-            == ZLINK_REQUEST_OK);
-
     zlink_msg_t join;
     make_message (&join, "enter-room");
     assert (zlink_spot_node_actor_join_spot (
@@ -41,20 +34,18 @@ int main (void)
     assert (callback_signal_wait (&capture.join_signal, 2000));
     assert (capture.join_result == ZLINK_REQUEST_OK);
 
-    zlink_msg_t event;
-    make_message (&event, "move:north");
-    assert (zlink_stream_send_bound_actor_part (
-              node, stream, &session, "room-player-1", &event,
-              ZLINK_DONTWAIT, ZLINK_PART_FINAL)
+    actor_sample_capture_reset (&capture);
+    assert (zlink_spot_node_actor_leave_spot (
+              node, &actor, &spot_rid, actor_sample_reply, &capture, 0)
             == ZLINK_SUBMIT_OK);
-    assert (callback_signal_wait (&capture.actor_signal, 2000));
-    assert (strcmp (capture.payload, "move:north") == 0);
-
-    assert (zlink_spot_node_actor_leave_spot (node, &actor, &spot_rid, 0)
-            == ZLINK_REQUEST_OK);
-    assert (zlink_spot_node_actor_destroy (node, &actor, 0)
-            == ZLINK_REQUEST_OK);
-    assert (zlink_close (stream) == ZLINK_CLOSE_OK);
+    assert (callback_signal_wait (&capture.join_signal, 2000));
+    assert (capture.join_result == ZLINK_REQUEST_OK);
+    actor_sample_capture_reset (&capture);
+    assert (zlink_spot_node_actor_destroy (
+              node, &actor, actor_sample_reply, &capture, 0)
+            == ZLINK_SUBMIT_OK);
+    assert (callback_signal_wait (&capture.join_signal, 2000));
+    assert (capture.join_result == ZLINK_REQUEST_OK);
     assert (zlink_spot_destroy (&spot) == ZLINK_CLOSE_OK);
     assert (zlink_spot_node_destroy (&node) == ZLINK_CLOSE_OK);
     actor_sample_capture_destroy (&capture);

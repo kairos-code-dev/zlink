@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework Use Case Validation](../../usecase-validation.ko.md) | [다음: ZLink Framework .NET Interface Catalog](handler-interfaces.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Actor](./aspnet-core-actor.ko.md) | [Session Actor Dispatch](./session-actor-dispatch.ko.md) | [Stream Connector](./streaming-client.ko.md) | [Unity Stream Connector](./unity-stream-connector.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
@@ -98,8 +102,9 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
   draft 구현 범위에 포함하므로 공용 계약과 샘플 문서에 함께 반영한다.
 - session actor dispatch는 하나의 gateway feature switch가 아니라
   `AddStreamNode(...).AddHeaderSession<TSession>()`, actor factory, actor route
-  resolver, session route resolver, session location writer, `IZLinkSessionProxy`
-  조합으로 설명한다.
+  resolver, actor-session binding, `IZLinkSessionProxy` 조합으로 설명한다. 공개
+  resolver 축은 actor와 spot으로 제한하고, session 위치 조회는 별도 public API로
+  두지 않는다.
 
 ## 2. 문서 구조와 역할 분담
 
@@ -181,11 +186,11 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
   registration이 소유한다.
 - `SPOT`도 별도 low-level runtime이 아니라, framework lifecycle 안에서
   다룰 수 있어야 한다.
-- 일반 channel messaging은 `channelName` 호출을 기본으로 두고, `rid` 지정은
-  SPOT spot-to-spot 경로에만 남긴다.
-- `SPOT` high-level 표면은 current channel publish/subscribe와 attach된 channel
-  send/request를 설명한다. `SpotId` 기반 routed send/request는 현재 구현 계약으로
-  문서화하지 않는다.
+- 일반 channel messaging은 `channelName` 호출을 기본으로 둔다. spot-to-spot 경로는
+  `IZLinkSpotClient.SendSpot(...)` / `RequestSpot(...)`이 spot name/id를 받고,
+  resolver가 transport 위치값을 숨긴다.
+- `SPOT` high-level 표면은 current channel publish/subscribe, attach된 channel
+  send/request, spot name/id 기반 routed send/request를 설명한다.
 - `IZLinkClient`와 `IZLinkSpotClient`는 서로 다른 C API를 감싸는 별도 인터페이스다.
   다만 하부 기능이 겹치는 부분이 있으므로, 두 인터페이스가 일부 비슷한
   send/request 계열 함수를 가질 수 있다.

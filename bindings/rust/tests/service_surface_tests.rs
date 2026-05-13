@@ -195,8 +195,6 @@ fn actor_surfaces_exist() {
     let stream = ctx.stream_socket().unwrap();
     let session_rid = RoutingId::from_bytes(b"actor-session");
 
-    node.on_actor_admission(|_, _| ActorAdmissionResult::Accept)
-        .unwrap();
     let mut actor = node.create_actor("actor-surface").unwrap();
     let actor_ref = actor.actor_ref().unwrap();
     assert!(!actor_ref.is_unchecked());
@@ -214,63 +212,46 @@ fn actor_surfaces_exist() {
     let _ = node.actors_snapshot().unwrap();
     let _ = spot.actors_snapshot().unwrap();
     let _ = actor.recv_part_with_flags(RecvFlags::DONT_WAIT);
-    let _ = actor.send_bound_session_msg(
-        Message::copy_from(b"payload").unwrap(),
-        SendFlags::DONT_WAIT,
-    );
+    let _ = actor
+        .send_bound_session_msg()
+        .message(Message::copy_from(b"payload").unwrap())
+        .flags(SendFlags::DONT_WAIT);
     let _ = actor.close_bound_session(std::time::Duration::from_millis(1));
-    let _ = actor.join_callback(
-        &spot,
-        Message::copy_from(b"join").unwrap(),
-        |_| {},
-        SendFlags::DONT_WAIT,
-        std::time::Duration::from_millis(1),
-    );
+    let _ = actor
+        .join(&spot)
+        .message(Message::copy_from(b"join").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .timeout(std::time::Duration::from_millis(1));
     let _ = spot.recv_actor_join_with_flags(RecvFlags::DONT_WAIT);
-    let _ = stream.bind_actor(
-        &node,
-        &session_rid,
-        &actor_ref,
-        std::time::Duration::from_millis(1),
-    );
-    let _ = stream.send_bound_actor_part(
-        &node,
-        &session_rid,
-        "actor-surface",
-        Message::copy_from(b"payload").unwrap(),
-        SendFlags::DONT_WAIT,
-    );
-    let _ = stream.unbind_actor(
-        &node,
-        &session_rid,
-        "actor-surface",
-        std::time::Duration::from_millis(1),
-    );
+    let _ = stream
+        .bind_actor(&session_rid, &actor_ref)
+        .timeout(std::time::Duration::from_millis(1));
+    let _ = stream
+        .send_bound_actor_part(&session_rid, "actor-surface")
+        .message(Message::copy_from(b"payload").unwrap())
+        .flags(SendFlags::DONT_WAIT);
+    let _ = stream
+        .unbind_actor(&session_rid, "actor-surface")
+        .timeout(std::time::Duration::from_millis(1));
     let _ = actor.leave(&spot);
     let _ = actor.close();
-    let _ = node.create_remote_actor(
-        &RoutingId::from_bytes(b"remote-node"),
-        "remote-actor",
-        Message::copy_from(b"create").unwrap(),
-        std::time::Duration::from_millis(1),
-    );
     let remote =
         SpotNode::remote_actor_ref(&RoutingId::from_bytes(b"remote-node"), "remote-actor").unwrap();
-    let _ = node.destroy_actor(&remote, std::time::Duration::from_millis(1));
-    let _ = node.join_actor_callback(
-        &remote,
-        &RoutingId::from_bytes(b"actor-node"),
-        &RoutingId::from_bytes(b"actor-spot"),
-        Message::copy_from(b"join").unwrap(),
-        |_| {},
-        SendFlags::DONT_WAIT,
-        std::time::Duration::from_millis(1),
-    );
-    let _ = node.leave_actor(
-        &remote,
-        &RoutingId::from_bytes(b"actor-spot"),
-        std::time::Duration::from_millis(1),
-    );
+    let _ = node
+        .destroy_actor(&remote)
+        .timeout(std::time::Duration::from_millis(1));
+    let _ = node
+        .join_actor(
+            &remote,
+            &RoutingId::from_bytes(b"actor-node"),
+            &RoutingId::from_bytes(b"actor-spot"),
+        )
+        .message(Message::copy_from(b"join").unwrap())
+        .flags(SendFlags::DONT_WAIT)
+        .timeout(std::time::Duration::from_millis(1));
+    let _ = node
+        .leave_actor(&remote, &RoutingId::from_bytes(b"actor-spot"))
+        .timeout(std::time::Duration::from_millis(1));
     fn _dispatch_handler(_info: SpotDispatchInfo<'_>) {}
     let _on_dispatch_event = Spot::on_dispatch_event::<fn(SpotDispatchInfo<'_>)>;
     let _ = _on_dispatch_event;

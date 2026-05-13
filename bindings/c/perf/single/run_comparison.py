@@ -519,9 +519,9 @@ def derive_current_lib_dir(build_dir: str) -> str:
     elif base == "bin":
         build_root = os.path.dirname(build_root)
     if (
-        os.path.isfile(os.path.join(build_root, "libzlink_c.so"))
-        or os.path.isfile(os.path.join(build_root, "libzlink_c.dylib"))
-        or os.path.isfile(os.path.join(build_root, "zlink_c.dll"))
+        os.path.isfile(os.path.join(build_root, "libzlink.so"))
+        or os.path.isfile(os.path.join(build_root, "libzlink.dylib"))
+        or os.path.isfile(os.path.join(build_root, "zlink.dll"))
     ):
         return os.path.abspath(build_root)
     return os.path.abspath(os.path.join(build_root, "lib"))

@@ -683,3 +683,41 @@
     결과 생성, `Message` native handle lifecycle, P/Invoke send/recv 왕복 비용이다.
   - 공개 API 확장은 하지 않았다. perf 실행 파일에 한정된 internal 접근은 기존
     perf compat 경로를 사용하기 위한 범위 제한 조치다.
+
+### 2026-05-12 .NET round 18 — Poller int tag ready fast path
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260512_210159_c_echo_for_cpp_java_net_20260512.txt`
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Poller.cs`
+    - `PollEvent` 객체를 만들지 않고 int tag와 revents만 채우는 internal
+      `WaitReadyTags(...)` 경로를 추가했다.
+    - public `Poller.Wait(...)` 계약은 바꾸지 않았다.
+  - `bindings/dotnet/src/Zlink/Properties/AssemblyInfo.cs`
+    - perf 공용 어셈블리에서 internal ready fast path를 쓰도록
+      `Zlink.BindingBench.Common`에만 internal 접근을 허용했다.
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfPollManager.cs`
+    - multi echo poll loop가 `PollEvent` 변환과 tag object 확인을 거치지 않고
+      ready index와 revents를 바로 받는다.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release --nologo`
+  - `dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --filter 'FullyQualifiedName~test_socket_surface|FullyQualifiedName~test_validation_contract' --nologo`
+  - `bindings/dotnet/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag dotnet_wait_ready_tags_20260512`
+- 결과:
+  - build 통과.
+  - surface/validation filtered test 24개가 모두 passed다.
+  - latest report: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_222500_dotnet_wait_ready_tags_20260512.txt`
+  - RR 64/256/1024B: `224.184/226.871/222.684` Kops/s.
+  - DR 64/256/1024B: `270.356/265.654/264.136` Kops/s.
+- round 17 대비:
+  - RR 64/256/1024B: `+4.900/+5.971/+3.857` Kops/s.
+  - DR 64/256/1024B: `+3.173/+1.175/+4.294` Kops/s.
+- C 기준 대비:
+  - RR 64/256/1024B ratio `0.53/0.54/0.55`.
+  - DR 64/256/1024B ratio `0.61/0.61/0.60`.
+- 판단:
+  - poller event materialization 비용은 실제 병목 일부였고, 공개 API를 넓히지 않는
+    internal 경로로 소폭 개선됐다.
+  - 남은 차이는 여전히 `Recv(Received)` 결과 생성, `Message` native handle
+    lifecycle, P/Invoke send/recv 왕복 비용 쪽이 더 크다.

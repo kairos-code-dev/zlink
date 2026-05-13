@@ -4,7 +4,7 @@
 #include "../common/perf_single_monitor.hpp"
 #include "../common/perf_single_one_way.hpp"
 #include "../common/perf_single_phase.hpp"
-#include <zlink_c.h>
+#include <zlink.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -148,7 +148,7 @@ int send_pubsub_stop_token (void *publisher_)
     if (zlink_msg_init_size (&part, stop_token_size ()) != 0)
         return -1;
     std::memcpy (zlink_msg_data (&part), k_stop_token, stop_token_size ());
-    if (zlink_publish (publisher_, k_pubsub_topic, &part, 1,
+    if (perf_zlink_publish_parts (publisher_, k_pubsub_topic, &part, 1,
                        ZLINK_SEND_FLAGS_NONE)
         == 0)
         return 0;
@@ -227,7 +227,7 @@ void run_pubsub (const std::string &transport,
                     &part, active_payload, active_state, seq)) {
                   return perf_single_one_way::send_step_fatal;
               }
-              if (zlink_publish (
+              if (perf_zlink_publish_parts (
                     publisher,
                     k_pubsub_topic,
                     &part,

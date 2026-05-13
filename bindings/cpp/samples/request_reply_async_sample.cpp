@@ -12,10 +12,12 @@ void run_request_round_trip (zlink::dealer_socket_t &dealer_)
 {
     zlink::message_t request =
       detail::make_message (detail::k_dealer_router_request);
-    std::vector<zlink::message_t> reply = dealer_.request (
-      request,
-      std::chrono::milliseconds (2000))
-                                .get ();
+    std::vector<zlink::message_t> reply =
+      dealer_.request ()
+        .message (request)
+        .timeout (std::chrono::milliseconds (2000))
+        .submit_async ()
+        .get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == detail::k_dealer_router_reply);
 }
@@ -43,7 +45,7 @@ int main ()
     assert (detail::wait_connected (router_monitor, dealer_monitor));
 
     zlink::message_t warmup = detail::make_message ("warmup");
-    dealer_socket.send (warmup);
+    dealer_socket.send ().message (warmup).submit ();
     zlink::received_t warmup_received;
     assert (router_socket.recv (warmup_received) == 0);
     assert (warmup_received.parts ().size () == 1);
@@ -64,14 +66,18 @@ int main ()
           assert (*received.request_seq () != 0u);
           zlink::message_t reply =
             detail::make_message (detail::k_dealer_router_reply);
-          received.reply (reply);
+          received.reply ().message (reply).submit ();
           received.close ();
       });
 
     zlink::message_t request =
       detail::make_message (detail::k_dealer_router_request);
     std::vector<zlink::message_t> reply =
-      dealer_socket.request (request, std::chrono::milliseconds (5000)).get ();
+      dealer_socket.request ()
+        .message (request)
+        .timeout (std::chrono::milliseconds (5000))
+        .submit_async ()
+        .get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == detail::k_dealer_router_reply);
     request_done.get ();

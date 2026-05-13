@@ -43,44 +43,71 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         return RoutingId.FromBytes(Kernel.GetOption(SocketOptions.RoutingId));
     }
 
-    public Task<IReadOnlyList<Message>> Request(RoutingId peerRid,
-        Message part, CancellationToken ct = default)
-        => Request(peerRid, new[] { part }, ct);
-
-    public Task<IReadOnlyList<Message>> Request(RoutingId peerRid,
-        Message part, TimeSpan timeout, CancellationToken ct = default)
-        => Request(peerRid, new[] { part }, timeout, ct);
-
-    public async Task<IReadOnlyList<Message>> Request(RoutingId peerRid,
-        IReadOnlyList<Message> parts, CancellationToken ct = default)
+    /// <summary>
+    /// Start a request to a specific peer (operation builder).
+    /// </summary>
+    public RequestOperation Request(RoutingId peerRid)
     {
-        Received received = await RequestAsyncCore(peerRid, parts,
-            DefaultRequestTimeout, ct).ConfigureAwait(false);
-        return received.Parts;
+        return new RouterRequestOperation(this, RouterOperationKind.Request,
+            peerRid, default, default);
     }
 
-    public async Task<IReadOnlyList<Message>> Request(RoutingId peerRid,
-        IReadOnlyList<Message> parts, TimeSpan timeout,
-        CancellationToken ct = default)
+    /// <summary>
+    /// Start a reply (operation builder).
+    /// </summary>
+    public ReplyOperation Reply(RoutingId rid, ulong requestSeq)
     {
-        Received received = await RequestAsyncCore(peerRid, parts, timeout, ct)
+        return new RouterReplyOperation(this, RouterOperationKind.Reply, rid,
+            default, default, requestSeq);
+    }
+
+    /// <summary>
+    /// Start a router -> spot routed send (operation builder).
+    /// </summary>
+    public SendOperation SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid)
+    {
+        return new RouterSendOperation(this, destNodeRid, destSpotRid);
+    }
+
+    /// <summary>
+    /// Start a router -> spot routed request (operation builder).
+    /// </summary>
+    public RequestOperation RequestToSpot(RoutingId destNodeRid,
+        RoutingId destSpotRid)
+    {
+        return new RouterRequestOperation(this,
+            RouterOperationKind.RequestToSpot, default, destNodeRid,
+            destSpotRid);
+    }
+
+    /// <summary>
+    /// Start a router -> spot routed reply (operation builder).
+    /// </summary>
+    public ReplyOperation ReplyToSpot(RoutingId destNodeRid,
+        RoutingId destSpotRid, ulong requestSeq)
+    {
+        return new RouterReplyOperation(this, RouterOperationKind.ReplyToSpot,
+            default, destNodeRid, destSpotRid, requestSeq);
+    }
+
+    internal async Task<IReadOnlyList<Message>> RequestCore(RoutingId peerRid,
+        IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct)
+    {
+        Received received = await RequestAsyncCore(peerRid, parts,
+            timeout == TimeSpan.Zero ? DefaultRequestTimeout : timeout, ct)
             .ConfigureAwait(false);
         return received.Parts;
     }
 
-    public bool Request(RoutingId peerRid, Message part,
-        RequestCallback callback,
-        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
-        => Request(peerRid, new[] { part }, callback, flags, timeout);
-
-    public bool Request(RoutingId peerRid, IReadOnlyList<Message> parts,
-        RequestCallback callback,
-        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
+    internal bool RequestCallbackCore(RoutingId peerRid,
+        IReadOnlyList<Message> parts, RequestCallback callback,
+        SendFlags flags, TimeSpan timeout)
     {
         try
         {
             RequestReplySupport.AttachResultCallback(
-                () => RequestAsyncCore(peerRid, parts, timeout ?? TimeSpan.Zero,
+                () => RequestAsyncCore(peerRid, parts,
+                    timeout == TimeSpan.Zero ? TimeSpan.Zero : timeout,
                     CancellationToken.None, (int)flags),
                 (result, reply) =>
                 {
@@ -106,11 +133,7 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         }
     }
 
-    public void Reply(RoutingId peerRid, ulong requestSeq, Message message,
-        SendFlags flags = SendFlags.None)
-        => Reply(peerRid, requestSeq, new[] { message }, flags);
-
-    public unsafe void Reply(RoutingId peerRid, ulong requestSeq,
+    internal unsafe void ReplyCore(RoutingId peerRid, ulong requestSeq,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         _ = flags;
@@ -151,12 +174,9 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         }
     }
 
-    public bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        Message message, SendFlags flags = SendFlags.None)
-        => SendToSpot(destNodeRid, destSpotRid, new[] { message }, flags);
-
-    public unsafe bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+    internal unsafe bool SendToSpotCore(RoutingId destNodeRid,
+        RoutingId destSpotRid, IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
     {
         EnsureParts(parts, nameof(parts));
         byte[] nodeRidBytes = RoutingIdCodec.FromRoutingId(destNodeRid);
@@ -204,38 +224,24 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         }
     }
 
-    public Task<IReadOnlyList<Message>> RequestToSpot(RoutingId destNodeRid,
-        RoutingId destSpotRid, Message message, TimeSpan timeout = default,
-        CancellationToken ct = default)
-        => RequestToSpot(destNodeRid, destSpotRid, new[] { message }, timeout,
-            ct);
-
-    public async Task<IReadOnlyList<Message>> RequestToSpot(RoutingId destNodeRid,
-        RoutingId destSpotRid, IReadOnlyList<Message> parts,
-        TimeSpan timeout = default, CancellationToken ct = default)
+    internal async Task<IReadOnlyList<Message>> RequestToSpotCore(
+        RoutingId destNodeRid, RoutingId destSpotRid,
+        IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct)
     {
         Received received = await RequestToSpotAsyncInternal(destNodeRid,
             destSpotRid, parts, timeout, ct).ConfigureAwait(false);
         return received.Parts;
     }
 
-    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        Message message, RequestCallback callback,
-        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
-        => RequestToSpot(destNodeRid, destSpotRid, new[] { message }, callback,
-            flags, timeout);
-
-    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        IReadOnlyList<Message> parts,
-        RequestCallback callback,
-        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
+    internal bool RequestToSpotCallbackCore(RoutingId destNodeRid,
+        RoutingId destSpotRid, IReadOnlyList<Message> parts,
+        RequestCallback callback, SendFlags flags, TimeSpan timeout)
     {
         try
         {
             RequestReplySupport.AttachResultCallback(
                 () => RequestToSpotAsyncInternal(destNodeRid, destSpotRid, parts,
-                    timeout ?? TimeSpan.Zero, CancellationToken.None,
-                    (int)flags),
+                    timeout, CancellationToken.None, (int)flags),
                 (result, reply) =>
                 {
                     IReadOnlyList<Message> payload = Array.Empty<Message>();
@@ -260,13 +266,8 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         }
     }
 
-    public void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        ulong requestSeq, Message message, SendFlags flags = SendFlags.None)
-        => ReplyToSpot(destNodeRid, destSpotRid, requestSeq, new[] { message },
-            flags);
-
-    public unsafe void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        ulong requestSeq, IReadOnlyList<Message> parts,
+    internal unsafe void ReplyToSpotCore(RoutingId destNodeRid,
+        RoutingId destSpotRid, ulong requestSeq, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
         _ = flags;

@@ -160,7 +160,7 @@ internal static class CoreTestSupport
             Message message = Message.FromBytes(payload);
             try
             {
-                socket.Send(message);
+                socket.Send().Message(message).Submit();
                 return;
             }
             catch (ZlinkSubmitException)
@@ -180,7 +180,7 @@ internal static class CoreTestSupport
             Message message = Message.FromBytes(payload);
             try
             {
-                socket.Publish(topic, message);
+                socket.Publish(topic).Message(message).Submit();
                 return;
             }
             catch (ZlinkSubmitException)

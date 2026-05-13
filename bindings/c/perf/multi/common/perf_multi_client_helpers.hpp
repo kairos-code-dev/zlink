@@ -124,14 +124,14 @@ inline send_status_t send_echo_message_flags (void *socket,
               static_cast<size_t> (target_rid.size));
         }
         const zlink_submit_result_t rc =
-          ::zlink_send_rid (socket, &target_rid, &part, 1, base_flags);
+          ::perf_zlink_send_rid_parts (socket, &target_rid, &part, 1, base_flags);
         if (rc != ZLINK_SUBMIT_OK)
             zlink_msg_close (&part);
         return classify_send_result (rc);
     }
 
     const zlink_submit_result_t payload_rc =
-      ::zlink_send (socket, &part, 1, base_flags);
+      ::perf_zlink_send_parts (socket, &part, 1, base_flags);
     if (payload_rc != ZLINK_SUBMIT_OK)
         zlink_msg_close (&part);
     return classify_send_result (payload_rc);

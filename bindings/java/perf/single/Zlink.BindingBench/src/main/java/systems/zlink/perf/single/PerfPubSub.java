@@ -103,13 +103,13 @@ final class PerfPubSub {
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    pub.publish(TOPIC, active);
+                    pub.publish(TOPIC).message(active).submit();
                 }
             }
             // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with stop token
             // published on the same topic so the subscriber's filter delivers it.
             try (Message stop = PerfStopToken.newMessage()) {
-                pub.publish(TOPIC, stop);
+                pub.publish(TOPIC).message(stop).submit();
             }
             PerfUtil.join(recvThread, "pubsub receiver",
                 Duration.ofSeconds(config.durationSeconds() + 10L));

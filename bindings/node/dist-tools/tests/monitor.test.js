@@ -6,7 +6,7 @@ const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const net = require('node:net');
 const path = require('node:path');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 const AUTO_CONNECT_SPOT_MESH = 5;
 async function reservePort() {
     const server = net.createServer();

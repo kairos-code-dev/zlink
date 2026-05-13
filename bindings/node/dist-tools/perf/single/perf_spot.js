@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const node_net_1 = __importDefault(require("node:net"));
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const perf_metrics_1 = require("../common/perf_metrics");
 const perf_single_common_1 = require("./perf_single_common");
 const perf_stop_token_1 = require("../perf_stop_token");

@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET STREAM Samples](stream-samples.ko.md) | [다음: ZLink Framework For Java](../java/README.ko.md)
+<!-- framework-adapter-nav:end -->
+
 # TicTacToe Game Sample 초안
 
 > 이 문서는 구현 전 초안이다. 현재 공개 계약이 아니며, `.NET` framework adapter와
@@ -111,8 +115,9 @@ session actor dispatch 샘플의 DTO는
 핵심 계약은 아래와 같다.
 
 - `AuthenticateReq.ActorId`가 인증 요청의 actor identity다.
-- 인증 성공 뒤 Session 서버는 `CreateRemoteActorAsync(...)`로 remote actor를 만들고
-  현재 stream session binding을 writer로 기록한다.
+- 인증 성공 뒤 Session 서버는 `CreateActorHandleAsync(...)`로 local `SpotNode` actor
+  runtime의 actor handle을 만들고 현재 stream session binding을 framework/core 내부
+  상태로 기록한다.
 - `CreateMatchReq`는 Session 서버에서 API 서버로 channel request로 relay된다.
   client는 match id나 room name을 지정하지 않는다.
 - API 서버는 Play 서버에 room 생성을 요청하고, Play 서버는 `IZLinkSpotManager`로

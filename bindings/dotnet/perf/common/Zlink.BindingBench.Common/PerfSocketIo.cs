@@ -11,7 +11,8 @@ public static class PerfSocketIo
         {
             bool sent = socket switch
             {
-                MessageSocketBase messageSocket => messageSocket.Send(message, flags),
+                MessageSocketBase messageSocket => messageSocket.Send()
+                    .Message(message).Flags(flags).Submit(),
                 _ => throw new NotSupportedException(
                     $"Unsupported socket type for perf send: {socket.GetType().Name}")
             };
@@ -41,7 +42,7 @@ public static class PerfSocketIo
         Message message = new Message(payload);
         try
         {
-            if (socket.Send(routingId, message, flags))
+            if (socket.Send(routingId).Message(message).Flags(flags).Submit())
                 return payload.Length;
             message.Dispose();
             return 0;
@@ -59,7 +60,7 @@ public static class PerfSocketIo
         Message message = new Message(payload);
         try
         {
-            if (socket.Publish(topic, message, flags))
+            if (socket.Publish(topic).Message(message).Flags(flags).Submit())
                 return payload.Length;
             message.Dispose();
             return 0;

@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Stream Connector For Unity](unity-stream-connector.ko.md) | [다음: ZLink Framework ASP.NET Core Monitoring](aspnet-core-monitoring.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [인터페이스](./handler-interfaces.ko.md)
@@ -24,9 +28,9 @@ registration surface와 테스트 기준이 바뀌지 않게 만드는 데 목�
 
 ### 2.1 현재 정리된 방향
 
-- `STREAM` session callback은 `Message`를 받는다.
-- packet session은 주로 `header`를 먼저 읽고 body를 다시 parse한다.
-- body는 `header.MsgId`를 보고 각 packet 타입으로 parse한다.
+- `STREAM` session callback은 `IZLinkSessionPacket`을 받는다.
+- packet session은 framework가 내부 header를 먼저 읽고 packet name과 metadata를 만든다.
+- application은 `packet.PacketName`을 보고 각 packet 타입으로 decode한다.
 - protobuf/json/messagepack 같은 객체 변환은 transport 본체보다
   `playhouse/extensions` 같은 extension 계층으로 두는 방향을 기본으로 본다.
 
@@ -45,7 +49,7 @@ registration surface와 테스트 기준이 바뀌지 않게 만드는 데 목�
 
 - transport 본체는 `Message`까지만 책임진다.
 - serializer는 extension 패키지로 분리한다.
-- handler 샘플은 `body.Parse<T>()` 같은 helper를 기준으로 쓴다.
+- handler 샘플은 `packet.Decode<T>()` 같은 helper를 기준으로 쓴다.
 - generated protobuf 타입은 `IMessage<T>` 계열인지 보고 protobuf로 해석한다.
 - 그 밖의 일반 class는 json으로 해석하는 규칙을 기본값으로 둔다.
 - helper 내부는 `Message.AsReadOnlySpan()`를 사용해서 추가 복사를 피한다.

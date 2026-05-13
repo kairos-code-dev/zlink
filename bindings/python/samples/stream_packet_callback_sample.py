@@ -34,7 +34,7 @@ def main():
                         raise AssertionError("unexpected stream packet body")
                     if not observed["routing_id"]:
                         raise AssertionError("stream packet callback expected a routing id")
-                    server.send(observed["routing_id"], b"hello-stream")
+                    server.send(observed["routing_id"]).message(b"hello-stream").submit()
                     reply = client.recv(64)
                     if reply != b"hello-stream":
                         raise AssertionError(f"unexpected stream packet reply: {reply!r}")

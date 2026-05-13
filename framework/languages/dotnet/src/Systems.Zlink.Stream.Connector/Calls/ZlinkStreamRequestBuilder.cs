@@ -58,7 +58,7 @@ public sealed class ZlinkStreamRequestBuilder
         return this;
     }
 
-    public async ValueTask<ZlinkStreamEncodedBody> Async(CancellationToken cancellationToken = default)
+    public async ValueTask<ZlinkStreamEncodedBody> Submit(CancellationToken cancellationToken = default)
     {
         _state.EnsureNotExecuted();
         return await _connector.RequestEncodedAsync(
@@ -70,7 +70,7 @@ public sealed class ZlinkStreamRequestBuilder
             cancellationToken).ConfigureAwait(false);
     }
 
-    public void Async(Action<ZlinkStreamResult> callback)
+    public void Submit(Action<ZlinkStreamResult> callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
         _state.EnsureNotExecuted();
@@ -83,7 +83,7 @@ public sealed class ZlinkStreamRequestBuilder
             callback);
     }
 
-    public void Async(Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback)
+    public void Submit(Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
         _state.EnsureNotExecuted();

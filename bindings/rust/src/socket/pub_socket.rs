@@ -2,11 +2,11 @@ use std::ffi::c_void;
 use std::time::Duration;
 
 use crate::ctx::Context;
-use crate::error::{ConfigError, HandlerError, SubmitError, check_config_rc};
+use crate::error::{ConfigError, HandlerError, check_config_rc};
 use crate::ffi;
-use crate::flags::SendFlags;
-use crate::message::{IntoMultipart, Message, RoutingId};
+use crate::message::{Message, RoutingId};
 use crate::options::{CommonSocketOptions, PubSocketOptions};
+use crate::service::{Empty, SendOp};
 
 use super::{
     SocketInner, impl_attach_discovery, impl_base_socket, impl_connect, impl_recv_options,
@@ -28,17 +28,10 @@ impl PubSocket {
         })
     }
 
-    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError> {
-        self.inner.publish(topic, parts)
-    }
-
-    pub fn publish_with_flags(
-        &self,
-        topic: &str,
-        parts: impl IntoMultipart,
-        flags: SendFlags,
-    ) -> Result<bool, SubmitError> {
-        self.inner.publish_with_flags(topic, parts, flags)
+    pub fn publish(&self, topic: &str) -> SendOp<Empty> {
+        let topic = std::ffi::CString::new(topic)
+            .unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
+        crate::service::socket_publish_op(self.inner.handle, topic)
     }
 
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>

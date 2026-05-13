@@ -1,5 +1,15 @@
 namespace Zlink.Framework.Spots;
 
+public readonly record struct ZLinkSpotActorLifecycleInfo(
+    string? PreviousActorId,
+    string? CurrentActorId,
+    RoutingId? PreviousNodeRid,
+    RoutingId? CurrentNodeRid,
+    RoutingId? PreviousSpotRid,
+    RoutingId? CurrentSpotRid,
+    ulong JoinEpoch,
+    uint Flags);
+
 public interface IZLinkSpot
 {
     void Configure()
@@ -12,6 +22,20 @@ public interface IZLinkSpot
     }
 
     ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    ValueTask OnActorJoinedAsync(
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    ValueTask OnActorLeftAsync(
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }

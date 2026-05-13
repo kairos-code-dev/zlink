@@ -36,7 +36,7 @@ def _publish_stop_token(publisher):
 
     for _ in range(100):
         try:
-            publisher.publish(TOPIC, STOP_TOKEN)
+            publisher.publish(TOPIC).message(STOP_TOKEN).submit()
             return
         except zlink.SubmitError as exc:
             if exc.result != zlink.SubmitResult.BACKPRESSURED:
@@ -53,7 +53,7 @@ def main(argv=None):
     def send_loop(publisher):
         active_end = time.perf_counter() + args.duration
         while time.perf_counter() < active_end:
-            publisher.publish(TOPIC, stamp_payload(payload, phase=1, run_id=run_id))
+            publisher.publish(TOPIC).message(stamp_payload(payload, phase=1, run_id=run_id)).submit()
         _publish_stop_token(publisher)
     with zlink.Context() as ctx:
         with zlink.PubSocket(ctx) as publisher:

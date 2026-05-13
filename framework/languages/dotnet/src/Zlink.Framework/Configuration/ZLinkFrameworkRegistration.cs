@@ -22,7 +22,7 @@ internal sealed class ZLinkFrameworkRegistration
 
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
-    public Dictionary<string, ZLinkRoutedChannelRegistration> RoutedChannels { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, ZLinkRouteChannelRegistration> RouteChannels { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkStreamNodeRegistration> StreamNodes { get; } = new(StringComparer.Ordinal);
 
@@ -69,7 +69,7 @@ internal sealed class ZLinkChannelServerCapabilityRegistration
 
     public ZLinkCommonSocketOptions SocketOptions { get; } = new();
 
-    public ZLinkRoutedPeerOptions RoutingOptions { get; } = new();
+    public ZLinkRoutePeerOptions RoutingOptions { get; } = new();
 }
 
 internal sealed class ZLinkChannelClientCapabilityRegistration
@@ -106,7 +106,7 @@ internal sealed class ZLinkStreamNodeRegistration
     public Type? HeaderSessionType { get; set; }
 }
 
-internal sealed class ZLinkRoutedChannelRegistration
+internal sealed class ZLinkRouteChannelRegistration
 {
     public required string RouterChannelId { get; init; }
 
@@ -114,17 +114,17 @@ internal sealed class ZLinkRoutedChannelRegistration
 
     public ZLinkCommonSocketOptions SocketOptions { get; } = new();
 
-    public ZLinkRoutedPeerOptions RoutingOptions { get; } = new();
+    public ZLinkRoutePeerOptions RoutingOptions { get; } = new();
 
     public List<string> ManualConnections { get; } = [];
 
-    public List<ZLinkRoutedHandlerRegistration> SendHandlers { get; } = [];
+    public List<ZLinkRouteHandlerRegistration> SendHandlers { get; } = [];
 
-    public List<ZLinkRoutedHandlerRegistration> RequestHandlers { get; } = [];
+    public List<ZLinkRouteHandlerRegistration> RequestHandlers { get; } = [];
 
 }
 
-internal sealed record ZLinkRoutedHandlerRegistration(
+internal sealed record ZLinkRouteHandlerRegistration(
     Type HandlerType,
     Type MessageType,
     Type? ReplyType,
@@ -151,7 +151,7 @@ internal sealed class ZLinkSpotRouterCapabilityRegistration
 {
     public ZLinkCommonSocketOptions SocketOptions { get; } = new();
 
-    public ZLinkRoutedPeerOptions RoutingOptions { get; } = new();
+    public ZLinkRoutePeerOptions RoutingOptions { get; } = new();
 
     public List<string> ManualConnections { get; } = [];
 }

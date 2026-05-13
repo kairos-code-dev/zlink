@@ -166,7 +166,7 @@ internal sealed class ZLinkActorSessionManager(
             && state.NativeActorRef is { } actorRef
             && stream is ZLinkManagedStream managedStream)
         {
-            managedStream.BindActor(node, actorRef, runtime.Registration.DefaultTimeout);
+            managedStream.BindActor(actorRef, runtime.Registration.DefaultTimeout);
         }
     }
 
@@ -214,7 +214,7 @@ internal sealed class ZLinkActorSessionManager(
         {
             try
             {
-                managedStream.UnbindActor(node, actor.ActorId, runtime.Registration.DefaultTimeout);
+                managedStream.UnbindActor(actor.ActorId, runtime.Registration.DefaultTimeout);
             }
             catch (ZlinkException)
             {

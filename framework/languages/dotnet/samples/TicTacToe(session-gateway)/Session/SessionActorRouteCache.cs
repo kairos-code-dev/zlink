@@ -17,7 +17,7 @@ internal sealed class SessionActorRouteCache
             return state.Actor;
         }
 
-        state.Actor = await context.CreateRemoteActorAsync(
+        state.Actor = await context.CreateActorHandleAsync(
                 route.TargetNodeRid,
                 actorId,
                 SampleNames.PlayerActorType,

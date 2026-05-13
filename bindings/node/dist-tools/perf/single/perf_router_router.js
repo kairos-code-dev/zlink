@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
 const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
@@ -22,7 +22,7 @@ async function handshakeReceiver(receiver) {
     if (ping.routingId === null || partStrings(ping).join(',') !== 'PING') {
         throw new Error('router-router handshake receive failed');
     }
-    receiver.send(SENDER_ROUTING_ID, Buffer.from('PONG'));
+    receiver.send(SENDER_ROUTING_ID).message(Buffer.from('PONG')).submit();
 }
 async function runRouterRouterBenchmark(msgSize, options) {
     const ctx = new zlink.Context();

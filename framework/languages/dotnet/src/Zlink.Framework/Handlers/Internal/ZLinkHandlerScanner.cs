@@ -33,10 +33,10 @@ internal static class ZLinkHandlerScanner
                     endpoints.Add(CreateDescriptor(type, method, send.PacketName, ZLinkMessageKind.Command));
                 }
 
-                var @event = method.GetCustomAttribute<ZLinkEventAttribute>();
-                if (@event is not null)
+                var publish = method.GetCustomAttribute<ZLinkPublishAttribute>();
+                if (publish is not null)
                 {
-                    endpoints.Add(CreateDescriptor(type, method, @event.PacketName, ZLinkMessageKind.Event));
+                    endpoints.Add(CreateDescriptor(type, method, publish.PacketName, ZLinkMessageKind.Publish));
                 }
             }
 
@@ -56,9 +56,9 @@ internal static class ZLinkHandlerScanner
                 {
                     endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Command));
                 }
-                else if (def == typeof(IZLinkEventHandler<>))
+                else if (def == typeof(IZLinkPublishHandler<>))
                 {
-                    endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Event));
+                    endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Publish));
                 }
             }
         }
@@ -79,7 +79,7 @@ internal static class ZLinkHandlerScanner
         MethodInfo? targetMethod = null;
         for (var i = 0; i < map.InterfaceMethods.Length; i++)
         {
-            if (map.InterfaceMethods[i].Name == nameof(IZLinkEventHandler<object>.HandleAsync))
+            if (map.InterfaceMethods[i].Name == nameof(IZLinkPublishHandler<object>.HandleAsync))
             {
                 targetMethod = map.TargetMethods[i];
                 break;
@@ -97,7 +97,7 @@ internal static class ZLinkHandlerScanner
         {
             ZLinkMessageKind.Request => typeof(ZLinkRequestContext),
             ZLinkMessageKind.Command => typeof(ZLinkSendContext),
-            _ => typeof(ZLinkEventContext),
+            _ => typeof(ZLinkPublishContext),
         };
 
         return new ZLinkHandlerEndpointDescriptor(

@@ -3,7 +3,7 @@
 #include "../common/perf_single_metric_header.hpp"
 #include "../common/perf_single_monitor.hpp"
 #include "../common/perf_single_phase.hpp"
-#include <zlink_c.h>
+#include <zlink.h>
 
 #include <algorithm>
 #include <atomic>
@@ -170,7 +170,7 @@ bool send_dealer_stop_token (void *sender_)
             return false;
         std::memcpy (zlink_msg_data (&part), k_stop_token,
                      std::strlen (k_stop_token));
-        if (zlink_send (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) == 0)
+        if (perf_zlink_send_parts (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) == 0)
             return true;
         const int err = zlink_errno ();
         zlink_msg_close (&part);
@@ -214,7 +214,7 @@ bool send_dealer_samples (void *sender_,
             std::memcpy (
               zlink_msg_data (&part), payload_->data (), payload_->size ());
 
-        if (zlink_send (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) != 0) {
+        if (perf_zlink_send_parts (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) != 0) {
             const int err = zlink_errno ();
             if (bench_debug_enabled ()) {
                 std::cerr << "[perf-dealer-router] send failed err=" << err
@@ -258,7 +258,7 @@ int send_dealer_probe_once (void *sender_,
           zlink_msg_data (&part), payload_->data (), payload_->size ());
     }
 
-    if (zlink_send (sender_, &part, 1, ZLINK_DONTWAIT) == 0)
+    if (perf_zlink_send_parts (sender_, &part, 1, ZLINK_DONTWAIT) == 0)
         return 1;
 
     const int err = zlink_errno ();

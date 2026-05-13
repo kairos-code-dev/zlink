@@ -247,8 +247,10 @@ class dealer_dealer_client_bench_t
             return false;
         }
         try {
-            sent = state.sock->send (state.message,
-                                     zlink::send_flags_t::dontwait);
+            sent = std::move (state.sock->send ())
+                     .message (state.message)
+                     .flags (zlink::send_flags_t::dontwait)
+                     .submit ();
         }
         catch (const zlink::submit_error_t &) {
             debug_log ("send failed errno=" + std::to_string (errno));
@@ -374,8 +376,10 @@ class dealer_dealer_client_bench_t
         zlink::message_t stop_part = zlink::message_t::from_bytes (stop, stop_len);
         if (!stop_part.valid ())
             return;
-        (void) _socket_states[0].sock->send (
-          stop_part, zlink::send_flags_t::dontwait);
+        (void) std::move (_socket_states[0].sock->send ())
+          .message (stop_part)
+          .flags (zlink::send_flags_t::dontwait)
+          .submit ();
     }
 
   private:

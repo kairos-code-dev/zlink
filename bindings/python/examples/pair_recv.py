@@ -16,7 +16,7 @@ def main():
                         client.connect(endpoint)
                         wait_connected(srv_mon, cli_mon)
 
-                client.send(b"hello-pair")
+                client.send().message(b"hello-pair").submit()
                 with server.recv() as received:
                     data = received.to_bytes_list()[0].decode("utf-8")
                     print(f'[pair/recv] send: "hello-pair" \u2192 recv: "{data}"')

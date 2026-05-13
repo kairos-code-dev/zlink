@@ -32,7 +32,7 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         return this;
     }
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
@@ -92,7 +92,7 @@ internal sealed class ZLinkRequestCall<TMessage> : IZLinkRequestCall
         return this;
     }
 
-    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default)
     {
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
@@ -194,13 +194,13 @@ internal sealed class ZLinkPublishCall : IZLinkPublishCall
         return this;
     }
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = _runtime.GetOrCreatePublisherBundle(_channelName);
         var publisher = (IZLinkBackendPublisherSocket)bundle.Socket;
         var header = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Event,
+            ZLinkMessageKind.Publish,
             _channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             ZLinkEnvelopeCodec.DefaultContentType,

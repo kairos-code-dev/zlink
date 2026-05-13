@@ -1,13 +1,8 @@
 use std::ffi::c_void;
 
-use crate::error::{
-    CloseError, RecvError, SubmitError, check_close_rc, check_submit_rc, recv_state_error,
-    submit_state_error,
-};
-use crate::ffi;
-use crate::flags::SendFlags;
-use crate::message::{IntoMultipart, Message, RoutingId};
-use crate::socket::{check_send_flags_rc, prepare_send_parts, submit_part_sequence};
+use crate::error::{CloseError, RecvError, check_close_rc, recv_state_error};
+use crate::message::{Message, RoutingId};
+use crate::service::{Empty, ReplyOp, SendOp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SendResult {
@@ -58,107 +53,6 @@ enum SendContext {
         node_rid: RoutingId,
         spot_rid: RoutingId,
     },
-}
-
-impl SendContext {
-    fn send_with_flags(&self, parts: Vec<Message>, flags: SendFlags) -> Result<bool, SubmitError> {
-        let mut parts = parts.into_multipart();
-        let mut native = prepare_send_parts(&mut parts).map_err(|_| submit_state_error())?;
-        let rc = match self {
-            Self::Router { handle, routing_id } => submit_part_sequence(
-                &mut native,
-                |part, part_flag, _| unsafe {
-                    ffi::zlink_send_part_rid(
-                        *handle,
-                        routing_id.as_raw(),
-                        part,
-                        flags.bits(),
-                        part_flag,
-                    )
-                },
-            )?,
-            Self::RouterSpot {
-                handle,
-                node_rid,
-                spot_rid,
-            } => submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-                ffi::zlink_router_send_spot_part(
-                    *handle,
-                    node_rid.as_raw(),
-                    spot_rid.as_raw(),
-                    part,
-                    flags.bits(),
-                    part_flag,
-                )
-            })?,
-            Self::Spot {
-                handle,
-                node_rid,
-                spot_rid,
-            } => submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-                ffi::zlink_spot_send_spot_part(
-                    *handle,
-                    node_rid.as_raw(),
-                    spot_rid.as_raw(),
-                    part,
-                    flags.bits(),
-                    part_flag,
-                )
-            })?,
-        };
-        check_send_flags_rc(rc)
-    }
-}
-
-impl ReplyContext {
-    fn reply_with_flags(&self, parts: Vec<Message>, _flags: SendFlags) -> Result<(), SubmitError> {
-        let mut parts = parts.into_multipart();
-        let mut native = prepare_send_parts(&mut parts).map_err(|_| submit_state_error())?;
-        let rc = match self {
-            Self::Router {
-                handle,
-                routing_id,
-                request_seq,
-            } => submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-                ffi::zlink_router_reply_part(
-                    *handle,
-                    routing_id.as_raw(),
-                    *request_seq,
-                    part,
-                    part_flag,
-                )
-            })?,
-            Self::Spot {
-                handle,
-                node_rid,
-                spot_rid,
-                request_seq,
-            } => submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-                ffi::zlink_spot_reply_spot_part(
-                    *handle,
-                    node_rid.as_raw(),
-                    spot_rid.as_raw(),
-                    *request_seq,
-                    part,
-                    part_flag,
-                )
-            })?,
-            Self::SpotRouter {
-                handle,
-                peer_rid,
-                request_seq,
-            } => submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-                ffi::zlink_spot_reply_router_part(
-                    *handle,
-                    peer_rid.as_raw(),
-                    *request_seq,
-                    part,
-                    part_flag,
-                )
-            })?,
-        };
-        check_submit_rc(rc)
-    }
 }
 
 pub struct Received {
@@ -408,34 +302,56 @@ impl Received {
         Ok(self.parts.into_iter().next().expect("single part"))
     }
 
-    pub fn reply(&self, parts: Vec<Message>) -> Result<(), SubmitError> {
-        self.reply_with_flags(parts, SendFlags::NONE)
+    pub fn reply(&self) -> ReplyOp<Empty> {
+        match self.reply_context.as_ref().expect("missing reply context") {
+            ReplyContext::Router {
+                handle,
+                routing_id,
+                request_seq,
+            } => crate::service::router_reply_op(*handle, routing_id.clone(), *request_seq),
+            ReplyContext::Spot {
+                handle,
+                node_rid,
+                spot_rid,
+                request_seq,
+            } => crate::service::spot_reply_to_spot_op(
+                *handle,
+                node_rid.clone(),
+                spot_rid.clone(),
+                *request_seq,
+            ),
+            ReplyContext::SpotRouter {
+                handle,
+                peer_rid,
+                request_seq,
+            } => crate::service::spot_reply_to_router_op(*handle, peer_rid.clone(), *request_seq),
+        }
     }
 
-    pub fn reply_with_flags(
-        &self,
-        parts: Vec<Message>,
-        flags: SendFlags,
-    ) -> Result<(), SubmitError> {
-        self.reply_context
-            .as_ref()
-            .ok_or_else(submit_state_error)?
-            .reply_with_flags(parts, flags)
-    }
-
-    pub fn send(&self, parts: Vec<Message>) -> Result<bool, SubmitError> {
-        self.send_with_flags(parts, SendFlags::NONE)
-    }
-
-    pub fn send_with_flags(
-        &self,
-        parts: Vec<Message>,
-        flags: SendFlags,
-    ) -> Result<bool, SubmitError> {
-        self.send_context
-            .as_ref()
-            .ok_or_else(submit_state_error)?
-            .send_with_flags(parts, flags)
+    pub fn send(&self) -> SendOp<Empty> {
+        match self.send_context.as_ref().expect("missing send context") {
+            SendContext::Router { handle, routing_id } => {
+                crate::service::socket_send_to_op(*handle, routing_id.clone())
+            }
+            SendContext::RouterSpot {
+                handle,
+                node_rid,
+                spot_rid,
+            } => crate::service::router_send_to_spot_op(
+                *handle,
+                node_rid.clone(),
+                spot_rid.clone(),
+            ),
+            SendContext::Spot {
+                handle,
+                node_rid,
+                spot_rid,
+            } => crate::service::spot_send_to_spot_op(
+                *handle,
+                node_rid.clone(),
+                spot_rid.clone(),
+            ),
+        }
     }
 
     pub fn into_parts(self) -> Vec<Message> {

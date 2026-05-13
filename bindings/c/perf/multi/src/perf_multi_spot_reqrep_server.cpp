@@ -293,7 +293,7 @@ void on_spot_dispatch(void *spot,
         size_t part_count = 0;
 
         const zlink_recv_result_t rc =
-          zlink_spot_recv(spot,
+          perf_zlink_spot_recv_parts (spot,
                           &source_rid,
                           &source_spot_rid,
                           &request_seq,
@@ -363,7 +363,7 @@ void on_spot_dispatch(void *spot,
         const uint64_t reply_begin_ns =
           spot_trace_enabled() ? perf_multi_metric::now_ns() : 0;
         const zlink_submit_result_t reply_rc =
-          zlink_spot_reply_spot(
+          perf_zlink_spot_reply_spot_parts(
             spot, source_rid, source_spot_rid, request_seq, parts, part_count);
         if (reply_rc != ZLINK_SUBMIT_OK) {
             const int reply_errno = zlink_errno();

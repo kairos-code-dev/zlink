@@ -294,6 +294,76 @@ public final class NativeLayouts {
             ACTOR_ROUTE_LAYOUT.byteOffset(
                     PathElement.groupElement("joined_spot_rid"));
 
+    public static final MemoryLayout ACTOR_JOIN_RESULT_LAYOUT =
+            MemoryLayout.structLayout(
+                    ValueLayout.JAVA_INT.withName("result"),
+                    MemoryLayout.paddingLayout(4),
+                    ACTOR_REF_LAYOUT.withName("actor"),
+                    ROUTING_ID_LAYOUT.withName("joined_spot_rid"),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("join_epoch"),
+                    ValueLayout.JAVA_INT.withName("flags"),
+                    MemoryLayout.paddingLayout(4));
+    public static final long ACTOR_JOIN_RESULT_RESULT_OFFSET =
+            ACTOR_JOIN_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("result"));
+    public static final long ACTOR_JOIN_RESULT_ACTOR_OFFSET =
+            ACTOR_JOIN_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("actor"));
+    public static final long ACTOR_JOIN_RESULT_JOINED_SPOT_RID_OFFSET =
+            ACTOR_JOIN_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("joined_spot_rid"));
+    public static final long ACTOR_JOIN_RESULT_JOIN_EPOCH_OFFSET =
+            ACTOR_JOIN_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("join_epoch"));
+    public static final long ACTOR_JOIN_RESULT_FLAGS_OFFSET =
+            ACTOR_JOIN_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("flags"));
+
+    public static final MemoryLayout ACTOR_LOOKUP_RESULT_LAYOUT =
+            MemoryLayout.structLayout(
+                    ValueLayout.JAVA_INT.withName("result"),
+                    MemoryLayout.paddingLayout(4),
+                    ACTOR_REF_LAYOUT.withName("actor"),
+                    ValueLayout.JAVA_INT.withName("flags"),
+                    MemoryLayout.paddingLayout(4));
+    public static final long ACTOR_LOOKUP_RESULT_RESULT_OFFSET =
+            ACTOR_LOOKUP_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("result"));
+    public static final long ACTOR_LOOKUP_RESULT_ACTOR_OFFSET =
+            ACTOR_LOOKUP_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("actor"));
+    public static final long ACTOR_LOOKUP_RESULT_FLAGS_OFFSET =
+            ACTOR_LOOKUP_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("flags"));
+
+    public static final MemoryLayout SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT =
+            MemoryLayout.structLayout(
+                    ACTOR_REF_LAYOUT.withName("previous_actor"),
+                    ACTOR_REF_LAYOUT.withName("current_actor"),
+                    ROUTING_ID_LAYOUT.withName("previous_spot_rid"),
+                    ROUTING_ID_LAYOUT.withName("current_spot_rid"),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("join_epoch"),
+                    ValueLayout.JAVA_INT.withName("flags"),
+                    MemoryLayout.paddingLayout(4));
+    public static final long SPOT_ACTOR_LIFECYCLE_INFO_PREVIOUS_ACTOR_OFFSET =
+            SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("previous_actor"));
+    public static final long SPOT_ACTOR_LIFECYCLE_INFO_CURRENT_ACTOR_OFFSET =
+            SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("current_actor"));
+    public static final long SPOT_ACTOR_LIFECYCLE_INFO_PREVIOUS_SPOT_RID_OFFSET =
+            SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("previous_spot_rid"));
+    public static final long SPOT_ACTOR_LIFECYCLE_INFO_CURRENT_SPOT_RID_OFFSET =
+            SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("current_spot_rid"));
+    public static final long SPOT_ACTOR_LIFECYCLE_INFO_JOIN_EPOCH_OFFSET =
+            SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("join_epoch"));
+    public static final long SPOT_ACTOR_LIFECYCLE_INFO_FLAGS_OFFSET =
+            SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("flags"));
+
     public static final MemoryLayout SPOT_NODE_STATUS_LAYOUT =
             MemoryLayout.structLayout(
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"),

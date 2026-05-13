@@ -57,7 +57,7 @@ public sealed partial class StreamConnectorTests
             .Request(new Ping("hello"))
             .WithPacketName("ping")
             .WithTimeout(TimeSpan.FromSeconds(1))
-            .Async<Pong>();
+            .Submit<Pong>();
 
         Assert.Equal("pong", reply.Text);
         await server;
@@ -97,7 +97,7 @@ public sealed partial class StreamConnectorTests
         var completed = new TaskCompletionSource<ZlinkStreamResult<Pong>>(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.Request(new Ping("hello"))
             .WithPacketName("ping")
-            .Async<Pong>(completed.SetResult);
+            .Submit<Pong>(completed.SetResult);
 
         var result = await completed.Task.WaitAsync(TimeSpan.FromSeconds(1));
         Assert.True(result.IsSuccess);
@@ -126,7 +126,7 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
 
-        await connector.Send(new NamedPacket("name")).Async();
+        await connector.Send(new NamedPacket("name")).Submit();
         await server;
     }
 
@@ -152,7 +152,7 @@ public sealed partial class StreamConnectorTests
             await connector.Send(new Ping("hello"))
                 .WithPacketName("ping")
                 .Metadata("traceId", "abcdef")
-                .Async());
+                .Submit());
 
         Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
         await server;
@@ -190,11 +190,11 @@ public sealed partial class StreamConnectorTests
 
         await connector.Send(new Ping("plain"))
             .WithPacketName("plain")
-            .Async();
+            .Submit();
         await connector.Send(new Ping("compressed"))
             .WithPacketName("compressed")
             .Compress()
-            .Async();
+            .Submit();
         await server;
     }
 

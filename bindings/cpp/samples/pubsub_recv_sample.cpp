@@ -27,7 +27,7 @@ int main ()
 
     const std::string sent = detail::k_pubsub_payload;
     zlink::message_t outbound = detail::make_message (sent);
-    publisher.publish (topic, outbound);
+    publisher.publish (topic).message (outbound).submit ();
 
     std::optional<zlink::topic_message_t> inbound = subscriber.subscribe ();
     assert (inbound.has_value ());

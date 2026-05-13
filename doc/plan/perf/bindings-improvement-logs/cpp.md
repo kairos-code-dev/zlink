@@ -1042,3 +1042,25 @@
   - 남은 C++ 64KB 병목은 server 단일-part send wrapper만으로 설명되지 않는다.
     round 23/24의 결론처럼 client receive/send loop의 wrapper 비용과 100 client
     64KB in-flight 압력이 함께 작용하는 영역으로 본다.
+
+### 2026-05-12 C++ round 28 — 단건 poll wait 실험 보류
+
+- 선택한 병목 가설:
+  - multi echo server는 단일 socket poll만 필요하지만 현재 perf 서버는
+    `poller.wait(vector, 1, ...)` 경로를 사용한다.
+  - public API 표면을 바꾸지 않고 `poller.wait(timeout)` 단건 경로도 scan 정책을
+    따르게 하면 vector 정리와 event 배열 채우기 비용을 줄일 수 있다고 보았다.
+- 실험한 변경:
+  - `poller_t::wait_impl`이 서비스/timer가 없을 때 `zlink_poll` scan 경로를 쓰도록
+    내부 helper를 추가했다.
+  - DR/RR multi echo server가 vector wait 대신 단건 wait를 사용하도록 바꿨다.
+- 검증 결과:
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_dealer_router_server cpp_comp_src_router_router_server cpp_comp_src_dealer_router_client cpp_comp_src_router_router_client -j2`
+    실행 시, 이번 poller 변경과 무관한 현재 worktree의 core actor/SPOT C API 선언
+    불일치에서 빌드가 먼저 실패했다.
+  - 실패 지점은 `core/include/zlink.h`의 actor 관련 선언과
+    `bindings/cpp/include/zlink/services/spot.hpp` 기대 시그니처 불일치다.
+- 판단:
+  - 검증하지 못한 C++ 실험 변경은 되돌렸다.
+  - C++ 다음 라운드는 먼저 core actor/SPOT C API 변경과 C++ wrapper를 동기화해
+    perf target이 다시 빌드 가능한 상태인지 확인한 뒤 진행해야 한다.

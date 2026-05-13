@@ -58,7 +58,10 @@ public class SendResultContractTest {
             RoutingId missingRid = RoutingId.fromBytes(
                 "router-missing-peer".getBytes(StandardCharsets.UTF_8));
             SubmitException ex = assertThrows(SubmitException.class,
-                () -> router.send(missingRid, payload, SendFlags.DONT_WAIT));
+                () -> router.send(missingRid)
+                    .message(payload)
+                    .flags(SendFlags.DONT_WAIT)
+                    .submit());
             assertEquals(SubmitResult.NOT_CONNECTED, ex.getResult());
         }
     }
@@ -117,7 +120,7 @@ public class SendResultContractTest {
             boolean sent = true;
             for (int i = 0; i < 1_024; i++) {
                 try (Message payload = Message.copyOfUtf8("bp-" + i)) {
-                    sent = sender.send(payload, SendFlags.DONT_WAIT);
+                    sent = sender.send().message(payload).flags(SendFlags.DONT_WAIT).submit();
                 }
                 if (!sent) {
                     break;

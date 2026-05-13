@@ -10,10 +10,175 @@
 #include "services/spot/spot_node_control_policy.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_sub.hpp"
+#include "services/spot/spot_subject_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 
 namespace zlink
 {
+namespace
+{
+struct node_send_ready_task_t
+{
+    explicit node_send_ready_task_t (spot_node_t *node_) : node (node_) {}
+
+    spot_node_t *node;
+};
+
+struct logical_send_ready_task_t
+{
+    explicit logical_send_ready_task_t (
+      const std::shared_ptr<spot_logical_state_t> &state_) :
+        state (state_)
+    {
+    }
+
+    std::shared_ptr<spot_logical_state_t> state;
+};
+
+void run_node_send_ready_task (void *arg_)
+{
+    std::unique_ptr<node_send_ready_task_t> task (
+      static_cast<node_send_ready_task_t *> (arg_));
+    if (task && task->node)
+        task->node->dispatch_send_ready_handler ();
+}
+
+void run_logical_send_ready_task (void *arg_)
+{
+    std::unique_ptr<logical_send_ready_task_t> task (
+      static_cast<logical_send_ready_task_t *> (arg_));
+    if (task)
+        spot_node_t::dispatch_logical_send_ready_handler (task->state);
+}
+}
+
+int spot_node_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
+                                         void *userdata_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    _send_ready_handler_userdata.store (userdata_, std::memory_order_release);
+    _send_ready_handler.store (handler_, std::memory_order_release);
+    return 0;
+}
+
+int spot_node_t::send_ready_fd (zlink_fd_t *fd_out_) const
+{
+    if (!fd_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+    *fd_out_ = retired_fd;
+    if (!_send_ready_signaler.valid ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    *fd_out_ = _send_ready_signaler.get_fd ();
+    return 0;
+}
+
+void spot_node_t::drain_send_ready_signal ()
+{
+    while (_send_ready_signaler.recv_failable () == 0) {
+    }
+    scoped_lock_t lock (_sync);
+    _send_ready_signal_armed = false;
+}
+
+void spot_node_t::notify_send_ready_recovery ()
+{
+    zlink_send_ready_handler_fn node_handler =
+      _send_ready_handler.load (std::memory_order_acquire);
+    std::vector<std::shared_ptr<spot_logical_state_t> > states;
+    snapshot_spot_states (&states);
+
+    bool signal_node = false;
+    {
+        scoped_lock_t lock (_sync);
+        if (!_send_ready_signal_armed) {
+            _send_ready_signal_armed = true;
+            signal_node = true;
+        }
+    }
+    if (signal_node && _send_ready_signaler.valid ())
+        _send_ready_signaler.send ();
+    if (node_handler && _runtime) {
+        node_send_ready_task_t *task =
+          new (std::nothrow) node_send_ready_task_t (this);
+        if (task && _runtime->post_dispatch_task (&run_node_send_ready_task,
+                                                  task)
+                      != 0)
+            delete task;
+    }
+
+    for (std::vector<std::shared_ptr<spot_logical_state_t> >::iterator it =
+           states.begin ();
+         it != states.end (); ++it) {
+        const std::shared_ptr<spot_logical_state_t> &state = *it;
+        if (!state)
+            continue;
+        bool signal_spot = false;
+        {
+            scoped_lock_t lock (state->pubsub_sync);
+            if (!state->send_ready_signal_armed) {
+                state->send_ready_signal_armed = true;
+                signal_spot = true;
+            }
+        }
+        if (signal_spot && state->send_ready_signaler.valid ())
+            state->send_ready_signaler.send ();
+        zlink_send_ready_handler_fn handler =
+          state->send_ready_handler.load (std::memory_order_acquire);
+        if (handler && _runtime) {
+            logical_send_ready_task_t *task =
+              new (std::nothrow) logical_send_ready_task_t (state);
+            if (task
+                && _runtime->post_dispatch_task (&run_logical_send_ready_task,
+                                                 task)
+                     != 0)
+                delete task;
+        }
+    }
+}
+
+void spot_node_t::dispatch_send_ready_handler ()
+{
+    zlink_send_ready_handler_fn handler =
+      _send_ready_handler.load (std::memory_order_acquire);
+    if (!handler)
+        return;
+    spot_node_t *previous = enter_spot_node_send_ready_callback (this);
+    handler (this, _send_ready_handler_userdata.load (
+                     std::memory_order_acquire));
+    leave_spot_node_send_ready_callback (previous);
+}
+
+void spot_node_t::dispatch_logical_send_ready_handler (
+  const std::shared_ptr<spot_logical_state_t> &state_)
+{
+    if (!state_)
+        return;
+
+    zlink_send_ready_handler_fn handler =
+      state_->send_ready_handler.load (std::memory_order_acquire);
+    void *subject = state_->send_ready_subject.load (std::memory_order_acquire);
+    if (!handler || !subject)
+        return;
+
+    spot_node_t *previous =
+      enter_spot_node_send_ready_callback (state_->node);
+    handler (subject,
+             state_->send_ready_userdata.load (std::memory_order_acquire));
+    leave_spot_node_send_ready_callback (previous);
+}
+
 uint32_t spot_node_t::max_pub_delivery_ready_count_locked () const
 {
     const uint32_t active_peer_count =

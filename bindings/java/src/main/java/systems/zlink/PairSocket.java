@@ -2,6 +2,7 @@
 
 package systems.zlink;
 
+import systems.zlink.service.spot.SendOp;
 import java.util.List;
 public final class PairSocket extends Socket {
     public PairSocket(Context ctx) {
@@ -13,10 +14,10 @@ public final class PairSocket extends Socket {
     public void unbind(String endpoint) { super.unbind(endpoint); }
     public void disconnect(String endpoint) { super.disconnect(endpoint); }
     public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
-    public boolean send(Message part) { return super.send(part); }
-    public boolean send(Message part, SendFlags flags) { return super.send(part, SendFlag.fromValue(flags.value())); }
-    public boolean send(List<Message> parts) { return super.send(parts); }
-    public boolean send(List<Message> parts, SendFlags flags) { return super.send(parts, SendFlag.fromValue(flags.value())); }
+    public SendOp send() {
+        return SocketOperations.send((parts, flags) ->
+            super.send(parts, SendFlag.fromValue(flags.value())));
+    }
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
     SendResult sendNoWaitResult(List<Message> parts) { return super.sendNoWaitResult(parts); }
     public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }

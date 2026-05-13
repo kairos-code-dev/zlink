@@ -2,7 +2,6 @@ package systems.zlink.samples;
 
 import systems.zlink.Context;
 import systems.zlink.Message;
-import systems.zlink.RequestCallback;
 import systems.zlink.RecvFlags;
 import systems.zlink.RequestResult;
 import systems.zlink.RoutingId;
@@ -40,7 +39,9 @@ public final class ActorSinglePlayerQueueSample {
                              spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
                         if (request != null) {
                             try (Message reply = Message.copyOfUtf8("ok")) {
-                                spot.replyActorJoin(request, true, reply);
+                                spot.replyActorJoin(request, true)
+                                  .message(reply)
+                                  .submit();
                             }
                         }
                     }
@@ -64,24 +65,36 @@ public final class ActorSinglePlayerQueueSample {
                     stream.recv(received, systems.zlink.RecvFlags.NONE);
                     sessionRid = received.routingId().orElseThrow();
                 }
-                stream.bindActor(node, sessionRid, actorRef, Duration.ofSeconds(2));
+                stream.bindActor(sessionRid, actorRef)
+                  .timeout(Duration.ofSeconds(2))
+                  .submitAsync()
+                  .join()
+                  .forEach(Message::close);
                 try (Message request = Message.copyOfUtf8("join")) {
-                    actor.join(spot, request, (RequestCallback) (result, messages) -> {
-                        replies.add(result);
+                    actor.join(spot)
+                      .message(request)
+                      .timeout(Duration.ofSeconds(2))
+                      .submit((result, messages) -> {
+                        replies.add(result.result());
                         messages.forEach(Message::close);
-                    }, Duration.ofSeconds(2));
+                    });
                 }
                 SampleSupport.waitUntil("actor join", () -> !replies.isEmpty());
-                actor.leave(spot);
+                actor.leave(spot).submitAsync().join().forEach(Message::close);
                 try (Message payload = Message.copyOfUtf8("queued")) {
-                    stream.sendBoundActor(node, sessionRid, "solo", payload);
+                    stream.sendBoundActor(sessionRid, "solo")
+                      .message(payload)
+                      .submit();
                 }
 
                 try (Message request = Message.copyOfUtf8("rejoin")) {
-                    actor.join(spot, request, (RequestCallback) (result, messages) -> {
-                        replies.add(result);
+                    actor.join(spot)
+                      .message(request)
+                      .timeout(Duration.ofSeconds(2))
+                      .submit((result, messages) -> {
+                        replies.add(result.result());
                         messages.forEach(Message::close);
-                    }, Duration.ofSeconds(2));
+                    });
                 }
                 SampleSupport.waitUntil("queued actor payload",
                     () -> !payloads.isEmpty());
@@ -89,7 +102,7 @@ public final class ActorSinglePlayerQueueSample {
                     throw new IllegalStateException(
                       "queued payload was not preserved");
                 }
-                actor.leave(spot);
+                actor.leave(spot).submitAsync().join().forEach(Message::close);
                 actor.close();
             }
             System.out.println("[actor/solo] queued payload preserved across leave");

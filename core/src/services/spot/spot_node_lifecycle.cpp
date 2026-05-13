@@ -8,7 +8,6 @@
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
-#include "services/spot/spot_subject_access.hpp"
 
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
@@ -22,11 +21,7 @@
 #include "utils/routing_id.hpp"
 #include "utils/sleep.hpp"
 
-extern "C" void zlink_spot_notify_dispatch_info (
-  void *spot_,
-  zlink_spot_dispatch_event_t event_,
-  zlink_spot_dispatch_subject_kind_t subject_kind_,
-  void *subject_);
+#include "api/service_spot_dispatch_surface_internal.hpp"
 
 namespace zlink
 {
@@ -58,39 +53,6 @@ static bool valid_attached_socket_type_local (socket_base_t *socket_,
            && socket_->socket_type () == expected_type_;
 }
 
-struct node_send_ready_task_t
-{
-    explicit node_send_ready_task_t (spot_node_t *node_) : node (node_) {}
-
-    spot_node_t *node;
-};
-
-struct logical_send_ready_task_t
-{
-    explicit logical_send_ready_task_t (
-      const std::shared_ptr<spot_logical_state_t> &state_) :
-        state (state_)
-    {
-    }
-
-    std::shared_ptr<spot_logical_state_t> state;
-};
-
-static void run_node_send_ready_task (void *arg_)
-{
-    std::unique_ptr<node_send_ready_task_t> task (
-      static_cast<node_send_ready_task_t *> (arg_));
-    if (task && task->node)
-        task->node->dispatch_send_ready_handler ();
-}
-
-static void run_logical_send_ready_task (void *arg_)
-{
-    std::unique_ptr<logical_send_ready_task_t> task (
-      static_cast<logical_send_ready_task_t *> (arg_));
-    if (task)
-        spot_node_t::dispatch_logical_send_ready_handler (task->state);
-}
 }
 
 int spot_node_t::bind (const char *endpoint_)
@@ -539,6 +501,49 @@ bool spot_node_t::actor_route_sync_enabled () const
     scoped_lock_t lock (_sync);
     return _discovery_state.discovery
            && _discovery_state.discovery->actor_route_sync_enabled ();
+}
+
+int spot_node_t::bind_actor_route (const char *actor_id_,
+                                   const void *value_,
+                                   size_t value_size_)
+{
+    if (!valid_channel_name_local (actor_id_) || !value_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    discovery_t *discovery = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        discovery = _discovery_state.discovery;
+    }
+    if (!discovery) {
+        errno = EAGAIN;
+        return -1;
+    }
+    return discovery_access_t::bind_route (
+      discovery, ZLINK_ROUTE_KIND_ACTOR, actor_id_, strlen (actor_id_),
+      value_, value_size_);
+}
+
+int spot_node_t::unbind_actor_route (const char *actor_id_)
+{
+    if (!valid_channel_name_local (actor_id_)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    discovery_t *discovery = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        discovery = _discovery_state.discovery;
+    }
+    if (!discovery) {
+        errno = EAGAIN;
+        return -1;
+    }
+    return discovery_access_t::unbind_route (
+      discovery, ZLINK_ROUTE_KIND_ACTOR, actor_id_, strlen (actor_id_));
 }
 
 bool spot_node_t::spot_owner_route_synced () const
@@ -1277,133 +1282,6 @@ int spot_node_t::set_tls_client (const char *ca_cert_,
     _tls_state.tls_hostname = hostname_ ? hostname_ : "";
     _tls_state.tls_trust_system = trust_system_;
     return 0;
-}
-
-int spot_node_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
-                                         void *userdata_)
-{
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return -1;
-
-    if (!handler_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    _send_ready_handler_userdata.store (userdata_, std::memory_order_release);
-    _send_ready_handler.store (handler_, std::memory_order_release);
-    return 0;
-}
-
-int spot_node_t::send_ready_fd (zlink_fd_t *fd_out_) const
-{
-    if (!fd_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-    *fd_out_ = retired_fd;
-    if (!_send_ready_signaler.valid ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    *fd_out_ = _send_ready_signaler.get_fd ();
-    return 0;
-}
-
-void spot_node_t::drain_send_ready_signal ()
-{
-    while (_send_ready_signaler.recv_failable () == 0) {
-    }
-    scoped_lock_t lock (_sync);
-    _send_ready_signal_armed = false;
-}
-
-void spot_node_t::notify_send_ready_recovery ()
-{
-    zlink_send_ready_handler_fn node_handler =
-      _send_ready_handler.load (std::memory_order_acquire);
-    std::vector<std::shared_ptr<spot_logical_state_t> > states;
-    snapshot_spot_states (&states);
-
-    bool signal_node = false;
-    {
-        scoped_lock_t lock (_sync);
-        if (!_send_ready_signal_armed) {
-            _send_ready_signal_armed = true;
-            signal_node = true;
-        }
-    }
-    if (signal_node && _send_ready_signaler.valid ())
-        _send_ready_signaler.send ();
-    if (node_handler && _runtime) {
-        node_send_ready_task_t *task =
-          new (std::nothrow) node_send_ready_task_t (this);
-        if (task && _runtime->post_dispatch_task (&run_node_send_ready_task,
-                                                  task)
-                      != 0)
-            delete task;
-    }
-
-    for (std::vector<std::shared_ptr<spot_logical_state_t> >::iterator it =
-           states.begin ();
-         it != states.end (); ++it) {
-        const std::shared_ptr<spot_logical_state_t> &state = *it;
-        if (!state)
-            continue;
-        bool signal_spot = false;
-        {
-            scoped_lock_t lock (state->pubsub_sync);
-            if (!state->send_ready_signal_armed) {
-                state->send_ready_signal_armed = true;
-                signal_spot = true;
-            }
-        }
-        if (signal_spot && state->send_ready_signaler.valid ())
-            state->send_ready_signaler.send ();
-        zlink_send_ready_handler_fn handler =
-          state->send_ready_handler.load (std::memory_order_acquire);
-        if (handler && _runtime) {
-            logical_send_ready_task_t *task =
-              new (std::nothrow) logical_send_ready_task_t (state);
-            if (task
-                && _runtime->post_dispatch_task (&run_logical_send_ready_task,
-                                                 task)
-                     != 0)
-                delete task;
-        }
-    }
-}
-
-void spot_node_t::dispatch_send_ready_handler ()
-{
-    zlink_send_ready_handler_fn handler =
-      _send_ready_handler.load (std::memory_order_acquire);
-    if (!handler)
-        return;
-    spot_node_t *previous = enter_spot_node_send_ready_callback (this);
-    handler (this, _send_ready_handler_userdata.load (
-                     std::memory_order_acquire));
-    leave_spot_node_send_ready_callback (previous);
-}
-
-void spot_node_t::dispatch_logical_send_ready_handler (
-  const std::shared_ptr<spot_logical_state_t> &state_)
-{
-    if (!state_)
-        return;
-
-    zlink_send_ready_handler_fn handler =
-      state_->send_ready_handler.load (std::memory_order_acquire);
-    void *subject = state_->send_ready_subject.load (std::memory_order_acquire);
-    if (!handler || !subject)
-        return;
-
-    spot_node_t *previous =
-      enter_spot_node_send_ready_callback (state_->node);
-    handler (subject,
-             state_->send_ready_userdata.load (std::memory_order_acquire));
-    leave_spot_node_send_ready_callback (previous);
 }
 
 void spot_node_t::queue_service_discovery_refresh_locked (

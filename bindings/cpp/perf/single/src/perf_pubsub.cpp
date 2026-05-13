@@ -29,7 +29,10 @@ bool send_pubsub_payload (void *userdata_, const void *data_, size_t size_)
     if (!part.valid ())
         return false;
     try {
-        if (!publisher->publish (k_topic, part, zlink::send_flags_t::dontwait)) {
+        if (!std::move (publisher->publish (k_topic))
+               .message (part)
+               .flags (zlink::send_flags_t::dontwait)
+               .submit ()) {
             errno = EAGAIN;
             return false;
         }

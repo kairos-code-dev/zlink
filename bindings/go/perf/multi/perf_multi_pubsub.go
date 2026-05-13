@@ -116,7 +116,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 				err,
 			))
 		}
-		_, err = publisher.Publish("bench.topic", zlink.SendFlagsDontWait, msg)
+		_, err = publisher.Publish("bench.topic").Message(msg).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -187,11 +187,7 @@ func drainMultiPubSubAvailable(
 
 func sendMultiPubSubStopToken(publisher *zlink.XPubSocket) {
 	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
-		sent, err := publisher.Publish(
-			"bench.topic",
-			zlink.SendFlagsDontWait,
-			perfcommon.NewMessage(perfcommon.StopToken),
-		)
+		sent, err := publisher.Publish("bench.topic").Message(perfcommon.NewMessage(perfcommon.StopToken)).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err == nil && sent {
 			return
 		}

@@ -9,11 +9,7 @@
 #include <iomanip>
 #include <iostream>
 
-#if defined(ZLINK_PERF_STD_COMPAT)
 #include <zlink.h>
-#else
-#include <zlink_c.h>
-#endif
 
 inline void configure_perf_monitor_socket(void *monitor_)
 {

@@ -19,7 +19,7 @@ fn pair_socket_has_send_recv() {
 
     // PairSocket exposes: send, recv
     let msg = Message::copy_from(b"test").unwrap();
-    let _ = sock.send_with_flags(msg, SendFlags::DONT_WAIT);
+    let _ = sock.send().message(msg).flags(SendFlags::DONT_WAIT).submit();
     let mut received = Received::empty();
     let _ = sock.recv(&mut received, RecvFlags::DONT_WAIT);
 }
@@ -32,7 +32,11 @@ fn pub_socket_has_publish_no_recv() {
 
     // PubSocket exposes: publish
     let msg = Message::copy_from(b"payload").unwrap();
-    let _ = sock.publish_with_flags("market.price", msg, SendFlags::DONT_WAIT);
+    let _ = sock
+        .publish("market.price")
+        .message(msg)
+        .flags(SendFlags::DONT_WAIT)
+        .submit();
     // No recv on PubSocket – compile-time enforced
 }
 
@@ -69,10 +73,10 @@ fn router_socket_send_requires_routing_id() {
     let sock = ctx.router_socket().unwrap();
     sock.bind("inproc://surface-router").unwrap();
 
-    // RouterSocket::send takes (RoutingId, parts)
+    // RouterSocket::send takes a RoutingId and returns a builder.
     let rid = RoutingId::from_bytes(b"peer-001");
     let msg = Message::copy_from(b"response").unwrap();
-    let _ = sock.send(&rid, msg);
+    let _ = sock.send(&rid).message(msg).submit();
 }
 
 #[test]
@@ -83,7 +87,7 @@ fn stream_socket_send_requires_routing_id() {
 
     let rid = RoutingId::from_bytes(b"client-001");
     let msg = Message::copy_from(b"data").unwrap();
-    let _ = sock.send(&rid, msg);
+    let _ = sock.send(&rid).message(msg).submit();
 }
 
 #[test]

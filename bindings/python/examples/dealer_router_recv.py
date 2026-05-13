@@ -17,9 +17,9 @@ def main():
                         dealer.connect(endpoint)
                         wait_connected(rtr_mon, dlr_mon)
 
-                dealer.send(b"ping")
+                dealer.send().message(b"ping").submit()
                 with router.recv() as request:
-                    router.send(b"pong", routing_id=request.routing_id)
+                    router.send(request.routing_id).message(b"pong").submit()
 
                 with dealer.recv() as response:
                     data = response.to_bytes_list()[0].decode("utf-8")

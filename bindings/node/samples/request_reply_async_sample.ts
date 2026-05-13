@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 async function reservePort() {
   const srv = net.createServer();
@@ -44,20 +44,18 @@ async function main() {
       dealerMonitor.close();
     }
 
-    const pendingReply = dealerSocket.request(
-      zlink.Message.from(Buffer.from('ping')),
-      2000
-    );
+    const pendingReply = dealerSocket.request()
+      .message(Buffer.from('ping'))
+      .timeout(2000)
+      .submitAsync();
     const request = new zlink.Received();
     routerSocket.recv(request);
     try {
       assert.equal(request.routingId.toBytes().toString(), 'request-reply-client');
       assert.ok(typeof request.requestSeq === 'bigint');
-      routerSocket.reply(
-        request.routingId,
-        request.requestSeq,
-        zlink.Message.from(Buffer.from('pong'))
-      );
+      routerSocket.reply(request.routingId, request.requestSeq)
+        .message(Buffer.from('pong'))
+        .submit();
     } finally {
       request.close();
     }

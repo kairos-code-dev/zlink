@@ -135,10 +135,10 @@ public sealed class ProfileHandlers(ProfileCommandRecorder recorder)
 
 public sealed class ProfileEventHandlers(ProfileEventRecorder recorder)
 {
-    [ZLinkEvent]
+    [ZLinkPublish]
     public ValueTask OnInvalidatedAsync(
         ProfileInvalidated @event,
-        ZLinkEventContext context,
+        ZLinkPublishContext context,
         CancellationToken cancellationToken)
     {
         Assert.Equal("profile.cache-invalidated", context.Topic);

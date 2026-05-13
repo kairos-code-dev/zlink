@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Message Model](message-model.ko.md) | [다음: ZLink Framework API](framework-api.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../README.ko.md)
 
 [초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [framework API](./framework-api.ko.md) | [검증](../usecase-validation.ko.md) | [.NET](../bindings/dotnet/README.ko.md) | [Java](../bindings/java/README.ko.md) | [Node.js](../bindings/node/README.ko.md) | [Python](../bindings/python/README.ko.md) | [C++](../bindings/cpp/README.ko.md)
@@ -137,9 +141,9 @@ channel의 `AuthenticateReq`는 서로 다른 handler로 매핑할 수 있어야
 `channel name + kind + packet name`에 handler가 둘 이상이면 startup 오류다. 여기서
 `kind`는 dispatch key 어휘인 `{request, command, event}` 중 하나다.
 다른 channel에서 같은 `kind + packet name`을 다시 쓰는 것은 허용한다. routed
-channel, actor, spot도 같은 원칙을 따르되, 각각의 `router channel`, actor 실행
-문맥, spot 실행 문맥을 namespace로 본다. actor 측 dispatch namespace의 정확한
-모델 (`actorId` 단위 packet 등록, `Configure()` 시점에 한 번 등록 등) 은
+channel, actor, spot도 같은 원칙을 따르되, 각각의 `router channel`, Entry Spot
+registry, user Spot registry를 namespace로 본다. actor 측 dispatch namespace의 정확한
+모델 (`Entry Spot` / user Spot 별 actor packet 등록, `Configure()` 시점에 한 번 등록 등) 은
 [actor-model.ko.md](./actor-model.ko.md) §5에 정의한다.
 
 handler attribute나 annotation은 packet kind와 packet name override를 표현한다.

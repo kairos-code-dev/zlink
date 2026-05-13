@@ -376,16 +376,6 @@ class SpotDispatchSubjectKind(IntEnum):
     ACTOR = 4
 
 
-class ActorCreateStatus(IntEnum):
-    CREATED = 1
-    EXISTING = 2
-
-
-class ActorAdmissionResult(IntEnum):
-    ACCEPT = 1
-    REJECT = 2
-
-
 class RegistryState(IntEnum):
     IDLE = 1
     ACTIVE = 2

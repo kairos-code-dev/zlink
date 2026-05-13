@@ -280,7 +280,7 @@ bool echo_routed_payload(void *spot,
     }
 
     zlink_submit_result_t submit_rc =
-      zlink_spot_send_spot(
+      perf_zlink_spot_send_spot_parts(
         spot, source_rid, source_spot_rid, parts, part_count, ZLINK_DONTWAIT);
     if (submit_rc == ZLINK_SUBMIT_OK)
         return true;
@@ -315,7 +315,7 @@ void drain_spot_routed_recv(void *spot, spot_reqrep_server_state_t *state)
         size_t part_count = 0;
 
         const zlink_recv_result_t rc =
-          zlink_spot_recv(spot,
+          perf_zlink_spot_recv_parts (spot,
                           &source_rid,
                           &source_spot_rid,
                           &request_seq,

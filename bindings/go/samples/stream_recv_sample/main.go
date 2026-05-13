@@ -37,7 +37,7 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected payload %q", string(part.Data())))
 	}
 
-	_, err = received.Send([]*zlink.Message{samplecommon.Message(sent)})
+	_, err = received.Send().Message(samplecommon.Message(sent)).Submit(nil)
 	samplecommon.Must(err)
 
 	buffer := make([]byte, len(sent))

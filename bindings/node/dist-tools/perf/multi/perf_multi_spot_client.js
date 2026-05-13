@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const { configureTlsClient } = require('../common/perf_tls');
 const { runSpotBenchmark } = require('../single/perf_spot');
 const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');

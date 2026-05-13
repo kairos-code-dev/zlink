@@ -1,11 +1,7 @@
 use std::ffi::c_void;
 
-use crate::error::SubmitError;
-use crate::ffi;
-use crate::flags::SendFlags;
-use crate::message::{IntoMultipart, RoutingId};
-
-use super::{check_send_flags_rc, prepare_send_parts, submit_part_sequence};
+use crate::message::RoutingId;
+use crate::service::{Empty, SendOp};
 
 /// A lightweight, cloneable handle for sending messages on a socket.
 ///
@@ -31,7 +27,9 @@ use super::{check_send_flags_rc, prepare_send_parts, submit_part_sequence};
 /// router.recv(&mut received, RecvFlags::NONE).unwrap();
 /// let reply = Message::copy_from(b"pong").unwrap();
 /// handle
-///     .send_to(received.routing_id().expect("missing routing id"), reply)
+///     .send_to(received.routing_id().expect("missing routing id"))
+///     .message(reply)
+///     .submit()
 ///     .unwrap();
 /// ```
 #[derive(Clone)]
@@ -50,47 +48,12 @@ impl SendHandle {
     }
 
     /// Send a non-routed message (PAIR, DEALER, etc.).
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError> {
-        self.send_with_flags(parts, SendFlags::NONE).map(|_| ())
-    }
-
-    pub fn send_with_flags(
-        &self,
-        parts: impl IntoMultipart,
-        flags: SendFlags,
-    ) -> Result<bool, SubmitError> {
-        let mut parts = parts.into_parts();
-        let mut native =
-            prepare_send_parts(&mut parts).map_err(|_| crate::error::submit_state_error())?;
-        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-            ffi::zlink_send_part(self.handle, part, flags.bits(), part_flag)
-        })?;
-        drop(parts);
-        check_send_flags_rc(rc)
+    pub fn send(&self) -> SendOp<Empty> {
+        crate::service::socket_send_op(self.handle)
     }
 
     /// Send a routed message to a specific peer (ROUTER).
-    pub fn send_to(
-        &self,
-        target: &RoutingId,
-        parts: impl IntoMultipart,
-    ) -> Result<(), SubmitError> {
-        self.send_to_with_flags(target, parts, SendFlags::NONE)
-    }
-
-    pub fn send_to_with_flags(
-        &self,
-        target: &RoutingId,
-        parts: impl IntoMultipart,
-        flags: SendFlags,
-    ) -> Result<(), SubmitError> {
-        let mut parts = parts.into_parts();
-        let mut native =
-            prepare_send_parts(&mut parts).map_err(|_| crate::error::submit_state_error())?;
-        let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
-            ffi::zlink_send_part_rid(self.handle, target.as_raw(), part, flags.bits(), part_flag)
-        })?;
-        drop(parts);
-        check_send_flags_rc(rc).map(|_| ())
+    pub fn send_to(&self, target: &RoutingId) -> SendOp<Empty> {
+        crate::service::socket_send_to_op(self.handle, target.clone())
     }
 }

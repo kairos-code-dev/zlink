@@ -37,19 +37,20 @@ int validate_send_parts (zlink_msg_t *parts_, size_t part_count_)
     return 0;
 }
 
+void consume_checked_core_msg (zlink::msg_t *msg_)
+{
+    if (!msg_ || !msg_->check ())
+        return;
+
+    const int close_rc = msg_->close ();
+    errno_assert (close_rc == 0);
+    const int init_rc = msg_->init ();
+    errno_assert (init_rc == 0);
+}
+
 void consume_send_frame (zlink_msg_t *part_)
 {
-    if (!part_)
-        return;
-
-    zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (part_);
-    if (!msg->check ())
-        return;
-
-    const int close_rc = msg->close ();
-    errno_assert (close_rc == 0);
-    const int init_rc = msg->init ();
-    errno_assert (init_rc == 0);
+    consume_checked_core_msg (reinterpret_cast<zlink::msg_t *> (part_));
 }
 
 void consume_send_frames_from (zlink_msg_t *parts_,
@@ -176,17 +177,6 @@ bool stream_routing_id_matches_value (const zlink_routing_id_t *rid_,
            && rid_->data[3] == static_cast<uint8_t> (routing_id_ & 0xFF);
 }
 
-void consume_stream_send_msg (zlink::msg_t *msg_)
-{
-    if (!msg_ || !msg_->check ())
-        return;
-
-    int rc = msg_->close ();
-    errno_assert (rc == 0);
-    rc = msg_->init ();
-    errno_assert (rc == 0);
-}
-
 int send_stream_message (socket_handle_t handle_,
                          const zlink_routing_id_t *rid_,
                          zlink_msg_t *msg_,
@@ -228,7 +218,7 @@ int send_stream_message (socket_handle_t handle_,
             }
             if (errno != EAGAIN) {
                 const int err = errno;
-                consume_stream_send_msg (core_msg);
+                consume_checked_core_msg (core_msg);
                 errno = err;
                 return -1;
             }
@@ -246,7 +236,7 @@ int send_stream_message (socket_handle_t handle_,
             }
             if (errno != EAGAIN) {
                 const int err = errno;
-                consume_stream_send_msg (core_msg);
+                consume_checked_core_msg (core_msg);
                 errno = err;
                 return -1;
             }
@@ -256,7 +246,7 @@ int send_stream_message (socket_handle_t handle_,
     uint32_t routing_id = 0;
     if (!parse_stream_routing_id (rid_, &routing_id)) {
         const int err = errno;
-        consume_stream_send_msg (core_msg);
+        consume_checked_core_msg (core_msg);
         errno = err;
         return -1;
     }
@@ -264,7 +254,7 @@ int send_stream_message (socket_handle_t handle_,
     stream_api_lock_t api_lock (handle_);
     if (core_msg->set_routing_id (routing_id) != 0) {
         const int err = errno;
-        consume_stream_send_msg (core_msg);
+        consume_checked_core_msg (core_msg);
         errno = err;
         return -1;
     }
@@ -277,7 +267,7 @@ int send_stream_message (socket_handle_t handle_,
     if (send_rc < 0) {
         const int err = errno;
         if (err != EAGAIN)
-            consume_stream_send_msg (core_msg);
+            consume_checked_core_msg (core_msg);
         errno = err;
         return -1;
     }

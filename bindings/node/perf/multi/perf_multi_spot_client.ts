@@ -3,7 +3,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const { configureTlsClient } = require('../common/perf_tls');
 const { runSpotBenchmark } = require('../single/perf_spot');
 const {

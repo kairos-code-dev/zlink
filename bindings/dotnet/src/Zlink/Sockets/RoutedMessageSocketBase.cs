@@ -20,8 +20,16 @@ public abstract class RoutedMessageSocketBase : SocketBase
     {
     }
 
+    /// <summary>
+    /// Start a routed send operation (operation builder).
+    /// </summary>
+    public SendOperation Send(RoutingId routingId)
+    {
+        return new RoutedSendOperation(this, routingId);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal bool Send(string routingId, Message message,
+    internal bool SendStringCore(string routingId, Message message,
         SendFlags flags = SendFlags.None)
     {
         if ((flags & SendFlags.DontWait) != 0)
@@ -35,7 +43,7 @@ public abstract class RoutedMessageSocketBase : SocketBase
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Send(RoutingId routingId, Message message,
+    internal bool SendRoutedCore(RoutingId routingId, Message message,
         SendFlags flags = SendFlags.None)
     {
         if ((flags & SendFlags.DontWait) != 0)
@@ -50,7 +58,7 @@ public abstract class RoutedMessageSocketBase : SocketBase
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal bool Send(string routingId, IReadOnlyList<Message> parts,
+    internal bool SendStringCore(string routingId, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
         if ((flags & SendFlags.DontWait) != 0)
@@ -64,9 +72,11 @@ public abstract class RoutedMessageSocketBase : SocketBase
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Send(RoutingId routingId, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
+    internal bool SendRoutedCore(RoutingId routingId,
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
+        if (parts.Count == 1)
+            return SendRoutedCore(routingId, parts[0], flags);
         if ((flags & SendFlags.DontWait) != 0)
         {
             return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
@@ -87,12 +97,14 @@ public abstract class RoutedMessageSocketBase : SocketBase
         return Kernel.SendNoWaitResult(routingId, message);
     }
 
-    internal SendResult SendNoWaitResult(string routingId, IReadOnlyList<Message> parts)
+    internal SendResult SendNoWaitResult(string routingId,
+        IReadOnlyList<Message> parts)
     {
         return Kernel.SendNoWaitResult(routingId, parts);
     }
 
-    internal SendResult SendNoWaitResult(RoutingId routingId, IReadOnlyList<Message> parts)
+    internal SendResult SendNoWaitResult(RoutingId routingId,
+        IReadOnlyList<Message> parts)
     {
         return Kernel.SendNoWaitResult(routingId, parts);
     }
@@ -103,18 +115,8 @@ public abstract class RoutedMessageSocketBase : SocketBase
     }
 
     /// <summary>
-    /// Receive a routed message into <paramref name="result"/>. Caller-provided
-    /// storage is the canonical recv shape; reuse the same Received instance
-    /// across calls to avoid per-recv allocation. See
-    /// doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
+    /// Receive a routed message into <paramref name="result"/>.
     /// </summary>
-    /// <param name="result">Long-lived Received storage. Internal state is
-    /// reset and refilled on each successful call.</param>
-    /// <param name="flags">Recv flags. With <see cref="RecvFlags.DontWait"/>,
-    /// returns <c>false</c> when no data is available; otherwise blocks
-    /// until data arrives or the socket reports a hard error.</param>
-    /// <returns>true on success, false when DontWait is set and no data is
-    /// available.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Recv(Received result, RecvFlags flags = RecvFlags.None)
     {

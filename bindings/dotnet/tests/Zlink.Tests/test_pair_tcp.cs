@@ -56,7 +56,7 @@ public sealed class test_pair_tcp
 
         using Message part1 = Message.FromString("hello");
         using Message part2 = Message.FromString("world");
-        client.Send(new[] { part1, part2 });
+        client.Send().Message(part1).Message(part2).Submit();
 
         var received = new Received();
         server.Recv(received);
@@ -323,7 +323,8 @@ public sealed class test_pair_tcp
         for (int i = 0; i < 16 * 1024; i++)
         {
             using Message payload = Message.FromBytes(payloadBytes);
-            result = sender.Send(payload, SendFlags.DontWait)
+            result = sender.Send().Message(payload).Flags(SendFlags.DontWait)
+                .Submit()
                 ? SendResult.Sent
                 : SendResult.Backpressured;
             if (result != SendResult.Sent)
@@ -356,7 +357,8 @@ public sealed class test_pair_tcp
         for (int i = 0; i < 16 * 1024; i++)
         {
             using Message payload = Message.FromBytes(payloadBytes);
-            sent = sender.Send(payload, SendFlags.DontWait);
+            sent = sender.Send().Message(payload).Flags(SendFlags.DontWait)
+                .Submit();
             if (!sent)
                 break;
         }
@@ -376,7 +378,8 @@ public sealed class test_pair_tcp
 
         using Message message = Message.FromString("no-route");
         var ex = Assert.Throws<ZlinkSubmitException>(() =>
-            router.Send(RoutingId.FromBytes("UNKNOWN"u8), message, SendFlags.DontWait));
+            router.Send(RoutingId.FromBytes("UNKNOWN"u8)).Message(message)
+                .Flags(SendFlags.DontWait).Submit());
         Assert.Equal(ZlinkSubmitException.ErrorCode.NotConnected, ex.Result);
     }
 
@@ -392,7 +395,8 @@ public sealed class test_pair_tcp
 
         using Message message = Message.FromString("no-route");
         var ex = Assert.Throws<ZlinkSubmitException>(() =>
-            router.Send(RoutingId.FromBytes("UNKNOWN"u8), message, SendFlags.DontWait));
+            router.Send(RoutingId.FromBytes("UNKNOWN"u8)).Message(message)
+                .Flags(SendFlags.DontWait).Submit());
         Assert.Equal(ZlinkSubmitException.ErrorCode.NotConnected, ex.Result);
     }
 }

@@ -49,7 +49,7 @@ void registry_t::handle_router (void *router_)
     sender.size = 0;
     discovery_protocol::read_routing_id (msg, &sender);
     zlink_msg_close (&msg);
-    std::vector<zlink_msg_t> frames;
+    scoped_msg_frames_t frames;
     while (true) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
@@ -63,7 +63,6 @@ void registry_t::handle_router (void *router_)
     }
 
     if (frames.empty ()) {
-        close_msg_frames (&frames);
         return;
     }
 
@@ -74,7 +73,6 @@ void registry_t::handle_router (void *router_)
         memcpy (&req, zlink_msg_data (&frames[0]), sizeof (req));
         msg_id = req.msg_id;
     } else if (!discovery_protocol::read_u16 (frames[0], &msg_id)) {
-        close_msg_frames (&frames);
         return;
     }
 
@@ -118,8 +116,6 @@ void registry_t::handle_router (void *router_)
         default:
             break;
     }
-
-    close_msg_frames (&frames);
 }
 
 void registry_t::handle_bootstrap (void *router_,

@@ -214,8 +214,10 @@ class dealer_router_client_bench_t
         }
 
         try {
-            if (state.sock->send (
-                  state.request, zlink::send_flags_t::dontwait)) {
+            if (std::move (state.sock->send ())
+                  .message (state.request)
+                  .flags (zlink::send_flags_t::dontwait)
+                  .submit ()) {
                 state.awaiting_reply = true;
                 state.send_pending = false;
                 return set_pollout (state, false);
@@ -383,8 +385,10 @@ class dealer_router_client_bench_t
         zlink::message_t stop_part = zlink::message_t::from_bytes (stop, stop_len);
         if (!stop_part.valid ())
             return;
-        (void) _socket_states[0].sock->send (
-          stop_part, zlink::send_flags_t::dontwait);
+        (void) std::move (_socket_states[0].sock->send ())
+          .message (stop_part)
+          .flags (zlink::send_flags_t::dontwait)
+          .submit ();
     }
 
     void print_result () const

@@ -30,13 +30,13 @@ from perf_common import (
 def _send_router_stop_token(router, dest_routing_id):
     """PERF_SINGLE_TEST_POLICY § 1.4 wire-level shutdown signal.
 
-    Router-router uses ``send(routing_id, payload)``; the stop token is a
+    Router-router uses ``send(routing_id).message(payload).submit()``; the stop token is a
     single payload frame addressed to the peer.
     """
 
     for _ in range(100):
         try:
-            router.send(dest_routing_id, STOP_TOKEN)
+            router.send(dest_routing_id).message(STOP_TOKEN).submit()
             return
         except zlink.SubmitError as exc:
             if exc.result != zlink.SubmitResult.BACKPRESSURED:
@@ -53,10 +53,9 @@ def main(argv=None):
     def send_loop(router):
         active_end = time.perf_counter() + args.duration
         while time.perf_counter() < active_end:
-            router.send(
-                b"SERVER",
+            router.send(b"SERVER").message(
                 stamp_payload(payload, phase=1, run_id=run_id),
-            )
+            ).submit()
         _send_router_stop_token(router, b"SERVER")
 
     with zlink.Context() as ctx:

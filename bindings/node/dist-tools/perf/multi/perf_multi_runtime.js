@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const { MonitorEventType, RecvFlags, RecvResult } = zlink;
 const { sleepImmediate } = require('../common/perf_metrics');
 const { isStopTokenParts } = require('../perf_stop_token');
@@ -211,7 +211,14 @@ async function waitForConnectionReadyCount(socket, expectedCount, connectFn = nu
 }
 function trySocketSend(socket, ...args) {
     try {
-        return socket.send(...args, zlink.SendFlags.DontWait);
+        const routed = args.length >= 2 && args[0] instanceof zlink.RoutingId;
+        const payload = routed ? args[1] : args[0];
+        let op = routed ? socket.send(args[0]) : socket.send();
+        const parts = Array.isArray(payload) ? payload : [payload];
+        for (const part of parts) {
+            op = op.message(part);
+        }
+        return op.flags(zlink.SendFlags.DontWait).submit();
     }
     catch (error) {
         if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
@@ -241,7 +248,12 @@ async function sendStopTokenWithRetry(_socket, sendFn) {
 }
 function trySocketPublish(socket, topic, payload) {
     try {
-        return socket.publish(topic, payload, zlink.SendFlags.DontWait);
+        let op = socket.publish(topic);
+        const parts = Array.isArray(payload) ? payload : [payload];
+        for (const part of parts) {
+            op = op.message(part);
+        }
+        return op.flags(zlink.SendFlags.DontWait).submit();
     }
     catch (error) {
         if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {

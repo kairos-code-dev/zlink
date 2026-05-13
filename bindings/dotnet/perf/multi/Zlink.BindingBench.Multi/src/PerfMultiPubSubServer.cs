@@ -65,7 +65,8 @@ internal static class PerfMultiPubSubServer
         try
         {
             using Message message = Message.FromBytes(payload);
-            return server.Publish(string.Empty, message, SendFlags.DontWait);
+            return server.Publish(string.Empty).Message(message)
+                .Flags(SendFlags.DontWait).Submit();
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                         || IsInterrupted(ex.InternalErrno))
@@ -121,7 +122,8 @@ internal static class PerfMultiPubSubServer
             try
             {
                 using Message stopMessage = Message.FromBytes(MultiStopToken);
-                if (server.Publish(string.Empty, stopMessage, SendFlags.DontWait))
+                if (server.Publish(string.Empty).Message(stopMessage)
+                    .Flags(SendFlags.DontWait).Submit())
                     return;
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)

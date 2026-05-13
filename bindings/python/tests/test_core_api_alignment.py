@@ -53,9 +53,9 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.StreamSocket, "on_packet"))
         self.assertTrue(hasattr(zlink.Spot, "send_channel"))
         self.assertTrue(hasattr(zlink.Spot, "request_channel"))
-        self.assertTrue(hasattr(zlink.DealerSocket, "request_callback"))
-        self.assertTrue(hasattr(zlink.RouterSocket, "request_callback"))
-        self.assertTrue(hasattr(zlink.RouterSocket, "request_to_spot_callback"))
+        self.assertFalse(hasattr(zlink.DealerSocket, "request_callback"))
+        self.assertFalse(hasattr(zlink.RouterSocket, "request_callback"))
+        self.assertFalse(hasattr(zlink.RouterSocket, "request_to_spot_callback"))
         self.assertTrue(hasattr(zlink.Spot, "receive_subscription_event"))
         self.assertTrue(hasattr(zlink.SpotNode, "attach_channel_dealer"))
         self.assertTrue(hasattr(zlink.SpotNode, "attach_channel_dealer_manual"))
@@ -80,15 +80,11 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertIs(zlink.SocketMonitorEvent, zlink.MonitorEvent)
         self.assertTrue(hasattr(zlink, "Actor"))
         self.assertTrue(hasattr(zlink, "ActorRef"))
-        self.assertTrue(hasattr(zlink, "ActorCreateStatus"))
-        self.assertTrue(hasattr(zlink, "ActorAdmissionResult"))
         self.assertTrue(hasattr(zlink, "remote_actor_ref"))
         self.assertTrue(hasattr(zlink.SpotNode, "actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "actor_lookup"))
-        self.assertTrue(hasattr(zlink.SpotNode, "create_remote_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "destroy_actor"))
         self.assertFalse(hasattr(zlink.SpotNode, "destroy_" + "remote_actor"))
-        self.assertTrue(hasattr(zlink.SpotNode, "on_actor_admission"))
         self.assertTrue(hasattr(zlink.SpotNode, "join_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "leave_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "spots_snapshot"))
@@ -168,7 +164,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     sender.bind(endpoint)
                     receiver.connect(endpoint)
                     self.assertIsNone(receiver.recv(flags=zlink.RecvFlags.DONT_WAIT))
-                    sender.send(b"payload", flags=zlink.SendFlags.NONE)
+                    sender.send().message(b"payload").flags(zlink.SendFlags.NONE).submit()
                     with receiver.recv(flags=zlink.RecvFlags.NONE) as received:
                         self.assertTrue(received.is_single_part())
                         self.assertEqual(received.first_part().to_bytes(), b"payload")
@@ -184,11 +180,9 @@ class CoreApiAlignmentTests(unittest.TestCase):
             with zlink.RouterSocket(ctx) as router:
                 router.options.mandatory = True
                 with self.assertRaises(zlink.SubmitError) as cm:
-                    router.send(
-                        b"UNKNOWN",
-                        b"payload",
-                        flags=zlink.SendFlags.DONT_WAIT,
-                    )
+                    router.send(b"UNKNOWN").message(b"payload").flags(
+                        zlink.SendFlags.DONT_WAIT
+                    ).submit()
                 self.assertEqual(cm.exception.result, zlink.SubmitResult.NOT_CONNECTED)
 
     def test_pubsub_canonical_roundtrip(self):
@@ -204,7 +198,9 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     publisher.bind(endpoint)
                     subscriber.connect(endpoint)
                     subscriber.set_subscription(b"topic")
-                    publisher.publish(b"topic", [b"payload"], flags=zlink.SendFlags.NONE)
+                    publisher.publish(b"topic").message(b"payload").flags(
+                        zlink.SendFlags.NONE
+                    ).submit()
                     with subscriber.subscribe(flags=zlink.RecvFlags.NONE) as received:
                         self.assertEqual(received.topic, "topic")
                         self.assertEqual(received.single_part_or_throw().to_bytes(), b"payload")
@@ -241,11 +237,11 @@ class CoreApiAlignmentTests(unittest.TestCase):
         async def scenario():
             with zlink.RouterSocket(ctx) as router_socket:
                 self.assertTrue(hasattr(router_socket, "request"))
-                self.assertTrue(hasattr(router_socket, "request_callback"))
+                self.assertFalse(hasattr(router_socket, "request_callback"))
                 self.assertTrue(hasattr(router_socket, "reply"))
                 self.assertTrue(hasattr(router_socket, "send_to_spot"))
                 self.assertTrue(hasattr(router_socket, "request_to_spot"))
-                self.assertTrue(hasattr(router_socket, "request_to_spot_callback"))
+                self.assertFalse(hasattr(router_socket, "request_to_spot_callback"))
                 self.assertTrue(hasattr(router_socket, "reply_to_spot"))
                 self.assertFalse(hasattr(router_socket, "recv_spot"))
                 self.assertFalse(hasattr(router_socket, "on_spot_receive"))
@@ -256,10 +252,10 @@ class CoreApiAlignmentTests(unittest.TestCase):
 
                     def responder():
                         with router_socket.recv() as received:
-                            received.reply([b"pong"])
+                            received.reply().message(b"pong").submit()
 
                     threading.Thread(target=responder, daemon=True).start()
-                    reply = await dealer_socket.request([b"ping"], timeout=2.0)
+                    reply = await dealer_socket.request().message(b"ping").timeout(2.0).submit_async()
                     try:
                         self.assertEqual([part.to_bytes() for part in reply], [b"pong"])
                     finally:
@@ -347,20 +343,19 @@ class CoreApiAlignmentTests(unittest.TestCase):
 
         with ctx:
             with zlink.DealerSocket(ctx) as dealer:
-                with self.assertRaises(TypeError):
-                    dealer.request(b"payload", flags=zlink.SendFlags.NONE)
+                op = dealer.request().message(b"payload").flags(zlink.SendFlags.NONE)
+                self.assertFalse(hasattr(op, "submit_async"))
             with zlink.RouterSocket(ctx) as router:
                 peer_rid = zlink.RoutingId.from_bytes(b"peer")
                 spot_rid = zlink.RoutingId.from_bytes(b"spot")
-                with self.assertRaises(TypeError):
-                    router.request(peer_rid, b"payload", flags=zlink.SendFlags.NONE)
-                with self.assertRaises(TypeError):
-                    router.request_to_spot(
-                        peer_rid,
-                        spot_rid,
-                        b"payload",
-                        flags=zlink.SendFlags.NONE,
-                    )
+                op = router.request(peer_rid).message(b"payload").flags(
+                    zlink.SendFlags.NONE
+                )
+                self.assertFalse(hasattr(op, "submit_async"))
+                op = router.request_to_spot(peer_rid, spot_rid).message(b"payload").flags(
+                    zlink.SendFlags.NONE
+                )
+                self.assertFalse(hasattr(op, "submit_async"))
 
     def test_pub_manual_getter_surfaces_config_error(self):
         class _BrokenSocket:
@@ -390,7 +385,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
         with ctx:
             with zlink.PubSocket(ctx) as publisher:
                 with self.assertRaises(ValueError):
-                    publisher.publish(b"bad\0topic", b"payload")
+                    publisher.publish(b"bad\0topic").message(b"payload").submit()
 
             with zlink.SubSocket(ctx) as subscriber:
                 with self.assertRaises(ValueError):

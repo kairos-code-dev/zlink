@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
   createRunId,

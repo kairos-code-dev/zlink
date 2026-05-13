@@ -111,7 +111,7 @@ internal sealed class ZLinkActorSendCall<TMessage>(
     IZLinkActorSendCall IZLinkActorSendCall.Compress()
         => (IZLinkActorSendCall)Compress();
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         return ExecuteAsync(cancellationToken);
     }
@@ -145,7 +145,7 @@ internal sealed class ZLinkActorReplyCall<TMessage>(
     IZLinkActorReplyCall IZLinkActorReplyCall.Compress()
         => (IZLinkActorReplyCall)Compress();
 
-    public ValueTask Async(CancellationToken cancellationToken = default)
+    public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         return ExecuteAsync(cancellationToken);
     }

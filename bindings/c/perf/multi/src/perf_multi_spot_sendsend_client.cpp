@@ -743,7 +743,7 @@ bool drain_slot_recv(spot_reqrep_client_slot_t *slot)
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
         const zlink_recv_result_t rc =
-          zlink_spot_recv(slot->socket,
+          perf_zlink_spot_recv_parts (slot->socket,
                           &source_rid,
                           &source_spot_rid,
                           &request_seq,
@@ -818,7 +818,7 @@ send_result_t send_request(spot_reqrep_client_slot_t *slot,
 
     slot->waiting_reply.store(true, std::memory_order_release);
 
-    const zlink_submit_result_t rc = zlink_spot_send_spot(
+    const zlink_submit_result_t rc = perf_zlink_spot_send_spot_parts(
       slot->socket,
       server_node_rid,
       server_spot_rid,

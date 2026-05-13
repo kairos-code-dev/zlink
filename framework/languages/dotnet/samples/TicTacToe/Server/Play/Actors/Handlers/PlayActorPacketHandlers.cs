@@ -17,7 +17,7 @@ internal sealed class PlayActorJoinGameHandler(
 
         var reply = await games.JoinAsync(actor, message, cancellationToken);
         await actor.Context.Reply(reply)
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
         logger.LogInformation(
             "actor -> client: JoinGameRes sent. actor={ActorId}, gameId={GameId}, mark={Mark}",
             actor.ActorId,
@@ -45,7 +45,7 @@ internal sealed class PlayActorPlaceMarkHandler(ILogger<PlayActorPlaceMarkHandle
 
         var reply = await game.PlaceMarkAsync(actor, message.Cell, cancellationToken);
         await actor.Context.Reply(reply)
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
 
         logger.LogInformation(
             "actor -> client: PlaceMarkRes sent. actor={ActorId}, gameId={GameId}, board={Board}, status={Status}",

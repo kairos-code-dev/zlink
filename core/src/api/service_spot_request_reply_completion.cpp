@@ -8,6 +8,7 @@
 #include "api/socket_api_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
 #include "api/service_api_internal.hpp"
+#include "api/service_spot_dispatch_surface_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "core/socket_poller.hpp"
 #include "services/spot/spot_handle.hpp"
@@ -199,9 +200,11 @@ int zlink::spot_reqrep_internal::queue_spot_channel_reply_completion (
         return -1;
     }
 
-    zlink_spot_notify_dispatch_info (
-      state_->owner, ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE,
-      ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER, dealer_);
+    if (!in_spot_dispatch_event_callback (state_->owner)) {
+        zlink_spot_notify_dispatch_info (
+          state_->owner, ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE,
+          ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER, dealer_);
+    }
     return 0;
 }
 

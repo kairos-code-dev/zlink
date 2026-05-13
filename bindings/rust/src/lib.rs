@@ -5,8 +5,8 @@
 //! This crate wraps the zlink C API (`zlink.h`) with an idiomatic, safe Rust
 //! surface following the bindings API policy:
 //!
+//! - **Builder-based** public send, publish, request, reply, and actor operations.
 //! - **Multipart-only** public send/receive surface.
-//! - **Blocking** vs **non-blocking** distinguished by flags (`send` / `send_with_flags`).
 //! - **Typed options** per socket type – no raw option bags.
 //! - **Ownership** via RAII: [`Message`] drop calls `zlink_msg_close`;
 //!   `send` consumes messages and suppresses drop.
@@ -57,8 +57,7 @@ pub use poller::{
 };
 pub use runtime::{multipart_close, proxy, proxy_steerable, sleep};
 pub use service::{
-    Actor, ActorAdmissionResult, ActorCreateResult, ActorCreateStatus, ActorJoinInfo,
-    ActorJoinRequest, ActorRecvInfo, ActorRef, ActorRoute, AutoConnectType, CallbackReady,
+    Actor, ActorJoinInfo, ActorJoinRequest, ActorRecvInfo, ActorRef, ActorRoute, AutoConnectType, CallbackReady,
     Discovery, Empty, MemberPeerEntry, Ready, Registry, RegistryQueryClient,
     RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState, RegistryStatus,
     RegistryTopologyEntry, RegistryTopologyFilter, ReplyOp, RequestOp, SendOp, ServiceKind,

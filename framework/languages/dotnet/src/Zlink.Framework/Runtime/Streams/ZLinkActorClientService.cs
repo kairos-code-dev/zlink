@@ -4,7 +4,7 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkActorClientService(
     IZLinkActorPlayRouteResolver routeResolver,
-    IZLinkRoutedClient routedClient,
+    IZLinkRouteClient routedClient,
     ZLinkFrameworkRegistration registration) : IZLinkActorClient
 {
     public IZLinkActorClientSendCall Send<TMessage>(
@@ -33,7 +33,7 @@ internal sealed class ZLinkActorClientService(
 
 internal sealed class ZLinkActorClientSendCall<TMessage>(
     IZLinkActorPlayRouteResolver routeResolver,
-    IZLinkRoutedClient routedClient,
+    IZLinkRouteClient routedClient,
     string actorId,
     TMessage message) : IZLinkActorClientSendCall
 {
@@ -55,7 +55,7 @@ internal sealed class ZLinkActorClientSendCall<TMessage>(
         return this;
     }
 
-    public async ValueTask Async(CancellationToken cancellationToken = default)
+    public async ValueTask Submit(CancellationToken cancellationToken = default)
     {
         var route = await ResolveRouteAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -68,7 +68,7 @@ internal sealed class ZLinkActorClientSendCall<TMessage>(
 
         await routedClient.SendTo(route.RouterChannelId, route.TargetNodeRid, packet)
             .WithPacketName(ZLinkInternalPacketNames.ActorDispatch)
-            .Async(cancellationToken)
+            .Submit(cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -109,7 +109,7 @@ internal sealed class ZLinkActorClientSendCall<TMessage>(
 
 internal sealed class ZLinkActorClientRequestCall<TRequest>(
     IZLinkActorPlayRouteResolver routeResolver,
-    IZLinkRoutedClient routedClient,
+    IZLinkRouteClient routedClient,
     ZLinkFrameworkRegistration registration,
     string actorId,
     TRequest request) : IZLinkActorClientRequestCall
@@ -139,7 +139,7 @@ internal sealed class ZLinkActorClientRequestCall<TRequest>(
         return this;
     }
 
-    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default)
     {
         var route = await ResolveRouteAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -155,7 +155,7 @@ internal sealed class ZLinkActorClientRequestCall<TRequest>(
             var reply = await routedClient.RequestTo(route.RouterChannelId, route.TargetNodeRid, packet)
                 .WithPacketName(ZLinkInternalPacketNames.ActorDispatch)
                 .WithTimeout(_timeout ?? registration.DefaultTimeout)
-                .Async<byte[]>(cancellationToken)
+                .Submit<byte[]>(cancellationToken)
                 .ConfigureAwait(false);
             return JsonSerializer.Deserialize<TReply>(reply, JsonOptions)
                 ?? throw new InvalidOperationException("Actor client reply body is null.");

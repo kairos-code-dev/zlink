@@ -2,7 +2,7 @@
 'use strict';
 
 import net from 'node:net';
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 import {
   createPayload,
   createRunId,

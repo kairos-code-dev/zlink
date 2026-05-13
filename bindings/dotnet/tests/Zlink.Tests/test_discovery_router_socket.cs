@@ -60,8 +60,8 @@ public sealed class test_discovery_router_socket
                 using var reply = Message.FromString("pong");
                 right.Reply(
                     request.RoutingId ?? throw new InvalidOperationException("missing source rid"),
-                    request.RequestSeq ?? 0UL,
-                    reply);
+                    request.RequestSeq ?? 0UL)
+                    .Message(reply).Submit();
                 received.Set();
             }
             finally
@@ -71,7 +71,8 @@ public sealed class test_discovery_router_socket
         });
 
         using var ping = Message.FromString("ping");
-        var replies = await left.Request(rightRid, ping, TimeSpan.FromSeconds(3));
+        var replies = await left.Request(rightRid).Message(ping)
+            .Timeout(TimeSpan.FromSeconds(3)).SubmitAsync();
         try
         {
             Assert.Equal("pong", replies[0].GetString());

@@ -112,7 +112,7 @@ bool run_pattern_dealer_router (const std::string &transport,
             zlink::message_t msg =
               zlink::message_t::from_bytes (payload.data (), payload.size ());
             if (!msg.valid ()
-                || dealer.sock ().send (msg, 0) != 0) {
+                || perf::send_socket (dealer.sock (), msg, 0) != 0) {
                 if (perf_debug_enabled ())
                     std::cerr << "dealer_router: send failed errno=" << errno
                               << std::endl;
@@ -129,7 +129,7 @@ bool run_pattern_dealer_router (const std::string &transport,
           std::strlen (perf::single::k_stop_token));
         for (int retry = 0; retry < 100 && stop_msg.valid (); ++retry) {
             try {
-                if (dealer.sock ().send (stop_msg, 0) == 0)
+                if (perf::send_socket (dealer.sock (), stop_msg, 0) == 0)
                     break;
             }
             catch (const zlink::zlink_error_t &) {

@@ -151,7 +151,7 @@ final class PerfMultiDealerDealer {
                 pollSet.setEvents(0);
                 while (true) {
                     try (Message stop = PerfStopToken.newMessage()) {
-                        if (cooldownClient.send(stop, SendFlags.DONT_WAIT)) {
+                        if (cooldownClient.send().message(stop).flags(SendFlags.DONT_WAIT).submit()) {
                             return PerfUtil.Result.silent(config);
                         }
                     } catch (SubmitException ex) {
@@ -198,7 +198,7 @@ final class PerfMultiDealerDealer {
     private static boolean trySend(DealerSocket socket, PerfSocketPollSet pollSet,
                                    boolean[] pending, int index, int size, byte phase) {
         try (Message payload = PerfUtil.payload(size, phase, System.nanoTime())) {
-            if (socket.send(payload, SendFlags.DONT_WAIT)) {
+            if (socket.send().message(payload).flags(SendFlags.DONT_WAIT).submit()) {
                 pending[index] = false;
                 pollSet.setEvents(index);
                 return true;

@@ -17,9 +17,9 @@ internal static class ZLinkFrameworkRegistrationValidator
             ValidateStreamNode(streamNode);
         }
 
-        foreach (var routed in registration.RoutedChannels.Values)
+        foreach (var routed in registration.RouteChannels.Values)
         {
-            ValidateRoutedChannel(routed, registration.Discovery is not null);
+            ValidateRouteChannel(routed, registration.Discovery is not null);
         }
 
         foreach (var spotNode in registration.SpotNodes.Values)
@@ -141,18 +141,18 @@ internal static class ZLinkFrameworkRegistrationValidator
         }
     }
 
-    private static void ValidateRoutedChannel(
-        ZLinkRoutedChannelRegistration routed,
+    private static void ValidateRouteChannel(
+        ZLinkRouteChannelRegistration routed,
         bool discoveryConfigured)
     {
         if (string.IsNullOrWhiteSpace(routed.BindEndpoint))
         {
             throw new ZLinkConfigurationException(
-                $"Routed channel '{routed.RouterChannelId}' must define a bind endpoint.");
+                $"Route channel '{routed.RouterChannelId}' must define a bind endpoint.");
         }
 
         ZLinkPeerAcquisitionPolicy.RequireSinglePeerSource(
-            $"Routed channel '{routed.RouterChannelId}'",
+            $"Route channel '{routed.RouterChannelId}'",
             discoveryConfigured,
             routed.ManualConnections);
 

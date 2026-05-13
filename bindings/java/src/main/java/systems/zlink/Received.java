@@ -3,6 +3,8 @@
 package systems.zlink;
 
 import systems.zlink.internal.ReceivedPartCursor;
+import systems.zlink.service.spot.ReplyOp;
+import systems.zlink.service.spot.SendOp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -441,19 +443,11 @@ public final class Received implements AutoCloseable {
         }
     }
 
-    public void reply(Message part) {
-        reply(List.of(Objects.requireNonNull(part, "part")), SendFlags.NONE);
+    public ReplyOp reply() {
+        return SocketOperations.reply(this::submitReply);
     }
 
-    public void reply(Message part, SendFlags flags) {
-        reply(List.of(Objects.requireNonNull(part, "part")), flags);
-    }
-
-    public void reply(List<Message> parts) {
-        reply(parts, SendFlags.NONE);
-    }
-
-    public void reply(List<Message> parts, SendFlags flags) {
+    private void submitReply(List<Message> parts, SendFlags flags) {
         if (!hasRequestSequence || replySender == null) {
             throw new SubmitException(SubmitResult.INVALID_STATE);
         }
@@ -465,47 +459,26 @@ public final class Received implements AutoCloseable {
         }
     }
 
-    public boolean send(Message part) {
-        return send(part, SendFlags.NONE);
+    public SendOp send() {
+        return SocketOperations.send(this::submitSend);
     }
 
-    public boolean send(Message part, SendFlags flags) {
-        Objects.requireNonNull(part, "part");
-        Objects.requireNonNull(flags, "flags");
-        RouterSocket router = sendRouter;
-        if (router != null) {
-            try {
-                if (spotRidBytes == null && routingIdBytes != null) {
-                    return router.send(routingIdBytes, part,
-                        SendFlag.fromValue(flags.value()));
-                }
-                RoutingId nodeRid = routingIdOrThrow();
-                RoutingId spot = spotRidOrNull();
-                return spot == null
-                    ? router.send(nodeRid, part, flags)
-                    : router.sendToSpot(nodeRid, spot, part, flags);
-            } catch (IllegalStateException ex) {
-                throw new SubmitException(SubmitResult.TERMINATED);
-            }
-        }
-        return send(List.of(part), flags);
-    }
-
-    public boolean send(List<Message> parts) {
-        return send(parts, SendFlags.NONE);
-    }
-
-    public boolean send(List<Message> parts, SendFlags flags) {
+    private boolean submitSend(List<Message> parts, SendFlags flags) {
         Objects.requireNonNull(parts, "parts");
         Objects.requireNonNull(flags, "flags");
         RouterSocket router = sendRouter;
         if (router != null) {
             try {
+                if (parts.size() == 1 && spotRidBytes == null
+                    && routingIdBytes != null) {
+                    return router.send(routingIdBytes, parts.get(0),
+                        SendFlag.fromValue(flags.value()));
+                }
                 RoutingId nodeRid = routingIdOrThrow();
                 RoutingId spot = spotRidOrNull();
                 return spot == null
-                    ? router.send(nodeRid, parts, flags)
-                    : router.sendToSpot(nodeRid, spot, parts, flags);
+                    ? router.sendInternal(nodeRid, parts, flags)
+                    : router.sendToSpotInternal(nodeRid, spot, parts, flags);
             } catch (IllegalStateException ex) {
                 throw new SubmitException(SubmitResult.TERMINATED);
             }

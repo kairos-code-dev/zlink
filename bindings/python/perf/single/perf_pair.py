@@ -32,7 +32,7 @@ def _send_stop_token(sock):
 
     for _ in range(100):
         try:
-            sock.send(STOP_TOKEN)
+            sock.send().message(STOP_TOKEN).submit()
             return
         except zlink.SubmitError as exc:
             if exc.result != zlink.SubmitResult.BACKPRESSURED:
@@ -51,7 +51,7 @@ def main(argv=None):
         try:
             active_end = time.perf_counter() + args.duration
             while time.perf_counter() < active_end:
-                client.send(stamp_payload(payload, phase=1, run_id=run_id))
+                client.send().message(stamp_payload(payload, phase=1, run_id=run_id)).submit()
             # PERF_SINGLE_TEST_POLICY § 1.4: wire stop token instead of
             # threading.Event coordination.
             _send_stop_token(client)

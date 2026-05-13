@@ -98,14 +98,12 @@ internal static class PerfPair
                     if (!WaitForInput(poller, events, -1))
                         continue;
 
+                    using var receivedMessage = new Received();
                     while (true)
                     {
-                        using Received? receivedMessage = receiver.Recv(
-                            RecvFlags.DontWait);
-                        if (receivedMessage == null)
+                        if (!receiver.Recv(receivedMessage, RecvFlags.DontWait))
                             break;
 
-                        using (receivedMessage)
                         {
                             ReadOnlySpan<byte> body = receivedMessage.FirstPart()
                                 .AsReadOnlySpan();

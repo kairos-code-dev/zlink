@@ -6,7 +6,7 @@ const net = require('node:net');
 const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const path = require('node:path');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 const SPOT_PEER_SOURCE_MANUAL = 1;
 const SPOT_CHANNEL_NAME = 'pubsub-spot-service';
 async function reservePort() {
@@ -258,7 +258,7 @@ test('sub sockets receive TopicMessage domain objects and non-blocking receive r
     sub.connect('inproc://subscribed-contract');
     sub.setSubscription('topic');
     assert.equal(subscribeMaybe(sub), null);
-    pub.publish('topic', 'payload');
+    pub.publish('topic').message('payload').submit();
     const received = sub.subscribe();
     assert.equal(received.topic, 'topic');
     assert.ok(received.routingId === null || received.routingId instanceof zlink.RoutingId);
@@ -274,7 +274,7 @@ test('subscribe returns topic-aware multipart payloads without callback mode', a
     pub.bind('inproc://subscribe-handler-contract');
     sub.connect('inproc://subscribe-handler-contract');
     sub.setSubscription('topic');
-    pub.publish('topic', 'payload');
+    pub.publish('topic').message('payload').submit();
     const deadline = Date.now() + 5000;
     let received = null;
     while (Date.now() < deadline) {

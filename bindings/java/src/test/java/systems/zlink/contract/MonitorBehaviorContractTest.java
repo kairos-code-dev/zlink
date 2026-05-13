@@ -35,7 +35,7 @@ public class MonitorBehaviorContractTest {
             server.bind(endpoint);
             client.connect(endpoint);
             try (Message payload = Message.copyOfUtf8("monitor")) {
-                client.send(payload);
+                client.send().message(payload).submit();
             }
 
             MonitorEvent event = eventFuture.get(TestSupport.DEFAULT_TIMEOUT_MS,

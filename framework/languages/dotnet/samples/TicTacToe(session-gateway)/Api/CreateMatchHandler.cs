@@ -24,7 +24,7 @@ internal sealed class CreateMatchHandler(IZLinkClientServerClient client)
                 SampleNames.PlayChannel,
                 new CreateMatchRoomReq())
             .WithTimeout(SampleTimings.RequestTimeout)
-            .Async<CreateMatchRoomRes>(cancellationToken)
+            .Submit<CreateMatchRoomRes>(cancellationToken)
             .ConfigureAwait(false);
 
         return new CreateMatchRes(room.MatchId, ownerActorId);

@@ -38,7 +38,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ZLinkClient>();
         services.AddSingleton<IZLinkClientServerClient>(static provider => provider.GetRequiredService<ZLinkClient>());
         services.AddSingleton<IZLinkClient>(static provider => provider.GetRequiredService<ZLinkClient>());
-        services.AddSingleton<IZLinkRoutedClient, ZLinkRoutedClient>();
+        services.AddSingleton<IZLinkRouteClient, ZLinkRouteClient>();
         services.AddSingleton<ZLinkEventPublisher>();
         services.AddSingleton<IZLinkFanoutPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
         services.AddSingleton<IZLinkEventPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
@@ -104,7 +104,7 @@ public static class ServiceCollectionExtensions
             }
         }
 
-        foreach (var routed in registration.RoutedChannels.Values)
+        foreach (var routed in registration.RouteChannels.Values)
         {
             foreach (var handler in routed.SendHandlers)
             {

@@ -25,6 +25,49 @@ template<typename SocketT> class has_routed_send_t
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
+template<typename SocketT> class has_send_builder_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().send (), std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_routed_send_builder_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().send (
+                      std::declval<const zlink::routing_id_t &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_publish_builder_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().publish (
+                      std::declval<const std::string &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
 template<typename SocketT> class has_receive_t
 {
   private:
@@ -177,6 +220,8 @@ template<typename SocketT> class has_recv_spot_t
 
 static_assert (!has_routed_send_t<zlink::pair_socket_t>::value,
                "pair_socket_t must not expose routed send");
+static_assert (has_send_builder_t<zlink::pair_socket_t>::value,
+               "pair_socket_t must expose send builder");
 static_assert (has_receive_t<zlink::pair_socket_t>::value,
                "pair_socket_t must expose recv");
 static_assert (has_single_part_recv_t<zlink::pair_socket_t>::value,
@@ -189,14 +234,18 @@ static_assert (!has_raw_common_option_get_t<zlink::pair_socket_t>::value,
                "pair_socket_t must not expose raw common option getters");
 static_assert (!has_routed_send_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must not expose routed send");
+static_assert (has_send_builder_t<zlink::dealer_socket_t>::value,
+               "dealer_socket_t must expose send builder");
 static_assert (has_receive_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must expose recv");
 static_assert (has_single_part_recv_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must expose single-part recv");
 static_assert (has_attach_discovery_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must expose attach_discovery");
-static_assert (has_routed_send_t<zlink::router_socket_t>::value,
-               "router_socket_t must expose routed send");
+static_assert (!has_routed_send_t<zlink::router_socket_t>::value,
+               "router_socket_t must not expose direct routed send");
+static_assert (has_routed_send_builder_t<zlink::router_socket_t>::value,
+               "router_socket_t must expose routed send builder");
 static_assert (has_receive_t<zlink::router_socket_t>::value,
                "router_socket_t must expose recv");
 static_assert (has_routed_single_part_recv_t<zlink::router_socket_t>::value,
@@ -207,14 +256,20 @@ static_assert (has_attach_discovery_t<zlink::router_socket_t>::value,
                "router_socket_t must expose attach_discovery");
 static_assert (has_attach_discovery_t<zlink::pub_socket_t>::value,
                "pub_socket_t must expose attach_discovery");
+static_assert (has_publish_builder_t<zlink::pub_socket_t>::value,
+               "pub_socket_t must expose publish builder");
 static_assert (has_attach_discovery_t<zlink::sub_socket_t>::value,
                "sub_socket_t must expose attach_discovery");
 static_assert (!has_attach_discovery_t<zlink::xpub_socket_t>::value,
                "xpub_socket_t must not expose attach_discovery");
+static_assert (has_publish_builder_t<zlink::xpub_socket_t>::value,
+               "xpub_socket_t must expose publish builder");
 static_assert (!has_attach_discovery_t<zlink::xsub_socket_t>::value,
                "xsub_socket_t must not expose attach_discovery");
-static_assert (has_routed_send_t<zlink::stream_socket_t>::value,
-               "stream_socket_t must expose routed send");
+static_assert (!has_routed_send_t<zlink::stream_socket_t>::value,
+               "stream_socket_t must not expose direct routed send");
+static_assert (has_routed_send_builder_t<zlink::stream_socket_t>::value,
+               "stream_socket_t must expose routed send builder");
 static_assert (has_receive_t<zlink::stream_socket_t>::value,
                "stream_socket_t must expose recv");
 static_assert (!has_attach_discovery_t<zlink::stream_socket_t>::value,
@@ -245,7 +300,7 @@ void test_pair_send_recv_single_part ()
       static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("ping");
-    right.send (outbound);
+    assert (right.send ().message (outbound).submit ());
 
     zlink::received_t inbound;
     assert (left.recv (inbound) == 0);
@@ -273,7 +328,7 @@ void test_pair_send_recv_single_part_direct ()
       static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("direct");
-    right.send (outbound);
+    assert (right.send ().message (outbound).submit ());
 
     zlink::message_t inbound;
     assert (left.recv (inbound) == 0);
@@ -305,7 +360,7 @@ void test_router_recv_single_part_direct ()
       static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("routed");
-    dealer.send (outbound);
+    assert (dealer.send ().message (outbound).submit ());
 
     zlink::routing_id_t source =
       zlink::routing_id_t::from_bytes (
@@ -338,7 +393,10 @@ void test_pair_send_recv_multipart ()
     std::vector<zlink::message_t> outbound;
     outbound.push_back (zlink_cpp_contract::make_message ("one"));
     outbound.push_back (zlink_cpp_contract::make_message ("two"));
-    right.send (outbound);
+    assert (right.send ()
+              .message (outbound[0])
+              .message (outbound[1])
+              .submit ());
 
     zlink::received_t inbound;
     assert (left.recv (inbound) == 0);
@@ -370,7 +428,7 @@ void test_pair_ipc_large_message_shutdown ()
     zlink::message_t outbound (payload_size);
     assert (outbound.valid ());
     std::memset (outbound.data (), 0x5a, payload_size);
-    right.send (outbound);
+    assert (right.send ().message (outbound).submit ());
 
     zlink::received_t inbound;
     assert (left.recv (inbound) == 0);

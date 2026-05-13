@@ -372,8 +372,10 @@ class router_router_client_bench_t
         state.request = std::move (request);
 
         try {
-            if (state.sock->send (_server_rid, state.request,
-                                  zlink::send_flags_t::dontwait)) {
+            if (std::move (state.sock->send (_server_rid))
+                  .message (state.request)
+                  .flags (zlink::send_flags_t::dontwait)
+                  .submit ()) {
                 state.awaiting_reply = true;
                 state.send_pending = false;
                 return set_pollout (state, false);
@@ -557,8 +559,10 @@ class router_router_client_bench_t
             return;
         std::memcpy (stop_msg.data (), stop, stop_len);
         try {
-            (void) sock->send (_server_rid, stop_msg,
-                               zlink::send_flags_t::dontwait);
+            (void) std::move (sock->send (_server_rid))
+              .message (stop_msg)
+              .flags (zlink::send_flags_t::dontwait)
+              .submit ();
         } catch (const zlink::submit_error_t &) {
             // Stop token is best-effort; ignore submit failures.
         }

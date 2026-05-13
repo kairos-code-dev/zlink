@@ -49,7 +49,7 @@ SampleSupport.WaitOrThrow(() =>
     try
     {
         using Message message = Message.FromString(payload);
-        publisher.Publish(serviceName, topic).Message(message).Submit();
+        publisher.Publish(topic).Message(message).Submit();
         subscribed = subscriber.Subscribe(RecvFlags.DontWait);
         return subscribed is not null;
     }
@@ -60,8 +60,6 @@ SampleSupport.WaitOrThrow(() =>
 }, 5000, "spot recv sample");
 
 using var subscribedMessage = subscribed!;
-if (subscribedMessage.ServiceName != serviceName)
-    throw new InvalidOperationException("unexpected service name");
 string receivedTopic = subscribedMessage.Topic;
 string receivedPayload = subscribedMessage.SinglePartOrThrow().GetString();
 Console.WriteLine(

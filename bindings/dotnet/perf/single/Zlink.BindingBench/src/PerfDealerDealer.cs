@@ -146,14 +146,12 @@ internal static class PerfDealerDealer
                     if (!WaitForInput(poller, events, -1))
                         continue;
 
+                    using var maybe = new Received();
                     while (true)
                     {
-                        using Received? maybe = receiver.Recv(
-                            RecvFlags.DontWait);
-                        if (maybe is null)
+                        if (!receiver.Recv(maybe, RecvFlags.DontWait))
                             break;
 
-                        using (maybe)
                         {
                             ReadOnlySpan<byte> body = maybe.FirstPart()
                                 .AsReadOnlySpan();

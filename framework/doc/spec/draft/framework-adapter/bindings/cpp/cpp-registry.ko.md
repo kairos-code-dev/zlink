@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework C++ Monitoring](cpp-monitoring.ko.md) | [다음: ZLink Framework C++ Channel Messaging Samples](channel-messaging-samples.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [C++ 묶음](./README.ko.md)

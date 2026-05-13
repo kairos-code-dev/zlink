@@ -2455,7 +2455,7 @@ typed option/property로 이 두 값을 노출하고, raw option bag을 canonica
   subject socket에서 channel name metadata를 조회해 어느 channel reply를
   drain할지 구분한다.
 - `attach_pub_ingress()`는 일반 `PUB -> Spot` 입력 경로를 여는 전용 표면이다.
-- `Spot.publish(topic, ...)`는 `SpotNode` 자신의 topic publish
+- `Spot.publish(topic).message(...).submit()`은 `SpotNode` 자신의 topic publish
   ingress queue로 들어가는 channel-aware topic plane이다. 외부 channel 호출은
   `send_channel()` / `request_channel()`과 attached `DEALER` 경로로 설명한다.
 - `connect_peer` / `disconnect_peer` 는 raw peer topology 전용 control

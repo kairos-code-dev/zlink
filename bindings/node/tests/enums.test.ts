@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 test('public flag and result enums stay frozen', () => {
   assert.equal(zlink.SendFlags.None, 0);
@@ -16,10 +16,6 @@ test('public flag and result enums stay frozen', () => {
   assert.equal(zlink.SpotDispatchEvent.ActorReadable, 5);
   assert.equal(zlink.SpotDispatchEvent.ActorJoinReadable, 6);
   assert.equal(zlink.SpotDispatchSubjectKind.Actor, 4);
-  assert.equal(zlink.ActorCreateStatus.Created, 1);
-  assert.equal(zlink.ActorCreateStatus.Existing, 2);
-  assert.equal(zlink.ActorAdmissionResult.Accept, 1);
-  assert.equal(zlink.ActorAdmissionResult.Reject, 2);
   assert.equal(zlink.AutoHwmProfile.Compact, 0);
   assert.equal(zlink.AutoHwmProfile.LowLatency, 1);
   assert.equal(zlink.AutoHwmProfile.Balanced, 2);
@@ -41,8 +37,6 @@ test('public flag and result enums stay frozen', () => {
   assert.ok(Object.isFrozen(zlink.RequestResult));
   assert.ok(Object.isFrozen(zlink.SpotDispatchEvent));
   assert.ok(Object.isFrozen(zlink.SpotDispatchSubjectKind));
-  assert.ok(Object.isFrozen(zlink.ActorCreateStatus));
-  assert.ok(Object.isFrozen(zlink.ActorAdmissionResult));
   assert.ok(Object.isFrozen(zlink.AutoHwmProfile));
   assert.ok(Object.isFrozen(zlink.AutoConnectType));
   assert.ok(Object.isFrozen(zlink.ServiceRole));

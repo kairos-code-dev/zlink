@@ -34,8 +34,10 @@ public sealed class test_request_reply
                 Assert.NotEqual(0UL, received.RequestSeq.Value);
                 Assert.Equal("ping", received.Parts[0].GetString());
                 using Message reply = Message.FromString("pong");
-                routerSocket.Reply(received.RoutingId ?? throw new InvalidOperationException(
-                    "missing routing id"), received.RequestSeq.Value, reply);
+                routerSocket.Reply(
+                    received.RoutingId ?? throw new InvalidOperationException(
+                        "missing routing id"), received.RequestSeq.Value)
+                    .Message(reply).Submit();
                 handled.Set();
             }
             finally
@@ -45,8 +47,10 @@ public sealed class test_request_reply
         });
 
         using Message request = Message.FromString("ping");
-        IReadOnlyList<Message> reply = await dealerSocket.Request(request,
-            TimeSpan.FromSeconds(2));
+        IReadOnlyList<Message> reply = await dealerSocket.Request()
+            .Message(request)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .SubmitAsync();
         try
         {
             Assert.Equal("pong", reply[0].GetString());
@@ -78,7 +82,7 @@ public sealed class test_request_reply
         Thread.Sleep(50);
 
         using Message payload = Message.FromString("plain-data");
-        dealerSocket.Send(payload);
+        dealerSocket.Send().Message(payload).Submit();
 
         var received = new Received();
         routerSocket.Recv(received);
@@ -124,8 +128,10 @@ public sealed class test_request_reply
             try
             {
                 using Message reply = Message.FromString("pong-owned");
-                routerSocket.Reply(received.RoutingId ?? throw new InvalidOperationException(
-                    "missing routing id"), received.RequestSeq ?? 0UL, reply);
+                routerSocket.Reply(
+                    received.RoutingId ?? throw new InvalidOperationException(
+                        "missing routing id"), received.RequestSeq ?? 0UL)
+                    .Message(reply).Submit();
                 handled.Set();
             }
             finally
@@ -135,7 +141,7 @@ public sealed class test_request_reply
         });
 
         using Message request = Message.FromString("ping-owned");
-        dealerSocket.Request(request, (result, reply) =>
+        dealerSocket.Request().Message(request).Submit((result, reply) =>
         {
             observedResult = result;
             Assert.Single(reply);

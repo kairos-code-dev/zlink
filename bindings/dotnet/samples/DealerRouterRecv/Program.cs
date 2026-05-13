@@ -15,7 +15,7 @@ dealer.Connect(endpoint);
 SampleSupport.WaitConnected(routerMonitor, dealerMonitor);
 
 using (Message request = Message.FromString("ping"))
-    dealer.Send(request);
+    dealer.Send().Message(request).Submit();
 using var received = new Received();
 if (!router.Recv(received))
     throw new InvalidOperationException("recv failed");
@@ -23,6 +23,6 @@ string requestPayload = received.Parts[0].GetString();
 SampleSupport.EnsureEqual("ping", requestPayload, "request");
 
 using var reply = Message.FromString("pong");
-received.Send(reply);
+received.Send().Message(reply).Submit();
 string payload = SampleSupport.ReceiveUtf8(dealer, 2000);
 Console.WriteLine($"[dealer-router/recv] send: \"ping\" -> recv: \"{payload}\"");

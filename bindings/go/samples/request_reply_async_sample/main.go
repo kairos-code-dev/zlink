@@ -59,14 +59,14 @@ func main() {
 			requestDone <- fmt.Errorf("missing request sequence")
 			return
 		}
-		_, replyErr := routerSocket.Reply(received.RoutingID(), requestSeq, zlink.SendFlagsNone, samplecommon.Message("pong"))
+		replyErr := routerSocket.Reply(received.RoutingID(), requestSeq).Message(samplecommon.Message("pong")).Submit(nil)
 		requestDone <- replyErr
 	}()
 
 	replyCh := make(chan []*zlink.Message, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		reply, err := dealerSocket.Request([][]byte{[]byte("ping")}, 2*time.Second)
+		reply, err := dealerSocket.Request().Message(samplecommon.Message("ping")).Timeout(2 * time.Second).Submit(nil)
 		if err != nil {
 			errCh <- err
 			return

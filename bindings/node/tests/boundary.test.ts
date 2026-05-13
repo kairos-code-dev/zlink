@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 const AUTO_CONNECT_SPOT_MESH = 5;
 
@@ -22,8 +22,8 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
   assert.equal(zlink.RoutingId.fromString('a'.repeat(510)).size, 255);
   assert.throws(() => zlink.RoutingId.fromString('not-hex'), /hex string/);
   assert.throws(() => zlink.RoutingId.fromString('a'.repeat(512)), /255 bytes/);
-  assert.throws(() => router.send(overflowRoutingId, Buffer.alloc(0)), /RoutingId/);
-  assert.throws(() => stream.send(overflowRoutingId, Buffer.alloc(0)), /RoutingId/);
+  assert.throws(() => router.send(overflowRoutingId).message(Buffer.alloc(0)).submit(), /RoutingId/);
+  assert.throws(() => stream.send(overflowRoutingId).message(Buffer.alloc(0)).submit(), /RoutingId/);
 
   stream.close();
   router.close();

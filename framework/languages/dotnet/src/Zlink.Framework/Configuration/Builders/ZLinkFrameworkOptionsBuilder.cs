@@ -103,9 +103,9 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         configure(new ZLinkDealerMeshChannelBuilder(channel));
     }
 
-    public void AddRoutedChannel(
+    public void AddRouteChannel(
         string routerChannelId,
-        Action<IZLinkRoutedChannelBuilder> configure)
+        Action<IZLinkRouteChannelBuilder> configure)
     {
         AddRouteMeshChannel(routerChannelId, configure);
     }
@@ -119,14 +119,14 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             throw new ZLinkConfigurationException("Route mesh channel name must not be empty.");
         }
 
-        if (!_registration.RoutedChannels.TryAdd(
+        if (!_registration.RouteChannels.TryAdd(
                 channelName,
-                new ZLinkRoutedChannelRegistration { RouterChannelId = channelName }))
+                new ZLinkRouteChannelRegistration { RouterChannelId = channelName }))
         {
             throw new ZLinkConfigurationException($"Duplicate route mesh channel name '{channelName}'.");
         }
 
-        configure(new ZLinkRoutedChannelBuilder(_registration.RoutedChannels[channelName]));
+        configure(new ZLinkRouteChannelBuilder(_registration.RouteChannels[channelName]));
     }
 
     public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure)

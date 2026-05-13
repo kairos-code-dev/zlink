@@ -85,8 +85,7 @@ fn null_byte_in_topic_rejected() {
     let pub_sock = ctx.pub_socket().unwrap();
     pub_sock.bind("inproc://bnd-topic-null").unwrap();
 
-    let msg = Message::copy_from(b"data").unwrap();
-    let result = pub_sock.publish("bad\0topic", msg);
+    let result = std::panic::catch_unwind(|| pub_sock.publish("bad\0topic"));
     assert!(result.is_err(), "topic with null byte must be rejected");
 }
 

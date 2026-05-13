@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 async function reservePort() {
     const srv = net.createServer();
     srv.listen(0, '127.0.0.1');
@@ -33,7 +33,7 @@ async function main() {
             dealerMonitor.close();
         }
         const sent = 'ping';
-        dealer.send(Buffer.from(sent));
+        dealer.send().message(Buffer.from(sent)).submit();
         const reply = 'pong';
         const request = new zlink.Received();
         router.recv(request);
@@ -41,7 +41,7 @@ async function main() {
             const recvReq = request.parts[0].data().toString();
             assert.equal(recvReq, sent);
             assert.ok(request.routingId instanceof zlink.RoutingId);
-            request.send(Buffer.from(reply));
+            request.send().message(Buffer.from(reply)).submit();
         }
         finally {
             request.close();

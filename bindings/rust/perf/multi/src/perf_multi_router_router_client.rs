@@ -102,10 +102,12 @@ fn main() {
                     seqs[index],
                 );
             }
-            match sockets[index].try_send(
-                &server_rid,
-                vec![Message::copy_from(&payloads[index]).expect("msg")],
-            ) {
+            match sockets[index]
+                .send(&server_rid)
+                .message(Message::copy_from(&payloads[index]).expect("msg"))
+                .flags(SendFlags::DONT_WAIT)
+                .submit()
+            {
                 Ok(true) => {
                     waiting_reply[index] = true;
                     send_pending[index] = false;

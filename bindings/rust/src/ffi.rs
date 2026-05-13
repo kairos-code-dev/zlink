@@ -66,16 +66,20 @@ pub struct zlink_actor_join_info_t {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum zlink_actor_create_status_t {
-    ZLINK_ACTOR_CREATE_CREATED = 1,
-    ZLINK_ACTOR_CREATE_EXISTING = 2,
+pub struct zlink_actor_join_result_t {
+    pub result: zlink_request_result_t,
+    pub actor: zlink_actor_ref_t,
+    pub joined_spot_rid: zlink_routing_id_t,
+    pub join_epoch: u64,
+    pub flags: u32,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct zlink_actor_create_result_t {
-    pub status: zlink_actor_create_status_t,
+pub struct zlink_actor_lookup_result_t {
+    pub result: zlink_request_result_t,
     pub actor: zlink_actor_ref_t,
+    pub flags: u32,
 }
 
 #[repr(C)]
@@ -84,13 +88,6 @@ pub struct zlink_actor_route_t {
     pub actor: zlink_actor_ref_t,
     pub joined: u32,
     pub joined_spot_rid: zlink_routing_id_t,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum zlink_actor_admission_result_t {
-    ZLINK_ACTOR_ADMISSION_ACCEPT = 1,
-    ZLINK_ACTOR_ADMISSION_REJECT = 2,
 }
 
 pub type zlink_free_fn = unsafe extern "C" fn(data: *mut c_void, hint: *mut c_void);
@@ -152,6 +149,8 @@ pub enum zlink_send_result_t {
     ZLINK_SEND_RESULT_BACKPRESSURED = 1,
     ZLINK_SEND_RESULT_NOT_READY = 2,
 }
+
+pub type zlink_submit_result_t = c_int;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -522,14 +521,6 @@ pub type zlink_stream_packet_handler_fn = unsafe extern "C" fn(
     userdata: *mut c_void,
 );
 
-pub type zlink_actor_admission_handler_fn = unsafe extern "C" fn(
-    node: *mut c_void,
-    actor_id: *const c_char,
-    parts: *const zlink_msg_t,
-    part_count: usize,
-    userdata: *mut c_void,
-) -> zlink_actor_admission_result_t;
-
 pub type zlink_subscribe_handler_fn = unsafe extern "C" fn(
     source_rid: *const zlink_routing_id_t,
     topic: *const c_char,
@@ -546,6 +537,18 @@ pub type zlink_reply_handler_fn = unsafe extern "C" fn(
     result: zlink_request_result_t,
     parts: *mut zlink_msg_t,
     part_count: usize,
+    userdata: *mut c_void,
+);
+
+pub type zlink_actor_join_handler_fn = unsafe extern "C" fn(
+    result: *const zlink_actor_join_result_t,
+    parts: *mut zlink_msg_t,
+    part_count: usize,
+    userdata: *mut c_void,
+);
+
+pub type zlink_actor_lookup_handler_fn = unsafe extern "C" fn(
+    result: *const zlink_actor_lookup_result_t,
     userdata: *mut c_void,
 );
 
@@ -936,27 +939,34 @@ unsafe extern "C" {
         userdata: *mut c_void,
     ) -> c_int;
     pub fn zlink_stream_bind_actor(
-        node: *mut c_void,
         stream: *mut c_void,
         session_rid: *const zlink_routing_id_t,
         actor: *const zlink_actor_ref_t,
+        handler: zlink_reply_handler_fn,
+        userdata: *mut c_void,
         timeout_ms: u32,
-    ) -> zlink_request_result_t;
+    ) -> zlink_submit_result_t;
     pub fn zlink_stream_unbind_actor(
-        node: *mut c_void,
         stream: *mut c_void,
         session_rid: *const zlink_routing_id_t,
         actor_id: *const c_char,
+        handler: zlink_reply_handler_fn,
+        userdata: *mut c_void,
         timeout_ms: u32,
-    ) -> zlink_request_result_t;
+    ) -> zlink_submit_result_t;
     pub fn zlink_stream_send_bound_actor_part(
-        node: *mut c_void,
         stream: *mut c_void,
         session_rid: *const zlink_routing_id_t,
         actor_id: *const c_char,
         part: *mut zlink_msg_t,
         flags: zlink_send_flags_t,
         part_flag: zlink_part_flag_t,
+    ) -> c_int;
+    pub fn zlink_stream_bound_actors(
+        stream: *mut c_void,
+        session_rid: *const zlink_routing_id_t,
+        entries: *mut zlink_actor_ref_t,
+        count: *mut usize,
     ) -> c_int;
     pub fn zlink_subscribe_handler(
         socket: *mut c_void,
@@ -1282,29 +1292,20 @@ unsafe extern "C" {
         out: *mut zlink_actor_ref_t,
     ) -> c_int;
     pub fn zlink_remote_actor_get_ref(
-        target_node_rid: *const zlink_routing_id_t,
-        actor_id: *const c_char,
-        out: *mut zlink_actor_ref_t,
-    ) -> c_int;
-    pub fn zlink_spot_node_create_remote_actor(
         node: *mut c_void,
         target_node_rid: *const zlink_routing_id_t,
         actor_id: *const c_char,
-        parts: *mut zlink_msg_t,
-        part_count: usize,
-        out: *mut zlink_actor_create_result_t,
+        handler: zlink_actor_lookup_handler_fn,
+        userdata: *mut c_void,
         timeout_ms: u32,
-    ) -> zlink_request_result_t;
+    ) -> zlink_submit_result_t;
     pub fn zlink_spot_node_actor_destroy(
         node: *mut c_void,
         actor: *const zlink_actor_ref_t,
-        timeout_ms: u32,
-    ) -> zlink_request_result_t;
-    pub fn zlink_spot_node_actor_admission_handler(
-        node: *mut c_void,
-        handler: zlink_actor_admission_handler_fn,
+        handler: zlink_reply_handler_fn,
         userdata: *mut c_void,
-    ) -> c_int;
+        timeout_ms: u32,
+    ) -> zlink_submit_result_t;
     pub fn zlink_spot_node_actor_join_spot(
         node: *mut c_void,
         actor: *const zlink_actor_ref_t,
@@ -1312,7 +1313,7 @@ unsafe extern "C" {
         dest_spot_rid: *const zlink_routing_id_t,
         parts: *mut zlink_msg_t,
         part_count: usize,
-        handler: Option<zlink_reply_handler_fn>,
+        handler: Option<zlink_actor_join_handler_fn>,
         userdata: *mut c_void,
         flags: zlink_send_flags_t,
         timeout_ms: u32,
@@ -1335,8 +1336,10 @@ unsafe extern "C" {
         node: *mut c_void,
         actor: *const zlink_actor_ref_t,
         dest_spot_rid: *const zlink_routing_id_t,
+        handler: zlink_reply_handler_fn,
+        userdata: *mut c_void,
         timeout_ms: u32,
-    ) -> zlink_request_result_t;
+    ) -> zlink_submit_result_t;
     pub fn zlink_spot_node_actor_recv_part(
         node: *mut c_void,
         actor: *const zlink_actor_ref_t,

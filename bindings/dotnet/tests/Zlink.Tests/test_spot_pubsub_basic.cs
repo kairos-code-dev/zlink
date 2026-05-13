@@ -133,7 +133,7 @@ public sealed class test_spot_pubsub_basic
             () =>
             {
                 using var message = Message.FromString(payload);
-                ingress.Publish(topic, message);
+                ingress.Publish(topic).Message(message).Submit();
 
                 try
                 {

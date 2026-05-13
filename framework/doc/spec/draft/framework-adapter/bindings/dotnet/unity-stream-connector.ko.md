@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Stream Connector For .NET](streaming-client.ko.md) | [다음: ZLink Framework .NET STREAM Decisions](stream-open-items.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [Stream Connector](./streaming-client.ko.md) | [공통 Stream Connector](../../../streaming-client.ko.md)

@@ -1015,19 +1015,11 @@ type directSocket struct {
 	*connectionSocket
 }
 
-func (s *directSocket) Send(flags SendFlags, parts ...*Message) (bool, error) {
+func (s *directSocket) submit(flags SendFlags, parts ...*Message) (bool, error) {
 	err := submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 		return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
 	})
 	return submitBackpressureResult(err)
-}
-
-func (s *directSocket) TrySend(parts ...*Message) (bool, error) {
-	return s.Send(SendFlagsDontWait, parts...)
-}
-
-func (s *directSocket) TryRecv(out *Received) (bool, error) {
-	return s.Recv(out, RecvFlagsDontWait)
 }
 
 // Recv is the canonical caller-provided storage recv. Pass a long-lived
@@ -1083,7 +1075,7 @@ type publishSocket struct {
 	*connectionSocket
 }
 
-func (s *publishSocket) Publish(topic string, flags SendFlags, parts ...*Message) (bool, error) {
+func (s *publishSocket) submitPublish(topic string, flags SendFlags, parts ...*Message) (bool, error) {
 	err := s.withCString(topic, func(cstr *C.char) error {
 		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_publish_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
@@ -1096,7 +1088,7 @@ type routedSocket struct {
 	*connectionSocket
 }
 
-func (s *routedSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) (bool, error) {
+func (s *routedSocket) submitTo(target RoutingID, flags SendFlags, parts ...*Message) (bool, error) {
 	rid := target.toC()
 	err := submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 		return submitErrorFromResult(C.zlink_send_part_rid(s.raw(), &rid, part, C.zlink_send_flags_t(flags), partFlag))
@@ -1104,11 +1096,7 @@ func (s *routedSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Messa
 	return submitBackpressureResult(err)
 }
 
-func (s *routedSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, error) {
-	return s.SendTo(target, SendFlagsDontWait, parts...)
-}
-
-func (s *routedSocket) SendToSpot(destNodeRid, destSpotRid RoutingID, flags SendFlags, parts ...*Message) (bool, error) {
+func (s *routedSocket) submitToSpot(destNodeRid, destSpotRid RoutingID, flags SendFlags, parts ...*Message) (bool, error) {
 	node := destNodeRid.toC()
 	spot := destSpotRid.toC()
 	err := submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
@@ -1133,12 +1121,8 @@ func (s *routedSocket) requestToSpot(destNodeRid, destSpotRid RoutingID, callbac
 	return true, nil
 }
 
-func (s *routedSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) (bool, error) {
+func (s *routedSocket) requestToSpotCallback(destNodeRid, destSpotRid RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) (bool, error) {
 	return s.requestToSpot(destNodeRid, destSpotRid, callback, flags, timeout, parts...)
-}
-
-func (s *routedSocket) TryRequestToSpot(destNodeRid, destSpotRid RoutingID, callback RequestReplyCallback, timeout time.Duration, parts ...*Message) (bool, error) {
-	return s.RequestToSpot(destNodeRid, destSpotRid, callback, SendFlagsDontWait, timeout, parts...)
 }
 
 func (s *routedSocket) reply(rid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {
@@ -1151,7 +1135,7 @@ func (s *routedSocket) reply(rid RoutingID, requestSeq uint64, flags SendFlags, 
 	})
 }
 
-func (s *routedSocket) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) (bool, error) {
+func (s *routedSocket) replyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) (bool, error) {
 	if err := validateReplyFlags(flags); err != nil {
 		return false, err
 	}
@@ -1217,14 +1201,21 @@ func (s *routedSocket) directRecv(flags RecvFlags) (*Received, error) {
 		if received.spotRID.Size() == 0 {
 			received.reply = receivedReplyToRouter(s.reply, received.routingID, received.requestSeq)
 		} else {
-			received.reply = receivedReplyToSpotPeer(s, received.routingID, received.spotRID, received.requestSeq)
+			received.reply = func(flags SendFlags, parts []*Message) error {
+				_, err := s.replyToSpot(received.routingID, received.spotRID,
+					received.requestSeq, flags, parts...)
+				return err
+			}
 		}
 	}
 	if received.routingID.Size() > 0 {
 		if received.spotRID.Size() == 0 {
-			received.send = receivedSendToRouter(s.SendTo, received.routingID)
+			received.send = receivedSendToRouter(s.submitTo, received.routingID)
 		} else {
-			received.send = receivedSendToSpotPeer(s, received.routingID, received.spotRID)
+			received.send = func(flags SendFlags, parts []*Message) (bool, error) {
+				return s.submitToSpot(received.routingID, received.spotRID,
+					flags, parts...)
+			}
 		}
 	}
 	return received, nil
@@ -1371,6 +1362,14 @@ func (s *PairSocket) OnSendReady(handler func()) error {
 	return s.connectionSocket.setSendReady(handler)
 }
 
+func (s *PairSocket) Send() SendOp {
+	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
+		})
+	})
+}
+
 type PubSocket struct {
 	*publishSocket
 }
@@ -1450,6 +1449,16 @@ func (s *PubSocket) RejectSubscribe(routingID RoutingID) error {
 
 func (s *PubSocket) PubOptions() *PubSocketOptions {
 	return &PubSocketOptions{socket: s.connectionSocket}
+}
+
+func (s *PubSocket) Publish(topic string) SendOp {
+	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		return s.withCString(topic, func(cstr *C.char) error {
+			return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+				return submitErrorFromResult(C.zlink_publish_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
+			})
+		})
+	})
 }
 
 func (s *PubSocket) OnSendReady(handler func()) error {
@@ -1565,28 +1574,26 @@ func (s *DealerSocket) OnSendReady(handler func()) error {
 	return s.connectionSocket.setSendReady(handler)
 }
 
-func (s *DealerSocket) Request(parts [][]byte, timeout time.Duration) ([]*Message, error) {
-	msgs, err := bytePartsToMessages(parts)
-	if err != nil {
-		return nil, err
-	}
-	return (&dealerRequestSupport{socket: s}).Request(timeout, msgs...)
+func (s *DealerSocket) Send() SendOp {
+	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
+		})
+	})
 }
 
-func (s *DealerSocket) RequestCallback(parts [][]byte, cb func(RequestResult, []*Message), flags SendFlags, timeout time.Duration) (bool, error) {
-	msgs, err := bytePartsToMessages(parts)
-	if err != nil {
-		return false, err
-	}
-	return (&dealerRequestSupport{socket: s}).TryRequestCallback(RequestReplyCallback(cb), timeout, msgs...)
-}
-
-func (s *DealerSocket) TryRequestCallback(parts [][]byte, callback RequestReplyCallback, timeout time.Duration) (bool, error) {
-	msgs, err := bytePartsToMessages(parts)
-	if err != nil {
-		return false, err
-	}
-	return (&dealerRequestSupport{socket: s}).TryRequestCallback(callback, timeout, msgs...)
+func (s *DealerSocket) Request() RequestOp {
+	return newRequestBuilder(nil, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+		if callback == nil {
+			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		resultCh, err := (&dealerRequestSupport{socket: s}).startRequest(flags, timeout, parts...)
+		if err != nil {
+			return err
+		}
+		dispatchRequestCallback(resultCh, callback)
+		return nil
+	})
 }
 
 type RouterSocket struct {
@@ -1684,32 +1691,65 @@ func (s *RouterSocket) OnSendReady(handler func()) error {
 	return s.connectionSocket.setSendReady(handler)
 }
 
-func (s *RouterSocket) Request(peerRid RoutingID, parts [][]byte, timeout time.Duration) ([]*Message, error) {
-	msgs, err := bytePartsToMessages(parts)
-	if err != nil {
-		return nil, err
-	}
-	return (&routerRequestSupport{socket: s}).Request(peerRid, timeout, msgs...)
+func (s *RouterSocket) SendTo(target RoutingID) SendOp {
+	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		rid := target.toC()
+		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_send_part_rid(s.raw(), &rid, part, C.zlink_send_flags_t(flags), partFlag))
+		})
+	})
 }
 
-func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte, cb func(RequestResult, []*Message), flags SendFlags, timeout time.Duration) (bool, error) {
-	msgs, err := bytePartsToMessages(parts)
-	if err != nil {
-		return false, err
-	}
-	return (&routerRequestSupport{socket: s}).TryRequestCallback(peerRid, RequestReplyCallback(cb), timeout, msgs...)
+func (s *RouterSocket) Request(peerRid RoutingID) RequestOp {
+	return newRequestBuilder(nil, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+		if callback == nil {
+			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		resultCh, err := (&routerRequestSupport{socket: s}).startRequest(peerRid, flags, timeout, parts...)
+		if err != nil {
+			return err
+		}
+		dispatchRequestCallback(resultCh, callback)
+		return nil
+	})
 }
 
-func (s *RouterSocket) TryRequestCallback(peerRid RoutingID, parts [][]byte, callback RequestReplyCallback, timeout time.Duration) (bool, error) {
-	msgs, err := bytePartsToMessages(parts)
-	if err != nil {
-		return false, err
-	}
-	return (&routerRequestSupport{socket: s}).TryRequestCallback(peerRid, callback, timeout, msgs...)
+func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64) ReplyOp {
+	return newReplyBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		_, err := (&routerRequestSupport{socket: s}).Reply(rid, requestSeq, flags, parts...)
+		return err
+	})
 }
 
-func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) (bool, error) {
-	return (&routerRequestSupport{socket: s}).Reply(rid, requestSeq, flags, parts...)
+func (s *RouterSocket) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp {
+	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		node := destNodeRid.toC()
+		spot := destSpotRid.toC()
+		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_router_send_spot_part_go_local(s.raw(), &node, &spot, part, C.zlink_send_flags_t(flags), partFlag))
+		})
+	})
+}
+
+func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
+	return newRequestBuilder(nil, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+		if callback == nil {
+			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		resultCh, err := s.routedSocket.startSpotRequest(destNodeRid, destSpotRid, flags, timeout, parts...)
+		if err != nil {
+			return err
+		}
+		dispatchRequestCallback(resultCh, callback)
+		return nil
+	})
+}
+
+func (s *RouterSocket) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64) ReplyOp {
+	return newReplyBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		_, err := s.routedSocket.replyToSpot(destNodeRid, destSpotRid, requestSeq, flags, parts...)
+		return err
+	})
 }
 
 type XPubSocket struct {
@@ -1789,6 +1829,16 @@ func (s *XPubSocket) RejectSubscribe(routingID RoutingID) error {
 
 func (s *XPubSocket) PubOptions() *PubSocketOptions {
 	return &PubSocketOptions{socket: s.connectionSocket}
+}
+
+func (s *XPubSocket) Publish(topic string) SendOp {
+	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		return s.withCString(topic, func(cstr *C.char) error {
+			return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+				return submitErrorFromResult(C.zlink_publish_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
+			})
+		})
+	})
 }
 
 func (s *XPubSocket) OnSendReady(handler func()) error {
@@ -1915,12 +1965,13 @@ func (s *StreamSocket) RoutingID() (RoutingID, error) {
 	return getHandleRoutingID(s.raw())
 }
 
-func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) (bool, error) {
-	return s.core.SendTo(target, flags, parts...)
-}
-
-func (s *StreamSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, error) {
-	return s.SendTo(target, SendFlagsDontWait, parts...)
+func (s *StreamSocket) SendTo(target RoutingID) SendOp {
+	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+		rid := target.toC()
+		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_send_part_rid(s.raw(), &rid, part, C.zlink_send_flags_t(flags), partFlag))
+		})
+	})
 }
 
 // Recv is the canonical caller-provided storage recv. See
@@ -1931,7 +1982,7 @@ func (s *StreamSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 		return ok, err
 	}
 	if out.routingID.Size() > 0 {
-		out.send = receivedSendToRouter(s.SendTo, out.routingID)
+		out.send = receivedSendToRouter(s.core.submitTo, out.routingID)
 	}
 	return true, nil
 }

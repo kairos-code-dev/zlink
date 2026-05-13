@@ -42,7 +42,7 @@ internal sealed class SessionActorDispatchPlayerClient(
         return connector
             .Request(new AuthenticateReq(actorId))
             .WithTimeout(SampleTimings.RequestTimeout)
-            .Async<AuthenticateRes>(cancellationToken);
+            .Submit<AuthenticateRes>(cancellationToken);
     }
 
     public ValueTask<JoinMatchRes> JoinAsync(
@@ -52,7 +52,7 @@ internal sealed class SessionActorDispatchPlayerClient(
         return connector
             .Request(new JoinMatchReq(matchId))
             .WithTimeout(SampleTimings.RequestTimeout)
-            .Async<JoinMatchRes>(cancellationToken);
+            .Submit<JoinMatchRes>(cancellationToken);
     }
 
     public ValueTask<CreateMatchRes> CreateMatchAsync(CancellationToken cancellationToken)
@@ -60,7 +60,7 @@ internal sealed class SessionActorDispatchPlayerClient(
         return connector
             .Request(new CreateMatchReq())
             .WithTimeout(SampleTimings.RequestTimeout)
-            .Async<CreateMatchRes>(cancellationToken);
+            .Submit<CreateMatchRes>(cancellationToken);
     }
 
     public ValueTask<PlaceMarkRes> PlaceMarkAsync(
@@ -71,7 +71,7 @@ internal sealed class SessionActorDispatchPlayerClient(
         return connector
             .Request(new PlaceMarkReq(matchId, cell))
             .WithTimeout(SampleTimings.RequestTimeout)
-            .Async<PlaceMarkRes>(cancellationToken);
+            .Submit<PlaceMarkRes>(cancellationToken);
     }
 
     public ValueTask DisposeAsync()

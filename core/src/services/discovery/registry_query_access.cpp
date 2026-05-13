@@ -6,14 +6,14 @@
 
 #include <new>
 #include <string.h>
+#include <vector>
 
 #include "core/ctx.hpp"
-#include "core/recv_internal.hpp"
 #include "services/common/service_public_api.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/discovery_registry_rpc.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/err.hpp"
-#include "utils/random.hpp"
 
 namespace
 {
@@ -38,41 +38,12 @@ struct registry_query_client_t
 
     int connect_locked (const char *endpoint_)
     {
-        if (!endpoint_ || !*endpoint_) {
-            errno = EINVAL;
-            return -1;
-        }
         if (dealer) {
             dealer->close ();
             dealer = NULL;
         }
-        dealer = ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
-        if (!dealer)
-            return -1;
-        unsigned char rid[5];
-        rid[0] = 0;
-        uint32_t rid_word = zlink::generate_random ();
-        if (rid_word == 0)
-            rid_word = 1;
-        memcpy (rid + 1, &rid_word, sizeof (rid_word));
-        dealer->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, rid, sizeof (rid));
-        const int linger = 0;
-        const int sndtimeo_ms = 1000;
-        const int rcvtimeo_ms = 1000;
-        dealer->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
-        dealer->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo_ms,
-                            sizeof (sndtimeo_ms));
-        dealer->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &rcvtimeo_ms,
-                            sizeof (rcvtimeo_ms));
-        if (dealer->connect (endpoint_) != 0)
-            return -1;
-        if (zlink::wait_socket_events_internal (
-              static_cast<void *> (dealer), ZLINK_POLLOUT, 1000)
-            <= 0) {
-            errno = EAGAIN;
-            return -1;
-        }
-        return 0;
+        return zlink::discovery_registry_rpc::prepare_query_dealer (
+          ctx, endpoint_, &dealer);
     }
 
     int destroy_locked ()
@@ -102,100 +73,39 @@ static registry_query_client_t *as_registry_query_client (void *client_)
     return client;
 }
 
-static int recv_registry_reply_frames (void *socket_,
-                                       uint16_t expected_msg_id_,
-                                       void *entries_,
-                                       size_t entry_size_,
+static int recv_topology_reply_frames (zlink::socket_base_t *socket_,
+                                       zlink_registry_topology_entry_t *entries_,
                                        size_t *count_)
 {
-    if (!count_) {
+    if (!socket_ || !count_) {
         errno = EINVAL;
         return -1;
     }
 
-    zlink_msg_t frame;
-    zlink_msg_init (&frame);
-#define RECV_TOPOLOGY_FRAME_OR_RETURN()                                          \
-    do {                                                                         \
-        if (zlink::wait_socket_events_internal (socket_, ZLINK_POLLIN, 1000)     \
-            <= 0) {                                                              \
-            errno = EAGAIN;                                                      \
-            return -1;                                                           \
-        }                                                                        \
-        if (zlink::recv_msg_internal (socket_, &frame, 0) < 0) {                 \
-            zlink_msg_close (&frame);                                            \
-            return -1;                                                           \
-        }                                                                        \
-    } while (false)
-    RECV_TOPOLOGY_FRAME_OR_RETURN();
-    uint16_t msg_id = 0;
-    const bool ok_msg =
-      zlink::discovery_protocol::read_u16 (frame, &msg_id)
-      && msg_id == expected_msg_id_;
-    zlink_msg_close (&frame);
-    if (!ok_msg) {
-        errno = EPROTO;
+    std::vector<zlink_registry_topology_entry_t> decoded;
+    if (zlink::discovery_registry_rpc::recv_topology_reply_entries (
+          socket_, &decoded)
+        != 0)
         return -1;
-    }
 
-    zlink_msg_init (&frame);
-    RECV_TOPOLOGY_FRAME_OR_RETURN();
-    uint32_t remote_count = 0;
-    const bool ok_count =
-      zlink::discovery_protocol::read_u32 (frame, &remote_count);
-    zlink_msg_close (&frame);
-    if (!ok_count) {
-        errno = EPROTO;
-        return -1;
-    }
+    const size_t remote_count = decoded.size ();
 
     if (!entries_) {
         *count_ = remote_count;
-        for (uint32_t i = 0; i < remote_count; ++i) {
-            zlink_msg_init (&frame);
-            RECV_TOPOLOGY_FRAME_OR_RETURN();
-            zlink_msg_close (&frame);
-        }
         return 0;
     }
 
     if (*count_ < remote_count) {
-        for (uint32_t i = 0; i < remote_count; ++i) {
-            zlink_msg_init (&frame);
-            RECV_TOPOLOGY_FRAME_OR_RETURN();
-            zlink_msg_close (&frame);
-        }
         *count_ = remote_count;
         errno = ENOBUFS;
         return -1;
     }
 
-    for (uint32_t i = 0; i < remote_count; ++i) {
-        zlink_msg_init (&frame);
-        RECV_TOPOLOGY_FRAME_OR_RETURN();
-        if (zlink_msg_size (&frame) != entry_size_) {
-            zlink_msg_close (&frame);
-            errno = EPROTO;
-            return -1;
-        }
-        memcpy (static_cast<char *> (entries_) + (i * entry_size_),
-                zlink_msg_data (&frame), entry_size_);
-        zlink_msg_close (&frame);
-    }
-#undef RECV_TOPOLOGY_FRAME_OR_RETURN
+    for (size_t i = 0; i < remote_count; ++i)
+        entries_[i] = decoded[i];
 
     *count_ = remote_count;
     return 0;
-}
-
-static int recv_topology_reply_frames (
-  void *socket_,
-  zlink_registry_topology_entry_t *entries_,
-  size_t *count_)
-{
-    return recv_registry_reply_frames (
-      socket_, zlink::discovery_protocol::msg_topology_reply, entries_,
-      sizeof (zlink_registry_topology_entry_t), count_);
 }
 }
 
@@ -263,8 +173,7 @@ int registry_query_access_t::topology_query (
         < 0)
         return -1;
 
-    return recv_topology_reply_frames (static_cast<void *> (client->dealer),
-                                       entries_, count_);
+    return recv_topology_reply_frames (client->dealer, entries_, count_);
 }
 
 int registry_query_access_t::destroy (void **client_p_)

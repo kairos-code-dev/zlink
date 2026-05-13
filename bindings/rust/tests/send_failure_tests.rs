@@ -20,7 +20,7 @@ fn blocking_send_failure_surfaces_error() {
 
     let rid = RoutingId::from_bytes(b"nonexistent-peer");
     let msg = Message::copy_from(b"will-fail").unwrap();
-    let result = router.send(&rid, msg);
+    let result = router.send(&rid).message(msg).submit();
 
     // Must be an error, not silently swallowed
     assert!(
@@ -44,7 +44,7 @@ fn blocking_publish_failure_surfaces_error() {
     // Fill the HWM
     for _ in 0..10 {
         let msg = Message::copy_from(b"fill").unwrap();
-        let _ = pub_sock.publish("topic", msg);
+        let _ = pub_sock.publish("topic").message(msg).submit();
     }
     // This tests that publish doesn't silently drop
     // (behavior depends on nodrop setting and HWM)
@@ -58,7 +58,7 @@ fn try_send_returns_not_ready_or_backpressured() {
     // No peer connected
 
     let msg = Message::copy_from(b"data").unwrap();
-    let _ = sock.send_with_flags(msg, SendFlags::DONT_WAIT);
+    let _ = sock.send().message(msg).flags(SendFlags::DONT_WAIT).submit();
 }
 
 #[test]
@@ -75,7 +75,7 @@ fn try_send_backpressure() {
     // Fill the HWM
     for _ in 0..100 {
         let msg = Message::copy_from(b"fill-buffer").unwrap();
-        if a.send_with_flags(msg, SendFlags::DONT_WAIT).is_err() {
+        if a.send().message(msg).flags(SendFlags::DONT_WAIT).submit().is_err() {
             break;
         }
     }
@@ -89,7 +89,11 @@ fn try_publish_returns_explicit_outcome() {
     pub_sock.bind("inproc://sf-try-pub-out").unwrap();
 
     let msg = Message::copy_from(b"data").unwrap();
-    let _ = pub_sock.publish_with_flags("topic", msg, SendFlags::DONT_WAIT);
+    let _ = pub_sock
+        .publish("topic")
+        .message(msg)
+        .flags(SendFlags::DONT_WAIT)
+        .submit();
 }
 
 #[test]
@@ -101,7 +105,7 @@ fn try_send_not_ready() {
     // No peer connected – socket is not ready to send
 
     let msg = Message::copy_from(b"no-peer").unwrap();
-    let _ = sock.send_with_flags(msg, SendFlags::DONT_WAIT);
+    let _ = sock.send().message(msg).flags(SendFlags::DONT_WAIT).submit();
 }
 
 #[test]
@@ -122,7 +126,10 @@ fn try_publish_backpressure_or_not_ready() {
     for _ in 0..100 {
         let msg = Message::copy_from(b"fill-pub-hwm").unwrap();
         if pub_sock
-            .publish_with_flags("t", msg, SendFlags::DONT_WAIT)
+            .publish("t")
+            .message(msg)
+            .flags(SendFlags::DONT_WAIT)
+            .submit()
             .is_err()
         {
             saw_non_sent = true;
@@ -145,7 +152,7 @@ fn try_send_non_eagain_error_not_swallowed() {
     ctx.shutdown().unwrap();
 
     let msg = Message::copy_from(b"after-shutdown").unwrap();
-    let result = sock.send_with_flags(msg, SendFlags::DONT_WAIT);
+    let result = sock.send().message(msg).flags(SendFlags::DONT_WAIT).submit();
     // ETERM is not EAGAIN – must be Err
     assert!(result.is_err(), "non-EAGAIN error must surface as Err");
 }

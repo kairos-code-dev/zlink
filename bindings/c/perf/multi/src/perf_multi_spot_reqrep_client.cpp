@@ -808,7 +808,7 @@ send_result_t send_request(spot_reqrep_client_slot_t *slot,
     slot->waiting_reply.store(true, std::memory_order_release);
     slot->last_sent_ts_ns.store(sent_ts_ns, std::memory_order_release);
 
-    const zlink_submit_result_t rc = zlink_spot_request_spot(
+    const zlink_submit_result_t rc = perf_zlink_spot_request_spot_parts(
       slot->socket,
       server_node_rid,
       server_spot_rid,

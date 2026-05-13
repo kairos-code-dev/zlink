@@ -6,5 +6,5 @@ public interface IZLinkSessionRequestCall
 
     IZLinkSessionRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }

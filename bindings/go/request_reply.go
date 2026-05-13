@@ -39,9 +39,10 @@ type requestResult struct {
 }
 
 type replyCallbackState struct {
-	result chan requestResult
-	done   chan struct{}
-	once   sync.Once
+	result   chan requestResult
+	done     chan struct{}
+	once     sync.Once
+	metadata any
 }
 
 type dealerRequestSupport struct {
@@ -84,15 +85,6 @@ func (r *dealerRequestSupport) requestCallback(callback RequestReplyCallback, fl
 	}
 	dispatchRequestCallback(resultCh, callback)
 	return true, nil
-}
-
-func (r *dealerRequestSupport) RequestCallback(callback RequestReplyCallback, timeout time.Duration, parts ...*Message) error {
-	_, err := r.requestCallback(callback, SendFlagsNone, timeout, parts...)
-	return err
-}
-
-func (r *dealerRequestSupport) TryRequestCallback(callback RequestReplyCallback, timeout time.Duration, parts ...*Message) (bool, error) {
-	return r.requestCallback(callback, SendFlagsDontWait, timeout, parts...)
 }
 
 func (r *dealerRequestSupport) Recv(out *Received, flags RecvFlags) (bool, error) {
@@ -173,15 +165,6 @@ func (r *routerRequestSupport) requestCallback(routingID RoutingID, callback Req
 	}
 	dispatchRequestCallback(resultCh, callback)
 	return true, nil
-}
-
-func (r *routerRequestSupport) RequestCallback(routingID RoutingID, callback RequestReplyCallback, timeout time.Duration, parts ...*Message) error {
-	_, err := r.requestCallback(routingID, callback, SendFlagsNone, timeout, parts...)
-	return err
-}
-
-func (r *routerRequestSupport) TryRequestCallback(routingID RoutingID, callback RequestReplyCallback, timeout time.Duration, parts ...*Message) (bool, error) {
-	return r.requestCallback(routingID, callback, SendFlagsDontWait, timeout, parts...)
 }
 
 func (r *routerRequestSupport) Reply(routingID RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) (bool, error) {

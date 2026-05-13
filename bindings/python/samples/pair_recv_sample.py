@@ -14,7 +14,7 @@ def main():
                         client.connect(endpoint)
                         wait_connected(server_monitor, client_monitor)
 
-                client.send(b"hello-pair")
+                client.send().message(b"hello-pair").submit()
                 with server.recv() as received:
                     payload = received.to_bytes_list()
                     if payload != [b"hello-pair"]:

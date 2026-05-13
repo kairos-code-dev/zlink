@@ -61,7 +61,8 @@ internal static class PerfMultiSpotReqRep
                     bool isStop = StopToken.IsStopToken(body);
 
                     using Message reply = receivedBuffer.FirstPart().Move();
-                    responder.Reply(routingId, requestSeq, reply);
+                    responder.Reply(routingId, requestSeq)
+                        .Message(reply).Submit();
 
                     if (isStop)
                     {

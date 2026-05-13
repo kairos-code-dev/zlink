@@ -32,7 +32,8 @@ Task serverTask = Task.Run(() =>
         string requestPayload = received.Parts[0].GetString();
         SampleSupport.EnsureEqual("ping", requestPayload, "request");
         using var reply = Message.FromString("pong");
-        routerSocket.Reply(routingId, received.RequestSeq ?? 0UL, reply);
+        routerSocket.Reply(routingId, received.RequestSeq ?? 0UL)
+            .Message(reply).Submit();
     }
     finally
     {
@@ -41,8 +42,10 @@ Task serverTask = Task.Run(() =>
 });
 
 using var sent = Message.FromString("ping");
-IReadOnlyList<Message> replyReceived = await dealerSocket.Request(sent,
-    TimeSpan.FromSeconds(2));
+IReadOnlyList<Message> replyReceived = await dealerSocket.Request()
+    .Message(sent)
+    .Timeout(TimeSpan.FromSeconds(2))
+    .SubmitAsync();
 using Message replyPart = replyReceived[0];
 SampleSupport.EnsureEqual("pong", replyPart.GetString(), "reply");
 for (int i = 1; i < replyReceived.Count; i++)

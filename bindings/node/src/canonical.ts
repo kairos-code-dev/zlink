@@ -135,18 +135,6 @@ export const SpotDispatchSubjectKind = Object.freeze({
 } as const);
 export type SpotDispatchSubjectKind = typeof SpotDispatchSubjectKind[keyof typeof SpotDispatchSubjectKind];
 
-export const ActorCreateStatus = Object.freeze({
-  Created: 1,
-  Existing: 2
-} as const);
-export type ActorCreateStatus = typeof ActorCreateStatus[keyof typeof ActorCreateStatus];
-
-export const ActorAdmissionResult = Object.freeze({
-  Accept: 1,
-  Reject: 2
-} as const);
-export type ActorAdmissionResult = typeof ActorAdmissionResult[keyof typeof ActorAdmissionResult];
-
 export const MonitorEventType = Object.freeze({
   Connected: 0x0001,
   ConnectDelayed: 0x0002,
@@ -449,10 +437,6 @@ export interface ActorRef {
   readonly actorId: string;
   readonly generation: bigint;
 }
-export interface ActorCreateResult {
-  readonly status: ActorCreateStatus;
-  readonly actor: ActorRef;
-}
 export interface ActorRoute {
   readonly actor: ActorRef;
   readonly joined: boolean;
@@ -483,6 +467,30 @@ export interface ActorJoinRequest {
   readonly info: ActorJoinInfo;
   readonly message: Message;
 }
+export interface ActorJoinResult {
+  readonly result: RequestResult;
+  readonly actor: ActorRef;
+  readonly joinedSpotRid: RoutingId;
+  readonly joinEpoch: bigint;
+  readonly flags: number;
+}
+export interface ActorLookupResult {
+  readonly result: RequestResult;
+  readonly actor: ActorRef;
+  readonly flags: number;
+}
+export interface SpotActorLifecycleInfo {
+  readonly previousActor: ActorRef;
+  readonly currentActor: ActorRef;
+  readonly previousSpotRid: RoutingId | null;
+  readonly currentSpotRid: RoutingId | null;
+  readonly joinEpoch: bigint;
+  readonly flags: number;
+}
+export type ActorJoinHandler = (result: ActorJoinResult, parts: Message[]) => void;
+export type ActorLookupHandler = (result: ActorLookupResult) => void;
+export type ActorLifecycleHandler = (spot: Spot, info: SpotActorLifecycleInfo) => void;
+export type ReplyHandler = (result: RequestResult, parts: Message[]) => void;
 export interface SpotNodeSpotEntry {
   readonly spotRid: RoutingId;
   readonly dispatchHandlerAttached: boolean;
@@ -499,8 +507,6 @@ export interface SpotNodeActorEntry {
   readonly pendingMessageCount: number;
   readonly lastChangedMs: bigint;
 }
-export type ActorAdmissionHandler =
-  (actorId: string, message: Message) => ActorAdmissionResult;
 export interface SpotDispatchInfo {
   readonly event: SpotDispatchEvent;
   readonly subjectKind: SpotDispatchSubjectKind;
@@ -549,6 +555,60 @@ export interface ReplySubmitOp {
   message(message: MessageLike): ReplySubmitOp;
   flags(flags: SendFlags): ReplySubmitOp;
   submit(): void;
+}
+
+export interface ActorJoinOp {
+  message(message: MessageLike): ActorJoinSubmitOp;
+}
+
+export interface ActorJoinSubmitOp {
+  message(message: MessageLike): ActorJoinSubmitOp;
+  timeout(timeoutMs: number): ActorJoinSubmitOp;
+  flags(flags: SendFlags): ActorJoinCallbackSubmitOp;
+  submitAsync(): Promise<{ result: ActorJoinResult; parts: Message[] }>;
+  submit(callback: ActorJoinHandler): boolean;
+}
+
+export interface ActorJoinCallbackSubmitOp {
+  message(message: MessageLike): ActorJoinCallbackSubmitOp;
+  timeout(timeoutMs: number): ActorJoinCallbackSubmitOp;
+  flags(flags: SendFlags): ActorJoinCallbackSubmitOp;
+  submit(callback: ActorJoinHandler): boolean;
+}
+
+export interface ActorJoinReplyOp {
+  message(message: MessageLike): ActorJoinReplyOp;
+  submit(): void;
+}
+
+export interface ActorLeaveOp {
+  timeout(timeoutMs: number): ActorLeaveOp;
+  submitAsync(): Promise<Message[]>;
+  submit(callback: ReplyHandler): boolean;
+}
+
+export interface ActorDestroyOp {
+  timeout(timeoutMs: number): ActorDestroyOp;
+  submitAsync(): Promise<Message[]>;
+  submit(callback: ReplyHandler): boolean;
+}
+
+export interface ActorLookupOp {
+  timeout(timeoutMs: number): ActorLookupOp;
+  submitAsync(): Promise<ActorLookupResult>;
+  submit(callback: ActorLookupHandler): boolean;
+}
+
+export interface ActorBindOp {
+  timeout(timeoutMs: number): ActorBindOp;
+  submitAsync(): Promise<Message[]>;
+  submit(callback: ReplyHandler): boolean;
+}
+
+export interface ActorUnbindOp {
+  timeout(timeoutMs: number): ActorUnbindOp;
+  submitAsync(): Promise<Message[]>;
+  submit(callback: ReplyHandler): boolean;
 }
 
 function readErrno(): number {
@@ -627,12 +687,11 @@ function submitErrorFromResult(result: SubmitResult, message: string): SubmitErr
 }
 
 function remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef {
-  return actorRefFromRaw(
-    requireNative().remoteActorGetRef(
-      normalizeRoutingId(targetNodeRid, 'targetNodeRid'),
-      validateCString(actorId, 'actorId', 255)
-    ) as any
-  );
+  return {
+    nodeRid: RoutingId.fromBytes(normalizeRoutingId(targetNodeRid, 'targetNodeRid')),
+    actorId: validateCString(actorId, 'actorId', 255),
+    generation: 0n
+  };
 }
 
 function normalizeReplyFlags(flags: SendFlags = SendFlags.None): SendFlags {
@@ -1062,13 +1121,6 @@ function actorJoinInfoToRaw(info: ActorJoinInfo): Record<string, unknown> {
   };
 }
 
-function actorCreateResultFromRaw(raw: {
-  status: number;
-  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
-}): ActorCreateResult {
-  return { status: raw.status as ActorCreateStatus, actor: actorRefFromRaw(raw.actor) };
-}
-
 function actorRouteFromRaw(raw: {
   actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
   joined: boolean;
@@ -1079,6 +1131,265 @@ function actorRouteFromRaw(raw: {
     joined: Boolean(raw.joined),
     joinedSpotRid: wrapRoutingId(raw.joinedSpotRid)
   };
+}
+
+interface ActorJoinResultRaw {
+  result: number;
+  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  joinedSpotRid?: Buffer | null;
+  joinEpoch?: bigint | number;
+  flags: number;
+}
+
+interface ActorLookupResultRaw {
+  result: number;
+  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  flags: number;
+}
+
+interface SpotActorLifecycleInfoRaw {
+  previousActor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  currentActor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  previousSpotRid?: Buffer | null;
+  currentSpotRid?: Buffer | null;
+  joinEpoch?: bigint | number;
+  flags: number;
+}
+
+function actorJoinResultFromRaw(raw: ActorJoinResultRaw | null): ActorJoinResult {
+  if (!raw) {
+    return {
+      result: RequestResult.InternalError,
+      actor: { nodeRid: RoutingId.fromBytes(Buffer.alloc(1)), actorId: '', generation: 0n },
+      joinedSpotRid: RoutingId.fromBytes(Buffer.alloc(1)),
+      joinEpoch: 0n,
+      flags: 0,
+    };
+  }
+  return {
+    result: raw.result as RequestResult,
+    actor: actorRefFromRaw(raw.actor),
+    joinedSpotRid: (wrapRoutingId(raw.joinedSpotRid ?? null) as RoutingId) ?? RoutingId.fromBytes(Buffer.alloc(1)),
+    joinEpoch: BigInt(raw.joinEpoch ?? 0),
+    flags: raw.flags | 0,
+  };
+}
+
+function actorLookupResultFromRaw(raw: ActorLookupResultRaw): ActorLookupResult {
+  return {
+    result: raw.result as RequestResult,
+    actor: actorRefFromRaw(raw.actor),
+    flags: raw.flags | 0,
+  };
+}
+
+function spotActorLifecycleInfoFromRaw(raw: SpotActorLifecycleInfoRaw): SpotActorLifecycleInfo {
+  return {
+    previousActor: actorRefFromRaw(raw.previousActor),
+    currentActor: actorRefFromRaw(raw.currentActor),
+    previousSpotRid: wrapRoutingId(raw.previousSpotRid ?? null),
+    currentSpotRid: wrapRoutingId(raw.currentSpotRid ?? null),
+    joinEpoch: BigInt(raw.joinEpoch ?? 0),
+    flags: raw.flags | 0,
+  };
+}
+
+function invokeActorJoin(
+  nodeHandle: unknown,
+  actor: ActorRef,
+  destNodeRid: RoutingId,
+  destSpotRid: RoutingId,
+  spotHandle: unknown | null,
+  parts: readonly MessageLike[],
+  callback: ActorJoinHandler,
+  flags: SendFlags,
+  timeoutMs: number,
+): boolean {
+  const releaseProgress = spotHandle
+    ? startRequestProgress(spotHandle, (handle) => requireNative().spotRequestProgress(handle))
+    : null;
+  try {
+    requireNative().spotNodeActorJoinSpot(
+      nodeHandle,
+      actorRefToRaw(actor),
+      normalizeRoutingId(destNodeRid, 'destNodeRid'),
+      normalizeRoutingId(destSpotRid, 'destSpotRid'),
+      toMessageParts(parts),
+      (rawResult: ActorJoinResultRaw | null, replyParts: Buffer[] | null) => {
+        if (releaseProgress) releaseProgress();
+        callback(actorJoinResultFromRaw(rawResult), messagesFromNativeBuffers(replyParts));
+      },
+      flags | 0,
+      timeoutMs | 0,
+    );
+    return true;
+  } catch (error) {
+    if (releaseProgress) releaseProgress();
+    const submitError = submitNativeError(error, flags, 'actor join failed');
+    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+      return false;
+    }
+    throw submitError;
+  }
+}
+
+function invokeActorLeave(
+  nodeHandle: unknown,
+  actor: ActorRef,
+  currentSpotRid: RoutingId,
+  callback: ReplyHandler,
+  timeoutMs: number,
+): boolean {
+  try {
+    requireNative().spotNodeActorLeaveSpot(
+      nodeHandle,
+      actorRefToRaw(actor),
+      normalizeRoutingId(currentSpotRid, 'currentSpotRid'),
+      (result: number, replyParts: Buffer[] | null) => {
+        callback(result as RequestResult, messagesFromNativeBuffers(replyParts));
+      },
+      timeoutMs | 0,
+    );
+    return true;
+  } catch (error) {
+    throw submitNativeError(error, SendFlags.None, 'actor leave failed');
+  }
+}
+
+function invokeActorDestroy(
+  nodeHandle: unknown,
+  actorRaw: ReturnType<typeof actorRefToRaw>,
+  callback: ReplyHandler,
+  timeoutMs: number,
+): boolean {
+  try {
+    requireNative().spotNodeActorDestroy(
+      nodeHandle,
+      actorRaw,
+      (result: number, replyParts: Buffer[] | null) => {
+        callback(result as RequestResult, messagesFromNativeBuffers(replyParts));
+      },
+      timeoutMs | 0,
+    );
+    return true;
+  } catch (error) {
+    throw submitNativeError(error, SendFlags.None, 'actor destroy failed');
+  }
+}
+
+function invokeRemoteActorGetRef(
+  nodeHandle: unknown,
+  targetNodeRid: Buffer,
+  actorId: string,
+  callback: ActorLookupHandler,
+  timeoutMs: number,
+): boolean {
+  try {
+    requireNative().remoteActorGetRef(
+      nodeHandle,
+      targetNodeRid,
+      actorId,
+      (raw: ActorLookupResultRaw) => callback(actorLookupResultFromRaw(raw)),
+      timeoutMs | 0,
+    );
+    return true;
+  } catch (error) {
+    throw submitNativeError(error, SendFlags.None, 'remote actor lookup failed');
+  }
+}
+
+function invokeActorSendBoundSession(
+  nodeHandle: unknown,
+  actor: ActorRef,
+  parts: readonly MessageLike[],
+  flags: SendFlags,
+): boolean {
+  try {
+    requireNative().spotNodeActorSendBoundSessionMsg(
+      nodeHandle,
+      actorRefToRaw(actor),
+      toMessageParts(parts),
+      flags | 0,
+    );
+  } catch (error) {
+    const submitError = submitNativeError(error, flags, 'actor bound session send failed');
+    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+      return false;
+    }
+    throw submitError;
+  }
+  return true;
+}
+
+function invokeStreamBindActor(
+  streamHandle: unknown,
+  sessionRid: Buffer,
+  actorRaw: ReturnType<typeof actorRefToRaw>,
+  callback: ReplyHandler,
+  timeoutMs: number,
+): boolean {
+  try {
+    requireNative().streamBindActor(
+      streamHandle,
+      sessionRid,
+      actorRaw,
+      (result: number, replyParts: Buffer[] | null) => {
+        callback(result as RequestResult, messagesFromNativeBuffers(replyParts));
+      },
+      timeoutMs | 0,
+    );
+    return true;
+  } catch (error) {
+    throw submitNativeError(error, SendFlags.None, 'stream actor bind failed');
+  }
+}
+
+function invokeStreamUnbindActor(
+  streamHandle: unknown,
+  sessionRid: Buffer,
+  actorId: string,
+  callback: ReplyHandler,
+  timeoutMs: number,
+): boolean {
+  try {
+    requireNative().streamUnbindActor(
+      streamHandle,
+      sessionRid,
+      actorId,
+      (result: number, replyParts: Buffer[] | null) => {
+        callback(result as RequestResult, messagesFromNativeBuffers(replyParts));
+      },
+      timeoutMs | 0,
+    );
+    return true;
+  } catch (error) {
+    throw submitNativeError(error, SendFlags.None, 'stream actor unbind failed');
+  }
+}
+
+function invokeStreamSendBoundActor(
+  streamHandle: unknown,
+  sessionRid: Buffer,
+  actorId: string,
+  parts: readonly MessageLike[],
+  flags: SendFlags,
+): boolean {
+  try {
+    requireNative().streamSendBoundActorPart(
+      streamHandle,
+      sessionRid,
+      actorId,
+      toMessageParts(parts),
+      flags | 0,
+    );
+  } catch (error) {
+    const submitError = submitNativeError(error, flags, 'sendBoundActor failed');
+    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+      return false;
+    }
+    throw submitError;
+  }
+  return true;
 }
 
 function spotNodeSpotEntryFromRaw(raw: {
@@ -1690,9 +2001,10 @@ export class MonitorSocket extends NativeHandle {
 }
 
 class SendSocket extends ConnectableSocket {
-  send(message: MessageLike, flags?: SendFlags): boolean;
-  send(parts: readonly MessageLike[], flags?: SendFlags): boolean;
-  send(payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
+  send(): SendOp {
+    return new SendOperation((parts, flags) => this.sendDirect(parts, flags));
+  }
+  protected sendDirect(payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const payload = normalizeMessageLikePayload(payloadOrParts);
     if ((flags | 0) & (SendFlags.DontWait | 0)) {
       let result;
@@ -1721,11 +2033,14 @@ class SendSocket extends ConnectableSocket {
 }
 
 class PublisherSocket extends ConnectableSocket {
-  publish(topic: string, message: MessageLike, flags?: SendFlags): boolean;
-  publish(topic: string, parts: readonly MessageLike[], flags?: SendFlags): boolean;
-  publish(topic: string, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
+  publish(topic: string): SendOp {
+    return new SendOperation((parts, flags) => this.publishDirect(topic, parts, flags));
+  }
+  protected publishDirect(topic: string, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const normalizedTopic = validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER);
-    const normalized = normalizeMessageLikePayload(payload);
+    const normalized = payload.map((part, index) =>
+      part instanceof Message ? part.data() : normalizeBufferLike(part, `parts[${index}]`)
+    );
     try {
       requireNative().socketPublish(this.nativeHandle(), normalizedTopic, normalized, flags | 0);
       return true;
@@ -1746,17 +2061,24 @@ class MessageSocket extends SendSocket {
    * Returns true on success, false when DontWait finds no data. See
    * doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
    */
-  recv(result: Received, flags: RecvFlags = RecvFlags.None): boolean {
+  recv(flags?: RecvFlags): Received | null;
+  recv(result: Received, flags?: RecvFlags): boolean;
+  recv(resultOrFlags: Received | RecvFlags = RecvFlags.None,
+      flags: RecvFlags = RecvFlags.None): Received | null | boolean {
+    const result = resultOrFlags instanceof Received ? resultOrFlags : null;
+    const recvFlags: RecvFlags = result ? flags : resultOrFlags as RecvFlags;
     let raw;
     try {
-      raw = ((flags | 0) & (RecvFlags.DontWait | 0))
+      raw = ((recvFlags | 0) & (RecvFlags.DontWait | 0))
         ? requireNative().socketRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null
-        : requireNative().socketRecvMessage(this.nativeHandle(), flags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null;
+        : requireNative().socketRecvMessage(this.nativeHandle(), recvFlags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null;
     } catch (error) {
-      throw recvNativeError(error, flags, 'recv failed');
+      throw recvNativeError(error, recvFlags, 'recv failed');
     }
-    if (raw == null) return false;
-    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(materializeReceived(raw));
+    if (raw == null) return result ? false : null;
+    const received = materializeReceived(raw);
+    if (!result) return received;
+    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(received);
     return true;
   }
   onSendReady(handler: SocketSendReadyHandler): void {
@@ -1806,9 +2128,10 @@ class SubscriberSocket extends ConnectableSocket {
 }
 
 class RoutedMessageSocket extends ConnectableSocket {
-  send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
-  send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): boolean;
-  send(routingId: RoutingId, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
+  send(routingId: RoutingId): SendOp {
+    return new SendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
+  }
+  protected sendDirect(routingId: RoutingId, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const normalized = normalizeMessageLikePayload(payload);
     const normalizedRoutingId = normalizeRoutingId(routingId);
     if ((flags | 0) & (SendFlags.DontWait | 0)) {
@@ -1837,33 +2160,38 @@ class RoutedMessageSocket extends ConnectableSocket {
   /**
    * Canonical caller-provided storage recv. See {@link MessageSocket.recv}.
    */
-  recv(result: Received, flags: RecvFlags = RecvFlags.None): boolean {
+  recv(flags?: RecvFlags): Received | null;
+  recv(result: Received, flags?: RecvFlags): boolean;
+  recv(resultOrFlags: Received | RecvFlags = RecvFlags.None,
+      flags: RecvFlags = RecvFlags.None): Received | null | boolean {
+    const result = resultOrFlags instanceof Received ? resultOrFlags : null;
+    const recvFlags: RecvFlags = result ? flags : resultOrFlags as RecvFlags;
     let raw;
     try {
-      raw = ((flags | 0) & (RecvFlags.DontWait | 0))
+      raw = ((recvFlags | 0) & (RecvFlags.DontWait | 0))
         ? requireNative().routerRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; spotRid?: Buffer | null; requestSeq?: bigint | null } | null
-        : requireNative().routerRecvMessage(this.nativeHandle(), flags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null; spotRid?: Buffer | null; requestSeq?: bigint | null } | null;
+        : requireNative().routerRecvMessage(this.nativeHandle(), recvFlags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null; spotRid?: Buffer | null; requestSeq?: bigint | null } | null;
     } catch (error) {
-      throw recvNativeError(error, flags, 'recv failed');
+      throw recvNativeError(error, recvFlags, 'recv failed');
     }
-    if (raw == null) return false;
-    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(
-      materializeReceived(raw, undefined, (parts, sendFlags) => {
+    if (raw == null) return result ? false : null;
+    const received = materializeReceived(raw, undefined, (parts, sendFlags) => {
         if (!raw.routingId) {
           throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
         }
         const source = RoutingId.fromBytes(raw.routingId);
         if (raw.spotRid) {
-          return (this as unknown as RouterSocket).sendToSpot(
+          return (this as unknown as RouterSocket).sendToSpotDirect(
             source,
             RoutingId.fromBytes(raw.spotRid),
             parts,
             sendFlags
           );
         }
-        return this.send(source, parts, sendFlags);
-      })
-    );
+        return this.sendDirect(source, parts, sendFlags);
+      });
+    if (!result) return received;
+    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(received);
     return true;
   }
   onSendReady(handler: SocketSendReadyHandler): void {
@@ -1968,12 +2296,13 @@ export class DealerSocket extends MessageSocket {
       requireNative().socketAttachDiscovery(this.nativeHandle(), discovery.nativeHandle());
     });
   }
-  request(message: MessageLike, timeout?: number): Promise<Message[]>;
-  request(parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-  request(message: MessageLike, callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-  request(parts: readonly MessageLike[], callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-  request(
-    payloadOrParts: MessageLike | readonly MessageLike[],
+  request(): RequestOp {
+    return new RequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
+      this.requestDirect(parts, cbOrTimeout as any, opFlags as any, opTimeout)
+    );
+  }
+  private requestDirect(
+    payloadOrParts: readonly MessageLike[],
     callbackOrTimeout?: RequestCallback | number,
     flagsOrTimeout?: SendFlags | number,
     maybeTimeout?: number,
@@ -2066,13 +2395,14 @@ export class RouterSocket extends RoutedMessageSocket {
       requireNative().socketAttachDiscovery(this.nativeHandle(), discovery.nativeHandle());
     });
   }
-  request(peerRid: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
-  request(peerRid: RoutingId, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-  request(peerRid: RoutingId, message: MessageLike, callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-  request(peerRid: RoutingId, parts: readonly MessageLike[], callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-  request(
+  request(peerRid: RoutingId): RequestOp {
+    return new RequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
+      this.requestDirect(peerRid, parts, cbOrTimeout as any, opFlags as any, opTimeout)
+    );
+  }
+  private requestDirect(
     peerRid: RoutingId,
-    payloadOrParts: MessageLike | readonly MessageLike[],
+    payloadOrParts: readonly MessageLike[],
     callbackOrTimeout?: RequestCallback | number,
     flagsOrTimeout?: SendFlags | number,
     maybeTimeout?: number,
@@ -2136,9 +2466,11 @@ export class RouterSocket extends RoutedMessageSocket {
       }
     });
   }
-  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
-  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): boolean;
-  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOp {
+    return new SendOperation((parts, opFlags) => this.sendToSpotDirect(destNodeRid, destSpotRid, parts, opFlags));
+  }
+  /** @internal */
+  sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     try {
       requireNative().routerSpotSend(
         this.nativeHandle(),
@@ -2156,11 +2488,12 @@ export class RouterSocket extends RoutedMessageSocket {
       throw submitError;
     }
   }
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly MessageLike[], callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOp {
+    return new RequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
+      this.requestToSpotDirect(destNodeRid, destSpotRid, parts, cbOrTimeout as any, opFlags as any, opTimeout)
+    );
+  }
+  private requestToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
     const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
     const nodeRid = normalizeRoutingId(destNodeRid);
     const spotRid = normalizeRoutingId(destSpotRid);
@@ -2222,9 +2555,10 @@ export class RouterSocket extends RoutedMessageSocket {
       }
     });
   }
-  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
-  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
-  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint): ReplyOp {
+    return new ReplyOperation((parts, opFlags) => this.replyToSpotDirect(destNodeRid, destSpotRid, requestSeq, parts, opFlags));
+  }
+  private replyToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     normalizeReplyFlags(flags);
     const normalizedDestNodeRid = normalizeRoutingId(destNodeRid);
     const normalizedDestSpotRid = normalizeRoutingId(destSpotRid);
@@ -2241,9 +2575,10 @@ export class RouterSocket extends RoutedMessageSocket {
       throw submitNativeError(error, flags, 'replyToSpot failed');
     }
   }
-  reply(peerRid: RoutingId, requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
-  reply(peerRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
-  reply(peerRid: RoutingId, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  reply(peerRid: RoutingId, requestSeq: bigint): ReplyOp {
+    return new ReplyOperation((parts, opFlags) => this.replyDirect(peerRid, requestSeq, parts, opFlags));
+  }
+  private replyDirect(peerRid: RoutingId, requestSeq: bigint, payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     normalizeReplyFlags(flags);
     const normalizedPeerRid = normalizeRoutingId(peerRid, 'peerRid');
     const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
@@ -2285,67 +2620,33 @@ export class Actor extends NativeHandle {
   get actorRef(): ActorRef {
     return this.ref();
   }
-  join(spot: Spot, message: MessageLike, timeout?: number): Promise<Message[]>;
-  join(spot: Spot, message: MessageLike, callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-  join(spot: Spot, message: MessageLike, callbackOrTimeout?: RequestCallback | number, flags?: SendFlags, timeout?: number): Promise<Message[]> | boolean {
+  join(spot: Spot): ActorJoinOp {
     if (!(spot instanceof Spot)) {
       throw new TypeError('spot must be a Spot');
     }
-    const submit = (callback: RequestCallback, normalizedFlags: SendFlags, timeoutMs: number): boolean => {
-      const releaseProgress = startRequestProgress(spot.nativeHandle(), (handle) => requireNative().spotRequestProgress(handle));
-      try {
-        requireNative().spotNodeActorJoinSpot(
-          this._native,
-          actorRefToRaw(this.ref()),
-          normalizeRoutingId(spot.ownerNodeRoutingId(), 'destNodeRid'),
-          normalizeRoutingId(spot.routingId, 'destSpotRid'),
-          [normalizeMessageLikePayload(message)],
-          (result: number, replyParts: Buffer[] | null) => {
-            releaseProgress();
-            callback(result as RequestResult, messagesFromNativeBuffers(replyParts));
-          },
-          normalizedFlags | 0,
-          timeoutMs | 0
-        );
-        return true;
-      } catch (error) {
-        releaseProgress();
-        const submitError = submitNativeError(error, normalizedFlags, 'actor join failed');
-        if (((normalizedFlags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-          return false;
-        }
-        throw submitError;
-      }
-    };
-    if (typeof callbackOrTimeout === 'function') {
-      const { flags: normalizedFlags, timeoutMs } = normalizeCallbackFlagsAndTimeout(flags, timeout);
-      return submit(callbackOrTimeout, normalizedFlags, timeoutMs);
-    }
-    const timeoutMs = typeof callbackOrTimeout === 'number' ? callbackOrTimeout : 0;
-    return new Promise<Message[]>((resolve, reject) => {
-      submit((result, parts) => {
-        if (result !== RequestResult.Ok) {
-          reject(requestErrorFromResult(result as RequestResult, 'actor join failed'));
-          return;
-        }
-        resolve(parts.slice());
-      }, SendFlags.None, timeoutMs);
-    });
-  }
-  leave(spot: Spot, timeoutMs = 0): void {
-    if (!(spot instanceof Spot)) {
-      throw new TypeError('spot must be a Spot');
-    }
-    const actorRaw = actorRefToRaw(this.ref());
-    const spotRid = normalizeRoutingId(spot.routingId, 'destSpotRid');
-    configCall('actor leave failed', () => {
-      requireNative().spotNodeActorLeaveSpot(
+    return new ActorJoinOperation((parts, callback, flags, timeoutMs) =>
+      invokeActorJoin(
         this._native,
-        actorRaw,
-        spotRid,
-        timeoutMs | 0
-      );
-    });
+        this.ref(),
+        spot.ownerNodeRoutingId(),
+        spot.routingId,
+        spot.nativeHandle(),
+        parts,
+        callback,
+        flags,
+        timeoutMs,
+      ),
+    );
+  }
+  leave(spot: Spot): ActorLeaveOp {
+    if (!(spot instanceof Spot)) {
+      throw new TypeError('spot must be a Spot');
+    }
+    const actorRef = this.ref();
+    const spotRid = spot.routingId;
+    return new ActorLeaveOperation((callback, timeoutMs) =>
+      invokeActorLeave(this._native, actorRef, spotRid, callback, timeoutMs),
+    );
   }
   recvPart(flags: RecvFlags = RecvFlags.None): ActorPart | null {
     let raw;
@@ -2360,22 +2661,10 @@ export class Actor extends NativeHandle {
     }
     return raw ? actorPartFromRaw(raw) : null;
   }
-  sendBoundSession(message: MessageLike, flags: SendFlags = SendFlags.None): boolean {
-    try {
-      requireNative().spotNodeActorSendBoundSessionMsg(
-        this._native,
-        actorRefToRaw(this.ref()),
-        [normalizeMessageLikePayload(message)],
-        flags | 0
-      );
-    } catch (error) {
-      const submitError = submitNativeError(error, flags, 'actor bound session send failed');
-      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-        return false;
-      }
-      throw submitError;
-    }
-    return true;
+  sendBoundSession(): SendOp {
+    const node = this._native;
+    const ref = this.ref();
+    return new SendOperation((parts, flags) => invokeActorSendBoundSession(node, ref, parts, flags));
   }
   closeBoundSession(timeoutMs = 0): void {
     const actorRaw = actorRefToRaw(this.ref());
@@ -2406,9 +2695,10 @@ export class StreamSocket extends SocketBase {
     super(ctx, NativeSocketType.STREAM);
     this.options = StreamSocketOptions.create(this);
   }
-  send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
-  send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): boolean;
-  send(routingId: RoutingId, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
+  send(routingId: RoutingId): SendOp {
+    return new SendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
+  }
+  private sendDirect(routingId: RoutingId, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const normalized = normalizeMessageLikePayload(payload);
     const normalizedRoutingId = normalizeRoutingId(routingId);
     if ((flags | 0) & (SendFlags.DontWait | 0)) {
@@ -2434,10 +2724,7 @@ export class StreamSocket extends SocketBase {
     }
     return true;
   }
-  /**
-   * Canonical caller-provided storage recv. See {@link MessageSocket.recv}.
-   */
-  recv(result: Received, flags: RecvFlags = RecvFlags.None): boolean {
+  recv(flags: RecvFlags = RecvFlags.None): Received | null {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
@@ -2446,16 +2733,13 @@ export class StreamSocket extends SocketBase {
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
     }
-    if (raw == null) return false;
-    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(
-      materializeReceived(raw, undefined, (parts, sendFlags) => {
+    if (raw == null) return null;
+    return materializeReceived(raw, undefined, (parts, sendFlags) => {
         if (!raw.routingId) {
           throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
         }
-        return this.send(RoutingId.fromBytes(raw.routingId), parts, sendFlags);
-      })
-    );
-    return true;
+        return this.sendDirect(RoutingId.fromBytes(raw.routingId), parts, sendFlags);
+      });
   }
   onPacket(handler: StreamPacketHandler): void {
     handlerCall('stream packet handler registration failed', () => {
@@ -2497,55 +2781,35 @@ export class StreamSocket extends SocketBase {
       )
     );
   }
-  bindActor(node: SpotNode, sessionRid: RoutingId, actor: ActorRef, timeoutMs = 0): void {
+  bindActor(sessionRid: RoutingId, actor: ActorRef): ActorBindOp {
+    const handle = this.nativeHandle();
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     const actorRaw = actorRefToRaw(actor);
-    configCall('stream actor bind failed', () => {
-      requireNative().streamBindActor(
-        node.nativeHandle(),
-        this.nativeHandle(),
-        normalizedSessionRid,
-        actorRaw,
-        timeoutMs | 0
-      );
-    });
+    return new ActorBindOperation((callback, timeoutMs) =>
+      invokeStreamBindActor(handle, normalizedSessionRid, actorRaw, callback, timeoutMs),
+    );
   }
-  unbindActor(node: SpotNode, sessionRid: RoutingId, actorId: string, timeoutMs = 0): void {
+  unbindActor(sessionRid: RoutingId, actorId: string): ActorUnbindOp {
+    const handle = this.nativeHandle();
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     const normalizedActorId = validateCString(actorId, 'actorId', 255);
-    configCall('stream actor unbind failed', () => {
-      requireNative().streamUnbindActor(
-        node.nativeHandle(),
-        this.nativeHandle(),
-        normalizedSessionRid,
-        normalizedActorId,
-        timeoutMs | 0
-      );
-    });
+    return new ActorUnbindOperation((callback, timeoutMs) =>
+      invokeStreamUnbindActor(handle, normalizedSessionRid, normalizedActorId, callback, timeoutMs),
+    );
   }
-  sendBoundActor(node: SpotNode, sessionRid: RoutingId, actorId: string, message: MessageLike, flags?: SendFlags): boolean;
-  sendBoundActor(node: SpotNode, sessionRid: RoutingId, actorId: string, parts: readonly MessageLike[], flags?: SendFlags): boolean;
-  sendBoundActor(node: SpotNode, sessionRid: RoutingId, actorId: string, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
-    const parts = Array.isArray(payload) ? toMessageParts(payload) : [normalizeMessageLikePayload(payload)];
+  sendBoundActor(sessionRid: RoutingId, actorId: string): SendOp {
+    const handle = this.nativeHandle();
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     const normalizedActorId = validateCString(actorId, 'actorId', 255);
-    try {
-      requireNative().streamSendBoundActorPart(
-        node.nativeHandle(),
-        this.nativeHandle(),
-        normalizedSessionRid,
-        normalizedActorId,
-        parts,
-        flags | 0
-      );
-    } catch (error) {
-      const submitError = submitNativeError(error, flags, 'sendBoundActor failed');
-      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-        return false;
-      }
-      throw submitError;
-    }
-    return true;
+    return new SendOperation((parts, flags) =>
+      invokeStreamSendBoundActor(handle, normalizedSessionRid, normalizedActorId, parts, flags),
+    );
+  }
+  boundActors(sessionRid: RoutingId): ActorRef[] {
+    const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
+    return (configCall('stream bound actors snapshot failed', () =>
+      requireNative().streamBoundActors(this.nativeHandle(), normalizedSessionRid) as Array<{ nodeRid: Buffer; actorId: string; generation: bigint | number }>
+    )).map((entry) => actorRefFromRaw(entry));
   }
 }
 
@@ -2945,95 +3209,36 @@ export class SpotNode extends NativeHandle {
       )
     );
   }
-  static remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef {
-    return remoteActorRef(targetNodeRid, actorId);
-  }
-  createRemoteActor(targetNodeRid: RoutingId, actorId: string, message: MessageLike, timeoutMs = 0): ActorCreateResult {
-    const normalizedTargetNodeRid = normalizeRoutingId(targetNodeRid, 'targetNodeRid');
+  remoteActorGetRef(targetNodeRid: RoutingId, actorId: string): ActorLookupOp {
+    const node = this._native;
+    const normalizedNodeRid = normalizeRoutingId(targetNodeRid, 'targetNodeRid');
     const normalizedActorId = validateCString(actorId, 'actorId', 255);
-    const parts = [normalizeMessageLikePayload(message)];
-    return actorCreateResultFromRaw(
-      configCall('remote actor create failed', () =>
-        requireNative().spotNodeCreateRemoteActor(
-          this._native,
-          normalizedTargetNodeRid,
-          normalizedActorId,
-          parts,
-          timeoutMs | 0
-        ) as any
-      )
+    return new ActorLookupOperation((callback, timeoutMs) =>
+      invokeRemoteActorGetRef(node, normalizedNodeRid, normalizedActorId, callback, timeoutMs),
     );
   }
-  destroyActor(actor: ActorRef, timeoutMs = 0): void {
+  destroyActor(actor: ActorRef): ActorDestroyOp {
+    const node = this._native;
     const actorRaw = actorRefToRaw(actor);
-    configCall('spot node actor destroy failed', () => {
-      requireNative().spotNodeActorDestroy(
-        this._native,
-        actorRaw,
-        timeoutMs | 0
-      );
-    });
+    return new ActorDestroyOperation((callback, timeoutMs) =>
+      invokeActorDestroy(node, actorRaw, callback, timeoutMs),
+    );
   }
-  onActorAdmission(handler: ActorAdmissionHandler): void {
-    handlerCall('actor admission handler registration failed', () => {
-      requireNative().spotNodeActorAdmissionHandler(
-        this._native,
-        (actorId: string, rawMessage: Buffer) => handler(actorId, messageFromNativeBuffer(rawMessage)) | 0
-      );
-    });
+  joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId): ActorJoinOp {
+    const node = this._native;
+    return new ActorJoinOperation((parts, callback, flags, timeoutMs) =>
+      invokeActorJoin(node, actor, destNodeRid, destSpotRid, null, parts, callback, flags, timeoutMs),
+    );
   }
-  joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, timeout?: number): Promise<Message[]>;
-  joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-  joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, callbackOrTimeout?: RequestCallback | number, flags?: SendFlags, timeout?: number): Promise<Message[]> | boolean {
-    const submit = (callback: RequestCallback, normalizedFlags: SendFlags, timeoutMs: number): boolean => {
-      try {
-        requireNative().spotNodeActorJoinSpot(
-          this._native,
-          actorRefToRaw(actor),
-          normalizeRoutingId(destNodeRid, 'destNodeRid'),
-          normalizeRoutingId(destSpotRid, 'destSpotRid'),
-          [normalizeMessageLikePayload(message)],
-          (result: number, replyParts: Buffer[] | null) => {
-            callback(result as RequestResult, messagesFromNativeBuffers(replyParts));
-          },
-          normalizedFlags | 0,
-          timeoutMs | 0
-        );
-        return true;
-      } catch (error) {
-        const submitError = submitNativeError(error, normalizedFlags, 'actor join failed');
-        if (((normalizedFlags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-          return false;
-        }
-        throw submitError;
-      }
-    };
-    if (typeof callbackOrTimeout === 'function') {
-      const { flags: normalizedFlags, timeoutMs } = normalizeCallbackFlagsAndTimeout(flags, timeout);
-      return submit(callbackOrTimeout, normalizedFlags, timeoutMs);
-    }
-    const timeoutMs = typeof callbackOrTimeout === 'number' ? callbackOrTimeout : 0;
-    return new Promise<Message[]>((resolve, reject) => {
-      submit((result, parts) => {
-        if (result !== RequestResult.Ok) {
-          reject(requestErrorFromResult(result as RequestResult, 'actor join failed'));
-          return;
-        }
-        resolve(parts.slice());
-      }, SendFlags.None, timeoutMs);
-    });
+  leaveActor(actor: ActorRef, currentSpotRid: RoutingId): ActorLeaveOp {
+    const node = this._native;
+    return new ActorLeaveOperation((callback, timeoutMs) =>
+      invokeActorLeave(node, actor, currentSpotRid, callback, timeoutMs),
+    );
   }
-  leaveActor(actor: ActorRef, currentSpotRid: RoutingId, timeoutMs = 0): void {
-    const actorRaw = actorRefToRaw(actor);
-    const normalizedCurrentSpotRid = normalizeRoutingId(currentSpotRid, 'currentSpotRid');
-    configCall('spot node actor leave failed', () => {
-      requireNative().spotNodeActorLeaveSpot(
-        this._native,
-        actorRaw,
-        normalizedCurrentSpotRid,
-        timeoutMs | 0
-      );
-    });
+  sendBoundSessionMsg(actor: ActorRef): SendOp {
+    const node = this._native;
+    return new SendOperation((parts, flags) => invokeActorSendBoundSession(node, actor, parts, flags));
   }
   /** @internal */
   unregisterSpot(spot: Spot): void {
@@ -3237,6 +3442,176 @@ class ReplyOperation implements ReplyOp, ReplySubmitOp {
 
   submit(): void {
     this._invoke(this._payload.consume(), this._flags);
+  }
+}
+
+type ActorJoinInvoker = (
+  parts: readonly MessageLike[],
+  callback: ActorJoinHandler,
+  flags: SendFlags,
+  timeoutMs: number,
+) => boolean;
+
+class ActorJoinOperation implements ActorJoinOp, ActorJoinSubmitOp, ActorJoinCallbackSubmitOp {
+  private readonly _invoke: ActorJoinInvoker;
+  private readonly _payload = new OperationPayload();
+  private _flags: SendFlags = SendFlags.None;
+  private _timeoutMs = 0;
+  private _callbackMode = false;
+
+  constructor(invoke: ActorJoinInvoker) {
+    this._invoke = invoke;
+  }
+
+  message(message: MessageLike): this {
+    this._payload.append(message);
+    return this;
+  }
+
+  timeout(timeoutMs: number): this {
+    this._payload.ensureOpen();
+    this._timeoutMs = timeoutMs | 0;
+    return this;
+  }
+
+  flags(flags: SendFlags): ActorJoinCallbackSubmitOp {
+    this._payload.ensureOpen();
+    this._flags = flags;
+    this._callbackMode = true;
+    return this;
+  }
+
+  submitAsync(): Promise<{ result: ActorJoinResult; parts: Message[] }> {
+    const parts = this._payload.consume();
+    return new Promise((resolve, reject) => {
+      this._invoke(parts, (result, replyParts) => {
+        if (result.result !== RequestResult.Ok) {
+          reject(requestErrorFromResult(result.result, 'actor join failed'));
+          return;
+        }
+        resolve({ result, parts: replyParts });
+      }, SendFlags.None, this._timeoutMs);
+    });
+  }
+
+  submit(callback: ActorJoinHandler): boolean {
+    const flags = this._callbackMode ? this._flags : SendFlags.None;
+    return this._invoke(this._payload.consume(), callback, flags, this._timeoutMs);
+  }
+}
+
+class ActorJoinReplyOperation implements ActorJoinReplyOp {
+  private readonly _invoke: (parts: readonly MessageLike[]) => void;
+  private readonly _payload = new OperationPayload();
+
+  constructor(invoke: (parts: readonly MessageLike[]) => void) {
+    this._invoke = invoke;
+  }
+
+  message(message: MessageLike): ActorJoinReplyOp {
+    this._payload.append(message);
+    return this;
+  }
+
+  submit(): void {
+    this._invoke(this._payload.consume());
+  }
+}
+
+type ReplyOpInvoker = (callback: ReplyHandler, timeoutMs: number) => boolean;
+
+class ReplyHandlerOperation {
+  protected readonly _invoke: ReplyOpInvoker;
+  protected _timeoutMs = 0;
+  protected _submitted = false;
+
+  constructor(invoke: ReplyOpInvoker) {
+    this._invoke = invoke;
+  }
+
+  protected ensureOpen(): void {
+    if (this._submitted) {
+      throw new TypeError('operation has already been submitted');
+    }
+  }
+
+  protected markSubmitted(): void {
+    this._submitted = true;
+  }
+
+  timeout(timeoutMs: number): this {
+    this.ensureOpen();
+    this._timeoutMs = timeoutMs | 0;
+    return this;
+  }
+
+  submitAsync(): Promise<Message[]> {
+    this.ensureOpen();
+    return new Promise((resolve, reject) => {
+      this.markSubmitted();
+      this._invoke((result, parts) => {
+        if (result !== RequestResult.Ok) {
+          reject(requestErrorFromResult(result, 'actor operation failed'));
+          return;
+        }
+        resolve(parts);
+      }, this._timeoutMs);
+    });
+  }
+
+  submit(callback: ReplyHandler): boolean {
+    this.ensureOpen();
+    this.markSubmitted();
+    return this._invoke(callback, this._timeoutMs);
+  }
+}
+
+class ActorLeaveOperation extends ReplyHandlerOperation implements ActorLeaveOp {}
+class ActorDestroyOperation extends ReplyHandlerOperation implements ActorDestroyOp {}
+class ActorBindOperation extends ReplyHandlerOperation implements ActorBindOp {}
+class ActorUnbindOperation extends ReplyHandlerOperation implements ActorUnbindOp {}
+
+type ActorLookupInvoker = (callback: ActorLookupHandler, timeoutMs: number) => boolean;
+
+class ActorLookupOperation implements ActorLookupOp {
+  private readonly _invoke: ActorLookupInvoker;
+  private _timeoutMs = 0;
+  private _submitted = false;
+
+  constructor(invoke: ActorLookupInvoker) {
+    this._invoke = invoke;
+  }
+
+  private ensureOpen(): void {
+    if (this._submitted) {
+      throw new TypeError('operation has already been submitted');
+    }
+  }
+
+  timeout(timeoutMs: number): ActorLookupOp {
+    this.ensureOpen();
+    this._timeoutMs = timeoutMs | 0;
+    return this;
+  }
+
+  submitAsync(): Promise<ActorLookupResult> {
+    this.ensureOpen();
+    this._submitted = true;
+    return new Promise((resolve, reject) => {
+      this._invoke((result) => {
+        if (result.result !== RequestResult.Ok) {
+          reject(requestErrorFromResult(result.result, 'actor lookup failed'));
+          return;
+        }
+        resolve(result);
+      }, this._timeoutMs);
+    });
+  }
+
+  submit(callback: ActorLookupHandler): boolean {
+    this.ensureOpen();
+    this._submitted = true;
+    return this._invoke(callback, this._timeoutMs);
   }
 }
 
@@ -3754,19 +4129,32 @@ export class Spot extends NativeHandle {
       message: Message.fromSnapshot(raw.message)
     };
   }
-  replyActorJoin(request: ActorJoinRequest, accepted: boolean, message: MessageLike): void {
+  replyActorJoin(request: ActorJoinRequest, accepted: boolean): ActorJoinReplyOp {
+    const spotHandle = this._native;
     const rawInfo = actorJoinInfoToRaw(request.info);
-    const parts = [normalizeMessageLikePayload(message)];
-    try {
-      requireNative().spotActorJoinReply(
+    const acceptedFlag = Boolean(accepted);
+    return new ActorJoinReplyOperation((partsInput) => {
+      const parts = toMessageParts(partsInput);
+      try {
+        requireNative().spotActorJoinReply(spotHandle, rawInfo, acceptedFlag, parts);
+      } catch (error) {
+        throw submitNativeError(error, SendFlags.None, 'actor join reply failed');
+      }
+    });
+  }
+  onActorLifecycle(onJoin: ActorLifecycleHandler | null, onLeave: ActorLifecycleHandler | null): void {
+    const spotInstance = this;
+    handlerCall('spot actor lifecycle handler registration failed', () => {
+      requireNative().spotActorLifecycleHandler(
         this._native,
-        rawInfo,
-        Boolean(accepted),
-        parts
+        onJoin
+          ? (rawInfo: SpotActorLifecycleInfoRaw) => onJoin(spotInstance, spotActorLifecycleInfoFromRaw(rawInfo))
+          : null,
+        onLeave
+          ? (rawInfo: SpotActorLifecycleInfoRaw) => onLeave(spotInstance, spotActorLifecycleInfoFromRaw(rawInfo))
+          : null,
       );
-    } catch (error) {
-      throw submitNativeError(error, SendFlags.None, 'actor join reply failed');
-    }
+    });
   }
   actorsSnapshot(): ActorRef[] {
     return (configCall('spot actors snapshot failed', () =>

@@ -59,7 +59,6 @@ from ._discovery import (
 )
 from ._spot import (
     Actor,
-    ActorCreateResult,
     ActorJoinRequest,
     ActorJoinInfo,
     ActorPart,
@@ -109,8 +108,6 @@ from ._enums import (
     SubmitResult,
     RequestResult,
     RecvResult,
-    ActorAdmissionResult,
-    ActorCreateStatus,
     HandlerResult,
     CloseResult,
     BindResult,
@@ -215,7 +212,6 @@ __all__ = [
     "Spot",
     "Actor",
     "ActorRef",
-    "ActorCreateResult",
     "ActorJoinRequest",
     "ActorRoute",
     "ActorRecvInfo",
@@ -251,8 +247,6 @@ __all__ = [
     "SubmitResult",
     "RequestResult",
     "RecvResult",
-    "ActorAdmissionResult",
-    "ActorCreateStatus",
     "HandlerResult",
     "CloseResult",
     "BindResult",

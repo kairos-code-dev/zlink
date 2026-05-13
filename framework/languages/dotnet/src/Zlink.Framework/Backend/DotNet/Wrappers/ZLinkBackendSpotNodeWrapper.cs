@@ -127,13 +127,5 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
         nativeSpotNode.DestroyActor(actor.ToNative(), timeout);
     }
 
-    public void OnActorAdmission(Func<string, Message, bool> handler)
-    {
-        nativeSpotNode.OnActorAdmission((actorId, message) =>
-            handler(actorId, message)
-                ? ActorAdmissionResult.Accept
-                : ActorAdmissionResult.Reject);
-    }
-
     public ValueTask DisposeAsync() => nativeSpotNode.DisposeAsync();
 }

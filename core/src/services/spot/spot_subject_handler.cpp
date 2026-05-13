@@ -5,7 +5,7 @@
 #include "services/spot/spot_subject_access.hpp"
 
 #include "api/service_mode_internal.hpp"
-#include "api/service_surface_internal.hpp"
+#include "api/service_spot_subject_surface_internal.hpp"
 
 #include <map>
 

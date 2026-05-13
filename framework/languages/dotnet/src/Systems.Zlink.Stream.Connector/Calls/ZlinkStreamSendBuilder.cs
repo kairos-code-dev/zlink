@@ -52,7 +52,7 @@ public sealed class ZlinkStreamSendBuilder
         return this;
     }
 
-    public async ValueTask Async(CancellationToken cancellationToken = default)
+    public async ValueTask Submit(CancellationToken cancellationToken = default)
     {
         _state.EnsureNotExecuted();
         await _connector.SendEncodedAsync(

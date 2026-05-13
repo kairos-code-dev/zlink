@@ -67,7 +67,7 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenRoutedChannelMixesDiscoveryAndManualConnections()
+    public void AddZLinkFramework_Throws_WhenRouteChannelMixesDiscoveryAndManualConnections()
     {
         var services = new ServiceCollection();
 

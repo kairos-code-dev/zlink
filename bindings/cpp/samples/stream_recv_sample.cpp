@@ -27,7 +27,7 @@ int main ()
     assert (inbound.parts ()[0].to_string () == detail::k_stream_payload);
 
     zlink::message_t reply = detail::make_message (detail::k_stream_payload);
-    inbound.send (reply);
+    inbound.send ().message (reply).submit ();
     inbound.close ();
 
     char response[64];

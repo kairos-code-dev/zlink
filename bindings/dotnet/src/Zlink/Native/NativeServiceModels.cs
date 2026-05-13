@@ -156,10 +156,32 @@ internal struct ZlinkActorJoinInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct ZlinkActorCreateResult
+internal struct ZlinkActorJoinResult
 {
-    public global::Systems.Zlink.ActorCreateStatus Status;
+    public int Result;
     public ZlinkActorRef Actor;
+    public ZlinkRoutingId JoinedSpotRid;
+    public ulong JoinEpoch;
+    public uint Flags;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorLookupResult
+{
+    public int Result;
+    public ZlinkActorRef Actor;
+    public uint Flags;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkSpotActorLifecycleInfo
+{
+    public ZlinkActorRef PreviousActor;
+    public ZlinkActorRef CurrentActor;
+    public ZlinkRoutingId PreviousSpotRid;
+    public ZlinkRoutingId CurrentSpotRid;
+    public ulong JoinEpoch;
+    public uint Flags;
 }
 
 [StructLayout(LayoutKind.Sequential)]

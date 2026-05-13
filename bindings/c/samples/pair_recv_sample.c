@@ -13,20 +13,20 @@ typedef struct
 static void pair_receiver_thread (void *arg_)
 {
     pair_sample_t *sample = (pair_sample_t *) arg_;
-    zlink_routing_id_t rid;
-    zlink_msg_t *parts = NULL;
-    size_t count = 0;
+    const zlink_routing_id_t *rid = NULL;
+    zlink_msg_t part;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
-    memset (&rid, 0, sizeof (rid));
-    assert (zlink_recv (sample->server, &rid, &parts, &count, 0)
+    assert (zlink_msg_init (&part) == 0);
+    assert (zlink_recv_part (sample->server, &rid, &part, &has_more, 0)
             == ZLINK_RECV_OK);
-    assert (count == 1);
+    assert (has_more == ZLINK_PART_FINAL);
 
-    sample->received_len = zlink_msg_size (&parts[0]);
+    sample->received_len = zlink_msg_size (&part);
     assert (sample->received_len == strlen (k_pair_payload));
-    memcpy (sample->received, zlink_msg_data (&parts[0]), sample->received_len);
+    memcpy (sample->received, zlink_msg_data (&part), sample->received_len);
     sample->received[sample->received_len] = '\0';
-    zlink_multipart_close (parts, count);
+    zlink_msg_close (&part);
 }
 
 static void pair_sender_thread (void *arg_)
@@ -35,7 +35,8 @@ static void pair_sender_thread (void *arg_)
     zlink_msg_t outbound;
 
     make_message (&outbound, k_pair_payload);
-    assert (zlink_send (sample->client, &outbound, 1, 0) == ZLINK_SUBMIT_OK);
+    assert (zlink_send_part (sample->client, &outbound, 0, ZLINK_PART_FINAL)
+            == ZLINK_SUBMIT_OK);
 }
 
 int main (void)

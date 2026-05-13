@@ -57,21 +57,22 @@ static int raw_tcp_connect (const char *endpoint)
 static void stream_server_thread (void *arg_)
 {
     stream_recv_sample_t *sample = (stream_recv_sample_t *) arg_;
-    zlink_routing_id_t rid;
-    zlink_msg_t *parts = NULL;
-    size_t count = 0;
+    const zlink_routing_id_t *rid = NULL;
+    zlink_msg_t part;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
-    memset (&rid, 0, sizeof (rid));
-    assert (zlink_recv (sample->server, &rid, &parts, &count, 0)
+    assert (zlink_msg_init (&part) == 0);
+    assert (zlink_recv_part (sample->server, &rid, &part, &has_more, 0)
             == ZLINK_RECV_OK);
-    assert (rid.size > 0);
-    assert (count == 1);
+    assert (rid != NULL);
+    assert (rid->size > 0);
+    assert (has_more == ZLINK_PART_FINAL);
 
-    sample->payload_len = zlink_msg_size (&parts[0]);
+    sample->payload_len = zlink_msg_size (&part);
     assert (sample->payload_len == strlen (k_stream_payload));
-    memcpy (sample->payload, zlink_msg_data (&parts[0]), sample->payload_len);
+    memcpy (sample->payload, zlink_msg_data (&part), sample->payload_len);
     sample->payload[sample->payload_len] = '\0';
-    zlink_multipart_close (parts, count);
+    zlink_msg_close (&part);
 }
 
 static void stream_client_thread (void *arg_)

@@ -15,7 +15,7 @@ internal sealed class TicTacToeJoinService
                 spotRid,
                 new TicTacToeGameJoinReq(request.GameId, actor.ActorId))
             .WithTimeout(SampleTimeouts.Request)
-            .Async<TicTacToeGameJoinRes>(cancellationToken);
+            .Submit<TicTacToeGameJoinRes>(cancellationToken);
 
         return new JoinGameRes(reply.State);
     }

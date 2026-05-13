@@ -83,9 +83,9 @@ public class BoundaryValidationContractTest {
             assertThrows(IllegalArgumentException.class,
                 () -> sub.setSubscription(overflow));
 
-            assertDoesNotThrow(() -> pub.publish(max, payload));
+            assertDoesNotThrow(() -> pub.publish(max).message(payload).submit());
             assertThrows(IllegalArgumentException.class,
-                () -> pub.publish(overflow, payload));
+                () -> pub.publish(overflow).message(payload).submit());
         }
     }
 

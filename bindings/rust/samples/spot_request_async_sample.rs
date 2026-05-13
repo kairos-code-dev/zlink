@@ -64,8 +64,9 @@ fn main() {
             .reply(
                 received.routing_id().expect("missing routing id"),
                 received.request_seq().expect("missing request seq"),
-                vec![Message::copy_from(b"spot-pong").expect("reply message failed")],
             )
+            .message(Message::copy_from(b"spot-pong").expect("reply message failed"))
+            .submit()
             .expect("reply send failed");
         server_done_tx.send(()).expect("server done send failed");
     });

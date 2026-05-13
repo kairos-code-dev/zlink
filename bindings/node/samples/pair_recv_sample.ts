@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 async function reservePort() {
   const srv = net.createServer();
@@ -37,7 +37,7 @@ async function main() {
     }
 
     const sent = 'hello-pair';
-    client.send(Buffer.from(sent));
+    client.send().message(Buffer.from(sent)).submit();
 
     const received = new zlink.Received();
     server.recv(received);

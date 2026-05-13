@@ -99,7 +99,7 @@ internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapability
         configure(registration.SocketOptions);
     }
 
-    public void ConfigureRouting(Action<IRoutedPeerOptions> configure)
+    public void ConfigureRouting(Action<IRoutePeerOptions> configure)
     {
         configure(registration.RoutingOptions);
     }

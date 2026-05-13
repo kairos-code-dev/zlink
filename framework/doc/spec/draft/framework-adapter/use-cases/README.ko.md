@@ -1,6 +1,10 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../README.ko.md) | [이전: Session Gateway 초안 보관본](../policy/session-gateway.ko.md) | [다음: Draft Use Case -- Service To Service RPC](01-service-to-service-rpc.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
-[Framework 초안 묶음](../README.ko.md) | [개요](../overview.ko.md) | [검증](../usecase-validation.ko.md)
+[Framework 초안 묶음](../README.ko.md) | [개요](../policy/overview.ko.md) | [검증](../usecase-validation.ko.md)
 
 # Draft -- ZLink Framework Use Cases
 

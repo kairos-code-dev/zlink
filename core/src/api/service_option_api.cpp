@@ -4,7 +4,7 @@
 
 #include "utils/err.hpp"
 #include "api/service_handle_internal.hpp"
-#include "api/service_surface_internal.hpp"
+#include "api/service_option_surface_internal.hpp"
 
 #include "services/discovery/discovery_access.hpp"
 #include "services/discovery/registry_access.hpp"

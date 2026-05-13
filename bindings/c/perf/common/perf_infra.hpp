@@ -10,11 +10,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-#if defined(ZLINK_PERF_STD_COMPAT)
-#include <zlink.h>
-#else
-#include <zlink_c.h>
-#endif
+#include "perf_zlink_part_helpers.hpp"
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>

@@ -184,8 +184,9 @@ internal static class PerfMultiStreamServer
                 if (message.Payload == null)
                     return SendStatus.Fatal;
 
-                if (((StreamSocket)server).Send(message.RoutingId,
-                        message.Payload, SendFlags.DontWait))
+                if (((StreamSocket)server).Send(message.RoutingId)
+                        .Message(message.Payload).Flags(SendFlags.DontWait)
+                        .Submit())
                 {
                     message.Clear();
                     return SendStatus.Done;

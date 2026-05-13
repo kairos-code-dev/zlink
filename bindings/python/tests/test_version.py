@@ -39,7 +39,7 @@ class VersionTests(unittest.TestCase):
                     s1.bind(endpoint)
                     s2.connect(endpoint)
                     payload = b"ping"
-                    s1.send(payload)
+                    s1.send().message(payload).submit()
                     with s2.recv() as received:
                         self.assertEqual(received.to_bytes_list(), [payload])
 

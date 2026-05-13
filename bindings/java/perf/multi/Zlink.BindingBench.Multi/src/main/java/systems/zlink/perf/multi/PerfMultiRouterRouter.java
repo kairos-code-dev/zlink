@@ -100,8 +100,10 @@ final class PerfMultiRouterRouter {
                         }
                         // Fast path: send directly when no pending backlog.
                         if (pendingReplies.isEmpty()
-                            && receivedBuffer.send(receivedBuffer.firstPart(),
-                                SendFlags.DONT_WAIT)) {
+                            && receivedBuffer.send()
+                                .message(receivedBuffer.firstPart())
+                                .flags(SendFlags.DONT_WAIT)
+                                .submit()) {
                             continue;
                         }
                         RoutingId rid = receivedBuffer.routingId().orElseThrow();
@@ -110,8 +112,10 @@ final class PerfMultiRouterRouter {
                         Message ownedReply = receivedBuffer.firstPart().move();
                         receivedBuffer.close();
                         if (pendingReplies.isEmpty()
-                            && server.send(rid, ownedReply,
-                                SendFlags.DONT_WAIT)) {
+                            && server.send(rid)
+                                .message(ownedReply)
+                                .flags(SendFlags.DONT_WAIT)
+                                .submit()) {
                             ownedReply.close();
                         } else {
                             pendingReplies.addLast(
@@ -265,7 +269,10 @@ final class PerfMultiRouterRouter {
             // result-line timeout.
             for (int i = 0; i < n; i++) {
                 try (Message stop = PerfStopToken.newMessage()) {
-                    clients.get(i).send(SERVER_ID, stop, SendFlags.DONT_WAIT);
+                    clients.get(i).send(SERVER_ID)
+                        .message(stop)
+                        .flags(SendFlags.DONT_WAIT)
+                        .submit();
                 }
             }
         }
@@ -309,7 +316,10 @@ final class PerfMultiRouterRouter {
 
     private static boolean trySendPayload(RouterSocket client, byte[] payload) {
         try (Message message = Message.copyOf(payload)) {
-            return client.send(SERVER_ID, message, SendFlags.DONT_WAIT);
+            return client.send(SERVER_ID)
+                .message(message)
+                .flags(SendFlags.DONT_WAIT)
+                .submit();
         }
     }
 
@@ -364,8 +374,10 @@ final class PerfMultiRouterRouter {
             if (pending == null) {
                 return;
             }
-            if (!server.send(pending.routingId(), pending.payload(),
-                SendFlags.DONT_WAIT)) {
+            if (!server.send(pending.routingId())
+                .message(pending.payload())
+                .flags(SendFlags.DONT_WAIT)
+                .submit()) {
                 return;
             }
             pendingReplies.removeFirst();

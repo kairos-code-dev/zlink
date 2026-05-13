@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 test('canonical socket classes expose only directionally valid methods', () => {
     const ctx = new zlink.Context();
     const pub = new zlink.PubSocket(ctx);
@@ -114,10 +114,9 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(typeof spotNode.attachPubIngress, 'function');
     assert.equal(typeof spotNode.createActor, 'function');
     assert.equal(typeof spotNode.actorLookup, 'function');
-    assert.equal(typeof zlink.SpotNode.remoteActorRef, 'function');
-    assert.equal(typeof spotNode.createRemoteActor, 'function');
+    assert.equal(zlink.SpotNode.remoteActorRef, undefined);
+    assert.equal(typeof spotNode.remoteActorGetRef, 'function');
     assert.equal(typeof spotNode.destroyActor, 'function');
-    assert.equal(typeof spotNode.onActorAdmission, 'function');
     assert.equal(typeof spotNode.joinActor, 'function');
     assert.equal(typeof spotNode.leaveActor, 'function');
     assert.equal(typeof spotNode.entrySpot, 'function');
@@ -190,13 +189,21 @@ test('spot operation builders keep payload and single-submit validation centrali
     const ctx = new zlink.Context();
     const node = new zlink.SpotNode(ctx);
     const spot = node.createSpot();
+    const actor = node.createActor('builder-actor-owned');
+    const actorRef = actor.ref();
     const rid = zlink.RoutingId.fromBytes(Buffer.from('builder-target'));
     assert.throws(() => spot.sendChannel('svc').submit(), /requires at least one message/);
     assert.throws(() => spot.requestChannel('svc').submitAsync(), /requires at least one message/);
     assert.throws(() => spot.replyToRouter(rid, 1n).submit(), /requires at least one message/);
+    assert.throws(() => node.joinActor(actorRef, rid, rid).submit(() => { }), /requires at least one message/);
     const op = spot.sendChannel('svc').message('payload');
     assert.throws(() => op.submit(), zlink.SubmitError);
     assert.throws(() => op.message('again'), /already been submitted/);
+    const stream = new zlink.StreamSocket(ctx);
+    assert.throws(() => stream.sendBoundActor(rid, actorRef.actorId).submit(), /requires at least one message/);
+    assert.throws(() => actor.sendBoundSession().submit(), /requires at least one message/);
+    actor.close();
+    stream.close();
     spot.close();
     node.close();
     ctx.close();

@@ -50,13 +50,12 @@ import (
 )
 
 type SpotNode struct {
-	handle          unsafe.Pointer
-	closed          bool
-	closing         bool
-	mu              sync.Mutex
-	spots           map[*spotCore]struct{}
-	admissionHandle cgo.Handle
-	dealerRegistry  sync.Map
+	handle         unsafe.Pointer
+	closed         bool
+	closing        bool
+	mu             sync.Mutex
+	spots          map[*spotCore]struct{}
+	dealerRegistry sync.Map
 }
 
 type SpotNodeMode int
@@ -475,10 +474,6 @@ func (n *SpotNode) Close() error {
 	n.closing = false
 	n.handle = nil
 	n.spots = nil
-	if n.admissionHandle != 0 {
-		releaseCallbackHandle(n.admissionHandle)
-		n.admissionHandle = 0
-	}
 	return nil
 }
 
@@ -522,6 +517,7 @@ type spotCore struct {
 	routedHandle    cgo.Handle
 	sendReadyHandle cgo.Handle
 	dispatchHandle  cgo.Handle
+	lifecycleHandle cgo.Handle
 	owner           *SpotNode
 	mu              sync.Mutex
 }
@@ -656,18 +652,18 @@ type ReplySubmitOp interface {
 
 type sendBuilder struct {
 	spot      *Spot
-	msg       *Message
+	parts     []*Message
 	flags     SendFlags
 	submitted bool
-	submit    func(msg *Message, flags SendFlags) error
+	submit    func(parts []*Message, flags SendFlags) error
 }
 
-func newSendBuilder(spot *Spot, submit func(msg *Message, flags SendFlags) error) SendOp {
+func newSendBuilder(spot *Spot, submit func(parts []*Message, flags SendFlags) error) SendOp {
 	return &sendBuilder{spot: spot, submit: submit}
 }
 
 func (b *sendBuilder) Message(message *Message) SendSubmitOp {
-	b.msg = message
+	b.parts = append(b.parts, message)
 	return b
 }
 
@@ -680,11 +676,11 @@ func (b *sendBuilder) Submit(_ context.Context) (bool, error) {
 	if b.submitted {
 		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
 	}
-	if b.msg == nil {
+	if len(b.parts) == 0 {
 		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	b.submitted = true
-	if err := b.submit(b.msg, b.flags); err != nil {
+	if err := b.submit(b.parts, b.flags); err != nil {
 		var submitErr *SubmitError
 		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
 			return false, nil
@@ -697,11 +693,11 @@ func (b *sendBuilder) Submit(_ context.Context) (bool, error) {
 // --- requestBuilder ---
 
 type requestBuilderState struct {
-	msg       *Message
+	parts     []*Message
 	flags     SendFlags
 	timeout   time.Duration
 	submitted bool
-	submit    func(msg *Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error
+	submit    func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error
 }
 
 type requestBuilder struct {
@@ -712,12 +708,12 @@ type requestCallbackBuilder struct {
 	state *requestBuilderState
 }
 
-func newRequestBuilder(spot *Spot, submit func(msg *Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error) RequestOp {
+func newRequestBuilder(spot *Spot, submit func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error) RequestOp {
 	return &requestBuilder{state: &requestBuilderState{submit: submit}}
 }
 
 func (b *requestBuilder) Message(message *Message) RequestSubmitOp {
-	b.state.msg = message
+	b.state.parts = append(b.state.parts, message)
 	return b
 }
 
@@ -740,7 +736,7 @@ func (b *requestBuilder) SubmitCallback(_ context.Context, callback RequestReply
 }
 
 func (b *requestCallbackBuilder) Message(message *Message) RequestCallbackSubmitOp {
-	b.state.msg = message
+	b.state.parts = append(b.state.parts, message)
 	return b
 }
 
@@ -762,12 +758,12 @@ func (s *requestBuilderState) doSubmitSync() ([]*Message, error) {
 	if s.submitted {
 		return nil, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
 	}
-	if s.msg == nil {
+	if len(s.parts) == 0 {
 		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	s.submitted = true
 	result := make(chan requestResult, 1)
-	if err := s.submit(s.msg, s.flags, s.timeout, func(r RequestResult, parts []*Message) {
+	if err := s.submit(s.parts, s.flags, s.timeout, func(r RequestResult, parts []*Message) {
 		result <- requestResult{result: r, parts: parts}
 	}); err != nil {
 		return nil, err
@@ -783,11 +779,11 @@ func (s *requestBuilderState) doSubmitCallback(callback RequestReplyCallback) (b
 	if s.submitted {
 		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
 	}
-	if s.msg == nil || callback == nil {
+	if len(s.parts) == 0 || callback == nil {
 		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	s.submitted = true
-	if err := s.submit(s.msg, s.flags, s.timeout, callback); err != nil {
+	if err := s.submit(s.parts, s.flags, s.timeout, callback); err != nil {
 		var submitErr *SubmitError
 		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
 			return false, nil
@@ -801,18 +797,18 @@ func (s *requestBuilderState) doSubmitCallback(callback RequestReplyCallback) (b
 
 type replyBuilder struct {
 	spot      *Spot
-	msg       *Message
+	parts     []*Message
 	flags     SendFlags
 	submitted bool
-	submit    func(msg *Message, flags SendFlags) error
+	submit    func(parts []*Message, flags SendFlags) error
 }
 
-func newReplyBuilder(spot *Spot, submit func(msg *Message, flags SendFlags) error) ReplyOp {
+func newReplyBuilder(spot *Spot, submit func(parts []*Message, flags SendFlags) error) ReplyOp {
 	return &replyBuilder{spot: spot, submit: submit}
 }
 
 func (b *replyBuilder) Message(message *Message) ReplySubmitOp {
-	b.msg = message
+	b.parts = append(b.parts, message)
 	return b
 }
 
@@ -825,11 +821,11 @@ func (b *replyBuilder) Submit(_ context.Context) error {
 	if b.submitted {
 		return &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
 	}
-	if b.msg == nil {
+	if len(b.parts) == 0 {
 		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	b.submitted = true
-	return b.submit(b.msg, b.flags)
+	return b.submit(b.parts, b.flags)
 }
 
 type Spot struct {
@@ -917,9 +913,9 @@ func (s *Spot) SetNoDrop(value bool) error {
 }
 
 func (s *Spot) Publish(topic string) SendOp {
-	return newSendBuilder(s, func(msg *Message, flags SendFlags) error {
+	return newSendBuilder(s, func(parts []*Message, flags SendFlags) error {
 		return s.core.withCString(topic, func(topicC *C.char) error {
-			return submitMultipartFromClones([]*Message{msg}, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 				return submitErrorFromResult(C.zlink_spot_publish_part(s.raw(), topicC, part, C.zlink_send_flags_t(flags), partFlag))
 			})
 		})
@@ -927,9 +923,9 @@ func (s *Spot) Publish(topic string) SendOp {
 }
 
 func (s *Spot) SendChannel(channelName string) SendOp {
-	return newSendBuilder(s, func(msg *Message, flags SendFlags) error {
+	return newSendBuilder(s, func(parts []*Message, flags SendFlags) error {
 		return s.core.withCString(channelName, func(cstr *C.char) error {
-			return submitMultipartFromClones([]*Message{msg}, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 				return submitErrorFromResult(C.zlink_spot_send_channel_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
 			})
 		})
@@ -937,21 +933,21 @@ func (s *Spot) SendChannel(channelName string) SendOp {
 }
 
 func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp {
-	return newSendBuilder(s, func(msg *Message, flags SendFlags) error {
+	return newSendBuilder(s, func(parts []*Message, flags SendFlags) error {
 		node := destNodeRid.toC()
 		spot := destSpotRid.toC()
-		return submitMultipartFromClones([]*Message{msg}, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_spot_send_spot_part(s.raw(), &node, &spot, part, C.zlink_send_flags_t(flags), partFlag))
 		})
 	})
 }
 
 func (s *Spot) RequestChannel(channelName string) RequestOp {
-	return newRequestBuilder(s, func(msg *Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+	return newRequestBuilder(s, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
-		resultCh, err := s.startChannelRequest(channelName, flags, timeout, msg)
+		resultCh, err := s.startChannelRequest(channelName, flags, timeout, parts...)
 		if err != nil {
 			return err
 		}
@@ -964,14 +960,14 @@ func (s *Spot) RequestChannel(channelName string) RequestOp {
 }
 
 func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
-	return newRequestBuilder(s, func(msg *Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+	return newRequestBuilder(s, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
 		if timeout <= 0 {
 			timeout = defaultRequestTimeout
 		}
-		cloned, err := cloneParts([]*Message{msg})
+		cloned, err := cloneParts(parts)
 		if err != nil {
 			return err
 		}
@@ -1014,14 +1010,14 @@ func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
 }
 
 func (s *Spot) RequestToRouter(peerRid RoutingID) RequestOp {
-	return newRequestBuilder(s, func(msg *Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+	return newRequestBuilder(s, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
 		if timeout <= 0 {
 			timeout = defaultRequestTimeout
 		}
-		cloned, err := cloneParts([]*Message{msg})
+		cloned, err := cloneParts(parts)
 		if err != nil {
 			return err
 		}
@@ -1062,25 +1058,25 @@ func (s *Spot) RequestToRouter(peerRid RoutingID) RequestOp {
 }
 
 func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64) ReplyOp {
-	return newReplyBuilder(s, func(msg *Message, flags SendFlags) error {
+	return newReplyBuilder(s, func(parts []*Message, flags SendFlags) error {
 		if err := validateReplyFlags(flags); err != nil {
 			return err
 		}
 		node := destNodeRid.toC()
 		spot := destSpotRid.toC()
-		return submitMultipartFromClones([]*Message{msg}, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitMultipartFromClones(parts, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_spot_reply_spot_part(s.raw(), &node, &spot, C.uint64_t(requestSeq), part, partFlag))
 		})
 	})
 }
 
 func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64) ReplyOp {
-	return newReplyBuilder(s, func(msg *Message, flags SendFlags) error {
+	return newReplyBuilder(s, func(parts []*Message, flags SendFlags) error {
 		if err := validateReplyFlags(flags); err != nil {
 			return err
 		}
 		peer := peerRid.toC()
-		return submitMultipartFromClones([]*Message{msg}, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitMultipartFromClones(parts, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_spot_reply_router_part(s.raw(), &peer, C.uint64_t(requestSeq), part, partFlag))
 		})
 	})

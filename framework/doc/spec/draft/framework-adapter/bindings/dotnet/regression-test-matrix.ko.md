@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET Behavior Matrix](behavior-matrix.ko.md) | [다음: ZLink Framework .NET Lifecycle And Failure Semantics](lifecycle-and-failure-semantics.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [use case validation](../../usecase-validation.ko.md)
@@ -86,15 +90,16 @@ matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는 형
 | `AddSpotNode(...)` + 별도 `UseSpotDiscovery(channel, ...)` 분리 호출 | `integration-single-process` | 등록 순서와 관계없이 같은 채널 view 공유 |
 | `CreateAsync(spotName)` | `integration-single-process` | `SpotRid`, `SpotName`, `Created` 일관성 확인 |
 | `GetAsync(...)`, `ListAsync(...)` | `integration-single-process` | manager 조회 결과 일관성 확인 |
-| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등록이 descriptor에 반영 |
+| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddActorPacket(...)`, `Context.AddActorJoined(...)`, `Context.AddActorLeft(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등록이 descriptor에 반영 |
 | `OnInitializeAsync(...)` handler resolve | `integration-single-process` | per-spot scope DI 정상 동작 |
 | `OnClosingAsync(...)` normal remove callback | `integration-single-process` | `RemoveAsync(...)` 호출 때 spot 실행 문맥에서 한 번 호출 |
 | local spot publish | `integration-single-process` | subscriber 수신 |
 | outbound-only 외부 publish client | `integration-multi-process` | target SPOT channel publish 성공 |
 | spot 제거 후 scope 정리 | `integration-single-process` | 이후 callback 미발생, dispose 완료 |
-| actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkActorContext.AddPacket(...)`으로 등록한 handler가 join된 `Spot` 실행 문맥에서 실행 |
-| session actor create/dispatch bridge | `integration-single-process` | `CreateActorAsync(...)`, `CreateRemoteActorAsync(...)`, `DispatchToActorAsync(IZLinkActorRef, ...)`가 public session 표면에서 동작 |
-| session actor location writer rollback | `integration-single-process` | writer bind 실패 때 helper가 실패하고 local binding table의 같은 token entry를 제거 |
+| actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 handler가 join된 `Spot` 실행 문맥에서 실행 |
+| spot route resolver path | `integration-single-process` | spot name/id 기반 호출이 `IZLinkSpotRouteResolver` 결과로 target node와 spot rid를 찾아 routed message를 보냄 |
+| session actor create/dispatch bridge | `integration-single-process` | `CreateActorAsync(...)`, `CreateActorHandleAsync(...)`, `DispatchToActorAsync(IZLinkActorRef, ...)`가 public session 표면에서 동작 |
+| session actor binding rollback | `integration-single-process` | actor-session binding 갱신 실패 때 helper가 실패하고 local binding table의 같은 token entry를 제거 |
 | stale session binding token guard | `integration-single-process` | 이전 stream의 늦은 unbind나 stale `SessionProxy` message가 새 binding을 지우거나 사용하지 못함 |
 | session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고 disconnect callback으로 이어짐 |
 | actor join 직후 packet dispatch | `integration-single-process` | join 완료 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행 |

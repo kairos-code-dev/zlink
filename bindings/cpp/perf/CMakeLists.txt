@@ -10,57 +10,6 @@ find_package(Threads REQUIRED)
 set(PERF_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(PERF_CPP_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/../include")
 set(PERF_CORE_INCLUDE_DIR "${ZLINK_CORE_DIR}/include")
-set(PERF_ZLINK_C_DIR "${PERF_ROOT_DIR}/../../c")
-set(PERF_ZLINK_C_INCLUDE_DIR "${PERF_ZLINK_C_DIR}/include")
-
-function(resolve_perf_zlink_c_target out_target_var out_runtime_dir_var)
-  if(TARGET zlink_c)
-    set(${out_target_var} zlink_c PARENT_SCOPE)
-    set(${out_runtime_dir_var} "$<TARGET_FILE_DIR:zlink_c>" PARENT_SCOPE)
-    return()
-  endif()
-
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(_libname "libzlink_c.so")
-  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(_libname "libzlink_c.dylib")
-  elseif(WIN32)
-    set(_libname "zlink_c.dll")
-  else()
-    set(_libname "")
-  endif()
-
-  if(NOT _libname)
-    message(FATAL_ERROR "Unsupported platform for zlink_c runtime resolution")
-  endif()
-
-  set(_candidate_dirs
-    "${PERF_ZLINK_C_DIR}/build"
-    "${PERF_ZLINK_C_DIR}/build/lib"
-    "${PERF_ZLINK_C_DIR}/build/bin")
-  find_file(_zlink_c_lib
-    NAMES "${_libname}"
-    PATHS ${_candidate_dirs}
-    NO_DEFAULT_PATH)
-  if(NOT _zlink_c_lib)
-    message(FATAL_ERROR
-      "No zlink_c runtime found. Build bindings/c first under "
-      "${PERF_ZLINK_C_DIR}/build or include bindings/c in the active build.")
-  endif()
-
-  if(NOT TARGET zlink_c_perf_runtime)
-    add_library(zlink_c_perf_runtime SHARED IMPORTED GLOBAL)
-    set_target_properties(zlink_c_perf_runtime PROPERTIES
-      IMPORTED_LOCATION "${_zlink_c_lib}"
-    )
-  endif()
-
-  get_filename_component(_zlink_c_runtime_dir "${_zlink_c_lib}" DIRECTORY)
-  set(${out_target_var} zlink_c_perf_runtime PARENT_SCOPE)
-  set(${out_runtime_dir_var} "${_zlink_c_runtime_dir}" PARENT_SCOPE)
-endfunction()
-
-resolve_perf_zlink_c_target(PERF_ZLINK_C_TARGET PERF_ZLINK_C_RUNTIME_DIR)
 
 set(PERF_SINGLE_COMMON_SRCS
   "${PERF_ROOT_DIR}/single/common/perf_single_common.cpp"
@@ -71,23 +20,21 @@ function(configure_perf_target target_name out_subdir)
   target_compile_features(${target_name} PRIVATE cxx_std_17)
   target_link_libraries(${target_name} PRIVATE
     ${ZLINK_CPP_CORE_TARGET}
-    ${PERF_ZLINK_C_TARGET}
     zlink-cpp
     Threads::Threads)
   target_include_directories(${target_name} PRIVATE
     "${PERF_CORE_INCLUDE_DIR}"
-    "${PERF_ZLINK_C_INCLUDE_DIR}"
     "${PERF_CPP_INCLUDE_DIR}"
     "${PERF_ROOT_DIR}/single/common"
     "${PERF_ROOT_DIR}/multi/common"
   )
   if(UNIX AND NOT APPLE)
     set_target_properties(${target_name} PROPERTIES
-      BUILD_RPATH "${ZLINK_CPP_RUNTIME_DIR};${PERF_ZLINK_C_RUNTIME_DIR}"
+      BUILD_RPATH "${ZLINK_CPP_RUNTIME_DIR}"
     )
   elseif(APPLE)
     set_target_properties(${target_name} PROPERTIES
-      BUILD_RPATH "${ZLINK_CPP_RUNTIME_DIR};${PERF_ZLINK_C_RUNTIME_DIR}"
+      BUILD_RPATH "${ZLINK_CPP_RUNTIME_DIR}"
     )
   endif()
 

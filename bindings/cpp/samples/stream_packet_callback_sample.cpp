@@ -68,7 +68,7 @@ int main ()
 
     zlink::message_t reply = detail::make_message (detail::k_stream_payload);
     assert (result.routing_id.has_value ());
-    server.send (*result.routing_id, reply);
+    server.send (*result.routing_id).message (reply).submit ();
 
     char response[64];
     const int received = client.recv_exact (response, request.size ());

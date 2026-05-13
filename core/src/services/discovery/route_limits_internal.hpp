@@ -9,6 +9,7 @@
 typedef uint32_t zlink_route_kind_t;
 
 static const zlink_route_kind_t ZLINK_ROUTE_KIND_INVALID = 0u;
+static const zlink_route_kind_t ZLINK_ROUTE_KIND_ACTOR = 1u;
 static const size_t ZLINK_ROUTE_KEY_MAX = 256u;
 static const size_t ZLINK_ROUTE_VALUE_MAX = 4096u;
 

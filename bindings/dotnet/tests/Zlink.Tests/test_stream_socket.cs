@@ -225,7 +225,7 @@ public sealed class test_stream_socket
             header.Dispose();
             if (payload.AsReadOnlySpan().SequenceEqual(expected))
                 Interlocked.Increment(ref matched);
-            stream.Send(rid, payload);
+            stream.Send(rid).Message(payload).Submit();
         }));
 
         using var client = ConnectRawClient(port);
@@ -306,7 +306,7 @@ public sealed class test_stream_socket
             ReadOnlySpan<byte> payload = msg.AsReadOnlySpan();
             if (payload.Length == 1 && payload[0] == 0)
                 Interlocked.Increment(ref matched);
-            stream.Send(rid, msg);
+            stream.Send(rid).Message(msg).Submit();
         }));
 
         using var client = ConnectRawClient(port);
@@ -348,7 +348,7 @@ public sealed class test_stream_socket
             Assert.False(routingId.IsEmpty);
             Assert.Equal("hello", CoreTestSupport.Utf8(payloadMessage));
             using var reply = Message.FromBytes("world"u8);
-            stream.Send(routingId, reply);
+            stream.Send(routingId).Message(reply).Submit();
             Assert.Throws<ObjectDisposedException>(() =>
             {
                 _ = reply.Size;
@@ -453,7 +453,7 @@ public sealed class test_stream_socket
         stream.OnPacket((StreamPacketHandler)((rid, header, payload) =>
         {
             header.Dispose();
-            stream.Send(rid, payload);
+            stream.Send(rid).Message(payload).Submit();
         }));
 
         const int clientCount = 8;

@@ -3,7 +3,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
   createPayload,
@@ -83,12 +83,10 @@ function closeQuietly(resource) {
 }
 
 async function requestSpotReply(router, payload, timeoutMs) {
-  const parts = await router.requestToSpot(
-    SERVER_NODE_ROUTING_ID,
-    SERVER_SPOT_ROUTING_ID,
-    payload,
-    timeoutMs
-  );
+  const parts = await router.requestToSpot(SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID)
+    .message(payload)
+    .timeout(timeoutMs)
+    .submitAsync();
   try {
     return decodeMetricHeaderFromParts(parts);
   } finally {
@@ -170,7 +168,9 @@ async function main() {
           continue;
         }
         try {
-          received.reply(received.parts);
+          let reply = received.reply();
+          for (const part of received.parts) reply = reply.message(part);
+          reply.submit();
         } finally {
           closeReceived(received);
         }

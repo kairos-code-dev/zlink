@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 test('request-reply helpers expose canonical socket accessors', () => {
     const ctx = new zlink.Context();
     const routerSocket = new zlink.RouterSocket(ctx);
@@ -28,14 +28,14 @@ test('router recv and reply still work through the canonical socket surface', ()
     routerSocket.bind('inproc://request-reply-contract');
     dealerSocket.setRoutingId(clientRoutingId);
     dealerSocket.connect('inproc://request-reply-contract');
-    dealerSocket.send('ping');
+    dealerSocket.send().message('ping').submit();
     const request = new zlink.Received();
     routerSocket.recv(request);
     assert.ok(request.routingId instanceof zlink.RoutingId);
     assert.equal(request.routingId.toBytes().toString(), 'request-reply-client');
     assert.equal(request.requestSeq, null);
     assert.equal(request.parts[0].data().toString(), 'ping');
-    routerSocket.send(request.routingId, 'pong');
+    routerSocket.send(request.routingId).message('pong').submit();
     const reply = new zlink.Received();
     dealerSocket.recv(reply);
     assert.equal(reply.parts[0].data().toString(), 'pong');
@@ -51,8 +51,8 @@ test('reply helpers reject non-none flags when the core lacks reply flag support
     const spot = spotNode.createSpot();
     const routingId = zlink.RoutingId.fromBytes(Buffer.from('peer'));
     const spotRoutingId = zlink.RoutingId.fromBytes(Buffer.from('spot'));
-    assert.throws(() => routerSocket.reply(routingId, 1n, 'pong', zlink.SendFlags.DontWait), (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported);
-    assert.throws(() => routerSocket.replyToSpot(routingId, spotRoutingId, 1n, 'pong', zlink.SendFlags.DontWait), (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported);
+    assert.throws(() => routerSocket.reply(routingId, 1n).message('pong').flags(zlink.SendFlags.DontWait).submit(), (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported);
+    assert.throws(() => routerSocket.replyToSpot(routingId, spotRoutingId, 1n).message('pong').flags(zlink.SendFlags.DontWait).submit(), (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported);
     assert.equal(typeof spot.sendToSpot, 'function');
     assert.equal(typeof spot.replyToSpot, 'function');
     assert.equal(typeof spot.replyToRouter, 'function');

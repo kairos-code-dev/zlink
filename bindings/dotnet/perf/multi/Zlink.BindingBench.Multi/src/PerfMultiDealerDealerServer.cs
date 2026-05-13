@@ -80,7 +80,8 @@ internal static class PerfMultiDealerDealerServer
             StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Active,
                 msgSize, seq, EpochNs());
             using Message message = Message.FromBytes(payload);
-            if (server.Send(message, SendFlags.DontWait))
+            if (server.Send().Message(message).Flags(SendFlags.DontWait)
+                .Submit())
             {
                 seq++;
                 continue;
@@ -111,7 +112,8 @@ internal static class PerfMultiDealerDealerServer
             try
             {
                 using Message stopMessage = Message.FromBytes(MultiStopToken);
-                if (server.Send(stopMessage, SendFlags.DontWait))
+                if (server.Send().Message(stopMessage)
+                    .Flags(SendFlags.DontWait).Submit())
                     return;
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)

@@ -127,7 +127,7 @@ void discovery_t::tick ()
         if (!wait_socket_event_local (sub, ZLINK_POLLIN, 0))
             break;
 
-        std::vector<zlink_msg_t> frames;
+        scoped_msg_frames_t frames;
         frames.reserve (8);
         while (true) {
             zlink_msg_t frame;
@@ -142,7 +142,6 @@ void discovery_t::tick ()
         }
         if (!frames.empty ())
             handle_service_list (frames);
-        close_msg_frames (&frames);
     }
 
     refresh_registered_service_heartbeats (clock_t ().now_ms ());
@@ -172,84 +171,39 @@ void discovery_t::notify_observers (const std::set<std::string> &services_)
 
 void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
 {
-    if (frames_.size () < 4)
+    discovery_protocol::service_list_t service_list;
+    if (!discovery_protocol::decode_service_list (frames_, &service_list))
         return;
-
-    uint16_t msg_id = 0;
-    if (!discovery_protocol::read_u16 (frames_[0], &msg_id))
-        return;
-    if (msg_id != discovery_protocol::msg_service_list)
-        return;
-
-    uint32_t registry_id = 0;
-    uint64_t list_seq = 0;
-    uint32_t service_count = 0;
-
-    if (!discovery_protocol::read_u32 (frames_[1], &registry_id)
-        || !discovery_protocol::read_u64 (frames_[2], &list_seq)
-        || !discovery_protocol::read_u32 (frames_[3], &service_count)) {
-        return;
-    }
 
     std::vector<provider_info_t> updated;
-    updated.reserve (service_count);
+    updated.reserve (service_list.services.size ());
 
-    size_t index = 4;
-    for (uint32_t i = 0; i < service_count && index < frames_.size (); ++i) {
-        if (index + 3 >= frames_.size ())
-            break;
-        uint16_t auto_connect_type = 0;
-        if (!discovery_protocol::read_u16 (frames_[index++],
-                                           &auto_connect_type))
-            break;
-        const std::string channel_name =
-          discovery_protocol::read_string (frames_[index++]);
-        uint64_t contract_created_at = 0;
-        if (!discovery_protocol::read_u64 (frames_[index++],
-                                           &contract_created_at))
-            break;
-        uint32_t receiver_count = 0;
-        if (!discovery_protocol::read_u32 (frames_[index++], &receiver_count))
-            break;
-
+    for (size_t i = 0; i < service_list.services.size (); ++i) {
+        const discovery_protocol::service_record_t &service =
+          service_list.services[i];
         std::vector<provider_info_t> service_providers;
-        service_providers.reserve (receiver_count);
-        for (uint32_t p = 0; p < receiver_count && index + 8 < frames_.size ();
-             ++p) {
+        service_providers.reserve (service.providers.size ());
+        for (size_t p = 0; p < service.providers.size (); ++p) {
+            const discovery_protocol::service_provider_record_t &provider =
+              service.providers[p];
             provider_info_t info;
-            info.auto_connect_type = auto_connect_type;
-            info.channel_name = channel_name;
-            if (!discovery_protocol::read_u16 (frames_[index++],
-                                               &info.service_role))
-                break;
-            info.endpoint = discovery_protocol::read_string (frames_[index++]);
-            discovery_protocol::read_routing_id (frames_[index++],
-                                                 &info.routing_id);
-            discovery_protocol::read_u32 (frames_[index++],
-                                          &info.source_registry);
-            discovery_protocol::read_u64 (frames_[index++],
-                                          &info.registration_id);
-            uint64_t provider_update_seq = 0;
-            discovery_protocol::read_u64 (frames_[index++],
-                                          &provider_update_seq);
-            uint16_t raw_weight = 0;
-            if (!discovery_protocol::read_u16 (frames_[index++],
-                                               &raw_weight))
-                break;
-            info.weight =
-              raw_weight == 0
-                ? 0
-                : 100;
-            discovery_protocol::read_i64 (frames_[index++], &info.value);
-            discovery_protocol::read_bytes (frames_[index], &info.metadata);
-            ++index;
+            info.auto_connect_type = service.auto_connect_type;
+            info.channel_name = service.channel_name;
+            info.service_role = provider.service_role;
+            info.endpoint = provider.endpoint;
+            info.routing_id = provider.routing_id;
+            info.source_registry = provider.source_registry;
+            info.registration_id = provider.registration_id;
+            info.weight = provider.weight == 0 ? 0 : 100;
+            info.value = provider.value;
+            info.metadata = provider.metadata;
             info.registered_at = 0;
-            if (auto_connect_type == _auto_connect_type)
+            if (service.auto_connect_type == _auto_connect_type)
                 service_providers.push_back (info);
         }
 
-        if (auto_connect_type != _auto_connect_type
-            || channel_name != _channel_name)
+        if (service.auto_connect_type != _auto_connect_type
+            || service.channel_name != _channel_name)
             continue;
         updated.insert (updated.end (), service_providers.begin (),
                         service_providers.end ());
@@ -264,7 +218,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
         _service_state.snapshot_providers (&previous);
         discovery_service_change_t service_change;
         _service_state.apply_provider_snapshot (
-          registry_id, list_seq, updated, _channel_name,
+          service_list.registry_id, service_list.list_seq, updated, _channel_name,
           _bootstrap_runtime->routing_id_value (), &service_change);
         append_peer_admission_events_local (previous, updated, _channel_name,
                                             &events);

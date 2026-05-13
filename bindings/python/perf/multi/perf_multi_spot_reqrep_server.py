@@ -116,7 +116,7 @@ def main(argv=None):
                                 return
                             raise
                         with received:
-                            received.reply(received.to_bytes_list())
+                            received.reply().messages(*received.to_bytes_list()).submit()
 
                 replier.on_dispatch_event(on_dispatch)
 

@@ -50,7 +50,7 @@ def main(argv=None):
                     )
                 warmup_parts = [bytes(stamp_payload(warmup, phase=0, run_id=run_id))]
                 for sock in sockets:
-                    sock.send(warmup_parts)
+                    sock.send().messages(*warmup_parts).submit()
                 print(f"CLIENT_READY,{args.msg_size}", flush=True)
                 command = sys.stdin.readline().strip()
                 if command != f"START,{args.msg_size}":

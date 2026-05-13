@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const zlink = require('../../..');
+const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
 const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, spawnSenderWorker, waitForPostReadySettle, waitForConnectionReady, waitForWorkerDone, waitForWorkerError, waitForWorkerMessage, } = require('./perf_single_common');
 function trace(message) {

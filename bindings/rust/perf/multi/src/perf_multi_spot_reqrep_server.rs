@@ -166,7 +166,7 @@ fn main() {
                     }
                     let reply = Message::copy_from(common::message_payload(received.parts()))
                         .expect("reply");
-                    if let Err(err) = received.reply(vec![reply]) {
+                    if let Err(err) = received.reply().message(reply).submit() {
                         if trace_enabled() {
                             eprintln!("spot reqrep reply failed: {err}");
                         }

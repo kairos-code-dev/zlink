@@ -83,7 +83,6 @@ from ._socket_base import (
     _leave_callback,
 )
 
-
 _STREAM_PACKET_HANDLER = ctypes.CFUNCTYPE(
     None,
     ctypes.c_void_p,
@@ -272,6 +271,14 @@ class RouterSocketOptions:
 class PairSocket(_SendReadySocket, _EndpointSocket, _MessageSocket):
     _socket_type_value = SocketType.PAIR
 
+    def send(self):
+        from ._spot import SendOp
+
+        return SendOp(
+            self,
+            lambda parts, op_flags: _MessageSocket.send(self, parts, flags=op_flags),
+        )
+
 
 class DealerSocket(
     _SendReadySocket,
@@ -292,7 +299,26 @@ class DealerSocket(
             lambda: bool(self._pending_requests),
         )
 
-    async def request(self, payload, *, timeout=0):
+    def send(self):
+        from ._spot import SendOp
+
+        return SendOp(
+            self,
+            lambda parts, op_flags: _MessageSocket.send(self, parts, flags=op_flags),
+        )
+
+    def request(self):
+        from ._spot import RequestOp
+
+        return RequestOp(
+            self,
+            lambda parts, timeout=0: self._request_async_payload(parts, timeout=timeout),
+            lambda parts, callback, flags=0, timeout=0: self._request_callback(
+                parts, callback, flags=flags, timeout=timeout
+            ),
+        )
+
+    async def _request_async_payload(self, payload, *, timeout=0):
         loop = asyncio.get_running_loop()
         pending = _PendingRequest(loop=loop)
         handle = id(pending)
@@ -304,9 +330,6 @@ class DealerSocket(
             raise
         self._request_progress.ensure_running()
         return await pending.future
-
-    def request_callback(self, payload, callback, *, flags=0, timeout=0):
-        return self._request_callback(payload, callback, flags=flags, timeout=timeout)
 
     def close(self):
         self._cancel_pending_requests(RequestResult.TERMINATED)
@@ -398,7 +421,30 @@ class RouterSocket(
     def router_options(self):
         return RouterSocketOptions(self)
 
-    async def request(self, peer_rid, payload, *, timeout=0):
+    def send(self, routing_id):
+        from ._spot import SendOp
+
+        return SendOp(
+            self,
+            lambda parts, op_flags: _RoutedMessageSocket.send(
+                self, routing_id, parts, flags=op_flags
+            ),
+        )
+
+    def request(self, peer_rid):
+        from ._spot import RequestOp
+
+        return RequestOp(
+            self,
+            lambda parts, timeout=0: self._request_async_payload(
+                peer_rid, parts, timeout=timeout
+            ),
+            lambda parts, callback, flags=0, timeout=0: self._request_callback(
+                peer_rid, parts, callback, flags=flags, timeout=timeout
+            ),
+        )
+
+    async def _request_async_payload(self, peer_rid, payload, *, timeout=0):
         loop = asyncio.get_running_loop()
         pending = _PendingRequest(loop=loop)
         handle = id(pending)
@@ -411,10 +457,16 @@ class RouterSocket(
         self._request_progress.ensure_running()
         return await pending.future
 
-    def request_callback(self, peer_rid, payload, callback, *, flags=0, timeout=0):
-        return self._request_callback(peer_rid, payload, callback, flags=flags, timeout=timeout)
+    def reply(self, routing_id, request_seq):
+        from ._spot import ReplyOp
 
-    def reply(self, routing_id, request_seq, payload, *, flags=0):
+        return ReplyOp(
+            lambda parts, op_flags: self._reply_payload(
+                routing_id, request_seq, parts, flags=op_flags
+            )
+        )
+
+    def _reply_payload(self, routing_id, request_seq, payload, *, flags=0):
         _ensure_reply_flags_supported(flags)
         native_parts = _clone_payload(payload)
         native_rid = _copy_routing_id(routing_id)
@@ -483,31 +535,53 @@ class RouterSocket(
         routing_id = RoutingId(source_node) if source_node else None
         spot_rid = RoutingId(source_spot) if source_spot else None
         request_seq_value = int(request_seq.value)
+        socket = self
+        request_seq_for_reply = request_seq_value
+
+        def _make_router_send_op():
+            from ._spot import SendOp
+
+            return SendOp(
+                socket,
+                lambda parts, flags: socket._send_op_submit(
+                    routing_id, spot_rid, parts, flags
+                ),
+            )
+
+        def _make_router_reply_op():
+            from ._spot import ReplyOp
+
+            return ReplyOp(
+                lambda parts, flags: socket._reply_from_receive_context(
+                    routing_id, spot_rid, request_seq_for_reply, parts, flags=flags
+                )
+            )
+
         fresh = _request_received(
             parts_array,
             part_count,
             routing_id=routing_id,
             spot_rid=spot_rid,
             request_seq=request_seq_value if request_seq_value != 0 else None,
-            send_sender=lambda payload, *, flags=0, routing_id=routing_id, spot_rid=spot_rid: (
-                self.send_to_spot(routing_id, spot_rid, payload, flags=flags)
-                if spot_rid is not None
-                else self.send(routing_id, payload, flags=flags)
-            ),
-            reply_sender=lambda payload, *, flags=0, routing_id=routing_id, spot_rid=spot_rid, request_seq=request_seq_value: self._reply_from_receive_context(
-                routing_id,
-                spot_rid,
-                request_seq,
-                payload,
-                flags=flags,
-            ),
+            send_sender=_make_router_send_op,
+            reply_sender=_make_router_reply_op,
         )
         if received is None:
             return fresh
         received._adopt_from(fresh)
         return True
 
-    def send_to_spot(self, dest_node_rid, dest_spot_rid, payload, *, flags=0):
+    def send_to_spot(self, dest_node_rid, dest_spot_rid):
+        from ._spot import SendOp
+
+        return SendOp(
+            self,
+            lambda parts, op_flags: self._send_to_spot_payload(
+                dest_node_rid, dest_spot_rid, parts, flags=op_flags
+            ),
+        )
+
+    def _send_to_spot_payload(self, dest_node_rid, dest_spot_rid, payload, *, flags=0):
         try:
             native_parts = _spot_clone_payload(payload)
             native_node = _copy_routing_id(dest_node_rid)
@@ -562,9 +636,16 @@ class RouterSocket(
         self, routing_id, spot_rid, request_seq, payload, *, flags=0
     ):
         if spot_rid is None:
-            self.reply(routing_id, request_seq, payload, flags=flags)
+            self._reply_payload(routing_id, request_seq, payload, flags=flags)
             return
-        self.reply_to_spot(routing_id, spot_rid, request_seq, payload, flags=flags)
+        self._reply_to_spot_payload(routing_id, spot_rid, request_seq, payload, flags=flags)
+
+    def _send_op_submit(self, routing_id, spot_rid, parts, flags):
+        """Submit a Received.send() payload back to the source. Used by the
+        SendOp builder returned from Received.send()."""
+        if spot_rid is not None:
+            return self._send_to_spot_payload(routing_id, spot_rid, parts, flags=flags)
+        return _RoutedMessageSocket.send(self, routing_id, parts, flags=flags)
 
     def _request_callback(self, routing_id, payload, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)
@@ -603,7 +684,25 @@ class RouterSocket(
             self._pending_requests.pop(handle, None)
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
-    async def request_to_spot(self, dest_node_rid, dest_spot_rid, payload, *, timeout=0):
+    def request_to_spot(self, dest_node_rid, dest_spot_rid):
+        from ._spot import RequestOp
+
+        return RequestOp(
+            self,
+            lambda parts, timeout=0: self._request_to_spot_async_payload(
+                dest_node_rid, dest_spot_rid, parts, timeout=timeout
+            ),
+            lambda parts, callback, flags=0, timeout=0: self._request_to_spot_callback_payload(
+                dest_node_rid,
+                dest_spot_rid,
+                parts,
+                callback,
+                flags=flags,
+                timeout=timeout,
+            ),
+        )
+
+    async def _request_to_spot_async_payload(self, dest_node_rid, dest_spot_rid, payload, *, timeout=0):
         native_parts = _spot_clone_payload(payload)
         native_node = _copy_routing_id(dest_node_rid)
         native_spot = _copy_routing_id(dest_spot_rid)
@@ -632,7 +731,7 @@ class RouterSocket(
         self._request_progress.ensure_running()
         return await pending.future
 
-    def request_to_spot_callback(self, dest_node_rid, dest_spot_rid, payload, callback, *, flags=0, timeout=0):
+    def _request_to_spot_callback_payload(self, dest_node_rid, dest_spot_rid, payload, callback, *, flags=0, timeout=0):
         native_parts = _spot_clone_payload(payload)
         native_node = _copy_routing_id(dest_node_rid)
         native_spot = _copy_routing_id(dest_spot_rid)
@@ -667,7 +766,16 @@ class RouterSocket(
                 return False
             raise
 
-    def reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq, payload, *, flags=0):
+    def reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq):
+        from ._spot import ReplyOp
+
+        return ReplyOp(
+            lambda parts, op_flags: self._reply_to_spot_payload(
+                dest_node_rid, dest_spot_rid, request_seq, parts, flags=op_flags
+            )
+        )
+
+    def _reply_to_spot_payload(self, dest_node_rid, dest_spot_rid, request_seq, payload, *, flags=0):
         _ensure_reply_flags_supported(flags)
         native_parts = _spot_clone_payload(payload)
         native_node = _copy_routing_id(dest_node_rid)
@@ -723,44 +831,52 @@ class RouterSocket(
 class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingIdSocket, _RoutedMessageSocket):
     _socket_type_value = SocketType.STREAM
 
+    def send(self, routing_id):
+        from ._spot import SendOp
+
+        return SendOp(
+            self,
+            lambda parts, op_flags: _RoutedMessageSocket.send(
+                self, routing_id, parts, flags=op_flags
+            ),
+        )
+
     def disconnect_rid(self, peer_rid):
         native = _copy_routing_id(peer_rid)
         rc = lib().zlink_disconnect_rid(self._handle, ctypes.byref(native))
         if rc != 0:
             _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
 
-    def bind_actor(self, node, session_rid, actor_ref, *, timeout=0):
-        native_session = _copy_routing_id(session_rid)
-        native_actor = _actor_ref_to_native(actor_ref)
-        rc = lib().zlink_stream_bind_actor(
-            node._handle,
-            self._handle,
-            ctypes.byref(native_session),
-            ctypes.byref(native_actor),
-            _spot_timeout_to_ms(timeout),
-        )
-        if rc != 0:
-            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
+    def bind_actor(self, session_rid, actor):
+        """Async Actor bind. The stream is bound to its session/actor mapping
+        here. A bind does not require nor imply a Spot join."""
+        from ._spot import ActorBindOp
 
-    def unbind_actor(self, node, session_rid, actor_id, *, timeout=0):
-        native_session = _copy_routing_id(session_rid)
-        rc = lib().zlink_stream_unbind_actor(
-            node._handle,
-            self._handle,
-            ctypes.byref(native_session),
-            _actor_id_bytes(actor_id),
-            _spot_timeout_to_ms(timeout),
-        )
-        if rc != 0:
-            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
+        return ActorBindOp(self, session_rid, actor)
 
-    def send_bound_actor(self, node, session_rid, actor_id, payload, *, flags=0):
+    def unbind_actor(self, session_rid, actor_id):
+        """Async Actor unbind."""
+        from ._spot import ActorUnbindOp
+
+        return ActorUnbindOp(self, session_rid, actor_id)
+
+    def send_bound_actor(self, session_rid, actor_id):
+        """Send a payload to the (session, actor) pair bound on this stream."""
+        from ._spot import SendOp
+
+        return SendOp(
+            self,
+            lambda parts, flags: self._send_bound_actor_submit(
+                session_rid, actor_id, parts, flags
+            ),
+        )
+
+    def _send_bound_actor_submit(self, session_rid, actor_id, parts, flags):
         native_session = _copy_routing_id(session_rid)
-        native_parts = _spot_clone_payload(payload)
+        native_parts = _spot_clone_payload(parts)
         rc, err = _submit_parts(
             native_parts,
             lambda part_ptr, part_flag: lib().zlink_stream_send_bound_actor_part(
-                node._handle,
                 self._handle,
                 ctypes.byref(native_session),
                 _actor_id_bytes(actor_id),
@@ -774,6 +890,86 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
                 return False
             _raise_result_error(SubmitError, SubmitResult, rc, err)
         return True
+
+    def _submit_bind_actor(self, session_rid, actor_ref, pending, timeout):
+        from ._spot import _PendingRequest  # local import to avoid cycle
+
+        native_session = _copy_routing_id(session_rid)
+        native_actor = _actor_ref_to_native(actor_ref)
+        handle = id(pending)
+        if not hasattr(self, "_actor_request_pending"):
+            self._actor_request_pending = {}
+        if not hasattr(self, "_actor_reply_handler"):
+            self._actor_reply_handler = None
+        self._actor_request_pending[handle] = pending
+        if self._actor_reply_handler is None:
+            self._actor_reply_handler = _REPLY_HANDLER(self._on_actor_reply)
+        rc = lib().zlink_stream_bind_actor(
+            self._handle,
+            ctypes.byref(native_session),
+            ctypes.byref(native_actor),
+            self._actor_reply_handler,
+            ctypes.c_void_p(handle),
+            _spot_timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            self._actor_request_pending.pop(handle, None)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+
+    def _submit_unbind_actor(self, session_rid, actor_id, pending, timeout):
+        native_session = _copy_routing_id(session_rid)
+        handle = id(pending)
+        if not hasattr(self, "_actor_request_pending"):
+            self._actor_request_pending = {}
+        if not hasattr(self, "_actor_reply_handler"):
+            self._actor_reply_handler = None
+        self._actor_request_pending[handle] = pending
+        if self._actor_reply_handler is None:
+            self._actor_reply_handler = _REPLY_HANDLER(self._on_actor_reply)
+        rc = lib().zlink_stream_unbind_actor(
+            self._handle,
+            ctypes.byref(native_session),
+            _actor_id_bytes(actor_id),
+            self._actor_reply_handler,
+            ctypes.c_void_p(handle),
+            _spot_timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            self._actor_request_pending.pop(handle, None)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+
+    def _on_actor_reply(self, result_code, parts, part_count, userdata):
+        handle = ctypes.cast(userdata, ctypes.c_void_p).value
+        pending = self._actor_request_pending.pop(handle, None)
+        if pending is None:
+            return
+        result = _request_result_from_code(int(result_code))
+        reply = []
+        if result == RequestResult.OK:
+            reply = _message_list_from_parts(parts, part_count)
+        pending.resolve(result, reply, _request_result_internal_errno(result))
+
+    def bound_actors(self, session_rid):
+        """Snapshot of Actor refs attached to the given session."""
+        from ._ffi import ZlinkActorRef as _Ref
+        from ._spot import _actor_ref_from_native
+
+        native_session = _copy_routing_id(session_rid)
+        count = ctypes.c_size_t()
+        rc = lib().zlink_stream_bound_actors(
+            self._handle, ctypes.byref(native_session), None, ctypes.byref(count)
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        if count.value == 0:
+            return []
+        entries = (_Ref * int(count.value))()
+        rc = lib().zlink_stream_bound_actors(
+            self._handle, ctypes.byref(native_session), entries, ctypes.byref(count)
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return [_actor_ref_from_native(entry) for entry in entries[: int(count.value)]]
 
     def on_packet(self, handler):
         if handler is None:
@@ -840,6 +1036,16 @@ class PubSocket(_SendReadySocket, _DiscoveryAttachSocket, _EndpointSocket, _Publ
     def publisher_options(self):
         return PubSocketOptions(self)
 
+    def publish(self, topic):
+        from ._spot import SendOp
+
+        return SendOp(
+            self,
+            lambda parts, op_flags: _PublisherSocket.publish(
+                self, topic, parts, flags=op_flags
+            ),
+        )
+
 
 class SubSocket(_DiscoveryAttachSocket, _EndpointSocket, _SubscriberOptionSocket, _SubscriberSocket):
     _socket_type_value = SocketType.SUB
@@ -851,6 +1057,16 @@ class XPubSocket(_SendReadySocket, _EndpointSocket, _PublisherOptionSocket, _Pub
     @property
     def publisher_options(self):
         return PubSocketOptions(self)
+
+    def publish(self, topic):
+        from ._spot import SendOp
+
+        return SendOp(
+            self,
+            lambda parts, op_flags: _PublisherSocket.publish(
+                self, topic, parts, flags=op_flags
+            ),
+        )
 
     def _subscription_event(self, flags):
         routing_id = ctypes.POINTER(ZlinkRoutingId)()

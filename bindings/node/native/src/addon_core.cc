@@ -2897,11 +2897,16 @@ napi_value socket_publish(napi_env env, napi_callback_info info)
     std::string topic = get_string(env, argv[1]);
 
     std::vector<zlink_msg_t> parts;
+    bool is_array = false;
+    napi_is_array(env, argv[2], &is_array);
     bool is_buf = false;
     napi_valuetype payload_type = napi_undefined;
     napi_typeof(env, argv[2], &payload_type);
-    if ((napi_is_buffer(env, argv[2], &is_buf) == napi_ok && is_buf)
-        || payload_type == napi_object) {
+    if (is_array) {
+        if (!build_msg_vector(env, argv[2], &parts))
+            return NULL;
+    } else if ((napi_is_buffer(env, argv[2], &is_buf) == napi_ok && is_buf)
+               || payload_type == napi_object) {
         parts.resize(1);
         if (!init_msg_from_value(env, argv[2], &parts[0]))
             return throw_last_error(env, "publish failed");
@@ -2938,11 +2943,16 @@ napi_value socket_try_publish(napi_env env, napi_callback_info info)
     std::string topic = get_string(env, argv[1]);
 
     std::vector<zlink_msg_t> parts;
+    bool is_array = false;
+    napi_is_array(env, argv[2], &is_array);
     bool is_buf = false;
     napi_valuetype payload_type = napi_undefined;
     napi_typeof(env, argv[2], &payload_type);
-    if ((napi_is_buffer(env, argv[2], &is_buf) == napi_ok && is_buf)
-        || payload_type == napi_object) {
+    if (is_array) {
+        if (!build_msg_vector(env, argv[2], &parts))
+            return NULL;
+    } else if ((napi_is_buffer(env, argv[2], &is_buf) == napi_ok && is_buf)
+               || payload_type == napi_object) {
         parts.resize(1);
         if (!init_msg_from_value(env, argv[2], &parts[0]))
             return throw_last_error(env, "publishNoWaitResult failed");

@@ -54,7 +54,7 @@ public sealed class ChannelMessagingRuntimeTests
         var recorder = serverHost.Services.GetRequiredService<ProfileCommandRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetProfileRequest { UserId = "discovery" }).Async<ProfileReply>(),
+            async () => await client.Request("api", new GetProfileRequest { UserId = "discovery" }).Submit<ProfileReply>(),
             static result => result.Name == "user:discovery");
 
         Assert.Equal("user:discovery", reply.Name);
@@ -62,7 +62,7 @@ public sealed class ChannelMessagingRuntimeTests
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () =>
             {
-                await client.Send("api", new RefreshProfileCacheCommand { UserId = "discovery" }).Async();
+                await client.Send("api", new RefreshProfileCacheCommand { UserId = "discovery" }).Submit();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },

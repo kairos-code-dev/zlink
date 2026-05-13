@@ -1158,22 +1158,11 @@ void zlink::asio_ws_engine_t::maybe_grow_stream_decoder_read_target (
         return;
     }
 
-    ++_stream_decoder_read_target_full_hits;
-    _stream_decoder_read_target_full_hits = 0;
-
-    size_t grown = _stream_decoder_read_target_size;
-    if (grown >= _stream_decoder_read_target_max)
-        return;
-
-    if (grown > _stream_decoder_read_target_max / 2)
-        grown = _stream_decoder_read_target_max;
-    else
-        grown *= 2;
-
-    if (grown > _stream_decoder_read_target_max)
-        grown = _stream_decoder_read_target_max;
-
-    if (grown <= _stream_decoder_read_target_size)
+    const size_t grown =
+      zlink::asio_stream_fastpath_policy::next_stream_target_after_full_hit (
+        _stream_decoder_read_target_size, _stream_decoder_read_target_max,
+        &_stream_decoder_read_target_full_hits, 1);
+    if (grown == 0)
         return;
 
     _stream_decoder_read_target_size = grown;
@@ -1204,19 +1193,11 @@ void zlink::asio_ws_engine_t::maybe_schedule_stream_encoder_growth (
         return;
     }
 
-    ++_stream_encoder_write_target_full_hits;
-    _stream_encoder_write_target_full_hits = 0;
-
-    size_t grown = _stream_encoder_write_target_size;
-    if (grown > _stream_encoder_write_target_max / 2)
-        grown = _stream_encoder_write_target_max;
-    else
-        grown *= 2;
-
-    if (grown > _stream_encoder_write_target_max)
-        grown = _stream_encoder_write_target_max;
-
-    if (grown <= _stream_encoder_write_target_size)
+    const size_t grown =
+      zlink::asio_stream_fastpath_policy::next_stream_target_after_full_hit (
+        _stream_encoder_write_target_size, _stream_encoder_write_target_max,
+        &_stream_encoder_write_target_full_hits, 1);
+    if (grown == 0)
         return;
 
     _stream_encoder_pending_resize_size = grown;

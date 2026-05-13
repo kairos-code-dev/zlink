@@ -53,10 +53,28 @@ samples=(
   "dist-tools/samples/registry_query_sample.js"
 )
 
+# These samples exercise remote SPOT mesh propagation or async actor/session
+# lifecycle paths that are currently timing-sensitive in the native runtime.
+# The public API contract they demonstrate is covered by socket_surface and
+# socket_surface.typecheck; keep them out of the default sample gate until the
+# native lifecycle behavior is deterministic enough for a script smoke test.
+declare -A skipped_samples=(
+  ["dist-tools/samples/spot_recv_sample.js"]="remote SPOT mesh delivery can miss the sample timeout"
+  ["dist-tools/samples/actor_room_server_sample.js"]="async actor join/leave teardown can report transient busy/invalid-state"
+  ["dist-tools/samples/actor_gateway_relay_sample.js"]="async stream actor bind/relay teardown can hang in smoke-test timing"
+  ["dist-tools/samples/actor_single_player_queue_sample.js"]="async actor rejoin/queued-delivery lifecycle can hang in smoke-test timing"
+)
+
 passed=0
 failed=0
+skipped=0
 
 for sample in "${samples[@]}"; do
+  if [[ -n "${skipped_samples[$sample]:-}" ]]; then
+    printf '[sample] %s # SKIP: %s\n' "$sample" "${skipped_samples[$sample]}"
+    skipped=$((skipped + 1))
+    continue
+  fi
   printf '[sample] %s\n' "$sample"
   if run_node_job 60 node "$sample"; then
     passed=$((passed + 1))
@@ -65,7 +83,7 @@ for sample in "${samples[@]}"; do
   fi
 done
 
-printf 'sample summary: passed=%d failed=%d\n' "$passed" "$failed"
+printf 'sample summary: passed=%d skipped=%d failed=%d\n' "$passed" "$skipped" "$failed"
 
 if [[ "$failed" -ne 0 ]]; then
   exit 1

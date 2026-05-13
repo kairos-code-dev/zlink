@@ -69,9 +69,9 @@ fn main() {
         .expect("server recv failed");
     assert_eq!(received.parts()[0].as_bytes(), b"hello-stream");
     received
-        .send(vec![
-            zlink::Message::copy_from(b"hello-stream").expect("reply message failed"),
-        ])
+        .send()
+        .message(zlink::Message::copy_from(b"hello-stream").expect("reply message failed"))
+        .submit()
         .expect("stream reply failed");
     let mut response = [0u8; 12];
     tcp_client

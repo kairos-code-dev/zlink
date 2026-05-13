@@ -62,7 +62,8 @@ bool complete_handshake (::perf::socket_t &receiver,
         if (!outbound.valid ())
             return false;
 
-        if (sender.send (receiver_rid, outbound, ZLINK_DONTWAIT) != 0) {
+        if (perf::send_socket (
+              sender, receiver_rid, outbound, ZLINK_DONTWAIT) != 0) {
             const int err = errno;
             if (err != EAGAIN && err != EINTR && err != EHOSTUNREACH
                 && err != ENOTCONN) {
@@ -103,7 +104,8 @@ bool complete_handshake (::perf::socket_t &receiver,
         return false;
 
     zlink::message_t reply = zlink::message_t::from_string ("PONG");
-    if (!reply.valid () || receiver.send (*sender_actual_rid, reply) != 0) {
+    if (!reply.valid ()
+        || perf::send_socket (receiver, *sender_actual_rid, reply) != 0) {
         if (perf_debug_enabled ())
             std::cerr << "router_router: handshake reply send failed errno="
                       << errno << std::endl;

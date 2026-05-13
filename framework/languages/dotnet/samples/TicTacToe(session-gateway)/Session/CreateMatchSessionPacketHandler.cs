@@ -26,11 +26,11 @@ internal sealed class CreateMatchSessionPacketHandler : ISessionRelayPacketHandl
                     SampleNames.ApiChannel,
                     request with { OwnerActorId = actorId })
                 .WithTimeout(SampleTimings.RequestTimeout)
-                .Async<CreateMatchRes>(cancellationToken)
+                .Submit<CreateMatchRes>(cancellationToken)
                 .ConfigureAwait(false);
 
             await context.Stream.Reply(reply)
-                .Async(cancellationToken)
+                .Submit(cancellationToken)
                 .ConfigureAwait(false);
         }
     }

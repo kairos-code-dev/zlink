@@ -16,7 +16,7 @@ fn pair_send_recv_roundtrip() {
     client.connect("inproc://beh-pair").unwrap();
 
     let msg = Message::copy_from(b"pair-payload-42").unwrap();
-    client.send(msg).unwrap();
+    client.send().message(msg).submit().unwrap();
 
     let mut received = Received::empty();
     server.recv(&mut received, RecvFlags::NONE).unwrap();
@@ -37,7 +37,13 @@ fn pair_multipart_send_recv() {
         Message::copy_from(b"frame-1").unwrap(),
         Message::copy_from(b"frame-2").unwrap(),
     ];
-    b.send(parts).unwrap();
+    let mut iter = parts.into_iter();
+    let first = iter.next().unwrap();
+    let mut op = b.send().message(first);
+    for part in iter {
+        op = op.message(part);
+    }
+    op.submit().unwrap();
 
     let mut received = Received::empty();
     a.recv(&mut received, RecvFlags::NONE).unwrap();
@@ -71,7 +77,7 @@ fn dealer_router_roundtrip() {
 
     // Dealer sends to Router
     let msg = Message::copy_from(b"request-payload").unwrap();
-    dealer.send(msg).unwrap();
+    dealer.send().message(msg).submit().unwrap();
 
     // Router receives with the dealer's routing id
     let mut received = Received::empty();
@@ -81,7 +87,9 @@ fn dealer_router_roundtrip() {
     // Router sends back to the dealer using the received routing id
     let reply = Message::copy_from(b"response-payload").unwrap();
     router
-        .send(received.routing_id().expect("missing routing id"), reply)
+        .send(received.routing_id().expect("missing routing id"))
+        .message(reply)
+        .submit()
         .unwrap();
 
     let mut response = Received::empty();
@@ -101,7 +109,7 @@ fn pub_sub_roundtrip() {
     thread::sleep(Duration::from_millis(100));
 
     let msg = Message::copy_from(b"price=42.5").unwrap();
-    pub_sock.publish("market.price", msg).unwrap();
+    pub_sock.publish("market.price").message(msg).submit().unwrap();
 
     let topic_msg = sub_sock.subscribe().unwrap();
     assert_eq!(topic_msg.topic(), "market.price");
@@ -127,7 +135,7 @@ fn try_send_explicit_outcome() {
     // No peer connected, so non-blocking send should fail explicitly.
 
     let msg = Message::copy_from(b"test").unwrap();
-    let _ = sock.send_with_flags(msg, SendFlags::DONT_WAIT);
+    let _ = sock.send().message(msg).flags(SendFlags::DONT_WAIT).submit();
 }
 
 #[test]
@@ -137,7 +145,11 @@ fn try_publish_explicit_outcome() {
     pub_sock.bind("inproc://beh-try-pub").unwrap();
 
     let msg = Message::copy_from(b"test").unwrap();
-    let _ = pub_sock.publish_with_flags("topic", msg, SendFlags::DONT_WAIT);
+    let _ = pub_sock
+        .publish("topic")
+        .message(msg)
+        .flags(SendFlags::DONT_WAIT)
+        .submit();
 }
 
 #[test]
@@ -187,7 +199,9 @@ fn dealer_router_send_from_callback() {
 
     // Dealer sends request.
     dealer
-        .send(Message::copy_from(b"request-42").unwrap())
+        .send()
+        .message(Message::copy_from(b"request-42").unwrap())
+        .submit()
         .unwrap();
 
     let mut received = Received::empty();
@@ -195,7 +209,9 @@ fn dealer_router_send_from_callback() {
     assert_eq!(received.parts()[0].as_bytes(), b"request-42");
     let reply = Message::copy_from(b"reply-42").unwrap();
     handle
-        .send_to(received.routing_id().expect("missing routing id"), reply)
+        .send_to(received.routing_id().expect("missing routing id"))
+        .message(reply)
+        .submit()
         .unwrap();
 
     // Dealer receives the reply sent from the router handle.
@@ -230,13 +246,15 @@ fn pair_send_from_callback() {
 
     // Client sends and receives.
     client
-        .send(Message::copy_from(b"ping-pair").unwrap())
+        .send()
+        .message(Message::copy_from(b"ping-pair").unwrap())
+        .submit()
         .unwrap();
     let mut received = Received::empty();
     server.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"ping-pair");
     let reply = Message::copy_from(b"pong-pair").unwrap();
-    handle.send(reply).unwrap();
+    handle.send().message(reply).submit().unwrap();
     client
         .common_options()
         .set_recv_timeout(Duration::from_secs(5))

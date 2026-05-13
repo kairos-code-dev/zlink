@@ -69,7 +69,12 @@ fn main() {
         if !pending {
             common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
             let msg = Message::copy_from(&buf).expect("msg");
-            match pub_sock.publish_with_flags(TOPIC, msg, SendFlags::DONT_WAIT) {
+            match pub_sock
+                .publish(TOPIC)
+                .message(msg)
+                .flags(SendFlags::DONT_WAIT)
+                .submit()
+            {
                 Ok(true) => {
                     seq += 1;
                     continue;
@@ -98,7 +103,7 @@ fn main() {
     // token (blocking publish, deadline ignored). Subscribers exit on token.
     for _ in 0..100 {
         let token = Message::copy_from(common::STOP_TOKEN).expect("stop token");
-        match pub_sock.publish(TOPIC, token) {
+        match pub_sock.publish(TOPIC).message(token).submit().map(|_| ()) {
             Ok(()) => break,
             Err(_) => std::thread::sleep(Duration::from_millis(1)),
         }

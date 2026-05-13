@@ -1036,15 +1036,22 @@ class TopicMessage:
 
 
 class Received(ReceivedMultipart):
-    def send(self, parts, *, flags=0):
+    def send(self):
+        """Return a SendOp routed back to the source of this Received.
+
+        Source rid / spot rid are encapsulated; accumulate payload via
+        ``.message(...)`` before calling ``.submit()``.
+        """
         if self._send_sender is None:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        return self._send_sender(parts, flags=int(flags))
+        return self._send_sender()
 
-    def reply(self, parts, *, flags=0):
+    def reply(self):
+        """Return a ReplyOp for this received request. Valid only when
+        ``request_seq`` is present."""
         if self.request_seq is None or self._reply_sender is None:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        self._reply_sender(parts, flags=int(flags))
+        return self._reply_sender()
 
 
 class Subscribed(TopicMessage):
@@ -1125,9 +1132,6 @@ class Message:
 
     def refCount(self):
         return self.ref_count()
-
-    def send(self, socket):
-        socket.send(self)
 
     def close(self):
         if not self._valid:

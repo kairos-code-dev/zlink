@@ -93,6 +93,7 @@ def _request_received(
     spot_rid=None,
     request_seq=None,
     *,
+    send_sender=None,
     reply_sender=None,
 ):
     return Received(
@@ -100,6 +101,7 @@ def _request_received(
         routing_id=routing_id,
         spot_rid=spot_rid,
         request_seq=request_seq,
+        send_sender=send_sender,
         reply_sender=reply_sender,
     )
 

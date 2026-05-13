@@ -34,7 +34,12 @@ import systems.zlink.service.discovery.Discovery;
 import systems.zlink.service.spot.SpotNode;
 import systems.zlink.service.registry.Registry;
 import systems.zlink.service.spot.ActorRef;
+import systems.zlink.service.spot.ActorJoinCallbackSubmitOp;
+import systems.zlink.service.spot.ActorJoinOp;
+import systems.zlink.service.spot.ActorJoinSubmitOp;
 import systems.zlink.service.spot.ActorRoute;
+import systems.zlink.service.spot.ActorBindOp;
+import systems.zlink.service.spot.ActorUnbindOp;
 import systems.zlink.service.spot.ReplyOp;
 import systems.zlink.service.spot.RequestOp;
 import systems.zlink.service.spot.SendOp;
@@ -82,7 +87,7 @@ public class SocketContractTest {
             client.connect(endpoint);
 
             try (Message outbound = Message.copyOfUtf8("pair-contract")) {
-                client.send(outbound);
+                client.send().message(outbound).submit();
             }
 
             try (systems.zlink.Received received = new systems.zlink.Received()) {
@@ -116,13 +121,18 @@ public class SocketContractTest {
                     assertTrue(received.routingId().isPresent());
                     assertTrue(received.requestSeq().isPresent());
                     assertTrue(received.requestSeq().orElseThrow() != 0L);
-                    received.reply(List.of(Message.copyOfUtf8("pong")));
+                    received.reply()
+                        .message(Message.copyOfUtf8("pong"))
+                        .submit();
                 }
             }, serverExecutor);
 
             try (Message request = Message.copyOfUtf8("ping")) {
-                List<Message> reply = dealerSocket.request(request,
-                    Duration.ofSeconds(2)).get(2, TimeUnit.SECONDS);
+                List<Message> reply = dealerSocket.request()
+                    .message(request)
+                    .timeout(Duration.ofSeconds(2))
+                    .submitAsync()
+                    .get(2, TimeUnit.SECONDS);
                 try {
                     assertArrayEquals("pong".getBytes(StandardCharsets.UTF_8),
                         reply.get(0).toByteArray());
@@ -145,7 +155,9 @@ public class SocketContractTest {
             routerSocket.bind(endpoint);
             dealerSocket.connect(endpoint);
 
-            dealerSocket.send(List.of(Message.copyOfUtf8("plain-data")));
+            dealerSocket.send()
+                .message(Message.copyOfUtf8("plain-data"))
+                .submit();
 
             try (systems.zlink.Received received = new systems.zlink.Received()) {
 
@@ -174,7 +186,9 @@ public class SocketContractTest {
                 try (systems.zlink.Received received = new systems.zlink.Received()) {
 
                     routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
-                    received.reply(List.of(Message.copyOfUtf8("pong-callback")));
+                    received.reply()
+                        .message(Message.copyOfUtf8("pong-callback"))
+                        .submit();
                 }
             }, serverExecutor);
 
@@ -183,7 +197,7 @@ public class SocketContractTest {
             AtomicReference<RequestResult> resultRef = new AtomicReference<>();
             AtomicReference<Throwable> errorRef = new AtomicReference<>();
             try (Message request = Message.copyOfUtf8("ping-callback")) {
-                dealerSocket.request(request, (result, reply) -> {
+                dealerSocket.request().message(request).submit((result, reply) -> {
                     resultRef.set(result);
                     replyRef.set(reply);
                     done.countDown();
@@ -229,7 +243,7 @@ public class SocketContractTest {
                 systems.zlink.MonitorEventType.CONNECTION_READY);
 
             try (Message payload = Message.copyOfUtf8("socket-payload")) {
-                pub.publish("socket-topic", payload);
+                pub.publish("socket-topic").message(payload).submit();
             }
 
             try (TopicMessage received = sub.subscribe()) {
@@ -310,11 +324,11 @@ public class SocketContractTest {
     @Test
     public void routedAndLegacySurfaceMatchesJavaSpec() throws Exception {
         assertTrue(hasPublicMethod(RouterSocket.class, "sendToSpot",
-            RoutingId.class, RoutingId.class, Message.class));
+            RoutingId.class, RoutingId.class));
         assertTrue(hasPublicMethod(RouterSocket.class, "requestToSpot",
-            RoutingId.class, RoutingId.class, Message.class));
+            RoutingId.class, RoutingId.class));
         assertTrue(hasPublicMethod(RouterSocket.class, "replyToSpot",
-            RoutingId.class, RoutingId.class, long.class, Message.class));
+            RoutingId.class, RoutingId.class, long.class));
         assertFalse(hasPublicMethod(RouterSocket.class, "recvSpot"));
         assertFalse(hasPublicMethod(RouterSocket.class, "recvSpot",
             RecvFlags.class));
@@ -436,6 +450,33 @@ public class SocketContractTest {
     }
 
     @Test
+    public void actorJoinBuilderSurfaceMatchesJavaSpec() throws Exception {
+        assertEquals(ActorJoinSubmitOp.class,
+            ActorJoinOp.class.getMethod("message", Message.class)
+                .getReturnType());
+        assertEquals(ActorJoinSubmitOp.class,
+            ActorJoinSubmitOp.class.getMethod("message", Message.class)
+                .getReturnType());
+        assertEquals(ActorJoinSubmitOp.class,
+            ActorJoinSubmitOp.class.getMethod("timeout", Duration.class)
+                .getReturnType());
+        assertEquals(ActorJoinCallbackSubmitOp.class,
+            ActorJoinSubmitOp.class.getMethod("flags", SendFlags.class)
+                .getReturnType());
+        assertEquals(ActorJoinCallbackSubmitOp.class,
+            ActorJoinCallbackSubmitOp.class.getMethod("message", Message.class)
+                .getReturnType());
+        assertEquals(ActorJoinCallbackSubmitOp.class,
+            ActorJoinCallbackSubmitOp.class.getMethod("timeout", Duration.class)
+                .getReturnType());
+        assertEquals(ActorJoinCallbackSubmitOp.class,
+            ActorJoinCallbackSubmitOp.class.getMethod("flags", SendFlags.class)
+                .getReturnType());
+        assertFalse(hasPublicMethod(ActorJoinCallbackSubmitOp.class,
+            "submitAsync"));
+    }
+
+    @Test
     public void routerReplyWithFlagsFailsExplicitlyWhenCoreLacksSupport()
       throws Exception {
         TestSupport.assumeNative();
@@ -450,7 +491,10 @@ public class SocketContractTest {
 
             CompletableFuture<List<Message>> future;
             try (Message request = Message.copyOfUtf8("ping")) {
-                future = dealerSocket.request(request, Duration.ofMillis(50));
+                future = dealerSocket.request()
+                    .message(request)
+                    .timeout(Duration.ofMillis(50))
+                    .submitAsync();
             }
 
             try (systems.zlink.Received received = new systems.zlink.Received()) {
@@ -459,8 +503,10 @@ public class SocketContractTest {
                 routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
                 SubmitException submitException = assertThrows(
                     SubmitException.class,
-                    () -> received.reply(List.of(Message.copyOfUtf8("pong")),
-                        SendFlags.DONT_WAIT));
+                    () -> received.reply()
+                        .message(Message.copyOfUtf8("pong"))
+                        .flags(SendFlags.DONT_WAIT)
+                        .submit());
                 assertEquals(SubmitResult.NOT_SUPPORTED,
                     submitException.getResult());
             }
@@ -494,7 +540,8 @@ public class SocketContractTest {
     }
 
     @Test
-    public void streamSocketDoesNotExposeLegacyStreamOrConnectSurface() {
+    public void streamSocketDoesNotExposeLegacyStreamOrConnectSurface()
+      throws Exception {
         assertFalse(hasPublicMethod(StreamSocket.class, "attachStream"));
         assertFalse(hasPublicMethod(StreamSocket.class, "streamSend"));
         assertFalse(hasPublicMethod(StreamSocket.class, "onReceive"));
@@ -512,6 +559,17 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(StreamSocket.class, "attachStreamRaw"));
         assertFalse(hasPublicMethod(StreamSocket.class, "connect"));
         assertFalse(hasPublicMethod(StreamSocket.class, "attachDiscovery"));
+        assertEquals(SendOp.class, StreamSocket.class
+            .getMethod("send", RoutingId.class).getReturnType());
+        assertEquals(ActorBindOp.class, StreamSocket.class
+            .getMethod("bindActor", RoutingId.class, ActorRef.class)
+            .getReturnType());
+        assertEquals(ActorUnbindOp.class, StreamSocket.class
+            .getMethod("unbindActor", RoutingId.class, String.class)
+            .getReturnType());
+        assertEquals(SendOp.class, StreamSocket.class
+            .getMethod("sendBoundActor", RoutingId.class, String.class)
+            .getReturnType());
     }
 
     @Test
@@ -579,12 +637,10 @@ public class SocketContractTest {
                 "monitorOpen", int.class));
             assertTrue(hasPublicMethod(MonitorSocket.class, "recv",
                 RecvFlags.class));
-            assertTrue(hasPublicMethod(PairSocket.class, "send", Message.class,
-                SendFlags.class));
+            assertTrue(hasPublicMethod(PairSocket.class, "send"));
             assertTrue(hasPublicMethod(PairSocket.class, "recv",
                 RecvFlags.class));
-            assertTrue(hasPublicMethod(PubSocket.class, "publish", String.class,
-                Message.class, SendFlags.class));
+            assertTrue(hasPublicMethod(PubSocket.class, "publish", String.class));
             assertTrue(hasPublicMethod(SubSocket.class, "subscribe",
                 RecvFlags.class));
             assertFalse(hasPublicMethod(Message.class, "dataSegment"));
@@ -691,7 +747,7 @@ public class SocketContractTest {
                 assertFalse(server.recv(probe, RecvFlags.DONT_WAIT));
             }
             try (Message outbound = Message.copyOfUtf8("pair-try")) {
-                assertTrue(client.send(outbound, SendFlags.DONT_WAIT));
+                assertTrue(client.send().message(outbound).flags(SendFlags.DONT_WAIT).submit());
             }
             try (systems.zlink.Received received = new systems.zlink.Received()) {
                 assertTrue(server.recv(received, RecvFlags.DONT_WAIT));

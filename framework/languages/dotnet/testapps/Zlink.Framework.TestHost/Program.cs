@@ -507,7 +507,7 @@ internal sealed class ChannelStartupPublishHostedService(
         while (!stoppingToken.IsCancellationRequested)
         {
             await publisher.Publish(channelName, topic, new TestHostPublishedEvent(value))
-                .Async(stoppingToken);
+                .Submit(stoppingToken);
 
             try
             {
@@ -532,7 +532,7 @@ internal sealed class SpotStartupPublishHostedService(
         while (!stoppingToken.IsCancellationRequested)
         {
             await publisher.Publish(channelName, topic, new StartupStageEvent(value))
-                .Async(stoppingToken);
+                .Submit(stoppingToken);
 
             try
             {
@@ -600,10 +600,10 @@ internal sealed record TestHostPublishedEvent(string Value);
 
 internal sealed class ChannelSubscriptionEventHandler(TestHostEventSink sink)
 {
-    [ZLinkEvent]
+    [ZLinkPublish]
     public ValueTask HandleAsync(
         TestHostPublishedEvent @event,
-        ZLinkEventContext context,
+        ZLinkPublishContext context,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;
@@ -672,6 +672,6 @@ internal sealed class TestHostRawStreamSession(TestHostRawStreamRecorder recorde
         _ = header;
         recorder.RecordPayload(Encoding.UTF8.GetString(payload.AsReadOnlySpan()));
         return Context.Reply("pong")
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
     }
 }

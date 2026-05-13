@@ -31,6 +31,17 @@ int recv_followup_msg_socket_wait (socket_base_t *socket_,
                                    int flags_);
 bool msg_frame_has_more (const zlink_msg_t &msg_);
 void close_msg_frames (std::vector<zlink_msg_t> *frames_);
+
+struct scoped_msg_frames_t : public std::vector<zlink_msg_t>
+{
+    scoped_msg_frames_t () {}
+    ~scoped_msg_frames_t () { close_msg_frames (this); }
+
+private:
+    scoped_msg_frames_t (const scoped_msg_frames_t &);
+    scoped_msg_frames_t &operator= (const scoped_msg_frames_t &);
+};
+
 bool recv_msg_sequence_socket_wait (socket_base_t *socket_,
                                     std::vector<zlink_msg_t> *frames_,
                                     long followup_timeout_ms_);

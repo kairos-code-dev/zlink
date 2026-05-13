@@ -3,7 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "api/config_result_internal.hpp"
-#include "api/service_surface_internal.hpp"
+#include "api/service_option_surface_internal.hpp"
 #include "api/zlink_option_internal.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_subject_access.hpp"

@@ -1,6 +1,6 @@
 'use strict';
 
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 const TOPIC = 'spot:child';
 const CHANNEL_NAME = 'spot-child-service';

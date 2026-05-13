@@ -337,7 +337,14 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, pair_socket_t>::value
                           || std::is_same<socket_type_t, dealer_socket_t>::value) {
                 try {
-                    return bool_result_to_errno (socket_.send (part_, flags_));
+                    message_t attempt = part_;
+                    const bool sent = std::move (socket_.send ())
+                                        .message (attempt)
+                                        .flags (flags_)
+                                        .submit ();
+                    if (sent)
+                        part_.close ();
+                    return bool_result_to_errno (sent);
                 }
                 catch (const zlink_error_t &err) {
                     errno = err.internal_errno ();
@@ -359,8 +366,14 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, router_socket_t>::value
                           || std::is_same<socket_type_t, stream_socket_t>::value) {
                 try {
-                    return bool_result_to_errno (
-                      socket_.send (routing_id_, part_, flags_));
+                    message_t attempt = part_;
+                    const bool sent = std::move (socket_.send (routing_id_))
+                                        .message (attempt)
+                                        .flags (flags_)
+                                        .submit ();
+                    if (sent)
+                        part_.close ();
+                    return bool_result_to_errno (sent);
                 }
                 catch (const zlink_error_t &err) {
                     errno = err.internal_errno ();
@@ -382,8 +395,14 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, pub_socket_t>::value
                           || std::is_same<socket_type_t, xpub_socket_t>::value) {
                 try {
-                    return bool_result_to_errno (
-                      socket_.publish (topic_id_, part_, flags_));
+                    message_t attempt = part_;
+                    const bool sent = std::move (socket_.publish (topic_id_))
+                                        .message (attempt)
+                                        .flags (flags_)
+                                        .submit ();
+                    if (sent)
+                        part_.close ();
+                    return bool_result_to_errno (sent);
                 }
                 catch (const zlink_error_t &err) {
                     errno = err.internal_errno ();
@@ -1022,6 +1041,24 @@ namespace perf
 {
 
 using socket_t = zlink::socket_t;
+
+inline int send_socket (socket_t &socket_, zlink::message_t &part_,
+                        int flags_ = 0)
+{
+    return (socket_.*static_cast<int (socket_t::*) (zlink::message_t &, int)> (
+                      &socket_t::send)) (part_, flags_);
+}
+
+inline int send_socket (socket_t &socket_,
+                        const zlink::routing_id_t &routing_id_,
+                        zlink::message_t &part_,
+                        int flags_ = 0)
+{
+    return (socket_.*
+            static_cast<int (socket_t::*) (
+              const zlink::routing_id_t &, zlink::message_t &, int)> (
+              &socket_t::send)) (routing_id_, part_, flags_);
+}
 
 class socket_guard_t
 {

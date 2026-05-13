@@ -17,8 +17,6 @@ from ._socket_base import (
 )
 from ._request_reply import _ensure_reply_flags_supported
 from ._enums import (
-    ActorAdmissionResult,
-    ActorCreateStatus,
     AutoHwmProfile,
     ServiceKind,
     SocketType,
@@ -36,12 +34,14 @@ from ._enums import (
 from ._ffi import (
     ZLINK_PART_FINAL,
     ZLINK_PART_MORE,
-    ZlinkActorCreateResult,
     ZlinkActorJoinInfo,
+    ZlinkActorJoinResult,
+    ZlinkActorLookupResult,
     ZlinkActorRecvInfo,
     ZlinkActorRef,
     ZlinkMsg,
     ZlinkRoutingId,
+    ZlinkSpotActorLifecycleInfo,
     ZlinkSpotDispatchInfo,
     ZlinkSpotNodePeerEntry,
     ZlinkSpotNodePeerFilter,
@@ -140,6 +140,25 @@ _ACTOR_ADMISSION_HANDLER = ctypes.CFUNCTYPE(
     ctypes.c_size_t,
     ctypes.c_void_p,
 )
+_ACTOR_JOIN_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.POINTER(ZlinkActorJoinResult),
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.c_size_t,
+    ctypes.c_void_p,
+)
+_ACTOR_LOOKUP_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.POINTER(ZlinkActorLookupResult),
+    ctypes.c_void_p,
+)
+
+_ACTOR_LIFECYCLE_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_void_p,
+    ctypes.POINTER(ZlinkSpotActorLifecycleInfo),
+    ctypes.c_void_p,
+)
 
 _SPOT_SUBSCRIBE_HANDLER = ctypes.CFUNCTYPE(
     None,
@@ -150,6 +169,30 @@ _SPOT_SUBSCRIBE_HANDLER = ctypes.CFUNCTYPE(
     ctypes.c_size_t,
     ctypes.c_void_p,
 )
+
+
+def _wait_for_reply_submit(submit, timeout=0):
+    event = threading.Event()
+    box = {"result": RequestResult.INTERNAL_ERROR, "errno": 0}
+
+    def _callback(result_code, parts, part_count, _userdata):
+        result = _request_result_from_code(int(result_code))
+        if parts is not None and part_count:
+            for index in range(int(part_count)):
+                lib().zlink_msg_close(ctypes.byref(parts[index]))
+        box["result"] = result
+        box["errno"] = _request_result_internal_errno(result)
+        event.set()
+
+    callback = _REPLY_HANDLER(_callback)
+    rc = submit(callback)
+    if rc != 0:
+        _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+    wait_timeout = None if timeout in (None, 0) else float(timeout)
+    if not event.wait(wait_timeout):
+        raise RequestError(RequestResult.TIMED_OUT, errno.ETIMEDOUT)
+    if box["result"] != RequestResult.OK:
+        raise RequestError(box["result"], box["errno"])
 
 
 def _decode_fixed(buf):
@@ -211,12 +254,6 @@ class ActorRef:
 
 
 @dataclass(frozen=True)
-class ActorCreateResult:
-    status: ActorCreateStatus
-    actor: ActorRef
-
-
-@dataclass(frozen=True)
 class ActorRoute:
     actor: ActorRef
     joined: bool
@@ -259,6 +296,32 @@ class ActorJoinRequest:
     def __iter__(self):
         yield self.info
         yield self.message
+
+
+@dataclass(frozen=True)
+class ActorJoinResult:
+    result: RequestResult
+    actor: ActorRef
+    joined_spot_rid: RoutingId
+    join_epoch: int
+    flags: int
+
+
+@dataclass(frozen=True)
+class ActorLookupResult:
+    result: RequestResult
+    actor: ActorRef
+    flags: int
+
+
+@dataclass(frozen=True)
+class SpotActorLifecycleInfo:
+    previous_actor: ActorRef
+    current_actor: ActorRef
+    previous_spot_rid: "RoutingId | None"
+    current_spot_rid: "RoutingId | None"
+    join_epoch: int
+    flags: int
 
 
 @dataclass(frozen=True)
@@ -316,14 +379,8 @@ def _message_from_native(native):
 
 
 def remote_actor_ref(target_node_rid, actor_id):
-    native_node = _copy_routing_id(target_node_rid)
-    native_ref = ZlinkActorRef()
-    rc = lib().zlink_remote_actor_get_ref(
-        ctypes.byref(native_node), _actor_id_bytes(actor_id), ctypes.byref(native_ref)
-    )
-    if rc != 0:
-        _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-    return _actor_ref_from_native(native_ref)
+    return ActorRef(node_rid=_routing_id_bytes(_copy_routing_id(target_node_rid)),
+                    actor_id=_actor_id_bytes(actor_id).decode(), generation=0)
 
 
 def _routing_id_or_none(native):
@@ -332,6 +389,15 @@ def _routing_id_or_none(native):
 
 def _routing_id_or_empty(native):
     raw = bytes(native.data[: native.size])
+    return RoutingId(raw)
+
+
+def _routing_id_optional(native):
+    """Return None for a zero-size routing id, else RoutingId(bytes)."""
+    size = int(native.size)
+    if size == 0:
+        return None
+    raw = bytes(native.data[:size])
     return RoutingId(raw)
 
 
@@ -363,30 +429,20 @@ def _recv_actor_part(node_handle, actor_ref, flags=0):
 
 
 def _make_spot_routed_reply_sender(spot, node_rid, spot_rid, seq):
+    """Return a zero-arg factory that yields a fresh ReplyOp for this routed
+    receive. Each call yields a new builder so per-call payload accumulation
+    stays isolated."""
     if spot_rid:
-        return lambda payload, *, flags=0: (
-            spot.reply_to_spot(node_rid, spot_rid, seq)
-            .message(payload)
-            .flags(flags)
-            .submit()
-        )
-    return lambda payload, *, flags=0: (
-        spot.reply_to_router(node_rid, seq)
-        .message(payload)
-        .flags(flags)
-        .submit()
-    )
+        return lambda: spot.reply_to_spot(node_rid, spot_rid, seq)
+    return lambda: spot.reply_to_router(node_rid, seq)
 
 
 def _make_spot_routed_send_sender(spot, node_rid, spot_rid):
+    """Return a zero-arg factory that yields a fresh SendOp routed back to the
+    source spot of this received message, or None if there is no source spot."""
     if not node_rid or not spot_rid:
         return None
-    return lambda payload, *, flags=0: (
-        spot.send_to_spot(node_rid, spot_rid)
-        .message(payload)
-        .flags(flags)
-        .submit()
-    )
+    return lambda: spot.send_to_spot(node_rid, spot_rid)
 
 
 def _payload_parts(payload):
@@ -526,6 +582,62 @@ class _PendingRequest:
             return
         try:
             self.callback(result, received if result == RequestResult.OK else [])
+        except Exception:
+            _report_unhandled_callback_exception(self.callback)
+
+
+class _PendingActorJoin:
+    """Pending state for ActorJoinOp: surfaces (ActorJoinResult, list[Message])."""
+
+    def __init__(self, *, loop=None, callback=None):
+        self.loop = loop
+        self.future = loop.create_future() if loop is not None else None
+        self.callback = callback
+
+    def resolve(self, join_result, messages, errnum=0):
+        result = join_result.result
+        if self.future is not None:
+            if result == RequestResult.OK:
+                self.loop.call_soon_threadsafe(
+                    self.future.set_result, (join_result, messages)
+                )
+            else:
+                self.loop.call_soon_threadsafe(
+                    self.future.set_exception, RequestError(result, errnum)
+                )
+            return
+        if self.callback is None:
+            return
+        try:
+            self.callback(join_result, messages if result == RequestResult.OK else [])
+        except Exception:
+            _report_unhandled_callback_exception(self.callback)
+
+
+class _PendingActorLookup:
+    """Pending state for ActorLookupOp: surfaces ActorLookupResult."""
+
+    def __init__(self, *, loop=None, callback=None):
+        self.loop = loop
+        self.future = loop.create_future() if loop is not None else None
+        self.callback = callback
+
+    def resolve(self, lookup_result, errnum=0):
+        result = lookup_result.result
+        if self.future is not None:
+            if result == RequestResult.OK:
+                self.loop.call_soon_threadsafe(
+                    self.future.set_result, lookup_result
+                )
+            else:
+                self.loop.call_soon_threadsafe(
+                    self.future.set_exception, RequestError(result, errnum)
+                )
+            return
+        if self.callback is None:
+            return
+        try:
+            self.callback(lookup_result)
         except Exception:
             _report_unhandled_callback_exception(self.callback)
 
@@ -708,54 +820,20 @@ class Actor:
     def actor_ref(self):
         return self.ref()
 
-    def join(self, spot, payload, callback, *, flags=0, timeout=0):
-        if callback is None:
-            raise ValueError("callback must not be None")
+    def join(self, spot):
         if not isinstance(spot, Spot):
             raise TypeError("spot must be Spot")
-        native_parts = spot._native_parts_from_payload(payload)
-        native_array = _prepare_native_parts(native_parts)
-        pending = _PendingRequest(callback=callback)
-        handle = id(pending)
-        spot._request_pending[handle] = pending
-        spot._request_progress_targets[handle] = spot._request_progress_target()
-        reply_handler = spot._ensure_request_reply_handler()
-        native_actor = _actor_ref_to_native(self.ref())
-        native_node = _copy_routing_id(spot._node.routing_id)
-        native_spot = _copy_routing_id(spot.routing_id)
-        rc = lib().zlink_spot_node_actor_join_spot(
-            self._node._handle,
-            ctypes.byref(native_actor),
-            ctypes.byref(native_node),
-            ctypes.byref(native_spot),
-            native_array if native_parts else None,
-            len(native_parts),
-            reply_handler,
-            ctypes.c_void_p(handle),
-            int(flags),
-            _timeout_to_ms(timeout),
+        return ActorJoinOp(
+            self._node,
+            self.ref(),
+            spot._node.routing_id,
+            spot.routing_id,
         )
-        if rc != 0:
-            spot._request_pending.pop(handle, None)
-            spot._request_progress_targets.pop(handle, None)
-            _close_native_parts(native_parts)
-            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
-        spot._request_progress.ensure_running()
-        return True
 
     def leave(self, spot):
         if not isinstance(spot, Spot):
             raise TypeError("spot must be Spot")
-        native_actor = _actor_ref_to_native(self.ref())
-        native_spot = _copy_routing_id(spot.routing_id)
-        rc = lib().zlink_spot_node_actor_leave_spot(
-            self._node._handle,
-            ctypes.byref(native_actor),
-            ctypes.byref(native_spot),
-            0,
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return ActorLeaveOp(self._node, self.ref(), spot.routing_id)
 
     def recv_part(self, *, flags=0):
         try:
@@ -765,24 +843,15 @@ class Actor:
                 return None
             raise
 
-    def send_bound_session(self, payload, *, flags=0):
-        native_parts = _clone_payload(payload)
-        if len(native_parts) != 1:
-            _close_native_parts(native_parts)
-            raise ValueError("payload must contain one frame")
-        native_actor = _actor_ref_to_native(self.ref())
-        rc = lib().zlink_spot_node_actor_send_bound_session_msg(
-            self._node._handle,
-            ctypes.byref(native_actor),
-            ctypes.byref(native_parts[0]),
-            int(flags),
+    def send_bound_session(self):
+        actor_ref = self.ref()
+        node = self._node
+        return SendOp(
+            node,
+            lambda parts, flags: node._actor_send_bound_session_submit(
+                actor_ref, parts, flags
+            ),
         )
-        if rc != 0:
-            _close_native_parts(native_parts)
-            if int(flags) & 1 and rc == int(SubmitResult.BACKPRESSURED):
-                return False
-            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
-        return True
 
     def close_bound_session(self, *, timeout=0):
         native_actor = _actor_ref_to_native(self.ref())
@@ -798,13 +867,16 @@ class Actor:
         if self._ref is None:
             return
         native_actor = _actor_ref_to_native(self._ref)
-        rc = lib().zlink_spot_node_actor_destroy(
-            self._node._handle,
-            ctypes.byref(native_actor),
-            _timeout_to_ms(timeout),
+        _wait_for_reply_submit(
+            lambda handler: lib().zlink_spot_node_actor_destroy(
+                self._node._handle,
+                ctypes.byref(native_actor),
+                handler,
+                None,
+                _timeout_to_ms(timeout),
+            ),
+            timeout,
         )
-        if rc != 0:
-            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
         self._ref = None
 
     def __enter__(self):
@@ -900,7 +972,11 @@ class SpotNode:
         self._actor_admission_handler = None
         self._actor_admission_cb = None
         self._actor_request_pending = {}
+        self._actor_join_pending = {}
+        self._actor_lookup_pending = {}
         self._actor_reply_handler = None
+        self._actor_join_handler = None
+        self._actor_lookup_handler = None
         self._channel_dealers = {}
 
     def bind(self, endpoint: str):
@@ -1137,66 +1213,115 @@ class SpotNode:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return _actor_ref_from_native(native)
 
-    def create_remote_actor(self, target_node_rid, actor_id, payload, *, timeout=0):
-        native_node = _copy_routing_id(target_node_rid)
-        native_parts = _clone_payload(payload)
-        native_array = _prepare_native_parts(native_parts)
-        result = ZlinkActorCreateResult()
-        rc = lib().zlink_spot_node_create_remote_actor(
+    def destroy_actor(self, actor_ref):
+        return ActorDestroyOp(self, actor_ref)
+
+    def remote_actor_get_ref(self, target_node_rid, actor_id):
+        return ActorLookupOp(self, target_node_rid, actor_id)
+
+    def join_actor(self, actor_ref, dest_node_rid, dest_spot_rid):
+        return ActorJoinOp(self, actor_ref, dest_node_rid, dest_spot_rid)
+
+    def leave_actor(self, actor_ref, current_spot_rid):
+        return ActorLeaveOp(self, actor_ref, current_spot_rid)
+
+    def send_bound_session_msg(self, actor_ref):
+        return SendOp(
+            self,
+            lambda parts, flags: self._actor_send_bound_session_submit(
+                actor_ref, parts, flags
+            ),
+        )
+
+    def _actor_send_bound_session_submit(self, actor_ref, parts, flags=0):
+        native_parts = _clone_payload(parts)
+        if len(native_parts) != 1:
+            _close_native_parts(native_parts)
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        native_actor = _actor_ref_to_native(actor_ref)
+        rc = lib().zlink_spot_node_actor_send_bound_session_msg(
             self._handle,
-            ctypes.byref(native_node),
-            _actor_id_bytes(actor_id),
-            native_array if native_parts else None,
-            len(native_parts),
-            ctypes.byref(result),
-            _timeout_to_ms(timeout),
+            ctypes.byref(native_actor),
+            ctypes.byref(native_parts[0]),
+            int(flags),
         )
         if rc != 0:
             _close_native_parts(native_parts)
-            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
-        return ActorCreateResult(
-            status=ActorCreateStatus(int(result.status)),
-            actor=_actor_ref_from_native(result.actor),
-        )
-
-    def destroy_actor(self, actor_ref, *, timeout=0):
-        native = _actor_ref_to_native(actor_ref)
-        rc = lib().zlink_spot_node_actor_destroy(
-            self._handle, ctypes.byref(native), _timeout_to_ms(timeout)
-        )
-        if rc != 0:
-            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
-
-    def on_actor_admission(self, handler):
-        if handler is None:
-            raise ValueError("handler must not be None")
-
-        def _callback(_node, actor_id, parts_ptr, part_count, _):
-            try:
-                actor_text = ctypes.cast(actor_id, ctypes.c_char_p).value.decode()
-                messages = _make_message_list(parts_ptr, part_count)
-                message = messages[0] if messages else Message()
-                result = handler(actor_text, message)
-                for owned in messages:
-                    owned.close()
-                return int(result)
-            except Exception:
-                _report_unhandled_callback_exception(handler)
-                return int(ActorAdmissionResult.REJECT)
-
-        callback = _ACTOR_ADMISSION_HANDLER(_callback)
-        rc = lib().zlink_spot_node_actor_admission_handler(
-            self._handle, callback, None
-        )
-        if rc != 0:
-            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
-        self._actor_admission_handler = handler
-        self._actor_admission_cb = callback
+            if int(flags) & 1 and rc == int(SubmitResult.BACKPRESSURED):
+                return False
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        return True
 
     def _ensure_actor_reply_handler(self):
         if self._actor_reply_handler is None:
             self._actor_reply_handler = _REPLY_HANDLER(self._on_actor_reply)
         return self._actor_reply_handler
+
+    def _ensure_actor_join_handler(self):
+        if self._actor_join_handler is None:
+            self._actor_join_handler = _ACTOR_JOIN_HANDLER(self._on_actor_join_reply)
+        return self._actor_join_handler
+
+    def _ensure_actor_lookup_handler(self):
+        if self._actor_lookup_handler is None:
+            self._actor_lookup_handler = _ACTOR_LOOKUP_HANDLER(self._on_actor_lookup_reply)
+        return self._actor_lookup_handler
+
+    def _on_actor_join_reply(self, result_ptr, parts, part_count, userdata):
+        handle = ctypes.cast(userdata, ctypes.c_void_p).value
+        pending = self._actor_join_pending.pop(handle, None)
+        if pending is None:
+            # Fall back to plain reply path (legacy destroy/leave/bind/unbind).
+            if not result_ptr:
+                self._on_actor_reply(int(RequestResult.INTERNAL_ERROR), parts, part_count, userdata)
+                return
+            self._on_actor_reply(result_ptr.contents.result, parts, part_count, userdata)
+            return
+        if not result_ptr:
+            join_result = ActorJoinResult(
+                result=RequestResult.INTERNAL_ERROR,
+                actor=ActorRef(node_rid=RoutingId(b""), actor_id="", generation=0),
+                joined_spot_rid=RoutingId(b""),
+                join_epoch=0,
+                flags=0,
+            )
+            pending.resolve(join_result, [], _request_result_internal_errno(RequestResult.INTERNAL_ERROR))
+            return
+        native = result_ptr.contents
+        result = _request_result_from_code(int(native.result))
+        join_result = ActorJoinResult(
+            result=result,
+            actor=_actor_ref_from_native(native.actor),
+            joined_spot_rid=_routing_id_bytes(native.joined_spot_rid),
+            join_epoch=int(native.join_epoch),
+            flags=int(native.flags),
+        )
+        messages = []
+        if result == RequestResult.OK:
+            messages = _make_message_list(parts, part_count)
+        pending.resolve(join_result, messages, _request_result_internal_errno(result))
+
+    def _on_actor_lookup_reply(self, result_ptr, userdata):
+        handle = ctypes.cast(userdata, ctypes.c_void_p).value
+        pending = self._actor_lookup_pending.pop(handle, None)
+        if pending is None:
+            return
+        if not result_ptr:
+            lookup_result = ActorLookupResult(
+                result=RequestResult.INTERNAL_ERROR,
+                actor=ActorRef(node_rid=RoutingId(b""), actor_id="", generation=0),
+                flags=0,
+            )
+            pending.resolve(lookup_result, _request_result_internal_errno(RequestResult.INTERNAL_ERROR))
+            return
+        native = result_ptr.contents
+        result = _request_result_from_code(int(native.result))
+        lookup_result = ActorLookupResult(
+            result=result,
+            actor=_actor_ref_from_native(native.actor),
+            flags=int(native.flags),
+        )
+        pending.resolve(lookup_result, _request_result_internal_errno(result))
 
     def _on_actor_reply(self, result_code, parts, part_count, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
@@ -1209,17 +1334,14 @@ class SpotNode:
             received = _make_message_list(parts, part_count)
         pending.resolve(result, received, _request_result_internal_errno(result))
 
-    def join_actor(self, actor_ref, dest_node_rid, dest_spot_rid, payload, callback, *, flags=0, timeout=0):
-        if callback is None:
-            raise ValueError("callback must not be None")
+    def _submit_actor_join(self, actor_ref, dest_node_rid, dest_spot_rid, parts, pending, flags=0, timeout=0):
         native_actor = _actor_ref_to_native(actor_ref)
         native_node = _copy_routing_id(dest_node_rid)
         native_spot = _copy_routing_id(dest_spot_rid)
-        native_parts = _clone_payload(payload)
+        native_parts = _clone_payload(parts)
         native_array = _prepare_native_parts(native_parts)
-        pending = _PendingRequest(callback=callback)
         handle = id(pending)
-        self._actor_request_pending[handle] = pending
+        self._actor_join_pending[handle] = pending
         rc = lib().zlink_spot_node_actor_join_spot(
             self._handle,
             ctypes.byref(native_actor),
@@ -1227,28 +1349,67 @@ class SpotNode:
             ctypes.byref(native_spot),
             native_array if native_parts else None,
             len(native_parts),
-            self._ensure_actor_reply_handler(),
+            self._ensure_actor_join_handler(),
             ctypes.c_void_p(handle),
             int(flags),
             _timeout_to_ms(timeout),
         )
         if rc != 0:
-            self._actor_request_pending.pop(handle, None)
+            self._actor_join_pending.pop(handle, None)
             _close_native_parts(native_parts)
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
         return True
 
-    def leave_actor(self, actor_ref, dest_spot_rid, *, timeout=0):
+    def _submit_actor_leave(self, actor_ref, current_spot_rid, pending, timeout=0):
         native_actor = _actor_ref_to_native(actor_ref)
-        native_spot = _copy_routing_id(dest_spot_rid)
+        native_spot = _copy_routing_id(current_spot_rid)
+        handle = id(pending)
+        self._actor_request_pending[handle] = pending
         rc = lib().zlink_spot_node_actor_leave_spot(
             self._handle,
             ctypes.byref(native_actor),
             ctypes.byref(native_spot),
+            self._ensure_actor_reply_handler(),
+            ctypes.c_void_p(handle),
             _timeout_to_ms(timeout),
         )
         if rc != 0:
-            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
+            self._actor_request_pending.pop(handle, None)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        return True
+
+    def _submit_actor_destroy(self, actor_ref, pending, timeout=0):
+        native_actor = _actor_ref_to_native(actor_ref)
+        handle = id(pending)
+        self._actor_request_pending[handle] = pending
+        rc = lib().zlink_spot_node_actor_destroy(
+            self._handle,
+            ctypes.byref(native_actor),
+            self._ensure_actor_reply_handler(),
+            ctypes.c_void_p(handle),
+            _timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            self._actor_request_pending.pop(handle, None)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        return True
+
+    def _submit_actor_lookup(self, target_node_rid, actor_id, pending, timeout=0):
+        native_rid = _copy_routing_id(target_node_rid)
+        handle = id(pending)
+        self._actor_lookup_pending[handle] = pending
+        rc = lib().zlink_remote_actor_get_ref(
+            self._handle,
+            ctypes.byref(native_rid),
+            _actor_id_bytes(actor_id),
+            self._ensure_actor_lookup_handler(),
+            ctypes.c_void_p(handle),
+            _timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            self._actor_lookup_pending.pop(handle, None)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        return True
 
     def spots_snapshot(self):
         count = ctypes.c_size_t()
@@ -1515,9 +1676,13 @@ class SpotNode:
         self._handle = None
         self._spots.clear()
         self._actor_request_pending.clear()
+        self._actor_join_pending.clear()
+        self._actor_lookup_pending.clear()
         self._actor_admission_handler = None
         self._actor_admission_cb = None
         self._actor_reply_handler = None
+        self._actor_join_handler = None
+        self._actor_lookup_handler = None
         if rc != 0 and first_error is None:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
         if first_error is not None:
@@ -1714,6 +1879,353 @@ class ReplyOp:
         self._op_fn(self._parts, self._flags)
 
 
+class ActorJoinOp:
+    """Fluent builder for Actor join operations (async or callback)."""
+    __slots__ = ('_node', '_actor_ref', '_dest_node_rid', '_dest_spot_rid',
+                 '_parts', '_timeout', '_submitted')
+
+    def __init__(self, node, actor_ref, dest_node_rid, dest_spot_rid):
+        self._node = node
+        self._actor_ref = actor_ref
+        self._dest_node_rid = dest_node_rid
+        self._dest_spot_rid = dest_spot_rid
+        self._parts = []
+        self._timeout = 0
+        self._submitted = False
+
+    def message(self, payload):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.append(payload)
+        return self
+
+    def messages(self, *payloads):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.extend(payloads)
+        return self
+
+    def timeout(self, timeout):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._timeout = timeout
+        return self
+
+    def flags(self, flags):
+        """Transitions to a callback-only builder. submit_async() is no longer
+        available after flags()."""
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        op = ActorJoinCallbackOp(
+            self._node,
+            self._actor_ref,
+            self._dest_node_rid,
+            self._dest_spot_rid,
+            self._parts,
+            self._timeout,
+            int(flags),
+        )
+        self._submitted = True
+        return op
+
+    def submit_async(self):
+        """Submit as async coroutine. Returns awaitable
+        tuple[ActorJoinResult, list[Message]]."""
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if not self._parts:
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        self._submitted = True
+        parts = list(self._parts)
+        timeout = self._timeout
+
+        async def _run():
+            loop = asyncio.get_running_loop()
+            pending = _PendingActorJoin(loop=loop)
+            self._node._submit_actor_join(
+                self._actor_ref,
+                self._dest_node_rid,
+                self._dest_spot_rid,
+                parts,
+                pending,
+                flags=0,
+                timeout=timeout,
+            )
+            return await pending.future
+
+        return _run()
+
+    def submit(self, callback):
+        """Submit with callback. Returns True; raises SubmitError on failure."""
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if callback is None:
+            raise ValueError("callback must not be None")
+        if not self._parts:
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        self._submitted = True
+        pending = _PendingActorJoin(callback=callback)
+        self._node._submit_actor_join(
+            self._actor_ref,
+            self._dest_node_rid,
+            self._dest_spot_rid,
+            self._parts,
+            pending,
+            flags=0,
+            timeout=self._timeout,
+        )
+        return True
+
+
+class ActorJoinCallbackOp:
+    """Callback-only ActorJoin builder (after flags() has been called)."""
+    __slots__ = ('_node', '_actor_ref', '_dest_node_rid', '_dest_spot_rid',
+                 '_parts', '_timeout', '_flags', '_submitted')
+
+    def __init__(self, node, actor_ref, dest_node_rid, dest_spot_rid, parts, timeout, flags):
+        self._node = node
+        self._actor_ref = actor_ref
+        self._dest_node_rid = dest_node_rid
+        self._dest_spot_rid = dest_spot_rid
+        self._parts = list(parts)
+        self._timeout = timeout
+        self._flags = int(flags)
+        self._submitted = False
+
+    def message(self, payload):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.append(payload)
+        return self
+
+    def messages(self, *payloads):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.extend(payloads)
+        return self
+
+    def timeout(self, timeout):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._timeout = timeout
+        return self
+
+    def flags(self, flags):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._flags = int(flags)
+        return self
+
+    def submit(self, callback):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if callback is None:
+            raise ValueError("callback must not be None")
+        if not self._parts:
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        self._submitted = True
+        pending = _PendingActorJoin(callback=callback)
+        try:
+            self._node._submit_actor_join(
+                self._actor_ref,
+                self._dest_node_rid,
+                self._dest_spot_rid,
+                self._parts,
+                pending,
+                flags=self._flags,
+                timeout=self._timeout,
+            )
+        except SubmitError as ex:
+            if self._flags & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                return False
+            raise
+        return True
+
+
+class ActorJoinReplyOp:
+    """Fluent builder for Spot.reply_actor_join. Multipart reply is optional;
+    a zero-message submit() is allowed."""
+    __slots__ = ('_spot', '_request', '_accepted', '_parts', '_submitted')
+
+    def __init__(self, spot, request, accepted):
+        self._spot = spot
+        self._request = request
+        self._accepted = bool(accepted)
+        self._parts = []
+        self._submitted = False
+
+    def message(self, payload):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.append(payload)
+        return self
+
+    def messages(self, *payloads):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.extend(payloads)
+        return self
+
+    def submit(self):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._submitted = True
+        self._spot._submit_actor_join_reply(
+            self._request, self._accepted, self._parts
+        )
+
+
+class _ActorRequestOp:
+    """Base class for payload-less Actor request builders (leave / destroy /
+    bind / unbind). submit_async() returns list[Message]; submit(callback)
+    invokes callback(RequestResult, list[Message])."""
+
+    __slots__ = ('_node', '_timeout', '_submitted')
+
+    def __init__(self, node):
+        self._node = node
+        self._timeout = 0
+        self._submitted = False
+
+    def timeout(self, timeout):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._timeout = timeout
+        return self
+
+    def _submit_native(self, pending, timeout):
+        raise NotImplementedError
+
+    def submit_async(self):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._submitted = True
+        timeout = self._timeout
+
+        async def _run():
+            loop = asyncio.get_running_loop()
+            pending = _PendingRequest(loop=loop)
+            self._submit_native(pending, timeout)
+            return await pending.future
+
+        return _run()
+
+    def submit(self, callback):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if callback is None:
+            raise ValueError("callback must not be None")
+        self._submitted = True
+        pending = _PendingRequest(callback=callback)
+        self._submit_native(pending, self._timeout)
+        return True
+
+
+class ActorLeaveOp(_ActorRequestOp):
+    __slots__ = ('_actor_ref', '_current_spot_rid')
+
+    def __init__(self, node, actor_ref, current_spot_rid):
+        super().__init__(node)
+        self._actor_ref = actor_ref
+        self._current_spot_rid = current_spot_rid
+
+    def _submit_native(self, pending, timeout):
+        self._node._submit_actor_leave(
+            self._actor_ref, self._current_spot_rid, pending, timeout
+        )
+
+
+class ActorDestroyOp(_ActorRequestOp):
+    __slots__ = ('_actor_ref',)
+
+    def __init__(self, node, actor_ref):
+        super().__init__(node)
+        self._actor_ref = actor_ref
+
+    def _submit_native(self, pending, timeout):
+        self._node._submit_actor_destroy(self._actor_ref, pending, timeout)
+
+
+class ActorLookupOp:
+    """Fluent builder for SpotNode.remote_actor_get_ref. submit_async() returns
+    ActorLookupResult; submit(callback) invokes callback(ActorLookupResult)."""
+
+    __slots__ = ('_node', '_target_node_rid', '_actor_id', '_timeout', '_submitted')
+
+    def __init__(self, node, target_node_rid, actor_id):
+        self._node = node
+        self._target_node_rid = target_node_rid
+        self._actor_id = actor_id
+        self._timeout = 0
+        self._submitted = False
+
+    def timeout(self, timeout):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._timeout = timeout
+        return self
+
+    def submit_async(self):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._submitted = True
+        timeout = self._timeout
+
+        async def _run():
+            loop = asyncio.get_running_loop()
+            pending = _PendingActorLookup(loop=loop)
+            self._node._submit_actor_lookup(
+                self._target_node_rid, self._actor_id, pending, timeout
+            )
+            return await pending.future
+
+        return _run()
+
+    def submit(self, callback):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if callback is None:
+            raise ValueError("callback must not be None")
+        self._submitted = True
+        pending = _PendingActorLookup(callback=callback)
+        self._node._submit_actor_lookup(
+            self._target_node_rid, self._actor_id, pending, self._timeout
+        )
+        return True
+
+
+class ActorBindOp(_ActorRequestOp):
+    """Async StreamSocket.bind_actor builder."""
+    __slots__ = ('_stream', '_session_rid', '_actor_ref')
+
+    def __init__(self, stream, session_rid, actor_ref):
+        super().__init__(node=None)
+        self._stream = stream
+        self._session_rid = session_rid
+        self._actor_ref = actor_ref
+
+    def _submit_native(self, pending, timeout):
+        self._stream._submit_bind_actor(
+            self._session_rid, self._actor_ref, pending, timeout
+        )
+
+
+class ActorUnbindOp(_ActorRequestOp):
+    """Async StreamSocket.unbind_actor builder."""
+    __slots__ = ('_stream', '_session_rid', '_actor_id')
+
+    def __init__(self, stream, session_rid, actor_id):
+        super().__init__(node=None)
+        self._stream = stream
+        self._session_rid = session_rid
+        self._actor_id = actor_id
+
+    def _submit_native(self, pending, timeout):
+        self._stream._submit_unbind_actor(
+            self._session_rid, self._actor_id, pending, timeout
+        )
+
+
 class Spot:
     @classmethod
     def _create(cls, node):
@@ -1747,6 +2259,10 @@ class Spot:
         self._send_ready_handler_queue = None
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
+        self._actor_lifecycle_on_join = None
+        self._actor_lifecycle_on_leave = None
+        self._actor_lifecycle_on_join_cb = None
+        self._actor_lifecycle_on_leave_cb = None
         self._own = True
         self._timers = {}
         self._request_progress = _RequestProgressPump(
@@ -2525,22 +3041,89 @@ class Spot:
             _native=info,
         )
 
-    def reply_actor_join(self, request, accepted, payload):
+    def reply_actor_join(self, request, accepted):
         if not isinstance(request, ActorJoinRequest):
             raise TypeError("request must be ActorJoinRequest")
-        native_parts = _clone_payload(payload)
-        native_array = _prepare_native_parts(native_parts)
+        return ActorJoinReplyOp(self, request, accepted)
+
+    def _submit_actor_join_reply(self, request, accepted, parts):
+        if parts:
+            native_parts = _clone_payload(parts)
+            native_array = _prepare_native_parts(native_parts)
+            parts_arg = native_array
+            count = len(native_parts)
+        else:
+            native_parts = []
+            parts_arg = None
+            count = 0
         rc = lib().zlink_spot_actor_join_reply(
             self._handle,
             ctypes.byref(request._native),
             1 if accepted else 0,
-            native_array if native_parts else None,
-            len(native_parts),
+            parts_arg,
+            count,
         )
         if rc != 0:
             _close_native_parts(native_parts)
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
-        return True
+
+    def on_actor_lifecycle(self, on_join, on_leave):
+        """Register Actor lifecycle callbacks for this Spot. Passing None for
+        both clears the registration."""
+        on_join_cb = None
+        on_leave_cb = None
+
+        if on_join is not None:
+            def _on_join(spot_handle, info_ptr, _ud):
+                if not info_ptr:
+                    return
+                native = info_ptr.contents
+                try:
+                    info = SpotActorLifecycleInfo(
+                        previous_actor=_actor_ref_from_native(native.previous_actor),
+                        current_actor=_actor_ref_from_native(native.current_actor),
+                        previous_spot_rid=_routing_id_optional(native.previous_spot_rid),
+                        current_spot_rid=_routing_id_optional(native.current_spot_rid),
+                        join_epoch=int(native.join_epoch),
+                        flags=int(native.flags),
+                    )
+                    on_join(self, info)
+                except Exception:
+                    _report_unhandled_callback_exception(on_join)
+            on_join_cb = _ACTOR_LIFECYCLE_HANDLER(_on_join)
+
+        if on_leave is not None:
+            def _on_leave(spot_handle, info_ptr, _ud):
+                if not info_ptr:
+                    return
+                native = info_ptr.contents
+                try:
+                    info = SpotActorLifecycleInfo(
+                        previous_actor=_actor_ref_from_native(native.previous_actor),
+                        current_actor=_actor_ref_from_native(native.current_actor),
+                        previous_spot_rid=_routing_id_optional(native.previous_spot_rid),
+                        current_spot_rid=_routing_id_optional(native.current_spot_rid),
+                        join_epoch=int(native.join_epoch),
+                        flags=int(native.flags),
+                    )
+                    on_leave(self, info)
+                except Exception:
+                    _report_unhandled_callback_exception(on_leave)
+            on_leave_cb = _ACTOR_LIFECYCLE_HANDLER(_on_leave)
+
+        rc = lib().zlink_spot_actor_lifecycle_handler(
+            self._handle,
+            on_join_cb if on_join_cb is not None else ctypes.c_void_p(0),
+            on_leave_cb if on_leave_cb is not None else ctypes.c_void_p(0),
+            None,
+        )
+        if rc != 0:
+            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
+        # Keep references alive so the callbacks aren't GC'd.
+        self._actor_lifecycle_on_join_cb = on_join_cb
+        self._actor_lifecycle_on_leave_cb = on_leave_cb
+        self._actor_lifecycle_on_join = on_join
+        self._actor_lifecycle_on_leave = on_leave
 
     def actors_snapshot(self):
         count = ctypes.c_size_t()
@@ -2611,6 +3194,12 @@ class Spot:
         self._cancel_pending_requests()
         self._request_progress.stop()
         self._request_reply_handler = None
+        lifecycle_on_join_cb = self._actor_lifecycle_on_join_cb
+        lifecycle_on_leave_cb = self._actor_lifecycle_on_leave_cb
+        self._actor_lifecycle_on_join_cb = None
+        self._actor_lifecycle_on_leave_cb = None
+        self._actor_lifecycle_on_join = None
+        self._actor_lifecycle_on_leave = None
         handle = ctypes.c_void_p(self._handle)
         self._handle = None
         rc = lib().zlink_spot_destroy(ctypes.byref(handle))
@@ -2620,6 +3209,8 @@ class Spot:
         del send_ready_handler_cb
         del routed_handler_cb
         del dispatch_handler_cb
+        del lifecycle_on_join_cb
+        del lifecycle_on_leave_cb
         if rc != 0:
             _raise_last_error()
 

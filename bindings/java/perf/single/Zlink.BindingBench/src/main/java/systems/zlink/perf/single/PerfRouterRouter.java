@@ -107,7 +107,7 @@ final class PerfRouterRouter {
 
             try (Message probe = PerfUtil.payload(config.size(),
                      (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                sender.send(ROUTER1, List.of(probe));
+                sender.send(ROUTER1).message(probe).submit();
             }
             PerfUtil.await(routed, "router/router self-check", Duration.ofSeconds(10));
 
@@ -119,14 +119,14 @@ final class PerfRouterRouter {
                     while (System.nanoTime() < activeEnd) {
                         try (Message active = PerfUtil.payload(config.size(),
                                  (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            sender.send(ROUTER1, active);
+                            sender.send(ROUTER1).message(active).submit();
                         }
                     }
                     // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
                     // blocking stop-token send (routed via ROUTER1 because
                     // ROUTER->ROUTER requires explicit routing id).
                     try (Message stop = PerfStopToken.newMessage()) {
-                        sender.send(ROUTER1, stop);
+                        sender.send(ROUTER1).message(stop).submit();
                     }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);

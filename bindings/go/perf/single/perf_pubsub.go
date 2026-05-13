@@ -48,11 +48,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	go func() {
 		for time.Now().Before(window.StopAt) {
 			perfcommon.StampWindowPayload(payload, window.ActiveAt)
-			_, err := publisher.Publish(
-				"bench.topic",
-				zlink.SendFlagsNone,
-				perfcommon.NewMessage(payload),
-			)
+			_, err := publisher.Publish("bench.topic").Message(perfcommon.NewMessage(payload)).Submit(nil)
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					continue
@@ -133,11 +129,7 @@ func drainSinglePubSubUntilStop(
 // matched the active stream.
 func sendPubSubStopToken(publisher *zlink.XPubSocket) {
 	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
-		_, err := publisher.Publish(
-			"bench.topic",
-			zlink.SendFlagsNone,
-			perfcommon.NewMessage(perfcommon.StopToken),
-		)
+		_, err := publisher.Publish("bench.topic").Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
 		if err == nil {
 			return
 		}

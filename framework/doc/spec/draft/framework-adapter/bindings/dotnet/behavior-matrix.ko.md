@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework ASP.NET Core Registry Integration](aspnet-core-registry.ko.md) | [다음: ZLink Framework .NET Regression Test Matrix](regression-test-matrix.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [스펙 목차](../../../README.ko.md)
 
 [.NET 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md)
@@ -77,11 +81,10 @@
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 같은 actor type factory 중복 등록 | 비허용 | builder 등록 시점 오류 |
 | actor play route resolver 중복 등록 | 비허용 | builder 등록 시점 오류 |
-| actor session route resolver 중복 등록 | 비허용 | builder 등록 시점 오류 |
-| actor session location writer 중복 등록 | 비허용 | builder 등록 시점 오류 |
+| spot route resolver 중복 등록 | 비허용 | builder 등록 시점 오류 |
 | `IZLinkActorClient` 사용 + play route resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
-| `IZLinkSessionProxy` 사용 + session route resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
-| session actor create 사용 + session location writer 없음 | 비허용 | create 호출에서 명확한 오류 |
+| spot name/id 기반 client 또는 `JoinSpot(...)` 사용 + spot route resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
+| `IZLinkSessionProxy` 사용 + actor-session binding 없음 | 비허용 | 현재 actor에 연결된 session이 없으면 명확한 오류 |
 
 ## 6. Monitoring Registration Matrix
 
@@ -120,5 +123,5 @@
 - 같은 routed channel의 같은 `kind + packetName` handler 중복
 
 이 오류들은 런타임에 늦게 드러내지 않고 startup 단계에서 막는 편을 기본으로 본다.
-다만 resolver나 writer 누락처럼 실제 service 사용 여부가 있어야 드러나는 항목은
+다만 actor resolver 누락처럼 실제 service 사용 여부가 있어야 드러나는 항목은
 해당 service 생성 또는 첫 호출에서 같은 error family로 명확하게 실패시킨다.

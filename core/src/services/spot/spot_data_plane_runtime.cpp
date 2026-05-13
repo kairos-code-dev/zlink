@@ -11,7 +11,7 @@
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 
-#include "api/service_surface_internal.hpp"
+#include "api/service_spot_dispatch_surface_internal.hpp"
 #include "api/request_reply_protocol_internal.hpp"
 #include "core/auto_hwm_policy.hpp"
 #include "core/socket_poller.hpp"

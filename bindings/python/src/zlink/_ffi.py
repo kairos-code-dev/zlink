@@ -56,10 +56,21 @@ class ZlinkActorJoinInfo(ctypes.Structure):
     ]
 
 
-class ZlinkActorCreateResult(ctypes.Structure):
+class ZlinkActorJoinResult(ctypes.Structure):
     _fields_ = [
-        ("status", ctypes.c_int),
+        ("result", ctypes.c_int),
         ("actor", ZlinkActorRef),
+        ("joined_spot_rid", ZlinkRoutingId),
+        ("join_epoch", ctypes.c_uint64),
+        ("flags", ctypes.c_uint32),
+    ]
+
+
+class ZlinkActorLookupResult(ctypes.Structure):
+    _fields_ = [
+        ("result", ctypes.c_int),
+        ("actor", ZlinkActorRef),
+        ("flags", ctypes.c_uint32),
     ]
 
 
@@ -68,6 +79,17 @@ class ZlinkActorRoute(ctypes.Structure):
         ("actor", ZlinkActorRef),
         ("joined", ctypes.c_uint32),
         ("joined_spot_rid", ZlinkRoutingId),
+    ]
+
+
+class ZlinkSpotActorLifecycleInfo(ctypes.Structure):
+    _fields_ = [
+        ("previous_actor", ZlinkActorRef),
+        ("current_actor", ZlinkActorRef),
+        ("previous_spot_rid", ZlinkRoutingId),
+        ("current_spot_rid", ZlinkRoutingId),
+        ("join_epoch", ctypes.c_uint64),
+        ("flags", ctypes.c_uint32),
     ]
 
 
@@ -462,9 +484,10 @@ class _Lib:
             "zlink_stream_bind_actor",
             [
                 ctypes.c_void_p,
-                ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.POINTER(ZlinkActorRef),
+                ctypes.c_void_p,
+                ctypes.c_void_p,
                 ctypes.c_uint32,
             ],
             ctypes.c_int,
@@ -473,9 +496,10 @@ class _Lib:
             "zlink_stream_unbind_actor",
             [
                 ctypes.c_void_p,
-                ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.c_char_p,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
                 ctypes.c_uint32,
             ],
             ctypes.c_int,
@@ -483,7 +507,6 @@ class _Lib:
         self._require(
             "zlink_stream_send_bound_actor_part",
             [
-                ctypes.c_void_p,
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.c_char_p,
@@ -985,33 +1008,24 @@ class _Lib:
         self._require(
             "zlink_remote_actor_get_ref",
             [
-                ctypes.POINTER(ZlinkRoutingId),
-                ctypes.c_char_p,
-                ctypes.POINTER(ZlinkActorRef),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_create_remote_actor",
-            [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.c_char_p,
-                ctypes.POINTER(ZlinkMsg),
-                ctypes.c_size_t,
-                ctypes.POINTER(ZlinkActorCreateResult),
+                ctypes.c_void_p,
+                ctypes.c_void_p,
                 ctypes.c_uint32,
             ],
             ctypes.c_int,
         )
         self._require(
             "zlink_spot_node_actor_destroy",
-            [ctypes.c_void_p, ctypes.POINTER(ZlinkActorRef), ctypes.c_uint32],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_actor_admission_handler",
-            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkActorRef),
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+            ],
             ctypes.c_int,
         )
         self._require(
@@ -1058,6 +1072,8 @@ class _Lib:
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkActorRef),
                 ctypes.POINTER(ZlinkRoutingId),
+                ctypes.c_void_p,
+                ctypes.c_void_p,
                 ctypes.c_uint32,
             ],
             ctypes.c_int,
@@ -1081,6 +1097,26 @@ class _Lib:
                 ctypes.POINTER(ZlinkActorRef),
                 ctypes.POINTER(ZlinkMsg),
                 ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_actor_lifecycle_handler",
+            [
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_stream_bound_actors",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ZlinkActorRef),
+                ctypes.POINTER(ctypes.c_size_t),
             ],
             ctypes.c_int,
         )

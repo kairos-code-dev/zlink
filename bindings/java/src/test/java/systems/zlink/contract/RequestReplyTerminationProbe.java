@@ -58,7 +58,9 @@ public final class RequestReplyTerminationProbe {
                                 throw new IllegalStateException("missing request seq");
                             }
                             log("server recv reply");
-                            received.reply(List.of(Message.copyOfUtf8("pong")));
+                            received.reply()
+                                .message(Message.copyOfUtf8("pong"))
+                                .submit();
                         }
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex);
@@ -75,15 +77,20 @@ public final class RequestReplyTerminationProbe {
                             throw new IllegalStateException("missing request seq");
                         }
                         log("server recv reply");
-                        received.reply(List.of(Message.copyOfUtf8("pong")));
+                        received.reply()
+                            .message(Message.copyOfUtf8("pong"))
+                            .submit();
                     }
                 }, serverExecutor);
             }
 
             try (Message request = Message.copyOfUtf8("ping")) {
                 log("dealer request begin");
-                List<Message> reply = dealerSocket.request(request,
-                    Duration.ofSeconds(2)).get(2, TimeUnit.SECONDS);
+                List<Message> reply = dealerSocket.request()
+                    .message(request)
+                    .timeout(Duration.ofSeconds(2))
+                    .submitAsync()
+                    .get(2, TimeUnit.SECONDS);
                 try {
                     log("dealer request complete");
                     byte[] payload = reply.get(0).toByteArray();

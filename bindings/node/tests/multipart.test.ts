@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../..');
+const zlink = require('@zlink-systems/zlink');
 
 test('pair sockets send and receive multipart through canonical api', () => {
   const ctx = new zlink.Context();
@@ -11,10 +11,7 @@ test('pair sockets send and receive multipart through canonical api', () => {
 
   left.bind('inproc://multipart-contract');
   right.connect('inproc://multipart-contract');
-  right.send([
-    'a',
-    Buffer.from('b')
-  ]);
+  right.send().message('a').message(Buffer.from('b')).submit();
 
   const received = new zlink.Received();
   left.recv(received);

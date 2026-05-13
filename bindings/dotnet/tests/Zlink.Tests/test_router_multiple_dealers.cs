@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using Xunit;
 
@@ -52,10 +53,12 @@ public sealed class test_router_multiple_dealers
         string dealer2RoutingId = received.First(kvp => kvp.Value == "from_dealer2").Key;
 
         using Message reply1 = Message.FromString("reply_to_d1");
-        router.Send(dealer1RoutingId, reply1);
+        router.Send(RoutingId.FromBytes(Encoding.UTF8.GetBytes(dealer1RoutingId)))
+            .Message(reply1).Submit();
 
         using Message reply2 = Message.FromString("reply_to_d2");
-        router.Send(dealer2RoutingId, reply2);
+        router.Send(RoutingId.FromBytes(Encoding.UTF8.GetBytes(dealer2RoutingId)))
+            .Message(reply2).Submit();
 
         Assert.Equal("reply_to_d1", CoreTestSupport.ReceiveUtf8WithTimeout(dealer1,
             2000));

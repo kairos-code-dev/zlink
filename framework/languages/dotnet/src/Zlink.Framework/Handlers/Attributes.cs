@@ -13,7 +13,7 @@ public sealed class ZLinkSendAttribute : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkEventAttribute : Attribute
+public sealed class ZLinkPublishAttribute : Attribute
 {
     public string? PacketName { get; init; }
 }

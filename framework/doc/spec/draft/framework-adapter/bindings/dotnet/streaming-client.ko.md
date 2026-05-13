@@ -730,3 +730,19 @@ Unity 상세 계약은 [unity-stream-connector.ko.md](./unity-stream-connector.k
 7. LZ4 compression과 server-to-client 자동 압축 해제
 8. TLS, WebSocket, WebSocket over TLS transport
 9. Unity adapter package
+
+## 19. 회귀 테스트
+
+Stream Connector 항목은 transport frame, typed request/reply, metadata, packet name,
+codec, compression, error handling을 분리해서 검증한다. Connector API를 바꾸면 아래
+테스트 이름과 문서 설명을 함께 맞춘다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `StreamConnectorTests.TcpSendUsesHeaderBodyFrame` | TCP transport가 header/body frame 형식을 사용한다. |
+| `StreamConnectorTests.TcpReceiveDispatchesMultipleHeaderPacketsInOrder` | 여러 header packet을 순서대로 callback에 전달한다. |
+| `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | typed request가 request sequence로 response를 짝짓는다. |
+| `StreamConnectorTests.PacketNameAttributeIsUsedByDefault` | packet name attribute가 기본 packet 이름으로 사용된다. |
+| `StreamConnectorTests.MetadataSendLimitIsEnforced` | metadata 크기 제한이 send 전에 적용된다. |
+| `StreamConnectorTests.TypedCallbackDecompressesServerPacket` | 압축된 server packet을 typed callback에서 복원한다. |
+

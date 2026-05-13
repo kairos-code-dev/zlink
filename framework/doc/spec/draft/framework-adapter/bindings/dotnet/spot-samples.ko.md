@@ -1743,3 +1743,17 @@ channel messaging 쪽은 편의 기능을 조금 더 허용할 여지가 있다�
 - packet dispatch 기준은 header `msgId`다.
 - `IZLinkSpotManager`는 spot 생성과 조회를 함께 가진다.
 - attach된 channel client와 SPOT publish 설정은 capability별 builder에서 노출한다.
+
+## 10. 회귀 테스트
+
+SPOT 샘플은 room/stage/zone 같은 상위 모델이 framework public 표면만 사용해 구성되는지
+확인한다. 샘플 코드를 고치면 spot 생성, publish, actor join, channel request 흐름을
+아래 테스트와 맞춘다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `SpotIntegrationTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | spot 생성과 조회, 제거, callback scope 정리가 동작한다. |
+| `SpotIntegrationTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 노드 publish 샘플이 target SPOT channel에 도달한다. |
+| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 room 역할의 spot에 join한 뒤 해당 문맥에서 dispatch된다. |
+| `SpotIntegrationTests.ActorContext_RequestChannel_Uses_Global_Client_Before_Join_And_Spot_Client_After_Join` | actor context에서 channel request를 보내는 샘플 경로가 유지된다. |
+

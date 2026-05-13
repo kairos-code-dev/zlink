@@ -383,3 +383,16 @@ public interface IStageSpotManager
 1. `IZLinkSpotContext.AddTimer<THandler>(...)` timer 초안 정리
 2. `IZLinkSpotManager` metadata 확장을 wrapper 후보로 별도 정리
 3. `Stage wrapper` 전용 문서에서 membership, broadcast, directory를 별도 정의
+
+## 7. 회귀 테스트
+
+Stage wrapper 항목은 framework가 stage 자체를 알지 않더라도, 현재 SPOT 실행 문맥,
+timer, spot manager, actor channel 경로로 상위 모델을 얹을 수 있는지 확인한다.
+wrapper 전용 API가 생기면 이 표에는 실제 실행되는 테스트만 추가한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 뒤 stage 역할의 spot 실행 문맥에서 packet을 처리한다. |
+| `SpotIntegrationTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | stage tick처럼 쓰는 timer가 spot 제거 뒤 멈춘다. |
+| `SpotIntegrationTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | stage 생성·조회·제거에 필요한 spot manager와 scope 정리가 동작한다. |
+| `SpotIntegrationTests.ActorContext_RequestChannel_Uses_Global_Client_Before_Join_And_Spot_Client_After_Join` | actor가 stage에 join한 뒤 현재 spot channel client 경로를 사용한다. |

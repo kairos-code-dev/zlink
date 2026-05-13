@@ -128,3 +128,18 @@ reply 대기는 `WithTimeout(...)`으로 정한 request timeout을 따른다.
 - 이미 시작된 handler는 cancellation을 전달받고 빠르게 종료할 기회를 가진다.
 - graceful timeout을 넘긴 작업은 host shutdown 정책에 따라 중단될 수 있다.
 - shutdown 중 새 outbound request 성공을 보장하지 않는다.
+
+## 10. 회귀 테스트
+
+Lifecycle과 failure semantics 항목은 시작 순서, shutdown 정리, request/send 실패 의미,
+stream transport error 범위를 테스트로 고정한다. 오류가 늦게 드러나는 방향으로 구현을
+바꾸면 이 문서와 테스트를 함께 갱신한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `LifecycleHostedServiceTests.Host_Starts_And_Stops_FrameworkRuntimeContext` | host 시작/종료에 맞춰 framework runtime context가 생성되고 정리된다. |
+| `LifecycleHostedServiceTests.Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry와 framework runtime 시작 순서가 유지된다. |
+| `ZLinkAsyncSubmitterTests.SubmitAsync_FailsPendingItemWhenSendTimeoutExpires` | pending submit은 send timeout 정책으로 실패하고 caller thread를 묶지 않는다. |
+| `StreamConnectorTests.RequestTimeoutRemovesPendingRequest` | stream connector request timeout 뒤 pending request가 제거된다. |
+| `TopologyMultiProcessTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect는 stream session의 transport error callback으로 보고된다. |
+

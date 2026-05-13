@@ -148,3 +148,39 @@ matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는 형
 failure semantics가 테스트로 같이 고정돼야 한다. native backend가 이미 해당
 platform을 지원하더라도, framework는 그 위에서 registration, lifecycle, DI,
 monitoring 계층이 추가되므로 platform gate를 별도로 유지해야 한다.
+
+## 9. 문서별 회귀 테스트 단락
+
+이 디렉토리의 각 draft 문서는 자기 항목이 어떤 테스트로 고정되는지 짧은 `회귀 테스트`
+단락을 가져야 한다. 중앙 matrix만 갱신하면 세부 문서 독자가 어떤 테스트를 봐야 하는지
+놓치기 쉽기 때문이다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `DocumentationRegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | 아래 문서들이 모두 `회귀 테스트` 단락을 가진다. |
+| `DocumentationRegressionTests.DotNetRegressionMatrix_References_AllDraftDocuments` | 이 matrix가 아래 문서 파일명을 모두 참조한다. |
+
+대상 문서는 다음과 같다.
+
+- `README.ko.md`
+- `handler-interfaces.ko.md`
+- `aspnet-core-channel-messaging.ko.md`
+- `aspnet-core-spot.ko.md`
+- `stage-wrapper-on-spot.ko.md`
+- `aspnet-core-stream.ko.md`
+- `aspnet-core-actor.ko.md`
+- `session-actor-dispatch.ko.md`
+- `streaming-client.ko.md`
+- `unity-stream-connector.ko.md`
+- `stream-open-items.ko.md`
+- `aspnet-core-monitoring.ko.md`
+- `aspnet-core-registry.ko.md`
+- `behavior-matrix.ko.md`
+- `regression-test-matrix.ko.md`
+- `lifecycle-and-failure-semantics.ko.md`
+- `implementation-scope-and-nongoals.ko.md`
+- `backend-dependency-policy.ko.md`
+- `channel-messaging-samples.ko.md`
+- `spot-samples.ko.md`
+- `stream-samples.ko.md`
+- `tictactoe-game-sample.ko.md`

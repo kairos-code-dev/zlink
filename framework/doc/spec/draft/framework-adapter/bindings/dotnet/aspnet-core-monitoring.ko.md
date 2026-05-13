@@ -343,3 +343,18 @@ mesh 이름(예: `"game.stage"`)이 그대로 들어간다. framework 내부에�
   반면 registry/spot event는 snapshot diff 기반 synthetic event이므로 별도 native
   enum 필드를 두지 않는다. discovery는 runtime event가 아니므로 별도 event payload를
   두지 않는다.
+
+## 8. 회귀 테스트
+
+Monitoring 문서의 항목은 등록한 source 이름이 실제 runtime capability와 맞는지,
+Registry와 SPOT 상태 변화가 typed event와 snapshot으로 관찰되는지 확인한다. raw
+monitor event를 그대로 새어 내지 않는다는 정책도 public surface 테스트와 함께 본다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `RegistrationValidationTests.AddZLinkMonitoring_Throws_WhenSocketSourceDoesNotMatchRegisteredCapability` | 존재하지 않는 monitoring source 이름은 startup validation 예외가 된다. |
+| `MonitoringIntegrationTests.RegistryMonitoring_Emits_StatusChanged_For_EmbeddedRegistry` | embedded Registry 상태 변경 event가 발생한다. |
+| `MonitoringIntegrationTests.RegistryMonitoring_Emits_Topology_And_ServiceSummary_When_FrameworkHostRegisters` | framework host 등록 뒤 topology와 service summary event가 발생한다. |
+| `MonitoringIntegrationTests.SpotMonitoring_Emits_SubjectsChanged_When_SpotIsCreated` | spot 생성 후 subject 변화 event가 발생한다. |
+| `MonitoringIntegrationTests.SpotMonitoring_Emits_PeersChanged_When_RemoteNodeAppears` | remote spot node가 나타나면 peer 변화 event가 발생한다. |
+

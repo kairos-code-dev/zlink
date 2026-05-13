@@ -129,3 +129,18 @@
 이 오류들은 런타임에 늦게 드러내지 않고 startup 단계에서 막는 편을 기본으로 본다.
 다만 actor resolver 누락처럼 실제 service 사용 여부가 있어야 드러나는 항목은
 해당 service 생성 또는 첫 호출에서 같은 error family로 명확하게 실패시킨다.
+
+## 9. 회귀 테스트
+
+Behavior Matrix는 허용 조합과 비허용 조합을 테스트 이름으로 고정한다. 새 capability
+조합을 추가할 때는 표만 늘리지 말고, startup validation 또는 runtime integration
+테스트도 같은 변경에 포함한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenCompatibilityChannelMixesAutoConnectTypes` | client/server와 fanout capability를 호환 등록 경로에서 잘못 섞으면 실패한다. |
+| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenRouteChannelMixesDiscoveryAndManualConnections` | 같은 routed capability에서 Discovery와 manual 연결을 섞으면 실패한다. |
+| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenServerHasNoBindEndpoint` | server capability에 bind endpoint가 없으면 실패한다. |
+| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenPublisherHasNoBindEndpoint` | publisher capability에 bind endpoint가 없으면 실패한다. |
+| `RegistrationValidationTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | Discovery mesh 없이 local-only SpotNode를 단독으로 시작할 수 있다. |
+

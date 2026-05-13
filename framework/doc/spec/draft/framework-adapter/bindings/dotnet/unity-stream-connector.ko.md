@@ -243,3 +243,17 @@ sample에서 다룬다.
 - callback queue overflow 정책 검증
 
 TLS/WSS 테스트는 인증서 fixture가 준비된 CI 환경에서 실행한다.
+
+## 10. 회귀 테스트
+
+Unity adapter 항목은 공통 Stream Connector 계약을 그대로 지키면서 Unity main thread
+callback dispatch와 wrapper lifecycle만 추가로 검증한다. 현재 저장소에는 순수 Unity
+runtime 테스트가 없으므로, 이 표에는 공통 connector 계약을 실제로 검증하는 테스트만
+둔다. Unity runtime 전용 테스트가 생기면 실행 가능한 테스트 이름으로 추가한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | Unity wrapper가 감싸는 기본 connector request/reply 의미가 유지된다. |
+| `StreamConnectorTests.TypedCallbackDecompressesServerPacket` | callback codec과 compression 의미가 Unity adapter 아래에서도 동일해야 한다. |
+| `StreamConnectorTests.TcpReceiveDispatchesMultipleHeaderPacketsInOrder` | wrapper 아래의 connector가 여러 server packet callback을 순서대로 처리한다. |
+| `StreamConnectorTests.DisconnectedSendFailsBeforeTransportWrite` | 연결이 끊긴 뒤 send가 transport write 전에 실패해 wrapper lifecycle 정리와 충돌하지 않는다. |

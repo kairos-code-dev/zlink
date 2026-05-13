@@ -455,3 +455,19 @@ app.Run();
   올리는 편을 기본으로 본다.
 - `RegistryQueryClient`는 연결 실패 시 framework가 숨은 retry를 넣지 않는다.
   retry가 필요하면 호출자나 monitoring 계층이 명시적으로 정책을 둔다.
+
+## 10. 회귀 테스트
+
+Registry 문서의 항목은 embedded/standalone startup, in-process query, remote query,
+framework topology 노출이 함께 유지되어야 한다. Registry가 framework보다 먼저 뜨는
+순서도 회귀 기준이다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `RegistrationValidationTests.AddZLinkRegistry_Throws_WhenPubEndpointIsMissing` | Registry pub endpoint 누락은 startup validation 예외로 드러난다. |
+| `RegistrationValidationTests.AddZLinkRegistry_Throws_WhenRouterEndpointIsMissing` | Registry router endpoint 누락은 startup validation 예외로 드러난다. |
+| `LifecycleHostedServiceTests.Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry가 framework runtime보다 먼저 시작된다. |
+| `RegistryIntegrationTests.EmbeddedRegistry_Query_Service_Resolves_And_Reads_Status` | `IZLinkRegistryQuery`가 DI에서 resolve되고 status snapshot을 읽는다. |
+| `RegistryIntegrationTests.RemoteRegistryQueryClient_Can_Read_Topology_Snapshot` | 별도 host의 query client가 remote topology snapshot을 읽는다. |
+| `TopologyMultiProcessTests.RemoteRegistryQueryClient_Reads_FrameworkTopology_From_TestHostProcesses` | 여러 프로세스 구성에서 framework topology 조회가 성공한다. |
+

@@ -508,3 +508,16 @@ local routed channel state를 보여 주는 역할만 한다.
 - actor 라이프사이클과 actor handler 모델 → [aspnet-core-actor.ko.md](./aspnet-core-actor.ko.md)
 - TicTacToe sample contract → [tictactoe-game-sample.ko.md](./tictactoe-game-sample.ko.md)
 - STREAM session 라이프사이클 → [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md)
+
+## 12. 회귀 테스트
+
+session actor dispatch 항목은 stream session, actor factory, route resolver,
+actor-session binding이 하나의 흐름으로 맞물리는지 확인한다. 또한 이전 stream의
+늦은 disconnect가 현재 actor-session 연결을 끊지 않는지 함께 본다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고 request sequence로 reply를 되돌린다. |
+| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 뒤 dispatch가 현재 spot 실행 문맥에서 실행된다. |
+| `SpotIntegrationTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | 이전 stream의 늦은 disconnect가 현재 actor-session 연결을 끊지 않는다. |
+| `StreamIntegrationTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 닫고 disconnect callback으로 이어진다. |

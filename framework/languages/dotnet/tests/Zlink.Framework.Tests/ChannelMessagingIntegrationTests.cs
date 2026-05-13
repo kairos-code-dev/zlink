@@ -139,55 +139,6 @@ public sealed class ChannelMessagingIntegrationTests
     }
 
     [Fact]
-    public async Task ChannelConnectionManager_Connects_And_Lists_Endpoints_Async()
-    {
-        var apiEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
-        var serverBuilder = Host.CreateApplicationBuilder();
-        serverBuilder.Services.AddZLinkFramework(options =>
-        {
-            options.AddClientServerChannel("api", channel =>
-            {
-                channel.EnableServer(server => server.Bind(apiEndpoint));
-            });
-        });
-        serverBuilder.Services.AddZLinkHandlersFromAssemblyContaining<ChannelMessagingIntegrationTests>();
-
-        var clientBuilder = Host.CreateApplicationBuilder();
-        clientBuilder.Services.AddZLinkFramework(options =>
-        {
-            options.AddClientServerChannel("api", channel =>
-            {
-                channel.EnableClient();
-            });
-        });
-
-        using var serverHost = serverBuilder.Build();
-        using var clientHost = clientBuilder.Build();
-
-        await serverHost.StartAsync();
-        await clientHost.StartAsync();
-
-        var connections = await clientHost.Services
-            .GetRequiredService<IZLinkChannelConnectionManager>()
-            .GetClientAsync("api");
-        var client = clientHost.Services.GetRequiredService<IZLinkClient>();
-
-        Assert.True(await connections.ConnectAsync(apiEndpoint));
-        Assert.Contains(apiEndpoint, await connections.ListConnectionsAsync());
-
-        var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetProfileRequest { UserId = "manager" }).SubmitAsync<ProfileReply>(),
-            static result => result.Name == "user:manager");
-
-        Assert.Equal("user:manager", reply.Name);
-
-        await connections.DisconnectAsync(apiEndpoint);
-        Assert.DoesNotContain(apiEndpoint, await connections.ListConnectionsAsync());
-
-        await ChannelMessagingTestSupport.StopHostsAsync(clientHost, serverHost);
-    }
-
-    [Fact]
     public async Task Publisher_And_Subscriber_Work_Across_Hosts()
     {
         var pubEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";

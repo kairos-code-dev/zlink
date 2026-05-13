@@ -962,6 +962,20 @@ public interface IZLinkSpotMeshNodeBuilder
 - Play 서버 actor가 client에 push할 때는 **반드시 `IZLinkSessionProxy`** 를 통한
   다. actor가 stream socket을 직접 들고 있지 않다.
 
+## 13. 회귀 테스트
+
+Actor 문서의 항목은 actor factory, Entry Spot, user Spot join, session bind, session actor
+dispatch가 같은 public 표면으로 이어지는지 확인해야 한다. actor가 어느 spot에 붙어
+있는지는 framework가 관리하고, 사용자는 현재 context만 다룬다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenActorFactoryNameIsDuplicated` | actor factory 이름 중복은 startup validation 예외로 막는다. |
+| `SpotIntegrationTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot과 user Spot에 등록한 actor packet/lifecycle handler가 dispatch된다. |
+| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 spot을 이동한 뒤 stale spot 문맥으로 dispatch되지 않는다. |
+| `SpotIntegrationTests.ActorContext_RequestChannel_Uses_Global_Client_Before_Join_And_Spot_Client_After_Join` | join 전후 channel request 경로가 public context 의미에 맞게 바뀐다. |
+| `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | stream session에서 bound actor로 request가 전달되고 sequence별 reply가 맞는다. |
+
 ---
 
 ### 각주 모음

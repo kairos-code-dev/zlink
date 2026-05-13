@@ -3168,3 +3168,17 @@ channel registration
 - `IZLinkRegistryQuery`와 `IZLinkRegistryQueryClient`는 묶지 않는다.
   in-process 조회와 원격 조회는 lifecycle, 실패 모델, 제공 범위가 다르므로 별도
   인터페이스를 유지한다.
+
+## 15. 회귀 테스트
+
+이 문서의 인터페이스 항목은 public surface가 backend 구현 세부사항을 새어 내지 않고,
+등록·handler·client 표면이 런타임 테스트와 같은 이름으로 유지되는지 확인해야 한다.
+인터페이스 설명을 바꾸면 아래 테스트도 함께 조정한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `ScaffoldSmokeTests.PublicSurface_DoesNotExpose_BackendConcreteTypes` | framework public API가 허용된 값 타입 외의 backend concrete type을 직접 노출하지 않는다. |
+| `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | direct route 계약은 빠지고 actor/session 계약은 public surface에 남아 있다. |
+| `RegistrationValidationTests.AddZLinkFramework_RegistersValidatedConfigurationAndFilterTypes` | options, codec, filter, channel, stream, spot 등록 표면이 DI 등록 결과에 반영된다. |
+| `ChannelMessagingIntegrationTests.Filters_Run_In_Registration_Order_Around_Handler_Dispatch` | handler filter 인터페이스가 등록 순서대로 dispatch 앞뒤를 감싼다. |
+

@@ -132,3 +132,17 @@ registration surface와 테스트 기준이 바뀌지 않게 만드는 데 목�
 
 이 항목들이 정리되면 `.NET` `STREAM` 초안은 큰 틀에서 구현 가능한 수준으로
 가까워진다.
+
+## 7. 회귀 테스트
+
+STREAM open item은 결정이 끝난 항목과 아직 남은 항목을 구분해 테스트로 닫는다.
+serializer, write, monitor mapping 결정을 바꾸면 완료된 항목은 실제 실행되는
+regression test와 함께 유지한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `StreamIntegrationTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session의 write/reply와 lifecycle mapping이 현재 결정과 맞는다. |
+| `StreamIntegrationTests.StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints` | callback dispatch 정책이 transport 직접 호출로 되돌아가지 않는다. |
+| `StreamConnectorTests.HeaderCodecRoundTripsMetadataAndRequestSeq` | header metadata와 request sequence encoding이 round-trip 된다. |
+| `TopologyMultiProcessTests.StreamRawSession_OnConnected_Emits_Metadata_Once_From_TestHostProcess` | 실제 프로세스 경계에서 connection ready가 session connected metadata로 한 번 매핑된다. |
+| `TopologyMultiProcessTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | 실제 프로세스 경계에서 disconnect가 transport error callback으로 매핑된다. |

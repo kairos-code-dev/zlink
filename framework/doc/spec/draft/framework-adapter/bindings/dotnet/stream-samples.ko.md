@@ -396,3 +396,17 @@ raw chunk를 직접 다루는 표면은 MVP 범위에 넣지 않는다.
   맡는다.
 - `Message.AsReadOnlySpan()` 기반 helper를 기본으로 해서 불필요한 복사를 줄인다.
 - protobuf/json/messagepack serializer는 확장 패키지로 분리한다.
+
+## 8. 회귀 테스트
+
+STREAM 샘플은 header session registration, packet dispatch, reply, lifecycle callback을
+한 흐름으로 보여 주므로 같은 범위의 integration test에 연결한다. 샘플에서 raw recv
+방식이 다시 기본처럼 보이지 않도록 주의한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `StreamIntegrationTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session 샘플의 dispatch와 reply 흐름이 동작한다. |
+| `StreamIntegrationTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context close 샘플의 의미가 유지된다. |
+| `TopologyMultiProcessTests.StreamRawSession_OnConnected_Emits_Metadata_Once_From_TestHostProcess` | 실제 프로세스 경계에서 connected metadata가 한 번 전달된다. |
+| `TopologyMultiProcessTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect가 transport error로 보고된다. |
+

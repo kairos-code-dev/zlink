@@ -194,3 +194,16 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 - `IZLinkClient`와 `IZLinkSpotClient`는 서로 다른 C API를 감싸는 별도 인터페이스다.
   다만 하부 기능이 겹치는 부분이 있으므로, 두 인터페이스가 일부 비슷한
   send/request 계열 함수를 가질 수 있다.
+
+## 4. 회귀 테스트
+
+이 묶음 문서는 각 세부 문서가 회귀 테스트 기준을 함께 설명해야 한다. 문서가
+추가되거나 이름이 바뀌면 아래 테스트가 문서 목록, 회귀 테스트 단락, 대표 테스트
+케이스 연결이 같이 갱신됐는지 확인한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `DocumentationRegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | `.NET` draft 문서마다 `회귀 테스트` 단락이 있다. |
+| `DocumentationRegressionTests.DotNetRegressionMatrix_References_AllDraftDocuments` | `regression-test-matrix.ko.md`가 각 draft 문서 파일명을 참조한다. |
+| `ScaffoldSmokeTests.FrameworkRoot_IsDiscoverable_FromTestRuntime` | 테스트 runtime에서 framework 루트를 찾을 수 있어 문서 회귀 테스트가 저장소 기준으로 실행된다. |
+

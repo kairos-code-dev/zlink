@@ -794,3 +794,17 @@ app.MapPost("/profiles/get", async (
 - outbound-only 앱도 같은 표면을 그대로 쓴다.
 - request/send/event handler는 HTTP handler와 비슷한 DI 감각으로 읽히도록 유지한다.
 - event publish는 publisher capability가 열린 channel에서만 가능하다.
+
+## 10. 회귀 테스트
+
+channel 샘플은 문서의 코드 흐름이 실제 framework 표면과 어긋나지 않는지 확인하기 위한
+대표 테스트와 연결한다. 샘플을 바꿀 때는 등록 코드, handler, outbound 호출이 아래
+테스트 범위 안에 남아야 한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `ChannelMessagingIntegrationTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 샘플의 request/send 흐름이 동작한다. |
+| `ChannelMessagingIntegrationTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | 자동 연결 샘플의 request/send 흐름이 동작한다. |
+| `ChannelMessagingIntegrationTests.Publisher_And_Subscriber_Work_Across_Hosts` | publish/subscribe 샘플 흐름이 동작한다. |
+| `ChannelMessagingIntegrationTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkClient` | HTTP handler에서 outbound client를 사용하는 샘플 흐름이 동작한다. |
+

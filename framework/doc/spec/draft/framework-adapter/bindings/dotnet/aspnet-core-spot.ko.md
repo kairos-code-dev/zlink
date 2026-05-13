@@ -880,3 +880,19 @@ mesh 묶음 형태를 권장한다.
 `Stage wrapper`에서 필요한 metadata 전달, membership, 실행 문맥 규칙은 framework
 기본 계약이 아니라 [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md)에서
 다루는 상위 wrapper 축으로 본다.
+
+## 11. 회귀 테스트
+
+SPOT 문서의 항목은 factory 등록, mesh/discovery 구성, lifecycle, publish, actor join
+문맥이 함께 검증되어야 한다. spot 이름과 id를 다루는 public 표면은 호출자가 transport
+위치를 알지 않아도 동작해야 한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenSpotFactoryNameIsDuplicatedAcrossNodes` | 같은 `spotName` factory를 중복 등록하면 startup validation 예외가 난다. |
+| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenSpotMeshHasNoUseDiscovery` | Discovery 없는 mesh 구성은 시작 전에 실패한다. |
+| `SpotIntegrationTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | `CreateAsync`, `GetAsync`, `ListAsync`, `RemoveAsync`와 scope 정리가 일관된다. |
+| `SpotIntegrationTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | timer와 publish callback이 spot lifecycle 안에서 돌고 제거 뒤 멈춘다. |
+| `SpotIntegrationTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 publisher client가 target SPOT channel로 publish한다. |
+| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join, 이동, packet dispatch가 현재 spot 실행 문맥에서 실행된다. |
+

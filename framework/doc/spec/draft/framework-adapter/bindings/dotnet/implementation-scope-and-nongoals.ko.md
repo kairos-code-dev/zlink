@@ -94,3 +94,16 @@
 - 현재 저장소가 패키징하는 여섯 runtime RID 모두에서 CI 기준이 유지된다.
 
 반대로 use case 문서에 이름이 나온 모든 개념을 다 구현하는 것을 뜻하지는 않는다.
+
+## 6. 회귀 테스트
+
+구현 범위와 비목표는 public surface가 커지는 방향을 막는 회귀 테스트와 함께 유지한다.
+새 API가 추가되면 이 문서의 범위 표와 public surface 테스트를 같이 바꿔야 한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | 비목표인 direct route public 호출은 없고 actor/session 표면은 남아 있다. |
+| `ScaffoldSmokeTests.PublicSurface_DoesNotExpose_BackendConcreteTypes` | backend 교체 범위 밖의 concrete type이 public API로 새어 나오지 않는다. |
+| `BackendAdapterFactoryTests.BackendFactory_Creates_Channel_Registry_Spot_And_Stream_Wrappers` | 현재 구현 범위인 channel, Registry, SPOT, STREAM backend wrapper가 생성된다. |
+| `DocumentationRegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | 범위 문서를 포함한 모든 draft 문서가 회귀 테스트 단락을 유지한다. |
+

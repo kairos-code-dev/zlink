@@ -27,5 +27,7 @@
   <ItemGroup>
     <Compile Include="../Common/**/*.cs" LinkBase="Common" />
     <Compile Include="../Zlink.Framework.Tests/GlobalUsings.cs" Link="GlobalUsings.cs" />
+    <Compile Include="../Zlink.Framework.Tests/ChannelMessagingIntegrationTests.cs" Link="ChannelMessagingIntegrationTests.cs" />
+    <Compile Remove="ChannelMessagingRuntimeTests.cs" />
   </ItemGroup>
 </Project>

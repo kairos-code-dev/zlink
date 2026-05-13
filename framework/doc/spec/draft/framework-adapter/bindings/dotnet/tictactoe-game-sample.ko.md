@@ -138,3 +138,17 @@ session actor dispatch 샘플의 DTO는
 - session actor dispatch 샘플은 Play 서버에 game room SPOT을 만들고, scenario는
   생성된 `MatchId`가 실제 SPOT room으로 존재하는지 확인한다.
 - direct 샘플의 수동 연결 설명은 direct 샘플 범위로만 제한한다.
+
+## 5. 회귀 테스트
+
+틱택토 샘플은 Direct 경로와 Session Actor Dispatch 경로가 모두 public framework 표면만
+사용하는지 확인한다. 샘플을 바꾸면 API 서버, Play 서버, STREAM connector, SPOT actor
+흐름을 아래 테스트와 맞춘다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session gateway 경로에서 request/reply sequence가 actor dispatch와 맞는다. |
+| `SpotIntegrationTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot과 room Spot actor handler가 각각 동작한다. |
+| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | match room 이동 뒤 stale room으로 dispatch되지 않는다. |
+| `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | 게임 클라이언트 역할의 connector request/reply 계약이 유지된다. |
+

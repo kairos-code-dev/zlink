@@ -104,3 +104,16 @@ monitoring, registry query, spot status는 하부와 가까운 값이 일부 pub
 
 즉 backend 교체는 adapter layer 교체가 기본이고, public API 교체는 별도 breaking
 change 작업으로 분리하는 편을 원칙으로 본다.
+
+## 9. 회귀 테스트
+
+Backend 의존 정책은 framework public API와 adapter factory 두 축으로 확인한다. 구현체가
+바뀌어도 사용자는 backend concrete type을 몰라야 하며, adapter 내부에서만 native
+binding wrapper를 만든다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `ScaffoldSmokeTests.PublicSurface_DoesNotExpose_BackendConcreteTypes` | 허용된 값 타입 외의 backend concrete type이 public surface에 나타나지 않는다. |
+| `BackendAdapterFactoryTests.BackendFactory_Creates_Channel_Registry_Spot_And_Stream_Wrappers` | backend factory가 channel, Registry, SPOT, STREAM wrapper를 만든다. |
+| `BackendAdapterFactoryTests.BackendFactory_Creates_MonitoringAdapter` | monitoring adapter 생성 경로가 backend 내부에 머문다. |
+

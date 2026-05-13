@@ -291,3 +291,17 @@ application 표면으로는 올리지 않는다**는 뜻이다.
   callback에는 올리지 않는다.
 - raw chunk 직접 처리 표면은 현재 공개 계약에 넣지 않는다. 현 단계의 session은
   framework가 decode한 `IZLinkSessionPacket`을 받는 계약으로 둔다.
+
+## 8. 회귀 테스트
+
+STREAM 문서의 항목은 session lifecycle과 packet dispatch가 transport callback을 직접
+실행하지 않고 managed queue를 거치는지 확인해야 한다. metadata와 error 의미도 stream
+session 단위로 고정한다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleHeaderSessions` | 같은 node에 header session을 중복 등록하면 startup validation 예외가 난다. |
+| `StreamIntegrationTests.StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints` | transport 진입점은 public enqueue API만 노출한다. |
+| `StreamIntegrationTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | connected, dispatch, reply, metadata, disconnected/error callback이 기대 순서로 실행된다. |
+| `StreamIntegrationTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 서버 쪽에서 닫을 수 있다. |
+

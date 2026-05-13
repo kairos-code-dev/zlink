@@ -51,6 +51,7 @@ from ._core import (
     _validated_c_string_text,
     _validated_c_string_value,
     _validated_int32,
+    _validated_int64,
     _validated_routing_id_bytes,
     _send_buffer,
     ZlinkError,
@@ -114,7 +115,7 @@ def _int32_bytes(value):
 
 
 def _int64_bytes(value):
-    native = ctypes.c_int64(int(value))
+    native = ctypes.c_int64(_validated_int64(value))
     return ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native))
 
 
@@ -661,7 +662,11 @@ class _BaseSocket:
         return _routing_id_bytes(rid)
 
     def set_channel_name(self, channel_name):
-        channel_bytes = _validated_c_string_bytes(channel_name, "channel_name")
+        channel_bytes = _validated_c_string_bytes(
+            channel_name,
+            field="channel_name",
+            max_length=255,
+        )
         rc = lib().zlink_socket_set_channel_name(self._handle, channel_bytes)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())

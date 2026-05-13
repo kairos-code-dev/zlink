@@ -11,5 +11,13 @@ cmake -S "${C_DIR}" -B "${BUILD_DIR}" \
   -DZLINK_C_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
   -DZLINK_C_BUILD_TESTS=ON
 
-cmake --build "${BUILD_DIR}" --target test_c_contract_surface -j"$(nproc)"
+TEST_TARGETS=(
+  test_c_contract_surface
+  test_c_message_lifecycle
+  test_c_option_error_contract
+)
+
+for target in "${TEST_TARGETS[@]}"; do
+  cmake --build "${BUILD_DIR}" --target "${target}" -j"$(nproc)"
+done
 ctest --test-dir "${BUILD_DIR}" --output-on-failure -L contract

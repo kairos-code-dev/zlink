@@ -356,6 +356,13 @@ def _validated_uint32(value, *, field="value"):
     return native
 
 
+def _validated_int64(value, *, field="value"):
+    native = int(value)
+    if native < -(1 << 63) or native > ((1 << 63) - 1):
+        raise OverflowError(f"{field} must fit in signed 64-bit range")
+    return native
+
+
 def _validated_c_string_bytes(data, *, field="value", max_length=None):
     raw = bytes(_as_bytes_view(data))
     if b"\0" in raw:
@@ -967,7 +974,11 @@ class ReceivedMultipart:
         return self.parts[0]
 
     def close(self):
+        if self._owner is None:
+            return
         self._owner.close()
+        self._owner = None
+        self.parts = ()
 
     def __enter__(self):
         return self

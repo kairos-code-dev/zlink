@@ -100,34 +100,36 @@ endif()
 
 option(ZLINK_C_BUILD_TESTS "Build C binding tests" OFF)
 if(ZLINK_C_BUILD_TESTS)
-  add_executable(test_c_contract_surface tests/test_c_contract_surface.c)
-  target_link_libraries(test_c_contract_surface PRIVATE zlink_c)
-  if(UNIX AND NOT APPLE)
-    set_target_properties(test_c_contract_surface PROPERTIES
-      BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}"
-    )
-  elseif(APPLE)
-    set_target_properties(test_c_contract_surface PROPERTIES
-      BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}"
-    )
-  endif()
-  if(ZLINK_C_REGISTER_CTEST)
-    add_test(NAME test_c_contract_surface COMMAND test_c_contract_surface)
-    set_tests_properties(test_c_contract_surface PROPERTIES
-      LABELS "contract"
-      TIMEOUT 30
-    )
-    if(WIN32)
-      set_tests_properties(test_c_contract_surface PROPERTIES
-        ENVIRONMENT "PATH=${ZLINK_C_CORE_RUNTIME_DIR};$ENV{PATH}")
-    elseif(APPLE)
-      set_tests_properties(test_c_contract_surface PROPERTIES
-        ENVIRONMENT "DYLD_LIBRARY_PATH=${ZLINK_C_CORE_RUNTIME_DIR}:$ENV{DYLD_LIBRARY_PATH}")
-    elseif(UNIX)
-      set_tests_properties(test_c_contract_surface PROPERTIES
-        ENVIRONMENT "LD_LIBRARY_PATH=${ZLINK_C_CORE_RUNTIME_DIR}:$ENV{LD_LIBRARY_PATH}")
+  function(zlink_c_add_contract_test name)
+    add_executable(${name} tests/${name}.c)
+    target_link_libraries(${name} PRIVATE zlink_c)
+    if(UNIX OR APPLE)
+      set_target_properties(${name} PROPERTIES
+        BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}"
+      )
     endif()
-  endif()
+    if(ZLINK_C_REGISTER_CTEST)
+      add_test(NAME ${name} COMMAND ${name})
+      set_tests_properties(${name} PROPERTIES
+        LABELS "contract"
+        TIMEOUT 30
+      )
+      if(WIN32)
+        set_tests_properties(${name} PROPERTIES
+          ENVIRONMENT "PATH=${ZLINK_C_CORE_RUNTIME_DIR};$ENV{PATH}")
+      elseif(APPLE)
+        set_tests_properties(${name} PROPERTIES
+          ENVIRONMENT "DYLD_LIBRARY_PATH=${ZLINK_C_CORE_RUNTIME_DIR}:$ENV{DYLD_LIBRARY_PATH}")
+      elseif(UNIX)
+        set_tests_properties(${name} PROPERTIES
+          ENVIRONMENT "LD_LIBRARY_PATH=${ZLINK_C_CORE_RUNTIME_DIR}:$ENV{LD_LIBRARY_PATH}")
+      endif()
+    endif()
+  endfunction()
+
+  zlink_c_add_contract_test(test_c_contract_surface)
+  zlink_c_add_contract_test(test_c_message_lifecycle)
+  zlink_c_add_contract_test(test_c_option_error_contract)
 endif()
 
 option(ZLINK_C_BUILD_BENCHMARKS "Build C binding benchmarks" OFF)

@@ -28,7 +28,7 @@ public sealed class ZlinkStreamRequestBuilder
         _state = new ZlinkStreamCallBuilderState(name);
     }
 
-    public ZlinkStreamRequestBuilder WithPacketName(string name)
+    public ZlinkStreamRequestBuilder PacketName(string name)
     {
         _state.SetMessageName(name);
         return this;
@@ -46,7 +46,7 @@ public sealed class ZlinkStreamRequestBuilder
         return this;
     }
 
-    public ZlinkStreamRequestBuilder WithTimeout(TimeSpan timeout)
+    public ZlinkStreamRequestBuilder Timeout(TimeSpan timeout)
     {
         _state.SetTimeout(timeout);
         return this;

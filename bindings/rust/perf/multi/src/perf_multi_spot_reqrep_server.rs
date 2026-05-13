@@ -4,7 +4,7 @@ mod common;
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
     mpsc,
 };
@@ -142,45 +142,54 @@ fn main() {
         node.set_tls_server(&pem.cert, &pem.key, false)
             .expect("spot tls");
     }
-    let mut spot = node.create_spot().expect("spot");
-    spot.set_routing_id(&RoutingId::from_bytes(SERVER_SPOT_RID))
+    let spot = Arc::new(Mutex::new(node.create_spot().expect("spot")));
+    spot.lock()
+        .expect("spot lock")
+        .set_routing_id(&RoutingId::from_bytes(SERVER_SPOT_RID))
         .expect("spot routing id");
     let stop_dispatch = Arc::clone(&stop);
-    let spot_ptr = (&spot as *const Spot) as usize;
-    spot.on_dispatch_event(move |info| {
-        if stop_dispatch.load(Ordering::Acquire) || info.event != SpotDispatchEvent::RoutedReadable
-        {
-            return;
-        }
-        let spot = unsafe { &*(spot_ptr as *const Spot) };
-        loop {
-            match spot.recv_routed_with_flags(RecvFlags::DONT_WAIT) {
-                Ok(received) => {
-                    if trace_enabled() {
-                        eprintln!(
-                            "spot reqrep server received routed request node_len={} spot_len={} seq={}",
-                            received.routing_id().map(|rid| rid.size()).unwrap_or(0),
-                            received.spot_rid.as_ref().map(|rid| rid.size()).unwrap_or(0),
-                            received.request_seq().unwrap_or(0)
-                        );
-                    }
-                    let reply = Message::copy_from(common::message_payload(received.parts()))
-                        .expect("reply");
-                    if let Err(err) = received.reply().message(reply).submit() {
+    let dispatch_spot = Arc::clone(&spot);
+    spot.lock()
+        .expect("spot lock")
+        .on_dispatch_event(move |info| {
+            if stop_dispatch.load(Ordering::Acquire)
+                || info.event != SpotDispatchEvent::RoutedReadable
+            {
+                return;
+            }
+            loop {
+                let received = {
+                    let spot = dispatch_spot.lock().expect("spot lock");
+                    spot.recv_routed_with_flags(RecvFlags::DONT_WAIT)
+                };
+                match received {
+                    Ok(Some(received)) => {
                         if trace_enabled() {
-                            eprintln!("spot reqrep reply failed: {err}");
+                            eprintln!(
+                                "spot reqrep server received routed request node_len={} spot_len={} seq={}",
+                                received.routing_id().map(|rid| rid.size()).unwrap_or(0),
+                                0,
+                                received.request_seq().unwrap_or(0)
+                            );
+                        }
+                        let reply = Message::copy_from(common::message_payload(received.parts()))
+                            .expect("reply");
+                        if let Err(err) = received.reply().message(reply).submit() {
+                            if trace_enabled() {
+                                eprintln!("spot reqrep reply failed: {err}");
+                            }
                         }
                     }
-                }
-                Err(err) if err.code() == RecvResult::NoData => break,
-                Err(err) => {
-                    eprintln!("[spot-reqrep-server] recv error in dispatch: {:?}", err);
-                    break;
+                    Ok(None) => break,
+                    Err(err) if err.code() == RecvResult::NoData => break,
+                    Err(err) => {
+                        eprintln!("[spot-reqrep-server] recv error in dispatch: {:?}", err);
+                        break;
+                    }
                 }
             }
-        }
-    })
-    .expect("dispatch event");
+        })
+        .expect("dispatch event");
     let Some(data_bind_endpoint) =
         common::resolve_server_bind_endpoint("MULTI_SPOT_REQREP", &args.transport)
     else {

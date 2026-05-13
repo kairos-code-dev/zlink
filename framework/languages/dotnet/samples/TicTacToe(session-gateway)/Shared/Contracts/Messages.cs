@@ -1,4 +1,4 @@
-namespace TicTacToe.SessionActorDispatch.Contracts;
+namespace TicTacToe.SessionGateway.Shared.Contracts;
 
 public sealed record AuthenticateReq(string ActorId);
 

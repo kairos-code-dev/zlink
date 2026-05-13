@@ -1,6 +1,6 @@
-using TicTacToe.SessionActorDispatch.Configuration;
-using TicTacToe.SessionActorDispatch.Contracts;
 using TicTacToe.SessionGateway.Play;
+using TicTacToe.SessionGateway.Shared.Configuration;
+using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Play;
@@ -34,7 +34,7 @@ internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
                         joined.JoinedMark?.ToContract()
                             ?? throw new InvalidOperationException("Opponent joined event must include the joined mark."),
                         joined.Snapshot.ToContract()))
-                .WithPacketName(SampleNames.OpponentJoinedPacket)
+                .PacketName(SampleNames.OpponentJoinedPacket)
                 .Submit(cancellationToken),
             { Kind: TicTacToeGameEventKind.TurnChanged } turn => proxy
                 .Send(
@@ -43,7 +43,7 @@ internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
                         turn.Snapshot.MatchId,
                         turn.Snapshot.TurnActorId,
                         turn.Snapshot.ToContract()))
-                .WithPacketName(SampleNames.TurnChangedPacket)
+                .PacketName(SampleNames.TurnChangedPacket)
                 .Submit(cancellationToken),
             { Kind: TicTacToeGameEventKind.GameEnded } ended => proxy
                 .Send(
@@ -53,7 +53,7 @@ internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
                         ended.Snapshot.WinnerActorId,
                         ended.Snapshot.Status == TicTacToeGameStatus.Draw,
                         ended.Snapshot.ToContract()))
-                .WithPacketName(SampleNames.GameEndedPacket)
+                .PacketName(SampleNames.GameEndedPacket)
                 .Submit(cancellationToken),
             _ => throw new InvalidOperationException($"Unsupported game event '{gameEvent.GetType().Name}'.")
         };

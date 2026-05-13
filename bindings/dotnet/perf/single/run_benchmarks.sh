@@ -80,6 +80,20 @@ Options:
   --build-dir PATH      Accepted for policy compatibility.
   --reuse-build         Reuse existing build output.
   --clean-build         Remove project bin/obj before build.
+  --output PATH         Tee report output to PATH.
+  --pin-cpu             Pin benchmark process to CPU 0 on Linux.
+  --io-threads N        Context I/O threads.
+  --hwm N               Shared HWM fallback.
+  --send-hwm N          Send HWM override.
+  --recv-hwm N          Receive HWM override.
+  --buf SIZE            Send/receive buffer override.
+  --sndbuf SIZE         Send buffer override.
+  --rcvbuf SIZE         Receive buffer override.
+  --sndtimeo N          Send timeout ms.
+  --rcvtimeo N          Receive timeout ms.
+  --send-timeout-ms N   Alias of --sndtimeo.
+  --recv-timeout-ms N   Alias of --rcvtimeo.
+  --auto-hwm-profile NAME Auto-HWM profile.
   --results-dir PATH    Override result root directory.
   --results-tag NAME    Optional report suffix tag.
 
@@ -280,8 +294,8 @@ with open(sys.argv[1], encoding="utf-8") as handle:
         rows.setdefault(size, {})
         rows[size][metric] = row[6]
 
-print("      | Size     |       Throughput |   Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |")
-print("      |----------|------------------|-------------|--------------|-------------|-------------|")
+print("      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
+print("      |----------|--------------------|----------------|---------------|---------------|---------------|")
 for size, metrics in rows.items():
     values = [metrics.get(metric, "NA") for metric in required]
     throughput = float(values[0]) / 1000.0
@@ -289,9 +303,10 @@ for size, metrics in rows.items():
     latency = float(values[2])
     latency_p95 = float(values[3])
     latency_p99 = float(values[4])
+    throughput_text = f"{throughput:8.3f} {throughput_unit}"
     print(
-        f"      | {size}B | {throughput:>16.2f} {throughput_unit} | {bandwidth:>10.2f} MB/s |"
-        f" {latency:>11.3f} ms | {latency_p95:>11.3f} ms | {latency_p99:>11.3f} ms |"
+        f"      | {size + 'B':<8} | {throughput_text:>16} | {bandwidth:>10.3f} MB/s |"
+        f" {latency:>9.3f} ms | {latency_p95:>9.3f} ms | {latency_p99:>9.3f} ms |"
     )
 PY
     print_line "${table_line}"
@@ -363,6 +378,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --clean-build)
       CLEAN_BUILD=1
+      ;;
+    --output)
+      shift
+      ;;
+    --pin-cpu)
+      ;;
+    --io-threads|--hwm|--send-hwm|--recv-hwm|--buf|--sndbuf|--rcvbuf|--sndtimeo|--rcvtimeo|--send-timeout-ms|--recv-timeout-ms|--auto-hwm-profile)
+      shift
       ;;
     --results-dir)
       RESULTS_ROOT="${2:-}"

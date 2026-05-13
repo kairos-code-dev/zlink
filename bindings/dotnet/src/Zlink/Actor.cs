@@ -73,13 +73,20 @@ public sealed record ActorPart(ActorRecvInfo Info, Message Message,
 public sealed class ActorJoinRequest
 {
     internal ActorJoinRequest(ActorJoinInfo info, Message message)
+        : this(info, [message])
+    {
+    }
+
+    internal ActorJoinRequest(ActorJoinInfo info, IReadOnlyList<Message> parts)
     {
         Info = info;
-        Message = message;
+        Parts = parts;
+        Message = parts.Count > 0 ? parts[0] : new Message();
     }
 
     public ActorJoinInfo Info { get; }
     public Message Message { get; }
+    public IReadOnlyList<Message> Parts { get; }
 }
 
 public sealed record SpotNodeSpotEntry(RoutingId? SpotRid,

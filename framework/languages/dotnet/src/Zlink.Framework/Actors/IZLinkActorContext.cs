@@ -65,7 +65,7 @@ public interface IZLinkActorContext
 
 public interface IZLinkActorJoinSpotCall
 {
-    IZLinkActorJoinSpotCall WithTimeout(TimeSpan timeout);
+    IZLinkActorJoinSpotCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }

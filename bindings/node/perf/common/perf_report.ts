@@ -44,15 +44,15 @@ function throughputUnit(pattern) {
 
 function formatTableHeader() {
   return [
-    '| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |',
-    '|----------|------------------|------------|---------------|---------------|---------------|'
+    '| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |',
+    '|----------|--------------------|----------------|---------------|---------------|---------------|'
   ];
 }
 
 function formatTableRow(row) {
-  const throughput = `${(row.metrics.throughput / 1000).toFixed(2)} ${throughputUnit(row.pattern)}`;
-  const bandwidth = `${row.metrics.bandwidth.toFixed(2)} MB/s`;
-  return `| ${String(row.msgSize).padEnd(8)}B | ${throughput.padStart(16)} | ${bandwidth.padStart(10)} | ${`${row.metrics.latency.toFixed(6)} ms`.padStart(13)} | ${`${row.metrics.latency_p95.toFixed(6)} ms`.padStart(13)} | ${`${row.metrics.latency_p99.toFixed(6)} ms`.padStart(13)} |`;
+  const throughput = `${(row.metrics.throughput / 1000).toFixed(3).padStart(8)} ${throughputUnit(row.pattern)}`;
+  const bandwidth = `${row.metrics.bandwidth.toFixed(3).padStart(10)} MB/s`;
+  return `| ${`${row.msgSize}B`.padEnd(8)} | ${throughput.padStart(16)} | ${bandwidth.padStart(12)} | ${`${row.metrics.latency.toFixed(3).padStart(9)} ms`.padStart(12)} | ${`${row.metrics.latency_p95.toFixed(3).padStart(9)} ms`.padStart(12)} | ${`${row.metrics.latency_p99.toFixed(3).padStart(9)} ms`.padStart(12)} |`;
 }
 
 function formatTableRows(rows) {

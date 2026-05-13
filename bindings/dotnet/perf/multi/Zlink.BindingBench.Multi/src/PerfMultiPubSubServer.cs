@@ -117,27 +117,18 @@ internal static class PerfMultiPubSubServer
 
     private static void TrySendStopToken(PubSocket server)
     {
-        for (int retry = 0; retry < 100; retry++)
+        try
         {
-            try
-            {
-                using Message stopMessage = Message.FromBytes(MultiStopToken);
-                if (server.Publish(string.Empty).Message(stopMessage)
-                    .Flags(SendFlags.DontWait).Submit())
-                    return;
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
-            {
-                System.Threading.Thread.Sleep(1);
-                continue;
-            }
-            catch (ObjectDisposedException)
-            {
-                return;
-            }
-
-            System.Threading.Thread.Sleep(1);
+            using Message stopMessage = Message.FromBytes(MultiStopToken);
+            server.Publish(string.Empty).Message(stopMessage)
+                .Flags(SendFlags.None).Submit();
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                        || IsInterrupted(ex.InternalErrno))
+        {
+        }
+        catch (ObjectDisposedException)
+        {
         }
     }
 

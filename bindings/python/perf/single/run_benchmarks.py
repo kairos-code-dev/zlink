@@ -66,6 +66,12 @@ def parse_args(argv):
     parser.add_argument("--hwm", default="")
     parser.add_argument("--send-hwm", default="")
     parser.add_argument("--recv-hwm", default="")
+    parser.add_argument("--buf", default="")
+    parser.add_argument("--sndbuf", default="")
+    parser.add_argument("--rcvbuf", default="")
+    parser.add_argument("--sndtimeo", "--send-timeout-ms", dest="sndtimeo", default="")
+    parser.add_argument("--rcvtimeo", "--recv-timeout-ms", dest="rcvtimeo", default="")
+    parser.add_argument("--auto-hwm-profile", default="")
     parser.add_argument("--pin-cpu", action="store_true")
     parser.add_argument(
         "--msg-size", dest="msg_size_compat", default=None, help=argparse.SUPPRESS
@@ -185,13 +191,14 @@ def _status_kind(output):
 
 
 def _metric_row(pattern, msg_size, metrics, *, indent="      "):
+    throughput = f"{float(metrics.get('throughput', 0.0)) / 1000.0:8.3f} {throughput_unit(pattern)}"
     return (
-        f"{indent}| {int(msg_size):>7}B | "
-        f"{float(metrics.get('throughput', 0.0)) / 1000.0:>16.2f} {throughput_unit(pattern)} | "
-        f"{float(metrics.get('bandwidth', 0.0)):>10.2f} MB/s | "
-        f"{float(metrics.get('latency', 0.0)):>12.6f} ms | "
-        f"{float(metrics.get('latency_p95', 0.0)):>12.6f} ms | "
-        f"{float(metrics.get('latency_p99', 0.0)):>12.6f} ms |"
+        f"{indent}| {str(msg_size) + 'B':<8} | "
+        f"{throughput:>16} | "
+        f"{float(metrics.get('bandwidth', 0.0)):>10.3f} MB/s | "
+        f"{float(metrics.get('latency', 0.0)):>9.3f} ms | "
+        f"{float(metrics.get('latency_p95', 0.0)):>9.3f} ms | "
+        f"{float(metrics.get('latency_p99', 0.0)):>9.3f} ms |"
     )
 
 

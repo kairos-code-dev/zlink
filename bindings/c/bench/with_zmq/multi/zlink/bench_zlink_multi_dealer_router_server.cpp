@@ -56,7 +56,7 @@ inline bool relay_router_once (void *server)
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     const zlink_recv_result_t rc =
-      ::zlink_recv (server, &source_rid, &parts, &part_count, 0);
+      ::zlink_std_compat_recv (server, &source_rid, &parts, &part_count, 0);
     if (rc != ZLINK_RECV_OK) {
         const int err = zlink_errno ();
         return err == EAGAIN || err == EINTR;
@@ -68,7 +68,7 @@ inline bool relay_router_once (void *server)
             return false;
 
         const zlink_submit_result_t send_rc =
-          ::zlink_send_rid (server, &source_rid, &empty_part, 1, 0);
+          ::zlink_std_compat_send_rid (server, &source_rid, &empty_part, 1, 0);
         if (send_rc == ZLINK_SUBMIT_OK)
             return true;
 
@@ -78,7 +78,7 @@ inline bool relay_router_once (void *server)
     }
 
     const zlink_submit_result_t send_rc =
-      ::zlink_send_rid (server, &source_rid, parts, part_count, 0);
+      ::zlink_std_compat_send_rid (server, &source_rid, parts, part_count, 0);
     if (send_rc == ZLINK_SUBMIT_OK)
         return true;
 

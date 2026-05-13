@@ -1,6 +1,6 @@
 package systems.zlink;
 
-import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Assertions;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -16,7 +16,7 @@ public final class TestSupport {
         try {
             Zlink.version();
         } catch (Throwable t) {
-            Assumptions.assumeTrue(false,
+            Assertions.fail(
                 "zlink native library not found: " + t.getMessage());
         }
     }

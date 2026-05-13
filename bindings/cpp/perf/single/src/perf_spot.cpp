@@ -471,7 +471,6 @@ bool run_pattern_spot (const std::string &transport,
         for (int retry = 0; retry < 100; ++retry) {
             if (send_spot_stop_token (pub_spot))
                 break;
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
         }
     });
 

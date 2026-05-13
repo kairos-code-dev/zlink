@@ -15,16 +15,16 @@ public interface IZLinkRouteClient
 
 public interface IZLinkRouteSendCall
 {
-    IZLinkRouteSendCall WithPacketName(string packetName);
+    IZLinkRouteSendCall PacketName(string packetName);
 
     ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkRouteRequestCall
 {
-    IZLinkRouteRequestCall WithPacketName(string packetName);
+    IZLinkRouteRequestCall PacketName(string packetName);
 
-    IZLinkRouteRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkRouteRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }

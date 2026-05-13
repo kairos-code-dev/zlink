@@ -43,6 +43,17 @@ internal sealed class ZLinkBackendDealerSocketWrapper(DealerSocket nativeSocket)
             .Submit();
     }
 
+    public bool Send(IReadOnlyList<Message> parts, SendFlags flags)
+    {
+        var operation = nativeSocket.Send().Message(parts[0]);
+        for (var index = 1; index < parts.Count; index++)
+        {
+            operation = operation.Message(parts[index]);
+        }
+
+        return operation.Flags(flags).Submit();
+    }
+
     public bool Request(
         Message message,
         RequestCallback callback,
@@ -58,6 +69,26 @@ internal sealed class ZLinkBackendDealerSocketWrapper(DealerSocket nativeSocket)
         }
 
         return operation.Submit(callback);
+    }
+
+    public bool Request(
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout)
+    {
+        var operation = nativeSocket.Request().Message(parts[0]);
+        for (var index = 1; index < parts.Count; index++)
+        {
+            operation = operation.Message(parts[index]);
+        }
+
+        if (timeout is { } value)
+        {
+            operation = operation.Timeout(value);
+        }
+
+        return operation.Flags(flags).Submit(callback);
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

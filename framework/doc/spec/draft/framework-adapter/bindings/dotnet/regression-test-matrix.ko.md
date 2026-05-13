@@ -76,9 +76,11 @@ matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는 형
 | HTTP handler에서 `IZLinkClient` 사용 | `integration-single-process` | route handler와 same DI container에서 정상 동작 |
 | send async submit backpressure | `integration-single-process` | HWM 도달 시 caller thread를 block하지 않고 ready 이후 완료 |
 | publish async submit backpressure | `integration-single-process` | `NoDrop` 또는 HWM 조건에서 thread를 block하지 않고 `SendTimeout` 정책으로 완료 또는 실패 |
-| request submit/reply timeout 분리 | `integration-single-process` | request packet submit 지연은 `SendTimeout`, reply 대기는 `WithTimeout(...)`으로 판정 |
+| request submit/reply timeout 분리 | `integration-single-process` | request packet submit 지연은 `SendTimeout`, reply 대기는 `Timeout(...)`으로 판정 |
 | pending request cleanup | `unit` | submit 실패, timeout, cancellation, runtime stop 때 request sequence가 pending map에서 제거 |
 | ready callback batch drain | `integration-single-process` | socket ready 이후 pending send/publish를 batch로 처리하고 frame 중복 전송 없음 |
+| channel wire multipart | `integration-single-process` | 서버 간 channel send/request/reply가 `header`와 `body`를 별도 message part로 보내고, handler dispatch는 header part만으로 packet을 고른다 |
+| publish wire multipart | `integration-single-process` | `PUB/SUB` publish도 framework header와 body를 별도 part로 유지하고 subscriber handler에는 typed body만 전달한다 |
 
 ## 5. Spot Regression 항목
 
@@ -102,10 +104,12 @@ matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는 형
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 handler가 join된 `Spot` 실행 문맥에서 실행 |
 | spot route resolver path | `integration-single-process` | spot name/id 기반 호출이 `IZLinkSpotRouteResolver` 결과로 target node와 spot id를 찾아 routed message를 보냄 |
 | session actor create/dispatch bridge | `integration-single-process` | `CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`, `DispatchToActorAsync(IZLinkActorRef, ...)`가 public session 표면에서 동작 |
+| session actor dispatch wire multipart | `integration-single-process` | Session 서버와 Play 서버 사이 actor dispatch가 route header, actor metadata, stream header, body를 별도 part로 유지하고 body를 JSON envelope 안의 `byte[]`로 재직렬화하지 않음 |
 | session actor reconnect reuse | `integration-single-process` | 같은 actor id가 새 stream session에서 다시 bind되면 기존 actor instance와 spot membership을 유지하고 session binding token만 갱신 |
 | session actor binding rollback | `integration-single-process` | actor-session binding 갱신 실패 때 helper가 실패하고 local binding table의 같은 token entry를 제거 |
 | stale session binding token guard | `integration-single-process` | 이전 stream의 늦은 unbind나 stale `SessionProxy` message가 새 binding을 지우거나 사용하지 못함 |
 | stale session proxy send | `integration-single-process` | 닫힌 stream이나 stale binding으로 향한 one-way push가 route receive loop와 host shutdown을 실패시키지 않음 |
+| session proxy wire multipart | `integration-single-process` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 route header, proxy metadata, body를 별도 part로 유지하고 client STREAM에는 단일 stream packet으로 쓴다 |
 | session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고 disconnect callback으로 이어짐 |
 | actor join 직후 packet dispatch | `integration-single-process` | join 완료 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch 되지 않음 |

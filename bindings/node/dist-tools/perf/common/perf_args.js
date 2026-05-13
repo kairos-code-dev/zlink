@@ -48,6 +48,9 @@ function parseCommonArgs(argv, defaults) {
         hwm: undefined,
         sendHwm: undefined,
         recvHwm: undefined,
+        sndbuf: undefined,
+        rcvbuf: undefined,
+        autoHwmProfile: undefined,
         serverIoThreads: undefined,
         clientIoThreads: undefined,
         sendTimeoutMs: undefined,
@@ -125,6 +128,19 @@ function parseCommonArgs(argv, defaults) {
             options.recvHwm = Number(argv[i + 1]);
             i += 1;
         }
+        else if (arg === '--buf') {
+            options.sndbuf = argv[i + 1];
+            options.rcvbuf = argv[i + 1];
+            i += 1;
+        }
+        else if (arg === '--sndbuf') {
+            options.sndbuf = argv[i + 1];
+            i += 1;
+        }
+        else if (arg === '--rcvbuf') {
+            options.rcvbuf = argv[i + 1];
+            i += 1;
+        }
         else if (arg === '--server-io-threads') {
             options.serverIoThreads = Number(argv[i + 1]);
             i += 1;
@@ -171,6 +187,10 @@ function parseCommonArgs(argv, defaults) {
         }
         else if (arg === '--server-bind-port') {
             options.serverBindPort = Number(argv[i + 1]);
+            i += 1;
+        }
+        else if (arg === '--auto-hwm-profile') {
+            options.autoHwmProfile = argv[i + 1];
             i += 1;
         }
         else if (arg === '--clients') {

@@ -139,7 +139,6 @@ bool run_pattern_dealer_router (const std::string &transport,
                 && errno != ETIMEDOUT && errno != EINTR) {
                 break;
             }
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
         }
     });
 

@@ -30,10 +30,7 @@ TOPIC = b"spot:callback"
 
 class CallbackSendTests(unittest.TestCase):
     def setUp(self):
-        try:
-            self.ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        self.ctx = zlink.Context()
 
     def tearDown(self):
         if hasattr(self, "ctx") and self.ctx is not None:
@@ -72,7 +69,6 @@ class CallbackSendTests(unittest.TestCase):
         stream.close()
 
     def test_spot_send_inside_on_dispatch_event_raises_explicit_error(self):
-        self.skipTest("spot local publish callback triggering is not guaranteed in the canonical Python binding")
         node = zlink.SpotNode(self.ctx)
         spot = node.create_spot()
         done = threading.Event()

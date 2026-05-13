@@ -483,7 +483,7 @@ builder.Services.AddZLinkFramework(options =>
 
 이때 timeout은 socket option이 아니라 실제 low-level 바인딩의
 `Spot.RequestChannelAsync(..., TimeSpan timeout, ...)`처럼 호출 단위 인자로
-들어간다. 즉 `RequestChannel(...).WithTimeout(...)` 같은 framework builder 옵션은
+들어간다. 즉 `RequestChannel(...).Timeout(...)` 같은 framework builder 옵션은
 특정 요청 하나에만 적용되고, 위 등록 설정은 runtime 기본값으로 유지된다.
 
 ### 4.4 spot 실행 문맥과 timer
@@ -630,7 +630,7 @@ var reply = await client
     .RequestChannel(
         "orders",
         new GetStageStateRequest())
-    .WithTimeout(TimeSpan.FromMilliseconds(200))
+    .Timeout(TimeSpan.FromMilliseconds(200))
     .Submit<GetStageStateReply>(cancellationToken);
 
 await client
@@ -688,7 +688,7 @@ var reply = await spotClient
     .RequestChannel(
         "orders",
         new GetStageStateRequest())
-    .WithTimeout(TimeSpan.FromMilliseconds(200))
+    .Timeout(TimeSpan.FromMilliseconds(200))
     .Submit<GetStageStateReply>(cancellationToken);
 
 await spotClient

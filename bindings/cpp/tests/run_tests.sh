@@ -11,6 +11,8 @@ CONFIGURE_ARGS=(
   -DZLINK_CORE_DIR=${ROOT_DIR}/core
   -DZLINK_CPP_CORE_BUILD_DIR=${CORE_BUILD_DIR}
   -DZLINK_CPP_BUILD_TESTS=ON
+  -DZLINK_CPP_BUILD_SAMPLES=OFF
+  -DZLINK_CPP_BUILD_BENCHMARKS=OFF
 )
 
 TEST_TARGETS=(
@@ -36,7 +38,8 @@ echo "[cpp-tests] build"
 cmake --build "${BUILD_DIR}" --target "${TEST_TARGETS[@]}" -j"$(nproc)"
 
 echo "[cpp-tests] run contract tests"
-if ctest --test-dir "${BUILD_DIR}" --output-on-failure -L contract; then
+if ctest --test-dir "${BUILD_DIR}" --output-on-failure -L contract && \
+    "${CPP_DIR}/samples/run_samples.sh"; then
   echo "[cpp-tests] PASS"
 else
   echo "[cpp-tests] FAIL"

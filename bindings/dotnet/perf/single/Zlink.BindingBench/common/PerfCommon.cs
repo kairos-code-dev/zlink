@@ -164,10 +164,13 @@ internal static partial class PerfRunner
                         SendFlags.None) > 0)
                     return;
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
             {
-                Thread.Sleep(1);
+                WaitForSendReady(sender);
+                continue;
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
+            {
                 continue;
             }
             catch (Exception ex)
@@ -175,8 +178,6 @@ internal static partial class PerfRunner
                 Console.Error.WriteLine($"{tag} stop-token send failed: {ex.Message}");
                 return;
             }
-
-            Thread.Sleep(1);
         }
     }
 
@@ -191,10 +192,13 @@ internal static partial class PerfRunner
                         SendFlags.None) > 0)
                     return;
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
             {
-                Thread.Sleep(1);
+                WaitForSendReady(sender);
+                continue;
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
+            {
                 continue;
             }
             catch (Exception ex)
@@ -202,8 +206,6 @@ internal static partial class PerfRunner
                 Console.Error.WriteLine($"{tag} stop-token send failed: {ex.Message}");
                 return;
             }
-
-            Thread.Sleep(1);
         }
     }
 
@@ -218,10 +220,13 @@ internal static partial class PerfRunner
                         SendFlags.None) > 0)
                     return;
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
             {
-                Thread.Sleep(1);
+                WaitForSendReady(sender);
+                continue;
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
+            {
                 continue;
             }
             catch (Exception ex)
@@ -229,8 +234,6 @@ internal static partial class PerfRunner
                 Console.Error.WriteLine($"{tag} stop-token publish failed: {ex.Message}");
                 return;
             }
-
-            Thread.Sleep(1);
         }
     }
 
@@ -248,7 +251,6 @@ internal static partial class PerfRunner
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                             || IsWouldBlock(ex.InternalErrno))
             {
-                Thread.Sleep(1);
                 continue;
             }
             catch (Exception ex)
@@ -256,8 +258,25 @@ internal static partial class PerfRunner
                 Console.Error.WriteLine($"{tag} stop-token publish failed: {ex.Message}");
                 return;
             }
+        }
+    }
 
-            Thread.Sleep(1);
+    private static void WaitForSendReady(SocketBase socket)
+    {
+        using var poller = new Poller();
+        var events = new PollEvent[1];
+        poller.Add(socket, PollEventFlags.PollOut);
+        while (true)
+        {
+            try
+            {
+                poller.Wait(events, TimeSpan.FromMilliseconds(-1), out _);
+                return;
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
+            {
+            }
         }
     }
 

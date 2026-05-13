@@ -689,8 +689,10 @@ caller가 `RoutingId`를 모르더라도 같은 routed mesh 위에서 request/re
    id, `SessionId`, `BindingToken`을 얻는다. 분산 배포의 `.NET` adapter에서는 이 조회가
    `IZLinkActorSessionBindingStore.FindSessionAsync(...)` 구현을 통해 닫힐 수 있다.
 3. 반환된 `RouterChannelId`와 session router id로 내부 routed transport call을 만든다.
-4. internal metadata에 `ActorId`, `SessionId`, `BindingToken`, packet name,
-   application metadata snapshot을 담는다.
+4. routed transport payload는 multipart로 만든다. route header는 `parts[0]`에 두고,
+   `ActorId`, `SessionId`, `BindingToken`, packet name, application metadata snapshot 같은
+   session proxy metadata는 별도 metadata part에 둔다. application body는 별도 body
+   part로 유지한다.
 5. target session server가 metadata의 `SessionId`와 `BindingToken`을 현재 local
    binding과 비교한 뒤 client stream으로 전송한다.
 6. request이면 routed channel reply correlation 경로로 reply를 기다린다.
@@ -741,11 +743,14 @@ session actor dispatch sample은 별도 serializer helper를 두면 안 된다. 
 - typed handler는 codec registry가 decode한 body를 받는다.
 - internal session actor dispatch envelope와 session proxy envelope는 framework가 소유한다.
 - internal envelope의 wire 형식은 public sample code가 알 필요 없다.
+- 내부 routed transport에서는 envelope header와 body를 한 `Message`로 합치지 않는다.
+  서버 간 경로는 공통 message model의 multipart 계약을 따른다.
 - sample에는 `SampleJson` 같은 serializer wrapper를 두지 않는다.
 
-internal envelope가 JSON을 쓰는지, binary codec을 쓰는지는 framework 구현 선택이다.
-중요한 계약은 application handler가 framework codec registry와 typed message만 본다는
-점이다.
+internal metadata part가 JSON을 쓰는지, binary codec을 쓰는지는 framework 구현 선택이다.
+하지만 metadata part와 body part를 하나로 합치는 것은 구현 선택이 아니다. 중요한
+계약은 application handler가 framework codec registry와 typed message만 보고, 내부
+server-to-server wire는 multipart 경계를 유지한다는 점이다.
 
 ## 13. Discovery 정책
 
@@ -1014,7 +1019,7 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
 | metadata raw header 비노출 | actor handler context가 stream session id, peer endpoint, source session node rid, native handle을 노출하지 않는다. |
 | codec registry 사용 | sample serializer 없이 framework codec으로 body가 encode/decode된다. |
 | codec failure | body encode/decode 실패가 `CodecFailed` 계열 error로 전달된다. |
-| session proxy timeout | `SessionProxy.Request(...).WithTimeout(...)` 대기가 timeout되면 pending request를 정리하고 `SessionProxyTimeout`으로 실패한다. |
+| session proxy timeout | `SessionProxy.Request(...).Timeout(...)` 대기가 timeout되면 pending request를 정리하고 `SessionProxyTimeout`으로 실패한다. |
 | actor dispatch timeout | actor dispatch request timeout이 pending request를 정리하고 `ActorDispatchTimeout`으로 실패한다. |
 | route not found error | play route가 없거나 actor-session binding이 없으면 transport send를 시도하지 않고 명확한 error로 실패한다. |
 | unauthenticated dispatch 차단 | session callback이 인증 전 domain packet을 play server로 보내지 않는다. |

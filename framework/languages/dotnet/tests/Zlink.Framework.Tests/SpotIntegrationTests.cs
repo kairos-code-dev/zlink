@@ -1035,7 +1035,7 @@ public sealed class SpotIntegrationTests
             var reply = await actor.Context.RequestChannel(
                     "actor-pre-api",
                     new ActorContextChannelReq(message))
-                .WithTimeout(TimeSpan.FromSeconds(5))
+                .Timeout(TimeSpan.FromSeconds(5))
                 .SubmitAsync<ActorContextChannelRes>(cancellationToken);
 
             actor.Recorder.ChannelReplies.Enqueue($"before:{reply.Value}");
@@ -1053,7 +1053,7 @@ public sealed class SpotIntegrationTests
             var reply = await actor.Context.RequestChannel(
                     "actor-post-api",
                     new ActorContextChannelReq(message))
-                .WithTimeout(TimeSpan.FromSeconds(5))
+                .Timeout(TimeSpan.FromSeconds(5))
                 .SubmitAsync<ActorContextChannelRes>(cancellationToken);
 
             actor.Recorder.ChannelReplies.Enqueue($"after:{reply.Value}");
@@ -1071,7 +1071,7 @@ public sealed class SpotIntegrationTests
             var reply = await actor.Context.JoinSpot(
                     global::Systems.Zlink.RoutingId.FromString(message),
                     new JoinStageRequest("room-context"))
-                .WithTimeout(TimeSpan.FromSeconds(5))
+                .Timeout(TimeSpan.FromSeconds(5))
                 .SubmitAsync<JoinStageReply>(cancellationToken);
 
             actor.CurrentRoomId = reply.RoomId;
@@ -1156,7 +1156,7 @@ public sealed class SpotIntegrationTests
             var reply = await actor.Context.JoinSpot(
                     global::Systems.Zlink.RoutingId.FromString(spotRid),
                     new RegistryJoinRequest("entry-room"))
-                .WithTimeout(TimeSpan.FromSeconds(5))
+                .Timeout(TimeSpan.FromSeconds(5))
                 .SubmitAsync<RegistryJoinReply>(cancellationToken);
 
             actor.CurrentRoomId = reply.RoomId;

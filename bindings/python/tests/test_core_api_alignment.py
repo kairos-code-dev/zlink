@@ -110,10 +110,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertEqual(remote.generation, 0)
 
     def test_context_options_use_snake_case(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
 
         with ctx:
             self.assertTrue(hasattr(ctx.options, "io_threads"))
@@ -129,10 +126,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.assertFalse(hasattr(ctx.options, "maxSockets"))
 
     def test_common_socket_options_include_canonical_typed_accessors(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
 
         with ctx:
             with zlink.PairSocket(ctx) as sock:
@@ -152,10 +146,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 self.assertIn("reconnect_interval_max_ms", dir(options))
 
     def test_pair_send_and_recv_use_flags(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
 
         with ctx:
             with zlink.PairSocket(ctx) as sender:
@@ -171,10 +162,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         self.assertEqual(received.single_part_or_throw().to_bytes(), b"payload")
 
     def test_nonblocking_send_raises_submit_error(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
 
         with ctx:
             with zlink.RouterSocket(ctx) as router:
@@ -186,10 +174,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 self.assertEqual(cm.exception.result, zlink.SubmitResult.NOT_CONNECTED)
 
     def test_pubsub_canonical_roundtrip(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
 
         with ctx:
             with zlink.PubSocket(ctx) as publisher:
@@ -206,10 +191,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         self.assertEqual(received.single_part_or_throw().to_bytes(), b"payload")
 
     def test_monitor_surface_uses_recv_and_snapshot(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
 
         with ctx:
             with zlink.PairSocket(ctx) as sock:
@@ -229,10 +211,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     )
 
     def test_request_reply_canonical_roundtrip(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
 
         async def scenario():
             with zlink.RouterSocket(ctx) as router_socket:
@@ -265,10 +244,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
         asyncio.run(scenario())
 
     def test_spot_surface_and_pubsub_roundtrip(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
 
         with ctx:
             with zlink.SpotNode(ctx) as node:
@@ -303,10 +279,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     )
 
     def test_discovery_surface_exposes_resolution_without_dealer_peer_mode(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
 
         with ctx:
             with zlink.Discovery(
@@ -319,12 +292,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 self.assertFalse(hasattr(zlink, "DiscoveryDealerPeerMode"))
 
     def test_message_and_routing_id_helpers_use_canonical_names(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
-        else:
-            ctx.close()
+        ctx = zlink.Context()
+        ctx.close()
 
         rid = zlink.RoutingId.from_bytes(b"peer-1")
         self.assertEqual(rid.to_bytes(), b"peer-1")
@@ -336,10 +305,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.Message, "_wrap_buffer"))
 
     def test_async_request_surface_rejects_flags_without_callback(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
 
         with ctx:
             with zlink.DealerSocket(ctx) as dealer:
@@ -377,10 +343,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.assertEqual(message.ref_count(), message.refCount())
 
     def test_c_string_inputs_reject_embedded_nul(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
 
         with ctx:
             with zlink.PubSocket(ctx) as publisher:

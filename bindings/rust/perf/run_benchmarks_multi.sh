@@ -30,8 +30,11 @@ CLIENT_IO_THREADS=""
 HWM=""
 SEND_HWM=""
 RECV_HWM=""
+SNDBUF=""
+RCVBUF=""
 SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-200}"
 RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-200}"
+AUTO_HWM_PROFILE="${PERF_CTX_AUTO_HWM_PROFILE:-}"
 CONNECT_CONCURRENCY=""
 TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
 PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
@@ -48,6 +51,8 @@ ENV_MULTI_STREAM_CLIENT_IO_THREADS="${PERF_MULTI_STREAM_CLIENT_IO_THREADS:-}"
 ENV_MULTI_HWM="${PERF_MULTI_HWM:-}"
 ENV_MULTI_SNDHWM="${PERF_MULTI_SNDHWM:-}"
 ENV_MULTI_RCVHWM="${PERF_MULTI_RCVHWM:-}"
+ENV_MULTI_SNDBUF="${PERF_MULTI_SNDBUF:-}"
+ENV_MULTI_RCVBUF="${PERF_MULTI_RCVBUF:-}"
 EXPLICIT_CLIENTS=0
 [[ -n "${PERF_MSG_SIZES+x}" ]] && EXPLICIT_MSG_SIZES=1
 [[ -n "${PERF_MULTI_CLIENTS+x}" ]] && EXPLICIT_CLIENTS=1
@@ -79,6 +84,9 @@ Options:
   --hwm N
   --send-hwm N
   --recv-hwm N
+  --buf SIZE
+  --sndbuf SIZE
+  --rcvbuf SIZE
   --sndtimeo N
   --rcvtimeo N
   --send-timeout-ms N
@@ -91,6 +99,7 @@ Options:
   --monitor-hwm N
   --server-shutdown-timeout-ms N
   --server-bind-port N
+  --auto-hwm-profile NAME
   --results-dir PATH
   --results-tag NAME
   --output PATH
@@ -119,6 +128,9 @@ while [[ $# -gt 0 ]]; do
         --hwm) HWM="$2"; shift 2 ;;
         --send-hwm) SEND_HWM="$2"; shift 2 ;;
         --recv-hwm) RECV_HWM="$2"; shift 2 ;;
+        --buf) SNDBUF="$2"; RCVBUF="$2"; shift 2 ;;
+        --sndbuf) SNDBUF="$2"; shift 2 ;;
+        --rcvbuf) RCVBUF="$2"; shift 2 ;;
         --sndtimeo|--send-timeout-ms) SNDTIMEO_MS="$2"; shift 2 ;;
         --rcvtimeo|--recv-timeout-ms) RCVTIMEO_MS="$2"; shift 2 ;;
         --connect-concurrency) CONNECT_CONCURRENCY="$2"; shift 2 ;;
@@ -129,6 +141,7 @@ while [[ $# -gt 0 ]]; do
         --monitor-hwm) MONITOR_HWM="$2"; shift 2 ;;
         --server-shutdown-timeout-ms) SERVER_SHUTDOWN_TIMEOUT_MS="$2"; shift 2 ;;
         --server-bind-port) SERVER_BIND_PORT="$2"; shift 2 ;;
+        --auto-hwm-profile) AUTO_HWM_PROFILE="$2"; shift 2 ;;
         --results-dir) RESULTS_ROOT="$2"; shift 2 ;;
         --results-tag) RESULTS_TAG="$2"; shift 2 ;;
         --output)      OUTPUT_FILE="$2"; shift 2 ;;
@@ -463,6 +476,9 @@ export PERF_MULTI_SNDTIMEO_MS="${SNDTIMEO_MS}"
 export PERF_MULTI_RCVTIMEO_MS="${RCVTIMEO_MS}"
 export PERF_MULTI_CONNECT_READY_TIMEOUT_MS="${CONNECT_READY_TIMEOUT_MS}"
 export PERF_MULTI_SERVER_BIND_PORT="${SERVER_BIND_PORT}"
+[[ -n "${SNDBUF:-${ENV_MULTI_SNDBUF}}" ]] && export PERF_MULTI_SNDBUF="${SNDBUF:-${ENV_MULTI_SNDBUF}}"
+[[ -n "${RCVBUF:-${ENV_MULTI_RCVBUF}}" ]] && export PERF_MULTI_RCVBUF="${RCVBUF:-${ENV_MULTI_RCVBUF}}"
+[[ -n "${AUTO_HWM_PROFILE}" ]] && export PERF_CTX_AUTO_HWM_PROFILE="${AUTO_HWM_PROFILE}"
 
 RUN_PREFIX=()
 if [[ "${PIN_CPU}" -eq 1 ]]; then
@@ -1030,13 +1046,13 @@ def median(values):
     return (usable[mid - 1] + usable[mid]) / 2.0
 
 def fmt_rate(value):
-    return "N/A" if math.isnan(value) else f"{value / 1000.0:.2f}"
+    return "N/A" if math.isnan(value) else f"{value / 1000.0:.3f}"
 
 def fmt_bandwidth(value):
-    return "N/A" if math.isnan(value) else f"{value:.2f} MB/s"
+    return "N/A" if math.isnan(value) else f"{value:.3f} MB/s"
 
 def fmt_latency_ms(value):
-    return "N/A" if math.isnan(value) else f"{value:.2f} ms"
+    return "N/A" if math.isnan(value) else f"{value:.3f} ms"
 
 def fmt_metric(value):
     return "N/A" if math.isnan(value) else f"{value:.2f}"
@@ -1092,8 +1108,8 @@ def rate_unit(pattern):
     return "Kops/s" if pattern_direction(pattern) == "echo" else "Kmsg/s"
 
 def emit_table_header():
-    emit("| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |")
-    emit("|------|------------|-----------|--------------|-------------|-------------|")
+    emit("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
+    emit("|----------|--------------------|----------------|---------------|---------------|---------------|")
 
 def metric_value_for_run(key, metric, run_index):
     values = rows[key].get(metric, [])
@@ -1102,12 +1118,13 @@ def metric_value_for_run(key, metric, run_index):
     return math.nan
 
 def emit_case_row(pattern, size, metric_values):
+    throughput = f"{fmt_rate(metric_values['throughput']):>8} {rate_unit(pattern)}"
     emit(
-        f"| {size}B | {fmt_rate(metric_values['throughput'])} {rate_unit(pattern)} | "
-        f"{fmt_bandwidth(metric_values['bandwidth'])} | "
-        f"{fmt_latency_ms(metric_values['latency'])} | "
-        f"{fmt_latency_ms(metric_values['latency_p95'])} | "
-        f"{fmt_latency_ms(metric_values['latency_p99'])} |"
+        f"| {str(size) + 'B':<8} | {throughput:>16} | "
+        f"{fmt_bandwidth(metric_values['bandwidth']):>12} | "
+        f"{fmt_latency_ms(metric_values['latency']):>12} | "
+        f"{fmt_latency_ms(metric_values['latency_p95']):>12} | "
+        f"{fmt_latency_ms(metric_values['latency_p99']):>12} |"
     )
 
 for pattern_index, pattern in enumerate(patterns):

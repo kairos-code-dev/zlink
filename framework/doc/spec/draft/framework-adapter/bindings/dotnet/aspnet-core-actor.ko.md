@@ -376,7 +376,7 @@ internal sealed class JoinMatchHandler(
         // RoutingId 변환은 framework 내부 spot route resolver가 푼다.
         var result = await actor.Context
             .JoinSpot<JoinMatchSpotResult, JoinMatchReq>(request.MatchId, request)
-            .WithTimeout(TimeSpan.FromSeconds(2))
+            .Timeout(TimeSpan.FromSeconds(2))
             .Submit(cancellationToken)
             .ConfigureAwait(false);
 
@@ -495,16 +495,16 @@ public interface IZLinkActorClient
 
 public interface IZLinkActorClientSendCall
 {
-    IZLinkActorClientSendCall WithPacketName(string packetName);
-    IZLinkActorClientSendCall WithMetadata(string key, string value);
+    IZLinkActorClientSendCall PacketName(string packetName);
+    IZLinkActorClientSendCall Metadata(string key, string value);
     ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorClientRequestCall
 {
-    IZLinkActorClientRequestCall WithPacketName(string packetName);
-    IZLinkActorClientRequestCall WithMetadata(string key, string value);
-    IZLinkActorClientRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkActorClientRequestCall PacketName(string packetName);
+    IZLinkActorClientRequestCall Metadata(string key, string value);
+    IZLinkActorClientRequestCall Timeout(TimeSpan timeout);
     ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }
 ```
@@ -606,7 +606,7 @@ spot 이름(`string`)이고, `RoutingId` 변환은 framework 내부 spot route r
 ```csharp
 var result = await actor.Context
     .JoinSpot<JoinMatchSpotResult, JoinMatchReq>(matchId, new JoinMatchReq(...))
-    .WithTimeout(TimeSpan.FromSeconds(2))
+    .Timeout(TimeSpan.FromSeconds(2))
     .Submit(cancellationToken);
 ```
 
@@ -629,15 +629,15 @@ public interface IZLinkActorStreamClient
 
 public interface IZLinkActorSendCall
 {
-    IZLinkActorSendCall WithMetadata(string key, string value);
-    IZLinkActorSendCall WithPacketName(string messageName);
+    IZLinkActorSendCall Metadata(string key, string value);
+    IZLinkActorSendCall PacketName(string messageName);
     IZLinkActorSendCall Compress();
     ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorReplyCall
 {
-    IZLinkActorReplyCall WithMetadata(string key, string value);
+    IZLinkActorReplyCall Metadata(string key, string value);
     IZLinkActorReplyCall Compress();
     ValueTask Submit(CancellationToken cancellationToken = default);
 }
@@ -775,6 +775,13 @@ sequenceDiagram
 한 표면으로 "actor id 앞으로 message 보내라"고만 하면, framework가 actor-session
 binding에서 현재 session 노드를 찾아 routed channel을 거쳐 Session 서버까지 보낸다.
 Session 서버는 actor binding 정보로 어떤 client stream에 push할지 정한다.
+
+이 routed channel 내부 메시지는
+[message-model.ko.md](../../policy/message-model.ko.md)의 multipart 계약을 따른다.
+Session 서버와 Play 서버 사이에서는 route header, actor/session metadata, stream
+header, body를 각각 part로 나누어 보낸다. client와 Session 서버 사이의 STREAM packet은
+그대로 단일 stream packet frame으로 처리한다. 따라서 actor dispatch body를 내부 DTO의
+`byte[]` 필드에 넣어 다시 JSON envelope로 보내는 방식은 이 초안의 목표가 아니다.
 
 ### 9.2 `IZLinkSessionProxy`
 

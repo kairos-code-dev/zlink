@@ -1936,8 +1936,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         ActorJoinInfo info = ActorInterop.FromNative(ref nativeInfo);
         Message[] messages = Message.FromNativeVector(parts, partCount);
         NativeMethods.zlink_multipart_close(parts, partCount);
-        Message message = messages.Length > 0 ? messages[0] : new Message();
-        return new ActorJoinRequest(info, message);
+        return new ActorJoinRequest(info, messages);
     }
 
     public ActorJoinReplyOperation ReplyActorJoin(ActorJoinRequest request,
@@ -2276,13 +2275,13 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 {
                     int rc = NativeMethods.zlink_spot_request_channel_part(_handle,
                         channelName, ref nativePart,
-                        i + 1 < cloned.Length ? IntPtr.Zero : RoutedReplyHandlerPtr,
-                        i + 1 < cloned.Length ? IntPtr.Zero : GCHandle.ToIntPtr(handle),
+                        RoutedReplyHandlerPtr,
+                        GCHandle.ToIntPtr(handle),
                         flags,
                         i + 1 < cloned.Length
                             ? NativeMethods.ZlinkPartFlag.More
                             : NativeMethods.ZlinkPartFlag.Final,
-                        i + 1 < cloned.Length ? 0u : timeoutMs);
+                        timeoutMs);
                     submitted = true;
                     if (rc != 0)
                         throw ZlinkException.CreateSubmitException(
@@ -2378,12 +2377,12 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 try
                 {
                     int rc = submit(ref nativePart,
-                        i + 1 < cloned.Length ? IntPtr.Zero : RoutedReplyHandlerPtr,
-                        i + 1 < cloned.Length ? IntPtr.Zero : GCHandle.ToIntPtr(handle),
+                        RoutedReplyHandlerPtr,
+                        GCHandle.ToIntPtr(handle),
                         i + 1 < cloned.Length
                             ? NativeMethods.ZlinkPartFlag.More
                             : NativeMethods.ZlinkPartFlag.Final,
-                        i + 1 < cloned.Length ? 0u : timeoutMs);
+                        timeoutMs);
                     submitted = true;
                     if (rc != 0)
                         throw ZlinkException.CreateSubmitException(

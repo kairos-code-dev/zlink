@@ -76,7 +76,7 @@ inline recv_result_t receive_one_message (
     source_rid.size = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const zlink_recv_result_t rc = ::zlink_recv (
+    const zlink_recv_result_t rc = ::zlink_std_compat_recv (
       server, &source_rid, &parts, &part_count,
       static_cast<zlink_send_flags_t> (flags));
     if (rc != ZLINK_RECV_OK) {

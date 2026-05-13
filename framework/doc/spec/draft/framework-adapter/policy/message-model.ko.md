@@ -14,9 +14,10 @@
 
 ## 1. 목적
 
-`ZLink Framework`의 기본 메시지 단위는 내부적으로 `header + body` 멀티파트를
-가질 수 있다고 본다. 이 구조는 codec 교체와 metadata 전달을 함께 설명하기 쉽고,
-요청/응답과 이벤트를 같은 큰 틀 안에서 다루기 좋다.
+`ZLink Framework`의 서버 간 기본 메시지 단위는 내부적으로 `header + body`
+멀티파트다. 이 구조는 codec 교체와 metadata 전달을 함께 설명하기 쉽고,
+요청/응답과 이벤트를 같은 큰 틀 안에서 다루기 좋다. 특히 body를 header와 함께
+하나의 직렬화된 객체로 다시 감싸지 않는다는 점이 이 문서의 핵심 계약이다.
 
 다만 중요한 원칙이 하나 있다. 서버 간 `send/request`를 프레임워크에 통합할 때
 handler 시그니처에 raw header를 직접 노출하지 않는다. framework 사용자는
@@ -25,14 +26,49 @@ typed request body를 받고, header metadata가 필요하면 context에서 조�
 
 ## 2. 기본 구조 초안
 
-현재 초안은 내부 wire 수준에서 기본적으로 2개 part를 전제로 한다.
+현재 초안은 서버 간 framework message의 내부 wire 수준에서 기본적으로 2개 part를
+전제로 한다.
 
 1. `header`
 2. `body`
 
-다만 이것이 "항상 part가 2개뿐이다"를 뜻하지는 않는다.
-앞으로 attachment나 추가 payload part가 필요해질 수 있으므로, wire 수준에서는
-확장 여지를 남겨 두는 편이 낫다.
+이 구조는 권장 구현 세부가 아니라 framework adapter의 서버 간 메시지 계약이다.
+framework가 `DEALER/ROUTER`, routed channel, `SPOT` channel, internal actor dispatch,
+internal session proxy 경로로 서버 사이에 메시지를 보낼 때는 header와 body를 하나의
+직렬화된 객체로 합치지 않는다.
+
+기본 part 의미는 아래와 같다.
+
+| part | 내용 | 처리 기준 |
+|------|------|-----------|
+| `parts[0]` | framework header | route, dispatch, timeout, correlation, codec, packet name 판단에 필요한 작은 metadata |
+| `parts[1]` | body payload | 등록된 codec이 만든 bytes. handler dispatch가 확정된 뒤 필요한 타입으로 decode한다 |
+| `parts[2...]` | 선택적 추가 payload | attachment나 내부 확장이 필요할 때만 사용한다 |
+
+body가 없는 메시지도 기본적으로 빈 body part를 둔다. 이렇게 하면 receive path가
+항상 `parts[0]`과 `parts[1]`을 기대할 수 있어 분기가 줄고, 나중에 body가 생겨도
+wire shape가 바뀌지 않는다.
+
+이 계약은 다음 이유 때문에 필요하다.
+
+- route와 dispatch는 header만 읽으면 된다. body를 함께 파싱하면 handler를 고르기
+  전부터 큰 payload를 불필요하게 처리하게 된다.
+- body는 이미 codec이 만든 byte payload다. 이것을 다시 header object 안에 넣어
+  JSON 문자열이나 base64 같은 중간 표현으로 감싸면 복사와 크기 증가가 생긴다.
+- zlink binding과 core transport는 multipart를 지원한다. framework가 이를 사용해야
+  transport가 제공하는 메시지 경계를 그대로 살릴 수 있다.
+- header와 body 소유권이 분리되어야 retry, timeout, dispose, attachment 확장이 한
+  곳에서 명확해진다.
+
+따라서 아래 형태는 framework 서버 간 wire 계약으로 금지한다.
+
+- `parts[0]` 하나에 `{ header, body }`를 함께 직렬화한 envelope
+- binary body를 header object 내부 `byte[]` 필드로 넣어 다시 직렬화하는 형태
+- dispatch 전에 body까지 파싱해야 packet name을 알 수 있는 형태
+
+다만 이것이 "항상 part가 2개뿐이다"를 뜻하지는 않는다. 앞으로 attachment나 추가
+payload part가 필요해질 수 있으므로, wire 수준에서는 `parts[2...]` 확장 여지를 남겨
+둔다.
 
 프레임워크 공용 API에서는 이 구조를 그대로 드러내지 않을 수 있다.
 
@@ -40,6 +76,25 @@ typed request body를 받고, header metadata가 필요하면 context에서 조�
 - response도 보통 typed object 하나를 반환한다.
 - metadata는 context에서 접근한다.
 - stream은 예외적으로 session packet과 connection, peer 정보가 먼저 보일 수 있다.
+
+## 2.1 STREAM packet과의 경계
+
+`STREAM`은 서버 간 framework message와 다른 wire 경로다. stream connector와 stream
+session은 하나의 stream packet을 보내고 받는다. 그 packet 내부에 stream header와
+body framing이 들어간다.
+
+즉 STREAM 경로의 기본 모양은 아래와 같이 본다.
+
+| 경로 | wire message shape |
+|------|--------------------|
+| 서버 간 framework channel / route / SPOT / internal actor dispatch | multipart `framework header` + `body` |
+| STREAM client/server packet | 단일 packet message 안의 stream header/body frame |
+
+STREAM을 multipart로 쪼개지 않는 이유는 stream transport에서 packet framing 자체가
+연결 세션의 wire 계약이기 때문이다. stream packet은 client connector, TLS/WS/TCP
+transport, session request sequence가 같은 frame을 기준으로 맞물린다. 반대로 서버 간
+framework route는 이미 zlink multipart message를 기본 단위로 다루므로 header와 body를
+별도 part로 유지해야 한다.
 
 ## 3. header가 담아야 할 정보 초안
 

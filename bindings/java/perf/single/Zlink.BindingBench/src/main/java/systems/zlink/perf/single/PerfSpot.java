@@ -3,6 +3,7 @@
 package systems.zlink.perf.single;
 
 import systems.zlink.Message;
+import systems.zlink.RecvFlags;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
 import systems.zlink.TopicMessage;
@@ -159,32 +160,14 @@ final class PerfSpot {
 
     /**
      * Drain until the wire-level stop token is observed. PERF_SINGLE_TEST_POLICY
-     * § 1.4 mandates that phase-end is signaled by the stop token, so this loop
-     * exits the moment the token arrives.
-     *
-     * <p>TODO(PERF_SINGLE_TEST_POLICY § 1.4): the Java SPOT subscribe API does
-     * not expose a signal-driven blocking wait, so this loop falls back to a
-     * non-blocking drain with a tiny yield while the stop token is in transit.
-     * A bounded outer deadline guards against a dropped stop token (SPOT
-     * publishes are best-effort DONT_WAIT). When the SPOT API gains a
-     * poller-style wait, replace the sleep with a {@code Duration.ofMillis(-1)}
-     * wait per the policy.
+     * § 1.4 mandates that phase-end is signaled by the stop token.
      */
     private static void drainUntilStopToken(Spot subscriber,
                                             PerfUtil.Config config,
                                             PerfUtil.Metrics metrics,
                                             long activeEnd) {
-        long drainBudgetMs = Math.max(1, config.recvTimeoutMs()) * 50L;
-        long deadlineNs = System.nanoTime()
-            + Duration.ofMillis(drainBudgetMs).toNanos();
-        while (System.nanoTime() < deadlineNs) {
-            var maybe = PerfUtil.subscribeNoWait(subscriber);
-            if (maybe.isEmpty()) {
-                sleepQuietly(Duration.ofMillis(1),
-                    "spot stop-token drain interrupted");
-                continue;
-            }
-            try (TopicMessage subscribed = maybe.orElseThrow()) {
+        while (true) {
+            try (TopicMessage subscribed = subscriber.subscribe(RecvFlags.NONE)) {
                 if (PerfStopToken.isStopTokenMessage(subscribed.firstPart())) {
                     return;
                 }

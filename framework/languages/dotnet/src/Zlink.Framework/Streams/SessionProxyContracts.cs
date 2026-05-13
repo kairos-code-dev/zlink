@@ -13,9 +13,9 @@ public interface IZLinkSessionProxy
 
 public interface IZLinkSessionProxySendCall
 {
-    IZLinkSessionProxySendCall WithPacketName(string packetName);
+    IZLinkSessionProxySendCall PacketName(string packetName);
 
-    IZLinkSessionProxySendCall WithMetadata(
+    IZLinkSessionProxySendCall Metadata(
         string key,
         string value);
 
@@ -24,13 +24,13 @@ public interface IZLinkSessionProxySendCall
 
 public interface IZLinkSessionProxyRequestCall
 {
-    IZLinkSessionProxyRequestCall WithPacketName(string packetName);
+    IZLinkSessionProxyRequestCall PacketName(string packetName);
 
-    IZLinkSessionProxyRequestCall WithMetadata(
+    IZLinkSessionProxyRequestCall Metadata(
         string key,
         string value);
 
-    IZLinkSessionProxyRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkSessionProxyRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }

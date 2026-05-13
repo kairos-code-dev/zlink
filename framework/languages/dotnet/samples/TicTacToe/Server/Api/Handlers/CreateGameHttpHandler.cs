@@ -16,7 +16,7 @@ internal static class CreateGameHttpHandler
         var reply = await client.Request(
                 SampleChannels.Play,
                 new CreateGameReq(gameName))
-            .WithTimeout(SampleTimeouts.Request)
+            .Timeout(SampleTimeouts.Request)
             .SubmitAsync<CreateGameRes>(cancellationToken);
 
         logger.LogInformation(

@@ -2,6 +2,7 @@
 
 #include <zlink.h>
 
+#include <algorithm>
 #include <atomic>
 #include <csignal>
 #include <cstring>
@@ -43,48 +44,62 @@ void apply_socket_options(void *socket)
 bool handle_router_once(void *server, char *id_buf, size_t id_cap,
                         char *payload_buf, size_t payload_cap)
 {
-    zlink_routing_id_t source_rid;
-    source_rid.size = 0;
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    const int rc =
-      ::zlink_recv(server, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
-    if (rc < 0)
+    const zlink_routing_id_t *source_rid = NULL;
+    zlink_msg_t part;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+    if (zlink_msg_init (&part) != 0)
         return false;
-
-    if (source_rid.size == 0 || part_count == 0) {
-        if (parts) {
-            zlink_multipart_close(parts, part_count);
-        }
+    const zlink_recv_result_t rc = ::zlink_recv_part (
+      server, &source_rid, &part, &has_more, ZLINK_RECV_FLAGS_DONTWAIT);
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close (&part);
         return false;
     }
 
-    const size_t id_len = std::min(id_cap, static_cast<size_t>(source_rid.size));
-    std::memcpy(id_buf, source_rid.data, id_len);
+    if (!source_rid || source_rid->size == 0) {
+        zlink_msg_close (&part);
+        return false;
+    }
 
-    const size_t payload_size = zlink_msg_size(&parts[part_count - 1]);
+    const size_t id_len = std::min(id_cap, static_cast<size_t>(source_rid->size));
+    std::memcpy(id_buf, source_rid->data, id_len);
+
+    const size_t payload_size = zlink_msg_size(&part);
     const size_t payload_len = std::min(payload_cap, payload_size);
     if (payload_len > 0) {
-        std::memcpy(payload_buf, zlink_msg_data(&parts[part_count - 1]),
-                    payload_len);
+        std::memcpy(payload_buf, zlink_msg_data(&part), payload_len);
     }
 
-    zlink_multipart_close(parts, part_count);
-
-    zlink_msg_t reply_parts[2];
-    if (zlink_msg_init_size (&reply_parts[0], id_len) != 0)
-        return false;
-    if (zlink_msg_init_size (&reply_parts[1], payload_len) != 0) {
-        zlink_msg_close (&reply_parts[0]);
-        return false;
+    while (has_more == ZLINK_PART_MORE) {
+        zlink_msg_t next;
+        if (zlink_msg_init (&next) != 0) {
+            zlink_msg_close (&part);
+            return false;
+        }
+        const zlink_recv_result_t next_rc = ::zlink_recv_part (
+          server, &source_rid, &next, &has_more, ZLINK_RECV_FLAGS_DONTWAIT);
+        zlink_msg_close (&next);
+        if (next_rc != ZLINK_RECV_OK) {
+            zlink_msg_close (&part);
+            return false;
+        }
     }
+    zlink_msg_close (&part);
+
+    zlink_routing_id_t target_rid;
+    target_rid.size = static_cast<uint8_t> (id_len);
     if (id_len > 0)
-        std::memcpy (zlink_msg_data (&reply_parts[0]), id_buf, id_len);
+        std::memcpy (target_rid.data, id_buf, id_len);
+
+    zlink_msg_t reply_part;
+    if (zlink_msg_init_size (&reply_part, payload_len) != 0)
+        return false;
     if (payload_len > 0)
-        std::memcpy (zlink_msg_data (&reply_parts[1]), payload_buf, payload_len);
-    if (::zlink_send (server, reply_parts, 2, 0) != ZLINK_SUBMIT_OK) {
-        zlink_msg_close (&reply_parts[0]);
-        zlink_msg_close (&reply_parts[1]);
+        std::memcpy (zlink_msg_data (&reply_part), payload_buf, payload_len);
+    if (::zlink_send_part_rid (server, &target_rid, &reply_part, ZLINK_SEND_FLAGS_NONE,
+                               ZLINK_PART_FINAL)
+        != ZLINK_SUBMIT_OK) {
+        zlink_msg_close (&reply_part);
         return false;
     }
     return true;

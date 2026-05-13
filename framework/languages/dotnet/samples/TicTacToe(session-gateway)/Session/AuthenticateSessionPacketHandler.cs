@@ -1,8 +1,8 @@
 using Systems.Zlink.Stream.Connector.Contracts;
-using TicTacToe.SessionActorDispatch.Configuration;
-using TicTacToe.SessionActorDispatch.Contracts;
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
+using TicTacToe.SessionGateway.Shared.Configuration;
+using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
@@ -27,7 +27,7 @@ internal sealed class AuthenticateSessionPacketHandler(
             var authenticated = await context.Stream.RequestChannel(
                     SampleNames.ApiChannel,
                     new AuthenticateActorReq(request.ActorId))
-                .WithTimeout(SampleTimings.RequestTimeout)
+                .Timeout(SampleTimings.RequestTimeout)
                 .SubmitAsync<AuthenticateActorRes>(cancellationToken)
                 .ConfigureAwait(false);
             if (!authenticated.Accepted || string.IsNullOrWhiteSpace(authenticated.ActorId))

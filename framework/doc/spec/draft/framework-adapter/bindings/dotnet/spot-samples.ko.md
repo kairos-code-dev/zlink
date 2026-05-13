@@ -394,7 +394,7 @@ app.Run();
   - 실제 `.NET` 바인딩의 `CommonSocketOptions`, route policy 옵션,
     outbound route policy 옵션, `SpotNodePublisherOptions`,
     `SpotNodeSubscriberOptions`와 같은 typed facade를 capability별로 등록한다.
-  - 호출 단위 `WithTimeout(...)`과 달리 runtime 기본 동작을 정하는 설정이다.
+  - 호출 단위 `Timeout(...)`과 달리 runtime 기본 동작을 정하는 설정이다.
 - `AddSpotFactory<SampleSpot>("sample")`
   - 이 node가 생성하고 소유할 `SampleSpot` factory를 `sample` 이름으로 등록한다.
   - 같은 `SpotNode`에는 서로 다른 이름으로 여러 spot factory를 둘 수 있고,
@@ -593,7 +593,7 @@ builder.Services.AddZLinkFramework(options =>
   `CommonSocketOptions`와 같은 공통 socket 기본 동작을 정한다.
 - `router.ConfigureRouting(...)`, `client.ConfigureRouting(...)`은 실제 route policy와
   outbound route policy에 대응하는 capability 전용 facade다.
-- `RequestChannel(...).WithTimeout(...)` 같은 호출 단위 옵션은 특정 호출 하나에만
+- `RequestChannel(...).Timeout(...)` 같은 호출 단위 옵션은 특정 호출 하나에만
   적용되고, 위 설정은 runtime 기본값이다.
 
 이렇게 두면 framework 사용자는 low-level `spot_node_option`이나 `setsockopt`
@@ -1024,7 +1024,7 @@ public sealed class SampleSpot(
         {
             await sessionProxy
                 .Send(actor.ActorId, pushed)
-                .WithPacketName("SampleRoomChatPushed")
+                .PacketName("SampleRoomChatPushed")
                 .Submit(cancellationToken);
         }
     }
@@ -1117,7 +1117,7 @@ public sealed class SampleActor : IZLinkActor
                 X = X,
                 Y = Y
             })
-            .WithPacketName("SampleActorSnapshot")
+            .PacketName("SampleActorSnapshot")
             .Submit(cancellationToken);
     }
 
@@ -1520,7 +1520,7 @@ public sealed class SampleStateUpdatedHandler
                     ActorCount = message.ActorCount,
                     ConnectedSessionCount = message.ConnectedSessionCount
                 })
-            .WithTimeout(TimeSpan.FromMilliseconds(200))
+            .Timeout(TimeSpan.FromMilliseconds(200))
             .Submit<SampleSyncStateReply>(cancellationToken);
     }
 }
@@ -1679,7 +1679,7 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 - attach된 다른 channel에 send packet을 보내고 싶다
   - `SendChannel(...).Submit(...)`
 - attach된 다른 channel에 request packet을 보내고 싶다
-  - `RequestChannel(...).WithTimeout(...).Submit(...)`
+  - `RequestChannel(...).Timeout(...).Submit(...)`
 - 다른 SPOT 인스턴스에 routed 호출을 하고 싶다
   - 현재 framework core 기본 표면에는 없다. `SendSpot(...)` / `RequestSpot(...)`처럼
     spot name 또는 `ZLinkSpotId`를 받는 표면을 사용한다.

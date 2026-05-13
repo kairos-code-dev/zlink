@@ -24,7 +24,7 @@ inline int recv_router_header_flags (void *router,
     source_rid.size = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = ::zlink_recv (
+    const int rc = ::zlink_std_compat_recv (
       router, &source_rid, &parts, &part_count,
       static_cast<zlink_send_flags_t> (flags));
     if (rc < 0) {

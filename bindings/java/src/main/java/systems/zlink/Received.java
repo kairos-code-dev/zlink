@@ -3,6 +3,7 @@
 package systems.zlink;
 
 import systems.zlink.internal.ReceivedPartCursor;
+import systems.zlink.internal.SocketOperations;
 import systems.zlink.service.spot.ReplyOp;
 import systems.zlink.service.spot.SendOp;
 import java.util.ArrayList;

@@ -13,9 +13,9 @@ public interface IZLinkActorClient
 
 public interface IZLinkActorClientSendCall
 {
-    IZLinkActorClientSendCall WithPacketName(string packetName);
+    IZLinkActorClientSendCall PacketName(string packetName);
 
-    IZLinkActorClientSendCall WithMetadata(
+    IZLinkActorClientSendCall Metadata(
         string key,
         string value);
 
@@ -24,13 +24,13 @@ public interface IZLinkActorClientSendCall
 
 public interface IZLinkActorClientRequestCall
 {
-    IZLinkActorClientRequestCall WithPacketName(string packetName);
+    IZLinkActorClientRequestCall PacketName(string packetName);
 
-    IZLinkActorClientRequestCall WithMetadata(
+    IZLinkActorClientRequestCall Metadata(
         string key,
         string value);
 
-    IZLinkActorClientRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkActorClientRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }

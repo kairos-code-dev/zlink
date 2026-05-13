@@ -2,6 +2,7 @@
 
 package systems.zlink;
 
+import systems.zlink.internal.SocketOperations;
 import systems.zlink.service.spot.SendOp;
 public final class XPubSocket extends Socket {
     private final PubSocketOptions options = new PubSocketOptions(this);

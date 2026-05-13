@@ -144,9 +144,9 @@ public sealed class DealerSocket : MessageSocketBase
                         i + 1 < cloned.Length
                             ? NativeMethods.ZlinkPartFlag.More
                             : NativeMethods.ZlinkPartFlag.Final,
-                        i + 1 < cloned.Length ? 0u : timeoutMs,
-                        i + 1 < cloned.Length ? IntPtr.Zero : RequestReplyHandlerPtr,
-                        i + 1 < cloned.Length ? IntPtr.Zero : userData);
+                        timeoutMs,
+                        RequestReplyHandlerPtr,
+                        userData);
                     submitted = true;
                     if (rc != 0)
                         throw ZlinkException.CreateSubmitException(

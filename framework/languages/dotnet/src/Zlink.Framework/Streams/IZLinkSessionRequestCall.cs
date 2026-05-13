@@ -2,9 +2,9 @@ namespace Zlink.Framework.Streams;
 
 public interface IZLinkSessionRequestCall
 {
-    IZLinkSessionRequestCall WithPacketName(string packetName);
+    IZLinkSessionRequestCall PacketName(string packetName);
 
-    IZLinkSessionRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkSessionRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }

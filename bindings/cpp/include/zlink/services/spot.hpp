@@ -1738,7 +1738,7 @@ request_ready_op_t::submit_async () &&
         }
         return async_result_t<std::vector<message_t>> (
           std::move (future),
-          detail::make_socket_request_progress (_state.raw_socket));
+          zlink::detail::make_socket_request_progress (_state.raw_socket));
     }
 
     if (!_state.spot)

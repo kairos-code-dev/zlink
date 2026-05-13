@@ -59,8 +59,8 @@ public sealed class RouteChannelIntegrationTests
         var client = leftHost.Services.GetRequiredService<IZLinkRouteClient>();
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () => await client.RequestTo("backend.discovery", rightRid, new SharedPacketRequest("discovery", 1))
-                .WithPacketName("SharedPacket")
-                .WithTimeout(TimeSpan.FromSeconds(1))
+                .PacketName("SharedPacket")
+                .Timeout(TimeSpan.FromSeconds(1))
                 .SubmitAsync<SharedPacketReply>(),
             static result => result.Value == "discovery",
             attempts: 30,
@@ -116,20 +116,20 @@ public sealed class RouteChannelIntegrationTests
         var client = leftHost.Services.GetRequiredService<IZLinkRouteClient>();
         _ = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () => await client.RequestTo("backend", rightRid, new SharedPacketRequest("warmup", 1))
-                .WithPacketName("SharedPacket")
-                .WithTimeout(TimeSpan.FromSeconds(3))
+                .PacketName("SharedPacket")
+                .Timeout(TimeSpan.FromSeconds(3))
                 .SubmitAsync<SharedPacketReply>(),
             static result => result.Value == "warmup",
             attempts: 30,
             delayMs: 100);
 
         var slow = client.RequestTo("backend", rightRid, new SharedPacketRequest("slow", 40))
-            .WithPacketName("SharedPacket")
-            .WithTimeout(TimeSpan.FromSeconds(3))
+            .PacketName("SharedPacket")
+            .Timeout(TimeSpan.FromSeconds(3))
             .SubmitAsync<SharedPacketReply>();
         var fast = client.RequestTo("backend", rightRid, new SharedPacketRequest("fast", 1))
-            .WithPacketName("SharedPacket")
-            .WithTimeout(TimeSpan.FromSeconds(3))
+            .PacketName("SharedPacket")
+            .Timeout(TimeSpan.FromSeconds(3))
             .SubmitAsync<SharedPacketReply>();
 
         var replies = await Task.WhenAll(slow.AsTask(), fast.AsTask());

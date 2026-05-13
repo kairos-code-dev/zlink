@@ -62,14 +62,14 @@ bool wait_for_spot_send_progress (zlink::poller_t *poller_, bool send_enabled_)
 {
     if (send_enabled_ && poller_) {
         try {
-            (void) poller_->wait (std::chrono::milliseconds (2));
+            (void) poller_->wait (std::chrono::milliseconds (-1));
             return true;
         }
         catch (const zlink::zlink_error_t &) {
             return false;
         }
     }
-    return perf_idle_wait_ms (send_enabled_ ? 2 : 1) >= 0;
+    return !send_enabled_;
 }
 
 bool wait_for_spot_control_progress ()

@@ -18,8 +18,6 @@ from ._core import (
     RoutingId,
     SubscriptionEvent,
     ZlinkError,
-    METADATA_KEY_USER_MIN,
-    METADATA_VALUE_MAX,
 )
 from ._socket_base import (
     CommonSocketOptions,

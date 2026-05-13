@@ -12,7 +12,7 @@ import systems.zlink.RecvResult;
 import systems.zlink.RouterSocket;
 import systems.zlink.RoutingId;
 import systems.zlink.perf.PerfControl;
-import systems.zlink.PerfSocketPollSet;
+import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import systems.zlink.service.spot.Spot;

@@ -1,4 +1,6 @@
-namespace TicTacToe.SessionActorDispatch.Configuration;
+using TicTacToe.SessionGateway.Shared.Contracts;
+
+namespace TicTacToe.SessionGateway.Shared.Configuration;
 
 public static class SampleNames
 {
@@ -22,11 +24,11 @@ public static class SampleNames
 
     public const string OActorId = "player-o";
 
-    public const string TurnChangedPacket = nameof(Contracts.TurnChangedNotify);
+    public const string TurnChangedPacket = nameof(TurnChangedNotify);
 
-    public const string OpponentJoinedPacket = nameof(Contracts.OpponentJoinedNotify);
+    public const string OpponentJoinedPacket = nameof(OpponentJoinedNotify);
 
-    public const string GameEndedPacket = nameof(Contracts.GameEndedNotify);
+    public const string GameEndedPacket = nameof(GameEndedNotify);
 }
 
 public static class SampleTimings

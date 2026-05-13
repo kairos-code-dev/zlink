@@ -17,8 +17,12 @@ if [[ -f "${CORE_LIB}" ]]; then
   done
 fi
 TASKS=(
-  "test"
-  "integrationTest"
+  ":test"
+  ":integrationTest"
+  ":zlink-codec-json:test"
+  ":zlink-codec-messagepack:test"
+  ":zlink-codec-protobuf:test"
+  ":zlink-ext-netty:test"
 )
 
 cd "${ROOT_DIR}"
@@ -44,10 +48,17 @@ for task in "${TASKS[@]}"; do
   fi
 done
 
+printf '[RUN] samples/run_samples.sh\n'
+if ! "${ROOT_DIR}/samples/run_samples.sh"; then
+  printf '[FAIL] samples/run_samples.sh\n'
+  failures=$((failures + 1))
+else
+  printf '[PASS] samples/run_samples.sh\n'
+fi
+
 if (( failures > 0 )); then
-  printf 'Test summary: %d failed, %d passed\n' "$failures" \
-    "$(( ${#TASKS[@]} - failures ))"
+  printf 'Test summary: %d failed\n' "$failures"
   exit 1
 fi
 
-printf 'Test summary: all %d tasks passed\n' "${#TASKS[@]}"
+printf 'Test summary: all tasks and sample smoke passed\n'

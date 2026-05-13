@@ -175,7 +175,7 @@ send_status_t send_router_request(router_client_slot_t *slot)
     }
 
     const int rc =
-      zlink_send_rid(slot->socket, &slot->target_routing_id, &part, 1,
+      zlink_std_compat_send_rid (slot->socket, &slot->target_routing_id, &part, 1,
                      ZLINK_DONTWAIT);
     if (rc == 0) {
         slot->send_pending = false;
@@ -208,7 +208,7 @@ recv_status_t receive_router_reply(router_client_state_t *state,
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     const int rc =
-      zlink_recv(slot->socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
+      zlink_std_compat_recv (slot->socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
     if (rc != 0) {
         const int err = zlink_errno();
         if (err == EAGAIN || err == EINTR)

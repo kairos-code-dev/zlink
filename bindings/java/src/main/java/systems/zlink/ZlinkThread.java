@@ -82,13 +82,13 @@ public final class ZlinkThread implements AutoCloseable {
         if (thread == null) {
             return;
         }
-        SocketCore.enterCallback();
+        Socket.enterCallbackContext();
         try {
             thread.task.run();
         } catch (Throwable failure) {
             thread.failure = failure;
         } finally {
-            SocketCore.leaveCallback();
+            Socket.leaveCallbackContext();
         }
     }
 

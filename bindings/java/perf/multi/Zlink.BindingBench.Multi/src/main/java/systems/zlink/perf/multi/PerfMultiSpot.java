@@ -61,19 +61,12 @@ final class PerfMultiSpot {
                 }
             }
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
-            // wire-level stop token. Brief retry burst guards against transient
-            // best-effort backpressure on the per-spot publish path.
-            long stopBurstEnd = System.nanoTime() + Duration.ofSeconds(2).toNanos();
-            int sent = 0;
-            while (sent < 3 && System.nanoTime() < stopBurstEnd) {
-                try (Message stop = PerfStopToken.newMessage()) {
-                    publisher.publish(TOPIC)
-                        .message(stop)
-                        .flags(SendFlags.DONT_WAIT)
-                        .submit();
-                    sent++;
-                }
-                sleepQuietly(1);
+            // wire-level stop token.
+            try (Message stop = PerfStopToken.newMessage()) {
+                publisher.publish(TOPIC)
+                    .message(stop)
+                    .flags(SendFlags.NONE)
+                    .submit();
             }
             return PerfUtil.Result.silent(config);
         }

@@ -470,24 +470,8 @@ class _SocketHandle:
 class _BaseSocket:
     _socket_type_value = None
     _OPTION_ROUTE_MISS = object()
-    _OPTION_SET_ROUTES = (
-        ((5,), "routing IDs", "set_routing_id", lambda option, value: (value,)),
-        ((6,), "subscriptions", "set_subscription", lambda option, value: (value,)),
-        ((7,), "subscriptions", "unset_subscription", lambda option, value: (value,)),
-        ((40,), "publisher options", "_set_pub_option", lambda option, value: (0x3301, value)),
-        ((0x3100, 0x3200), "router options", "_set_router_option", lambda option, value: (option, value)),
-        ((0x3200, 0x3300), "dealer options", "_set_dealer_option", lambda option, value: (option, value)),
-        ((0x3300, 0x3400), "publisher options", "_set_pub_option", lambda option, value: (option, value)),
-        ((0x3400, 0x3500), "subscriber options", "_set_sub_option", lambda option, value: (option, value)),
-        ((0x3500, 0x3600), "stream options", "_set_stream_option", lambda option, value: (option, value)),
-    )
-    _OPTION_GET_ROUTES = (
-        ((5,), "routing IDs", "get_routing_id", lambda option, size: ()),
-        ((0x3100, 0x3200), "router options", "_get_router_option", lambda option, size: (option, size)),
-        ((0x3300, 0x3400), "publisher options", "_get_pub_option", lambda option, size: (option, size)),
-        ((0x3400, 0x3500), "subscriber options", "_get_sub_option", lambda option, size: (option, size)),
-        ((0x3500, 0x3600), "stream options", "_get_stream_option", lambda option, size: (option, size)),
-    )
+    _OPTION_SET_ROUTES = ()
+    _OPTION_GET_ROUTES = ()
 
     def __init__(self, context, sock_type=None):
         socket_type = self._resolve_socket_type(sock_type)
@@ -625,23 +609,18 @@ class _BaseSocket:
         actual = _socket_type_name(self._socket_type)
         raise TypeError(f"{actual} sockets do not support {capability}")
 
-    def _require_capability_method(self, method_name, capability):
-        method = getattr(self, method_name, None)
-        if method is None:
-            self._unsupported_capability(capability)
-        return method
-
     def _option_route_matches(self, route_key, option):
         if len(route_key) == 1:
             return int(option) == route_key[0]
         return route_key[0] <= int(option) < route_key[1]
 
     def _dispatch_option_route(self, option, value, routes):
-        for route_key, capability, method_name, args_factory in routes:
+        for route_key, capability, required_type, action, args_factory in routes:
             if not self._option_route_matches(route_key, option):
                 continue
-            method = self._require_capability_method(method_name, capability)
-            return method(*args_factory(int(option), value))
+            if not isinstance(self, required_type):
+                self._unsupported_capability(capability)
+            return action(self, *args_factory(int(option), value))
         return self._OPTION_ROUTE_MISS
 
     def _set_routing_id_raw(self, routing_id):
@@ -1279,3 +1258,52 @@ class _SubscriberSocket(_Socket):
         thread.daemon = True
         self._subscribe_handler_thread = thread
         thread.start()
+
+
+_BaseSocket._OPTION_SET_ROUTES = (
+    ((5,), "routing IDs", _RoutingIdSocket,
+     lambda socket, value: socket.set_routing_id(value),
+     lambda option, value: (value,)),
+    ((6,), "subscriptions", _SubscriberSocket,
+     lambda socket, value: socket.set_subscription(value),
+     lambda option, value: (value,)),
+    ((7,), "subscriptions", _SubscriberSocket,
+     lambda socket, value: socket.unset_subscription(value),
+     lambda option, value: (value,)),
+    ((40,), "publisher options", _PublisherOptionSocket,
+     lambda socket, option, value: socket._set_pub_option(option, value),
+     lambda option, value: (0x3301, value)),
+    ((0x3100, 0x3200), "router options", _RouterOptionSocket,
+     lambda socket, option, value: socket._set_router_option(option, value),
+     lambda option, value: (option, value)),
+    ((0x3200, 0x3300), "dealer options", _DealerOptionSocket,
+     lambda socket, option, value: socket._set_dealer_option(option, value),
+     lambda option, value: (option, value)),
+    ((0x3300, 0x3400), "publisher options", _PublisherOptionSocket,
+     lambda socket, option, value: socket._set_pub_option(option, value),
+     lambda option, value: (option, value)),
+    ((0x3400, 0x3500), "subscriber options", _SubscriberOptionSocket,
+     lambda socket, option, value: socket._set_sub_option(option, value),
+     lambda option, value: (option, value)),
+    ((0x3500, 0x3600), "stream options", _StreamOptionSocket,
+     lambda socket, option, value: socket._set_stream_option(option, value),
+     lambda option, value: (option, value)),
+)
+
+_BaseSocket._OPTION_GET_ROUTES = (
+    ((5,), "routing IDs", _RoutingIdSocket,
+     lambda socket: socket.get_routing_id(),
+     lambda option, size: ()),
+    ((0x3100, 0x3200), "router options", _RouterOptionSocket,
+     lambda socket, option, size: socket._get_router_option(option, size),
+     lambda option, size: (option, size)),
+    ((0x3300, 0x3400), "publisher options", _PublisherOptionSocket,
+     lambda socket, option, size: socket._get_pub_option(option, size),
+     lambda option, size: (option, size)),
+    ((0x3400, 0x3500), "subscriber options", _SubscriberOptionSocket,
+     lambda socket, option, size: socket._get_sub_option(option, size),
+     lambda option, size: (option, size)),
+    ((0x3500, 0x3600), "stream options", _StreamOptionSocket,
+     lambda socket, option, size: socket._get_stream_option(option, size),
+     lambda option, size: (option, size)),
+)

@@ -77,6 +77,9 @@ def parse_args(argv):
     parser.add_argument("--hwm", default="")
     parser.add_argument("--send-hwm", default="")
     parser.add_argument("--recv-hwm", default="")
+    parser.add_argument("--buf", default="")
+    parser.add_argument("--sndbuf", default="")
+    parser.add_argument("--rcvbuf", default="")
     parser.add_argument("--sndtimeo", "--send-timeout-ms", dest="send_timeout_ms", default="")
     parser.add_argument("--rcvtimeo", "--recv-timeout-ms", dest="recv_timeout_ms", default="")
     parser.add_argument("--connect-concurrency", default="")
@@ -87,6 +90,7 @@ def parse_args(argv):
     parser.add_argument("--monitor-hwm", default="")
     parser.add_argument("--server-shutdown-timeout-ms", default="")
     parser.add_argument("--server-bind-port", default="")
+    parser.add_argument("--auto-hwm-profile", default="")
     parser.add_argument(
         "--msg-size", dest="msg_size_compat", default=None, help=argparse.SUPPRESS
     )
@@ -284,13 +288,15 @@ def _result_metrics_for_case(output, pattern, transport, msg_size):
 
 
 def _metric_row(pattern, msg_size, metrics, *, indent="      "):
+    unit = throughput_unit(f"MULTI_{pattern}")
+    throughput = f"{float(metrics.get('throughput', 0.0)) / 1000.0:8.3f} {unit}"
     return (
-        f"{indent}| {int(msg_size):>7}B | "
-        f"{float(metrics.get('throughput', 0.0)) / 1000.0:>16.2f} {throughput_unit(f'MULTI_{pattern}')} | "
-        f"{float(metrics.get('bandwidth', 0.0)):>10.2f} MB/s | "
-        f"{float(metrics.get('latency', 0.0)):>12.6f} ms | "
-        f"{float(metrics.get('latency_p95', 0.0)):>12.6f} ms | "
-        f"{float(metrics.get('latency_p99', 0.0)):>12.6f} ms |"
+        f"{indent}| {str(msg_size) + 'B':<8} | "
+        f"{throughput:>16} | "
+        f"{float(metrics.get('bandwidth', 0.0)):>10.3f} MB/s | "
+        f"{float(metrics.get('latency', 0.0)):>9.3f} ms | "
+        f"{float(metrics.get('latency_p95', 0.0)):>9.3f} ms | "
+        f"{float(metrics.get('latency_p99', 0.0)):>9.3f} ms |"
     )
 
 

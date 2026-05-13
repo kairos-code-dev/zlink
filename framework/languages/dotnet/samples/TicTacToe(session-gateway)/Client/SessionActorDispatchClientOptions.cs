@@ -1,4 +1,4 @@
-using TicTacToe.SessionActorDispatch.Configuration;
+using TicTacToe.SessionGateway.Shared.Configuration;
 
 namespace TicTacToe.SessionGateway.Client;
 

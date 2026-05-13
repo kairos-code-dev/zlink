@@ -28,7 +28,7 @@ public sealed class ZlinkStreamSendBuilder
         _state = new ZlinkStreamCallBuilderState(name);
     }
 
-    public ZlinkStreamSendBuilder WithPacketName(string name)
+    public ZlinkStreamSendBuilder PacketName(string name)
     {
         _state.SetMessageName(name);
         return this;

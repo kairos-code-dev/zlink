@@ -38,6 +38,51 @@ session actor dispatch가 `.NET`에서 노출하는 핵심 표면은 아래 네 
 전체 인터페이스 정의는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)
 §4.4, §5.5, §5.6, §5.7에 모여 있다. 본 문서는 사용 모양과 등록 코드 예시를 모은다.
 
+## 2.1 내부 routed wire 계약
+
+session actor dispatch는 public API가 typed object 중심이어도, 서버 간 내부 route
+transport에서는 공통
+[message-model.ko.md](../../policy/message-model.ko.md)의 multipart 계약을 따른다.
+
+Session 서버에서 Play 서버 actor로 보내는 actor dispatch request/send는 아래 part
+구성을 사용한다.
+
+| part | 내용 |
+|------|------|
+| `parts[0]` | routed framework header. packet name은 internal actor dispatch packet 이름이다 |
+| `parts[1]` | actor dispatch metadata. `ActorId`, `ActorType`, stream packet kind, codec, request sequence, packet name, metadata snapshot을 담는다 |
+| `parts[2]` | encoded stream header bytes. stream header를 서버 간 route header와 섞지 않는다 |
+| `parts[3]` | application body bytes. framework codec 또는 stream packet codec이 만든 payload를 그대로 둔다 |
+
+Play 서버 actor에서 Session 서버의 client stream으로 보내는 session proxy send/request는
+아래 part 구성을 사용한다.
+
+| part | 내용 |
+|------|------|
+| `parts[0]` | routed framework header. packet name은 internal session proxy packet 이름이다 |
+| `parts[1]` | session proxy metadata. `ActorId`, `SessionId`, `BindingToken`, client packet name, reply 필요 여부, metadata snapshot을 담는다 |
+| `parts[2]` | application body bytes |
+
+reply도 같은 원칙을 따른다. routed reply header는 `parts[0]`에 두고 reply body는 별도
+part로 둔다. body가 없으면 빈 body part를 둔다.
+
+다음 형태는 이 초안의 내부 routed wire 계약이 아니다.
+
+- `ZLinkActorDispatchPacket` 같은 단일 DTO 안에 `StreamHeader`와 `byte[] Body`를 함께
+  넣고 그 DTO 전체를 다시 JSON으로 직렬화하는 방식
+- `ZLinkSessionProxyPacket` 같은 단일 DTO 안에 proxy metadata와 body bytes를 함께 넣는
+  방식
+- `parts[0]` 하나만 보내고 그 안에서 header와 body를 모두 decode하는 방식
+
+이 제한은 성능 최적화만을 위한 것이 아니다. route와 dispatch는 header/metadata만
+읽어도 target과 handler를 정할 수 있어야 하고, application body는 handler가 정해진
+뒤에 등록된 codec으로 decode되어야 한다. 그래야 큰 body, binary body, 압축 body,
+attachment가 들어와도 framework 내부 route path가 body 재인코딩 비용을 만들지 않는다.
+
+STREAM 자체는 예외다. client와 Session 서버 사이의 STREAM transport는 하나의 stream
+packet 안에 stream header/body frame을 넣는다. 위 multipart 계약은 Session 서버와
+Play 서버 같은 framework 서버 사이의 routed transport에만 적용한다.
+
 ## 3. Actor handler 표면
 
 ### 3.1 typed handler 시그니처
@@ -131,9 +176,9 @@ public interface IZLinkSessionProxy
 
 public interface IZLinkSessionProxySendCall
 {
-    IZLinkSessionProxySendCall WithPacketName(string packetName);
+    IZLinkSessionProxySendCall PacketName(string packetName);
 
-    IZLinkSessionProxySendCall WithMetadata(
+    IZLinkSessionProxySendCall Metadata(
         string key,
         string value);
 
@@ -143,13 +188,13 @@ public interface IZLinkSessionProxySendCall
 
 public interface IZLinkSessionProxyRequestCall
 {
-    IZLinkSessionProxyRequestCall WithPacketName(string packetName);
+    IZLinkSessionProxyRequestCall PacketName(string packetName);
 
-    IZLinkSessionProxyRequestCall WithMetadata(
+    IZLinkSessionProxyRequestCall Metadata(
         string key,
         string value);
 
-    IZLinkSessionProxyRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkSessionProxyRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> Submit<TReply>(
         CancellationToken cancellationToken = default);
@@ -203,16 +248,16 @@ public interface IZLinkActorClient
 
 public interface IZLinkActorClientSendCall
 {
-    IZLinkActorClientSendCall WithPacketName(string packetName);
-    IZLinkActorClientSendCall WithMetadata(string key, string value);
+    IZLinkActorClientSendCall PacketName(string packetName);
+    IZLinkActorClientSendCall Metadata(string key, string value);
     ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorClientRequestCall
 {
-    IZLinkActorClientRequestCall WithPacketName(string packetName);
-    IZLinkActorClientRequestCall WithMetadata(string key, string value);
-    IZLinkActorClientRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkActorClientRequestCall PacketName(string packetName);
+    IZLinkActorClientRequestCall Metadata(string key, string value);
+    IZLinkActorClientRequestCall Timeout(TimeSpan timeout);
     ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }
 ```
@@ -530,6 +575,8 @@ actor-session binding이 하나의 흐름으로 맞물리는지 확인한다. �
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고 request sequence로 reply를 되돌린다. |
+| `StreamIntegrationTests.SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch` | Session 서버와 Play 서버 사이 actor dispatch가 route header, actor metadata, stream header, body를 별도 part로 유지한다. |
+| `StreamIntegrationTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 proxy metadata와 body를 별도 part로 유지하고 client에게는 단일 STREAM packet으로 쓴다. |
 | `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 뒤 dispatch가 현재 spot 실행 문맥에서 실행된다. |
 | `SpotIntegrationTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | 이전 stream의 늦은 disconnect가 현재 actor-session 연결을 끊지 않는다. |
 | `StreamIntegrationTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 닫고 disconnect callback으로 이어진다. |

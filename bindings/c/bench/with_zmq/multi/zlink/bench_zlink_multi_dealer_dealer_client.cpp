@@ -95,7 +95,7 @@ inline send_status_t send_one_message (void *socket,
     }
 
     const zlink_submit_result_t rc =
-      ::zlink_send (socket, &part, 1, ZLINK_DONTWAIT);
+      ::zlink_std_compat_send (socket, &part, 1, ZLINK_DONTWAIT);
     if (rc != ZLINK_SUBMIT_OK)
         zlink_msg_close (&part);
     if (rc == ZLINK_SUBMIT_OK)

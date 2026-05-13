@@ -70,8 +70,13 @@ Options:
   --hwm N               Override PERF_MULTI_HWM (default baseline: 100, stream=10).
   --send-hwm N          Override PERF_MULTI_SNDHWM.
   --recv-hwm N          Override PERF_MULTI_RCVHWM.
+  --buf SIZE            Override both PERF_MULTI_SNDBUF and PERF_MULTI_RCVBUF.
+  --sndbuf SIZE         Override PERF_MULTI_SNDBUF.
+  --rcvbuf SIZE         Override PERF_MULTI_RCVBUF.
   --sndtimeo N          Override PERF_MULTI_SNDTIMEO_MS.
   --rcvtimeo N          Override PERF_MULTI_RCVTIMEO_MS.
+  --send-timeout-ms N   Alias of --sndtimeo.
+  --recv-timeout-ms N   Alias of --rcvtimeo.
   --connect-concurrency N
                        Override PERF_MULTI_CONNECT_CONCURRENCY.
   --transport-transition-ms N
@@ -86,6 +91,7 @@ Options:
   --server-shutdown-timeout-ms N
                        Override graceful server shutdown wait.
   --server-bind-port N Override benchmark bind port (default: 0 = auto).
+  --auto-hwm-profile N Set auto-HWM profile.
   --pin-cpu            Pin server/client benchmark processes to CPU 0 on Linux.`);
 }
 function median(values) {

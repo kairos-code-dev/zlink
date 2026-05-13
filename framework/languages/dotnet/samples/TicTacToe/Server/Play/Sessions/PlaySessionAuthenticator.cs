@@ -24,7 +24,7 @@ internal sealed class PlaySessionAuthenticator(
         var reply = await context.RequestChannel(
                 SampleChannels.Api,
                 new AuthenticatePlayerReq(authenticate.AccessToken))
-            .WithTimeout(SampleTimeouts.Request)
+            .Timeout(SampleTimeouts.Request)
             .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
 
         var actor = (PlayActor)await actorFactory.CreateAsync(reply.ActorId, cancellationToken)

@@ -53,7 +53,7 @@ public sealed partial class StreamConnectorTests
         });
 
         await connector.Send(new PackedPing { Text = "hello" })
-            .WithPacketName("packed")
+            .PacketName("packed")
             .Submit();
         await server;
     }

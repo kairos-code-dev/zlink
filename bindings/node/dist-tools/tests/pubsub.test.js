@@ -31,7 +31,7 @@ test('spot exposes unified publish and subscribe surface', () => {
     node.close();
     ctx.close();
 });
-test.skip('remote spot peer delivery works over tcp direct peer connect', async () => {
+test('remote spot peer delivery works over tcp direct peer connect', async () => {
     const ctx = new zlink.Context();
     const serverNode = new zlink.SpotNode(ctx);
     const clientNode = new zlink.SpotNode(ctx);
@@ -122,7 +122,7 @@ test('spot node peersQuery filters manual peer connections', async () => {
         ctx.close();
     }
 });
-test.skip('remote spot peer delivery works across child processes', async () => {
+test('remote spot peer delivery works across child processes', async () => {
     const serverEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const clientEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const fixturesDir = path.join(__dirname, '..', '..', 'tests', 'fixtures');

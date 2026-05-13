@@ -59,8 +59,14 @@ Options:
   --hwm N               Override PERF_SINGLE_HWM.
   --send-hwm N          Override PERF_SINGLE_SNDHWM.
   --recv-hwm N          Override PERF_SINGLE_RCVHWM.
+  --buf SIZE            Override both PERF_SINGLE_SNDBUF and PERF_SINGLE_RCVBUF.
+  --sndbuf SIZE         Override PERF_SINGLE_SNDBUF.
+  --rcvbuf SIZE         Override PERF_SINGLE_RCVBUF.
   --sndtimeo N          Override PERF_SINGLE_SNDTIMEO_MS.
   --rcvtimeo N          Override PERF_SINGLE_RCVTIMEO_MS.
+  --send-timeout-ms N   Alias of --sndtimeo.
+  --recv-timeout-ms N   Alias of --rcvtimeo.
+  --auto-hwm-profile N  Set auto-HWM profile.
 
 Notes:
   - result is saved under perf/results/single/report/ as
@@ -143,6 +149,15 @@ function buildBinaryEnv(options) {
   }
   if (Number.isFinite(options.recvHwm)) {
     env.PERF_SINGLE_RCVHWM = String(options.recvHwm);
+  }
+  if (options.sndbuf) {
+    env.PERF_SINGLE_SNDBUF = String(options.sndbuf);
+  }
+  if (options.rcvbuf) {
+    env.PERF_SINGLE_RCVBUF = String(options.rcvbuf);
+  }
+  if (options.autoHwmProfile) {
+    env.PERF_CTX_AUTO_HWM_PROFILE = String(options.autoHwmProfile);
   }
   if (Number.isFinite(options.sendTimeoutMs)) {
     env.PERF_SINGLE_SNDTIMEO_MS = String(options.sendTimeoutMs);

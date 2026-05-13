@@ -65,6 +65,20 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
             .Submit();
     }
 
+    public bool Send(
+        RoutingId routingId,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        var operation = nativeSocket.Send(routingId).Message(parts[0]);
+        for (var index = 1; index < parts.Count; index++)
+        {
+            operation = operation.Message(parts[index]);
+        }
+
+        return operation.Flags(flags).Submit();
+    }
+
     public bool Request(
         RoutingId routingId,
         Message message,
@@ -83,6 +97,27 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
         return operation.Submit(callback);
     }
 
+    public bool Request(
+        RoutingId routingId,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout)
+    {
+        var operation = nativeSocket.Request(routingId).Message(parts[0]);
+        for (var index = 1; index < parts.Count; index++)
+        {
+            operation = operation.Message(parts[index]);
+        }
+
+        if (timeout is { } value)
+        {
+            operation = operation.Timeout(value);
+        }
+
+        return operation.Flags(flags).Submit(callback);
+    }
+
     public void Reply(
         RoutingId routingId,
         ulong requestSeq,
@@ -91,6 +126,20 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
         nativeSocket.Reply(routingId, requestSeq)
             .Message(message)
             .Submit();
+    }
+
+    public void Reply(
+        RoutingId routingId,
+        ulong requestSeq,
+        IReadOnlyList<Message> parts)
+    {
+        var operation = nativeSocket.Reply(routingId, requestSeq).Message(parts[0]);
+        for (var index = 1; index < parts.Count; index++)
+        {
+            operation = operation.Message(parts[index]);
+        }
+
+        operation.Submit();
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

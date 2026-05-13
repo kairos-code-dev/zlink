@@ -21,32 +21,8 @@
 #include <utility>
 #include <vector>
 
-zlink_recv_result_t spot_subscribe_impl (void *spot_,
-                                         zlink_routing_id_t *source_rid_out_,
-                                         zlink_msg_t **parts_out_,
-                                         size_t *part_count_out_,
-                                         char *topic_id_out_,
-                                         size_t *topic_id_len_out_,
-                                         zlink_recv_flags_t flags_);
-
-zlink_recv_result_t spot_recv_impl (void *spot_,
-                                    const zlink_routing_id_t **source_rid_out_,
-                                    const zlink_routing_id_t **spot_rid_out_,
-                                    uint64_t *request_seq_out_,
-                                    zlink_msg_t **parts_out_,
-                                    size_t *part_count_out_,
-                                    zlink_recv_flags_t flags_);
-
 namespace zlink
 {
-extern "C" zlink_recv_result_t zlink_spot_subscription_event_recv (
-  void *spot_,
-  const zlink_routing_id_t **source_rid_out_,
-  int *subscribed_out_,
-  char *topic_id_buf_,
-  size_t topic_id_capacity_,
-  size_t *topic_id_len_out_,
-  zlink_recv_flags_t flags_);
 namespace service
 {
 
@@ -84,11 +60,6 @@ namespace service
 namespace detail
 {
 
-extern "C" int zlink_spot_request_progress_internal (void *spot_);
-extern "C" int zlink_spot_request_channel_progress_internal (
-  void *spot_, const char *channel_name_);
-extern "C" int zlink_socket_request_progress_internal (void *socket_);
-
 using zlink::detail::assign_parts_from_native;
 using zlink::detail::close_message_array;
 using zlink::detail::close_native_parts;
@@ -100,6 +71,23 @@ using zlink::detail::restore_parts_from_native;
 using zlink::detail::submit_native_parts;
 using zlink::detail::take_parts_from_native;
 using zlink::detail::throw_if_failed;
+
+void request_progress_spot (void *spot_) noexcept;
+void request_progress_spot_channel (void *spot_,
+                                    const std::string &channel_name_) noexcept;
+
+inline std::function<void()> make_spot_request_progress (void *spot_)
+{
+    return [spot_]() { request_progress_spot (spot_); };
+}
+
+inline std::function<void()>
+make_spot_request_progress (void *spot_, const std::string &channel_name_)
+{
+    return [spot_, channel_name_]() {
+        request_progress_spot_channel (spot_, channel_name_);
+    };
+}
 
 inline send_result_t to_send_result (int result_) noexcept
 {
@@ -151,25 +139,6 @@ make_callback_request_state (
     request_state_t *state = new request_state_t ();
     state->on_complete = std::move (callback_);
     return state;
-}
-
-inline std::function<void()> make_spot_request_progress (void *spot_)
-{
-    return [spot_]() { (void) zlink_spot_request_progress_internal (spot_); };
-}
-
-inline std::function<void()> make_socket_request_progress (void *socket_)
-{
-    return [socket_]() { (void) zlink_socket_request_progress_internal (socket_); };
-}
-
-inline std::function<void()> make_spot_request_progress (void *spot_,
-                                                         const std::string &channel_name_)
-{
-    return [spot_, channel_name_]() {
-        (void) zlink_spot_request_channel_progress_internal (
-          spot_, channel_name_.c_str ());
-    };
 }
 
 inline void complete_request_state (request_state_t *state_,

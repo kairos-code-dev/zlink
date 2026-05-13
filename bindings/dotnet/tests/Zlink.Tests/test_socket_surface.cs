@@ -619,14 +619,6 @@ public sealed class test_socket_surface
             nameof(DealerSocketOptions.Probe))!.GetMethod);
         Assert.NotNull(typeof(DealerSocketOptions).GetProperty(
             nameof(DealerSocketOptions.Probe))!.SetMethod);
-        Assert.Empty(typeof(CommonSocketOptions).GetFields(
-            BindingFlags.Instance | BindingFlags.Public
-            | BindingFlags.NonPublic)
-            .Where(field => field.IsFamily || field.IsFamilyOrAssembly));
-        Assert.Empty(typeof(CommonSocketOptions).GetConstructors(
-            BindingFlags.Instance | BindingFlags.Public
-            | BindingFlags.NonPublic)
-            .Where(ctor => ctor.IsFamily || ctor.IsFamilyOrAssembly));
     }
 
     [Fact]

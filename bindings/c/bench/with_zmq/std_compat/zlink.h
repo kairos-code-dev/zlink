@@ -599,7 +599,7 @@ inline int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_,
     return rc;
 }
 
-inline int zlink_send (void *s_,
+inline int zlink_std_compat_send (void *s_,
                        zlink_msg_t *parts_,
                        size_t part_count_,
                        zlink_send_flags_t flags_)
@@ -617,7 +617,7 @@ inline int zlink_send (void *s_,
     return 0;
 }
 
-inline int zlink_send_rid (void *s_,
+inline int zlink_std_compat_send_rid (void *s_,
                            const zlink_routing_id_t *target_rid_,
                            zlink_msg_t *parts_,
                            size_t part_count_,
@@ -639,10 +639,10 @@ inline int zlink_send_rid (void *s_,
         zmq_msg_close (&rid_msg);
         return -1;
     }
-    return zlink_send (s_, parts_, part_count_, flags_);
+    return zlink_std_compat_send (s_, parts_, part_count_, flags_);
 }
 
-inline int zlink_recv (void *s_,
+inline int zlink_std_compat_recv (void *s_,
                        zlink_routing_id_t *source_rid_out_,
                        zlink_msg_t **parts_out_,
                        size_t *part_count_out_,
@@ -732,7 +732,7 @@ inline int zlink_recv (void *s_,
     return 0;
 }
 
-inline int zlink_router_recv (void *router_,
+inline int zlink_std_compat_router_recv (void *router_,
                               const zlink_routing_id_t **peer_rid_out_,
                               const zlink_routing_id_t **source_spot_rid_out_,
                               uint64_t *request_seq_out_,
@@ -748,7 +748,7 @@ inline int zlink_router_recv (void *router_,
     std::memset (&tls_source_spot_rid, 0, sizeof (tls_source_spot_rid));
 
     const int rc =
-      zlink_recv (router_, &tls_peer_rid, parts_out_, part_count_out_,
+      zlink_std_compat_recv (router_, &tls_peer_rid, parts_out_, part_count_out_,
                   static_cast<zlink_send_flags_t> (flags_));
     if (rc != 0) {
         if (peer_rid_out_)
@@ -785,7 +785,7 @@ inline int zlink_recv_part (void *s_,
         size_t part_count = 0;
         zlink_routing_id_t source_rid;
         std::memset (&source_rid, 0, sizeof (source_rid));
-        if (zlink_recv (s_, &source_rid, &parts, &part_count, flags_) != 0) {
+        if (zlink_std_compat_recv (s_, &source_rid, &parts, &part_count, flags_) != 0) {
             if (source_rid_out_)
                 *source_rid_out_ = NULL;
             return -1;
@@ -818,7 +818,7 @@ inline int zlink_router_recv_part (
     if (zlink_std_compat::recv_tls_count () == 0) {
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
-        if (zlink_router_recv (router_, peer_rid_out_, source_spot_rid_out_,
+        if (zlink_std_compat_router_recv (router_, peer_rid_out_, source_spot_rid_out_,
                                request_seq_out_, &parts, &part_count, flags_)
             != 0) {
             if (peer_rid_out_)
@@ -846,7 +846,7 @@ inline int zlink_router_recv_part (
     return zlink_std_compat::recv_tls_take_part (part_out_, has_more_out_);
 }
 
-inline int zlink_publish (void *subject_,
+inline int zlink_std_compat_publish (void *subject_,
                           const char *topic_id_,
                           zlink_msg_t *parts_,
                           size_t part_count_,
@@ -863,10 +863,10 @@ inline int zlink_publish (void *subject_,
         zmq_msg_close (&topic_msg);
         return -1;
     }
-    return zlink_send (subject_, parts_, part_count_, flags_);
+    return zlink_std_compat_send (subject_, parts_, part_count_, flags_);
 }
 
-inline int zlink_subscribe (void *subject_,
+inline int zlink_std_compat_subscribe (void *subject_,
                             zlink_routing_id_t *source_rid_out_,
                             zlink_msg_t **parts_out_,
                             size_t *part_count_out_,

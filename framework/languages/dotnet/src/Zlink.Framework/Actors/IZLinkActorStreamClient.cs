@@ -9,9 +9,9 @@ public interface IZLinkActorStreamClient
 
 public interface IZLinkActorSendCall
 {
-    IZLinkActorSendCall WithMetadata(string key, string value);
+    IZLinkActorSendCall Metadata(string key, string value);
 
-    IZLinkActorSendCall WithPacketName(string messageName);
+    IZLinkActorSendCall PacketName(string messageName);
 
     IZLinkActorSendCall Compress();
 
@@ -20,7 +20,7 @@ public interface IZLinkActorSendCall
 
 public interface IZLinkActorReplyCall
 {
-    IZLinkActorReplyCall WithMetadata(string key, string value);
+    IZLinkActorReplyCall Metadata(string key, string value);
 
     IZLinkActorReplyCall Compress();
 

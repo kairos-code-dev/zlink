@@ -135,9 +135,9 @@ public interface IZLinkSessionContext :
 
 public interface IZLinkSessionSendCall
 {
-    IZLinkSessionSendCall WithMetadata(string key, string value);
+    IZLinkSessionSendCall Metadata(string key, string value);
 
-    IZLinkSessionSendCall WithPacketName(string messageName);
+    IZLinkSessionSendCall PacketName(string messageName);
 
     IZLinkSessionSendCall Compress();
 
@@ -146,7 +146,7 @@ public interface IZLinkSessionSendCall
 
 public interface IZLinkSessionReplyCall
 {
-    IZLinkSessionReplyCall WithMetadata(string key, string value);
+    IZLinkSessionReplyCall Metadata(string key, string value);
 
     IZLinkSessionReplyCall Compress();
 

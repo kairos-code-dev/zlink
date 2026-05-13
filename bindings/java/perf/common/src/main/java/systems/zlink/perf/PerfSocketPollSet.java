@@ -1,11 +1,17 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink;
+package systems.zlink.perf;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import systems.zlink.PollEvent;
+import systems.zlink.PollEventFlag;
+import systems.zlink.Poller;
+import systems.zlink.Socket;
+import systems.zlink.ZlinkException;
 
 public final class PerfSocketPollSet implements AutoCloseable {
     private static final int ERRNO_EINTR = 4;
@@ -19,6 +25,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
     private final int[] readyIndexes;
     private final int[] currentMasks;
     private final Poller poller = new Poller();
+    private final List<PollEvent> readyEventsBuffer = new ArrayList<>();
     private int readyCount;
 
     private PerfSocketPollSet(List<Socket> sockets,
@@ -78,9 +85,8 @@ public final class PerfSocketPollSet implements AutoCloseable {
 
     public int poll(int timeoutMs) {
         clearReadyEvents();
-        int eventCount;
         try {
-            eventCount = poller.pollCount(Duration.ofMillis(timeoutMs));
+            poller.wait(readyEventsBuffer, Duration.ofMillis(timeoutMs));
         } catch (ZlinkException ex) {
             int errno = ex.getInternalErrno();
             if (errno == ERRNO_EINTR
@@ -90,17 +96,16 @@ public final class PerfSocketPollSet implements AutoCloseable {
             }
             throw ex;
         }
-        int count = Math.min(eventCount, sockets.length);
-        for (int i = 0; i < count; i++) {
-            Object tag = poller.readyTag(i);
+        for (PollEvent event : readyEventsBuffer) {
+            Object tag = event.tag();
             Integer index = tag instanceof Integer readyIndex
                 ? readyIndex
                 : null;
             if (index != null && index >= 0 && index < sockets.length) {
-                boolean hasIn = poller.readyHasEvent(i, PollEventFlag.POLLIN);
-                boolean hasOut = poller.readyHasEvent(i, PollEventFlag.POLLOUT);
-                boolean hasErr = poller.readyHasEvent(i, PollEventFlag.POLLERR);
-                boolean hasPri = poller.readyHasEvent(i, PollEventFlag.POLLPRI);
+                boolean hasIn = event.revents().contains(PollEventFlag.POLLIN);
+                boolean hasOut = event.revents().contains(PollEventFlag.POLLOUT);
+                boolean hasErr = event.revents().contains(PollEventFlag.POLLERR);
+                boolean hasPri = event.revents().contains(PollEventFlag.POLLPRI);
                 readyIn[index] = hasIn;
                 readyOut[index] = hasOut;
                 readyErr[index] = hasErr;

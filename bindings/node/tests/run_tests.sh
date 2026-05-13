@@ -37,3 +37,5 @@ for test_file in dist-tools/tests/*.test.js; do
   printf '[test] %s\n' "$test_file"
   run_node_job 120 node --test "$test_file"
 done
+
+"$ROOT_DIR/samples/run_samples.sh"

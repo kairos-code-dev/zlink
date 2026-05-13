@@ -157,15 +157,15 @@ public interface IZLinkSessionActorAttachmentContext
 
 public interface IZLinkSessionSendCall
 {
-    IZLinkSessionSendCall WithMetadata(string key, string value);
-    IZLinkSessionSendCall WithPacketName(string messageName);
+    IZLinkSessionSendCall Metadata(string key, string value);
+    IZLinkSessionSendCall PacketName(string messageName);
     IZLinkSessionSendCall Compress();
     ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionReplyCall
 {
-    IZLinkSessionReplyCall WithMetadata(string key, string value);
+    IZLinkSessionReplyCall Metadata(string key, string value);
     IZLinkSessionReplyCall Compress();
     ValueTask Submit(CancellationToken cancellationToken = default);
 }

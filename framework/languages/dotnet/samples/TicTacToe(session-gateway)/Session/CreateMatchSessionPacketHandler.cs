@@ -1,8 +1,8 @@
 using Systems.Zlink.Stream.Connector.Contracts;
-using TicTacToe.SessionActorDispatch.Configuration;
-using TicTacToe.SessionActorDispatch.Contracts;
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
+using TicTacToe.SessionGateway.Shared.Configuration;
+using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
@@ -25,7 +25,7 @@ internal sealed class CreateMatchSessionPacketHandler : ISessionRelayPacketHandl
             var reply = await context.Stream.RequestChannel(
                     SampleNames.ApiChannel,
                     request with { OwnerActorId = actorId })
-                .WithTimeout(SampleTimings.RequestTimeout)
+                .Timeout(SampleTimings.RequestTimeout)
                 .SubmitAsync<CreateMatchRes>(cancellationToken)
                 .ConfigureAwait(false);
 

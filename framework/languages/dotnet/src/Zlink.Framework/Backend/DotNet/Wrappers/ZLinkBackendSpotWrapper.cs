@@ -65,6 +65,27 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         return operation.Submit(callback);
     }
 
+    public bool RequestChannel(
+        string channelName,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout)
+    {
+        var operation = nativeSpot.RequestChannel(channelName).Message(parts[0]);
+        for (var index = 1; index < parts.Count; index++)
+        {
+            operation = operation.Message(parts[index]);
+        }
+
+        if (timeout is { } value)
+        {
+            operation = operation.Timeout(value);
+        }
+
+        return operation.Flags(flags).Submit(callback);
+    }
+
     public bool SendChannel(
         string channelName,
         Message message,
@@ -74,6 +95,20 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
             .Message(message)
             .Flags(flags)
             .Submit();
+    }
+
+    public bool SendChannel(
+        string channelName,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        var operation = nativeSpot.SendChannel(channelName).Message(parts[0]);
+        for (var index = 1; index < parts.Count; index++)
+        {
+            operation = operation.Message(parts[index]);
+        }
+
+        return operation.Flags(flags).Submit();
     }
 
     public bool Publish(
@@ -87,6 +122,20 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
             .Submit();
     }
 
+    public bool Publish(
+        string topic,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        var operation = nativeSpot.Publish(topic).Message(parts[0]);
+        for (var index = 1; index < parts.Count; index++)
+        {
+            operation = operation.Message(parts[index]);
+        }
+
+        return operation.Flags(flags).Submit();
+    }
+
     public bool SendToSpot(
         RoutingId targetRid,
         RoutingId spotRid,
@@ -97,6 +146,21 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
             .Message(message)
             .Flags(flags)
             .Submit();
+    }
+
+    public bool SendToSpot(
+        RoutingId targetRid,
+        RoutingId spotRid,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        var operation = nativeSpot.SendToSpot(targetRid, spotRid).Message(parts[0]);
+        for (var index = 1; index < parts.Count; index++)
+        {
+            operation = operation.Message(parts[index]);
+        }
+
+        return operation.Flags(flags).Submit();
     }
 
     public bool RequestToSpot(
@@ -118,6 +182,28 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         return operation.Submit(callback);
     }
 
+    public bool RequestToSpot(
+        RoutingId targetRid,
+        RoutingId spotRid,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout)
+    {
+        var operation = nativeSpot.RequestToSpot(targetRid, spotRid).Message(parts[0]);
+        for (var index = 1; index < parts.Count; index++)
+        {
+            operation = operation.Message(parts[index]);
+        }
+
+        if (timeout is { } value)
+        {
+            operation = operation.Timeout(value);
+        }
+
+        return operation.Flags(flags).Submit(callback);
+    }
+
     public ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags)
     {
         var request = nativeSpot.RecvActorJoin(flags);
@@ -132,7 +218,8 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
             request.Info.SourceNodeRid,
             request.Info.TargetSpotRid,
             request.Info.JoinEpoch,
-            request.Message)
+            request.Message,
+            request.Parts)
         {
             NativeRequest = request
         };
@@ -147,6 +234,21 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         nativeSpot.ReplyActorJoin(nativeRequest, accepted)
             .Message(reply)
             .Submit();
+    }
+
+    public void ReplyActorJoin(
+        ZLinkBackendActorJoinRequest request,
+        bool accepted,
+        IReadOnlyList<Message> parts)
+    {
+        var nativeRequest = (ActorJoinRequest)request.NativeRequest!;
+        var operation = nativeSpot.ReplyActorJoin(nativeRequest, accepted);
+        foreach (var part in parts)
+        {
+            operation = operation.Message(part);
+        }
+
+        operation.Submit();
     }
 
     public ValueTask DisposeAsync() => nativeSpot.DisposeAsync();

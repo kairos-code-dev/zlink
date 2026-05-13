@@ -1,5 +1,5 @@
-using TicTacToe.SessionActorDispatch.Configuration;
-using TicTacToe.SessionActorDispatch.Contracts;
+using TicTacToe.SessionGateway.Shared.Configuration;
+using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Channels;
 using Zlink.Framework.Handlers;
 
@@ -23,7 +23,7 @@ internal sealed class CreateMatchHandler(IZLinkClientServerClient client)
         var room = await client.Request(
                 SampleNames.PlayChannel,
                 new CreateMatchRoomReq())
-            .WithTimeout(SampleTimings.RequestTimeout)
+            .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<CreateMatchRoomRes>(cancellationToken)
             .ConfigureAwait(false);
 

@@ -363,15 +363,9 @@ export interface SubscriptionEntry {
   readonly isPattern: boolean;
 }
 
-/** @internal */
-export type SocketRecvHandler = (message: Received) => void;
-/** @internal */
-export type SocketSubscribeHandler = (message: TopicMessage) => void;
 export type SocketSendReadyHandler = () => void;
 export type StreamPacketHandler = (sourceRid: RoutingId, header: Message, body: Message) => void;
 export type SocketMonitorHandler = (event: MonitorEvent) => void;
-/** @internal */
-export type SpotSubHandler = SocketSubscribeHandler;
 export type SpotSendReadyHandler = () => void;
 export type SpotRoutedHandler = (message: Received) => void;
 export interface ActorRef {

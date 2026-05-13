@@ -36,7 +36,7 @@ int recv_one_pubsub_message (void *socket,
     size_t topic_len = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = zlink_subscribe (
+    const int rc = zlink_std_compat_subscribe (
       socket, &parts, &part_count, ZLINK_DONTWAIT, NULL, &topic_len);
     if (rc != 0) {
         const int err = zlink_errno ();

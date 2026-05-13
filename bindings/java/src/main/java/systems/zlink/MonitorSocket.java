@@ -190,13 +190,13 @@ public final class MonitorSocket implements AutoCloseable {
 
     private void dispatchEvent(SocketMonitorHandler handler,
                                MonitorEvent event) {
-        SocketCore.enterCallback();
+        Socket.enterCallbackContext();
         try {
             handler.onEvent(event);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
         } finally {
-            SocketCore.leaveCallback();
+            Socket.leaveCallbackContext();
         }
     }
 

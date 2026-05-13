@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using Systems.Zlink.Stream.Connector.Json;
 using Systems.Zlink.Stream.Connector.Runtime;
-using TicTacToe.SessionActorDispatch.Configuration;
-using TicTacToe.SessionActorDispatch.Contracts;
+using TicTacToe.SessionGateway.Shared.Configuration;
+using TicTacToe.SessionGateway.Shared.Contracts;
 
 namespace TicTacToe.SessionGateway.Client;
 

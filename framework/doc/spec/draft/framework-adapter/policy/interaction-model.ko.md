@@ -79,7 +79,7 @@
   감싸지 않고 nonblocking send와 ready notification을 이용해서 backpressure를
   내부에서 처리한다.
 - send backpressure 대기 한계는 call builder가 아니라 channel 또는 socket의
-  `SendTimeout` 옵션을 따른다. request의 `WithTimeout(...)`은 reply 대기 시간만
+  `SendTimeout` 옵션을 따른다. request의 `Timeout(...)`은 reply 대기 시간만
   정한다.
 - spot/actor join은 caller가 `string spotName`을 받아서 들고 다닐 수 있다.
   `RoutingId` 변환은 framework 내부 spot route resolver가 푼다. application

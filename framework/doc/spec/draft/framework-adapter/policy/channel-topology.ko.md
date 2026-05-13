@@ -83,6 +83,16 @@ section 3을 참고한다.
 | `stream` | `STREAM` |
 | `worker-dispatch` | 별도 조합 모델 |
 
+위 표의 `request-response`, `command`, `publish-subscribe` 중 서버 간 framework
+message로 흐르는 경로는 모두 multipart `header + body` wire 계약을 따른다. routed
+channel과 `SPOT` channel 위의 internal actor dispatch, internal session proxy도 같은
+규칙을 사용한다.
+
+반대로 `STREAM`은 하나의 stream packet을 주고받는 경로다. stream header와 body는 그
+단일 packet 안에서 frame으로 인코딩한다. 따라서 STREAM의 packet framing을 서버 간
+multipart 계약으로 바꾸거나, 서버 간 multipart body를 stream frame처럼 단일 payload로
+합치는 방식은 둘 다 이 topology 정책에 맞지 않는다.
+
 현재 SPOT topology는 예전처럼 "하나의 `SpotNode`에 여러 channel surface를 붙이는
 모델"보다, "`AddSpotMesh(channelName, ...)` 등록이 node 묶음의 active channel
 view를 소유하는 모델"로 읽는 편이 맞다. 즉:

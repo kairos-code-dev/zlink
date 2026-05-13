@@ -1,9 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionActorDispatch.Infrastructure;
 using TicTacToe.SessionGateway.Infrastructure;
 using TicTacToe.SessionGateway.Infrastructure.Configuration;
+using TicTacToe.SessionGateway.Shared.Configuration;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Streams;
 

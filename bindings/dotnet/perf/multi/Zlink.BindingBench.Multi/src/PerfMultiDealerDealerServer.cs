@@ -103,31 +103,17 @@ internal static class PerfMultiDealerDealerServer
 
     private static void TrySendStopToken(DealerSocket server)
     {
-        // Bounded backpressure retry: at HWM 100 / inflight 1 with N=100
-        // peers, send queues can be momentarily full. 5000 * 1ms = 5s
-        // covers worst-case queue drain without blocking the runner's
-        // result-line timeout.
-        for (int retry = 0; retry < 5000; retry++)
+        try
         {
-            try
-            {
-                using Message stopMessage = Message.FromBytes(MultiStopToken);
-                if (server.Send().Message(stopMessage)
-                    .Flags(SendFlags.DontWait).Submit())
-                    return;
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
-            {
-                System.Threading.Thread.Sleep(1);
-                continue;
-            }
-            catch (ObjectDisposedException)
-            {
-                return;
-            }
-
-            System.Threading.Thread.Sleep(1);
+            using Message stopMessage = Message.FromBytes(MultiStopToken);
+            server.Send().Message(stopMessage).Flags(SendFlags.None).Submit();
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                        || IsInterrupted(ex.InternalErrno))
+        {
+        }
+        catch (ObjectDisposedException)
+        {
         }
     }
 

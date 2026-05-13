@@ -37,7 +37,8 @@ internal sealed record ZLinkBackendActorJoinRequest(
     RoutingId SourceNodeRid,
     RoutingId TargetSpotRid,
     ulong JoinEpoch,
-    Message Message)
+    Message Message,
+    IReadOnlyList<Message> Parts)
 {
     internal object? NativeRequest { get; init; }
 }
@@ -92,8 +93,16 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket
 
     bool Send(Message message, SendFlags flags);
 
+    bool Send(IReadOnlyList<Message> parts, SendFlags flags);
+
     bool Request(
         Message message,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout);
+
+    bool Request(
+        IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,
         TimeSpan? timeout);
@@ -114,9 +123,21 @@ internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket
         Message message,
         SendFlags flags);
 
+    bool Send(
+        RoutingId routingId,
+        IReadOnlyList<Message> parts,
+        SendFlags flags);
+
     bool Request(
         RoutingId routingId,
         Message message,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout);
+
+    bool Request(
+        RoutingId routingId,
+        IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,
         TimeSpan? timeout);
@@ -125,6 +146,11 @@ internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket
         RoutingId routingId,
         ulong requestSeq,
         Message message);
+
+    void Reply(
+        RoutingId routingId,
+        ulong requestSeq,
+        IReadOnlyList<Message> parts);
 }
 
 internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket
@@ -136,6 +162,11 @@ internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket
     bool Publish(
         string topic,
         Message message,
+        SendFlags flags);
+
+    bool Publish(
+        string topic,
+        IReadOnlyList<Message> parts,
         SendFlags flags);
 }
 
@@ -254,6 +285,14 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         RequestCallback callback,
         TimeSpan? timeout);
 
+    bool JoinActor(
+        ZLinkBackendActorRef actor,
+        RoutingId destNodeRid,
+        RoutingId destSpotRid,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        TimeSpan? timeout);
+
     void LeaveActor(
         ZLinkBackendActorRef actor,
         RoutingId currentSpotRid,
@@ -292,9 +331,21 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
         SendFlags flags,
         TimeSpan? timeout);
 
+    bool RequestChannel(
+        string channelName,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout);
+
     bool SendChannel(
         string channelName,
         Message message,
+        SendFlags flags);
+
+    bool SendChannel(
+        string channelName,
+        IReadOnlyList<Message> parts,
         SendFlags flags);
 
     bool Publish(
@@ -302,10 +353,21 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
         Message message,
         SendFlags flags);
 
+    bool Publish(
+        string topic,
+        IReadOnlyList<Message> parts,
+        SendFlags flags);
+
     bool SendToSpot(
         RoutingId targetRid,
         RoutingId spotRid,
         Message message,
+        SendFlags flags);
+
+    bool SendToSpot(
+        RoutingId targetRid,
+        RoutingId spotRid,
+        IReadOnlyList<Message> parts,
         SendFlags flags);
 
     bool RequestToSpot(
@@ -316,12 +378,25 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
         SendFlags flags,
         TimeSpan? timeout);
 
+    bool RequestToSpot(
+        RoutingId targetRid,
+        RoutingId spotRid,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout);
+
     ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags);
 
     void ReplyActorJoin(
         ZLinkBackendActorJoinRequest request,
         bool accepted,
         Message reply);
+
+    void ReplyActorJoin(
+        ZLinkBackendActorJoinRequest request,
+        bool accepted,
+        IReadOnlyList<Message> parts);
 }
 
 internal interface IZLinkBackendSocketMonitor : IZLinkBackendObject, IAsyncDisposable

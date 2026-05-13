@@ -194,7 +194,7 @@ manager를 통해 제어해야 한다.
 ### 2.3.2 소켓 옵션 설정 샘플
 
 소켓 옵션도 결국 capability가 소유한 runtime 기본값으로 보는 편이 자연스럽다.
-즉 요청 하나마다 주는 `WithTimeout(...)`과 같은 호출 단위 옵션과, channel
+즉 요청 하나마다 주는 `Timeout(...)`과 같은 호출 단위 옵션과, channel
 등록 시점에 넣는 socket 기본 옵션은 구분해서 설명해야 한다.
 
 아래 코드는 아직 확정 계약이 아니라, `.NET` 표면에서 이런 모양으로 보이는 편이
@@ -275,7 +275,7 @@ builder.Services.AddZLinkFramework(options =>
   routed 연결 정책을 따로 둔다는 뜻이다. public 설정은 `RequireKnownPeer`,
   `AllowPeerHandover`, `ProbeRouterOnConnect`처럼 framework 의미가 드러나는 이름을
   사용하고, 하부 backend option 이름은 노출하지 않는다.
-- `client.Request(...).WithTimeout(...)`은 특정 호출 하나에만 적용되는 값이고,
+- `client.Request(...).Timeout(...)`은 특정 호출 하나에만 적용되는 값이고,
   실제 low-level 바인딩에서도 `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)`
   처럼 호출 인자로 준다. 위 설정은 capability 전체의 기본값이다.
 
@@ -650,7 +650,7 @@ var fastReply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .WithTimeout(TimeSpan.FromMilliseconds(200))
+    .Timeout(TimeSpan.FromMilliseconds(200))
     .Submit<GetUserReply>(cancellationToken);
 ```
 
@@ -659,7 +659,7 @@ await client
     .Send(
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
-    .WithPacketName("profile.refresh-cache")
+    .PacketName("profile.refresh-cache")
     .Submit(cancellationToken);
 ```
 

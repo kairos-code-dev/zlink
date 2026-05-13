@@ -18,3 +18,4 @@ export PYTHONPATH="$(IFS=:; printf '%s' "${PYTHONPATH_ENTRIES[*]}")"
 
 cd "${ROOT_DIR}"
 pytest -q "$@"
+"${ROOT_DIR}/samples/run_samples.sh"

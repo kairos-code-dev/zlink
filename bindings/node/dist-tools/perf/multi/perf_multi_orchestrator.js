@@ -288,6 +288,15 @@ function childEnv(args) {
     if (Number.isFinite(args.recvHwm)) {
         env.PERF_MULTI_RCVHWM = String(args.recvHwm);
     }
+    if (args.sndbuf) {
+        env.PERF_MULTI_SNDBUF = String(args.sndbuf);
+    }
+    if (args.rcvbuf) {
+        env.PERF_MULTI_RCVBUF = String(args.rcvbuf);
+    }
+    if (args.autoHwmProfile) {
+        env.PERF_CTX_AUTO_HWM_PROFILE = String(args.autoHwmProfile);
+    }
     if (Number.isFinite(args.sendTimeoutMs)) {
         env.PERF_MULTI_SNDTIMEO_MS = String(args.sendTimeoutMs);
     }

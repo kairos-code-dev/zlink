@@ -113,6 +113,7 @@ Options:
                               Requires PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
   --send-hwm N                Debug-only PERF_SINGLE_SNDHWM override.
   --recv-hwm N                Debug-only PERF_SINGLE_RCVHWM override.
+  --buf SIZE                  Debug-only override for both PERF_SINGLE_SNDBUF and PERF_SINGLE_RCVBUF.
   --sndbuf SIZE               Debug-only PERF_SINGLE_SNDBUF override (e.g. 64b, 1k, 64k).
   --rcvbuf SIZE               Debug-only PERF_SINGLE_RCVBUF override (e.g. 64b, 1k, 64k).
   --sndtimeo N                Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
@@ -195,6 +196,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --recv-hwm)
       SINGLE_RCVHWM="${2:-}"
+      shift
+      ;;
+    --buf)
+      SINGLE_SNDBUF="${2:-}"
+      SINGLE_RCVBUF="${2:-}"
       shift
       ;;
     --sndbuf)

@@ -43,8 +43,14 @@ Options:
   --hwm N                Shared HWM fallback.
   --send-hwm N           Send HWM override.
   --recv-hwm N           Receive HWM override.
+  --buf SIZE             Send/receive buffer override.
+  --sndbuf SIZE          Send buffer override.
+  --rcvbuf SIZE          Receive buffer override.
   --sndtimeo N           Send timeout ms.
   --rcvtimeo N           Receive timeout ms.
+  --send-timeout-ms N    Alias of --sndtimeo.
+  --recv-timeout-ms N    Alias of --rcvtimeo.
+  --auto-hwm-profile NAME Auto-HWM profile.
   --results-dir PATH     Results root override.
   --results-tag NAME     Optional report suffix tag.
 USAGE
@@ -66,6 +72,7 @@ while [[ $# -gt 0 ]]; do
     --hwm) HWM="${2:-}"; SEND_HWM="${2:-}"; RECV_HWM="${2:-}"; shift ;;
     --send-hwm) SEND_HWM="${2:-}"; shift ;;
     --recv-hwm) RECV_HWM="${2:-}"; shift ;;
+    --buf|--sndbuf|--rcvbuf|--auto-hwm-profile) shift ;;
     --sndtimeo|--send-timeout-ms) SNDTIMEO_MS="${2:-}"; shift ;;
     --rcvtimeo|--recv-timeout-ms) RCVTIMEO_MS="${2:-}"; shift ;;
     --results-dir) RESULTS_ROOT="${2:-}"; shift ;;
@@ -342,10 +349,10 @@ def fmt_metric(value):
 def fmt_rate(value):
     if math.isnan(value):
         return "N/A"
-    return f"{value / 1000.0:.2f} Kmsg/s"
+    return f"{value / 1000.0:.3f} Kmsg/s"
 
 def fmt_bandwidth(value):
-    return "N/A" if math.isnan(value) else f"{value:.2f} MB/s"
+    return "N/A" if math.isnan(value) else f"{value:.3f} MB/s"
 
 def fmt_latency_ms(value):
     return "N/A" if math.isnan(value) else f"{value:.3f} ms"
@@ -385,17 +392,17 @@ for pattern in patterns:
     emit("")
     for transport in pattern_transports[pattern]:
         emit(f"### Transport: {transport}")
-        emit("| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |")
-        emit("|------|------------|-----------|--------------|-------------|-------------|")
+        emit("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
+        emit("|----------|--------------------|----------------|---------------|---------------|---------------|")
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
             metric_values = {metric: median(rows[key].get(metric, [])) for metric in all_metrics}
             emit(
-                f"| {fmt_size(size)} | {fmt_rate(metric_values['throughput'])} | "
-                f"{fmt_bandwidth(metric_values['bandwidth'])} | "
-                f"{fmt_latency_ms(metric_values['latency'])} | "
-                f"{fmt_latency_ms(metric_values['latency_p95'])} | "
-                f"{fmt_latency_ms(metric_values['latency_p99'])} |"
+                f"| {fmt_size(size):<8} | {fmt_rate(metric_values['throughput']):>16} | "
+                f"{fmt_bandwidth(metric_values['bandwidth']):>12} | "
+                f"{fmt_latency_ms(metric_values['latency']):>12} | "
+                f"{fmt_latency_ms(metric_values['latency_p95']):>12} | "
+                f"{fmt_latency_ms(metric_values['latency_p99']):>12} |"
             )
             for metric in all_metrics:
                 if rows[key].get(metric):

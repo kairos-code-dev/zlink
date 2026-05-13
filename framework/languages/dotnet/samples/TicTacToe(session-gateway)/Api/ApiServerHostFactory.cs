@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionGateway.Infrastructure.Configuration;
+using TicTacToe.SessionGateway.Shared.Configuration;
 using Zlink.Framework.AspNetCore;
 
 namespace TicTacToe.SessionGateway.Api;

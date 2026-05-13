@@ -169,7 +169,7 @@ send_status_t send_dealer_request(dealer_client_slot_t *slot)
         return send_error;
     }
 
-    const int rc = zlink_send(slot->socket, &part, 1, ZLINK_DONTWAIT);
+    const int rc = zlink_std_compat_send (slot->socket, &part, 1, ZLINK_DONTWAIT);
     if (rc == 0) {
         slot->send_pending = false;
         slot->inflight = true;
@@ -198,7 +198,7 @@ recv_status_t receive_dealer_reply(dealer_client_state_t *state,
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = zlink_recv(slot->socket, NULL, &parts, &part_count,
+    const int rc = zlink_std_compat_recv (slot->socket, NULL, &parts, &part_count,
                               ZLINK_DONTWAIT);
     if (rc != 0) {
         const int err = zlink_errno();

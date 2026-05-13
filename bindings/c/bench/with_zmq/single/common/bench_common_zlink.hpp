@@ -462,7 +462,7 @@ inline int bench_send_single_part (void *socket_,
                                    zlink_msg_t *msg_,
                                    zlink_send_flags_t flags_)
 {
-    return ::zlink_send (socket_, msg_, 1, flags_) == ZLINK_SUBMIT_OK ? 0 : -1;
+    return ::zlink_std_compat_send (socket_, msg_, 1, flags_) == ZLINK_SUBMIT_OK ? 0 : -1;
 }
 
 inline int bench_send_single_part_routed (
@@ -471,7 +471,7 @@ inline int bench_send_single_part_routed (
   zlink_msg_t *msg_,
   zlink_send_flags_t flags_)
 {
-    return ::zlink_send_rid (socket_, target_rid_, msg_, 1, flags_)
+    return ::zlink_std_compat_send_rid (socket_, target_rid_, msg_, 1, flags_)
              == ZLINK_SUBMIT_OK
              ? 0
              : -1;
@@ -488,7 +488,7 @@ inline int bench_recv_single_part (void *socket_,
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = ::zlink_recv (
+    const int rc = ::zlink_std_compat_recv (
       socket_, NULL, &parts, &part_count,
       static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0)
@@ -521,7 +521,7 @@ inline int bench_recv_single_part_routed (void *socket_,
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     const int rc =
-      ::zlink_recv (socket_, source_rid_out_, &parts, &part_count,
+      ::zlink_std_compat_recv (socket_, source_rid_out_, &parts, &part_count,
                     static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0)
         return -1;

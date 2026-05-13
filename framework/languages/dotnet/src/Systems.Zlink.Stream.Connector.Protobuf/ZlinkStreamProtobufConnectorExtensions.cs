@@ -61,9 +61,9 @@ public sealed class ZlinkStreamProtobufSendBuilder
         _inner = inner;
     }
 
-    public ZlinkStreamProtobufSendBuilder WithPacketName(string name)
+    public ZlinkStreamProtobufSendBuilder PacketName(string name)
     {
-        _inner.WithPacketName(name);
+        _inner.PacketName(name);
         return this;
     }
 
@@ -98,9 +98,9 @@ public sealed class ZlinkStreamProtobufRequestBuilder
         _inner = inner;
     }
 
-    public ZlinkStreamProtobufRequestBuilder WithPacketName(string name)
+    public ZlinkStreamProtobufRequestBuilder PacketName(string name)
     {
-        _inner.WithPacketName(name);
+        _inner.PacketName(name);
         return this;
     }
 
@@ -116,9 +116,9 @@ public sealed class ZlinkStreamProtobufRequestBuilder
         return this;
     }
 
-    public ZlinkStreamProtobufRequestBuilder WithTimeout(TimeSpan timeout)
+    public ZlinkStreamProtobufRequestBuilder Timeout(TimeSpan timeout)
     {
-        _inner.WithTimeout(timeout);
+        _inner.Timeout(timeout);
         return this;
     }
 

@@ -56,9 +56,9 @@ public sealed class ZlinkStreamJsonSendBuilder
         _inner = inner;
     }
 
-    public ZlinkStreamJsonSendBuilder WithPacketName(string name)
+    public ZlinkStreamJsonSendBuilder PacketName(string name)
     {
-        _inner.WithPacketName(name);
+        _inner.PacketName(name);
         return this;
     }
 
@@ -93,9 +93,9 @@ public sealed class ZlinkStreamJsonRequestBuilder
         _inner = inner;
     }
 
-    public ZlinkStreamJsonRequestBuilder WithPacketName(string name)
+    public ZlinkStreamJsonRequestBuilder PacketName(string name)
     {
-        _inner.WithPacketName(name);
+        _inner.PacketName(name);
         return this;
     }
 
@@ -111,9 +111,9 @@ public sealed class ZlinkStreamJsonRequestBuilder
         return this;
     }
 
-    public ZlinkStreamJsonRequestBuilder WithTimeout(TimeSpan timeout)
+    public ZlinkStreamJsonRequestBuilder Timeout(TimeSpan timeout)
     {
-        _inner.WithTimeout(timeout);
+        _inner.Timeout(timeout);
         return this;
     }
 

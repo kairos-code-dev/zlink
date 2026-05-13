@@ -1,17 +1,17 @@
-using TicTacToe.SessionActorDispatch.Configuration;
-using TicTacToe.SessionActorDispatch.Infrastructure;
-using TicTacToe.SessionActorDispatch.Play;
-using TicTacToe.SessionActorDispatch.Session;
 using Microsoft.Extensions.DependencyInjection;
+using TicTacToe.SessionActorDispatch;
+using TicTacToe.SessionActorDispatch.Infrastructure;
+using TicTacToe.SessionActorDispatch.Session;
 using TicTacToe.SessionGateway.Api;
 using TicTacToe.SessionGateway.Client;
 using TicTacToe.SessionGateway.Infrastructure;
 using TicTacToe.SessionGateway.Infrastructure.Configuration;
 using TicTacToe.SessionGateway.Play;
 using TicTacToe.SessionGateway.Registry;
+using TicTacToe.SessionGateway.Shared.Configuration;
 using Zlink.Framework.Spots;
 
-namespace TicTacToe.SessionActorDispatch;
+namespace TicTacToe.SessionGateway.Server.Scenario;
 
 public static class SessionActorDispatchSampleScenario
 {
@@ -24,7 +24,7 @@ public static class SessionActorDispatchSampleScenario
         var playRoutes = new RegistryPlayRouteStore(registryMetadata, "tictactoe");
         var routePublisher = new RegistryPlayRoutePublisher(playRoutes, playRoutes, topology);
         await routePublisher.BindInitialActorPlayRoutesAsync(
-                new[] { SampleNames.XActorId, SampleNames.OActorId },
+                [SampleNames.XActorId, SampleNames.OActorId],
                 cancellationToken)
             .ConfigureAwait(false);
         using var registryHost = RegistryHostFactory.Build(topology);

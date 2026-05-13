@@ -2892,6 +2892,7 @@ class Spot:
             raise RuntimeError("routed handler is already attached")
 
         def _callback(source_node_rid_ptr, source_spot_rid_ptr, request_seq, parts_ptr, part_count, _):
+            received = None
             try:
                 source_node_rid = (
                     source_node_rid_ptr.contents
@@ -2929,11 +2930,16 @@ class Spot:
                         else None,
                     ),
                 )
-                handler(received)
+                _enter_callback()
+                try:
+                    handler(received)
+                finally:
+                    _leave_callback()
             except Exception:
                 _report_unhandled_callback_exception(handler)
-            else:
-                received.close()
+            finally:
+                if received is not None:
+                    received.close()
 
         callback = _SPOT_ROUTED_HANDLER(_callback)
         rc = lib().zlink_spot_handler(self._handle, callback, None)
@@ -2969,17 +2975,19 @@ class Spot:
                         timer = self._timers.get(info.subject)
                     elif subject_kind == SpotDispatchSubjectKind.CHANNEL_DEALER:
                         channel_dealer = self._node._channel_dealers.get(info.subject)
-                handler(
-                    self,
-                    SpotDispatchInfo(
-                        event=SpotDispatchEvent(int(info.event)),
-                        subject_kind=subject_kind,
-                        timer=timer,
-                        channel_dealer=channel_dealer,
-                        actor=actor_ref,
-                        _node_handle=self._node._handle,
-                    ),
+                dispatch_info = SpotDispatchInfo(
+                    event=SpotDispatchEvent(int(info.event)),
+                    subject_kind=subject_kind,
+                    timer=timer,
+                    channel_dealer=channel_dealer,
+                    actor=actor_ref,
+                    _node_handle=self._node._handle,
                 )
+                _enter_callback()
+                try:
+                    handler(self, dispatch_info)
+                finally:
+                    _leave_callback()
             except Exception:
                 _report_unhandled_callback_exception(handler)
 

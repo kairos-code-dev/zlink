@@ -136,7 +136,7 @@ inline bool publish_once (void *server,
         return false;
     std::memcpy (zlink_msg_data (&payload_part), payload.data (), send_size);
 
-    if (::zlink_publish (
+    if (::zlink_std_compat_publish (
           server, k_pubsub_topic, &payload_part, 1, ZLINK_DONTWAIT)
         >= 0) {
         if (bench_debug_enabled ()

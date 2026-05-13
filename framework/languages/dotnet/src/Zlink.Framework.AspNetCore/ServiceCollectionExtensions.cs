@@ -38,7 +38,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ZLinkClient>();
         services.AddSingleton<IZLinkClientServerClient>(static provider => provider.GetRequiredService<ZLinkClient>());
         services.AddSingleton<IZLinkClient>(static provider => provider.GetRequiredService<ZLinkClient>());
-        services.AddSingleton<IZLinkRouteClient, ZLinkRouteClient>();
+        services.AddSingleton<ZLinkRouteClient>();
+        services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
+        services.AddSingleton<IZLinkMultipartRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<ZLinkEventPublisher>();
         services.AddSingleton<IZLinkFanoutPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
         services.AddSingleton<IZLinkEventPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());

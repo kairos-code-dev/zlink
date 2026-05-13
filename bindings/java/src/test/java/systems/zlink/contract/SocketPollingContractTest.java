@@ -8,14 +8,13 @@ import systems.zlink.PollEventFlag;
 import systems.zlink.Poller;
 import systems.zlink.TestSupport;
 import systems.zlink.Timer;
-import java.lang.reflect.Modifier;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SocketPollingContractTest {
@@ -67,9 +66,9 @@ public class SocketPollingContractTest {
     }
 
     @Test
-    public void legacySocketPollSetTypeIsHidden() throws Exception {
-        assertFalse(Modifier.isPublic(
-            Class.forName("systems.zlink.SocketPollSet")
-              .getModifiers()));
+    public void legacySocketPollSetTypeIsNotPartOfTheRootPackage() {
+        assertThrows(
+            ClassNotFoundException.class,
+            () -> Class.forName("systems.zlink.SocketPollSet"));
     }
 }

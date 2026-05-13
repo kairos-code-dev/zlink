@@ -116,9 +116,9 @@ public sealed class ZlinkStreamAutoCodecSendBuilder
         _inner = inner;
     }
 
-    public ZlinkStreamAutoCodecSendBuilder WithPacketName(string name)
+    public ZlinkStreamAutoCodecSendBuilder PacketName(string name)
     {
-        _inner.WithPacketName(name);
+        _inner.PacketName(name);
         return this;
     }
 
@@ -153,9 +153,9 @@ public sealed class ZlinkStreamAutoCodecRequestBuilder
         _inner = inner;
     }
 
-    public ZlinkStreamAutoCodecRequestBuilder WithPacketName(string name)
+    public ZlinkStreamAutoCodecRequestBuilder PacketName(string name)
     {
-        _inner.WithPacketName(name);
+        _inner.PacketName(name);
         return this;
     }
 
@@ -171,9 +171,9 @@ public sealed class ZlinkStreamAutoCodecRequestBuilder
         return this;
     }
 
-    public ZlinkStreamAutoCodecRequestBuilder WithTimeout(TimeSpan timeout)
+    public ZlinkStreamAutoCodecRequestBuilder Timeout(TimeSpan timeout)
     {
-        _inner.WithTimeout(timeout);
+        _inner.Timeout(timeout);
         return this;
     }
 

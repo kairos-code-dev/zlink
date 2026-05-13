@@ -152,11 +152,11 @@ public final class Timer implements AutoCloseable {
         if (handler == null) {
             return;
         }
-        SocketCore.enterCallback();
+        Socket.enterCallbackContext();
         try {
             handler.onFire(timer, fireCount);
         } finally {
-            SocketCore.leaveCallback();
+            Socket.leaveCallbackContext();
         }
     }
 

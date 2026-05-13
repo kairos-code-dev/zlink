@@ -710,12 +710,12 @@ app.MapPost("/profiles/get", async (
 ```csharp
 var reply = await client
     .Request("profile", new GetProfileRequest { AccountId = accountId })
-    .WithTimeout(TimeSpan.FromMilliseconds(200))
+    .Timeout(TimeSpan.FromMilliseconds(200))
     .Submit<GetProfileReply>(cancellationToken);
 
 await client
     .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
-    .WithPacketName("profile.refresh-cache")
+    .PacketName("profile.refresh-cache")
     .Submit(cancellationToken);
 ```
 
@@ -805,6 +805,17 @@ logging, validation, authorization, metrics, exception mapping 같은 공통 처
 
 - 메시지 = `header + body`
 - body codec = `protobuf` 또는 `json`
+
+서버 간 channel message는 공통
+[message-model.ko.md](../../policy/message-model.ko.md)의 multipart 계약을 따른다.
+즉 framework runtime이 `DEALER/ROUTER` 또는 `PUB/SUB`로 보내는 wire message는
+`parts[0] = framework header`, `parts[1] = body payload` 형태다. header와 body를
+하나의 JSON envelope로 합쳐서 단일 `Message`로 보내지 않는다.
+
+이 규칙은 handler 표면을 복잡하게 만들기 위한 것이 아니다. application handler는
+여전히 typed request body와 context를 받는다. multipart는 adapter 내부 transport
+계약이며, route와 dispatch가 header만 읽고 body decode를 handler 선택 이후로 늦출 수
+있게 하기 위한 규칙이다.
 
 `.NET` 표면에서는 codec 등록과 serializer 선택을 다음처럼 노출할 수 있다. 여기서
 `options.Codecs.*`는 binding core에 codec 구현을 직접 끼워 넣는다는 뜻이 아니라,

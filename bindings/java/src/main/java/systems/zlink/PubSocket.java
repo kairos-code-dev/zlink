@@ -2,6 +2,7 @@
 
 package systems.zlink;
 
+import systems.zlink.internal.SocketOperations;
 import systems.zlink.service.discovery.Discovery;
 import systems.zlink.service.spot.SendOp;
 

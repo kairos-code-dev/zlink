@@ -14,7 +14,7 @@ internal sealed class TicTacToeJoinService
         var reply = await actor.Context.JoinSpot(
                 ZLinkSpotId.FromRoutingId(spotRid),
                 new TicTacToeGameJoinReq(request.GameId, actor.ActorId))
-            .WithTimeout(SampleTimeouts.Request)
+            .Timeout(SampleTimeouts.Request)
             .SubmitAsync<TicTacToeGameJoinRes>(cancellationToken);
 
         return new JoinGameRes(reply.State);

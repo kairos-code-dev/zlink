@@ -7,10 +7,7 @@ import zlink
 
 class VersionTests(unittest.TestCase):
     def test_version_matches_core(self):
-        try:
-            major, minor, patch = zlink.version()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        major, minor, patch = zlink.version()
 
         header = (
             pathlib.Path(__file__).resolve().parents[3] / "core" / "include" / "zlink.h"
@@ -28,10 +25,7 @@ class VersionTests(unittest.TestCase):
         self.assertEqual((major, minor, patch), (expected_major, expected_minor, expected_patch))
 
     def test_pair_send_recv(self):
-        try:
-            ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        ctx = zlink.Context()
         with ctx:
             with zlink.PairSocket(ctx) as s1:
                 with zlink.PairSocket(ctx) as s2:

@@ -96,7 +96,7 @@ bool complete_handshake (::perf::socket_t &receiver,
         }
 
         if (!connected) {
-            (void) poller.wait (std::chrono::milliseconds (1));
+            (void) poller.wait (std::chrono::milliseconds (-1));
         }
     }
 
@@ -227,7 +227,6 @@ bool send_router_samples (::perf::socket_t *sender_,
             && errno != EHOSTUNREACH && errno != ENOTCONN) {
             break;
         }
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
 
     return true;

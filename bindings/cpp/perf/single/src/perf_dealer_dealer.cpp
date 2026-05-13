@@ -152,7 +152,6 @@ bool run_pattern_dealer_dealer (const std::string &transport,
             catch (const zlink::zlink_error_t &) {
                 break;
             }
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
         }
     });
 

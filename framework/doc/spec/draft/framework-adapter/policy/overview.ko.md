@@ -57,6 +57,19 @@ pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상�
 - stream session
 - socket/discovery/registry/spot runtime event
 
+transport 축은 사용자에게 그대로 노출하지 않더라도, 내부 wire 경계는 언어별
+adapter가 공통으로 지켜야 한다.
+
+- 서버 간 framework message (`DEALER/ROUTER`, routed channel, `SPOT` channel,
+  internal actor dispatch, internal session proxy)는 multipart `header + body`를
+  사용한다.
+- `STREAM`은 하나의 stream packet을 기본 단위로 사용한다. stream header와 body는 그
+  packet 안의 frame으로 다룬다.
+
+이 구분은 성능과 소유권을 위한 기본 정책이다. 서버 간 body를 header와 함께 단일
+직렬화 envelope로 묶으면 body를 다시 복사하거나 재인코딩하게 되고, route나 dispatch가
+header만 읽는 장점도 잃는다.
+
 ## 3. 핵심 차별점
 
 일반적인 웹 서버 환경에서는 위치투명성과 provider 선택을 위해 아래 중 하나를

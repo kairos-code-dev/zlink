@@ -54,7 +54,9 @@ if(EXISTS "${RC_ZLINK_INCLUDE_DIR}/zlink.h")
     if(ZLINK_BUILD_WITH_ROUTING_ZLINK_BENCHES)
         add_executable(bench_rc_zlink_server zlink/bench_zlink_router_server.cpp)
         target_link_libraries(bench_rc_zlink_server PRIVATE ${ZLINK_C_CORE_TARGET} Threads::Threads)
-        target_include_directories(bench_rc_zlink_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
+        target_include_directories(bench_rc_zlink_server PRIVATE
+            ${RC_ZLINK_INCLUDE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/common)
         target_compile_options(bench_rc_zlink_server PRIVATE ${RC_BENCH_CXX_FLAGS})
         target_compile_features(bench_rc_zlink_server PRIVATE cxx_std_17)
         set_target_properties(bench_rc_zlink_server PROPERTIES
@@ -63,7 +65,9 @@ if(EXISTS "${RC_ZLINK_INCLUDE_DIR}/zlink.h")
 
         add_executable(bench_rc_zlink_client zlink/bench_zlink_router_client.cpp)
         target_link_libraries(bench_rc_zlink_client PRIVATE ${ZLINK_C_CORE_TARGET} Threads::Threads)
-        target_include_directories(bench_rc_zlink_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
+        target_include_directories(bench_rc_zlink_client PRIVATE
+            ${RC_ZLINK_INCLUDE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/common)
         target_compile_options(bench_rc_zlink_client PRIVATE ${RC_BENCH_CXX_FLAGS})
         target_compile_features(bench_rc_zlink_client PRIVATE cxx_std_17)
         set_target_properties(bench_rc_zlink_client PROPERTIES

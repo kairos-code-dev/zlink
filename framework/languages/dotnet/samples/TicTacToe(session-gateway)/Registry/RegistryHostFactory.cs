@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionGateway.Infrastructure.Configuration;
 using Zlink.Framework.AspNetCore;
 

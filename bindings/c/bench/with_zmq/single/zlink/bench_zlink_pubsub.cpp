@@ -205,7 +205,7 @@ inline int recv_single_part_header_flags (
     size_t part_count = 0;
     char topic_id[256];
     size_t topic_len = sizeof (topic_id);
-    const int rc = ::zlink_subscribe (
+    const int rc = ::zlink_std_compat_subscribe (
       socket,
       NULL,
       &parts,
@@ -397,7 +397,7 @@ inline bool run_oneway_phase (void *pub_socket,
                 send_failed = true;
                 break;
             }
-            if (::zlink_publish (pub_socket, k_pubsub_topic, &part, 1,
+            if (::zlink_std_compat_publish (pub_socket, k_pubsub_topic, &part, 1,
                                  static_cast<zlink_send_flags_t> (0))
                 != ZLINK_SUBMIT_OK) {
                 ::zlink_msg_close (&part);
@@ -427,7 +427,7 @@ inline bool run_oneway_phase (void *pub_socket,
                 send_failed = true;
                 break;
             }
-            if (::zlink_publish (pub_socket, k_pubsub_topic, &part, 1,
+            if (::zlink_std_compat_publish (pub_socket, k_pubsub_topic, &part, 1,
                                  static_cast<zlink_send_flags_t> (0))
                 != ZLINK_SUBMIT_OK) {
                 ::zlink_msg_close (&part);

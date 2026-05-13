@@ -36,5 +36,19 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(PubSocket nativeSocket)
             .Submit();
     }
 
+    public bool Publish(
+        string topic,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        var operation = nativeSocket.Publish(topic).Message(parts[0]);
+        for (var index = 1; index < parts.Count; index++)
+        {
+            operation = operation.Message(parts[index]);
+        }
+
+        return operation.Flags(flags).Submit();
+    }
+
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();
 }

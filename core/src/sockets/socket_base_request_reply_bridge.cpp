@@ -69,6 +69,10 @@ int zlink::socket_base_t::set_channel_name_metadata (const char *channel_name_)
         errno = EINVAL;
         return -1;
     }
+    if (std::strlen (channel_name_) > 255) {
+        errno = EINVAL;
+        return -1;
+    }
     if (_channel_name_locked) {
         errno = EBUSY;
         return -1;

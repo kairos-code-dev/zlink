@@ -127,12 +127,7 @@ internal static class PerfMultiSpotServer
 
     private static void TryPublishStopToken(Spot spotPub, SpotServerConfig config)
     {
-        for (int retry = 0; retry < 100; retry++)
-        {
-            if (TryPublish(spotPub, config, MultiStopToken, SendFlags.DontWait))
-                return;
-            System.Threading.Thread.Sleep(1);
-        }
+        TryPublish(spotPub, config, MultiStopToken, SendFlags.None);
     }
 
     private static bool TryPublish(Spot spotPub, SpotServerConfig config,

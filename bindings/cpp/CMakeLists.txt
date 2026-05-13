@@ -142,14 +142,17 @@ endfunction()
 
 zlink_cpp_ensure_core_target(ZLINK_CPP_CORE_TARGET ZLINK_CPP_RUNTIME_DIR)
 
-add_library(zlink-cpp INTERFACE)
-target_include_directories(zlink-cpp INTERFACE
+add_library(zlink-cpp STATIC
+  src/request_progress.cpp
+)
+target_include_directories(zlink-cpp PUBLIC
   ${ZLINK_CORE_DIR}/include
   ${ZLINK_CORE_DIR}/external/boost
   ${CMAKE_CURRENT_LIST_DIR}/include
 )
+target_link_libraries(zlink-cpp PUBLIC ${ZLINK_CPP_CORE_TARGET})
 
-target_compile_features(zlink-cpp INTERFACE cxx_std_20)
+target_compile_features(zlink-cpp PUBLIC cxx_std_20)
 
 find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)

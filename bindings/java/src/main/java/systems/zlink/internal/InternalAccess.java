@@ -30,116 +30,107 @@ import java.util.function.BiFunction;
  * Non-exported bridge for package-private root-package internals.
  */
 public final class InternalAccess {
-    private static final Class<?> ROOT_BRIDGE = rootBridgeClass();
-    private static final MethodHandles.Lookup ROOT_LOOKUP = rootLookup();
-
     private static final MethodHandle CONTEXT_HANDLE =
-        staticMethod("contextHandle", MemorySegment.class, Context.class);
+        virtualMethod(Context.class, "handle", MemorySegment.class);
     private static final MethodHandle DISCOVERY_HANDLE =
-        staticMethod("discoveryHandle", MemorySegment.class, Discovery.class);
+        virtualMethod(Discovery.class, "handleInternal", MemorySegment.class);
     private static final MethodHandle SOCKET_HANDLE =
-        staticMethod("socketHandle", MemorySegment.class, Socket.class);
+        virtualMethod(Socket.class, "handle", MemorySegment.class);
     private static final MethodHandle SPOT_HANDLE =
-        staticMethod("spotHandle", MemorySegment.class, Spot.class);
+        virtualMethod(Spot.class, "handleInternal", MemorySegment.class);
     private static final MethodHandle SPOT_NODE_HANDLE =
-        staticMethod("spotNodeHandle", MemorySegment.class, SpotNode.class);
+        virtualMethod(SpotNode.class, "handleInternal", MemorySegment.class);
     private static final MethodHandle SPOT_DISPATCH_SUBJECT =
-        staticMethod("spotDispatchSubject", MemorySegment.class,
-          SpotDispatchInfo.class);
+        virtualMethod(SpotDispatchInfo.class, "subject", MemorySegment.class);
     private static final MethodHandle SPOT_DISPATCH_INFO =
-        staticMethod("spotDispatchInfo", SpotDispatchInfo.class,
-          SpotDispatchEvent.class, SpotDispatchSubjectKind.class,
-          MemorySegment.class);
+        constructor(SpotDispatchInfo.class, SpotDispatchEvent.class,
+          SpotDispatchSubjectKind.class, MemorySegment.class);
     private static final MethodHandle SPOT_DISPATCH_INFO_ACTOR =
-        staticMethod("spotDispatchInfo", SpotDispatchInfo.class,
-          SpotDispatchEvent.class, SpotDispatchSubjectKind.class,
-          MemorySegment.class, List.class);
+        constructor(SpotDispatchInfo.class, SpotDispatchEvent.class,
+          SpotDispatchSubjectKind.class, MemorySegment.class, List.class);
     private static final MethodHandle SPOT_DISPATCH_INFO_FULL =
-        staticMethod("spotDispatchInfo", SpotDispatchInfo.class,
-          SpotDispatchEvent.class, SpotDispatchSubjectKind.class,
-          MemorySegment.class, Timer.class, String.class, List.class);
+        constructor(SpotDispatchInfo.class, SpotDispatchEvent.class,
+          SpotDispatchSubjectKind.class, MemorySegment.class, Timer.class,
+          String.class, List.class);
     private static final MethodHandle TIMER_FROM_BORROWED_HANDLE =
-        staticMethod("timerFromBorrowedHandle", Timer.class,
+        staticMethod(Timer.class, "fromBorrowedHandle", Timer.class,
           MemorySegment.class);
     private static final MethodHandle MESSAGE_DATA_SEGMENT =
-        staticMethod("messageDataSegment", MemorySegment.class, Message.class);
+        virtualMethod(Message.class, "dataSegment", MemorySegment.class);
     private static final MethodHandle MESSAGE_DATA_SEGMENT_KNOWN =
-        staticMethod("messageDataSegment", MemorySegment.class, Message.class,
+        virtualMethod(Message.class, "dataSegment", MemorySegment.class,
           int.class);
     private static final MethodHandle MESSAGE_COPY_TO =
-        staticMethod("messageCopyTo", void.class, Message.class,
-          MemorySegment.class);
+        virtualMethod(Message.class, "copyTo", void.class, MemorySegment.class);
     private static final MethodHandle MESSAGE_MOVE_TO =
-        staticMethod("messageMoveTo", void.class, Message.class,
-          MemorySegment.class);
+        virtualMethod(Message.class, "moveTo", void.class, MemorySegment.class);
     private static final MethodHandle MESSAGE_NATIVE_HANDLE =
-        staticMethod("messageNativeHandle", MemorySegment.class,
-          Message.class);
+        virtualMethod(Message.class, "nativeHandle", MemorySegment.class);
     private static final MethodHandle MESSAGE_SET_MORE =
-        staticMethod("messageSetMore", void.class, Message.class,
-          boolean.class);
+        virtualMethod(Message.class, "setMore", void.class, boolean.class);
     private static final MethodHandle MESSAGE_MORE =
-        staticMethod("messageMore", boolean.class, Message.class);
+        virtualMethod(Message.class, "more", boolean.class);
     private static final MethodHandle MESSAGE_FINISH_RECEIVE =
-        staticMethod("messageFinishReceive", void.class, Message.class,
+        virtualMethod(Message.class, "finishReceive", void.class,
           boolean.class);
     private static final MethodHandle MESSAGE_TRANSFER_TO =
-        staticMethod("messageTransferTo", Object.class, Message.class,
+        virtualMethod(Message.class, "transferTo", Object.class,
           MemorySegment.class);
     private static final MethodHandle MESSAGE_RESTORE_FROM_NATIVE =
-        staticMethod("messageRestoreFromNative", void.class, Message.class,
+        virtualMethod(Message.class, "restoreFromNative", void.class,
           MemorySegment.class, boolean.class, Object.class);
     private static final MethodHandle MESSAGE_SHARED_COPY_OF =
-        staticMethod("messageSharedCopyOf", Message.class, Message.class);
+        staticMethod(Message.class, "sharedCopyOf", Message.class,
+          Message.class);
     private static final MethodHandle MESSAGE_FROM_MSG_VECTOR =
-        staticMethod("messageFromMsgVector", Message[].class,
+        staticMethod(Message.class, "fromMsgVector", Message[].class,
           MemorySegment.class, long.class);
     private static final MethodHandle MESSAGE_FROM_OWNED_MSG_VECTOR =
-        staticMethod("messageFromOwnedMsgVector", Message[].class,
+        staticMethod(Message.class, "fromOwnedMsgVector", Message[].class,
           MemorySegment.class, long.class);
     private static final MethodHandle MESSAGE_FROM_OWNED_MSG_VECTOR_SHARED =
-        staticMethod("messageFromOwnedMsgVectorShared", Message[].class,
+        staticMethod(Message.class, "fromOwnedMsgVectorShared", Message[].class,
           MemorySegment.class, long.class);
     private static final MethodHandle RECEIVED =
-        staticMethod("received", Received.class, RoutingId.class,
-          Message[].class);
+        constructor(Received.class, RoutingId.class, Message[].class);
     private static final MethodHandle RECEIVED_WITH_REPLY =
-        staticMethod("received", Received.class, RoutingId.class,
-          RoutingId.class, Message[].class, long.class, boolean.class,
+        constructor(Received.class, RoutingId.class, RoutingId.class,
+          Message[].class, boolean.class, long.class, boolean.class,
           BiConsumer.class);
     private static final MethodHandle RECEIVED_LAZY_BYTES =
-        staticMethod("receivedLazy", Received.class, byte[].class,
-          byte[].class, Message.class, ReceivedPartCursor.class, long.class,
-          boolean.class, BiConsumer.class, Runnable.class);
+        constructor(Received.class, byte[].class, byte[].class, Message.class,
+          ReceivedPartCursor.class, long.class, boolean.class, BiConsumer.class,
+          Runnable.class);
     private static final MethodHandle RECEIVED_LAZY_RIDS =
-        staticMethod("receivedLazy", Received.class, RoutingId.class,
-          RoutingId.class, Message.class, ReceivedPartCursor.class,
-          long.class, boolean.class, BiConsumer.class, Runnable.class);
+        constructor(Received.class, RoutingId.class, RoutingId.class,
+          Message.class, ReceivedPartCursor.class, long.class, boolean.class,
+          BiConsumer.class, Runnable.class);
     private static final MethodHandle TOPIC_MESSAGE =
-        staticMethod("topicMessage", TopicMessage.class, RoutingId.class,
+        constructor(TopicMessage.class, RoutingId.class,
           String.class, Message[].class);
     private static final MethodHandle RECEIVED_FORCE_MATERIALIZE =
-        staticMethod("receivedForceMaterialize", void.class, Received.class);
+        virtualMethod(Received.class, "forceMaterialize", void.class);
     private static final MethodHandle RECEIVED_TAKE_PARTS =
-        staticMethod("receivedTakeParts", List.class, Received.class);
+        virtualMethod(Received.class, "takeParts", List.class);
     private static final MethodHandle RECEIVED_SET_SEND_SENDER =
-        staticMethod("receivedSetSendSender", void.class, Received.class,
+        virtualMethod(Received.class, "setSendSender", void.class,
           BiFunction.class);
     private static final MethodHandle IN_CALLBACK =
-        staticMethod("inCallback", boolean.class);
+        staticMethod(Socket.class, "inCallbackContext", boolean.class);
     private static final MethodHandle ENTER_CALLBACK =
-        staticMethod("enterCallback", void.class);
+        staticMethod(Socket.class, "enterCallbackContext", void.class);
     private static final MethodHandle LEAVE_CALLBACK =
-        staticMethod("leaveCallback", void.class);
+        staticMethod(Socket.class, "leaveCallbackContext", void.class);
     private static final MethodHandle ROUTING_ID_FROM_TRUSTED =
-        staticMethod("routingIdFromTrusted", RoutingId.class, byte[].class);
+        staticMethod(RoutingId.class, "fromTrusted", RoutingId.class,
+          byte[].class);
     private static final MethodHandle ROUTING_ID_TRUSTED_BYTES =
-        staticMethod("routingIdTrustedBytes", byte[].class, RoutingId.class);
+        virtualMethod(RoutingId.class, "trustedBytes", byte[].class);
     private static final MethodHandle ZLINK_EXCEPTION_FROM_LAST_ERROR =
-        staticMethod("zlinkExceptionFromLastError", ZlinkException.class,
+        staticMethod(ZlinkException.class, "fromLastError", ZlinkException.class,
           String.class);
     private static final MethodHandle ZLINK_EXCEPTION_FROM_ERRNO =
-        staticMethod("zlinkExceptionFromErrno", ZlinkException.class,
+        staticMethod(ZlinkException.class, "fromErrno", ZlinkException.class,
           String.class, int.class);
 
     private InternalAccess() {
@@ -147,7 +138,7 @@ public final class InternalAccess {
 
     public static MemorySegment contextHandle(Context context) {
         try {
-            return (MemorySegment) CONTEXT_HANDLE.invokeExact(context);
+            return (MemorySegment) CONTEXT_HANDLE.invoke(context);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -155,7 +146,7 @@ public final class InternalAccess {
 
     public static MemorySegment discoveryHandle(Discovery discovery) {
         try {
-            return (MemorySegment) DISCOVERY_HANDLE.invokeExact(discovery);
+            return (MemorySegment) DISCOVERY_HANDLE.invoke(discovery);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -163,7 +154,7 @@ public final class InternalAccess {
 
     public static MemorySegment socketHandle(Socket socket) {
         try {
-            return (MemorySegment) SOCKET_HANDLE.invokeExact(socket);
+            return (MemorySegment) SOCKET_HANDLE.invoke(socket);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -171,7 +162,7 @@ public final class InternalAccess {
 
     public static MemorySegment spotHandle(Spot spot) {
         try {
-            return (MemorySegment) SPOT_HANDLE.invokeExact(spot);
+            return (MemorySegment) SPOT_HANDLE.invoke(spot);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -179,7 +170,7 @@ public final class InternalAccess {
 
     public static MemorySegment spotNodeHandle(SpotNode node) {
         try {
-            return (MemorySegment) SPOT_NODE_HANDLE.invokeExact(node);
+            return (MemorySegment) SPOT_NODE_HANDLE.invoke(node);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -187,7 +178,7 @@ public final class InternalAccess {
 
     public static MemorySegment spotDispatchSubject(SpotDispatchInfo info) {
         try {
-            return (MemorySegment) SPOT_DISPATCH_SUBJECT.invokeExact(info);
+            return (MemorySegment) SPOT_DISPATCH_SUBJECT.invoke(info);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -198,7 +189,7 @@ public final class InternalAccess {
       SpotDispatchSubjectKind subjectKind,
       MemorySegment subject) {
         try {
-            return (SpotDispatchInfo) SPOT_DISPATCH_INFO.invokeExact(event,
+            return (SpotDispatchInfo) SPOT_DISPATCH_INFO.invoke(event,
               subjectKind, subject);
         } catch (Throwable t) {
             throw unchecked(t);
@@ -212,7 +203,7 @@ public final class InternalAccess {
       MemorySegment subject,
       List<ActorPart> actorParts) {
         try {
-            return (SpotDispatchInfo) SPOT_DISPATCH_INFO_ACTOR.invokeExact(
+            return (SpotDispatchInfo) SPOT_DISPATCH_INFO_ACTOR.invoke(
               event, subjectKind, subject, (List<?>) actorParts);
         } catch (Throwable t) {
             throw unchecked(t);
@@ -228,7 +219,7 @@ public final class InternalAccess {
       String channelName,
       List<ActorPart> actorParts) {
         try {
-            return (SpotDispatchInfo) SPOT_DISPATCH_INFO_FULL.invokeExact(
+            return (SpotDispatchInfo) SPOT_DISPATCH_INFO_FULL.invoke(
               event, subjectKind, subject, timer, channelName,
               (List<?>) actorParts);
         } catch (Throwable t) {
@@ -238,7 +229,7 @@ public final class InternalAccess {
 
     public static Timer timerFromBorrowedHandle(MemorySegment handle) {
         try {
-            return (Timer) TIMER_FROM_BORROWED_HANDLE.invokeExact(handle);
+            return (Timer) TIMER_FROM_BORROWED_HANDLE.invoke(handle);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -246,7 +237,7 @@ public final class InternalAccess {
 
     public static MemorySegment messageDataSegment(Message message) {
         try {
-            return (MemorySegment) MESSAGE_DATA_SEGMENT.invokeExact(message);
+            return (MemorySegment) MESSAGE_DATA_SEGMENT.invoke(message);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -255,7 +246,7 @@ public final class InternalAccess {
     public static MemorySegment messageDataSegment(Message message,
                                                    int knownSize) {
         try {
-            return (MemorySegment) MESSAGE_DATA_SEGMENT_KNOWN.invokeExact(
+            return (MemorySegment) MESSAGE_DATA_SEGMENT_KNOWN.invoke(
               message, knownSize);
         } catch (Throwable t) {
             throw unchecked(t);
@@ -265,7 +256,7 @@ public final class InternalAccess {
     public static void messageCopyTo(Message message,
                                      MemorySegment destination) {
         try {
-            MESSAGE_COPY_TO.invokeExact(message, destination);
+            MESSAGE_COPY_TO.invoke(message, destination);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -274,7 +265,7 @@ public final class InternalAccess {
     public static void messageMoveTo(Message message,
                                      MemorySegment destination) {
         try {
-            MESSAGE_MOVE_TO.invokeExact(message, destination);
+            MESSAGE_MOVE_TO.invoke(message, destination);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -282,7 +273,7 @@ public final class InternalAccess {
 
     public static MemorySegment messageNativeHandle(Message message) {
         try {
-            return (MemorySegment) MESSAGE_NATIVE_HANDLE.invokeExact(message);
+            return (MemorySegment) MESSAGE_NATIVE_HANDLE.invoke(message);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -290,7 +281,7 @@ public final class InternalAccess {
 
     public static void messageSetMore(Message message, boolean more) {
         try {
-            MESSAGE_SET_MORE.invokeExact(message, more);
+            MESSAGE_SET_MORE.invoke(message, more);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -298,7 +289,7 @@ public final class InternalAccess {
 
     public static boolean messageMore(Message message) {
         try {
-            return (boolean) MESSAGE_MORE.invokeExact(message);
+            return (boolean) MESSAGE_MORE.invoke(message);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -306,7 +297,7 @@ public final class InternalAccess {
 
     public static void messageFinishReceive(Message message, boolean more) {
         try {
-            MESSAGE_FINISH_RECEIVE.invokeExact(message, more);
+            MESSAGE_FINISH_RECEIVE.invoke(message, more);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -315,7 +306,7 @@ public final class InternalAccess {
     public static Object messageTransferTo(Message message,
                                            MemorySegment destination) {
         try {
-            return MESSAGE_TRANSFER_TO.invokeExact(message, destination);
+            return MESSAGE_TRANSFER_TO.invoke(message, destination);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -326,7 +317,7 @@ public final class InternalAccess {
                                                 boolean moreFlag,
                                                 Object anchor) {
         try {
-            MESSAGE_RESTORE_FROM_NATIVE.invokeExact(message, source, moreFlag,
+            MESSAGE_RESTORE_FROM_NATIVE.invoke(message, source, moreFlag,
               anchor);
         } catch (Throwable t) {
             throw unchecked(t);
@@ -335,7 +326,7 @@ public final class InternalAccess {
 
     public static Message messageSharedCopyOf(Message message) {
         try {
-            return (Message) MESSAGE_SHARED_COPY_OF.invokeExact(message);
+            return (Message) MESSAGE_SHARED_COPY_OF.invoke(message);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -344,7 +335,7 @@ public final class InternalAccess {
     public static Message[] messageFromMsgVector(MemorySegment partsAddr,
                                                  long count) {
         try {
-            return (Message[]) MESSAGE_FROM_MSG_VECTOR.invokeExact(partsAddr,
+            return (Message[]) MESSAGE_FROM_MSG_VECTOR.invoke(partsAddr,
               count);
         } catch (Throwable t) {
             throw unchecked(t);
@@ -354,7 +345,7 @@ public final class InternalAccess {
     public static Message[] messageFromOwnedMsgVector(MemorySegment partsAddr,
                                                       long count) {
         try {
-            return (Message[]) MESSAGE_FROM_OWNED_MSG_VECTOR.invokeExact(
+            return (Message[]) MESSAGE_FROM_OWNED_MSG_VECTOR.invoke(
               partsAddr, count);
         } catch (Throwable t) {
             throw unchecked(t);
@@ -366,7 +357,7 @@ public final class InternalAccess {
       long count) {
         try {
             return (Message[]) MESSAGE_FROM_OWNED_MSG_VECTOR_SHARED
-              .invokeExact(partsAddr, count);
+              .invoke(partsAddr, count);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -374,7 +365,7 @@ public final class InternalAccess {
 
     public static Received received(RoutingId routingId, Message[] parts) {
         try {
-            return (Received) RECEIVED.invokeExact(routingId, parts);
+            return (Received) RECEIVED.invoke(routingId, parts);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -388,8 +379,8 @@ public final class InternalAccess {
                                     boolean hasRequestSeq,
                                     BiConsumer<List<Message>, SendFlags> replySender) {
         try {
-            return (Received) RECEIVED_WITH_REPLY.invokeExact(routingId,
-              spotRid, parts, requestSeq, hasRequestSeq,
+            return (Received) RECEIVED_WITH_REPLY.invoke(routingId,
+              spotRid, parts, true, requestSeq, hasRequestSeq,
               (BiConsumer<?, ?>) replySender);
         } catch (Throwable t) {
             throw unchecked(t);
@@ -406,7 +397,7 @@ public final class InternalAccess {
                                         BiConsumer<List<Message>, SendFlags> replySender,
                                         Runnable onTerminalState) {
         try {
-            return (Received) RECEIVED_LAZY_BYTES.invokeExact(routingIdBytes,
+            return (Received) RECEIVED_LAZY_BYTES.invoke(routingIdBytes,
               spotRidBytes, firstPart, cursor, requestSeq, hasRequestSeq,
               (BiConsumer<?, ?>) replySender, onTerminalState);
         } catch (Throwable t) {
@@ -424,7 +415,7 @@ public final class InternalAccess {
                                         BiConsumer<List<Message>, SendFlags> replySender,
                                         Runnable onTerminalState) {
         try {
-            return (Received) RECEIVED_LAZY_RIDS.invokeExact(routingId,
+            return (Received) RECEIVED_LAZY_RIDS.invoke(routingId,
               spotRid, firstPart, cursor, requestSeq, hasRequestSeq,
               (BiConsumer<?, ?>) replySender, onTerminalState);
         } catch (Throwable t) {
@@ -436,7 +427,7 @@ public final class InternalAccess {
                                             String topicId,
                                             Message[] parts) {
         try {
-            return (TopicMessage) TOPIC_MESSAGE.invokeExact(routingId,
+            return (TopicMessage) TOPIC_MESSAGE.invoke(routingId,
               topicId, parts);
         } catch (Throwable t) {
             throw unchecked(t);
@@ -445,7 +436,7 @@ public final class InternalAccess {
 
     public static void receivedForceMaterialize(Received received) {
         try {
-            RECEIVED_FORCE_MATERIALIZE.invokeExact(received);
+            RECEIVED_FORCE_MATERIALIZE.invoke(received);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -454,7 +445,7 @@ public final class InternalAccess {
     @SuppressWarnings("unchecked")
     public static List<Message> receivedTakeParts(Received received) {
         try {
-            return (List<Message>) RECEIVED_TAKE_PARTS.invokeExact(received);
+            return (List<Message>) RECEIVED_TAKE_PARTS.invoke(received);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -464,7 +455,7 @@ public final class InternalAccess {
                                              BiFunction<List<Message>, SendFlags,
                                                  Boolean> sendSender) {
         try {
-            RECEIVED_SET_SEND_SENDER.invokeExact(received, sendSender);
+            RECEIVED_SET_SEND_SENDER.invoke(received, sendSender);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -472,7 +463,7 @@ public final class InternalAccess {
 
     public static boolean inCallback() {
         try {
-            return (boolean) IN_CALLBACK.invokeExact();
+            return (boolean) IN_CALLBACK.invoke();
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -480,7 +471,7 @@ public final class InternalAccess {
 
     public static void enterCallback() {
         try {
-            ENTER_CALLBACK.invokeExact();
+            ENTER_CALLBACK.invoke();
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -488,7 +479,7 @@ public final class InternalAccess {
 
     public static void leaveCallback() {
         try {
-            LEAVE_CALLBACK.invokeExact();
+            LEAVE_CALLBACK.invoke();
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -496,7 +487,7 @@ public final class InternalAccess {
 
     public static RoutingId routingIdFromTrusted(byte[] value) {
         try {
-            return (RoutingId) ROUTING_ID_FROM_TRUSTED.invokeExact(value);
+            return (RoutingId) ROUTING_ID_FROM_TRUSTED.invoke(value);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -504,7 +495,7 @@ public final class InternalAccess {
 
     public static byte[] routingIdTrustedBytes(RoutingId routingId) {
         try {
-            return (byte[]) ROUTING_ID_TRUSTED_BYTES.invokeExact(routingId);
+            return (byte[]) ROUTING_ID_TRUSTED_BYTES.invoke(routingId);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -512,7 +503,7 @@ public final class InternalAccess {
 
     public static ZlinkException zlinkExceptionFromLastError(String operation) {
         try {
-            return (ZlinkException) ZLINK_EXCEPTION_FROM_LAST_ERROR.invokeExact(
+            return (ZlinkException) ZLINK_EXCEPTION_FROM_LAST_ERROR.invoke(
               operation);
         } catch (Throwable t) {
             throw unchecked(t);
@@ -522,38 +513,50 @@ public final class InternalAccess {
     public static ZlinkException zlinkExceptionFromErrno(String operation,
                                                          int errno) {
         try {
-            return (ZlinkException) ZLINK_EXCEPTION_FROM_ERRNO.invokeExact(
+            return (ZlinkException) ZLINK_EXCEPTION_FROM_ERRNO.invoke(
               operation, errno);
         } catch (Throwable t) {
             throw unchecked(t);
         }
     }
 
-    private static Class<?> rootBridgeClass() {
+    private static MethodHandle constructor(Class<?> type,
+                                            Class<?>... parameterTypes) {
         try {
-            return Class.forName("systems.zlink.InternalAccess");
-        } catch (ClassNotFoundException e) {
+            return lookup(type).findConstructor(type,
+              MethodType.methodType(void.class, parameterTypes));
+        } catch (NoSuchMethodException | IllegalAccessException e) {
             throw new ExceptionInInitializerError(e);
         }
     }
 
-    private static MethodHandles.Lookup rootLookup() {
-        try {
-            return MethodHandles.privateLookupIn(ROOT_BRIDGE,
-              MethodHandles.lookup());
-        } catch (IllegalAccessException e) {
-            throw new ExceptionInInitializerError(e);
-        }
-    }
-
-    private static MethodHandle staticMethod(String name, Class<?> returnType,
+    private static MethodHandle staticMethod(Class<?> type,
+                                             String name,
+                                             Class<?> returnType,
                                              Class<?>... parameterTypes) {
         try {
-            return ROOT_LOOKUP.findStatic(ROOT_BRIDGE, name,
+            return lookup(type).findStatic(type, name,
               MethodType.methodType(returnType, parameterTypes));
         } catch (NoSuchMethodException | IllegalAccessException e) {
             throw new ExceptionInInitializerError(e);
         }
+    }
+
+    private static MethodHandle virtualMethod(Class<?> type,
+                                              String name,
+                                              Class<?> returnType,
+                                              Class<?>... parameterTypes) {
+        try {
+            return lookup(type).findVirtual(type, name,
+              MethodType.methodType(returnType, parameterTypes));
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    private static MethodHandles.Lookup lookup(Class<?> type)
+      throws IllegalAccessException {
+        return MethodHandles.privateLookupIn(type, MethodHandles.lookup());
     }
 
     private static RuntimeException unchecked(Throwable t) {

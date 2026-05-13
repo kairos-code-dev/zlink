@@ -386,7 +386,7 @@ body를 만들고 `Async<TReply>()`는 JSON으로 reply를 읽는다.
 ```csharp
 public sealed class ZlinkStreamSendBuilder
 {
-    public ZlinkStreamSendBuilder WithPacketName(string packetName);
+    public ZlinkStreamSendBuilder PacketName(string packetName);
 
     public ZlinkStreamSendBuilder Metadata(string key, string value);
 
@@ -399,13 +399,13 @@ public sealed class ZlinkStreamSendBuilder
 
 public sealed class ZlinkStreamRequestBuilder
 {
-    public ZlinkStreamRequestBuilder WithPacketName(string packetName);
+    public ZlinkStreamRequestBuilder PacketName(string packetName);
 
     public ZlinkStreamRequestBuilder Metadata(string key, string value);
 
     public ZlinkStreamRequestBuilder Metadata(ZlinkStreamMetadata metadata);
 
-    public ZlinkStreamRequestBuilder WithTimeout(TimeSpan timeout);
+    public ZlinkStreamRequestBuilder Timeout(TimeSpan timeout);
 
     public ZlinkStreamRequestBuilder Compress();
 
@@ -426,7 +426,7 @@ builder instance는 1회 실행만 허용한다. 같은 builder에서 `Submit`�
 ```csharp
 var reply = await client
     .Request(new GetProfileRequest { AccountId = accountId })
-    .WithTimeout(TimeSpan.FromMilliseconds(200))
+    .Timeout(TimeSpan.FromMilliseconds(200))
     .Metadata("traceId", traceId)
     .Submit<GetProfileReply>(cancellationToken);
 ```
@@ -442,7 +442,7 @@ client
 
 client
     .Send(new ChatMessage { Text = "hello" })
-    .WithPacketName("chat.message")
+    .PacketName("chat.message")
     .Metadata("traceId", traceId)
     .Submit(cancellationToken);
 ```
@@ -661,8 +661,8 @@ client
 
 var reply = await client
     .Request(new ChatRequest("hello"))
-    .WithPacketName("chat.request")
-    .WithTimeout(TimeSpan.FromSeconds(1))
+    .PacketName("chat.request")
+    .Timeout(TimeSpan.FromSeconds(1))
     .Submit<ChatReply>(cancellationToken);
 ```
 

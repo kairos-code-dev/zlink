@@ -98,6 +98,30 @@ Options:
   --build-dir PATH      Accepted for policy compatibility.
   --reuse-build         Reuse existing build output.
   --clean-build         Remove project bin/obj before build.
+  --output PATH         Tee report output to PATH.
+  --pin-cpu             Pin benchmark processes to CPU 0 on Linux.
+  --io-threads N        Set both server/client io threads.
+  --server-io-threads N Server io threads override.
+  --client-io-threads N Client io threads override.
+  --hwm N               Shared HWM fallback.
+  --send-hwm N          Send HWM override.
+  --recv-hwm N          Receive HWM override.
+  --buf SIZE            Send/receive buffer override.
+  --sndbuf SIZE         Send buffer override.
+  --rcvbuf SIZE         Receive buffer override.
+  --sndtimeo N          Send timeout ms.
+  --rcvtimeo N          Receive timeout ms.
+  --send-timeout-ms N   Alias of --sndtimeo.
+  --recv-timeout-ms N   Alias of --rcvtimeo.
+  --connect-concurrency N Client connect concurrency.
+  --transport-transition-ms N Transport cooldown.
+  --pattern-transition-ms N Pattern cooldown.
+  --server-ready-timeout-ms N Server ready timeout.
+  --connect-ready-timeout-ms N Client connect-ready timeout.
+  --monitor-hwm N       Monitor socket HWM.
+  --server-shutdown-timeout-ms N Server shutdown timeout.
+  --server-bind-port N  Fixed bind port (0=auto).
+  --auto-hwm-profile NAME Auto-HWM profile.
   --results-dir PATH    Override result root directory.
   --results-tag NAME    Optional report suffix tag.
 
@@ -537,17 +561,18 @@ with open(sys.argv[1], encoding="utf-8") as handle:
         rows[size][metric] = row[6]
 
 throughput_unit = "Kops/s" if pattern in echo_patterns else "Kmsg/s"
-print("      | Size     |       Throughput |   Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
-print("      |----------|------------------|-------------|---------------|---------------|---------------|")
+print("      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
+print("      |----------|--------------------|----------------|---------------|---------------|---------------|")
 for size, metrics in rows.items():
     throughput = float(metrics["throughput"]) / 1000.0
     bandwidth = float(metrics["bandwidth"])
     latency_ms = float(metrics["latency"])
     latency_p95_ms = float(metrics["latency_p95"])
     latency_p99_ms = float(metrics["latency_p99"])
+    throughput_text = f"{throughput:8.3f} {throughput_unit}"
     print(
-        f"      | {size}B | {throughput:>16.2f} {throughput_unit} | {bandwidth:>10.2f} MB/s |"
-        f" {latency_ms:>11.2f} ms | {latency_p95_ms:>11.2f} ms | {latency_p99_ms:>11.2f} ms |"
+        f"      | {size + 'B':<8} | {throughput_text:>16} | {bandwidth:>10.3f} MB/s |"
+        f" {latency_ms:>9.3f} ms | {latency_p95_ms:>9.3f} ms | {latency_p99_ms:>9.3f} ms |"
     )
 PY
     print_line "${table_line}"
@@ -628,6 +653,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --clean-build)
       CLEAN_BUILD=1
+      ;;
+    --output)
+      shift
+      ;;
+    --pin-cpu)
+      ;;
+    --io-threads|--server-io-threads|--client-io-threads|--hwm|--send-hwm|--recv-hwm|--buf|--sndbuf|--rcvbuf|--sndtimeo|--rcvtimeo|--send-timeout-ms|--recv-timeout-ms|--connect-concurrency|--transport-transition-ms|--pattern-transition-ms|--server-ready-timeout-ms|--connect-ready-timeout-ms|--monitor-hwm|--server-shutdown-timeout-ms|--server-bind-port|--auto-hwm-profile)
+      shift
       ;;
     --duration)
       DURATION="${2:-}"

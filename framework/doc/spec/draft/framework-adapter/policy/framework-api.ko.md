@@ -25,6 +25,10 @@
 - runtime monitoring도 DI와 함께 설명할 수 있어야 한다.
 - 서버 간 `send/request`는 HTTP handler mapping과 닮은 경험으로 보이게 한다.
 - raw transport header는 handler 인자로 직접 노출하지 않는다.
+- 서버 간 framework transport는 공통
+  [message-model.ko.md](./message-model.ko.md)의 multipart `header + body` 계약을
+  따른다. 각 언어 adapter는 body를 header object 안에 다시 넣어 단일 메시지로
+  직렬화하면 안 된다.
 
 ## 2. 공통 방향
 
@@ -69,6 +73,9 @@
 - caller가 transport 위치값을 직접 넘기는 direct routed 호출은 기본 application
   표면으로 두지 않는다. actor나 spot으로 보내는 public send/request는 resolver가
   target `RoutingId`를 숨기는 형태를 우선한다.
+- application public API가 typed object 중심이더라도 adapter 내부 wire에서는
+  server-to-server message를 multipart로 유지한다. handler 표면에서 raw header를
+  숨기는 일과 transport에서 header/body를 한 메시지로 합치는 일은 다르다.
 - session server와 play server를 분리하는 구조에서는 `actorId`를 client-facing
   공개 키로 사용한다. session -> actor 방향은 actor create/dispatch helper로,
   actor -> client 방향은 `IZLinkSessionProxy`로 나눈다. actor 개념의 라이프사이클
@@ -87,6 +94,17 @@ section 2에 정의되어 있다. 이 문서는 channel messaging, `PUB/SUB`, `S
 
 핵심은 transport 축은 명확히 두되, 프레임워크 사용자가 보는 이름은 socket
 이름보다 역할 이름이 되게 만드는 것이다.
+
+transport 축마다 wire shape도 섞으면 안 된다.
+
+- channel, routed channel, SPOT channel, internal actor dispatch, internal session
+  proxy는 서버 간 framework message이므로 multipart `header + body`를 사용한다.
+- STREAM은 session 연결 위의 packet transport이므로 단일 stream packet 안에
+  stream header/body frame을 넣는다.
+
+이 구분은 모든 언어 adapter에 적용된다. 언어별 serializer나 framework DI 모양이
+달라도, 서버 간 body를 JSON envelope의 필드로 넣어 다시 인코딩하는 방식은 이
+정책에 맞지 않는다.
 
 ### 2.4 runtime monitoring
 
@@ -188,7 +206,7 @@ publish도 send와 같은 submit 규칙을 따른다. subscriber 처리 완료�
 local publish transport에 메시지를 맡길 수 있을 때까지 비동기로 기다린다.
 
 request도 reply를 기다리는 async 호출로 설명한다. 다만 request packet을 보내는
-단계는 send와 같은 async submit 경로를 사용해야 한다. `WithTimeout(...)`은 reply
+단계는 send와 같은 async submit 경로를 사용해야 한다. `Timeout(...)`은 reply
 대기 시간만 정하고, 전송 backpressure는 `SendTimeout` 정책이 처리한다.
 
 고성능 구현에서는 immediate send/publish 성공 path가 allocation 없이 완료되어야

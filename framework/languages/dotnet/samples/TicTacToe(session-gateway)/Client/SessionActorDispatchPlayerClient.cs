@@ -1,8 +1,8 @@
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Json;
 using Systems.Zlink.Stream.Connector.Runtime;
-using TicTacToe.SessionActorDispatch.Configuration;
-using TicTacToe.SessionActorDispatch.Contracts;
+using TicTacToe.SessionGateway.Shared.Configuration;
+using TicTacToe.SessionGateway.Shared.Contracts;
 
 namespace TicTacToe.SessionGateway.Client;
 
@@ -41,7 +41,7 @@ internal sealed class SessionActorDispatchPlayerClient(
     {
         return connector
             .Request(new AuthenticateReq(actorId))
-            .WithTimeout(SampleTimings.RequestTimeout)
+            .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<AuthenticateRes>(cancellationToken);
     }
 
@@ -51,7 +51,7 @@ internal sealed class SessionActorDispatchPlayerClient(
     {
         return connector
             .Request(new JoinMatchReq(matchId))
-            .WithTimeout(SampleTimings.RequestTimeout)
+            .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<JoinMatchRes>(cancellationToken);
     }
 
@@ -59,7 +59,7 @@ internal sealed class SessionActorDispatchPlayerClient(
     {
         return connector
             .Request(new CreateMatchReq())
-            .WithTimeout(SampleTimings.RequestTimeout)
+            .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<CreateMatchRes>(cancellationToken);
     }
 
@@ -70,7 +70,7 @@ internal sealed class SessionActorDispatchPlayerClient(
     {
         return connector
             .Request(new PlaceMarkReq(matchId, cell))
-            .WithTimeout(SampleTimings.RequestTimeout)
+            .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<PlaceMarkRes>(cancellationToken);
     }
 

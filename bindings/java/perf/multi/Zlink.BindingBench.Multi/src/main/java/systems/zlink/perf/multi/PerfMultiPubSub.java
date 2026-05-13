@@ -11,7 +11,7 @@ import systems.zlink.SendFlags;
 import systems.zlink.SubSocket;
 import systems.zlink.TopicMessage;
 import systems.zlink.perf.PerfControl;
-import systems.zlink.PerfSocketPollSet;
+import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;
@@ -43,18 +43,9 @@ final class PerfMultiPubSub {
                 }
             }
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
-            // wire-level stop token published on the same topic. PUB is
-            // best-effort (DONT_WAIT) so a brief retry burst guards against
-            // transient backpressure on slow subscribers.
-            long stopBurstEnd = System.nanoTime() + Duration.ofSeconds(2).toNanos();
-            int sent = 0;
-            while (sent < 3 && System.nanoTime() < stopBurstEnd) {
-                try (Message stop = PerfStopToken.newMessage()) {
-                    if (pub.publish(TOPIC).message(stop).flags(SendFlags.DONT_WAIT).submit()) {
-                        sent++;
-                    }
-                }
-                sleepMillis(1);
+            // wire-level stop token published on the same topic.
+            try (Message stop = PerfStopToken.newMessage()) {
+                pub.publish(TOPIC).message(stop).flags(SendFlags.NONE).submit();
             }
             return PerfUtil.Result.silent(config);
         }

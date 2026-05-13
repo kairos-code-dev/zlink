@@ -28,17 +28,13 @@ def _wait_spot_peer_connected(node, timeout_s=5.0):
 
 class SpotRequestAsyncTests(unittest.TestCase):
     def setUp(self):
-        try:
-            self.ctx = zlink.Context()
-        except OSError:
-            self.skipTest("zlink native library not found")
+        self.ctx = zlink.Context()
 
     def tearDown(self):
         if hasattr(self, "ctx") and self.ctx is not None:
             self.ctx.close()
 
     def test_request_to_spot_async_completes_via_routed_receive_callback(self):
-        self.skipTest("spot direct request surface was removed from the canonical Python binding")
         endpoint = _tcp_endpoint()
         requester_node = zlink.SpotNode(self.ctx)
         responder_node = zlink.SpotNode(self.ctx)

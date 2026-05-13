@@ -28,8 +28,11 @@ IO_THREADS=""
 HWM=""
 SEND_HWM=""
 RECV_HWM=""
+SNDBUF=""
+RCVBUF=""
 SNDTIMEO_MS=""
 RCVTIMEO_MS=""
+AUTO_HWM_PROFILE=""
 RUN_COOLDOWN_MS="${PERF_SINGLE_RUN_COOLDOWN_MS:-500}"
 CASE_RETRIES="${PERF_SINGLE_CASE_RETRIES:-3}"
 
@@ -85,10 +88,14 @@ Options:
   --hwm N
   --send-hwm N
   --recv-hwm N
+  --buf SIZE
+  --sndbuf SIZE
+  --rcvbuf SIZE
   --sndtimeo N
   --rcvtimeo N
   --send-timeout-ms N
   --recv-timeout-ms N
+  --auto-hwm-profile NAME
   -h, --help
 
 Notes:
@@ -121,11 +128,24 @@ while [[ $# -gt 0 ]]; do
     --recv-hwm)
       RECV_HWM="$2"
       shift 2 ;;
+    --buf)
+      SNDBUF="$2"
+      RCVBUF="$2"
+      shift 2 ;;
+    --sndbuf)
+      SNDBUF="$2"
+      shift 2 ;;
+    --rcvbuf)
+      RCVBUF="$2"
+      shift 2 ;;
     --sndtimeo|--send-timeout-ms)
       SNDTIMEO_MS="$2"
       shift 2 ;;
     --rcvtimeo|--recv-timeout-ms)
       RCVTIMEO_MS="$2"
+      shift 2 ;;
+    --auto-hwm-profile)
+      AUTO_HWM_PROFILE="$2"
       shift 2 ;;
     --reuse-build|--clean-build)
       shift ;;
@@ -150,11 +170,20 @@ fi
 if [[ -n "${RECV_HWM}" ]]; then
   export PERF_SINGLE_RCVHWM="${RECV_HWM}"
 fi
+if [[ -n "${SNDBUF}" ]]; then
+  export PERF_SINGLE_SNDBUF="${SNDBUF}"
+fi
+if [[ -n "${RCVBUF}" ]]; then
+  export PERF_SINGLE_RCVBUF="${RCVBUF}"
+fi
 if [[ -n "${SNDTIMEO_MS}" ]]; then
   export PERF_SINGLE_SNDTIMEO_MS="${SNDTIMEO_MS}"
 fi
 if [[ -n "${RCVTIMEO_MS}" ]]; then
   export PERF_SINGLE_RCVTIMEO_MS="${RCVTIMEO_MS}"
+fi
+if [[ -n "${AUTO_HWM_PROFILE}" ]]; then
+  export PERF_CTX_AUTO_HWM_PROFILE="${AUTO_HWM_PROFILE}"
 fi
 
 case "$(uname -s)" in
@@ -311,8 +340,8 @@ progress_table_header() {
     return
   fi
   progress_header_printed=1
-  echo "      | Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |"
-  echo "      |----------|------------------|------------|---------------|---------------|---------------|"
+  echo "      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |"
+  echo "      |----------|--------------------|----------------|---------------|---------------|---------------|"
 }
 
 progress_case_row() {
@@ -320,11 +349,11 @@ progress_case_row() {
   local size="$2"
   local case_log="$3"
   if grep -Eq '^UNSUPPORTED,' "${case_log}"; then
-    printf '      | %sB | %16s | %10s | %13s | %13s | %13s |\n' "${size}" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED"
+    printf '      | %-8s | %16s | %12s | %12s | %12s | %12s |\n' "${size}B" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED"
     return
   fi
   if grep -Eq '^SKIP,' "${case_log}"; then
-    printf '      | %sB | %16s | %10s | %13s | %13s | %13s |\n' "${size}" "SKIP" "SKIP" "SKIP" "SKIP" "SKIP"
+    printf '      | %-8s | %16s | %12s | %12s | %12s | %12s |\n' "${size}B" "SKIP" "SKIP" "SKIP" "SKIP" "SKIP"
     return
   fi
   python3 - "$pattern" "$size" "$case_log" <<'PY'
@@ -343,7 +372,7 @@ with open(path, "r", encoding="utf-8", errors="replace") as fh:
 
 required = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
 if not all(key in metrics for key in required):
-    print(f"      | {size}B | {'FAIL':>16} | {'FAIL':>10} | {'FAIL':>13} | {'FAIL':>13} | {'FAIL':>13} |")
+    print(f"      | {size + 'B':<8} | {'FAIL':>16} | {'FAIL':>12} | {'FAIL':>12} | {'FAIL':>12} | {'FAIL':>12} |")
     raise SystemExit(0)
 
 unit = "Kmsg/s"
@@ -352,9 +381,10 @@ bandwidth = float(metrics["bandwidth"])
 latency = float(metrics["latency"])
 latency_p95 = float(metrics["latency_p95"])
 latency_p99 = float(metrics["latency_p99"])
+throughput_text = f"{throughput:8.3f} {unit}"
 print(
-    f"      | {size}B | {throughput:16.2f} {unit} | {bandwidth:10.2f} MB/s |"
-    f" {latency:13.3f} ms | {latency_p95:13.3f} ms | {latency_p99:13.3f} ms |"
+    f"      | {size + 'B':<8} | {throughput_text:>16} | {bandwidth:10.3f} MB/s |"
+    f" {latency:9.3f} ms | {latency_p95:9.3f} ms | {latency_p99:9.3f} ms |"
 )
 PY
 }
@@ -427,19 +457,20 @@ for pattern in sorted(by_pattern):
         transports[transport].append((size, values))
     for transport in sorted(transports):
         print(f"### Transport: {transport}")
-        print("| Size     |       Throughput |  Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
-        print("|----------|------------------|------------|---------------|---------------|---------------|")
+        print("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
+        print("|----------|--------------------|----------------|---------------|---------------|---------------|")
         for size, values in sorted(transports[transport]):
             if not all(metric in values for metric in metrics):
                 continue
             unit = "Kops/s" if pattern in echo_patterns else "Kmsg/s"
+            throughput_text = f"{values['throughput'] / 1000.0:8.3f} {unit}"
             print(
-                f"| {size}B"
-                f" | {values['throughput'] / 1000.0:16.2f} {unit}"
-                f" | {values['bandwidth']:10.2f} MB/s"
-                f" | {values['latency']:13.3f} ms"
-                f" | {values['latency_p95']:13.3f} ms"
-                f" | {values['latency_p99']:13.3f} ms |"
+                f"| {str(size) + 'B':<8}"
+                f" | {throughput_text:>16}"
+                f" | {values['bandwidth']:10.3f} MB/s"
+                f" | {values['latency']:9.3f} ms"
+                f" | {values['latency_p95']:9.3f} ms"
+                f" | {values['latency_p99']:9.3f} ms |"
             )
         print()
 PY

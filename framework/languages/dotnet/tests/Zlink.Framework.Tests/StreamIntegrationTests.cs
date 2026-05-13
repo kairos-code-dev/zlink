@@ -36,6 +36,99 @@ public sealed class StreamIntegrationTests
     }
 
     [Fact]
+    public void SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch()
+    {
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var routeHeader = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Command,
+            "gateway",
+            ZLinkInternalPacketNames.ActorDispatch,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            "correlation",
+            null,
+            null,
+            null,
+            null);
+        var streamHeader = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.HasMetadata,
+            null,
+            "relay.echo",
+            ZlinkStreamMetadata.Empty.With("trace-id", "trace-1"));
+        var payloadParts = new[]
+        {
+            ZLinkEnvelopeCodec.EncodePart(new ZLinkActorDispatchMetadata("player-1", "player")),
+            Message.FromBytes(headerCodec.Encode(streamHeader).Span),
+            Message.FromString("{\"value\":\"ping\"}")
+        };
+        var parts = new Message[payloadParts.Length + 1];
+        parts[0] = ZLinkEnvelopeCodec.EncodeHeader(routeHeader);
+        Array.Copy(payloadParts, 0, parts, 1, payloadParts.Length);
+
+        try
+        {
+            Assert.Equal(4, parts.Length);
+            Assert.Equal(routeHeader, ZLinkEnvelopeCodec.DecodeHeader(parts));
+            Assert.Equal(new ZLinkActorDispatchMetadata("player-1", "player"),
+                ZLinkEnvelopeCodec.DecodePart<ZLinkActorDispatchMetadata>(parts[1]));
+            Assert.Equal("relay.echo", headerCodec.Decode(parts[2].AsReadOnlyMemory()).Name);
+            Assert.Equal("{\"value\":\"ping\"}", Encoding.UTF8.GetString(parts[3].AsReadOnlySpan()));
+            Assert.Throws<NotSupportedException>(() =>
+                ZLinkEnvelopeCodec.Encode(routeHeader, payloadParts, payloadParts.GetType()));
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
+    }
+
+    [Fact]
+    public void SessionProxy_Uses_Multipart_Routed_Client_Push()
+    {
+        var routeHeader = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Request,
+            "gateway",
+            ZLinkInternalPacketNames.SessionProxy,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            "correlation",
+            DateTimeOffset.UtcNow.AddSeconds(5),
+            null,
+            null,
+            null);
+        var parts = new[]
+        {
+            ZLinkEnvelopeCodec.EncodeHeader(routeHeader),
+            ZLinkEnvelopeCodec.EncodePart(new ZLinkSessionProxyEnvelope(
+                "player-1",
+                "binding-token",
+                "client.echo",
+                true,
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["trace-id"] = "trace-1"
+                })),
+            Message.FromString("{\"value\":\"ping\"}")
+        };
+
+        try
+        {
+            Assert.Equal(routeHeader, ZLinkEnvelopeCodec.DecodeHeader(parts));
+            var envelope = ZLinkEnvelopeCodec.DecodePart<ZLinkSessionProxyEnvelope>(parts[1]);
+            Assert.Equal("player-1", envelope.ActorId);
+            Assert.Equal("client.echo", envelope.PacketName);
+            Assert.True(envelope.ExpectsReply);
+            Assert.Equal("{\"value\":\"ping\"}", Encoding.UTF8.GetString(parts[2].AsReadOnlySpan()));
+            Assert.Throws<NotSupportedException>(() =>
+                ZLinkEnvelopeCodec.Encode(routeHeader, envelope, typeof(ZLinkSessionProxyEnvelope)));
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
+    }
+
+    [Fact]
     public async Task HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle()
     {
         var endpoint = GetFreeTcpEndpoint();
@@ -296,8 +389,8 @@ public sealed class StreamIntegrationTests
             var gatewayReply = await sessionProxy.Request(
                     "player-1",
                     new GatewayPing("from-play"))
-                .WithPacketName("client.echo")
-                .WithTimeout(TimeSpan.FromSeconds(10))
+                .PacketName("client.echo")
+                .Timeout(TimeSpan.FromSeconds(10))
                 .SubmitAsync<GatewayPong>();
 
             await clientReplyTask;
@@ -308,9 +401,9 @@ public sealed class StreamIntegrationTests
             var actorClientReply = await actorClient.Request(
                     "player-1",
                     new GatewayPing("from-actor-client"))
-                .WithPacketName("relay.echo")
-                .WithMetadata("trace-id", "trace-actor-client")
-                .WithTimeout(TimeSpan.FromSeconds(10))
+                .PacketName("relay.echo")
+                .Metadata("trace-id", "trace-actor-client")
+                .Timeout(TimeSpan.FromSeconds(10))
                 .SubmitAsync<GatewayPong>();
 
             Assert.Equal("play:from-actor-client", actorClientReply.Value);

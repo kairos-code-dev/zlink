@@ -45,6 +45,11 @@ struct request_state_t
     std::function<void(request_result_t, std::vector<message_t>)> on_complete;
 };
 
+inline std::function<void()> make_socket_request_progress (void *socket_)
+{
+    return [socket_]() { zlink::detail::request_progress_socket (socket_); };
+}
+
 inline request_state_t *make_future_request_state ()
 {
     request_state_t *state = new request_state_t ();
@@ -59,11 +64,6 @@ make_callback_request_state (
     request_state_t *state = new request_state_t ();
     state->on_complete = std::move (callback_);
     return state;
-}
-
-inline std::function<void()> make_socket_request_progress (void *socket_)
-{
-    return [socket_]() { (void) zlink_socket_request_progress_internal (socket_); };
 }
 
 [[noreturn]] inline void throw_submit_error_from_errno (int err_)

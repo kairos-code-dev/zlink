@@ -1013,9 +1013,9 @@ public interface IZLinkSessionContext :
 
 public interface IZLinkSessionSendCall
 {
-    IZLinkSessionSendCall WithMetadata(string key, string value);
+    IZLinkSessionSendCall Metadata(string key, string value);
 
-    IZLinkSessionSendCall WithPacketName(string messageName);
+    IZLinkSessionSendCall PacketName(string messageName);
 
     IZLinkSessionSendCall Compress();
 
@@ -1024,7 +1024,7 @@ public interface IZLinkSessionSendCall
 
 public interface IZLinkSessionReplyCall
 {
-    IZLinkSessionReplyCall WithMetadata(string key, string value);
+    IZLinkSessionReplyCall Metadata(string key, string value);
 
     IZLinkSessionReplyCall Compress();
 
@@ -1033,9 +1033,9 @@ public interface IZLinkSessionReplyCall
 
 public interface IZLinkSessionRequestCall
 {
-    IZLinkSessionRequestCall WithPacketName(string packetName);
+    IZLinkSessionRequestCall PacketName(string packetName);
 
-    IZLinkSessionRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkSessionRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }
@@ -1230,7 +1230,7 @@ public interface IZLinkActorContext
 
 public interface IZLinkActorJoinSpotCall<TReply>
 {
-    IZLinkActorJoinSpotCall<TReply> WithTimeout(TimeSpan timeout);
+    IZLinkActorJoinSpotCall<TReply> Timeout(TimeSpan timeout);
 
     ValueTask<TReply> Submit(CancellationToken cancellationToken = default);
 }
@@ -1244,9 +1244,9 @@ public interface IZLinkActorStreamClient
 
 public interface IZLinkActorSendCall
 {
-    IZLinkActorSendCall WithMetadata(string key, string value);
+    IZLinkActorSendCall Metadata(string key, string value);
 
-    IZLinkActorSendCall WithPacketName(string messageName);
+    IZLinkActorSendCall PacketName(string messageName);
 
     IZLinkActorSendCall Compress();
 
@@ -1255,7 +1255,7 @@ public interface IZLinkActorSendCall
 
 public interface IZLinkActorReplyCall
 {
-    IZLinkActorReplyCall WithMetadata(string key, string value);
+    IZLinkActorReplyCall Metadata(string key, string value);
 
     IZLinkActorReplyCall Compress();
 
@@ -1481,7 +1481,7 @@ overload를 계속 늘리지 않아도 된다.
 ```csharp
 public interface IZLinkSendCall
 {
-    IZLinkSendCall WithPacketName(string packetName);
+    IZLinkSendCall PacketName(string packetName);
 
     ValueTask Submit(
         CancellationToken cancellationToken = default);
@@ -1489,9 +1489,9 @@ public interface IZLinkSendCall
 
 public interface IZLinkRequestCall
 {
-    IZLinkRequestCall WithPacketName(string packetName);
+    IZLinkRequestCall PacketName(string packetName);
 
-    IZLinkRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> Submit<TReply>(
         CancellationToken cancellationToken = default);
@@ -1531,7 +1531,7 @@ runtime은 등록한 `channelName`마다 별도 outbound channel을 만든다.
 
 packet key 해석 규칙은 아래 순서를 기본으로 본다.
 
-1. builder에서 `WithPacketName(...)`이 지정되면 그것을 사용한다.
+1. builder에서 `PacketName(...)`이 지정되면 그것을 사용한다.
 2. 없으면 payload 타입에 선언된 packet metadata를 본다.
 3. 그것도 없으면 `Type.Name`을 packet key로 사용한다.
 
@@ -1540,7 +1540,7 @@ explicit `PacketName`을 쓰게 한다.
 
 timeout은 request/send에서 다르게 다룬다.
 
-- `Request(...)`는 reply를 기다리므로 `WithTimeout(...)`을 둘 수 있다.
+- `Request(...)`는 reply를 기다리므로 `Timeout(...)`을 둘 수 있다.
 - `Send(...)`는 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
 - `Publish(...)`도 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
 - `Send(...).Submit(...)`는 handler 완료를 기다리는 호출이 아니다. framework가
@@ -1556,7 +1556,7 @@ timeout은 request/send에서 다르게 다룬다.
   경우에만 core `-1`과 같은 무한 대기로 본다.
 - `Request(...).Submit<TReply>(...)`도 request packet을 보내는 단계에서는
   `Send(...).Submit(...)`와 같은 nonblocking submit 경로를 사용한다.
-- `Request(...).WithTimeout(...)`은 reply 대기 시간만 정한다.
+- `Request(...).Timeout(...)`은 reply 대기 시간만 정한다.
 - 이 초안은 별도 public no-wait 옵션을 제공하지 않는다. temporary backpressure는
   public `false` 반환값이 아니라 framework 내부 queue와 ready notification으로
   처리한다.
@@ -1590,12 +1590,12 @@ timeout은 request/send에서 다르게 다룬다.
 ```csharp
 var reply = await client
     .Request("profile", new GetProfileRequest { AccountId = accountId })
-    .WithTimeout(TimeSpan.FromMilliseconds(200))
+    .Timeout(TimeSpan.FromMilliseconds(200))
     .Submit<GetProfileReply>(cancellationToken);
 
 await client
     .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
-    .WithPacketName("profile.refresh-cache")
+    .PacketName("profile.refresh-cache")
     .Submit(cancellationToken);
 ```
 
@@ -1712,7 +1712,7 @@ SPOT publish와 별도로, channel messaging 쪽에서 쓴다.
 ```csharp
 public interface IZLinkPublishCall
 {
-    IZLinkPublishCall WithPacketName(string packetName);
+    IZLinkPublishCall PacketName(string packetName);
 
     ValueTask Submit(
         CancellationToken cancellationToken = default);
@@ -1778,9 +1778,9 @@ public interface IZLinkActorClient
 
 public interface IZLinkActorClientSendCall
 {
-    IZLinkActorClientSendCall WithPacketName(string packetName);
+    IZLinkActorClientSendCall PacketName(string packetName);
 
-    IZLinkActorClientSendCall WithMetadata(
+    IZLinkActorClientSendCall Metadata(
         string key,
         string value);
 
@@ -1789,13 +1789,13 @@ public interface IZLinkActorClientSendCall
 
 public interface IZLinkActorClientRequestCall
 {
-    IZLinkActorClientRequestCall WithPacketName(string packetName);
+    IZLinkActorClientRequestCall PacketName(string packetName);
 
-    IZLinkActorClientRequestCall WithMetadata(
+    IZLinkActorClientRequestCall Metadata(
         string key,
         string value);
 
-    IZLinkActorClientRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkActorClientRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }
@@ -1808,6 +1808,12 @@ route transport helper는 application public surface가 아니다. routed channe
 direct send/request를 보내야 하는 framework backend 또는 별도 adapter package가 쓰는
 internal transport helper다. 일반 application code는 `RoutingId`를 직접 넘기지 않고
 actor id 또는 spot key 기반 client를 사용한다.
+
+이 helper의 내부 wire 형식은 공통 message model의 multipart `header + body` 계약을
+따른다. typed `message` 또는 `request` 인자를 받더라도 runtime은 route header와 body를
+한 `Message`로 합쳐 직렬화하지 않는다. framework header는 첫 번째 part에, codec이 만든
+body bytes는 별도 part에 둔다. actor dispatch나 session proxy처럼 내부 metadata가 더
+필요한 경로는 body 앞에 metadata part를 추가할 수 있다.
 
 ```csharp
 internal interface IZLinkRouteTransport
@@ -1825,16 +1831,16 @@ internal interface IZLinkRouteTransport
 
 internal interface IZLinkRouteSendCall
 {
-    IZLinkRouteSendCall WithPacketName(string packetName);
-    IZLinkRouteSendCall WithMetadata(string key, string value);
+    IZLinkRouteSendCall PacketName(string packetName);
+    IZLinkRouteSendCall Metadata(string key, string value);
     ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 internal interface IZLinkRouteRequestCall
 {
-    IZLinkRouteRequestCall WithPacketName(string packetName);
-    IZLinkRouteRequestCall WithMetadata(string key, string value);
-    IZLinkRouteRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkRouteRequestCall PacketName(string packetName);
+    IZLinkRouteRequestCall Metadata(string key, string value);
+    IZLinkRouteRequestCall Timeout(TimeSpan timeout);
     ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }
 ```
@@ -1863,9 +1869,9 @@ public interface IZLinkSessionProxy
 
 public interface IZLinkSessionProxySendCall
 {
-    IZLinkSessionProxySendCall WithPacketName(string packetName);
+    IZLinkSessionProxySendCall PacketName(string packetName);
 
-    IZLinkSessionProxySendCall WithMetadata(
+    IZLinkSessionProxySendCall Metadata(
         string key,
         string value);
 
@@ -1874,13 +1880,13 @@ public interface IZLinkSessionProxySendCall
 
 public interface IZLinkSessionProxyRequestCall
 {
-    IZLinkSessionProxyRequestCall WithPacketName(string packetName);
+    IZLinkSessionProxyRequestCall PacketName(string packetName);
 
-    IZLinkSessionProxyRequestCall WithMetadata(
+    IZLinkSessionProxyRequestCall Metadata(
         string key,
         string value);
 
-    IZLinkSessionProxyRequestCall WithTimeout(TimeSpan timeout);
+    IZLinkSessionProxyRequestCall Timeout(TimeSpan timeout);
 
     ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }
@@ -2633,7 +2639,7 @@ endpoint 집합을 따로 관리하면 된다. 이 초안에서는 manual `Conne
   - framework public 표면에서는 remote `RoutingId`를 설정하지 않는다. discovery 기반
     경로는 resolver와 discovery registry가 위치값을 소유하고, manual 연결은 endpoint
     집합만 소유한다.
-- `WithTimeout(...)`
+- `Timeout(...)`
   - request 한 번에만 적용되는 호출 단위 옵션이다.
   - 실제 바인딩에서도 `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)`,
     `RouterSocket.RequestAsync(..., TimeSpan timeout, ...)`,

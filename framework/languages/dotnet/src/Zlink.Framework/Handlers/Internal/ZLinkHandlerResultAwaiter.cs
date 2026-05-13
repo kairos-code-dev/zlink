@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Reflection;
 
 namespace Zlink.Framework.Handlers.Internal;
 
@@ -43,14 +42,14 @@ internal static class ZLinkHandlerResultAwaiter
             ? nameof(AwaitTaskAsync)
             : nameof(AwaitValueTaskAsync);
         var method = typeof(ZLinkHandlerResultAwaiter)
-            .GetMethod(methodName, BindingFlags.Static | BindingFlags.NonPublic)!
+            .GetMethod(methodName)!
             .MakeGenericMethod(resultValueType);
         return (Func<object, ValueTask<object?>>)method.CreateDelegate(typeof(Func<object, ValueTask<object?>>));
     }
 
-    private static async ValueTask<object?> AwaitTaskAsync<T>(object result)
+    public static async ValueTask<object?> AwaitTaskAsync<T>(object result)
         => await ((Task<T>)result).ConfigureAwait(false);
 
-    private static async ValueTask<object?> AwaitValueTaskAsync<T>(object result)
+    public static async ValueTask<object?> AwaitValueTaskAsync<T>(object result)
         => await ((ValueTask<T>)result).ConfigureAwait(false);
 }

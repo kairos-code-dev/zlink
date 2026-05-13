@@ -143,7 +143,12 @@ def apply_single_spot_node_admission(*nodes):
 
 def recv_nonblocking(sock, *, method="recv"):
     zlink_mod = _require_zlink()
-    recv_method = getattr(sock, method)
+    if method == "recv":
+        recv_method = sock.recv
+    elif method == "subscribe":
+        recv_method = sock.subscribe
+    else:
+        raise ValueError(f"unsupported recv method: {method}")
     try:
         return recv_method(flags=zlink_mod.RecvFlags.DONT_WAIT)
     except zlink_mod.RecvError as exc:

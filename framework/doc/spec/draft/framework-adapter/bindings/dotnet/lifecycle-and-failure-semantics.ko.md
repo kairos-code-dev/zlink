@@ -87,7 +87,7 @@ runtime stop이나 cancellation이 들어오면 대기 중인 submit을 완료 �
 
 `Request(...).Submit(...)`는 두 단계로 나누어 본다. request packet submit은
 `Send(...).Submit(...)`와 같은 전송 경로를 사용하고 `SendTimeout` 정책을 따른다.
-reply 대기는 `WithTimeout(...)`으로 정한 request timeout을 따른다.
+reply 대기는 `Timeout(...)`으로 정한 request timeout을 따른다.
 
 ## 6. Reconnect 와 Monitoring 의미
 

@@ -348,6 +348,10 @@ if(ZLINK_CPP_BUILD_TESTS)
     test_cpp_contract_behavior
     tests/contract/test_cpp_contract_behavior.cpp
   )
+  add_cpp_contract_test(
+    test_cpp_contract_optimization_guard
+    tests/contract/test_cpp_contract_optimization_guard.cpp
+  )
 endif()
 
 option(ZLINK_CPP_BUILD_BENCHMARKS "Build C++ binding benchmarks" OFF)

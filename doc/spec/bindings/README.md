@@ -3567,29 +3567,89 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 | Monitor typed event surface | Raw struct | Required | Required | Required | Required | Required | Required | Required |
 
 ## Testing Policy
+바인딩 테스트의 목적은 언어별 테스트 개수를 맞추는 것이 아니다. 목적은 각
+바인딩이 자기 public surface에 해당하는 contract를 빠짐없이 같은 수준으로
+보장하는지 확인하는 것이다.
+
+테스트 수는 언어별 API 표면, 런타임 ownership 모델, 패키징 방식에 따라 달라질 수
+있다. 따라서 테스트 개수는 판단의 보조 신호일 뿐이고, 아래 검증 계층과 Test
+Matrix의 의미 계약을 충족하는지가 실제 기준이다. 특정 바인딩의 테스트가 유난히
+많거나 적으면 개수 자체를 맞추기보다, 누락된 contract가 있는지 또는 core
+correctness 재검증 같은 중복 테스트가 섞였는지를 먼저 확인한다.
+
+zlink 바인딩은 native 함수를 단순 호출하는 얇은 래퍼가 아니다. 각 언어 바인딩은
+public facade, helper object, domain object, typed option, callback delivery,
+ownership 관리, native loader, package boundary, hot path 최적화를 함께 제공한다.
+따라서 테스트도 단순 roundtrip만으로 충분하지 않다. public helper가 제공하는
+추가 의미와 최적화 불변식도 binding contract의 일부로 검증해야 한다.
+
+테스트는 아래 계층으로 분류한다.
+
+- `Required`: 모든 바인딩이 반드시 가져야 하는 테스트다.
+- `Conditional`: 해당 public API나 배포 단위를 제공하는 바인딩만 반드시 가져야
+  하는 테스트다.
+- `Language-specific`: 특정 런타임의 수명, 예외, GC, borrow, cgo, native loader
+  같은 위험을 검증하는 테스트다. 다른 언어에 억지로 복제하지 않는다.
+- `Sample smoke`: 사용자-facing 패턴이 public API로 실행되는지 확인하는 테스트다.
+  core correctness를 다시 검증하는 대량 시나리오로 확장하지 않는다.
+- `Out of scope`: core 자체의 메시징 correctness, transport matrix 전체 재검증,
+  일회성 migration 검증, 자동화할 수 없는 리뷰 항목이다. 이런 항목은 영구
+  바인딩 테스트로 남기지 않는다. 다만 바인딩 helper, facade, 최적화 불변식이
+  관여하는 경로라면 core 기능과 겹쳐 보여도 바인딩 테스트로 유지한다.
+
+공통 원칙은 아래와 같다.
+
 - public surface test로 canonical public API를 고정한다.
-- 공통 검증 항목:
-  - 타입별 capability 분리 여부
-  - raw option bag 비노출
-  - `try*` naming convention 준수 여부
-- contract test로 바인딩 ↔ native 계약을 검증한다.
-  - FFI/native 호출 매핑이 올바른지
-  - managed ↔ native 경계의 타입 변환이 올바른지
-  - native handle lifecycle과 리소스 정리가 누수 없이 동작하는지
-- behavior test로 바인딩 레이어가 core 계약을 올바르게 중계하는지 검증한다.
-- ownership 회귀 테스트를 유지한다.
-- callback mode와 direct mode의 충돌 규칙도 테스트한다.
-- 정책 변경 시 필수 테스트 규칙:
-  - public surface 변경: public surface test 동반
-  - contract 계약 변경: contract test 동반
-  - blocking/non-blocking 계약 변경: behavior test 동반
-  - ownership/receive shape 변경: callback regression 또는 ownership test 동반
-  - option surface 변경: typed option surface test와 negative capability test 동반
-- 성능 회귀 검증은 별도 Perf Policy가 담당한다.
-- Test Matrix에 정의되지 않은 테스트 항목이 기존 코드에 남아 있다면 삭제한다.
-  - migration 검증, core 기능 재검증, 자동화 불가능한 리뷰 항목 등이 테스트로
-    작성되어 있으면 정리 대상이다.
-  - 테스트는 이 문서의 Test Matrix 카테고리에 해당하는 항목만 유지한다.
+- contract test로 바인딩과 native 경계의 타입 변환, 오류 매핑, handle lifecycle을
+  검증한다.
+- behavior test로 바인딩 public API가 core 계약을 올바르게 중계하는지 검증한다.
+- helper/facade test로 바인딩이 추가로 제공하는 언어 친화 기능의 의미 계약을
+  검증한다.
+- ownership 테스트는 send 성공, send 실패, receive, callback, multipart 경로를
+  모두 포함해야 한다.
+- optimization guard test로 hot path가 정책에서 금지한 느린 경로로 퇴행하지
+  않았는지 검증한다.
+- callback mode와 direct mode가 함께 허용되지 않는 경로는 충돌 규칙을 검증한다.
+- option 테스트는 typed option surface와 잘못된 capability 접근 차단을 함께
+  검증한다.
+- 성능 회귀 검증은 별도 Perf Policy가 담당한다. 기능 테스트가 perf benchmark를
+  대체하거나, perf benchmark가 public contract test를 대체하면 안 된다.
+
+테스트 충족 기준은 아래와 같다.
+
+- 각 바인딩은 자신이 제공하는 public API에 대해 Test Matrix의 `Required` 항목을
+  모두 검증해야 한다.
+- 특정 public API, extension package, sample suite를 제공하면 대응하는
+  `Conditional` 항목도 검증해야 한다.
+- 언어 런타임 때문에 생기는 ownership, lifetime, loader, callback, GC, borrow,
+  cgo 같은 위험은 `Language-specific` 테스트로 검증한다.
+- 제공하지 않는 public API에 대한 테스트를 개수 맞추기 목적으로 추가하지 않는다.
+- core correctness를 다시 검증하는 테스트는 바인딩 helper, facade, package
+  boundary, native loader, 최적화 불변식과 직접 관련이 없으면 바인딩 테스트에서
+  제거하거나 core test로 옮긴다.
+- 같은 계약을 여러 테스트가 반복해서 검증하면 하나의 깊은 테스트로 합치고,
+  서로 다른 계약을 한 테스트가 숨기고 있으면 Matrix 항목이 드러나도록 나눈다.
+
+정책 변경 시 필수 테스트 규칙:
+
+- public surface 변경: public surface test 동반
+- contract 계약 변경: contract test 동반
+- blocking/non-blocking 계약 변경: behavior test 동반
+- ownership/receive shape 변경: callback regression 또는 ownership test 동반
+- option surface 변경: typed option surface test와 negative capability test 동반
+- codec extension 변경: 해당 codec extension test 동반
+- helper/facade 변경: helper/facade contract test 동반
+- hot path 구현 변경: optimization guard test 또는 perf regression gate 동반
+
+기존 코드에 Test Matrix 바깥의 테스트가 있으면 아래 기준으로 정리한다.
+
+- core 기능 재검증이면 core test로 옮기거나 삭제한다.
+- migration 검증이면 migration 완료 후 삭제할 임시 테스트로 표시한다.
+- 사용자-facing 패턴 확인이면 sample smoke로 이동한다.
+- 바인딩 helper, facade, package boundary, native loader, 최적화 불변식 검증이면
+  Test Matrix의 적절한 카테고리로 분류해서 유지한다.
+- 특정 언어 런타임 위험을 검증한다면 Language-specific 테스트로 남기고, 이유를
+  테스트 이름이나 파일 이름에서 알 수 있게 한다.
 
 ### Test Execution Script Policy
 - 각 바인딩은 전체 테스트를 한번에 실행할 수 있는 스크립트를 제공해야 한다.
@@ -3619,11 +3679,16 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 ## Test Matrix
 - 이 섹션은 각 바인딩이 최소한 가져야 할 테스트 항목을 정리한다.
 - 바인딩별 표면은 달라도 아래 의미 계약은 모두 검증해야 한다.
-- `Surface Tests`, `Contract Tests`, `Behavior Tests`, `Send Failure Contract Tests`,
-  `Receive Failure Contract Tests`, `Boundary Validation Tests`, `Option Tests`,
-  `Ownership Tests`, `Monitor Tests`는 기본적으로 `Required`다.
+- `Surface Tests`, `Contract Tests`, `Behavior Tests`, `Failure Contract Tests`,
+  `Helper/Facade Tests`, `Optimization Guard Tests`, `Boundary Validation Tests`,
+  `Option Tests`, `Ownership Tests`는 모든 바인딩의 기본 `Required` 항목이다.
+- `Callback Tests`, `Monitor Tests`, `Poller Tests`, `Service Tests`, `Codec Tests`,
+  `Sample Smoke Tests`는 해당 public API, extension package, sample suite를 제공하는
+  바인딩에서 `Conditional` 항목이다.
+- `Language Runtime Tests`는 런타임 특성 때문에 위험이 생기는 바인딩에서
+  `Language-specific` 항목이다.
 
-### Surface Tests
+### Required: Surface Tests
 - canonical public API surface test
 - socket type capability 분리 확인
 - typed option surface 존재 확인
@@ -3633,7 +3698,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - monitor canonical surface 존재 확인
   - `recv()`
 
-### Contract Tests
+### Required: Contract Tests
 - FFI/native 호출 매핑 검증
   - 바인딩 public API 호출이 올바른 C API 함수에 매핑되는지 확인
   - 파라미터 전달과 반환값 변환이 올바른지 확인
@@ -3644,7 +3709,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   - context/socket native handle 생성과 해제가 누수 없이 동작하는지 확인
   - 예외/오류 경로에서도 native 리소스가 정리되는지 확인
 
-### Behavior Tests
+### Required: Behavior Tests
 - 바인딩 레이어가 core 계약을 올바르게 중계하는지 검증한다.
 - 목적은 core 메시징 기능 재검증이 아니라 바인딩 경로의 정확성 확인이다.
 - blocking 경로:
@@ -3660,20 +3725,45 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   - `send` 실패 시 예외 또는 오류 경로 확인
   - `publish` 실패 시 예외 또는 오류 경로 확인
 
-### Send Failure Contract Tests
+### Required: Helper/Facade Tests
+- public helper와 facade가 단순 native 호출 이상의 의미를 제공하는 경우 그 의미를
+  직접 검증한다.
+- `Message`, `Received`, multipart collection, routing id value/codec, typed option
+  facade, domain object, request/reply helper, topology snapshot value object 같은
+  바인딩 제공 타입의 불변식을 검증한다.
+- helper가 native 세부사항을 사용자에게 누출하지 않는지 확인한다.
+- helper가 성공/실패, empty payload, one empty message, multipart boundary를
+  구분해서 유지하는지 확인한다.
+- helper가 public API에 없는 internal sequencing을 사용자에게 요구하지 않는지
+  확인한다.
+- convenience API가 canonical API와 다른 의미를 만들지 않는지 확인한다.
+
+### Required: Optimization Guard Tests
+- hot path가 High-Performance Binding Policy를 계속 지키는지 검증한다.
+- send/recv/request/reply/publish/subscribe 내부 경로가 `*_part` substrate를
+  사용하는지 확인한다.
+- aggregate native 함수 호출, 숨은 double materialization, 불필요한 eager copy,
+  반복 호출마다 생기는 closure/boxing/allocation이 다시 들어오지 않았는지 확인한다.
+- callback, dispatch, poller, request completion 경로에서 숨은 blocking wait,
+  sleep, busy wait, thread join이 생기지 않았는지 확인한다.
+- 이 검증은 항상 micro benchmark일 필요는 없다. 안정적으로 자동화할 수 있으면
+  source-level/static check, public API allocation check, stress smoke, perf gate 중
+  가장 낮은 비용의 방식을 사용한다.
+- perf benchmark는 수치 회귀를 담당하고, optimization guard test는 금지된 구조가
+  코드에 들어오지 않도록 막는 역할을 담당한다.
+
+### Required: Failure Contract Tests
 - blocking `send` failure가 예외 또는 언어별 오류 경로로 caller에 전달되는지 확인
 - blocking `publish` failure가 예외 또는 언어별 오류 경로로 caller에 전달되는지 확인
 - `send` backpressure 예외 확인
 - `send` not-ready 예외 확인
 - `publish` backpressure 또는 not-ready 예외 확인
 - `EAGAIN` 외 오류가 무시되지 않는지 확인
-
-### Receive Failure Contract Tests
 - callback mode와 direct recv 충돌 시 native 계약대로 오류가 전달되는지 확인
 - direct recv 불가 상태에서 empty/null로 숨기지 않는지 확인
 - `EAGAIN`만 empty/non-success 결과로 처리되는지 확인
 
-### Boundary Validation Tests
+### Required: Boundary Validation Tests
 - `RoutingId` 최대 길이 경계 (255바이트 OK)
 - `RoutingId` 초과 길이 즉시 오류 반환 (256바이트 이상 → 예외)
 - `Duration -> int millis` overflow 경계
@@ -3684,13 +3774,13 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - `endpoint` 255바이트 초과 즉시 오류 반환 (고정 크기 `char[256]`)
 - topic/filter에 embedded null 문자 포함 시 즉시 오류 반환
 
-### Option Tests
+### Required: Option Tests
 - common option typed getter/setter
 - socket type별 typed option getter/setter
 - 잘못된 소켓 타입에서 option capability 접근 차단
 - raw integer 대신 enum/boolean surface가 제공되는지 확인
 
-### Ownership Tests
+### Required: Ownership Tests
 - send 성공 시 ownership 이동 계약 (native에 넘어감, 바인딩이 이후 접근 금지)
 - send 실패 시 restore 또는 caller ownership 유지 계약
 - 생성 후 send하지 않은 메시지의 명시적 close/해제 (close 없으면 native 메모리 누수)
@@ -3698,10 +3788,62 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - callback 후 frame validity 계약
 - multipart receive shape와 callback delivery shape 일치 여부
 
-### Monitor Tests
+### Conditional: Callback Tests
+- public callback API가 있는 경우 callback delivery를 검증한다.
+- callback이 받은 message 또는 multipart payload의 ownership을 검증한다.
+- callback 예외, panic, rejected promise, delegate exception 같은 언어별 실패가
+  문서화된 오류 경로로 전달되는지 확인한다.
+- callback delegate/function/object lifetime이 native callback보다 짧아져
+  use-after-free를 만들지 않는지 검증한다.
+- callback 안에서 금지된 blocking wait나 hidden thread join이 발생하지 않는지
+  확인한다.
+
+### Conditional: Monitor Tests
 - blocking monitor `recv` 성공 경로
 - non-blocking monitor recv empty path
 - monitor callback/state 변화와 data plane readiness 일치 여부
+
+### Conditional: Poller Tests
+- raw socket readiness 또는 fd readiness가 public poller API로 전달되는지 확인한다.
+- poller가 지원하지 않는 service-specific handle을 조용히 받아들이지 않는지 확인한다.
+- readiness event 값은 data plane contract를 대체하지 않는다는 점을 검증한다.
+
+### Conditional: Service Tests
+- registry/discovery/spot/actor public API를 제공하는 바인딩은 해당 service lifecycle을
+  최소 경로로 검증한다.
+- discovery attach 이후 close/connect/unbind 같은 lifecycle 제약이 public API에서
+  native 계약대로 전달되는지 확인한다.
+- spot publish/subscribe, spot request/reply, topology/status snapshot은 public
+  surface가 있으면 roundtrip을 검증한다.
+- service test는 service layer 바인딩 계약 검증이 목적이다. core service 전체
+  matrix를 모든 언어에서 다시 실행하지 않는다.
+
+### Conditional: Codec Tests
+- codec extension package를 제공하는 바인딩은 codec별 payload roundtrip을 검증한다.
+- core binding package가 codec dependency를 필수로 끌어들이지 않는지 확인한다.
+- serializer 선택 규칙이 있는 언어는 기본 serializer와 오류 경로를 검증한다.
+
+### Conditional: Sample Smoke Tests
+- sample suite를 제공하는 바인딩은 canonical sample set의 실행 smoke를 제공한다.
+- sample smoke는 public API 사용 가능성을 확인하는 최소 검증이다.
+- sample smoke는 core transport matrix, stress, perf 측정을 대신하지 않는다.
+
+### Language-specific: Runtime Tests
+- .NET: `IDisposable`, `SafeHandle`, delegate lifetime, `GCHandle`, native library
+  loader, `ZlinkException` mapping을 검증한다.
+- Java: `AutoCloseable`, JNI object lifetime, checked/unchecked exception policy,
+  classloader/native loader 경계를 검증한다.
+- Go: cgo pointer rule, finalizer에 의존하지 않는 explicit close, `(T, error)`
+  mapping을 검증한다.
+- Rust: ownership move, borrow lifetime, `Drop`, `Send`/`Sync` 노출 여부, concrete
+  error type mapping을 검증한다.
+- Python: buffer protocol, reference counting, context manager, exception mapping을
+  검증한다.
+- Node: native addon lifetime, `Buffer` ownership, async callback error path,
+  package export boundary를 검증한다.
+- C++: RAII, move-only message ownership, exception type, installed header boundary를
+  검증한다.
+- C: raw ABI, errno/result code, caller-provided message lifecycle을 검증한다.
 
 ### Note: Performance and Sample Verification
 - 성능 회귀 검증은 Perf Policy (`doc/perf/`)가 담당한다. Test Matrix에 중복하지
@@ -3877,16 +4019,24 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
   - 언어별 `Flags Policy`에 없는 legacy flag 타입이 public 타입으로 남아 있음
 
 #### 6단계: 테스트 Matrix 완성
-- Test Matrix의 모든 카테고리에 대해 테스트를 작성하거나 보강한다.
+- Test Matrix의 `Required` 카테고리는 모든 바인딩에서 작성하거나 보강한다.
+- 해당 public API, extension package, sample suite를 제공하는 바인딩은 관련
+  `Conditional` 카테고리도 작성하거나 보강한다.
+- 언어 런타임의 수명, 예외, native loader 위험이 있는 바인딩은 관련
+  `Language-specific` 카테고리를 작성하거나 보강한다.
 - 완성 기준:
   - Surface test가 Socket Capability Matrix를 검증한다
   - Contract test가 FFI 매핑과 lifecycle을 검증한다
   - Behavior test가 blocking/non-blocking 경로를 검증한다
-  - Send/Receive Failure test가 오류 계약을 검증한다
+  - Helper/Facade test가 바인딩 제공 helper의 의미 계약을 검증한다
+  - Optimization Guard test가 hot path 최적화 불변식을 검증한다
+  - Failure Contract test가 send/receive 오류 계약을 검증한다
   - Boundary test가 값 경계를 검증한다
   - Option test가 typed surface를 검증한다
   - Ownership test가 send/recv ownership을 검증한다
-  - Monitor test가 recv를 검증한다
+  - 해당 public API가 있으면 Callback, Monitor, Poller, Service, Codec test가
+    public contract를 검증한다
+  - sample suite가 있으면 Sample Smoke test가 canonical API 실행을 검증한다
 
 #### 7단계: 샘플 정렬
 - Canonical Sample Set 기준으로 샘플을 완성한다.
@@ -3907,6 +4057,9 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 - 판단은 POSD 관점에서 수행한다.
 - 종료 조건의 범위는 해당 바인딩이 구현하기로 한 scope에 한정한다.
   - `Required` 항목: 모든 바인딩에 적용
+  - `Conditional` 항목: 해당 public API, extension package, sample suite를
+    제공하는 바인딩에 적용
+  - `Language-specific` 항목: 해당 런타임 위험이 있는 바인딩에 적용
   - `Recommended` 항목(예: 샘플): 공개 배포 바인딩에 적용
   - `Target` 항목(예: Registry): 해당 바인딩이 구현한 경우에만 적용
   - 구현하지 않기로 한 `Target` 컴포넌트는 종료 조건에서 제외한다.
@@ -3940,7 +4093,9 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
    - 사용자가 internal sequencing을 알지 않아도 API를 올바르게 사용할 수 있다.
 
 6. **Test Matrix 완성**
-   - Test Matrix의 9개 카테고리 전체에 대해 테스트가 존재하고 통과한다.
+   - 모든 `Required` 테스트가 존재하고 통과한다.
+   - 해당 바인딩의 scope에 포함되는 `Conditional` 테스트가 존재하고 통과한다.
+   - 해당 런타임 위험에 필요한 `Language-specific` 테스트가 존재하고 통과한다.
 
 7. **Sample 정렬 완료**
    - Canonical Sample Set의 모든 샘플이 존재한다.

@@ -22,6 +22,7 @@ TEST_TARGETS=(
   test_cpp_contract_monitor
   test_cpp_contract_service
   test_cpp_contract_behavior
+  test_cpp_contract_optimization_guard
 )
 
 if [[ $# -gt 0 ]]; then

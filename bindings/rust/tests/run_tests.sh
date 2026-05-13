@@ -45,6 +45,7 @@ run_test_file option_tests
 run_test_file ownership_tests
 run_test_file monitor_tests
 run_test_file service_surface_tests
+run_test_file optimization_guard_tests
 
 echo ""
 echo "=== Summary ==="

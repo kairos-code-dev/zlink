@@ -7,6 +7,12 @@ internal static class ZLinkFrameworkRegistrationValidator
         var globalSpotFactories = new HashSet<string>(StringComparer.Ordinal);
         var globalSpotPublisherChannels = new HashSet<string>(StringComparer.Ordinal);
 
+        if (registration.SpotDiscovery is { RequiresUseDiscovery: true, UseDiscoveryCalled: false })
+        {
+            throw new ZLinkConfigurationException(
+                "AddSpotMesh(...) requires spotMesh.UseDiscovery(...).");
+        }
+
         foreach (var channel in registration.Channels.Values)
         {
             ValidateChannel(channel, registration.Discovery is not null);
@@ -186,8 +192,14 @@ internal static class ZLinkFrameworkRegistrationValidator
     {
         if (registration.SpotDiscovery is null)
         {
-            throw new ZLinkConfigurationException(
-                $"SPOT node '{spotNode.SpotNodeName}' requires AddSpotMesh(...) or UseSpotDiscovery(...).");
+            if (spotNode.Router is not null
+                || spotNode.PubSub is not null
+                || spotNode.AttachedChannelClients.Count > 0
+                || spotNode.AttachedSpotPublisherClients.Count > 0)
+            {
+                throw new ZLinkConfigurationException(
+                    $"SPOT node '{spotNode.SpotNodeName}' requires AddSpotMesh(...) or UseSpotDiscovery(...) for mesh capabilities.");
+            }
         }
 
         foreach (var attachedChannelClient in spotNode.AttachedChannelClients.Values)

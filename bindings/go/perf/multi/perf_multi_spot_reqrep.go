@@ -102,7 +102,7 @@ func runMultiSpotReqRep(cfg multiConfig) perfcommon.Result {
 					Message(perfcommon.NewMessage(payload)).
 					Flags(zlink.SendFlagsDontWait).
 					Timeout(perfcommon.MultiRecvTimeout()).
-					SubmitCallback(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
+					Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
 						defer func() {
 							for _, part := range parts {
 								_ = part.Close()
@@ -148,7 +148,7 @@ func waitMultiSpotReqRepReady(
 		Message(perfcommon.NewMessage(payload)).
 		Flags(zlink.SendFlagsDontWait).
 		Timeout(perfcommon.MultiRecvTimeout()).
-		SubmitCallback(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
+		Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
 			defer func() {
 				for _, part := range parts {
 					_ = part.Close()

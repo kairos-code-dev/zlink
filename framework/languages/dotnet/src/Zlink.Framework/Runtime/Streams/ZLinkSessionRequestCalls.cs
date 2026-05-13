@@ -22,7 +22,7 @@ internal sealed class ZLinkSessionRequestCall<TRequest>(
         return this;
     }
 
-    public ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default)
+    public ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
     {
         return context.RequestClientAsync<TRequest, TReply>(
             request,

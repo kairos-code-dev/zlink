@@ -1,14 +1,54 @@
 namespace Zlink.Framework.Spots;
 
-public readonly record struct ZLinkSpotActorLifecycleInfo(
-    string? PreviousActorId,
-    string? CurrentActorId,
+public readonly record struct ZLinkSpotId(string Value)
+{
+    public static ZLinkSpotId FromRoutingId(RoutingId routingId)
+    {
+        return new ZLinkSpotId(routingId.ToHex());
+    }
+
+    public RoutingId ToRoutingId()
+    {
+        return RoutingId.FromString(Value);
+    }
+
+    public override string ToString()
+    {
+        return Value;
+    }
+}
+
+public enum ZLinkSpotActorLifecycleKind
+{
+    Joined = 1,
+    Left = 2
+}
+
+public sealed record ZLinkSpotActorLifecycleInfo(
+    ZLinkSpotActorLifecycleKind Kind,
+    string ActorId,
     RoutingId? PreviousNodeRid,
+    ZLinkSpotId? PreviousSpotId,
     RoutingId? CurrentNodeRid,
-    RoutingId? PreviousSpotRid,
-    RoutingId? CurrentSpotRid,
-    ulong JoinEpoch,
-    uint Flags);
+    ZLinkSpotId? CurrentSpotId,
+    string? PreviousSpotName,
+    string? CurrentSpotName,
+    bool PreviousIsEntrySpot,
+    bool CurrentIsEntrySpot,
+    ulong CommitEpoch)
+{
+    public string? PreviousActorId => PreviousSpotId is null ? null : ActorId;
+
+    public string? CurrentActorId => CurrentSpotId is null ? null : ActorId;
+
+    public RoutingId? PreviousSpotRid => PreviousSpotId?.ToRoutingId();
+
+    public RoutingId? CurrentSpotRid => CurrentSpotId?.ToRoutingId();
+
+    public ulong JoinEpoch => CommitEpoch;
+
+    public uint Flags { get; init; }
+}
 
 public interface IZLinkSpot
 {
@@ -62,6 +102,8 @@ public interface IZLinkActorHandlerRegistry
 
 public interface IZLinkSpotContext : IZLinkActorHandlerRegistry
 {
+    ZLinkSpotId SpotId { get; }
+
     RoutingId SpotRid { get; }
 
     RoutingId NodeRid { get; }

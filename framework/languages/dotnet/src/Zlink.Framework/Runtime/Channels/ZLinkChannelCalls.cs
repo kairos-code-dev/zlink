@@ -92,7 +92,7 @@ internal sealed class ZLinkRequestCall<TMessage> : IZLinkRequestCall
         return this;
     }
 
-    public async ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
     {
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;

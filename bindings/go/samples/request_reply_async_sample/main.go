@@ -66,12 +66,17 @@ func main() {
 	replyCh := make(chan []*zlink.Message, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		reply, err := dealerSocket.Request().Message(samplecommon.Message("ping")).Timeout(2 * time.Second).Submit(nil)
+		completions, err := dealerSocket.Request().Message(samplecommon.Message("ping")).Timeout(2 * time.Second).SubmitAsync(nil)
 		if err != nil {
 			errCh <- err
 			return
 		}
-		replyCh <- reply
+		completion := <-completions
+		if completion.Err != nil {
+			errCh <- completion.Err
+			return
+		}
+		replyCh <- completion.Parts
 	}()
 
 	var reply []*zlink.Message

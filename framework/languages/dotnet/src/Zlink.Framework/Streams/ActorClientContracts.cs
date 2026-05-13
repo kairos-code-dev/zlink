@@ -32,7 +32,7 @@ public interface IZLinkActorClientRequestCall
 
     IZLinkActorClientRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorPlayRouteResolver
@@ -41,6 +41,22 @@ public interface IZLinkActorPlayRouteResolver
         string actorId,
         CancellationToken cancellationToken);
 }
+
+public interface IZLinkSpotRouteResolver
+{
+    ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        string spotName,
+        CancellationToken cancellationToken);
+
+    ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        ZLinkSpotId spotId,
+        CancellationToken cancellationToken);
+}
+
+public readonly record struct ZLinkSpotRoute(
+    string RouterChannelId,
+    RoutingId TargetNodeRid,
+    ZLinkSpotId SpotId);
 
 public interface IZLinkActorSessionBindingStore
 {

@@ -99,6 +99,25 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
             .Submit();
     }
 
+    public bool RequestToSpot(
+        RoutingId targetRid,
+        RoutingId spotRid,
+        Message message,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout)
+    {
+        var operation = nativeSpot.RequestToSpot(targetRid, spotRid)
+            .Message(message)
+            .Flags(flags);
+        if (timeout is { } value)
+        {
+            operation = operation.Timeout(value);
+        }
+
+        return operation.Submit(callback);
+    }
+
     public ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags)
     {
         var request = nativeSpot.RecvActorJoin(flags);

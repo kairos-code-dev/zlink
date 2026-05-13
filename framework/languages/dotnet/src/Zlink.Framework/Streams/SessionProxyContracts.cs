@@ -32,5 +32,5 @@ public interface IZLinkSessionProxyRequestCall
 
     IZLinkSessionProxyRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }

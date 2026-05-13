@@ -28,7 +28,7 @@ internal sealed class AuthenticateSessionPacketHandler(
                     SampleNames.ApiChannel,
                     new AuthenticateActorReq(request.ActorId))
                 .WithTimeout(SampleTimings.RequestTimeout)
-                .Submit<AuthenticateActorRes>(cancellationToken)
+                .SubmitAsync<AuthenticateActorRes>(cancellationToken)
                 .ConfigureAwait(false);
             if (!authenticated.Accepted || string.IsNullOrWhiteSpace(authenticated.ActorId))
             {

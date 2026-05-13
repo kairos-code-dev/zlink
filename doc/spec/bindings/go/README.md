@@ -357,7 +357,7 @@ func (s *PairSocket) Disconnect(endpoint string) error
 // DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
 func (s *PairSocket) DisconnectRID(rid RoutingID) error
 // Send returns an operation builder. Accumulate parts via .Message(...) and
-// submit with .Submit(ctx) / .SubmitCallback(ctx, callback).
+// submit with .Submit(ctx).
 func (s *PairSocket) Send() SendOp
 // Recv is the canonical caller-provided storage recv. Returns
 // (true, nil) on success, (false, nil) when RecvFlagsDontWait finds no
@@ -479,8 +479,7 @@ func (s *DealerSocket) Send() SendOp
 // Recv is the canonical caller-provided storage recv.
 func (s *DealerSocket) Recv(out *Received, flags RecvFlags) (bool, error)
 // Request returns a request operation builder. Accumulate parts via
-// .Message(...) and submit with .Submit(ctx) (async) or
-// .SubmitCallback(ctx, callback).
+// .Message(...) and submit with .SubmitAsync(ctx) or .Submit(ctx, callback).
 func (s *DealerSocket) Request() RequestOp
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *DealerSocket) OnSendReady(handler func()) error
@@ -1369,19 +1368,25 @@ type RequestOp interface {
     Message(message *Message) RequestSubmitOp
 }
 
+type RequestReplyCompletion struct {
+    Result RequestResult
+    Parts  []*Message
+    Err    error
+}
+
 type RequestSubmitOp interface {
     Message(message *Message) RequestSubmitOp
     Timeout(timeout time.Duration) RequestSubmitOp
     Flags(flags SendFlags) RequestCallbackSubmitOp
-    Submit(ctx context.Context) ([]*Message, error)
-    SubmitCallback(ctx context.Context, callback RequestReplyCallback) (bool, error)
+    SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
+    Submit(ctx context.Context, callback RequestReplyCallback) (bool, error)
 }
 
 type RequestCallbackSubmitOp interface {
     Message(message *Message) RequestCallbackSubmitOp
     Timeout(timeout time.Duration) RequestCallbackSubmitOp
     Flags(flags SendFlags) RequestCallbackSubmitOp
-    SubmitCallback(ctx context.Context, callback RequestReplyCallback) (bool, error)
+    Submit(ctx context.Context, callback RequestReplyCallback) (bool, error)
 }
 
 type ReplyOp interface {
@@ -1403,13 +1408,23 @@ type ActorJoinOp interface {
     Message(message *Message) ActorJoinSubmitOp
 }
 
+type ActorJoinCompletion struct {
+    Result ActorJoinResult
+    Parts  []*Message
+    Err    error
+}
+
+type ActorLookupCompletion struct {
+    Result ActorLookupResult
+    Err    error
+}
+
 type ActorJoinSubmitOp interface {
     Message(message *Message) ActorJoinSubmitOp
     Timeout(timeout time.Duration) ActorJoinSubmitOp
     Flags(flags SendFlags) ActorJoinCallbackSubmitOp
-    // Submit blocks until completion and returns ActorJoinResult + reply parts.
-    Submit(ctx context.Context) (ActorJoinResult, []*Message, error)
-    SubmitCallback(ctx context.Context,
+    SubmitAsync(ctx context.Context) (<-chan ActorJoinCompletion, error)
+    Submit(ctx context.Context,
         callback func(result ActorJoinResult, parts []*Message)) (bool, error)
 }
 
@@ -1417,7 +1432,7 @@ type ActorJoinCallbackSubmitOp interface {
     Message(message *Message) ActorJoinCallbackSubmitOp
     Timeout(timeout time.Duration) ActorJoinCallbackSubmitOp
     Flags(flags SendFlags) ActorJoinCallbackSubmitOp
-    SubmitCallback(ctx context.Context,
+    Submit(ctx context.Context,
         callback func(result ActorJoinResult, parts []*Message)) (bool, error)
 }
 
@@ -1431,36 +1446,36 @@ type ActorJoinReplyOp interface {
 // Payload-less Actor operation builders: leave, destroy, lookup, bind, unbind.
 type ActorLeaveOp interface {
     Timeout(timeout time.Duration) ActorLeaveOp
-    Submit(ctx context.Context) ([]*Message, error)
-    SubmitCallback(ctx context.Context,
+    SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
+    Submit(ctx context.Context,
         callback func(result RequestResult, parts []*Message)) (bool, error)
 }
 
 type ActorDestroyOp interface {
     Timeout(timeout time.Duration) ActorDestroyOp
-    Submit(ctx context.Context) ([]*Message, error)
-    SubmitCallback(ctx context.Context,
+    SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
+    Submit(ctx context.Context,
         callback func(result RequestResult, parts []*Message)) (bool, error)
 }
 
 type ActorLookupOp interface {
     Timeout(timeout time.Duration) ActorLookupOp
-    Submit(ctx context.Context) (ActorLookupResult, error)
-    SubmitCallback(ctx context.Context,
+    SubmitAsync(ctx context.Context) (<-chan ActorLookupCompletion, error)
+    Submit(ctx context.Context,
         callback func(result ActorLookupResult)) (bool, error)
 }
 
 type ActorBindOp interface {
     Timeout(timeout time.Duration) ActorBindOp
-    Submit(ctx context.Context) ([]*Message, error)
-    SubmitCallback(ctx context.Context,
+    SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
+    Submit(ctx context.Context,
         callback func(result RequestResult, parts []*Message)) (bool, error)
 }
 
 type ActorUnbindOp interface {
     Timeout(timeout time.Duration) ActorUnbindOp
-    Submit(ctx context.Context) ([]*Message, error)
-    SubmitCallback(ctx context.Context,
+    SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
+    Submit(ctx context.Context,
         callback func(result RequestResult, parts []*Message)) (bool, error)
 }
 
@@ -1537,11 +1552,11 @@ func (s *Spot) Close() error
 `Message(...)` appends one multipart payload part. Submit without any payload
 returns a validation error before calling native code. `Submit(ctx)` receives
 the context at execution time, so the operation start methods do not take
-`context.Context`. Request `Submit(ctx)` is the reply-producing form and does
-not use submit flags. Callback submission uses `SubmitCallback(ctx, callback)`
-and may use `Flags(...)`; it returns `(false, nil)` only for temporary
-backpressure. Submit consumes the operation; reusing the same operation object
-after submit returns a validation error.
+`context.Context`. Request and Actor `SubmitAsync(ctx)` return a one-shot
+completion channel and do not use submit flags. Callback submission uses
+`Submit(ctx, callback)` and may use `Flags(...)`; it returns `(false, nil)` only
+for temporary backpressure. Submit consumes the operation; reusing the same
+operation object after submit returns a validation error.
 
 ### Actor
 

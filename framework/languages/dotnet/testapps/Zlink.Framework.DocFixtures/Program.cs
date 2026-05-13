@@ -398,7 +398,7 @@ internal sealed class FixtureActorPacketSession(
         var created = await spotManager.CreateAsync("fixture-actor-stage", cancellationToken);
         _ = await _actor.Context
             .JoinSpot(created.SpotRid, new FixtureActorJoinRequest("fixture-room"))
-            .Submit<FixtureActorJoinReply>(cancellationToken);
+            .SubmitAsync<FixtureActorJoinReply>(cancellationToken);
     }
 
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)

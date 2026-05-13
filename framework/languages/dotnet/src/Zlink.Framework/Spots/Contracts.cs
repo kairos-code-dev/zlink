@@ -3,11 +3,17 @@ namespace Zlink.Framework.Spots;
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
     string SpotName,
-    bool Created);
+    bool Created)
+{
+    public ZLinkSpotId SpotId => ZLinkSpotId.FromRoutingId(SpotRid);
+}
 
 public readonly record struct ZLinkSpotInfo(
     RoutingId SpotRid,
-    string SpotName);
+    string SpotName)
+{
+    public ZLinkSpotId SpotId => ZLinkSpotId.FromRoutingId(SpotRid);
+}
 
 public interface IZLinkSpotManager
 {
@@ -20,9 +26,24 @@ public interface IZLinkSpotManager
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
 
+    ValueTask<ZLinkSpotCreateResult> CreateAsync(
+        string spotName,
+        ZLinkSpotId spotId,
+        CancellationToken cancellationToken = default)
+    {
+        return CreateAsync(spotName, spotId.ToRoutingId(), cancellationToken);
+    }
+
     ValueTask<ZLinkSpotInfo?> GetAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkSpotInfo?> GetAsync(
+        ZLinkSpotId spotId,
+        CancellationToken cancellationToken = default)
+    {
+        return GetAsync(spotId.ToRoutingId(), cancellationToken);
+    }
 
     ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
         CancellationToken cancellationToken = default);
@@ -30,10 +51,33 @@ public interface IZLinkSpotManager
     ValueTask<bool> RemoveAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
+
+    ValueTask<bool> RemoveAsync(
+        ZLinkSpotId spotId,
+        CancellationToken cancellationToken = default)
+    {
+        return RemoveAsync(spotId.ToRoutingId(), cancellationToken);
+    }
 }
 
 public interface IZLinkSpotClient
 {
+    IZLinkSendCall SendSpot<TMessage>(
+        string spotName,
+        TMessage message);
+
+    IZLinkSendCall SendSpot<TMessage>(
+        ZLinkSpotId spotId,
+        TMessage message);
+
+    IZLinkRequestCall RequestSpot<TMessage>(
+        string spotName,
+        TMessage request);
+
+    IZLinkRequestCall RequestSpot<TMessage>(
+        ZLinkSpotId spotId,
+        TMessage request);
+
     IZLinkSendCall SendChannel<TMessage>(
         string channelName,
         TMessage message);

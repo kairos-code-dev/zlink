@@ -95,6 +95,8 @@ public interface IZLinkRouteChannelBuilder
 
     void UseManualConnections(Action<IRouteChannelConnections> configure);
 
+    void MapHandlerGroup(string groupName);
+
     void AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkRouteSendHandler<TMessage>;
 
@@ -130,6 +132,8 @@ public interface IZLinkClientServerChannelBuilder
     void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null);
 
     void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null);
+
+    void MapHandlerGroup(string groupName);
 }
 
 public interface IZLinkFanoutChannelBuilder
@@ -137,6 +141,8 @@ public interface IZLinkFanoutChannelBuilder
     void EnablePublisher(Action<IChannelPublisherCapabilityBuilder>? configure = null);
 
     void EnableSubscriber(Action<IChannelSubscriberCapabilityBuilder>? configure = null);
+
+    void MapHandlerGroup(string groupName);
 }
 
 public interface IZLinkDealerMeshChannelBuilder
@@ -220,6 +226,9 @@ public interface IZLinkFrameworkOptions
 
     void AddActorPlayRouteResolver<TResolver>()
         where TResolver : class, IZLinkActorPlayRouteResolver;
+
+    void AddSpotRouteResolver<TResolver>()
+        where TResolver : class, IZLinkSpotRouteResolver;
 
     void AddActorSessionBindingStore<TStore>()
         where TStore : class, IZLinkActorSessionBindingStore;

@@ -627,15 +627,15 @@ type RequestSubmitOp interface {
 	Message(message *Message) RequestSubmitOp
 	Timeout(timeout time.Duration) RequestSubmitOp
 	Flags(flags SendFlags) RequestCallbackSubmitOp
-	Submit(ctx context.Context) ([]*Message, error)
-	SubmitCallback(ctx context.Context, callback RequestReplyCallback) (bool, error)
+	SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
+	Submit(ctx context.Context, callback RequestReplyCallback) (bool, error)
 }
 
 type RequestCallbackSubmitOp interface {
 	Message(message *Message) RequestCallbackSubmitOp
 	Timeout(timeout time.Duration) RequestCallbackSubmitOp
 	Flags(flags SendFlags) RequestCallbackSubmitOp
-	SubmitCallback(ctx context.Context, callback RequestReplyCallback) (bool, error)
+	Submit(ctx context.Context, callback RequestReplyCallback) (bool, error)
 }
 
 type ReplyOp interface {
@@ -727,11 +727,11 @@ func (b *requestBuilder) Flags(flags SendFlags) RequestCallbackSubmitOp {
 	return &requestCallbackBuilder{state: b.state}
 }
 
-func (b *requestBuilder) Submit(_ context.Context) ([]*Message, error) {
-	return b.state.doSubmitSync()
+func (b *requestBuilder) SubmitAsync(_ context.Context) (<-chan RequestReplyCompletion, error) {
+	return b.state.doSubmitAsync()
 }
 
-func (b *requestBuilder) SubmitCallback(_ context.Context, callback RequestReplyCallback) (bool, error) {
+func (b *requestBuilder) Submit(_ context.Context, callback RequestReplyCallback) (bool, error) {
 	return b.state.doSubmitCallback(callback)
 }
 
@@ -750,29 +750,27 @@ func (b *requestCallbackBuilder) Flags(flags SendFlags) RequestCallbackSubmitOp 
 	return b
 }
 
-func (b *requestCallbackBuilder) SubmitCallback(_ context.Context, callback RequestReplyCallback) (bool, error) {
+func (b *requestCallbackBuilder) Submit(_ context.Context, callback RequestReplyCallback) (bool, error) {
 	return b.state.doSubmitCallback(callback)
 }
 
-func (s *requestBuilderState) doSubmitSync() ([]*Message, error) {
-	if s.submitted {
-		return nil, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
-	}
-	if len(s.parts) == 0 {
-		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	s.submitted = true
-	result := make(chan requestResult, 1)
-	if err := s.submit(s.parts, s.flags, s.timeout, func(r RequestResult, parts []*Message) {
-		result <- requestResult{result: r, parts: parts}
-	}); err != nil {
+func (s *requestBuilderState) doSubmitAsync() (<-chan RequestReplyCompletion, error) {
+	result := make(chan RequestReplyCompletion, 1)
+	ok, err := s.doSubmitCallback(func(r RequestResult, parts []*Message) {
+		completion := RequestReplyCompletion{Result: r, Parts: parts}
+		if r != RequestOK {
+			completion.Err = &RequestError{Result: r}
+		}
+		result <- completion
+		close(result)
+	})
+	if err != nil {
 		return nil, err
 	}
-	res := <-result
-	if res.result != RequestOK {
-		return nil, &RequestError{Result: res.result}
+	if !ok {
+		return nil, &SubmitError{Result: SubmitBackpressured}
 	}
-	return res.parts, nil
+	return result, nil
 }
 
 func (s *requestBuilderState) doSubmitCallback(callback RequestReplyCallback) (bool, error) {

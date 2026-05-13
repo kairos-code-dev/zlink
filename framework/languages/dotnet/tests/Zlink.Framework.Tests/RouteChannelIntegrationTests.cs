@@ -61,7 +61,7 @@ public sealed class RouteChannelIntegrationTests
             async () => await client.RequestTo("backend.discovery", rightRid, new SharedPacketRequest("discovery", 1))
                 .WithPacketName("SharedPacket")
                 .WithTimeout(TimeSpan.FromSeconds(1))
-                .Submit<SharedPacketReply>(),
+                .SubmitAsync<SharedPacketReply>(),
             static result => result.Value == "discovery",
             attempts: 30,
             delayMs: 100);
@@ -118,7 +118,7 @@ public sealed class RouteChannelIntegrationTests
             async () => await client.RequestTo("backend", rightRid, new SharedPacketRequest("warmup", 1))
                 .WithPacketName("SharedPacket")
                 .WithTimeout(TimeSpan.FromSeconds(3))
-                .Submit<SharedPacketReply>(),
+                .SubmitAsync<SharedPacketReply>(),
             static result => result.Value == "warmup",
             attempts: 30,
             delayMs: 100);
@@ -126,11 +126,11 @@ public sealed class RouteChannelIntegrationTests
         var slow = client.RequestTo("backend", rightRid, new SharedPacketRequest("slow", 40))
             .WithPacketName("SharedPacket")
             .WithTimeout(TimeSpan.FromSeconds(3))
-            .Submit<SharedPacketReply>();
+            .SubmitAsync<SharedPacketReply>();
         var fast = client.RequestTo("backend", rightRid, new SharedPacketRequest("fast", 1))
             .WithPacketName("SharedPacket")
             .WithTimeout(TimeSpan.FromSeconds(3))
-            .Submit<SharedPacketReply>();
+            .SubmitAsync<SharedPacketReply>();
 
         var replies = await Task.WhenAll(slow.AsTask(), fast.AsTask());
 

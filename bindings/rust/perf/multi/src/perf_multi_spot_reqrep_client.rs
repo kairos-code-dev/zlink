@@ -54,7 +54,7 @@ fn request_spot_reply(
         .request_to_spot(node_rid, spot_rid)
         .message(msg)
         .timeout(timeout)
-        .submit_callback(move |result| {
+        .submit(move |result| {
             let _ = tx.send(result);
         });
     match submit.and_then(|_| {

@@ -32,11 +32,22 @@ type ActorJoinResult struct {
 	Flags         uint32
 }
 
+type ActorJoinCompletion struct {
+	Result ActorJoinResult
+	Parts  []*Message
+	Err    error
+}
+
 // ActorLookupResult is the completion value of RemoteActorGetRef.
 type ActorLookupResult struct {
 	Result RequestResult
 	Actor  ActorRef
 	Flags  uint32
+}
+
+type ActorLookupCompletion struct {
+	Result ActorLookupResult
+	Err    error
 }
 
 // SpotActorLifecycleInfo is the payload delivered to lifecycle callbacks.
@@ -58,14 +69,14 @@ type ActorJoinOp interface {
 }
 
 // ActorJoinSubmitOp is the join operation builder after the first part is
-// attached. Submit blocks until completion; Flags advances to the callback-only
-// stage.
+// attached. SubmitAsync returns the completion channel; Flags advances to the
+// callback-only stage.
 type ActorJoinSubmitOp interface {
 	Message(message *Message) ActorJoinSubmitOp
 	Timeout(timeout time.Duration) ActorJoinSubmitOp
 	Flags(flags SendFlags) ActorJoinCallbackSubmitOp
-	Submit(ctx context.Context) (ActorJoinResult, []*Message, error)
-	SubmitCallback(ctx context.Context,
+	SubmitAsync(ctx context.Context) (<-chan ActorJoinCompletion, error)
+	Submit(ctx context.Context,
 		callback func(result ActorJoinResult, parts []*Message)) (bool, error)
 }
 
@@ -74,7 +85,7 @@ type ActorJoinCallbackSubmitOp interface {
 	Message(message *Message) ActorJoinCallbackSubmitOp
 	Timeout(timeout time.Duration) ActorJoinCallbackSubmitOp
 	Flags(flags SendFlags) ActorJoinCallbackSubmitOp
-	SubmitCallback(ctx context.Context,
+	Submit(ctx context.Context,
 		callback func(result ActorJoinResult, parts []*Message)) (bool, error)
 }
 
@@ -88,40 +99,40 @@ type ActorJoinReplyOp interface {
 // ActorLeaveOp is returned by SpotNode.LeaveActor / Actor.Leave.
 type ActorLeaveOp interface {
 	Timeout(timeout time.Duration) ActorLeaveOp
-	Submit(ctx context.Context) ([]*Message, error)
-	SubmitCallback(ctx context.Context,
+	SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
+	Submit(ctx context.Context,
 		callback func(result RequestResult, parts []*Message)) (bool, error)
 }
 
 // ActorDestroyOp is returned by SpotNode.DestroyActor.
 type ActorDestroyOp interface {
 	Timeout(timeout time.Duration) ActorDestroyOp
-	Submit(ctx context.Context) ([]*Message, error)
-	SubmitCallback(ctx context.Context,
+	SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
+	Submit(ctx context.Context,
 		callback func(result RequestResult, parts []*Message)) (bool, error)
 }
 
 // ActorLookupOp is returned by SpotNode.RemoteActorGetRef.
 type ActorLookupOp interface {
 	Timeout(timeout time.Duration) ActorLookupOp
-	Submit(ctx context.Context) (ActorLookupResult, error)
-	SubmitCallback(ctx context.Context,
+	SubmitAsync(ctx context.Context) (<-chan ActorLookupCompletion, error)
+	Submit(ctx context.Context,
 		callback func(result ActorLookupResult)) (bool, error)
 }
 
 // ActorBindOp is returned by StreamSocket.BindActor.
 type ActorBindOp interface {
 	Timeout(timeout time.Duration) ActorBindOp
-	Submit(ctx context.Context) ([]*Message, error)
-	SubmitCallback(ctx context.Context,
+	SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
+	Submit(ctx context.Context,
 		callback func(result RequestResult, parts []*Message)) (bool, error)
 }
 
 // ActorUnbindOp is returned by StreamSocket.UnbindActor.
 type ActorUnbindOp interface {
 	Timeout(timeout time.Duration) ActorUnbindOp
-	Submit(ctx context.Context) ([]*Message, error)
-	SubmitCallback(ctx context.Context,
+	SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
+	Submit(ctx context.Context,
 		callback func(result RequestResult, parts []*Message)) (bool, error)
 }
 
@@ -206,11 +217,11 @@ func (b *actorJoinSubmitBuilder) Flags(flags SendFlags) ActorJoinCallbackSubmitO
 	return &actorJoinCallbackBuilder{state: b.state}
 }
 
-func (b *actorJoinSubmitBuilder) Submit(_ context.Context) (ActorJoinResult, []*Message, error) {
-	return b.state.doSubmitSync()
+func (b *actorJoinSubmitBuilder) SubmitAsync(_ context.Context) (<-chan ActorJoinCompletion, error) {
+	return b.state.doSubmitAsync()
 }
 
-func (b *actorJoinSubmitBuilder) SubmitCallback(_ context.Context, callback func(ActorJoinResult, []*Message)) (bool, error) {
+func (b *actorJoinSubmitBuilder) Submit(_ context.Context, callback func(ActorJoinResult, []*Message)) (bool, error) {
 	return b.state.doSubmitCallback(callback)
 }
 
@@ -229,29 +240,27 @@ func (b *actorJoinCallbackBuilder) Flags(flags SendFlags) ActorJoinCallbackSubmi
 	return b
 }
 
-func (b *actorJoinCallbackBuilder) SubmitCallback(_ context.Context, callback func(ActorJoinResult, []*Message)) (bool, error) {
+func (b *actorJoinCallbackBuilder) Submit(_ context.Context, callback func(ActorJoinResult, []*Message)) (bool, error) {
 	return b.state.doSubmitCallback(callback)
 }
 
-func (s *actorJoinBuilderState) doSubmitSync() (ActorJoinResult, []*Message, error) {
-	if s.submitted {
-		return ActorJoinResult{}, nil, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
+func (s *actorJoinBuilderState) doSubmitAsync() (<-chan ActorJoinCompletion, error) {
+	resultCh := make(chan ActorJoinCompletion, 1)
+	ok, err := s.doSubmitCallback(func(result ActorJoinResult, parts []*Message) {
+		completion := ActorJoinCompletion{Result: result, Parts: parts}
+		if result.Result != RequestOK {
+			completion.Err = &RequestError{Result: result.Result}
+		}
+		resultCh <- completion
+		close(resultCh)
+	})
+	if err != nil {
+		return nil, err
 	}
-	if len(s.parts) == 0 {
-		return ActorJoinResult{}, nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	if !ok {
+		return nil, &SubmitError{Result: SubmitBackpressured}
 	}
-	s.submitted = true
-	resultCh := make(chan actorJoinTrampolineResult, 1)
-	if err := s.submit(s.parts, s.flags, s.timeout, func(result ActorJoinResult, parts []*Message) {
-		resultCh <- actorJoinTrampolineResult{result: result, parts: parts}
-	}); err != nil {
-		return ActorJoinResult{}, nil, err
-	}
-	out := <-resultCh
-	if out.result.Result != RequestOK {
-		return out.result, out.parts, &RequestError{Result: out.result.Result}
-	}
-	return out.result, out.parts, nil
+	return resultCh, nil
 }
 
 func (s *actorJoinBuilderState) doSubmitCallback(callback func(ActorJoinResult, []*Message)) (bool, error) {
@@ -305,23 +314,23 @@ type requestPartsBuilderState struct {
 	submit    func(timeout time.Duration, cb requestPartsCallback) error
 }
 
-func (s *requestPartsBuilderState) doSubmitSync() ([]*Message, error) {
-	if s.submitted {
-		return nil, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
-	}
-	s.submitted = true
-	resultCh := make(chan requestResult, 1)
-	if err := s.submit(s.timeout, func(r RequestResult, parts []*Message) {
-		resultCh <- requestResult{result: r, parts: parts}
-	}); err != nil {
+func (s *requestPartsBuilderState) doSubmitAsync() (<-chan RequestReplyCompletion, error) {
+	resultCh := make(chan RequestReplyCompletion, 1)
+	ok, err := s.doSubmitCallback(func(r RequestResult, parts []*Message) {
+		completion := RequestReplyCompletion{Result: r, Parts: parts}
+		if r != RequestOK {
+			completion.Err = &RequestError{Result: r}
+		}
+		resultCh <- completion
+		close(resultCh)
+	})
+	if err != nil {
 		return nil, err
 	}
-	out := <-resultCh
-	if out.result != RequestOK {
-		closeMessageSlice(out.parts)
-		return nil, &RequestError{Result: out.result}
+	if !ok {
+		return nil, &SubmitError{Result: SubmitBackpressured}
 	}
-	return out.parts, nil
+	return resultCh, nil
 }
 
 func (s *requestPartsBuilderState) doSubmitCallback(callback requestPartsCallback) (bool, error) {
@@ -357,11 +366,11 @@ func (b *actorLeaveBuilder) Timeout(timeout time.Duration) ActorLeaveOp {
 	return b
 }
 
-func (b *actorLeaveBuilder) Submit(_ context.Context) ([]*Message, error) {
-	return b.state.doSubmitSync()
+func (b *actorLeaveBuilder) SubmitAsync(_ context.Context) (<-chan RequestReplyCompletion, error) {
+	return b.state.doSubmitAsync()
 }
 
-func (b *actorLeaveBuilder) SubmitCallback(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
+func (b *actorLeaveBuilder) Submit(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
 	return b.state.doSubmitCallback(cb)
 }
 
@@ -381,15 +390,26 @@ func (b *actorDestroyBuilder) Timeout(timeout time.Duration) ActorDestroyOp {
 	return b
 }
 
-func (b *actorDestroyBuilder) Submit(_ context.Context) ([]*Message, error) {
-	parts, err := b.state.doSubmitSync()
-	if err == nil && b.onSuccess != nil {
-		b.onSuccess()
+func (b *actorDestroyBuilder) SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error) {
+	resultCh := make(chan RequestReplyCompletion, 1)
+	ok, err := b.Submit(ctx, func(r RequestResult, parts []*Message) {
+		completion := RequestReplyCompletion{Result: r, Parts: parts}
+		if r != RequestOK {
+			completion.Err = &RequestError{Result: r}
+		}
+		resultCh <- completion
+		close(resultCh)
+	})
+	if err != nil {
+		return nil, err
 	}
-	return parts, err
+	if !ok {
+		return nil, &SubmitError{Result: SubmitBackpressured}
+	}
+	return resultCh, nil
 }
 
-func (b *actorDestroyBuilder) SubmitCallback(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
+func (b *actorDestroyBuilder) Submit(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
 	wrapped := cb
 	if b.onSuccess != nil {
 		wrapped = func(r RequestResult, parts []*Message) {
@@ -417,11 +437,11 @@ func (b *actorBindBuilder) Timeout(timeout time.Duration) ActorBindOp {
 	return b
 }
 
-func (b *actorBindBuilder) Submit(_ context.Context) ([]*Message, error) {
-	return b.state.doSubmitSync()
+func (b *actorBindBuilder) SubmitAsync(_ context.Context) (<-chan RequestReplyCompletion, error) {
+	return b.state.doSubmitAsync()
 }
 
-func (b *actorBindBuilder) SubmitCallback(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
+func (b *actorBindBuilder) Submit(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
 	return b.state.doSubmitCallback(cb)
 }
 
@@ -440,11 +460,11 @@ func (b *actorUnbindBuilder) Timeout(timeout time.Duration) ActorUnbindOp {
 	return b
 }
 
-func (b *actorUnbindBuilder) Submit(_ context.Context) ([]*Message, error) {
-	return b.state.doSubmitSync()
+func (b *actorUnbindBuilder) SubmitAsync(_ context.Context) (<-chan RequestReplyCompletion, error) {
+	return b.state.doSubmitAsync()
 }
 
-func (b *actorUnbindBuilder) SubmitCallback(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
+func (b *actorUnbindBuilder) Submit(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
 	return b.state.doSubmitCallback(cb)
 }
 
@@ -469,25 +489,26 @@ func (b *actorLookupBuilder) Timeout(timeout time.Duration) ActorLookupOp {
 	return b
 }
 
-func (b *actorLookupBuilder) Submit(_ context.Context) (ActorLookupResult, error) {
-	if b.state.submitted {
-		return ActorLookupResult{}, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
+func (b *actorLookupBuilder) SubmitAsync(ctx context.Context) (<-chan ActorLookupCompletion, error) {
+	resultCh := make(chan ActorLookupCompletion, 1)
+	ok, err := b.Submit(ctx, func(result ActorLookupResult) {
+		completion := ActorLookupCompletion{Result: result}
+		if result.Result != RequestOK {
+			completion.Err = &RequestError{Result: result.Result}
+		}
+		resultCh <- completion
+		close(resultCh)
+	})
+	if err != nil {
+		return nil, err
 	}
-	b.state.submitted = true
-	resultCh := make(chan ActorLookupResult, 1)
-	if err := b.state.submit(b.state.timeout, func(r ActorLookupResult) {
-		resultCh <- r
-	}); err != nil {
-		return ActorLookupResult{}, err
+	if !ok {
+		return nil, &SubmitError{Result: SubmitBackpressured}
 	}
-	out := <-resultCh
-	if out.Result != RequestOK {
-		return out, &RequestError{Result: out.Result}
-	}
-	return out, nil
+	return resultCh, nil
 }
 
-func (b *actorLookupBuilder) SubmitCallback(_ context.Context, cb func(ActorLookupResult)) (bool, error) {
+func (b *actorLookupBuilder) Submit(_ context.Context, cb func(ActorLookupResult)) (bool, error) {
 	if b.state.submitted {
 		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
 	}

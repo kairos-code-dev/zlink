@@ -27,7 +27,7 @@ func main() {
 	joinCh := make(chan zlink.RequestResult, 1)
 	playSpotRID := mustRID(playSpot.RoutingID())
 	playNodeRID := mustRID(gatewayNode.RoutingID())
-	_, joinErr := gatewayNode.JoinActor(actorRef, playNodeRID, playSpotRID).Message(samplecommon.Message("join-play")).Flags(zlink.SendFlagsDontWait).Timeout(time.Second).SubmitCallback(nil, func(result zlink.ActorJoinResult, parts []*zlink.Message) {
+	_, joinErr := gatewayNode.JoinActor(actorRef, playNodeRID, playSpotRID).Message(samplecommon.Message("join-play")).Flags(zlink.SendFlagsDontWait).Timeout(time.Second).Submit(nil, func(result zlink.ActorJoinResult, parts []*zlink.Message) {
 		for _, part := range parts {
 			part.Close()
 		}
@@ -46,11 +46,17 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected join result %v", result))
 	}
 
-	leaveParts, err := gatewayNode.LeaveActor(actorRef, playSpotRID).Timeout(time.Second).Submit(nil)
+	leaveCh, err := gatewayNode.LeaveActor(actorRef, playSpotRID).Timeout(time.Second).SubmitAsync(nil)
 	samplecommon.Must(err)
+	leave := <-leaveCh
+	samplecommon.Must(leave.Err)
+	leaveParts := leave.Parts
 	zlink.MultipartClose(leaveParts)
-	destroyParts, err := gatewayNode.DestroyRemoteActor(actorRef).Timeout(time.Second).Submit(nil)
+	destroyCh, err := gatewayNode.DestroyRemoteActor(actorRef).Timeout(time.Second).SubmitAsync(nil)
 	samplecommon.Must(err)
+	destroy := <-destroyCh
+	samplecommon.Must(destroy.Err)
+	destroyParts := destroy.Parts
 	zlink.MultipartClose(destroyParts)
 }
 

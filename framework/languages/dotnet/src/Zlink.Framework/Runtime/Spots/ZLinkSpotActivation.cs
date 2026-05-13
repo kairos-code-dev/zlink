@@ -66,6 +66,8 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
 
     public RoutingId SpotRid => NativeSpot.RoutingId;
 
+    public ZLinkSpotId SpotId => ZLinkSpotId.FromRoutingId(SpotRid);
+
     public RoutingId NodeRid { get; }
 
     public int SubscriptionMessageCount => _subscriptions.MessageCount;
@@ -329,6 +331,42 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
             cancellationToken);
     }
 
+    public async ValueTask<IReadOnlyList<Message>> RequestSpotAsync(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        Message message,
+        TimeSpan? timeout,
+        CancellationToken cancellationToken)
+    {
+        var requestTimeout = timeout ?? _defaultTimeout;
+        return await _submitter
+            .SubmitRequestAsync<IReadOnlyList<Message>>(
+                message,
+                (pending, complete, fail) => NativeSpot.RequestToSpot(
+                    targetNodeRid,
+                    targetSpotRid,
+                    pending,
+                    (result, reply) =>
+                    {
+                        if (result == RequestResult.Ok)
+                        {
+                            complete(reply);
+                            return;
+                        }
+
+                        foreach (var replyPart in reply)
+                        {
+                            replyPart.Dispose();
+                        }
+
+                        fail(new TimeoutException($"SPOT request failed with result '{result}'."));
+                    },
+                    SendFlags.DontWait,
+                    requestTimeout),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public ValueTask PublishCurrentAsync(
         string topic,
         Message message,
@@ -553,7 +591,11 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         await _runtime.JoinActorToSpotAsync(this, actor, cancellationToken);
         if (!ReferenceEquals(previousActivation, this))
         {
-            var info = ToPublicLifecycleInfo(actor, previousActivation, this);
+            var info = ToPublicLifecycleInfo(
+                actor,
+                previousActivation,
+                this,
+                ZLinkSpotActorLifecycleKind.Joined);
             if (previousActivation is null)
             {
                 await _runtime.NotifyEntrySpotActorLeftAsync(actor, info, cancellationToken)
@@ -587,7 +629,11 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         await _runtime.LeaveActorFromSpotAsync(this, actor, cancellationToken);
         if (wasCurrent)
         {
-            var info = ToPublicLifecycleInfo(actor, this, currentActivation: null);
+            var info = ToPublicLifecycleInfo(
+                actor,
+                this,
+                currentActivation: null,
+                ZLinkSpotActorLifecycleKind.Left);
             if (_actorHandlers is not null
                 && _actorHandlers.TryResolveLeft(actor.GetType(), out var descriptor)
                 && descriptor is not null)
@@ -654,33 +700,48 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
     }
 
     private ZLinkSpotActorLifecycleInfo ToPublicLifecycleInfo(
-        ZLinkBackendSpotActorLifecycleInfo info)
+        ZLinkBackendSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleKind kind)
     {
         return new ZLinkSpotActorLifecycleInfo(
-            info.PreviousActor?.ActorId,
-            info.CurrentActor?.ActorId,
+            kind,
+            info.CurrentActor?.ActorId ?? info.PreviousActor?.ActorId ?? string.Empty,
             info.PreviousActor?.NodeRid,
+            info.PreviousSpotRid is { } previousSpotRid
+                ? ZLinkSpotId.FromRoutingId(previousSpotRid)
+                : null,
             info.CurrentActor?.NodeRid,
-            info.PreviousSpotRid,
-            info.CurrentSpotRid,
-            info.JoinEpoch,
-            info.Flags);
+            info.CurrentSpotRid is { } currentSpotRid
+                ? ZLinkSpotId.FromRoutingId(currentSpotRid)
+                : null,
+            null,
+            null,
+            PreviousIsEntrySpot: info.PreviousSpotRid is null,
+            CurrentIsEntrySpot: info.CurrentSpotRid is null,
+            info.JoinEpoch)
+        {
+            Flags = info.Flags
+        };
     }
 
     private static ZLinkSpotActorLifecycleInfo ToPublicLifecycleInfo(
         IZLinkActor actor,
         ZLinkSpotActivation? previousActivation,
-        ZLinkSpotActivation? currentActivation)
+        ZLinkSpotActivation? currentActivation,
+        ZLinkSpotActorLifecycleKind kind)
     {
         return new ZLinkSpotActorLifecycleInfo(
-            previousActivation is null ? null : actor.ActorId,
-            currentActivation is null ? null : actor.ActorId,
+            kind,
+            actor.ActorId,
             previousActivation?.NodeRid,
+            previousActivation is null ? null : ZLinkSpotId.FromRoutingId(previousActivation.SpotRid),
             currentActivation?.NodeRid,
-            previousActivation?.SpotRid,
-            currentActivation?.SpotRid,
-            JoinEpoch: 0,
-            Flags: 0);
+            currentActivation is null ? null : ZLinkSpotId.FromRoutingId(currentActivation.SpotRid),
+            previousActivation?.SpotName,
+            currentActivation?.SpotName,
+            PreviousIsEntrySpot: previousActivation is null,
+            CurrentIsEntrySpot: currentActivation is null,
+            CommitEpoch: 0);
     }
 
     private async ValueTask InvokeLifecycleCallbackAsync(

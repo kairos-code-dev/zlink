@@ -6,6 +6,8 @@ public interface IZLinkActorContext
 
     string? SessionId { get; }
 
+    string? SpotName { get; }
+
     RoutingId? SpotRid { get; }
 
     bool IsJoined { get; }
@@ -20,6 +22,14 @@ public interface IZLinkActorContext
 
     TSpot GetSpot<TSpot>()
         where TSpot : IZLinkSpot;
+
+    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+        string spotName,
+        TRequest request);
+
+    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+        ZLinkSpotId spotId,
+        TRequest request);
 
     IZLinkActorJoinSpotCall JoinSpot<TRequest>(
         RoutingId spotRid,
@@ -38,6 +48,16 @@ public interface IZLinkActorContext
     IZLinkActorReplyCall Reply<TMessage>(TMessage message);
 
     ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
+        string spotName,
+        TRequest request,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
+        ZLinkSpotId spotId,
+        TRequest request,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
         RoutingId spotRid,
         TRequest request,
         CancellationToken cancellationToken = default);
@@ -47,5 +67,5 @@ public interface IZLinkActorJoinSpotCall
 {
     IZLinkActorJoinSpotCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }

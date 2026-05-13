@@ -441,7 +441,7 @@ streamSocket.bindActor(sessionRid, actorRef)
 | .NET | fluent builder. 가능하면 interface stage로 최소 payload rule을 표현하되, public surface가 과도하게 장황해지면 submit-time validation을 허용한다. |
 | Node | fluent builder. TypeScript declaration은 payload stage를 표현하고, 런타임도 같은 validation을 수행한다. |
 | Python | fluent builder. `message(...)` 반복과 Python 관용의 `messages(*parts)` convenience를 함께 허용한다. |
-| Go | fluent builder. `context.Context`는 operation 시작점이 아니라 `Submit(ctx)` / `SubmitCallback(ctx, callback)` 실행 시점에 전달한다. |
+| Go | fluent builder. `context.Context`는 operation 시작점이 아니라 `Submit(ctx)` / `Submit(ctx, callback)` / `SubmitAsync(ctx)` 실행 시점에 전달한다. |
 | Rust | typestate builder. payload 의무 작업은 `Empty` 상태에서 `message(...)` 후 `Ready` 상태로 바뀌며 `Ready` 상태에서만 submit 메서드가 존재한다. payload 없는 작업은 시작점이 곧바로 submit 가능한 typestate를 반환한다. |
 
 이 규칙은 POSD 기준에서 Required다. 새 send/request/reply/publish 또는 Actor

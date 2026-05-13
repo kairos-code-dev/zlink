@@ -4,7 +4,8 @@ namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelMessagePump(
     ZLinkHandlerRegistry handlerRegistry,
-    ZLinkHandlerDispatcher dispatcher)
+    ZLinkHandlerDispatcher dispatcher,
+    ZLinkFrameworkRegistration registration)
 {
     public async Task RunServerLoopAsync(
         string channelName,
@@ -109,7 +110,10 @@ internal sealed class ZLinkChannelMessagePump(
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
-        var endpoint = handlerRegistry.GetRequest(header.MessageName);
+        var endpoint = handlerRegistry.GetRequest(
+            channelName,
+            ResolveMappedGroups(channelName),
+            header.MessageName);
         var message = ZLinkEnvelopeCodec.DecodeBody(received.Parts[0], endpoint.MessageType);
         var context = new ZLinkRequestContext(
             channelName,
@@ -164,7 +168,10 @@ internal sealed class ZLinkChannelMessagePump(
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
-        var endpoint = handlerRegistry.GetCommand(header.MessageName);
+        var endpoint = handlerRegistry.GetCommand(
+            channelName,
+            ResolveMappedGroups(channelName),
+            header.MessageName);
         var message = ZLinkEnvelopeCodec.DecodeBody(envelope, endpoint.MessageType);
         var context = new ZLinkSendContext(
             channelName,
@@ -189,7 +196,9 @@ internal sealed class ZLinkChannelMessagePump(
         }
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(topicMessage.Parts[0]);
-        var endpoints = handlerRegistry.GetPublishes(header.MessageName);
+        var endpoints = handlerRegistry.GetPublishes(
+            ResolveMappedGroups(channelName),
+            header.MessageName);
 
         foreach (var endpoint in endpoints)
         {
@@ -208,4 +217,13 @@ internal sealed class ZLinkChannelMessagePump(
                 .ConfigureAwait(false);
         }
     }
+
+    private IReadOnlySet<string> ResolveMappedGroups(string channelName)
+    {
+        return registration.Channels.TryGetValue(channelName, out var channel)
+            ? channel.HandlerGroups
+            : EmptyGroups;
+    }
+
+    private static readonly IReadOnlySet<string> EmptyGroups = new HashSet<string>(StringComparer.Ordinal);
 }

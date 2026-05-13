@@ -84,7 +84,7 @@ fn main() {
             .request()
             .message(Message::copy_from(b"ping").expect("request message failed"))
             .timeout(Duration::from_secs(2))
-            .submit(),
+            .submit_async(),
     )
     .expect("dealer request failed");
     assert_eq!(reply[0].as_str().unwrap_or("?"), "pong");

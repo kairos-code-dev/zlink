@@ -258,10 +258,15 @@ func TestRequestReplyCanonicalDealerRouterRoundTrip(t *testing.T) {
 		}
 	}()
 
-	reply, err := dealerSocket.Request().Message(newMessage(t, "ping")).Timeout(2 * time.Second).Submit(nil)
+	replyCh, err := dealerSocket.Request().Message(newMessage(t, "ping")).Timeout(2 * time.Second).SubmitAsync(nil)
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
+	completion := <-replyCh
+	if completion.Err != nil {
+		t.Fatalf("Request() completion error = %v", completion.Err)
+	}
+	reply := completion.Parts
 	if len(reply) != 1 {
 		t.Fatalf("Request() reply parts = %d, want 1", len(reply))
 	}

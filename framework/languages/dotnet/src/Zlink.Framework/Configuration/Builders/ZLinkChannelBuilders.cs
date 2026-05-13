@@ -41,6 +41,11 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
         registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
         configure?.Invoke(new ZLinkChannelClientCapabilityBuilder(registration.Client));
     }
+
+    public void MapHandlerGroup(string groupName)
+    {
+        ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
+    }
 }
 
 internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registration)
@@ -57,6 +62,11 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
         registration.Subscriber ??= new ZLinkChannelSubscriberCapabilityRegistration();
         configure?.Invoke(new ZLinkChannelSubscriberCapabilityBuilder(registration.Subscriber));
     }
+
+    public void MapHandlerGroup(string groupName)
+    {
+        ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
+    }
 }
 
 internal sealed class ZLinkDealerMeshChannelBuilder(ZLinkChannelRegistration registration)
@@ -66,6 +76,21 @@ internal sealed class ZLinkDealerMeshChannelBuilder(ZLinkChannelRegistration reg
     {
         registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
         configure?.Invoke(new ZLinkDealerMeshChannelClientCapabilityBuilder(registration.Client));
+    }
+}
+
+internal static class ZLinkHandlerGroupBuilderSupport
+{
+    public static void AddHandlerGroup(
+        ZLinkChannelRegistration registration,
+        string groupName)
+    {
+        if (string.IsNullOrWhiteSpace(groupName))
+        {
+            throw new ZLinkConfigurationException("Handler group name must not be empty.");
+        }
+
+        registration.HandlerGroups.Add(groupName);
     }
 }
 

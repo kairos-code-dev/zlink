@@ -64,7 +64,7 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
         return this;
     }
 
-    public ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default)
+    public ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
     {
         var timeout = _timeout ?? runtime.Registration.DefaultTimeout;
         return runtime.GetRouteChannel(routerChannelId).RequestAsync<TRequest, TReply>(

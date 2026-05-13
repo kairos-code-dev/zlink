@@ -301,7 +301,7 @@ public sealed class StreamIntegrationTests
                     new GatewayPing("from-play"))
                 .WithPacketName("client.echo")
                 .WithTimeout(TimeSpan.FromSeconds(10))
-                .Submit<GatewayPong>();
+                .SubmitAsync<GatewayPong>();
 
             await clientReplyTask;
             Assert.Equal("client:from-play", gatewayReply.Value);
@@ -314,7 +314,7 @@ public sealed class StreamIntegrationTests
                 .WithPacketName("relay.echo")
                 .WithMetadata("trace-id", "trace-actor-client")
                 .WithTimeout(TimeSpan.FromSeconds(10))
-                .Submit<GatewayPong>();
+                .SubmitAsync<GatewayPong>();
 
             Assert.Equal("play:from-actor-client", actorClientReply.Value);
             Assert.Equal("relay.echo", proxyRecorder.LastPacketName);

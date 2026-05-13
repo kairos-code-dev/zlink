@@ -23,7 +23,7 @@ func main() {
 	samplecommon.Must(err)
 
 	joinCh := make(chan zlink.RequestResult, 1)
-	_, joinErr := actor.Join(spot).Message(samplecommon.Message("enter-room")).Flags(zlink.SendFlagsDontWait).Timeout(time.Second).SubmitCallback(nil, func(result zlink.ActorJoinResult, parts []*zlink.Message) {
+	_, joinErr := actor.Join(spot).Message(samplecommon.Message("enter-room")).Flags(zlink.SendFlagsDontWait).Timeout(time.Second).Submit(nil, func(result zlink.ActorJoinResult, parts []*zlink.Message) {
 		for _, part := range parts {
 			part.Close()
 		}
@@ -42,8 +42,11 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected join result %v", result))
 	}
 
-	leaveParts, err := actor.Leave(spot).Timeout(time.Second).Submit(nil)
+	leaveCh, err := actor.Leave(spot).Timeout(time.Second).SubmitAsync(nil)
 	samplecommon.Must(err)
+	leave := <-leaveCh
+	samplecommon.Must(leave.Err)
+	leaveParts := leave.Parts
 	zlink.MultipartClose(leaveParts)
 	samplecommon.Must(actor.Close())
 }

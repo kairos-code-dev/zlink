@@ -28,6 +28,16 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
         configure(new ZLinkMutableConnections(registration.ManualConnections));
     }
 
+    public void MapHandlerGroup(string groupName)
+    {
+        if (string.IsNullOrWhiteSpace(groupName))
+        {
+            throw new ZLinkConfigurationException("Handler group name must not be empty.");
+        }
+
+        registration.HandlerGroups.Add(groupName);
+    }
+
     public void AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkRouteSendHandler<TMessage>
     {

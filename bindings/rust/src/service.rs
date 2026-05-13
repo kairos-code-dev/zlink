@@ -2319,7 +2319,7 @@ impl RequestOp<Ready> {
         self
     }
 
-    /// Setting flags moves to `CallbackReady` (only `submit_callback` available).
+    /// Setting flags moves to `CallbackReady` (only callback `submit` available).
     pub fn flags(self, flags: SendFlags) -> RequestOp<CallbackReady> {
         RequestOp {
             handle: self.handle,
@@ -2333,7 +2333,7 @@ impl RequestOp<Ready> {
 
     /// Async submit — produces the reply.
     /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn submit(mut self) -> Result<Vec<Message>, ZlinkError> {
+    pub async fn submit_async(mut self) -> Result<Vec<Message>, ZlinkError> {
         let (tx, rx) = mpsc::channel();
         self.submit_callback_inner(SendFlags::NONE, move |result| {
             let _ = tx.send(result);
@@ -2350,7 +2350,7 @@ impl RequestOp<Ready> {
 
     /// Callback submit.
     /// # Errors: SubmitError
-    pub fn submit_callback<F>(mut self, callback: F) -> Result<(), SubmitError>
+    pub fn submit<F>(mut self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
@@ -2389,7 +2389,7 @@ impl RequestOp<CallbackReady> {
     }
 
     /// # Errors: SubmitError
-    pub fn submit_callback<F>(mut self, callback: F) -> Result<(), SubmitError>
+    pub fn submit<F>(mut self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {

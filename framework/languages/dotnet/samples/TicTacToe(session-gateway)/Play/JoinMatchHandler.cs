@@ -20,7 +20,7 @@ internal sealed class JoinMatchHandler(
         var result = await actor.Context
             .JoinSpot(RoutingId.FromString(request.MatchId), request)
             .WithTimeout(SampleTimings.RequestTimeout)
-            .Submit<JoinMatchSpotResult>(cancellationToken)
+            .SubmitAsync<JoinMatchSpotResult>(cancellationToken)
             .ConfigureAwait(false);
         await routes.BindActorPlayAsync(actor.ActorId, cancellationToken)
             .ConfigureAwait(false);

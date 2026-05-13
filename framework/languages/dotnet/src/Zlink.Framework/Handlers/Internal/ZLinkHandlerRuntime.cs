@@ -15,18 +15,19 @@ internal sealed record ZLinkHandlerEndpointDescriptor(
     Type MessageType,
     Type? ReplyType,
     Type? ContextType,
-    bool HasCancellationToken);
+    bool HasCancellationToken,
+    IReadOnlySet<string> Groups);
 
 internal sealed class ZLinkHandlerRegistry
 {
-    private readonly IReadOnlyDictionary<string, ZLinkHandlerEndpointDescriptor> _requests;
-    private readonly IReadOnlyDictionary<string, ZLinkHandlerEndpointDescriptor> _commands;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _requests;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _commands;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _publishes;
 
     public ZLinkHandlerRegistry(IEnumerable<ZLinkHandlerEndpointDescriptor> endpoints)
     {
-        var requests = new Dictionary<string, ZLinkHandlerEndpointDescriptor>(StringComparer.Ordinal);
-        var commands = new Dictionary<string, ZLinkHandlerEndpointDescriptor>(StringComparer.Ordinal);
+        var requests = new Dictionary<string, List<ZLinkHandlerEndpointDescriptor>>(StringComparer.Ordinal);
+        var commands = new Dictionary<string, List<ZLinkHandlerEndpointDescriptor>>(StringComparer.Ordinal);
         var publishes = new Dictionary<string, List<ZLinkHandlerEndpointDescriptor>>(StringComparer.Ordinal);
 
         foreach (var endpoint in endpoints)
@@ -34,20 +35,22 @@ internal sealed class ZLinkHandlerRegistry
             switch (endpoint.Kind)
             {
                 case ZLinkMessageKind.Request:
-                    if (!requests.TryAdd(endpoint.MessageName, endpoint))
+                    if (!requests.TryGetValue(endpoint.MessageName, out var requestList))
                     {
-                        throw new ZLinkConfigurationException(
-                            $"Duplicate request handler packet '{endpoint.MessageName}'.");
+                        requestList = [];
+                        requests.Add(endpoint.MessageName, requestList);
                     }
 
+                    requestList.Add(endpoint);
                     break;
                 case ZLinkMessageKind.Command:
-                    if (!commands.TryAdd(endpoint.MessageName, endpoint))
+                    if (!commands.TryGetValue(endpoint.MessageName, out var commandList))
                     {
-                        throw new ZLinkConfigurationException(
-                            $"Duplicate send handler packet '{endpoint.MessageName}'.");
+                        commandList = [];
+                        commands.Add(endpoint.MessageName, commandList);
                     }
 
+                    commandList.Add(endpoint);
                     break;
                 case ZLinkMessageKind.Publish:
                     if (!publishes.TryGetValue(endpoint.MessageName, out var list))
@@ -61,33 +64,79 @@ internal sealed class ZLinkHandlerRegistry
             }
         }
 
-        _requests = requests;
-        _commands = commands;
+        _requests = requests.ToDictionary(
+            entry => entry.Key,
+            entry => (IReadOnlyList<ZLinkHandlerEndpointDescriptor>)entry.Value,
+            StringComparer.Ordinal);
+        _commands = commands.ToDictionary(
+            entry => entry.Key,
+            entry => (IReadOnlyList<ZLinkHandlerEndpointDescriptor>)entry.Value,
+            StringComparer.Ordinal);
         _publishes = publishes.ToDictionary(
             entry => entry.Key,
             entry => (IReadOnlyList<ZLinkHandlerEndpointDescriptor>)entry.Value,
             StringComparer.Ordinal);
     }
 
-    public ZLinkHandlerEndpointDescriptor GetRequest(string messageName)
+    public ZLinkHandlerEndpointDescriptor GetRequest(
+        string channelName,
+        IReadOnlySet<string> mappedGroups,
+        string messageName)
     {
-        return _requests.TryGetValue(messageName, out var endpoint)
-            ? endpoint
+        return _requests.TryGetValue(messageName, out var endpoints)
+            ? SelectEndpoint(channelName, mappedGroups, messageName, endpoints, "request")
             : throw new InvalidOperationException($"No request handler is registered for '{messageName}'.");
     }
 
-    public ZLinkHandlerEndpointDescriptor GetCommand(string messageName)
+    public ZLinkHandlerEndpointDescriptor GetCommand(
+        string channelName,
+        IReadOnlySet<string> mappedGroups,
+        string messageName)
     {
-        return _commands.TryGetValue(messageName, out var endpoint)
-            ? endpoint
+        return _commands.TryGetValue(messageName, out var endpoints)
+            ? SelectEndpoint(channelName, mappedGroups, messageName, endpoints, "send")
             : throw new InvalidOperationException($"No send handler is registered for '{messageName}'.");
     }
 
-    public IReadOnlyList<ZLinkHandlerEndpointDescriptor> GetPublishes(string messageName)
+    public IReadOnlyList<ZLinkHandlerEndpointDescriptor> GetPublishes(
+        IReadOnlySet<string> mappedGroups,
+        string messageName)
     {
         return _publishes.TryGetValue(messageName, out var endpoints)
-            ? endpoints
+            ? FilterEndpoints(mappedGroups, endpoints)
             : Array.Empty<ZLinkHandlerEndpointDescriptor>();
+    }
+
+    private static ZLinkHandlerEndpointDescriptor SelectEndpoint(
+        string channelName,
+        IReadOnlySet<string> mappedGroups,
+        string messageName,
+        IReadOnlyList<ZLinkHandlerEndpointDescriptor> endpoints,
+        string kind)
+    {
+        var matches = FilterEndpoints(mappedGroups, endpoints);
+        return matches.Count switch
+        {
+            1 => matches[0],
+            0 => throw new InvalidOperationException(
+                $"No {kind} handler is mapped for '{channelName}:{messageName}'."),
+            _ => throw new ZLinkConfigurationException(
+                $"Duplicate {kind} handler packet '{messageName}' is mapped to channel '{channelName}'.")
+        };
+    }
+
+    private static IReadOnlyList<ZLinkHandlerEndpointDescriptor> FilterEndpoints(
+        IReadOnlySet<string> mappedGroups,
+        IReadOnlyList<ZLinkHandlerEndpointDescriptor> endpoints)
+    {
+        if (mappedGroups.Count == 0)
+        {
+            return endpoints;
+        }
+
+        return endpoints
+            .Where(endpoint => endpoint.Groups.Count > 0 && endpoint.Groups.Any(mappedGroups.Contains))
+            .ToArray();
     }
 }
 

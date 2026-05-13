@@ -19,24 +19,25 @@ internal static class ZLinkHandlerScanner
                 continue;
             }
 
+            var groups = ResolveGroups(type);
             foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public))
             {
                 var request = method.GetCustomAttribute<ZLinkRequestAttribute>();
                 if (request is not null)
                 {
-                    endpoints.Add(CreateDescriptor(type, method, request.PacketName, ZLinkMessageKind.Request));
+                    endpoints.Add(CreateDescriptor(type, method, request.PacketName, ZLinkMessageKind.Request, groups));
                 }
 
                 var send = method.GetCustomAttribute<ZLinkSendAttribute>();
                 if (send is not null)
                 {
-                    endpoints.Add(CreateDescriptor(type, method, send.PacketName, ZLinkMessageKind.Command));
+                    endpoints.Add(CreateDescriptor(type, method, send.PacketName, ZLinkMessageKind.Command, groups));
                 }
 
                 var publish = method.GetCustomAttribute<ZLinkPublishAttribute>();
                 if (publish is not null)
                 {
-                    endpoints.Add(CreateDescriptor(type, method, publish.PacketName, ZLinkMessageKind.Publish));
+                    endpoints.Add(CreateDescriptor(type, method, publish.PacketName, ZLinkMessageKind.Publish, groups));
                 }
             }
 
@@ -50,15 +51,15 @@ internal static class ZLinkHandlerScanner
                 var def = iface.GetGenericTypeDefinition();
                 if (def == typeof(IZLinkRequestHandler<,>))
                 {
-                    endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Request));
+                    endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Request, groups));
                 }
                 else if (def == typeof(IZLinkSendHandler<>))
                 {
-                    endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Command));
+                    endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Command, groups));
                 }
                 else if (def == typeof(IZLinkPublishHandler<>))
                 {
-                    endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Publish));
+                    endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Publish, groups));
                 }
             }
         }
@@ -69,7 +70,8 @@ internal static class ZLinkHandlerScanner
     private static ZLinkHandlerEndpointDescriptor CreateInterfaceDescriptor(
         Type declaringType,
         Type handlerInterface,
-        ZLinkMessageKind kind)
+        ZLinkMessageKind kind,
+        IReadOnlySet<string> groups)
     {
         var args = handlerInterface.GetGenericArguments();
         var messageType = args[0];
@@ -108,14 +110,16 @@ internal static class ZLinkHandlerScanner
             messageType,
             replyType,
             contextType,
-            HasCancellationToken: true);
+            HasCancellationToken: true,
+            groups);
     }
 
     private static ZLinkHandlerEndpointDescriptor CreateDescriptor(
         Type declaringType,
         MethodInfo method,
         string? messageNameOverride,
-        ZLinkMessageKind kind)
+        ZLinkMessageKind kind,
+        IReadOnlySet<string> groups)
     {
         var parameters = method.GetParameters();
         if (parameters.Length == 0)
@@ -155,7 +159,17 @@ internal static class ZLinkHandlerScanner
             messageType,
             replyType,
             contextType,
-            hasCancellationToken);
+            hasCancellationToken,
+            groups);
+    }
+
+    private static IReadOnlySet<string> ResolveGroups(Type declaringType)
+    {
+        return declaringType
+            .GetCustomAttributes<ZLinkHandlerGroupAttribute>()
+            .Select(static attribute => attribute.GroupName)
+            .Where(static group => !string.IsNullOrWhiteSpace(group))
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     private static Type? GetReplyType(Type returnType)

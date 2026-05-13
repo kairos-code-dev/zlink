@@ -27,7 +27,7 @@ func main() {
 	ref := actor.Ref()
 
 	firstJoin := make(chan zlink.RequestResult, 1)
-	_, joinErr := actor.Join(firstSpot).Message(samplecommon.Message("join-first")).Flags(zlink.SendFlagsDontWait).Timeout(time.Second).SubmitCallback(nil, func(result zlink.ActorJoinResult, parts []*zlink.Message) {
+	_, joinErr := actor.Join(firstSpot).Message(samplecommon.Message("join-first")).Flags(zlink.SendFlagsDontWait).Timeout(time.Second).Submit(nil, func(result zlink.ActorJoinResult, parts []*zlink.Message) {
 		for _, part := range parts {
 			part.Close()
 		}
@@ -39,12 +39,15 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected first join result %v", result))
 	}
 
-	leaveParts, err := actor.Leave(firstSpot).Timeout(time.Second).Submit(nil)
+	leaveCh, err := actor.Leave(firstSpot).Timeout(time.Second).SubmitAsync(nil)
 	samplecommon.Must(err)
+	leave := <-leaveCh
+	samplecommon.Must(leave.Err)
+	leaveParts := leave.Parts
 	zlink.MultipartClose(leaveParts)
 
 	secondJoin := make(chan zlink.RequestResult, 1)
-	_, joinErr2 := node.JoinActor(ref, mustRID(node.RoutingID()), mustRID(secondSpot.RoutingID())).Message(samplecommon.Message("join-second")).Flags(zlink.SendFlagsDontWait).Timeout(time.Second).SubmitCallback(nil, func(result zlink.ActorJoinResult, parts []*zlink.Message) {
+	_, joinErr2 := node.JoinActor(ref, mustRID(node.RoutingID()), mustRID(secondSpot.RoutingID())).Message(samplecommon.Message("join-second")).Flags(zlink.SendFlagsDontWait).Timeout(time.Second).Submit(nil, func(result zlink.ActorJoinResult, parts []*zlink.Message) {
 		for _, part := range parts {
 			part.Close()
 		}
@@ -55,8 +58,11 @@ func main() {
 	if result := <-secondJoin; result != zlink.RequestOK {
 		samplecommon.Must(fmt.Errorf("unexpected second join result %v", result))
 	}
-	leaveParts2, err := actor.Leave(secondSpot).Timeout(time.Second).Submit(nil)
+	leaveCh2, err := actor.Leave(secondSpot).Timeout(time.Second).SubmitAsync(nil)
 	samplecommon.Must(err)
+	leave2 := <-leaveCh2
+	samplecommon.Must(leave2.Err)
+	leaveParts2 := leave2.Parts
 	zlink.MultipartClose(leaveParts2)
 	samplecommon.Must(actor.Close())
 }

@@ -13,7 +13,7 @@ public interface IZLinkRequestCall
 
     IZLinkRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkPublishCall

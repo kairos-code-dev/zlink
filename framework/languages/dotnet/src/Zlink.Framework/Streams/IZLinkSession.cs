@@ -1,5 +1,18 @@
 namespace Zlink.Framework.Streams;
 
+public interface IZLinkSessionPacket
+{
+    string PacketName { get; }
+
+    ZLinkMessageMetadata Metadata { get; }
+
+    ZlinkStreamHeader Header { get; }
+
+    Message Body { get; }
+
+    TMessage Decode<TMessage>();
+}
+
 public interface IZLinkSession
 {
     IZLinkSessionContext Context { get; set; }
@@ -15,9 +28,22 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
+        IZLinkSessionPacket packet,
+        CancellationToken cancellationToken)
+    {
+        return OnDispatchAsync(packet.Header, packet.Body, cancellationToken);
+    }
+
+    ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
         Message body,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        _ = header;
+        _ = body;
+        _ = cancellationToken;
+        return ValueTask.CompletedTask;
+    }
 }
 
 public interface IZLinkSessionIdentityContext
@@ -62,6 +88,15 @@ public interface IZLinkSessionActorDispatchContext
         CancellationToken cancellationToken = default);
 
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
+
+    ValueTask DispatchToActorAsync(
+        IZLinkSessionPacket packet,
+        CancellationToken cancellationToken = default);
+
+    ValueTask DispatchToActorAsync(
+        IZLinkActorRef actor,
+        IZLinkSessionPacket packet,
+        CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         ZlinkStreamHeader header,

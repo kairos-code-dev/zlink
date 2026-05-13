@@ -87,13 +87,13 @@ fn spot_callback_surfaces_exist() {
         spot.request_channel("svc-surface")
             .message(Message::copy_from(b"payload").unwrap())
             .timeout(std::time::Duration::from_millis(1))
-            .submit(),
+            .submit_async(),
     );
     let _ = spot
         .request_channel("svc-surface")
         .message(Message::copy_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
-        .submit_callback(|_result| {});
+        .submit(|_result| {});
     let _ = spot.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
     let _on_send_ready = Spot::on_send_ready::<fn()>;
     let _on_routed_receive = Spot::on_routed_receive::<fn(Received)>;

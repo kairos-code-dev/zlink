@@ -37,7 +37,7 @@ public sealed class SpotDispatchInfo
         return index < ActorParts.Count ? ActorParts[index] : null;
     }
 
-    internal void DrainChannelReply()
+    public void DrainChannelReply()
     {
         if (_drainChannelReply == null || _channelDealerSubject == IntPtr.Zero)
         {

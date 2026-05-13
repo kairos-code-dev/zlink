@@ -57,7 +57,7 @@ public sealed partial class StreamConnectorTests
             .Request(new Ping("hello"))
             .WithPacketName("ping")
             .WithTimeout(TimeSpan.FromSeconds(1))
-            .Submit<Pong>();
+            .SubmitAsync<Pong>();
 
         Assert.Equal("pong", reply.Text);
         await server;
@@ -97,7 +97,7 @@ public sealed partial class StreamConnectorTests
         var completed = new TaskCompletionSource<ZlinkStreamResult<Pong>>(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.Request(new Ping("hello"))
             .WithPacketName("ping")
-            .Submit<Pong>(completed.SetResult);
+            .Submit<Pong>(result => completed.SetResult(result));
 
         var result = await completed.Task.WaitAsync(TimeSpan.FromSeconds(1));
         Assert.True(result.IsSuccess);

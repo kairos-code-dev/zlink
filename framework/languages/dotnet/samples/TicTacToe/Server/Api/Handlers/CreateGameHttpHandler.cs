@@ -17,7 +17,7 @@ internal static class CreateGameHttpHandler
                 SampleChannels.Play,
                 new CreateGameReq(gameName))
             .WithTimeout(SampleTimeouts.Request)
-            .Submit<CreateGameRes>(cancellationToken);
+            .SubmitAsync<CreateGameRes>(cancellationToken);
 
         logger.LogInformation(
             "play -> api: game created. gameId={GameId}, endpoint={Endpoint}, game={GameName}",

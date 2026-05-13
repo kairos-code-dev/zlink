@@ -49,17 +49,17 @@ public sealed class TicTacToeClient
 
         var xAuthentication = await xConnector
             .Request(new AuthenticateReq(options.XActorId))
-            .Submit<AuthenticateRes>(cancellationToken);
+            .SubmitAsync<AuthenticateRes>(cancellationToken);
         var oAuthentication = await oConnector
             .Request(new AuthenticateReq(options.OActorId))
-            .Submit<AuthenticateRes>(cancellationToken);
+            .SubmitAsync<AuthenticateRes>(cancellationToken);
 
         var xJoin = await xConnector
             .Request(new JoinGameReq(game.GameId))
-            .Submit<JoinGameRes>(cancellationToken);
+            .SubmitAsync<JoinGameRes>(cancellationToken);
         var oJoin = await oConnector
             .Request(new JoinGameReq(game.GameId))
-            .Submit<JoinGameRes>(cancellationToken);
+            .SubmitAsync<JoinGameRes>(cancellationToken);
 
         var moves = new List<PlaceMarkRes>
         {
@@ -96,7 +96,7 @@ public sealed class TicTacToeClient
     {
         return connector
             .Request(new PlaceMarkReq(cell))
-            .Submit<PlaceMarkRes>(cancellationToken);
+            .SubmitAsync<PlaceMarkRes>(cancellationToken);
     }
 
     private static ValueTask<ZlinkStreamConnector> ConnectPlayerAsync(

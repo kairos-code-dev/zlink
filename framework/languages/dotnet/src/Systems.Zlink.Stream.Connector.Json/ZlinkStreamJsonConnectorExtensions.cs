@@ -123,9 +123,9 @@ public sealed class ZlinkStreamJsonRequestBuilder
         return this;
     }
 
-    public async ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
     {
-        var reply = await _inner.Submit(cancellationToken).ConfigureAwait(false);
+        var reply = await _inner.SubmitAsync(cancellationToken).ConfigureAwait(false);
         return reply.FromJson<TReply>();
     }
 

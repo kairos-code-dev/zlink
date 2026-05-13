@@ -1707,9 +1707,9 @@ impl RequestOp<Ready> {
     pub fn timeout(self, timeout: Duration) -> Self;
     pub fn flags(self, flags: SendFlags) -> RequestOp<CallbackReady>;
     /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn submit(self) -> Result<Vec<Message>, ZlinkError>;
+    pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError>;
     /// # Errors: SubmitError
-    pub fn submit_callback<F>(self, callback: F) -> Result<(), SubmitError>
+    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
         where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
 }
 
@@ -1718,7 +1718,7 @@ impl RequestOp<CallbackReady> {
     pub fn timeout(self, timeout: Duration) -> Self;
     pub fn flags(self, flags: SendFlags) -> Self;
     /// # Errors: SubmitError
-    pub fn submit_callback<F>(self, callback: F) -> Result<(), SubmitError>
+    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
         where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
 }
 
@@ -1881,9 +1881,9 @@ impl Spot {
 `SendOp`, `RequestOp`, and `ReplyOp` use Rust typestate. Submit methods exist
 only for `Ready` or `CallbackReady` states, so a payload-less submit is a type
 error. Repeated `message(...)` calls append multipart payload parts in order.
-Request `submit()` is the async reply-producing form and has no submit flags.
+Request `submit_async()` is the async reply-producing form and has no submit flags.
 Adding `flags(...)` moves the operation to `CallbackReady`, where only
-`submit_callback(...)` is available. Submit consumes the operation by value, so
+callback `submit(...)` is available. Submit consumes the operation by value, so
 the same operation cannot be submitted twice.
 
 ```rust

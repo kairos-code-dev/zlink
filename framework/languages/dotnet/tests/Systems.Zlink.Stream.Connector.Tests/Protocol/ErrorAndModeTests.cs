@@ -42,7 +42,7 @@ public sealed partial class StreamConnectorTests
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
             await connector.Request(new Ping("hello"))
                 .WithPacketName("ping")
-                .Submit<Pong>());
+                .SubmitAsync<Pong>());
 
         Assert.Equal(ZlinkStreamErrorCode.RequestTimeout, exception.Error.Code);
         await server;

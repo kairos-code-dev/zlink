@@ -110,6 +110,13 @@ internal sealed class ZLinkSessionContext(
     }
 
     public ValueTask DispatchToActorAsync(
+        IZLinkSessionPacket packet,
+        CancellationToken cancellationToken = default)
+    {
+        return DispatchToActorAsync(packet.Header, packet.Body.Move(), cancellationToken);
+    }
+
+    public ValueTask DispatchToActorAsync(
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default)
@@ -132,6 +139,15 @@ internal sealed class ZLinkSessionContext(
         }
 
         return runtime.SubmitActorAsync(actor, header, body, cancellationToken);
+    }
+
+    public async ValueTask DispatchToActorAsync(
+        IZLinkActorRef actor,
+        IZLinkSessionPacket packet,
+        CancellationToken cancellationToken = default)
+    {
+        await DispatchToActorAsync(actor, packet.Header, packet.Body.Move(), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask DispatchToActorAsync(
@@ -162,7 +178,7 @@ internal sealed class ZLinkSessionContext(
                         .RequestTo(actorRef.RouterChannelId, actorRef.TargetNodeRid, packet)
                         .WithPacketName(ZLinkInternalPacketNames.ActorDispatch)
                         .WithTimeout(runtime.Registration.DefaultTimeout)
-                        .Submit<byte[]>(cancellationToken)
+                        .SubmitAsync<byte[]>(cancellationToken)
                         .ConfigureAwait(false);
                 }
                 catch (TimeoutException ex)

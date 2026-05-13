@@ -308,6 +308,14 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
         Message message,
         SendFlags flags);
 
+    bool RequestToSpot(
+        RoutingId targetRid,
+        RoutingId spotRid,
+        Message message,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout);
+
     ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags);
 
     void ReplyActorJoin(

@@ -37,7 +37,7 @@ internal sealed class ZLinkFrameworkRuntime
             services,
             backendAdapterFactory,
             registration,
-            new ZLinkChannelMessagePump(handlerRegistry, dispatcher));
+            new ZLinkChannelMessagePump(handlerRegistry, dispatcher, registration));
         _streams = new ZLinkStreamRuntimeManager(services, backendAdapterFactory, registration);
         _spots = new ZLinkSpotRuntimeManager(services, this, backendAdapterFactory, registration);
         _actorSessionManager = new ZLinkActorSessionManager(this, services, GetActorSpotNode);

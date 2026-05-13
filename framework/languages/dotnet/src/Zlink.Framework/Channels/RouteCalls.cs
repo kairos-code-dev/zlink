@@ -26,7 +26,7 @@ public interface IZLinkRouteRequestCall
 
     IZLinkRouteRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkRouteSendHandler<in TMessage>

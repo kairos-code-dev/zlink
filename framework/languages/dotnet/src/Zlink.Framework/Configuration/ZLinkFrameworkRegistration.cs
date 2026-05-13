@@ -16,6 +16,8 @@ internal sealed class ZLinkFrameworkRegistration
 
     public Type? ActorPlayRouteResolverType { get; set; }
 
+    public Type? SpotRouteResolverType { get; set; }
+
     public Type? ActorSessionBindingStoreType { get; set; }
 
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
@@ -44,6 +46,10 @@ internal sealed class ZLinkMetadataPolicyRegistration
 internal sealed class ZLinkSpotDiscoveryRegistration : ZLinkDiscoveryRegistration
 {
     public required string ChannelName { get; init; }
+
+    public bool RequiresUseDiscovery { get; init; }
+
+    public bool UseDiscoveryCalled { get; set; }
 }
 
 internal sealed class ZLinkChannelRegistration
@@ -59,6 +65,8 @@ internal sealed class ZLinkChannelRegistration
     public ZLinkChannelPublisherCapabilityRegistration? Publisher { get; set; }
 
     public ZLinkChannelSubscriberCapabilityRegistration? Subscriber { get; set; }
+
+    public HashSet<string> HandlerGroups { get; } = new(StringComparer.Ordinal);
 }
 
 internal sealed class ZLinkChannelServerCapabilityRegistration
@@ -119,6 +127,8 @@ internal sealed class ZLinkRouteChannelRegistration
     public List<ZLinkRouteHandlerRegistration> SendHandlers { get; } = [];
 
     public List<ZLinkRouteHandlerRegistration> RequestHandlers { get; } = [];
+
+    public HashSet<string> HandlerGroups { get; } = new(StringComparer.Ordinal);
 
 }
 

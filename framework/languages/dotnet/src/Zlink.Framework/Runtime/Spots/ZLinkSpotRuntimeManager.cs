@@ -33,8 +33,7 @@ internal sealed class ZLinkSpotRuntimeManager(
                 state.Context,
                 channelAdapter,
                 node,
-                registration.SpotDiscovery?.ChannelName
-                    ?? throw new InvalidOperationException("SPOT discovery is not configured."));
+                registration.SpotDiscovery?.ChannelName ?? spotNodeRegistration.SpotNodeName);
 
             if (registration.SpotDiscovery is not null
                 && registration.SpotDiscovery.Endpoints.Count > 0)

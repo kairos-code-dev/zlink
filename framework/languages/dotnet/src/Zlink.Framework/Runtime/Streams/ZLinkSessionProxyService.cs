@@ -132,7 +132,7 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
         return this;
     }
 
-    public async ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
     {
         var route = await ResolveRouteAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -151,7 +151,7 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
             reply = await routedClient.RequestTo(runtime.ResolveDefaultRouterChannelId(), route.SessionRouterId, packet)
                 .WithPacketName(ZLinkInternalPacketNames.SessionProxy)
                 .WithTimeout(_timeout ?? registration.DefaultTimeout)
-                .Submit<byte[]>(cancellationToken)
+                .SubmitAsync<byte[]>(cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (TimeoutException ex)

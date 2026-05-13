@@ -48,6 +48,17 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration.ActorPlayRouteResolverType = typeof(TResolver);
     }
 
+    public void AddSpotRouteResolver<TResolver>()
+        where TResolver : class, IZLinkSpotRouteResolver
+    {
+        if (_registration.SpotRouteResolverType is not null)
+        {
+            throw new ZLinkConfigurationException("SPOT route resolver is already registered.");
+        }
+
+        _registration.SpotRouteResolverType = typeof(TResolver);
+    }
+
     public void AddActorSessionBindingStore<TStore>()
         where TStore : class, IZLinkActorSessionBindingStore
     {
@@ -147,6 +158,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         var discovery = new ZLinkSpotDiscoveryRegistration
         {
             ChannelName = channelName,
+            UseDiscoveryCalled = true,
         };
 
         configure(new ZLinkDiscoveryBuilder(discovery.Endpoints));
@@ -207,6 +219,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         var discovery = new ZLinkSpotDiscoveryRegistration
         {
             ChannelName = channelName,
+            RequiresUseDiscovery = true,
         };
 
         _registration.SpotDiscovery = discovery;
@@ -289,6 +302,7 @@ internal sealed class ZLinkSpotMeshBuilder(
 {
     public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure)
     {
+        discovery.UseDiscoveryCalled = true;
         configure(new ZLinkDiscoveryBuilder(discovery.Endpoints));
     }
 

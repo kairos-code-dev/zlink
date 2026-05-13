@@ -1,5 +1,3 @@
-using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
@@ -36,19 +34,18 @@ internal sealed class SessionRelaySession(
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
-        Message payload,
+        IZLinkSessionPacket packet,
         CancellationToken cancellationToken)
     {
-        if (!_handlers.TryGetValue(header.Name, out var handler))
+        if (!_handlers.TryGetValue(packet.PacketName, out var handler))
         {
-            throw new InvalidOperationException($"Unsupported client packet '{header.Name}'.");
+            throw new InvalidOperationException($"Unsupported client packet '{packet.PacketName}'.");
         }
 
         await handler.HandleAsync(
                 new SessionRelayPacketContext(Context, _state),
-                header,
-                payload,
+                packet.Header,
+                packet.Body.Move(),
                 cancellationToken)
             .ConfigureAwait(false);
     }

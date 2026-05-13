@@ -172,6 +172,18 @@ GamePromptRep prompt = await sessionProxy
 `CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)`,
 actor → client 방향은 `IZLinkSessionProxy`다.
 
+`IZLinkSessionProxy.Send(...).Submit(...)`은 one-way push다. 이 호출은 framework route
+send 제출을 의미하며, client application handler가 메시지를 처리했다는 ack를 뜻하지
+않는다. stale binding token, 이미 닫힌 stream, 늦게 도착한 push는 해당 push만
+실패해야 하며 route receive loop나 host shutdown을 실패시키면 안 된다. client 처리
+완료가 계약에 필요하면 `IZLinkSessionProxy.Request(...).Submit<TReply>(...)`처럼
+명시적인 request/reply 표면을 사용한다.
+
+재접속은 actor id 기준으로 idempotent해야 한다. 같은 actor id가 새 stream session에서
+`BindActorHandleAsync(...)`로 다시 들어오면 framework는 기존 actor instance와 spot
+membership을 유지하고 session binding만 새 stream으로 옮긴다. 이 규칙이 있어야
+client reconnect가 "새 게임 참여"가 아니라 "기존 actor의 새 연결"로 동작한다.
+
 ## 5. IZLinkActorClient (actor id 기반 호출)
 
 `IZLinkActorClient`는 actor id 하나로 actor runtime에 호출을 보낸다. route 결정은

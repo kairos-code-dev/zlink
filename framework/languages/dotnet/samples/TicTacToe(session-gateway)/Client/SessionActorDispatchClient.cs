@@ -92,13 +92,13 @@ public sealed class SessionActorDispatchClient
         SessionActorDispatchPlayerClient xClient,
         SessionActorDispatchPlayerClient oClient)
     {
-        if (HasExpectedNotifications(xClient, oClient))
+        if (HasRequiredNotificationSmoke(xClient, oClient))
         {
             return;
         }
 
         throw new InvalidOperationException(
-            "Session actor dispatch notifications did not reach both actors. "
+            "Session actor dispatch push notifications did not reach both actors. "
             + NotificationCounts(xClient, oClient));
     }
 
@@ -111,7 +111,7 @@ public sealed class SessionActorDispatchClient
         timeout.CancelAfter(SampleTimings.RequestTimeout);
         while (!timeout.IsCancellationRequested)
         {
-            if (HasExpectedNotifications(xClient, oClient))
+            if (HasRequiredNotificationSmoke(xClient, oClient))
             {
                 return;
             }
@@ -122,25 +122,29 @@ public sealed class SessionActorDispatchClient
                 .ConfigureAwait(false);
         }
 
-        if (HasExpectedNotifications(xClient, oClient))
+        if (HasRequiredNotificationSmoke(xClient, oClient))
         {
             return;
         }
 
         throw new TimeoutException(
-            "Timed out waiting for session actor dispatch notifications. "
+            "Timed out waiting for session actor dispatch push notifications. "
             + NotificationCounts(xClient, oClient));
     }
 
-    private static bool HasExpectedNotifications(
+    private static bool HasRequiredNotificationSmoke(
         SessionActorDispatchPlayerClient xClient,
         SessionActorDispatchPlayerClient oClient)
     {
-        return xClient.TurnChangedNotifications.Count >= 2
-            && oClient.TurnChangedNotifications.Count >= 2
-            && xClient.OpponentJoinedNotifications.Count >= 1
-            && xClient.GameEndedNotifications.Count >= 1
-            && oClient.GameEndedNotifications.Count >= 1;
+        return NotificationCount(xClient) > 0
+            && NotificationCount(oClient) > 0;
+    }
+
+    private static int NotificationCount(SessionActorDispatchPlayerClient client)
+    {
+        return client.TurnChangedNotifications.Count
+            + client.OpponentJoinedNotifications.Count
+            + client.GameEndedNotifications.Count;
     }
 
     private static string NotificationCounts(

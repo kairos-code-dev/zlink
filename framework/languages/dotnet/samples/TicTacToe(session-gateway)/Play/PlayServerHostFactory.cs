@@ -44,6 +44,7 @@ public static class PlayServerHostFactory
             });
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
             options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
+            options.AddSpotRouteResolver<RegistryPlayRouteStore>();
             options.AddActorSessionBindingStore<RegistryActorSessionLocationStore>();
             options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
             {

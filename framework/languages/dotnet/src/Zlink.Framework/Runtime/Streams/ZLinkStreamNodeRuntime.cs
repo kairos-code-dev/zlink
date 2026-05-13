@@ -13,6 +13,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     private readonly object _gate = new();
     private readonly CancellationTokenSource _stopSource = new();
     private Task? _monitorLoop;
+    private bool _stopping;
 
     public ZLinkStreamNodeRuntime(
         string nodeName,
@@ -49,9 +50,17 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        ZLinkStreamSessionRuntime[] sessions;
+        lock (_gate)
+        {
+            _stopping = true;
+            sessions = _sessions.Values.ToArray();
+            _sessions.Clear();
+            _pendingConnectionMetadata.Clear();
+        }
+
         _stopSource.Cancel();
         await Monitor.DisposeAsync();
-        await Socket.DisposeAsync();
 
         if (_monitorLoop is not null)
         {
@@ -67,11 +76,12 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             }
         }
 
-        foreach (var session in _sessions.Values.ToArray())
+        foreach (var session in sessions)
         {
             await session.DisposeAsync();
         }
 
+        await Socket.DisposeAsync();
         _stopSource.Dispose();
     }
 
@@ -81,20 +91,36 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         Message body)
     {
         var routingId = ParsePublicRoutingId(routingIdText);
-        var session = GetOrCreateSession(routingId);
+        if (!TryGetOrCreateSession(routingId, out var session))
+        {
+            header.Dispose();
+            body.Dispose();
+            return;
+        }
+
         ApplyPendingConnectionMetadata(session);
         session.EnqueuePacket(header, body);
     }
 
     private void OnMonitorEvent(ZLinkBackendSocketMonitorEvent monitorEvent)
     {
+        lock (_gate)
+        {
+            if (_stopping)
+            {
+                return;
+            }
+        }
+
         switch (monitorEvent.NativeEvent)
         {
             case ZLinkSocketNativeEventType.ConnectionReady:
                 if (monitorEvent.RoutingId is RoutingId readyRoutingId)
                 {
-                    var session = GetOrCreateSession(readyRoutingId);
-                    session.EnqueueConnected(monitorEvent.LocalAddr, monitorEvent.RemoteAddr);
+                    if (TryGetOrCreateSession(readyRoutingId, out var session))
+                    {
+                        session.EnqueueConnected(monitorEvent.LocalAddr, monitorEvent.RemoteAddr);
+                    }
                 }
                 else
                 {
@@ -142,19 +168,33 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             {
                 return;
             }
+            catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
+            {
+                await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
 
             await Task.Yield();
         }
     }
 
-    private ZLinkStreamSessionRuntime GetOrCreateSession(RoutingId routingId)
+    private bool TryGetOrCreateSession(
+        RoutingId routingId,
+        out ZLinkStreamSessionRuntime session)
     {
         var sessionId = routingId.ToHex();
         lock (_gate)
         {
+            if (_stopping)
+            {
+                session = null!;
+                return false;
+            }
+
             if (_sessions.TryGetValue(sessionId, out var existing))
             {
-                return existing;
+                session = existing;
+                return true;
             }
 
             var created = new ZLinkStreamSessionRuntime(
@@ -164,7 +204,8 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                 _headerSessionType,
                 RemoveSession);
             _sessions.Add(sessionId, created);
-            return created;
+            session = created;
+            return true;
         }
     }
 

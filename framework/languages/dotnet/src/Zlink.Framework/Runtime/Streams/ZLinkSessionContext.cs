@@ -233,6 +233,12 @@ internal sealed class ZLinkSessionContext(
         await _actorBindings.CleanupAsync(this, cancellationToken).ConfigureAwait(false);
     }
 
+    internal async ValueTask CleanupAsync(CancellationToken cancellationToken)
+    {
+        await DisconnectActorAsync(cancellationToken).ConfigureAwait(false);
+        await CleanupActorBindingsAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     internal void EnterDispatch(ZlinkStreamHeader header)
     {
         _currentDispatchHeader = header;

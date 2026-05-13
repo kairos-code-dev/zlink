@@ -85,6 +85,10 @@
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 같은 actor type factory 중복 등록 | 비허용 | builder 등록 시점 오류 |
 | actor play route resolver 중복 등록 | 비허용 | builder 등록 시점 오류 |
+| 같은 actor id가 새 stream session에서 다시 bind | 허용 | 기존 actor instance를 재사용하고 session binding token만 갱신 |
+| actor factory가 요청 actor id와 다른 id 반환 | 비허용 | actor route와 binding id가 갈라지므로 actor 생성 오류 |
+| `SessionProxy.Send(...)`가 stale binding 또는 닫힌 stream에 도착 | 허용된 실패 | 해당 push만 실패하고 route loop와 host shutdown은 계속 진행 |
+| converter 없는 abstract/interface payload를 reply DTO에 포함 | 비허용 | startup validation 또는 첫 submit 전 configuration 오류 |
 | spot route resolver 중복 등록 | 비허용 | builder 등록 시점 오류 |
 | `IZLinkActorClient` 사용 + play route resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
 | spot name/id 기반 client 또는 `JoinSpot(...)` 사용 + spot route resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
@@ -143,4 +147,3 @@ Behavior Matrix는 허용 조합과 비허용 조합을 테스트 이름으로 �
 | `RegistrationValidationTests.AddZLinkFramework_Throws_WhenServerHasNoBindEndpoint` | server capability에 bind endpoint가 없으면 실패한다. |
 | `RegistrationValidationTests.AddZLinkFramework_Throws_WhenPublisherHasNoBindEndpoint` | publisher capability에 bind endpoint가 없으면 실패한다. |
 | `RegistrationValidationTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | Discovery mesh 없이 local-only SpotNode를 단독으로 시작할 수 있다. |
-

@@ -119,21 +119,43 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenSpotNodeHasNoSpotDiscovery()
+    public void AddZLinkFramework_AllowsStandaloneLocalSpotNode()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddSpotNode("stage-node", spot =>
+            {
+                spot.Bind("tcp://127.0.0.1:9000");
+                spot.AddSpotFactory<TestSpot>("stage");
+            });
+        });
+
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        Assert.Single(registration.SpotNodes);
+        Assert.Null(registration.SpotDiscovery);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenSpotMeshHasNoUseDiscovery()
     {
         var services = new ServiceCollection();
 
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddSpotNode("stage-node", spot =>
+                options.AddSpotMesh("game.stage", mesh =>
                 {
-                    spot.Bind("tcp://127.0.0.1:9000");
-                    spot.AddSpotFactory<TestSpot>("stage");
+                    mesh.AddNode("stage-node", spot =>
+                    {
+                        spot.Bind("tcp://127.0.0.1:9000");
+                        spot.AddSpotFactory<TestSpot>("stage");
+                    });
                 });
             }));
 
-        Assert.Contains("requires AddSpotMesh", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("requires spotMesh.UseDiscovery", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -236,6 +258,9 @@ public sealed class RegistrationValidationTests
             options.DefaultTimeout = TimeSpan.FromSeconds(5);
             options.Codecs.AddProtobuf();
             options.UseFilter<TestFilter>();
+            options.AddActorPlayRouteResolver<TestActorPlayRouteResolver>();
+            options.AddSpotRouteResolver<TestSpotRouteResolver>();
+            options.AddActorSessionBindingStore<TestActorSessionBindingStore>();
             options.ConfigureDispatch(dispatch =>
             {
                 dispatch.SpotDispatchMode = ZLinkDispatchMode.Dynamic;
@@ -273,6 +298,12 @@ public sealed class RegistrationValidationTests
         var filter = provider.GetRequiredService<TestFilter>();
 
         Assert.NotNull(filter);
+        Assert.IsType<TestActorPlayRouteResolver>(
+            provider.GetRequiredService<IZLinkActorPlayRouteResolver>());
+        Assert.IsType<TestSpotRouteResolver>(
+            provider.GetRequiredService<IZLinkSpotRouteResolver>());
+        Assert.IsType<TestActorSessionBindingStore>(
+            provider.GetRequiredService<IZLinkActorSessionBindingStore>());
         Assert.Equal(TimeSpan.FromSeconds(5), registration.DefaultTimeout);
         Assert.Contains("protobuf", registration.Codecs.RegisteredCodecs);
         Assert.Equal(ZLinkDispatchMode.Dynamic, registration.DispatchOptions.SpotDispatchMode);
@@ -397,6 +428,77 @@ public sealed class RegistrationValidationTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult<IZLinkActor>(new TestActor(actorId));
+        }
+    }
+
+    private sealed class TestActorPlayRouteResolver : IZLinkActorPlayRouteResolver
+    {
+        public ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+            string actorId,
+            CancellationToken cancellationToken)
+        {
+            _ = actorId;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new ZLinkActorRoute(
+                "play",
+                global::Systems.Zlink.RoutingId.FromString("01")));
+        }
+    }
+
+    private sealed class TestSpotRouteResolver : IZLinkSpotRouteResolver
+    {
+        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+            string spotName,
+            CancellationToken cancellationToken)
+        {
+            _ = spotName;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ResolveSpotRouteAsync(
+                ZLinkSpotId.FromRoutingId(global::Systems.Zlink.RoutingId.FromString("02")),
+                cancellationToken);
+        }
+
+        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+            ZLinkSpotId spotId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new ZLinkSpotRoute(
+                "spots",
+                global::Systems.Zlink.RoutingId.FromString("03"),
+                spotId));
+        }
+    }
+
+    private sealed class TestActorSessionBindingStore : IZLinkActorSessionBindingStore
+    {
+        public ValueTask BindSessionAsync(
+            ZLinkActorSessionBinding binding,
+            CancellationToken cancellationToken)
+        {
+            _ = binding;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask UnbindSessionAsync(
+            ZLinkActorSessionUnbind binding,
+            CancellationToken cancellationToken)
+        {
+            _ = binding;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask<ZLinkActorSessionRoute> FindSessionAsync(
+            string actorId,
+            CancellationToken cancellationToken)
+        {
+            _ = actorId;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new ZLinkActorSessionRoute(
+                global::Systems.Zlink.RoutingId.FromString("04"),
+                "binding"));
         }
     }
 

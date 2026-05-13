@@ -24,17 +24,19 @@ internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
     {
         return gameEvent switch
         {
-            OpponentJoinedGameEvent joined => proxy
+            { Kind: TicTacToeGameEventKind.OpponentJoined } joined => proxy
                 .Send(
                     joined.RecipientActorId,
                     new OpponentJoinedNotify(
                         joined.Snapshot.MatchId,
-                        joined.JoinedActorId,
-                        joined.Mark.ToContract(),
+                        joined.JoinedActorId
+                            ?? throw new InvalidOperationException("Opponent joined event must include the joined actor id."),
+                        joined.JoinedMark?.ToContract()
+                            ?? throw new InvalidOperationException("Opponent joined event must include the joined mark."),
                         joined.Snapshot.ToContract()))
                 .WithPacketName(SampleNames.OpponentJoinedPacket)
                 .Submit(cancellationToken),
-            TurnChangedGameEvent turn => proxy
+            { Kind: TicTacToeGameEventKind.TurnChanged } turn => proxy
                 .Send(
                     turn.RecipientActorId,
                     new TurnChangedNotify(
@@ -43,7 +45,7 @@ internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
                         turn.Snapshot.ToContract()))
                 .WithPacketName(SampleNames.TurnChangedPacket)
                 .Submit(cancellationToken),
-            GameEndedGameEvent ended => proxy
+            { Kind: TicTacToeGameEventKind.GameEnded } ended => proxy
                 .Send(
                     ended.RecipientActorId,
                     new GameEndedNotify(

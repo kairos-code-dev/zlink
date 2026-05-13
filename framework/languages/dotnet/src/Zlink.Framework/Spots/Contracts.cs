@@ -5,6 +5,14 @@ public readonly record struct ZLinkSpotCreateResult(
     string SpotName,
     bool Created)
 {
+    public ZLinkSpotCreateResult(
+        ZLinkSpotId spotId,
+        string spotName,
+        bool created)
+        : this(spotId.ToRoutingId(), spotName, created)
+    {
+    }
+
     public ZLinkSpotId SpotId => ZLinkSpotId.FromRoutingId(SpotRid);
 }
 
@@ -12,6 +20,13 @@ public readonly record struct ZLinkSpotInfo(
     RoutingId SpotRid,
     string SpotName)
 {
+    public ZLinkSpotInfo(
+        ZLinkSpotId spotId,
+        string spotName)
+        : this(spotId.ToRoutingId(), spotName)
+    {
+    }
+
     public ZLinkSpotId SpotId => ZLinkSpotId.FromRoutingId(SpotRid);
 }
 

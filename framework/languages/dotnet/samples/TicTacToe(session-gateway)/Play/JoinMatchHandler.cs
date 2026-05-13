@@ -2,7 +2,6 @@ using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionActorDispatch.Contracts;
 using TicTacToe.SessionActorDispatch.Infrastructure;
 using TicTacToe.SessionGateway.Play;
-using Systems.Zlink;
 using Zlink.Framework.Spots;
 
 namespace TicTacToe.SessionActorDispatch.Play;
@@ -18,7 +17,7 @@ internal sealed class JoinMatchHandler(
         CancellationToken cancellationToken)
     {
         var result = await actor.Context
-            .JoinSpot(RoutingId.FromString(request.MatchId), request)
+            .JoinSpot(request.MatchId, request)
             .WithTimeout(SampleTimings.RequestTimeout)
             .SubmitAsync<JoinMatchSpotResult>(cancellationToken)
             .ConfigureAwait(false);

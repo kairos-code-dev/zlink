@@ -27,26 +27,19 @@ internal sealed record TicTacToeGameSnapshot(
     string? LastMoveActorId,
     int? LastMoveCell);
 
-internal abstract record TicTacToeGameEvent(
-    string RecipientActorId,
-    TicTacToeGameSnapshot Snapshot);
+internal enum TicTacToeGameEventKind
+{
+    OpponentJoined,
+    TurnChanged,
+    GameEnded,
+}
 
-internal sealed record OpponentJoinedGameEvent(
+internal sealed record TicTacToeGameEvent(
+    TicTacToeGameEventKind Kind,
     string RecipientActorId,
-    string JoinedActorId,
-    TicTacToeMark Mark,
-    TicTacToeGameSnapshot Snapshot)
-    : TicTacToeGameEvent(RecipientActorId, Snapshot);
-
-internal sealed record TurnChangedGameEvent(
-    string RecipientActorId,
-    TicTacToeGameSnapshot Snapshot)
-    : TicTacToeGameEvent(RecipientActorId, Snapshot);
-
-internal sealed record GameEndedGameEvent(
-    string RecipientActorId,
-    TicTacToeGameSnapshot Snapshot)
-    : TicTacToeGameEvent(RecipientActorId, Snapshot);
+    TicTacToeGameSnapshot Snapshot,
+    string? JoinedActorId = null,
+    TicTacToeMark? JoinedMark = null);
 
 internal sealed record JoinMatchSpotResult(
     string MatchId,

@@ -21,6 +21,15 @@ internal sealed class ZLinkActorSessionManager(
                 $"Actor factory '{actorType}' is not registered.");
         }
 
+        var state = _actorSessions.GetOrCreate(actorId);
+        var existingActor = await state.ExecuteLockedAsync(
+            () => state.Actor,
+            cancellationToken).ConfigureAwait(false);
+        if (existingActor is not null)
+        {
+            return new CreateActorResult(existingActor, false);
+        }
+
         await using var scope = services.CreateAsyncScope();
         var factory = (IZLinkActorFactory)scope.ServiceProvider.GetRequiredService(factoryType);
         var actor = await factory.CreateAsync(actorId, cancellationToken)
@@ -30,7 +39,12 @@ internal sealed class ZLinkActorSessionManager(
             throw new InvalidOperationException($"Actor factory '{factoryType}' returned null.");
         }
 
-        var state = _actorSessions.GetOrCreate(actor.ActorId);
+        if (!string.Equals(actor.ActorId, actorId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Actor factory '{factoryType}' returned actor id '{actor.ActorId}' for requested id '{actorId}'.");
+        }
+
         EnsureActorContext(actor, state);
 
         var node = getActorSpotNode();

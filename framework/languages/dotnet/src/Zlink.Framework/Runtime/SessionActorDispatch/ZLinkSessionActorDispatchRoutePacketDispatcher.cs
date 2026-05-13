@@ -103,12 +103,18 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(IServicePro
         CancellationToken cancellationToken)
     {
         var packet = DecodeRequired<ZLinkSessionProxyPacket>(received, "Session proxy packet body is null.");
-        var sessionContext = ResolveSessionContext(packet.Envelope);
-        await sessionContext.SendRawAsync(
-            packet.Envelope.PacketName,
-            ZlinkStreamCodec.Json,
-            packet.Body,
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var sessionContext = ResolveSessionContext(packet.Envelope);
+            await sessionContext.SendRawAsync(
+                packet.Envelope.PacketName,
+                ZlinkStreamCodec.Json,
+                packet.Body,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsClosedSessionWriteFailure(ex))
+        {
+        }
     }
 
     private async ValueTask<byte[]> DispatchSessionProxyRequestAsync(
@@ -163,5 +169,22 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(IServicePro
         return remaining > TimeSpan.Zero
             ? remaining
             : TimeSpan.Zero;
+    }
+
+    private static bool IsClosedSessionWriteFailure(Exception exception)
+    {
+        return exception is ObjectDisposedException
+            or ZlinkCloseException
+            || exception is ZLinkFrameworkException
+            {
+                Kind: ZLinkFrameworkErrorKind.ActorSessionNotBound
+                    or ZLinkFrameworkErrorKind.SessionRouteNotFound
+            }
+            || exception is ZlinkSubmitException
+            {
+                Result: ZlinkSubmitException.ErrorCode.NotConnected
+                    or ZlinkSubmitException.ErrorCode.Terminated
+                    or ZlinkSubmitException.ErrorCode.InvalidHandle
+            };
     }
 }

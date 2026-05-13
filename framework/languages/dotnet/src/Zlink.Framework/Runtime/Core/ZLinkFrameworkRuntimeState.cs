@@ -37,6 +37,11 @@ internal sealed class ZLinkFrameworkRuntimeState(
         StopTokenSource.Cancel();
         await WaitForListenerTasksAsync();
 
+        foreach (var stream in StreamNodes.Values)
+        {
+            await DisposeSafelyAsync(stream);
+        }
+
         foreach (var bundle in ClientBundles.Values)
         {
             await DisposeSafelyAsync(bundle);
@@ -65,11 +70,6 @@ internal sealed class ZLinkFrameworkRuntimeState(
         foreach (var routed in RouteChannels.Values)
         {
             await DisposeSafelyAsync(routed);
-        }
-
-        foreach (var stream in StreamNodes.Values)
-        {
-            await DisposeSafelyAsync(stream);
         }
 
         foreach (var discovery in SpotDiscoveries.Values)

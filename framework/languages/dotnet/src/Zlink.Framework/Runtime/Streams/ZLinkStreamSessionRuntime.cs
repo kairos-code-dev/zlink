@@ -14,6 +14,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private readonly ZlinkStreamHeaderCodec _headerCodec = new();
     private int _connected;
     private int _disconnected;
+    private int _disposed;
 
     public ZLinkStreamSessionRuntime(
         AsyncServiceScope scope,
@@ -111,8 +112,14 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                await _context.ReplyErrorAsync(decoded, ex, CancellationToken.None)
-                    .ConfigureAwait(false);
+                try
+                {
+                    await _context.ReplyErrorAsync(decoded, ex, CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception replyException) when (IsClosedReplyFailure(replyException))
+                {
+                }
             }
             finally
             {
@@ -125,21 +132,39 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     {
         await _handler.OnErrorAsync(error, CancellationToken.None);
         await _handler.OnDisconnectedAsync(CancellationToken.None);
-        await _context.CleanupActorBindingsAsync(CancellationToken.None);
+        await _context.CleanupAsync(CancellationToken.None);
         _removeSession(Stream.SessionId);
     }
 
     private async ValueTask MarkClosedAsync()
     {
         await _handler.OnDisconnectedAsync(CancellationToken.None);
-        await _context.CleanupActorBindingsAsync(CancellationToken.None);
+        await _context.CleanupAsync(CancellationToken.None);
         _removeSession(Stream.SessionId);
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         await _serial.DisposeAsync();
-        await _scope.DisposeAsync();
+        try
+        {
+            if (Interlocked.Exchange(ref _disconnected, 1) == 0)
+            {
+                await _handler.OnDisconnectedAsync(CancellationToken.None);
+            }
+
+            await _context.CleanupAsync(CancellationToken.None);
+            _removeSession(Stream.SessionId);
+        }
+        finally
+        {
+            await _scope.DisposeAsync();
+        }
     }
 
     private void Enqueue(Func<ValueTask> work, Action? onRejected = null)
@@ -164,5 +189,17 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         }
 
         return _handler.OnConnectedAsync(CancellationToken.None);
+    }
+
+    private static bool IsClosedReplyFailure(Exception exception)
+    {
+        return exception is ObjectDisposedException
+            or ZlinkCloseException
+            || exception is ZlinkSubmitException
+            {
+                Result: ZlinkSubmitException.ErrorCode.NotConnected
+                    or ZlinkSubmitException.ErrorCode.Terminated
+                    or ZlinkSubmitException.ErrorCode.InvalidHandle
+            };
     }
 }

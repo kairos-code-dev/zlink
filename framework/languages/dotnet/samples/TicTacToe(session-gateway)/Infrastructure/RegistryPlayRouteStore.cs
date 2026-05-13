@@ -1,4 +1,5 @@
 using Systems.Zlink;
+using Zlink.Framework.Spots;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionGateway.Infrastructure;
@@ -7,6 +8,7 @@ public sealed class RegistryPlayRouteStore(
     IRegistryDiscoveryMetadata registry,
     string metadataNamespace)
     : IZLinkActorPlayRouteResolver,
+      IZLinkSpotRouteResolver,
       ISpotRouteResolver,
       ISpotRouteWriter
 {
@@ -52,6 +54,30 @@ public sealed class RegistryPlayRouteStore(
             cancellationToken).ConfigureAwait(false);
 
         return ReadPlayRoute(entry);
+    }
+
+    public async ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        string spotName,
+        CancellationToken cancellationToken)
+    {
+        return await ResolveSpotRouteAsync(
+            ZLinkSpotId.FromRoutingId(RoutingId.FromString(spotName)),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        ZLinkSpotId spotId,
+        CancellationToken cancellationToken)
+    {
+        var spotRid = spotId.ToRoutingId();
+        var entry = await registry.GetRequiredAsync(
+            SpotKey(spotRid),
+            cancellationToken).ConfigureAwait(false);
+        var actorRoute = ReadPlayRoute(entry);
+        return new ZLinkSpotRoute(
+            actorRoute.RouterChannelId,
+            actorRoute.TargetNodeRid,
+            spotId);
     }
 
     private string ActorPlayKey(string actorId)

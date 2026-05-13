@@ -102,8 +102,10 @@ matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는 형
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 handler가 join된 `Spot` 실행 문맥에서 실행 |
 | spot route resolver path | `integration-single-process` | spot name/id 기반 호출이 `IZLinkSpotRouteResolver` 결과로 target node와 spot id를 찾아 routed message를 보냄 |
 | session actor create/dispatch bridge | `integration-single-process` | `CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`, `DispatchToActorAsync(IZLinkActorRef, ...)`가 public session 표면에서 동작 |
+| session actor reconnect reuse | `integration-single-process` | 같은 actor id가 새 stream session에서 다시 bind되면 기존 actor instance와 spot membership을 유지하고 session binding token만 갱신 |
 | session actor binding rollback | `integration-single-process` | actor-session binding 갱신 실패 때 helper가 실패하고 local binding table의 같은 token entry를 제거 |
 | stale session binding token guard | `integration-single-process` | 이전 stream의 늦은 unbind나 stale `SessionProxy` message가 새 binding을 지우거나 사용하지 못함 |
+| stale session proxy send | `integration-single-process` | 닫힌 stream이나 stale binding으로 향한 one-way push가 route receive loop와 host shutdown을 실패시키지 않음 |
 | session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고 disconnect callback으로 이어짐 |
 | actor join 직후 packet dispatch | `integration-single-process` | join 완료 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch 되지 않음 |
@@ -122,6 +124,8 @@ matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는 형
 | session callback task dispatch | `integration-single-process` | transport callback에서 user callback을 직접 호출하지 않고 managed task 경로로 호출 |
 | session callback 직렬성 | `integration-single-process` | 같은 session의 lifecycle/packet callback이 서로 병렬 실행되지 않음 |
 | session callback 직접 호출 우회 방지 | `unit` | runtime 내부 transport 진입점은 enqueue API만 사용 |
+| handler `ValueTask<T>` result await | `unit` | handler invoker가 generic `ValueTask<T>`를 실제 결과 값으로 변환하고 값 타입 boxing 오류를 내지 않음 |
+| abstract wire payload validation | `unit` | converter 없는 abstract/interface payload가 node 경계 DTO에 포함되면 등록 또는 첫 submit 전 configuration 오류로 실패 |
 
 ## 7. Registry / Monitoring Regression 항목
 

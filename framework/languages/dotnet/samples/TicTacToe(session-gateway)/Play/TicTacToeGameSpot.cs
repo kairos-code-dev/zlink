@@ -6,7 +6,7 @@ namespace TicTacToe.SessionGateway.Play;
 
 internal sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
 {
-    private readonly TicTacToeMatchRoom _room = new(context.SpotRid.ToHex());
+    private readonly TicTacToeMatchRoom _room = new(context.SpotId.Value);
 
     public void Configure()
     {
@@ -66,7 +66,12 @@ internal sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
         {
             events.AddRange(_room.ActorIds
                 .Where(actorId => !string.Equals(actorId, joinedActorId, StringComparison.Ordinal))
-                .Select(actorId => new OpponentJoinedGameEvent(actorId, joinedActorId, mark, snapshot)));
+                .Select(actorId => new TicTacToeGameEvent(
+                    TicTacToeGameEventKind.OpponentJoined,
+                    actorId,
+                    snapshot,
+                    joinedActorId,
+                    mark)));
         }
 
         events.AddRange(BuildTurnChangedEvents(snapshot));
@@ -81,14 +86,20 @@ internal sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
         }
 
         return _room.ActorIds
-            .Select(actorId => new TurnChangedGameEvent(actorId, snapshot))
+            .Select(actorId => new TicTacToeGameEvent(
+                TicTacToeGameEventKind.TurnChanged,
+                actorId,
+                snapshot))
             .ToArray();
     }
 
     private IReadOnlyList<TicTacToeGameEvent> BuildGameEndedEvents(TicTacToeGameSnapshot snapshot)
     {
         return _room.ActorIds
-            .Select(actorId => new GameEndedGameEvent(actorId, snapshot))
+            .Select(actorId => new TicTacToeGameEvent(
+                TicTacToeGameEventKind.GameEnded,
+                actorId,
+                snapshot))
             .ToArray();
     }
 }

@@ -1958,6 +1958,13 @@ resolver 입력에는 metadata, packet name, raw message, decoded body를 넘기
 `IZLinkActorSessionBindingStore`는 resolver가 아니다. session bind/unbind lifecycle과
 `SessionProxy` 조회를 한 저장소 계약으로 묶어서 stale binding 처리를 한 곳에 가둔다.
 
+같은 actor id가 새 stream session에서 다시 bind될 때 framework는 새 논리 actor를
+만들지 않는다. 기존 actor runtime state가 있으면 그 actor instance를 재사용하고,
+session binding token만 새 값으로 바꾼다. actor factory가 호출되어 새 actor를 만들
+필요가 있는 경우에도 factory가 반환한 `ActorId`는 요청한 actor id와 정확히 같아야
+한다. 다르면 actor route와 session binding이 서로 다른 id를 가리키게 되므로
+configuration 오류로 실패한다.
+
 ## 6. 등록과 관리 인터페이스
 
 ### 6.1 framework 등록 루트
@@ -3119,6 +3126,19 @@ attribute 기반 handler의 메서드 시그니처는 아래 규칙을 따른다
 - request handler 반환: `ValueTask<T>` 또는 `Task<T>`
 - send handler 반환: `ValueTask` 권장
 
+handler scanner와 runtime invoker는 `Task`, `Task<T>`, `ValueTask`, `ValueTask<T>`를
+명시적으로 구분해서 처리해야 한다. `dynamic` 호출 결과에 기대어 generic
+`ValueTask<T>`를 기다리면 값 타입 boxing 뒤에 `AsTask()`를 찾지 못하는 오류가
+늦게 드러날 수 있다. 따라서 등록 단계에서 허용 반환형을 먼저 판정하고, 허용하지
+않는 반환형은 startup validation 오류로 실패시킨다.
+
+request/reply payload와 session actor dispatch로 node 경계를 넘는 payload는 codec이
+직렬화하고 역직렬화할 수 있는 DTO여야 한다. root 타입 또는 컬렉션 원소 타입이
+abstract class나 interface이면 기본 codec만으로는 구체 타입을 만들 수 없으므로,
+명시적인 codec/converter 계약이 없을 때는 등록 또는 첫 submit 전에 명확한
+configuration 오류로 실패해야 한다. domain 내부 이벤트 계층을 그대로 reply DTO에
+넣지 말고, wire에 올릴 구체 record DTO로 한 번 변환한다.
+
 framework가 강제하는 것은 class 구조가 아니라, resolved packet key 하나는
 하나의 실행 문맥 안에서 하나의 handler에만 매핑된다는 규칙이다. 일반 channel
 messaging의 실행 문맥은 inbound channel capability이고, actor와 spot은 각각
@@ -3181,4 +3201,4 @@ channel registration
 | `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | direct route 계약은 빠지고 actor/session 계약은 public surface에 남아 있다. |
 | `RegistrationValidationTests.AddZLinkFramework_RegistersValidatedConfigurationAndFilterTypes` | options, codec, filter, channel, stream, spot 등록 표면이 DI 등록 결과에 반영된다. |
 | `ChannelMessagingIntegrationTests.Filters_Run_In_Registration_Order_Around_Handler_Dispatch` | handler filter 인터페이스가 등록 순서대로 dispatch 앞뒤를 감싼다. |
-
+| `HandlerResultAwaiterTests.AwaitAsync_Returns_ValueTaskOfT_Result` | `ValueTask<T>` handler 결과를 값 타입 boxing 여부와 무관하게 기다리고 실제 reply 값을 반환한다. |

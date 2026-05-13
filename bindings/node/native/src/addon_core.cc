@@ -424,6 +424,13 @@ bool init_msg_from_bytes(zlink_msg_t *msg, const void *data, size_t len)
     return true;
 }
 
+bool init_msg_from_borrowed_bytes(zlink_msg_t *msg, void *data, size_t len)
+{
+    if (zlink_msg_init_data(msg, data, len, NULL, NULL) != 0)
+        return false;
+    return true;
+}
+
 void copy_routing_id(zlink_routing_id_t *out, const zlink_routing_id_t *in)
 {
     if (!out)
@@ -2998,6 +3005,77 @@ napi_value socket_try_send(napi_env env, napi_callback_info info)
     return out;
 }
 
+napi_value socket_try_send_from(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    void *data = NULL;
+    size_t cap = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &cap) != napi_ok) {
+        napi_throw_type_error(env, NULL, "sendFromNoWaitResult buffer invalid");
+        return NULL;
+    }
+    int32_t len = 0;
+    napi_get_value_int32(env, argv[2], &len);
+    if (len < 0 || static_cast<size_t>(len) > cap) {
+        napi_throw_range_error(env, NULL, "sendFromNoWaitResult length out of range");
+        return NULL;
+    }
+    zlink_msg_t msg;
+    if (!init_msg_from_bytes(&msg, data, static_cast<size_t>(len)))
+        return throw_last_error(env, "sendFromNoWaitResult failed");
+    int rc = send_parts(sock, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+    if (rc == ZLINK_SUBMIT_OK)
+        rc = ZLINK_SUBMIT_OK;
+    else
+        rc = classify_try_send_errno();
+    if (rc < 0)
+        return throw_last_error(env, "sendFromNoWaitResult failed");
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
+}
+
+napi_value socket_try_send_from_borrowed(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    void *data = NULL;
+    size_t cap = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &cap) != napi_ok) {
+        napi_throw_type_error(env, NULL, "sendBorrowedFromNoWaitResult buffer invalid");
+        return NULL;
+    }
+    int32_t len = 0;
+    napi_get_value_int32(env, argv[2], &len);
+    if (len < 0 || static_cast<size_t>(len) > cap) {
+        napi_throw_range_error(env, NULL, "sendBorrowedFromNoWaitResult length out of range");
+        return NULL;
+    }
+    zlink_msg_t msg;
+    if (!init_msg_from_borrowed_bytes(&msg, data, static_cast<size_t>(len)))
+        return throw_last_error(env, "sendBorrowedFromNoWaitResult failed");
+    int rc = zlink_send_part(
+      sock, &msg, ZLINK_SEND_FLAGS_DONTWAIT, ZLINK_PART_FINAL);
+    if (rc == ZLINK_SUBMIT_OK)
+        rc = ZLINK_SUBMIT_OK;
+    else {
+        zlink_msg_close(&msg);
+        rc = classify_try_send_errno();
+    }
+    if (rc < 0)
+        return throw_last_error(env, "sendBorrowedFromNoWaitResult failed");
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
+}
+
 napi_value socket_try_send_parts(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -3045,6 +3123,89 @@ napi_value socket_try_send_routing(napi_env env, napi_callback_info info)
         rc = classify_try_send_errno();
     if (rc < 0)
         return throw_last_error(env, "trySendTo failed");
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
+}
+
+napi_value socket_try_send_routing_from(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+
+    zlink_routing_id_t routing_id;
+    if (!parse_routing_id(env, argv[1], &routing_id))
+        return NULL;
+
+    void *data = NULL;
+    size_t cap = 0;
+    if (napi_get_buffer_info(env, argv[2], &data, &cap) != napi_ok) {
+        napi_throw_type_error(env, NULL, "sendRoutingFromNoWaitResult buffer invalid");
+        return NULL;
+    }
+    int32_t len = 0;
+    napi_get_value_int32(env, argv[3], &len);
+    if (len < 0 || static_cast<size_t>(len) > cap) {
+        napi_throw_range_error(env, NULL, "sendRoutingFromNoWaitResult length out of range");
+        return NULL;
+    }
+
+    zlink_msg_t msg;
+    if (!init_msg_from_bytes(&msg, data, static_cast<size_t>(len)))
+        return throw_last_error(env, "sendRoutingFromNoWaitResult failed");
+    int rc = send_parts_rid(sock, &routing_id, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+    if (rc == ZLINK_SUBMIT_OK)
+        rc = ZLINK_SUBMIT_OK;
+    else
+        rc = classify_try_send_errno();
+    if (rc < 0)
+        return throw_last_error(env, "sendRoutingFromNoWaitResult failed");
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
+}
+
+napi_value socket_try_send_routing_from_borrowed(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+
+    zlink_routing_id_t routing_id;
+    if (!parse_routing_id(env, argv[1], &routing_id))
+        return NULL;
+
+    void *data = NULL;
+    size_t cap = 0;
+    if (napi_get_buffer_info(env, argv[2], &data, &cap) != napi_ok) {
+        napi_throw_type_error(env, NULL, "sendRoutingBorrowedFromNoWaitResult buffer invalid");
+        return NULL;
+    }
+    int32_t len = 0;
+    napi_get_value_int32(env, argv[3], &len);
+    if (len < 0 || static_cast<size_t>(len) > cap) {
+        napi_throw_range_error(env, NULL, "sendRoutingBorrowedFromNoWaitResult length out of range");
+        return NULL;
+    }
+
+    zlink_msg_t msg;
+    if (!init_msg_from_borrowed_bytes(&msg, data, static_cast<size_t>(len)))
+        return throw_last_error(env, "sendRoutingBorrowedFromNoWaitResult failed");
+    int rc = zlink_send_part_rid(
+      sock, &routing_id, &msg, ZLINK_SEND_FLAGS_DONTWAIT, ZLINK_PART_FINAL);
+    if (rc == ZLINK_SUBMIT_OK)
+        rc = ZLINK_SUBMIT_OK;
+    else {
+        zlink_msg_close(&msg);
+        rc = classify_try_send_errno();
+    }
+    if (rc < 0)
+        return throw_last_error(env, "sendRoutingBorrowedFromNoWaitResult failed");
     napi_value out;
     napi_create_int32(env, rc, &out);
     return out;
@@ -3528,6 +3689,207 @@ napi_value socket_recv_msg_into(napi_env env, napi_callback_info info)
 
     napi_value out;
     napi_create_int32(env, static_cast<int32_t>(total), &out);
+    return out;
+}
+
+napi_value socket_try_recv_into(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "recvIntoNoWait buffer invalid");
+        return NULL;
+    }
+
+    zlink_routing_id_t routing_id;
+    std::vector<zlink_msg_t> parts;
+    int rc = recv_parts(sock, &routing_id, &parts, ZLINK_RECV_FLAGS_DONTWAIT);
+    if (rc != ZLINK_RECV_OK) {
+        if (zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "recvIntoNoWait failed");
+    }
+    size_t total = recv_parts_size(parts.data(), parts.size());
+    if (total > 0)
+        copy_recv_parts(parts.data(), parts.size(),
+                        static_cast<unsigned char *>(data), len);
+    close_msg_vector(parts);
+    napi_value out;
+    napi_create_int32(env, static_cast<int32_t>(total), &out);
+    return out;
+}
+
+napi_value router_try_recv_into(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "routerRecvIntoNoWait buffer invalid");
+        return NULL;
+    }
+
+    zlink_routing_id_t peer_rid;
+    zlink_routing_id_t spot_rid;
+    uint64_t request_seq = 0;
+    std::vector<zlink_msg_t> parts;
+    int rc = router_recv_parts(
+      router, &peer_rid, &spot_rid, &request_seq, &parts,
+      ZLINK_RECV_FLAGS_DONTWAIT);
+    if (rc != ZLINK_RECV_OK) {
+        if (zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "routerRecvIntoNoWait failed");
+    }
+
+    size_t total = recv_parts_size(parts.data(), parts.size());
+    if (total > 0)
+        copy_recv_parts(parts.data(), parts.size(),
+                        static_cast<unsigned char *>(data), len);
+    close_msg_vector(parts);
+
+    napi_value out;
+    napi_create_object(env, &out);
+    napi_value size_value;
+    napi_create_int32(env, static_cast<int32_t>(total), &size_value);
+    napi_set_named_property(env, out, "size", size_value);
+    napi_value rid = create_routing_id_value(env, peer_rid);
+    napi_set_named_property(env, out, "routingId", rid);
+    napi_value spot = spot_rid.size > 0 ? create_routing_id_value(env, spot_rid) : NULL;
+    if (!spot)
+        napi_get_null(env, &spot);
+    napi_set_named_property(env, out, "spotRid", spot);
+    napi_value seq;
+    napi_create_bigint_uint64(env, request_seq, &seq);
+    napi_set_named_property(env, out, "requestSeq", seq);
+    return out;
+}
+
+napi_value router_try_recv_payload_into(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "routerRecvPayloadIntoNoWait buffer invalid");
+        return NULL;
+    }
+
+    uint64_t request_seq = 0;
+    std::vector<zlink_msg_t> parts;
+    const zlink_routing_id_t *peer_rid_ptr = NULL;
+    const zlink_routing_id_t *spot_rid_ptr = NULL;
+    zlink_msg_t first_part;
+    if (zlink_msg_init(&first_part) != 0)
+        return throw_last_error(env, "routerRecvPayloadIntoNoWait failed");
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+    int rc = zlink_router_recv_part(
+      router,
+      &peer_rid_ptr,
+      &spot_rid_ptr,
+      &request_seq,
+      &first_part,
+      &has_more,
+      ZLINK_RECV_FLAGS_DONTWAIT);
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close(&first_part);
+        if (zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "routerRecvPayloadIntoNoWait failed");
+    }
+    rc = collect_recv_parts(router, &first_part, has_more, &parts);
+    if (rc != ZLINK_RECV_OK)
+        return throw_last_error(env, "routerRecvPayloadIntoNoWait failed");
+
+    size_t total = recv_parts_size(parts.data(), parts.size());
+    if (total > 0)
+        copy_recv_parts(parts.data(), parts.size(),
+                        static_cast<unsigned char *>(data), len);
+    close_msg_vector(parts);
+    napi_value out;
+    napi_create_int32(env, static_cast<int32_t>(total), &out);
+    return out;
+}
+
+napi_value router_try_recv_echo(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+    void *stop_data = NULL;
+    size_t stop_len = 0;
+    if (napi_get_buffer_info(env, argv[1], &stop_data, &stop_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "routerRecvEchoNoWait stop token invalid");
+        return NULL;
+    }
+
+    zlink_routing_id_t peer_rid;
+    zlink_routing_id_t spot_rid;
+    uint64_t request_seq = 0;
+    std::vector<zlink_msg_t> parts;
+    int rc = router_recv_parts(
+      router, &peer_rid, &spot_rid, &request_seq, &parts,
+      ZLINK_RECV_FLAGS_DONTWAIT);
+    if (rc != ZLINK_RECV_OK) {
+        if (zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "routerRecvEchoNoWait failed");
+    }
+
+    if (parts.size() == 1 && zlink_msg_size(&parts[0]) == stop_len &&
+        (stop_len == 0 || memcmp(zlink_msg_data(&parts[0]), stop_data, stop_len) == 0)) {
+        close_msg_vector(parts);
+        napi_value out;
+        napi_create_int32(env, 2, &out);
+        return out;
+    }
+
+    if (peer_rid.size == 0) {
+        close_msg_vector(parts);
+        napi_value out;
+        napi_create_int32(env, 1, &out);
+        return out;
+    }
+
+    rc = send_parts_rid(
+      router, &peer_rid, parts.data(), parts.size(), ZLINK_SEND_FLAGS_DONTWAIT);
+    if (rc == ZLINK_SUBMIT_OK)
+        rc = ZLINK_SUBMIT_OK;
+    else {
+        close_msg_vector(parts);
+        rc = classify_try_send_errno();
+    }
+    if (rc < 0)
+        return throw_last_error(env, "routerRecvEchoNoWait failed");
+    napi_value out;
+    napi_create_int32(env, rc == ZLINK_SUBMIT_OK ? 1 : rc, &out);
     return out;
 }
 

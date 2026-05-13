@@ -5,7 +5,7 @@
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { isStopTokenParts } = require('../perf_stop_token');
+const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 const {
   POLLIN,
   POLLOUT,
@@ -14,8 +14,6 @@ const {
   applySocketPolicy,
   pollEvents,
   pollEventHas,
-  recvNoWaitInto,
-  trySocketSend,
   waitForConnectionReadyCount
 } = require('./perf_multi_runtime');
 
@@ -26,7 +24,7 @@ async function main() {
   const router = new zlink.RouterSocket(ctx);
   const poller = new zlink.Poller();
   const pending = [];
-  let receivedBuffer = new zlink.Received();
+  const receivedBuffer = Buffer.allocUnsafe(options.msgSize);
   let rl = null;
   let stop = false;
 
@@ -65,31 +63,13 @@ async function main() {
 
       if (pollEventHas(ready, POLLIN)) {
         while (true) {
-          if (!recvNoWaitInto(router, receivedBuffer)) {
+          const result = router.recvEchoNoWait(STOP_TOKEN_BYTES);
+          if (result === null) {
             break;
           }
-          const received = receivedBuffer;
-          try {
-            if (isStopTokenParts(received.parts)) {
-              received.close();
-              stop = true;
-              break;
-            }
-            if (!received.routingId) {
-              received.close();
-              continue;
-            }
-            let send = received.send();
-            for (const part of received.parts) send = send.message(part);
-            if (pending.length === 0 && send.flags(zlink.SendFlags.DontWait).submit()) {
-              received.close();
-              continue;
-            }
-            pending.push(received);
-            receivedBuffer = new zlink.Received();
-          } catch (error) {
-            received.close();
-            throw error;
+          if (result === 2) {
+            stop = true;
+            break;
           }
         }
         if (stop) {
@@ -100,20 +80,18 @@ async function main() {
       if (pollEventHas(ready, POLLOUT)) {
         while (pending.length > 0) {
           const current = pending[0];
-          if (!trySocketSend(router, current.routingId, current.parts)) {
+          if (!router.sendBufferNoWait(current.routingId, current.payload, current.size)) {
             break;
           }
           pending.shift();
-          current.close();
         }
       }
     }
   } finally {
     rl?.close();
     while (pending.length > 0) {
-      pending.shift().close();
+      pending.shift();
     }
-    receivedBuffer.close();
     poller.close();
     router.close();
     ctx.close();

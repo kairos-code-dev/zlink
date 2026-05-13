@@ -129,7 +129,7 @@ function resolveMultiIoThreads(role, pattern) {
     return fallback;
   }
 
-  return 4;
+  return 8;
 }
 
 function resolveAutoHwmProfile() {

@@ -113,7 +113,7 @@ function resolveMultiIoThreads(role, pattern) {
     if (Number.isFinite(fallback) && fallback >= 0) {
         return fallback;
     }
-    return 4;
+    return 8;
 }
 function resolveAutoHwmProfile() {
     const env = process.env.PERF_CTX_AUTO_HWM_PROFILE || process.env.PERF_AUTO_HWM_PROFILE || '';

@@ -13,6 +13,7 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
+const METRIC_HEADER_SIZE = 29;
 const {
   POLLIN,
   POLLOUT,
@@ -21,10 +22,8 @@ const {
   applySocketPolicy,
   pollEvents,
   pollEventHas,
-  recvNoWaitInto,
   resolveMultiLatencySampleCap,
   sendStopTokenWithRetry,
-  trySocketSend,
   waitForConnectionReady
 } = require('./perf_multi_runtime');
 
@@ -46,7 +45,7 @@ async function main() {
       dealer.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`CLIENT-${i}`, 'ascii')));
       dealers.push(dealer);
       payloads.push(createPayload(options.msgSize));
-      replyBuffers.push(new zlink.Received());
+      replyBuffers.push(Buffer.allocUnsafe(METRIC_HEADER_SIZE));
       waiting.push(false);
       sendPending.push(false);
     }
@@ -73,12 +72,13 @@ async function main() {
       let progressed = false;
       while (true) {
         const echoed = replyBuffers[index];
-        if (!recvNoWaitInto(dealers[index], echoed)) {
+        const size = dealers[index].recvInto(echoed);
+        if (size === null) {
           break;
         }
         waiting[index] = false;
         collector.record(
-          decodeMetricHeader(echoed.parts[0].data()),
+          decodeMetricHeader(echoed),
           currentEpochNs()
         );
         progressed = true;
@@ -92,7 +92,7 @@ async function main() {
           continue;
         }
         stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-        if (!trySocketSend(dealers[i], payloads[i])) {
+        if (!dealers[i].sendBorrowedBufferNoWait(payloads[i], payloads[i].length)) {
           sendPending[i] = true;
           continue;
         }
@@ -131,7 +131,8 @@ async function main() {
     // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end to the echo server
     // via the wire-level stop token. The server's recv loop exits on the
     // first stop token observed.
-    await sendStopTokenWithRetry(dealers[0], (bytes) => trySocketSend(dealers[0], bytes));
+    await sendStopTokenWithRetry(dealers[0], (bytes) =>
+      dealers[0].sendBorrowedBufferNoWait(bytes, bytes.length));
 
     const result = await collector.finish();
     for (const metricLine of summarizeMetrics(
@@ -147,9 +148,6 @@ async function main() {
     }
   } finally {
     poller.close();
-    for (const reply of replyBuffers) {
-      reply.close();
-    }
     for (const dealer of dealers) {
       dealer.close();
     }

@@ -13,6 +13,7 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
+const METRIC_HEADER_SIZE = 29;
 const {
   POLLIN,
   POLLOUT,
@@ -21,15 +22,12 @@ const {
   applySocketPolicy,
   pollEvents,
   pollEventHas,
-  recvNoWaitInto,
   resolveMultiLatencySampleCap,
   sendStopTokenWithRetry,
-  trySocketSend,
   waitForConnectionReady
 } = require('./perf_multi_runtime');
 
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
-const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
@@ -51,7 +49,7 @@ async function main() {
       );
       routers.push(router);
       payloads.push(createPayload(options.msgSize));
-      replyBuffers.push(new zlink.Received());
+      replyBuffers.push(Buffer.allocUnsafe(METRIC_HEADER_SIZE));
       waiting.push(false);
       sendPending.push(false);
     }
@@ -78,12 +76,13 @@ async function main() {
       let progressed = false;
       while (true) {
         const echoed = replyBuffers[index];
-        if (!recvNoWaitInto(routers[index], echoed)) {
+        const size = routers[index].recvPayloadInto(echoed);
+        if (size === null) {
           break;
         }
         waiting[index] = false;
         collector.record(
-          decodeMetricHeader(echoed.parts[0].data()),
+          decodeMetricHeader(echoed),
           currentEpochNs()
         );
         progressed = true;
@@ -97,7 +96,7 @@ async function main() {
           continue;
         }
         stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-        if (!trySocketSend(routers[i], SERVER_ROUTING_ID, payloads[i])) {
+        if (!routers[i].sendBorrowedBufferNoWait(SERVER_ID, payloads[i], payloads[i].length)) {
           sendPending[i] = true;
           continue;
         }
@@ -134,7 +133,7 @@ async function main() {
     // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via wire stop token.
     await sendStopTokenWithRetry(
       routers[0],
-      (bytes) => trySocketSend(routers[0], SERVER_ROUTING_ID, bytes)
+      (bytes) => routers[0].sendBorrowedBufferNoWait(SERVER_ID, bytes, bytes.length)
     );
 
     const result = await collector.finish();
@@ -151,9 +150,6 @@ async function main() {
     }
   } finally {
     poller.close();
-    for (const reply of replyBuffers) {
-      reply.close();
-    }
     for (const router of routers) {
       router.close();
     }

@@ -9,7 +9,7 @@ internal sealed class ZLinkActorSessionManager(
 {
     private readonly ZLinkActorSessionRegistry _actorSessions = new();
 
-    public async ValueTask<CreateActorResult> CreateActorAsync(
+    public async ValueTask<CreateActorResult> CreateAndBindActorAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default)
@@ -267,6 +267,17 @@ internal sealed class ZLinkActorSessionManager(
         {
             if (activation is null)
             {
+                if (await runtime.TrySubmitEntrySpotActorAsync(
+                        actor,
+                        state,
+                        header,
+                        body,
+                        cancellationToken)
+                    .ConfigureAwait(false))
+                {
+                    return;
+                }
+
                 var previousDispatch = state.CurrentDispatch;
                 state.CurrentDispatch = new ZLinkActorDispatchState(header);
                 try
@@ -301,6 +312,45 @@ internal sealed class ZLinkActorSessionManager(
         Message body,
         CancellationToken cancellationToken)
     {
+        var activation = await state.ExecuteLockedAsync(
+            () =>
+            {
+                var currentActivation = state.Activation;
+                if (currentActivation is not null && currentActivation.IsDisposed)
+                {
+                    state.Activation = null;
+                    currentActivation = null;
+                }
+
+                return currentActivation;
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        if (activation is not null)
+        {
+            return await activation.SubmitActorForReplyAsync(
+                    actor,
+                    state,
+                    header,
+                    body,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var entryResult = await runtime.TrySubmitEntrySpotActorForReplyAsync(
+                actor,
+                state,
+                header,
+                body,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (entryResult.Handled)
+        {
+            return entryResult.Reply
+                ?? throw new InvalidOperationException(
+                    $"Entry Spot actor request handler for '{header.Name}' returned no reply.");
+        }
+
         var previousDispatch = state.CurrentDispatch;
         state.CurrentDispatch = new ZLinkActorDispatchState(header);
         try

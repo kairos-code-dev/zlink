@@ -78,7 +78,7 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
     raw transport 타입(예: `DealerSocket`, `RouterSocket`, `SpotNode`, `Spot`)은
     `Zlink` namespace 아래에 있다. wire/transport 레벨이다.
   - framework adapter 표면 타입은 `ZLink` prefix로 통일한다 (예:
-    `IZLinkSession`, `ZLinkStreamHeader`, `IZLinkActorContext`,
+    `IZLinkSession`, `IZLinkSessionPacket`, `IZLinkActorContext`,
     `IZLinkSessionProxy`). 즉 framework가 사용자에게 노출하는 모든 interface, record,
     enum, exception은 `ZLink`를 쓴다.
   - 패키지 id와 namespace 단어(`Systems.Zlink.*`)는 native binding 규칙을 따른다.
@@ -95,9 +95,9 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
   아니라 nonblocking send, pending queue, ready notification으로 framework 내부에서
   처리한다.
 - `SPOT`을 지원하는 문서는 named spot factory 등록, `spotName` 기준 생성,
-  `spotRid -> spotName` 조회, lifecycle timer, 외부 spot publish 표면을
+  `spotId -> spotName` 조회, lifecycle timer, 외부 spot publish 표면을
   공통 정책과 맞춰 설명해야 한다.
-- 현재 framework core 문서에서는 `targetRid + spotRid` direct routed public 호출은
+- 현재 framework core 문서에서는 `targetRid + spotId` direct routed public 호출은
   두지 않는다. 반면 actor join, actor factory 등록, stream-to-actor bridge는 현재
   draft 구현 범위에 포함하므로 공용 계약과 샘플 문서에 함께 반영한다.
 - session actor dispatch는 하나의 gateway feature switch가 아니라
@@ -128,7 +128,7 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 | [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish/subscribe, discovery |
 | [aspnet-core-actor.ko.md](./aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkActorClient, IZLinkSessionProxy, session actor dispatch (gateway) 패턴 |
 | [session-actor-dispatch.ko.md](./session-actor-dispatch.ko.md) | session actor dispatch의 .NET 시그니처와 등록 코드 (`IZLinkSessionProxy`, `IZLinkActorClient`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md). |
-| [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, framework Header 기반 packet session, monitor 기반 lifecycle, recv 비지원 방향 |
+| [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
 | [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` / Unity Stream Connector, TCP/TLS/WS/WSS transport, header/body packet 송수신 |
 | [unity-stream-connector.ko.md](./unity-stream-connector.ko.md) | Unity package, `MonoBehaviour` wrapper, main thread callback dispatch, lifecycle |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM serializer, write, monitor-event mapping의 결정 기준 |

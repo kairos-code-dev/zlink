@@ -1,6 +1,7 @@
 using Systems.Zlink;
 using Zlink.Framework.Timers;
 using TicTacToe.Server.Play.Actors;
+using TicTacToe.Server.Play.Actors.Handlers;
 
 namespace TicTacToe.Server.Play.Games;
 
@@ -24,6 +25,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
     public void Configure()
     {
         Context.AddActorJoin<TicTacToeGameJoinHandler, PlayActor, TicTacToeGameJoinReq, TicTacToeGameJoinRes>();
+        Context.AddActorPacket<PlayActorPlaceMarkHandler, PlayActor>();
     }
 
     public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)

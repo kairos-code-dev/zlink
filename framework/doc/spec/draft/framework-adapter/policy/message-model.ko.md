@@ -39,8 +39,7 @@ typed request body를 받고, header metadata가 필요하면 context에서 조�
 - request handler는 보통 decoded body 하나를 받는다.
 - response도 보통 typed object 하나를 반환한다.
 - metadata는 context에서 접근한다.
-- stream은 예외적으로 header/body보다 connection, packet, peer 정보가 더 앞에
-  보일 수 있다.
+- stream은 예외적으로 session packet과 connection, peer 정보가 먼저 보일 수 있다.
 
 ## 3. header가 담아야 할 정보 초안
 

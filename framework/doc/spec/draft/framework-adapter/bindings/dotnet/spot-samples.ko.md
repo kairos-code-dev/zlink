@@ -32,7 +32,7 @@ timer가 함께 나오기 때문에 설명만 보면 감이 잘 안 올 수 있�
   framework core public surface에 맞춘 샘플이다.
 - 3.2.1의 actor/session membership 예시는 stage wrapper 같은 상위 확장 아이디어
   메모다. 현재 framework core public surface가 아니다.
-- `targetRid + spotRid` direct routed 호출은 framework public surface에 두지 않는다.
+- `targetRid + spotId` direct routed 호출은 framework public surface에 두지 않는다.
   spot name/id 기반 호출은 `IZLinkSpotClient`가 resolver를 통해 처리한다.
 
 ## 2. 인터페이스 초안
@@ -64,9 +64,14 @@ public interface IZLinkSpot
     }
 }
 
+public readonly record struct ZLinkSpotId(string Value)
+{
+    public override string ToString() => Value;
+}
+
 public interface IZLinkSpotContext
 {
-    RoutingId SpotRid { get; }
+    ZLinkSpotId SpotId { get; }
     RoutingId NodeRid { get; }
     string SpotName { get; }
 
@@ -188,12 +193,12 @@ public sealed class Timer : IDisposable, IAsyncDisposable
 }
 
 public readonly record struct ZLinkSpotCreateResult(
-    RoutingId SpotRid,
+    ZLinkSpotId SpotId,
     string SpotName,
     bool Created);
 
 public readonly record struct ZLinkSpotInfo(
-    RoutingId SpotRid,
+    ZLinkSpotId SpotId,
     string SpotName);
 
 // IZLinkSpotManager is defined in handler-interfaces.ko.md section 6.3.
@@ -216,7 +221,7 @@ public interface IZLinkSpotClient
         TMessage message);
 
     IZLinkSendCall SendSpot<TMessage>(
-        RoutingId spotRid,
+        ZLinkSpotId spotId,
         TMessage message);
 
     IZLinkRequestCall RequestSpot<TMessage>(
@@ -224,7 +229,7 @@ public interface IZLinkSpotClient
         TMessage request);
 
     IZLinkRequestCall RequestSpot<TMessage>(
-        RoutingId spotRid,
+        ZLinkSpotId spotId,
         TMessage request);
 
     IZLinkSendCall SendChannel<TMessage>(
@@ -314,8 +319,8 @@ builder.Services.AddZLinkFramework(options =>
 
                 router.ConfigureRouting(routing =>
                 {
-                    routing.Mandatory = true;
-                    routing.Handover = true;
+                    routing.RequireKnownPeer = true;
+                    routing.AllowPeerHandover = true;
                 });
             });
 
@@ -349,7 +354,7 @@ builder.Services.AddZLinkFramework(options =>
 
                 client.ConfigureRouting(routing =>
                 {
-                    routing.ProbeRouter = true;
+                    routing.ProbeRouterOnConnect = true;
                 });
             });
 
@@ -523,8 +528,8 @@ builder.Services.AddZLinkFramework(options =>
 
                 router.ConfigureRouting(routing =>
                 {
-                    routing.Mandatory = true;
-                    routing.Handover = true;
+                    routing.RequireKnownPeer = true;
+                    routing.AllowPeerHandover = true;
                 });
             });
 
@@ -558,7 +563,7 @@ builder.Services.AddZLinkFramework(options =>
 
                 client.ConfigureRouting(routing =>
                 {
-                    routing.ProbeRouter = true;
+                    routing.ProbeRouterOnConnect = true;
                 });
             });
 
@@ -606,11 +611,11 @@ app.MapPost("/stage/create", async (
     CancellationToken cancellationToken) =>
 {
     var created = await spotManager.CreateAsync("stage", cancellationToken);
-    var spotInfo = await spotManager.GetAsync(created.SpotRid, cancellationToken);
+    var spotInfo = await spotManager.GetAsync(created.SpotId, cancellationToken);
 
     return Results.Ok(new
     {
-        created.SpotRid,
+        created.SpotId,
         created.SpotName,
         created.Created,
         LookupName = spotInfo?.SpotName
@@ -619,7 +624,7 @@ app.MapPost("/stage/create", async (
 ```
 
 여기서 `SpotName`은 생성 결과와 조회 표면 둘 다에서 다시 보인다. 즉 운영 코드가
-`spotRid`만 들고 있어도, 이 인스턴스가 어떤 등록 이름으로 만들어졌는지 다시
+`spotId`만 들고 있어도, 이 인스턴스가 어떤 등록 이름으로 만들어졌는지 다시
 확인할 수 있다.
 
 ### 3.1.3 outbound-only SPOT-aware 앱
@@ -659,7 +664,7 @@ app.MapPost("/stage/query", async (
     var reply = await client
         .Request(
             "orders",
-            new SampleGetStateRequest { SpotRid = request.StageRid })
+            new SampleGetStateRequest { SpotId = request.StageRid })
         .Submit<SampleGetStateReply>(cancellationToken);
 
     return Results.Ok(reply);
@@ -723,7 +728,7 @@ app.MapPost("/stage/publish", async (
             "sample.state.updated",
             new SampleStateUpdatedEvent
             {
-                SpotRid = request.StageRid,
+                SpotId = request.StageRid,
                 ActorCount = request.UserCount,
                 ConnectedSessionCount = request.UserCount
             })
@@ -823,7 +828,7 @@ session handler는 인증과 재연결을 맡는 ingress adapter이고, 실제 l
 actor는 room에 남아 있을 수 있고, 새 stream이 같은
 `accountId`로 다시 들어오면 같은 actor에 다시 연결할 수 있다.
 그리고 이 모델이 public 계약으로 보이려면 actor join은 `IZLinkSpot` override가
-아니라 session의 `CreateActorAsync(...)` 또는 `CreateActorHandleAsync(...)`,
+아니라 session의 `CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)`,
 `IZLinkActorContext.JoinSpot(...)`,
 `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` 조합으로 보여야 한다.
 join 승인과 membership 기록은 반드시 target `Spot` 실행 문맥에서 함께 처리되어야
@@ -906,7 +911,7 @@ builder.Services.AddZLinkFramework(options =>
 
 실제 샘플 코드는 아래처럼 읽는다. `SampleSpot`은 actor table만 소유하고,
 `SampleSession`은 인증과 actor 재연결, 그리고 actor로 넘길
-`header/body` 정규화와 room join 요청을 맡는다.
+session packet 정규화와 room join 요청을 맡는다.
 여기서 `IZLinkSessionContext`는 stream session이 channel request, stream reply,
 actor create와 actor packet dispatch를 framework runtime으로 넘길 때 쓰는 session
 전용 context다. actor stream 연결과 해제는 별도 `IZLinkSessionActorAttachmentContext`
@@ -924,7 +929,7 @@ public sealed class SampleSpot(
     public IZLinkSpotContext Context { get; } = context;
     public IZLinkSpotActorMembership Membership { get; } = membership;
 
-    public string RoomId => Context.SpotRid.ToString();
+    public string RoomId => Context.SpotId.ToString();
 
     public int ActorCount => _actors.Count;
 
@@ -1031,7 +1036,7 @@ public sealed class SampleSpot(
             "sample.state.updated",
             new SampleStateUpdatedEvent
             {
-                SpotRid = Context.SpotRid.ToString(),
+                SpotId = Context.SpotId.ToString(),
                 ActorCount = ActorCount,
                 ConnectedSessionCount = ConnectedSessionCount
             })
@@ -1158,7 +1163,7 @@ public sealed class SampleActor : IZLinkActor
         CancellationToken cancellationToken)
     {
         return _context
-            .JoinSpot(room.SpotRid, request)
+            .JoinSpot(room.Context.SpotName, request)
             .Submit<SampleJoinRoomReply>(cancellationToken);
     }
 
@@ -1273,7 +1278,7 @@ public sealed class SampleSession
                     cancellationToken);
 
             Actor = actor;
-            ActorRef = await Context.CreateActorAsync(
+            ActorRef = await Context.CreateAndBindActorAsync(
                 auth.AccountId,
                 auth.ActorType,
                 cancellationToken);
@@ -1420,8 +1425,8 @@ public sealed record SampleAuthenticationResult(
 즉 room은 actor만 붙잡고, session handler는 room 밖에서 인증과 재연결을 처리한다.
 이 구조로 보면 "같은 account의 actor는 유지하고 stream만 교체"하는 reconnect 정책이
 설명하기 쉽다.
-이 샘플 코드는 framework Header 기반 packet session 기준이다. framework는 decode한
-`header/body`를 내부 dispatch 경로로 같은 `Spot` 문맥에 올린 뒤, 최종 actor 로직은
+이 샘플 코드는 framework session packet 기준이다. framework는 decode한
+`IZLinkSessionPacket`을 내부 dispatch 경로로 같은 `Spot` 문맥에 올린 뒤, 최종 actor 로직은
 등록된 actor packet handler가 처리한다.
 또한 room timer는 room에 join된 actor만 본다. 즉 인증은 끝났지만 아직
 `SampleJoinRoomRequest`를 보내지 않은 연결은 `SampleSpot` 바깥의 stream 수명으로
@@ -1450,13 +1455,13 @@ public sealed record SampleAuthenticationResult(
                 "orders",
                 new SampleReportStateQueryCommand
                 {
-                    SpotRid = spot.Context.SpotRid.ToString()
+                    SpotId = spot.Context.SpotId.ToString()
                 })
             .Submit(cancellationToken);
 
         return new SampleGetStateReply
         {
-            SpotRid = spot.Context.SpotRid,
+            SpotId = spot.Context.SpotId,
             ActorCount = spot.ActorCount,
             ConnectedSessionCount = spot.ConnectedSessionCount
         };
@@ -1485,7 +1490,7 @@ public sealed class SampleReportStateHandler
                 "orders",
                 new SampleReportStateQueryCommand
                 {
-                    SpotRid = spot.Context.SpotRid.ToString()
+                    SpotId = spot.Context.SpotId.ToString()
                 })
             .Submit(cancellationToken);
     }
@@ -1511,7 +1516,7 @@ public sealed class SampleStateUpdatedHandler
                 "orders",
                 new SampleSyncStateRequest
                 {
-                    SpotRid = spot.Context.SpotRid.ToString(),
+                    SpotId = spot.Context.SpotId.ToString(),
                     ActorCount = message.ActorCount,
                     ConnectedSessionCount = message.ConnectedSessionCount
                 })
@@ -1568,7 +1573,7 @@ public sealed class SampleSessionTimeoutSweepHandler
 - `room.node`는 논리 `SpotNode` 이름이고, `AddSpotMesh("game.room", mesh => mesh.UseDiscovery(...))`가
   `game.room` channel mesh 범위를 정한다.
 - `SampleSpot`은 단순 handler class가 아니라 실제 spot 객체다.
-- `SampleSpot`은 `IZLinkSpot`을 상속받고 자기 `Context.SpotRid`, `Context.NodeRid`를 상태로 가진다.
+- `SampleSpot`은 `IZLinkSpot`을 상속받고 자기 `Context.SpotId`, `Context.NodeRid`를 상태로 가진다.
 - `SampleSpot` 안에는 상태와 코어 로직만 두고, packet 처리는 별도 handler class로 뺄 수 있다.
 - handler는 `IZLinkSpotClient`를 constructor injection으로 받을 수 있다.
 - `SampleSpot`과 그 spot에 귀속된 handler, timer handler, join handler는 같은
@@ -1587,8 +1592,8 @@ public sealed class SampleSessionTimeoutSweepHandler
 
 즉 이 샘플의 핵심은 두 가지다.
 
-1. `SampleSpot`이 이미 생성된 spot 객체라서, spot rid는 요청 scope에서 따로 꺼내는
-   값이 아니라 `SampleSpot.Context.SpotRid` 속성으로 바로 읽는다.
+1. `SampleSpot`이 이미 생성된 spot 객체라서, spot id는 요청 scope에서 따로 꺼내는
+   값이 아니라 `SampleSpot.Context.SpotId` 속성으로 바로 읽는다.
 2. subscribe handler, packet handler, timer handler, channel reply callback뿐 아니라
    room에 join된 actor의 client packet과 disconnect 처리도 같은 spot execution
    context 에서 직렬 실행된다. `SampleSpot` 의 mutable state (`ActorCount` 등)에
@@ -1622,7 +1627,7 @@ client를 꺼내 쓰기보다 handler가 `IZLinkSpotClient`를 직접 주입받�
 
 이 샘플 기준으로 `SampleSpot` 안에 남는 것은 아래 정도다.
 
-- `Context.SpotRid`, `Context.NodeRid` 같은 자기 identity
+- `Context.SpotId`, `Context.NodeRid` 같은 자기 identity
 - `ActorCount`, `ConnectedSessionCount` 같은 현재 상태
 - `SweepInactiveActorsAsync(...)` 같은 liveness 관리 메서드
 - `ApplyReportedState(...)` 같은 순수 도메인 메서드
@@ -1675,13 +1680,13 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
   - `SendChannel(...).Submit(...)`
 - attach된 다른 channel에 request packet을 보내고 싶다
   - `RequestChannel(...).WithTimeout(...).Submit(...)`
-- 다른 SPOT peer와 직접 RID routed 호출을 하고 싶다
-  - 현재 framework core 기본 표면에는 없다. 필요하면 stage wrapper나 별도 확장
-    패키지에서 다룬다.
-- 현재 spot 자신의 rid를 알고 싶다
-  - `SampleSpot.Context.SpotRid`
-- 특정 `spotRid`가 어떤 이름으로 생성됐는지 다시 보고 싶다
-  - `IZLinkSpotManager.GetAsync(spotRid)` 또는 `ListAsync()`
+- 다른 SPOT 인스턴스에 routed 호출을 하고 싶다
+  - 현재 framework core 기본 표면에는 없다. `SendSpot(...)` / `RequestSpot(...)`처럼
+    spot name 또는 `ZLinkSpotId`를 받는 표면을 사용한다.
+- 현재 spot 자신의 id를 알고 싶다
+  - `SampleSpot.Context.SpotId`
+- 특정 `spotId`가 어떤 이름으로 생성됐는지 다시 보고 싶다
+  - `IZLinkSpotManager.GetAsync(spotId)` 또는 `ListAsync()`
 - stage 안에서 fan-out 하고 싶다
   - `Publish(topic, ...).Submit(...)`
 - local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish하고 싶다

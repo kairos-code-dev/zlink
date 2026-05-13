@@ -7,8 +7,7 @@ namespace TicTacToe.SessionGateway.Infrastructure;
 public sealed class RegistryActorSessionLocationStore(
     IRegistryDiscoveryMetadata registry,
     string metadataNamespace)
-    : IZLinkActorSessionLocationWriter,
-      IZLinkActorSessionRouteResolver
+    : IZLinkActorSessionBindingStore
 {
     public ValueTask BindSessionAsync(
         ZLinkActorSessionBinding binding,
@@ -37,7 +36,7 @@ public sealed class RegistryActorSessionLocationStore(
             cancellationToken);
     }
 
-    public async ValueTask<ZLinkActorSessionRoute> ResolveSessionRouteAsync(
+    public async ValueTask<ZLinkActorSessionRoute> FindSessionAsync(
         string actorId,
         CancellationToken cancellationToken)
     {

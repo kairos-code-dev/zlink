@@ -12,6 +12,7 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
     private readonly ZLinkSpotSerialExecutor _serial;
     private readonly ZLinkSpotPacketRegistry _packets = new();
     private readonly ZLinkSpotActorJoinRegistry _actorJoins = new();
+    private ZLinkSpotActorHandlerRegistry? _actorHandlers;
     private readonly ZLinkSpotActorMembership _actors = new();
     private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
     private ZLinkSpotHandlerInvoker? _handlerInvoker;
@@ -88,6 +89,9 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         }
 
         _spot = spot;
+        _actorHandlers = new ZLinkSpotActorHandlerRegistry(
+            ZLinkSpotActorHandlerSurface.UserSpot,
+            spot.GetType());
         _handlerInvoker = new ZLinkSpotHandlerInvoker(_scope.ServiceProvider, spot);
     }
 
@@ -98,6 +102,7 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         _packets.Bind(Spot);
         _subscriptions.Bind(Spot, NativeSpot);
         _actorJoins.Bind(Spot);
+        _actorHandlers?.Bind();
     }
 
     public void AddPacket<THandler>()
@@ -124,6 +129,52 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
             typeof(TActor),
             typeof(TRequest),
             typeof(TReply));
+    }
+
+    public void AddActorPacket<THandler, TActor>()
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        AddActorPacketCore<THandler, TActor>(packetName: null);
+    }
+
+    public void AddActorPacket<THandler, TActor>(string packetName)
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        if (string.IsNullOrWhiteSpace(packetName))
+        {
+            throw new InvalidOperationException("Actor packet name must not be empty.");
+        }
+
+        AddActorPacketCore<THandler, TActor>(packetName);
+    }
+
+    private void AddActorPacketCore<THandler, TActor>(string? packetName)
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        EnsureConfigurationOpen();
+        (_actorHandlers ?? throw new InvalidOperationException("SPOT actor registry is not initialized."))
+            .AddPacket(typeof(THandler), typeof(TActor), packetName);
+    }
+
+    public void AddActorJoined<THandler, TActor>()
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        EnsureConfigurationOpen();
+        (_actorHandlers ?? throw new InvalidOperationException("SPOT actor registry is not initialized."))
+            .AddJoined(typeof(THandler), typeof(TActor));
+    }
+
+    public void AddActorLeft<THandler, TActor>()
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        EnsureConfigurationOpen();
+        (_actorHandlers ?? throw new InvalidOperationException("SPOT actor registry is not initialized."))
+            .AddLeft(typeof(THandler), typeof(TActor));
     }
 
     public ValueTask JoinActorAsync(
@@ -307,6 +358,16 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         return _actorJoins.TryResolve(requestType, out descriptor);
     }
 
+    public bool TryResolveActorPacketDescriptor(
+        Type actorType,
+        ZlinkStreamHeader header,
+        out ZLinkSpotActorPacketDescriptor? descriptor)
+    {
+        descriptor = null;
+        return _actorHandlers is not null
+            && _actorHandlers.TryResolve(actorType, header, out descriptor);
+    }
+
     public async ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
         IZLinkActor actor,
         TRequest request,
@@ -358,12 +419,29 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
                     state.RuntimeState.CurrentDispatch = new ZLinkActorDispatchState(state.Header);
                     try
                     {
-                        await state.RuntimeState.DispatchAsync(
-                            activation._runtime.Services,
-                            state.Actor,
-                            state.Header,
-                            currentBody.Move(),
-                            ct);
+                        if (activation.TryResolveActorPacketDescriptor(
+                                state.Actor.GetType(),
+                                state.Header,
+                                out var descriptor)
+                            && descriptor is not null)
+                        {
+                            await activation.HandlerInvoker.InvokeActorPacketAsync(
+                                    descriptor,
+                                    state.Actor,
+                                    state.Header,
+                                    currentBody,
+                                    ct)
+                                .ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            await state.RuntimeState.DispatchAsync(
+                                activation._runtime.Services,
+                                state.Actor,
+                                state.Header,
+                                currentBody.Move(),
+                                ct);
+                        }
                     }
                     finally
                     {
@@ -372,6 +450,70 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
                 },
                 new ActorDispatchState(actor, runtimeState, header, ownedBody),
                 cancellationToken);
+        }
+        catch
+        {
+            ownedBody.Dispose();
+            throw;
+        }
+    }
+
+    public async ValueTask<byte[]> SubmitActorForReplyAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState runtimeState,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        var ownedBody = body.Move();
+
+        try
+        {
+            var state = new ActorReplyDispatchState(actor, runtimeState, header, ownedBody);
+            await ExecuteSerializedAsync(
+                async static (activation, state, ct) =>
+                {
+                    using var currentBody = state.Body;
+                    var previousDispatch = state.RuntimeState.CurrentDispatch;
+                    state.RuntimeState.CurrentDispatch = new ZLinkActorDispatchState(state.Header);
+                    try
+                    {
+                        if (activation.TryResolveActorPacketDescriptor(
+                                state.Actor.GetType(),
+                                state.Header,
+                                out var descriptor)
+                            && descriptor is not null)
+                        {
+                            state.Reply = await activation.HandlerInvoker.InvokeActorPacketForReplyAsync(
+                                    descriptor,
+                                    state.Actor,
+                                    state.Header,
+                                    currentBody,
+                                    ct)
+                                .ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            state.Reply = await state.RuntimeState.DispatchForReplyAsync(
+                                    activation._runtime.Services,
+                                    state.Actor,
+                                    state.Header,
+                                    currentBody.Move(),
+                                    ct)
+                                .ConfigureAwait(false);
+                        }
+                    }
+                    finally
+                    {
+                        state.RuntimeState.CurrentDispatch = previousDispatch;
+                    }
+                },
+                state,
+                cancellationToken).ConfigureAwait(false);
+
+            return state.Reply
+                ?? throw new InvalidOperationException(
+                    $"SPOT actor packet reply for '{header.Name}' was null.");
         }
         catch
         {
@@ -411,10 +553,25 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         await _runtime.JoinActorToSpotAsync(this, actor, cancellationToken);
         if (!ReferenceEquals(previousActivation, this))
         {
+            var info = ToPublicLifecycleInfo(actor, previousActivation, this);
+            if (previousActivation is null)
+            {
+                await _runtime.NotifyEntrySpotActorLeftAsync(actor, info, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (_actorHandlers is not null
+                && _actorHandlers.TryResolveJoined(actor.GetType(), out var descriptor)
+                && descriptor is not null)
+            {
+                await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, info, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             await InvokeLifecycleCallbackAsync(
                     static (spot, info, ct) =>
                         spot.OnActorJoinedAsync(info, ct),
-                    ToPublicLifecycleInfo(actor, previousActivation, this),
+                    info,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -430,10 +587,22 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         await _runtime.LeaveActorFromSpotAsync(this, actor, cancellationToken);
         if (wasCurrent)
         {
+            var info = ToPublicLifecycleInfo(actor, this, currentActivation: null);
+            if (_actorHandlers is not null
+                && _actorHandlers.TryResolveLeft(actor.GetType(), out var descriptor)
+                && descriptor is not null)
+            {
+                await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, info, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             await InvokeLifecycleCallbackAsync(
                     static (spot, info, ct) => spot.OnActorLeftAsync(info, ct),
-                    ToPublicLifecycleInfo(actor, this, currentActivation: null),
+                    info,
                     cancellationToken)
+                .ConfigureAwait(false);
+
+            await _runtime.NotifyEntrySpotActorJoinedAsync(actor, info, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -594,6 +763,11 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
 
         if (!_actors.TryGetActor(joinRequest.TargetActor.ActorId, out var actor) || actor is null)
         {
+            actor = _runtime.GetOrCreateActorState(joinRequest.TargetActor.ActorId).Actor;
+        }
+
+        if (actor is null)
+        {
             using var emptyReply = Message.FromBytes(ReadOnlySpan<byte>.Empty);
             NativeSpot.ReplyActorJoin(joinRequest, accepted: false, emptyReply);
             return;
@@ -670,8 +844,18 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         runtimeState.CurrentDispatch = new ZLinkActorDispatchState(streamHeader);
         try
         {
-            await runtimeState.DispatchAsync(_runtime.Services, actor, streamHeader, body, cancellationToken)
-                .ConfigureAwait(false);
+            if (_actorHandlers is not null
+                && _actorHandlers.TryResolve(actor.GetType(), streamHeader, out var descriptor)
+                && descriptor is not null)
+            {
+                await HandlerInvoker.InvokeActorPacketAsync(descriptor, actor, streamHeader, body, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                await runtimeState.DispatchAsync(_runtime.Services, actor, streamHeader, body, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -710,7 +894,9 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
                     null,
                     null);
                 using var replyMessage = ZLinkEnvelopeCodec.Encode(replyHeader, reply, descriptor.ReplyType);
-                received.Reply(replyMessage);
+                received.Reply()
+                    .Message(replyMessage)
+                    .Submit();
                 return;
             }
 
@@ -855,5 +1041,22 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         public ZlinkStreamHeader Header { get; } = header;
 
         public Message Body { get; } = body;
+    }
+
+    private sealed class ActorReplyDispatchState(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState runtimeState,
+        ZlinkStreamHeader header,
+        Message body)
+    {
+        public IZLinkActor Actor { get; } = actor;
+
+        public ZLinkActorRuntimeState RuntimeState { get; } = runtimeState;
+
+        public ZlinkStreamHeader Header { get; } = header;
+
+        public Message Body { get; } = body;
+
+        public byte[]? Reply { get; set; }
     }
 }

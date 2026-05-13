@@ -503,6 +503,96 @@ public sealed class SpotIntegrationTests
     }
 
     [Fact]
+    public async Task EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets()
+    {
+        var spotNode = GetFreeTcpEndpoint();
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<EntrySpotActorRegistryRecorder>();
+        builder.Services.AddScoped<RegistryEntrySpot>();
+        builder.Services.AddScoped<RegistryStageSpot>();
+        builder.Services.AddScoped<RegistryEntryJoinHandler>();
+        builder.Services.AddScoped<RegistryStageJoinHandler>();
+        builder.Services.AddScoped<RegistryStageDispatchHandler>();
+        builder.Services.AddScoped<RegistryStageJoinedHandler>();
+        builder.Services.AddScoped<RegistryStageLeftHandler>();
+        builder.Services.AddScoped<RegistryEntryJoinedHandler>();
+        builder.Services.AddScoped<RegistryEntryLeftHandler>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.registry", _ => { });
+            options.AddSpotNode("registry-node", spot =>
+            {
+                spot.Bind(spotNode);
+                spot.AddEntrySpot<RegistryEntrySpot>();
+                spot.AddSpotFactory<RegistryStageSpot>("registry-stage");
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+        var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var recorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
+        var first = await manager.CreateAsync("registry-stage");
+        var second = await manager.CreateAsync("registry-stage");
+        var actor = new RegistryTestActor("registry-actor", recorder);
+        await actorRuntime.AttachActorAsync(actor, new TestStream("registry-session"));
+
+        using (var joinBody = global::Systems.Zlink.Message.FromString(first.SpotRid.ToHex()))
+        {
+            await actorRuntime.SubmitActorAsync(
+                actor,
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "entry-join",
+                    ZlinkStreamMetadata.Empty),
+                joinBody);
+        }
+
+        Assert.Equal("entry-room", actor.CurrentRoomId);
+        Assert.Contains($"entry:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
+        Assert.Contains($"entry-left:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
+        Assert.Contains($"joined:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
+
+        using (var dispatchBody = global::Systems.Zlink.Message.FromString("payload"))
+        {
+            await actorRuntime.SubmitActorAsync(
+                actor,
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "spot-dispatch",
+                    ZlinkStreamMetadata.Empty),
+                dispatchBody);
+        }
+
+        Assert.Contains($"dispatch:registry-actor:entry-room:payload:{first.SpotRid.ToHex()}", recorder.Events);
+
+        _ = await actorRuntime.JoinActorAsync<RegistryJoinRequest, RegistryJoinReply>(
+            second.SpotRid,
+            actor,
+            new RegistryJoinRequest("second-room"));
+
+        Assert.Contains($"left:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
+        Assert.Contains($"joined:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);
+
+        var currentSpot = actor.Spot ?? throw new InvalidOperationException("Actor is not joined.");
+        await currentSpot.Context.LeaveActorAsync(actor);
+        actor.DetachSpot(currentSpot);
+
+        Assert.Contains($"entry-joined:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);
+
+        await host.StopAsync();
+    }
+
+    [Fact]
     public async Task ActorContext_RequestChannel_Uses_Global_Client_Before_Join_And_Spot_Client_After_Join()
     {
         var preJoinApi = GetFreeTcpEndpoint();
@@ -1011,6 +1101,199 @@ public sealed class SpotIntegrationTests
             actor.Recorder.DispatchSpotRids.Enqueue(stageSpot.Context.SpotRid.ToHex());
             return ValueTask.CompletedTask;
         }
+    }
+
+    public sealed class RegistryEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
+    {
+        public IZLinkEntrySpotContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.AddActorPacket<RegistryEntryJoinHandler, RegistryTestActor>("entry-join");
+            Context.AddActorJoined<RegistryEntryJoinedHandler, RegistryTestActor>();
+            Context.AddActorLeft<RegistryEntryLeftHandler, RegistryTestActor>();
+        }
+    }
+
+    public sealed class RegistryStageSpot(IZLinkSpotContext context)
+        : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.AddActorJoin<RegistryStageJoinHandler, RegistryTestActor, RegistryJoinRequest, RegistryJoinReply>();
+            Context.AddActorPacket<RegistryStageDispatchHandler, RegistryTestActor>("spot-dispatch");
+            Context.AddActorJoined<RegistryStageJoinedHandler, RegistryTestActor>();
+            Context.AddActorLeft<RegistryStageLeftHandler, RegistryTestActor>();
+        }
+
+        public async ValueTask<RegistryJoinReply> JoinAsync(
+            RegistryTestActor actor,
+            RegistryJoinRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (actor.Spot is RegistryStageSpot current && !ReferenceEquals(current, this))
+            {
+                await current.Context.LeaveActorAsync(actor, cancellationToken);
+                actor.DetachSpot(current);
+            }
+
+            await Context.JoinActorAsync(actor, cancellationToken);
+            actor.AttachSpot(this);
+            actor.CurrentRoomId = request.RoomId;
+            return new RegistryJoinReply(request.RoomId);
+        }
+    }
+
+    public sealed class RegistryEntryJoinHandler(EntrySpotActorRegistryRecorder recorder)
+        : IZLinkEntrySpotActorSendHandler<RegistryTestActor, string>
+    {
+        public async ValueTask HandleAsync(
+            RegistryTestActor actor,
+            string spotRid,
+            CancellationToken cancellationToken)
+        {
+            var reply = await actor.Context.JoinSpot(
+                    global::Systems.Zlink.RoutingId.FromString(spotRid),
+                    new RegistryJoinRequest("entry-room"))
+                .WithTimeout(TimeSpan.FromSeconds(5))
+                .Submit<RegistryJoinReply>(cancellationToken);
+
+            actor.CurrentRoomId = reply.RoomId;
+            recorder.Events.Enqueue($"entry:{actor.ActorId}:{spotRid}");
+        }
+    }
+
+    public sealed class RegistryStageJoinHandler
+        : IZLinkSpotActorJoinHandler<RegistryStageSpot, RegistryTestActor, RegistryJoinRequest, RegistryJoinReply>
+    {
+        public ValueTask<RegistryJoinReply> HandleAsync(
+            RegistryStageSpot spot,
+            RegistryTestActor actor,
+            RegistryJoinRequest request,
+            CancellationToken cancellationToken)
+        {
+            return spot.JoinAsync(actor, request, cancellationToken);
+        }
+    }
+
+    public sealed class RegistryStageDispatchHandler(EntrySpotActorRegistryRecorder recorder)
+        : IZLinkSpotActorSendHandler<RegistryStageSpot, RegistryTestActor, string>
+    {
+        public ValueTask HandleAsync(
+            RegistryStageSpot spot,
+            RegistryTestActor actor,
+            string message,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.Events.Enqueue(
+                $"dispatch:{actor.ActorId}:{actor.CurrentRoomId}:{message}:{spot.Context.SpotRid.ToHex()}");
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class RegistryStageJoinedHandler(EntrySpotActorRegistryRecorder recorder)
+        : IZLinkSpotActorJoinedHandler<RegistryStageSpot, RegistryTestActor>
+    {
+        public ValueTask HandleAsync(
+            RegistryStageSpot spot,
+            RegistryTestActor actor,
+            ZLinkSpotActorLifecycleInfo info,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.Events.Enqueue($"joined:{actor.ActorId}:{spot.Context.SpotRid.ToHex()}");
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class RegistryStageLeftHandler(EntrySpotActorRegistryRecorder recorder)
+        : IZLinkSpotActorLeftHandler<RegistryStageSpot, RegistryTestActor>
+    {
+        public ValueTask HandleAsync(
+            RegistryStageSpot spot,
+            RegistryTestActor actor,
+            ZLinkSpotActorLifecycleInfo info,
+            CancellationToken cancellationToken)
+        {
+            _ = info;
+            _ = cancellationToken;
+            recorder.Events.Enqueue($"left:{actor.ActorId}:{spot.Context.SpotRid.ToHex()}");
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class RegistryEntryJoinedHandler(EntrySpotActorRegistryRecorder recorder)
+        : IZLinkEntrySpotActorJoinedHandler<RegistryTestActor>
+    {
+        public ValueTask HandleAsync(
+            RegistryTestActor actor,
+            ZLinkSpotActorLifecycleInfo info,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.Events.Enqueue($"entry-joined:{actor.ActorId}:{info.PreviousSpotRid?.ToHex()}");
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class RegistryEntryLeftHandler(EntrySpotActorRegistryRecorder recorder)
+        : IZLinkEntrySpotActorLeftHandler<RegistryTestActor>
+    {
+        public ValueTask HandleAsync(
+            RegistryTestActor actor,
+            ZLinkSpotActorLifecycleInfo info,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.Events.Enqueue($"entry-left:{actor.ActorId}:{info.CurrentSpotRid?.ToHex()}");
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed record RegistryJoinRequest(string RoomId);
+
+    public sealed record RegistryJoinReply(string RoomId);
+
+    public sealed class RegistryTestActor(
+        string actorId,
+        EntrySpotActorRegistryRecorder recorder) : IZLinkActor
+    {
+        public string ActorId { get; } = actorId;
+
+        public IZLinkActorContext Context { get; set; } = default!;
+
+        public EntrySpotActorRegistryRecorder Recorder { get; } = recorder;
+
+        public RegistryStageSpot? Spot { get; private set; }
+
+        public string? CurrentRoomId { get; set; }
+
+        public void AttachSpot(RegistryStageSpot spot)
+        {
+            Spot = spot;
+        }
+
+        public void DetachSpot(RegistryStageSpot spot)
+        {
+            if (ReferenceEquals(Spot, spot))
+            {
+                Spot = null;
+            }
+        }
+
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class EntrySpotActorRegistryRecorder
+    {
+        public ConcurrentQueue<string> Events { get; } = new();
     }
 
     public sealed class TestStream(string sessionId) : IZLinkStream

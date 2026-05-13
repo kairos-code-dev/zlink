@@ -30,7 +30,7 @@ session actor dispatch가 `.NET`에서 노출하는 핵심 표면은 아래 네 
 
 | 축 | `.NET` 표면 |
 |----|-------------|
-| session → actor dispatch | `IZLinkSessionContext.CreateActorAsync(...)`, `CreateActorHandleAsync(...)`, `DispatchToActorAsync(...)` |
+| session → actor dispatch | `IZLinkSessionContext.CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)` |
 | actor handler | `IZLinkEntrySpotActorSendHandler<TActor, TMessage>`, `IZLinkEntrySpotActorRequestHandler<TActor, TRequest, TReply>`, `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
 | actor → client push | `IZLinkSessionProxy.Send(actorId, msg).Submit(...)` / `IZLinkSessionProxy.Request(actorId, req).Submit<TReply>(...)` |
 | route 해석 | `IZLinkActorPlayRouteResolver`; actor → client push는 framework/core actor-session binding을 사용 |
@@ -169,7 +169,7 @@ GamePromptRep prompt = await sessionProxy
 ```
 
 `SessionGateway`라는 기존 이름은 새 public API에서 제거한다. session → actor 방향은
-`CreateActorAsync(...)`, `CreateActorHandleAsync(...)`, `DispatchToActorAsync(...)`,
+`CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)`,
 actor → client 방향은 `IZLinkSessionProxy`다.
 
 ## 5. IZLinkActorClient (actor id 기반 호출)
@@ -225,6 +225,11 @@ public readonly record struct ZLinkActorRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid);
 
+public readonly record struct ZLinkSpotId(string Value)
+{
+    public override string ToString() => Value;
+}
+
 public interface IZLinkSpotRouteResolver
 {
     ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
@@ -232,14 +237,14 @@ public interface IZLinkSpotRouteResolver
         CancellationToken cancellationToken);
 
     ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
-        RoutingId spotRid,
+        ZLinkSpotId spotId,
         CancellationToken cancellationToken);
 }
 
 public readonly record struct ZLinkSpotRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid,
-    RoutingId SpotRid);
+    ZLinkSpotId SpotId);
 ```
 
 DI 등록 (Session 서버):
@@ -270,16 +275,16 @@ builder.Services.AddZLinkFramework(options =>
 
 ### 6.1 Actor-session binding 상태
 
-framework는 registry 기반 session 위치 조회 API나 별도 기록 API를 public 기본
-구현으로 제공하지 않는다. session binding은 actor handle 생성, stream attach, stream
-disconnect 흐름에서 framework/core가 갱신하는 내부 상태다. sample이 registry나 Redis를
-사용하더라도 그것은 framework public resolver가 아니라 application infrastructure의
-구현 세부다.
+framework는 session route resolver를 public 기본 표면으로 제공하지 않는다. session
+binding은 actor handle 생성, stream attach, stream disconnect 흐름에서 framework/core가
+갱신하는 상태다. 분산 배포에서 이 상태를 외부 저장소에 둬야 하면 `.NET` adapter는
+`IZLinkActorSessionBindingStore`를 등록한다. 이 store는 resolver가 아니라 bind/unbind와
+`SessionProxy` 조회를 함께 가진 저장소 계약이다.
 
 `IRegistryDiscoveryMetadata` 같은 registry/discovery metadata adapter는 sample code에서
 사용할 수 있지만 framework public contract가 아니다. session binding을 registry에
-저장하는 샘플을 만들더라도 그 adapter는 framework 내부 binding state를 보조하는
-infrastructure 코드일 뿐, 별도 public session 위치 조회 API를 도입하지 않는다.
+저장하는 샘플을 만들더라도 그 adapter는 `IZLinkActorSessionBindingStore` 구현 내부에
+머물러야 하며, 별도 public session route resolver를 도입하지 않는다.
 
 `DeleteIfAsync(...)`는 저장된 `sessionId`와 `bindingToken`이 모두 맞을 때만 key를
 삭제해야 한다. registry metadata API가 조건부 삭제나 compare-and-swap을 제공하지
@@ -369,7 +374,7 @@ public sealed class TicTacToeSession : IZLinkSession
         {
             AuthReq request = packet.Decode<AuthReq>();
 
-            IZLinkActorRef actor = await Context.CreateActorHandleAsync(
+            IZLinkActorRef actor = await Context.BindActorHandleAsync(
                 request.ActorId,
                 request.ActorType,
                 cancellationToken);
@@ -469,7 +474,7 @@ public enum ZLinkFrameworkErrorKind
 §17 error-kind 매트릭스를 본다.
 
 `ActorCreateFailed`와 `ActorAlreadyExists`는 local `SpotNode` actor runtime에서 actor를
-만들거나 handle을 준비할 때 사용한다. `CreateActorHandleAsync(...)`는 remote node를 직접
+만들거나 handle을 준비할 때 사용한다. `BindActorHandleAsync(...)`는 remote node를 직접
 지정하지 않으며, 현재 actor에 bound session이 없어서 client push를 할 수 없으면
 `ActorSessionNotBound`로 분류한다.
 

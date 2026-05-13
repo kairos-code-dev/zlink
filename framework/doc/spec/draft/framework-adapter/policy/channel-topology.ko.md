@@ -84,11 +84,12 @@ section 3을 참고한다.
 | `worker-dispatch` | 별도 조합 모델 |
 
 현재 SPOT topology는 예전처럼 "하나의 `SpotNode`에 여러 channel surface를 붙이는
-모델"보다, "`UseSpotDiscovery(channelName, ...)` 등록이 node의 active channel
+모델"보다, "`AddSpotMesh(channelName, ...)` 등록이 node 묶음의 active channel
 view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 
 - `SpotNode`는 생성 시 channel 이름을 직접 소유하지 않는다.
-- `UseSpotDiscovery(channelName, ...)`가 node의 mesh 범위를 정한다.
+- `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))`가 node 묶음의 mesh 범위를
+  정한다.
 - 같은 `SpotNode`에는 active SPOT channel view를 하나만 둔다.
 - 같은 channel의 다른 `SpotNode`와만 router / pub/sub mesh를 만든다.
 - 다른 channel 호출은 attach된 `DEALER(client)` 경로로 푼다.

@@ -41,7 +41,10 @@ internal sealed class ZLinkRegistryRuntime
 
             try
             {
-                registry.SetId(_registration.RegistryId);
+                if (_registration.RegistryId != 0)
+                {
+                    registry.SetId(_registration.RegistryId);
+                }
                 registry.SetHeartbeat(
                     checked((uint)_registration.HeartbeatInterval.TotalMilliseconds),
                     checked((uint)_registration.HeartbeatTimeout.TotalMilliseconds));

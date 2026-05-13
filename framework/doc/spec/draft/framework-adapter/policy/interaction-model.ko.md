@@ -72,7 +72,7 @@
   `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
 - SPOT 쪽은 routed 호출보다 attach된 channel client를 통한
   `SendChannel(...).Submit(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
-- caller가 `targetRid`와 `spotRid`를 이미 알고 있더라도, 기본 application public
+- caller가 `targetRid`와 `spotId`를 이미 알고 있더라도, 기본 application public
   surface에서는 direct target send를 먼저 보여 주지 않는다. 위치값은 resolver 구현체와
   runtime transport helper 안에 가둔다.
 - command send는 기본 async submit을 뜻한다. framework는 blocking send를 task로

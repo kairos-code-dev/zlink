@@ -57,7 +57,7 @@ matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는 형
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | duplicate channel 이름 등록 (`AddClientServerChannel`, `AddFanoutChannel`) | `unit` | startup validation 예외 |
-| 같은 채널 안에서 server/client + publisher/subscriber 혼용 (`AddChannel` legacy 경로) | `unit` | `RegistrationValidator` 거부 |
+| 같은 channel 이름을 client-server와 fanout capability로 동시에 등록 | `unit` | startup validation 예외 |
 | server capability에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | `AddClientServerChannel(...).EnableClient(c => c.UseManualConnections(...))` | `integration-single-process` | manual request/send 성공 |
 | `AddClientServerChannel(...).EnableClient(...)` + 전역 `UseDiscovery(...)` | `integration-single-process` | discovery request/send 성공 |
@@ -85,20 +85,23 @@ matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는 형
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | duplicate `spotName` factory | `unit` | startup validation 예외 |
-| `UseSpotDiscovery(...)` 없이 `AddSpotNode(...)` | `unit` | startup validation 예외 |
-| `AddSpotMesh(channel, mesh => mesh.UseDiscovery(...).AddNode(...).AddSpotFactory<T>(...))` | `integration-single-process` | mesh 빌더 한 호출로 discovery + node + spot factory 등록 |
-| `AddSpotNode(...)` + 별도 `UseSpotDiscovery(channel, ...)` 분리 호출 | `integration-single-process` | 등록 순서와 관계없이 같은 채널 view 공유 |
-| `CreateAsync(spotName)` | `integration-single-process` | `SpotRid`, `SpotName`, `Created` 일관성 확인 |
+| duplicate `AddEntrySpot<TEntrySpot>()` | `unit` | 같은 `SpotNode` 안에서 Entry Spot registry 중복 등록 시 startup validation 예외 |
+| `AddSpotMesh(...)`에 `UseDiscovery(...)` 없음 | `unit` | discovery 기반 mesh를 만들 수 없으므로 startup validation 예외 |
+| `AddSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery + node + spot factory 등록 |
+| standalone `AddSpotNode(...)` + local-only spot factory | `integration-single-process` | discovery mesh 없이 단일 local SpotNode runtime 시작 |
+| `AddSpotNode(...)` + 별도 `UseSpotDiscovery(channel, ...)` 분리 호출 | `integration-single-process` | 호환 경로로만 유지한다. 새 샘플은 `AddSpotMesh(...)`를 사용한다 |
+| `CreateAsync(spotName)` | `integration-single-process` | `SpotId`, `SpotName`, `Created` 일관성 확인 |
 | `GetAsync(...)`, `ListAsync(...)` | `integration-single-process` | manager 조회 결과 일관성 확인 |
 | `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddActorPacket(...)`, `Context.AddActorJoined(...)`, `Context.AddActorLeft(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등록이 descriptor에 반영 |
+| Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.AddActorPacket(...)`, `AddActorJoined(...)`, `AddActorLeft(...)`가 Entry Spot registry에 반영 |
 | `OnInitializeAsync(...)` handler resolve | `integration-single-process` | per-spot scope DI 정상 동작 |
 | `OnClosingAsync(...)` normal remove callback | `integration-single-process` | `RemoveAsync(...)` 호출 때 spot 실행 문맥에서 한 번 호출 |
 | local spot publish | `integration-single-process` | subscriber 수신 |
 | outbound-only 외부 publish client | `integration-multi-process` | target SPOT channel publish 성공 |
 | spot 제거 후 scope 정리 | `integration-single-process` | 이후 callback 미발생, dispose 완료 |
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 handler가 join된 `Spot` 실행 문맥에서 실행 |
-| spot route resolver path | `integration-single-process` | spot name/id 기반 호출이 `IZLinkSpotRouteResolver` 결과로 target node와 spot rid를 찾아 routed message를 보냄 |
-| session actor create/dispatch bridge | `integration-single-process` | `CreateActorAsync(...)`, `CreateActorHandleAsync(...)`, `DispatchToActorAsync(IZLinkActorRef, ...)`가 public session 표면에서 동작 |
+| spot route resolver path | `integration-single-process` | spot name/id 기반 호출이 `IZLinkSpotRouteResolver` 결과로 target node와 spot id를 찾아 routed message를 보냄 |
+| session actor create/dispatch bridge | `integration-single-process` | `CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`, `DispatchToActorAsync(IZLinkActorRef, ...)`가 public session 표면에서 동작 |
 | session actor binding rollback | `integration-single-process` | actor-session binding 갱신 실패 때 helper가 실패하고 local binding table의 같은 token entry를 제거 |
 | stale session binding token guard | `integration-single-process` | 이전 stream의 늦은 unbind나 stale `SessionProxy` message가 새 binding을 지우거나 사용하지 못함 |
 | session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고 disconnect callback으로 이어짐 |

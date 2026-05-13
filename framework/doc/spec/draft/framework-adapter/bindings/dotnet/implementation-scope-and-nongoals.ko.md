@@ -64,7 +64,7 @@
 - scatter-gather aggregate helper
 - workflow orchestration metadata와 compensation model
 - stage wrapper 전용 metadata/membership 모델
-- `targetRid + spotRid` direct routed public 호출 표면
+- `targetRid + spotId` direct routed public 호출 표면
 - framework 기본 표면의 channel별 typed wrapper
 - automatic embedded registry discovery endpoint 추론
 - `IHealthCheck` 자동 등록

@@ -163,6 +163,27 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void AddZLinkFramework_Throws_WhenSpotNodeRegistersMultipleEntrySpots()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.UseSpotDiscovery("game.stage", _ => { });
+
+                options.AddSpotNode("stage-node", spot =>
+                {
+                    spot.Bind("tcp://127.0.0.1:6101");
+                    spot.AddEntrySpot<TestEntrySpot>();
+                    spot.AddEntrySpot<TestEntrySpot>();
+                });
+            }));
+
+        Assert.Contains("Duplicate Entry Spot registry", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AddZLinkFramework_Throws_WhenActorFactoryNameIsDuplicated()
     {
         var services = new ServiceCollection();
@@ -361,6 +382,11 @@ public sealed class RegistrationValidationTests
     private sealed class TestSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         public IZLinkSpotContext Context { get; } = context;
+    }
+
+    private sealed class TestEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
+    {
+        public IZLinkEntrySpotContext Context { get; } = context;
     }
 
     private sealed class TestActorFactory : IZLinkActorFactory

@@ -20,6 +20,8 @@
 
 - `SpotNode` lifecycle 관리
 - `Spot` publish/subscribe facade 주입
+- Entry Spot application registry 등록
+- actor packet handler와 join/leave lifecycle handler 등록
 - room, stage, zone 같은 논리 인스턴스 모델 설명
 - current channel publish/subscribe
 - attach된 다른 channel client를 통한 send/request
@@ -67,7 +69,7 @@ publish/subscribe는 그 안에서 함께 쓰일 수 있는 한 가지 사용 �
 - 같은 `SpotNode`에는 active SPOT channel view를 하나만 둔다.
 - `SpotNode.router`와 pub/sub mesh는 같은 channel의 다른 `SpotNode`와만 연결된다.
 - 다른 channel 호출은 `SpotNode.router`가 아니라 attach된 channel client 경로로 푼다.
-- 따라서 `spotRid`는 service에서 생기는 값이 아니라, `SpotNode`가 개별 spot
+- 따라서 `spotId`는 service에서 생기는 값이 아니라, `SpotNode`가 개별 spot
   인스턴스를 만들 때 생기는 식별자다.
 
 이 관점에서 중요한 점은 아래와 같다.
@@ -75,7 +77,7 @@ publish/subscribe는 그 안에서 함께 쓰일 수 있는 한 가지 사용 �
 - 현재 SPOT channel 안에서는 topic publish/subscribe를 쓴다.
 - 다른 channel 호출은 attach된 channel client를 통해 보낸다.
 - `SpotNode.router`는 peer topology와 내부 routed delivery를 위해 남기되, 현재
-  framework core의 public high-level API에서는 `targetRid + spotRid`를 직접
+  framework core의 public high-level API에서는 `targetRid + spotId`를 직접
   받는 direct routed 호출 표면을 두지 않는다.
 - spot name 또는 spot id를 다른 node의 user Spot 위치로 바꿔야 하면
   `IZLinkSpotRouteResolver`를 사용한다. resolver 구현체만 `RoutingId`를 알고,
@@ -109,6 +111,7 @@ builder.Services.AddZLinkFramework(options =>
             node.EnablePubSub();
             node.AttachClientServerChannelClient("orders");
             node.AttachSpotMeshPublisherClient("game.stage");
+            node.AddEntrySpot<StageEntrySpot>();
             node.AddSpotFactory<StageSpot>("stage");
         });
     });
@@ -127,6 +130,7 @@ builder.Services.AddZLinkFramework(options =>
 - local SPOT pub/sub capability 활성화
 - 다른 channel 호출용 client attach
 - 필요하면 외부 노드용 spot publish client attach
+- 자동 Entry Spot에 붙일 application registry 등록
 - spot name/id 기반 호출이나 actor `JoinSpot(...)` 경로에서 쓸 spot route resolver 등록
 - host shutdown 시 lifecycle 정리
 
@@ -155,6 +159,11 @@ mesh 기능을 켜는데 standalone 등록을 쓰면 시작 시점에 `AddSpotMe
 - `AttachSpotMeshPublisherClient("game.stage")`
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     별도 publisher client를 붙인다.
+- `AddEntrySpot<StageEntrySpot>()`
+  - 이 node의 자동 Entry Spot에 붙일 application registry를 등록한다.
+  - Entry Spot 자체의 native 생성과 소멸은 framework가 관리한다.
+  - 등록하지 않으면 빈 Entry Spot registry가 사용된다. 이 경우 actor가 Entry Spot에
+    있는 동안 처리할 application actor packet handler와 lifecycle handler가 없다.
 - `AddSpotFactory<StageSpot>("stage")`
   - 이 node가 생성하고 소유할 `StageSpot` factory를 `stage` 이름으로 등록한다.
   - 같은 `SpotNode`에 여러 spot factory를 둘 수 있다면, 생성 시에는 이 이름으로
@@ -177,7 +186,85 @@ mesh 기능을 켜는데 standalone 등록을 쓰면 시작 시점에 `AddSpotMe
 - 따라서 SPOT 등록 시점에도 channel client attach와 spot publisher client
   attach를 별도 함수로 드러내는 편이 맞다.
 
-### 4.1 capability별 수동 연결
+### 4.1 Entry Spot과 actor handler 등록
+
+Entry Spot은 actor가 생성된 직후 처음 머무르는 기본 실행 문맥이다. application은 raw
+Entry Spot handle을 직접 만들거나 보관하지 않는다. 대신 `AddEntrySpot<TEntrySpot>()`로
+Entry Spot에서 실행할 actor packet handler와 join/leave lifecycle handler registry를
+등록한다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.AddSpotMesh("game.stage", mesh =>
+    {
+        mesh.AddNode("stage-node", node =>
+        {
+            node.Bind("tcp://0.0.0.0:9000");
+
+            node.AddEntrySpot<StageEntrySpot>();
+            node.AddSpotFactory<StageSpot>("stage");
+        });
+    });
+});
+```
+
+Entry Spot class는 `IZLinkEntrySpot`을 구현하고, `Configure()` 안에서 Entry 단계의
+actor handler를 등록한다. 인증, 초기 상태 설정, target Spot 선택처럼 actor가 user
+Spot에 join하기 전의 packet이 여기에 들어온다.
+
+```csharp
+public sealed class StageEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
+{
+    public IZLinkEntrySpotContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.AddActorPacket<AuthenticateStageActorHandler, StageActor>();
+        Context.AddActorPacket<JoinStageHandler, StageActor>();
+        Context.AddActorJoined<StageEntryJoinedHandler, StageActor>();
+        Context.AddActorLeft<StageEntryLeftHandler, StageActor>();
+    }
+}
+```
+
+user Spot class는 `IZLinkSpot`을 구현하고, 같은 방식으로 user Spot 단계의 actor
+handler를 등록한다. room, stage, zone 상태를 다루는 packet은 Entry Spot이 아니라 이
+registry에 둔다.
+
+```csharp
+public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
+{
+    public IZLinkSpotContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.AddActorPacket<MoveOnStageHandler, StageActor>();
+        Context.AddActorPacket<ReportStageStateHandler, StageActor>();
+        Context.AddActorJoined<StageJoinedHandler, StageActor>();
+        Context.AddActorLeft<StageLeftHandler, StageActor>();
+    }
+}
+```
+
+Entry Spot registry와 user Spot registry는 서로 다른 namespace다. 같은 actor type과
+packet 이름이라도 Entry 단계와 user Spot 단계에서 다른 handler로 매핑할 수 있다.
+반대로 같은 registry 안에서 같은 `actor type + packet kind + packet name` 조합을 둘
+이상 등록하면 startup validation 오류다. `AddActorJoined(...)`와 `AddActorLeft(...)`도
+같은 registry 안에서 같은 actor type에 대해 하나씩만 허용한다.
+
+join/leave lifecycle은 `OnJoinActor`나 `OnLeaveActor` 같은 Spot method override로
+정의하지 않는다. Entry Spot과 user Spot 모두 `AddActorJoined(...)` /
+`AddActorLeft(...)`에 해당하는 registry 등록으로 후속 처리를 붙인다. 이 callback은
+join/leave commit 이후 같은 실행 문맥에서 호출되며, admission을 결정하는 hook이 아니다.
+
+Entry Spot actor handler는 actor와 payload를 받는다. user Spot actor handler는 spot,
+actor, payload를 함께 받는다. Entry Spot에는 user Spot 객체가 없고, user Spot에서는
+spot 상태와 actor 상태를 함께 봐야 하기 때문에 두 handler 표면을 구분한다. 자세한
+시그니처는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 SPOT lifecycle
+handler 섹션을 기준으로 본다.
+
+### 4.2 capability별 수동 연결
 
 SPOT도 일반 channel과 마찬가지로 수동 연결은 capability별로 나눠서 다뤄야 한다.
 `router`, channel client, `pub/sub`, spot publish client는 모두 각 capability가
@@ -233,6 +320,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
+            node.AddEntrySpot<StageEntrySpot>();
             node.AddSpotFactory<StageSpot>("stage");
         });
     });
@@ -253,13 +341,18 @@ builder.Services.AddZLinkFramework(options =>
 - `pub/sub` manual 연결에서 등록하는 주소는 다른 `SpotNode`의 mesh publish bind
   주소다. local `SUB/XSUB` 쪽이 그 주소로 붙는다.
 
-### 4.2 Spot route resolver
+### 4.3 Spot route resolver
 
 `IZLinkSpotRouteResolver`는 spot name 또는 spot id를 현재 user Spot이 있는 node와
-spot rid로 바꾼다. framework는 resolver가 registry, Redis, memory cache 중 무엇을
+spot id로 바꾼다. framework는 resolver가 registry, Redis, memory cache 중 무엇을
 쓰는지 알지 않는다. handler와 actor code는 `RoutingId`를 직접 들고 다니지 않는다.
 
 ```csharp
+public readonly record struct ZLinkSpotId(string Value)
+{
+    public override string ToString() => Value;
+}
+
 public interface IZLinkSpotRouteResolver
 {
     ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
@@ -267,14 +360,14 @@ public interface IZLinkSpotRouteResolver
         CancellationToken cancellationToken);
 
     ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
-        RoutingId spotRid,
+        ZLinkSpotId spotId,
         CancellationToken cancellationToken);
 }
 
 public readonly record struct ZLinkSpotRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid,
-    RoutingId SpotRid);
+    ZLinkSpotId SpotId);
 ```
 
 resolver 입력은 spot key 하나로 제한한다. packet name, metadata, request body를
@@ -333,8 +426,8 @@ builder.Services.AddZLinkFramework(options =>
 
                 router.ConfigureRouting(routing =>
                 {
-                    routing.Mandatory = true;
-                    routing.Handover = true;
+                    routing.RequireKnownPeer = true;
+                    routing.AllowPeerHandover = true;
                 });
             });
 
@@ -368,7 +461,7 @@ builder.Services.AddZLinkFramework(options =>
 
                 client.ConfigureRouting(routing =>
                 {
-                    routing.ProbeRouter = true;
+                    routing.ProbeRouterOnConnect = true;
                 });
             });
 
@@ -393,7 +486,7 @@ builder.Services.AddZLinkFramework(options =>
 들어간다. 즉 `RequestChannel(...).WithTimeout(...)` 같은 framework builder 옵션은
 특정 요청 하나에만 적용되고, 위 등록 설정은 runtime 기본값으로 유지된다.
 
-### 4.2 spot 실행 문맥과 timer
+### 4.4 spot 실행 문맥과 timer
 
 이 부분은 "timer를 어디서 만들고 어느 문맥에서 실행하느냐"를 분명히 적어 두는
 것이 핵심이다.
@@ -441,7 +534,7 @@ managed `.NET` timer tick을 같은 spot 문맥으로 enqueue해서 처리한다
 사용자 눈높이로 풀어 적는 일에
 가깝다. channel reply 도 이제 그 "같은 spot 문맥" 안에 포함된다.
 
-### 4.3 Spot 생성과 lifecycle 초안
+### 4.5 Spot 생성과 lifecycle 초안
 
 현재 방향에서는 handler class가 spot을 만드는 것이 아니다.
 `Spot` 인스턴스는 `SpotNode`가 생성하고 소유한다. handler는 이미 존재하는 spot으로
@@ -456,19 +549,19 @@ managed `.NET` timer tick을 같은 spot 문맥으로 enqueue해서 처리한다
 
 이 표면은 아래 상황을 함께 설명한다.
 
-- `spotName`으로 factory를 고르고 runtime이 새 `spotRid`를 발급하는 생성
-- `spotName`으로 factory를 고른 뒤 호출자가 특정 `spotRid`를 함께 지정해서
+- `spotName`으로 factory를 고르고 runtime이 새 `spotId`를 발급하는 생성
+- `spotName`으로 factory를 고른 뒤 호출자가 특정 `spotId`를 함께 지정해서
   생성하는 경우
-- 이미 존재하는 `spotRid`면 그대로 얻는 `get-or-create` 성격의 동작
+- 이미 존재하는 `spotId`면 그대로 얻는 `get-or-create` 성격의 동작
 
 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle이 아니라는 점이다.
-생성 결과는 `spotRid`, `spotName`, `Created` 정도면 충분하다. 이후 메시징은
+생성 결과는 `spotId`, `spotName`, `Created` 정도면 충분하다. 이후 메시징은
 현재 channel publish 또는 attach된 channel client를 통한 send/request로 푸는
 쪽이 현재 topology 초안과 더 잘 맞는다.
 
 여러 factory를 같은 `SpotNode`에 등록할 수 있다면, 운영 코드에서
-`spotRid -> spotName` 매핑을 다시 볼 수 있어야 한다. 그래서 `GetAsync(...)`와
-`ListAsync(...)`를 함께 두고, 어떤 `spotRid`가 어떤 이름으로 생성됐는지
+`spotId -> spotName` 매핑을 다시 볼 수 있어야 한다. 그래서 `GetAsync(...)`와
+`ListAsync(...)`를 함께 두고, 어떤 `spotId`가 어떤 이름으로 생성됐는지
 바깥에서 다시 확인할 수 있게 한다.
 
 등록 단계에서 이름 충돌은 조용히 덮어쓰지 않는다. `AddSpotFactory<TSpot>(spotName)`
@@ -485,11 +578,11 @@ await spotClient
         "stage.state.updated",
         new StageStateUpdatedEvent
         {
-            StageRid = stage.SpotRid.ToString()
+            StageRid = stage.SpotId.ToString()
         })
     .Submit(cancellationToken);
 
-var spotInfo = await spotManager.GetAsync(stage.SpotRid, cancellationToken);
+var spotInfo = await spotManager.GetAsync(stage.SpotId, cancellationToken);
 ```
 
 처럼 사용하면 된다. 생성된 `Spot` 인스턴스를 응용이 직접 오래 관리하는 모델은
@@ -509,7 +602,7 @@ framework 기본 계약처럼 적기보다 wrapper 확장 후보로 따로 다�
 
 `SendChannel(...)` / `RequestChannel(...)`는 attach된 channel client를 사용한다.
 `SendSpot(...)` / `RequestSpot(...)`는 spot route resolver가 찾은 target route를
-사용한다. `targetRid + spotRid`를 직접 받는 raw 호출은 하부 바인딩에 남아 있어도,
+사용한다. `targetRid + spotId`를 직접 받는 raw 호출은 하부 바인딩에 남아 있어도,
 application guide의 기본 API로 문서화하지 않는다.
 
 `IZLinkSpotClient` 인터페이스 전체 정의는
@@ -520,7 +613,7 @@ application guide의 기본 API로 문서화하지 않는다.
 두는 쪽이 더 자연스럽다.
 
 현재 `.NET` framework 표면은 channel 이름 기준 호출과 spot key 기반 호출을 나눈다.
-`targetRid + spotRid`를 직접 받는 raw route 함수가 하부 바인딩에 있더라도, framework
+`targetRid + spotId`를 직접 받는 raw route 함수가 하부 바인딩에 있더라도, framework
 application 문서에서는 backend/internal transport helper로만 다룬다. 일반 application은
 `IZLinkSpotRouteResolver`가 숨긴 위치값을 직접 보지 않는다.
 
@@ -574,12 +667,12 @@ constructor injection해서 호출하는 것은 같은 경로를 사용한다.
 ([handler-interfaces.ko.md](./handler-interfaces.ko.md) section 5.2 참고).
 이는 `SPOT` 쪽이 두 기능을 함께 쓰는 경우가 많기 때문이다.
 
-여기서 `topic`과 `spotRid`는 역할이 다르다.
+여기서 `topic`과 `spotId`는 역할이 다르다.
 
-- `spotRid`: 특정 room/stage/zone 인스턴스를 가리키는 논리 주소
+- `spotId`: 특정 room/stage/zone 인스턴스를 가리키는 논리 주소
 - `topic`: 여러 subscriber가 함께 듣는 fan-out 주제 이름
 
-현재 topology 초안에서는 framework 기본 표면을 `targetRid + spotRid` direct
+현재 topology 초안에서는 framework 기본 표면을 `targetRid + spotId` direct
 호출 중심으로 설명하지 않는다. high-level framework 문서는 아래 세 축을 먼저
 보여 주는 편이 더 자연스럽다.
 
@@ -770,7 +863,14 @@ mesh 묶음 형태를 권장한다.
   묶는다.
   socket option과 manual connection 같은 runtime 소유 설정만 노출하고, 더 세밀한
   하위 builder 트리는 기본 표면으로 늘리지 않는다.
-- `spotRid` 타입은 `RoutingId`를 그대로 사용한다.
+- `spotId` 타입은 `ZLinkSpotId`로 노출한다. 하부 transport `RoutingId`와 논리
+  spot id를 같은 public 타입으로 섞지 않는다.
+- Entry Spot application registry는 `SpotNode` 등록 안에서
+  `AddEntrySpot<TEntrySpot>()`로 붙인다. Entry Spot 자체의 native lifecycle은
+  framework가 관리한다.
+- Entry Spot과 user Spot의 actor packet handler, actor joined handler, actor left
+  handler는 각 context의 registry에 등록한다. join/leave lifecycle을 Spot method
+  override만으로 설명하지 않는다.
 - `IZLinkSpotManager`는 생성과 조회를 함께 가진다.
   `GetAsync(...)`, `ListAsync(...)`는 별도 query 서비스로 분리하지 않고 manager에
   남긴다.

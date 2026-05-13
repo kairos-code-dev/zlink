@@ -21,7 +21,7 @@ internal sealed class CreateMatchSessionPacketHandler : ISessionRelayPacketHandl
         var actorId = context.State.RequireActorId("creating a match");
         using (payload)
         {
-            var request = payload.FromJson<CreateMatchReq>();
+            var request = SessionRelayJson.Decode<CreateMatchReq>(payload);
             var reply = await context.Stream.RequestChannel(
                     SampleNames.ApiChannel,
                     request with { OwnerActorId = actorId })

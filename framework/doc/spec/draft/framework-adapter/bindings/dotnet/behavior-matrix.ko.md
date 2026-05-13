@@ -53,12 +53,16 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `AddSpotNode(...)` + 전역 `UseSpotDiscovery(...)` 있음 | 허용 | active SPOT channel view를 공유한다 |
-| `AddSpotNode(...)`만 있고 `UseSpotDiscovery(...)` 없음 | 비허용 | discovery 기반 SPOT mesh를 만들 수 없으므로 startup validation 오류 |
-| 같은 앱에 `AddSpotNode(...)` 여러 개 | 허용 | 같은 `UseSpotDiscovery(...)`가 만든 channel view를 공유한다 |
+| `AddSpotMesh(channel, configureMesh)` | 허용 | mesh가 active SPOT channel view와 node 집합을 함께 소유한다 |
+| `AddSpotMesh(...)`에 `UseDiscovery(...)` 없음 | 비허용 | discovery 기반 SPOT mesh를 만들 수 없으므로 startup validation 오류 |
+| `AddSpotNode(...)` standalone + local-only spot factory | 허용 | discovery mesh 없이 단일 local SpotNode를 띄운다 |
+| `AddSpotNode(...)` standalone + mesh capability 사용 | 비허용 | router, pub/sub mesh, channel attach 같은 mesh 기능은 `AddSpotMesh(...)` 안에서 등록한다 |
+| `UseSpotDiscovery(...)` + `AddSpotNode(...)` 분리 등록 | 허용(호환) | 기존 초안 compatibility 경로다. 새 문서와 샘플은 `AddSpotMesh(...)`를 권장한다 |
+| 같은 mesh에 `AddNode(...)` 여러 개 | 허용 | 같은 channel view를 공유하는 여러 SpotNode를 등록한다 |
 | 같은 `SpotNode`에 같은 `spotName` factory 중복 등록 | 비허용 | startup validation 오류 |
+| 같은 `SpotNode`에 Entry Spot registry 중복 등록 | 비허용 | startup validation 오류 |
 | `router` capability만 등록 | 허용 | inbound routed call만 받는다 |
-| attach된 channel client capability 등록 + global channel discovery/manual 경로 있음 | 허용 | spot 내부 outbound channel call 가능 |
+| attach된 channel client capability 등록 + channel discovery/manual 경로 있음 | 허용 | spot 내부 outbound channel call 가능 |
 | attach된 channel client capability 등록 + channel peer acquisition 경로 없음 | 비허용 | startup validation 오류 |
 | local spot 없는 외부 publish는 `IZLinkSpotPublisherClient` 사용 | 허용 | 특정 SPOT channel publish만 수행한다 |
 
@@ -70,7 +74,7 @@
 | 같은 node에 stream session을 둘 이상 등록 | 비허용 | startup validation 오류 |
 | bind endpoint 없음 | 비허용 | startup validation 오류 |
 
-## 5.1 Session Actor Dispatch Matrix
+### 5.1 Session Actor Dispatch Matrix
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|

@@ -185,6 +185,8 @@ action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 | channel messaging 샘플 문서 | 등록부터 handler, client 호출까지 한 번에 보이는 샘플을 둔다. |
 | `SPOT` 주제 문서 | 해당 언어에서 `SPOT`을 지원하면 lifecycle, publish/subscribe, channel attach를 설명한다. |
 | `SPOT` 샘플 문서 | room/stage/zone 같은 실제 흐름을 코드로 보여 준다. |
+| Actor / Entry Spot 주제 문서 | actor factory, Entry Spot registry, user Spot registry, actor packet handler, join/leave lifecycle handler를 설명한다. |
+| Actor / Entry Spot 샘플 문서 | Entry Spot에서 인증 또는 target Spot 선택을 처리하고, user Spot에서 domain packet을 처리하는 흐름을 한 예시 안에 보여 준다. |
 | `STREAM` 주제 문서 | framework Header 기반 packet session과 open item을 분리해서 설명한다. |
 | `STREAM` 샘플 문서 | 등록과 handler 코드를 한 번에 보여 준다. |
 | Monitoring 주제 문서 | socket/discovery/registry/spot runtime event와 등록 모델을 설명한다. |
@@ -230,12 +232,24 @@ runtime으로 설명하는 편이 맞다.
   설명하는가
 - actor/session 모델을 지원하면 actor가 `Spot`에 attach된 뒤
   `OnDispatch` 계열 callback이 해당 `Spot` 실행 문맥에서 실행되는지 설명하는가
+- actor/session 모델을 지원하면 Entry Spot public 표면을 별도 섹션으로 설명하는가
+- Entry Spot에서 actor packet handler를 등록하는 API와 예시가 있는가
+- user Spot에서 actor packet handler를 등록하는 API와 예시가 있는가
+- Entry Spot과 user Spot의 actor packet handler 인자 차이를 설명하는가
+- actor join/leave lifecycle handler를 `AddActorJoined` / `AddActorLeft`에 해당하는
+  registry 등록 표면으로 설명하는가
+- actor join/leave lifecycle을 `OnJoinActor` / `OnLeaveActor` 같은 Spot method
+  override로만 설명하지 않는가
+- Entry Spot registry와 user Spot registry가 서로 다른 namespace라서 같은 actor
+  type과 packet 이름을 다르게 매핑할 수 있음을 설명하는가
+- 같은 registry 안에서 actor packet, joined lifecycle, left lifecycle 중복 등록이
+  startup validation 오류임을 설명하는가
 - actor/session 모델의 회귀 테스트는 join 직후 packet, spot 이동 직후 packet,
   stale session packet을 구분해서 검증하는가
 - stream session 회귀 테스트는 callback task dispatch, 같은 session callback
   직렬성, enqueue 진입점만 허용되는지 검증하는가
 - `SPOT`을 지원하면 spot factory 등록, `spotName` 기준 생성, lifecycle timer,
-  외부 spot publish, `spotRid -> spotName` 조회를 어떻게 설명하는가
+  외부 spot publish, `spotId -> spotName` 조회를 어떻게 설명하는가
 - monitoring을 지원하면 socket/discovery/registry/spot runtime event를 어떤
   typed event와 등록 surface로 설명하는가
 - 샘플 코드가 실제 registration API와 인터페이스 이름과 맞는가

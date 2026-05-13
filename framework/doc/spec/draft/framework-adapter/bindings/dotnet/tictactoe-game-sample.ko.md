@@ -115,13 +115,13 @@ session actor dispatch 샘플의 DTO는
 핵심 계약은 아래와 같다.
 
 - `AuthenticateReq.ActorId`가 인증 요청의 actor identity다.
-- 인증 성공 뒤 Session 서버는 `CreateActorHandleAsync(...)`로 local `SpotNode` actor
+- 인증 성공 뒤 Session 서버는 `BindActorHandleAsync(...)`로 local `SpotNode` actor
   runtime의 actor handle을 만들고 현재 stream session binding을 framework/core 내부
   상태로 기록한다.
 - `CreateMatchReq`는 Session 서버에서 API 서버로 channel request로 relay된다.
   client는 match id나 room name을 지정하지 않는다.
 - API 서버는 Play 서버에 room 생성을 요청하고, Play 서버는 `IZLinkSpotManager`로
-  game room SPOT을 만든다. `CreateMatchRes.MatchId`는 생성된 room의 `SpotRid` hex다.
+  game room SPOT을 만든다. `CreateMatchRes.MatchId`는 생성된 room의 `SpotId` hex다.
 - `JoinMatchReq`와 `PlaceMarkReq`는 Session 서버에서 Play 서버 actor로 dispatch된다.
 - Play actor는 `JoinMatchReq` 처리 중 해당 game room SPOT에 join한다. 이후
   `PlaceMarkReq`는 actor가 join한 room SPOT의 상태를 변경한다.

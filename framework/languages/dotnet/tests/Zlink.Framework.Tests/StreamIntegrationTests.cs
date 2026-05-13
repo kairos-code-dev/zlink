@@ -215,7 +215,7 @@ public sealed class StreamIntegrationTests
                     metadata.ForwardApplicationKey("trace-id");
                 });
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddActorSessionRouteResolver<ActorSessionLocationStore>();
+                options.AddActorSessionBindingStore<ActorSessionLocationStore>();
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(playRouterEndpoint);
@@ -227,13 +227,12 @@ public sealed class StreamIntegrationTests
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new GatewayRelaySettings(playRid));
             services.AddSingleton(new ActorPlayRouteStore(playRid));
             services.AddSingleton(sessionLocations);
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>
             {
-                options.AddActorSessionLocationWriter<ActorSessionLocationStore>();
+                options.AddActorSessionBindingStore<ActorSessionLocationStore>();
                 options.AddActorPlayRouteResolver<ActorPlayRouteStore>();
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
@@ -627,8 +626,6 @@ public sealed class StreamIntegrationTests
 
     public sealed record GatewayPong(string Value, ulong RequestSeq);
 
-    public sealed record GatewayRelaySettings(RoutingId PlayRid);
-
     public sealed class ActorPlayRouteStore(RoutingId playRid) : IZLinkActorPlayRouteResolver
     {
         public ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
@@ -651,8 +648,7 @@ public sealed class StreamIntegrationTests
     }
 
     public sealed class ActorSessionLocationStore
-        : IZLinkActorSessionLocationWriter,
-          IZLinkActorSessionRouteResolver
+        : IZLinkActorSessionBindingStore
     {
         private ZLinkActorSessionBinding? _binding;
 
@@ -680,7 +676,7 @@ public sealed class StreamIntegrationTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask<ZLinkActorSessionRoute> ResolveSessionRouteAsync(
+        public ValueTask<ZLinkActorSessionRoute> FindSessionAsync(
             string actorId,
             CancellationToken cancellationToken)
         {
@@ -722,7 +718,7 @@ public sealed class StreamIntegrationTests
         }
     }
 
-    public sealed class GatewayRelaySession(GatewayRelaySettings settings) : IZLinkSession
+    public sealed class GatewayRelaySession : IZLinkSession
     {
         private IZLinkActorRef? _actor;
 
@@ -755,8 +751,7 @@ public sealed class StreamIntegrationTests
             Message payload,
             CancellationToken cancellationToken)
         {
-            _actor ??= await Context.CreateActorHandleAsync(
-                settings.PlayRid,
+            _actor ??= await Context.BindActorHandleAsync(
                 "player-1",
                 "player",
                 cancellationToken);

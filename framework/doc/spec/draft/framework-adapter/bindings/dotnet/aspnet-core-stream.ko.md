@@ -90,11 +90,16 @@ public readonly record struct ZLinkStreamDiagnostic(
     int NativeCode,
     string? Message);
 
+public sealed class ZLinkMessageMetadata
+{
+    public static ZLinkMessageMetadata Empty { get; }
+}
+
 public interface IZLinkSessionPacket
 {
     string PacketName { get; }
 
-    IReadOnlyDictionary<string, string> Metadata { get; }
+    ZLinkMessageMetadata Metadata { get; }
 
     TMessage Decode<TMessage>();
 }
@@ -118,12 +123,12 @@ public interface IZLinkSession
 
 public interface IZLinkSessionActorDispatchContext
 {
-    ValueTask<IZLinkActorRef> CreateActorAsync(
+    ValueTask<IZLinkActorRef> CreateAndBindActorAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> CreateActorHandleAsync(
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);

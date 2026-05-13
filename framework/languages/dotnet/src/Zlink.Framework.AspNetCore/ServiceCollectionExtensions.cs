@@ -75,25 +75,17 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IZLinkActorClient, ZLinkMissingActorClient>();
         }
 
-        if (registration.ActorSessionRouteResolverType is not null)
+        if (registration.ActorSessionBindingStoreType is not null)
         {
-            services.TryAddSingleton(registration.ActorSessionRouteResolverType);
+            services.TryAddSingleton(registration.ActorSessionBindingStoreType);
             services.AddSingleton(
-                typeof(IZLinkActorSessionRouteResolver),
-                provider => provider.GetRequiredService(registration.ActorSessionRouteResolverType));
+                typeof(IZLinkActorSessionBindingStore),
+                provider => provider.GetRequiredService(registration.ActorSessionBindingStoreType));
             services.AddSingleton<IZLinkSessionProxy, ZLinkSessionProxyService>();
         }
         else
         {
             services.AddSingleton<IZLinkSessionProxy, ZLinkMissingSessionProxy>();
-        }
-
-        if (registration.ActorSessionLocationWriterType is not null)
-        {
-            services.TryAddSingleton(registration.ActorSessionLocationWriterType);
-            services.AddSingleton(
-                typeof(IZLinkActorSessionLocationWriter),
-                provider => provider.GetRequiredService(registration.ActorSessionLocationWriterType));
         }
 
         foreach (var streamNode in registration.StreamNodes.Values)

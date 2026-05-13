@@ -17,7 +17,7 @@
 현재 `SPOT` 초안은 아래 기능을 중심으로 잡혀 있다.
 
 - `SpotNode` 등록
-- `spotRid` 생성과 삭제
+- `spotId` 생성과 삭제
 - current channel publish/subscribe
 - attach된 channel client 기반 send/request
 - topic publish/subscribe
@@ -45,7 +45,7 @@
 - `Spot`은 특정 service가 아니라 `SpotNode`에 종속된다는 점
 - attach된 SPOT `Discovery`가 `SpotNode`의 active channel view를 정한다는 점
 - 다른 channel 호출을 attach된 channel client 경로로 푼다는 점
-- `spotRid`와 topic publish를 구분해서 설명하는 점
+- `spotId`와 topic publish를 구분해서 설명하는 점
 - `IZLinkSpotManager`로 spot 생성 lifecycle을 분리한 점
 
 이 방향은 `playhouse`의 `Stage`를 `SPOT`으로 완전히 대체하는 것이 아니라,
@@ -59,7 +59,7 @@
 기본 `zlink framework`가 직접 맡는 범위는 보통 아래 정도다.
 
 - `SpotNode` 등록과 lifecycle
-- `spotRid` 생성과 삭제
+- `spotId` 생성과 삭제
 - current channel publish/subscribe
 - attach된 channel client 기반 send/request
 - publish/subscribe
@@ -90,7 +90,7 @@
 
 `Stage` wrapper를 올리려면 최소한 아래가 정리되어야 한다.
 
-- 같은 `spotRid`로 들어오는 handler가 직렬 실행되는가
+- 같은 `spotId`로 들어오는 handler가 직렬 실행되는가
 - timer handler도 같은 실행 문맥으로 들어오는가
 - publish subscription callback도 같은 문맥으로 들어오는가
 - **channel reply callback도 같은 문맥으로 들어오는가**
@@ -134,7 +134,7 @@
 - routed packet handler, subscription handler, timer handler, channel reply
   continuation, stream session callback에서 `StageSpot` state 를 읽고 쓸 때 별도
   lock 이 필요 없다.
-- 단, `Stage` wrapper 외부에서 `SpotRid` 를 받아 직접 state 를 건드리려 하면
+- 단, `Stage` wrapper 외부에서 `SpotId` 를 받아 직접 state 를 건드리려 하면
   그 접근은 같은 실행 계약 바깥이므로 별도 동기화가 필요하다.
 
 #### 4.1.1 actor join 이후 내부 처리 모델
@@ -160,7 +160,7 @@
    join 요청을 넣는다.
 3. join handler는 `IZLinkSpotActorMembership.JoinActorAsync(actor)`를 호출해
    `actorId -> spot runtime` 연결을 membership으로 기록한다.
-4. 그 뒤 session에서 packet이 오면 framework Header 기반 `header/body` 형태로
+4. 그 뒤 session에서 packet이 오면 framework가 `IZLinkSessionPacket` 형태로
    정규화한다.
 5. 정규화된 packet을 해당 actor가 attach된 `Spot` runtime inbox로 넣는다.
 6. 그 `Spot` inbox를 소비하는 실행기는 하나뿐이라고 가정한다.
@@ -173,7 +173,7 @@
 
 ```text
 joined actor session packet
-    -> normalize to header/body
+    -> normalize to session packet
     -> submit to spot-owned inbox
     -> single spot consumer
     -> actor packet handler
@@ -203,7 +203,7 @@ joined actor session packet
 - join된 actor의 packet은 `Spot` 실행 문맥 밖에서 직접 처리하지 않는다.
 - framework 내부 `SubmitAsync(...)`는 `Spot`이 소유한 직렬 실행 규칙 안에서만
   수행되고, 그 안에서 최종적으로 actor packet handler가 호출된다.
-- stream packet은 framework Header 기반 `header/body`로 정규화된 뒤 같은 actor
+- stream packet은 framework `IZLinkSessionPacket`으로 정규화된 뒤 같은 actor
   dispatch 경로를 탄다.
 
 즉 "`Spot`에 actor가 join된다"는 말은 membership만 뜻하는 것이 아니라,
@@ -289,7 +289,7 @@ timer handler를 호출한다고 이해하는 편이 맞다.
 
 ### 4.3 spot 생성 시 초기값 전달
 
-현재 `IZLinkSpotManager`는 `spotRid` 생성과 삭제를 설명하기에는 충분하지만,
+현재 `IZLinkSpotManager`는 `spotId` 생성과 삭제를 설명하기에는 충분하지만,
 `Stage` 생성처럼 초기 payload를 갖는 모델을 설명하기에는 부족하다.
 
 예를 들면 `playhouse`의 stage 생성은 보통 아래 정보를 함께 가진다.
@@ -301,12 +301,12 @@ timer handler를 호출한다고 이해하는 편이 맞다.
 
 현재 `IZLinkSpotManager`의 기본 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 6.3을 따른다.
-즉 현재 framework 기본 계약은 `spotName`만 받는 생성과, `spotName + spotRid`
+즉 현재 framework 기본 계약은 `spotName`만 받는 생성과, `spotName + spotId`
 까지를 다루는 수준이다.
 
 `Stage wrapper`를 위해서는 최소한 아래 중 하나가 더 필요하다.
 
-- `spotName + spotRid + metadata`
+- `spotName + spotId + metadata`
 - create payload를 handler 초기화에 전달하는 별도 contract
 
 다만 이 부분은 현재 하부 C API 공개 계약에서 바로 읽히는 내용은 아니다. 즉 아래
@@ -317,7 +317,7 @@ public interface IStageSpotManager
 {
     ValueTask<ZLinkSpotCreateResult> CreateAsync<TMetadata>(
         string spotName,
-        RoutingId spotRid,
+        ZLinkSpotId spotId,
         TMetadata metadata,
         CancellationToken cancellationToken = default);
 }

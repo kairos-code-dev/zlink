@@ -37,7 +37,10 @@ internal sealed class ZLinkBackendDealerSocketWrapper(DealerSocket nativeSocket)
 
     public bool Send(Message message, SendFlags flags)
     {
-        return nativeSocket.Send(message, flags);
+        return nativeSocket.Send()
+            .Message(message)
+            .Flags(flags)
+            .Submit();
     }
 
     public bool Request(
@@ -46,7 +49,15 @@ internal sealed class ZLinkBackendDealerSocketWrapper(DealerSocket nativeSocket)
         SendFlags flags,
         TimeSpan? timeout)
     {
-        return nativeSocket.Request(message, callback, flags, timeout);
+        var operation = nativeSocket.Request()
+            .Message(message)
+            .Flags(flags);
+        if (timeout is { } value)
+        {
+            operation = operation.Timeout(value);
+        }
+
+        return operation.Submit(callback);
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

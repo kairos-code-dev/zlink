@@ -111,7 +111,7 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
     private readonly ActorRef _actor;
     private readonly RoutingId _destNodeRid;
     private readonly RoutingId _destSpotRid;
-    private readonly List<Message> _parts = new();
+    private OperationMessageBuffer _parts;
     private TimeSpan _timeout;
     private SendFlags _flags;
     private bool _callbackStage;
@@ -185,7 +185,7 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
                 ZlinkConfigException.ErrorCode.InvalidState);
         _submitted = true;
         return ActorInterop.JoinActorAsync(_node, _actor, _destNodeRid,
-            _destSpotRid, _parts, _timeout, _flags, ct);
+            _destSpotRid, _parts.Parts, _timeout, _flags, ct);
     }
 
     public bool Submit(ActorJoinHandler callback)
@@ -195,23 +195,19 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
         EnsureReady();
         _submitted = true;
         return ActorInterop.JoinActorCallback(_node, _actor, _destNodeRid,
-            _destSpotRid, _parts, _timeout, _flags, callback);
+            _destSpotRid, _parts.Parts, _timeout, _flags, callback);
     }
 
     private void AddMessage(Message message)
     {
         EnsureNotSubmitted();
-        if (message == null)
-            throw new ArgumentNullException(nameof(message));
         _parts.Add(message);
     }
 
     private void EnsureReady()
     {
         EnsureNotSubmitted();
-        if (_parts.Count == 0)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidArgument);
+        _parts.EnsureNotEmpty();
     }
 
     private void EnsureNotSubmitted()
@@ -227,7 +223,7 @@ internal sealed class ActorJoinReplyOperationImpl : ActorJoinReplyOperation
     private readonly Spot _spot;
     private readonly ActorJoinRequest _request;
     private readonly bool _accepted;
-    private readonly List<Message> _parts = new();
+    private OperationMessageBuffer _parts;
     private bool _submitted;
 
     internal ActorJoinReplyOperationImpl(Spot spot, ActorJoinRequest request,
@@ -243,8 +239,6 @@ internal sealed class ActorJoinReplyOperationImpl : ActorJoinReplyOperation
         if (_submitted)
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
-        if (message == null)
-            throw new ArgumentNullException(nameof(message));
         _parts.Add(message);
         return this;
     }
@@ -255,7 +249,8 @@ internal sealed class ActorJoinReplyOperationImpl : ActorJoinReplyOperation
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
         _submitted = true;
-        _spot.ReplyActorJoinInternal(_request.Info, _accepted, _parts);
+        _spot.ReplyActorJoinInternal(_request.Info, _accepted,
+            _parts.PartsOrEmpty);
     }
 }
 

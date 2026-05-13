@@ -11,6 +11,7 @@ internal sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
     public void Configure()
     {
         context.AddActorJoin<TicTacToeGameJoinHandler, PlayerActor, JoinMatchReq, JoinMatchSpotResult>();
+        context.AddActorPacket<PlaceMarkHandler, PlayerActor>();
     }
 
     public ValueTask OnInitializeAsync(CancellationToken cancellationToken)

@@ -159,6 +159,9 @@ internal static class ZLinkDotNetBackendMappings
                 SpotDispatchEvent.ActorReadable => ZLinkBackendSpotDispatchEvent.ActorReadable,
                 _ => ZLinkBackendSpotDispatchEvent.Internal,
             },
+            DrainChannelReply: info.Event == SpotDispatchEvent.ChannelReplyReadable
+                ? info.DrainChannelReply
+                : null,
             ActorParts: actorParts);
     }
 

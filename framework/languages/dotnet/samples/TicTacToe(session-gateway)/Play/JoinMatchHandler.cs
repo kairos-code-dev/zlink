@@ -3,14 +3,14 @@ using TicTacToe.SessionActorDispatch.Contracts;
 using TicTacToe.SessionActorDispatch.Infrastructure;
 using TicTacToe.SessionGateway.Play;
 using Systems.Zlink;
-using Zlink.Framework.Streams;
+using Zlink.Framework.Spots;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 
 internal sealed class JoinMatchHandler(
     RegistryPlayRoutePublisher routes,
     GameNotificationPublisher notifications)
-    : IZLinkActorRequestHandler<PlayerActor, JoinMatchReq, JoinMatchRes>
+    : IZLinkEntrySpotActorRequestHandler<PlayerActor, JoinMatchReq, JoinMatchRes>
 {
     public async ValueTask<JoinMatchRes> HandleAsync(
         PlayerActor actor,

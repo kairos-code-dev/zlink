@@ -89,6 +89,18 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
                 $"Duplicate SPOT factory '{spotName}' on node '{registration.SpotNodeName}'.");
         }
     }
+
+    public void AddEntrySpot<TEntrySpot>()
+        where TEntrySpot : IZLinkEntrySpot
+    {
+        if (registration.EntrySpotType is not null)
+        {
+            throw new ZLinkConfigurationException(
+                $"Duplicate Entry Spot registry on node '{registration.SpotNodeName}'.");
+        }
+
+        registration.EntrySpotType = typeof(TEntrySpot);
+    }
 }
 
 internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapabilityRegistration registration)
@@ -99,7 +111,7 @@ internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapability
         configure(registration.SocketOptions);
     }
 
-    public void ConfigureRouting(Action<IRoutePeerOptions> configure)
+    public void ConfigureRouting(Action<IZLinkRoutePolicyOptions> configure)
     {
         configure(registration.RoutingOptions);
     }
@@ -151,7 +163,7 @@ internal sealed class ZLinkSpotChannelClientCapabilityBuilder(ZLinkSpotChannelCl
         configure(registration.SocketOptions);
     }
 
-    public void ConfigureRouting(Action<IOutboundPeerOptions> configure)
+    public void ConfigureRouting(Action<IZLinkOutboundRoutePolicyOptions> configure)
     {
         configure(registration.RoutingOptions);
     }

@@ -12,7 +12,7 @@ session actor dispatch APIs:
 - a Play channel server reached by the API server for match room creation
 - Play server SPOT game rooms created through `IZLinkSpotManager`
 - routed channel registration and client calls
-- Session server target actor handle creation through `CreateActorHandleAsync(...)`
+- Session server local actor handle binding through `BindActorHandleAsync(...)`
 - Session server actor dispatch through `DispatchToActorAsync(...)`
 - Play actor typed request handlers that join and update SPOT game rooms
 - Play actor client notifications through `SessionProxy`

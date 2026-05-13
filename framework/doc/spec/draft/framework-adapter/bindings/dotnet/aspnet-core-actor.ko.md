@@ -184,12 +184,12 @@ builder.Services.AddZLinkFramework(options =>
 core actor의 상태 전이:
 
 ```text
-없음
-  └─(factory.CreateAsync)→ 생성됨 (Entry Spot 소속, unbound)
-        ├─(bind session)→ Entry Spot + bound to session
-        │     └─(JoinSpot)→ user Spot + bound to session
-        │           └─(leave: framework 자동)→ Entry Spot + bound
-        └─(disconnect / unbind: framework 자동)→ destroy → 없음
+None
+  +--(factory.CreateAsync)-> Created (Entry Spot, unbound)
+        +--(bind session)-> Entry Spot + bound to session
+        |     +--(JoinSpot)-> user Spot + bound to session
+        |           +--(leave: framework)-> Entry Spot + bound
+        +--(disconnect / unbind: framework)-> destroy -> None
 ```
 
 framework가 처리하는 시퀀스:
@@ -667,12 +667,12 @@ public interface IZLinkSessionActorAttachmentContext
 
 public interface IZLinkSessionActorDispatchContext
 {
-    ValueTask<IZLinkActorRef> CreateActorAsync(
+    ValueTask<IZLinkActorRef> CreateAndBindActorAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> CreateActorHandleAsync(
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
@@ -685,10 +685,10 @@ public interface IZLinkSessionActorDispatchContext
 
 - `AttachActorAsync(...)` -- 이미 만든 actor 인스턴스를 현재 session에 attach
   한다. session이 끊어지면 자동으로 `OnDisconnectedAsync`가 호출된다.
-- `CreateActorAsync(actorId, actorType, ...)` -- factory를 호출해서 새 actor를
+- `CreateAndBindActorAsync(actorId, actorType, ...)` -- factory를 호출해서 새 actor를
   만들고 이 session에 attach까지 **한 호출 안에서 atomic하게** 처리한다 (생성과
   session bind를 분리해서 노출하지 않는다).
-- `CreateActorHandleAsync(actorId, actorType, ...)` -- 현재 session host의 local
+- `BindActorHandleAsync(actorId, actorType, ...)` -- 현재 session host의 local
   `SpotNode` actor runtime에서 actor handle을 만들고 현재 actor-session binding을
   기록한다. actor는 기본적으로 `SpotNode`에서 생성되며, framework session 표면은
   remote node를 직접 지정하는 create/handle API를 제공하지 않는다.
@@ -712,7 +712,7 @@ sequenceDiagram
 
     C->>S: STREAM connect + authenticate
     S->>S: 인증 (AuthenticateReq → actorId)
-    S->>Act: CreateActorAsync("player", actorId)
+    S->>Act: CreateAndBindActorAsync("player", actorId)
     Note over Act: factory가 actor 생성
     S->>Loc: BindSessionAsync(actorId, sessionRouterId, token)
 
@@ -846,6 +846,8 @@ Play 서버:
 
 ```csharp
 builder.Services.AddScoped<PlayerActorFactory>();
+builder.Services.AddScoped<PlayerEntrySpot>();
+builder.Services.AddScoped<MatchSpot>();
 builder.Services.AddSingleton<RegistryPlayRouteStore>();
 builder.Services.AddSingleton<RegistrySpotRouteStore>();
 builder.Services.AddZLinkFramework(options =>
@@ -853,7 +855,23 @@ builder.Services.AddZLinkFramework(options =>
     options.AddActorFactory<PlayerActorFactory>("player");
     options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
     options.AddSpotRouteResolver<RegistrySpotRouteStore>();
-    // routed channel 등록 + spot mesh 등록 (별도 문서 참고)
+
+    options.AddSpotMesh("game.stage", mesh =>
+    {
+        mesh.UseDiscovery(discovery =>
+        {
+            discovery.Add("tcp://registry1:5551");
+        });
+
+        mesh.AddNode("play-node", node =>
+        {
+            node.Bind("tcp://0.0.0.0:9000");
+            node.AddEntrySpot<PlayerEntrySpot>();
+            node.AddSpotFactory<MatchSpot>("match");
+        });
+    });
+
+    // routed channel 등록은 별도 문서 참고
 });
 ```
 
@@ -862,7 +880,7 @@ builder.Services.AddZLinkFramework(options =>
 play 노드로 forwarding할 수 있어야 하기 때문이다.
 
 actor-session binding은 framework/core runtime 내부에서 관리한다. Session 서버는
-인증과 `CreateActorAsync(...)` 또는 `CreateActorHandleAsync(...)` 흐름에서 binding을
+인증과 `CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)` 흐름에서 binding을
 갱신하고, Play 서버는 `IZLinkSessionProxy`를 통해 현재 binding을 사용한다. 이를 위한
 별도 public session route API나 기록 API 등록은 두지 않는다.
 
@@ -883,6 +901,29 @@ public interface IZLinkFrameworkOptions
 
     void AddSpotRouteResolver<TResolver>()
         where TResolver : class, IZLinkSpotRouteResolver;
+
+    void AddActorSessionBindingStore<TStore>()
+        where TStore : class, IZLinkActorSessionBindingStore;
+
+    void AddSpotMesh(
+        string channelName,
+        Action<IZLinkSpotMeshBuilder> configure);
+}
+
+public interface IZLinkSpotMeshBuilder
+{
+    void AddNode(
+        string spotNodeName,
+        Action<IZLinkSpotMeshNodeBuilder> configure);
+}
+
+public interface IZLinkSpotMeshNodeBuilder
+{
+    void AddEntrySpot<TEntrySpot>()
+        where TEntrySpot : IZLinkEntrySpot;
+
+    void AddSpotFactory<TSpot>(string spotName)
+        where TSpot : IZLinkSpot;
 }
 ```
 
@@ -893,6 +934,8 @@ public interface IZLinkFrameworkOptions
 | `AddActorFactory<>(type)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | actorType 키로 factory 매핑 |
 | `AddActorPlayRouteResolver<>()` | actor를 외부에서 부르는 모든 서버 | actor id → play node routing |
 | `AddSpotRouteResolver<>()` | actor가 spot name/id로 user Spot에 join하거나 spot client를 쓰는 서버 | spot name/id → spot routing |
+| `AddSpotMesh(...).AddNode(...).AddEntrySpot<>()` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
+| `AddSpotMesh(...).AddNode(...).AddSpotFactory<>()` | user Spot을 만드는 SPOT host | spotName 키로 user Spot factory 매핑 |
 
 ## 11. 다른 문서와의 관계
 

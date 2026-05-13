@@ -8,12 +8,6 @@ internal sealed class PlayerActor(string actorId) : IZLinkActor
 
     public IZLinkActorContext Context { get; set; } = default!;
 
-    public void Configure()
-    {
-        Context.AddPacket<JoinMatchHandler>();
-        Context.AddPacket<PlaceMarkHandler>();
-    }
-
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
         _ = cancellationToken;

@@ -203,7 +203,9 @@ request도 reply를 기다리는 async 호출로 설명한다. 다만 request pa
 `SPOT`은 일반 channel messaging보다 instance lifecycle과 실행 문맥이 더 먼저
 보이는 표면이다. 공통 정책 차원에서는 아래 정도만 고정한다.
 
-- active SPOT channel view는 `UseSpotDiscovery(...)`가 정한다.
+- active SPOT channel view는 `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))`가
+  정한다. `UseSpotDiscovery(...)`와 `AddSpotNode(...)`를 분리하는 방식은 호환 경로로만
+  남기고, 새 샘플은 mesh 등록을 기준으로 작성한다.
 - `SpotNode`는 router, pub/sub, attach된 외부 호출 capability를 가진다.
 - local spot 인스턴스는 등록 이름으로 만들고, lifecycle 안에서 packet, subscribe,
   timer를 등록한다.

@@ -836,6 +836,16 @@ internal static class ActorInterop
             }
             ZlinkActorJoinResult native = Marshal.PtrToStructure
                 <ZlinkActorJoinResult>(resultPtr);
+            if ((RequestResult)native.Result != RequestResult.Ok)
+            {
+                ActorJoinResult fail = new((RequestResult)native.Result,
+                    default, default, native.JoinEpoch, native.Flags);
+                state.Completion.TrySetResult(
+                    new ActorJoinResultEnvelope(fail,
+                        Array.Empty<Message>()));
+                return;
+            }
+
             ActorRef returnedActor = FromNative(ref native.Actor);
             RoutingId joinedSpot = RoutingId.FromBytes(
                 NativeHelpers.ReadRoutingId(ref native.JoinedSpotRid));

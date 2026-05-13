@@ -1,9 +1,12 @@
+using TicTacToe.Server.Play.Games;
+using Zlink.Framework.Spots;
+
 namespace TicTacToe.Server.Play.Actors.Handlers;
 
 internal sealed class PlayActorJoinGameHandler(
     TicTacToeJoinService games,
     ILogger<PlayActorJoinGameHandler> logger)
-    : IZLinkActorPacketHandler<PlayActor, JoinGameReq>
+    : IZLinkEntrySpotActorSendHandler<PlayActor, JoinGameReq>
 {
     public async ValueTask HandleAsync(
         PlayActor actor,
@@ -27,23 +30,22 @@ internal sealed class PlayActorJoinGameHandler(
 }
 
 internal sealed class PlayActorPlaceMarkHandler(ILogger<PlayActorPlaceMarkHandler> logger)
-    : IZLinkActorPacketHandler<PlayActor, PlaceMarkReq>
+    : IZLinkSpotActorSendHandler<TicTacToeGame, PlayActor, PlaceMarkReq>
 {
     public async ValueTask HandleAsync(
+        TicTacToeGame spot,
         PlayActor actor,
         PlaceMarkReq message,
         CancellationToken cancellationToken)
     {
         var gameId = actor.RequireJoinedGame();
-        var game = actor.Context.GetSpot<TicTacToeGame>();
-
         logger.LogInformation(
             "actor: PlaceMarkReq received. actor={ActorId}, gameId={GameId}, cell={Cell}",
             actor.ActorId,
             gameId,
             message.Cell);
 
-        var reply = await game.PlaceMarkAsync(actor, message.Cell, cancellationToken);
+        var reply = await spot.PlaceMarkAsync(actor, message.Cell, cancellationToken);
         await actor.Context.Reply(reply)
             .Submit(cancellationToken);
 

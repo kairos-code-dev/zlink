@@ -125,7 +125,9 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         Message reply)
     {
         var nativeRequest = (ActorJoinRequest)request.NativeRequest!;
-        nativeSpot.ReplyActorJoin(nativeRequest, accepted, reply);
+        nativeSpot.ReplyActorJoin(nativeRequest, accepted)
+            .Message(reply)
+            .Submit();
     }
 
     public ValueTask DisposeAsync() => nativeSpot.DisposeAsync();

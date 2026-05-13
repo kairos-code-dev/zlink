@@ -23,6 +23,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly HashSet<string> _pubSubDiscoveredConnections = new(StringComparer.Ordinal);
     private Task? _discoveryPeerReconciliationTask;
     private IZLinkBackendSpot? _entrySpot;
+    private ZLinkEntrySpotActivation? _entrySpotActivation;
     private static readonly ZlinkStreamHeaderCodec EntrySpotHeaderCodec = new();
 
     public ZLinkSpotNodeRuntime(
@@ -63,7 +64,18 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         _entrySpot = Node.EntrySpot();
         var entrySpot = _entrySpot;
+        if (_registration.EntrySpotType is not null)
+        {
+            _entrySpotActivation = new ZLinkEntrySpotActivation(
+                _services,
+                _registration.EntrySpotType,
+                Node.RoutingId);
+            _entrySpotActivation.Configure();
+            _entrySpotActivation.InitializeAsync(_stopSource.Token).AsTask().GetAwaiter().GetResult();
+        }
+
         var runtime = _runtime;
+        var activation = _entrySpotActivation;
         var stopToken = _stopSource.Token;
 
         var previous = SynchronizationContext.Current;
@@ -79,7 +91,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 }
 
                 _ = Task.Run(
-                    () => DispatchEntrySpotActorPartsAsync(runtime, actorParts, stopToken),
+                    () => DispatchEntrySpotActorPartsAsync(runtime, activation, actorParts, stopToken),
                     CancellationToken.None);
             });
         }
@@ -91,6 +103,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     private static async Task DispatchEntrySpotActorPartsAsync(
         ZLinkFrameworkRuntime runtime,
+        ZLinkEntrySpotActivation? activation,
         IReadOnlyList<ZLinkBackendActorPart> parts,
         CancellationToken cancellationToken)
     {
@@ -115,7 +128,13 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 var header = EntrySpotHeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
                 headerPart.Message.Dispose();
                 using var emptyBody = Message.FromBytes(ReadOnlySpan<byte>.Empty);
-                await runtime.SubmitActorAsync(actor, header, emptyBody, cancellationToken)
+                await DispatchEntrySpotActorPacketAsync(
+                        runtime,
+                        activation,
+                        actor,
+                        header,
+                        emptyBody,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 continue;
             }
@@ -130,9 +149,133 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             var streamHeader = EntrySpotHeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
             headerPart.Message.Dispose();
             using var body = bodyPart.Message;
-            await runtime.SubmitActorAsync(actor, streamHeader, body, cancellationToken)
+            await DispatchEntrySpotActorPacketAsync(
+                    runtime,
+                    activation,
+                    actor,
+                    streamHeader,
+                    body,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
+    }
+
+    private static async ValueTask DispatchEntrySpotActorPacketAsync(
+        ZLinkFrameworkRuntime runtime,
+        ZLinkEntrySpotActivation? activation,
+        IZLinkActor actor,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        if (activation is not null
+            && activation.TryResolveActorPacket(actor.GetType(), header, out var descriptor)
+            && descriptor is not null)
+        {
+            var actorState = runtime.GetOrCreateActorState(actor.ActorId);
+            var previousDispatch = actorState.CurrentDispatch;
+            actorState.CurrentDispatch = new ZLinkActorDispatchState(header);
+            try
+            {
+                await activation.InvokeActorPacketAsync(descriptor, actor, header, body, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                actorState.CurrentDispatch = previousDispatch;
+            }
+
+            return;
+        }
+
+        await runtime.SubmitActorAsync(actor, header, body, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public bool TryResolveEntrySpotActorPacket(
+        Type actorType,
+        ZlinkStreamHeader header,
+        out ZLinkSpotActorPacketDescriptor? descriptor)
+    {
+        descriptor = null;
+        return _entrySpotActivation is not null
+            && _entrySpotActivation.TryResolveActorPacket(actorType, header, out descriptor);
+    }
+
+    public ValueTask InvokeEntrySpotActorPacketAsync(
+        ZLinkSpotActorPacketDescriptor descriptor,
+        IZLinkActor actor,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        if (_entrySpotActivation is null)
+        {
+            throw new InvalidOperationException($"SPOT node '{Name}' does not have an Entry Spot.");
+        }
+
+        return _entrySpotActivation.InvokeActorPacketAsync(
+            descriptor,
+            actor,
+            header,
+            body,
+            cancellationToken);
+    }
+
+    public ValueTask<byte[]> InvokeEntrySpotActorPacketForReplyAsync(
+        ZLinkSpotActorPacketDescriptor descriptor,
+        IZLinkActor actor,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        if (_entrySpotActivation is null)
+        {
+            throw new InvalidOperationException($"SPOT node '{Name}' does not have an Entry Spot.");
+        }
+
+        return _entrySpotActivation.InvokeActorPacketForReplyAsync(
+            descriptor,
+            actor,
+            header,
+            body,
+            cancellationToken);
+    }
+
+    public bool TryResolveEntrySpotActorJoined(
+        Type actorType,
+        out ZLinkSpotActorLifecycleDescriptor? descriptor)
+    {
+        descriptor = null;
+        return _entrySpotActivation is not null
+            && _entrySpotActivation.TryResolveActorJoined(actorType, out descriptor);
+    }
+
+    public bool TryResolveEntrySpotActorLeft(
+        Type actorType,
+        out ZLinkSpotActorLifecycleDescriptor? descriptor)
+    {
+        descriptor = null;
+        return _entrySpotActivation is not null
+            && _entrySpotActivation.TryResolveActorLeft(actorType, out descriptor);
+    }
+
+    public ValueTask InvokeEntrySpotActorLifecycleAsync(
+        ZLinkSpotActorLifecycleDescriptor descriptor,
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        if (_entrySpotActivation is null)
+        {
+            throw new InvalidOperationException($"SPOT node '{Name}' does not have an Entry Spot.");
+        }
+
+        return _entrySpotActivation.InvokeActorLifecycleAsync(
+            descriptor,
+            actor,
+            info,
+            cancellationToken);
     }
 
     public void StartDiscoveryPeerReconciliation()
@@ -541,6 +684,12 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
         if (_entrySpot is not null)
         {
+            if (_entrySpotActivation is not null)
+            {
+                await _entrySpotActivation.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+                await _entrySpotActivation.DisposeAsync().ConfigureAwait(false);
+            }
+
             await _entrySpot.DisposeAsync();
         }
 

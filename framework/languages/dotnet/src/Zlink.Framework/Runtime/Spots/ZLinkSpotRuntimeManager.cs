@@ -170,6 +170,149 @@ internal sealed class ZLinkSpotRuntimeManager(
         return await activation.JoinActorAsync<TRequest, TReply>(actor, request, cancellationToken);
     }
 
+    public async ValueTask<bool> TrySubmitEntrySpotActorAsync(
+        ZLinkFrameworkRuntimeState state,
+        IZLinkActor actor,
+        ZLinkActorRuntimeState runtimeState,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        foreach (var node in state.SpotNodes.Values)
+        {
+            if (!node.TryResolveEntrySpotActorPacket(actor.GetType(), header, out var descriptor)
+                || descriptor is null)
+            {
+                continue;
+            }
+
+            var previousDispatch = runtimeState.CurrentDispatch;
+            runtimeState.CurrentDispatch = new ZLinkActorDispatchState(header);
+            try
+            {
+                await node.InvokeEntrySpotActorPacketAsync(
+                        descriptor,
+                        actor,
+                        header,
+                        body,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                runtimeState.CurrentDispatch = previousDispatch;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public async ValueTask<EntrySpotActorReplyDispatchResult> TrySubmitEntrySpotActorForReplyAsync(
+        ZLinkFrameworkRuntimeState state,
+        IZLinkActor actor,
+        ZLinkActorRuntimeState runtimeState,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        foreach (var node in state.SpotNodes.Values)
+        {
+            if (!node.TryResolveEntrySpotActorPacket(actor.GetType(), header, out var descriptor)
+                || descriptor is null)
+            {
+                continue;
+            }
+
+            var previousDispatch = runtimeState.CurrentDispatch;
+            runtimeState.CurrentDispatch = new ZLinkActorDispatchState(header);
+            try
+            {
+                var reply = await node.InvokeEntrySpotActorPacketForReplyAsync(
+                        descriptor,
+                        actor,
+                        header,
+                        body,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return new EntrySpotActorReplyDispatchResult(true, reply);
+            }
+            finally
+            {
+                runtimeState.CurrentDispatch = previousDispatch;
+            }
+        }
+
+        return new EntrySpotActorReplyDispatchResult(false, null);
+    }
+
+    public async ValueTask NotifyEntrySpotActorJoinedAsync(
+        ZLinkFrameworkRuntimeState state,
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        foreach (var node in state.SpotNodes.Values)
+        {
+            if (!node.TryResolveEntrySpotActorJoined(actor.GetType(), out var descriptor)
+                || descriptor is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                await node.InvokeEntrySpotActorLifecycleAsync(
+                        descriptor,
+                        actor,
+                        info,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    public async ValueTask NotifyEntrySpotActorLeftAsync(
+        ZLinkFrameworkRuntimeState state,
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        foreach (var node in state.SpotNodes.Values)
+        {
+            if (!node.TryResolveEntrySpotActorLeft(actor.GetType(), out var descriptor)
+                || descriptor is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                await node.InvokeEntrySpotActorLifecycleAsync(
+                        descriptor,
+                        actor,
+                        info,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+            }
+        }
+    }
+
     public IZLinkEndpointConnections GetRouterConnections(
         ZLinkFrameworkRuntimeState state,
         string spotNodeName)
@@ -321,3 +464,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         return null;
     }
 }
+
+internal readonly record struct EntrySpotActorReplyDispatchResult(
+    bool Handled,
+    byte[]? Reply);

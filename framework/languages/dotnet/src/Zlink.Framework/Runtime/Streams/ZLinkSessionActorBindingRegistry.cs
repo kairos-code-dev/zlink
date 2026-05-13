@@ -26,11 +26,11 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             sessionRouterId,
             Guid.NewGuid().ToString("N"));
 
-        var writer = runtime.Services.GetRequiredService<IZLinkActorSessionLocationWriter>();
+        var store = runtime.Services.GetRequiredService<IZLinkActorSessionBindingStore>();
         runtime.BindSessionActor(actorId, context, binding.BindingToken);
         try
         {
-            await writer.BindSessionAsync(binding, cancellationToken).ConfigureAwait(false);
+            await store.BindSessionAsync(binding, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -64,10 +64,10 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         foreach (var binding in bindings)
         {
             runtime.UnbindSessionActor(binding.ActorId, context, binding.BindingToken);
-            var writer = runtime.Services.GetService<IZLinkActorSessionLocationWriter>();
-            if (writer is not null)
+            var store = runtime.Services.GetService<IZLinkActorSessionBindingStore>();
+            if (store is not null)
             {
-                await writer.UnbindSessionAsync(
+                await store.UnbindSessionAsync(
                     new ZLinkActorSessionUnbind(
                         binding.ActorId,
                         binding.BindingToken),

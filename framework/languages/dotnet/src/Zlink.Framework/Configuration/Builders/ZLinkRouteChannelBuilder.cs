@@ -18,7 +18,7 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
         configure(registration.SocketOptions);
     }
 
-    public void ConfigureRouting(Action<IRoutePeerOptions> configure)
+    public void ConfigureRouting(Action<IZLinkRoutePolicyOptions> configure)
     {
         configure(registration.RoutingOptions);
     }

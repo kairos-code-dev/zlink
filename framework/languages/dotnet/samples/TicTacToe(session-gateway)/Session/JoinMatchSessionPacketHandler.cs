@@ -21,7 +21,7 @@ internal sealed class JoinMatchSessionPacketHandler(
         Message payload,
         CancellationToken cancellationToken)
     {
-        var request = payload.FromJson<JoinMatchReq>();
+        var request = SessionRelayJson.Decode<JoinMatchReq>(payload);
         var spotRid = RoutingId.FromString(request.MatchId);
         var route = await spotRoutes.ResolveSpotRouteAsync(spotRid, cancellationToken)
             .ConfigureAwait(false);

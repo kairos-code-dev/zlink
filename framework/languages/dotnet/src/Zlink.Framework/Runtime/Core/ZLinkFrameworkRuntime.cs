@@ -317,11 +317,83 @@ internal sealed class ZLinkFrameworkRuntime
         CancellationToken cancellationToken = default)
         => await _actorSessionManager.SubmitActorAsync(actor, header, body, cancellationToken);
 
+    internal async ValueTask<bool> TrySubmitEntrySpotActorAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState runtimeState,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken = default)
+    {
+        var state = GetOrStartState();
+        return await _spots.TrySubmitEntrySpotActorAsync(
+                state,
+                actor,
+                runtimeState,
+                header,
+                body,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<EntrySpotActorReplyDispatchResult> TrySubmitEntrySpotActorForReplyAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState runtimeState,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken = default)
+    {
+        var state = GetOrStartState();
+        return await _spots.TrySubmitEntrySpotActorForReplyAsync(
+                state,
+                actor,
+                runtimeState,
+                header,
+                body,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask NotifyEntrySpotActorJoinedAsync(
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken = default)
+    {
+        if (_state is null)
+        {
+            return;
+        }
+
+        await _spots.NotifyEntrySpotActorJoinedAsync(
+                _state,
+                actor,
+                info,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask NotifyEntrySpotActorLeftAsync(
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken = default)
+    {
+        if (_state is null)
+        {
+            return;
+        }
+
+        await _spots.NotifyEntrySpotActorLeftAsync(
+                _state,
+                actor,
+                info,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     internal async ValueTask<CreateActorResult> CreateLocalActorAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default)
-        => await _actorSessionManager.CreateActorAsync(actorId, actorType, cancellationToken);
+        => await _actorSessionManager.CreateAndBindActorAsync(actorId, actorType, cancellationToken);
 
     internal async ValueTask<byte[]> SubmitActorForReplyAsync(
         string actorId,

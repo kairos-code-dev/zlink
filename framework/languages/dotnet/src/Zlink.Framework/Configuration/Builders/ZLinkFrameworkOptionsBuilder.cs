@@ -48,26 +48,15 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration.ActorPlayRouteResolverType = typeof(TResolver);
     }
 
-    public void AddActorSessionRouteResolver<TResolver>()
-        where TResolver : class, IZLinkActorSessionRouteResolver
+    public void AddActorSessionBindingStore<TStore>()
+        where TStore : class, IZLinkActorSessionBindingStore
     {
-        if (_registration.ActorSessionRouteResolverType is not null)
+        if (_registration.ActorSessionBindingStoreType is not null)
         {
-            throw new ZLinkConfigurationException("Actor session route resolver is already configured.");
+            throw new ZLinkConfigurationException("Actor session binding store is already configured.");
         }
 
-        _registration.ActorSessionRouteResolverType = typeof(TResolver);
-    }
-
-    public void AddActorSessionLocationWriter<TWriter>()
-        where TWriter : class, IZLinkActorSessionLocationWriter
-    {
-        if (_registration.ActorSessionLocationWriterType is not null)
-        {
-            throw new ZLinkConfigurationException("Actor session location writer is already configured.");
-        }
-
-        _registration.ActorSessionLocationWriterType = typeof(TWriter);
+        _registration.ActorSessionBindingStoreType = typeof(TStore);
     }
 
     public void AddChannel(

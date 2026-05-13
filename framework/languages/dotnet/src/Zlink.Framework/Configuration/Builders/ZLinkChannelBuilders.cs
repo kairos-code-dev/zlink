@@ -87,7 +87,7 @@ internal sealed class ZLinkChannelServerCapabilityBuilder(ZLinkChannelServerCapa
         configure(registration.SocketOptions);
     }
 
-    public void ConfigureRouting(Action<IRoutePeerOptions> configure)
+    public void ConfigureRouting(Action<IZLinkRoutePolicyOptions> configure)
     {
         configure(registration.RoutingOptions);
     }
@@ -101,7 +101,7 @@ internal sealed class ZLinkChannelClientCapabilityBuilder(ZLinkChannelClientCapa
         configure(registration.SocketOptions);
     }
 
-    public void ConfigureRouting(Action<IOutboundPeerOptions> configure)
+    public void ConfigureRouting(Action<IZLinkOutboundRoutePolicyOptions> configure)
     {
         configure(registration.RoutingOptions);
     }
@@ -130,7 +130,7 @@ internal sealed class ZLinkDealerMeshChannelClientCapabilityBuilder(ZLinkChannel
         configure(registration.SocketOptions);
     }
 
-    public void ConfigureRouting(Action<IOutboundPeerOptions> configure)
+    public void ConfigureRouting(Action<IZLinkOutboundRoutePolicyOptions> configure)
     {
         configure(registration.RoutingOptions);
     }

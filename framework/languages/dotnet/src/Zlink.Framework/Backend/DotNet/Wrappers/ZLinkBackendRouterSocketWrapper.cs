@@ -59,7 +59,10 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
         Message message,
         SendFlags flags)
     {
-        return nativeSocket.Send(routingId, message, flags);
+        return nativeSocket.Send(routingId)
+            .Message(message)
+            .Flags(flags)
+            .Submit();
     }
 
     public bool Request(
@@ -69,7 +72,15 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
         SendFlags flags,
         TimeSpan? timeout)
     {
-        return nativeSocket.Request(routingId, message, callback, flags, timeout);
+        var operation = nativeSocket.Request(routingId)
+            .Message(message)
+            .Flags(flags);
+        if (timeout is { } value)
+        {
+            operation = operation.Timeout(value);
+        }
+
+        return operation.Submit(callback);
     }
 
     public void Reply(
@@ -77,7 +88,9 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
         ulong requestSeq,
         Message message)
     {
-        nativeSocket.Reply(routingId, requestSeq, message);
+        nativeSocket.Reply(routingId, requestSeq)
+            .Message(message)
+            .Submit();
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

@@ -42,14 +42,7 @@ public interface IZLinkActorPlayRouteResolver
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkActorSessionRouteResolver
-{
-    ValueTask<ZLinkActorSessionRoute> ResolveSessionRouteAsync(
-        string actorId,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkActorSessionLocationWriter
+public interface IZLinkActorSessionBindingStore
 {
     ValueTask BindSessionAsync(
         ZLinkActorSessionBinding binding,
@@ -57,6 +50,10 @@ public interface IZLinkActorSessionLocationWriter
 
     ValueTask UnbindSessionAsync(
         ZLinkActorSessionUnbind binding,
+        CancellationToken cancellationToken);
+
+    ValueTask<ZLinkActorSessionRoute> FindSessionAsync(
+        string actorId,
         CancellationToken cancellationToken);
 }
 

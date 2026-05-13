@@ -11,14 +11,14 @@ public interface IChannelServerCapabilityBuilder
 
     void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
 
-    void ConfigureRouting(Action<IRoutePeerOptions> configure);
+    void ConfigureRouting(Action<IZLinkRoutePolicyOptions> configure);
 }
 
 public interface IChannelClientCapabilityBuilder
 {
     void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
 
-    void ConfigureRouting(Action<IOutboundPeerOptions> configure);
+    void ConfigureRouting(Action<IZLinkOutboundRoutePolicyOptions> configure);
 
     void UseManualConnections(Action<IChannelClientConnections> configure);
 }
@@ -46,7 +46,7 @@ public interface ISpotRouterCapabilityBuilder
 {
     void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
 
-    void ConfigureRouting(Action<IRoutePeerOptions> configure);
+    void ConfigureRouting(Action<IZLinkRoutePolicyOptions> configure);
 
     void UseManualConnections(Action<ISpotRouterConnections> configure);
 }
@@ -71,7 +71,7 @@ public interface ISpotChannelClientCapabilityBuilder
 {
     void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
 
-    void ConfigureRouting(Action<IOutboundPeerOptions> configure);
+    void ConfigureRouting(Action<IZLinkOutboundRoutePolicyOptions> configure);
 
     void UseManualConnections(Action<IChannelClientConnections> configure);
 }
@@ -91,7 +91,7 @@ public interface IZLinkRouteChannelBuilder
 
     void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
 
-    void ConfigureRouting(Action<IRoutePeerOptions> configure);
+    void ConfigureRouting(Action<IZLinkRoutePolicyOptions> configure);
 
     void UseManualConnections(Action<IRouteChannelConnections> configure);
 
@@ -170,6 +170,9 @@ public interface IZLinkSpotNodeBuilder
 
     void AddSpotFactory<TSpot>(string spotName)
         where TSpot : IZLinkSpot;
+
+    void AddEntrySpot<TEntrySpot>()
+        where TEntrySpot : IZLinkEntrySpot;
 }
 
 public interface IZLinkSpotMeshNodeBuilder
@@ -190,6 +193,9 @@ public interface IZLinkSpotMeshNodeBuilder
 
     void AddSpotFactory<TSpot>(string spotName)
         where TSpot : IZLinkSpot;
+
+    void AddEntrySpot<TEntrySpot>()
+        where TEntrySpot : IZLinkEntrySpot;
 }
 
 public interface IZLinkSpotMeshBuilder
@@ -215,11 +221,8 @@ public interface IZLinkFrameworkOptions
     void AddActorPlayRouteResolver<TResolver>()
         where TResolver : class, IZLinkActorPlayRouteResolver;
 
-    void AddActorSessionRouteResolver<TResolver>()
-        where TResolver : class, IZLinkActorSessionRouteResolver;
-
-    void AddActorSessionLocationWriter<TWriter>()
-        where TWriter : class, IZLinkActorSessionLocationWriter;
+    void AddActorSessionBindingStore<TStore>()
+        where TStore : class, IZLinkActorSessionBindingStore;
 
     void AddChannel(
         string channelName,

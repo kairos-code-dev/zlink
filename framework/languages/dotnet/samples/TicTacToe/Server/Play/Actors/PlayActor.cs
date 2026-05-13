@@ -1,5 +1,3 @@
-using TicTacToe.Server.Play.Actors.Handlers;
-
 namespace TicTacToe.Server.Play.Actors;
 
 internal sealed class PlayActor(
@@ -12,12 +10,6 @@ internal sealed class PlayActor(
     public IZLinkActorContext Context { get; set; } = default!;
 
     public string GameId { get; private set; } = string.Empty;
-
-    public void Configure()
-    {
-        Context.AddPacket<PlayActorJoinGameHandler>();
-        Context.AddPacket<PlayActorPlaceMarkHandler>();
-    }
 
     public void JoinGame(string gameId)
     {

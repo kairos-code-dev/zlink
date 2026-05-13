@@ -89,12 +89,12 @@ message handler와 lifecycle callback handler는 별도 표면으로 설정한�
 framework는 위 시점에 알아서 적절한 core API를 호출하고, application은 결과만
 보면 된다.
 
-user Spot의 actor join/leave commit 알림은 spot lifecycle callback으로 전달한다.
-각 binding은 core의 `on_join` / `on_leave` 의미를 보존하되, framework public surface에
-native actor ref를 그대로 드러내지 않는다. application은 actor id와 이동 전/후
-spot 위치를 보고 room/stage 상태 정리나 운영 event 기록을 수행한다. native commit
-epoch를 얻을 수 있는 binding은 그 값을 함께 전달하고, framework membership 변경만으로
-만든 알림은 epoch를 `0`으로 둔다.
+Entry Spot과 user Spot의 actor join/leave commit 알림은 spot lifecycle callback으로
+전달한다. 각 binding은 core의 `on_join` / `on_leave` 의미를 보존하되, framework public
+surface에 native actor ref를 그대로 드러내지 않는다. application은 actor id와 이동
+전/후 spot 위치를 보고 room/stage 상태 정리나 운영 event 기록을 수행한다. native
+commit epoch를 얻을 수 있는 binding은 그 값을 함께 전달하고, framework membership
+변경만으로 만든 알림은 epoch를 `0`으로 둔다.
 
 ### 3.2 application이 구현하는 Entry Spot 로직
 
@@ -124,12 +124,12 @@ context의 join 상태 (예: `IsJoined`, `SpotName` 노출) 로 확인한다. `R
 ## 4. 라이프사이클 단계
 
 ```text
-없음
-  └─(factory create)→ 생성됨 (Entry Spot 소속, unbound)
-        ├─(bind session)→ Entry Spot + bound
-        │     └─(JoinSpot)→ user Spot + bound
-        │           └─(leave: framework 자동)→ Entry Spot + bound
-        └─(disconnect / unbind: framework 자동)→ destroy → 없음
+None
+  +--(factory create)-> Created (Entry Spot, unbound)
+        +--(bind session)-> Entry Spot + bound
+        |     +--(JoinSpot)-> user Spot + bound
+        |           +--(leave: framework)-> Entry Spot + bound
+        +--(disconnect / unbind: framework)-> destroy -> None
 ```
 
 각 단계에서 framework는 다음 일을 한다.
@@ -141,7 +141,7 @@ context의 join 상태 (예: `IsJoined`, `SpotName` 노출) 로 확인한다. `R
 | JoinSpot | target spot에 join 요청 전송, accept/reject 결과를 application에 반환 |
 | leave | (자동) user Spot → Entry Spot 이동, spot 쪽에 leave 통보 |
 | destroy | (자동) actor 정리, 내부 actor-session binding 해제, `OnDisconnectedAsync` 호출 |
-| session-bound actor 등록 | session-bound 경로에서는 local `SpotNode` actor runtime의 actor 생성 또는 handle 준비와 session bind를 `CreateActorAsync(...)` / `CreateActorHandleAsync(...)`로 묶는다. session 표면은 remote node를 직접 지정하는 actor 생성 API를 제공하지 않는다. |
+| session-bound actor 등록 | session-bound 경로에서는 local `SpotNode` actor runtime의 actor 생성 또는 handle 준비와 session bind를 `CreateAndBindActorAsync(...)` / `BindActorHandleAsync(...)`로 묶는다. session 표면은 remote node를 직접 지정하는 actor 생성 API를 제공하지 않는다. |
 
 application은 위 시점에 다음만 책임진다: factory 코드, actor 클래스의
 `Configure()` / handler 코드, actor/spot route resolver 구현, 그리고 actor 안에서 호출하는
@@ -162,6 +162,46 @@ user Spot에 있을 때 서로 다른 packet handler와 lifecycle callback handl
 
 같은 actor 안에서 같은 `kind + packet name` 조합이 둘 이상 매핑되면 startup
 validation 오류로 막는다.
+
+### 5.1 Entry Spot과 user Spot registry
+
+모든 binding은 Entry Spot registry와 user Spot registry를 분리해서 노출해야 한다.
+두 registry는 같은 actor 객체를 보더라도 다른 실행 문맥이다. Entry Spot registry는
+인증, 초기 상태 설정, target Spot 선택처럼 actor가 user Spot에 join하기 전의 packet을
+처리한다. user Spot registry는 room, game, stage 같은 domain spot 안에서의 packet을
+처리한다.
+
+binding별 실제 이름은 언어 관례에 맞게 정하되, 의미상 아래 항목을 빠뜨리면 안 된다.
+
+| 등록 표면 | Entry Spot | user Spot |
+| --- | --- | --- |
+| actor packet | Entry Spot context에서 actor type과 handler를 묶는다 | Spot context에서 actor type과 handler를 묶는다 |
+| actor joined lifecycle | Entry Spot context에서 actor type과 joined handler를 묶는다 | Spot context에서 actor type과 joined handler를 묶는다 |
+| actor left lifecycle | Entry Spot context에서 actor type과 left handler를 묶는다 | Spot context에서 actor type과 left handler를 묶는다 |
+| handler 실행 인자 | actor + payload 또는 actor + lifecycle info | spot + actor + payload 또는 spot + actor + lifecycle info |
+
+Entry Spot은 user Spot 객체가 아니므로 Entry Spot actor handler에 user Spot 인스턴스를
+넘기지 않는다. 반대로 user Spot actor handler는 spot 상태와 actor 상태를 함께 볼 수
+있어야 하므로 spot 인스턴스와 actor 인스턴스를 모두 받는다.
+
+### 5.2 lifecycle callback 공개 방식
+
+actor join/leave lifecycle은 Spot method override가 아니라 registry 등록으로
+표현한다. 즉 `OnJoinActor`, `OnLeaveActor` 같은 이름의 method를 framework public
+계약으로 요구하지 않는다. 각 언어가 관례상 callback 이름을 다르게 정할 수는 있지만,
+다음 의미는 유지해야 한다.
+
+- lifecycle handler는 Entry Spot 또는 user Spot의 registry에 명시 등록된다.
+- 같은 registry 안에서 같은 actor type의 joined handler는 하나만 허용한다.
+- 같은 registry 안에서 같은 actor type의 left handler는 하나만 허용한다.
+- callback은 join/leave commit 이후 같은 실행 문맥에서 호출된다.
+- callback은 admission을 결정하는 hook이 아니다. 입장 허용 여부는 join request
+  handler나 별도 admission handler가 결정한다.
+
+이 규칙을 두는 이유는 actor packet handler와 lifecycle handler의 소유권을 같은
+registry에 두기 위해서다. Entry 단계와 user Spot 단계를 하나의 actor class callback에
+섞으면, handler가 현재 위치를 직접 분기해야 하고 binding마다 다른 lifecycle 모양이
+생긴다.
 
 ## 6. Outbound: actor를 부르는 쪽
 
@@ -206,17 +246,27 @@ gameplay 로직은 **Play 서버**의 actor가 처리한다. 그러면서도 cli
 
 ## 8. 등록 표면 (binding 중립)
 
-binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다음 네 가지를 공통으로
+binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다음 표면을 공통으로
 제공한다.
 
 | 의미 | 누가 등록하나 | 무엇을 한다 |
 | --- | --- | --- |
 | actor factory | actor를 만드는 서버 (Play / SPOT host) | actorType 키로 factory 매핑 |
+| Entry Spot | actor runtime을 가진 서버 | Entry Spot context와 handler registry 설정 |
+| user Spot factory | user Spot을 만드는 서버 | spotName 키로 factory 매핑 |
+| actor packet handler | Entry Spot 또는 user Spot | actor type + message kind + packet name을 handler에 매핑 |
+| actor joined handler | Entry Spot 또는 user Spot | actor type별 join commit 후속 처리 등록 |
+| actor left handler | Entry Spot 또는 user Spot | actor type별 leave commit 후속 처리 등록 |
 | actor route resolver | actor를 외부에서 부르는 모든 서버 | actor id → actor node routing |
 | spot route resolver | spot을 이름/id로 부르는 서버 | spot name/id → spot routing |
 
 언어별 실제 API 이름과 시그니처는 binding 디렉토리의 상세 문서에 둔다 (예:
 .NET은 `AddActorFactory<>`, `AddActorPlayRouteResolver<>` 등).
+
+각 binding 상세 문서는 위 표면을 모두 보여 주는 짧은 코드 예시를 포함해야 한다.
+특히 Entry Spot handler 등록과 user Spot handler 등록을 같은 예시에 함께 보여 주어야
+한다. 둘 중 하나만 있으면 다른 binding 작성자가 actor lifecycle의 절반을 빠뜨리기
+쉽다.
 
 ## 9. binding 매핑
 
@@ -246,6 +296,6 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
   인터페이스만 제공한다.
 - server → client push는 반드시 session proxy를 통한다. actor가 stream socket을
   직접 들고 있지 않다.
-- session-bound actor의 local 생성 또는 handle 준비 + bind는 `CreateActorAsync(...)`와
-  `CreateActorHandleAsync(...)`가 묶는다. 두 API 모두 local `SpotNode` actor runtime을
+- session-bound actor의 local 생성 또는 handle 준비 + bind는 `CreateAndBindActorAsync(...)`와
+  `BindActorHandleAsync(...)`가 묶는다. 두 API 모두 local `SpotNode` actor runtime을
   대상으로 하며 remote node를 직접 지정하지 않는다.

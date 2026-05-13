@@ -23,7 +23,7 @@ internal sealed class AuthenticateSessionPacketHandler(
         _ = header;
         using (payload)
         {
-            var request = payload.FromJson<AuthenticateReq>();
+            var request = SessionRelayJson.Decode<AuthenticateReq>(payload);
             var authenticated = await context.Stream.RequestChannel(
                     SampleNames.ApiChannel,
                     new AuthenticateActorReq(request.ActorId))

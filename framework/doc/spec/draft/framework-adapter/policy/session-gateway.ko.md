@@ -24,10 +24,10 @@ session actor helper, `SessionProxy`, 명시적 metadata 정책을 중심으로 
 
 | 이전 이름 | 현재 대체 | 상태 |
 |-----------|-----------|------|
-| `EnableSessionGateway(...)` | `AddStreamNode(...).AddHeaderSession<TSession>()`, `CreateActorHandleAsync(...)` | 제거 |
+| `EnableSessionGateway(...)` | `AddStreamNode(...).AddHeaderSession<TSession>()`, `BindActorHandleAsync(...)` | 제거 |
 | `IZLinkSessionGateway` | `IZLinkSessionContext`, `IZLinkActorClient`, `IZLinkSessionProxy` | 제거 |
 | `AddSessionProxyHandler(...)` | Entry Spot / user Spot actor handler와 `IZLinkSessionProxy` | 제거 |
-| `OpenActorRelay(...)` | `CreateActorAsync(...)`, `CreateActorHandleAsync(...)`, `DispatchToActorAsync(...)` | 제거 |
+| `OpenActorRelay(...)` | `CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)` | 제거 |
 | `SendToActor(...)` | `DispatchToActorAsync(...)` 또는 `IZLinkActorClient.Send(...)` | 제거 |
 | `RequestActor(...)` | `DispatchToActorAsync(...)` 또는 `IZLinkActorClient.Request(...)` | 제거 |
 | `IZLinkSessionProxyHandler` | typed actor handler와 `IZLinkSessionProxy` 호출 표면 | 제거 |

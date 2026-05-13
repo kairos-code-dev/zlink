@@ -25,6 +25,7 @@ public static class PlayServerHostFactory
         builder.Services.AddSingleton<RegistryPlayRoutePublisher>();
         builder.Services.AddSingleton<GameNotificationPublisher>();
         builder.Services.AddScoped<PlayerActorFactory>();
+        builder.Services.AddScoped<TicTacToeEntrySpot>();
         builder.Services.AddScoped<CreateMatchRoomHandler>();
         builder.Services.AddScoped<JoinMatchHandler>();
         builder.Services.AddScoped<TicTacToeGameJoinHandler>();
@@ -43,7 +44,7 @@ public static class PlayServerHostFactory
             });
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
             options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
-            options.AddActorSessionRouteResolver<RegistryActorSessionLocationStore>();
+            options.AddActorSessionBindingStore<RegistryActorSessionLocationStore>();
             options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
             {
                 routed.Bind(topology.PlayRouterEndpoint);
@@ -58,6 +59,7 @@ public static class PlayServerHostFactory
                 spotMesh.AddNode(SampleNames.GameSpotNode, spot =>
                 {
                     spot.Bind(topology.PlaySpotEndpoint);
+                    spot.AddEntrySpot<TicTacToeEntrySpot>();
                     spot.AddSpotFactory<TicTacToeGameSpot>(SampleNames.GameSpotType);
                 });
             });

@@ -102,14 +102,15 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
         RequestCallback callback,
         TimeSpan? timeout)
     {
-        return nativeSpotNode.JoinActor(
-            actor.ToNative(),
-            destNodeRid,
-            destSpotRid,
-            message,
-            callback,
-            SendFlags.DontWait,
-            timeout);
+        var operation = nativeSpotNode.JoinActor(actor.ToNative(), destNodeRid, destSpotRid)
+            .Message(message)
+            .Flags(SendFlags.DontWait);
+        if (timeout is { } value)
+        {
+            operation = operation.Timeout(value);
+        }
+
+        return operation.Submit((result, parts) => callback(result.Result, parts));
     }
 
     public void LeaveActor(
@@ -117,14 +118,22 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
         RoutingId currentSpotRid,
         TimeSpan timeout)
     {
-        nativeSpotNode.LeaveActor(actor.ToNative(), currentSpotRid, timeout);
+        nativeSpotNode.LeaveActor(actor.ToNative(), currentSpotRid)
+            .Timeout(timeout)
+            .SubmitAsync()
+            .GetAwaiter()
+            .GetResult();
     }
 
     public void DestroyActor(
         ZLinkBackendActorRef actor,
         TimeSpan timeout)
     {
-        nativeSpotNode.DestroyActor(actor.ToNative(), timeout);
+        nativeSpotNode.DestroyActor(actor.ToNative())
+            .Timeout(timeout)
+            .SubmitAsync()
+            .GetAwaiter()
+            .GetResult();
     }
 
     public ValueTask DisposeAsync() => nativeSpotNode.DisposeAsync();

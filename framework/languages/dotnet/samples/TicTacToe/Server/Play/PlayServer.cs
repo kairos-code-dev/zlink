@@ -19,6 +19,7 @@ internal sealed class PlayServer(SampleSettings settings)
         builder.Services.AddScoped<CreateGameHandler>();
         builder.Services.AddScoped<PlaySession>();
         builder.Services.AddScoped<PlaySessionAuthenticator>();
+        builder.Services.AddScoped<PlayEntrySpot>();
         builder.Services.AddScoped<PlayActorFactory>();
         builder.Services.AddScoped<TicTacToeJoinService>();
         builder.Services.AddScoped<TicTacToeGameJoinHandler>();
@@ -60,6 +61,7 @@ internal sealed class PlayServer(SampleSettings settings)
                 spotMesh.AddNode(SampleNodes.PlaySpot, spot =>
                 {
                     spot.Bind(settings.SpotEndpoint);
+                    spot.AddEntrySpot<PlayEntrySpot>();
                     spot.AddSpotFactory<TicTacToeGame>(SampleTypes.GameSpot);
                 });
             });

@@ -16,9 +16,7 @@ internal sealed class ZLinkFrameworkRegistration
 
     public Type? ActorPlayRouteResolverType { get; set; }
 
-    public Type? ActorSessionRouteResolverType { get; set; }
-
-    public Type? ActorSessionLocationWriterType { get; set; }
+    public Type? ActorSessionBindingStoreType { get; set; }
 
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
@@ -145,6 +143,8 @@ internal sealed class ZLinkSpotNodeRegistration
     public Dictionary<string, ZLinkSpotPublisherClientRegistration> AttachedSpotPublisherClients { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, Type> SpotFactories { get; } = new(StringComparer.Ordinal);
+
+    public Type? EntrySpotType { get; set; }
 }
 
 internal sealed class ZLinkSpotRouterCapabilityRegistration

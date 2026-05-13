@@ -30,7 +30,10 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(PubSocket nativeSocket)
         Message message,
         SendFlags flags)
     {
-        return nativeSocket.Publish(topic, message, flags);
+        return nativeSocket.Publish(topic)
+            .Message(message)
+            .Flags(flags)
+            .Submit();
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

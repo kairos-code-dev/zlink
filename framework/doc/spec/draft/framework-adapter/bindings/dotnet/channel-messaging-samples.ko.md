@@ -221,8 +221,8 @@ builder.Services.AddZLinkFramework(options =>
 
             server.ConfigureRouting(routing =>
             {
-                routing.Mandatory = true;
-                routing.Handover = true;
+                routing.RequireKnownPeer = true;
+                routing.AllowPeerHandover = true;
             });
         });
     });
@@ -255,7 +255,7 @@ builder.Services.AddZLinkFramework(options =>
 
             client.ConfigureRouting(routing =>
             {
-                routing.ProbeRouter = true;
+                routing.ProbeRouterOnConnect = true;
             });
         });
     });
@@ -272,8 +272,9 @@ builder.Services.AddZLinkFramework(options =>
 - `server.ConfigureSocket(...)`, `client.ConfigureSocket(...)`는 capability가 들고
   있는 socket 기본 동작을 정한다.
 - `server.ConfigureRouting(...)`, `client.ConfigureRouting(...)`는 capability별
-  routed 연결 규칙을 따로 둔다는 뜻이다. 현재 `.NET` backend 기준으로도 server 쪽과
-  client 쪽은 서로 다른 low-level option object에 대응한다.
+  routed 연결 정책을 따로 둔다는 뜻이다. public 설정은 `RequireKnownPeer`,
+  `AllowPeerHandover`, `ProbeRouterOnConnect`처럼 framework 의미가 드러나는 이름을
+  사용하고, 하부 backend option 이름은 노출하지 않는다.
 - `client.Request(...).WithTimeout(...)`은 특정 호출 하나에만 적용되는 값이고,
   실제 low-level 바인딩에서도 `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)`
   처럼 호출 인자로 준다. 위 설정은 capability 전체의 기본값이다.

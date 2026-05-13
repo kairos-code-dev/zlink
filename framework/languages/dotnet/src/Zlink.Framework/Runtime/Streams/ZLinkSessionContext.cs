@@ -52,7 +52,7 @@ internal sealed class ZLinkSessionContext(
         return new ZLinkSessionReplyCall<TMessage>(this, message);
     }
 
-    public async ValueTask<IZLinkActorRef> CreateActorAsync(
+    public async ValueTask<IZLinkActorRef> CreateAndBindActorAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default)
@@ -70,29 +70,20 @@ internal sealed class ZLinkSessionContext(
             cancellationToken).ConfigureAwait(false);
     }
 
-    [Obsolete("Remote actor creation is no longer a framework operation. Use CreateActorHandleAsync for a target-node handle, or CreateActorAsync on the node that owns the actor.")]
-    public async ValueTask<IZLinkActorRef> CreateRemoteActorAsync(
-        RoutingId actorNodeId,
-        string actorId,
-        string actorType,
-        CancellationToken cancellationToken = default)
-        => await CreateActorHandleAsync(actorNodeId, actorId, actorType, cancellationToken)
-            .ConfigureAwait(false);
-
-    public async ValueTask<IZLinkActorRef> CreateActorHandleAsync(
-        RoutingId actorNodeId,
+    public async ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default)
     {
-        var routerChannelId = runtime.ResolveDefaultRouterChannelId();
+        var route = await ResolveActorRouteAsync(actorId, cancellationToken)
+            .ConfigureAwait(false);
         return await _actorBindings.BindAsync(
             this,
             SessionId,
             actorId,
             actorType,
-            routerChannelId,
-            actorNodeId,
+            route.RouterChannelId,
+            route.TargetNodeRid,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -234,6 +225,20 @@ internal sealed class ZLinkSessionContext(
     internal void ExitDispatch()
     {
         _currentDispatchHeader = null;
+    }
+
+    private async ValueTask<ZLinkActorRoute> ResolveActorRouteAsync(
+        string actorId,
+        CancellationToken cancellationToken)
+    {
+        if (runtime.Services.GetService(typeof(IZLinkActorPlayRouteResolver))
+            is IZLinkActorPlayRouteResolver resolver)
+        {
+            return await resolver.ResolvePlayRouteAsync(actorId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return runtime.ResolveLocalActorRoute();
     }
 
     internal bool TryCompleteResponse(

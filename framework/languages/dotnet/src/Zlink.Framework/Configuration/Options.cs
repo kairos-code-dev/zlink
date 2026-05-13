@@ -29,24 +29,24 @@ public interface IZLinkCommonSocketOptions
     bool Immediate { get; set; }
 }
 
-public interface IRoutePeerOptions
+public interface IZLinkRoutePolicyOptions
 {
     RoutingId RoutingId { get; set; }
 
-    bool Mandatory { get; set; }
+    bool RequireKnownPeer { get; set; }
 
-    bool Handover { get; set; }
+    bool AllowPeerHandover { get; set; }
 
-    bool Probe { get; set; }
+    bool EnablePeerProbe { get; set; }
 
     RoutingId ConnectRoutingId { get; set; }
 }
 
-public interface IOutboundPeerOptions
+public interface IZLinkOutboundRoutePolicyOptions
 {
     RoutingId RoutingId { get; set; }
 
-    bool ProbeRouter { get; set; }
+    bool ProbeRouterOnConnect { get; set; }
 }
 
 public interface ISpotNodePublisherOptions
@@ -116,24 +116,24 @@ internal sealed class ZLinkCommonSocketOptions : IZLinkCommonSocketOptions
     }
 }
 
-internal sealed class ZLinkRoutePeerOptions : IRoutePeerOptions
+internal sealed class ZLinkRoutePeerOptions : IZLinkRoutePolicyOptions
 {
     public RoutingId RoutingId { get; set; }
 
-    public bool Mandatory { get; set; }
+    public bool RequireKnownPeer { get; set; }
 
-    public bool Handover { get; set; }
+    public bool AllowPeerHandover { get; set; }
 
-    public bool Probe { get; set; }
+    public bool EnablePeerProbe { get; set; }
 
     public RoutingId ConnectRoutingId { get; set; }
 }
 
-internal sealed class ZLinkOutboundPeerOptions : IOutboundPeerOptions
+internal sealed class ZLinkOutboundPeerOptions : IZLinkOutboundRoutePolicyOptions
 {
     public RoutingId RoutingId { get; set; }
 
-    public bool ProbeRouter { get; set; }
+    public bool ProbeRouterOnConnect { get; set; }
 }
 
 internal sealed class ZLinkSpotNodePublisherOptions : ISpotNodePublisherOptions

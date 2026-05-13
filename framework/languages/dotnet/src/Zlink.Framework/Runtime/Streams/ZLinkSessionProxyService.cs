@@ -4,7 +4,7 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionProxyService(
     IZLinkRouteClient routedClient,
-    IZLinkActorSessionRouteResolver routeResolver,
+    IZLinkActorSessionBindingStore bindingStore,
     ZLinkFrameworkRuntime runtime,
     ZLinkFrameworkRegistration registration) : IZLinkSessionProxy
 {
@@ -14,7 +14,7 @@ internal sealed class ZLinkSessionProxyService(
     {
         return new ZLinkSessionProxySendCall<TMessage>(
             routedClient,
-            routeResolver,
+            bindingStore,
             runtime,
             actorId,
             message);
@@ -26,7 +26,7 @@ internal sealed class ZLinkSessionProxyService(
     {
         return new ZLinkSessionProxyRequestCall<TRequest>(
             routedClient,
-            routeResolver,
+            bindingStore,
             runtime,
             registration,
             actorId,
@@ -36,7 +36,7 @@ internal sealed class ZLinkSessionProxyService(
 
 internal sealed class ZLinkSessionProxySendCall<TMessage>(
     IZLinkRouteClient routedClient,
-    IZLinkActorSessionRouteResolver routeResolver,
+    IZLinkActorSessionBindingStore bindingStore,
     ZLinkFrameworkRuntime runtime,
     string actorId,
     TMessage message) : IZLinkSessionProxySendCall
@@ -82,7 +82,7 @@ internal sealed class ZLinkSessionProxySendCall<TMessage>(
     {
         try
         {
-            return await routeResolver.ResolveSessionRouteAsync(actorId, cancellationToken)
+            return await bindingStore.FindSessionAsync(actorId, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (ZLinkFrameworkException)
@@ -101,7 +101,7 @@ internal sealed class ZLinkSessionProxySendCall<TMessage>(
 
 internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
     IZLinkRouteClient routedClient,
-    IZLinkActorSessionRouteResolver routeResolver,
+    IZLinkActorSessionBindingStore bindingStore,
     ZLinkFrameworkRuntime runtime,
     ZLinkFrameworkRegistration registration,
     string actorId,
@@ -170,7 +170,7 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
     {
         try
         {
-            return await routeResolver.ResolveSessionRouteAsync(actorId, cancellationToken)
+            return await bindingStore.FindSessionAsync(actorId, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (ZLinkFrameworkException)
@@ -196,7 +196,7 @@ internal sealed class ZLinkMissingSessionProxy : IZLinkSessionProxy
         _ = actorId;
         _ = message;
         throw new ZLinkConfigurationException(
-            "IZLinkSessionProxy requires AddActorSessionRouteResolver<TResolver>().");
+            "IZLinkSessionProxy requires AddActorSessionBindingStore<TStore>().");
     }
 
     public IZLinkSessionProxyRequestCall Request<TRequest>(
@@ -206,6 +206,6 @@ internal sealed class ZLinkMissingSessionProxy : IZLinkSessionProxy
         _ = actorId;
         _ = request;
         throw new ZLinkConfigurationException(
-            "IZLinkSessionProxy requires AddActorSessionRouteResolver<TResolver>().");
+            "IZLinkSessionProxy requires AddActorSessionBindingStore<TStore>().");
     }
 }

@@ -1194,14 +1194,23 @@ void test_multi_spot_backpressure_oneway_matrix ()
     verify_spot_forwarding_matrix ();
 }
 
+static bool should_run_case (const char *name_)
+{
+    const char *selected = getenv ("ZLINK_TEST_CASE");
+    return !selected || !*selected || strcmp (selected, name_) == 0;
+}
+
 int main (int, char **)
 {
     setup_test_environment (600);
 
     UNITY_BEGIN ();
-    RUN_TEST (test_single_socket_backpressure_oneway_matrix);
-    RUN_TEST (test_multi_pubsub_backpressure_oneway_matrix);
-    RUN_TEST (test_multi_spot_backpressure_oneway_matrix);
+    if (should_run_case ("test_single_socket_backpressure_oneway_matrix"))
+        RUN_TEST (test_single_socket_backpressure_oneway_matrix);
+    if (should_run_case ("test_multi_pubsub_backpressure_oneway_matrix"))
+        RUN_TEST (test_multi_pubsub_backpressure_oneway_matrix);
+    if (should_run_case ("test_multi_spot_backpressure_oneway_matrix"))
+        RUN_TEST (test_multi_spot_backpressure_oneway_matrix);
     const int status = UNITY_END ();
     fflush (NULL);
     return status;

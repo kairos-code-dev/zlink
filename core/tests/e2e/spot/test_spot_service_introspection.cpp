@@ -160,8 +160,7 @@ static void destroy_node_spot_handle (void *node_)
     if (it == g_node_spot_handles.end ())
         return;
 
-    zlink::destroy_spot_handle_for_testing (it->second);
-    erase_spot_mode_state (it->second);
+    zlink::destroy_registered_spot_handle_for_testing (it->second);
     g_node_spot_handles.erase (it);
 }
 
@@ -257,8 +256,7 @@ void tearDown ()
     for (std::map<void *, spot_handle_t *>::iterator it =
            g_node_spot_handles.begin ();
          it != g_node_spot_handles.end (); ++it) {
-        zlink::destroy_spot_handle_for_testing (it->second);
-        erase_spot_mode_state (it->second);
+        zlink::destroy_registered_spot_handle_for_testing (it->second);
     }
     g_node_spot_handles.clear ();
 }

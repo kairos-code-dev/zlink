@@ -56,6 +56,8 @@ int zlink::socket_base_t::socket_msg_dispatch_from_io (msg_t *msg_,
 
     std::lock_guard<std::recursive_mutex> dispatch_lock (
       dispatch_runtime ().socket_msg_dispatch_sync);
+    if (!socket_msg_dispatch_active ())
+        return 0;
     socket_msg_dispatch_context_t context (NULL, pipe_, NULL, NULL);
     return xsocket_msg_dispatch (msg_, pipe_);
 }
@@ -144,6 +146,11 @@ int zlink::socket_base_t::socket_msg_dispatch_stop ()
       NULL, std::memory_order_release);
     dispatch_runtime ().socket_msg_handler_userdata.store (
       NULL, std::memory_order_release);
+
+    {
+        std::lock_guard<std::recursive_mutex> dispatch_lock (
+          dispatch_runtime ().socket_msg_dispatch_sync);
+    }
 
     if (lifecycle_coordinator ().is_async_mailbox_active ()) {
         stop_async_mailbox_processing ();

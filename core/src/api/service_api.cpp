@@ -163,9 +163,6 @@ void destroy_spot_handle_internal (void *spot_)
         return;
     }
 
-    zlink_spot_request_reply_cleanup_spot (spot);
-    zlink::part_helper_internal::cleanup_handle (spot);
-
     spot->tag = 0xdeadbeef;
     ::operator delete (spot);
 }

@@ -9,6 +9,7 @@
 #include <cstdio>
 
 #include "api/part_helper_internal.hpp"
+#include "api/service_handle_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "core/c_api_copy_internal.hpp"
 #include "core/msg.hpp"
@@ -101,6 +102,14 @@ create_socket_owned_handle_state (void *handle_)
 
     socket->set_part_helper_state (state);
     return state;
+}
+
+bool uses_global_handle_state (void *handle_)
+{
+    return is_registered_spot_handle (handle_)
+           || is_registered_spot_pub_side_handle (handle_)
+           || is_registered_spot_sub_side_handle (handle_)
+           || is_registered_spot_node_handle (handle_);
 }
 }
 
@@ -237,12 +246,14 @@ zlink::part_helper_internal::find_or_create_handle_state (void *handle_)
         return std::shared_ptr<handle_state_t> ();
     }
 
-    std::shared_ptr<handle_state_t> socket_state =
-      create_socket_owned_handle_state (handle_);
-    if (socket_state)
-        return socket_state;
-    if (try_as_socket (handle_))
-        return std::shared_ptr<handle_state_t> ();
+    if (!uses_global_handle_state (handle_)) {
+        std::shared_ptr<handle_state_t> socket_state =
+          create_socket_owned_handle_state (handle_);
+        if (socket_state)
+            return socket_state;
+        if (try_as_socket (handle_))
+            return std::shared_ptr<handle_state_t> ();
+    }
 
     std::lock_guard<std::mutex> lock (g_part_helper_mutex);
     std::unordered_map<void *, std::shared_ptr<handle_state_t> >::iterator it =
@@ -263,12 +274,14 @@ zlink::part_helper_internal::find_or_create_handle_state (void *handle_)
 std::shared_ptr<zlink::part_helper_internal::handle_state_t>
 zlink::part_helper_internal::find_handle_state (void *handle_)
 {
-    std::shared_ptr<handle_state_t> socket_state =
-      try_socket_owned_handle_state (handle_);
-    if (socket_state)
-        return socket_state;
-    if (try_as_socket (handle_))
-        return std::shared_ptr<handle_state_t> ();
+    if (!uses_global_handle_state (handle_)) {
+        std::shared_ptr<handle_state_t> socket_state =
+          try_socket_owned_handle_state (handle_);
+        if (socket_state)
+            return socket_state;
+        if (try_as_socket (handle_))
+            return std::shared_ptr<handle_state_t> ();
+    }
 
     std::lock_guard<std::mutex> lock (g_part_helper_mutex);
     std::unordered_map<void *, std::shared_ptr<handle_state_t> >::iterator it =
@@ -654,14 +667,16 @@ void zlink::part_helper_internal::invalidate_recv_sequence (void *handle_)
 void zlink::part_helper_internal::cleanup_handle (void *handle_)
 {
     std::shared_ptr<handle_state_t> state;
-    zlink::socket_base_t *socket = try_as_socket (handle_);
-    if (socket) {
-        state = socket->part_helper_state ();
-        if (!state)
-            return;
-        socket->clear_part_helper_state ();
-    } else {
-    {
+    if (!uses_global_handle_state (handle_)) {
+        zlink::socket_base_t *socket = try_as_socket (handle_);
+        if (socket) {
+            state = socket->part_helper_state ();
+            if (!state)
+                return;
+            socket->clear_part_helper_state ();
+        }
+    }
+    if (!state) {
         std::lock_guard<std::mutex> lock (g_part_helper_mutex);
         std::unordered_map<void *, std::shared_ptr<handle_state_t> >::iterator it =
           g_part_helper_state.find (handle_);
@@ -669,7 +684,6 @@ void zlink::part_helper_internal::cleanup_handle (void *handle_)
             return;
         state = it->second;
         g_part_helper_state.erase (it);
-    }
     }
 
     std::lock_guard<std::mutex> lock (state->mutex);

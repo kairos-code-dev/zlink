@@ -51,7 +51,7 @@ ws_transport_t::ws_transport_t (const std::string &path,
     _path (path),
     _host (host),
     _handshake_complete (false),
-    _read_pending_offset (0)
+    _read_state (new read_state_t)
 {
 }
 
@@ -88,7 +88,7 @@ bool ws_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     //  Create WebSocket stream wrapping the socket
     try {
         _ws_stream =
-          std::unique_ptr<ws_stream_t> (new ws_stream_t (std::move (socket)));
+          std::shared_ptr<ws_stream_t> (new ws_stream_t (std::move (socket)));
     } catch (const std::bad_alloc &) {
         ASIO_GLOBAL_ERROR ("ws_transport stream allocation failed");
         return false;
@@ -102,9 +102,7 @@ bool ws_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     _ws_stream->read_message_max (ws_read_message_max ());
 
     _handshake_complete = false;
-    _read_message_buffer.consume (_read_message_buffer.size ());
-    _read_pending_message.clear ();
-    _read_pending_offset = 0;
+    _read_state.reset (new read_state_t);
 
     ASIO_DBG_WS ("opened with path=%s, host=%s", _path.c_str (), _host.c_str ());
     return true;
@@ -117,24 +115,26 @@ bool ws_transport_t::is_open () const
 
 void ws_transport_t::close ()
 {
-    if (_ws_stream) {
+    std::shared_ptr<ws_stream_t> stream = _ws_stream;
+    _ws_stream.reset ();
+
+    if (stream) {
         boost::system::error_code ec;
 
         //  Close the underlying socket first - this cancels all pending async ops
         //  The socket close will cause pending async_read/async_write to complete
         //  with operation_aborted error
-        if (_ws_stream->next_layer ().is_open ()) {
-            _ws_stream->next_layer ().shutdown (
+        if (stream->next_layer ().is_open ()) {
+            stream->next_layer ().shutdown (
               boost::asio::ip::tcp::socket::shutdown_both, ec);
-            _ws_stream->next_layer ().close (ec);
+            stream->next_layer ().close (ec);
         }
 
-        //  Note: We don't reset the stream here - let the caller drain pending
-        //  handlers first. The stream will be cleaned up in destructor.
         _handshake_complete = false;
-        _read_message_buffer.consume (_read_message_buffer.size ());
-        _read_pending_message.clear ();
-        _read_pending_offset = 0;
+        if (_read_state) {
+            _read_state->closed = true;
+            _read_state->clear ();
+        }
     }
 
 }
@@ -143,7 +143,9 @@ void ws_transport_t::async_read_some (unsigned char *buffer,
                                       std::size_t buffer_size,
                                       completion_handler_t handler)
 {
-    if (!_ws_stream || !_handshake_complete) {
+    std::shared_ptr<ws_stream_t> stream = _ws_stream;
+    std::shared_ptr<read_state_t> read_state = _read_state;
+    if (!stream || !read_state || !_handshake_complete) {
         if (handler) {
             handler (boost::asio::error::not_connected, 0);
         }
@@ -153,27 +155,29 @@ void ws_transport_t::async_read_some (unsigned char *buffer,
     if (buffer_size == 0) {
         if (handler) {
             boost::asio::post (
-              _ws_stream->get_executor (), [handler] () {
+              stream->get_executor (), [handler] () {
                   handler (boost::system::error_code (), 0);
               });
         }
         return;
     }
 
-    const std::size_t pending_size = _read_pending_message.size ();
-    if (_read_pending_offset < pending_size) {
-        const std::size_t remaining = pending_size - _read_pending_offset;
+    const std::size_t pending_size = read_state->pending_message.size ();
+    if (read_state->pending_offset < pending_size) {
+        const std::size_t remaining = pending_size - read_state->pending_offset;
         const std::size_t deliver =
           std::min<std::size_t> (buffer_size, remaining);
-        std::memcpy (buffer, &_read_pending_message[_read_pending_offset], deliver);
-        _read_pending_offset += deliver;
-        if (_read_pending_offset >= _read_pending_message.size ()) {
-            _read_pending_message.clear ();
-            _read_pending_offset = 0;
+        std::memcpy (
+          buffer, &read_state->pending_message[read_state->pending_offset],
+          deliver);
+        read_state->pending_offset += deliver;
+        if (read_state->pending_offset >= read_state->pending_message.size ()) {
+            read_state->pending_message.clear ();
+            read_state->pending_offset = 0;
         }
         if (handler) {
             boost::asio::post (
-              _ws_stream->get_executor (),
+              stream->get_executor (),
               [handler, deliver] () {
                   handler (boost::system::error_code (), deliver);
               });
@@ -181,12 +185,19 @@ void ws_transport_t::async_read_some (unsigned char *buffer,
         return;
     }
 
-    _ws_stream->async_read (
-      _read_message_buffer,
-      [this, buffer, buffer_size, handler] (
+    stream->async_read (
+      read_state->message_buffer,
+      [read_state, buffer, buffer_size, handler] (
         const boost::system::error_code &ec, std::size_t) {
+          if (read_state->closed) {
+              if (handler) {
+                  handler (boost::asio::error::operation_aborted, 0);
+              }
+              return;
+          }
+
           if (ec) {
-              ASIO_DBG_WS ("read failed: %s", ec.message ().c_str ());
+              ASIO_DBG ("WS", "read failed: %s", ec.message ().c_str ());
               if (handler) {
                   handler (ec, 0);
               }
@@ -194,7 +205,7 @@ void ws_transport_t::async_read_some (unsigned char *buffer,
           }
 
           const std::size_t available =
-            boost::asio::buffer_size (_read_message_buffer.data ());
+            boost::asio::buffer_size (read_state->message_buffer.data ());
           if (available == 0) {
               if (handler) {
                   handler (boost::system::error_code (), 0);
@@ -205,19 +216,19 @@ void ws_transport_t::async_read_some (unsigned char *buffer,
           const std::size_t deliver =
             std::min<std::size_t> (buffer_size, available);
           if (available > deliver) {
-              _read_pending_message.resize (available);
+              read_state->pending_message.resize (available);
               boost::asio::buffer_copy (
-                boost::asio::buffer (&_read_pending_message[0], available),
-                _read_message_buffer.data ());
-              std::memcpy (buffer, &_read_pending_message[0], deliver);
-              _read_pending_offset = deliver;
+                boost::asio::buffer (&read_state->pending_message[0], available),
+                read_state->message_buffer.data ());
+              std::memcpy (buffer, &read_state->pending_message[0], deliver);
+              read_state->pending_offset = deliver;
           } else {
               boost::asio::buffer_copy (boost::asio::buffer (buffer, deliver),
-                                        _read_message_buffer.data ());
-              _read_pending_message.clear ();
-              _read_pending_offset = 0;
+                                        read_state->message_buffer.data ());
+              read_state->pending_message.clear ();
+              read_state->pending_offset = 0;
           }
-          _read_message_buffer.consume (available);
+          read_state->message_buffer.consume (available);
 
           if (handler) {
               handler (boost::system::error_code (), deliver);
@@ -272,7 +283,8 @@ void ws_transport_t::async_write_some (const unsigned char *buffer,
                                        std::size_t buffer_size,
                                        completion_handler_t handler)
 {
-    if (!_ws_stream || !_handshake_complete) {
+    std::shared_ptr<ws_stream_t> stream = _ws_stream;
+    if (!stream || !_handshake_complete) {
         if (handler) {
             handler (boost::asio::error::not_connected, 0);
         }
@@ -281,10 +293,10 @@ void ws_transport_t::async_write_some (const unsigned char *buffer,
 
     //  WebSocket writes are frame-based, so we write the entire buffer
     //  as a single binary frame
-    _ws_stream->async_write (
+    stream->async_write (
       boost::asio::buffer (buffer, buffer_size),
-      [handler] (const boost::system::error_code &ec,
-                 std::size_t bytes_transferred) {
+      [stream, handler] (const boost::system::error_code &ec,
+                         std::size_t bytes_transferred) {
           ASIO_DBG ("WS", "write complete: ec=%s, bytes=%zu",
                     ec.message ().c_str (), bytes_transferred);
           if (handler) {
@@ -299,7 +311,8 @@ void ws_transport_t::async_writev (const unsigned char *header,
                                    std::size_t body_size,
                                    completion_handler_t handler)
 {
-    if (!_ws_stream || !_handshake_complete) {
+    std::shared_ptr<ws_stream_t> stream = _ws_stream;
+    if (!stream || !_handshake_complete) {
         if (handler) {
             handler (boost::asio::error::not_connected, 0);
         }
@@ -310,10 +323,10 @@ void ws_transport_t::async_writev (const unsigned char *header,
       boost::asio::buffer (header, header_size),
       boost::asio::buffer (body, body_size)};
 
-    _ws_stream->async_write (
+    stream->async_write (
       buffers,
-      [handler] (const boost::system::error_code &ec,
-                 std::size_t bytes_transferred) {
+      [stream, handler] (const boost::system::error_code &ec,
+                         std::size_t bytes_transferred) {
           ASIO_DBG ("WS", "writev complete: ec=%s, bytes=%zu",
                     ec.message ().c_str (), bytes_transferred);
           if (handler) {

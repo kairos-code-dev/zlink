@@ -263,10 +263,10 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
     zlink_spot_request_reply_cleanup_spot (spot);
     zlink_timer_cleanup_spot (spot);
     zlink::spot_node_access_t::unregister_spot_facade (node, spot);
+    erase_spot_mode_state (spot);
     if (!last_facade)
         spot->logical_state.reset ();
     zlink::destroy_spot_handle_internal (spot);
-    erase_spot_mode_state (spot);
     *spot_p_ = NULL;
     return ZLINK_CLOSE_OK;
 }

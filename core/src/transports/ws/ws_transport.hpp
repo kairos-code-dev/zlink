@@ -95,14 +95,28 @@ class ws_transport_t : public i_asio_transport
     //  WebSocket stream type (over TCP socket, no compression for simplicity)
     typedef boost::beast::websocket::stream<boost::asio::ip::tcp::socket>
       ws_stream_t;
+    struct read_state_t
+    {
+        read_state_t () : pending_offset (0), closed (false) {}
+
+        void clear ()
+        {
+            message_buffer.consume (message_buffer.size ());
+            pending_message.clear ();
+            pending_offset = 0;
+        }
+
+        boost::beast::flat_buffer message_buffer;
+        std::vector<unsigned char> pending_message;
+        std::size_t pending_offset;
+        bool closed;
+    };
 
     std::string _path;
     std::string _host;
-    std::unique_ptr<ws_stream_t> _ws_stream;
+    std::shared_ptr<ws_stream_t> _ws_stream;
     bool _handshake_complete;
-    boost::beast::flat_buffer _read_message_buffer;
-    std::vector<unsigned char> _read_pending_message;
-    std::size_t _read_pending_offset;
+    std::shared_ptr<read_state_t> _read_state;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (ws_transport_t)
 };

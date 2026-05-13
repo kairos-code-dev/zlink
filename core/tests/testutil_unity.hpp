@@ -9,6 +9,7 @@
 #include "../src/core/send_internal.hpp"
 #include "../src/sockets/stream.hpp"
 #include "../src/api/recv_result_internal.hpp"
+#include "../src/api/service_handle_internal.hpp"
 #include "../src/api/service_api_c_internal.h"
 #include "../src/api/submit_result_internal.hpp"
 #include "../src/api/socket_message_api_internal.hpp"
@@ -167,6 +168,31 @@ inline void consume_parts (zlink_msg_t *parts_, size_t count_)
         consume_part (&parts_[i]);
 }
 
+inline bool should_consume_after_bulk_attempt (int rc_, int err_)
+{
+    return rc_ == 0 || err_ != EAGAIN;
+}
+
+inline zlink_submit_result_t finish_bulk_attempt (int rc_,
+                                                  int err_,
+                                                  zlink_msg_t *parts_,
+                                                  size_t count_)
+{
+    if (should_consume_after_bulk_attempt (rc_, err_))
+        consume_parts (parts_, count_);
+    errno = err_;
+    return zlink::submit_result_internal::from_rc (rc_);
+}
+
+inline bool is_service_publish_subject (void *subject_)
+{
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (subject_);
+    return resolved.kind == zlink::service_handle_spot_pub_side
+           || resolved.kind == zlink::service_handle_spot
+           || resolved.kind == zlink::service_handle_spot_node;
+}
+
 /* Aggregate send helpers prefer the direct bulk path so tests observe the
  * same public send contract as bindings/c. */
 inline zlink_submit_result_t send_parts (void *s_,
@@ -181,19 +207,12 @@ inline zlink_submit_result_t send_parts (void *s_,
 
     const int socket_rc = zlink_socket_send_internal (s_, parts_, count_, flags_);
     const int socket_errno = errno;
-    if (socket_rc == 0 || socket_errno != EFAULT) {
-        if (socket_rc == 0 || socket_errno != EAGAIN)
-            consume_parts (parts_, count_);
-        errno = socket_errno;
-        return zlink::submit_result_internal::from_rc (socket_rc);
-    }
+    if (socket_rc == 0 || socket_errno != EFAULT)
+        return finish_bulk_attempt (socket_rc, socket_errno, parts_, count_);
 
     const int service_rc = zlink_service_send_internal (s_, parts_, count_, flags_);
     const int service_errno = errno;
-    if (service_rc == 0 || service_errno != EAGAIN)
-        consume_parts (parts_, count_);
-    errno = service_errno;
-    return zlink::submit_result_internal::from_rc (service_rc);
+    return finish_bulk_attempt (service_rc, service_errno, parts_, count_);
 }
 
 inline zlink_submit_result_t send_parts_rid (void *s_,
@@ -210,20 +229,49 @@ inline zlink_submit_result_t send_parts_rid (void *s_,
     const int socket_rc =
       zlink_socket_send_rid_internal (s_, rid_, parts_, count_, flags_);
     const int socket_errno = errno;
-    if (socket_rc == 0 || socket_errno != EFAULT) {
-        if (socket_rc == 0 || socket_errno != EAGAIN)
-            consume_parts (parts_, count_);
-        errno = socket_errno;
-        return zlink::submit_result_internal::from_rc (socket_rc);
-    }
+    if (socket_rc == 0 || socket_errno != EFAULT)
+        return finish_bulk_attempt (socket_rc, socket_errno, parts_, count_);
 
     const int service_rc =
       zlink_service_send_rid_internal (s_, rid_, parts_, count_, flags_);
     const int service_errno = errno;
-    if (service_rc == 0 || service_errno != EAGAIN)
-        consume_parts (parts_, count_);
+    return finish_bulk_attempt (service_rc, service_errno, parts_, count_);
+}
+
+inline zlink_submit_result_t publish_parts (void *subject_,
+                                            const char *topic_id_,
+                                            zlink_msg_t *parts_,
+                                            size_t count_,
+                                            zlink_send_flags_t flags_)
+{
+    if (!parts_ && count_ != 0) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+
+    if (is_service_publish_subject (subject_)) {
+        const int service_rc =
+          zlink_service_publish_internal (subject_, topic_id_, parts_, count_,
+                                          flags_);
+        const int service_errno = errno;
+        return finish_bulk_attempt (service_rc, service_errno, parts_, count_);
+    }
+
+    const int socket_rc =
+      zlink_socket_publish_internal (subject_, topic_id_, parts_, count_, flags_);
+    const int socket_errno = errno;
+    if (socket_rc == 0 || socket_errno != EFAULT)
+        return finish_bulk_attempt (socket_rc, socket_errno, parts_, count_);
+
+    const int service_rc =
+      zlink_service_publish_internal (subject_, topic_id_, parts_, count_,
+                                      flags_);
+    const int service_errno = errno;
+    if (service_rc == 0 || service_errno != EFAULT)
+        return finish_bulk_attempt (service_rc, service_errno, parts_, count_);
+
     errno = service_errno;
-    return zlink::submit_result_internal::from_rc (service_rc);
+    return zlink::submit_result_internal::from_rc (-1);
 }
 }
 
@@ -254,39 +302,11 @@ inline zlink_submit_result_t zlink_publish (void *subject_,
                                             size_t part_count_,
                                             zlink_send_flags_t flags_)
 {
-    if (!parts_ && part_count_ != 0) {
-        errno = EFAULT;
-        return ZLINK_SUBMIT_INVALID_HANDLE;
-    }
-
-    const int socket_rc =
-      zlink_socket_publish_internal (subject_, topic_id_, parts_, part_count_,
-                                     flags_);
-    const int socket_errno = errno;
-    if (socket_rc == 0 || socket_errno != EFAULT) {
-        if ((socket_rc == 0 || socket_errno != EAGAIN) && parts_
-            && part_count_ != 0)
-            testutil_agg::consume_parts (parts_, part_count_);
-        errno = socket_errno;
-        return zlink::submit_result_internal::from_rc (socket_rc);
-    }
-
-    const int service_rc =
-      zlink_service_publish_internal (subject_, topic_id_, parts_, part_count_,
-                                      flags_);
-    const int service_errno = errno;
-    if (service_rc == 0 || service_errno != EFAULT) {
-        if ((service_rc == 0 || service_errno != EAGAIN) && parts_
-            && part_count_ != 0)
-            testutil_agg::consume_parts (parts_, part_count_);
-        errno = service_errno;
-        return zlink::submit_result_internal::from_rc (service_rc);
-    }
-
-    if (part_count_ == 0) {
-        errno = service_errno;
-        return zlink::submit_result_internal::from_rc (-1);
-    }
+    const zlink_submit_result_t bulk_rc =
+      testutil_agg::publish_parts (subject_, topic_id_, parts_, part_count_,
+                                   flags_);
+    if (bulk_rc != ZLINK_SUBMIT_INVALID_HANDLE || part_count_ == 0)
+        return bulk_rc;
 
     for (size_t i = 0; i < part_count_; ++i) {
         const zlink_part_flag_t f =

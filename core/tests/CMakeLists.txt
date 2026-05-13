@@ -6,7 +6,9 @@ project(tests)
 
 set(TEST_PTY_WRAPPER "${CMAKE_CURRENT_LIST_DIR}/run_under_pty.sh")
 set(REGISTERED_TESTS)
-set(SPLIT_ONLY_TEST_TARGETS)
+set(SPLIT_ONLY_TEST_TARGETS
+    test_backpressure_matrix
+    test_backpressure_oneway_matrix)
 set(INTEGRATION_TEST_ROOT "integration")
 set(E2E_TEST_ROOT "e2e")
 
@@ -492,20 +494,6 @@ endif()
 if(TARGET test_transport_matrix)
   set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
 endif()
-if(TARGET test_backpressure_matrix)
-  set_tests_properties(
-    test_backpressure_matrix
-    PROPERTIES
-      TIMEOUT 360
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-endif()
-if(TARGET test_backpressure_oneway_matrix)
-  set_tests_properties(
-    test_backpressure_oneway_matrix
-    PROPERTIES
-      TIMEOUT 180
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-endif()
 if(TARGET test_zmp_request_reply)
   set_tests_properties(
     test_zmp_request_reply
@@ -712,32 +700,76 @@ function(add_env_case_tests_from_specs target_name specs_var)
   endforeach()
 endfunction()
 
-function(extract_test_names_from_specs out_var specs_var)
-  set(test_names)
+function(add_env_case_suite target_name specs_var out_names_var)
+  add_env_case_tests_from_specs(${target_name} ${specs_var})
+  extract_test_names_from_specs(test_names ${specs_var})
+  set(${out_names_var} "${test_names}" PARENT_SCOPE)
+endfunction()
+
+function(set_zlink_network_case_properties tests_var timeout)
+  set(options ALLOW_SKIP)
+  set(one_value_args WORKING_DIRECTORY)
+  cmake_parse_arguments(
+    ZLINK_NETWORK_CASE
+    "${options}"
+    "${one_value_args}"
+    ""
+    ${ARGN})
+
+  set(test_names ${${tests_var}})
+  if(NOT test_names)
+    return()
+  endif()
+
+  set(properties
+      TIMEOUT ${timeout}
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+  if(ZLINK_NETWORK_CASE_ALLOW_SKIP)
+    list(APPEND properties SKIP_RETURN_CODE 77)
+  endif()
+  if(ZLINK_NETWORK_CASE_WORKING_DIRECTORY)
+    list(APPEND properties
+         WORKING_DIRECTORY "${ZLINK_NETWORK_CASE_WORKING_DIRECTORY}")
+  endif()
+
+  set_tests_properties(${test_names} PROPERTIES ${properties})
+endfunction()
+
+function(set_zlink_scenario_properties target_name timeout labels)
+  if(TARGET ${target_name})
+    set_tests_properties(${target_name} PROPERTIES
+      TIMEOUT ${timeout}
+      LABELS "${labels}")
+  endif()
+endfunction()
+
+function(extract_spec_fields out_var specs_var field_index)
+  set(values)
   foreach(spec IN LISTS ${specs_var})
     string(REPLACE "=" ";" parts "${spec}")
-    list(GET parts 0 test_name)
-    list(APPEND test_names "${test_name}")
+    list(LENGTH parts part_count)
+    if(NOT part_count EQUAL 2)
+      message(FATAL_ERROR "Invalid case spec '${spec}'")
+    endif()
+    list(GET parts ${field_index} value)
+    list(APPEND values "${value}")
   endforeach()
+  set(${out_var} "${values}" PARENT_SCOPE)
+endfunction()
+
+function(extract_test_names_from_specs out_var specs_var)
+  extract_spec_fields(test_names ${specs_var} 0)
   set(${out_var} "${test_names}" PARENT_SCOPE)
+endfunction()
+
+function(extract_case_names_from_specs out_var specs_var)
+  extract_spec_fields(case_names ${specs_var} 1)
+  set(${out_var} "${case_names}" PARENT_SCOPE)
 endfunction()
 
 set(NETWORK_INTEGRATION_RESOURCE_LOCK "zlink-network-integration")
 set(SPOT_TEST_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 set(SPOT_SPLIT_TEST_WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
-
-set(SPOT_SERVICE_INTROSPECTION_CASES
-    test_spot_pub_sub_options_and_routing_ids
-    test_spot_callback_model_receive_regression
-    test_spot_recv_model_receive_regression
-    test_spot_node_default_handle_owner_keeps_defaults_private
-    test_spot_unified_spot_basic
-    test_queue_pub_local_fanout_shared_block
-    test_queue_sub_exact_pattern_dedupe
-    test_queue_pub_no_subscriber_success
-    test_queue_pub_dead_spot_fails
-    test_spot_node_snapshot_status_peers_subjects
-    test_discovery_local_value_route_limit_contract)
 
 set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
@@ -751,29 +783,44 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_queue_dead_spot=test_queue_pub_dead_spot_fails
     test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects
     test_spot_service_introspection_route_limit=test_discovery_local_value_route_limit_contract)
-
-set(SPOT_PUBSUB_CASES
-    test_spot_peer_tcp
-    test_spot_peer_tcp_reverse_publish
-    test_spot_multi_publisher
-    test_spot_aggregate_subscription_refcount
-    test_spot_node_direct_local_and_child_interop
-    test_spot_node_pub_ingress_local_spot_subscribe_surface
-    test_spot_sub_handler_basic
-    test_spot_recv_callback_isolated_by_handle
-    test_spot_node_discovery_direct_and_child_interop)
+extract_case_names_from_specs(
+  SPOT_SERVICE_INTROSPECTION_CASES
+  SPOT_SERVICE_INTROSPECTION_TEST_SPECS)
 
 set(SPOT_PUBSUB_PEER_TEST_SPECS
     test_spot_pubsub_scenario_peer_tcp=test_spot_peer_tcp
     test_spot_pubsub_scenario_peer_tcp_reverse_publish=test_spot_peer_tcp_reverse_publish)
 
-set(SPOT_PUBSUB_LOCAL_TEST_SPECS
+set(SPOT_PUBSUB_LOCAL_PREFIX_TEST_SPECS
     test_spot_pubsub_scenario_multi_publisher=test_spot_multi_publisher
     test_spot_pubsub_scenario_aggregate_subscription_refcount=test_spot_aggregate_subscription_refcount
-    test_spot_pubsub_scenario_node_child_interop=test_spot_node_direct_local_and_child_interop
+    test_spot_pubsub_scenario_node_child_interop=test_spot_node_direct_local_and_child_interop)
+
+set(SPOT_PUBSUB_LOCAL_SUFFIX_TEST_SPECS
     test_spot_pubsub_scenario_sub_handler_basic=test_spot_sub_handler_basic
     test_spot_pubsub_scenario_recv_handle_isolation=test_spot_recv_callback_isolated_by_handle
     test_spot_pubsub_scenario_node_discovery_interop=test_spot_node_discovery_direct_and_child_interop)
+
+set(SPOT_PUBSUB_LOCAL_TEST_SPECS
+    ${SPOT_PUBSUB_LOCAL_PREFIX_TEST_SPECS}
+    ${SPOT_PUBSUB_LOCAL_SUFFIX_TEST_SPECS})
+
+set(SPOT_PUBSUB_UNSPLIT_CASES
+    test_spot_node_pub_ingress_local_spot_subscribe_surface)
+extract_case_names_from_specs(
+  SPOT_PUBSUB_PEER_CASES
+  SPOT_PUBSUB_PEER_TEST_SPECS)
+extract_case_names_from_specs(
+  SPOT_PUBSUB_LOCAL_PREFIX_CASES
+  SPOT_PUBSUB_LOCAL_PREFIX_TEST_SPECS)
+extract_case_names_from_specs(
+  SPOT_PUBSUB_LOCAL_SUFFIX_CASES
+  SPOT_PUBSUB_LOCAL_SUFFIX_TEST_SPECS)
+set(SPOT_PUBSUB_CASES
+    ${SPOT_PUBSUB_PEER_CASES}
+    ${SPOT_PUBSUB_LOCAL_PREFIX_CASES}
+    ${SPOT_PUBSUB_UNSPLIT_CASES}
+    ${SPOT_PUBSUB_LOCAL_SUFFIX_CASES})
 
 set(STREAM_SOCKET_REGRESSION_TEST_SPECS
     test_stream_socket_callback_zero_byte=test_stream_callback_echo_single_zero_byte
@@ -793,37 +840,21 @@ set(STREAM_THREADSAFE_REGRESSION_TEST_SPECS
     test_stream_threadsafe_socket_runtime_reads=test_socket_runtime_reads_are_safe_during_connect_disconnect
     test_stream_threadsafe_client_churn=test_stream_rapid_client_churn_during_send)
 
-set(SERVICE_INTROSPECTION_CASES
-    test_discovery_monitor_and_routing_id
-    test_discovery_ready_changed_contract
-    test_registry_topology_snapshot_and_remote_query
-    test_registry_raw_socket_topology_and_summary_query
-    test_monitor_closed_event_on_service_destroy
-    test_discovery_monitor_reports_service_up_then_down_in_order
-    test_discovery_monitor_callback_parent_destroy_returns_ebusy
-    test_registry_control_path_queries_are_safe_during_concurrent_updates
-    test_discovery_control_path_reads_are_safe_during_concurrent_updates
-    test_discovery_registry_transport_restriction
-    test_discovery_registry_transport_allowed_ws
-    test_discovery_registry_transport_allowed_tls
-    test_registry_peer_transport_restriction_and_tcp_sync
-    test_registry_peer_transport_mixed_ws_sync)
+set(BACKPRESSURE_MATRIX_INTEGRATION_TEST_SPECS
+    test_backpressure_matrix_single_socket=test_single_socket_backpressure_matrix)
 
-set(SERVICE_INTROSPECTION_TEST_SPECS
-    test_service_introspection_discovery_monitor=test_discovery_monitor_and_routing_id
-    test_service_introspection_discovery_ready_changed=test_discovery_ready_changed_contract
-    test_service_introspection_topology_snapshot=test_registry_topology_snapshot_and_remote_query
-    test_service_introspection_raw_topology=test_registry_raw_socket_topology_and_summary_query
-    test_service_introspection_closed_event=test_monitor_closed_event_on_service_destroy
-    test_service_introspection_discovery_ordering=test_discovery_monitor_reports_service_up_then_down_in_order
-    test_service_introspection_discovery_self_close=test_discovery_monitor_callback_parent_destroy_returns_ebusy
-    test_service_introspection_registry_control_path=test_registry_control_path_queries_are_safe_during_concurrent_updates
-    test_service_introspection_discovery_control_path=test_discovery_control_path_reads_are_safe_during_concurrent_updates
-    test_service_introspection_transport_restriction=test_discovery_registry_transport_restriction
-    test_service_introspection_transport_ws=test_discovery_registry_transport_allowed_ws
-    test_service_introspection_transport_tls=test_discovery_registry_transport_allowed_tls
-    test_service_introspection_registry_peer_sync=test_registry_peer_transport_restriction_and_tcp_sync
-    test_service_introspection_registry_peer_mixed_ws=test_registry_peer_transport_mixed_ws_sync)
+set(BACKPRESSURE_ONEWAY_INTEGRATION_TEST_SPECS
+    test_backpressure_oneway_matrix_single_socket=test_single_socket_backpressure_oneway_matrix)
+
+set(BACKPRESSURE_MATRIX_REGRESSION_TEST_SPECS
+    test_backpressure_matrix_single_socket_regression=test_single_socket_backpressure_matrix
+    test_backpressure_matrix_pubsub_regression=test_multi_pubsub_backpressure_matrix
+    test_backpressure_matrix_spot_regression=test_multi_spot_backpressure_matrix)
+
+set(BACKPRESSURE_ONEWAY_REGRESSION_TEST_SPECS
+    test_backpressure_oneway_matrix_single_socket_regression=test_single_socket_backpressure_oneway_matrix
+    test_backpressure_oneway_matrix_pubsub_regression=test_multi_pubsub_backpressure_oneway_matrix
+    test_backpressure_oneway_matrix_spot_regression=test_multi_spot_backpressure_oneway_matrix)
 
 assert_named_case_coverage(
   "test_spot_pubsub_scenario"
@@ -844,20 +875,16 @@ if(TARGET test_spot_service_introspection)
       WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 
-  add_env_case_tests_from_specs(
+  add_env_case_suite(
     test_spot_service_introspection
-    SPOT_SERVICE_INTROSPECTION_TEST_SPECS)
-  extract_test_names_from_specs(
-    SPOT_SERVICE_INTROSPECTION_TEST_NAMES
-    SPOT_SERVICE_INTROSPECTION_TEST_SPECS)
+    SPOT_SERVICE_INTROSPECTION_TEST_SPECS
+    SPOT_SERVICE_INTROSPECTION_TEST_NAMES)
 
-  set_tests_properties(
-    ${SPOT_SERVICE_INTROSPECTION_TEST_NAMES}
-    PROPERTIES
-      TIMEOUT 120
-      SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+  set_zlink_network_case_properties(
+    SPOT_SERVICE_INTROSPECTION_TEST_NAMES
+    120
+    ALLOW_SKIP
+    WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}")
 endif()
 if(TARGET test_spot_pubsub_scenario)
   set_tests_properties(
@@ -883,73 +910,82 @@ if(TARGET test_spot_pubsub_scenario)
     SPOT_PUBSUB_LOCAL_TEST_NAMES
     SPOT_PUBSUB_LOCAL_TEST_SPECS)
 
-  set_tests_properties(
-    ${SPOT_PUBSUB_LOCAL_TEST_NAMES}
-    PROPERTIES
-      TIMEOUT 60
-      SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${SPOT_SPLIT_TEST_WORKING_DIRECTORY}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+  set_zlink_network_case_properties(
+    SPOT_PUBSUB_LOCAL_TEST_NAMES
+    60
+    ALLOW_SKIP
+    WORKING_DIRECTORY "${SPOT_SPLIT_TEST_WORKING_DIRECTORY}")
 
-  set_tests_properties(
-    ${SPOT_PUBSUB_PEER_TEST_NAMES}
-    PROPERTIES
-      TIMEOUT 90
-      SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${SPOT_SPLIT_TEST_WORKING_DIRECTORY}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+  set_zlink_network_case_properties(
+    SPOT_PUBSUB_PEER_TEST_NAMES
+    90
+    ALLOW_SKIP
+    WORKING_DIRECTORY "${SPOT_SPLIT_TEST_WORKING_DIRECTORY}")
 
 endif()
 if(TARGET test_stream_socket)
-  add_env_case_tests_from_specs(
+  add_env_case_suite(
     test_stream_socket
-    STREAM_SOCKET_REGRESSION_TEST_SPECS)
-  extract_test_names_from_specs(
+    STREAM_SOCKET_REGRESSION_TEST_SPECS
+    STREAM_SOCKET_REGRESSION_TEST_NAMES)
+  set_zlink_network_case_properties(
     STREAM_SOCKET_REGRESSION_TEST_NAMES
-    STREAM_SOCKET_REGRESSION_TEST_SPECS)
-  set_tests_properties(
-    ${STREAM_SOCKET_REGRESSION_TEST_NAMES}
-    PROPERTIES
-      TIMEOUT 60
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+    60)
 endif()
 if(TARGET test_stream_threadsafe)
-  add_env_case_tests_from_specs(
+  add_env_case_suite(
     test_stream_threadsafe
-    STREAM_THREADSAFE_REGRESSION_TEST_SPECS)
-  extract_test_names_from_specs(
+    STREAM_THREADSAFE_REGRESSION_TEST_SPECS
+    STREAM_THREADSAFE_REGRESSION_TEST_NAMES)
+  set_zlink_network_case_properties(
     STREAM_THREADSAFE_REGRESSION_TEST_NAMES
-    STREAM_THREADSAFE_REGRESSION_TEST_SPECS)
-  set_tests_properties(
-    ${STREAM_THREADSAFE_REGRESSION_TEST_NAMES}
-    PROPERTIES
-      TIMEOUT 45
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+    45)
 endif()
-if(TARGET test_scenario_router_router_zlink_connect)
-  set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
-  set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
+if(TARGET test_backpressure_matrix)
+  add_env_case_suite(
+    test_backpressure_matrix
+    BACKPRESSURE_MATRIX_INTEGRATION_TEST_SPECS
+    BACKPRESSURE_MATRIX_INTEGRATION_TEST_NAMES)
+  set_zlink_network_case_properties(
+    BACKPRESSURE_MATRIX_INTEGRATION_TEST_NAMES
+    120)
+  add_env_case_suite(
+    test_backpressure_matrix
+    BACKPRESSURE_MATRIX_REGRESSION_TEST_SPECS
+    BACKPRESSURE_MATRIX_REGRESSION_TEST_NAMES)
+  set_zlink_network_case_properties(
+    BACKPRESSURE_MATRIX_REGRESSION_TEST_NAMES
+    180)
 endif()
-if(TARGET test_scenario_stream_client)
-  set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
-  set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
+if(TARGET test_backpressure_oneway_matrix)
+  add_env_case_suite(
+    test_backpressure_oneway_matrix
+    BACKPRESSURE_ONEWAY_INTEGRATION_TEST_SPECS
+    BACKPRESSURE_ONEWAY_INTEGRATION_TEST_NAMES)
+  set_zlink_network_case_properties(
+    BACKPRESSURE_ONEWAY_INTEGRATION_TEST_NAMES
+    120)
+  add_env_case_suite(
+    test_backpressure_oneway_matrix
+    BACKPRESSURE_ONEWAY_REGRESSION_TEST_SPECS
+    BACKPRESSURE_ONEWAY_REGRESSION_TEST_NAMES)
+  set_zlink_network_case_properties(
+    BACKPRESSURE_ONEWAY_REGRESSION_TEST_NAMES
+    120)
 endif()
-if(TARGET test_scenario_stream_zlink)
-  set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
-  set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
-endif()
-if(TARGET test_scenario_stream_zlink_packet)
-  set_tests_properties(test_scenario_stream_zlink_packet PROPERTIES TIMEOUT 120)
-  set_tests_properties(test_scenario_stream_zlink_packet PROPERTIES LABELS "scenario;stream;zlink_packet")
-endif()
-if(TARGET test_scenario_stream_asio)
-  set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
-  set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
-endif()
-if(TARGET test_scenario_stream_zmq)
-  set_tests_properties(test_scenario_stream_zmq PROPERTIES TIMEOUT 120)
-  set_tests_properties(test_scenario_stream_zmq PROPERTIES LABELS "scenario;stream;zmq")
-endif()
+
+set_zlink_scenario_properties(
+  test_scenario_router_router_zlink_connect
+  180
+  "scenario;router_router;zlink_connect")
+set_zlink_scenario_properties(test_scenario_stream_client 120 "scenario;stream;client")
+set_zlink_scenario_properties(test_scenario_stream_zlink 120 "scenario;stream;zlink")
+set_zlink_scenario_properties(
+  test_scenario_stream_zlink_packet
+  120
+  "scenario;stream;zlink_packet")
+set_zlink_scenario_properties(test_scenario_stream_asio 120 "scenario;stream;asio")
+set_zlink_scenario_properties(test_scenario_stream_zmq 120 "scenario;stream;zmq")
 
 set(E2E_SERIAL_TESTS
     test_spot_pubsub_scenario
@@ -974,6 +1010,8 @@ if(TARGET test_scenario_router_router_zlink_connect)
 endif()
 
 set(REGRESSION_SERIAL_TESTS
+    ${BACKPRESSURE_MATRIX_REGRESSION_TEST_NAMES}
+    ${BACKPRESSURE_ONEWAY_REGRESSION_TEST_NAMES}
     test_router_concurrent_routed_recv
     test_transport_matrix
     ${STREAM_SOCKET_REGRESSION_TEST_NAMES}
@@ -988,11 +1026,11 @@ endif()
 set(INTEGRATION_SERIAL_TESTS ${REGISTERED_TESTS})
 list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS})
 list(APPEND INTEGRATION_SERIAL_TESTS
-     ${SERVICE_INTROSPECTION_TEST_NAMES}
-     ${SERVICE_DISCOVERY_TEST_NAMES}
      ${SPOT_SERVICE_INTROSPECTION_TEST_NAMES}
      ${SPOT_PUBSUB_PEER_TEST_NAMES}
-     ${SPOT_PUBSUB_LOCAL_TEST_NAMES})
+     ${SPOT_PUBSUB_LOCAL_TEST_NAMES}
+     ${BACKPRESSURE_MATRIX_INTEGRATION_TEST_NAMES}
+     ${BACKPRESSURE_ONEWAY_INTEGRATION_TEST_NAMES})
 list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS})
 list(REMOVE_DUPLICATES INTEGRATION_SERIAL_TESTS)
 

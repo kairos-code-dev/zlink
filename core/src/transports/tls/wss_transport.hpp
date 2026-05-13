@@ -109,6 +109,22 @@ class wss_transport_t : public i_asio_transport
 
     //  WebSocket stream over SSL
     typedef boost::beast::websocket::stream<ssl_stream_t> wss_stream_t;
+    struct read_state_t
+    {
+        read_state_t () : pending_offset (0), closed (false) {}
+
+        void clear ()
+        {
+            message_buffer.consume (message_buffer.size ());
+            pending_message.clear ();
+            pending_offset = 0;
+        }
+
+        boost::beast::flat_buffer message_buffer;
+        std::vector<unsigned char> pending_message;
+        std::size_t pending_offset;
+        bool closed;
+    };
 
     boost::asio::ssl::context &_ssl_ctx;
     std::string _path;
@@ -118,9 +134,7 @@ class wss_transport_t : public i_asio_transport
     bool _ws_handshake_complete;
     int _handshake_type;
     std::string _tls_hostname;
-    boost::beast::flat_buffer _read_message_buffer;
-    std::vector<unsigned char> _read_pending_message;
-    std::size_t _read_pending_offset;
+    std::shared_ptr<read_state_t> _read_state;
 
     //  Internal handshake continuation
     void continue_ws_handshake (const std::shared_ptr<wss_stream_t> &stream,

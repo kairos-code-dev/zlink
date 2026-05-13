@@ -30,6 +30,16 @@ void destroy_spot_handle_for_testing (void *spot_)
     destroy_spot_handle_internal (spot_);
 }
 
+void destroy_registered_spot_handle_for_testing (void *spot_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return;
+
+    erase_spot_mode_state (spot);
+    destroy_spot_handle_internal (spot);
+}
+
 int actor_stream_owner_set_for_testing (void *stream_, void *node_)
 {
     return spot_actor_internal::set_stream_owner (stream_, node_);

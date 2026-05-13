@@ -6,7 +6,6 @@ import systems.zlink.AutoHwmProfile;
 import systems.zlink.Context;
 import systems.zlink.MonitorEventType;
 import systems.zlink.MonitorSocket;
-import systems.zlink.PerfSocketOptions;
 import systems.zlink.Socket;
 import systems.zlink.service.discovery.Discovery;
 import systems.zlink.service.registry.Registry;
@@ -101,29 +100,27 @@ final class PerfTransport {
     }
 
     static void applySocketOptions(Socket socket, PerfUtil.Config config) {
-        PerfSocketOptions.linger(socket, Duration.ZERO);
+        socket.options().linger(Duration.ZERO);
         if ("multi".equals(config.suite())) {
             if (manualSocketOverridesEnabled()) {
                 int sndhwm = config.sendHwm() > 0 ? config.sendHwm() : 1;
                 int rcvhwm = config.recvHwm() > 0 ? config.recvHwm() : 1;
-                PerfSocketOptions.sendHwm(socket, sndhwm);
-                PerfSocketOptions.recvHwm(socket, rcvhwm);
+                socket.options().sendHwm(sndhwm);
+                socket.options().recvHwm(rcvhwm);
             }
         } else {
             if (config.sendHwm() > 0) {
-                PerfSocketOptions.sendHwm(socket, config.sendHwm());
+                socket.options().sendHwm(config.sendHwm());
             }
             if (config.recvHwm() > 0) {
-                PerfSocketOptions.recvHwm(socket, config.recvHwm());
+                socket.options().recvHwm(config.recvHwm());
             }
         }
         if (config.sendTimeoutMs() >= 0) {
-            PerfSocketOptions.sendTimeout(socket,
-                Duration.ofMillis(config.sendTimeoutMs()));
+            socket.options().sendTimeout(Duration.ofMillis(config.sendTimeoutMs()));
         }
         if (config.recvTimeoutMs() >= 0) {
-            PerfSocketOptions.recvTimeout(socket,
-                Duration.ofMillis(config.recvTimeoutMs()));
+            socket.options().recvTimeout(Duration.ofMillis(config.recvTimeoutMs()));
         }
     }
 
@@ -131,7 +128,7 @@ final class PerfTransport {
         if (msgSize <= 0) {
             return;
         }
-        PerfSocketOptions.autoHwmMessageUnitBytes(socket, msgSize);
+        socket.options().autoHwmMessageUnitBytes(msgSize);
     }
 
     static void recalculateAutoHwm(Context ctx) {

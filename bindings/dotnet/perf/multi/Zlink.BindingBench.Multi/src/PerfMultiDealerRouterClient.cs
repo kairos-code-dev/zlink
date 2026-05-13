@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Systems.Zlink;
-using Systems.Zlink.Sockets.Internal;
 using static PerfRunner;
 
 internal static class PerfMultiDealerRouterClient
@@ -292,9 +291,11 @@ internal static class PerfMultiDealerRouterClient
 
     private static bool TrySend(DealerRouterClientSlot slot)
     {
-        return SocketKernel.TrySendOrThrow(
-            ((DealerSocket)slot.Socket).Kernel
-            .SendBorrowedSingleNoWaitResult(slot.Payload));
+        using Message message = Message.FromBytes(slot.Payload);
+        return ((DealerSocket)slot.Socket).Send()
+            .Message(message)
+            .Flags(SendFlags.DontWait)
+            .Submit();
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)

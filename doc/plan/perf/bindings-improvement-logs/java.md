@@ -2,6 +2,25 @@
 
 관련 계획 문서: [bindings-library-performance-improvement-plan.ko.md](../bindings-library-performance-improvement-plan.ko.md)
 
+### 2026-05-14 Java policy cleanup
+
+- 정리 사유:
+  - perf code가 public API 밖의 helper를 호출하면 측정값이 binding library의 실제
+    사용자 경로를 대표하지 못한다.
+- 변경한 perf 파일:
+  - `bindings/java/perf/common/src/main/java/systems/zlink/PerfSocketOptions.java`
+    - perf 전용 option bridge를 삭제했다.
+  - `bindings/java/perf/common/src/main/java/systems/zlink/perf/PerfTransport.java`
+    - public `socket.options()` API로 옵션을 설정하도록 바꿨다.
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/PerfStreamHooks.java`
+    - perf 전용 stream hook을 삭제했다.
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiStream.java`
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/test/java/systems/zlink/perf/multi/PerfMultiStreamRegressionTest.java`
+    - public `StreamSocket.onPacket(...)`와 public send builder로 framed packet echo를
+      수행하도록 바꿨다.
+- 판단:
+  - 이후 Java perf는 public API 기준으로만 다시 비교한다.
+
 ### 2026-05-09 Java round 1
 
 - 동일 조합 C 결과:

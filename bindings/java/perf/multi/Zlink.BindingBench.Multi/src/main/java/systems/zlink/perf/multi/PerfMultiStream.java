@@ -4,8 +4,11 @@ package systems.zlink.perf.multi;
 
 import systems.zlink.Context;
 import systems.zlink.Message;
-import systems.zlink.PerfStreamHooks;
+import systems.zlink.RoutingId;
+import systems.zlink.SendFlags;
 import systems.zlink.StreamSocket;
+import systems.zlink.SubmitException;
+import systems.zlink.SubmitResult;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfUtil;
 import java.io.BufferedReader;
@@ -30,7 +33,7 @@ final class PerfMultiStream {
             server.options().recvTimeout(java.time.Duration.ZERO);
             server.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
-            PerfStreamHooks.attachFramedPacketHandler(server,
+            server.onPacket(
                 (routingId, header, body) ->
                     onPacket(server, routingId, header, body, stopRequested, stopSignal));
 
@@ -67,24 +70,51 @@ final class PerfMultiStream {
         return watcher;
     }
 
-    private static int onPacket(StreamSocket server,
-                                systems.zlink.RoutingId routingId,
-                                Message header,
-                                Message body,
-                                AtomicBoolean stopRequested,
-                                Object stopSignal) {
+    private static void onPacket(StreamSocket server,
+                                 RoutingId routingId,
+                                 Message header,
+                                 Message body,
+                                 AtomicBoolean stopRequested,
+                                 Object stopSignal) {
         if (routingId == null) {
-            return 0;
+            return;
         }
         try {
-            PerfStreamHooks.sendFramedPacket(server, routingId, header, body,
-                systems.zlink.SendFlags.NONE);
-            return 0;
+            sendFramedPacket(server, routingId, header, body);
         } catch (RuntimeException ex) {
             stopRequested.set(true);
             signal(stopSignal);
-            return -1;
+            throw ex;
         }
+    }
+
+    private static void sendFramedPacket(StreamSocket socket,
+                                         RoutingId routingId,
+                                         Message header,
+                                         Message body) {
+        try (Message packet = buildPacketFrame(header, body)) {
+            if (!socket.send(routingId)
+                .message(packet)
+                .flags(SendFlags.DONT_WAIT)
+                .submit()) {
+                throw new SubmitException(SubmitResult.BACKPRESSURED);
+            }
+        }
+    }
+
+    private static Message buildPacketFrame(Message header, Message body) {
+        int headerSize = header.size();
+        int bodySize = body.size();
+        byte[] frame = new byte[6 + headerSize + bodySize];
+        frame[0] = (byte) ((headerSize >>> 8) & 0xFF);
+        frame[1] = (byte) (headerSize & 0xFF);
+        frame[2] = (byte) ((bodySize >>> 24) & 0xFF);
+        frame[3] = (byte) ((bodySize >>> 16) & 0xFF);
+        frame[4] = (byte) ((bodySize >>> 8) & 0xFF);
+        frame[5] = (byte) (bodySize & 0xFF);
+        header.copyTo(frame, 0, 6, headerSize);
+        body.copyTo(frame, 0, 6 + headerSize, bodySize);
+        return Message.copyOf(frame);
     }
 
     private static void waitForStop(AtomicBoolean stopRequested, Object stopSignal) {

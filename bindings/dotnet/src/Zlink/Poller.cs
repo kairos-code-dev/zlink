@@ -259,13 +259,6 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         return WaitCore(destination, ToTimeoutMilliseconds(timeout), out totalReady);
     }
 
-    internal int WaitReadyTags(Span<int> tags, Span<PollEventFlags> revents,
-        TimeSpan timeout, out int totalReady)
-    {
-        return WaitReadyTagsCore(tags, revents, ToTimeoutMilliseconds(timeout),
-            out totalReady);
-    }
-
     private int WaitCore(Span<PollEvent> destination, int timeoutMs,
         out int totalReady)
     {
@@ -288,42 +281,6 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         int written = Math.Min(destination.Length, ready);
         for (int i = 0; i < written; i++)
             destination[i] = MapEvent(_nativeEvents[i]);
-        return written;
-    }
-
-    private int WaitReadyTagsCore(Span<int> tags, Span<PollEventFlags> revents,
-        int timeoutMs, out int totalReady)
-    {
-        EnsureNotDisposed();
-        if (_items.Count == 0)
-        {
-            totalReady = 0;
-            return 0;
-        }
-
-        EnsureEventCapacity(_items.Count);
-        int ready = NativeMethods.zlink_poller_wait(_handle, _nativeEvents,
-            _items.Count, timeoutMs, out _);
-        if (ready < 0)
-            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
-        totalReady = ready;
-        if (ready == 0)
-            return 0;
-
-        int capacity = Math.Min(tags.Length, revents.Length);
-        int written = 0;
-        for (int i = 0; i < ready && written < capacity; i++)
-        {
-            ZlinkPollerEvent nativeEvent = _nativeEvents[i];
-            PollItem? item = FindEventItem(nativeEvent);
-            if (item == null || !item.HasIntTag)
-                continue;
-
-            tags[written] = item.IntTag;
-            revents[written] = (PollEventFlags)nativeEvent.Events;
-            written++;
-        }
-
         return written;
     }
 
@@ -554,11 +511,6 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             Timer = timer;
             Events = events;
             Tag = tag;
-            if (tag is int intTag)
-            {
-                HasIntTag = true;
-                IntTag = intTag;
-            }
         }
 
         public PollItemKind Kind { get; }
@@ -569,8 +521,6 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         public Timer? Timer { get; }
         public PollEventFlags Events { get; set; }
         public object? Tag { get; }
-        public int IntTag { get; }
-        public bool HasIntTag { get; }
         public bool IsSocket => Kind == PollItemKind.Socket;
     }
 }

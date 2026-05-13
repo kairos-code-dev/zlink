@@ -1180,10 +1180,6 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
 
 public sealed class Spot : IDisposable, IAsyncDisposable
 {
-    private static readonly NativeMethods.ZlinkFreeFnDelegate BorrowedBufferFree =
-        OnBorrowedBufferFree;
-    private static readonly IntPtr BorrowedBufferFreePtr =
-        Marshal.GetFunctionPointerForDelegate(BorrowedBufferFree);
     private static readonly NativeMethods.ZlinkReplyHandlerDelegate RoutedReplyHandler =
         OnRoutedReply;
     private static readonly IntPtr RoutedReplyHandlerPtr =
@@ -1547,41 +1543,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
             throw;
         }
-    }
-
-    internal void PublishRawSingle(string topic, ReadOnlySpan<byte> payload,
-        int flags)
-    {
-        ValidateTopicId(topic, nameof(topic));
-        EnsureNotDisposed();
-        PublishRawSingleCore(topic, payload, flags);
-    }
-
-    internal SendResult PublishRawSingleNoWait(string topic,
-        ReadOnlySpan<byte> payload)
-    {
-        ValidateTopicId(topic, nameof(topic));
-        EnsureNotDisposed();
-        return PublishRawSingleNoWaitCore(topic, payload);
-    }
-
-    internal void PublishBorrowedSingle(string topic, byte[] payload, int flags)
-    {
-        ValidateTopicId(topic, nameof(topic));
-        if (payload == null)
-            throw new ArgumentNullException(nameof(payload));
-        EnsureNotDisposed();
-        PublishBorrowedSingleCore(topic, payload, flags);
-    }
-
-    internal SendResult PublishBorrowedSingleNoWait(string topic,
-        byte[] payload)
-    {
-        ValidateTopicId(topic, nameof(topic));
-        if (payload == null)
-            throw new ArgumentNullException(nameof(payload));
-        EnsureNotDisposed();
-        return PublishBorrowedSingleNoWaitCore(topic, payload);
     }
 
     public void SetSubscription(string topicOrPattern)
@@ -2844,154 +2805,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    private unsafe void PublishRawSingleCore(string topic,
-        ReadOnlySpan<byte> payload, int flags)
-    {
-        ZlinkMsg nativePart = default;
-        bool initialized = false;
-        try
-        {
-            int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
-                (nuint)payload.Length);
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-
-            if (payload.Length != 0)
-            {
-                IntPtr dataPtr = NativeMethods.zlink_msg_data(ref nativePart);
-                if (dataPtr == IntPtr.Zero)
-                    throw new InvalidOperationException("Message data is null.");
-                payload.CopyTo(new Span<byte>((void*)dataPtr, payload.Length));
-            }
-
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
-                ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
-            initialized = false;
-            if (rc != 0)
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
-        }
-        catch
-        {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
-            throw;
-        }
-    }
-
-    private unsafe SendResult PublishRawSingleNoWaitCore(string topic,
-        ReadOnlySpan<byte> payload)
-    {
-        ZlinkMsg nativePart = default;
-        bool initialized = false;
-        try
-        {
-            int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
-                (nuint)payload.Length);
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-
-            if (payload.Length != 0)
-            {
-                IntPtr dataPtr = NativeMethods.zlink_msg_data(ref nativePart);
-                if (dataPtr == IntPtr.Zero)
-                    throw new InvalidOperationException("Message data is null.");
-                payload.CopyTo(new Span<byte>((void*)dataPtr, payload.Length));
-            }
-
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
-                ref nativePart, DontWaitFlag,
-                NativeMethods.ZlinkPartFlag.Final);
-            initialized = false;
-            if (rc == 0)
-                return SendResult.Sent;
-
-            SendResult? sendResult = TryMapSendResultFromErrno();
-            if (sendResult != null)
-                return sendResult.Value;
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
-        }
-        catch
-        {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
-            throw;
-        }
-    }
-
-    private unsafe void PublishBorrowedSingleCore(string topic, byte[] payload,
-        int flags)
-    {
-        ZlinkMsg nativePart = default;
-        bool initialized = false;
-        GCHandle handle = default;
-        try
-        {
-            handle = GCHandle.Alloc(payload, GCHandleType.Pinned);
-            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
-                handle.AddrOfPinnedObject(), (nuint)payload.Length,
-                BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-            handle = default;
-
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
-                ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
-            initialized = false;
-            if (rc != 0)
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
-        }
-        catch
-        {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
-            if (handle.IsAllocated)
-                handle.Free();
-            throw;
-        }
-    }
-
-    private unsafe SendResult PublishBorrowedSingleNoWaitCore(string topic,
-        byte[] payload)
-    {
-        ZlinkMsg nativePart = default;
-        bool initialized = false;
-        GCHandle handle = default;
-        try
-        {
-            handle = GCHandle.Alloc(payload, GCHandleType.Pinned);
-            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
-                handle.AddrOfPinnedObject(), (nuint)payload.Length,
-                BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-            handle = default;
-
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
-                ref nativePart, DontWaitFlag,
-                NativeMethods.ZlinkPartFlag.Final);
-            initialized = false;
-            if (rc == 0)
-                return SendResult.Sent;
-
-            SendResult? sendResult = TryMapSendResultFromErrno();
-            if (sendResult != null)
-                return sendResult.Value;
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
-        }
-        catch
-        {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
-            if (handle.IsAllocated)
-                handle.Free();
-            throw;
-        }
-    }
-
     private unsafe int ReceiveRawSubscribedFrameCore(Span<byte> destination,
         int flags, out byte[][] pendingFrames)
     {
@@ -3338,11 +3151,4 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         return firstSize;
     }
 
-    private static void OnBorrowedBufferFree(IntPtr data, IntPtr hint)
-    {
-        if (hint == IntPtr.Zero)
-            return;
-
-        GCHandle.FromIntPtr(hint).Free();
-    }
 }

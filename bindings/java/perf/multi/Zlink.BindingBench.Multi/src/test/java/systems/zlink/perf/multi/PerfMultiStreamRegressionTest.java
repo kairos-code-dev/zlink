@@ -1,7 +1,9 @@
 package systems.zlink.perf.multi;
 
 import systems.zlink.Context;
-import systems.zlink.PerfStreamHooks;
+import systems.zlink.Message;
+import systems.zlink.RoutingId;
+import systems.zlink.SendFlags;
 import systems.zlink.StreamSocket;
 import java.io.InputStream;
 import java.net.ServerSocket;
@@ -34,17 +36,20 @@ class PerfMultiStreamRegressionTest {
              StreamSocket server = new StreamSocket(ctx)) {
             server.options().notify(true);
             server.bind(endpoint);
-            PerfStreamHooks.attachFramedPacketHandler(server,
+            server.onPacket(
                 (routingId, recvHeader, recvBody) -> {
                     try {
-                        PerfStreamHooks.sendFramedPacket(server, routingId,
-                            recvHeader, recvBody,
-                            systems.zlink.SendFlags.NONE);
+                        sendFramedPacket(server, routingId, recvHeader, recvBody);
                         echoed.countDown();
-                        return 0;
                     } catch (Throwable t) {
                         callbackError.compareAndSet(null, t);
-                        return -1;
+                        if (t instanceof RuntimeException runtime) {
+                            throw runtime;
+                        }
+                        if (t instanceof Error error) {
+                            throw error;
+                        }
+                        throw new RuntimeException(t);
                     }
                 });
 
@@ -74,6 +79,33 @@ class PerfMultiStreamRegressionTest {
         System.arraycopy(header, 0, frame, 6, header.length);
         System.arraycopy(body, 0, frame, 6 + header.length, body.length);
         return frame;
+    }
+
+    private static void sendFramedPacket(StreamSocket socket,
+                                         RoutingId routingId,
+                                         Message header,
+                                         Message body) {
+        try (Message packet = buildPacketMessage(header, body)) {
+            assertTrue(socket.send(routingId)
+                .message(packet)
+                .flags(SendFlags.DONT_WAIT)
+                .submit(), "stream echo send was backpressured");
+        }
+    }
+
+    private static Message buildPacketMessage(Message header, Message body) {
+        int headerSize = header.size();
+        int bodySize = body.size();
+        byte[] frame = new byte[6 + headerSize + bodySize];
+        frame[0] = (byte) ((headerSize >>> 8) & 0xFF);
+        frame[1] = (byte) (headerSize & 0xFF);
+        frame[2] = (byte) ((bodySize >>> 24) & 0xFF);
+        frame[3] = (byte) ((bodySize >>> 16) & 0xFF);
+        frame[4] = (byte) ((bodySize >>> 8) & 0xFF);
+        frame[5] = (byte) (bodySize & 0xFF);
+        header.copyTo(frame, 0, 6, headerSize);
+        body.copyTo(frame, 0, 6 + headerSize, bodySize);
+        return Message.copyOf(frame);
     }
 
     private static byte[] readExact(InputStream input, int length) throws Exception {

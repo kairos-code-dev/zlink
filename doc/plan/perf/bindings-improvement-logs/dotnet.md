@@ -2,6 +2,38 @@
 
 관련 계획 문서: [bindings-library-performance-improvement-plan.ko.md](../bindings-library-performance-improvement-plan.ko.md)
 
+### 2026-05-14 .NET policy cleanup
+
+- 정리 사유:
+  - 2026-05-13 `dotnet_echo_borrowed_direct_20260513` 결과는 perf assembly가
+    binding library의 internal borrowed send 경로를 직접 호출한 결과였다.
+  - 이는 public API 비용을 포함한 binding library 최적화가 아니므로 현재 기준
+    결과에서 제외한다.
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Properties/AssemblyInfo.cs`
+    - `Zlink.BindingBench.Common`, `Zlink.BindingBench.Multi`에 대한
+      `InternalsVisibleTo`를 제거했다.
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`
+    - raw/borrowed single-part send/publish internal helper를 삭제했다.
+    - public send builder 내부에서 `Message`가 준비한 borrowed native message를
+      제출하는 private 구현만 남겼다.
+  - `bindings/dotnet/src/Zlink/Service/Spot.cs`
+    - raw/borrowed single-part publish internal helper와 그 helper 전용 free
+      callback을 삭제했다.
+  - `bindings/dotnet/src/Zlink/Poller.cs`
+    - perf poll loop만을 위해 쓰던 internal `WaitReadyTags(...)` helper를 삭제했다.
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfPollManager.cs`
+    - public `Poller.Wait(...)`와 public `PollEvent.Tag/Revents`만 사용하도록 바꿨다.
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiDealerRouterClient.cs`
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiRouterRouterClient.cs`
+    - internal `SocketKernel` 직접 호출을 제거하고 public
+      `Send().Message(...).Flags(DontWait).Submit()` 경로로 되돌렸다.
+- 판단:
+  - round 19의 borrowed-send 수치는 정책 위반 실험 결과로만 남기고, 목표 달성
+    판단에는 사용하지 않는다.
+  - 다음 .NET multi 측정은 public API 경로로 다시 실행해야 한다.
+
 ### 2026-05-09 .NET round 1
 
 - 전환 사유:

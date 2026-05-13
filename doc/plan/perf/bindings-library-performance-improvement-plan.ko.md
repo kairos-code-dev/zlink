@@ -22,7 +22,7 @@
 - [ ] Rust 목표 달성
 - [ ] 전체 언어 최종 결과 요약
 
-## 현재 상태 요약 (2026-05-13)
+## 현재 상태 요약 (2026-05-14)
 
 2026-05-13 재개 기준 C core multi 결과는 아래 파일이다.
 
@@ -31,7 +31,9 @@
   - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260513_174642_cpp_dr_rr_after_singlepart_send_20260513.txt`
   - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260513_172245_cpp_dr_rr_64k_singlepart_send_fastpath_20260513.txt`
 - .NET 최신 비교 결과:
-  - `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260513_200850_dotnet_echo_borrowed_direct_20260513.txt`
+  - public API 기준으로 다시 측정해야 한다.
+  - `dotnet_echo_borrowed_direct_20260513` 결과는 internal borrowed send 직접 호출을
+    포함했으므로 현재 기준 결과에서 제외한다.
 - Java 최신 비교 결과:
   - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260513_201032_java_echo_current_20260513.txt`
 - Node 최신 비교 결과:
@@ -47,14 +49,16 @@ fast path를 추가했다. `MULTI_DEALER_ROUTER,tcp,65536`은 이전 `135.802 Ko
 복사하지 않고 refcount를 올려 같은 native message storage를 공유한다. C++ 문서성
 주석과 계약 테스트는 이 의미에 맞게 갱신했다.
 
-.NET은 echo client send hot path에서 public send builder와 `Message` wrapper
-수명 비용을 줄이기 위해 internal borrowed single-part nowait 경로를 적용했다.
-2026-05-13 C 기준 대비 RR 64/256/1024B ratio는 약 `0.51/0.51/0.49`,
-DR 64/256/1024B ratio는 약 `0.57/0.58/0.58`이다. 목표에는 아직 미달이지만
-DR 256/1024B와 RR 256B는 이전 current 측정보다 개선됐다.
+.NET은 perf assembly의 `InternalsVisibleTo` 접근과 perf client의 internal
+borrowed send 직접 호출을 제거했다. 바인딩 라이브러리 안에 남아 있던 raw/borrowed
+single-part helper도 public send builder 내부 구현에 필요한 경로만 남기고 정리했다.
+2026-05-13 `dotnet_echo_borrowed_direct_20260513` 결과는 public API 기준 수치가
+아니므로 현재 목표 판단에 쓰지 않는다. 다음 측정은 public
+`Send().Message(...).Flags(DontWait).Submit()` 경로로 다시 수행해야 한다.
 
 Java는 같은 조건에서 direct `ByteBuffer` borrow와 builder 우회 helper를 각각
-측정했지만 유지할 만큼의 개선이 없었다. 두 실험 변경은 되돌렸고, Java 최신 기준은
+측정했지만 유지할 만큼의 개선이 없었다. 두 실험 변경은 되돌렸고, perf 전용
+`PerfSocketOptions`와 `PerfStreamHooks`도 삭제했다. Java 최신 기준은
 `RR 246.074/245.399/239.309 Kops/s`, `DR 325.441/321.920/316.214 Kops/s`다.
 
 Node는 multi echo 기본 I/O thread를 `4`로 맞추고, caller-provided `Received`를

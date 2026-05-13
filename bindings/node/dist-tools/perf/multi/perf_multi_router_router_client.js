@@ -4,9 +4,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const METRIC_HEADER_SIZE = 29;
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, resolveMultiLatencySampleCap, sendStopTokenWithRetry, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWaitInto, resolveMultiLatencySampleCap, sendStopTokenWithRetry, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
+const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -24,7 +24,7 @@ async function main() {
             router.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`multi-router-client-${i}`, 'ascii')));
             routers.push(router);
             payloads.push(createPayload(options.msgSize));
-            replyBuffers.push(Buffer.allocUnsafe(METRIC_HEADER_SIZE));
+            replyBuffers.push(new zlink.Received());
             waiting.push(false);
             sendPending.push(false);
         }
@@ -50,12 +50,11 @@ async function main() {
             let progressed = false;
             while (true) {
                 const echoed = replyBuffers[index];
-                const size = routers[index].recvPayloadInto(echoed);
-                if (size === null) {
+                if (!recvNoWaitInto(routers[index], echoed)) {
                     break;
                 }
                 waiting[index] = false;
-                collector.record(decodeMetricHeader(echoed), currentEpochNs());
+                collector.record(decodeMetricHeader(echoed.parts[0].data()), currentEpochNs());
                 progressed = true;
             }
             return progressed;
@@ -67,7 +66,7 @@ async function main() {
                     continue;
                 }
                 stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-                if (!routers[i].sendBorrowedBufferNoWait(SERVER_ID, payloads[i], payloads[i].length)) {
+                if (!trySocketSend(routers[i], SERVER_ROUTING_ID, payloads[i])) {
                     sendPending[i] = true;
                     continue;
                 }
@@ -100,7 +99,7 @@ async function main() {
             }
         }
         // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via wire stop token.
-        await sendStopTokenWithRetry(routers[0], (bytes) => routers[0].sendBorrowedBufferNoWait(SERVER_ID, bytes, bytes.length));
+        await sendStopTokenWithRetry(routers[0], (bytes) => trySocketSend(routers[0], SERVER_ROUTING_ID, bytes));
         const result = await collector.finish();
         for (const metricLine of summarizeMetrics('MULTI_ROUTER_ROUTER', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
             console.log(metricLine);
@@ -108,6 +107,9 @@ async function main() {
     }
     finally {
         poller.close();
+        for (const reply of replyBuffers) {
+            reply.close();
+        }
         for (const router of routers) {
             router.close();
         }

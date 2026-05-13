@@ -2,43 +2,6 @@
 
 관련 계획 문서: [bindings-library-performance-improvement-plan.ko.md](../bindings-library-performance-improvement-plan.ko.md)
 
-### 2026-05-13 Node round 2
-
-- 동일 조합 C 결과:
-  - `bindings/c/perf/baseline/perf_c_multi_linux_20260513_101034.txt`
-- 대상 언어 최신 결과:
-  - `bindings/node/perf/results/multi/report/perf_node_multi_linux_20260513_230615_node_goal_pass_all_sizes_20260513.txt`
-- 목표 통과 조합:
-  - `MULTI_ROUTER_ROUTER,tcp,64/256/1024/65536/131072/262144B`
-  - `MULTI_DEALER_ROUTER,tcp,64/256/1024/65536/131072/262144B`
-- 선택한 병목 가설:
-  - round 1의 `Received` 재사용만으로는 JS `Message` wrapper 생성과 payload `Buffer` 복사가 hot path에 남았다.
-  - client는 perf metric header 29바이트만 읽으면 되는데, 이전 경로는 echo payload 전체를 JS `Message`로 materialize했다.
-  - server echo는 payload를 해석하지 않는데도 JS `Received`와 routing id wrapper를 매번 만들었다.
-  - 64KB 이상 크기에서는 Node 기본 I/O thread `4`가 충분하지 않아 core와 같은 데이터 이동을 따라가지 못했다.
-- 변경한 라이브러리 파일:
-  - `bindings/node/native/src/addon_core.cc`: caller-provided `Buffer`에서 borrowed native message를 만들고, nowait send가 해당 buffer를 바로 전송하는 helper를 추가했다. caller-provided buffer로 recv payload를 직접 채우는 helper와 ROUTER echo를 native에서 바로 되돌려 보내는 `routerTryRecvEchoNoWait`도 추가했다.
-  - `bindings/node/native/src/addon_api.h`, `bindings/node/native/src/addon.cc`: 새 native helper를 addon surface에 연결했다.
-  - `bindings/node/src/canonical.ts`: perf에서 필요한 buffer send/recv helper를 canonical socket class에 연결했다.
-- 변경한 perf 파일:
-  - `bindings/node/perf/multi/perf_multi_runtime.ts`: non-stream multi 기본 I/O thread를 `8`로 맞췄다.
-  - `bindings/node/perf/multi/perf_multi_*_client.ts`: send는 borrowed buffer nowait 경로를 쓰고, reply는 metric header 크기 buffer로만 받는다.
-  - `bindings/node/perf/multi/perf_multi_*_server.ts`: ROUTER echo hot path를 native `recvEchoNoWait`로 처리해 JS object materialization을 제거했다.
-- 실행한 검증 명령:
-  - perf 전 프로세스 확인 후 `bindings/node/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024,65536,131072,262144 --duration 3 --runs 3 --results-tag node_goal_pass_all_sizes_20260513`
-  - 테스트 전 프로세스 확인 후 `cd bindings/node && npm test`
-- 결과:
-  - 최신 median:
-    - `MULTI_ROUTER_ROUTER`: `269.62/271.11/269.32/139.89/66.52/31.08 Kops/s`
-    - `MULTI_DEALER_ROUTER`: `341.31/341.35/340.66/164.73/64.59/30.61 Kops/s`
-  - C 기준 대비 ratio:
-    - `MULTI_ROUTER_ROUTER`: `0.619/0.616/0.603/0.758/0.779/0.978`
-    - `MULTI_DEALER_ROUTER`: `0.727/0.732/0.748/0.865/0.817/1.012`
-  - Node 목표 `64B >= 0.42`, `256B >= 0.52`, `1024B >= 0.57`, `64KB >= 0.62`, `128KB >= 0.64`, `256KB >= 0.65`를 RR/DR 두 pattern 모두 통과했다.
-- 다음 판단:
-  - Node multi echo의 목표 조합은 통과 상태다.
-  - 새 helper는 perf hot path에서 caller-owned buffer를 쓰기 위한 얕은 native message 경로다. `zlink_msg_copy`처럼 payload를 깊게 복사하지 않고 lifetime은 submit 완료까지 caller buffer가 살아 있다는 전제로 perf loop 안에서만 사용한다.
-
 ### 2026-05-13 Node round 1
 
 - 동일 조합 C 결과:

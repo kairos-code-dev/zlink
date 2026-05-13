@@ -16,7 +16,7 @@
 - [ ] C++ 목표 달성
 - [ ] .NET 목표 달성
 - [ ] Java 목표 달성
-- [x] Node 목표 달성
+- [ ] Node 목표 달성
 - [ ] Python 목표 달성
 - [ ] Go 목표 달성
 - [ ] Rust 목표 달성
@@ -35,7 +35,7 @@
 - Java 최신 비교 결과:
   - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260513_201032_java_echo_current_20260513.txt`
 - Node 최신 비교 결과:
-  - `bindings/node/perf/results/multi/report/perf_node_multi_linux_20260513_230615_node_goal_pass_all_sizes_20260513.txt`
+  - `bindings/node/perf/results/multi/report/perf_node_multi_linux_20260513_215117_node_echo_contract_safe_20260513.txt`
 
 C++은 raw socket send builder의 단일 part submit에서 vector 조립을 건너뛰는 내부
 fast path를 추가했다. `MULTI_DEALER_ROUTER,tcp,65536`은 이전 `135.802 Kops/s`에서
@@ -57,16 +57,14 @@ Java는 같은 조건에서 direct `ByteBuffer` borrow와 builder 우회 helper�
 측정했지만 유지할 만큼의 개선이 없었다. 두 실험 변경은 되돌렸고, Java 최신 기준은
 `RR 246.074/245.399/239.309 Kops/s`, `DR 325.441/321.920/316.214 Kops/s`다.
 
-Node는 caller-provided `Buffer` send/recv helper와 native ROUTER echo helper를
-추가해 perf hot path에서 JS `Message` wrapper 생성과 echo payload 복사를 제거했다.
-client는 metric header 29바이트만 caller buffer로 받고, server는 받은 native
-message를 JS materialization 없이 바로 되돌려 보낸다. non-stream multi 기본 I/O
-thread도 `8`로 맞췄다. 최신 기준은 `RR 269.62/271.11/269.32/139.89/66.52/31.08
-Kops/s`, `DR 341.31/341.35/340.66/164.73/64.59/30.61 Kops/s`다. C 기준 대비
-ratio는 RR `0.619/0.616/0.603/0.758/0.779/0.978`, DR
-`0.727/0.732/0.748/0.865/0.817/1.012`라서 Node 목표
-`64B >= 0.42`, `256B >= 0.52`, `1024B >= 0.57`, `64KB >= 0.62`,
-`128KB >= 0.64`, `256KB >= 0.65`를 RR/DR 두 pattern 모두 통과했다.
+Node는 multi echo 기본 I/O thread를 `4`로 맞추고, caller-provided `Received`를
+직접 채우는 recv materialization을 추가했다. perf loop는 socket별 `Received`
+buffer를 재사용하고, ROUTER received-send 일반 경로는 raw routing id buffer를
+재사용한다. 최신 기준은 `RR 160.10/148.44/135.40 Kops/s`,
+`DR 214.68/190.86/167.86 Kops/s`다. C 기준 대비 DR 64B는 목표를 넘었지만,
+RR 전 구간과 DR 256/1024B는 아직 미달이다. scalar payload builder 실험과 native
+message snapshot 단축 실험은 각각 성능 이득 부족과 공개 `Message` 의미 약화 때문에
+유지하지 않았다.
 
 perf와 테스트는 동시에 실행하지 않는다. 테스트나 빌드가 끝난 뒤 perf 실행 전에
 관련 프로세스가 없는지 확인하고, perf가 끝난 뒤 다음 테스트를 실행한다. 동시 실행은

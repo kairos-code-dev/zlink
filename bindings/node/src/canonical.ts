@@ -1701,36 +1701,6 @@ class SendSocket extends ConnectableSocket {
   send(): SendOp {
     return new SendOperation((parts, flags) => this.sendDirect(parts, flags));
   }
-  sendBufferNoWait(buffer: Buffer, length: number = buffer.length): boolean {
-    let result;
-    try {
-      result = requireNative().socketSendFromNoWaitResult(
-        this.nativeHandle(),
-        buffer,
-        length | 0
-      ) as number;
-    } catch (error) {
-      throw submitNativeError(error, SendFlags.DontWait, 'send failed');
-    }
-    if (result === SubmitResult.Ok) return true;
-    if (result === SubmitResult.Backpressured) return false;
-    throw submitErrorFromResult(result as SubmitResult, 'send failed');
-  }
-  sendBorrowedBufferNoWait(buffer: Buffer, length: number = buffer.length): boolean {
-    let result;
-    try {
-      result = requireNative().socketSendBorrowedFromNoWaitResult(
-        this.nativeHandle(),
-        buffer,
-        length | 0
-      ) as number;
-    } catch (error) {
-      throw submitNativeError(error, SendFlags.DontWait, 'send failed');
-    }
-    if (result === SubmitResult.Ok) return true;
-    if (result === SubmitResult.Backpressured) return false;
-    throw submitErrorFromResult(result as SubmitResult, 'send failed');
-  }
   protected sendDirect(payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const payload = normalizeMessageLikePayload(payloadOrParts);
     if ((flags | 0) & (SendFlags.DontWait | 0)) {
@@ -1807,13 +1777,6 @@ class MessageSocket extends SendSocket {
     materializeReceivedInto(result, raw);
     return true;
   }
-  recvInto(buffer: Buffer): number | null {
-    try {
-      return requireNative().socketRecvIntoNoWait(this.nativeHandle(), buffer) as number | null;
-    } catch (error) {
-      throw recvNativeError(error, RecvFlags.DontWait, 'recv failed');
-    }
-  }
   onSendReady(handler: SocketSendReadyHandler): void {
     handlerCall('send-ready handler registration failed', () => {
       requireNative().socketSendReadyHandler(this.nativeHandle(), handler);
@@ -1863,44 +1826,6 @@ class SubscriberSocket extends ConnectableSocket {
 class RoutedMessageSocket extends ConnectableSocket {
   send(routingId: RoutingId): SendOp {
     return new SendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
-  }
-  sendBufferNoWait(routingId: RoutingId | Buffer, buffer: Buffer, length: number = buffer.length): boolean {
-    const normalizedRoutingId = Buffer.isBuffer(routingId)
-      ? routingId
-      : normalizeRoutingId(routingId);
-    let result;
-    try {
-      result = requireNative().socketSendRoutingFromNoWaitResult(
-        this.nativeHandle(),
-        normalizedRoutingId,
-        buffer,
-        length | 0
-      ) as number;
-    } catch (error) {
-      throw submitNativeError(error, SendFlags.DontWait, 'send failed');
-    }
-    if (result === SubmitResult.Ok) return true;
-    if (result === SubmitResult.Backpressured) return false;
-    throw submitErrorFromResult(result as SubmitResult, 'send failed');
-  }
-  sendBorrowedBufferNoWait(routingId: RoutingId | Buffer, buffer: Buffer, length: number = buffer.length): boolean {
-    const normalizedRoutingId = Buffer.isBuffer(routingId)
-      ? routingId
-      : normalizeRoutingId(routingId);
-    let result;
-    try {
-      result = requireNative().socketSendRoutingBorrowedFromNoWaitResult(
-        this.nativeHandle(),
-        normalizedRoutingId,
-        buffer,
-        length | 0
-      ) as number;
-    } catch (error) {
-      throw submitNativeError(error, SendFlags.DontWait, 'send failed');
-    }
-    if (result === SubmitResult.Ok) return true;
-    if (result === SubmitResult.Backpressured) return false;
-    throw submitErrorFromResult(result as SubmitResult, 'send failed');
   }
   protected sendDirect(routingId: RoutingId, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const normalizedRoutingId = normalizeRoutingId(routingId);
@@ -1966,32 +1891,6 @@ class RoutedMessageSocket extends ConnectableSocket {
     if (!result) return materializeReceived(raw, undefined, send);
     materializeReceivedInto(result, raw, undefined, send);
     return true;
-  }
-  recvInto(buffer: Buffer): { size: number; routingId: Buffer; spotRid?: Buffer | null; requestSeq?: bigint | null } | null {
-    try {
-      return requireNative().routerRecvIntoNoWait(this.nativeHandle(), buffer) as {
-        size: number;
-        routingId: Buffer;
-        spotRid?: Buffer | null;
-        requestSeq?: bigint | null;
-      } | null;
-    } catch (error) {
-      throw recvNativeError(error, RecvFlags.DontWait, 'recv failed');
-    }
-  }
-  recvPayloadInto(buffer: Buffer): number | null {
-    try {
-      return requireNative().routerRecvPayloadIntoNoWait(this.nativeHandle(), buffer) as number | null;
-    } catch (error) {
-      throw recvNativeError(error, RecvFlags.DontWait, 'recv failed');
-    }
-  }
-  recvEchoNoWait(stopToken: Buffer): number | null {
-    try {
-      return requireNative().routerRecvEchoNoWait(this.nativeHandle(), stopToken) as number | null;
-    } catch (error) {
-      throw recvNativeError(error, RecvFlags.DontWait, 'recv failed');
-    }
   }
   onSendReady(handler: SocketSendReadyHandler): void {
     handlerCall('send-ready handler registration failed', () => {

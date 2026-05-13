@@ -283,11 +283,11 @@ bool spot_pub_t::owns_socket (const socket_base_t *socket_) const
     return socket_ && socket_ == socket ();
 }
 
-void spot_pub_t::invoke_send_ready_for_testing ()
+void spot_pub_t::invoke_send_ready_handler ()
 {
     socket_base_t *pub_socket = socket ();
     if (pub_socket)
-        pub_socket->invoke_send_ready_handler_for_testing ();
+        pub_socket->invoke_send_ready_handler ();
     else
         dispatch_send_ready ();
 }

@@ -8,14 +8,10 @@
 namespace zlink
 {
 class ctx_t;
-class service_public_api_guard_t;
 
 struct registry_query_access_t
 {
     static void *create (ctx_t *ctx_);
-    static service_public_api_guard_t *public_api_guard_for_testing (
-      void *client_);
-    static void destroy_for_testing (void *client_);
     static int connect (void *client_, const char *endpoint_);
     static int topology_query (
       void *client_,

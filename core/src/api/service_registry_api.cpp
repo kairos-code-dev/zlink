@@ -4,7 +4,6 @@
 
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
-#include "api/zlink_testing.hpp"
 #include "api/bind_result_internal.hpp"
 #include "api/close_result_internal.hpp"
 #include "api/config_result_internal.hpp"
@@ -14,20 +13,6 @@
 
 #include "services/discovery/registry_access.hpp"
 #include "services/discovery/registry_query_access.hpp"
-
-namespace zlink
-{
-service_public_api_guard_t *
-registry_query_public_api_guard_for_testing (void *client_)
-{
-    return registry_query_access_t::public_api_guard_for_testing (client_);
-}
-
-void destroy_registry_query_client_for_testing (void *client_)
-{
-    registry_query_access_t::destroy_for_testing (client_);
-}
-}
 
 void *zlink_registry_new (void *ctx_)
 {

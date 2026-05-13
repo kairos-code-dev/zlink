@@ -100,14 +100,6 @@ class discovery_t
     bool latest_registry_uplink (std::string *out_);
     uint64_t update_seq ();
     uint64_t service_update_seq (const std::string &channel_name_);
-    service_public_api_guard_t &public_api_guard_for_testing ()
-    {
-        return _public_api;
-    }
-    void notify_observers_for_testing (const std::set<std::string> &services_)
-    {
-        notify_observers (services_);
-    }
     mutex_t &sync ();
     mutex_t &uplink_sync ();
     service_public_api_guard_t &public_api_guard ();

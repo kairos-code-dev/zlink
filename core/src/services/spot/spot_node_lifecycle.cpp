@@ -835,28 +835,14 @@ bool spot_node_t::is_last_spot_facade_for_logical_state (spot_handle_t *spot_)
 
 std::shared_ptr<spot_logical_state_t> spot_node_t::create_user_spot_state ()
 {
-    std::shared_ptr<spot_logical_state_t> state (
-      new (std::nothrow) spot_logical_state_t ());
-    if (!state) {
-        errno = ENOMEM;
-        return std::shared_ptr<spot_logical_state_t> ();
-    }
-    state->node = this;
-    state->stable_id = _handle_state.next_spot_stable_id++;
-    generate_random_uuid_routing_id (&state->routing_id);
-    state->entry = false;
-
     bool publish_summary = false;
+    std::shared_ptr<spot_logical_state_t> state;
     {
         scoped_lock_t lock (_sync);
-        const std::string key = spot_rid_key_local (state->routing_id);
-        if (key.empty ()) {
-            errno = EFAULT;
+        state = create_logical_spot_state_locked (false);
+        if (!state)
             return std::shared_ptr<spot_logical_state_t> ();
-        }
-        _handle_state.spots_by_rid[key] = state;
-        publish_summary = !_discovery_state.discovery_service.empty ()
-                          && !_endpoint_state.bound_endpoint.empty ();
+        publish_summary = spot_owner_summary_publishable_locked ();
     }
     if (publish_summary)
         submit_spot_owner_summary (state, ZLINK_TOPOLOGY_STATE_READY, 0);
@@ -872,29 +858,46 @@ std::shared_ptr<spot_logical_state_t> spot_node_t::entry_spot_state ()
         if (_handle_state.entry_spot)
             return _handle_state.entry_spot;
 
-        state.reset (new (std::nothrow) spot_logical_state_t ());
-        if (!state) {
-            errno = ENOMEM;
+        state = create_logical_spot_state_locked (true);
+        if (!state)
             return std::shared_ptr<spot_logical_state_t> ();
-        }
-        state->node = this;
-        state->stable_id = _handle_state.next_spot_stable_id++;
-        generate_random_uuid_routing_id (&state->routing_id);
-        state->entry = true;
-        state->rid_locked = _handle_state.entry_spot_rid_locked;
-        const std::string key = spot_rid_key_local (state->routing_id);
-        if (key.empty ()) {
-            errno = EFAULT;
-            return std::shared_ptr<spot_logical_state_t> ();
-        }
-        _handle_state.entry_spot = state;
-        _handle_state.spots_by_rid[key] = state;
-        publish_summary = !_discovery_state.discovery_service.empty ()
-                          && !_endpoint_state.bound_endpoint.empty ();
+        publish_summary = spot_owner_summary_publishable_locked ();
     }
     if (publish_summary)
         submit_spot_owner_summary (state, ZLINK_TOPOLOGY_STATE_READY, 0);
     return state;
+}
+
+std::shared_ptr<spot_logical_state_t>
+spot_node_t::create_logical_spot_state_locked (bool entry_)
+{
+    std::shared_ptr<spot_logical_state_t> state (
+      new (std::nothrow) spot_logical_state_t ());
+    if (!state) {
+        errno = ENOMEM;
+        return std::shared_ptr<spot_logical_state_t> ();
+    }
+    state->node = this;
+    state->stable_id = _handle_state.next_spot_stable_id++;
+    generate_random_uuid_routing_id (&state->routing_id);
+    state->entry = entry_;
+    state->rid_locked = entry_ && _handle_state.entry_spot_rid_locked;
+
+    const std::string key = spot_rid_key_local (state->routing_id);
+    if (key.empty ()) {
+        errno = EFAULT;
+        return std::shared_ptr<spot_logical_state_t> ();
+    }
+    if (entry_)
+        _handle_state.entry_spot = state;
+    _handle_state.spots_by_rid[key] = state;
+    return state;
+}
+
+bool spot_node_t::spot_owner_summary_publishable_locked () const
+{
+    return !_discovery_state.discovery_service.empty ()
+           && !_endpoint_state.bound_endpoint.empty ();
 }
 
 void spot_node_t::lock_entry_spot_rid ()

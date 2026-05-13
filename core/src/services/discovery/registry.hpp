@@ -61,10 +61,6 @@ class registry_t
       std::vector<zlink_registry_service_summary_entry_t> *out_);
     int start ();
     int destroy ();
-    service_public_api_guard_t &public_api_guard_for_testing ()
-    {
-        return _public_api;
-    }
 
   private:
     struct service_key_t

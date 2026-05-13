@@ -118,19 +118,32 @@ inline size_t clamp_stream_target_limit (size_t target_,
     return clamped > 0 ? clamped : static_cast<size_t> (1);
 }
 
-inline size_t decoder_initial_read_target (const zlink::options_t &options_)
+inline size_t decoder_initial_read_target (const zlink::options_t &options_,
+                                           size_t stream_min_target_,
+                                           size_t target_cap_)
 {
     size_t target = options_.in_batch_size > 0
                       ? static_cast<size_t> (options_.in_batch_size)
                       : default_target_size ();
-    if (target > initial_target_cap ())
-        target = initial_target_cap ();
+    if (options_.type == ZLINK_CORE_SOCKET_STREAM
+        && target < stream_min_target_)
+        target = stream_min_target_;
+    if (target > target_cap_)
+        target = target_cap_;
     return clamp_stream_target_limit (target, options_, true);
 }
 
-inline size_t decoder_max_read_target (const zlink::options_t &options_)
+inline size_t decoder_initial_read_target (const zlink::options_t &options_)
 {
-    const size_t initial_target = decoder_initial_read_target (options_);
+    return decoder_initial_read_target (options_, 0, initial_target_cap ());
+}
+
+inline size_t decoder_max_read_target (const zlink::options_t &options_,
+                                       size_t stream_min_target_,
+                                       size_t target_cap_)
+{
+    const size_t initial_target =
+      decoder_initial_read_target (options_, stream_min_target_, target_cap_);
     size_t max_target = initial_target;
 
     if (options_.rcvbuf > 0
@@ -147,19 +160,37 @@ inline size_t decoder_max_read_target (const zlink::options_t &options_)
     return max_target;
 }
 
-inline size_t encoder_initial_write_target (const zlink::options_t &options_)
+inline size_t decoder_max_read_target (const zlink::options_t &options_)
+{
+    return decoder_max_read_target (options_, 0, initial_target_cap ());
+}
+
+inline size_t encoder_initial_write_target (const zlink::options_t &options_,
+                                            size_t stream_min_target_,
+                                            size_t target_cap_)
 {
     size_t target = options_.out_batch_size > 0
                       ? static_cast<size_t> (options_.out_batch_size)
                       : default_target_size ();
-    if (target > initial_target_cap ())
-        target = initial_target_cap ();
+    if (options_.type == ZLINK_CORE_SOCKET_STREAM
+        && target < stream_min_target_)
+        target = stream_min_target_;
+    if (target > target_cap_)
+        target = target_cap_;
     return clamp_stream_target_limit (target, options_, false);
 }
 
-inline size_t encoder_max_write_target (const zlink::options_t &options_)
+inline size_t encoder_initial_write_target (const zlink::options_t &options_)
 {
-    const size_t initial_target = encoder_initial_write_target (options_);
+    return encoder_initial_write_target (options_, 0, initial_target_cap ());
+}
+
+inline size_t encoder_max_write_target (const zlink::options_t &options_,
+                                        size_t stream_min_target_,
+                                        size_t target_cap_)
+{
+    const size_t initial_target =
+      encoder_initial_write_target (options_, stream_min_target_, target_cap_);
     size_t max_target = initial_target;
 
     if (options_.sndbuf > 0
@@ -176,7 +207,13 @@ inline size_t encoder_max_write_target (const zlink::options_t &options_)
     return max_target;
 }
 
-inline size_t output_target_batch (const zlink::asio_engine_t &engine_,
+inline size_t encoder_max_write_target (const zlink::options_t &options_)
+{
+    return encoder_max_write_target (options_, 0, initial_target_cap ());
+}
+
+template <typename Engine>
+inline size_t output_target_batch (const Engine &engine_,
                                    const zlink::options_t &options_)
 {
     if (options_.type == ZLINK_CORE_SOCKET_STREAM) {

@@ -2,7 +2,7 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
-#include "api/zlink_testing.hpp"
+#include "zlink_testing.hpp"
 
 #include <chrono>
 #include <condition_variable>

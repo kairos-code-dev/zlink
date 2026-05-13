@@ -7,4 +7,9 @@
 #include "api/service_mode_internal.hpp"
 #include "api/service_surface_internal.hpp"
 
+namespace zlink
+{
+void destroy_spot_handle_internal (void *spot_);
+}
+
 #endif

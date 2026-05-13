@@ -64,9 +64,7 @@ static int recv_status_ack_local (socket_base_t *socket_,
             && discovery_protocol::read_u16 (frames[0], &msg_id)
             && msg_id == expected_msg_id_) {
             uint8_t status = discovery_protocol::status_invalid;
-            if (zlink_msg_size (&frames[1]) == sizeof (uint8_t))
-                memcpy (&status, zlink_msg_data (&frames[1]),
-                        sizeof (uint8_t));
+            discovery_protocol::read_u8 (frames[1], &status);
             *status_out_ = static_cast<int> (status);
             if (resolved_out_ && frames.size () >= 3
                 && expected_msg_id_ == discovery_protocol::msg_register_ack) {
@@ -265,7 +263,7 @@ static int recv_route_reply_local (socket_base_t *socket_,
     }
 
     uint8_t status = discovery_protocol::status_invalid;
-    memcpy (&status, zlink_msg_data (&frames[1]), sizeof (status));
+    discovery_protocol::read_u8 (frames[1], &status);
     if (status != discovery_protocol::status_ok) {
         close_msg_frames (&frames);
         errno = discovery_protocol::route_status_errno (status);

@@ -263,7 +263,7 @@ bool zlink::socket_base_t::current_socket_msg_dispatch_source_rid (
     return socket_msg_dispatch_context_t::current_source_rid (out_);
 }
 
-void zlink::socket_base_t::invoke_send_ready_handler_for_testing ()
+void zlink::socket_base_t::invoke_send_ready_handler ()
 {
     zlink_send_ready_handler_fn handler = NULL;
     void *subject = NULL;
@@ -481,7 +481,7 @@ void zlink::socket_base_t::notify_send_ready_if_armed ()
 
     zlink_send_ready_handler_fn handler = socket_send_ready_handler ();
     if (handler) {
-        invoke_send_ready_handler_for_testing ();
+        invoke_send_ready_handler ();
     }
 }
 

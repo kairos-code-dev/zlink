@@ -212,22 +212,6 @@ void *registry_query_access_t::create (ctx_t *ctx_)
     return client;
 }
 
-service_public_api_guard_t *
-registry_query_access_t::public_api_guard_for_testing (void *client_)
-{
-    registry_query_client_t *client = as_registry_query_client (client_);
-    return client ? &client->public_api : NULL;
-}
-
-void registry_query_access_t::destroy_for_testing (void *client_)
-{
-    registry_query_client_t *client = as_registry_query_client (client_);
-    if (!client)
-        return;
-    client->destroy_locked ();
-    delete client;
-}
-
 int registry_query_access_t::connect (void *client_, const char *endpoint_)
 {
     registry_query_client_t *client = as_registry_query_client (client_);

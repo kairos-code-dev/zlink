@@ -15,16 +15,14 @@ namespace
 {
 const uint32_t actor_async_timeout_precedence_delay_ms = 2;
 
-enum actor_async_operation_kind_t
-{
-    actor_async_reply,
-    actor_async_lookup
-};
-
 struct actor_async_operation_t
 {
+    typedef void (*operation_complete_fn) (actor_async_operation_t *);
+    typedef void (*operation_timeout_fn) (actor_async_operation_t *);
+
     actor_async_operation_t () :
-        kind (actor_async_reply),
+        complete (NULL),
+        timeout (NULL),
         reply_handler (NULL),
         lookup_handler (NULL),
         userdata (NULL),
@@ -37,7 +35,8 @@ struct actor_async_operation_t
     {
     }
 
-    actor_async_operation_kind_t kind;
+    operation_complete_fn complete;
+    operation_timeout_fn timeout;
     std::mutex mutex;
     zlink_reply_handler_fn reply_handler;
     zlink_actor_lookup_handler_fn lookup_handler;
@@ -50,6 +49,39 @@ struct actor_async_operation_t
     void *arg;
     zlink::spot_actor_async::operation_cleanup_fn cleanup;
 };
+
+void complete_actor_reply_operation (actor_async_operation_t *operation_)
+{
+    const zlink_request_result_t result =
+      operation_->reply_run ? operation_->reply_run (operation_->arg)
+                            : ZLINK_REQUEST_INTERNAL_ERROR;
+    operation_->reply_handler (result, NULL, 0, operation_->userdata);
+}
+
+void timeout_actor_reply_operation (actor_async_operation_t *operation_)
+{
+    operation_->reply_handler (ZLINK_REQUEST_TIMED_OUT, NULL, 0,
+                               operation_->userdata);
+}
+
+void complete_actor_lookup_operation (actor_async_operation_t *operation_)
+{
+    zlink_actor_lookup_result_t result;
+    memset (&result, 0, sizeof (result));
+    if (operation_->lookup_run)
+        operation_->lookup_run (operation_->arg, &result);
+    else
+        result.result = ZLINK_REQUEST_INTERNAL_ERROR;
+    operation_->lookup_handler (&result, operation_->userdata);
+}
+
+void timeout_actor_lookup_operation (actor_async_operation_t *operation_)
+{
+    zlink_actor_lookup_result_t result;
+    memset (&result, 0, sizeof (result));
+    result.result = ZLINK_REQUEST_TIMED_OUT;
+    operation_->lookup_handler (&result, operation_->userdata);
+}
 
 void retain_actor_async_operation (actor_async_operation_t *operation_)
 {
@@ -88,20 +120,8 @@ void complete_actor_async_operation_scheduled (void *userdata_)
     if (claim_actor_async_operation (operation)) {
         zlink::request_timeout::cancel (operation->timeout_task);
         operation->timeout_task.reset ();
-        if (operation->kind == actor_async_reply) {
-            const zlink_request_result_t result =
-              operation->reply_run ? operation->reply_run (operation->arg)
-                                   : ZLINK_REQUEST_INTERNAL_ERROR;
-            operation->reply_handler (result, NULL, 0, operation->userdata);
-        } else {
-            zlink_actor_lookup_result_t result;
-            memset (&result, 0, sizeof (result));
-            if (operation->lookup_run)
-                operation->lookup_run (operation->arg, &result);
-            else
-                result.result = ZLINK_REQUEST_INTERNAL_ERROR;
-            operation->lookup_handler (&result, operation->userdata);
-        }
+        if (operation->complete)
+            operation->complete (operation);
     }
     release_actor_async_operation (operation);
 }
@@ -113,15 +133,8 @@ void timeout_actor_async_operation_scheduled (void *userdata_)
     if (!operation)
         return;
     if (claim_actor_async_operation (operation)) {
-        if (operation->kind == actor_async_reply) {
-            operation->reply_handler (ZLINK_REQUEST_TIMED_OUT, NULL, 0,
-                                      operation->userdata);
-        } else {
-            zlink_actor_lookup_result_t result;
-            memset (&result, 0, sizeof (result));
-            result.result = ZLINK_REQUEST_TIMED_OUT;
-            operation->lookup_handler (&result, operation->userdata);
-        }
+        if (operation->timeout)
+            operation->timeout (operation);
     }
     release_actor_async_operation (operation);
 }
@@ -165,7 +178,8 @@ zlink_submit_result_t schedule_reply_operation (
         errno = ENOMEM;
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
     }
-    operation->kind = actor_async_reply;
+    operation->complete = complete_actor_reply_operation;
+    operation->timeout = timeout_actor_reply_operation;
     operation->reply_handler = handler_;
     operation->userdata = userdata_;
     operation->reply_run = run_;
@@ -186,7 +200,8 @@ zlink_submit_result_t schedule_lookup_operation (
         errno = ENOMEM;
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
     }
-    operation->kind = actor_async_lookup;
+    operation->complete = complete_actor_lookup_operation;
+    operation->timeout = timeout_actor_lookup_operation;
     operation->lookup_handler = handler_;
     operation->userdata = userdata_;
     operation->lookup_run = run_;

@@ -12,6 +12,7 @@
 
 #include <string>
 #include <string.h>
+#include <vector>
 
 namespace zlink
 {
@@ -295,6 +296,17 @@ inline bool read_u16 (const zlink_msg_t &msg_, uint16_t *out_)
     return true;
 }
 
+inline bool read_u8 (const zlink_msg_t &msg_, uint8_t *out_)
+{
+    if (!out_)
+        return false;
+    if (zlink_msg_size (&msg_) != sizeof (uint8_t))
+        return false;
+    memcpy (out_, zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)),
+            sizeof (uint8_t));
+    return true;
+}
+
 inline bool read_u32 (const zlink_msg_t &msg_, uint32_t *out_)
 {
     if (!out_)
@@ -350,6 +362,18 @@ inline bool read_routing_id (const zlink_msg_t &msg_, zlink_routing_id_t *out_)
         memcpy (out_->data,
                 zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)), size);
     return true;
+}
+
+inline void read_bytes (const zlink_msg_t &msg_,
+                        std::vector<unsigned char> *out_)
+{
+    if (!out_)
+        return;
+    const size_t size = zlink_msg_size (&msg_);
+    out_->resize (size);
+    if (size > 0)
+        memcpy (&(*out_)[0], zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)),
+                size);
 }
 }
 }

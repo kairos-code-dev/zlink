@@ -136,19 +136,7 @@ service_handle_resolution_t resolve_service_handle (void *handle_)
     return resolved;
 }
 
-service_public_api_guard_t *spot_public_api_guard_for_testing (void *spot_)
-{
-    spot_handle_t *spot = as_spot_handle (spot_);
-    if (spot)
-        return &spot->public_api;
-    if (zlink::spot_pub_t *pub = as_spot_pub_side_handle (spot_))
-        return pub->node () ? &pub->node ()->public_api_guard () : NULL;
-    if (zlink::spot_sub_t *sub = as_spot_sub_side_handle (spot_))
-        return sub->node () ? &sub->node ()->public_api_guard () : NULL;
-    return NULL;
-}
-
-void destroy_spot_handle_for_testing (void *spot_)
+void destroy_spot_handle_internal (void *spot_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot) {
@@ -181,6 +169,7 @@ void destroy_spot_handle_for_testing (void *spot_)
     spot->tag = 0xdeadbeef;
     ::operator delete (spot);
 }
+
 }
 
 namespace

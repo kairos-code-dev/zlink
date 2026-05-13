@@ -241,14 +241,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
                 ? 0
                 : 100;
             discovery_protocol::read_i64 (frames_[index++], &info.value);
-            const size_t metadata_size = zlink_msg_size (&frames_[index]);
-            info.metadata.resize (metadata_size);
-            if (metadata_size > 0) {
-                memcpy (&info.metadata[0],
-                        zlink_msg_data (const_cast<zlink_msg_t *> (
-                          &frames_[index])),
-                        metadata_size);
-            }
+            discovery_protocol::read_bytes (frames_[index], &info.metadata);
             ++index;
             info.registered_at = 0;
             if (auto_connect_type == _auto_connect_type)

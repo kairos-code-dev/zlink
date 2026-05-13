@@ -279,6 +279,9 @@ class spot_node_t : public discovery_observer_t
     void refresh_existing_summaries ();
     void refresh_sub_peer_summaries (bool has_active_peers,
                                      bool lost_transition);
+    std::shared_ptr<spot_logical_state_t> create_logical_spot_state_locked (
+      bool entry_);
+    bool spot_owner_summary_publishable_locked () const;
     void schedule_subscription_ready_refresh ();
     void schedule_pub_delivery_ready_refresh ();
     void clear_peer_readiness_locked (

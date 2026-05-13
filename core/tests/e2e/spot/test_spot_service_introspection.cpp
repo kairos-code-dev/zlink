@@ -4,7 +4,7 @@
 #include "../../testutil_unity.hpp"
 #include "../../testutil_monitoring.hpp"
 #include "../../../src/api/service_api_internal.hpp"
-#include "../../../src/api/zlink_testing.hpp"
+#include "../../zlink_testing.hpp"
 #include "../../../src/services/spot/spot_handle.hpp"
 #include "../../../src/services/spot/spot_node.hpp"
 #include "../../../src/services/spot/spot_node_access.hpp"

@@ -368,14 +368,7 @@ void registry_t::handle_peer (void *sub_)
             int64_t value = 0;
             discovery_protocol::read_i64 (frames[index++], &value);
             entry.value = value;
-            const size_t metadata_size = zlink_msg_size (&frames[index]);
-            entry.metadata.resize (metadata_size);
-            if (metadata_size > 0) {
-                memcpy (&entry.metadata[0],
-                        zlink_msg_data (const_cast<zlink_msg_t *> (
-                          &frames[index])),
-                        metadata_size);
-            }
+            discovery_protocol::read_bytes (frames[index], &entry.metadata);
             ++index;
             entry.registered_at = now;
             entry.last_heartbeat = now;
@@ -606,14 +599,8 @@ void registry_t::handle_register (void *router_,
     if (frame_count_ >= 7)
         discovery_protocol::read_i64 (frames_[6], &value);
     std::vector<unsigned char> metadata;
-    if (frame_count_ >= 8) {
-        const size_t metadata_size = zlink_msg_size (&frames_[7]);
-        metadata.resize (metadata_size);
-        if (metadata_size > 0)
-            memcpy (&metadata[0],
-                    zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[7])),
-                    metadata_size);
-    }
+    if (frame_count_ >= 8)
+        discovery_protocol::read_bytes (frames_[7], &metadata);
 
     const uint64_t now = zlink::clock_t ().now_ms ();
 
@@ -828,14 +815,8 @@ void registry_t::handle_update_attributes (void *router_,
     int64_t value = 0;
     discovery_protocol::read_i64 (frames_[6], &value);
     std::vector<unsigned char> metadata;
-    if (frame_count_ >= 8) {
-        const size_t metadata_size = zlink_msg_size (&frames_[7]);
-        metadata.resize (metadata_size);
-        if (metadata_size > 0)
-            memcpy (&metadata[0],
-                    zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[7])),
-                    metadata_size);
-    }
+    if (frame_count_ >= 8)
+        discovery_protocol::read_bytes (frames_[7], &metadata);
 
     service_key_t service_key;
     service_key.channel_name = channel_name;

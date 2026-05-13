@@ -4,6 +4,7 @@
 #if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_WS
 
 #include "transports/ws/asio_ws_engine.hpp"
+#include "engine/asio/asio_stream_fastpath_policy.hpp"
 #include "engine/asio/asio_poller.hpp"
 #include "core/io_thread.hpp"
 #include "core/session_base.hpp"
@@ -44,98 +45,31 @@ const bool ws_gather_write_on =
 const size_t ws_gather_threshold =
   zlink::env::positive_size ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
 
-const size_t stream_target_default_size = 4096;
 const size_t stream_target_initial_cap = 64 * 1024;
 const size_t ws_stream_initial_target = 64 * 1024;
 
-size_t clamp_stream_target_limit (size_t target_,
-                                  const zlink::options_t &options_,
-                                  bool read_path_)
-{
-    size_t clamped = target_ > 0 ? target_ : stream_target_default_size;
-
-    if (read_path_ && options_.rcvbuf > 0
-        && static_cast<size_t> (options_.rcvbuf) < clamped) {
-        clamped = static_cast<size_t> (options_.rcvbuf);
-    }
-
-    if (!read_path_ && options_.sndbuf > 0
-        && static_cast<size_t> (options_.sndbuf) < clamped) {
-        clamped = static_cast<size_t> (options_.sndbuf);
-    }
-
-    if (options_.maxmsgsize > 0
-        && static_cast<size_t> (options_.maxmsgsize) < clamped) {
-        clamped = static_cast<size_t> (options_.maxmsgsize);
-    }
-
-    return clamped > 0 ? clamped : static_cast<size_t> (1);
-}
-
 size_t stream_decoder_initial_read_target (const zlink::options_t &options_)
 {
-    size_t target = options_.in_batch_size > 0
-                      ? static_cast<size_t> (options_.in_batch_size)
-                      : stream_target_default_size;
-    if (options_.type == ZLINK_CORE_SOCKET_STREAM && target < ws_stream_initial_target)
-        target = ws_stream_initial_target;
-    if (target > stream_target_initial_cap)
-        target = stream_target_initial_cap;
-    return clamp_stream_target_limit (target, options_, true);
+    return zlink::asio_stream_fastpath_policy::decoder_initial_read_target (
+      options_, ws_stream_initial_target, stream_target_initial_cap);
 }
 
 size_t stream_decoder_max_read_target (const zlink::options_t &options_)
 {
-    const size_t initial_target = stream_decoder_initial_read_target (options_);
-    size_t max_target = initial_target;
-
-    if (options_.rcvbuf > 0
-        && static_cast<size_t> (options_.rcvbuf) > max_target) {
-        max_target = static_cast<size_t> (options_.rcvbuf);
-    }
-
-    if (options_.maxmsgsize > 0
-        && static_cast<size_t> (options_.maxmsgsize) < max_target) {
-        max_target = static_cast<size_t> (options_.maxmsgsize);
-    }
-
-    if (max_target == 0)
-        return initial_target;
-
-    return max_target;
+    return zlink::asio_stream_fastpath_policy::decoder_max_read_target (
+      options_, ws_stream_initial_target, stream_target_initial_cap);
 }
 
 size_t stream_encoder_initial_write_target (const zlink::options_t &options_)
 {
-    size_t target = options_.out_batch_size > 0
-                      ? static_cast<size_t> (options_.out_batch_size)
-                      : stream_target_default_size;
-    if (options_.type == ZLINK_CORE_SOCKET_STREAM && target < ws_stream_initial_target)
-        target = ws_stream_initial_target;
-    if (target > stream_target_initial_cap)
-        target = stream_target_initial_cap;
-    return clamp_stream_target_limit (target, options_, false);
+    return zlink::asio_stream_fastpath_policy::encoder_initial_write_target (
+      options_, ws_stream_initial_target, stream_target_initial_cap);
 }
 
 size_t stream_encoder_max_write_target (const zlink::options_t &options_)
 {
-    const size_t initial_target = stream_encoder_initial_write_target (options_);
-    size_t max_target = initial_target;
-
-    if (options_.sndbuf > 0
-        && static_cast<size_t> (options_.sndbuf) > max_target) {
-        max_target = static_cast<size_t> (options_.sndbuf);
-    }
-
-    if (options_.maxmsgsize > 0
-        && static_cast<size_t> (options_.maxmsgsize) < max_target) {
-        max_target = static_cast<size_t> (options_.maxmsgsize);
-    }
-
-    if (max_target == 0)
-        return initial_target;
-
-    return max_target;
+    return zlink::asio_stream_fastpath_policy::encoder_max_write_target (
+      options_, ws_stream_initial_target, stream_target_initial_cap);
 }
 }
 

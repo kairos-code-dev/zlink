@@ -216,6 +216,40 @@ static int append_socket_snapshot_row (
         out_->push_back (entry);
     return 0;
 }
+
+static zlink_registry_topology_entry_t make_topology_summary_entry (
+  const zlink_routing_id_t &rid_,
+  zlink_service_kind_t service_kind_,
+  const char *channel_name_,
+  const char *endpoint_,
+  discovery_t *discovery_,
+  uint16_t state_,
+  int error_code_)
+{
+    zlink_registry_topology_entry_t entry;
+    memset (&entry, 0, sizeof (entry));
+    entry.routing_id = rid_;
+    if (discovery_) {
+        entry.auto_connect_type =
+          static_cast<zlink_auto_connect_type_t> (
+            discovery_->auto_connect_type ());
+    }
+    entry.service_kind = service_kind_;
+    entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
+    copy_fixed_c_string_from_cstr (entry.channel_name,
+                                   sizeof (entry.channel_name),
+                                   channel_name_);
+    if (endpoint_)
+        copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint),
+                                       endpoint_);
+    entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
+    entry.state = static_cast<zlink_topology_state_t> (state_);
+    entry.desired_count = 1;
+    entry.ready_count = state_ == ZLINK_TOPOLOGY_STATE_READY ? 1 : 0;
+    entry.error_code = static_cast<uint32_t> (error_code_ > 0 ? error_code_ : 0);
+    entry.last_reported_ms = clock_t ().now_ms ();
+    return entry;
+}
 }
 
 std::string spot_node_t::summary_channel_name () const
@@ -266,24 +300,10 @@ void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
     if (pub_->routing_id (&rid) != 0 || rid.size == 0)
         return;
 
-    zlink_registry_topology_entry_t entry;
-    memset (&entry, 0, sizeof (entry));
-    entry.routing_id = rid;
-    entry.auto_connect_type =
-      static_cast<zlink_auto_connect_type_t> (discovery->auto_connect_type ());
-    entry.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
-    entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
-    copy_fixed_c_string_from_cstr (entry.channel_name,
-                                   sizeof (entry.channel_name),
-                                   channel_name.c_str ());
-    copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint),
-                                   endpoint.c_str ());
-    entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
-    entry.state = static_cast<zlink_topology_state_t> (state_);
-    entry.desired_count = 1;
-    entry.ready_count = state_ == ZLINK_TOPOLOGY_STATE_READY ? 1 : 0;
-    entry.error_code = static_cast<uint32_t> (error_code_ > 0 ? error_code_ : 0);
-    entry.last_reported_ms = clock_t ().now_ms ();
+    zlink_registry_topology_entry_t entry =
+      make_topology_summary_entry (rid, ZLINK_SERVICE_KIND_SPOT_PUB,
+                                   channel_name.c_str (), endpoint.c_str (),
+                                   discovery, state_, error_code_);
     discovery_access_t::upsert_service_summary (discovery, entry);
 }
 
@@ -308,22 +328,10 @@ void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
     if (sub_->routing_id (&rid) != 0 || rid.size == 0)
         return;
 
-    zlink_registry_topology_entry_t entry;
-    memset (&entry, 0, sizeof (entry));
-    entry.routing_id = rid;
-    entry.auto_connect_type =
-      static_cast<zlink_auto_connect_type_t> (discovery->auto_connect_type ());
-    entry.service_kind = ZLINK_SERVICE_KIND_SPOT_SUB;
-    entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
-    copy_fixed_c_string_from_cstr (entry.channel_name,
-                                   sizeof (entry.channel_name),
-                                   channel_name.c_str ());
-    entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
-    entry.state = static_cast<zlink_topology_state_t> (state_);
-    entry.desired_count = 1;
-    entry.ready_count = state_ == ZLINK_TOPOLOGY_STATE_READY ? 1 : 0;
-    entry.error_code = static_cast<uint32_t> (error_code_ > 0 ? error_code_ : 0);
-    entry.last_reported_ms = clock_t ().now_ms ();
+    zlink_registry_topology_entry_t entry =
+      make_topology_summary_entry (rid, ZLINK_SERVICE_KIND_SPOT_SUB,
+                                   channel_name.c_str (), NULL, discovery,
+                                   state_, error_code_);
     discovery_access_t::upsert_service_summary (discovery, entry);
 }
 
@@ -348,24 +356,10 @@ void spot_node_t::submit_spot_owner_summary_for_rid (
     if (!discovery || channel_name.empty ())
         return;
 
-    zlink_registry_topology_entry_t entry;
-    memset (&entry, 0, sizeof (entry));
-    entry.routing_id = rid_;
-    entry.auto_connect_type =
-      static_cast<zlink_auto_connect_type_t> (discovery->auto_connect_type ());
-    entry.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
-    entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
-    copy_fixed_c_string_from_cstr (entry.channel_name,
-                                   sizeof (entry.channel_name),
-                                   channel_name.c_str ());
-    copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint),
-                                   endpoint.c_str ());
-    entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
-    entry.state = static_cast<zlink_topology_state_t> (state_);
-    entry.desired_count = 1;
-    entry.ready_count = state_ == ZLINK_TOPOLOGY_STATE_READY ? 1 : 0;
-    entry.error_code = static_cast<uint32_t> (error_code_ > 0 ? error_code_ : 0);
-    entry.last_reported_ms = clock_t ().now_ms ();
+    zlink_registry_topology_entry_t entry =
+      make_topology_summary_entry (rid_, ZLINK_SERVICE_KIND_SPOT_PUB,
+                                   channel_name.c_str (), endpoint.c_str (),
+                                   discovery, state_, error_code_);
     discovery_access_t::upsert_service_summary (discovery, entry);
 }
 

@@ -260,6 +260,7 @@ target_include_directories(unity PUBLIC "${ZLINK_CORE_SOURCE_DIR}/external/unity
 set(TESTUTIL_SOURCES
   testutil.cpp
   testutil.hpp
+  zlink_testing.cpp
   testutil_monitoring.cpp
   testutil_monitoring.hpp
   testutil_unity.cpp

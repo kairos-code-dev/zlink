@@ -13,7 +13,6 @@
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_subject_access.hpp"
-#include "api/zlink_testing.hpp"
 #include "api/bind_result_internal.hpp"
 #include "api/close_result_internal.hpp"
 #include "api/config_result_internal.hpp"
@@ -266,7 +265,7 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
     zlink::spot_node_access_t::unregister_spot_facade (node, spot);
     if (!last_facade)
         spot->logical_state.reset ();
-    zlink::destroy_spot_handle_for_testing (spot);
+    zlink::destroy_spot_handle_internal (spot);
     erase_spot_mode_state (spot);
     *spot_p_ = NULL;
     return ZLINK_CLOSE_OK;

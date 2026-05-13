@@ -179,7 +179,7 @@ class socket_base_t : public own_t,
     static bool current_socket_msg_dispatch_source_rid (
       zlink_routing_id_t *out_);
     bool recv_source_rid_capture_requested () const;
-    void invoke_send_ready_handler_for_testing ();
+    void invoke_send_ready_handler ();
     int stream_dispatch_msg_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual int sub_dispatch_start (spot_sub_io_handler_fn callback_,
                                     void *userdata_);

@@ -40,7 +40,6 @@ struct iovec
 #include "api/socket_request_reply_internal.hpp"
 #include "api/close_result_internal.hpp"
 #include "api/config_result_internal.hpp"
-#include "api/zlink_testing.hpp"
 #include "utils/mutex.hpp"
 #include "utils/stdint.hpp"
 #include "utils/config.hpp"

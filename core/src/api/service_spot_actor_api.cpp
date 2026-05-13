@@ -7,6 +7,7 @@
 #include "api/service_surface_internal.hpp"
 #include "api/service_spot_dispatch_context_internal.hpp"
 #include "api/service_spot_actor_async_internal.hpp"
+#include "api/service_spot_actor_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/service_spot_request_reply_utils_internal.hpp"
 #include "api/request_timeout_scheduler_internal.hpp"
@@ -533,7 +534,7 @@ void collect_live_join_requests_for_state_locked (
     }
 }
 
-void collect_queued_join_requests_for_stream_locked (
+void drain_queued_join_requests_for_stream_locked (
   void *stream_,
   std::deque<queued_join_request_t *> *aborted_)
 {
@@ -562,7 +563,7 @@ void collect_queued_join_requests_for_stream_locked (
     }
 }
 
-void collect_live_join_requests_for_stream_locked (
+void collect_received_join_requests_for_stream_locked (
   void *stream_,
   const std::deque<queued_join_request_t *> &already_aborted_,
   std::vector<queued_join_request_t *> *received_aborts_)
@@ -2361,10 +2362,10 @@ void erase_actor_stream_bindings (void *stream_)
     std::deque<queued_join_request_t *> aborted_joins;
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime().mutex);
-        collect_queued_join_requests_for_stream_locked (stream_, &aborted_joins);
+        drain_queued_join_requests_for_stream_locked (stream_, &aborted_joins);
         std::vector<queued_join_request_t *> received_aborts;
-        collect_live_join_requests_for_stream_locked (stream_, aborted_joins,
-                                                      &received_aborts);
+        collect_received_join_requests_for_stream_locked (stream_, aborted_joins,
+                                                          &received_aborts);
         for (std::vector<queued_join_request_t *>::iterator it =
                received_aborts.begin ();
              it != received_aborts.end (); ++it) {
@@ -3015,10 +3016,11 @@ extern "C" zlink_submit_result_t zlink_stream_send_bound_actor_part (
     return ZLINK_SUBMIT_OK;
 }
 
-#if defined ZLINK_BUILD_TESTS
 namespace zlink
 {
-int actor_stream_owner_set_for_testing (void *stream_, void *node_)
+namespace spot_actor_internal
+{
+int set_stream_owner (void *stream_, void *node_)
 {
     if (!stream_ || !node_ || !is_stream_socket (stream_)
         || !is_registered_spot_node_handle (node_)) {
@@ -3031,7 +3033,7 @@ int actor_stream_owner_set_for_testing (void *stream_, void *node_)
     return 0;
 }
 }
-#endif
+}
 
 extern "C" zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg (
   void *node_,

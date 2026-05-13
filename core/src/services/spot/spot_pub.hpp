@@ -43,7 +43,7 @@ class spot_pub_t
     socket_base_t *poller_socket () const { return socket (); }
     socket_base_t *snapshot_socket () const { return socket (); }
     bool owns_socket (const socket_base_t *socket_) const;
-    void invoke_send_ready_for_testing ();
+    void invoke_send_ready_handler ();
     spot_node_t *node () const { return _node; }
 
     void emit_ready_event ();

@@ -9,8 +9,8 @@ import systems.zlink.service.spot.RequestOp;
 import systems.zlink.service.spot.RequestSubmitOp;
 import systems.zlink.service.spot.SendOp;
 import systems.zlink.service.spot.SendSubmitOp;
+import systems.zlink.internal.MessagePartsBuffer;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -57,7 +57,7 @@ final class SocketOperations {
 
     private static final class SendBuilder implements SendOp, SendSubmitOp {
         private final SendInvoker invoker;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
@@ -82,7 +82,7 @@ final class SocketOperations {
         @Override
         public boolean submit() {
             markSubmitted();
-            return invoker.submit(List.copyOf(parts), flags);
+            return invoker.submit(parts.asList(), flags);
         }
 
         private void markSubmitted() {
@@ -102,7 +102,7 @@ final class SocketOperations {
       implements RequestOp, RequestSubmitOp {
         private final RequestAsyncInvoker asyncInvoker;
         private final RequestCallbackInvoker callbackInvoker;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private Duration timeout =
           Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS);
         private SendFlags flags = SendFlags.NONE;
@@ -139,13 +139,13 @@ final class SocketOperations {
         @Override
         public CompletableFuture<List<Message>> submitAsync() {
             markSubmitted();
-            return asyncInvoker.submit(List.copyOf(parts), flags, timeout);
+            return asyncInvoker.submit(parts.asList(), flags, timeout);
         }
 
         @Override
         public boolean submit(RequestCallback callback) {
             markSubmitted();
-            return callbackInvoker.submit(List.copyOf(parts),
+            return callbackInvoker.submit(parts.asList(),
               Objects.requireNonNull(callback, "callback"), flags, timeout);
         }
 
@@ -200,7 +200,7 @@ final class SocketOperations {
         @Override
         public boolean submit(RequestCallback callback) {
             source.markSubmitted();
-            return source.callbackInvoker.submit(List.copyOf(source.parts),
+            return source.callbackInvoker.submit(source.parts.asList(),
               Objects.requireNonNull(callback, "callback"), flags,
               source.timeout);
         }
@@ -208,7 +208,7 @@ final class SocketOperations {
 
     private static final class ReplyBuilder implements ReplyOp, ReplySubmitOp {
         private final ReplyInvoker invoker;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
@@ -236,7 +236,7 @@ final class SocketOperations {
             if (parts.isEmpty())
                 throw new IllegalArgumentException("at least one message required");
             submitted = true;
-            invoker.submit(List.copyOf(parts), flags);
+            invoker.submit(parts.asList(), flags);
         }
 
         private void ensureNotSubmitted() {

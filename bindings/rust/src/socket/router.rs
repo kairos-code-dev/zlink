@@ -3,14 +3,12 @@ use std::ptr;
 use std::time::Duration;
 
 use super::{
-    SendHandle, SocketInner, impl_attach_discovery, impl_base_socket, impl_connect,
-    impl_recv_options, impl_routing_id_options, impl_send_options,
+    SendHandle, SocketInner, close_unreceived_part, impl_attach_discovery, impl_base_socket,
+    impl_connect, impl_recv_options, impl_routing_id_options, impl_send_options,
 };
 use crate::ctx::Context;
 use crate::domain::Received;
-use crate::error::{
-    ConfigError, HandlerError, RecvError, check_config_rc, check_recv_rc,
-};
+use crate::error::{ConfigError, HandlerError, RecvError, check_config_rc, check_recv_rc};
 use crate::ffi;
 use crate::flags::RecvFlags;
 use crate::message::{Message, RoutingId};
@@ -40,9 +38,7 @@ impl RouterSocket {
     /// `doc/spec/bindings/README.md`.
     pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
         if flags.bits() == 0 {
-            if let Some(received) =
-                recv_router_once(self.inner.handle, ffi::ZLINK_DONTWAIT)?
-            {
+            if let Some(received) = recv_router_once(self.inner.handle, ffi::ZLINK_DONTWAIT)? {
                 out.adopt_from(received);
                 return Ok(true);
             }
@@ -203,7 +199,6 @@ impl RouterSocket {
             )
         })
     }
-
 }
 
 impl_base_socket!(RouterSocket);
@@ -276,9 +271,11 @@ fn recv_router_once(handle: *mut c_void, flags: u32) -> Result<Option<Received>,
         };
         if parts.is_empty() {
             if rc == crate::error::RecvResult::NoData as i32 {
+                close_unreceived_part(&mut part);
                 return Ok(None);
             }
             if rc != 0 {
+                close_unreceived_part(&mut part);
                 let errno = unsafe { ffi::zlink_errno() };
                 if errno == libc::EAGAIN {
                     return Ok(None);
@@ -289,6 +286,7 @@ fn recv_router_once(handle: *mut c_void, flags: u32) -> Result<Option<Received>,
             source_spot_rid = current_source_spot_rid;
             request_seq = current_request_seq;
         } else if rc != 0 {
+            close_unreceived_part(&mut part);
             return Err(check_recv_rc(rc).unwrap_err());
         }
 

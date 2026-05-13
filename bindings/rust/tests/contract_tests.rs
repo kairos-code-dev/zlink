@@ -192,9 +192,7 @@ fn request_router_exposes_request_sequence() {
         .unwrap();
 
     let mut received = Received::empty();
-    router_socket
-        .recv(&mut received, RecvFlags::NONE)
-        .unwrap();
+    router_socket.recv(&mut received, RecvFlags::NONE).unwrap();
     let request_seq = received.request_seq;
     assert_eq!(received.single_part().unwrap().as_bytes(), b"plain-data");
     assert_eq!(request_seq, None);

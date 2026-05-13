@@ -6,8 +6,8 @@ use crate::domain::Received;
 use crate::error::{ConfigError, HandlerError, RecvError};
 use crate::ffi;
 use crate::flags::RecvFlags;
-use crate::service::{Empty, SendOp};
 use crate::options::CommonSocketOptions;
+use crate::service::{Empty, SendOp};
 
 use super::{
     SendHandle, SocketInner, impl_base_socket, impl_connect, impl_recv_options, impl_send_options,

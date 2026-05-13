@@ -501,6 +501,7 @@ class RouterSocket(
             source_spot_rid = ctypes.POINTER(ZlinkRoutingId)()
             request_seq = ctypes.c_uint64()
             native_parts = []
+            recv_flags = int(flags)
             try:
                 while True:
                     native_part = ZlinkMsg()
@@ -512,13 +513,14 @@ class RouterSocket(
                         ctypes.byref(request_seq),
                         ctypes.byref(native_part),
                         ctypes.byref(has_more),
-                        int(flags),
+                        recv_flags,
                     )
                     if rc != 0:
                         _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
                     native_parts.append(native_part)
                     if has_more.value == 0:
                         break
+                    recv_flags = 1
             except Exception:
                 _close_native_parts(native_parts)
                 raise

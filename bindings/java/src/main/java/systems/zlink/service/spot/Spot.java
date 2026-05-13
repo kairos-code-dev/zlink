@@ -29,6 +29,7 @@ import systems.zlink.SubmitResult;
 import systems.zlink.internal.ActorInterop;
 import systems.zlink.internal.Native;
 import systems.zlink.internal.InternalAccess;
+import systems.zlink.internal.MessagePartsBuffer;
 import systems.zlink.internal.NativeHelpers;
 import systems.zlink.internal.NativeLayouts;
 import systems.zlink.internal.NativeMsg;
@@ -929,7 +930,7 @@ public final class Spot implements AutoCloseable {
     private final class ActorJoinReplyBuilder implements ActorJoinReplyOp {
         private final ActorJoinRequest request;
         private final boolean accepted;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private boolean submitted;
 
         ActorJoinReplyBuilder(ActorJoinRequest request, boolean accepted) {
@@ -1086,7 +1087,7 @@ public final class Spot implements AutoCloseable {
 
     private final class SendBuilder implements SendOp, SendSubmitOp {
         private final SendInvoker invoker;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
@@ -1111,7 +1112,7 @@ public final class Spot implements AutoCloseable {
         @Override
         public boolean submit() {
             markSubmitted();
-            return invoker.submit(List.copyOf(parts), flags);
+            return invoker.submit(parts.asList(), flags);
         }
 
         private void markSubmitted() {
@@ -1130,7 +1131,7 @@ public final class Spot implements AutoCloseable {
     private final class RequestBuilder implements RequestOp, RequestSubmitOp {
         private final RequestAsyncInvoker asyncInvoker;
         private final RequestCallbackInvoker callbackInvoker;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private Duration timeout = Duration.ofMillis(5_000L);
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
@@ -1164,13 +1165,13 @@ public final class Spot implements AutoCloseable {
         @Override
         public CompletableFuture<List<Message>> submitAsync() {
             markSubmitted();
-            return asyncInvoker.submit(List.copyOf(parts), timeout, flags);
+            return asyncInvoker.submit(parts.asList(), timeout, flags);
         }
 
         @Override
         public boolean submit(RequestCallback callback) {
             markSubmitted();
-            return callbackInvoker.submit(List.copyOf(parts),
+            return callbackInvoker.submit(parts.asList(),
               Objects.requireNonNull(callback, "callback"), flags, timeout);
         }
 
@@ -1225,7 +1226,7 @@ public final class Spot implements AutoCloseable {
         @Override
         public boolean submit(RequestCallback callback) {
             source.markSubmitted();
-            return source.callbackInvoker.submit(List.copyOf(source.parts),
+            return source.callbackInvoker.submit(source.parts.asList(),
               Objects.requireNonNull(callback, "callback"), flags,
               source.timeout);
         }
@@ -1233,7 +1234,7 @@ public final class Spot implements AutoCloseable {
 
     private final class ReplyBuilder implements ReplyOp, ReplySubmitOp {
         private final ReplyInvoker invoker;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
@@ -1261,7 +1262,7 @@ public final class Spot implements AutoCloseable {
             if (parts.isEmpty())
                 throw new IllegalArgumentException("at least one message required");
             submitted = true;
-            invoker.submit(List.copyOf(parts), flags);
+            invoker.submit(parts.asList(), flags);
         }
 
         private void ensureNotSubmitted() {

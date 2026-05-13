@@ -547,10 +547,8 @@ pub type zlink_actor_join_handler_fn = unsafe extern "C" fn(
     userdata: *mut c_void,
 );
 
-pub type zlink_actor_lookup_handler_fn = unsafe extern "C" fn(
-    result: *const zlink_actor_lookup_result_t,
-    userdata: *mut c_void,
-);
+pub type zlink_actor_lookup_handler_fn =
+    unsafe extern "C" fn(result: *const zlink_actor_lookup_result_t, userdata: *mut c_void);
 
 pub type zlink_router_handler_fn = unsafe extern "C" fn(
     source_node_rid: *const zlink_routing_id_t,

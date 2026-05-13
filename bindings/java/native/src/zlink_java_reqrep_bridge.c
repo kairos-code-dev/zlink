@@ -1,17 +1,13 @@
 #include <jni.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 
 #include "zlink.h"
-#include "api/recv_result_internal.hpp"
-#include "api/socket_api_internal.hpp"
-#include "api/socket_request_reply_internal.hpp"
-
-namespace reqrep = zlink::socket_reqrep_internal;
 
 extern "C" int zlink_router_enable_spot_receive(void *router_);
-extern "C" int zlink_socket_request_progress_internal(void *socket_);
 
 #ifdef __cplusplus
 #define ZLINK_JAVA_EXPORT extern "C"
@@ -28,17 +24,29 @@ extern "C" int zlink_socket_request_progress_internal(void *socket_);
       (mode_))
 #endif
 
-static int zlink_java_validate_router_socket(void *router,
-                                             int expected_type) {
-    socket_handle_t handle = as_socket_handle(router);
-    if (!handle.socket) {
-        return -1;
+static zlink_recv_result_t zlink_java_recv_result_from_errno(int err) {
+    switch (err) {
+    case EAGAIN:
+        return ZLINK_RECV_NO_DATA;
+    case EBUSY:
+        return ZLINK_RECV_BUSY;
+    case EFAULT:
+        return ZLINK_RECV_INVALID_HANDLE;
+    case ENOTSUP:
+#if defined(EOPNOTSUPP) && EOPNOTSUPP != ENOTSUP
+    case EOPNOTSUPP:
+#endif
+        return ZLINK_RECV_NOT_SUPPORTED;
+    default:
+        return ZLINK_RECV_INTERNAL_ERROR;
     }
-    if (socket_type(handle) != expected_type) {
-        errno = EINVAL;
-        return -1;
+}
+
+static void zlink_java_close_router_recv_parts(std::vector<zlink_msg_t> &parts) {
+    for (size_t i = 0; i < parts.size(); ++i) {
+        zlink_msg_close(&parts[i]);
     }
-    return 0;
+    parts.clear();
 }
 
 ZLINK_JAVA_EXPORT int zlink_java_router_recv_compat(
@@ -54,66 +62,49 @@ ZLINK_JAVA_EXPORT int zlink_java_router_recv_compat(
         errno = EFAULT;
         return (int) ZLINK_RECV_INVALID_HANDLE;
     }
-    if (zlink_java_validate_router_socket(router, ZLINK_CORE_SOCKET_ROUTER)
-        != 0) {
-        return (int) zlink::recv_result_internal::from_errno(errno);
-    }
-
-    socket_handle_t handle = as_socket_handle(router);
-    if (!handle.socket) {
-        return (int) zlink::recv_result_internal::from_errno(EFAULT);
+    if (router == NULL) {
+        errno = EFAULT;
+        return (int) ZLINK_RECV_INVALID_HANDLE;
     }
     if (zlink_router_enable_spot_receive(router) != 0) {
-        return (int) zlink::recv_result_internal::from_errno(errno);
+        return (int) zlink_java_recv_result_from_errno(errno);
     }
 
-    std::shared_ptr<reqrep::socket_request_reply_state_t> state =
-      reqrep::find_request_reply_state(handle);
+    static thread_local std::vector<zlink_msg_t> router_recv_parts;
+    zlink_java_close_router_recv_parts(router_recv_parts);
+    *source_node_rid_out = NULL;
+    *source_spot_rid_out = NULL;
+    *request_seq_out = 0;
+    *parts_out = NULL;
+    *part_count_out = 0;
+    zlink_recv_flags_t recv_flags = flags;
 
-    if (!state) {
-        int direct_rc = reqrep::recv_router_message_direct(
-          handle, source_node_rid_out, source_spot_rid_out, request_seq_out,
-          parts_out, part_count_out, flags);
-        if (direct_rc == 0) {
+    while (true) {
+        router_recv_parts.push_back(zlink_msg_t());
+        zlink_msg_t &part = router_recv_parts.back();
+        if (zlink_msg_init(&part) != 0) {
+            router_recv_parts.pop_back();
+            zlink_java_close_router_recv_parts(router_recv_parts);
+            return (int) zlink_java_recv_result_from_errno(errno);
+        }
+
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        zlink_recv_result_t rc = zlink_router_recv_part(
+          router, source_node_rid_out, source_spot_rid_out, request_seq_out,
+          &part, &has_more, recv_flags);
+        if (rc != ZLINK_RECV_OK) {
+            zlink_msg_close(&part);
+            router_recv_parts.pop_back();
+            zlink_java_close_router_recv_parts(router_recv_parts);
+            return (int) rc;
+        }
+        if (has_more == ZLINK_PART_FINAL) {
+            *parts_out = router_recv_parts.data();
+            *part_count_out = router_recv_parts.size();
             return (int) ZLINK_RECV_OK;
         }
-        return (int) zlink::recv_result_internal::from_errno(errno);
+        recv_flags = (zlink_recv_flags_t) ZLINK_DONTWAIT;
     }
-
-    std::unique_lock<std::mutex> lock(state->mutex);
-    bool has_recv_queue = state->recv_queue.rx || state->recv_queue.tx;
-    bool can_drain_direct =
-      !has_recv_queue && !state->internal_dispatch_installed
-      && state->pending_requests.empty() && state->pending_sequences.empty();
-    lock.unlock();
-
-    if (can_drain_direct) {
-        int direct_rc = reqrep::recv_router_message_direct(
-          handle, source_node_rid_out, source_spot_rid_out, request_seq_out,
-          parts_out, part_count_out, flags);
-        if (direct_rc == 0) {
-            return (int) ZLINK_RECV_OK;
-        }
-        return (int) zlink::recv_result_internal::from_errno(errno);
-    }
-
-    if (reqrep::ensure_recv_queue_ready(state) != 0
-        || reqrep::ensure_internal_dispatch_installed(state) != 0) {
-        return (int) zlink::recv_result_internal::from_errno(errno);
-    }
-
-    int timeout_ms = -1;
-    size_t timeout_size = sizeof(timeout_ms);
-    if (handle.socket->getsockopt(ZLINK_INTERNAL_OPT_RCVTIMEO, &timeout_ms,
-                                  &timeout_size)
-        != 0) {
-        return (int) zlink::recv_result_internal::from_errno(errno);
-    }
-
-    return (int) zlink::recv_result_internal::from_rc(
-      reqrep::recv_internal_router_queue(
-        &state->recv_queue, source_node_rid_out, source_spot_rid_out,
-        request_seq_out, parts_out, part_count_out, flags, timeout_ms));
 }
 
 ZLINK_JAVA_EXPORT uintptr_t zlink_java_msg_data_addr(zlink_msg_t *msg) {

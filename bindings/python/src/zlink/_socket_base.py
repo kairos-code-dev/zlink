@@ -1161,6 +1161,7 @@ class _SubscriberSocket(_Socket):
         routing_id = ctypes.POINTER(ZlinkRoutingId)()
         topic_buf = ctypes.create_string_buffer(256)
         parts = []
+        recv_flags = int(flags)
         try:
             while True:
                 topic_len = ctypes.c_size_t()
@@ -1174,13 +1175,14 @@ class _SubscriberSocket(_Socket):
                     ctypes.byref(topic_len),
                     ctypes.byref(native_part),
                     ctypes.byref(has_more),
-                    int(flags),
+                    recv_flags,
                 )
                 if rc != 0:
                     _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
                 parts.append(native_part)
                 if has_more.value == 0:
                     break
+                recv_flags = 1
         except Exception:
             _close_native_parts(parts)
             raise

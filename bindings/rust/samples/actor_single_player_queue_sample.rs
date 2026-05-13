@@ -47,7 +47,10 @@ fn main() {
         .timeout(Duration::from_secs(1))
         .submit(move |result| bind_tx.send(result).unwrap())
         .expect("stream actor bind failed");
-    bind_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+    bind_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
 
     let (first_tx, first_rx) = mpsc::channel();
     actor
@@ -58,10 +61,7 @@ fn main() {
         .submit(move |result, parts| first_tx.send((result, parts)).unwrap())
         .expect("first join submit failed");
     accept_join(&first_spot, b"join-first");
-    first_rx
-        .recv_timeout(Duration::from_secs(2))
-        .unwrap()
-        .0;
+    first_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
 
     stream
         .send_bound_actor_part(&session, "single-player")
@@ -75,7 +75,10 @@ fn main() {
         .timeout(Duration::from_secs(1))
         .submit(move |result| leave_tx.send(result).unwrap())
         .unwrap();
-    leave_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+    leave_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
     stream
         .send_bound_actor_part(&session, "single-player")
         .message(Message::copy_from(b"between").unwrap())
@@ -115,10 +118,7 @@ fn main() {
         .submit(move |result, parts| second_tx.send((result, parts)).unwrap())
         .expect("second join submit failed");
     accept_join(&second_spot, b"join-second");
-    second_rx
-        .recv_timeout(Duration::from_secs(2))
-        .unwrap()
-        .0;
+    second_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
 
     sample_support::wait_until(
         || payloads.lock().unwrap().len() >= 2,
@@ -133,6 +133,9 @@ fn main() {
         .timeout(Duration::from_secs(1))
         .submit(move |result| leave_tx.send(result).unwrap())
         .unwrap();
-    leave_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+    leave_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
     actor.close().unwrap();
 }

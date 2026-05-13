@@ -740,6 +740,12 @@ fn close_native_parts_from(parts: &mut [ffi::zlink_msg_t], start_index: usize) {
     }
 }
 
+pub(crate) fn close_unreceived_part(part: &mut MaybeUninit<ffi::zlink_msg_t>) {
+    unsafe {
+        ffi::zlink_msg_close(part.as_mut_ptr());
+    }
+}
+
 /// Take ownership of `part_count` messages from a native-owned array.
 pub(crate) fn take_parts(parts_ptr: *mut ffi::zlink_msg_t, part_count: usize) -> Vec<Message> {
     let mut out = Vec::with_capacity(part_count);
@@ -801,9 +807,11 @@ pub(crate) fn recv_basic_parts(
 
         if parts.is_empty() {
             if rc == RecvResult::NoData as i32 {
+                close_unreceived_part(&mut part);
                 return Ok(None);
             }
             if rc != 0 {
+                close_unreceived_part(&mut part);
                 let errno = unsafe { ffi::zlink_errno() };
                 if errno == libc::EAGAIN {
                     return Ok(None);
@@ -812,6 +820,7 @@ pub(crate) fn recv_basic_parts(
             }
             routing_id = routing_id_from_ptr(source_rid_ptr);
         } else if rc != 0 {
+            close_unreceived_part(&mut part);
             return Err(check_recv_rc(rc).unwrap_err());
         }
 
@@ -856,9 +865,11 @@ pub(crate) fn recv_subscribed_parts(
 
         if parts.is_empty() {
             if rc == RecvResult::NoData as i32 {
+                close_unreceived_part(&mut part);
                 return Ok(None);
             }
             if rc != 0 {
+                close_unreceived_part(&mut part);
                 let errno = unsafe { ffi::zlink_errno() };
                 if errno == libc::EAGAIN {
                     return Ok(None);
@@ -868,6 +879,7 @@ pub(crate) fn recv_subscribed_parts(
             routing_id = routing_id_from_ptr(source_rid_ptr);
             topic = cstr_buf_to_string(topic_buf, topic_len);
         } else if rc != 0 {
+            close_unreceived_part(&mut part);
             return Err(check_recv_rc(rc).unwrap_err());
         }
 

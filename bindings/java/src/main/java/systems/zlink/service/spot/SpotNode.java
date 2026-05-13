@@ -18,6 +18,7 @@ import systems.zlink.SubmitResult;
 import systems.zlink.internal.ActorInterop;
 import systems.zlink.internal.EnumCodecs;
 import systems.zlink.internal.InternalAccess;
+import systems.zlink.internal.MessagePartsBuffer;
 import systems.zlink.internal.Native;
 import systems.zlink.internal.NativeHelpers;
 import systems.zlink.internal.NativeLayouts;
@@ -989,7 +990,7 @@ public final class SpotNode implements AutoCloseable {
         private final ActorRef actor;
         private final RoutingId destNodeRid;
         private final RoutingId destSpotRid;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private Duration timeout = Duration.ofMillis(5_000L);
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
@@ -1116,7 +1117,7 @@ public final class SpotNode implements AutoCloseable {
     private final class SendBoundSessionBuilder
       implements SendOp, SendSubmitOp {
         private final ActorRef actor;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
@@ -1147,7 +1148,8 @@ public final class SpotNode implements AutoCloseable {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment refSegment = ActorInterop.actorRefToNative(arena,
                   actor);
-                for (Message part : parts) {
+                for (int i = 0; i < parts.size(); i++) {
+                    Message part = parts.get(i);
                     MemorySegment nativeMsg = arena.allocate(
                       NativeLayouts.MSG_LAYOUT);
                     InternalAccess.messageCopyTo(part, nativeMsg);

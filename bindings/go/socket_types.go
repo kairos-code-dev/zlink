@@ -491,7 +491,7 @@ type preparedMultipart struct {
 }
 
 type multipartSubmitFunc func(*C.zlink_msg_t, C.zlink_part_flag_t) error
-type multipartRecvFunc func(*C.zlink_msg_t, *C.zlink_part_flag_t) error
+type multipartRecvFunc func(*C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error
 
 func prepareMultipart(parts []*Message) (*preparedMultipart, error) {
 	if len(parts) == 0 {
@@ -606,8 +606,9 @@ func submitMultipartFromClones(parts []*Message, consumeOriginal bool, submit mu
 	return nil
 }
 
-func recvMultipart(recv multipartRecvFunc) ([]*Message, error) {
+func recvMultipart(flags RecvFlags, recv multipartRecvFunc) ([]*Message, error) {
 	native := make([]C.zlink_msg_t, 0, 1)
+	recvFlags := C.zlink_recv_flags_t(flags)
 	for {
 		var part C.zlink_msg_t
 		if err := configErrorFromResult(C.zlink_msg_init(&part)); err != nil {
@@ -616,7 +617,7 @@ func recvMultipart(recv multipartRecvFunc) ([]*Message, error) {
 		}
 
 		var hasMore C.zlink_part_flag_t
-		if err := recv(&part, &hasMore); err != nil {
+		if err := recv(&part, &hasMore, recvFlags); err != nil {
 			_ = configErrorFromResult(C.zlink_msg_close(&part))
 			closeNativeMultipart(native, len(native))
 			return nil, err
@@ -638,6 +639,7 @@ func recvMultipart(recv multipartRecvFunc) ([]*Message, error) {
 		if hasMore == 0 {
 			break
 		}
+		recvFlags = C.zlink_recv_flags_t(C.ZLINK_DONTWAIT)
 	}
 
 	return takeParts(&native[0], C.size_t(len(native)))
@@ -769,8 +771,8 @@ func recvTopicMessage(
 	var sourceRID *C.zlink_routing_id_t
 	topicBuf := make([]byte, recvTopicBufferCap)
 	topicLen := C.size_t(len(topicBuf))
-	clonedParts, err := recvMultipart(func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t) error {
-		return call(&sourceRID, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, part, hasMore, C.zlink_recv_flags_t(flags))
+	clonedParts, err := recvMultipart(flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+		return call(&sourceRID, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, part, hasMore, recvFlags)
 	})
 	if err != nil {
 		return nil, err
@@ -789,14 +791,14 @@ func recvSpotTopicMessage(
 	var sourceRID *C.zlink_routing_id_t
 	topicBuf := make([]byte, recvTopicBufferCap)
 	topicLen := C.size_t(len(topicBuf))
-	clonedParts, err := recvMultipart(func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t) error {
+	clonedParts, err := recvMultipart(flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return call(
 			&sourceRID,
 			(*C.char)(unsafe.Pointer(&topicBuf[0])),
 			&topicLen,
 			part,
 			hasMore,
-			C.zlink_recv_flags_t(flags),
+			recvFlags,
 		)
 	})
 	if err != nil {
@@ -1035,8 +1037,8 @@ func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
 	}
 	var sourceRID *C.zlink_routing_id_t
-	clonedParts, err := recvMultipart(func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t) error {
-		return recvErrorFromResult(C.zlink_recv_part(s.raw(), &sourceRID, part, hasMore, C.zlink_recv_flags_t(flags)))
+	clonedParts, err := recvMultipart(flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+		return recvErrorFromResult(C.zlink_recv_part(s.raw(), &sourceRID, part, hasMore, recvFlags))
 	})
 	if err != nil {
 		var recvErr *RecvError
@@ -1152,8 +1154,8 @@ func (s *routedSocket) directRecv(flags RecvFlags) (*Received, error) {
 		var nodeRID *C.zlink_routing_id_t
 		var spotRID *C.zlink_routing_id_t
 		var requestSeq C.uint64_t
-		parts, err := recvMultipart(func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t) error {
-			return recvErrorFromResult(C.zlink_router_recv_part(s.raw(), &nodeRID, &spotRID, &requestSeq, part, hasMore, C.zlink_recv_flags_t(recvFlags)))
+		parts, err := recvMultipart(recvFlags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, currentFlags C.zlink_recv_flags_t) error {
+			return recvErrorFromResult(C.zlink_router_recv_part(s.raw(), &nodeRID, &spotRID, &requestSeq, part, hasMore, currentFlags))
 		})
 		if err != nil {
 			return nil, nil, 0, nil, err

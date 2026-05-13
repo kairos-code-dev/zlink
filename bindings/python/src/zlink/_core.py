@@ -572,6 +572,7 @@ class _ReceivedPartsOwner:
 def _recv_native_parts(handle, flags):
     routing_id = ctypes.POINTER(ZlinkRoutingId)()
     native_parts = []
+    recv_flags = int(flags)
     try:
         while True:
             native_part = ZlinkMsg()
@@ -581,13 +582,14 @@ def _recv_native_parts(handle, flags):
                 ctypes.byref(routing_id),
                 ctypes.byref(native_part),
                 ctypes.byref(has_more),
-                int(flags),
+                recv_flags,
             )
             if rc != 0:
                 _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
             native_parts.append(native_part)
             if has_more.value == 0:
                 break
+            recv_flags = 1
     except Exception:
         for native_part in native_parts:
             lib().zlink_msg_close(ctypes.byref(native_part))

@@ -2,8 +2,8 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use zlink::{
-    Context, Message, RecvFlags, RecvResult, SendFlags, SpotDispatchEvent,
-    SpotDispatchSubject, SpotNode,
+    Context, Message, RecvFlags, RecvResult, SendFlags, SpotDispatchEvent, SpotDispatchSubject,
+    SpotNode,
 };
 
 #[path = "sample_support.rs"]
@@ -49,7 +49,10 @@ fn main() {
         .timeout(Duration::from_secs(1))
         .submit(move |result| bind_tx.send(result).unwrap())
         .expect("remote stream actor bind failed");
-    bind_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+    bind_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
     let (join_tx, join_rx) = mpsc::channel();
     gateway_node
         .join_actor(
@@ -81,10 +84,7 @@ fn main() {
         Duration::from_secs(2),
         "remote actor join request",
     );
-    join_rx
-        .recv_timeout(Duration::from_secs(2))
-        .unwrap()
-        .0;
+    join_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
 
     stream
         .send_bound_actor_part(&session, "play-session-actor")

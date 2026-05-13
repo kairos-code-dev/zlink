@@ -109,7 +109,11 @@ fn pub_sub_roundtrip() {
     thread::sleep(Duration::from_millis(100));
 
     let msg = Message::copy_from(b"price=42.5").unwrap();
-    pub_sock.publish("market.price").message(msg).submit().unwrap();
+    pub_sock
+        .publish("market.price")
+        .message(msg)
+        .submit()
+        .unwrap();
 
     let topic_msg = sub_sock.subscribe().unwrap();
     assert_eq!(topic_msg.topic(), "market.price");
@@ -135,7 +139,11 @@ fn try_send_explicit_outcome() {
     // No peer connected, so non-blocking send should fail explicitly.
 
     let msg = Message::copy_from(b"test").unwrap();
-    let _ = sock.send().message(msg).flags(SendFlags::DONT_WAIT).submit();
+    let _ = sock
+        .send()
+        .message(msg)
+        .flags(SendFlags::DONT_WAIT)
+        .submit();
 }
 
 #[test]

@@ -29,8 +29,7 @@ impl XPubSocket {
     }
 
     pub fn publish(&self, topic: &str) -> SendOp<Empty> {
-        let topic = std::ffi::CString::new(topic)
-            .unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
+        let topic = crate::service::fixed_cstring_or_panic(topic, "topic");
         crate::service::socket_publish_op(self.inner.handle, topic)
     }
 

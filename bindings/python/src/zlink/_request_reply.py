@@ -52,7 +52,7 @@ def _timeout_to_ms(timeout):
 
 def _payload_parts(payload):
     if isinstance(payload, (list, tuple)):
-        parts = list(payload)
+        parts = payload
     else:
         parts = [payload]
     if not parts:

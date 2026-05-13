@@ -1133,8 +1133,8 @@ func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error) {
 	var sourceRID *C.zlink_routing_id_t
 	var spotRID *C.zlink_routing_id_t
 	var requestSeq C.uint64_t
-	clonedParts, err := recvMultipart(func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t) error {
-		return recvErrorFromResult(C.zlink_spot_recv_part(s.raw(), &sourceRID, &spotRID, &requestSeq, part, hasMore, C.zlink_recv_flags_t(flags)))
+	clonedParts, err := recvMultipart(flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+		return recvErrorFromResult(C.zlink_spot_recv_part(s.raw(), &sourceRID, &spotRID, &requestSeq, part, hasMore, recvFlags))
 	})
 	if err != nil {
 		return nil, err

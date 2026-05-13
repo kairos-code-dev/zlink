@@ -4,9 +4,7 @@ use std::time::Duration;
 
 use crate::ctx::Context;
 use crate::domain::Received;
-use crate::error::{
-    ConfigError, HandlerError, RecvError, check_config_rc,
-};
+use crate::error::{ConfigError, HandlerError, RecvError, check_config_rc};
 use crate::ffi;
 use crate::flags::RecvFlags;
 use crate::message::RoutingId;
@@ -114,7 +112,6 @@ impl DealerSocket {
             )
         })
     }
-
 }
 
 fn set_dealer_bool_option(

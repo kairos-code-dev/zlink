@@ -4,6 +4,7 @@ package systems.zlink;
 
 import systems.zlink.internal.ActorInterop;
 import systems.zlink.internal.InternalAccess;
+import systems.zlink.internal.MessagePartsBuffer;
 import systems.zlink.internal.Native;
 import systems.zlink.internal.NativeHelpers;
 import systems.zlink.internal.NativeLayouts;
@@ -250,7 +251,7 @@ public final class StreamSocket extends Socket {
 
     private final class RoutedSendBuilder implements SendOp, SendSubmitOp {
         private final RoutingId rid;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
@@ -278,7 +279,7 @@ public final class StreamSocket extends Socket {
             submitted = true;
             if (parts.isEmpty())
                 throw new IllegalArgumentException("at least one message required");
-            return StreamSocket.super.send(rid, parts,
+            return StreamSocket.super.send(rid, parts.asList(),
                 SendFlag.fromValue(flags.value()));
         }
 
@@ -291,7 +292,7 @@ public final class StreamSocket extends Socket {
     private final class BoundActorSendBuilder implements SendOp, SendSubmitOp {
         private final RoutingId sessionRid;
         private final String actorId;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
@@ -318,7 +319,8 @@ public final class StreamSocket extends Socket {
         public boolean submit() {
             ensureNotSubmitted();
             submitted = true;
-            return sendBoundActorParts(sessionRid, actorId, parts, flags);
+            return sendBoundActorParts(sessionRid, actorId, parts.asList(),
+                flags);
         }
 
         private void ensureNotSubmitted() {

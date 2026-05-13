@@ -58,7 +58,11 @@ fn try_send_returns_not_ready_or_backpressured() {
     // No peer connected
 
     let msg = Message::copy_from(b"data").unwrap();
-    let _ = sock.send().message(msg).flags(SendFlags::DONT_WAIT).submit();
+    let _ = sock
+        .send()
+        .message(msg)
+        .flags(SendFlags::DONT_WAIT)
+        .submit();
 }
 
 #[test]
@@ -75,7 +79,12 @@ fn try_send_backpressure() {
     // Fill the HWM
     for _ in 0..100 {
         let msg = Message::copy_from(b"fill-buffer").unwrap();
-        if a.send().message(msg).flags(SendFlags::DONT_WAIT).submit().is_err() {
+        if a.send()
+            .message(msg)
+            .flags(SendFlags::DONT_WAIT)
+            .submit()
+            .is_err()
+        {
             break;
         }
     }
@@ -105,7 +114,11 @@ fn try_send_not_ready() {
     // No peer connected – socket is not ready to send
 
     let msg = Message::copy_from(b"no-peer").unwrap();
-    let _ = sock.send().message(msg).flags(SendFlags::DONT_WAIT).submit();
+    let _ = sock
+        .send()
+        .message(msg)
+        .flags(SendFlags::DONT_WAIT)
+        .submit();
 }
 
 #[test]
@@ -152,7 +165,11 @@ fn try_send_non_eagain_error_not_swallowed() {
     ctx.shutdown().unwrap();
 
     let msg = Message::copy_from(b"after-shutdown").unwrap();
-    let result = sock.send().message(msg).flags(SendFlags::DONT_WAIT).submit();
+    let result = sock
+        .send()
+        .message(msg)
+        .flags(SendFlags::DONT_WAIT)
+        .submit();
     // ETERM is not EAGAIN – must be Err
     assert!(result.is_err(), "non-EAGAIN error must surface as Err");
 }

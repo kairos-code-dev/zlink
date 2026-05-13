@@ -13,6 +13,7 @@ import systems.zlink.SubmitException;
 import systems.zlink.SubmitResult;
 import systems.zlink.internal.ActorInterop;
 import systems.zlink.internal.InternalAccess;
+import systems.zlink.internal.MessagePartsBuffer;
 import systems.zlink.internal.Native;
 import systems.zlink.internal.NativeLayouts;
 import systems.zlink.internal.NativeMsg;
@@ -21,7 +22,6 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -176,7 +176,7 @@ public final class Actor implements AutoCloseable {
     private final class ActorJoinBuilder
       implements ActorJoinOp, ActorJoinSubmitOp {
         private final Spot spot;
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private Duration timeout = Duration.ofMillis(5_000L);
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
@@ -354,7 +354,7 @@ public final class Actor implements AutoCloseable {
 
     private final class SendBoundSessionBuilder
       implements SendOp, SendSubmitOp {
-        private final ArrayList<Message> parts = new ArrayList<>();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
@@ -380,7 +380,8 @@ public final class Actor implements AutoCloseable {
             submitted = true;
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment refSegment = ActorInterop.actorRefToNative(arena, ref);
-                for (Message part : parts) {
+                for (int i = 0; i < parts.size(); i++) {
+                    Message part = parts.get(i);
                     MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
                     InternalAccess.messageCopyTo(part, nativeMsg);
                     int rc = Native.spotNodeActorSendBoundSessionMsg(nodeHandle(),

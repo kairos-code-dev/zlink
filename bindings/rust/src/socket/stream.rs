@@ -10,9 +10,7 @@ use crate::ffi;
 use crate::flags::RecvFlags;
 use crate::message::{Message, RoutingId};
 use crate::options::{CommonSocketOptions, StreamSocketOptions};
-use crate::service::{
-    ActorBindOp, ActorRef, ActorUnbindOp, Empty, SendOp,
-};
+use crate::service::{ActorBindOp, ActorRef, ActorUnbindOp, Empty, SendOp};
 
 use super::{
     SendHandle, SocketInner, impl_base_socket, impl_recv_options, impl_routing_id_options,
@@ -92,11 +90,7 @@ impl StreamSocket {
     }
 
     /// Async Actor bind (operation builder).
-    pub fn bind_actor(
-        &self,
-        session_rid: &RoutingId,
-        actor: &ActorRef,
-    ) -> ActorBindOp<Empty> {
+    pub fn bind_actor(&self, session_rid: &RoutingId, actor: &ActorRef) -> ActorBindOp<Empty> {
         let raw_actor = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
             node_rid: ffi::zlink_routing_id_t {
                 size: 0,
@@ -105,36 +99,18 @@ impl StreamSocket {
             actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
             generation: 0,
         });
-        crate::service::actor_bind_op_new(
-            self.inner.handle,
-            session_rid.clone(),
-            raw_actor,
-        )
+        crate::service::actor_bind_op_new(self.inner.handle, session_rid.clone(), raw_actor)
     }
 
     /// Async Actor unbind (operation builder).
-    pub fn unbind_actor(
-        &self,
-        session_rid: &RoutingId,
-        actor_id: &str,
-    ) -> ActorUnbindOp<Empty> {
-        let c_actor_id =
-            std::ffi::CString::new(actor_id).unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
-        crate::service::actor_unbind_op_new(
-            self.inner.handle,
-            session_rid.clone(),
-            c_actor_id,
-        )
+    pub fn unbind_actor(&self, session_rid: &RoutingId, actor_id: &str) -> ActorUnbindOp<Empty> {
+        let c_actor_id = crate::service::fixed_cstring_or_panic(actor_id, "actor_id");
+        crate::service::actor_unbind_op_new(self.inner.handle, session_rid.clone(), c_actor_id)
     }
 
     /// Session-bound relay send (operation builder).
-    pub fn send_bound_actor_part(
-        &self,
-        session_rid: &RoutingId,
-        actor_id: &str,
-    ) -> SendOp<Empty> {
-        let c_actor_id =
-            std::ffi::CString::new(actor_id).unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
+    pub fn send_bound_actor_part(&self, session_rid: &RoutingId, actor_id: &str) -> SendOp<Empty> {
+        let c_actor_id = crate::service::fixed_cstring_or_panic(actor_id, "actor_id");
         crate::service::stream_bound_actor_send_op(
             self.inner.handle,
             session_rid.clone(),
@@ -142,10 +118,7 @@ impl StreamSocket {
         )
     }
 
-    pub fn bound_actors(
-        &self,
-        session_rid: &RoutingId,
-    ) -> Result<Vec<ActorRef>, ConfigError> {
+    pub fn bound_actors(&self, session_rid: &RoutingId) -> Result<Vec<ActorRef>, ConfigError> {
         let mut count: usize = 0;
         check_config_rc(unsafe {
             ffi::zlink_stream_bound_actors(

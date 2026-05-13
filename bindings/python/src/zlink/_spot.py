@@ -1774,6 +1774,7 @@ class RequestOp:
         """Calling flags() transitions to a RequestCallbackOp."""
         if self._submitted:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._submitted = True
         return RequestCallbackOp(self._spot, self._op_cb_fn, self._parts, self._timeout, int(flags))
 
     def submit_async(self):
@@ -1802,7 +1803,7 @@ class RequestCallbackOp:
     def __init__(self, spot, op_cb_fn, parts, timeout, flags):
         self._spot = spot
         self._op_cb_fn = op_cb_fn
-        self._parts = list(parts)
+        self._parts = parts
         self._timeout = timeout
         self._flags = flags
         self._submitted = False
@@ -1936,7 +1937,7 @@ class ActorJoinOp:
         if not self._parts:
             raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
         self._submitted = True
-        parts = list(self._parts)
+        parts = self._parts
         timeout = self._timeout
 
         async def _run():
@@ -1987,7 +1988,7 @@ class ActorJoinCallbackOp:
         self._actor_ref = actor_ref
         self._dest_node_rid = dest_node_rid
         self._dest_spot_rid = dest_spot_rid
-        self._parts = list(parts)
+        self._parts = parts
         self._timeout = timeout
         self._flags = int(flags)
         self._submitted = False

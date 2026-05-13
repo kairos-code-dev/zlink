@@ -57,8 +57,8 @@ pub use poller::{
 };
 pub use runtime::{multipart_close, proxy, proxy_steerable, sleep};
 pub use service::{
-    Actor, ActorJoinInfo, ActorJoinRequest, ActorRecvInfo, ActorRef, ActorRoute, AutoConnectType, CallbackReady,
-    Discovery, Empty, MemberPeerEntry, Ready, Registry, RegistryQueryClient,
+    Actor, ActorJoinInfo, ActorJoinRequest, ActorRecvInfo, ActorRef, ActorRoute, AutoConnectType,
+    CallbackReady, Discovery, Empty, MemberPeerEntry, Ready, Registry, RegistryQueryClient,
     RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState, RegistryStatus,
     RegistryTopologyEntry, RegistryTopologyFilter, ReplyOp, RequestOp, SendOp, ServiceKind,
     ServiceRole, SocketType, Spot, SpotDispatchEvent, SpotDispatchInfo, SpotDispatchSubject,

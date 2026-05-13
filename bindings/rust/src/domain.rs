@@ -337,20 +337,14 @@ impl Received {
                 handle,
                 node_rid,
                 spot_rid,
-            } => crate::service::router_send_to_spot_op(
-                *handle,
-                node_rid.clone(),
-                spot_rid.clone(),
-            ),
+            } => {
+                crate::service::router_send_to_spot_op(*handle, node_rid.clone(), spot_rid.clone())
+            }
             SendContext::Spot {
                 handle,
                 node_rid,
                 spot_rid,
-            } => crate::service::spot_send_to_spot_op(
-                *handle,
-                node_rid.clone(),
-                spot_rid.clone(),
-            ),
+            } => crate::service::spot_send_to_spot_op(*handle, node_rid.clone(), spot_rid.clone()),
         }
     }
 

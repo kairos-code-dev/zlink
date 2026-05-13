@@ -12,7 +12,6 @@ import "C"
 import (
 	"bytes"
 	"encoding/hex"
-	"hash/fnv"
 	"strings"
 	"unsafe"
 )
@@ -68,9 +67,16 @@ func (r RoutingID) Size() int {
 }
 
 func (r RoutingID) Hash() uint64 {
-	hasher := fnv.New64a()
-	_, _ = hasher.Write(r.data)
-	return hasher.Sum64()
+	const (
+		offset64 = 14695981039346656037
+		prime64  = 1099511628211
+	)
+	hash := uint64(offset64)
+	for _, b := range r.data {
+		hash ^= uint64(b)
+		hash *= prime64
+	}
+	return hash
 }
 
 func (r RoutingID) String() string {

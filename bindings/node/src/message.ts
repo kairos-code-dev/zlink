@@ -62,12 +62,12 @@ interface ReceivedReplySubmitOp {
 }
 
 class ReceivedOpPayload {
-  private readonly _parts: Array<Message | BufferLike> = [];
+  private readonly _parts: Message[] = [];
   private _submitted = false;
 
   append(message: Message | BufferLike): void {
     this.ensureOpen();
-    this._parts.push(message);
+    this._parts.push(asMessage(message));
   }
 
   ensureOpen(): void {
@@ -76,7 +76,7 @@ class ReceivedOpPayload {
     }
   }
 
-  consume(): readonly (Message | BufferLike)[] {
+  consume(): readonly Message[] {
     this.ensureOpen();
     if (this._parts.length === 0) {
       throw new TypeError('operation requires at least one message');
@@ -111,8 +111,7 @@ class ReceivedSendOperation implements ReceivedSendOp, ReceivedSendSubmitOp {
   }
 
   submit(): boolean {
-    const parts = this._payload.consume().map(asMessage);
-    return this._invoke(parts, this._flags);
+    return this._invoke(this._payload.consume(), this._flags);
   }
 }
 
@@ -137,8 +136,7 @@ class ReceivedReplyOperation implements ReceivedReplyOp, ReceivedReplySubmitOp {
   }
 
   submit(): void {
-    const parts = this._payload.consume().map(asMessage);
-    this._invoke(parts, this._flags);
+    this._invoke(this._payload.consume(), this._flags);
   }
 }
 

@@ -46,7 +46,10 @@ fn main() {
         .timeout(Duration::from_secs(1))
         .submit(move |result| bind_tx.send(result).unwrap())
         .expect("stream actor bind failed");
-    bind_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+    bind_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
 
     let (tx, rx) = mpsc::channel();
     actor
@@ -54,11 +57,9 @@ fn main() {
         .message(Message::copy_from(b"enter-room").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .timeout(Duration::from_secs(1))
-        .submit(
-            move |result, parts| {
-                tx.send((result, parts)).unwrap();
-            },
-        )
+        .submit(move |result, parts| {
+            tx.send((result, parts)).unwrap();
+        })
         .expect("actor join submit failed");
     accept_next_join(&spot);
     let join_result = rx.recv_timeout(Duration::from_secs(2)).unwrap();
@@ -102,7 +103,10 @@ fn main() {
         .timeout(Duration::from_secs(1))
         .submit(move |result| leave_tx.send(result).unwrap())
         .unwrap();
-    leave_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+    leave_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
     actor.close().unwrap();
     drop(stream);
 }

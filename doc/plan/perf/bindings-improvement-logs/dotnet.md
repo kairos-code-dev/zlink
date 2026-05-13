@@ -721,3 +721,50 @@
     internal 경로로 소폭 개선됐다.
   - 남은 차이는 여전히 `Recv(Received)` 결과 생성, `Message` native handle
     lifecycle, P/Invoke send/recv 왕복 비용 쪽이 더 크다.
+
+### 2026-05-13 .NET round 19 — echo client borrowed send 재확인
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/baseline/perf_c_multi_linux_20260513_101034.txt`
+- 기준 대상 언어 결과:
+  - `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260513_200427_dotnet_echo_current_20260513.txt`
+- 실험 결과:
+  - `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260513_200706_dotnet_echo_wrapbytes_20260513.txt`
+  - `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260513_200850_dotnet_echo_borrowed_direct_20260513.txt`
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiDealerRouterClient.cs`
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiRouterRouterClient.cs`
+    - echo client send hot path가 public send builder 대신 perf assembly에 허용된
+      internal borrowed single-part nowait 경로를 직접 사용한다.
+- 함께 정리한 계약 파일:
+  - `bindings/dotnet/tests/Zlink.Tests/test_socket_surface.cs`
+  - `doc/spec/bindings/dotnet/README.md`
+    - `SpotDispatchInfo.DrainChannelReply()`는 channel reply readable 이벤트를
+      public API로 drain하기 위한 메서드로 명시했다. native subject 포인터는
+      여전히 공개하지 않는다.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release --nologo`
+  - `dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --filter 'FullyQualifiedName~test_socket_surface|FullyQualifiedName~test_validation_contract' --nologo`
+  - perf 실행 전 프로세스 확인:
+    `ps -eo pid,ppid,stat,comm,args | rg 'ctest|dotnet test|gradlew|cmake --build|run_benchmarks|run_comparison|Zlink.BindingBench|cpp_comp_src|java .*perf' || true`
+  - `bindings/dotnet/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag dotnet_echo_current_20260513`
+  - `bindings/dotnet/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag dotnet_echo_wrapbytes_20260513`
+  - `bindings/dotnet/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag dotnet_echo_borrowed_direct_20260513`
+- 결과:
+  - build 통과.
+  - surface/validation filtered test 24개가 모두 passed다.
+  - current median RR 64/256/1024B: `213.901/204.455/205.198` Kops/s.
+  - current median DR 64/256/1024B: `268.780/241.897/235.208` Kops/s.
+  - borrowed-send median RR 64/256/1024B: `222.616/223.848/219.419` Kops/s.
+  - borrowed-send median DR 64/256/1024B: `267.769/268.982/263.773` Kops/s.
+  - `Message.WrapBytes` public 경로는 결과가 섞였다. DR 256/1024B 일부는
+    개선됐지만 RR 64/1024B가 흔들려 최종 경로로 쓰지 않았다.
+- C 기준 대비:
+  - borrowed-send RR 64/256/1024B ratio는 약 `0.51/0.51/0.49`다.
+  - borrowed-send DR 64/256/1024B ratio는 약 `0.57/0.58/0.58`다.
+- 판단:
+  - client payload send에서 public builder와 message wrapper 수명 비용은 실제
+    병목이다. borrowed-send는 특히 256B 이상 DR에서 큰 폭으로 개선됐다.
+  - 64B DR은 거의 유지 수준이고, 일부 run에서 outlier가 있었다. 목표에는 여전히
+    크게 못 미친다.
+  - 다음 후보는 `Recv(Received)`의 native handle 수명과 P/Invoke recv/send 왕복 비용이다.

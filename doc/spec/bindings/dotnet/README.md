@@ -1371,14 +1371,15 @@ public sealed class SpotDispatchInfo
     Timer? Timer { get; }
     IReadOnlyList<ActorPart> ActorParts { get; }
     ActorPart? RecvActorPart();
+    void DrainChannelReply();
 }
 ```
 
 The native dispatch subject is callback-lifetime state owned by the binding
 and is not exposed as a raw pointer. For `TimerReadable`, `Timer` is the timer
-to drain. For `ChannelReplyReadable`, request futures and callbacks progress
-their replies inside the binding; the public API does not expose the native
-channel dealer subject.
+to drain. For `ChannelReplyReadable`, call `DrainChannelReply()` to let request
+futures and callbacks progress their replies. The public API does not expose the
+native channel dealer subject.
 
 `SubscribeReadable` and `RoutedReadable` are readiness events. Callers must
 drain `Spot.Subscribe(...)` or `Spot.RecvRouted(...)` until the binding

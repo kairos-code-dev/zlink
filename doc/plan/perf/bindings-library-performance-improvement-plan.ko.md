@@ -30,6 +30,10 @@
 - C++ 최신 비교 결과:
   - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260513_174642_cpp_dr_rr_after_singlepart_send_20260513.txt`
   - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260513_172245_cpp_dr_rr_64k_singlepart_send_fastpath_20260513.txt`
+- .NET 최신 비교 결과:
+  - `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260513_200850_dotnet_echo_borrowed_direct_20260513.txt`
+- Java 최신 비교 결과:
+  - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260513_201032_java_echo_current_20260513.txt`
 
 C++은 raw socket send builder의 단일 part submit에서 vector 조립을 건너뛰는 내부
 fast path를 추가했다. `MULTI_DEALER_ROUTER,tcp,65536`은 이전 `135.802 Kops/s`에서
@@ -40,6 +44,16 @@ fast path를 추가했다. `MULTI_DEALER_ROUTER,tcp,65536`은 이전 `135.802 Ko
 이번 라운드에서 `zlink_msg_copy`의 의미도 바로잡았다. 이 함수는 payload를 깊게
 복사하지 않고 refcount를 올려 같은 native message storage를 공유한다. C++ 문서성
 주석과 계약 테스트는 이 의미에 맞게 갱신했다.
+
+.NET은 echo client send hot path에서 public send builder와 `Message` wrapper
+수명 비용을 줄이기 위해 internal borrowed single-part nowait 경로를 적용했다.
+2026-05-13 C 기준 대비 RR 64/256/1024B ratio는 약 `0.51/0.51/0.49`,
+DR 64/256/1024B ratio는 약 `0.57/0.58/0.58`이다. 목표에는 아직 미달이지만
+DR 256/1024B와 RR 256B는 이전 current 측정보다 개선됐다.
+
+Java는 같은 조건에서 direct `ByteBuffer` borrow와 builder 우회 helper를 각각
+측정했지만 유지할 만큼의 개선이 없었다. 두 실험 변경은 되돌렸고, Java 최신 기준은
+`RR 246.074/245.399/239.309 Kops/s`, `DR 325.441/321.920/316.214 Kops/s`다.
 
 perf와 테스트는 동시에 실행하지 않는다. 테스트나 빌드가 끝난 뒤 perf 실행 전에
 관련 프로세스가 없는지 확인하고, perf가 끝난 뒤 다음 테스트를 실행한다. 동시 실행은

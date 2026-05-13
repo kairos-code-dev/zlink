@@ -600,7 +600,7 @@ public sealed class test_socket_surface
         Assert.Equal(typeof(Timer),
             typeof(SpotDispatchInfo).GetProperty(nameof(SpotDispatchInfo.Timer))!
                 .PropertyType);
-        Assert.False(HasPublicInstanceMethod(typeof(SpotDispatchInfo),
+        Assert.True(HasPublicInstanceMethod(typeof(SpotDispatchInfo),
             nameof(SpotDispatchInfo.DrainChannelReply)));
         Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
             "SetChannelName", typeof(string)));

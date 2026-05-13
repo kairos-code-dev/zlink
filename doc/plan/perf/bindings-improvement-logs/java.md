@@ -779,3 +779,43 @@
   - 이 실험 변경은 되돌렸다. Java poller ready cache 조회보다 `pollCount` 내부의
     FFM downcall, native event decode, recv/send message lifecycle 쪽이 더 큰
     후보로 남는다.
+
+### 2026-05-13 Java round 23 — client send 후보 재측정, 적용 보류
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/baseline/perf_c_multi_linux_20260513_101034.txt`
+- 기준 대상 언어 결과:
+  - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260513_201032_java_echo_current_20260513.txt`
+- 실험 결과:
+  - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260513_201556_java_echo_direct_buffer_20260513.txt`
+  - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260513_201955_java_echo_send_helper_20260513.txt`
+- 선택한 병목 가설:
+  - echo client send hot path가 매번 `Message.copyOf(byte[])`와 public send builder를
+    통과한다.
+  - heap `byte[]`는 GC 이동 가능성 때문에 native `zlink_msg_init_data`에 안전하게
+    빌려 줄 수 없다. 따라서 direct `ByteBuffer` borrow와 builder 우회 helper를
+    각각 분리해 확인했다.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :compileJava :perf-multi:compileJava`
+  - `cd bindings/java && ./gradlew --quiet :test --tests systems.zlink.contract.SocketContractTest --tests systems.zlink.contract.CallbackSendContractTest --tests systems.zlink.ReceivedContractTest --tests systems.zlink.contract.ReceivedContractTest`
+  - perf 실행 전 프로세스 확인:
+    `ps -eo pid,ppid,stat,comm,args | rg 'ctest|dotnet test|gradlew|cmake --build|run_benchmarks|run_comparison|Zlink.BindingBench|cpp_comp_src|java .*perf' || true`
+  - `bindings/java/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag java_echo_current_20260513`
+  - `bindings/java/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag java_echo_direct_buffer_20260513`
+  - `bindings/java/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag java_echo_send_helper_20260513`
+- 결과:
+  - compile 및 관련 contract subset 통과.
+  - current RR 64/256/1024B: `246.074/245.399/239.309` Kops/s.
+  - current DR 64/256/1024B: `325.441/321.920/316.214` Kops/s.
+  - direct buffer RR 64/256/1024B: `245.269/226.037/238.189` Kops/s.
+  - direct buffer DR 64/256/1024B: `324.019/318.162/313.267` Kops/s.
+  - builder 우회 helper RR 64/256/1024B: `243.713/244.646/240.428` Kops/s.
+  - builder 우회 helper DR 64/256/1024B: `329.134/316.039/312.253` Kops/s.
+- 판단:
+  - direct `ByteBuffer` borrow는 payload 복사를 줄였지만 `ByteBuffer` 접근과
+    wrap message 수명 비용 때문에 전체적으로 이득이 없었다.
+  - builder 우회 helper는 DR 64B와 RR 1024B만 소폭 좋아졌고, DR 256/1024B는
+    하락했다.
+  - 두 실험 변경은 모두 되돌렸다. Java 작업 트리에는 최종 코드 변경을 남기지 않았다.
+  - 다음 후보는 client send보다 receive/send native boundary와 per-recv `Message`
+    lifecycle 쪽이다.

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Systems.Zlink;
+using Systems.Zlink.Sockets.Internal;
 using static PerfRunner;
 
 internal static class PerfMultiRouterRouterClient
@@ -289,20 +290,10 @@ internal static class PerfMultiRouterRouterClient
 
     private static bool TrySend(RouterRouterClientSlot slot)
     {
-        Message message = Message.FromBytes(slot.Payload);
-        try
-        {
-            bool sent = ((RouterSocket)slot.Socket).Send(slot.ServerRoutingId)
-                .Message(message).Flags(SendFlags.DontWait).Submit();
-            if (!sent)
-                message.Dispose();
-            return sent;
-        }
-        catch
-        {
-            message.Dispose();
-            throw;
-        }
+        return SocketKernel.TrySendOrThrow(
+            ((RouterSocket)slot.Socket).Kernel
+            .SendBorrowedSingleNoWaitResult(slot.ServerRoutingId,
+                slot.Payload));
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)

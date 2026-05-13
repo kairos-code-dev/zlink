@@ -144,6 +144,10 @@ function freezeMessageParts(parts: readonly Message[]): Message[] {
   return Object.freeze(parts.slice()) as Message[];
 }
 
+function freezeOwnedMessageParts(parts: Message[]): Message[] {
+  return Object.freeze(parts) as Message[];
+}
+
 function invalidMultipartError(partsLength: number): RecvError {
   return new RecvError(
     RecvResult.NotSupported,
@@ -245,7 +249,6 @@ export class Message {
       snapshot.properties,
       snapshot.metadata
     );
-    Object.freeze(message);
     return message;
   }
 
@@ -439,6 +442,26 @@ export class Received {
     source.requestSeq = null;
     source._replyContext = null;
     source._sendContext = null;
+  }
+
+  /** @internal */
+  _replace(
+    parts: Message[],
+    routingId: RoutingId | null = null,
+    requestSeq: bigint | null = null,
+    spotRid: RoutingId | null = null,
+    replyContext: ReplyContext | null = null,
+    sendContext: SendContext | null = null
+  ): void {
+    for (const p of this.parts) {
+      try { p.close(); } catch { /* swallow */ }
+    }
+    this.parts = freezeOwnedMessageParts(parts);
+    this.routingId = routingId;
+    this.spotRid = spotRid;
+    this.requestSeq = requestSeq;
+    this._replyContext = replyContext;
+    this._sendContext = sendContext;
   }
 
   /** @internal */

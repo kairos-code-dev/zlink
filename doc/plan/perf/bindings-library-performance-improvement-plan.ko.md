@@ -34,6 +34,8 @@
   - `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260513_200850_dotnet_echo_borrowed_direct_20260513.txt`
 - Java 최신 비교 결과:
   - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260513_201032_java_echo_current_20260513.txt`
+- Node 최신 비교 결과:
+  - `bindings/node/perf/results/multi/report/perf_node_multi_linux_20260513_215117_node_echo_contract_safe_20260513.txt`
 
 C++은 raw socket send builder의 단일 part submit에서 vector 조립을 건너뛰는 내부
 fast path를 추가했다. `MULTI_DEALER_ROUTER,tcp,65536`은 이전 `135.802 Kops/s`에서
@@ -54,6 +56,15 @@ DR 256/1024B와 RR 256B는 이전 current 측정보다 개선됐다.
 Java는 같은 조건에서 direct `ByteBuffer` borrow와 builder 우회 helper를 각각
 측정했지만 유지할 만큼의 개선이 없었다. 두 실험 변경은 되돌렸고, Java 최신 기준은
 `RR 246.074/245.399/239.309 Kops/s`, `DR 325.441/321.920/316.214 Kops/s`다.
+
+Node는 multi echo 기본 I/O thread를 `4`로 맞추고, caller-provided `Received`를
+직접 채우는 recv materialization을 추가했다. perf loop는 socket별 `Received`
+buffer를 재사용하고, ROUTER received-send 일반 경로는 raw routing id buffer를
+재사용한다. 최신 기준은 `RR 160.10/148.44/135.40 Kops/s`,
+`DR 214.68/190.86/167.86 Kops/s`다. C 기준 대비 DR 64B는 목표를 넘었지만,
+RR 전 구간과 DR 256/1024B는 아직 미달이다. scalar payload builder 실험과 native
+message snapshot 단축 실험은 각각 성능 이득 부족과 공개 `Message` 의미 약화 때문에
+유지하지 않았다.
 
 perf와 테스트는 동시에 실행하지 않는다. 테스트나 빌드가 끝난 뒤 perf 실행 전에
 관련 프로세스가 없는지 확인하고, perf가 끝난 뒤 다음 테스트를 실행한다. 동시 실행은

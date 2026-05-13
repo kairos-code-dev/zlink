@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWait, resolveMultiLatencySampleCap, sendStopTokenWithRetry, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWaitInto, resolveMultiLatencySampleCap, sendStopTokenWithRetry, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
 const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
 async function main() {
@@ -13,6 +13,7 @@ async function main() {
     applyContextPolicy(ctx, 'client', 'MULTI_ROUTER_ROUTER');
     const routers = [];
     const payloads = [];
+    const replyBuffers = [];
     const waiting = [];
     const sendPending = [];
     const poller = new zlink.Poller();
@@ -23,6 +24,7 @@ async function main() {
             router.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`multi-router-client-${i}`, 'ascii')));
             routers.push(router);
             payloads.push(createPayload(options.msgSize));
+            replyBuffers.push(new zlink.Received());
             waiting.push(false);
             sendPending.push(false);
         }
@@ -47,8 +49,8 @@ async function main() {
         const drainReply = (index) => {
             let progressed = false;
             while (true) {
-                const echoed = recvNoWait(routers[index]);
-                if (!echoed) {
+                const echoed = replyBuffers[index];
+                if (!recvNoWaitInto(routers[index], echoed)) {
                     break;
                 }
                 waiting[index] = false;
@@ -84,7 +86,7 @@ async function main() {
                 continue;
             }
             for (const event of ready) {
-                const index = event.userData;
+                const index = event.tag ?? event.userData;
                 if (!Number.isInteger(index)) {
                     continue;
                 }
@@ -105,6 +107,9 @@ async function main() {
     }
     finally {
         poller.close();
+        for (const reply of replyBuffers) {
+            reply.close();
+        }
         for (const router of routers) {
             router.close();
         }

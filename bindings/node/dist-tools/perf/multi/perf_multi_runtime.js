@@ -113,7 +113,7 @@ function resolveMultiIoThreads(role, pattern) {
     if (Number.isFinite(fallback) && fallback >= 0) {
         return fallback;
     }
-    return isStream ? 4 : 2;
+    return 4;
 }
 function resolveAutoHwmProfile() {
     const env = process.env.PERF_CTX_AUTO_HWM_PROFILE || process.env.PERF_AUTO_HWM_PROFILE || '';
@@ -144,12 +144,15 @@ function resolveMultiLatencySampleCap() {
 }
 function recvNoWait(socket) {
     const received = new zlink.Received();
+    return recvNoWaitInto(socket, received) ? received : null;
+}
+function recvNoWaitInto(socket, received) {
     try {
-        return socket.recv(received, RecvFlags.DontWait) ? received : null;
+        return socket.recv(received, RecvFlags.DontWait);
     }
     catch (error) {
         if (error instanceof zlink.RecvError && error.result === RecvResult.NoData) {
-            return null;
+            return false;
         }
         throw error;
     }
@@ -362,6 +365,7 @@ module.exports = {
     pollEvents,
     pollEventHas,
     recvNoWait,
+    recvNoWaitInto,
     resolveClientPollTimeoutMs,
     resolveMultiLatencySampleCap,
     sendStopTokenWithRetry,

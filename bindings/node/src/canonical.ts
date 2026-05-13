@@ -388,6 +388,9 @@ function toMessageParts(parts: readonly MessageLike[]): Array<Buffer | MessageSn
 
 function normalizeMessageLikePayload(message: MessageLike | readonly MessageLike[]): Buffer | MessageSnapshot | Array<Buffer | MessageSnapshot> {
   if (Array.isArray(message)) {
+    if (message.length === 1) {
+      return normalizeMessageLikePayload(message[0]);
+    }
     return toMessageParts(message);
   }
   const scalar = message as MessageLike;
@@ -1127,6 +1130,49 @@ function materializeReceived(
   );
 }
 
+function materializeReceivedInto(
+  target: Received,
+  raw: {
+    parts: MessageSnapshot[];
+    routingId?: Buffer | null;
+    requestSeq?: bigint | null;
+    spotRid?: Buffer | null;
+  },
+  reply?: (requestSeq: bigint, parts: readonly Message[], flags: SendFlags) => void,
+  send?: (parts: readonly Message[], flags: SendFlags) => boolean
+): void {
+  const requestSeq = raw.requestSeq ?? null;
+  (target as Received & {
+    _replace: (
+      parts: Message[],
+      routingId: RoutingId | null,
+      requestSeq: bigint | null,
+      spotRid: RoutingId | null,
+      replyContext: unknown,
+      sendContext: unknown
+    ) => void;
+  })._replace(
+    raw.parts.map((part) => Message.fromSnapshot(part)),
+    wrapRoutingId(raw.routingId ?? null),
+    requestSeq,
+    wrapRoutingId(raw.spotRid ?? null),
+    requestSeq !== null && reply
+      ? {
+          reply(parts: readonly Message[], flags: SendFlags): void {
+            reply(requestSeq, parts, flags);
+          }
+        }
+      : null,
+    send
+      ? {
+          send(parts: readonly Message[], flags: SendFlags): boolean {
+            return send(parts, flags);
+          }
+        }
+      : null
+  );
+}
+
 function materializeTopicMessage(raw: {
   topic: string;
   parts: MessageSnapshot[];
@@ -1727,9 +1773,8 @@ class MessageSocket extends SendSocket {
       throw recvNativeError(error, recvFlags, 'recv failed');
     }
     if (raw == null) return result ? false : null;
-    const received = materializeReceived(raw);
-    if (!result) return received;
-    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(received);
+    if (!result) return materializeReceived(raw);
+    materializeReceivedInto(result, raw);
     return true;
   }
   onSendReady(handler: SocketSendReadyHandler): void {
@@ -1783,14 +1828,17 @@ class RoutedMessageSocket extends ConnectableSocket {
     return new SendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
   }
   protected sendDirect(routingId: RoutingId, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
-    const normalized = normalizeMessageLikePayload(payload);
     const normalizedRoutingId = normalizeRoutingId(routingId);
+    return this.sendDirectRaw(normalizedRoutingId, payload, flags);
+  }
+  protected sendDirectRaw(routingId: Buffer, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
+    const normalized = normalizeMessageLikePayload(payload);
     if ((flags | 0) & (SendFlags.DontWait | 0)) {
       let result;
       try {
         result = Array.isArray(normalized)
-          ? requireNative().socketSendRoutingNoWaitResultParts(this.nativeHandle(), normalizedRoutingId, normalized) as number
-          : requireNative().socketSendRoutingNoWaitResult(this.nativeHandle(), normalizedRoutingId, normalized) as number;
+          ? requireNative().socketSendRoutingNoWaitResultParts(this.nativeHandle(), routingId, normalized) as number
+          : requireNative().socketSendRoutingNoWaitResult(this.nativeHandle(), routingId, normalized) as number;
       } catch (error) {
         throw submitNativeError(error, flags, 'send failed');
       }
@@ -1799,8 +1847,8 @@ class RoutedMessageSocket extends ConnectableSocket {
       throw submitErrorFromResult(result as SubmitResult, 'send failed');
     }
     const parts = Array.isArray(normalized)
-      ? [normalizedRoutingId, ...normalized]
-      : [normalizedRoutingId, normalized];
+      ? [routingId, ...normalized]
+      : [routingId, normalized];
     try {
       requireNative().socketSendParts(this.nativeHandle(), parts, flags | 0);
     } catch (error) {
@@ -1826,23 +1874,22 @@ class RoutedMessageSocket extends ConnectableSocket {
       throw recvNativeError(error, recvFlags, 'recv failed');
     }
     if (raw == null) return result ? false : null;
-    const received = materializeReceived(raw, undefined, (parts, sendFlags) => {
+    const send = (parts: readonly Message[], sendFlags: SendFlags) => {
         if (!raw.routingId) {
           throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
         }
-        const source = RoutingId.fromBytes(raw.routingId);
         if (raw.spotRid) {
           return (this as unknown as RouterSocket).sendToSpotDirect(
-            source,
+            RoutingId.fromBytes(raw.routingId),
             RoutingId.fromBytes(raw.spotRid),
             parts,
             sendFlags
           );
         }
-        return this.sendDirect(source, parts, sendFlags);
-      });
-    if (!result) return received;
-    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(received);
+        return this.sendDirectRaw(raw.routingId, parts, sendFlags);
+      };
+    if (!result) return materializeReceived(raw, undefined, send);
+    materializeReceivedInto(result, raw, undefined, send);
     return true;
   }
   onSendReady(handler: SocketSendReadyHandler): void {

@@ -14,7 +14,7 @@ const {
   applySocketPolicy,
   pollEvents,
   pollEventHas,
-  recvNoWait,
+  recvNoWaitInto,
   trySocketSend,
   waitForConnectionReadyCount
 } = require('./perf_multi_runtime');
@@ -26,6 +26,7 @@ async function main() {
   const router = new zlink.RouterSocket(ctx);
   const poller = new zlink.Poller();
   const pending = [];
+  let receivedBuffer = new zlink.Received();
   let rl = null;
   let stop = false;
 
@@ -64,10 +65,10 @@ async function main() {
 
       if (pollEventHas(ready, POLLIN)) {
         while (true) {
-          const received = recvNoWait(router);
-          if (!received) {
+          if (!recvNoWaitInto(router, receivedBuffer)) {
             break;
           }
+          const received = receivedBuffer;
           try {
             if (isStopTokenParts(received.parts)) {
               received.close();
@@ -85,6 +86,7 @@ async function main() {
               continue;
             }
             pending.push(received);
+            receivedBuffer = new zlink.Received();
           } catch (error) {
             received.close();
             throw error;
@@ -111,6 +113,7 @@ async function main() {
     while (pending.length > 0) {
       pending.shift().close();
     }
+    receivedBuffer.close();
     poller.close();
     router.close();
     ctx.close();

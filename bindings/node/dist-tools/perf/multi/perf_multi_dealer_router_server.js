@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { isStopTokenParts } = require('../perf_stop_token');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWait, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWaitInto, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -13,6 +13,7 @@ async function main() {
     const router = new zlink.RouterSocket(ctx);
     const poller = new zlink.Poller();
     const pending = [];
+    let receivedBuffer = new zlink.Received();
     let rl = null;
     let stop = false;
     try {
@@ -45,10 +46,10 @@ async function main() {
             }
             if (pollEventHas(ready, POLLIN)) {
                 while (true) {
-                    const received = recvNoWait(router);
-                    if (!received) {
+                    if (!recvNoWaitInto(router, receivedBuffer)) {
                         break;
                     }
+                    const received = receivedBuffer;
                     try {
                         if (isStopTokenParts(received.parts)) {
                             received.close();
@@ -67,6 +68,7 @@ async function main() {
                             continue;
                         }
                         pending.push(received);
+                        receivedBuffer = new zlink.Received();
                     }
                     catch (error) {
                         received.close();
@@ -94,6 +96,7 @@ async function main() {
         while (pending.length > 0) {
             pending.shift().close();
         }
+        receivedBuffer.close();
         poller.close();
         router.close();
         ctx.close();

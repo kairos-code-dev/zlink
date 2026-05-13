@@ -21,7 +21,7 @@ const {
   applySocketPolicy,
   pollEvents,
   pollEventHas,
-  recvNoWait,
+  recvNoWaitInto,
   resolveMultiLatencySampleCap,
   sendStopTokenWithRetry,
   trySocketSend,
@@ -34,6 +34,7 @@ async function main() {
   applyContextPolicy(ctx, 'client', 'MULTI_DEALER_ROUTER');
   const dealers = [];
   const payloads = [];
+  const replyBuffers = [];
   const waiting = [];
   const sendPending = [];
   const poller = new zlink.Poller();
@@ -45,6 +46,7 @@ async function main() {
       dealer.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`CLIENT-${i}`, 'ascii')));
       dealers.push(dealer);
       payloads.push(createPayload(options.msgSize));
+      replyBuffers.push(new zlink.Received());
       waiting.push(false);
       sendPending.push(false);
     }
@@ -70,8 +72,8 @@ async function main() {
     const drainReply = (index) => {
       let progressed = false;
       while (true) {
-        const echoed = recvNoWait(dealers[index]);
-        if (!echoed) {
+        const echoed = replyBuffers[index];
+        if (!recvNoWaitInto(dealers[index], echoed)) {
           break;
         }
         waiting[index] = false;
@@ -83,7 +85,6 @@ async function main() {
       }
       return progressed;
     };
-
     while (currentEpochNs() < activeStopNs) {
       let progressed = false;
       for (let i = 0; i < dealers.length; i += 1) {
@@ -114,7 +115,7 @@ async function main() {
         continue;
       }
       for (const event of ready) {
-        const index = event.userData;
+        const index = event.tag ?? event.userData;
         if (!Number.isInteger(index)) {
           continue;
         }
@@ -146,6 +147,9 @@ async function main() {
     }
   } finally {
     poller.close();
+    for (const reply of replyBuffers) {
+      reply.close();
+    }
     for (const dealer of dealers) {
       dealer.close();
     }

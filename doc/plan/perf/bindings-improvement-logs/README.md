@@ -20,4 +20,5 @@
 - [cpp.md](cpp.md) — C++ 바인딩 라운드 로그
 - [dotnet.md](dotnet.md) — .NET 바인딩 라운드 로그
 - [java.md](java.md) — Java 바인딩 라운드 로그
-- (이후 Node, Python, Go, Rust 진행 시 같은 폴더에 추가)
+- [node.md](node.md) — Node 바인딩 라운드 로그
+- (이후 Python, Go, Rust 진행 시 같은 폴더에 추가)

@@ -5,7 +5,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeaderFromParts, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createCallbackEventWaiter, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii'));
@@ -23,10 +23,6 @@ function tryRecvRouted(spot) {
     }
     catch (error) {
         if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
-            return null;
-        }
-        const text = String(error && error.message ? error.message : error);
-        if (/Device or resource busy|resource busy/i.test(text)) {
             return null;
         }
         throw error;
@@ -88,6 +84,11 @@ async function main() {
                 inflight: false
             });
         }
+        const sendReady = createCallbackEventWaiter((handler) => {
+            for (const slot of slots) {
+                slot.spot.onSendReady(handler);
+            }
+        });
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(controlPub, 'spotnode_control_pub', options.transport, options.msgSize);
         emitMultiSocketHwmDetail(controlSub, 'spotnode_control_sub', options.transport, options.msgSize);
@@ -151,7 +152,12 @@ async function main() {
                 }
             }
             if (!progressed) {
-                await sleepImmediate();
+                if (slots.some((slot) => !slot.inflight)) {
+                    await sendReady.wait();
+                }
+                else {
+                    await sleepImmediate();
+                }
             }
         }
         while (slots.some((slot) => slot.inflight)) {

@@ -13,6 +13,7 @@ const {
   applyContextPolicy,
   applySocketPolicy,
   applySpotNodeAdmission,
+  createCallbackEventWaiter,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
   publishControlUntilSent,
@@ -40,10 +41,6 @@ function tryRecvRouted(spot) {
     return spot.recvRouted(zlink.RecvFlags.DontWait);
   } catch (error) {
     if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
-      return null;
-    }
-    const text = String(error && error.message ? error.message : error);
-    if (/Device or resource busy|resource busy/i.test(text)) {
       return null;
     }
     throw error;
@@ -75,6 +72,7 @@ async function main() {
     node.bind(options.peerEndpoint);
     spot = node.createSpot();
     spot.setRoutingId(SERVER_SPOT_ROUTING_ID);
+    const spotSendWaiter = createCallbackEventWaiter((handler) => spot.onSendReady(handler));
 
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
@@ -116,11 +114,14 @@ async function main() {
           continue;
         }
         try {
-          const sent = received.send().message(received.parts[0].data())
-            .flags(zlink.SendFlags.DontWait)
-            .submit();
-          if (!sent) {
-            await sleepImmediate();
+          while (!stop) {
+            const sent = received.send().message(received.parts[0].data())
+              .flags(zlink.SendFlags.DontWait)
+              .submit();
+            if (sent) {
+              break;
+            }
+            await spotSendWaiter.wait();
           }
         } finally {
           received.close();

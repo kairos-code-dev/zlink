@@ -5,6 +5,7 @@
 #include "utils/err.hpp"
 #include "api/part_helper_internal.hpp"
 #include "api/service_mode_internal.hpp"
+#include "api/service_spot_subject_surface_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
 #include "api/recv_result_internal.hpp"
 #include "api/submit_result_internal.hpp"
@@ -379,6 +380,14 @@ zlink_recv_result_t spot_subscribe_impl (void *spot_,
         topic_id_len_out_);
     if (logical_recv != ZLINK_RECV_NO_DATA)
         return logical_recv;
+
+    const zlink_recv_result_t dispatch_recv =
+      zlink::recv_result_internal::from_rc (
+        spot_dispatch_subscribe_recv_internal (
+          spot_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
+          topic_id_len_out_, flags_));
+    if (dispatch_recv != ZLINK_RECV_NO_DATA)
+        return dispatch_recv;
 
     const zlink_recv_result_t service_recv =
       zlink::recv_result_internal::from_rc (

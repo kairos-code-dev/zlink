@@ -6,7 +6,7 @@ const zlink = require('@zlink-systems/zlink');
 const { configureTlsServer } = require('../common/perf_tls');
 const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, subscribeNoWait, trySocketPublish } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createCallbackEventWaiter, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, subscribeNoWait, trySocketPublish } = require('./perf_multi_runtime');
 const TOPIC = 'bench';
 const CONTROL_TOPIC = 'bench';
 function trySpotPublish(spot, _channelName, topic, payload) {
@@ -75,6 +75,7 @@ async function main() {
         applySpotNodeAdmission(node);
         node.bind(dataBindEndpoint);
         spot = node.createSpot();
+        const spotSendWaiter = createCallbackEventWaiter((handler) => spot.onSendReady(handler));
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
         applyAutoHwmMsgUnit(controlPub, options.msgSize);
@@ -155,14 +156,14 @@ async function main() {
                 seq += 1n;
                 continue;
             }
-            await sleepImmediate();
+            await spotSendWaiter.wait();
         }
         stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
         for (;;) {
             if (trySpotPublish(spot, '', TOPIC, payload)) {
                 break;
             }
-            await sleepImmediate();
+            await spotSendWaiter.wait();
         }
     }
     finally {

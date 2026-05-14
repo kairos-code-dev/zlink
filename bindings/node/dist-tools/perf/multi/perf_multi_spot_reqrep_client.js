@@ -5,7 +5,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createCallbackEventWaiter, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
@@ -143,6 +143,11 @@ async function main() {
                 inflight: false
             });
         }
+        const sendReady = createCallbackEventWaiter((handler) => {
+            for (const slot of slots) {
+                slot.spot.onSendReady(handler);
+            }
+        });
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
         const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
@@ -193,7 +198,12 @@ async function main() {
                 progressed = true;
             }
             if (!progressed) {
-                await sleepImmediate();
+                if (slots.some((slot) => !slot.inflight)) {
+                    await sendReady.wait();
+                }
+                else {
+                    await sleepImmediate();
+                }
             }
         }
         while (slots.some((slot) => slot.inflight)) {

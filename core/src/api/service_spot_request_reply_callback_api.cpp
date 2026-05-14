@@ -63,9 +63,7 @@ zlink_recv_result_t spot_recv_impl (void *spot_,
     if (zlink::spot_reqrep_internal::ensure_spot_recv_ready (state) != 0)
         return zlink::recv_result_internal::from_errno (errno);
     std::unique_lock<std::mutex> lock (state->mutex);
-    if (state->recv.request_handler
-        || (state->dispatch.handler
-            && !in_spot_dispatch_event_callback (spot_))) {
+    if (state->recv.request_handler) {
         errno = EBUSY;
         return ZLINK_RECV_BUSY;
     }

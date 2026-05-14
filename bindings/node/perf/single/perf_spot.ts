@@ -64,10 +64,6 @@ function trySpotSubscribe(spot: any) {
         (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {
       return null;
     }
-    const text = String(error && error.message ? error.message : error);
-    if (/Device or resource busy|resource busy/i.test(text)) {
-      return null;
-    }
     throw error;
   }
 }

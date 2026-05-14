@@ -18,6 +18,7 @@ const {
   applyContextPolicy,
   applySocketPolicy,
   applySpotNodeAdmission,
+  createCallbackEventWaiter,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
   publishControlUntilSent,
@@ -95,6 +96,7 @@ async function main() {
     applySpotNodeAdmission(node);
     node.bind(dataBindEndpoint);
     spot = node.createSpot();
+    const spotSendWaiter = createCallbackEventWaiter((handler) => spot.onSendReady(handler));
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
     applyAutoHwmMsgUnit(controlPub, options.msgSize);
@@ -177,14 +179,14 @@ async function main() {
         seq += 1n;
         continue;
       }
-      await sleepImmediate();
+      await spotSendWaiter.wait();
     }
     stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
     for (;;) {
       if (trySpotPublish(spot, '', TOPIC, payload)) {
         break;
       }
-      await sleepImmediate();
+      await spotSendWaiter.wait();
     }
   } finally {
     rl?.close();

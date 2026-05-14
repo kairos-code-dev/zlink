@@ -292,20 +292,23 @@ int spot_dispatch_subscribe_recv_internal (
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_)
 {
+    if (validate_recv_flags (flags_) != 0)
+        return -1;
+
     std::shared_ptr<spot_request_reply_state_t> state =
       try_find_spot_state (spot_);
     if (!state) {
-        errno = EFAULT;
+        errno = EAGAIN;
         return -1;
     }
 
-    if (!in_spot_dispatch_event_callback (spot_)) {
-        errno = EBUSY;
-        return -1;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (!state->dispatch.handler) {
+            errno = EAGAIN;
+            return -1;
+        }
     }
-
-    if (validate_recv_flags (flags_) != 0)
-        return -1;
 
     return recv_internal_spot_subscribe_queue (&state->recv.subscribe_queue,
                                                source_rid_out_, parts_out_,

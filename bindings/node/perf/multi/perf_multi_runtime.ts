@@ -441,6 +441,28 @@ async function publishControlUntilSent(socket, waiter, topic, payload) {
   }
 }
 
+function createCallbackEventWaiter(register) {
+  let pending = 0;
+  const waiters = [];
+  register(() => {
+    const resolve = waiters.shift();
+    if (resolve) {
+      resolve();
+      return;
+    }
+    pending += 1;
+  });
+  return {
+    async wait() {
+      if (pending > 0) {
+        pending -= 1;
+        return;
+      }
+      await new Promise((resolve) => waiters.push(resolve));
+    }
+  };
+}
+
 async function waitForRunnerControlConnected() {
   const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
   try {
@@ -531,6 +553,7 @@ module.exports = {
   applyAutoHwmMsgUnit,
   applySpotNodeAdmission,
   applySocketPolicy,
+  createCallbackEventWaiter,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
   pollEvents,

@@ -27,6 +27,7 @@ const {
   applySocketPolicy,
   applyContextPolicy,
   applySpotNodeAdmission,
+  createCallbackEventWaiter,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
   publishControlUntilSent,
@@ -182,6 +183,11 @@ async function main() {
         inflight: false
       });
     }
+    const sendReady = createCallbackEventWaiter((handler) => {
+      for (const slot of slots) {
+        slot.spot.onSendReady(handler);
+      }
+    });
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
 
@@ -245,7 +251,11 @@ async function main() {
         progressed = true;
       }
       if (!progressed) {
-        await sleepImmediate();
+        if (slots.some((slot) => !slot.inflight)) {
+          await sendReady.wait();
+        } else {
+          await sleepImmediate();
+        }
       }
     }
     while (slots.some((slot) => slot.inflight)) {

@@ -27,6 +27,7 @@ const {
   applyContextPolicy,
   applySocketPolicy,
   applySpotNodeAdmission,
+  createCallbackEventWaiter,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
   publishControlUntilSent,
@@ -56,10 +57,6 @@ function tryRecvRouted(spot) {
     return spot.recvRouted(zlink.RecvFlags.DontWait);
   } catch (error) {
     if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
-      return null;
-    }
-    const text = String(error && error.message ? error.message : error);
-    if (/Device or resource busy|resource busy/i.test(text)) {
       return null;
     }
     throw error;
@@ -124,6 +121,11 @@ async function main() {
         inflight: false
       });
     }
+    const sendReady = createCallbackEventWaiter((handler) => {
+      for (const slot of slots) {
+        slot.spot.onSendReady(handler);
+      }
+    });
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(controlPub, 'spotnode_control_pub', options.transport, options.msgSize);
     emitMultiSocketHwmDetail(controlSub, 'spotnode_control_sub', options.transport, options.msgSize);
@@ -196,7 +198,11 @@ async function main() {
         }
       }
       if (!progressed) {
-        await sleepImmediate();
+        if (slots.some((slot) => !slot.inflight)) {
+          await sendReady.wait();
+        } else {
+          await sleepImmediate();
+        }
       }
     }
     while (slots.some((slot) => slot.inflight)) {

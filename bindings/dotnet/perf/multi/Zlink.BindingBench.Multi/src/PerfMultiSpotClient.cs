@@ -12,6 +12,9 @@ internal static class PerfMultiSpotClient
     private const uint ExpectedRunId = 1;
     private const string Topic = "bench";
     private const string ControlTopic = Topic;
+    private const int SpotSocketTag = 0;
+    private const int ControlDeadlineTag = -1;
+    private const int ReadyRepeatTag = -2;
 
     internal static int Run(PerfOptions options)
     {
@@ -85,8 +88,6 @@ internal static class PerfMultiSpotClient
             using var controlPub = controlNode.CreateSpot();
             using var controlSub = controlNode.CreateSpot();
             controlSub.SetSubscription(ControlTopic);
-            using var controlStart = new PerfSpotControlStartWatcher(controlSub,
-                ControlTopic, config.Size);
             string localControlEndpoint = BindSpotNodeWithRetry(controlNode,
                 config.Transport, "multi-spot-ctrl-client", options);
             RecalculateAutoHwm(ctx);
@@ -145,7 +146,7 @@ internal static class PerfMultiSpotClient
                 return controlState.StopRequested ? 0 : 2;
             }
             DebugSubjects(controlNode, "client_after_runner_start");
-            if (!WaitForControlStart(controlStart, controlPub, config.Size,
+            if (!WaitForControlStart(controlSub, controlPub, config.Size,
                     config.ClientCount, config.ConnectReadyTimeoutMs))
             {
                 Console.Error.WriteLine("multi_client_error:control_start_timeout");
@@ -171,13 +172,21 @@ internal static class PerfMultiSpotClient
         int timeoutMs)
     {
         byte[] bytes = Encoding.ASCII.GetBytes(payload);
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        using var deadlineTimer = new Systems.Zlink.Timer();
+        using var poller = new Poller();
+        var events = new PollEvent[2];
+        poller.Add(controlSpot, PollEventFlags.PollOut, SpotSocketTag);
+        poller.Add(deadlineTimer, ControlDeadlineTag);
+        deadlineTimer.Start(TimeSpan.FromMilliseconds(Math.Max(1, timeoutMs)),
+            1);
+
+        while (true)
         {
             try
             {
                 using Message message = new(bytes.AsSpan());
-                if (controlSpot.Publish(ControlTopic).Message(message).Submit())
+                if (controlSpot.Publish(ControlTopic).Message(message)
+                        .Flags(SendFlags.DontWait).Submit())
                     return true;
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
@@ -185,37 +194,112 @@ internal static class PerfMultiSpotClient
             {
             }
 
-            Thread.Yield();
+            if (!WaitForControlEvent(poller, events, PollEventFlags.PollOut))
+                return false;
         }
-
-        return false;
     }
 
     private static bool WaitForControlStart(
-        PerfSpotControlStartWatcher controlStart, Spot controlPub,
+        Spot controlSub, Spot controlPub,
         int size, int readyCount, int timeoutMs)
     {
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        long nextReadyTicks = 0;
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        string expected = $"START,{size}";
+        if (!PublishReadyCount(controlPub, size, readyCount, timeoutMs))
+            return false;
+
+        using var deadlineTimer = new Systems.Zlink.Timer();
+        using var repeatTimer = new Systems.Zlink.Timer();
+        using var poller = new Poller();
+        var events = new PollEvent[3];
+        poller.Add(controlSub, PollEventFlags.PollIn, SpotSocketTag);
+        poller.Add(deadlineTimer, ControlDeadlineTag);
+        poller.Add(repeatTimer, ReadyRepeatTag);
+        deadlineTimer.Start(TimeSpan.FromMilliseconds(Math.Max(1, timeoutMs)),
+            1);
+        repeatTimer.Start(TimeSpan.FromMilliseconds(250), 1);
+
+        while (true)
         {
-            long nowTicks = Stopwatch.GetTimestamp();
-            if (nowTicks >= nextReadyTicks)
+            while (TryReceiveControlStart(controlSub, expected, out bool started))
             {
-                if (nextReadyTicks == 0
-                    && !PublishReadyCount(controlPub, size, readyCount,
-                        timeoutMs))
-                {
-                    return false;
-                }
-                nextReadyTicks = nowTicks + (Stopwatch.Frequency / 4);
+                if (started)
+                    return true;
             }
 
-            if (controlStart.Wait(1))
-                return true;
+            if (!WaitForControlStartEvent(poller, events, controlPub, size,
+                    readyCount, timeoutMs, repeatTimer))
+                return false;
         }
+    }
 
-        return false;
+    private static bool TryReceiveControlStart(Spot controlSub, string expected,
+        out bool started)
+    {
+        started = false;
+        using TopicMessage? received = controlSub.Subscribe(RecvFlags.DontWait);
+        if (received == null)
+            return false;
+        if (received.Topic != ControlTopic)
+            return true;
+        string payload = Encoding.ASCII.GetString(
+            received.SinglePartOrThrow().AsReadOnlySpan());
+        started = payload == expected;
+        return true;
+    }
+
+    private static bool WaitForControlStartEvent(Poller poller,
+        PollEvent[] events, Spot controlPub, int size, int readyCount,
+        int timeoutMs, Systems.Zlink.Timer repeatTimer)
+    {
+        while (true)
+        {
+            int written = poller.Wait(events,
+                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs), out _);
+            for (int i = 0; i < written; i++)
+            {
+                if (events[i].Tag is ControlDeadlineTag)
+                {
+                    _ = events[i].Timer?.Recv();
+                    return false;
+                }
+
+                if (events[i].Tag is ReadyRepeatTag)
+                {
+                    _ = events[i].Timer?.Recv();
+                    if (!PublishReadyCount(controlPub, size, readyCount,
+                            timeoutMs))
+                        return false;
+                    repeatTimer.Start(TimeSpan.FromMilliseconds(250), 1);
+                    continue;
+                }
+
+                if (events[i].Tag is SpotSocketTag
+                    && (events[i].Revents & PollEventFlags.PollIn) != 0)
+                    return true;
+            }
+        }
+    }
+
+    private static bool WaitForControlEvent(Poller poller, PollEvent[] events,
+        PollEventFlags required)
+    {
+        while (true)
+        {
+            int written = poller.Wait(events,
+                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs), out _);
+            for (int i = 0; i < written; i++)
+            {
+                if (events[i].Tag is ControlDeadlineTag)
+                {
+                    _ = events[i].Timer?.Recv();
+                    return false;
+                }
+
+                if (events[i].Tag is SpotSocketTag
+                    && (events[i].Revents & required) != 0)
+                    return true;
+            }
+        }
     }
 
     private static void DebugSubjects(SpotNode node, string label)

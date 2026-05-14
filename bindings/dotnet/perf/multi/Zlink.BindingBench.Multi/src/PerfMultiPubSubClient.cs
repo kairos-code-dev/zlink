@@ -6,6 +6,8 @@ using static PerfRunner;
 
 internal static class PerfMultiPubSubClient
 {
+    private const int ActiveDeadlineTag = -1;
+
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
@@ -91,6 +93,8 @@ internal static class PerfMultiPubSubClient
             List<SocketBase> activeClients, int msgSize, int latencySampleCap,
             int latencySampleStride, int durationSeconds, int pollTimeoutMs)
     {
+        _ = pollManager;
+        _ = pollTimeoutMs;
         const uint expectedRunId = 1;
         var activeLatSamples = new List<double>(latencySampleCap);
         long activeSampleSeen = 0;
@@ -99,24 +103,33 @@ internal static class PerfMultiPubSubClient
 
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
+        using var activeTimer = new Systems.Zlink.Timer();
+        using var poller = new Poller();
+        var events = new PollEvent[activeClients.Count + 1];
+        for (int i = 0; i < activeClients.Count; i++)
+            poller.Add(activeClients[i], PollEventFlags.PollIn, i);
+        poller.Add(activeTimer, ActiveDeadlineTag);
+        activeTimer.Start(TimeSpan.FromSeconds(Math.Max(1, durationSeconds)),
+            1);
 
         // C perf contract: PUBSUB starts on START,<size> and the client owns
         // the active duration window. It does not wait for PHASE_ACTIVE or a
         // stop token to finish the case.
         while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
-            int readyCount = PollSocketReadReady(pollManager, activeClients,
-                pollTimeoutMs);
-            if (readyCount <= 0)
-            {
-                continue;
-            }
+            int readyCount = WaitForReadReady(poller, events);
+            if (readyCount < 0)
+                break;
 
             for (int readyOffset = 0; readyOffset < readyCount; readyOffset++)
             {
-                int i = ReadySocketIndexAt(pollManager, readyOffset);
-                if (!IsSocketReadReady(pollManager, i))
+                if (events[readyOffset].Tag is not int i
+                    || i < 0
+                    || i >= activeClients.Count
+                    || (events[readyOffset].Revents & PollEventFlags.PollIn) == 0)
+                {
                     continue;
+                }
 
                 while (true)
                 {
@@ -174,6 +187,25 @@ internal static class PerfMultiPubSubClient
         double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
 
         return (throughput, latencyNs, latencyP95Ns, latencyP99Ns, measureCount);
+    }
+
+    private static int WaitForReadReady(Poller poller, PollEvent[] events)
+    {
+        while (true)
+        {
+            int written = poller.Wait(events,
+                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs), out _);
+            for (int i = 0; i < written; i++)
+            {
+                if (events[i].Tag is ActiveDeadlineTag)
+                {
+                    _ = events[i].Timer?.Recv();
+                    return -1;
+                }
+            }
+            if (written > 0)
+                return written;
+        }
     }
 
     private static void AddLatencySample(List<double> samples,

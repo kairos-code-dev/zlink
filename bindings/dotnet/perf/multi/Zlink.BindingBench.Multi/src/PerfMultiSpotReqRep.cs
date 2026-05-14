@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using Systems.Zlink;
@@ -12,6 +13,11 @@ internal static class PerfMultiSpotReqRep
     private const string SendSendPattern = "SPOT_SENDSEND";
     private const string Topic = "bench";
     private const uint RunId = 1;
+    private const int SpotSocketTag = 0;
+    private const int ControlDeadlineTag = -1;
+    private const int ActiveDeadlineTag = -2;
+    private const int ReadyRepeatTag = -3;
+    private const int ActiveWakeTag = -4;
 
     private enum SpotEchoMode
     {
@@ -242,9 +248,6 @@ internal static class PerfMultiSpotReqRep
                     return 2;
                 }
             }
-            using var controlStart = new PerfSpotControlStartWatcher(controlSub,
-                Topic, size);
-
             for (int i = 0; i < clientCount; i++)
             {
                 var requester = dataNode.CreateSpot();
@@ -255,39 +258,6 @@ internal static class PerfMultiSpotReqRep
                             ? $"SPOT-REQREP-{i}"
                             : $"SPOT-SENDSEND-{i}")));
                 var slot = new ClientSlot(requester);
-                if (config.Mode == SpotEchoMode.RequestReply)
-                {
-                    requester.OnDispatchEvent(info =>
-                    {
-                        if (info.Event == SpotDispatchEvent.ChannelReplyReadable)
-                        {
-                            try
-                            {
-                                info.DrainChannelReply();
-                            }
-                            catch (ZlinkException ex) when (
-                                IsWouldBlock(ex.InternalErrno)
-                                || IsInterrupted(ex.InternalErrno)
-                                || ex.InternalErrno == 16)
-                            {
-                            }
-                        }
-                    });
-                }
-                else
-                {
-                    requester.OnDispatchEvent(info =>
-                    {
-                        if (info.Event != SpotDispatchEvent.RoutedReadable)
-                            return;
-                        long deadline =
-                            Volatile.Read(ref slot.ActiveDeadlineTicks);
-                        int msgSize = Volatile.Read(ref slot.ActiveMsgSize);
-                        if (deadline <= 0 || msgSize <= 0)
-                            return;
-                        DrainSendSendReplies(slot, msgSize, deadline);
-                    });
-                }
                 slots.Add(slot);
             }
 
@@ -355,7 +325,7 @@ internal static class PerfMultiSpotReqRep
                 Console.Error.WriteLine("multi_client_error:ready_republish_failed");
                 return 2;
             }
-            if (!WaitForControlStart(controlStart, controlPub, dataEndpoint, size,
+            if (!WaitForControlStart(controlSub, controlPub, dataEndpoint, size,
                     clientCount, readyTimeoutMs))
             {
                 Console.Error.WriteLine("multi_client_error:control_start_timeout");
@@ -406,50 +376,62 @@ internal static class PerfMultiSpotReqRep
         ReadyBarrier barrier, int size, int timeoutMs)
     {
         string readyPrefix = $"READY_COUNT,{size},";
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        using var deadlineTimer = new Systems.Zlink.Timer();
+        using var poller = new Poller();
+        var events = new PollEvent[2];
+        poller.Add(controlSub, PollEventFlags.PollIn, SpotSocketTag);
+        poller.Add(deadlineTimer, ControlDeadlineTag);
+        deadlineTimer.Start(TimeSpan.FromMilliseconds(Math.Max(1, timeoutMs)),
+            1);
+
+        while (true)
         {
-            using TopicMessage? received = controlSub.Subscribe(RecvFlags.DontWait);
-            if (received == null)
+            while (TryReceiveReadyBarrier(controlSub, dataNode, barrier,
+                       readyPrefix, out bool ready))
             {
-                Thread.Yield();
-                continue;
-            }
-            if (received.Topic != Topic)
-                continue;
-
-            string payload = Encoding.ASCII.GetString(
-                received.SinglePartOrThrow().AsReadOnlySpan());
-            if (payload == "CONNECTED")
-            {
-                barrier.ControlConnected = true;
-                continue;
-            }
-            if (payload.StartsWith("DATA_ENDPOINT,", StringComparison.Ordinal))
-            {
-                string endpoint = payload["DATA_ENDPOINT,".Length..];
-                if (!string.IsNullOrWhiteSpace(endpoint))
-                {
-                    dataNode.ConnectPeer(endpoint);
-                    barrier.DataPeerCount++;
-                }
-                continue;
-            }
-            if (payload.StartsWith(readyPrefix, StringComparison.Ordinal)
-                && int.TryParse(payload.AsSpan(readyPrefix.Length),
-                    out int readyCount))
-            {
-                barrier.ReadyCount += Math.Max(0, readyCount);
+                if (ready)
+                    return true;
             }
 
-            if (barrier.ControlConnected
-                && barrier.ReadyCount >= barrier.ExpectedReadyCount)
+            if (!WaitForControlEvent(poller, events, PollEventFlags.PollIn))
+                return false;
+        }
+    }
+
+    private static bool TryReceiveReadyBarrier(Spot controlSub,
+        SpotNode dataNode, ReadyBarrier barrier, string readyPrefix,
+        out bool ready)
+    {
+        ready = false;
+        using TopicMessage? received = controlSub.Subscribe(RecvFlags.DontWait);
+        if (received == null)
+            return false;
+        if (received.Topic != Topic)
+            return true;
+
+        string payload = Encoding.ASCII.GetString(
+            received.SinglePartOrThrow().AsReadOnlySpan());
+        if (payload == "CONNECTED")
+            barrier.ControlConnected = true;
+        else if (payload.StartsWith("DATA_ENDPOINT,", StringComparison.Ordinal))
+        {
+            string endpoint = payload["DATA_ENDPOINT,".Length..];
+            if (!string.IsNullOrWhiteSpace(endpoint))
             {
-                return true;
+                dataNode.ConnectPeer(endpoint);
+                barrier.DataPeerCount++;
             }
         }
+        else if (payload.StartsWith(readyPrefix, StringComparison.Ordinal)
+                 && int.TryParse(payload.AsSpan(readyPrefix.Length),
+                     out int readyCount))
+        {
+            barrier.ReadyCount += Math.Max(0, readyCount);
+        }
 
-        return false;
+        ready = barrier.ControlConnected
+                && barrier.ReadyCount >= barrier.ExpectedReadyCount;
+        return true;
     }
 
     private static bool PublishControlStartBurst(Spot controlSpot, int size,
@@ -459,30 +441,85 @@ internal static class PerfMultiSpotReqRep
     }
 
     private static bool WaitForControlStart(
-        PerfSpotControlStartWatcher controlStart, Spot controlPub,
+        Spot controlSub, Spot controlPub,
         string dataEndpoint, int size, int readyCount, int timeoutMs)
     {
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        long nextReadyTicks = 0;
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        string expected = $"START,{size}";
+        if (!PublishReadyBarrier(controlPub, dataEndpoint, size, readyCount,
+                timeoutMs))
+            return false;
+
+        using var deadlineTimer = new Systems.Zlink.Timer();
+        using var repeatTimer = new Systems.Zlink.Timer();
+        using var poller = new Poller();
+        var events = new PollEvent[3];
+        poller.Add(controlSub, PollEventFlags.PollIn, SpotSocketTag);
+        poller.Add(deadlineTimer, ControlDeadlineTag);
+        poller.Add(repeatTimer, ReadyRepeatTag);
+        deadlineTimer.Start(TimeSpan.FromMilliseconds(Math.Max(1, timeoutMs)),
+            1);
+        repeatTimer.Start(TimeSpan.FromMilliseconds(250), 1);
+
+        while (true)
         {
-            long nowTicks = Stopwatch.GetTimestamp();
-            if (nowTicks >= nextReadyTicks)
+            while (TryReceiveControlStart(controlSub, expected, out bool started))
             {
-                if (nextReadyTicks == 0
-                    && !PublishReadyBarrier(controlPub, dataEndpoint, size,
-                        readyCount, timeoutMs))
-                {
-                    return false;
-                }
-                nextReadyTicks = nowTicks + (Stopwatch.Frequency / 4);
+                if (started)
+                    return true;
             }
 
-            if (controlStart.Wait(1))
-                return true;
+            if (!WaitForControlStartEvent(poller, events, controlPub,
+                    dataEndpoint, size, readyCount, timeoutMs, repeatTimer))
+                return false;
         }
+    }
 
-        return false;
+    private static bool TryReceiveControlStart(Spot controlSub, string expected,
+        out bool started)
+    {
+        started = false;
+        using TopicMessage? received = controlSub.Subscribe(RecvFlags.DontWait);
+        if (received == null)
+            return false;
+        if (received.Topic != Topic)
+            return true;
+        string payload = Encoding.ASCII.GetString(
+            received.SinglePartOrThrow().AsReadOnlySpan());
+        started = payload == expected;
+        return true;
+    }
+
+    private static bool WaitForControlStartEvent(Poller poller,
+        PollEvent[] events, Spot controlPub, string dataEndpoint, int size,
+        int readyCount, int timeoutMs, Systems.Zlink.Timer repeatTimer)
+    {
+        while (true)
+        {
+            int written = poller.Wait(events,
+                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs), out _);
+            for (int i = 0; i < written; i++)
+            {
+                if (events[i].Tag is ControlDeadlineTag)
+                {
+                    _ = events[i].Timer?.Recv();
+                    return false;
+                }
+
+                if (events[i].Tag is ReadyRepeatTag)
+                {
+                    _ = events[i].Timer?.Recv();
+                    if (!PublishReadyBarrier(controlPub, dataEndpoint, size,
+                            readyCount, timeoutMs))
+                        return false;
+                    repeatTimer.Start(TimeSpan.FromMilliseconds(250), 1);
+                    continue;
+                }
+
+                if (events[i].Tag is SpotSocketTag
+                    && (events[i].Revents & PollEventFlags.PollIn) != 0)
+                    return true;
+            }
+        }
     }
 
     private static bool PublishReadyBarrier(Spot controlPub, string dataEndpoint,
@@ -499,23 +536,31 @@ internal static class PerfMultiSpotReqRep
         int timeoutMs)
     {
         byte[] bytes = Encoding.ASCII.GetBytes(payload);
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        using var deadlineTimer = new Systems.Zlink.Timer();
+        using var poller = new Poller();
+        var events = new PollEvent[2];
+        poller.Add(controlSpot, PollEventFlags.PollOut, SpotSocketTag);
+        poller.Add(deadlineTimer, ControlDeadlineTag);
+        deadlineTimer.Start(TimeSpan.FromMilliseconds(Math.Max(1, timeoutMs)),
+            1);
+
+        while (true)
         {
             try
             {
                 using var message = new Message(bytes.AsSpan());
-                if (controlSpot.Publish(Topic).Message(message).Submit())
+                if (controlSpot.Publish(Topic).Message(message)
+                        .Flags(SendFlags.DontWait).Submit())
                     return true;
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno))
             {
             }
-            Thread.Yield();
-        }
 
-        return false;
+            if (!WaitForControlEvent(poller, events, PollEventFlags.PollOut))
+                return false;
+        }
     }
 
     private static bool WaitForConnectedPeers(SpotNode node, int expectedCount,
@@ -612,10 +657,28 @@ internal static class PerfMultiSpotReqRep
         }
 
         int activeSlots = ActiveSpotSlotLimit(slots.Count, size);
+        using var activeTimer = new Systems.Zlink.Timer();
+        using PollWake? wake =
+            config.Mode == SpotEchoMode.RequestReply ? new PollWake() : null;
         using var sendPoller = new Poller();
-        var sendEvents = new PollEvent[Math.Max(1, activeSlots)];
+        var sendEvents = new PollEvent[Math.Max(1, activeSlots + 2)];
         for (int i = 0; i < activeSlots; i++)
-            sendPoller.Add(slots[i].Requester, PollEventFlags.PollOut);
+        {
+            if (config.Mode == SpotEchoMode.SendSend)
+            {
+                sendPoller.Add(slots[i].Requester, PollEventFlags.PollIn, i);
+                slots[i].PollRegistered = true;
+            }
+            else
+            {
+                slots[i].Wake = wake;
+            }
+        }
+        sendPoller.Add(activeTimer, ActiveDeadlineTag);
+        if (wake != null)
+            sendPoller.AddFd(wake.ReadFd, PollEventFlags.PollIn, ActiveWakeTag);
+        activeTimer.Start(TimeSpan.FromSeconds(Math.Max(1, durationSeconds)),
+            1);
 
         while (Stopwatch.GetTimestamp() < activeDeadlineTicks)
         {
@@ -628,6 +691,11 @@ internal static class PerfMultiSpotReqRep
                 {
                     continue;
                 }
+                if (Volatile.Read(ref slot.SendPending) != 0)
+                {
+                    canSend = true;
+                    continue;
+                }
 
                 canSend = true;
                 try
@@ -637,6 +705,11 @@ internal static class PerfMultiSpotReqRep
                         : TrySendOneWay(slot, size, config);
                     if (result == SendResult.Sent)
                         sendProgress = true;
+                    else if (result == SendResult.Blocked)
+                    {
+                        Volatile.Write(ref slot.SendPending, 1);
+                        EnablePollOut(sendPoller, slot, i, config);
+                    }
                     else if (result == SendResult.Fatal)
                         return false;
                 }
@@ -651,13 +724,27 @@ internal static class PerfMultiSpotReqRep
                 continue;
 
             if (canSend)
-                WaitForSpotReqRepSendReady(sendPoller, sendEvents);
+            {
+                if (!WaitForSpotReqRepReady(sendPoller, sendEvents, slots,
+                        activeSlots, size, activeDeadlineTicks, config, wake))
+                    break;
+            }
             else
-                Thread.Yield();
+            {
+                if (!WaitForSpotReqRepReady(sendPoller, sendEvents, slots,
+                        activeSlots, size, activeDeadlineTicks, config, wake))
+                    break;
+            }
         }
 
+        if (config.Mode == SpotEchoMode.RequestReply)
+            WaitForPendingReplies(slots, activeSlots, 1000);
+
         for (int i = 0; i < slots.Count; i++)
+        {
             Volatile.Write(ref slots[i].ActiveDeadlineTicks, 0);
+            slots[i].Wake = null;
+        }
 
         if (failure == null)
             return true;
@@ -718,19 +805,87 @@ internal static class PerfMultiSpotReqRep
         return SendResult.Blocked;
     }
 
-    private static void WaitForSpotReqRepSendReady(Poller poller,
-        PollEvent[] events)
+    private static bool WaitForSpotReqRepReady(Poller poller,
+        PollEvent[] events, List<ClientSlot> slots, int activeSlots, int size,
+        long activeDeadlineTicks, SpotEchoConfig config, PollWake? wake)
     {
         while (true)
         {
             try
             {
-                poller.Wait(events, TimeSpan.FromMilliseconds(-1), out _);
-                return;
+                int written = poller.Wait(events,
+                    TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs),
+                    out _);
+                bool progressed = false;
+                for (int i = 0; i < written; i++)
+                {
+                    if (events[i].Tag is int tag && tag == ActiveDeadlineTag)
+                    {
+                        _ = events[i].Timer?.Recv();
+                        return false;
+                    }
+
+                    if (events[i].Tag is int wakeTag && wakeTag == ActiveWakeTag)
+                    {
+                        wake?.Drain();
+                        progressed = true;
+                        continue;
+                    }
+
+                    if (events[i].Tag is not int slotIndex
+                        || slotIndex < 0
+                        || slotIndex >= activeSlots
+                        || slotIndex >= slots.Count)
+                    {
+                        continue;
+                    }
+
+                    PollEventFlags revents = events[i].Revents;
+                    if (config.Mode == SpotEchoMode.SendSend
+                        && (revents & PollEventFlags.PollIn) != 0)
+                    {
+                        DrainSendSendReplies(slots[slotIndex], size,
+                            activeDeadlineTicks);
+                        progressed = true;
+                    }
+                    if ((events[i].Revents
+                            & PollEventFlags.PollOut)
+                        != 0)
+                    {
+                        Volatile.Write(ref slots[slotIndex].SendPending, 0);
+                        DisablePollOut(poller, slots[slotIndex], config);
+                        progressed = true;
+                    }
+                }
+
+                if (progressed)
+                    return true;
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno))
             {
+            }
+        }
+    }
+
+    private static bool WaitForControlEvent(Poller poller, PollEvent[] events,
+        PollEventFlags required)
+    {
+        while (true)
+        {
+            int written = poller.Wait(events,
+                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs), out _);
+            for (int i = 0; i < written; i++)
+            {
+                if (events[i].Tag is ControlDeadlineTag)
+                {
+                    _ = events[i].Timer?.Recv();
+                    return false;
+                }
+
+                if (events[i].Tag is SpotSocketTag
+                    && (events[i].Revents & required) != 0)
+                    return true;
             }
         }
     }
@@ -805,6 +960,7 @@ internal static class PerfMultiSpotReqRep
         }
 
         Interlocked.Increment(ref slot.MeasureCount);
+        slot.Wake?.Signal();
         ulong nowNs = EpochNs();
         if (header.SentTsNs > 0 && nowNs >= header.SentTsNs)
         {
@@ -820,6 +976,57 @@ internal static class PerfMultiSpotReqRep
         if (msgSize >= 65536)
             return Math.Min(totalSlots, 32);
         return totalSlots;
+    }
+
+    private static void EnablePollOut(Poller poller, ClientSlot slot,
+        int slotIndex, SpotEchoConfig config)
+    {
+        if (config.Mode == SpotEchoMode.SendSend)
+        {
+            poller.Modify(slot.Requester,
+                PollEventFlags.PollIn | PollEventFlags.PollOut);
+            return;
+        }
+
+        if (slot.PollRegistered)
+            return;
+        poller.Add(slot.Requester, PollEventFlags.PollOut, slotIndex);
+        slot.PollRegistered = true;
+    }
+
+    private static void DisablePollOut(Poller poller, ClientSlot slot,
+        SpotEchoConfig config)
+    {
+        if (config.Mode == SpotEchoMode.SendSend)
+        {
+            poller.Modify(slot.Requester, PollEventFlags.PollIn);
+            return;
+        }
+
+        if (slot.PollRegistered && poller.Remove(slot.Requester))
+            slot.PollRegistered = false;
+    }
+
+    private static void WaitForPendingReplies(List<ClientSlot> slots,
+        int activeSlots, int timeoutMs)
+    {
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            bool pending = false;
+            int count = Math.Min(activeSlots, slots.Count);
+            for (int i = 0; i < count; i++)
+            {
+                if (Volatile.Read(ref slots[i].WaitingReply) == 0)
+                    continue;
+                pending = true;
+                break;
+            }
+
+            if (!pending)
+                return;
+            Thread.Sleep(1);
+        }
     }
 
     private static int PrintMultiResult(string pattern, string transport, int size,
@@ -930,6 +1137,8 @@ internal static class PerfMultiSpotReqRep
         internal int ActiveMsgSize;
         internal long ActiveDeadlineTicks;
         internal ulong NextSeq = 1;
+        internal bool PollRegistered;
+        internal PollWake? Wake;
 
         internal void ResetForActive()
         {
@@ -939,6 +1148,8 @@ internal static class PerfMultiSpotReqRep
             ActiveMsgSize = 0;
             ActiveDeadlineTicks = 0;
             NextSeq = 1;
+            PollRegistered = false;
+            Wake = null;
             lock (LatencySamples)
                 LatencySamples.Clear();
         }
@@ -947,5 +1158,65 @@ internal static class PerfMultiSpotReqRep
         {
             Requester.Dispose();
         }
+    }
+
+    private sealed class PollWake : IDisposable
+    {
+        private const int ONonBlock = 0x800;
+        private const int OCloExec = 0x80000;
+        private readonly int _readFd;
+        private readonly int _writeFd;
+        private int _disposed;
+
+        internal PollWake()
+        {
+            int[] fds = new int[2];
+            if (pipe2(fds, ONonBlock | OCloExec) != 0)
+                throw new InvalidOperationException(
+                    $"pipe2 failed errno={Marshal.GetLastPInvokeError()}");
+            _readFd = fds[0];
+            _writeFd = fds[1];
+        }
+
+        internal int ReadFd => _readFd;
+
+        internal void Signal()
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+            byte value = 1;
+            _ = write(_writeFd, ref value, (UIntPtr)1);
+        }
+
+        internal void Drain()
+        {
+            Span<byte> buffer = stackalloc byte[64];
+            while (read(_readFd, ref MemoryMarshal.GetReference(buffer),
+                       (UIntPtr)buffer.Length).ToInt64() > 0)
+            {
+            }
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+            _ = close(_readFd);
+            _ = close(_writeFd);
+        }
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern int pipe2(int[] pipefd, int flags);
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern IntPtr write(int fd, ref byte buffer,
+            UIntPtr count);
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern IntPtr read(int fd, ref byte buffer,
+            UIntPtr count);
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern int close(int fd);
     }
 }

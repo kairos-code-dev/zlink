@@ -32,8 +32,7 @@ public sealed record PerfOptions(
     int MultiRcvBuf,
     int ServerBindPort,
     int PubSubXpubNoDrop,
-    int SpotXpubNoDrop,
-    int ClientPollTimeoutMs)
+    int SpotXpubNoDrop)
 {
     public static bool TryParseSingleArgs(string[] args, out PerfOptions options)
     {
@@ -121,8 +120,7 @@ public sealed record PerfOptions(
             0,
             0,
             PerfEnv.ReadPositive("PERF_SINGLE_PUBSUB_XPUB_NODROP", 1),
-            0,
-            100);
+            0);
     }
 
     public static PerfOptions CreateMulti(PerfExecutionKind kind, string pattern,
@@ -155,8 +153,7 @@ public sealed record PerfOptions(
             PerfEnv.ReadByteSize("PERF_MULTI_RCVBUF", 0),
             PerfEnv.ReadNonNegative("PERF_MULTI_SERVER_BIND_PORT", 0),
             PerfEnv.ReadPositive("PERF_MULTI_PUBSUB_XPUB_NODROP", 1),
-            PerfEnv.ReadPositive("PERF_MULTI_SPOT_XPUB_NODROP", 1),
-            PerfEnv.ReadPositive("PERF_CLIENT_POLL_TIMEOUT_MS", 100));
+            PerfEnv.ReadPositive("PERF_MULTI_SPOT_XPUB_NODROP", 1));
     }
 
     public int ResolveSingleHwm(string specificName)

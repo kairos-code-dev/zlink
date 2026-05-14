@@ -11,6 +11,9 @@ internal static class PerfSpot
     private const uint RunId = 1;
     private const uint ReadyPhase = 0;
     private const uint ActivePhase = 1;
+    private const int SpotSocketTag = 0;
+    private const int ReadyDeadlineTag = -1;
+    private const int ReadyRetryTag = -2;
     private static readonly RoutingId PubNodeRoutingId =
         RoutingId.FromBytes("z-perf-spot-pub"u8);
     private static readonly RoutingId SubNodeRoutingId =
@@ -99,17 +102,24 @@ internal static class PerfSpot
         Spot subscriber, byte[] probePayload, int msgSize)
     {
         ulong seq = 1;
-        long deadlineTicks = DeadlineTicksFromMilliseconds(
-            ResolveSpotReadyTimeoutMs());
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            if (!PublishMetricPayload(publisher, probePayload, msgSize, seq++,
-                    ReadyPhase, out _))
-                return false;
+        if (!PublishMetricPayload(publisher, probePayload, msgSize, seq++,
+                ReadyPhase, out _))
+            return false;
 
-            long probeDeadlineTicks = Math.Min(deadlineTicks,
-                DeadlineTicksFromMilliseconds(50));
-            while (Stopwatch.GetTimestamp() < probeDeadlineTicks)
+        int readyTimeoutMs = ResolveSpotReadyTimeoutMs();
+        using var deadlineTimer = new Systems.Zlink.Timer();
+        using var retryTimer = new Systems.Zlink.Timer();
+        using var poller = new Poller();
+        var events = new PollEvent[3];
+        poller.Add(subscriber, PollEventFlags.PollIn, SpotSocketTag);
+        poller.Add(deadlineTimer, ReadyDeadlineTag);
+        poller.Add(retryTimer, ReadyRetryTag);
+        deadlineTimer.Start(TimeSpan.FromMilliseconds(readyTimeoutMs), 1);
+        retryTimer.Start(TimeSpan.FromMilliseconds(50), 1);
+
+        while (true)
+        {
+            while (true)
             {
                 int recvRc = ReceiveSpotHeader(subscriber, msgSize,
                     out var header, out bool headerOk);
@@ -124,11 +134,13 @@ internal static class PerfSpot
                 if (recvRc < 0)
                     return false;
 
-                Thread.Yield();
+                break;
             }
-        }
 
-        return false;
+            if (!WaitForReadyProbeEvent(poller, events, publisher,
+                    probePayload, msgSize, ref seq, retryTimer))
+                return false;
+        }
     }
 
     private static bool RunActiveWindow(Spot publisher, Spot subscriber,
@@ -149,6 +161,9 @@ internal static class PerfSpot
         // stop token instead of `senderDone` + drain timer.
         var receiverThread = new Thread(() =>
         {
+            using var poller = new Poller();
+            var events = new PollEvent[1];
+            poller.Add(subscriber, PollEventFlags.PollIn);
             while (true)
             {
                 int recvRc = ReceiveSpotPayload(subscriber, msgSize,
@@ -178,7 +193,7 @@ internal static class PerfSpot
 
                 if (recvRc == 0)
                 {
-                    Thread.Yield();
+                    WaitForSpotReadable(poller, events);
                     continue;
                 }
 
@@ -214,6 +229,53 @@ internal static class PerfSpot
         received = activeReceived;
         latencySamples = samples;
         return Volatile.Read(ref ok) != 0;
+    }
+
+    private static bool WaitForReadyProbeEvent(Poller poller,
+        PollEvent[] events, Spot publisher, byte[] probePayload, int msgSize,
+        ref ulong seq, Systems.Zlink.Timer retryTimer)
+    {
+        while (true)
+        {
+            int written = poller.Wait(events, TimeSpan.FromMilliseconds(-1),
+                out _);
+            for (int i = 0; i < written; i++)
+            {
+                if (events[i].Tag is ReadyDeadlineTag)
+                {
+                    _ = events[i].Timer?.Recv();
+                    return false;
+                }
+
+                if (events[i].Tag is ReadyRetryTag)
+                {
+                    _ = events[i].Timer?.Recv();
+                    if (!PublishMetricPayload(publisher, probePayload, msgSize,
+                            seq++, ReadyPhase, out _))
+                        return false;
+                    retryTimer.Start(TimeSpan.FromMilliseconds(50), 1);
+                    continue;
+                }
+
+                if (events[i].Tag is SpotSocketTag
+                    && (events[i].Revents & PollEventFlags.PollIn) != 0)
+                    return true;
+            }
+        }
+    }
+
+    private static void WaitForSpotReadable(Poller poller, PollEvent[] events)
+    {
+        while (true)
+        {
+            int written = poller.Wait(events, TimeSpan.FromMilliseconds(-1),
+                out _);
+            for (int i = 0; i < written; i++)
+            {
+                if ((events[i].Revents & PollEventFlags.PollIn) != 0)
+                    return;
+            }
+        }
     }
 
     private static bool PublishMetricPayload(Spot publisher, byte[] payload,

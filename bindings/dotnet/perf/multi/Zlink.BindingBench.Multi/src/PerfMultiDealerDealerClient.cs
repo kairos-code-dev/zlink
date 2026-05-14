@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using Systems.Zlink;
 using static PerfRunner;
 
 internal static class PerfMultiDealerDealerClient
 {
+    private const int ActiveDeadlineTag = -1;
+
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
@@ -87,6 +88,17 @@ internal static class PerfMultiDealerDealerClient
         Array.Fill(payload, (byte)'a');
         long activeDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
+        using var activeTimer = new Systems.Zlink.Timer();
+        using var sendPoller = new Poller();
+        var sendEvents = new PollEvent[activeClients.Count + 1];
+        var pending = new bool[activeClients.Count];
+        int pendingCount = 0;
+
+        for (int i = 0; i < activeClients.Count; i++)
+            sendPoller.Add(activeClients[i], PollEventFlags.PollOut, i);
+        sendPoller.Add(activeTimer, ActiveDeadlineTag);
+        activeTimer.Start(TimeSpan.FromSeconds(Math.Max(1, durationSeconds)),
+            1);
 
         while (!controlState.StopRequested
                && Stopwatch.GetTimestamp() < activeDeadlineTicks)
@@ -94,6 +106,9 @@ internal static class PerfMultiDealerDealerClient
             bool progressed = false;
             for (int i = 0; i < activeClients.Count; i++)
             {
+                if (pending[i])
+                    continue;
+
                 DealerSocket socket = (DealerSocket)activeClients[i];
                 while (!controlState.StopRequested
                        && Stopwatch.GetTimestamp() < activeDeadlineTicks)
@@ -101,15 +116,24 @@ internal static class PerfMultiDealerDealerClient
                     StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Active,
                         msgSize, seq, EpochNs());
                     if (!TrySendNoWait(socket, payload.AsSpan()))
+                    {
+                        pending[i] = true;
+                        pendingCount++;
                         break;
+                    }
 
                     seq++;
                     progressed = true;
                 }
             }
 
-            if (!progressed)
-                Thread.Yield();
+            if (!progressed && pendingCount > 0
+                && Stopwatch.GetTimestamp() < activeDeadlineTicks)
+            {
+                if (!WaitForWritable(sendPoller, sendEvents, pending,
+                        ref pendingCount))
+                    break;
+            }
         }
 
         return SendStopTokens(activeClients);
@@ -132,38 +156,49 @@ internal static class PerfMultiDealerDealerClient
 
     private static bool SendStopTokens(IReadOnlyList<SocketBase> activeClients)
     {
-        var pending = new bool[activeClients.Count];
-        int remaining = 0;
-
         for (int i = 0; i < activeClients.Count; i++)
         {
             var socket = (DealerSocket)activeClients[i];
-            if (TrySendNoWait(socket, MultiStopToken.AsSpan()))
-                continue;
-
-            pending[i] = true;
-            remaining++;
+            try
+            {
+                socket.Options.SendTimeout = null;
+                _ = SendBlocking(socket, MultiStopToken.AsSpan(),
+                    SendFlags.None);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"multi_client_error:stop_token_send_failed:{ex.Message}");
+                return false;
+            }
         }
 
-        while (remaining > 0)
+        return true;
+    }
+
+    private static bool WaitForWritable(Poller poller, PollEvent[] events,
+        bool[] pending, ref int pendingCount)
+    {
+        int written = poller.Wait(events,
+            TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs),
+            out _);
+        for (int i = 0; i < written; i++)
         {
-            bool progressed = false;
-            for (int i = 0; i < activeClients.Count; i++)
+            if (events[i].Tag is ActiveDeadlineTag)
             {
-                if (!pending[i])
-                    continue;
-
-                var socket = (DealerSocket)activeClients[i];
-                if (!TrySendNoWait(socket, MultiStopToken.AsSpan()))
-                    continue;
-
-                pending[i] = false;
-                remaining--;
-                progressed = true;
+                _ = events[i].Timer?.Recv();
+                return false;
             }
 
-            if (!progressed)
-                Thread.Yield();
+            if ((events[i].Revents & PollEventFlags.PollOut) == 0
+                || events[i].Tag is not int index
+                || index < 0
+                || index >= pending.Length
+                || !pending[index])
+                continue;
+
+            pending[index] = false;
+            pendingCount--;
         }
 
         return true;

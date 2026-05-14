@@ -1,12 +1,14 @@
 using System;
 using System.Diagnostics;
-using System.Threading;
 using Systems.Zlink;
 using static PerfRunner;
 
 internal static class PerfMultiPubSubServer
 {
     private const string Topic = "bench";
+    private const int PublishSocketTag = 0;
+    private const int ActiveDeadlineTag = -1;
+    private const int PublishRetryTag = -2;
 
     internal static int Run(PerfOptions options)
     {
@@ -76,6 +78,16 @@ internal static class PerfMultiPubSubServer
     {
         long deadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
+        using var activeTimer = new Systems.Zlink.Timer();
+        using var retryTimer = new Systems.Zlink.Timer();
+        using var publishPoller = new Poller();
+        var publishEvents = new PollEvent[3];
+        publishPoller.Add(server, PollEventFlags.PollOut, PublishSocketTag);
+        publishPoller.Add(activeTimer, ActiveDeadlineTag);
+        publishPoller.Add(retryTimer, PublishRetryTag);
+        activeTimer.Start(TimeSpan.FromSeconds(Math.Max(1, durationSeconds)),
+            1);
+        retryTimer.Start(TimeSpan.FromMilliseconds(10), 1);
 
         // C perf contract: PUBSUB server publishes active messages until the
         // scripted duration ends and then exits. The client owns its duration
@@ -91,14 +103,51 @@ internal static class PerfMultiPubSubServer
                 continue;
             }
 
-            // TODO: Replace this with public POLLOUT once PUB no-drop
-            // readiness distinguishes drainable backpressure from transient
-            // no-subscriber EAGAIN. Poller.Wait(-1) can otherwise park until
-            // the runner timeout before any active sample is published.
-            System.Threading.Thread.Yield();
+            if (!WaitForPublishReady(publishPoller, publishEvents,
+                    retryTimer))
+                break;
         }
 
         return true;
+    }
+
+    private static bool WaitForPublishReady(Poller poller, PollEvent[] events,
+        Systems.Zlink.Timer retryTimer)
+    {
+        while (true)
+        {
+            try
+            {
+                int written = poller.Wait(events,
+                    TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs),
+                    out _);
+                for (int i = 0; i < written; i++)
+                {
+                    if (events[i].Tag is ActiveDeadlineTag)
+                    {
+                        _ = events[i].Timer?.Recv();
+                        return false;
+                    }
+
+                    if (events[i].Tag is PublishRetryTag)
+                    {
+                        _ = events[i].Timer?.Recv();
+                        retryTimer.Start(TimeSpan.FromMilliseconds(10), 1);
+                        return true;
+                    }
+
+                    if (events[i].Tag is PublishSocketTag
+                        && (events[i].Revents & PollEventFlags.PollOut) != 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
+            {
+            }
+        }
     }
 
 }

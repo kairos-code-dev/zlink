@@ -1,14 +1,12 @@
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Calls;
-using Systems.Zlink.Stream.Connector.Protocol;
-using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Contracts.Calls;
 
 namespace Systems.Zlink.Stream.Connector.Json;
 
 public static class ZlinkStreamJsonConnectorExtensions
 {
     public static ZlinkStreamJsonSendBuilder Send<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         TBody body)
     {
         ArgumentNullException.ThrowIfNull(connector);
@@ -16,7 +14,7 @@ public static class ZlinkStreamJsonConnectorExtensions
     }
 
     public static ZlinkStreamJsonRequestBuilder Request<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         TBody body)
     {
         ArgumentNullException.ThrowIfNull(connector);
@@ -24,16 +22,16 @@ public static class ZlinkStreamJsonConnectorExtensions
     }
 
     public static IDisposable On<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        var resolver = connector.Options.NameResolver ?? new ZlinkStreamPacketNameResolver();
+        var resolver = connector.Options.NameResolver ?? ZlinkStreamDefaultCodecs.PacketNameResolver();
         return connector.On(resolver.Resolve(typeof(TBody)), handler);
     }
 
     public static IDisposable On<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         string name,
         Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
     {
@@ -49,9 +47,9 @@ public static class ZlinkStreamJsonConnectorExtensions
 
 public sealed class ZlinkStreamJsonSendBuilder
 {
-    private readonly ZlinkStreamSendBuilder _inner;
+    private readonly IZlinkStreamSendCall _inner;
 
-    internal ZlinkStreamJsonSendBuilder(ZlinkStreamSendBuilder inner)
+    internal ZlinkStreamJsonSendBuilder(IZlinkStreamSendCall inner)
     {
         _inner = inner;
     }
@@ -86,9 +84,9 @@ public sealed class ZlinkStreamJsonSendBuilder
 
 public sealed class ZlinkStreamJsonRequestBuilder
 {
-    private readonly ZlinkStreamRequestBuilder _inner;
+    private readonly IZlinkStreamRequestCall _inner;
 
-    internal ZlinkStreamJsonRequestBuilder(ZlinkStreamRequestBuilder inner)
+    internal ZlinkStreamJsonRequestBuilder(IZlinkStreamRequestCall inner)
     {
         _inner = inner;
     }

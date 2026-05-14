@@ -2,7 +2,7 @@ using TicTacToe.SessionGateway.Infrastructure;
 using TicTacToe.SessionGateway.Infrastructure.Configuration;
 using Systems.Zlink;
 using TicTacToe.SessionGateway.Shared.Configuration;
-using Zlink.Framework.Streams;
+using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Infrastructure;
 

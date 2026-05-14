@@ -1,0 +1,51 @@
+namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
+
+
+internal sealed class ZLinkBackendPublisherSocketWrapper(PubSocket nativeSocket) : IZLinkBackendPublisherSocket
+{
+    public object NativeInstance => nativeSocket;
+
+    public void Bind(string endpoint)
+    {
+        nativeSocket.Bind(endpoint);
+    }
+
+    public void SetChannelName(string channelName)
+    {
+        nativeSocket.SetChannelName(channelName);
+    }
+
+    public void AttachDiscovery(IZLinkBackendDiscovery discovery)
+    {
+        nativeSocket.AttachDiscovery(discovery.RequireNative<Discovery>());
+    }
+
+    public void OnSendReady(Action handler)
+    {
+        nativeSocket.OnSendReady(handler);
+    }
+
+    public bool Publish(
+        string topic,
+        Message message,
+        SendFlags flags)
+    {
+        return nativeSocket.Publish(topic)
+            .Message(message)
+            .Flags(flags)
+            .Submit();
+    }
+
+    public bool Publish(
+        string topic,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        return nativeSocket.Publish(topic)
+            .Messages(parts)
+            .Flags(flags)
+            .Submit();
+    }
+
+    public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();
+}

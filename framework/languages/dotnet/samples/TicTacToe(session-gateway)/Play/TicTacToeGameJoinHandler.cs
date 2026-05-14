@@ -1,6 +1,6 @@
 using TicTacToe.SessionActorDispatch.Play;
 using TicTacToe.SessionGateway.Shared.Contracts;
-using Zlink.Framework.Spots;
+using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.SessionGateway.Play;
 

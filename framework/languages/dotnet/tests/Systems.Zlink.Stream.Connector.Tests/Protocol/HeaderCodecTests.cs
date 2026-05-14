@@ -8,9 +8,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Calls;
-using Systems.Zlink.Stream.Connector.Protocol;
-using Systems.Zlink.Stream.Connector.Protocol.Compression;
+using Systems.Zlink.Stream.Connector.Contracts.Calls;
 using Systems.Zlink.Stream.Connector.Runtime;
 using Systems.Zlink.Stream.Connector.Protocol.Framing;
 using Xunit;
@@ -21,7 +19,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void HeaderCodecRoundTripsMetadataAndRequestSeq()
     {
-        var codec = new ZlinkStreamHeaderCodec();
+        var codec = ZlinkStreamDefaultCodecs.Header();
         var source = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
             ZlinkStreamCodec.Json,
@@ -42,7 +40,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void HeaderCodecRejectsUnknownFlag()
     {
-        var codec = new ZlinkStreamHeaderCodec();
+        var codec = ZlinkStreamDefaultCodecs.Header();
         var bytes = new byte[] { 1, 1, 0x80, 1, (byte)'x' };
 
         var exception = Assert.Throws<ZlinkStreamException>(() => codec.Decode(bytes));
@@ -53,7 +51,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void HeaderCodecRejectsInvalidRequestSeqAndErrorCodecCombinations()
     {
-        var codec = new ZlinkStreamHeaderCodec();
+        var codec = ZlinkStreamDefaultCodecs.Header();
 
         var sendWithRequestSeq = new byte[12];
         sendWithRequestSeq[0] = (byte)ZlinkStreamMessageKind.Send;

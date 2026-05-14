@@ -5,6 +5,36 @@ namespace Zlink.Framework.Tests;
 
 public sealed class ScaffoldSmokeTests
 {
+    private static readonly string[] PublicTypeDeclarationTokens =
+    [
+        "public interface ",
+        "public class ",
+        "public sealed class ",
+        "public abstract class ",
+        "public record ",
+        "public sealed record ",
+        "public enum ",
+        "public struct ",
+        "public readonly struct ",
+        "public delegate ",
+        "public static class ",
+    ];
+
+    private static readonly string[] InternalTypeDeclarationTokens =
+    [
+        "internal interface ",
+        "internal class ",
+        "internal sealed class ",
+        "internal abstract class ",
+        "internal record ",
+        "internal sealed record ",
+        "internal enum ",
+        "internal struct ",
+        "internal readonly struct ",
+        "internal delegate ",
+        "internal static class ",
+    ];
+
     private static readonly HashSet<Type> AllowedBackendTypes =
     [
         typeof(global::Systems.Zlink.Message),
@@ -39,6 +69,55 @@ public sealed class ScaffoldSmokeTests
         Assert.Contains(typeof(IZLinkActor), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
         Assert.Contains(typeof(IZLinkSession), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
         Assert.Contains(typeof(IZLinkSessionContext), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
+    }
+
+    [Fact]
+    public void FrameworkPublicTypeSourceFiles_LiveUnderContracts()
+    {
+        var frameworkRoot = Common.FrameworkTestEnvironment.GetFrameworkRoot();
+        var sourceRoot = Path.Combine(frameworkRoot, "src", "Zlink.Framework");
+        var violations = Directory
+            .EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(path => HasPublicTypeDeclaration(File.ReadAllText(path)))
+            .Where(path => !Path.GetRelativePath(sourceRoot, path)
+                .StartsWith($"Contracts{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Select(path => Path.GetRelativePath(sourceRoot, path))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Empty(violations);
+    }
+
+    [Fact]
+    public void FrameworkContracts_DoNotContain_InternalTypeDeclarations()
+    {
+        var frameworkRoot = Common.FrameworkTestEnvironment.GetFrameworkRoot();
+        var contractsRoot = Path.Combine(frameworkRoot, "src", "Zlink.Framework", "Contracts");
+        var violations = Directory
+            .EnumerateFiles(contractsRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(path => HasInternalTypeDeclaration(File.ReadAllText(path)))
+            .Select(path => Path.GetRelativePath(contractsRoot, path))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Empty(violations);
+    }
+
+    [Fact]
+    public void FrameworkExportedTypes_UseContractsNamespace()
+    {
+        var violations = typeof(ZLinkFrameworkAssemblyMarker).Assembly
+            .GetExportedTypes()
+            .Where(static type => type.Namespace is null
+                || !type.Namespace.Equals("Zlink.Framework.Contracts", StringComparison.Ordinal)
+                    && !type.Namespace.StartsWith("Zlink.Framework.Contracts.", StringComparison.Ordinal))
+            .Select(static type => type.FullName)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Empty(violations);
     }
 
     private static void AssertBackendLeakageFree(Assembly assembly)
@@ -121,5 +200,21 @@ public sealed class ScaffoldSmokeTests
     private static void AssertMissingMethod(Type type, string methodName)
     {
         Assert.Null(type.GetMethod(methodName));
+    }
+
+    private static bool HasPublicTypeDeclaration(string source)
+    {
+        return source
+            .Split('\n')
+            .Select(static line => line.TrimEnd('\r'))
+            .Any(static line => PublicTypeDeclarationTokens.Any(token => line.StartsWith(token, StringComparison.Ordinal)));
+    }
+
+    private static bool HasInternalTypeDeclaration(string source)
+    {
+        return source
+            .Split('\n')
+            .Select(static line => line.TrimEnd('\r'))
+            .Any(static line => InternalTypeDeclarationTokens.Any(token => line.StartsWith(token, StringComparison.Ordinal)));
     }
 }

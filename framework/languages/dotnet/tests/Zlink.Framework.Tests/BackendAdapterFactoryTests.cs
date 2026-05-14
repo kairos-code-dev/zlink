@@ -1,4 +1,4 @@
-using Zlink.Framework.Backend.Contracts;
+using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Tests;
 

@@ -1,9 +1,9 @@
 using System.Net.Http.Json;
 using System.Collections.Concurrent;
-using TicTacToe.Shared.Contracts;
-using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
+using TicTacToe.Shared.Contracts;
 
 namespace TicTacToe.Client;
 
@@ -90,7 +90,7 @@ public sealed class TicTacToeClient
     }
 
     private static ValueTask<PlaceMarkRes> PlaceAsync(
-        ZlinkStreamConnector connector,
+        IZlinkStreamConnector connector,
         int cell,
         CancellationToken cancellationToken)
     {
@@ -99,12 +99,12 @@ public sealed class TicTacToeClient
             .SubmitAsync<PlaceMarkRes>(cancellationToken);
     }
 
-    private static ValueTask<ZlinkStreamConnector> ConnectPlayerAsync(
+    private static ValueTask<IZlinkStreamConnector> ConnectPlayerAsync(
         string playEndpoint,
         TicTacToeClientOptions options,
         CancellationToken cancellationToken)
     {
-        return ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        return ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri(playEndpoint),
             ConnectTimeout = options.StreamTimeout,

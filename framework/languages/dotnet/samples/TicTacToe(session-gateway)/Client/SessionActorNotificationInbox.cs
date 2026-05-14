@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Json;
-using Systems.Zlink.Stream.Connector.Runtime;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
 
@@ -21,7 +21,7 @@ internal sealed class SessionActorNotificationInbox
 
     public IReadOnlyList<GameEndedNotify> GameEnded => _gameEnded.ToArray();
 
-    public void Register(ZlinkStreamConnector connector)
+    public void Register(IZlinkStreamConnector connector)
     {
         _ = connector.On<TurnChangedNotify>(
             SampleNames.TurnChangedPacket,

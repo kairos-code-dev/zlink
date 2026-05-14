@@ -1,6 +1,6 @@
+using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Json;
-using Systems.Zlink.Stream.Connector.Runtime;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
 
@@ -9,7 +9,7 @@ namespace TicTacToe.SessionGateway.Client;
 internal sealed class SessionActorDispatchPlayerClient(
     string actorId,
     SessionActorNotificationInbox notifications,
-    ZlinkStreamConnector connector) : IAsyncDisposable
+    IZlinkStreamConnector connector) : IAsyncDisposable
 {
     public string ActorId => actorId;
 
@@ -18,7 +18,7 @@ internal sealed class SessionActorDispatchPlayerClient(
         string streamEndpoint,
         CancellationToken cancellationToken)
     {
-        var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri(streamEndpoint),
             ConnectTimeout = SampleTimings.ConnectTimeout,

@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend.Contracts;
+using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Messaging;
 

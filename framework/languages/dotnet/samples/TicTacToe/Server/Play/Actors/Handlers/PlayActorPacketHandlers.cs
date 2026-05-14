@@ -1,5 +1,5 @@
 using TicTacToe.Server.Play.Games;
-using Zlink.Framework.Spots;
+using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Actors.Handlers;
 

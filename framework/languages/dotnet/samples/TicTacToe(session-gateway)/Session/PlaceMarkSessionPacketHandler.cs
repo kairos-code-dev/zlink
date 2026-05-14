@@ -1,7 +1,7 @@
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink;
 using TicTacToe.SessionGateway.Shared.Contracts;
-using Zlink.Framework.Streams;
+using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
 

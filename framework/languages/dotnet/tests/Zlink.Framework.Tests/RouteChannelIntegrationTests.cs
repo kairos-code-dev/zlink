@@ -52,23 +52,24 @@ public sealed class RouteChannelIntegrationTests
         using var leftHost = leftBuilder.Build();
         using var rightHost = rightBuilder.Build();
 
-        await registryHost.StartAsync();
-        await rightHost.StartAsync();
-        await leftHost.StartAsync();
+        await ChannelMessagingTestSupport.RunWithHostCleanupAsync(async () =>
+        {
+            await registryHost.StartAsync();
+            await rightHost.StartAsync();
+            await leftHost.StartAsync();
 
-        var client = leftHost.Services.GetRequiredService<IZLinkRouteClient>();
-        var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.RequestTo("backend.discovery", rightRid, new SharedPacketRequest("discovery", 1))
-                .PacketName("SharedPacket")
-                .Timeout(TimeSpan.FromSeconds(1))
-                .SubmitAsync<SharedPacketReply>(),
-            static result => result.Value == "discovery",
-            attempts: 30,
-            delayMs: 100);
+            var client = leftHost.Services.GetRequiredService<IZLinkRouteClient>();
+            var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
+                async () => await client.RequestTo("backend.discovery", rightRid, new SharedPacketRequest("discovery", 1))
+                    .PacketName("SharedPacket")
+                    .Timeout(TimeSpan.FromSeconds(1))
+                    .SubmitAsync<SharedPacketReply>(),
+                static result => result.Value == "discovery",
+                attempts: 30,
+                delayMs: 100);
 
-        Assert.Equal("discovery", reply.Value);
-
-        await ChannelMessagingTestSupport.StopHostsAsync(leftHost, rightHost, registryHost);
+            Assert.Equal("discovery", reply.Value);
+        }, leftHost, rightHost, registryHost);
     }
 
     [Fact]
@@ -110,34 +111,35 @@ public sealed class RouteChannelIntegrationTests
         using var leftHost = leftBuilder.Build();
         using var rightHost = rightBuilder.Build();
 
-        await rightHost.StartAsync();
-        await leftHost.StartAsync();
+        await ChannelMessagingTestSupport.RunWithHostCleanupAsync(async () =>
+        {
+            await rightHost.StartAsync();
+            await leftHost.StartAsync();
 
-        var client = leftHost.Services.GetRequiredService<IZLinkRouteClient>();
-        _ = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.RequestTo("backend", rightRid, new SharedPacketRequest("warmup", 1))
+            var client = leftHost.Services.GetRequiredService<IZLinkRouteClient>();
+            _ = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
+                async () => await client.RequestTo("backend", rightRid, new SharedPacketRequest("warmup", 1))
+                    .PacketName("SharedPacket")
+                    .Timeout(TimeSpan.FromSeconds(3))
+                    .SubmitAsync<SharedPacketReply>(),
+                static result => result.Value == "warmup",
+                attempts: 30,
+                delayMs: 100);
+
+            var slow = client.RequestTo("backend", rightRid, new SharedPacketRequest("slow", 40))
                 .PacketName("SharedPacket")
                 .Timeout(TimeSpan.FromSeconds(3))
-                .SubmitAsync<SharedPacketReply>(),
-            static result => result.Value == "warmup",
-            attempts: 30,
-            delayMs: 100);
+                .SubmitAsync<SharedPacketReply>();
+            var fast = client.RequestTo("backend", rightRid, new SharedPacketRequest("fast", 1))
+                .PacketName("SharedPacket")
+                .Timeout(TimeSpan.FromSeconds(3))
+                .SubmitAsync<SharedPacketReply>();
 
-        var slow = client.RequestTo("backend", rightRid, new SharedPacketRequest("slow", 40))
-            .PacketName("SharedPacket")
-            .Timeout(TimeSpan.FromSeconds(3))
-            .SubmitAsync<SharedPacketReply>();
-        var fast = client.RequestTo("backend", rightRid, new SharedPacketRequest("fast", 1))
-            .PacketName("SharedPacket")
-            .Timeout(TimeSpan.FromSeconds(3))
-            .SubmitAsync<SharedPacketReply>();
+            var replies = await Task.WhenAll(slow.AsTask(), fast.AsTask());
 
-        var replies = await Task.WhenAll(slow.AsTask(), fast.AsTask());
-
-        Assert.Equal("slow", replies[0].Value);
-        Assert.Equal("fast", replies[1].Value);
-
-        await ChannelMessagingTestSupport.StopHostsAsync(leftHost, rightHost);
+            Assert.Equal("slow", replies[0].Value);
+            Assert.Equal("fast", replies[1].Value);
+        }, leftHost, rightHost);
     }
 
     public sealed record SharedPacketRequest(string Value, int DelayMs);

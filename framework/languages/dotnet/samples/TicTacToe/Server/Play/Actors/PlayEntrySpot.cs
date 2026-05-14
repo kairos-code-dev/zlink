@@ -1,4 +1,4 @@
-using Zlink.Framework.Spots;
+using Zlink.Framework.Contracts.Spots;
 using TicTacToe.Server.Play.Actors.Handlers;
 
 namespace TicTacToe.Server.Play.Actors;

@@ -5,7 +5,7 @@ using TicTacToe.SessionGateway.Infrastructure;
 using TicTacToe.SessionGateway.Infrastructure.Configuration;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Streams;
+using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
 

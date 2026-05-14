@@ -124,6 +124,81 @@ framework는 monitoring 표면을 별도 축으로 설명하는 편이 맞다.
 source별 구현 차이를 숨긴 typed runtime event surface를 제공하는 편이 더
 자연스럽다.
 
+### 2.5 public contract 폴더의 타입 관리 기준
+
+각 binding 구현은 사용자에게 보이는 public 계약을 별도 `Contracts` 폴더나 그와 같은
+역할의 위치에 모을 수 있다. 이 폴더는 사용자가 읽어야 하는 표면을 보여 주기 위한
+공간이다. 따라서 내부 구현체, 내부 policy, 내부 registration record처럼 framework만
+알아야 하는 타입을 이 위치에 두면 안 된다.
+
+`Contracts` 폴더에 둘 타입은 아래 범위로 제한한다.
+
+- 사용자가 구현해야 하는 handler, session, actor, spot, resolver, policy interface
+- framework가 발급하고 사용자가 호출하는 client, manager, context, call, handle, view
+  interface
+- 사용자가 직접 만들거나 저장해도 자연스러운 값 객체, event payload, error payload,
+  route snapshot, option 값
+- attribute, enum, exception처럼 public 계약을 설명하는 보조 타입
+- concrete 구현을 숨기기 위한 public factory. 단 factory의 반환 타입은 가능한 한
+  interface나 값 객체여야 한다.
+
+반대로 아래 타입은 `Contracts` 폴더에 두지 않는다.
+
+- framework 내부 구현 class
+- public interface를 구현하는 기본 구현체
+- socket, codec, dispatch, routing, registry 같은 내부 정책 class
+- runtime 상태를 담는 record
+- 특정 binding 내부 테스트나 샘플만 편하게 하기 위한 helper
+
+public 타입을 interface로 둘지 concrete 값 객체로 둘지는 타입이 가진 도메인 의미를
+기준으로 판단한다. 필드 수가 적다는 이유만으로 값 객체로 보고, 구현 클래스가 있다는
+이유만으로 interface로 숨기지 않는다.
+
+interface가 맞는 경우는 아래와 같다.
+
+- framework가 생성하거나 발급하고 application은 그 표면만 사용하는 handle, view,
+  context, call builder다.
+- 내부 routing, lifecycle, native resource, lazy decode, 실행 문맥 같은 구현 의미가
+  함께 붙어 있다.
+- application이 callback이나 handler로 구현해서 framework가 호출하는 계약이다.
+- 여러 구현이 자연스럽거나, binding별 구현 차이를 숨겨야 한다.
+- 사용자가 직접 생성해서 저장하는 값이 아니라, framework 실행 흐름 안에서만 의미가
+  분명하다.
+
+예를 들어 actor 참조는 겉으로 `actorId`, `actorType`만 가진 값처럼 보여도 단순한
+DTO가 아니다. actor 참조는 framework가 발급한 actor handle이며, 내부적으로 현재
+session bind, actor dispatch 대상, routing 선택과 연결될 수 있다. 따라서
+`ActorRef` 계열은 concrete 값 객체보다 interface로 두는 편이 맞다.
+
+session packet도 비슷하다. packet은 stream에서 막 도착한 frame을 application handler가
+읽는 view이며, native body message의 수명과 decode 정책이 함께 붙어 있다. 따라서
+`SessionPacket` 계열은 저장 가능한 순수 값이라기보다 framework가 제공하는 packet
+view로 보고 interface로 둔다.
+
+concrete 값 객체가 맞는 경우는 아래와 같다.
+
+- 값의 구조와 전달 자체가 public 의미다.
+- 사용자가 직접 만들고, 복사하고, 저장해도 자연스럽다.
+- 내부 저장 방식이 바뀌어도 public 의미가 거의 변하지 않는다.
+- interface로 바꾸면 factory, builder, cast 같은 보조 API가 늘어나고, 호출자가 알아야
+  할 것이 오히려 많아진다.
+
+예를 들어 metadata, route snapshot, registry entry, monitoring event payload, error
+payload, option 값처럼 작은 구조화 데이터는 concrete record, class, struct로 두는 편이
+낫다. 내부 저장소가 dictionary에서 배열이나 immutable collection으로 바뀌더라도,
+사용자에게 중요한 것은 "어떤 값을 표현하는가"이지 "어떤 구현체인가"가 아니다.
+
+정리하면 아래 기준을 따른다.
+
+- 동작, handle, view, context, call, handler, lifecycle, codec 확장점은 interface를
+  우선한다.
+- 데이터, snapshot, event payload, route value, error value, metadata value는 concrete
+  값 객체를 우선한다.
+- 값처럼 보여도 framework가 발급한 handle이거나 native resource 수명과 연결되어 있으면
+  interface로 둔다.
+- concrete 값 객체를 public으로 둘 때도 내부 저장 방식은 숨긴다. public 필드나 mutable
+  collection을 그대로 노출하지 않는다.
+
 ## 3. ASP.NET Core 방향
 
 ### 3.1 기대하는 표면

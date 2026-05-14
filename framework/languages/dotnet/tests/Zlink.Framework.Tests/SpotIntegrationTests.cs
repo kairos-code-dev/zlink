@@ -5,9 +5,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Protocol;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Backend.Contracts;
+using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Tests;
 
@@ -2018,7 +2017,7 @@ public sealed class SpotIntegrationTests
         IZLinkActor actor,
         string packetName)
     {
-        var codec = new ZlinkStreamHeaderCodec();
+        var codec = ZlinkStreamDefaultCodecs.Header();
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Send,
             ZlinkStreamCodec.Raw,

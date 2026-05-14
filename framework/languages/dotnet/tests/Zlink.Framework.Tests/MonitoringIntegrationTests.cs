@@ -30,17 +30,18 @@ public sealed class MonitoringIntegrationTests
         });
 
         using var registryHost = registryBuilder.Build();
-        await registryHost.StartAsync();
+        await ChannelMessagingTestSupport.RunWithHostCleanupAsync(async () =>
+        {
+            await registryHost.StartAsync();
 
-        var probe = registryHost.Services.GetRequiredService<RegistryMonitorProbe>();
-        var @event = await probe.WaitAsync(TimeSpan.FromSeconds(10));
+            var probe = registryHost.Services.GetRequiredService<RegistryMonitorProbe>();
+            var @event = await probe.WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.Equal(ZLinkRegistryEventKind.StatusChanged, @event.Event);
-        Assert.Equal("registry", @event.SourceName);
-        Assert.NotNull(@event.Status);
-        Assert.True(@event.Status?.State is ZLinkRegistryState.Idle or ZLinkRegistryState.Active);
-
-        await StopHostsAsync(registryHost);
+            Assert.Equal(ZLinkRegistryEventKind.StatusChanged, @event.Event);
+            Assert.Equal("registry", @event.SourceName);
+            Assert.NotNull(@event.Status);
+            Assert.True(@event.Status?.State is ZLinkRegistryState.Idle or ZLinkRegistryState.Active);
+        }, registryHost);
     }
 
     [Fact]
@@ -68,19 +69,20 @@ public sealed class MonitoringIntegrationTests
         });
 
         using var host = builder.Build();
-        await host.StartAsync();
+        await ChannelMessagingTestSupport.RunWithHostCleanupAsync(async () =>
+        {
+            await host.StartAsync();
 
-        var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
-        _ = await manager.CreateAsync("stage");
+            var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+            _ = await manager.CreateAsync("stage");
 
-        var @event = await host.Services.GetRequiredService<SpotMonitorProbe>()
-            .WaitAsync(TimeSpan.FromSeconds(5));
+            var @event = await host.Services.GetRequiredService<SpotMonitorProbe>()
+                .WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.Equal(ZLinkSpotEventKind.SubjectsChanged, @event.Event);
-        Assert.NotNull(@event.Subjects);
-        Assert.Contains(@event.Subjects!, subject => subject.Subject == "stage.monitor");
-
-        await StopHostsAsync(host);
+            Assert.Equal(ZLinkSpotEventKind.SubjectsChanged, @event.Event);
+            Assert.NotNull(@event.Subjects);
+            Assert.Contains(@event.Subjects!, subject => subject.Subject == "stage.monitor");
+        }, host);
     }
 
     [Fact]
@@ -121,14 +123,15 @@ public sealed class MonitoringIntegrationTests
         using var registryHost = registryBuilder.Build();
         using var frameworkHost = frameworkBuilder.Build();
 
-        await registryHost.StartAsync();
-        await frameworkHost.StartAsync();
+        await ChannelMessagingTestSupport.RunWithHostCleanupAsync(async () =>
+        {
+            await registryHost.StartAsync();
+            await frameworkHost.StartAsync();
 
-        var probe = registryHost.Services.GetRequiredService<RegistryChangeProbe>();
-        await probe.WaitForTopologyAsync(TimeSpan.FromSeconds(10));
-        await probe.WaitForSummaryAsync(TimeSpan.FromSeconds(10));
-
-        await StopHostsAsync(frameworkHost, registryHost);
+            var probe = registryHost.Services.GetRequiredService<RegistryChangeProbe>();
+            await probe.WaitForTopologyAsync(TimeSpan.FromSeconds(10));
+            await probe.WaitForSummaryAsync(TimeSpan.FromSeconds(10));
+        }, frameworkHost, registryHost);
     }
 
     [Fact]
@@ -185,18 +188,19 @@ public sealed class MonitoringIntegrationTests
         using var firstHost = firstBuilder.Build();
         using var secondHost = secondBuilder.Build();
 
-        await registryHost.StartAsync();
-        await firstHost.StartAsync();
-        await secondHost.StartAsync();
+        await ChannelMessagingTestSupport.RunWithHostCleanupAsync(async () =>
+        {
+            await registryHost.StartAsync();
+            await firstHost.StartAsync();
+            await secondHost.StartAsync();
 
-        var peerEvent = await firstHost.Services.GetRequiredService<SpotPeerProbe>()
-            .WaitAsync(TimeSpan.FromSeconds(10));
+            var peerEvent = await firstHost.Services.GetRequiredService<SpotPeerProbe>()
+                .WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.Equal(ZLinkSpotEventKind.PeersChanged, peerEvent.Event);
-        Assert.NotNull(peerEvent.Peers);
-        Assert.NotEmpty(peerEvent.Peers!);
-
-        await StopHostsAsync(secondHost, firstHost, registryHost);
+            Assert.Equal(ZLinkSpotEventKind.PeersChanged, peerEvent.Event);
+            Assert.NotNull(peerEvent.Peers);
+            Assert.NotEmpty(peerEvent.Peers!);
+        }, secondHost, firstHost, registryHost);
     }
 
     private static string GetFreeTcpEndpoint()

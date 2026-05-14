@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend;
+using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Core;
 using System.Threading;
 

@@ -1,6 +1,6 @@
 using Systems.Zlink;
-using Zlink.Framework.Spots;
-using Zlink.Framework.Streams;
+using Zlink.Framework.Contracts.Spots;
+using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionGateway.Infrastructure;
 

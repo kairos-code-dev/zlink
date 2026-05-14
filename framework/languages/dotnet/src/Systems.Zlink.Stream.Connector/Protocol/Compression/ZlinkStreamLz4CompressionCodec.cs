@@ -2,7 +2,7 @@ using K4os.Compression.LZ4;
 
 namespace Systems.Zlink.Stream.Connector.Protocol.Compression;
 
-public sealed class ZlinkStreamLz4CompressionCodec : IZlinkStreamCompressionCodec
+internal sealed class ZlinkStreamLz4CompressionCodec : IZlinkStreamCompressionCodec
 {
     public ZlinkStreamCompression Compression => ZlinkStreamCompression.Lz4;
 

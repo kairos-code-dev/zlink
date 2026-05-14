@@ -1,5 +1,4 @@
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Runtime;
 using System.Collections.Concurrent;
 
 namespace Systems.Zlink.Stream.Connector.Unity;
@@ -85,10 +84,10 @@ public sealed class ZlinkStreamConnectorBehaviour : IAsyncDisposable
 #endif
 {
     private ZlinkUnityStreamConnectorOptions? _options;
-    private ZlinkStreamConnector? _connector;
+    private IZlinkStreamConnector? _connector;
     private ZlinkUnityCallbackDispatcher? _dispatcher;
 
-    public ZlinkStreamConnector? Connector => _connector;
+    public IZlinkStreamConnector? Connector => _connector;
 
     public ZlinkUnityCallbackDispatcher? Dispatcher => _dispatcher;
 
@@ -107,7 +106,7 @@ public sealed class ZlinkStreamConnectorBehaviour : IAsyncDisposable
             throw new InvalidOperationException("Unity stream connector options are not configured.");
         }
 
-        _connector = await ZlinkStreamConnector.ConnectAsync(_options.Connector, cancellationToken)
+        _connector = await ZlinkStreamConnectorFactory.ConnectAsync(_options.Connector, cancellationToken)
             .ConfigureAwait(false);
     }
 

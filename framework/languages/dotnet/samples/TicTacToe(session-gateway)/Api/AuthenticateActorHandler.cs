@@ -1,6 +1,6 @@
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
-using Zlink.Framework.Handlers;
+using Zlink.Framework.Contracts.Handlers;
 
 namespace TicTacToe.SessionGateway.Api;
 

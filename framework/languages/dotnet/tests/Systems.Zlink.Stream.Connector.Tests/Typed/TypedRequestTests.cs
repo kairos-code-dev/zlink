@@ -7,11 +7,10 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
+using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Codecs;
-using Systems.Zlink.Stream.Connector.Calls;
-using Systems.Zlink.Stream.Connector.Protocol;
-using Systems.Zlink.Stream.Connector.Protocol.Compression;
+using Systems.Zlink.Stream.Connector.Contracts.Calls;
 using Systems.Zlink.Stream.Connector.Runtime;
 using Systems.Zlink.Stream.Connector.Protocol.Framing;
 using Xunit;
@@ -22,7 +21,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task TcpTypedRequestCorrelatesResponse()
     {
-        var headerCodec = new ZlinkStreamHeaderCodec();
+        var headerCodec = ZlinkStreamDefaultCodecs.Header();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -48,7 +47,7 @@ public sealed partial class StreamConnectorTests
             await WritePacketAsync(stream, headerCodec.Encode(responseHeader).ToArray(), responseBody);
         });
 
-        await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
@@ -66,7 +65,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task CallbackRequestReturnsTypedResult()
     {
-        var headerCodec = new ZlinkStreamHeaderCodec();
+        var headerCodec = ZlinkStreamDefaultCodecs.Header();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -89,7 +88,7 @@ public sealed partial class StreamConnectorTests
                 JsonSerializer.SerializeToUtf8Bytes(new Pong("callback")));
         });
 
-        await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
@@ -108,7 +107,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task PacketNameAttributeIsUsedByDefault()
     {
-        var headerCodec = new ZlinkStreamHeaderCodec();
+        var headerCodec = ZlinkStreamDefaultCodecs.Header();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -121,7 +120,7 @@ public sealed partial class StreamConnectorTests
             Assert.Equal("custom.packet", header.Name);
         });
 
-        await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
@@ -142,7 +141,7 @@ public sealed partial class StreamConnectorTests
             await Task.Delay(TimeSpan.FromMilliseconds(100));
         });
 
-        await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
             MaxSendMetadataSize = 4
@@ -161,8 +160,8 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task ClientToServerCompressionIsExplicit()
     {
-        var headerCodec = new ZlinkStreamHeaderCodec();
-        var compressionCodec = new ZlinkStreamLz4CompressionCodec();
+        var headerCodec = ZlinkStreamDefaultCodecs.Header();
+        var compressionCodec = ZlinkStreamDefaultCodecs.Lz4Compression();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -182,7 +181,7 @@ public sealed partial class StreamConnectorTests
             Assert.Equal("compressed", decoded?.Text);
         });
 
-        await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
             Compression = ZlinkStreamCompression.Lz4

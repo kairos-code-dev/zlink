@@ -7,10 +7,9 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
+using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Calls;
-using Systems.Zlink.Stream.Connector.Protocol;
-using Systems.Zlink.Stream.Connector.Protocol.Compression;
+using Systems.Zlink.Stream.Connector.Contracts.Calls;
 using Systems.Zlink.Stream.Connector.Runtime;
 using Systems.Zlink.Stream.Connector.Protocol.Framing;
 using Xunit;
@@ -24,7 +23,7 @@ public sealed partial class StreamConnectorTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
-        var headerCodec = new ZlinkStreamHeaderCodec();
+        var headerCodec = ZlinkStreamDefaultCodecs.Header();
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
@@ -36,7 +35,7 @@ public sealed partial class StreamConnectorTests
             Assert.Equal("b", Encoding.UTF8.GetString(packet.Body));
         });
 
-        await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
@@ -54,7 +53,7 @@ public sealed partial class StreamConnectorTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
-        var headerCodec = new ZlinkStreamHeaderCodec();
+        var headerCodec = ZlinkStreamDefaultCodecs.Header();
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
@@ -81,7 +80,7 @@ public sealed partial class StreamConnectorTests
                 "b2"u8.ToArray());
         });
 
-        await using var connector = new ZlinkStreamConnector(new ZlinkStreamConnectorOptions
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
@@ -116,7 +115,7 @@ public sealed partial class StreamConnectorTests
         var port = GetFreeTcpPort();
         listener.Prefixes.Add($"http://127.0.0.1:{port}/ws/");
         listener.Start();
-        var headerCodec = new ZlinkStreamHeaderCodec();
+        var headerCodec = ZlinkStreamDefaultCodecs.Header();
         var server = Task.Run(async () =>
         {
             var context = await listener.GetContextAsync();
@@ -130,7 +129,7 @@ public sealed partial class StreamConnectorTests
             Assert.Equal("wb", Encoding.UTF8.GetString(packet.Body));
         });
 
-        await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"ws://127.0.0.1:{port}/ws/")
         });
@@ -149,7 +148,7 @@ public sealed partial class StreamConnectorTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
-        var headerCodec = new ZlinkStreamHeaderCodec();
+        var headerCodec = ZlinkStreamDefaultCodecs.Header();
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
@@ -162,7 +161,7 @@ public sealed partial class StreamConnectorTests
             Assert.Equal("tb", Encoding.UTF8.GetString(packet.Body));
         });
 
-        await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tls://127.0.0.1:{endpoint.Port}"),
             SkipServerCertificateValidation = true

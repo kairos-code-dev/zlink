@@ -7,11 +7,10 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
+using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Codecs;
-using Systems.Zlink.Stream.Connector.Calls;
-using Systems.Zlink.Stream.Connector.Protocol;
-using Systems.Zlink.Stream.Connector.Protocol.Compression;
+using Systems.Zlink.Stream.Connector.Contracts.Calls;
 using Systems.Zlink.Stream.Connector.Runtime;
 using Systems.Zlink.Stream.Connector.Protocol.Framing;
 using Xunit;
@@ -33,7 +32,7 @@ public sealed partial class StreamConnectorTests
             await Task.Delay(TimeSpan.FromMilliseconds(200));
         });
 
-        await using var connector = await ZlinkStreamConnector.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
             RequestTimeout = TimeSpan.FromMilliseconds(50)
@@ -51,7 +50,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task DisconnectedSendFailsBeforeTransportWrite()
     {
-        await using var connector = new ZlinkStreamConnector(new ZlinkStreamConnectorOptions
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri("tcp://127.0.0.1:1")
         });
@@ -67,7 +66,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task SendFrameLimitIsEnforcedBeforeTransportWrite()
     {
-        await using var connector = new ZlinkStreamConnector(new ZlinkStreamConnectorOptions
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri("tcp://127.0.0.1:1"),
             MaxSendFrameSize = 6
@@ -85,7 +84,7 @@ public sealed partial class StreamConnectorTests
     public void InvalidHandlerQueueCapacityIsRejected()
     {
         var exception = Assert.Throws<ZlinkStreamException>(() =>
-            new ZlinkStreamConnector(new ZlinkStreamConnectorOptions
+            ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
             {
                 Endpoint = new Uri("tcp://127.0.0.1:1"),
                 HandlerQueueCapacity = 0
@@ -107,7 +106,7 @@ public sealed partial class StreamConnectorTests
             await WritePacketAsync(stream, "invalid-header"u8.ToArray(), "body"u8.ToArray());
         });
 
-        await using var connector = new ZlinkStreamConnector(new ZlinkStreamConnectorOptions
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });

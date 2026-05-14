@@ -1,14 +1,12 @@
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Calls;
-using Systems.Zlink.Stream.Connector.Protocol;
-using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Contracts.Calls;
 
 namespace Systems.Zlink.Stream.Connector.MessagePack;
 
 public static class ZlinkStreamMessagePackConnectorExtensions
 {
     public static ZlinkStreamMessagePackSendBuilder Send<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         TBody body)
     {
         ArgumentNullException.ThrowIfNull(connector);
@@ -16,7 +14,7 @@ public static class ZlinkStreamMessagePackConnectorExtensions
     }
 
     public static ZlinkStreamMessagePackRequestBuilder Request<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         TBody body)
     {
         ArgumentNullException.ThrowIfNull(connector);
@@ -24,16 +22,16 @@ public static class ZlinkStreamMessagePackConnectorExtensions
     }
 
     public static IDisposable On<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        var resolver = connector.Options.NameResolver ?? new ZlinkStreamPacketNameResolver();
+        var resolver = connector.Options.NameResolver ?? ZlinkStreamDefaultCodecs.PacketNameResolver();
         return connector.On(resolver.Resolve(typeof(TBody)), handler);
     }
 
     public static IDisposable On<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         string name,
         Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
     {
@@ -49,9 +47,9 @@ public static class ZlinkStreamMessagePackConnectorExtensions
 
 public sealed class ZlinkStreamMessagePackSendBuilder
 {
-    private readonly ZlinkStreamSendBuilder _inner;
+    private readonly IZlinkStreamSendCall _inner;
 
-    internal ZlinkStreamMessagePackSendBuilder(ZlinkStreamSendBuilder inner)
+    internal ZlinkStreamMessagePackSendBuilder(IZlinkStreamSendCall inner)
     {
         _inner = inner;
     }
@@ -86,9 +84,9 @@ public sealed class ZlinkStreamMessagePackSendBuilder
 
 public sealed class ZlinkStreamMessagePackRequestBuilder
 {
-    private readonly ZlinkStreamRequestBuilder _inner;
+    private readonly IZlinkStreamRequestCall _inner;
 
-    internal ZlinkStreamMessagePackRequestBuilder(ZlinkStreamRequestBuilder inner)
+    internal ZlinkStreamMessagePackRequestBuilder(IZlinkStreamRequestCall inner)
     {
         _inner = inner;
     }

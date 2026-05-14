@@ -9,7 +9,7 @@ using TicTacToe.SessionGateway.Infrastructure.Configuration;
 using TicTacToe.SessionGateway.Play;
 using TicTacToe.SessionGateway.Registry;
 using TicTacToe.SessionGateway.Shared.Configuration;
-using Zlink.Framework.Spots;
+using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.SessionGateway.Server.Scenario;
 

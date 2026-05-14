@@ -3,7 +3,7 @@ using System.Threading.Channels;
 
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
-public sealed class ZlinkStreamConnector : IAsyncDisposable
+internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 {
     private readonly ZlinkStreamPendingRequests _pending = new();
     private readonly ZlinkStreamTypedHandlerRegistry _typedHandlers = new();
@@ -22,7 +22,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
     private readonly Task _handlerPump;
     private int _disposed;
 
-    public ZlinkStreamConnector(ZlinkStreamConnectorOptions options)
+    internal ZlinkStreamConnector(ZlinkStreamConnectorOptions options)
     {
         Options = options ?? throw new ArgumentNullException(nameof(options));
         ZlinkStreamTransportFactory.ValidateOptions(options);
@@ -101,15 +101,6 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
 
     public ZlinkStreamConnectorOptions Options { get; }
 
-    public static async ValueTask<ZlinkStreamConnector> ConnectAsync(
-        ZlinkStreamConnectorOptions options,
-        CancellationToken cancellationToken = default)
-    {
-        var connector = new ZlinkStreamConnector(options);
-        await connector.ConnectAsync(cancellationToken).ConfigureAwait(false);
-        return connector;
-    }
-
     public async ValueTask ConnectAsync(CancellationToken cancellationToken = default)
     {
         await _lifecycle.ConnectAsync(
@@ -124,11 +115,11 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         await _lifecycle.CloseAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public ZlinkStreamSendBuilder Send(ZlinkStreamEncodedBody body)
-        => new(this, ResolveNameOrDefault(body), body);
+    public IZlinkStreamSendCall Send(ZlinkStreamEncodedBody body)
+        => new ZlinkStreamSendBuilder(this, ResolveNameOrDefault(body), body);
 
-    public ZlinkStreamRequestBuilder Request(ZlinkStreamEncodedBody body)
-        => new(this, ResolveNameOrDefault(body), body);
+    public IZlinkStreamRequestCall Request(ZlinkStreamEncodedBody body)
+        => new ZlinkStreamRequestBuilder(this, ResolveNameOrDefault(body), body);
 
     public IDisposable On(
         string name,
@@ -140,7 +131,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         return _typedHandlers.Add(name, handler);
     }
 
-    internal async ValueTask SendEncodedAsync(
+    async ValueTask IZlinkStreamConnectorInternal.SendEncodedAsync(
         ZlinkStreamMessageKind kind,
         string name,
         ZlinkStreamEncodedBody body,
@@ -153,7 +144,25 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.BodyBytes, cancellationToken).ConfigureAwait(false);
     }
 
-    internal async ValueTask<ZlinkStreamEncodedBody> RequestEncodedAsync(
+    async ValueTask<ZlinkStreamEncodedBody> IZlinkStreamConnectorInternal.RequestEncodedAsync(
+        string name,
+        ZlinkStreamEncodedBody body,
+        ZlinkStreamMetadata metadata,
+        bool compress,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        return await RequestEncodedCoreAsync(
+                name,
+                body,
+                metadata,
+                compress,
+                timeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<ZlinkStreamEncodedBody> RequestEncodedCoreAsync(
         string name,
         ZlinkStreamEncodedBody body,
         ZlinkStreamMetadata metadata,
@@ -182,7 +191,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         }
     }
 
-    internal void RequestEncoded(
+    void IZlinkStreamConnectorInternal.RequestEncoded(
         string name,
         ZlinkStreamEncodedBody body,
         ZlinkStreamMetadata metadata,
@@ -191,13 +200,13 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         Action<ZlinkStreamResult> callback)
     {
         _callbacks.QueueRequestCallback(
-            () => RequestEncodedAsync(name, body, metadata, compress, timeout, CancellationToken.None),
+            () => RequestEncodedCoreAsync(name, body, metadata, compress, timeout, CancellationToken.None),
             reply => ZlinkStreamResult.Success(),
             ZlinkStreamResult.Failure,
             callback);
     }
 
-    internal void RequestEncoded(
+    void IZlinkStreamConnectorInternal.RequestEncoded(
         string name,
         ZlinkStreamEncodedBody body,
         ZlinkStreamMetadata metadata,
@@ -206,7 +215,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback)
     {
         _callbacks.QueueRequestCallback(
-            () => RequestEncodedAsync(name, body, metadata, compress, timeout, CancellationToken.None),
+            () => RequestEncodedCoreAsync(name, body, metadata, compress, timeout, CancellationToken.None),
             ZlinkStreamResult<ZlinkStreamEncodedBody>.Success,
             ZlinkStreamResult<ZlinkStreamEncodedBody>.Failure,
             callback);

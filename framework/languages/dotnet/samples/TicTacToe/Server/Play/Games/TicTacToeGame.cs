@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using Zlink.Framework.Timers;
+using Zlink.Framework.Contracts.Timers;
 using TicTacToe.Server.Play.Actors;
 using TicTacToe.Server.Play.Actors.Handlers;
 

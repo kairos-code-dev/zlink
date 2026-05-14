@@ -1,4 +1,4 @@
-using Zlink.Framework.Actors;
+using Zlink.Framework.Contracts.Actors;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 

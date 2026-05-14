@@ -1,5 +1,5 @@
 using TicTacToe.SessionActorDispatch.Play;
-using Zlink.Framework.Spots;
+using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.SessionGateway.Play;
 

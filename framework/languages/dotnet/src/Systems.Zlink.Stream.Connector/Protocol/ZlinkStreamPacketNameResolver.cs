@@ -3,7 +3,7 @@ using System.Reflection;
 
 namespace Systems.Zlink.Stream.Connector.Protocol;
 
-public sealed class ZlinkStreamPacketNameResolver : IZlinkStreamPacketNameResolver
+internal sealed class ZlinkStreamPacketNameResolver : IZlinkStreamPacketNameResolver
 {
     private static readonly ConcurrentDictionary<Type, string> Cache = new();
 

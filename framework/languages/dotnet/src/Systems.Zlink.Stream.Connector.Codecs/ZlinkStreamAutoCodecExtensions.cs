@@ -1,6 +1,4 @@
-using Systems.Zlink.Stream.Connector.Calls;
-using Systems.Zlink.Stream.Connector.Runtime;
-using Systems.Zlink.Stream.Connector.Protocol;
+using Systems.Zlink.Stream.Connector.Contracts.Calls;
 using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace Systems.Zlink.Stream.Connector.Codecs;
@@ -8,7 +6,7 @@ namespace Systems.Zlink.Stream.Connector.Codecs;
 public static class ZlinkStreamAutoCodecExtensions
 {
     public static ZlinkStreamAutoCodecSendBuilder Send<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         TBody body)
     {
         ArgumentNullException.ThrowIfNull(connector);
@@ -16,7 +14,7 @@ public static class ZlinkStreamAutoCodecExtensions
     }
 
     public static ZlinkStreamAutoCodecRequestBuilder Request<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         TBody body)
     {
         ArgumentNullException.ThrowIfNull(connector);
@@ -24,16 +22,16 @@ public static class ZlinkStreamAutoCodecExtensions
     }
 
     public static IDisposable On<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        var resolver = connector.Options.NameResolver ?? new ZlinkStreamPacketNameResolver();
+        var resolver = connector.Options.NameResolver ?? ZlinkStreamDefaultCodecs.PacketNameResolver();
         return connector.On(resolver.Resolve(typeof(TBody)), handler);
     }
 
     public static IDisposable On<TBody>(
-        this ZlinkStreamConnector connector,
+        this IZlinkStreamConnector connector,
         string name,
         Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
     {
@@ -49,9 +47,9 @@ public static class ZlinkStreamAutoCodecExtensions
 
 public sealed class ZlinkStreamAutoCodecSendBuilder
 {
-    private readonly ZlinkStreamSendBuilder _inner;
+    private readonly IZlinkStreamSendCall _inner;
 
-    internal ZlinkStreamAutoCodecSendBuilder(ZlinkStreamSendBuilder inner)
+    internal ZlinkStreamAutoCodecSendBuilder(IZlinkStreamSendCall inner)
     {
         _inner = inner;
     }
@@ -86,9 +84,9 @@ public sealed class ZlinkStreamAutoCodecSendBuilder
 
 public sealed class ZlinkStreamAutoCodecRequestBuilder
 {
-    private readonly ZlinkStreamRequestBuilder _inner;
+    private readonly IZlinkStreamRequestCall _inner;
 
-    internal ZlinkStreamAutoCodecRequestBuilder(ZlinkStreamRequestBuilder inner)
+    internal ZlinkStreamAutoCodecRequestBuilder(IZlinkStreamRequestCall inner)
     {
         _inner = inner;
     }

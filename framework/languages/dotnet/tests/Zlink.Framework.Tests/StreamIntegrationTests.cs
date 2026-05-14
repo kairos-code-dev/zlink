@@ -7,7 +7,6 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Protocol;
 using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.Tests;
@@ -38,7 +37,7 @@ public sealed class StreamIntegrationTests
     [Fact]
     public void SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch()
     {
-        var headerCodec = new ZlinkStreamHeaderCodec();
+        var headerCodec = ZlinkStreamDefaultCodecs.Header();
         var routeHeader = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Command,
             "gateway",
@@ -528,7 +527,7 @@ public sealed class StreamIntegrationTests
         ZlinkStreamHeader header,
         ReadOnlySpan<byte> body)
     {
-        var headerBytes = new ZlinkStreamHeaderCodec().Encode(header).ToArray();
+        var headerBytes = ZlinkStreamDefaultCodecs.Header().Encode(header).ToArray();
         var frame = new byte[6 + headerBytes.Length + body.Length];
         frame[0] = (byte)(headerBytes.Length >> 8);
         frame[1] = (byte)headerBytes.Length;
@@ -549,7 +548,7 @@ public sealed class StreamIntegrationTests
         var bodyLength = (lengths[2] << 24) | (lengths[3] << 16) | (lengths[4] << 8) | lengths[5];
         var headerBytes = ReceiveExact(stream, headerLength);
         var bodyBytes = ReceiveExact(stream, bodyLength);
-        var header = new ZlinkStreamHeaderCodec().Decode(headerBytes);
+        var header = ZlinkStreamDefaultCodecs.Header().Decode(headerBytes);
         return (header, bodyBytes);
     }
 

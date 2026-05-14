@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Hosting;
 
 namespace Zlink.Framework.Tests;
@@ -50,13 +51,53 @@ internal static class ChannelMessagingTestSupport
     {
         foreach (var host in hosts)
         {
-            await host.StopAsync();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                await host.StopAsync(timeout.Token);
+            }
+            catch (OperationCanceledException ex) when (timeout.IsCancellationRequested)
+            {
+                throw new TimeoutException($"Timed out while stopping host {host.GetType().FullName}.", ex);
+            }
         }
 
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
         await Task.Delay(1000);
+    }
+
+    public static async Task RunWithHostCleanupAsync(
+        Func<Task> runAsync,
+        params IHost[] hosts)
+    {
+        Exception? runFailure = null;
+        try
+        {
+            await runAsync();
+        }
+        catch (Exception ex)
+        {
+            runFailure = ex;
+        }
+
+        try
+        {
+            await StopHostsAsync(hosts);
+        }
+        catch (Exception cleanupFailure) when (runFailure is not null)
+        {
+            throw new AggregateException(
+                "Test failed, and host cleanup also failed.",
+                runFailure,
+                cleanupFailure);
+        }
+
+        if (runFailure is not null)
+        {
+            ExceptionDispatchInfo.Capture(runFailure).Throw();
+        }
     }
 }
 

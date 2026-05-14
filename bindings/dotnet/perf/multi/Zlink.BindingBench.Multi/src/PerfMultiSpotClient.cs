@@ -356,9 +356,15 @@ internal static class PerfMultiSpotClient
         _ = controlState;
         long activeDeadlineTicks = DeadlineTicksFromSeconds(
             config.DurationSeconds);
+        long activeDurationNs = Math.Max(1L, config.DurationSeconds)
+            * 1_000_000_000L;
         for (int i = 0; i < slots.Count; i++)
         {
             Volatile.Write(ref slots[i].State.ActiveMsgSize, config.Size);
+            Interlocked.Exchange(ref slots[i].State.ActiveDurationNs,
+                activeDurationNs);
+            Interlocked.Exchange(ref slots[i].State.SenderWindowStartNs, 0);
+            Interlocked.Exchange(ref slots[i].State.SenderWindowEndNs, 0);
             Interlocked.Exchange(ref slots[i].State.ActiveDeadlineTicks,
                 activeDeadlineTicks);
             Volatile.Write(ref slots[i].State.Active, 1);
@@ -431,47 +437,48 @@ internal static class PerfMultiSpotClient
                 }
                 using (subscribed)
                 {
-                if (subscribed == null)
-                    return progressed;
+                    if (subscribed == null)
+                        return progressed;
 
-                progressed = true;
-                ReadOnlySpan<byte> payload =
-                    subscribed.SinglePartOrThrow().AsReadOnlySpan();
-                if (IsStopTokenPayload(payload))
-                {
-                    slot.State.CooldownSeen = 1;
-                    return true;
-                }
-
-                if (!PerfShared.TryDecodeMetricHeader(payload,
-                        out PerfMetricHeader header))
-                {
-                    continue;
-                }
-                if (header.RunId != ExpectedRunId
-                    || header.MsgSize != (uint)msgSize)
-                {
-                    continue;
-                }
-                if (header.Phase != (uint)PerfPhase.Active
-                    || Stopwatch.GetTimestamp() > activeDeadlineTicks)
-                {
-                    continue;
-                }
-
-                slot.State.MeasureCount++;
-                if (slot.State.MeasureCount % slot.State.LatencySampleStride == 0
-                    && header.SentTsNs > 0)
-                {
-                    ulong nowNs = EpochNs();
-                    if (nowNs >= header.SentTsNs)
+                    progressed = true;
+                    ReadOnlySpan<byte> payload =
+                        subscribed.SinglePartOrThrow().AsReadOnlySpan();
+                    if (IsStopTokenPayload(payload))
                     {
-                        double sampleLatencyNs = nowNs - header.SentTsNs;
-                        ReservoirSample(slot.State.LatencySamples,
-                            sampleLatencyNs, ref slot.State.SampleSeen,
-                            slot.State.LatencySampleCap, ref slot.State.Rng);
+                        slot.State.CooldownSeen = 1;
+                        return true;
                     }
-                }
+
+                    if (!PerfShared.TryDecodeMetricHeader(payload,
+                            out PerfMetricHeader header))
+                    {
+                        continue;
+                    }
+                    if (header.RunId != ExpectedRunId
+                        || header.MsgSize != (uint)msgSize)
+                    {
+                        continue;
+                    }
+                    if (header.Phase != (uint)PerfPhase.Active
+                        || Stopwatch.GetTimestamp() > activeDeadlineTicks
+                        || !IsWithinSenderWindow(slot.State, header))
+                    {
+                        continue;
+                    }
+
+                    slot.State.MeasureCount++;
+                    if (slot.State.MeasureCount % slot.State.LatencySampleStride == 0
+                        && header.SentTsNs > 0)
+                    {
+                        ulong nowNs = EpochNs();
+                        if (nowNs >= header.SentTsNs)
+                        {
+                            double sampleLatencyNs = nowNs - header.SentTsNs;
+                            ReservoirSample(slot.State.LatencySamples,
+                                sampleLatencyNs, ref slot.State.SampleSeen,
+                                slot.State.LatencySampleCap, ref slot.State.Rng);
+                        }
+                    }
                 }
             }
         }
@@ -480,6 +487,35 @@ internal static class PerfMultiSpotClient
             Interlocked.CompareExchange(ref slot.State.Error, ex, null);
             return false;
         }
+    }
+
+    private static bool IsWithinSenderWindow(SpotClientSlotState state,
+        PerfMetricHeader header)
+    {
+        if (header.SentTsNs == 0)
+            return true;
+
+        long sentNs = unchecked((long)header.SentTsNs);
+        long windowEndNs = Interlocked.Read(ref state.SenderWindowEndNs);
+        if (windowEndNs == 0)
+        {
+            lock (state.SenderWindowLock)
+            {
+                windowEndNs = state.SenderWindowEndNs;
+                if (windowEndNs == 0)
+                {
+                    long durationNs = Math.Max(1L, state.ActiveDurationNs);
+                    long computedEndNs = sentNs > long.MaxValue - durationNs
+                        ? long.MaxValue
+                        : sentNs + durationNs;
+                    state.SenderWindowStartNs = sentNs;
+                    state.SenderWindowEndNs = computedEndNs;
+                    windowEndNs = computedEndNs;
+                }
+            }
+        }
+
+        return sentNs <= windowEndNs;
     }
 
     private static void MergeLatencySamples(IReadOnlyList<double> source,
@@ -633,6 +669,10 @@ internal static class PerfMultiSpotClient
         internal int Active;
         internal int ActiveMsgSize;
         internal long ActiveDeadlineTicks;
+        internal long ActiveDurationNs;
+        internal long SenderWindowStartNs;
+        internal long SenderWindowEndNs;
+        internal readonly object SenderWindowLock = new();
         internal Exception? Error;
 
         public void Dispose()

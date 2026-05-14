@@ -766,7 +766,8 @@ internal static class PerfMultiSpotReqRep
         int readyTimeoutMs, SpotEchoConfig config)
     {
         ulong seq = slot.NextSeq++;
-        using var payload = new Message(CreatePayload(size, seq).AsSpan());
+        ReadOnlySpan<byte> payloadBytes = slot.PreparePayload(size, seq);
+        using var payload = new Message(payloadBytes);
         Volatile.Write(ref slot.WaitingReply, 1);
         bool submitted = slot.Requester
             .RequestToSpot(config.ServerNodeRoutingId, config.ServerSpotRoutingId)
@@ -787,7 +788,8 @@ internal static class PerfMultiSpotReqRep
         SpotEchoConfig config)
     {
         ulong seq = slot.NextSeq++;
-        using var payload = new Message(CreatePayload(size, seq).AsSpan());
+        ReadOnlySpan<byte> payloadBytes = slot.PreparePayload(size, seq);
+        using var payload = new Message(payloadBytes);
         Volatile.Write(ref slot.WaitingReply, 1);
         bool submitted = slot.Requester
             .SendToSpot(config.ServerNodeRoutingId, config.ServerSpotRoutingId)
@@ -1065,15 +1067,6 @@ internal static class PerfMultiSpotReqRep
         return 0;
     }
 
-    private static byte[] CreatePayload(int size, ulong seq)
-    {
-        var payload = new byte[Math.Max(size, PerfMetricHeaderSize)];
-        Array.Fill(payload, (byte)'a');
-        StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Active, size, seq,
-            EpochNs());
-        return payload;
-    }
-
     private static bool IsTransientSubmitErrno(int errno)
     {
         return errno == 11 || errno == 110 || errno == 107 || errno == 113;
@@ -1139,6 +1132,21 @@ internal static class PerfMultiSpotReqRep
         internal ulong NextSeq = 1;
         internal bool PollRegistered;
         internal PollWake? Wake;
+        private byte[] _payload = Array.Empty<byte>();
+
+        internal ReadOnlySpan<byte> PreparePayload(int size, ulong seq)
+        {
+            int payloadSize = Math.Max(size, PerfMetricHeaderSize);
+            if (_payload.Length != payloadSize)
+            {
+                _payload = new byte[payloadSize];
+                Array.Fill(_payload, (byte)'a');
+            }
+
+            StampMetricHeader(_payload.AsSpan(), RunId, PerfPhase.Active,
+                size, seq, EpochNs());
+            return _payload.AsSpan();
+        }
 
         internal void ResetForActive()
         {

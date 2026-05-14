@@ -49,7 +49,8 @@ internal static class PerfMultiPubSubServer
         Array.Fill(payload, (byte)'a');
 
         if (!RunPublishPhase(server, payload, runId, size, ref seq,
-                durationSeconds, controlState))
+                PerfPhase.Active, durationSeconds, controlState)
+            || !PublishStopToken(server, controlState))
         {
             return 2;
         }
@@ -72,8 +73,34 @@ internal static class PerfMultiPubSubServer
         }
     }
 
+    private static bool PublishStopToken(PubSocket server,
+        RunnerControlState controlState)
+    {
+        while (!controlState.StopRequested)
+        {
+            try
+            {
+                using Message message = new(MultiStopToken.AsSpan());
+                if (server.Publish(Topic).Message(message)
+                        .Flags(SendFlags.None).Submit())
+                    return true;
+            }
+            catch (ZlinkException ex) when (IsTransientStopPublishErrno(
+                                                ex.InternalErrno))
+            {
+            }
+        }
+
+        return controlState.StopRequested;
+    }
+
+    private static bool IsTransientStopPublishErrno(int errno)
+    {
+        return IsWouldBlock(errno) || IsInterrupted(errno) || errno == 110;
+    }
+
     private static bool RunPublishPhase(PubSocket server, byte[] payload,
-        uint runId, int size, ref ulong seq, int durationSeconds,
+        uint runId, int size, ref ulong seq, PerfPhase phase, int durationSeconds,
         RunnerControlState controlState)
     {
         long deadlineTicks = Stopwatch.GetTimestamp()
@@ -89,14 +116,11 @@ internal static class PerfMultiPubSubServer
             1);
         retryTimer.Start(TimeSpan.FromMilliseconds(10), 1);
 
-        // C perf contract: PUBSUB server publishes active messages until the
-        // scripted duration ends and then exits. The client owns its duration
-        // window and does not require a stop token for completion.
         while (!controlState.StopRequested
                && Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Active,
-                size, seq, EpochNs());
+            StampMetricHeader(payload.AsSpan(), runId, phase, size, seq,
+                EpochNs());
             if (PublishNoWait(server, payload.AsSpan()))
             {
                 seq++;

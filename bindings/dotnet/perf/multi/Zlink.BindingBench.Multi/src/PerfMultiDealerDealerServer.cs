@@ -17,7 +17,6 @@ internal static class PerfMultiDealerDealerServer
         int clientCount = ResolveMultiClients(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
         int latencySampleCap = ResolveMultiLatencySampleCap(options);
-        int latencySampleStride = ResolveMultiOnewayLatencySampleStride();
         string endpoint = MultiEndpointFor(options.Transport,
             "multi-dealer-dealer", options);
 
@@ -48,7 +47,7 @@ internal static class PerfMultiDealerDealerServer
         PrintAutoHwmSnapshot(server, "server", options.Transport, size);
 
         var result = RunReceivePhase(server, size, latencySampleCap,
-            latencySampleStride, durationSeconds);
+            durationSeconds);
         if (result.measureCount <= 0)
             return 2;
 
@@ -60,7 +59,7 @@ internal static class PerfMultiDealerDealerServer
     private static (double throughput, double latencyNs, double latencyP95Ns,
         double latencyP99Ns, long measureCount)
         RunReceivePhase(DealerSocket server, int msgSize, int latencySampleCap,
-            int latencySampleStride, int durationSeconds)
+            int durationSeconds)
     {
         const uint expectedRunId = 1;
         var latSamples = new List<double>(latencySampleCap);
@@ -70,8 +69,8 @@ internal static class PerfMultiDealerDealerServer
         using var receivedBuffer = new Received();
 
         if (!ReceiveActiveWindow(server, receivedBuffer, msgSize, expectedRunId,
-                PerfPhase.Active, latencySampleStride, latSamples, ref sampleSeen,
-                ref rng, ref measureCount, durationSeconds)
+                PerfPhase.Active, latSamples, ref sampleSeen, ref rng,
+                ref measureCount, durationSeconds)
             || !DrainUntilIdle(server, receivedBuffer, msgSize, expectedRunId,
                 PerfPhase.Active))
         {
@@ -92,9 +91,8 @@ internal static class PerfMultiDealerDealerServer
 
     private static bool ReceiveActiveWindow(DealerSocket server,
         Received receivedBuffer, int msgSize, uint expectedRunId,
-        PerfPhase expectedPhase, int latencySampleStride,
-        List<double> latSamples, ref long sampleSeen, ref uint rng,
-        ref long messageCount, int durationSeconds)
+        PerfPhase expectedPhase, List<double> latSamples, ref long sampleSeen,
+        ref uint rng, ref long messageCount, int durationSeconds)
     {
         using var poller = new Poller();
         using var activeTimer = new Systems.Zlink.Timer();
@@ -107,7 +105,7 @@ internal static class PerfMultiDealerDealerServer
         while (true)
         {
             int written = poller.Wait(events,
-                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs), out _);
+                TimeSpan.FromMilliseconds(-1), out _);
 
             for (int i = 0; i < written; i++)
             {
@@ -124,9 +122,8 @@ internal static class PerfMultiDealerDealerServer
                     continue;
 
                 DrainAvailable(server, receivedBuffer, msgSize, expectedRunId,
-                    expectedPhase, latencySampleStride, latSamples,
-                    ref sampleSeen, ref rng, ref messageCount,
-                    collectMetrics: true);
+                    expectedPhase, latSamples, ref sampleSeen, ref rng,
+                    ref messageCount, collectMetrics: true);
             }
         }
     }
@@ -166,9 +163,9 @@ internal static class PerfMultiDealerDealerServer
                     continue;
 
                 if (DrainAvailable(server, receivedBuffer, msgSize,
-                        expectedRunId, expectedPhase, 1, ignoredSamples,
-                        ref ignoredSampleSeen, ref ignoredRng, ref ignoredCount,
-                        collectMetrics: false) > 0)
+                        expectedRunId, expectedPhase, ignoredSamples,
+                        ref ignoredSampleSeen, ref ignoredRng,
+                        ref ignoredCount, collectMetrics: false) > 0)
                     idleTimer.Start(TimeSpan.FromMilliseconds(50), 1);
             }
         }
@@ -176,8 +173,8 @@ internal static class PerfMultiDealerDealerServer
 
     private static int DrainAvailable(DealerSocket server, Received receivedBuffer,
         int msgSize, uint expectedRunId, PerfPhase expectedPhase,
-        int latencySampleStride, List<double> latSamples, ref long sampleSeen,
-        ref uint rng, ref long messageCount, bool collectMetrics)
+        List<double> latSamples, ref long sampleSeen, ref uint rng,
+        ref long messageCount, bool collectMetrics)
     {
         int drained = 0;
         while (true)
@@ -188,6 +185,9 @@ internal static class PerfMultiDealerDealerServer
             drained++;
             ReadOnlySpan<byte> body = receivedBuffer.SinglePartOrThrow()
                 .AsReadOnlySpan();
+            if (IsStopTokenPayload(body))
+                continue;
+
             if (!PerfShared.TryDecodeMetricHeader(body, out PerfMetricHeader header)
                 || header.RunId != expectedRunId
                 || header.MsgSize != (uint)msgSize
@@ -198,8 +198,6 @@ internal static class PerfMultiDealerDealerServer
                 continue;
 
             messageCount++;
-            if (messageCount % latencySampleStride != 0)
-                continue;
             if (header.SentTsNs > 0)
             {
                 ulong nowNs = EpochNs();

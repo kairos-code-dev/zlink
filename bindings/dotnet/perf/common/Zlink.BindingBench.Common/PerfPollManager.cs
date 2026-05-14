@@ -1,55 +1,47 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using Systems.Zlink;
 
 public sealed class MonitorReadyPoller : IDisposable
 {
+    private readonly List<SocketMonitor> _activeMonitors = new();
+
     public int Poll(List<SocketMonitor> monitors, int[] activeIndices,
         int activeCount, long deadlineTicks, long nowTicks)
     {
         if (activeCount <= 0)
             return 0;
 
-        int ready = CountReady(monitors, activeIndices, activeCount);
-        if (ready > 0)
-            return ready;
+        long remainingTicks = deadlineTicks - nowTicks;
+        if (remainingTicks <= 0)
+            return 0;
 
-        long remainingMs = Math.Max(0, (deadlineTicks - nowTicks) * 1000L
-            / Stopwatch.Frequency);
-        if (remainingMs > 0)
+        long remainingMs = (remainingTicks * 1000L + Stopwatch.Frequency - 1)
+            / Stopwatch.Frequency;
+        int timeoutMs = remainingMs > int.MaxValue
+            ? int.MaxValue
+            : (int)remainingMs;
+
+        _activeMonitors.Clear();
+        for (int i = 0; i < activeCount; i++)
+            _activeMonitors.Add(monitors[activeIndices[i]]);
+
+        try
         {
-            Thread.Sleep((int)Math.Min(remainingMs, 1));
-            ready = CountReady(monitors, activeIndices, activeCount);
+            return ZlinkPoll.Poll(_activeMonitors, timeoutMs);
         }
-
-        return ready;
+        catch (ZlinkException ex) when (PerfShared.IsWouldBlock(ex.InternalErrno)
+                                        || PerfShared.IsInterrupted(ex.InternalErrno)
+                                        || ex.InternalErrno == 0)
+        {
+            return 0;
+        }
     }
 
     public void Dispose()
     {
-    }
-
-    private static int CountReady(List<SocketMonitor> monitors,
-        int[] activeIndices, int activeCount)
-    {
-        int ready = 0;
-        for (int i = 0; i < activeCount; i++)
-        {
-            try
-            {
-                if (monitors[activeIndices[i]].Snapshot().IsReady)
-                    ready++;
-            }
-            catch (ZlinkException ex) when (PerfShared.IsWouldBlock(ex.InternalErrno)
-                                            || PerfShared.IsInterrupted(ex.InternalErrno)
-                                            || ex.InternalErrno == 0)
-            {
-            }
-        }
-
-        return ready;
+        _activeMonitors.Clear();
     }
 }
 

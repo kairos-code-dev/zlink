@@ -208,7 +208,7 @@ internal static class PerfSpot
 
         // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
         // stop token published on the same topic.
-        PublishSpotStopTokenWithRetry(publisher, Topic, "[single-spot]");
+        PublishSpotStopTokenBlocking(publisher, Topic, "[single-spot]");
         receiverThread.Join();
 
         received = activeReceived;

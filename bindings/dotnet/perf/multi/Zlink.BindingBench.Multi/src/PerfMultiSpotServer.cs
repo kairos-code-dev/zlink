@@ -149,6 +149,9 @@ internal static class PerfMultiSpotServer
         Array.Fill(payload, (byte)'a');
 
         long activeDeadlineTicks = DeadlineTicksFromSeconds(config.DurationSeconds);
+        using var sendPoller = new Poller();
+        var sendEvents = new PollEvent[1];
+        sendPoller.Add(spotPub, PollEventFlags.PollOut);
 
         while (!controlState.StopRequested
                && Stopwatch.GetTimestamp() < activeDeadlineTicks)
@@ -156,7 +159,12 @@ internal static class PerfMultiSpotServer
             StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Active,
                 config.Size, seq, EpochNs());
             if (TryPublish(spotPub, config, payload, SendFlags.DontWait))
+            {
                 seq++;
+                continue;
+            }
+
+            WaitForSpotPublishReady(sendPoller, sendEvents);
         }
 
         // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via wire-level
@@ -298,6 +306,23 @@ internal static class PerfMultiSpotServer
                                         || IsInterrupted(ex.InternalErrno))
         {
             return false;
+        }
+    }
+
+    private static void WaitForSpotPublishReady(Poller poller,
+        PollEvent[] events)
+    {
+        while (true)
+        {
+            try
+            {
+                poller.Wait(events, TimeSpan.FromMilliseconds(-1), out _);
+                return;
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
+            {
+            }
         }
     }
 

@@ -182,7 +182,7 @@ internal static class PerfPubSub
 
         // PERF_SINGLE_TEST_POLICY § 1.4: send wire-level stop token to
         // wake the subscriber out of recv.
-        PublishStopTokenWithRetry(sender, Topic, "[single-pubsub]");
+        PublishStopTokenBlocking(sender, Topic, "[single-pubsub]");
         recvThread.Join();
 
         latencySamples = samples;

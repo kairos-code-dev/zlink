@@ -166,7 +166,7 @@ internal static class PerfPair
         // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
         // stop token. Bounded retry through transient backpressure so the
         // receiver always observes the terminator.
-        SendStopTokenWithRetry(sender, "[single-pair]");
+        SendStopTokenBlocking(sender, "[single-pair]");
         recvThread.Join();
 
         latencySamples = samples;

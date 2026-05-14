@@ -612,18 +612,24 @@ internal static class PerfMultiSpotReqRep
         }
 
         int activeSlots = ActiveSpotSlotLimit(slots.Count, size);
+        using var sendPoller = new Poller();
+        var sendEvents = new PollEvent[Math.Max(1, activeSlots)];
+        for (int i = 0; i < activeSlots; i++)
+            sendPoller.Add(slots[i].Requester, PollEventFlags.PollOut);
+
         while (Stopwatch.GetTimestamp() < activeDeadlineTicks)
         {
             bool sendProgress = false;
+            bool canSend = false;
             for (int i = 0; i < activeSlots; i++)
             {
                 ClientSlot slot = slots[i];
-                if (Volatile.Read(ref slot.WaitingReply) != 0
-                    || Volatile.Read(ref slot.SendPending) != 0)
+                if (Volatile.Read(ref slot.WaitingReply) != 0)
                 {
                     continue;
                 }
 
+                canSend = true;
                 try
                 {
                     SendResult result = config.Mode == SpotEchoMode.RequestReply
@@ -644,7 +650,10 @@ internal static class PerfMultiSpotReqRep
             if (sendProgress)
                 continue;
 
-            Thread.Yield();
+            if (canSend)
+                WaitForSpotReqRepSendReady(sendPoller, sendEvents);
+            else
+                Thread.Yield();
         }
 
         for (int i = 0; i < slots.Count; i++)
@@ -683,7 +692,7 @@ internal static class PerfMultiSpotReqRep
             return SendResult.Sent;
 
         Volatile.Write(ref slot.WaitingReply, 0);
-        Volatile.Write(ref slot.SendPending, 1);
+        Volatile.Write(ref slot.SendPending, 0);
         return SendResult.Blocked;
     }
 
@@ -705,8 +714,25 @@ internal static class PerfMultiSpotReqRep
         }
 
         Volatile.Write(ref slot.WaitingReply, 0);
-        Volatile.Write(ref slot.SendPending, 1);
+        Volatile.Write(ref slot.SendPending, 0);
         return SendResult.Blocked;
+    }
+
+    private static void WaitForSpotReqRepSendReady(Poller poller,
+        PollEvent[] events)
+    {
+        while (true)
+        {
+            try
+            {
+                poller.Wait(events, TimeSpan.FromMilliseconds(-1), out _);
+                return;
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
+            {
+            }
+        }
     }
 
     private static void OnRequestReply(ClientSlot slot, RequestResult result,

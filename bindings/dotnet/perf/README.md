@@ -82,8 +82,10 @@ active window uses the same tiered-runtime policy as `doc/perf/PERF_POLICY.md`.
 
 Multi uses `PERF_IO_THREADS=4` by default for both server and client processes,
 matching the C multi policy. Raw socket multi patterns set the current message
-size as `AutoHwmMessageUnitBytes` on every benchmark socket and then call
-context auto-HWM recalculation before active measurement.
+size as `AutoHwmMessageUnitBytes` on benchmark sockets and then call context
+auto-HWM recalculation before active measurement. SPOT benchmark handles do not
+set per-socket message-unit overrides; they use the SPOT node/context HWM
+configuration path.
 
 ## Results
 
@@ -112,6 +114,18 @@ and include the required metrics:
 The report also includes a markdown summary table for each pattern / transport /
 run group so the output remains readable without dropping the canonical
 `RESULT,current,...` lines.
+
+## SPOT One-Way Latency
+
+`MULTI_SPOT` reports active-phase latency from the timestamp carried in the
+one-way payload. The active phase intentionally drives the sender hard, so the
+reported value includes queue residence time when the receiver cannot drain as
+fast as the publisher fills the path.
+
+The .NET runner currently relies on SPOT dispatch callbacks for this path.
+That keeps the benchmark on public binding APIs, but it does not match the C
+runner's extra receive-worker drain path. Because of that, one-way SPOT latency
+can be much higher than C even when every size completes successfully.
 
 ## Review Notes
 

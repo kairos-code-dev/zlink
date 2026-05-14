@@ -213,7 +213,7 @@ internal static class PerfDealerDealer
 
         // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
         // stop token. Bounded retry through transient backpressure.
-        SendStopTokenWithRetry(sender, "[single-dealer-dealer]");
+        SendStopTokenBlocking(sender, "[single-dealer-dealer]");
         recvThread.Join();
 
         latencySamples = samples;

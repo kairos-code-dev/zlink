@@ -91,8 +91,10 @@ internal static class PerfMultiPubSubServer
                 continue;
             }
 
-            // EAGAIN with no_drop XPub: yield and retry without a
-            // poller timer wait.
+            // TODO: Replace this with public POLLOUT once PUB no-drop
+            // readiness distinguishes drainable backpressure from transient
+            // no-subscriber EAGAIN. Poller.Wait(-1) can otherwise park until
+            // the runner timeout before any active sample is published.
             System.Threading.Thread.Yield();
         }
 

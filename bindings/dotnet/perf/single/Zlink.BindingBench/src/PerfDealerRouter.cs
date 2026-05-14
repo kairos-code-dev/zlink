@@ -263,7 +263,7 @@ internal static class PerfDealerRouter
             {
                 // Always emit the stop token so the receiver loop exits
                 // even on send failures during the active phase.
-                SendStopTokenWithRetry(sender, "[single-dealer-router]");
+                SendStopTokenBlocking(sender, "[single-dealer-router]");
             }
         });
         senderThread.IsBackground = true;

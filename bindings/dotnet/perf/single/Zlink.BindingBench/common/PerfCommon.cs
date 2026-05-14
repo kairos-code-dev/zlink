@@ -153,7 +153,7 @@ internal static partial class PerfRunner
 
     // PERF_SINGLE_TEST_POLICY § 1.4: send the wire-level stop token once
     // with a blocking send; the receiver exits when it observes the token.
-    internal static void SendStopTokenWithRetry(SocketBase sender, string tag)
+    internal static void SendStopTokenBlocking(SocketBase sender, string tag)
     {
         try
         {
@@ -167,7 +167,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void SendRoutedStopTokenWithRetry(
+    internal static void SendRoutedStopTokenBlocking(
         RoutedMessageSocketBase sender, RoutingId routingId, string tag)
     {
         try
@@ -183,7 +183,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void PublishStopTokenWithRetry(
+    internal static void PublishStopTokenBlocking(
         PublisherSocketBase sender, string topic, string tag)
     {
         try
@@ -199,7 +199,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void PublishSpotStopTokenWithRetry(Spot spot, string topic,
+    internal static void PublishSpotStopTokenBlocking(Spot spot, string topic,
         string tag)
     {
         try
@@ -212,25 +212,6 @@ internal static partial class PerfRunner
         catch (Exception ex)
         {
             Console.Error.WriteLine($"{tag} stop-token publish failed: {ex.Message}");
-        }
-    }
-
-    private static void WaitForSendReady(SocketBase socket)
-    {
-        using var poller = new Poller();
-        var events = new PollEvent[1];
-        poller.Add(socket, PollEventFlags.PollOut);
-        while (true)
-        {
-            try
-            {
-                poller.Wait(events, TimeSpan.FromMilliseconds(-1), out _);
-                return;
-            }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
-            {
-            }
         }
     }
 

@@ -7,7 +7,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-internal static class ZlinkPoll
+public static class ZlinkPoll
 {
     [ThreadStatic]
     private static ZlinkPollItemUnix[]? _unixItems;

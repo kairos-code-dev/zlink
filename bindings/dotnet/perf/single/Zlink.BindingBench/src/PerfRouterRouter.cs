@@ -266,7 +266,7 @@ internal static class PerfRouterRouter
             {
                 // Always emit the stop token so the receiver loop exits
                 // even on send failures during the active phase.
-                SendRoutedStopTokenWithRetry(sender, ReceiverRoutingId,
+                SendRoutedStopTokenBlocking(sender, ReceiverRoutingId,
                     "[single-router-router]");
             }
         });

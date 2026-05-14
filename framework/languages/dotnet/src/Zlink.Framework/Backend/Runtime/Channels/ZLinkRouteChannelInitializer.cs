@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Systems.Zlink.Stream.Connector.Protocol;
 using Zlink.Framework.Backend.Contracts;
 using Zlink.Framework.Runtime.Core;
@@ -46,7 +47,9 @@ internal sealed class ZLinkRouteChannelInitializer(
             router,
             discovery,
             handlers,
-            new ZLinkSessionActorDispatchRoutePacketDispatcher(services),
+            new ZLinkSessionActorDispatchRoutePacketDispatcher(
+                services.GetRequiredService<ZLinkFrameworkRuntime>(),
+                registration),
             state.StopTokenSource.Token);
     }
 

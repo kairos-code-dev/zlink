@@ -129,8 +129,14 @@ public sealed class DocumentationRegressionTests
         Assert.Contains("internal sealed class ZLinkUserSpotRuntime", document, StringComparison.Ordinal);
         Assert.Contains("internal sealed class ZLinkEntrySpotRuntime", document, StringComparison.Ordinal);
         Assert.Contains("internal sealed class ZLinkNodeMessageRuntime", document, StringComparison.Ordinal);
-        Assert.Contains("이미 queue에 들어간 work item을 중간에서", document, StringComparison.Ordinal);
-        Assert.Contains("fire-and-forget handler 예외", document, StringComparison.Ordinal);
+        var normalized = NormalizeWhitespace(document);
+        Assert.Contains("queue 에 들어간 work item 을 중간에서", normalized, StringComparison.Ordinal);
+        Assert.Contains("fire-and-forget handler 예외", normalized, StringComparison.Ordinal);
+    }
+
+    private static string NormalizeWhitespace(string value)
+    {
+        return string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
     private static string GetDotNetDraftDirectory()

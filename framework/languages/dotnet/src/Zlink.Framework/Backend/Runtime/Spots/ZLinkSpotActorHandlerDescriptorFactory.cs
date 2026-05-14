@@ -12,15 +12,8 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         Type expectedActorType,
         string? packetName)
     {
-        foreach (var implemented in handlerType.GetInterfaces())
+        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (!implemented.IsGenericType)
-            {
-                continue;
-            }
-
-            var definition = implemented.GetGenericTypeDefinition();
-            var arguments = implemented.GetGenericArguments();
             if (surface == ZLinkSpotActorHandlerSurface.EntrySpot
                 && definition == typeof(IZLinkEntrySpotActorSendHandler<,>))
             {
@@ -71,15 +64,13 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             _ => typeof(IZLinkSpotActorLeftHandler<,>)
         };
 
-        foreach (var implemented in handlerType.GetInterfaces())
+        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (!implemented.IsGenericType
-                || implemented.GetGenericTypeDefinition() != expectedDefinition)
+            if (definition != expectedDefinition)
             {
                 continue;
             }
 
-            var arguments = implemented.GetGenericArguments();
             if (surface == ZLinkSpotActorHandlerSurface.EntrySpot)
             {
                 ValidateActorType(handlerType, expectedActorType, arguments[0]);

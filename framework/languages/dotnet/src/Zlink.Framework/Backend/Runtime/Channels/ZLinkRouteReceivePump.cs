@@ -9,6 +9,7 @@ internal sealed class ZLinkRouteReceivePump(
 {
     public async Task RunAsync(CancellationToken cancellationToken)
     {
+        var backoff = new ZLinkPollingBackoff();
         while (!cancellationToken.IsCancellationRequested)
         {
             Received? received = null;
@@ -17,10 +18,11 @@ internal sealed class ZLinkRouteReceivePump(
                 received = router.Recv(RecvFlags.DontWait);
                 if (received is null)
                 {
-                    await ZLinkPollingBackoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
+                    await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
+                backoff.Reset();
                 await dispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
@@ -29,7 +31,7 @@ internal sealed class ZLinkRouteReceivePump(
             }
             catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
             {
-                await ZLinkPollingBackoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
+                await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (ObjectDisposedException)
             {
@@ -44,7 +46,7 @@ internal sealed class ZLinkRouteReceivePump(
             catch (ZlinkRecvException ex)
                 when (ex.Result == ZlinkRecvException.ErrorCode.InternalError)
             {
-                await ZLinkPollingBackoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
+                await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
             {

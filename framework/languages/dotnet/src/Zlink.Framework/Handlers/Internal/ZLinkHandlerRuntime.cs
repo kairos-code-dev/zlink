@@ -4,6 +4,8 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend.Contracts;
 
+using System.Buffers;
+
 namespace Zlink.Framework.Handlers.Internal;
 
 internal enum ZLinkHandlerArgumentKind
@@ -171,9 +173,18 @@ internal sealed class ZLinkHandlerDispatcher(
         async ValueTask<object?> ExecuteHandler(CancellationToken ct)
         {
             var handler = scope.ServiceProvider.GetRequiredService(endpoint.DeclaringType);
-            var args = BuildArguments(endpoint, message, scopedContext, ct);
-            var result = endpoint.Invoker(handler, args);
-            return await ZLinkHandlerResultAwaiter.AwaitAsync(result);
+            var args = ArrayPool<object?>.Shared.Rent(endpoint.ArgumentPlan.Count);
+            try
+            {
+                BuildArguments(endpoint, message, scopedContext, ct, args);
+                var result = endpoint.Invoker(handler, args);
+                return await ZLinkHandlerResultAwaiter.AwaitAsync(result);
+            }
+            finally
+            {
+                Array.Clear(args, 0, endpoint.ArgumentPlan.Count);
+                ArrayPool<object?>.Shared.Return(args);
+            }
         }
 
         ZLinkHandlerDelegate pipeline = ExecuteHandler;
@@ -192,14 +203,13 @@ internal sealed class ZLinkHandlerDispatcher(
         return await pipeline(cancellationToken);
     }
 
-    private static object?[] BuildArguments(
+    private static void BuildArguments(
         ZLinkHandlerEndpointDescriptor endpoint,
         object? message,
         ZLinkHandlerContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        object?[] args)
     {
-        var args = new object?[endpoint.ArgumentPlan.Count];
-
         for (var i = 0; i < endpoint.ArgumentPlan.Count; i++)
         {
             switch (endpoint.ArgumentPlan[i])
@@ -215,8 +225,6 @@ internal sealed class ZLinkHandlerDispatcher(
                     break;
             }
         }
-
-        return args;
     }
 
     private static ZLinkHandlerContext RebindContext(ZLinkHandlerContext context, IServiceProvider services)

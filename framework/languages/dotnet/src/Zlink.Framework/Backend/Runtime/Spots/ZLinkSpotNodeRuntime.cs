@@ -1,4 +1,5 @@
 using Zlink.Framework.Backend.Contracts;
+using Zlink.Framework.Runtime.Core;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -13,6 +14,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly ZLinkSpotPeerConnectionSet _peerConnections = new();
     private readonly ZLinkSpotNodeBundleRegistry _bundles;
     private readonly ZLinkSpotNodeCatalog _spots;
+    private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private Task? _discoveryPeerReconciliationTask;
     private IZLinkBackendSpot? _entrySpot;
     private ZLinkEntrySpotActivation? _entrySpotActivation;
@@ -33,6 +35,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _registration = registration;
         Node = node;
         _spotChannelName = spotChannelName;
+        _taskRunner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            _stopSource.Token);
         _bundles = new ZLinkSpotNodeBundleRegistry(
             registration.SpotNodeName,
             frameworkRegistration,
@@ -86,29 +91,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
         var runtime = _runtime;
         var activation = _entrySpotActivation;
-        var stopToken = _stopSource.Token;
-
-        var previous = SynchronizationContext.Current;
-        SynchronizationContext.SetSynchronizationContext(null);
-        try
-        {
-            entrySpot.OnDispatchEvent(info =>
-            {
-                if (info.Event != ZLinkBackendSpotDispatchEvent.ActorReadable
-                    || info.ActorParts is not { Count: > 0 } actorParts)
-                {
-                    return;
-                }
-
-                _ = Task.Run(
-                    () => ZLinkEntrySpotActorDispatcher.DispatchAsync(runtime, activation, actorParts, stopToken),
-                    CancellationToken.None);
-            });
-        }
-        finally
-        {
-            SynchronizationContext.SetSynchronizationContext(previous);
-        }
+        new ZLinkEntrySpotDispatchPump(runtime, activation, _taskRunner)
+            .Attach(entrySpot);
     }
 
     public bool TryResolveEntrySpotActorPacket(

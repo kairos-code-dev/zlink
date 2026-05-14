@@ -1,8 +1,7 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
-
 using System.Net.Security;
-
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Security.Authentication;
@@ -19,6 +18,7 @@ internal sealed class WebSocketConnection(ClientWebSocket webSocket) : IZlinkStr
 {
     private readonly byte[] _receiveBuffer = new byte[8192];
     private byte[]? _pendingMessage;
+    private int _pendingLength;
     private int _pendingOffset;
 
     public bool CanWriteSegments => false;
@@ -27,45 +27,80 @@ internal sealed class WebSocketConnection(ClientWebSocket webSocket) : IZlinkStr
     {
         while (_pendingMessage is null)
         {
-            using var message = new System.IO.MemoryStream();
+            var message = ArrayPool<byte>.Shared.Rent(_receiveBuffer.Length);
+            var messageLength = 0;
             WebSocketReceiveResult result;
-            do
+            try
             {
-                result = await webSocket.ReceiveAsync(_receiveBuffer, cancellationToken).ConfigureAwait(false);
-                if (result.MessageType == WebSocketMessageType.Close)
+                do
                 {
-                    return 0;
-                }
+                    result = await webSocket.ReceiveAsync(_receiveBuffer, cancellationToken).ConfigureAwait(false);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        ArrayPool<byte>.Shared.Return(message);
+                        return 0;
+                    }
 
-                if (result.MessageType != WebSocketMessageType.Binary)
-                {
-                    throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "WebSocket text messages are not supported.");
-                }
+                    if (result.MessageType != WebSocketMessageType.Binary)
+                    {
+                        throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "WebSocket text messages are not supported.");
+                    }
 
-                message.Write(_receiveBuffer, 0, result.Count);
+                    EnsureCapacity(ref message, messageLength, messageLength + result.Count);
+                    _receiveBuffer.AsSpan(0, result.Count).CopyTo(message.AsSpan(messageLength));
+                    messageLength += result.Count;
+                }
+                while (!result.EndOfMessage);
             }
-            while (!result.EndOfMessage);
-
-            if (message.Length == 0)
+            catch
             {
+                ArrayPool<byte>.Shared.Return(message);
+                throw;
+            }
+
+            if (messageLength == 0)
+            {
+                ArrayPool<byte>.Shared.Return(message);
                 continue;
             }
 
-            _pendingMessage = message.ToArray();
+            _pendingMessage = message;
+            _pendingLength = messageLength;
             _pendingOffset = 0;
         }
 
-        var remaining = _pendingMessage.Length - _pendingOffset;
+        var remaining = _pendingLength - _pendingOffset;
         var count = Math.Min(buffer.Length, remaining);
         _pendingMessage.AsMemory(_pendingOffset, count).CopyTo(buffer);
         _pendingOffset += count;
-        if (_pendingOffset == _pendingMessage.Length)
+        if (_pendingOffset == _pendingLength)
         {
+            ArrayPool<byte>.Shared.Return(_pendingMessage);
             _pendingMessage = null;
+            _pendingLength = 0;
             _pendingOffset = 0;
         }
 
         return count;
+    }
+
+    private static void EnsureCapacity(ref byte[] buffer, int existingLength, int requiredCapacity)
+    {
+        if (buffer.Length >= requiredCapacity)
+        {
+            return;
+        }
+
+        var newLength = buffer.Length;
+        while (newLength < requiredCapacity)
+        {
+            newLength *= 2;
+        }
+
+        var next = ArrayPool<byte>.Shared.Rent(newLength);
+        buffer.AsSpan(0, existingLength).CopyTo(next);
+        ArrayPool<byte>.Shared.Return(buffer);
+        buffer = next;
     }
 
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
@@ -73,11 +108,26 @@ internal sealed class WebSocketConnection(ClientWebSocket webSocket) : IZlinkStr
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken)
     {
+        ReturnPendingMessage();
+
         if (webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
         {
             await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", cancellationToken).ConfigureAwait(false);
         }
 
         webSocket.Dispose();
+    }
+
+    private void ReturnPendingMessage()
+    {
+        if (_pendingMessage is null)
+        {
+            return;
+        }
+
+        ArrayPool<byte>.Shared.Return(_pendingMessage);
+        _pendingMessage = null;
+        _pendingLength = 0;
+        _pendingOffset = 0;
     }
 }

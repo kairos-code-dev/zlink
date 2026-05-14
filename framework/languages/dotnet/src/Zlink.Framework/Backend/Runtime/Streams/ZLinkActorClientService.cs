@@ -61,15 +61,12 @@ internal sealed class ZLinkActorClientSendCall<TMessage>(
             .ConfigureAwait(false);
         var packetName = _packetName ?? throw new InvalidOperationException("Packet name is required.");
         var streamHeader = CreateHeader(ZlinkStreamMessageKind.Send, packetName, _metadata);
-        var parts = new[]
-        {
-            ZLinkEnvelopeCodec.EncodePart(new ZLinkActorDispatchMetadata(actorId, string.Empty)),
-            Message.FromBytes(HeaderCodec.Encode(streamHeader).Span),
-            Message.FromBytes(JsonSerializer.SerializeToUtf8Bytes(
-                message,
-                message?.GetType() ?? typeof(TMessage),
-                ZLinkJsonSerializerOptions.Default))
-        };
+        var parts = ZLinkInternalMultipartPackets.CreateActorDispatchParts(
+            actorId,
+            string.Empty,
+            streamHeader,
+            message,
+            message?.GetType() ?? typeof(TMessage));
 
         await routedClient.SendPartsTo(
                 route.RouterChannelId,
@@ -154,15 +151,12 @@ internal sealed class ZLinkActorClientRequestCall<TRequest>(
         var packetName = _packetName ?? throw new InvalidOperationException("Packet name is required.");
         var timeout = _timeout ?? registration.DefaultTimeout;
         var streamHeader = CreateHeader(packetName, _metadata);
-        var parts = new[]
-        {
-            ZLinkEnvelopeCodec.EncodePart(new ZLinkActorDispatchMetadata(actorId, string.Empty)),
-            Message.FromBytes(HeaderCodec.Encode(streamHeader).Span),
-            Message.FromBytes(JsonSerializer.SerializeToUtf8Bytes(
-                request,
-                request?.GetType() ?? typeof(TRequest),
-                ZLinkJsonSerializerOptions.Default))
-        };
+        var parts = ZLinkInternalMultipartPackets.CreateActorDispatchParts(
+            actorId,
+            string.Empty,
+            streamHeader,
+            request,
+            request?.GetType() ?? typeof(TRequest));
 
         try
         {

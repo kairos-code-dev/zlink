@@ -147,11 +147,13 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
     private async Task RunMonitorLoopAsync(CancellationToken cancellationToken)
     {
+        var backoff = new ZLinkPollingBackoff();
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
                 var monitorEvent = Monitor.Recv();
+                backoff.Reset();
                 OnMonitorEvent(monitorEvent);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
@@ -171,7 +173,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             }
             catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
             {
-                await ZLinkPollingBackoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
+                await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                 continue;
             }
 

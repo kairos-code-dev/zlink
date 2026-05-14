@@ -1,12 +1,10 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Zlink.Framework.Runtime.SessionActorDispatch;
 
-internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(IServiceProvider services)
+internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
+    ZLinkFrameworkRuntime runtime,
+    ZLinkFrameworkRegistration registration)
     : IZLinkRouteInternalPacketDispatcher
 {
-    private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
-
     public bool CanHandleSend(string packetName)
     {
         return packetName is ZLinkInternalPacketNames.ActorDispatch
@@ -60,10 +58,9 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(IServicePro
         Received received,
         CancellationToken cancellationToken)
     {
-        var metadata = DecodeActorDispatchMetadata(received);
-        var streamHeader = DecodeActorDispatchStreamHeader(received);
-        using var body = DecodeActorDispatchBody(received);
-        var runtime = services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var metadata = ZLinkInternalMultipartPackets.DecodeActorDispatchMetadata(received);
+        var streamHeader = ZLinkInternalMultipartPackets.DecodeActorDispatchStreamHeader(received);
+        using var body = ZLinkInternalMultipartPackets.DecodeActorDispatchBody(received);
         await EnsureLocalActorAsync(runtime, metadata, cancellationToken).ConfigureAwait(false);
         await runtime.SubmitActorByIdAsync(
             metadata.ActorId,
@@ -76,10 +73,9 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(IServicePro
         Received received,
         CancellationToken cancellationToken)
     {
-        var metadata = DecodeActorDispatchMetadata(received);
-        var streamHeader = DecodeActorDispatchStreamHeader(received);
-        using var body = DecodeActorDispatchBody(received);
-        var runtime = services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var metadata = ZLinkInternalMultipartPackets.DecodeActorDispatchMetadata(received);
+        var streamHeader = ZLinkInternalMultipartPackets.DecodeActorDispatchStreamHeader(received);
+        using var body = ZLinkInternalMultipartPackets.DecodeActorDispatchBody(received);
         await EnsureLocalActorAsync(runtime, metadata, cancellationToken).ConfigureAwait(false);
         return await runtime.SubmitActorForReplyAsync(
             metadata.ActorId,
@@ -106,14 +102,14 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(IServicePro
         Received received,
         CancellationToken cancellationToken)
     {
-        var envelope = DecodeSessionProxyEnvelope(received);
+        var envelope = ZLinkInternalMultipartPackets.DecodeSessionProxyEnvelope(received);
         try
         {
             var sessionContext = ResolveSessionContext(envelope);
             await sessionContext.SendRawAsync(
                 envelope.PacketName,
                 ZlinkStreamCodec.Json,
-                DecodeSessionProxyBody(received),
+                ZLinkInternalMultipartPackets.DecodeSessionProxyBody(received),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (IsClosedSessionWriteFailure(ex))
@@ -126,12 +122,12 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(IServicePro
         ZLinkEnvelopeHeader routedHeader,
         CancellationToken cancellationToken)
     {
-        var envelope = DecodeSessionProxyEnvelope(received);
+        var envelope = ZLinkInternalMultipartPackets.DecodeSessionProxyEnvelope(received);
         var sessionContext = ResolveSessionContext(envelope);
         using var reply = await sessionContext.RequestRawAsync(
             envelope.PacketName,
             ZlinkStreamCodec.Json,
-            DecodeSessionProxyBody(received),
+            ZLinkInternalMultipartPackets.DecodeSessionProxyBody(received),
             ResolveInternalTimeout(routedHeader),
             cancellationToken).ConfigureAwait(false);
         return reply.AsReadOnlyMemory().ToArray();
@@ -139,7 +135,6 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(IServicePro
 
     private ZLinkSessionContext ResolveSessionContext(ZLinkSessionProxyEnvelope envelope)
     {
-        var runtime = services.GetRequiredService<ZLinkFrameworkRuntime>();
         if (runtime.TryGetSessionActorContext(
                 envelope.ActorId,
                 envelope.BindingToken,
@@ -153,50 +148,11 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(IServicePro
             $"No current session binding exists for actor '{envelope.ActorId}'.");
     }
 
-    private static ZLinkActorDispatchMetadata DecodeActorDispatchMetadata(Received received)
-    {
-        EnsurePartCount(received, 4, "actor dispatch");
-        return ZLinkEnvelopeCodec.DecodePart<ZLinkActorDispatchMetadata>(received.Parts[1]);
-    }
-
-    private static ZlinkStreamHeader DecodeActorDispatchStreamHeader(Received received)
-    {
-        EnsurePartCount(received, 4, "actor dispatch");
-        return HeaderCodec.Decode(received.Parts[2].AsReadOnlyMemory());
-    }
-
-    private static Message DecodeActorDispatchBody(Received received)
-    {
-        EnsurePartCount(received, 4, "actor dispatch");
-        return Message.FromBytes(received.Parts[3].AsReadOnlySpan());
-    }
-
-    private static ZLinkSessionProxyEnvelope DecodeSessionProxyEnvelope(Received received)
-    {
-        EnsurePartCount(received, 3, "session proxy");
-        return ZLinkEnvelopeCodec.DecodePart<ZLinkSessionProxyEnvelope>(received.Parts[1]);
-    }
-
-    private static ReadOnlyMemory<byte> DecodeSessionProxyBody(Received received)
-    {
-        EnsurePartCount(received, 3, "session proxy");
-        return received.Parts[2].AsReadOnlyMemory();
-    }
-
-    private static void EnsurePartCount(Received received, int minimumCount, string packetName)
-    {
-        if (received.Parts.Count < minimumCount)
-        {
-            throw new InvalidOperationException(
-                $"Internal routed {packetName} packet requires at least {minimumCount} message parts.");
-        }
-    }
-
     private TimeSpan ResolveInternalTimeout(ZLinkEnvelopeHeader header)
     {
         if (header.Deadline is not { } deadline)
         {
-            return services.GetRequiredService<ZLinkFrameworkRegistration>().DefaultTimeout;
+            return registration.DefaultTimeout;
         }
 
         var remaining = deadline - DateTimeOffset.UtcNow;

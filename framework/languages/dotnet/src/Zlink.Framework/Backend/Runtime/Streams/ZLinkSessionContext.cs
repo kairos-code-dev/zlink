@@ -166,13 +166,11 @@ internal sealed class ZLinkSessionContext(
 
         using (body)
         {
-            var parts = new[]
-            {
-                ZLinkEnvelopeCodec.EncodePart(
-                    new ZLinkActorDispatchMetadata(actorRef.ActorId, actorRef.ActorType)),
-                Message.FromBytes(HeaderCodec.Encode(header).Span),
-                Message.FromBytes(body.AsReadOnlySpan())
-            };
+            var parts = ZLinkInternalMultipartPackets.CreateActorDispatchParts(
+                actorRef.ActorId,
+                actorRef.ActorType,
+                header,
+                body.AsReadOnlySpan());
 
             if (header.RequestSeq is not null)
             {

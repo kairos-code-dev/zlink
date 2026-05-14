@@ -62,20 +62,15 @@ internal sealed class ZLinkSessionProxySendCall<TMessage>(
     {
         var route = await ResolveRouteAsync(cancellationToken)
             .ConfigureAwait(false);
-        var parts = new[]
-        {
-            ZLinkEnvelopeCodec.EncodePart(
-                new ZLinkSessionProxyEnvelope(
+        var parts = ZLinkInternalMultipartPackets.CreateSessionProxyParts(
+            new ZLinkSessionProxyEnvelope(
                 actorId,
                 route.BindingToken,
                 _packetName ?? throw new InvalidOperationException("Packet name is required."),
                 false,
-                    new Dictionary<string, string>(_metadata, StringComparer.Ordinal))),
-            Message.FromBytes(JsonSerializer.SerializeToUtf8Bytes(
-                message,
-                message?.GetType() ?? typeof(TMessage),
-                ZLinkJsonSerializerOptions.Default))
-        };
+                new Dictionary<string, string>(_metadata, StringComparer.Ordinal)),
+            message,
+            message?.GetType() ?? typeof(TMessage));
 
         await routedClient.SendPartsTo(
                 runtime.ResolveDefaultRouterChannelId(),
@@ -144,20 +139,15 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
         var route = await ResolveRouteAsync(cancellationToken)
             .ConfigureAwait(false);
         var timeout = _timeout ?? registration.DefaultTimeout;
-        var parts = new[]
-        {
-            ZLinkEnvelopeCodec.EncodePart(
-                new ZLinkSessionProxyEnvelope(
+        var parts = ZLinkInternalMultipartPackets.CreateSessionProxyParts(
+            new ZLinkSessionProxyEnvelope(
                 actorId,
                 route.BindingToken,
                 _packetName ?? throw new InvalidOperationException("Packet name is required."),
                 true,
-                    new Dictionary<string, string>(_metadata, StringComparer.Ordinal))),
-            Message.FromBytes(JsonSerializer.SerializeToUtf8Bytes(
-                request,
-                request?.GetType() ?? typeof(TRequest),
-                ZLinkJsonSerializerOptions.Default))
-        };
+                new Dictionary<string, string>(_metadata, StringComparer.Ordinal)),
+            request,
+            request?.GetType() ?? typeof(TRequest));
 
         byte[] reply;
         try

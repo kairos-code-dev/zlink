@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend;
+using Zlink.Framework.Runtime.Core;
 using System.Threading;
 
 namespace Zlink.Framework.AspNetCore;
@@ -17,6 +18,7 @@ internal sealed class ZLinkMonitoringHostedService(
     private readonly ZLinkMonitoringSourceValidator _sourceValidator = new(services, registration);
     private readonly List<IAsyncDisposable> _monitors = [];
     private CancellationTokenSource? _stopTokenSource;
+    private ZLinkRuntimeTaskRunner? _taskRunner;
     private Task? _pollingTask;
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -45,7 +47,8 @@ internal sealed class ZLinkMonitoringHostedService(
             {
                 await frameworkRuntime.StopAsync(CancellationToken.None);
             }
-            else if (registryRuntime is not null && registryRuntime.IsStarted)
+
+            if (registryRuntime is not null && registryRuntime.IsStarted)
             {
                 await registryRuntime.StopAsync(CancellationToken.None);
             }
@@ -54,6 +57,9 @@ internal sealed class ZLinkMonitoringHostedService(
         }
 
         _stopTokenSource = new CancellationTokenSource();
+        _taskRunner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            _stopTokenSource.Token);
         var pollingRunner = new ZLinkMonitoringPollingRunner(
             services,
             registration,
@@ -87,6 +93,7 @@ internal sealed class ZLinkMonitoringHostedService(
 
         _stopTokenSource?.Dispose();
         _stopTokenSource = null;
+        _taskRunner = null;
         _pollingTask = null;
     }
 
@@ -111,6 +118,7 @@ internal sealed class ZLinkMonitoringHostedService(
         await DisposeMonitorsAsync();
         _stopTokenSource?.Dispose();
         _stopTokenSource = null;
+        _taskRunner = null;
     }
 
     private void AttachSocketMonitors(ZLinkFrameworkRuntime? frameworkRuntime)
@@ -167,19 +175,18 @@ internal sealed class ZLinkMonitoringHostedService(
     private void QueueDispatch<TEvent>(TEvent @event)
         where TEvent : IZLinkRuntimeEvent
     {
-        var cancellationToken = _stopTokenSource?.Token ?? CancellationToken.None;
-        _ = Task.Run(
-            async () =>
+        var taskRunner = _taskRunner;
+        if (taskRunner is null)
+        {
+            return;
+        }
+
+        taskRunner.RunDetached(
+            "monitoring-event-dispatch",
+            async ct =>
             {
-                try
-                {
-                    await dispatcher.DispatchAsync(@event, cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                }
-            },
-            cancellationToken);
+                await dispatcher.DispatchAsync(@event, ct).ConfigureAwait(false);
+            });
     }
 
     private async ValueTask DisposeMonitorsAsync()

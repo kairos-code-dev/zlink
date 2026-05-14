@@ -4,17 +4,10 @@ internal static class ZLinkSpotDescriptorFactory
 {
     public static ZLinkSpotDescriptor CreatePacketDescriptor(Type handlerType, Type expectedSpotType)
     {
-        foreach (var implemented in handlerType.GetInterfaces())
+        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (!implemented.IsGenericType)
-            {
-                continue;
-            }
-
-            var definition = implemented.GetGenericTypeDefinition();
             if (definition == typeof(IZLinkSpotPacketHandler<,>))
             {
-                var arguments = implemented.GetGenericArguments();
                 ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
                 return new ZLinkSpotDescriptor
                 {
@@ -28,7 +21,6 @@ internal static class ZLinkSpotDescriptorFactory
 
             if (definition == typeof(IZLinkSpotRequestHandler<,,>))
             {
-                var arguments = implemented.GetGenericArguments();
                 ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
                 return new ZLinkSpotDescriptor
                 {
@@ -51,15 +43,13 @@ internal static class ZLinkSpotDescriptorFactory
         Type handlerType,
         Type expectedSpotType)
     {
-        foreach (var implemented in handlerType.GetInterfaces())
+        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (!implemented.IsGenericType
-                || implemented.GetGenericTypeDefinition() != typeof(IZLinkSpotSubscriptionHandler<,>))
+            if (definition != typeof(IZLinkSpotSubscriptionHandler<,>))
             {
                 continue;
             }
 
-            var arguments = implemented.GetGenericArguments();
             ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
             return new ZLinkSpotSubscriptionDescriptor
             {
@@ -81,15 +71,13 @@ internal static class ZLinkSpotDescriptorFactory
         Type handlerType,
         Type expectedSpotType)
     {
-        foreach (var implemented in handlerType.GetInterfaces())
+        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (!implemented.IsGenericType
-                || implemented.GetGenericTypeDefinition() != typeof(IZLinkSpotTimerHandler<>))
+            if (definition != typeof(IZLinkSpotTimerHandler<>))
             {
                 continue;
             }
 
-            var arguments = implemented.GetGenericArguments();
             ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
             return new ZLinkSpotTimerDescriptor
             {
@@ -112,15 +100,13 @@ internal static class ZLinkSpotDescriptorFactory
         Type expectedRequestType,
         Type expectedReplyType)
     {
-        foreach (var implemented in handlerType.GetInterfaces())
+        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (!implemented.IsGenericType
-                || implemented.GetGenericTypeDefinition() != typeof(IZLinkSpotActorJoinHandler<,,,>))
+            if (definition != typeof(IZLinkSpotActorJoinHandler<,,,>))
             {
                 continue;
             }
 
-            var arguments = implemented.GetGenericArguments();
             ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
             ValidateActorType(handlerType, expectedActorType, arguments[1]);
 

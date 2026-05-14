@@ -41,8 +41,8 @@ internal static class ZLinkEnvelopeCodec
 
     public static Message EncodeHeader(ZLinkEnvelopeHeader header)
     {
-        return Message.FromString(
-            JsonSerializer.Serialize(header, ZLinkJsonSerializerOptions.Default));
+        return Message.FromBytes(
+            JsonSerializer.SerializeToUtf8Bytes(header, ZLinkJsonSerializerOptions.Default));
     }
 
     public static Message EncodeBody(object? body, Type? bodyType)

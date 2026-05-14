@@ -20,6 +20,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _pendingCount;
     private int _completed;
+    private int _drainScheduled;
 
     public ZLinkSerialExecutionQueue(
         ZLinkRuntimeTaskRunner taskRunner,
@@ -104,6 +105,12 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
     private void ScheduleDrain()
     {
+        if (Volatile.Read(ref _completed) != 0
+            || Interlocked.Exchange(ref _drainScheduled, 1) != 0)
+        {
+            return;
+        }
+
         _taskRunner.RunDetached(
             "serial-queue-drain",
             DrainAsync);
@@ -114,6 +121,12 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         _ = cancellationToken;
         if (!await _drainGate.WaitAsync(0, CancellationToken.None).ConfigureAwait(false))
         {
+            Volatile.Write(ref _drainScheduled, 0);
+            if (_queue.Reader.TryPeek(out _))
+            {
+                ScheduleDrain();
+            }
+
             return;
         }
 
@@ -132,6 +145,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             _drainGate.Release();
         }
 
+        Volatile.Write(ref _drainScheduled, 0);
         if (_queue.Reader.TryPeek(out _))
         {
             ScheduleDrain();

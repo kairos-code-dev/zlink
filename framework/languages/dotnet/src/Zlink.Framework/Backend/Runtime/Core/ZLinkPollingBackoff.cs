@@ -1,11 +1,20 @@
 namespace Zlink.Framework.Runtime.Core;
 
-internal static class ZLinkPollingBackoff
+internal sealed class ZLinkPollingBackoff
 {
-    private static readonly TimeSpan NoDataDelay = TimeSpan.FromMilliseconds(1);
+    private static readonly TimeSpan MinDelay = TimeSpan.FromMilliseconds(1);
+    private static readonly TimeSpan MaxDelay = TimeSpan.FromMilliseconds(20);
+    private int _misses;
 
-    public static Task NoDataAsync(CancellationToken cancellationToken)
+    public void Reset()
     {
-        return Task.Delay(NoDataDelay, cancellationToken);
+        _misses = 0;
+    }
+
+    public Task NoDataAsync(CancellationToken cancellationToken)
+    {
+        var misses = Math.Min(++_misses, 6);
+        var delayMs = Math.Min(MinDelay.TotalMilliseconds * (1 << (misses - 1)), MaxDelay.TotalMilliseconds);
+        return Task.Delay(TimeSpan.FromMilliseconds(delayMs), cancellationToken);
     }
 }

@@ -13,6 +13,7 @@ internal sealed class ZLinkChannelMessagePump(
         IZLinkBackendRouterSocket router,
         CancellationToken cancellationToken)
     {
+        var backoff = new ZLinkPollingBackoff();
         while (!cancellationToken.IsCancellationRequested)
         {
             Received? received = null;
@@ -21,10 +22,11 @@ internal sealed class ZLinkChannelMessagePump(
                 received = router.Recv(RecvFlags.DontWait);
                 if (received is null)
                 {
-                    await ZLinkPollingBackoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
+                    await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
+                backoff.Reset();
                 await DispatchServerMessageAsync(channelName, router, received, cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -48,6 +50,7 @@ internal sealed class ZLinkChannelMessagePump(
         IZLinkBackendSubscriberSocket subscriber,
         CancellationToken cancellationToken)
     {
+        var backoff = new ZLinkPollingBackoff();
         while (!cancellationToken.IsCancellationRequested)
         {
             TopicMessage? topicMessage = null;
@@ -56,10 +59,11 @@ internal sealed class ZLinkChannelMessagePump(
                 topicMessage = subscriber.Subscribe(RecvFlags.DontWait);
                 if (topicMessage is null)
                 {
-                    await ZLinkPollingBackoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
+                    await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
+                backoff.Reset();
                 await DispatchEventMessageAsync(channelName, topicMessage, cancellationToken)
                     .ConfigureAwait(false);
             }

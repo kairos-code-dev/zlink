@@ -12,15 +12,13 @@ internal static class ZLinkActorPacketDescriptorFactory
         Type expectedActorType,
         string? messageName)
     {
-        foreach (var implemented in handlerType.GetInterfaces())
+        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (!implemented.IsGenericType
-                || implemented.GetGenericTypeDefinition() != typeof(IZLinkActorPacketHandler<,>))
+            if (definition != typeof(IZLinkActorPacketHandler<,>))
             {
                 continue;
             }
 
-            var arguments = implemented.GetGenericArguments();
             if (!arguments[0].IsAssignableFrom(expectedActorType))
             {
                 throw new InvalidOperationException(
@@ -39,15 +37,13 @@ internal static class ZLinkActorPacketDescriptorFactory
             };
         }
 
-        foreach (var implemented in handlerType.GetInterfaces())
+        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (!implemented.IsGenericType
-                || implemented.GetGenericTypeDefinition() != typeof(IZLinkActorRequestHandler<,,>))
+            if (definition != typeof(IZLinkActorRequestHandler<,,>))
             {
                 continue;
             }
 
-            var arguments = implemented.GetGenericArguments();
             if (!arguments[0].IsAssignableFrom(expectedActorType))
             {
                 throw new InvalidOperationException(
@@ -66,15 +62,13 @@ internal static class ZLinkActorPacketDescriptorFactory
             };
         }
 
-        foreach (var implemented in handlerType.GetInterfaces())
+        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (!implemented.IsGenericType
-                || implemented.GetGenericTypeDefinition() != typeof(IZLinkActorSendHandler<>))
+            if (definition != typeof(IZLinkActorSendHandler<>))
             {
                 continue;
             }
 
-            var arguments = implemented.GetGenericArguments();
             return new ZLinkActorPacketDescriptor
             {
                 HandlerType = handlerType,
@@ -87,15 +81,13 @@ internal static class ZLinkActorPacketDescriptorFactory
             };
         }
 
-        foreach (var implemented in handlerType.GetInterfaces())
+        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (!implemented.IsGenericType
-                || implemented.GetGenericTypeDefinition() != typeof(IZLinkActorRequestHandler<,>))
+            if (definition != typeof(IZLinkActorRequestHandler<,>))
             {
                 continue;
             }
 
-            var arguments = implemented.GetGenericArguments();
             return new ZLinkActorPacketDescriptor
             {
                 HandlerType = handlerType,

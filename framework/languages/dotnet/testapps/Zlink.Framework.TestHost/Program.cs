@@ -271,6 +271,7 @@ internal static class TestHostScenarioConfigurator
         services.AddSingleton(new TestHostEventSink(options.EventFilePath));
         services.AddZLinkFramework(framework =>
         {
+            framework.AddHandlersFromAssemblyOf<Program>();
             framework.UseDiscovery(discovery =>
             {
                 discovery.Add(options.DiscoveryEndpoint
@@ -285,7 +286,6 @@ internal static class TestHostScenarioConfigurator
                     channel.EnableSubscriber();
                 });
         });
-        services.AddZLinkHandlersFromAssemblyContaining<Program>();
     }
 
     private static void ConfigureChannelPublisher(IServiceCollection services, TestHostOptions options)

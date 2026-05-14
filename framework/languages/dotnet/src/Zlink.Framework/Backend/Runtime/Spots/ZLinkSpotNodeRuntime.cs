@@ -66,6 +66,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Spots;
 
+    internal ZLinkEntrySpotActivation? EntrySpotActivation => _entrySpotActivation;
+
     public IZLinkBackendDiscovery? SpotDiscovery { get; set; }
 
     public void InitializeEntrySpot()

@@ -12,6 +12,7 @@ internal static class ZLinkEntrySpotActorDispatcher
         IReadOnlyList<ZLinkBackendActorPart> parts,
         CancellationToken cancellationToken)
     {
+        List<Task>? dispatchTasks = null;
         int i = 0;
         while (i < parts.Count)
         {
@@ -32,15 +33,17 @@ internal static class ZLinkEntrySpotActorDispatcher
             {
                 var header = HeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
                 headerPart.Message.Dispose();
-                using var emptyBody = Message.FromBytes(ReadOnlySpan<byte>.Empty);
-                await DispatchPacketAsync(
+                var emptyBody = Message.FromBytes(ReadOnlySpan<byte>.Empty);
+                AddDispatchTask(
+                    ref dispatchTasks,
+                    DispatchPacketAndDisposeBodyAsync(
                         runtime,
                         activation,
+                        actorState,
                         actor,
                         header,
                         emptyBody,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                        cancellationToken));
                 continue;
             }
 
@@ -53,21 +56,63 @@ internal static class ZLinkEntrySpotActorDispatcher
             var bodyPart = parts[i++];
             var streamHeader = HeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
             headerPart.Message.Dispose();
-            using var body = bodyPart.Message;
+            AddDispatchTask(
+                ref dispatchTasks,
+                DispatchPacketAndDisposeBodyAsync(
+                    runtime,
+                    activation,
+                    actorState,
+                    actor,
+                    streamHeader,
+                    bodyPart.Message,
+                    cancellationToken));
+        }
+
+        if (dispatchTasks is not null)
+        {
+            await Task.WhenAll(dispatchTasks).ConfigureAwait(false);
+        }
+    }
+
+    private static void AddDispatchTask(
+        ref List<Task>? dispatchTasks,
+        Task task)
+    {
+        dispatchTasks ??= [];
+        dispatchTasks.Add(task);
+    }
+
+    private static async Task DispatchPacketAndDisposeBodyAsync(
+        ZLinkFrameworkRuntime runtime,
+        ZLinkEntrySpotActivation? activation,
+        ZLinkActorRuntimeState actorState,
+        IZLinkActor actor,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
             await DispatchPacketAsync(
                     runtime,
                     activation,
+                    actorState,
                     actor,
-                    streamHeader,
+                    header,
                     body,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+        finally
+        {
+            body.Dispose();
         }
     }
 
     private static async ValueTask DispatchPacketAsync(
         ZLinkFrameworkRuntime runtime,
         ZLinkEntrySpotActivation? activation,
+        ZLinkActorRuntimeState actorState,
         IZLinkActor actor,
         ZlinkStreamHeader header,
         Message body,
@@ -77,18 +122,18 @@ internal static class ZLinkEntrySpotActorDispatcher
             && activation.TryResolveActorPacket(actor.GetType(), header, out var descriptor)
             && descriptor is not null)
         {
-            var actorState = runtime.GetOrCreateActorState(actor.ActorId);
-            var previousDispatch = actorState.CurrentDispatch;
-            actorState.CurrentDispatch = new ZLinkActorDispatchState(header);
-            try
-            {
-                await activation.InvokeActorPacketAsync(descriptor, actor, header, body, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            finally
-            {
-                actorState.CurrentDispatch = previousDispatch;
-            }
+            await runtime.SubmitResolvedEntrySpotActorAsync(
+                    actor,
+                    actorState,
+                    header,
+                    ct => activation.InvokeActorPacketAsync(
+                        descriptor,
+                        actor,
+                        header,
+                        body,
+                        ct),
+                    cancellationToken)
+                .ConfigureAwait(false);
 
             return;
         }

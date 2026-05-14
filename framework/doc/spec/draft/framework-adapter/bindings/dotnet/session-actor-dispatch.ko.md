@@ -9,79 +9,833 @@
 # Draft -- ZLink Framework .NET Session Actor Dispatch
 
 > 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `.NET` `ZLink Framework`에서 session actor dispatch
-> 표면을 어떤 시그니처와 등록 코드로 노출할지 정리한 문서다.
+> 아직 공개된 계약[^public-contract]이 아니며, `.NET` `ZLink Framework`에서
+> session actor dispatch[^session-actor-dispatch] 표면을 어떤 시그니처와 등록
+> 코드로 노출할지 정리해 둔 문서다.
 >
-> cross-binding 정책 부분 (의미·계약·실패 의미·테스트 항목·POSD 결론, error kind
-> 매트릭스, 회귀 테스트 목록)은
+> cross-binding[^cross-binding] 정책에 해당하는 부분, 즉 의미·계약·실패
+> 의미·테스트 항목·POSD[^posd] 결론과 error kind 매트릭스, 회귀 테스트 목록은
 > [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md)
-> 를 본다. 이 문서는 그 정책을 `.NET` 표면으로만 내려 옮긴다.
+> 를 본다. 이 문서는 그 정책을 `.NET` 표면으로만 옮겨 내려 정리한다.
 
 ## 1. 목적
 
-`.NET` 사용자가 session 서버와 play 서버를 분리하는 구조를 구체적인 시그니처와
-DI 등록 코드로 보고 싶을 때 참고하는 문서다. cross-binding 의미는
+session 서버와 play 서버를 분리하는 구조를 `.NET` 사용자가 실제 시그니처와 DI
+등록 코드 모양으로 살펴 보고 싶을 때 참고하는 문서다. cross-binding 의미 자체는
 [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md)
-에 있다.
+에서 다루므로, 여기서는 `.NET` 표면만 다룬다.
 
 ## 2. 핵심 표면 요약
 
-session actor dispatch가 `.NET`에서 노출하는 핵심 표면은 아래 네 가지다.
+session actor dispatch가 `.NET`에서 노출하는 핵심 표면은 다음 네 축이다.
 
 | 축 | `.NET` 표면 |
 |----|-------------|
 | session → actor dispatch | `IZLinkSessionContext.CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)` |
 | actor handler | `IZLinkEntrySpotActorSendHandler<TActor, TMessage>`, `IZLinkEntrySpotActorRequestHandler<TActor, TRequest, TReply>`, `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
 | actor → client push | `IZLinkSessionProxy.Send(actorId, msg).Submit(...)` / `IZLinkSessionProxy.Request(actorId, req).Submit<TReply>(...)` |
-| route 해석 | `IZLinkActorPlayRouteResolver`; actor → client push는 framework/core actor-session binding을 사용 |
+| route 해석 | `IZLinkActorPlayRouteResolver`. actor → client push 방향은 framework/core가 가진 actor-session binding[^actor-session-binding]을 사용한다 |
 
-전체 인터페이스 정의는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)
-§4.4, §5.5, §5.6, §5.7에 모여 있다. 본 문서는 사용 모양과 등록 코드 예시를 모은다.
+인터페이스 전체 정의는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)
+§4.4, §5.5, §5.6, §5.7에 모여 있다. 이 문서에서는 사용 모양과 등록 코드 예시만
+모아 둔다.
 
 ## 2.1 내부 routed wire 계약
 
-session actor dispatch는 public API가 typed object 중심이어도, 서버 간 내부 route
-transport에서는 공통
-[message-model.ko.md](../../policy/message-model.ko.md)의 multipart 계약을 따른다.
+session actor dispatch의 public API는 typed object 중심이지만, 서버 사이를 잇는
+내부 route transport 단계에서는 공통
+[message-model.ko.md](../../policy/message-model.ko.md) 가 정한 multipart 계약을
+그대로 따른다.
 
-Session 서버에서 Play 서버 actor로 보내는 actor dispatch request/send는 아래 part
-구성을 사용한다.
-
-| part | 내용 |
-|------|------|
-| `parts[0]` | routed framework header. packet name은 internal actor dispatch packet 이름이다 |
-| `parts[1]` | actor dispatch metadata. `ActorId`, `ActorType`, stream packet kind, codec, request sequence, packet name, metadata snapshot을 담는다 |
-| `parts[2]` | encoded stream header bytes. stream header를 서버 간 route header와 섞지 않는다 |
-| `parts[3]` | application body bytes. framework codec 또는 stream packet codec이 만든 payload를 그대로 둔다 |
-
-Play 서버 actor에서 Session 서버의 client stream으로 보내는 session proxy send/request는
-아래 part 구성을 사용한다.
+Session 서버에서 Play 서버 actor로 보내는 actor dispatch request/send는 아래와
+같은 part 구성을 사용한다.
 
 | part | 내용 |
 |------|------|
-| `parts[0]` | routed framework header. packet name은 internal session proxy packet 이름이다 |
-| `parts[1]` | session proxy metadata. `ActorId`, `SessionId`, `BindingToken`, client packet name, reply 필요 여부, metadata snapshot을 담는다 |
+| `parts[0]` | routed framework header. packet name은 internal actor dispatch packet 이름을 사용한다 |
+| `parts[1]` | actor dispatch metadata. actor route와 함께, local actor를 새로 만들어야 하는 경우를 위한 `ActorId`, `ActorType`만 둔다 |
+| `parts[2]` | encoded stream header bytes. stream packet kind, codec, request sequence, packet name, metadata snapshot은 모두 이 part에 둔다 |
+| `parts[3]` | application body bytes. framework codec이나 stream packet codec이 만든 payload를 그대로 둔다 |
+
+Play 서버 actor에서 Session 서버의 client stream으로 보내는 session proxy
+send/request는 다음 part 구성을 사용한다.
+
+| part | 내용 |
+|------|------|
+| `parts[0]` | routed framework header. packet name은 internal session proxy packet 이름을 사용한다 |
+| `parts[1]` | session proxy metadata. `ActorId`, `BindingToken`, client packet name, reply 필요 여부, metadata snapshot을 함께 담는다 |
 | `parts[2]` | application body bytes |
 
-reply도 같은 원칙을 따른다. routed reply header는 `parts[0]`에 두고 reply body는 별도
-part로 둔다. body가 없으면 빈 body part를 둔다.
+reply도 같은 원칙을 따른다. routed reply header는 `parts[0]`에 두고, reply body는
+별도 part로 둔다. body가 없으면 빈 body part를 그대로 남긴다.
 
-다음 형태는 이 초안의 내부 routed wire 계약이 아니다.
+다음과 같은 형태는 이 초안의 내부 routed wire 계약이 아니다.
 
-- `ZLinkActorDispatchPacket` 같은 단일 DTO 안에 `StreamHeader`와 `byte[] Body`를 함께
-  넣고 그 DTO 전체를 다시 JSON으로 직렬화하는 방식
-- `ZLinkSessionProxyPacket` 같은 단일 DTO 안에 proxy metadata와 body bytes를 함께 넣는
+- `ZLinkActorDispatchPacket` 같은 단일 DTO 안에 `StreamHeader`와 `byte[] Body`를 같이
+  넣고, 그 DTO 전체를 다시 JSON으로 직렬화하는 방식
+- `ZLinkSessionProxyPacket` 같은 단일 DTO 안에 proxy metadata와 body bytes를 함께 묶는
   방식
-- `parts[0]` 하나만 보내고 그 안에서 header와 body를 모두 decode하는 방식
+- `parts[0]` 한 part만 보내고 그 안에서 header와 body를 모두 decode하는 방식
 
-이 제한은 성능 최적화만을 위한 것이 아니다. route와 dispatch는 header/metadata만
-읽어도 target과 handler를 정할 수 있어야 하고, application body는 handler가 정해진
-뒤에 등록된 codec으로 decode되어야 한다. 그래야 큰 body, binary body, 압축 body,
-attachment가 들어와도 framework 내부 route path가 body 재인코딩 비용을 만들지 않는다.
+이 제한은 단순히 성능 때문만이 아니다. route와 dispatch는 header와 metadata만 읽고도
+target과 handler를 결정할 수 있어야 하고, application body는 handler가 정해진 뒤에
+등록된 codec이 decode 해야 한다. 그래야 큰 body나 binary body, 압축 body, attachment가
+들어와도 framework 내부 route 경로가 body 재인코딩 비용을 떠안지 않는다.
 
-STREAM 자체는 예외다. client와 Session 서버 사이의 STREAM transport는 하나의 stream
-packet 안에 stream header/body frame을 넣는다. 위 multipart 계약은 Session 서버와
-Play 서버 같은 framework 서버 사이의 routed transport에만 적용한다.
+STREAM 자체는 예외다. 즉 client와 Session 서버 사이의 STREAM transport는 stream
+packet 하나 안에 stream header/body frame을 그대로 담는다. 위에서 말한 multipart
+계약은 Session 서버와 Play 서버처럼 framework 서버끼리 주고받는 routed transport
+구간에만 적용한다.
+
+## 2.2 actor mailbox와 실행 순서
+
+stream socket은 같은 session으로 들어온 frame의 도착 순서를 보존하고, framework는
+같은 session의 callback을 직렬로 실행한다. 따라서 session actor dispatch를 위해
+별도의 session mailbox를 application 표면에 따로 두지 않는다.
+
+Session 서버가 받은 stream packet을 actor로 relay할 때 framework는 현재 actor 위치에
+맞는 실행 경계로 넘긴다. actor가 Entry Spot에 있거나 아직 user Spot에 들어가지 않은
+상태라면 대상 actor의 순서 규칙을 거친다. actor별 순서 규칙은 같은 actor로 들어온
+packet 사이의 순서를 지키고, 서로 다른 actor의 packet이 서로의 처리를 막지 않도록
+보장하는 역할을 한다.
+
+이 규칙은 session relay뿐 아니라 Entry Spot[^entry-spot] actor packet에도 그대로
+적용한다. Entry Spot은 모든 actor가 처음 거치는 공용 입구이므로, Entry Spot 전체에
+실행 줄을 하나만 두고 actor packet을 처리하면 서로 관련 없는 actor들이 한 줄로
+묶여 막혀 버린다.
+
+반면 user Spot[^user-spot] 안에서 처리되는 actor packet은 user Spot의 실행 queue에서
+handler를 실행한다. user Spot handler는 `spot` 인스턴스와 `actor` 인스턴스를 함께 받고,
+room이나 game 상태를 바꿀 수 있기 때문이다. 같은 user Spot 안의 여러 actor가 같은
+상태를 만질 수 있으므로 Spot 단위로 순서를 지켜야 한다. managed runtime 경로에서는
+actor별 순서 규칙을 거친 뒤 user Spot queue로 들어갈 수 있지만, native bound actor
+경로에서는 user Spot queue가 필요한 직렬화 경계다.
+
+이를 정리하면 `.NET` runtime의 실행 규칙은 아래와 같다.
+
+| 입력 경로 | 실행 위치 |
+| --- | --- |
+| stream session → Entry/local actor | actor별로 순서를 보존한 뒤 현재 actor 위치로 dispatch |
+| Entry Spot actor packet | actor별 mailbox |
+| stream session → user Spot actor | user Spot 실행 queue |
+| user Spot actor packet | user Spot 실행 queue |
+| user Spot packet / timer / subscription | user Spot 실행 queue |
+| Entry Spot initialize / closing / lifecycle callback | Entry Spot 실행 문맥 |
+
+## 2.3 실행 직렬화 핵심 코드
+
+이 절의 코드는 public API 계약이 아니다. 구현자가 실행 의미를 같은 방식으로
+이해하도록 돕기 위한 code-level 설계 기준이다. 실제 class 이름은 달라도 무방하지만,
+queue의 소유자와 completion 의미는 이 구조를 따라야 한다.
+
+### 2.3.1 work item과 completion 의미
+
+실행 queue에는 "실행할 일"과 "그 일이 끝났음을 알리는 completion"을 함께 넣는다.
+다만 모든 호출자가 이 completion을 끝까지 기다리는 것은 아니다.
+
+```csharp
+internal sealed class ZLinkSerialWorkItem
+{
+    private readonly Func<CancellationToken, ValueTask> _callback;
+    private readonly TaskCompletionSource _completion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public ZLinkSerialWorkItem(Func<CancellationToken, ValueTask> callback)
+    {
+        _callback = callback;
+    }
+
+    public Task Completion => _completion.Task;
+
+    public async ValueTask InvokeAsync(
+        Action<Exception> onUnhandledException,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _callback(cancellationToken).ConfigureAwait(false);
+            _completion.TrySetResult();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _completion.TrySetCanceled(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _completion.TrySetException(ex);
+            _ = _completion.Task.Exception;
+            onUnhandledException(ex);
+        }
+    }
+}
+```
+
+completion이 어떤 의미인지는 호출 종류에 따라 달라진다.
+
+- send나 fire-and-forget relay는 target queue에 work item을 넣는 시점까지만 기다리면 충분하다.
+- request/reply relay는 handler가 reply를 만들어 내거나 오류를 낼 때까지 기다린다.
+- lifecycle callback은 runtime shutdown이나 remove 흐름에서 completion을 기다릴 수 있다.
+- fire-and-forget handler 예외는 completion을 기다리는 호출자가 없더라도 runtime error
+  sink에 반드시 기록해야 한다.
+- `TaskCompletionSource`에 저장한 예외는 fire-and-forget 경로에서도 unobserved task
+  exception으로 남지 않도록 관찰 처리해야 한다.
+- 어떤 경우에도 transport callback thread에서 application handler를 직접 호출하지 않는다.
+
+### 2.3.2 단일 실행 queue
+
+`SemaphoreSlim`은 handler 하나하나를 감싸는 lock이 아니다. 아래 코드의
+`_drainGate`는 queue를 비우는 drain loop가 동시에 두 개 이상 실행되지 않도록 막는
+용도다. 실제 실행 순서는 `Channel`에 들어간 work item의 입력 순서가 만든다.
+
+```csharp
+internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
+{
+    private readonly ZLinkRuntimeTaskRunner _taskRunner;
+    private readonly IZLinkRuntimeErrorSink _errorSink;
+    private readonly CancellationToken _executionToken;
+    private readonly Channel<ZLinkSerialWorkItem> _queue =
+        Channel.CreateUnbounded<ZLinkSerialWorkItem>(
+            new UnboundedChannelOptions
+            {
+                SingleReader = true,
+                SingleWriter = false,
+                AllowSynchronousContinuations = false,
+            });
+    private readonly SemaphoreSlim _drainGate = new(1, 1);
+    private readonly TaskCompletionSource _drained =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _pendingCount;
+    private int _completed;
+
+    public ZLinkSerialExecutionQueue(
+        ZLinkRuntimeTaskRunner taskRunner,
+        IZLinkRuntimeErrorSink errorSink,
+        CancellationToken executionToken)
+    {
+        _taskRunner = taskRunner;
+        _errorSink = errorSink;
+        _executionToken = executionToken;
+    }
+
+    public async ValueTask<ZLinkSerialWorkItem> PostAsync(
+        Func<CancellationToken, ValueTask> callback,
+        CancellationToken cancellationToken)
+    {
+        var item = new ZLinkSerialWorkItem(callback);
+        Interlocked.Increment(ref _pendingCount);
+        try
+        {
+            await _queue.Writer.WriteAsync(item, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            CompletePendingItem();
+            throw;
+        }
+
+        ScheduleDrain();
+        return item;
+    }
+
+    public bool TryPost(
+        Func<CancellationToken, ValueTask> callback,
+        out ZLinkSerialWorkItem item)
+    {
+        item = new ZLinkSerialWorkItem(callback);
+        Interlocked.Increment(ref _pendingCount);
+        if (_queue.Writer.TryWrite(item))
+        {
+            ScheduleDrain();
+            return true;
+        }
+
+        CompletePendingItem();
+        return false;
+    }
+
+    public async ValueTask RunAsync(
+        Func<CancellationToken, ValueTask> callback,
+        CancellationToken cancellationToken)
+    {
+        var item = await PostAsync(callback, cancellationToken).ConfigureAwait(false);
+        await item.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _completed, 1) != 0)
+        {
+            return;
+        }
+
+        _queue.Writer.TryComplete();
+        if (Volatile.Read(ref _pendingCount) == 0)
+        {
+            _drained.TrySetResult();
+        }
+
+        try
+        {
+            await _drained.Task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        _drainGate.Dispose();
+    }
+
+    private void ScheduleDrain()
+    {
+        _taskRunner.RunDetached(
+            "serial-queue-drain",
+            DrainAsync);
+    }
+
+    private async ValueTask DrainAsync(CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        if (!await _drainGate.WaitAsync(0, CancellationToken.None).ConfigureAwait(false))
+        {
+            return;
+        }
+
+        try
+        {
+            while (_queue.Reader.TryRead(out var item))
+            {
+                await item.InvokeAsync(
+                    ReportHandlerException,
+                    _executionToken).ConfigureAwait(false);
+                CompletePendingItem();
+            }
+        }
+        finally
+        {
+            _drainGate.Release();
+        }
+
+        if (_queue.Reader.TryPeek(out _))
+        {
+            ScheduleDrain();
+        }
+    }
+
+    private void ReportHandlerException(Exception exception)
+    {
+        try
+        {
+            _errorSink.ReportHandlerException(exception);
+        }
+        catch (Exception reportException)
+        {
+            _taskRunner.ReportErrorSinkFailure(
+                "handler-exception-report",
+                reportException);
+        }
+    }
+
+    private void CompletePendingItem()
+    {
+        if (Interlocked.Decrement(ref _pendingCount) == 0
+            && Volatile.Read(ref _completed) != 0)
+        {
+            _drained.TrySetResult();
+        }
+    }
+}
+```
+
+이 queue의 동작은 다음과 같이 읽으면 된다.
+
+- `PostAsync(...)`는 work item을 queue에 넣고 drain task를 깨운다.
+- 이미 drain 중이라면 `_drainGate.WaitAsync(0)`이 실패하므로 새로 만들어진 drain task는 곧바로 끝난다.
+- 진행 중이던 drain task가 queue를 계속 비우므로 handler가 하나씩 차례로 실행된다.
+- 서로 다른 `ZLinkSerialExecutionQueue` 인스턴스는 서로 다른 실행 줄이므로 병렬로 실행될 수 있다.
+
+`PostAsync(...)`와 `RunAsync(...)`에 넘긴 `cancellationToken`은 queue에 들어가기
+이전 단계의 대기나 completion 대기를 취소하기 위한 값이다.
+이미 queue에 들어간 work item을 중간에서 빼낸다는 뜻은 아니다. handler 실행 자체를
+멈추는 값은 runtime shutdown token이나 handler가 별도로 받은 operation token으로
+분리해야 한다.
+이렇게 분리해 두어야 request timeout이 같은 queue 안에 줄 서 있는 다음 work
+item의 순서를 깨지 않는다.
+
+### 2.3.3 runtime task runner
+
+queue drain은 transport callback thread에서 직접 실행하지 않는다. framework
+runtime은 분리된 task runner를 통해 drain task를 만든다. 이 runner는 fire-and-forget
+task의 예외를 반드시 관찰해 monitoring 이나 runtime error sink로 넘겨야 한다.
+
+```csharp
+internal interface IZLinkRuntimeErrorSink
+{
+    void ReportHandlerException(Exception exception);
+
+    void ReportRuntimeTaskException(
+        string taskName,
+        Exception exception);
+}
+
+internal sealed class ZLinkRuntimeTaskRunner
+{
+    private readonly IZLinkRuntimeErrorSink _errorSink;
+    private readonly CancellationToken _shutdownToken;
+
+    public ZLinkRuntimeTaskRunner(
+        IZLinkRuntimeErrorSink errorSink,
+        CancellationToken shutdownToken)
+    {
+        _errorSink = errorSink;
+        _shutdownToken = shutdownToken;
+    }
+
+    public void RunDetached(
+        string name,
+        Func<CancellationToken, ValueTask> callback)
+    {
+        _ = Task.Factory.StartNew(
+            static state => RunDetachedCoreAsync((TaskState)state!),
+            new TaskState(name, callback, _errorSink, _shutdownToken),
+            CancellationToken.None,
+            TaskCreationOptions.DenyChildAttach,
+            TaskScheduler.Default).Unwrap();
+    }
+
+    private static async Task RunDetachedCoreAsync(TaskState state)
+    {
+        try
+        {
+            await state.Callback(state.ShutdownToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (state.ShutdownToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                state.ErrorSink.ReportRuntimeTaskException(
+                    state.Name,
+                    ex);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    public void ReportErrorSinkFailure(
+        string name,
+        Exception exception)
+    {
+        _ = name;
+        _ = exception;
+    }
+
+    private sealed record TaskState(
+        string Name,
+        Func<CancellationToken, ValueTask> Callback,
+        IZLinkRuntimeErrorSink ErrorSink,
+        CancellationToken ShutdownToken);
+}
+```
+
+이런 runner를 따로 두는 이유는 아래와 같다.
+
+- transport callback은 queue에 item을 넣은 뒤 곧장 빠져나와야 한다.
+- application handler는 반드시 runtime이 만든 Task 안에서 실행되어야 한다.
+- fire-and-forget task의 예외와 fire-and-forget handler의 예외가 unobserved exception으로
+  남으면 안 된다.
+- `TaskScheduler.Default`를 명시해 ASP.NET request context나 임의 synchronization context에
+  묶이지 않도록 한다.
+
+`Task.Factory.StartNew(...).Unwrap()` 대신 `Task.Run(...)`을 써도 같은 의미를
+만들 수 있다. 중요한 것은 task 생성 위치를 runtime 한곳에 모으고, 예외 관찰과
+shutdown token 처리를 동일한 규칙으로 적용한다는 점이다.
+
+### 2.3.4 stream session runtime
+
+stream transport가 frame을 읽으면 session runtime은 packet을 만든 뒤 session별
+queue에 넣는다. 같은 session에서 들어온 frame 순서는 stream socket이 이미
+보존하므로, framework는 그 순서를 session callback 순서로 이어 주면 된다.
+
+```csharp
+internal sealed class ZLinkStreamSessionRuntime
+{
+    private readonly ZLinkSerialExecutionQueue _sessionQueue;
+    private readonly IZLinkSession _session;
+    private readonly ZLinkSessionContext _context;
+
+    public ZLinkStreamSessionRuntime(
+        ZLinkRuntimeTaskRunner taskRunner,
+        IZLinkRuntimeErrorSink errorSink,
+        CancellationToken executionToken,
+        IZLinkSession session,
+        ZLinkSessionContext context)
+    {
+        _sessionQueue = new ZLinkSerialExecutionQueue(
+            taskRunner,
+            errorSink,
+            executionToken);
+        _session = session;
+        _context = context;
+    }
+
+    public async ValueTask OnTransportConnectedAsync(CancellationToken cancellationToken)
+    {
+        await _sessionQueue.PostAsync(
+            ct => _session.OnConnectedAsync(_context, ct),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask OnTransportFrameAsync(
+        ZLinkStreamHeader header,
+        ReadOnlyMemory<byte> body,
+        CancellationToken cancellationToken)
+    {
+        var packet = DecodeSessionPacket(header, body);
+
+        await _sessionQueue.PostAsync(
+            ct => _session.OnDispatchAsync(packet, ct),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask OnTransportDisconnectedAsync(CancellationToken cancellationToken)
+    {
+        await _sessionQueue.PostAsync(
+            ct => _session.OnDisconnectedAsync(_context, ct),
+            cancellationToken).ConfigureAwait(false);
+    }
+}
+```
+
+transport 진입점이 `PostAsync(...)`만 기다리는 이유는, frame ingress와 lifecycle
+ingress를 application handler의 완료 시간에 묶지 않기 위해서다. session callback은
+session queue 안에서 차례대로 실행되며, 같은 session 안에서 겹쳐 실행되지 않는다.
+그러나 transport 진입점 자체는 handler 완료를 기다리는 public request/reply
+경로가 아니다. shutdown처럼 완료를 반드시 기다려야 하는 runtime 흐름은 별도의
+drain/stop 단계에서 queue item completion을 관찰한다.
+
+### 2.3.5 session에서 actor로 relay
+
+session callback 안에서 actor에게 packet을 넘기는 public 표면은
+`DispatchToActorAsync(...)` 같은 helper다. 이 helper는 session queue를 actor 실행
+queue로 이어 주는 bridge 역할을 한다.
+
+```csharp
+internal sealed class ZLinkSessionContext : IZLinkSessionContext
+{
+    private readonly ZLinkActorDispatchRuntime _actorDispatch;
+    private readonly ZLinkActorBindingTable _bindings;
+
+    public async ValueTask DispatchToActorAsync(
+        IZLinkActorRef actorRef,
+        IZLinkSessionPacket packet,
+        CancellationToken cancellationToken)
+    {
+        var binding = _bindings.GetCurrentBinding(actorRef.ActorId);
+
+        await _actorDispatch.PostFromSessionAsync(
+            actorRef,
+            binding,
+            packet,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<TReply> RequestActorAsync<TReply>(
+        IZLinkActorRef actorRef,
+        IZLinkSessionPacket packet,
+        CancellationToken cancellationToken)
+    {
+        var binding = _bindings.GetCurrentBinding(actorRef.ActorId);
+
+        return await _actorDispatch.InvokeFromSessionAsync<TReply>(
+            actorRef,
+            binding,
+            packet,
+            cancellationToken).ConfigureAwait(false);
+    }
+}
+```
+
+send 성격의 `DispatchToActorAsync(...)`는 actor의 실행 줄에 packet을 넣는 데
+성공한 시점에 끝난다. 반면 request 성격의 `RequestActorAsync<TReply>(...)`는 actor
+handler가 만든 reply를 받을 때까지 기다린다. 두 경우 모두 같은 actor로 들어간
+packet의 enqueue 순서는 그대로 보존해야 한다.
+
+### 2.3.6 actor 위치 snapshot과 dispatch 결정
+
+actor dispatch runtime은 actor의 현재 위치를 본 뒤 handler 실행 위치를 고른다.
+위치 snapshot을 읽는 동작과 queue를 선택하는 동작은 하나의 actor dispatch 결정으로
+묶여야 한다. 그래야 join 직후에 들어온 packet이 이전 Entry Spot handler 쪽으로
+빠지는 일이 없다.
+
+```csharp
+internal sealed class ZLinkActorDispatchRuntime
+{
+    private readonly ZLinkRuntimeTaskRunner _taskRunner;
+    private readonly IZLinkRuntimeErrorSink _errorSink;
+    private readonly CancellationToken _executionToken;
+
+    private readonly ConcurrentDictionary<string, ZLinkSerialExecutionQueue>
+        _entryActorQueues = new();
+
+    public ZLinkActorDispatchRuntime(
+        ZLinkRuntimeTaskRunner taskRunner,
+        IZLinkRuntimeErrorSink errorSink,
+        CancellationToken executionToken)
+    {
+        _taskRunner = taskRunner;
+        _errorSink = errorSink;
+        _executionToken = executionToken;
+    }
+
+    public async ValueTask PostFromSessionAsync(
+        IZLinkActorRef actorRef,
+        ZLinkActorSessionBinding binding,
+        IZLinkSessionPacket packet,
+        CancellationToken cancellationToken)
+    {
+        var item = CreateActorWorkItem<object?>(
+            actorRef,
+            binding,
+            packet,
+            expectReply: false);
+
+        await EnqueueByCurrentLocationAsync(
+            actorRef,
+            item,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<TReply> InvokeFromSessionAsync<TReply>(
+        IZLinkActorRef actorRef,
+        ZLinkActorSessionBinding binding,
+        IZLinkSessionPacket packet,
+        CancellationToken cancellationToken)
+    {
+        var item = CreateActorWorkItem<TReply>(
+            actorRef,
+            binding,
+            packet,
+            expectReply: true);
+
+        var queued = await EnqueueByCurrentLocationAsync(
+            actorRef,
+            item,
+            cancellationToken).ConfigureAwait(false);
+
+        await queued.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return item.GetReply();
+    }
+
+    private ValueTask<ZLinkSerialWorkItem> EnqueueByCurrentLocationAsync(
+        IZLinkActorRef actorRef,
+        ZLinkActorDispatchWorkItem item,
+        CancellationToken cancellationToken)
+    {
+        var location = actorRef.ReadCurrentLocation();
+
+        if (location.IsEntrySpot)
+        {
+            var actorQueue = _entryActorQueues.GetOrAdd(
+                actorRef.ActorId,
+                _ => new ZLinkSerialExecutionQueue(
+                    _taskRunner,
+                    _errorSink,
+                    _executionToken));
+
+            return actorQueue.PostAsync(
+                ct => InvokeEntrySpotHandlerAsync(item, ct),
+                cancellationToken);
+        }
+
+        return location.UserSpot.ExecutionQueue.PostAsync(
+            ct => InvokeUserSpotHandlerAsync(location.UserSpot, item, ct),
+            cancellationToken);
+    }
+}
+```
+
+이 코드를 보면 Entry Spot에는 actor별 queue만 둔다. Entry Spot 전체 queue에
+actor packet을 넣지 않는다. 그래서 `actor A`의 handler가 아무리 오래 걸려도
+`actor B`의 Entry Spot packet은 같은 actor queue에 끌려 들어가지 않는다.
+
+user Spot은 그 반대다. actor별 queue로만 끝내 버리면 같은 room state를 handler
+두 개가 동시에 건드릴 수 있다. 그래서 actor가 user Spot에 있으면 최종 handler
+호출은 반드시 `location.UserSpot.ExecutionQueue` 안에서 한다.
+
+### 2.3.7 user Spot queue
+
+user Spot queue는 actor packet만 처리하는 곳이 아니다. Spot packet, timer,
+subscription, channel reply continuation까지 모두 같은 queue로 들어와야 한다.
+
+```csharp
+internal sealed class ZLinkUserSpotRuntime
+{
+    public ZLinkSerialExecutionQueue ExecutionQueue { get; }
+
+    public ZLinkUserSpotRuntime(
+        ZLinkRuntimeTaskRunner taskRunner,
+        IZLinkRuntimeErrorSink errorSink,
+        CancellationToken executionToken)
+    {
+        ExecutionQueue = new ZLinkSerialExecutionQueue(
+            taskRunner,
+            errorSink,
+            executionToken);
+    }
+
+    public ValueTask<ZLinkSerialWorkItem> EnqueueSpotPacketAsync(
+        ZLinkSpotPacket packet,
+        CancellationToken cancellationToken)
+    {
+        return ExecutionQueue.PostAsync(
+            ct => InvokeSpotPacketHandlerAsync(packet, ct),
+            cancellationToken);
+    }
+
+    public ValueTask<ZLinkSerialWorkItem> EnqueueActorPacketAsync(
+        ZLinkActorDispatchWorkItem item,
+        CancellationToken cancellationToken)
+    {
+        return ExecutionQueue.PostAsync(
+            ct => InvokeUserSpotActorHandlerAsync(item, ct),
+            cancellationToken);
+    }
+
+    public ValueTask<ZLinkSerialWorkItem> EnqueueTimerTickAsync(
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
+    {
+        return ExecutionQueue.PostAsync(
+            ct => InvokeTimerHandlerAsync(tick, ct),
+            cancellationToken);
+    }
+
+    public ValueTask<ZLinkSerialWorkItem> EnqueueChannelReplyAsync(
+        ZLinkChannelReply reply,
+        CancellationToken cancellationToken)
+    {
+        return ExecutionQueue.PostAsync(
+            ct => CompleteChannelRequestAsync(reply, ct),
+            cancellationToken);
+    }
+}
+```
+
+이 queue 하나가 user Spot의 mutable state를 지킨다. `Spot` 객체의 필드, room
+board, stage actor count 같은 값은 이 queue 안에서만 읽고 쓴다는 것을 전제로
+한다.
+
+### 2.3.8 Entry Spot lifecycle queue
+
+Entry Spot lifecycle은 actor packet과 분리해 둔다. 초기화, 종료, joined/left
+callback처럼 Entry Spot registry나 lifecycle state를 만지는 작업은 Entry Spot
+lifecycle 실행 문맥에서 직렬화할 수 있다.
+
+```csharp
+internal sealed class ZLinkEntrySpotRuntime
+{
+    private readonly ZLinkSerialExecutionQueue _lifecycleQueue;
+    private readonly IZLinkEntrySpot _entrySpot;
+
+    public ZLinkEntrySpotRuntime(
+        ZLinkRuntimeTaskRunner taskRunner,
+        IZLinkRuntimeErrorSink errorSink,
+        CancellationToken executionToken,
+        IZLinkEntrySpot entrySpot)
+    {
+        _lifecycleQueue = new ZLinkSerialExecutionQueue(
+            taskRunner,
+            errorSink,
+            executionToken);
+        _entrySpot = entrySpot;
+    }
+
+    public ValueTask InitializeAsync(CancellationToken cancellationToken)
+    {
+        return _lifecycleQueue.RunAsync(
+            ct => _entrySpot.OnInitializeAsync(ct),
+            cancellationToken);
+    }
+
+    public ValueTask ClosingAsync(CancellationToken cancellationToken)
+    {
+        return _lifecycleQueue.RunAsync(
+            ct => _entrySpot.OnClosingAsync(ct),
+            cancellationToken);
+    }
+
+    public ValueTask ActorJoinedAsync(
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        return _lifecycleQueue.RunAsync(
+            ct => InvokeEntrySpotActorJoinedHandlerAsync(info, ct),
+            cancellationToken);
+    }
+}
+```
+
+이 queue에는 Entry Spot actor packet을 넣지 않는다. Entry Spot actor packet은
+`ZLinkActorDispatchRuntime`의 actor별 queue를 사용한다.
+
+### 2.3.9 독립 node message task
+
+특정 Spot이나 actor의 상태를 보호할 필요가 없는 node-level message는 message
+하나를 runtime task 하나로 실행한다. 이 경로에는 전역 node queue를 두지 않는다.
+전역 queue를 두면 서로 무관한 node message들이 한 줄로 묶여 막혀 버리기
+때문이다.
+
+```csharp
+internal sealed class ZLinkNodeMessageRuntime
+{
+    private readonly ZLinkRuntimeTaskRunner _taskRunner;
+    private readonly ZLinkNodeMessageHandlerInvoker _invoker;
+
+    public void OnNodeMessage(ZLinkNodeMessage message)
+    {
+        _taskRunner.RunDetached(
+            "node-message",
+            ct => _invoker.InvokeAsync(message, ct));
+    }
+}
+```
+
+node message handler가 actor 상태나 user Spot 상태를 바꿔야 한다면, handler
+안에서 직접 상태를 만지지 말고 actor dispatch runtime이나 user Spot queue로 다시
+넘겨야 한다. 정리하면, node message task는 독립 작업을 실행하는 단위일 뿐이며
+공유 상태를 보호하는 단위가 아니다.
+
+### 2.3.10 전체 흐름
+
+```text
+Stream frame
+  -> Session queue
+  -> Session callback
+  -> Actor dispatch runtime
+       Entry Spot actor -> Actor queue
+       User Spot actor  -> User Spot queue
+
+Entry Spot lifecycle
+  -> Entry Spot lifecycle queue
+
+Node message
+  -> Independent runtime task
+
+User Spot packet, timer, subscription, channel reply
+  -> User Spot queue
+```
+
+session queue는 stream callback을 직렬화하기 위한 장치다. actor 실행 순서를
+최종적으로 결정하는 곳은 actor dispatch runtime이다. 이 둘을 섞어 버리면 Entry
+Spot actor packet이 전역으로 직렬화되거나, user Spot 상태가 서로 다른 actor
+handler에서 동시에 변경되는 문제가 생긴다.
 
 ## 3. Actor handler 표면
 
@@ -119,11 +873,12 @@ public interface IZLinkEntrySpotActorSendHandler<TActor, in TMessage>
 ```
 
 handler는 transport raw header를 직접 받지 않는다. Session route, stream sequence,
-binding token은 framework runtime metadata로 남긴다.
+binding token 같은 값은 framework runtime의 metadata 쪽에 남긴다.
 
 typed actor context는 source session의 `RoutingId`를 노출하지 않는다. handler가
-즉시 client에게 push를 보내야 할 때도 `context.SessionProxy.Send(context.ActorId, message)`
-처럼 resolver 기반 표면을 사용해야 한다.
+즉시 client로 push를 보내야 하는 경우에도
+`context.SessionProxy.Send(context.ActorId, message)`처럼 resolver 기반 표면을
+사용해야 한다.
 
 ### 3.2 metadata snapshot
 
@@ -150,7 +905,9 @@ public interface IZLinkMessageMetadataPolicy
 }
 ```
 
-기본 `IZLinkMessageMetadataPolicy`는 application metadata를 전달하지 않는다. trace id 같은 값을 actor handler까지 전달하려면 framework 등록 단계에서 명시한다.
+기본 `IZLinkMessageMetadataPolicy`는 application metadata를 전달하지 않는다.
+trace id 같은 값을 actor handler까지 함께 흘려 보내려면 framework 등록 단계에서
+명시적으로 허용한다.
 
 ```csharp
 options.ConfigureMetadata(metadata =>
@@ -201,7 +958,7 @@ public interface IZLinkSessionProxyRequestCall
 }
 ```
 
-호출 모양:
+호출 모양은 아래와 같다.
 
 ```csharp
 await sessionProxy
@@ -213,26 +970,30 @@ GamePromptRep prompt = await sessionProxy
     .Submit<GamePromptRep>(cancellationToken);
 ```
 
-`SessionGateway`라는 기존 이름은 새 public API에서 제거한다. session → actor 방향은
-`CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)`,
-actor → client 방향은 `IZLinkSessionProxy`다.
+기존에 사용하던 `SessionGateway`라는 이름은 새 public API에서 제거한다.
+session → actor 방향은 `CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`,
+`DispatchToActorAsync(...)`를 쓰고, actor → client 방향은 `IZLinkSessionProxy`를
+쓴다.
 
-`IZLinkSessionProxy.Send(...).Submit(...)`은 one-way push다. 이 호출은 framework route
-send 제출을 의미하며, client application handler가 메시지를 처리했다는 ack를 뜻하지
-않는다. stale binding token, 이미 닫힌 stream, 늦게 도착한 push는 해당 push만
-실패해야 하며 route receive loop나 host shutdown을 실패시키면 안 된다. client 처리
-완료가 계약에 필요하면 `IZLinkSessionProxy.Request(...).Submit<TReply>(...)`처럼
-명시적인 request/reply 표면을 사용한다.
+`IZLinkSessionProxy.Send(...).Submit(...)`은 one-way push다. 이 호출은 framework
+route send 제출이 끝났다는 의미일 뿐, client application handler가 메시지를 처리
+완료했다는 ack는 아니다. stale binding token, 이미 닫힌 stream, 늦게 도착한
+push는 해당 push 하나만 실패해야 하며 route receive loop나 host shutdown 자체를
+실패시켜서는 안 된다. 만약 client 처리 완료가 계약상 필요하다면
+`IZLinkSessionProxy.Request(...).Submit<TReply>(...)`처럼 명시적인 request/reply
+표면을 써야 한다.
 
-재접속은 actor id 기준으로 idempotent해야 한다. 같은 actor id가 새 stream session에서
-`BindActorHandleAsync(...)`로 다시 들어오면 framework는 기존 actor instance와 spot
-membership을 유지하고 session binding만 새 stream으로 옮긴다. 이 규칙이 있어야
-client reconnect가 "새 게임 참여"가 아니라 "기존 actor의 새 연결"로 동작한다.
+재접속은 actor id 기준으로 idempotent해야 한다. 같은 actor id가 새 stream
+session에서 `BindActorHandleAsync(...)`로 다시 들어오면, framework는 기존 actor
+instance와 spot membership을 그대로 유지하고 session binding만 새 stream으로
+옮긴다. 이 규칙이 있어야 client reconnect가 "새 게임에 참여"가 아니라 "기존
+actor의 새 연결"로 동작한다.
 
 ## 5. IZLinkActorClient (actor id 기반 호출)
 
-`IZLinkActorClient`는 actor id 하나로 actor runtime에 호출을 보낸다. route 결정은
-`IZLinkActorPlayRouteResolver`가 맡고, 호출자는 play node `RoutingId`를 넘기지 않는다.
+`IZLinkActorClient`는 actor id 하나만으로 actor runtime에 호출을 보낸다. route
+결정은 `IZLinkActorPlayRouteResolver`가 맡으며, 호출자는 play node의 `RoutingId`를
+직접 넘기지 않는다.
 
 ```csharp
 public interface IZLinkActorClient
@@ -264,11 +1025,12 @@ public interface IZLinkActorClientRequestCall
 
 ## 6. Actor/Spot route resolver 등록
 
-공개 resolver는 actor와 spot 축으로 제한한다. session actor dispatch에서 필요한
-public resolver는 actor id에서 actor runtime route를 찾는 resolver 하나다. actor가
-현재 연결된 client session으로 push/request를 보낼 때는 framework/core가 가진
-actor-session binding 상태를 사용한다. actor가 `JoinSpot(spotName, ...)`로 user Spot에
-들어가는 경로가 node 경계를 넘을 수 있으면 spot route resolver도 등록한다.
+공개 resolver는 actor와 spot 두 축으로 한정한다. session actor dispatch에 필요한
+public resolver는 actor id에서 actor runtime route를 찾는 resolver 하나뿐이다.
+actor가 현재 연결된 client session으로 push나 request를 보낼 때는 framework/core
+가 가진 actor-session binding 상태를 사용한다. actor가 `JoinSpot(spotName, ...)`로
+user Spot에 들어가는 경로가 node 경계를 넘을 수 있다면 spot route resolver도
+함께 등록한다.
 
 ```csharp
 public interface IZLinkActorPlayRouteResolver
@@ -332,20 +1094,22 @@ builder.Services.AddZLinkFramework(options =>
 
 ### 6.1 Actor-session binding 상태
 
-framework는 session route resolver를 public 기본 표면으로 제공하지 않는다. session
-binding은 actor handle 생성, stream attach, stream disconnect 흐름에서 framework/core가
-갱신하는 상태다. 분산 배포에서 이 상태를 외부 저장소에 둬야 하면 `.NET` adapter는
-`IZLinkActorSessionBindingStore`를 등록한다. 이 store는 resolver가 아니라 bind/unbind와
-`SessionProxy` 조회를 함께 가진 저장소 계약이다.
+framework는 session route resolver를 public 기본 표면으로 제공하지 않는다.
+session binding은 actor handle 생성, stream attach, stream disconnect 흐름에서
+framework/core가 갱신해 두는 상태다. 분산 배포에서 이 상태를 외부 저장소에 두어야
+한다면 `.NET` adapter는 `IZLinkActorSessionBindingStore`를 등록한다. 이 store는
+resolver가 아니라 bind/unbind 동작과 `SessionProxy` 조회를 함께 가진 저장소
+계약이다.
 
-`IRegistryDiscoveryMetadata` 같은 registry/discovery metadata adapter는 sample code에서
-사용할 수 있지만 framework public contract가 아니다. session binding을 registry에
-저장하는 샘플을 만들더라도 그 adapter는 `IZLinkActorSessionBindingStore` 구현 내부에
-머물러야 하며, 별도 public session route resolver를 도입하지 않는다.
+`IRegistryDiscoveryMetadata` 같은 registry/discovery metadata adapter는 sample
+code에서 쓸 수 있으나, framework public contract는 아니다. session binding을
+registry에 저장하는 샘플을 만들더라도 그 adapter는 `IZLinkActorSessionBindingStore`
+구현 내부에 머물러야 하며, 별도의 public session route resolver를 도입하지
+않는다.
 
-`DeleteIfAsync(...)`는 저장된 `sessionId`와 `bindingToken`이 모두 맞을 때만 key를
+`DeleteIfAsync(...)`는 저장된 `sessionId`와 `bindingToken`이 모두 일치할 때만 key를
 삭제해야 한다. registry metadata API가 조건부 삭제나 compare-and-swap을 제공하지
-않는다면 sample adapter는 read 후 delete로 흉내 내면 안 된다.
+않는다면 sample adapter는 read 후 delete로 흉내 내서는 안 된다.
 
 ## 7. 등록 표면 (host 측)
 
@@ -407,7 +1171,7 @@ public sealed class TicTacToeGame : IZLinkSpot
 }
 ```
 
-actor resolver는 transport builder가 아니라 framework service 설정에 등록한다.
+actor resolver는 transport builder가 아니라 framework service 설정 쪽에 등록한다.
 
 ```csharp
 options.AddActorPlayRouteResolver<TicTacToePlayRouteResolver>();
@@ -416,7 +1180,8 @@ options.AddActorPlayRouteResolver<TicTacToePlayRouteResolver>();
 ## 8. 직접 dispatch 예시 (session callback)
 
 session callback이 인증, actor type 선택, local actor handle 생성, dispatch 여부를
-직접 고른다. framework helper는 actor-session binding과 transport 세부 작업만 숨긴다.
+모두 직접 결정한다. framework helper는 actor-session binding과 transport 세부
+작업만 가려 준다.
 
 ```csharp
 public sealed class TicTacToeSession : IZLinkSession
@@ -477,8 +1242,8 @@ public sealed class JoinMatchHandler
         JoinMatchReq request,
         CancellationToken cancellationToken)
     {
-        // request.MatchId는 application domain spot 이름이다.
-        // RoutingId 변환은 framework 내부 spot route resolver가 푼다.
+        // request.MatchId는 application 도메인이 정한 spot 이름이다.
+        // RoutingId 변환은 framework 내부의 spot route resolver가 풀어 준다.
         var joined = await actor.Context
             .JoinSpot<JoinMatchSpotResult, JoinMatchReq>(request.MatchId, request)
             .Submit(cancellationToken);
@@ -528,20 +1293,22 @@ public enum ZLinkFrameworkErrorKind
 
 각 kind의 발생 조건과 cross-binding 의미는
 [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md)
-§17 error-kind 매트릭스를 본다.
+§17 error-kind 매트릭스에서 다룬다.
 
-`ActorCreateFailed`와 `ActorAlreadyExists`는 local `SpotNode` actor runtime에서 actor를
-만들거나 handle을 준비할 때 사용한다. `BindActorHandleAsync(...)`는 remote node를 직접
-지정하지 않으며, 현재 actor에 bound session이 없어서 client push를 할 수 없으면
-`ActorSessionNotBound`로 분류한다.
+`ActorCreateFailed`와 `ActorAlreadyExists`는 local `SpotNode`의 actor runtime이
+actor를 새로 만들거나 handle을 준비할 때 사용한다. `BindActorHandleAsync(...)`는
+remote node를 직접 지정하지 않으며, 현재 actor에 bound된 session이 없어서 client
+push를 보낼 수 없으면 `ActorSessionNotBound`로 분류한다.
 
-`IsRetriable`은 framework가 자동 retry한다는 뜻이 아니다. caller가 retry policy를
-만들 때 참고할 수 있는 분류다. sample은 이 값을 사용해 retry loop를 만들지 않는다.
+`IsRetriable`은 framework가 자동으로 retry해 준다는 의미가 아니다. caller가 retry
+policy를 만들 때 참고할 수 있는 분류일 뿐이다. sample 코드에서도 이 값을 이용해
+retry loop를 만들지 않는다.
 
 ## 10. Diagnostic helper
 
-`.NET` 사용자가 connection / topology 상태를 점검할 수 있는 diagnostic helper
-초안이다. session actor dispatch의 필수 API는 아니고 운영 점검용이다.
+`.NET` 사용자가 connection이나 topology[^topology] 상태를 점검할 수 있도록 만든
+diagnostic helper 초안이다. session actor dispatch의 필수 API는 아니며, 운영
+점검용으로만 둔다.
 
 ```csharp
 public interface IZLinkTopologyDiagnostics
@@ -552,8 +1319,8 @@ public interface IZLinkTopologyDiagnostics
 }
 ```
 
-retry helper와는 다르다. diagnostic helper는 registry view, discovery member,
-local routed channel state를 보여 주는 역할만 한다.
+retry helper와는 성격이 다르다. diagnostic helper는 registry view, discovery
+member, local routed channel state를 보여 주는 역할만 한다.
 
 ## 11. 다른 문서와의 관계
 
@@ -569,14 +1336,36 @@ local routed channel state를 보여 주는 역할만 한다.
 ## 12. 회귀 테스트
 
 session actor dispatch 항목은 stream session, actor factory, route resolver,
-actor-session binding이 하나의 흐름으로 맞물리는지 확인한다. 또한 이전 stream의
-늦은 disconnect가 현재 actor-session 연결을 끊지 않는지 함께 본다.
+actor-session binding이 하나의 흐름으로 맞물려 동작하는지 확인한다. 또한 이전
+stream에서 늦게 도착한 disconnect가 현재 actor-session 연결을 끊지 않는지도 함께
+확인한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고 request sequence로 reply를 되돌린다. |
-| `StreamIntegrationTests.SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch` | Session 서버와 Play 서버 사이 actor dispatch가 route header, actor metadata, stream header, body를 별도 part로 유지한다. |
-| `StreamIntegrationTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 proxy metadata와 body를 별도 part로 유지하고 client에게는 단일 STREAM packet으로 쓴다. |
-| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 뒤 dispatch가 현재 spot 실행 문맥에서 실행된다. |
+| `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고, request sequence를 통해 reply를 되돌린다. |
+| `StreamIntegrationTests.SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch` | Session 서버와 Play 서버 사이의 actor dispatch가 route header, actor metadata, stream header, body를 각각 별도 part로 유지한다. |
+| `StreamIntegrationTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 proxy metadata와 body를 별도 part로 유지하고, client에게는 단일 STREAM packet으로 보낸다. |
+| `SpotIntegrationTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot actor packet이 actor별 순서를 지키되, 서로 다른 actor를 전역으로 막지 않는다. |
+| `SpotIntegrationTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel` | native Entry Spot actor batch도 actor별 순서 규칙을 거쳐 dispatch된다. |
+| `SpotIntegrationTests.LocalActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | user Spot에 들어가지 않은 actor packet도 actor별 순서를 지키되 서로 다른 actor 사이에서는 병렬로 실행될 수 있다. |
+| `SpotIntegrationTests.ActorDispatch_Rechecks_CurrentLocation_After_Waiting_For_ActorMailbox` | 같은 actor의 앞 packet이 join을 마치고 나면, 대기 중이던 다음 packet이 새 user Spot 위치로 dispatch된다. |
+| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 이후의 dispatch가 현재 spot 실행 문맥에서 실행된다. |
 | `SpotIntegrationTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | 이전 stream의 늦은 disconnect가 현재 actor-session 연결을 끊지 않는다. |
-| `StreamIntegrationTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 닫고 disconnect callback으로 이어진다. |
+| `StreamIntegrationTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 닫고 disconnect callback으로 자연스럽게 이어진다. |
+| `SerialExecutorTests.StreamSessionSerialExecutor_Continues_After_Work_Exception` | session queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
+| `SerialExecutorTests.SpotSerialExecutor_Continues_After_Queued_Work_Exception` | Spot queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
+| `SerialExecutorTests.SpotSerialExecutor_ExecuteAsync_Propagates_Work_Exception` | Spot queue에서 완료를 기다리는 실행 경로는 handler 예외를 호출자에게 그대로 돌려준다. |
+| `SerialExecutorTests.SerialExecutionQueue_RunAsync_Propagates_Work_Exception` | 공통 serial queue의 `RunAsync(...)`가 work 예외를 error sink에 기록하면서 호출자에게도 전파한다. |
+| `SerialExecutorTests.SerialExecutionQueue_Wait_Cancellation_Does_Not_Remove_Queued_Work` | 공통 serial queue에서 completion wait가 취소되더라도 이미 queue에 들어간 work item은 제거되지 않는다. |
+| `SerialExecutorTests.ActorDispatchCancellation_Does_Not_Stop_Current_Or_Later_Dispatch` | actor dispatch 대기를 취소해도 현재 실행 중인 dispatch나 이후 dispatch가 중단되지 않는다. |
+| `DocumentationRegressionTests.DotNetSessionActorDispatch_Documents_ExecutionSerialization_Core_Code` | 실행 직렬화 핵심 코드 섹션이 queue, runtime task, error sink, cancellation 의미를 계속 설명한다. |
+| `DocumentationRegressionTests.DotNetRegressionMatrix_Includes_ExecutionSerialization_Guards` | 중앙 regression matrix가 실행 직렬화 관련 회귀 항목을 유지한다. |
+
+[^public-contract]: public contract는 외부 사용자에게 공개되어, 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
+[^session-actor-dispatch]: session actor dispatch는 클라이언트 세션으로 들어온 요청을 그 세션과 묶여 있는 actor로 자동 전달해 주는 패턴이다.
+[^cross-binding]: cross-binding은 `.NET`, Java, C++ 등 서로 다른 언어 바인딩에 같은 의미가 동일하게 적용되어야 함을 가리키는 정책 축이다.
+[^posd]: POSD(Point Of Significant Decision)는 의미 있는 설계 결정이 내려진 지점을 기록해 두는 표기 방식이다.
+[^actor-session-binding]: actor-session binding은 특정 actor가 현재 어떤 client stream session에 연결되어 있는지를 framework/core가 보관하는 상태다.
+[^entry-spot]: Entry Spot은 모든 actor가 처음 거치는 공용 입구 역할의 Spot이다. user Spot으로 옮겨 가기 전까지 actor가 머무는 위치다.
+[^user-spot]: user Spot은 room이나 game처럼 application 도메인이 정의한 Spot으로, 같은 Spot 안의 actor들이 공유 상태를 두고 상호작용하는 곳이다.
+[^topology]: topology는 어떤 노드(channel, spot, registry 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 표현하는 구성 정보다.

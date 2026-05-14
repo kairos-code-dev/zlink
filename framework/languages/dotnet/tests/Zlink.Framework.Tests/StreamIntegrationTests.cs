@@ -74,8 +74,9 @@ public sealed class StreamIntegrationTests
                 ZLinkEnvelopeCodec.DecodePart<ZLinkActorDispatchMetadata>(parts[1]));
             Assert.Equal("relay.echo", headerCodec.Decode(parts[2].AsReadOnlyMemory()).Name);
             Assert.Equal("{\"value\":\"ping\"}", Encoding.UTF8.GetString(parts[3].AsReadOnlySpan()));
-            Assert.Throws<NotSupportedException>(() =>
-                ZLinkEnvelopeCodec.Encode(routeHeader, payloadParts, payloadParts.GetType()));
+            Assert.Null(typeof(ZLinkEnvelopeCodec).GetMethod(
+                "Encode",
+                BindingFlags.Public | BindingFlags.Static));
         }
         finally
         {
@@ -119,8 +120,9 @@ public sealed class StreamIntegrationTests
             Assert.Equal("client.echo", envelope.PacketName);
             Assert.True(envelope.ExpectsReply);
             Assert.Equal("{\"value\":\"ping\"}", Encoding.UTF8.GetString(parts[2].AsReadOnlySpan()));
-            Assert.Throws<NotSupportedException>(() =>
-                ZLinkEnvelopeCodec.Encode(routeHeader, envelope, typeof(ZLinkSessionProxyEnvelope)));
+            Assert.Null(typeof(ZLinkEnvelopeCodec).GetMethod(
+                "Encode",
+                BindingFlags.Public | BindingFlags.Static));
         }
         finally
         {

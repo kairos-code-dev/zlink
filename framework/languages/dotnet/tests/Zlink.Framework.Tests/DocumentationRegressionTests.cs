@@ -92,6 +92,47 @@ public sealed class DocumentationRegressionTests
         }
     }
 
+    [Fact]
+    public void DotNetRegressionMatrix_Includes_ExecutionSerialization_Guards()
+    {
+        var matrix = File.ReadAllText(Path.Combine(
+            GetDotNetDraftDirectory(),
+            "regression-test-matrix.ko.md"));
+
+        Assert.Contains("Entry Spot actor mailbox dispatch", matrix, StringComparison.Ordinal);
+        Assert.Contains("local actor mailbox dispatch", matrix, StringComparison.Ordinal);
+        Assert.Contains("user Spot actor dispatch serialization", matrix, StringComparison.Ordinal);
+        Assert.Contains("session actor dispatch ordering", matrix, StringComparison.Ordinal);
+        Assert.Contains("actor dispatch location after mailbox wait", matrix, StringComparison.Ordinal);
+        Assert.Contains("session callback task dispatch", matrix, StringComparison.Ordinal);
+        Assert.Contains("session callback 직렬성", matrix, StringComparison.Ordinal);
+        Assert.Contains("runtime task exception observation", matrix, StringComparison.Ordinal);
+        Assert.Contains("execution queue cancellation semantics", matrix, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DotNetSessionActorDispatch_Documents_ExecutionSerialization_Core_Code()
+    {
+        var document = File.ReadAllText(Path.Combine(
+            GetDotNetDraftDirectory(),
+            "session-actor-dispatch.ko.md"));
+
+        Assert.Contains("## 2.3 실행 직렬화 핵심 코드", document, StringComparison.Ordinal);
+        Assert.Contains("internal sealed class ZLinkSerialWorkItem", document, StringComparison.Ordinal);
+        Assert.Contains("internal sealed class ZLinkSerialExecutionQueue", document, StringComparison.Ordinal);
+        Assert.Contains("private readonly SemaphoreSlim _drainGate = new(1, 1);", document, StringComparison.Ordinal);
+        Assert.Contains("internal interface IZLinkRuntimeErrorSink", document, StringComparison.Ordinal);
+        Assert.Contains("internal sealed class ZLinkRuntimeTaskRunner", document, StringComparison.Ordinal);
+        Assert.Contains("TaskScheduler.Default", document, StringComparison.Ordinal);
+        Assert.Contains("internal sealed class ZLinkStreamSessionRuntime", document, StringComparison.Ordinal);
+        Assert.Contains("internal sealed class ZLinkActorDispatchRuntime", document, StringComparison.Ordinal);
+        Assert.Contains("internal sealed class ZLinkUserSpotRuntime", document, StringComparison.Ordinal);
+        Assert.Contains("internal sealed class ZLinkEntrySpotRuntime", document, StringComparison.Ordinal);
+        Assert.Contains("internal sealed class ZLinkNodeMessageRuntime", document, StringComparison.Ordinal);
+        Assert.Contains("이미 queue에 들어간 work item을 중간에서", document, StringComparison.Ordinal);
+        Assert.Contains("fire-and-forget handler 예외", document, StringComparison.Ordinal);
+    }
+
     private static string GetDotNetDraftDirectory()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

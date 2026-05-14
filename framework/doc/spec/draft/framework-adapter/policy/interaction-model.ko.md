@@ -114,6 +114,9 @@
 - 같은 session 안에서는 packet callback과 lifecycle callback이 직렬로 실행된다.
   이 직렬성은 session 단위 계약이며, 서로 다른 session의 전역 순서를 의미하지
   않는다.
+- stream socket은 같은 session의 frame 도착 순서를 보존한다. framework는 그 순서를
+  session별 직렬 callback 실행으로 이어 주면 된다. actor처럼 별도 public mailbox
+  개념을 session 표면에 노출하지 않는다.
 
 ### 3.4.1 stream-attached actor
 

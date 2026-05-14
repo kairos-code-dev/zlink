@@ -336,7 +336,24 @@ message kind이고, route resolver 입력은 `actorId` 또는 `spotId`로 제한
 [bindings/dotnet/session-actor-dispatch.ko.md](../bindings/dotnet/session-actor-dispatch.ko.md)
 §3.2를 참고한다.
 
-### 8.4 등록 API
+### 8.4 실행 순서
+
+session actor dispatch는 stream session에서 actor로 packet을 넘기는 경로다. 같은
+session의 stream frame 도착 순서는 stream socket이 보존하고, framework는 session별
+내부 실행 queue로 session callback을 직렬로 실행한다. 이 queue는 framework 내부
+구현이며, 별도 session mailbox를 public 개념으로 추가하지 않는다.
+
+session callback이 actor로 packet을 넘길 때 framework는 현재 actor 위치에 맞는 실행
+경계로 넘긴다. actor가 Entry Spot에 있거나 아직 user Spot에 들어가지 않았다면 대상
+actor의 mailbox에 packet을 넣는다. 같은 actor로 들어온 packet은 순서대로 실행하고,
+서로 다른 actor는 서로 기다리지 않게 한다.
+
+이 규칙은 Entry Spot actor packet과 같다. Entry Spot은 모든 actor가 거쳐 가는 공용
+입구이므로 Entry Spot 전체 실행 줄에 actor packet을 세우면 안 된다. actor가 user Spot에
+join한 뒤 user Spot handler가 처리하는 packet은 user Spot 실행 queue를 탄다. user
+Spot은 room, game, stage 같은 공유 상태를 소유하므로 Spot 단위 순서가 필요하다.
+
+### 8.5 등록 API
 
 routed channel builder는 transport mesh 설정만 가진다. handler 등록을 routed channel
 아래에 두면 transport 설정과 domain dispatch 설정이 섞인다.

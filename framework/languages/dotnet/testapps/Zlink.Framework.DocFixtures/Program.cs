@@ -21,6 +21,7 @@ internal static class FixtureSamples
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf<FixtureSendHandler>();
             options.UseDiscovery(discovery =>
             {
                 discovery.Add("tcp://127.0.0.1:7100");
@@ -58,7 +59,6 @@ internal static class FixtureSamples
                 });
             });
         });
-        builder.Services.AddZLinkHandlersFromAssemblyContaining<FixtureSendHandler>();
         return builder;
     }
 

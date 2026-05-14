@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace Zlink.Framework.Configuration.Builders;
 
 internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
@@ -16,6 +18,25 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     }
 
     public IZLinkCodecRegistryBuilder Codecs => _registration.Codecs;
+
+    public void AddHandlersFromAssemblyOf<TMarker>()
+    {
+        AddHandlersFromAssembly(typeof(TMarker).Assembly);
+    }
+
+    public void AddHandlersFromAssemblyOf(Type markerType)
+    {
+        ArgumentNullException.ThrowIfNull(markerType);
+
+        AddHandlersFromAssembly(markerType.Assembly);
+    }
+
+    public void AddHandlersFromAssembly(Assembly assembly)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+
+        _registration.HandlerAssemblies.Add(assembly);
+    }
 
     public void ConfigureMetadata(Action<IZLinkMetadataPolicyBuilder> configure)
     {

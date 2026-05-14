@@ -20,6 +20,11 @@ public static class ServiceCollectionExtensions
         configure(builder);
         ZLinkFrameworkRegistrationValidator.Validate(registration);
 
+        foreach (var assembly in registration.HandlerAssemblies)
+        {
+            services.AddZLinkHandlersFromAssembly(assembly);
+        }
+
         services.AddSingleton(registration);
         services.TryAddSingleton<IZLinkBackendAdapterFactory, ZLinkDotNetBackendAdapterFactory>();
         services.TryAddSingleton(static provider =>
@@ -123,11 +128,10 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    [Obsolete("Use AddZLinkFramework(options => options.AddHandlersFromAssemblyOf<TMarker>()) instead.")]
     public static IServiceCollection AddZLinkHandlersFromAssemblyContaining<TMarker>(
         this IServiceCollection services)
     {
-        ArgumentNullException.ThrowIfNull(services);
-
         return services.AddZLinkHandlersFromAssembly(typeof(TMarker).Assembly);
     }
 

@@ -30,9 +30,9 @@ public static class PlayServerHostFactory
         builder.Services.AddScoped<JoinMatchHandler>();
         builder.Services.AddScoped<TicTacToeGameJoinHandler>();
         builder.Services.AddScoped<PlaceMarkHandler>();
-        builder.Services.AddZLinkHandlersFromAssemblyContaining<CreateMatchRoomHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.AddJson();
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
             options.AddClientServerChannel(SampleNames.PlayChannel, channel =>

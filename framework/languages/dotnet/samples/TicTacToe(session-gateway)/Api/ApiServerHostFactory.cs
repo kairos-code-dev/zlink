@@ -10,9 +10,9 @@ public static class ApiServerHostFactory
     public static IHost Build(SampleTopology topology)
     {
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddZLinkHandlersFromAssemblyContaining<AuthenticateActorHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.AddJson();
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>

@@ -10,9 +10,9 @@ internal sealed class ApiServer(SampleSettings settings)
         var builder = WebApplication.CreateBuilder();
         SampleLogging.Configure(builder.Logging, settings, "api");
         builder.WebHost.UseUrls(settings.ApiBindUrl);
-        builder.Services.AddZLinkHandlersFromAssemblyContaining<AuthenticatePlayerHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf<ApiServer>();
             options.AddClientServerChannel(SampleChannels.Api, channel =>
             {
                 channel.EnableServer(server =>

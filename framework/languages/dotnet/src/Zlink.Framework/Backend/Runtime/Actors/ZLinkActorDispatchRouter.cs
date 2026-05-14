@@ -45,48 +45,15 @@ internal sealed class ZLinkActorDispatchRouter(
     {
         var actorId = actor.ActorId;
         var state = actorSessions.GetOrCreate(actor.ActorId);
-        ZLinkSpotActivation? activation;
         var shouldPrune = false;
         ensureActorContext(actor, state);
 
-        (activation, shouldPrune) = await state.ExecuteLockedAsync(
-            () =>
-            {
-                var currentActivation = state.Activation;
-                var prune = false;
-
-                if (currentActivation is not null && currentActivation.IsDisposed)
-                {
-                    state.Activation = null;
-                    currentActivation = null;
-                    prune = state.SessionId is null;
-                }
-
-                return (currentActivation, prune);
-            },
-            cancellationToken).ConfigureAwait(false);
-
         try
         {
-            if (activation is null)
-            {
-                if (await runtime.TrySubmitEntrySpotActorAsync(
-                        actor,
-                        state,
-                        header,
-                        body,
-                        cancellationToken)
-                    .ConfigureAwait(false))
-                {
-                    return;
-                }
-
-                await DispatchLocalAsync(actor, state, header, body, cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            await activation.SubmitActorAsync(actor, state, header, body, cancellationToken)
+            shouldPrune = await state.ExecuteDispatchAsync(
+                    header,
+                    ct => SubmitByCurrentLocationAsync(actor, state, header, body, ct),
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
@@ -99,6 +66,66 @@ internal sealed class ZLinkActorDispatchRouter(
     }
 
     private async ValueTask<byte[]> SubmitForReplyAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState state,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        return await state.ExecuteDispatchAsync(
+                header,
+                ct => SubmitByCurrentLocationForReplyAsync(actor, state, header, body, ct),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<bool> SubmitByCurrentLocationAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState state,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        var activation = await state.ExecuteLockedAsync(
+            () =>
+            {
+                var currentActivation = state.Activation;
+                var prune = false;
+                if (currentActivation is not null && currentActivation.IsDisposed)
+                {
+                    state.Activation = null;
+                    currentActivation = null;
+                    prune = state.SessionId is null;
+                }
+
+                return (currentActivation, prune);
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        if (activation.currentActivation is null)
+        {
+            if (await runtime.TrySubmitEntrySpotActorAsync(
+                    actor,
+                    state,
+                    header,
+                    body,
+                    cancellationToken)
+                .ConfigureAwait(false))
+            {
+                return activation.prune;
+            }
+
+            await state.DispatchAsync(services, actor, header, body, cancellationToken)
+                .ConfigureAwait(false);
+            return activation.prune;
+        }
+
+        await activation.currentActivation.SubmitActorAsync(actor, state, header, body, cancellationToken)
+            .ConfigureAwait(false);
+        return activation.prune;
+    }
+
+    private async ValueTask<byte[]> SubmitByCurrentLocationForReplyAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
@@ -155,17 +182,8 @@ internal sealed class ZLinkActorDispatchRouter(
         Message body,
         CancellationToken cancellationToken)
     {
-        var previousDispatch = state.CurrentDispatch;
-        state.CurrentDispatch = new ZLinkActorDispatchState(header);
-        try
-        {
-            await state.DispatchAsync(services, actor, header, body, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            state.CurrentDispatch = previousDispatch;
-        }
+        await state.DispatchAsync(services, actor, header, body, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<byte[]> DispatchLocalForReplyAsync(
@@ -175,16 +193,7 @@ internal sealed class ZLinkActorDispatchRouter(
         Message body,
         CancellationToken cancellationToken)
     {
-        var previousDispatch = state.CurrentDispatch;
-        state.CurrentDispatch = new ZLinkActorDispatchState(header);
-        try
-        {
-            return await state.DispatchForReplyAsync(services, actor, header, body, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            state.CurrentDispatch = previousDispatch;
-        }
+        return await state.DispatchForReplyAsync(services, actor, header, body, cancellationToken)
+            .ConfigureAwait(false);
     }
 }

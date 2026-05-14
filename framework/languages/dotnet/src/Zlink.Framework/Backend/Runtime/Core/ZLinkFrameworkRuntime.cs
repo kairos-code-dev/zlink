@@ -251,6 +251,23 @@ internal sealed class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
+    internal async ValueTask SubmitResolvedEntrySpotActorAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState runtimeState,
+        ZlinkStreamHeader header,
+        Func<CancellationToken, ValueTask> operation,
+        CancellationToken cancellationToken = default)
+    {
+        GetOrStartState();
+        await _spots.SubmitResolvedEntrySpotActorAsync(
+                actor,
+                runtimeState,
+                header,
+                operation,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     internal async ValueTask NotifyEntrySpotActorJoinedAsync(
         IZLinkActor actor,
         ZLinkSpotActorLifecycleInfo info,

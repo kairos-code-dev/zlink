@@ -6,6 +6,7 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkEntrySpotActivation : IZLinkEntrySpotContext, IAsyncDisposable
 {
     private static readonly AsyncLocal<ZLinkEntrySpotActivation?> Current = new();
+    private readonly IServiceProvider _services;
     private readonly AsyncServiceScope _scope;
     private readonly ZLinkSpotActorHandlerRegistry _actorHandlers =
         new(ZLinkSpotActorHandlerSurface.EntrySpot);
@@ -20,6 +21,7 @@ internal sealed class ZLinkEntrySpotActivation : IZLinkEntrySpotContext, IAsyncD
         Type entrySpotType,
         RoutingId nodeRid)
     {
+        _services = services;
         NodeRid = nodeRid;
         _scope = services.CreateAsyncScope();
         EntrySpot = (IZLinkEntrySpot)ActivatorUtilities.CreateInstance(
@@ -118,15 +120,11 @@ internal sealed class ZLinkEntrySpotActivation : IZLinkEntrySpotContext, IAsyncD
         Message body,
         CancellationToken cancellationToken)
     {
-        return ExecuteAsync(
-            static (activation, state, ct) =>
-                activation._invoker.InvokeActorPacketAsync(
-                    state.Descriptor,
-                    state.Actor,
-                    state.Header,
-                    state.Body,
-                    ct),
-            new ActorPacketState(descriptor, actor, header, body),
+        return InvokeActorPacketWithoutLifecycleGateAsync(
+            descriptor,
+            actor,
+            header,
+            body,
             cancellationToken);
     }
 
@@ -137,22 +135,15 @@ internal sealed class ZLinkEntrySpotActivation : IZLinkEntrySpotContext, IAsyncD
         Message body,
         CancellationToken cancellationToken)
     {
-        var state = new ActorPacketReplyState(descriptor, actor, header, body);
-        await ExecuteAsync(
-            async static (activation, state, ct) =>
-            {
-                state.Reply = await activation._invoker.InvokeActorPacketForReplyAsync(
-                        state.Descriptor,
-                        state.Actor,
-                        state.Header,
-                        state.Body,
-                        ct)
-                    .ConfigureAwait(false);
-            },
-            state,
-            cancellationToken).ConfigureAwait(false);
+        var reply = await InvokeActorPacketForReplyWithoutLifecycleGateAsync(
+                descriptor,
+                actor,
+                header,
+                body,
+                cancellationToken)
+            .ConfigureAwait(false);
 
-        return state.Reply
+        return reply
             ?? throw new InvalidOperationException(
                 $"Entry Spot actor packet reply for '{descriptor.MessageName}' was null.");
     }
@@ -253,19 +244,58 @@ internal sealed class ZLinkEntrySpotActivation : IZLinkEntrySpotContext, IAsyncD
         }
     }
 
-    private sealed record ActorPacketState(
-        ZLinkSpotActorPacketDescriptor Descriptor,
-        IZLinkActor Actor,
-        ZlinkStreamHeader Header,
-        Message Body);
-
-    private sealed record ActorPacketReplyState(
-        ZLinkSpotActorPacketDescriptor Descriptor,
-        IZLinkActor Actor,
-        ZlinkStreamHeader Header,
-        Message Body)
+    private async ValueTask InvokeActorPacketWithoutLifecycleGateAsync(
+        ZLinkSpotActorPacketDescriptor descriptor,
+        IZLinkActor actor,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
     {
-        public byte[]? Reply { get; set; }
+        var previous = Current.Value;
+        Current.Value = this;
+        try
+        {
+            await using var scope = _services.CreateAsyncScope();
+            var invoker = new ZLinkSpotHandlerInvoker(scope.ServiceProvider, EntrySpot);
+            await invoker.InvokeActorPacketAsync(
+                    descriptor,
+                    actor,
+                    header,
+                    body,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Current.Value = previous;
+        }
+    }
+
+    private async ValueTask<byte[]> InvokeActorPacketForReplyWithoutLifecycleGateAsync(
+        ZLinkSpotActorPacketDescriptor descriptor,
+        IZLinkActor actor,
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        var previous = Current.Value;
+        Current.Value = this;
+        try
+        {
+            await using var scope = _services.CreateAsyncScope();
+            var invoker = new ZLinkSpotHandlerInvoker(scope.ServiceProvider, EntrySpot);
+            return await invoker.InvokeActorPacketForReplyAsync(
+                    descriptor,
+                    actor,
+                    header,
+                    body,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Current.Value = previous;
+        }
     }
 
     private sealed record ActorLifecycleState(

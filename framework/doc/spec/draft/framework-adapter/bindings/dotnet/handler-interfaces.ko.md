@@ -826,17 +826,19 @@ context** 안으로 enqueue해서 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...
 
 이 절에서 중요한 것은 **내부 구현 방식**이 아니라 **사용자에게 보이는 실행 계약**이다.
 
-framework 초안은 `Spot`을 단순 recv helper가 아니라, 같은 `Spot`에 귀속된 handler와
-join이 끝난 session/actor가 **같은 spot execution context**에서 처리되는 표면으로
-본다.
+framework 초안은 `Spot`을 단순 recv helper가 아니라, 같은 user Spot에 귀속된 handler와
+join이 끝난 actor가 **같은 spot execution context**에서 처리되는 표면으로 본다.
+session에서 actor로 relay되는 packet은 먼저 대상 actor의 순서 규칙을 통과한다. 그 뒤
+actor가 Entry Spot에 있으면 Entry Spot registry handler를 actor별 순서로 실행하고,
+actor가 user Spot에 있으면 user Spot 실행 queue로 넘겨 Spot 상태를 보호한다.
 
 사용자 기준 공개 계약은 아래와 같다.
 
 - 사용자는 `Recv(...)`나 `Drain(...)` loop를 직접 작성하지 않는다.
 - 사용자는 `Context.AddPacket<THandler>(...)`, `Context.AddSubscribe<THandler>(...)`,
   `Context.AddTimer<THandler>(...)`, stream attach 같은 고수준 표면만 사용한다.
-- 같은 `Spot`에 귀속된 handler, timer handler, channel reply continuation,
-  stream session callback은 framework가 정한 같은 실행 문맥 규칙을 따른다.
+- 같은 user Spot에 귀속된 handler, timer handler, channel reply continuation은
+  framework가 정한 같은 실행 문맥 규칙을 따른다.
 - 이 계약이 유지되는 한, 사용자는 `SampleSpot.ActorCount` 같은 spot state를
   handler 안에서 직접 다룰 수 있다.
 
@@ -1069,6 +1071,9 @@ session callback 실행 계약은 아래와 같이 고정한다.
   `OnErrorAsync(...)`, `OnDisconnectedAsync(...)`가 서로 병렬로 실행되지 않는다.
   framework는 같은 session의 callback 순서를 보존하고, 이전 callback이 끝난 뒤
   다음 callback을 호출한다.
+- 같은 session의 stream frame 도착 순서는 stream socket이 보존한다. framework는 이
+  도착 순서를 session별 내부 실행 queue에 연결해서 callback 순서로 이어 준다. 이 queue는
+  framework 내부 구현이며, application은 별도 session mailbox를 만들거나 관리하지 않는다.
 - 서로 다른 session의 callback은 서로 독립적이다. 같은 session 직렬성만 보장하며,
   전체 stream node에 대한 전역 단일 실행 순서는 보장하지 않는다.
 
@@ -1134,7 +1139,9 @@ zlink 라이브러리가 native Actor API를 제공함에 따라 framework는 ac
 
 framework의 `SpotActivation`은 `SpotDispatchEvent.ActorJoinReadable`와
 `SpotDispatchEvent.ActorReadable` 이벤트를 수신해 각각 join drain과 STREAM
-dispatch를 처리한다. 두 경로 모두 spot serial executor 안에서 직렬화된다.
+dispatch를 처리한다. user Spot의 두 경로는 spot serial executor 안에서 직렬화된다.
+Entry Spot의 actor readable 경로는 Entry Spot 전체 직렬 실행 줄이 아니라 대상 actor의
+mailbox로 넘겨야 한다.
 `OnDispatchEvent` 핸들러는 spot 초기화 시 항상 등록하며, 이는 패킷/join handler가
 없는 spot도 런타임에 actor가 join될 때 `ActorReadable` 이벤트를 수신하기 위함이다.
 
@@ -1147,14 +1154,16 @@ framework는 native `ActorRef`를 public surface에 그대로 노출하지 않�
 actor id, 이동 전/후 node rid, 이동 전/후 spot id, 가능하면 commit epoch를 담은
 `ZLinkSpotActorLifecycleInfo`를 전달한다. native callback에서 온 값이면 commit epoch를
 그대로 전달하고, framework membership 변경만으로 만든 알림이면 epoch는 `0`으로 둔다.
-이 callback은 해당 Spot 또는 Entry Spot serial executor 안에서 실행되므로, spot 상태를
-읽고 쓰는 코드가 일반 packet handler와 같은 직렬화 규칙을 따른다.
+user Spot lifecycle callback은 해당 user Spot 실행 queue에서 실행되므로, spot 상태를
+읽고 쓰는 코드가 일반 user Spot packet handler와 같은 직렬화 규칙을 따른다. Entry Spot
+lifecycle callback은 Entry Spot lifecycle 실행 문맥에서 실행된다. Entry Spot actor packet
+handler 실행 순서는 이 lifecycle 실행 문맥이 아니라 대상 actor mailbox가 보호한다.
 
 actor packet 실행 계약은 아래와 같이 둔다.
 
 - actor packet은 actor interface callback으로 들어가지 않는다.
 - actor가 아직 user Spot에 join되지 않은 상태라면 Entry Spot registry에 등록된
-  actor message handler를 Entry Spot 실행 문맥에서 호출한다.
+  actor message handler를 선택하되, 실행은 대상 actor mailbox를 통해 순서대로 처리한다.
 - actor가 user Spot에 join된 뒤에는 해당 `Spot` registry에 등록된 actor message
   handler를 반드시 해당 `Spot` 실행 문맥에서 호출한다. actor가 room 또는 stage 상태를
   읽고 쓸 수 있기 때문에, join 이후 dispatch가 stream session callback 문맥에서 직접
@@ -1346,6 +1355,10 @@ raw routed envelope, stream sequence, session router id를 직접 보지 않는�
 Entry Spot handler는 `IZLinkEntrySpotActorSendHandler<...>` 또는
 `IZLinkEntrySpotActorRequestHandler<...>`를 구현하고, user Spot handler는
 `IZLinkSpotActorSendHandler<...>` 또는 `IZLinkSpotActorRequestHandler<...>`를 구현한다.
+
+실행 순서는 현재 actor 위치가 결정한다. actor가 Entry Spot에 있으면 session에서 넘어온
+packet은 actor별 mailbox에서 순서대로 처리된다. actor가 user Spot에 있으면 user Spot의
+실행 queue에서 처리되어 같은 Spot 상태를 함께 보호한다.
 
 공통 metadata 타입은 actor dispatch, session proxy, channel 호출에서 같은 snapshot
 규칙을 따른다.
@@ -2616,8 +2629,9 @@ public interface IZLinkSpotMeshNodeBuilder
   - 같은 `SpotNode` 안에서 두 번 이상 등록하면 startup validation 오류다.
   - `TEntrySpot`은 node당 하나의 application object로 만든다. `Configure()`는 node가
     시작되기 전에 한 번 호출하고, `OnInitializeAsync(...)`는 native Entry Spot이 준비된 뒤
-    같은 Entry Spot serial executor에서 호출한다. `OnClosingAsync(...)`는 node shutdown
-    시 같은 executor에서 한 번 호출한다.
+    Entry Spot 실행 문맥에서 호출한다. `OnClosingAsync(...)`는 node shutdown 시 같은
+    실행 문맥에서 한 번 호출한다. Entry Spot actor packet은 이 실행 문맥에 전역으로
+    세우지 않고 대상 actor의 mailbox로 보낸다.
 
 여기서 수동 연결은 channel 쪽과 마찬가지로 capability별로 다뤄야 한다.
 예를 들어 `router`, channel client, publish 쪽은 모두 각 capability가 쓸
@@ -2723,6 +2737,11 @@ timer가 어떤 실행 문맥에서 callback을 호출하는지가 중요하다.
   같은 spot 실행 문맥 안에서 직렬화한다.
 - packet, subscribe, channel reply callback, timer callback은 모두 같은 spot
   execution context 규칙을 따른다.
+- user Spot 안의 actor packet도 먼저 actor별 mailbox에서 같은 actor의 순서를 지킨다.
+  그 뒤 최종 handler 실행은 같은 spot 실행 문맥을 따른다. 반대로 Entry Spot actor packet은
+  actor별 mailbox에서 처리한다. stream session에서 actor로 relay되는 packet은 actor별
+  순서를 먼저 보존한 뒤, 현재 actor 위치에 맞는 Entry Spot handler나 user Spot 실행
+  queue로 넘긴다.
 
 ## 8. Handler Filter
 

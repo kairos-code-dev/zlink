@@ -27,14 +27,6 @@ internal static class ZLinkEnvelopeCodec
 {
     private const string JsonContentType = "application/json";
 
-    public static Message Encode(
-        ZLinkEnvelopeHeader header,
-        object? body,
-        Type? bodyType)
-    {
-        throw new NotSupportedException("Framework envelopes must be sent as multipart messages.");
-    }
-
     public static IReadOnlyList<Message> EncodeParts(
         ZLinkEnvelopeHeader header,
         object? body,

@@ -33,14 +33,13 @@ public sealed class ChannelMessagingIntegrationTests
         serverBuilder.Services.AddSingleton<ProfileCommandRecorder>();
         serverBuilder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf<ChannelMessagingIntegrationTests>();
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });
         });
-        serverBuilder.Services.AddZLinkHandlersFromAssemblyContaining<ChannelMessagingIntegrationTests>();
-
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
@@ -90,13 +89,12 @@ public sealed class ChannelMessagingIntegrationTests
         serverBuilder.Services.AddSingleton<ProfileCommandRecorder>();
         serverBuilder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf<ChannelMessagingIntegrationTests>();
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });
         });
-        serverBuilder.Services.AddZLinkHandlersFromAssemblyContaining<ChannelMessagingIntegrationTests>();
-
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
@@ -146,6 +144,7 @@ public sealed class ChannelMessagingIntegrationTests
         subscriberBuilder.Services.AddSingleton<ProfileEventRecorder>();
         subscriberBuilder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf<ChannelMessagingIntegrationTests>();
             options.AddFanoutChannel("profile", channel =>
             {
                 channel.EnableSubscriber(subscriber =>
@@ -154,8 +153,6 @@ public sealed class ChannelMessagingIntegrationTests
                 });
             });
         });
-        subscriberBuilder.Services.AddZLinkHandlersFromAssemblyContaining<ChannelMessagingIntegrationTests>();
-
         var publisherBuilder = Host.CreateApplicationBuilder();
         publisherBuilder.Services.AddZLinkFramework(options =>
         {
@@ -199,6 +196,7 @@ public sealed class ChannelMessagingIntegrationTests
         serverBuilder.Services.AddSingleton<FilterOrderRecorder>();
         serverBuilder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf<ChannelMessagingIntegrationTests>();
             options.UseFilter<OuterOrderFilter>();
             options.UseFilter<InnerOrderFilter>();
             options.AddClientServerChannel("api", channel =>
@@ -206,8 +204,6 @@ public sealed class ChannelMessagingIntegrationTests
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });
         });
-        serverBuilder.Services.AddZLinkHandlersFromAssemblyContaining<ChannelMessagingIntegrationTests>();
-
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
@@ -250,13 +246,12 @@ public sealed class ChannelMessagingIntegrationTests
         channelBuilder.Services.AddSingleton<ProfileCommandRecorder>();
         channelBuilder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf<ChannelMessagingIntegrationTests>();
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });
         });
-        channelBuilder.Services.AddZLinkHandlersFromAssemblyContaining<ChannelMessagingIntegrationTests>();
-
         var httpBuilder = Host.CreateApplicationBuilder();
         httpBuilder.Services.AddLogging();
         httpBuilder.Services.AddZLinkFramework(options =>

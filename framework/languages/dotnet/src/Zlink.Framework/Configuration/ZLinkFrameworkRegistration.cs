@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace Zlink.Framework.Configuration;
 
 internal sealed class ZLinkFrameworkRegistration
@@ -11,6 +13,8 @@ internal sealed class ZLinkFrameworkRegistration
     public ZLinkDispatchOptionsModel DispatchOptions { get; } = new();
 
     public List<Type> Filters { get; } = [];
+
+    public HashSet<Assembly> HandlerAssemblies { get; } = [];
 
     public Dictionary<string, Type> ActorFactories { get; } = new(StringComparer.Ordinal);
 

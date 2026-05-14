@@ -7,6 +7,7 @@ using System.Text;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Protocol;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Tests;
 
@@ -239,24 +240,29 @@ public sealed class SpotIntegrationTests
             var publisherBundle = publisherRuntime.GetSpotPublisherBundle("game.stage");
             var directPublishResult = false;
             var rawReceived = "probe-unavailable";
-            using (var probeEnvelope = ZLinkEnvelopeCodec.Encode(
-                       new ZLinkEnvelopeHeader(
-                           ZLinkMessageKind.Publish,
-                           "game.stage",
-                           nameof(ExternalStageEvent),
-                           ZLinkEnvelopeCodec.DefaultContentType,
-                           null,
-                           null,
-                           "stage.external",
-                           null,
-                           null),
-                       new ExternalStageEvent("probe"),
-                       typeof(ExternalStageEvent)))
+            var probeParts = ZLinkEnvelopeCodec.EncodeParts(
+                new ZLinkEnvelopeHeader(
+                    ZLinkMessageKind.Publish,
+                    "game.stage",
+                    nameof(ExternalStageEvent),
+                    ZLinkEnvelopeCodec.DefaultContentType,
+                    null,
+                    null,
+                    "stage.external",
+                    null,
+                    null),
+                new ExternalStageEvent("probe"),
+                typeof(ExternalStageEvent));
+            try
             {
                 directPublishResult = publisherBundle.Spot.Publish(
                     "stage.external",
-                    probeEnvelope,
+                    probeParts,
                     global::Systems.Zlink.SendFlags.None);
+            }
+            finally
+            {
+                ZLinkMessageParts.DisposeAll(probeParts);
             }
 
             var subscriberActivation = GetSingleSpotActivation(subscriberRuntime, "subscriber-node");
@@ -592,6 +598,275 @@ public sealed class SpotIntegrationTests
     }
 
     [Fact]
+    public async Task ActorDispatch_Rechecks_CurrentLocation_After_Waiting_For_ActorMailbox()
+    {
+        var spotNode = GetFreeTcpEndpoint();
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<EntrySpotActorRegistryRecorder>();
+        builder.Services.AddSingleton<EntrySpotMailboxRecorder>();
+        builder.Services.AddScoped<RegistryEntrySpot>();
+        builder.Services.AddScoped<RegistryStageSpot>();
+        builder.Services.AddScoped<EntrySpotJoinBlockingHandler>();
+        builder.Services.AddScoped<RegistryStageJoinHandler>();
+        builder.Services.AddScoped<RegistryStageDispatchHandler>();
+        builder.Services.AddScoped<RegistryStageJoinedHandler>();
+        builder.Services.AddScoped<RegistryStageLeftHandler>();
+        builder.Services.AddScoped<RegistryEntryJoinedHandler>();
+        builder.Services.AddScoped<RegistryEntryLeftHandler>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.registry-location", _ => { });
+            options.AddSpotNode("registry-location-node", spot =>
+            {
+                spot.Bind(spotNode);
+                spot.AddEntrySpot<RegistryEntrySpot>();
+                spot.AddSpotFactory<RegistryStageSpot>("registry-stage");
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+        var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var recorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
+        var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
+        var stage = await manager.CreateAsync("registry-stage");
+        var actor = new RegistryTestActor("registry-location-actor", recorder);
+        await actorRuntime.AttachActorAsync(actor, new TestStream("registry-location-session"));
+
+        Task? joinTask = null;
+        Task? dispatchTask = null;
+        try
+        {
+            joinTask = SubmitEntrySpotStringAsync(
+                actorRuntime,
+                actor,
+                "entry-join-block",
+                stage.SpotRid.ToHex());
+            await mailboxRecorder.BlockingStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            dispatchTask = SubmitEntrySpotStringAsync(
+                actorRuntime,
+                actor,
+                "spot-dispatch",
+                "after-join");
+            Assert.False(dispatchTask.IsCompleted, "dispatch should wait for the same actor mailbox.");
+        }
+        finally
+        {
+            mailboxRecorder.ReleaseBlocking.TrySetResult();
+        }
+
+        await joinTask!.WaitAsync(TimeSpan.FromSeconds(5));
+        await dispatchTask!.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Contains(
+            $"dispatch:registry-location-actor:entry-room:after-join:{stage.SpotRid.ToHex()}",
+            recorder.Events);
+
+        await host.StopAsync();
+    }
+
+    [Fact]
+    public async Task EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors()
+    {
+        var spotNode = GetFreeTcpEndpoint();
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<EntrySpotActorRegistryRecorder>();
+        builder.Services.AddSingleton<EntrySpotMailboxRecorder>();
+        builder.Services.AddScoped<RegistryEntrySpot>();
+        builder.Services.AddScoped<EntrySpotBlockingHandler>();
+        builder.Services.AddScoped<EntrySpotRecordingHandler>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.entry-mailbox", _ => { });
+            options.AddSpotNode("entry-mailbox-node", spot =>
+            {
+                spot.Bind(spotNode);
+                spot.AddEntrySpot<RegistryEntrySpot>();
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var registryRecorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
+        var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
+        var actorA = new RegistryTestActor("entry-actor-a", registryRecorder);
+        var actorB = new RegistryTestActor("entry-actor-b", registryRecorder);
+        await actorRuntime.AttachActorAsync(actorA, new TestStream("entry-session-a"));
+        await actorRuntime.AttachActorAsync(actorB, new TestStream("entry-session-b"));
+
+        Task? actorABlocked = null;
+        Task? actorASecond = null;
+        try
+        {
+            actorABlocked = SubmitEntrySpotStringAsync(
+                actorRuntime,
+                actorA,
+                "entry-block",
+                "block-a");
+            await mailboxRecorder.BlockingStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            actorASecond = SubmitEntrySpotStringAsync(
+                actorRuntime,
+                actorA,
+                "entry-record",
+                "after-a");
+            var actorBPacket = SubmitEntrySpotStringAsync(
+                actorRuntime,
+                actorB,
+                "entry-record",
+                "record-b");
+
+            await actorBPacket.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Contains("record:entry-actor-b:record-b", mailboxRecorder.Events);
+            Assert.False(actorASecond.IsCompleted, "same actor packet ran before the blocking packet completed.");
+        }
+        finally
+        {
+            mailboxRecorder.ReleaseBlocking.TrySetResult();
+        }
+
+        await actorABlocked!.WaitAsync(TimeSpan.FromSeconds(5));
+        await actorASecond!.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("record:entry-actor-a:after-a", mailboxRecorder.Events);
+
+        await host.StopAsync();
+    }
+
+    [Fact]
+    public async Task EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel()
+    {
+        var spotNode = GetFreeTcpEndpoint();
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<EntrySpotActorRegistryRecorder>();
+        builder.Services.AddSingleton<EntrySpotMailboxRecorder>();
+        builder.Services.AddScoped<RegistryEntrySpot>();
+        builder.Services.AddScoped<EntrySpotBlockingHandler>();
+        builder.Services.AddScoped<EntrySpotRecordingHandler>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.entry-native-batch", _ => { });
+            options.AddSpotNode("entry-native-batch-node", spot =>
+            {
+                spot.Bind(spotNode);
+                spot.AddEntrySpot<RegistryEntrySpot>();
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var registryRecorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
+        var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
+        var activation = actorRuntime
+            .GetSpotNodeRuntime("entry-native-batch-node")
+            .EntrySpotActivation
+            ?? throw new InvalidOperationException("Entry Spot activation was not created.");
+        var actorA = new RegistryTestActor("entry-native-a", registryRecorder);
+        var actorB = new RegistryTestActor("entry-native-b", registryRecorder);
+        await actorRuntime.AttachActorAsync(actorA, new TestStream("entry-native-session-a"));
+        await actorRuntime.AttachActorAsync(actorB, new TestStream("entry-native-session-b"));
+
+        var dispatch = ZLinkEntrySpotActorDispatcher.DispatchAsync(
+            actorRuntime,
+            activation,
+            [
+                CreateEntryActorHeaderPart(actorA, "entry-block"),
+                CreateEntryActorBodyPart(actorA, "block-a"),
+                CreateEntryActorHeaderPart(actorB, "entry-record"),
+                CreateEntryActorBodyPart(actorB, "record-b"),
+                CreateEntryActorHeaderPart(actorA, "entry-record"),
+                CreateEntryActorBodyPart(actorA, "after-a"),
+            ],
+            CancellationToken.None);
+
+        try
+        {
+            await mailboxRecorder.BlockingStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await RetryAsync(
+                () => mailboxRecorder.Events.Contains("record:entry-native-b:record-b"),
+                TimeSpan.FromSeconds(5));
+            Assert.DoesNotContain("record:entry-native-a:after-a", mailboxRecorder.Events);
+        }
+        finally
+        {
+            mailboxRecorder.ReleaseBlocking.TrySetResult();
+        }
+
+        await dispatch.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("record:entry-native-a:after-a", mailboxRecorder.Events);
+
+        await host.StopAsync();
+    }
+
+    [Fact]
+    public async Task LocalActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<EntrySpotActorRegistryRecorder>();
+        builder.Services.AddSingleton<EntrySpotMailboxRecorder>();
+        builder.Services.AddScoped<LocalActorBlockingHandler>();
+        builder.Services.AddScoped<LocalActorRecordingHandler>();
+        builder.Services.AddZLinkFramework(_ => { });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var registryRecorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
+        var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
+        var actorA = new RegistryTestActor("local-actor-a", registryRecorder);
+        var actorB = new RegistryTestActor("local-actor-b", registryRecorder);
+        await actorRuntime.AttachActorAsync(actorA, new TestStream("local-session-a"));
+        await actorRuntime.AttachActorAsync(actorB, new TestStream("local-session-b"));
+
+        Task? actorABlocked = null;
+        Task? actorASecond = null;
+        try
+        {
+            actorABlocked = SubmitEntrySpotStringAsync(
+                actorRuntime,
+                actorA,
+                "local-block",
+                "block-a");
+            await mailboxRecorder.BlockingStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            actorASecond = SubmitEntrySpotStringAsync(
+                actorRuntime,
+                actorA,
+                "local-record",
+                "after-a");
+            var actorBPacket = SubmitEntrySpotStringAsync(
+                actorRuntime,
+                actorB,
+                "local-record",
+                "record-b");
+
+            await actorBPacket.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Contains("local-record:local-actor-b:record-b", mailboxRecorder.Events);
+            Assert.False(actorASecond.IsCompleted, "same actor packet ran before the blocking packet completed.");
+        }
+        finally
+        {
+            mailboxRecorder.ReleaseBlocking.TrySetResult();
+        }
+
+        await actorABlocked!.WaitAsync(TimeSpan.FromSeconds(5));
+        await actorASecond!.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("local-record:local-actor-a:after-a", mailboxRecorder.Events);
+
+        await host.StopAsync();
+    }
+
+    [Fact]
     public async Task ActorContext_RequestChannel_Uses_Global_Client_Before_Join_And_Spot_Client_After_Join()
     {
         var preJoinApi = GetFreeTcpEndpoint();
@@ -603,9 +878,9 @@ public sealed class SpotIntegrationTests
         builder.Services.AddScoped<ActorJoinHandler>();
         builder.Services.AddScoped<ActorPreJoinChannelHandler>();
         builder.Services.AddScoped<ActorPostJoinChannelHandler>();
-        builder.Services.AddZLinkHandlersFromAssemblyContaining<SpotIntegrationTests>();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf<SpotIntegrationTests>();
             options.UseSpotDiscovery("game.stage", _ => { });
             options.AddClientServerChannel("actor-pre-api", channel =>
             {
@@ -733,9 +1008,9 @@ public sealed class SpotIntegrationTests
         builder.Services.AddSingleton<SpotEventsRecorder>();
         builder.Services.AddSingleton<OrdersRecorder>();
         builder.Services.AddScoped<SpotScopeMarker>();
-        builder.Services.AddZLinkHandlersFromAssemblyContaining<SpotIntegrationTests>();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf<SpotIntegrationTests>();
             options.UseSpotDiscovery("game.stage", _ => { });
 
             options.AddClientServerChannel("orders", channel =>
@@ -1109,6 +1384,9 @@ public sealed class SpotIntegrationTests
         public void Configure()
         {
             Context.AddActorPacket<RegistryEntryJoinHandler, RegistryTestActor>("entry-join");
+            Context.AddActorPacket<EntrySpotJoinBlockingHandler, RegistryTestActor>("entry-join-block");
+            Context.AddActorPacket<EntrySpotBlockingHandler, RegistryTestActor>("entry-block");
+            Context.AddActorPacket<EntrySpotRecordingHandler, RegistryTestActor>("entry-record");
             Context.AddActorJoined<RegistryEntryJoinedHandler, RegistryTestActor>();
             Context.AddActorLeft<RegistryEntryLeftHandler, RegistryTestActor>();
         }
@@ -1161,6 +1439,88 @@ public sealed class SpotIntegrationTests
 
             actor.CurrentRoomId = reply.RoomId;
             recorder.Events.Enqueue($"entry:{actor.ActorId}:{spotRid}");
+        }
+    }
+
+    public sealed class EntrySpotBlockingHandler(EntrySpotMailboxRecorder recorder)
+        : IZLinkEntrySpotActorSendHandler<RegistryTestActor, string>
+    {
+        public async ValueTask HandleAsync(
+            RegistryTestActor actor,
+            string message,
+            CancellationToken cancellationToken)
+        {
+            recorder.Events.Enqueue($"block-start:{actor.ActorId}:{message}");
+            recorder.BlockingStarted.TrySetResult();
+            await recorder.ReleaseBlocking.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            recorder.Events.Enqueue($"block-end:{actor.ActorId}:{message}");
+        }
+    }
+
+    public sealed class EntrySpotJoinBlockingHandler(
+        EntrySpotMailboxRecorder mailboxRecorder,
+        EntrySpotActorRegistryRecorder registryRecorder)
+        : IZLinkEntrySpotActorSendHandler<RegistryTestActor, string>
+    {
+        public async ValueTask HandleAsync(
+            RegistryTestActor actor,
+            string spotRid,
+            CancellationToken cancellationToken)
+        {
+            mailboxRecorder.BlockingStarted.TrySetResult();
+            await mailboxRecorder.ReleaseBlocking.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+            var reply = await actor.Context.JoinSpot(
+                    global::Systems.Zlink.RoutingId.FromString(spotRid),
+                    new RegistryJoinRequest("entry-room"))
+                .Timeout(TimeSpan.FromSeconds(5))
+                .SubmitAsync<RegistryJoinReply>(cancellationToken);
+
+            actor.CurrentRoomId = reply.RoomId;
+            registryRecorder.Events.Enqueue($"entry-block-joined:{actor.ActorId}:{spotRid}");
+        }
+    }
+
+    public sealed class EntrySpotRecordingHandler(EntrySpotMailboxRecorder recorder)
+        : IZLinkEntrySpotActorSendHandler<RegistryTestActor, string>
+    {
+        public ValueTask HandleAsync(
+            RegistryTestActor actor,
+            string message,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.Events.Enqueue($"record:{actor.ActorId}:{message}");
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class LocalActorBlockingHandler(EntrySpotMailboxRecorder recorder)
+        : IZLinkActorPacketHandler<RegistryTestActor, string>
+    {
+        public async ValueTask HandleAsync(
+            RegistryTestActor actor,
+            string message,
+            CancellationToken cancellationToken)
+        {
+            recorder.Events.Enqueue($"local-block-start:{actor.ActorId}:{message}");
+            recorder.BlockingStarted.TrySetResult();
+            await recorder.ReleaseBlocking.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            recorder.Events.Enqueue($"local-block-end:{actor.ActorId}:{message}");
+        }
+    }
+
+    public sealed class LocalActorRecordingHandler(EntrySpotMailboxRecorder recorder)
+        : IZLinkActorPacketHandler<RegistryTestActor, string>
+    {
+        public ValueTask HandleAsync(
+            RegistryTestActor actor,
+            string message,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.Events.Enqueue($"local-record:{actor.ActorId}:{message}");
+            return ValueTask.CompletedTask;
         }
     }
 
@@ -1270,6 +1630,12 @@ public sealed class SpotIntegrationTests
 
         public string? CurrentRoomId { get; set; }
 
+        public void Configure()
+        {
+            Context.AddPacket<LocalActorBlockingHandler>("local-block");
+            Context.AddPacket<LocalActorRecordingHandler>("local-record");
+        }
+
         public void AttachSpot(RegistryStageSpot spot)
         {
             Spot = spot;
@@ -1293,6 +1659,17 @@ public sealed class SpotIntegrationTests
     public sealed class EntrySpotActorRegistryRecorder
     {
         public ConcurrentQueue<string> Events { get; } = new();
+    }
+
+    public sealed class EntrySpotMailboxRecorder
+    {
+        public ConcurrentQueue<string> Events { get; } = new();
+
+        public TaskCompletionSource BlockingStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource ReleaseBlocking { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     public sealed class TestStream(string sessionId) : IZLinkStream
@@ -1548,5 +1925,58 @@ public sealed class SpotIntegrationTests
     private static string GetSubscriptionPumpState(ZLinkSpotActivation activation)
     {
         return activation.SubscriptionPumpState;
+    }
+
+    private static async Task SubmitEntrySpotStringAsync(
+        ZLinkFrameworkRuntime actorRuntime,
+        IZLinkActor actor,
+        string packetName,
+        string value)
+    {
+        using var body = global::Systems.Zlink.Message.FromString(value);
+        await actorRuntime.SubmitActorAsync(
+                actor,
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    packetName,
+                    ZlinkStreamMetadata.Empty),
+                body)
+            .ConfigureAwait(false);
+    }
+
+    private static ZLinkBackendActorPart CreateEntryActorHeaderPart(
+        IZLinkActor actor,
+        string packetName)
+    {
+        var codec = new ZlinkStreamHeaderCodec();
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            packetName,
+            ZlinkStreamMetadata.Empty);
+
+        return new ZLinkBackendActorPart(
+            new ZLinkBackendActorRef(RoutingId.FromString("01"), actor.ActorId, 0),
+            RoutingId.FromString("02"),
+            RoutingId.FromString("03"),
+            Message.FromBytes(codec.Encode(header).Span),
+            More: true);
+    }
+
+    private static ZLinkBackendActorPart CreateEntryActorBodyPart(
+        IZLinkActor actor,
+        string value)
+    {
+        return new ZLinkBackendActorPart(
+            new ZLinkBackendActorRef(RoutingId.FromString("01"), actor.ActorId, 0),
+            RoutingId.FromString("02"),
+            RoutingId.FromString("03"),
+            Message.FromString(value),
+            More: false);
     }
 }

@@ -129,7 +129,7 @@ source별 구현 차이를 숨긴 typed runtime event surface를 제공하는 �
 ### 3.1 기대하는 표면
 
 - `AddZLinkFramework(...)`
-- `AddZLinkHandlersFromAssemblyContaining<...>()` 또는 그와 비슷한 등록
+- `options.AddHandlersFromAssemblyOf<...>()` 또는 그와 비슷한 handler assembly 등록
 - outbound client DI
 - runtime monitoring 등록
 - `SPOT` node / publisher / subscriber의 hosted lifecycle 통합
@@ -160,9 +160,8 @@ builder.Services.AddZLinkFramework(options =>
             });
         });
     });
+    options.AddHandlersFromAssemblyOf<Program>();
 });
-
-builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 
 public sealed class ProfileHandlers
 {

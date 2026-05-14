@@ -7,6 +7,7 @@ internal sealed class ZLinkActorRuntimeState
 {
     private readonly ZLinkActorPacketRegistry _packets = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly SemaphoreSlim _dispatchGate = new(1, 1);
 
     public string? SessionId { get; set; }
 
@@ -51,6 +52,44 @@ internal sealed class ZLinkActorRuntimeState
         finally
         {
             _gate.Release();
+        }
+    }
+
+    public async ValueTask ExecuteDispatchAsync(
+        ZlinkStreamHeader header,
+        Func<CancellationToken, ValueTask> operation,
+        CancellationToken cancellationToken)
+    {
+        await _dispatchGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var previousDispatch = CurrentDispatch;
+        CurrentDispatch = new ZLinkActorDispatchState(header);
+        try
+        {
+            await operation(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            CurrentDispatch = previousDispatch;
+            _dispatchGate.Release();
+        }
+    }
+
+    public async ValueTask<T> ExecuteDispatchAsync<T>(
+        ZlinkStreamHeader header,
+        Func<CancellationToken, ValueTask<T>> operation,
+        CancellationToken cancellationToken)
+    {
+        await _dispatchGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var previousDispatch = CurrentDispatch;
+        CurrentDispatch = new ZLinkActorDispatchState(header);
+        try
+        {
+            return await operation(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            CurrentDispatch = previousDispatch;
+            _dispatchGate.Release();
         }
     }
 

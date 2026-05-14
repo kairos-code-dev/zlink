@@ -18,22 +18,13 @@ internal sealed class ZLinkEntrySpotActorRouter
                 continue;
             }
 
-            var previousDispatch = runtimeState.CurrentDispatch;
-            runtimeState.CurrentDispatch = new ZLinkActorDispatchState(header);
-            try
-            {
-                await node.InvokeEntrySpotActorPacketAsync(
+            await node.InvokeEntrySpotActorPacketAsync(
                         descriptor,
                         actor,
                         header,
                         body,
                         cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            finally
-            {
-                runtimeState.CurrentDispatch = previousDispatch;
-            }
+                .ConfigureAwait(false);
 
             return true;
         }
@@ -57,26 +48,31 @@ internal sealed class ZLinkEntrySpotActorRouter
                 continue;
             }
 
-            var previousDispatch = runtimeState.CurrentDispatch;
-            runtimeState.CurrentDispatch = new ZLinkActorDispatchState(header);
-            try
-            {
-                var reply = await node.InvokeEntrySpotActorPacketForReplyAsync(
+            var reply = await node.InvokeEntrySpotActorPacketForReplyAsync(
                         descriptor,
                         actor,
                         header,
                         body,
                         cancellationToken)
-                    .ConfigureAwait(false);
-                return new EntrySpotActorReplyDispatchResult(true, reply);
-            }
-            finally
-            {
-                runtimeState.CurrentDispatch = previousDispatch;
-            }
+                .ConfigureAwait(false);
+            return new EntrySpotActorReplyDispatchResult(true, reply);
         }
 
         return new EntrySpotActorReplyDispatchResult(false, null);
+    }
+
+    public async ValueTask SubmitResolvedAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState runtimeState,
+        ZlinkStreamHeader header,
+        Func<CancellationToken, ValueTask> operation,
+        CancellationToken cancellationToken)
+    {
+        await runtimeState.ExecuteDispatchAsync(
+                header,
+                operation,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask NotifyJoinedAsync(

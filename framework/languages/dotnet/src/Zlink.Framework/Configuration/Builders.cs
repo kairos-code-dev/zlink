@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace Zlink.Framework.Configuration;
 
 public interface IZLinkDiscoveryBuilder
@@ -218,6 +220,12 @@ public interface IZLinkFrameworkOptions
     TimeSpan DefaultTimeout { get; set; }
 
     IZLinkCodecRegistryBuilder Codecs { get; }
+
+    void AddHandlersFromAssemblyOf<TMarker>();
+
+    void AddHandlersFromAssemblyOf(Type markerType);
+
+    void AddHandlersFromAssembly(Assembly assembly);
 
     void ConfigureMetadata(Action<IZLinkMetadataPolicyBuilder> configure);
 

@@ -26,9 +26,9 @@ internal sealed class PlayServer(SampleSettings settings)
         builder.Services.AddScoped<TicTacToeGameTimerHandler>();
         builder.Services.AddScoped<PlayActorJoinGameHandler>();
         builder.Services.AddScoped<PlayActorPlaceMarkHandler>();
-        builder.Services.AddZLinkHandlersFromAssemblyContaining<CreateGameHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf<PlayServer>();
             options.AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor);
 
             options.AddClientServerChannel(SampleChannels.Api, channel =>

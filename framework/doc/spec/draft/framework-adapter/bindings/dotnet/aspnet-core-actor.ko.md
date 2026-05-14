@@ -9,105 +9,116 @@
 # Draft -- ZLink Framework ASP.NET Core Actor
 
 > 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, framework에서 actor[^actor] 개념을 어떻게 노출할지 정리
-> 한다.
+> 즉 아직 공개된 계약[^public-contract]이 아니며, framework가 actor[^actor] 개념을
+> 어떻게 노출할지 정리하기 위한 문서다.
 
 ## 1. 목적
 
-zlink core가 정의한 **actor**[^actor] 개념을 `ASP.NET Core` 앱에서 .NET-idiomatic
-하게 노출하는 것이 목표다.
+이 문서의 목표는 zlink core가 정의한 **actor**[^actor] 개념을 `ASP.NET Core`
+애플리케이션 위에서 `.NET` 다운 모양으로 노출하는 것이다.
 
-zlink core 모델에서 actor는 다음 속성을 가진다 (자세한 내용은 zlink core의
-[SPOT Actor Guide](../../../../../../../doc/guide/07-4-actor.md) 참고).
+zlink core 모델에서 actor는 다음 성질을 가진다. 더 자세한 정의는 zlink core의
+[SPOT Actor Guide](../../../../../../../doc/guide/07-4-actor.md)에서 다룬다.
 
-- **`SpotNode`에 소속된다.** 생성 직후 actor는 그 node의 `Entry Spot`[^entryspot]에
-  속한다.
-- 선택적으로 **STREAM session에 binding**할 수 있다. 1개 session에는 여러 actor가
-  bind될 수 있지만, 1개 actor는 한 번에 최대 1개 session에만 bind된다. session
-  binding은 client relay 경로이며 actor 위치를 결정하지 않는다.
-- 선택적으로 **user Spot에 join**할 수 있다. Entry Spot에서 user Spot으로 이동한다.
-  user Spot join은 STREAM session binding 없이도 가능하다.
-- user Spot에서 다시 Entry Spot으로 돌아가려면 **leave**, 완전히 제거하려면
-  **destroy**한다. destroy는 actor가 Entry Spot에 있을 때만 허용된다.
+- **`SpotNode`에 소속된다.** actor는 생성 직후 그 node의
+  `Entry Spot`[^entryspot]에 위치한다.
+- 선택적으로 **STREAM session에 binding**[^session-bind]할 수 있다. 한 session
+  에는 여러 actor가 bind될 수 있지만, 하나의 actor는 한 번에 최대 한 session
+  에만 bind된다. session binding은 client relay 경로일 뿐이고, actor가 실제로
+  어디에 위치하는지를 결정하지는 않는다.
+- 선택적으로 **user Spot에 join**[^user-spot-join]할 수 있다. 이 경우 Entry
+  Spot에서 user Spot으로 이동한다. user Spot join은 STREAM session binding
+  없이도 수행할 수 있다.
+- user Spot에서 다시 Entry Spot으로 돌아오려면 **leave**, actor 자체를 완전히
+  제거하려면 **destroy**를 수행한다. destroy는 actor가 Entry Spot에 있을 때만
+  허용된다.
 
-framework는 위 모델 위에 .NET 라이프사이클(constructor injection, `OnDisconnectedAsync`,
-DI scope)과 fluent 호출(`IZLinkActorContext`, `IZLinkActorClient`, `IZLinkSessionProxy`)
-을 얹어서 노출한다. 다음 두 가지는 구분해서 본다.
+framework는 위 모델 위에 `.NET` 다운 lifecycle(constructor injection,
+`OnDisconnectedAsync`, DI scope[^di-scope])과 fluent 호출
+(`IZLinkActorContext`, `IZLinkActorClient`, `IZLinkSessionProxy`)을 얹어서
+사용자에게 노출한다. 책임은 두 갈래로 나눠서 본다.
 
-- **framework가 자동으로 관리하는 것**: Entry Spot 자체의 생성과 소멸, user Spot
-  에서 Entry Spot으로의 leave, actor destroy. 즉 application은 `zlink_spot_node_entry_spot()`
-  / `zlink_spot_node_actor_leave_spot()` / `zlink_spot_node_actor_destroy()` 같은
-  raw API를 직접 호출하지 않는다.
-- **application이 구현하는 Entry Spot 로직**: actor가 Entry Spot에 있는 동안 받는
-  packet의 handler는 application이 정한다. 이 handler는 actor 클래스가 아니라 Entry
-  Spot 전용 registry에 등록한다. 인증 결과로 target user Spot을 선택해서
-  `JoinSpot(...)`을 호출하는 것 같은 entry-stage application 로직이 여기 들어간다.
-  Entry Spot의 `on_join` / `on_leave` lifecycle callback handler도 일반 user Spot과
-  별도로 등록할 수 있어야 한다.
+- **framework가 자동으로 관리하는 영역**: Entry Spot 자체의 생성과 소멸, user
+  Spot에서 Entry Spot으로 돌아오는 leave, actor destroy가 여기에 해당한다.
+  즉 application 코드는 `zlink_spot_node_entry_spot()` /
+  `zlink_spot_node_actor_leave_spot()` / `zlink_spot_node_actor_destroy()`
+  같은 raw API[^raw-api]를 직접 호출하지 않는다.
+- **application이 구현하는 Entry Spot 로직**: actor가 Entry Spot에 머무는 동안
+  받는 packet의 handler는 application이 정한다. 이 handler는 actor 클래스에
+  붙이는 것이 아니라 Entry Spot 전용 registry에 등록한다. 예를 들어 인증
+  결과를 보고 target user Spot을 골라 `JoinSpot(...)`을 호출하는 entry 단계
+  로직이 여기에 들어간다. Entry Spot의 `on_join` / `on_leave` lifecycle
+  callback handler 역시 일반 user Spot과 별도로 등록할 수 있어야 한다.
 
-호출하는 쪽에서는 actor가 어느 노드 어느 spot에 있는지 알 필요 없이 **`actorId`**
-하나로 부르고, 라우팅은 framework가 application이 등록한 resolver에 위임한다.
+호출하는 쪽에서는 actor가 어느 노드의 어느 spot에 있는지 알 필요가 없고
+**`actorId`** 하나만으로 부르면 된다. 실제 라우팅은 framework가 application이
+등록한 resolver[^resolver]에 위임한다.
 
-본 문서가 다루는 범위:
+이 문서가 다루는 범위는 다음과 같다.
 
-- actor 라이프사이클 (Entry Spot 머무름 → session bind → user Spot join → disconnect)
+- actor lifecycle (Entry Spot 머무름 → session bind → user Spot join → disconnect)
 - handler 모델 (typed actor handler / 일반 actor handler)
 - Entry Spot에서의 application 로직 (인증, target Spot 선택)
 - STREAM session binding
 - user Spot join (framework가 노출하는 표면)
-- session actor dispatch (gateway) 패턴
+- session actor dispatch[^session-actor-dispatch] (gateway[^gateway]) 패턴
 - outbound `IZLinkActorClient` / `IZLinkSessionProxy` 표면
 - 등록 API 정리
 
-본 문서가 다루지 않는 범위:
+다음 항목은 이 문서가 다루지 않으므로 별도 문서에서 본다.
 
-- channel messaging 자체 ([aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md))
-- SPOT 자체 ([aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md))
-- STREAM session 자체 ([aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md))
-- C API의 raw actor 표면 (`zlink_spot_node_actor_recv_part`,
-  `zlink_spot_node_actor_send_bound_session_msg` 등은 core 가이드 참고)
+- channel messaging[^channel-messaging] 자체는
+  [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md)
+  에서 다룬다.
+- SPOT 자체는 [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md)에서 다룬다.
+- STREAM session 자체는 [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md)
+  에서 다룬다.
+- C API의 raw actor 표면(`zlink_spot_node_actor_recv_part`,
+  `zlink_spot_node_actor_send_bound_session_msg` 등)은 core 가이드에서 다룬다.
 
 ## 2. Actor 개념
 
-framework에서 **actor**는 zlink core가 정의한 actor 모델을 그대로 따른다 -- ID로
-식별되는 stateful object이고, SpotNode에 속하며, 선택적으로 session에 bind된다.
-프레임워크는 그 위에 application 코드가 다루기 쉬운 .NET 표면을 얹는다.
+framework의 **actor**는 zlink core가 정의한 actor 모델을 그대로 따른다. 즉
+ID로 식별되는 stateful object이며 SpotNode에 소속되고, 선택적으로 session에
+bind할 수 있다. 그 위에 framework가 application 코드에서 쓰기 편한 `.NET`
+표면을 한 겹 더 얹는다.
 
-actor가 일반 handler 클래스와 다른 점:
+일반 handler 클래스와 비교해 보면 actor의 특징은 다음과 같다.
 
 | 일반 handler | actor |
 | --- | --- |
-| stateless가 기본 | **stateful** -- 객체 자체가 상태를 가진다 |
-| 메시지마다 새 scope에서 resolve | 같은 actor id로 들어오는 메시지는 **같은 instance**가 받는다 |
+| 기본적으로 stateless | **stateful** -- 객체 자체가 상태를 보관한다 |
+| 메시지마다 새 scope에서 resolve | 같은 actor id로 들어오는 메시지는 항상 **같은 인스턴스**가 받는다 |
 | packet 등록은 채널 매핑이 담당 | actor packet 등록은 Entry Spot 또는 user Spot registry가 담당한다 |
-| identity가 없음 | `ActorId`가 1급 identity (core의 `zlink_actor_ref_t`에 대응) |
-| 라이프사이클이 메시지 한 번 | `Configure` → 여러 메시지 처리 → `OnDisconnectedAsync` |
+| identity 없음 | `ActorId`가 1급 identity (core의 `zlink_actor_ref_t`에 대응) |
+| 메시지 한 건짜리 lifecycle | `Configure` → 여러 메시지 처리 → `OnDisconnectedAsync` 로 이어지는 lifecycle |
 
 ### 두 가지 직교 축
 
-actor의 상태는 두 축으로 본다.
+actor의 상태는 서로 독립된 두 축으로 본다.
 
 | 축 | 값 |
 | --- | --- |
-| **위치** (어느 Spot에 있나) | Entry Spot (생성 직후 default) ↔ user Spot (join 후) |
-| **binding** (어느 client에 묶였나) | unbound ↔ bound to STREAM session |
+| **위치** (어느 Spot에 있는가) | Entry Spot (생성 직후의 default) ↔ user Spot (join 이후) |
+| **binding** (어느 client에 묶였는가) | unbound ↔ bound to STREAM session |
 
-application 입장에서 자주 보는 조합은 두 가지다.
+application 입장에서 자주 마주치는 조합은 두 가지다.
 
-- **standalone actor** -- session bind 없이 다른 노드에서 routed[^routed] 호출만 받는다.
-  Entry Spot에 머무른다. 단순 background worker / scheduler 패턴.
-- **session-bound actor** -- 인증된 client stream에 묶여 있고, 보통 user Spot에
-  join해서 game room / stage 같은 도메인 객체로 동작한다. 이 형태가 대부분의
-  `ASP.NET Core` gateway 시나리오의 기본형이다.
+- **standalone actor** -- session bind 없이 다른 노드에서 routed[^routed]
+  호출만 받는 형태다. Entry Spot에 그대로 머문다. 단순 background worker
+  나 scheduler 같은 패턴이 여기에 해당한다.
+- **session-bound actor** -- 인증된 client stream에 묶여 있고, 보통 user
+  Spot에 join해서 game room이나 stage 같은 도메인 객체로 동작한다. 대부분의
+  `ASP.NET Core` gateway 시나리오에서 기본형으로 쓰는 모양이다.
 
-actor 인스턴스는 framework가 application이 등록한 **factory**[^factory]를 통해
-만들어 낸다.
+actor 인스턴스는 framework가 application이 등록한 **factory**[^factory]를
+통해 생성한다.
 
 ## 3. Actor 라이프사이클
 
 ### 3.1 `IZLinkActor`
 
-모든 actor 클래스가 구현하는 기본 인터페이스다.
+모든 actor 클래스가 구현해야 하는 기본 인터페이스다.
 
 ```csharp
 public interface IZLinkActor
@@ -124,22 +135,26 @@ public interface IZLinkActor
 }
 ```
 
-- **`ActorId`** -- actor 고유 식별자. 보통 인증 단계에서 결정되어 factory에
-  생성자 인자로 들어온다.
-- **`Context`** -- framework가 attach 직후 주입한다. actor가 메시지 dispatch나
-  outbound 호출을 하려면 이 context를 통한다. application 코드는 set 대상이
-  아니지만, framework가 set 해야 하므로 set accessor를 둔다.
-- **`Configure()`** -- actor가 처리할 packet handler를 등록한다. attach 직후 한
-  번 호출된다 (자세한 흐름은 §4 참고).
-- **`OnDisconnectedAsync(...)`** -- actor가 더 이상 dispatch를 받지 않게 될 때
-  framework가 호출하는 cleanup 훅이다. 트리거 조건: bound STREAM session 종료,
-  명시적 unbind, 또는 actor destroy 직전. framework는 이 호출 이후에 (필요하면)
-  user Spot에서 Entry Spot으로 leave하고 destroy까지 자동으로 처리한다. 즉
-  application은 leave / destroy 표면을 직접 호출하지 않는다.
+각 멤버의 의미는 다음과 같다.
+
+- **`ActorId`** -- actor를 식별하는 고유 ID다. 보통 인증 단계에서 결정되어
+  factory의 생성자 인자로 전달된다.
+- **`Context`** -- framework가 attach 직후에 주입한다. actor가 메시지
+  dispatch나 outbound 호출을 하려면 이 context를 거친다. application 코드가
+  직접 set 하지는 않지만, framework가 set 할 수 있어야 하므로 set accessor를
+  둔다.
+- **`Configure()`** -- actor가 처리할 packet handler를 등록하는 자리다.
+  attach 직후 한 번 호출된다 (자세한 흐름은 §4에서 다룬다).
+- **`OnDisconnectedAsync(...)`** -- actor가 더 이상 dispatch를 받지 않게 되는
+  시점에 framework가 호출하는 cleanup 훅이다. 호출 트리거는 bound STREAM
+  session 종료, 명시적 unbind, actor destroy 직전 중 하나다. 이 호출 이후에
+  framework는 필요한 경우 user Spot에서 Entry Spot으로 leave하고 destroy
+  까지 자동으로 처리한다. 따라서 application은 leave / destroy 표면을 직접
+  호출하지 않는다.
 
 ### 3.2 `IZLinkActorFactory`
 
-actor 인스턴스를 만들어 내는 application 객체다. DI에 등록한 뒤
+actor 인스턴스를 만들어 내는 application 객체다. DI에 등록한 다음
 `options.AddActorFactory<...>(actorType)`로 framework에 매핑한다.
 
 ```csharp
@@ -151,10 +166,10 @@ public interface IZLinkActorFactory
 }
 ```
 
-`actorType`은 사용자가 정의하는 짧은 문자열 키다 (예: `"player"`). 같은 앱에서
-여러 actor 종류를 등록할 수 있고, 각 종류마다 다른 factory를 둔다. session
-actor dispatch처럼 actor 종류를 메시지로 받는 경우, framework는 그 actorType
-키로 factory를 찾는다.
+`actorType`은 사용자가 직접 정의하는 짧은 문자열 키다 (예: `"player"`). 한
+앱에서 여러 종류의 actor를 등록할 수 있고, 종류마다 별도 factory를 둔다.
+session actor dispatch처럼 actor 종류를 메시지로 받아 처리하는 경우, framework
+는 이 actorType 키로 어떤 factory를 부를지 결정한다.
 
 ```csharp
 public sealed class PlayerActorFactory : IZLinkActorFactory
@@ -169,7 +184,7 @@ public sealed class PlayerActorFactory : IZLinkActorFactory
 }
 ```
 
-등록:
+등록 코드는 다음과 같다.
 
 ```csharp
 builder.Services.AddScoped<PlayerActorFactory>();
@@ -181,7 +196,7 @@ builder.Services.AddZLinkFramework(options =>
 
 ### 3.3 라이프사이클 단계
 
-core actor의 상태 전이:
+core actor의 상태 전이는 다음과 같이 이어진다.
 
 ```text
 None
@@ -192,7 +207,7 @@ None
         +--(disconnect / unbind: framework)-> destroy -> None
 ```
 
-framework가 처리하는 시퀀스:
+framework가 처리하는 시퀀스는 다음과 같다.
 
 ```mermaid
 sequenceDiagram
@@ -234,32 +249,49 @@ sequenceDiagram
     FW->>FW: actor destroy
 ```
 
-핵심 제약 (core 모델에서 옴):
+core 모델에서 비롯된 핵심 제약은 다음과 같다.
 
-- **user Spot join은 bound session을 요구하지 않는다.** Actor 위치 이동과 STREAM
-  session binding은 서로 독립된 상태 전이다.
-- **destroy는 actor가 Entry Spot에 있을 때만 가능.** framework는 disconnect
-  시점에 자동으로 user Spot에서 leave한 뒤 destroy한다.
-- **discovery actor route publish는 user Spot join 성공 뒤에 갱신된다.** Actor
-  생성만으로는 active route를 공개하지 않고, session bind / unbind도 active route를
-  만들거나 제거하지 않는다.
+- **user Spot join은 bound session을 요구하지 않는다.** actor의 위치 이동과
+  STREAM session binding은 서로 독립된 상태 전이로 본다.
+- **destroy는 actor가 Entry Spot에 있을 때만 가능하다.** framework는
+  disconnect 시점에 user Spot에서 자동으로 leave한 뒤 destroy까지 묶어 처리
+  한다.
+- **discovery[^discovery] actor route publish는 user Spot join 성공 뒤에
+  갱신된다.** actor를 생성하기만 해서는 active route가 공개되지 않으며,
+  session bind / unbind도 active route를 새로 만들거나 지우지 않는다.
 
 ### 3.4 Entry Spot에서의 application 로직
 
-actor가 Entry Spot에 있는 동안 받는 packet은 Entry Spot 전용 handler registry가
-처리한다. framework는 Entry Spot 자체의 생성과 소멸은 자동으로 관리하지만, Entry
-Spot의 message handler와 `on_join` / `on_leave` lifecycle callback handler는
-application이 별도로 등록할 수 있어야 한다. Entry 단계와 user Spot 단계는 같은 actor
-객체를 보더라도 의미가 다르므로 같은 handler 묶음으로 합치지 않는다.
+actor가 Entry Spot에 머무는 동안 받는 packet은 Entry Spot 전용 handler
+registry가 처리한다. framework는 Entry Spot 자체의 생성과 소멸은 자동으로
+관리하지만, Entry Spot의 message handler와 `on_join` / `on_leave` lifecycle
+callback handler는 application이 따로 등록할 수 있어야 한다. Entry 단계와
+user Spot 단계는 같은 actor 객체를 보더라도 의미가 다르므로 동일한 handler
+묶음으로 합치지 않는다.
 
-이 단계에서 자주 구현하는 로직:
+이 단계에서 자주 구현하는 로직은 다음과 같다.
 
-- **인증 / 권한 확인** -- 인증 packet이 도착하면 actor가 검증한 뒤 결과를 reply
-  하거나 fail 응답 후 disconnect.
-- **target Spot 선택** -- 클라이언트의 요청 packet에서 어느 game room / stage에
-  들어갈지 결정한 뒤 `Context.JoinSpot<TReply, TReq>(targetSpotName, request).Submit(...)`
-  호출. `targetSpotName`은 `gameId`, `matchId`, `roomId` 같은 domain spot 이름이다.
-- **session 초기 상태 설정** -- session metadata, profile lookup 등.
+- **인증 / 권한 확인** -- 인증 packet이 도착하면 actor가 검증한 뒤 결과를
+  reply하거나, 실패한 경우 fail 응답을 보내고 disconnect한다.
+- **target Spot 선택** -- 클라이언트의 요청 packet에서 어느 game room이나
+  stage로 들어갈지 결정한 뒤
+  `Context.JoinSpot<TReply, TReq>(targetSpotName, request).Submit(...)`을
+  호출한다. `targetSpotName`은 `gameId`, `matchId`, `roomId` 같은 domain
+  spot 이름이다.
+- **session 초기 상태 설정** -- session metadata, profile lookup 같은 초기
+  작업이 여기 들어간다.
+
+Entry Spot의 actor packet은 Entry Spot 전체 실행 줄에 세우지 않는다. Entry
+Spot은 모든 actor가 처음 거치는 공용 입구이므로, 여기서 actor packet을 전역
+으로 직렬화하면 서로 관계없는 actor까지 같이 기다리게 된다. 따라서 Entry Spot
+actor packet은 대상 actor의 mailbox[^mailbox]로 들어가고, 같은 actor의 packet
+끼리만 순서가 보장된다.
+
+반면 Entry Spot의 `OnInitializeAsync(...)`, `OnClosingAsync(...)`, actor
+joined/left lifecycle callback처럼 Entry Spot 자체의 registry나 lifecycle
+상태를 다루는 작업은 Entry Spot 실행 문맥에서 직렬화해도 된다. 즉 Entry Spot
+은 lifecycle을 보호하고, actor packet의 처리 순서는 actor mailbox가 보호하는
+구도다.
 
 ```csharp
 public sealed class PlayerActor(string actorId, IAuthService auth) : IZLinkActor
@@ -297,19 +329,21 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot
 }
 ```
 
-즉 Entry Spot 전용 handler 등록 표면을 둔다. actor 객체는 상태를 담고, 현재 actor가
-어느 실행 문맥에 있는지에 따라 Entry Spot registry 또는 user Spot registry가 message와
-lifecycle callback을 처리한다. application handler가 `Context.IsJoined` 같은 상태값으로
-entry/user 단계를 직접 분기하지 않게 하는 것이 이 표면의 목적이다. `RoutingId` 같은
-transport 위치값은 handler 표면에 노출하지 않는다.
+즉 Entry Spot 전용 handler 등록 표면을 별도로 둔다. actor 객체는 상태를
+보관하고, 현재 actor가 어느 실행 문맥에 있는지에 따라 Entry Spot registry
+또는 user Spot registry가 message와 lifecycle callback을 처리한다. 이 표면의
+목적은 application handler가 `Context.IsJoined` 같은 상태값으로 entry/user
+단계를 직접 분기하지 않도록 막는 것이다. `RoutingId` 같은 transport 위치값은
+handler 표면에 노출하지 않는다.
 
 ## 4. Handler 모델
 
-actor가 처리할 packet handler는 **현재 실행 문맥의 registry에 등록한다**. Entry Spot은
-Entry Spot 전용 registry를 갖고, user Spot은 각 Spot type의 registry를 갖는다. 일반
-channel handler처럼 attribute scan + 그룹 매핑으로 노출되는 모델이 아니다. 그 대신 각
-Spot의 `Configure()` 안에서 `Context.AddActorPacket<THandler, TActor>()`로 명시적으로
-묶는다.
+actor가 처리할 packet handler는 **현재 실행 문맥의 registry에 등록한다.**
+Entry Spot은 Entry Spot 전용 registry를 갖고, user Spot은 각 Spot 타입마다
+별도의 registry를 갖는다. 일반 channel handler처럼 attribute
+scan[^attribute-scan]과 그룹 매핑으로 노출하는 모델이 아니다. 대신 각 Spot의
+`Configure()` 안에서 `Context.AddActorPacket<THandler, TActor>()`로 명시적
+으로 묶는다.
 
 ```csharp
 public sealed class PlayerActor(string actorId) : IZLinkActor
@@ -326,18 +360,18 @@ public sealed class PlayerActor(string actorId) : IZLinkActor
 }
 ```
 
-이 모델의 의도:
+이 모델의 의도는 다음과 같다.
 
-- actor마다 자기가 받을 packet 묶음을 자기 코드에서 정한다 (외부 attribute scan에
-  맡기지 않는다).
-- actor type과 실행 문맥이 다르면 packet 매핑이 다를 수 있다.
+- actor가 자기가 받을 packet 묶음을 자기 코드에서 정한다. 즉 외부 attribute
+  scan에 위임하지 않는다.
+- actor type과 실행 문맥이 달라지면 packet 매핑도 다르게 가져갈 수 있다.
 - 같은 handler 클래스를 여러 actor type이 공유해도 된다.
 
 ### 4.1 Entry Spot actor handler
 
-Entry Spot에 있는 actor message는 Entry Spot registry에 등록한 handler가 처리한다.
-첫 인자는 actor 인스턴스다. Entry Spot은 별도 user Spot 객체가 없으므로 handler는
-actor와 payload만 받는다.
+Entry Spot에 있는 actor message는 Entry Spot registry에 등록한 handler가
+처리한다. 첫 인자는 actor 인스턴스다. Entry Spot은 별도의 user Spot 객체를
+갖지 않으므로 handler는 actor와 payload만 받는다.
 
 ```csharp
 public interface IZLinkEntrySpotActorSendHandler<TActor, in TMessage>
@@ -359,7 +393,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TActor, in TRequest, TReply>
 }
 ```
 
-샘플:
+샘플은 다음과 같다.
 
 ```csharp
 internal sealed class JoinMatchHandler(
@@ -390,9 +424,9 @@ internal sealed class JoinMatchHandler(
 
 ### 4.2 user Spot actor handler
 
-user Spot에 join된 actor message는 해당 Spot type의 registry에 등록한 handler가
-처리한다. handler는 spot 객체와 actor 객체를 함께 받는다. room/stage 상태는 spot에서
-읽고, player/entity 상태는 actor에서 읽는다.
+user Spot에 join된 actor의 message는 해당 Spot 타입의 registry에 등록한
+handler가 처리한다. handler는 spot 객체와 actor 객체를 함께 받는다. room이나
+stage의 상태는 spot에서 읽고, player나 entity의 상태는 actor에서 읽는다.
 
 ```csharp
 public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
@@ -418,29 +452,32 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
 }
 ```
 
-Entry Spot과 user Spot 모두 `AddActorJoined(...)` / `AddActorLeft(...)`로 lifecycle
-callback handler를 따로 등록한다. 이 callback은 join/leave commit 이후 같은 실행 문맥에서
-호출된다.
+Entry Spot과 user Spot 어느 쪽이든 `AddActorJoined(...)` /
+`AddActorLeft(...)`로 lifecycle callback handler를 따로 등록한다. 이 callback
+은 join/leave가 commit된 직후 같은 실행 문맥에서 호출된다.
 
 ### 4.3 등록 순서
 
-handler 클래스는 DI에 등록되어야 한다. 가장 간단한 방법:
+handler 클래스는 반드시 DI에 등록해야 한다. 가장 간단한 방법은 다음과 같다.
 
 ```csharp
 builder.Services.AddScoped<JoinMatchHandler>();
 builder.Services.AddScoped<PlaceMarkHandler>();
-builder.Services.AddZLinkHandlersFromAssemblyContaining<JoinMatchHandler>();
+builder.Services.AddZLinkFramework(options =>
+{
+    options.AddHandlersFromAssemblyOf<JoinMatchHandler>();
+});
 ```
 
-`AddZLinkHandlersFromAssemblyContaining`은 attribute scan과 함께 typed actor
-handler 후보도 같이 모은다. 단 실제 actor 매핑은 Entry Spot 또는 user Spot의
+`AddHandlersFromAssemblyOf`는 attribute scan과 함께 typed actor handler
+후보까지 한꺼번에 모은다. 다만 실제 actor 매핑은 Entry Spot이나 user Spot의
 `Configure()`에서 일어난다는 점은 동일하다.
 
 ## 5. Actor context
 
-actor 안에서 outbound 호출과 spot join을 하려면 framework가 attach한
-`IZLinkActorContext`를 통한다. Packet handler와 lifecycle callback handler 등록은
-Entry Spot 또는 user Spot context에서 수행한다.
+actor 안에서 outbound 호출이나 spot join을 하려면 framework가 attach한
+`IZLinkActorContext`를 거쳐야 한다. packet handler와 lifecycle callback
+handler의 등록 자체는 Entry Spot 또는 user Spot의 context에서 수행한다.
 
 ```csharp
 public interface IZLinkActorContext
@@ -466,25 +503,25 @@ public interface IZLinkActorContext
 }
 ```
 
-표면별 의미:
+각 표면의 의미는 다음과 같다.
 
 | 표면 | 의미 |
 | --- | --- |
 | `ActorId` / `SessionId` | identity. session bind된 actor만 `SessionId`가 채워진다 |
-| `SpotName` / `IsJoined` | user Spot join된 경우 그 spot의 domain 이름과 join 상태 (Entry Spot에 있을 때는 `IsJoined`가 false). `RoutingId`는 framework 내부 표면이며 actor handler에 노출하지 않는다 |
+| `SpotName` / `IsJoined` | user Spot에 join한 경우 그 spot의 domain 이름과 join 상태. Entry Spot에 있을 때는 `IsJoined`가 false다. `RoutingId`는 framework 내부 표면으로만 두고 actor handler에는 노출하지 않는다 |
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
-| `JoinSpot(spotName, request).Submit(...)` | user Spot에 join 요청 (Entry → user Spot으로 이동). STREAM session binding을 요구하지 않는다. `spotName`은 application domain spot 이름(`string`) |
-| `RequestChannel` / `SendChannel` | 일반 channel을 향한 outbound 호출 (actor 안에서) |
-| `Send<TMessage>(...)` | bound client stream으로 데이터 push (session-bound actor 전용) |
+| `JoinSpot(spotName, request).Submit(...)` | user Spot에 join 요청 (Entry → user Spot으로 이동). STREAM session binding을 전제로 하지 않는다. `spotName`은 application domain spot 이름(`string`) |
+| `RequestChannel` / `SendChannel` | actor 안에서 일반 channel을 향한 outbound 호출 |
+| `Send<TMessage>(...)` | bound client stream으로 데이터를 push (session-bound actor 전용) |
 | `Reply<TMessage>(...)` | client request의 응답을 send (session-bound actor 전용) |
 
-## 6. Outbound: 다른 곳에서 actor 호출
+## 6. Outbound: 다른 곳에서 actor 호출하기
 
 ### 6.1 `IZLinkActorClient`
 
-application 다른 코드에서 특정 actor를 부를 때 쓰는 outbound client다. actor의
-물리적 위치(어느 노드의 어느 spot 또는 session에 사는지)는 호출자가 몰라도 된다.
-**`actorId`** 만 넘기면 된다.
+application의 다른 코드에서 특정 actor를 부르고 싶을 때 쓰는 outbound client
+다. 호출하는 쪽은 actor의 물리적 위치(어느 노드의 어느 spot이나 session에
+사는지)를 몰라도 된다. **`actorId`** 만 넘기면 충분하다.
 
 ```csharp
 public interface IZLinkActorClient
@@ -509,9 +546,9 @@ public interface IZLinkActorClientRequestCall
 }
 ```
 
-`IZLinkActorClient`는 내부적으로 actor id → routed channel + 대상 노드
-`RoutingId`로 풀기 위해 application이 등록한 **play route resolver**[^playroute]를
-부른다 (§6.2 참고).
+`IZLinkActorClient`는 내부적으로 actor id를 routed channel + 대상 노드의
+`RoutingId`로 풀어 내기 위해 application이 등록한 **play route
+resolver**[^playroute]를 호출한다 (§6.2 참고).
 
 ```csharp
 public sealed class GameDispatcher(IZLinkActorClient actors)
@@ -528,14 +565,15 @@ public sealed class GameDispatcher(IZLinkActorClient actors)
 }
 ```
 
-`IZLinkActorClient`를 쓰려면 `AddActorPlayRouteResolver<>()`가 같이 등록되어
-있어야 한다. 등록 없이 호출하면 startup validation에서 오류로 막는다.
+`IZLinkActorClient`를 쓰려면 반드시 `AddActorPlayRouteResolver<>()`를 함께
+등록해야 한다. resolver 등록 없이 호출하면 startup validation[^startup-validation]
+단계에서 오류로 막힌다.
 
 ### 6.2 `IZLinkActorPlayRouteResolver`
 
-application이 "이 actor id는 지금 어느 routed channel의 어느 노드에 있다"는
-정보를 돌려주는 resolver다. framework는 이 정보로 routed 채널 send/request를
-구성한다.
+"이 actor id는 지금 어느 routed channel의 어느 노드에 있다"는 정보를
+application이 돌려주기 위한 resolver다. framework는 이 정보를 가지고 routed
+채널 send / request를 구성한다.
 
 ```csharp
 public interface IZLinkActorPlayRouteResolver
@@ -550,10 +588,11 @@ public readonly record struct ZLinkActorRoute(
     RoutingId TargetNodeRid);
 ```
 
-application은 이 resolver를 어디서든 채울 수 있다 -- in-memory 캐시, Redis,
-Registry 기반 lookup 등. framework는 그 저장소를 소유하지 않는다.
+resolver의 실제 저장소는 application이 원하는 곳 어디든 채울 수 있다. 예를
+들어 in-memory 캐시, Redis, Registry 기반 lookup 등이 모두 가능하다.
+framework는 그 저장소를 소유하지 않는다.
 
-등록:
+등록 예시는 다음과 같다.
 
 ```csharp
 builder.Services.AddSingleton<RegistryPlayRouteStore>();
@@ -565,14 +604,15 @@ builder.Services.AddZLinkFramework(options =>
 
 ## 7. SPOT에 actor 붙이기
 
-SPOT 안의 객체로 actor를 쓰고 싶을 때다. room의 player, stage의 character, zone
-의 entity 같은 패턴이 여기 해당한다.
+SPOT 안의 객체로 actor를 쓰고 싶을 때 적용하는 패턴이다. room의 player,
+stage의 character, zone의 entity 같은 경우가 여기에 해당한다.
 
 ### 7.1 spot 안에서 actor join handler 등록
 
-SPOT spec ([aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md))의 `IZLinkSpotContext`
-에 `AddActorJoin<...>()` 표면이 있다. 이걸로 "spot에 합류 요청이 오면 어느
-handler를 부르고, 합류 성공 시 어떤 actor type을 생성할지"를 매핑한다.
+SPOT spec ([aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md))의
+`IZLinkSpotContext`에는 `AddActorJoin<...>()` 표면이 있다. 이 표면을 써서
+"spot에 합류 요청이 들어오면 어느 handler를 부르고, 합류에 성공하면 어떤 actor
+type을 생성할지"를 매핑한다.
 
 ```csharp
 public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
@@ -593,15 +633,15 @@ public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
 }
 ```
 
-join handler는 별도 핸들러 인터페이스를 구현한다 (자세한 시그니처는
-[handler-interfaces.ko.md](./handler-interfaces.ko.md) §5.7 참고).
+join handler는 별도의 핸들러 인터페이스를 구현한다. 자세한 시그니처는
+[handler-interfaces.ko.md](./handler-interfaces.ko.md) §5.7에서 다룬다.
 
 ### 7.2 actor가 spot에 합류하기
 
-다른 곳에 사는 actor(예: session-attached actor)가 특정 spot에 합류하려면 자기
-context의 `JoinSpot(spotName, request)`를 부른다. `spotName`은 application domain
-spot 이름(`string`)이고, `RoutingId` 변환은 framework 내부 spot route resolver가
-푼다.
+다른 곳에 사는 actor(예: session-attached actor)가 어떤 spot에 합류하려면
+자기 context의 `JoinSpot(spotName, request)`를 호출한다. `spotName`은
+application domain spot 이름(`string`)이고, `RoutingId`로의 변환은 framework
+내부 spot route resolver가 처리한다.
 
 ```csharp
 var result = await actor.Context
@@ -610,15 +650,16 @@ var result = await actor.Context
     .Submit(cancellationToken);
 ```
 
-이 호출은 spot 쪽의 join handler에서 결과를 돌려준다. 성공하면 actor 측
-`Context.IsJoined`가 `true`가 되고 `Context.SpotName`이 채워진다. 이후 spot은
-actor 객체에 직접 접근할 수 있다 (spot handler에서 `actor` 인자로 받음).
+이 호출은 spot 쪽 join handler의 결과를 그대로 돌려준다. 성공 시 actor 쪽
+`Context.IsJoined`가 `true`가 되고 `Context.SpotName`이 채워진다. 이후부터
+spot은 actor 객체에 직접 접근할 수 있다 (spot handler에서 `actor` 인자로 받게
+된다).
 
 ### 7.3 actor stream client
 
-spot에 합류한 actor 사이에서 데이터 send / reply를 보낼 때 쓰는 stream-side
-표면이다. actor handler 안에서는 보통 `actor.Context.Send(...)` / `Reply(...)`
-호출이 이 client 위로 매핑된다.
+spot에 합류한 actor 사이에서 데이터를 send / reply할 때 쓰는 stream-side
+표면이다. actor handler 안에서 호출하는 `actor.Context.Send(...)` /
+`Reply(...)`는 보통 이 client 위로 매핑된다.
 
 ```csharp
 public interface IZLinkActorStreamClient
@@ -645,12 +686,13 @@ public interface IZLinkActorReplyCall
 
 ## 8. STREAM session에 actor 붙이기
 
-session-attached actor는 client stream 연결과 함께 산다. client가 인증하고
-session이 열리면 그 session 안에 actor가 생기고, session이 닫히면 actor도
-`OnDisconnectedAsync`로 정리된다.
+session-attached actor는 client stream 연결과 lifecycle을 함께한다. client가
+인증을 마치고 session이 열리면 그 session 안에서 actor가 생성되고, session이
+닫히면 `OnDisconnectedAsync`로 정리된다.
 
-이 패턴은 보통 **gateway / playhouse** 같은 server에서 쓴다. client는 stream으로
-들어오고, server는 그 client를 actor로 다루어 모든 routing을 actor id로 통일한다.
+이 패턴은 보통 **gateway / playhouse[^playhouse]** 같은 서버에서 사용한다.
+client는 stream으로 들어오고, server는 그 client를 actor로 다루어 모든
+routing을 actor id 기준으로 통일한다.
 
 ### 8.1 session-actor attach 표면
 
@@ -684,21 +726,25 @@ public interface IZLinkSessionActorDispatchContext
 ```
 
 - `AttachActorAsync(...)` -- 이미 만든 actor 인스턴스를 현재 session에 attach
-  한다. session이 끊어지면 자동으로 `OnDisconnectedAsync`가 호출된다.
-- `CreateAndBindActorAsync(actorId, actorType, ...)` -- factory를 호출해서 새 actor를
-  만들고 이 session에 attach까지 **한 호출 안에서 atomic하게** 처리한다 (생성과
-  session bind를 분리해서 노출하지 않는다).
+  한다. session이 끊어지면 framework가 자동으로 `OnDisconnectedAsync`를
+  호출한다.
+- `CreateAndBindActorAsync(actorId, actorType, ...)` -- factory를 불러 새 actor
+  를 만들고, 그 actor를 현재 session에 attach하는 동작을 **한 호출 안에서
+  atomic하게** 처리한다. 즉 생성과 session bind를 별도로 노출하지 않는다.
 - `BindActorHandleAsync(actorId, actorType, ...)` -- 현재 session host의 local
-  `SpotNode` actor runtime에서 actor handle을 만들고 현재 actor-session binding을
-  기록한다. actor는 기본적으로 `SpotNode`에서 생성되며, framework session 표면은
-  remote node를 직접 지정하는 create/handle API를 제공하지 않는다.
+  `SpotNode` actor runtime에서 actor handle을 얻고, 현재 actor-session
+  binding을 기록한다. actor는 기본적으로 `SpotNode`에서 생성하며, framework
+  session 표면은 remote node를 직접 지정하는 create/handle API를 제공하지
+  않는다.
 
 session callback에서 unbound standalone actor를 만드는 표면은 두지 않는다.
-standalone actor가 필요하면 actor node 측 별도 등록 표면(예: actor factory + actor
-node가 직접 호출하는 create helper)을 사용한다. 정책 기준은
-[policy/actor-model.ko.md](../../policy/actor-model.ko.md) §4 lifecycle 표 참고.
-- `DispatchToActorAsync(...)` -- 들어온 packet을 actor에게 dispatch한다 (보통
-  framework가 자동으로 처리).
+standalone actor가 필요하다면 actor node 측에서 별도의 등록 표면(예: actor
+factory와 actor node가 직접 호출하는 create helper)을 쓴다. 정책 기준은
+[policy/actor-model.ko.md](../../policy/actor-model.ko.md) §4 lifecycle 표를
+참고한다.
+
+- `DispatchToActorAsync(...)` -- 들어온 packet을 actor에게 dispatch한다. 보통
+  framework가 자동으로 처리한다.
 
 ### 8.2 session 안에서의 흐름
 
@@ -729,19 +775,21 @@ sequenceDiagram
 
 ## 9. Session actor dispatch (gateway 패턴)
 
-가장 큰 use case다. 여러 server를 두는 구조에서, **Session 서버**는 client 연결만
-받고, 실제 gameplay 로직은 **Play 서버**의 actor가 처리한다. 그러면서도 client는
-하나의 stream만 유지하고, Play 서버가 client에게 message를 보낼 때도 그 stream으로
-push되어야 한다.
+가장 큰 use case다. 서버를 여러 대 두는 구성에서, **Session 서버**는 client
+연결만 받고 실제 gameplay 로직은 **Play 서버**의 actor가 처리한다. 그러면서
+client 입장에서는 stream을 하나만 유지하고, Play 서버가 client에게 message를
+보낼 때도 그 stream을 그대로 타고 push되어야 한다.
 
-이 구조의 핵심 표면:
+이 구조의 핵심 표면은 다음과 같다.
 
-- **`IZLinkActorPlayRouteResolver`** (§6.2) -- "actor id → play node routing id"
-- **`IZLinkSpotRouteResolver`** -- "spot name/id → user Spot routing id". actor가
-  `JoinSpot(spotName, ...)`로 node 경계를 넘을 수 있으면 등록한다.
-- **`IZLinkSessionProxy`** -- Play 서버 actor가 client에게 push를 보낼 때 쓰는
-  표면. 내부적으로 framework/core actor-session binding을 읽어 routed channel을 통해
-  Session 서버에 전달
+- **`IZLinkActorPlayRouteResolver`** (§6.2) -- "actor id → play node routing
+  id"를 푼다.
+- **`IZLinkSpotRouteResolver`** -- "spot name/id → user Spot routing id"를
+  푼다. actor가 `JoinSpot(spotName, ...)`로 node 경계를 넘을 수 있다면 이
+  resolver를 등록한다.
+- **`IZLinkSessionProxy`** -- Play 서버 actor가 client에게 push를 보낼 때
+  쓰는 표면이다. 내부적으로 framework/core actor-session binding을 읽어 routed
+  channel을 거쳐 Session 서버까지 전달한다.
 
 ### 9.1 전체 흐름
 
@@ -771,17 +819,20 @@ sequenceDiagram
     Note over P,B: Play actor는 새 binding으로 push
 ```
 
-핵심: Play 서버의 actor는 stream을 직접 들고 있지 않다. **`IZLinkSessionProxy`**
-한 표면으로 "actor id 앞으로 message 보내라"고만 하면, framework가 actor-session
-binding에서 현재 session 노드를 찾아 routed channel을 거쳐 Session 서버까지 보낸다.
-Session 서버는 actor binding 정보로 어떤 client stream에 push할지 정한다.
+핵심은 다음과 같다. Play 서버의 actor는 stream을 직접 들고 있지 않다.
+**`IZLinkSessionProxy`** 라는 표면 하나에 "이 actor id 앞으로 message
+보내라"고만 부탁하면, framework가 actor-session binding에서 현재 session 노드를
+찾아 routed channel을 통해 Session 서버까지 보낸다. Session 서버는 actor
+binding 정보를 보고 어떤 client stream에 push할지 결정한다.
 
 이 routed channel 내부 메시지는
-[message-model.ko.md](../../policy/message-model.ko.md)의 multipart 계약을 따른다.
-Session 서버와 Play 서버 사이에서는 route header, actor/session metadata, stream
-header, body를 각각 part로 나누어 보낸다. client와 Session 서버 사이의 STREAM packet은
-그대로 단일 stream packet frame으로 처리한다. 따라서 actor dispatch body를 내부 DTO의
-`byte[]` 필드에 넣어 다시 JSON envelope로 보내는 방식은 이 초안의 목표가 아니다.
+[message-model.ko.md](../../policy/message-model.ko.md)의 multipart 계약을
+따른다. Session 서버와 Play 서버 사이에서는 route header, actor/session
+metadata, stream header, body를 각각 별도의 part로 나누어 전송한다. client와
+Session 서버 사이의 STREAM packet은 그대로 단일 stream packet frame으로
+처리한다. 따라서 actor dispatch body를 내부 DTO[^dto]의 `byte[]` 필드에 담아
+다시 JSON envelope[^json-envelope]로 감싸 보내는 방식은 이 초안의 목표가
+아니다.
 
 ### 9.2 `IZLinkSessionProxy`
 
@@ -793,7 +844,7 @@ public interface IZLinkSessionProxy
 }
 ```
 
-actor handler가 받아 쓰기:
+actor handler에서 받아 쓰는 모습은 다음과 같다.
 
 ```csharp
 public sealed class JoinMatchHandler(IZLinkSessionProxy clientPush)
@@ -813,15 +864,16 @@ public sealed class JoinMatchHandler(IZLinkSessionProxy clientPush)
 }
 ```
 
-같은 user Spot 안에서 client push가 필요하면 user Spot actor handler 생성자에
-`IZLinkSessionProxy`를 주입해서 같은 방식으로 사용한다. Actor message handler는
-transport raw header나 session router id를 직접 받지 않는다.
+같은 user Spot 안에서 client push가 필요하면, user Spot actor handler의
+생성자에 `IZLinkSessionProxy`를 주입해서 같은 방식으로 사용한다. Actor message
+handler는 transport raw header나 session router id를 직접 받지 않는다.
 
 ### 9.3 라우팅 record
 
-handler-interfaces.ko.md §5.7과 동일한 actor route 필드 구성을 사용한다. session
-binding에 필요한 session rid, session id, binding token은 framework/core runtime 내부
-metadata로 관리하며 public resolver record로 노출하지 않는다.
+handler-interfaces.ko.md §5.7과 동일한 actor route 필드 구성을 그대로
+사용한다. session binding에 필요한 session rid, session id, binding token은
+framework/core runtime 내부 metadata로 관리하고, public resolver record로는
+노출하지 않는다.
 
 ```csharp
 public readonly record struct ZLinkActorRoute(
@@ -829,14 +881,15 @@ public readonly record struct ZLinkActorRoute(
     RoutingId TargetNodeRid);
 ```
 
-- **`ZLinkActorRoute`** -- "actor가 사는 Play 서버 위치". `IZLinkActorPlayRouteResolver`
-  결과로 돌려준다.
-- actor-session binding은 public route resolver 결과가 아니다. 이전 stream의 늦은
-  close가 새 binding을 지우지 못하도록 binding token으로 내부에서 조건부 갱신한다.
+- **`ZLinkActorRoute`** -- "이 actor가 사는 Play 서버의 위치"를 나타낸다.
+  `IZLinkActorPlayRouteResolver`의 결과로 돌려준다.
+- actor-session binding은 public route resolver 결과가 아니다. 이전 stream의
+  뒤늦은 close가 새 binding을 지우지 못하도록, 내부에서 binding token으로
+  조건부 갱신을 수행한다.
 
 ### 9.4 등록 패턴
 
-Session 서버:
+Session 서버는 다음과 같이 등록한다.
 
 ```csharp
 builder.Services.AddSingleton<RegistryPlayRouteStore>();
@@ -849,7 +902,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-Play 서버:
+Play 서버는 다음과 같이 등록한다.
 
 ```csharp
 builder.Services.AddScoped<PlayerActorFactory>();
@@ -882,18 +935,20 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-`AddActorPlayRouteResolver`는 **양쪽**에 등록한다. session 서버는 client packet을
-어느 play 노드로 보낼지 알아야 하고, play 서버도 actor migration 같은 경우 다른
-play 노드로 forwarding할 수 있어야 하기 때문이다.
+`AddActorPlayRouteResolver`는 **양쪽 모두**에 등록해야 한다. session 서버는
+client packet을 어느 play 노드로 보낼지 알아야 하고, play 서버도 actor
+migration[^actor-migration]처럼 다른 play 노드로 forwarding해야 하는 경우가
+있기 때문이다.
 
-actor-session binding은 framework/core runtime 내부에서 관리한다. Session 서버는
-인증과 `CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)` 흐름에서 binding을
-갱신하고, Play 서버는 `IZLinkSessionProxy`를 통해 현재 binding을 사용한다. 이를 위한
-별도 public session route API나 기록 API 등록은 두지 않는다.
+actor-session binding은 framework/core runtime 내부에서 관리한다. Session
+서버는 인증과 `CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)`
+흐름에서 binding을 갱신하고, Play 서버는 `IZLinkSessionProxy`를 통해 현재
+binding을 사용한다. 이 동작을 위해 별도의 public session route API나 기록
+API를 등록할 필요는 없다.
 
 ## 10. 등록 표면 종합
 
-`IZLinkFrameworkOptions`가 노출하는 actor 관련 등록 메서드:
+`IZLinkFrameworkOptions`가 노출하는 actor 관련 등록 메서드는 다음과 같다.
 
 ```csharp
 public interface IZLinkFrameworkOptions
@@ -934,11 +989,11 @@ public interface IZLinkSpotMeshNodeBuilder
 }
 ```
 
-용도 요약:
+각 메서드의 용도를 정리하면 다음과 같다.
 
-| 메서드 | 누가 필요한가 | 무엇을 한다 |
+| 메서드 | 누가 필요한가 | 무엇을 하는가 |
 | --- | --- | --- |
-| `AddActorFactory<>(type)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | actorType 키로 factory 매핑 |
+| `AddActorFactory<>(type)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | actorType 키로 factory를 매핑 |
 | `AddActorPlayRouteResolver<>()` | actor를 외부에서 부르는 모든 서버 | actor id → play node routing |
 | `AddSpotRouteResolver<>()` | actor가 spot name/id로 user Spot에 join하거나 spot client를 쓰는 서버 | spot name/id → spot routing |
 | `AddSpotMesh(...).AddNode(...).AddEntrySpot<>()` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
@@ -946,12 +1001,13 @@ public interface IZLinkSpotMeshNodeBuilder
 
 ## 11. 다른 문서와의 관계
 
-- 인터페이스 전체 정의: [handler-interfaces.ko.md](./handler-interfaces.ko.md) §5
-  (`IZLinkActor`, `IZLinkActorContext`, `IZLinkActorFactory`, actor handler
-  인터페이스, routing record 등)
-- SPOT에 actor 합류하는 표면 ( `AddActorJoin<...>` ):
+- 인터페이스 전체 정의:
+  [handler-interfaces.ko.md](./handler-interfaces.ko.md) §5 (`IZLinkActor`,
+  `IZLinkActorContext`, `IZLinkActorFactory`, actor handler 인터페이스,
+  routing record 등)
+- SPOT에 actor가 합류하는 표면(`AddActorJoin<...>`):
   [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md)
-- STREAM session 라이프사이클과 `IZLinkSession` 표면:
+- STREAM session lifecycle과 `IZLinkSession` 표면:
   [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md)
 - session actor dispatch 정책 문서 (구현 전 초안):
   [session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md)
@@ -960,42 +1016,121 @@ public interface IZLinkSpotMeshNodeBuilder
 
 ## 12. 결정된 기준
 
-- actor의 packet handler와 lifecycle callback handler는 Entry Spot 또는 user Spot
-  registry에서 등록한다. attribute scan과 그룹 매핑은 일반 channel handler 전용이다.
-- actor의 위치는 application의 resolver가 정한다. framework는 그 정보 저장소를
-  소유하지 않는다.
-- actor id는 application identity다 (보통 인증 단계에서 정해진다). framework는
-  actor id 발급에 관여하지 않는다.
-- Play 서버 actor가 client에 push할 때는 **반드시 `IZLinkSessionProxy`** 를 통한
-  다. actor가 stream socket을 직접 들고 있지 않다.
+- actor의 packet handler와 lifecycle callback handler는 Entry Spot 또는 user
+  Spot registry에서 등록한다. attribute scan과 그룹 매핑은 일반 channel
+  handler 전용이다.
+- actor의 위치는 application의 resolver가 결정한다. framework는 그 정보의
+  저장소를 소유하지 않는다.
+- actor id는 application identity[^identity]다. 보통 인증 단계에서 결정된다.
+  framework는 actor id 발급에 관여하지 않는다.
+- Play 서버의 actor가 client에 push를 보낼 때는 **반드시
+  `IZLinkSessionProxy`** 를 거친다. actor가 stream socket을 직접 들고 있는
+  구조가 아니다.
 
 ## 13. 회귀 테스트
 
-Actor 문서의 항목은 actor factory, Entry Spot, user Spot join, session bind, session actor
-dispatch가 같은 public 표면으로 이어지는지 확인해야 한다. actor가 어느 spot에 붙어
-있는지는 framework가 관리하고, 사용자는 현재 context만 다룬다.
+Actor 문서의 회귀 테스트 항목은 actor factory, Entry Spot, user Spot join,
+session bind, session actor dispatch가 같은 public 표면 위에서 일관되게 이어
+지는지를 확인한다. actor가 어느 spot에 붙어 있는지는 framework가 관리하고,
+사용자는 현재 context만 다룬다는 원칙을 검증한다.
 
 | 테스트 케이스 | 확인 기준 |
-|---------------|-----------|
-| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenActorFactoryNameIsDuplicated` | actor factory 이름 중복은 startup validation 예외로 막는다. |
-| `SpotIntegrationTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot과 user Spot에 등록한 actor packet/lifecycle handler가 dispatch된다. |
-| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 spot을 이동한 뒤 stale spot 문맥으로 dispatch되지 않는다. |
-| `SpotIntegrationTests.ActorContext_RequestChannel_Uses_Global_Client_Before_Join_And_Spot_Client_After_Join` | join 전후 channel request 경로가 public context 의미에 맞게 바뀐다. |
-| `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | stream session에서 bound actor로 request가 전달되고 sequence별 reply가 맞는다. |
+| --- | --- |
+| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenActorFactoryNameIsDuplicated` | actor factory 이름이 중복되면 startup validation에서 예외로 막는다. |
+| `SpotIntegrationTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot과 user Spot에 등록한 actor packet/lifecycle handler가 정상적으로 dispatch된다. |
+| `SpotIntegrationTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot에서 같은 actor의 packet은 순서대로 실행되고, 서로 다른 actor의 packet은 병렬로 진행된다. |
+| `SpotIntegrationTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel` | native Entry Spot dispatch batch가 actor별 순서를 보존하면서도 다른 actor를 전역으로 막지 않는다. |
+| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 spot을 옮긴 뒤 stale spot 문맥으로 dispatch되지 않는다. |
+| `SpotIntegrationTests.ActorContext_RequestChannel_Uses_Global_Client_Before_Join_And_Spot_Client_After_Join` | join 전과 후에 channel request 경로가 public context 의미에 맞게 전환된다. |
+| `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | stream session에서 bound actor로 request가 전달되고, sequence별 reply 순서가 맞는다. |
 
 ---
 
 ### 각주 모음
 
-[^actor]: **actor**는 ID로 식별되는 stateful application 객체다. 같은 actor id로
-    들어오는 메시지는 같은 인스턴스가 받는다. framework가 라이프사이클 관리, 메시지
-    dispatch, 라우팅 식별의 단위로 본다.
+[^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 
-[^routed]: **routed channel**은 `AddRouteChannel(...)` / `AddRouteMeshChannel(...)`
-    로 선언하는 양방향 채널이다. 일반 client-server 채널과 달리 호출 시점에 목적지
-    노드의 `RoutingId`를 직접 지정한다. 자세한 내용은
+[^actor]: **actor**는 ID로 식별되는 stateful application 객체다. 같은 actor id
+    로 들어오는 메시지는 같은 인스턴스가 받는다. framework는 actor를
+    라이프사이클 관리, 메시지 dispatch, 라우팅 식별의 단위로 본다.
+
+[^entryspot]: **Entry Spot**은 SpotNode가 자동으로 갖는 입구 spot이다. actor는
+    생성 직후 항상 Entry Spot에 위치하며, user Spot으로 옮기기 전까지의 인증
+    이나 분기 같은 초기 로직을 여기서 처리한다.
+
+[^session-bind]: **session bind**는 actor를 특정 STREAM session에 연결해서,
+    그 session으로 들어오고 나가는 client relay 경로를 actor와 묶는 동작이다.
+    actor의 물리적 위치를 결정하지는 않는다.
+
+[^user-spot-join]: **user Spot join**은 actor를 Entry Spot에서 application
+    정의 user Spot(room, stage 등)으로 이동시키는 동작이다. session binding과는
+    독립적으로 일어난다.
+
+[^di-scope]: DI scope는 `.NET` 의존성 주입 컨테이너에서 객체의 lifetime을
+    묶는 단위(singleton, scoped, transient)를 가리킨다. handler 인스턴스 생성과
+    소멸은 보통 이 scope를 기준으로 결정된다.
+
+[^raw-api]: raw API는 framework 추상화를 거치지 않고 C 바인딩이 노출하는
+    저수준 함수를 직접 부르는 호출을 뜻한다.
+
+[^resolver]: resolver는 식별자(예: actor id, spot name)를 받아 그 식별자가
+    가리키는 실제 위치(routing id 등)를 돌려주는 application 컴포넌트다.
+    framework는 위치 정보를 직접 소유하지 않고 resolver에게 위임한다.
+
+[^session-actor-dispatch]: session actor dispatch는 클라이언트 session에서 들어
+    온 요청을 그 session과 묶여 있는 actor 쪽으로 자동 전달하는 패턴이다.
+
+[^gateway]: gateway는 외부 client 연결을 받아 인증한 뒤 내부 서비스로 라우팅
+    하는 입구 서버를 가리킨다. 이 문서에서는 STREAM session을 받아 actor 호출
+    로 변환하는 Session 서버 역할을 가리킨다.
+
+[^channel-messaging]: channel messaging은 채널 이름을 키로 삼아 메시지를
+    주고받는 방식이다. request / send는 요청-응답과 단방향 전달을, event
+    messaging은 publish / subscribe 형태의 이벤트 전달을 가리킨다.
+
+[^routed]: **routed channel**은 `AddRouteChannel(...)` /
+    `AddRouteMeshChannel(...)`로 선언하는 양방향 채널이다. 일반 client-server
+    채널과 달리 호출 시점에 목적지 노드의 `RoutingId`를 직접 지정한다. 자세한
+    내용은
     [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md)
     §5.4 참고.
 
 [^factory]: **factory**는 `IZLinkActorFactory`를 구현한 application 클래스다.
-    actorType 키와 함께 등록하면 framework가 그 type의 actor를 만들 때 호출한다.
+    actorType 키와 함께 등록해 두면, framework가 해당 type의 actor를 만들 때
+    이 factory를 호출한다.
+
+[^discovery]: discovery는 등록된 노드(channel, spot 등)의 위치 정보를 Registry
+    같은 외부 저장소에서 자동으로 조회하고 갱신해 주는 메커니즘이다. application
+    이 IP/port를 직접 박지 않아도 노드 위치를 찾을 수 있다.
+
+[^mailbox]: mailbox는 같은 actor에게 들어오는 메시지를 한 줄로 세워 순차
+    처리하는 큐다. actor 단위로 순서를 보장하면서도 서로 다른 actor 사이의
+    병렬성은 유지한다.
+
+[^attribute-scan]: attribute scan은 어셈블리 안의 타입과 메서드를 훑으면서
+    특정 attribute가 붙은 항목을 찾아 자동으로 등록하는 방식이다.
+
+[^playroute]: **play route resolver**는 actor id를 받아 그 actor가 지금 어느
+    routed channel의 어느 노드에 사는지를 돌려주는 resolver다.
+    `IZLinkActorClient`가 outbound 호출 시 내부적으로 사용한다.
+
+[^startup-validation]: startup validation은 framework가 호스트 시작 시점에
+    등록 상태를 점검해서, 누락된 의존성이나 잘못된 조합을 즉시 예외로 보고하는
+    단계다. 잘못된 설정이 런타임으로 흘러가는 것을 막는다.
+
+[^playhouse]: playhouse는 게임 서비스에서 STREAM client를 받아 actor / room /
+    stage 위에서 처리하는 서버를 가리키는 사내 용어다. 여기서는 session 서버 +
+    play 서버 조합의 한 형태로 본다.
+
+[^dto]: DTO(Data Transfer Object)는 시스템 사이에서 데이터를 옮기기 위한
+    데이터 전용 클래스/record를 가리킨다.
+
+[^json-envelope]: JSON envelope는 실제 payload를 또 다른 JSON 객체 안의 필드로
+    감싸 보내는 방식을 가리킨다. 보통 metadata를 함께 싣기 위해 쓰지만, 본문이
+    이미 multipart로 나뉘는 경우에는 불필요한 wrapping이 된다.
+
+[^actor-migration]: actor migration은 같은 actor를 다른 play 노드로 옮기는
+    동작이다. 라우팅 정보가 갱신되어 외부 호출자가 새 위치로 forwarding된다.
+
+[^identity]: identity는 객체가 누구인지를 식별하는 1급 값이다. actor의 경우
+    `ActorId`가 identity로, application이 정한 도메인 단위를 그대로 따라간다.

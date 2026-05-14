@@ -24,14 +24,13 @@ public sealed class ChannelMessagingRuntimeTests
         serverBuilder.Services.AddSingleton<ProfileCommandRecorder>();
         serverBuilder.Services.AddZLinkFramework(options =>
         {
+            options.AddHandlersFromAssemblyOf<ChannelMessagingRuntimeTests>();
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });
         });
-        serverBuilder.Services.AddZLinkHandlersFromAssemblyContaining<ChannelMessagingRuntimeTests>();
-
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {

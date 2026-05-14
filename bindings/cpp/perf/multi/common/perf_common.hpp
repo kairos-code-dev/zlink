@@ -1144,13 +1144,14 @@ inline void print_server_queue_metrics (const std::string &lib,
 
 inline bench_multi_cpu_sample_t start_resource_probe ()
 {
-    return bench_multi_capture_cpu_sample ();
+    return bench_multi_cpu_sample_t ();
 }
 
 inline bench_multi_resource_metrics_t finish_resource_probe (
   const bench_multi_cpu_sample_t &sample_start)
 {
-    return bench_multi_finish_resource_probe (sample_start);
+    (void) sample_start;
+    return bench_multi_resource_metrics_t ();
 }
 
 inline void print_server_resource_metrics (
@@ -1208,21 +1209,6 @@ inline void print_client_result_lines (
                   latency.p95_ns,
                   latency.p99_ns);
     print_client_resource_metrics (lib, pattern, transport, size, metrics);
-}
-
-inline void print_cpu_mem_metrics (const std::string &lib,
-                                   const std::string &pattern,
-                                   const std::string &transport,
-                                   size_t size,
-                                   const std::string &role,
-                                   const bench_multi_resource_metrics_t &metrics)
-{
-    if (role == "server") {
-        print_server_resource_metrics (lib, pattern, transport, size, metrics);
-        return;
-    }
-    if (role == "client")
-        print_client_resource_metrics (lib, pattern, transport, size, metrics);
 }
 
 inline void print_ready (const std::string &endpoint)

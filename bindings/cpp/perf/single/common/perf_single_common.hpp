@@ -323,6 +323,122 @@ inline bool is_stop_token_message (const zlink::message_t &msg_)
     return is_stop_token (msg_.data (), msg_.size ());
 }
 
+inline bool send_payload_blocking (perf_socket_t &socket_,
+                                   const void *data_,
+                                   size_t size_)
+{
+    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    if (!msg.valid ())
+        return false;
+    try {
+        return ::perf::send_socket (socket_, msg, 0) == 0;
+    }
+    catch (const zlink::zlink_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
+}
+
+inline bool send_payload_blocking (perf_socket_t &socket_,
+                                   const zlink::routing_id_t &routing_id_,
+                                   const void *data_,
+                                   size_t size_)
+{
+    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    if (!msg.valid ())
+        return false;
+    try {
+        return ::perf::send_socket (socket_, routing_id_, msg, 0) == 0;
+    }
+    catch (const zlink::zlink_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
+}
+
+inline bool send_payload_blocking (zlink::pair_socket_t &socket_,
+                                   const void *data_,
+                                   size_t size_)
+{
+    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    if (!msg.valid ())
+        return false;
+    try {
+        return socket_.send ().message (msg).submit ();
+    }
+    catch (const zlink::zlink_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
+}
+
+inline bool publish_payload_blocking (zlink::pub_socket_t &publisher_,
+                                      const std::string &topic_,
+                                      const void *data_,
+                                      size_t size_)
+{
+    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    if (!msg.valid ())
+        return false;
+    try {
+        return publisher_.publish (topic_).message (msg).submit ();
+    }
+    catch (const zlink::zlink_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
+}
+
+inline bool publish_payload_blocking (zlink::service::spot_t &spot_,
+                                      const std::string &topic_,
+                                      const void *data_,
+                                      size_t size_)
+{
+    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    if (!msg.valid ())
+        return false;
+    try {
+        return spot_.publish (topic_).message (msg).submit ();
+    }
+    catch (const zlink::zlink_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
+}
+
+inline bool send_stop_token_blocking (perf_socket_t &socket_)
+{
+    return send_payload_blocking (
+      socket_, k_stop_token, std::strlen (k_stop_token));
+}
+
+inline bool send_stop_token_blocking (perf_socket_t &socket_,
+                                      const zlink::routing_id_t &routing_id_)
+{
+    return send_payload_blocking (
+      socket_, routing_id_, k_stop_token, std::strlen (k_stop_token));
+}
+
+inline bool send_stop_token_blocking (zlink::pair_socket_t &socket_)
+{
+    return send_payload_blocking (
+      socket_, k_stop_token, std::strlen (k_stop_token));
+}
+
+inline bool publish_stop_token_blocking (zlink::pub_socket_t &publisher_,
+                                         const std::string &topic_)
+{
+    return publish_payload_blocking (
+      publisher_, topic_, k_stop_token, std::strlen (k_stop_token));
+}
+
+inline bool publish_stop_token_blocking (zlink::service::spot_t &spot_,
+                                         const std::string &topic_)
+{
+    return publish_payload_blocking (
+      spot_, topic_, k_stop_token, std::strlen (k_stop_token));
+}
+
 #include "perf_single_report.hpp"
 
 } // namespace single

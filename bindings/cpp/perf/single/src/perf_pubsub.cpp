@@ -19,58 +19,6 @@ bool perf_debug_enabled ()
     return std::getenv ("PERF_DEBUG") != NULL;
 }
 
-bool send_pubsub_payload (void *userdata_, const void *data_, size_t size_)
-{
-    zlink::pub_socket_t *publisher = static_cast<zlink::pub_socket_t *> (userdata_);
-    if (!publisher)
-        return false;
-
-    zlink::message_t part = zlink::message_t::from_bytes (data_, size_);
-    if (!part.valid ())
-        return false;
-    try {
-        if (!std::move (publisher->publish (k_topic))
-               .message (part)
-               .flags (zlink::send_flags_t::dontwait)
-               .submit ()) {
-            errno = EAGAIN;
-            return false;
-        }
-        return true;
-    }
-    catch (const zlink::zlink_error_t &) {
-        return false;
-    }
-}
-
-bool send_pubsub_stop_token (zlink::pub_socket_t &publisher_)
-{
-    zlink::message_t part = zlink::message_t::from_bytes (
-      perf::single::k_stop_token,
-      std::strlen (perf::single::k_stop_token));
-    if (!part.valid ())
-        return false;
-
-    try {
-        return std::move (publisher_.publish (k_topic))
-          .message (part)
-          .submit ();
-    }
-    catch (const zlink::submit_error_t &err) {
-        const int err_no = err.internal_errno ();
-        if (err_no == EAGAIN || err_no == EWOULDBLOCK
-            || err_no == ETIMEDOUT || err_no == EINTR) {
-            errno = err_no;
-            return false;
-        }
-        errno = err_no;
-        return false;
-    }
-    catch (const zlink::zlink_error_t &) {
-        return false;
-    }
-}
-
 bool record_subscribed_payload (
   const zlink::topic_message_t &message,
   uint32_t run_id,
@@ -182,30 +130,17 @@ bool run_pattern_pubsub (const std::string &transport,
                                                     msg_size,
                                                     seq++,
                                                     perf_single_metric::now_ns ())
-                || !send_pubsub_payload (
-                  &publisher, payload.data (), payload.size ())) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK
-                    || errno == ETIMEDOUT || errno == EINTR) {
-                    continue;
-                }
+                || !perf::single::publish_payload_blocking (
+                  publisher, k_topic, payload.data (), payload.size ())) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
             sent_count.fetch_add (1, std::memory_order_relaxed);
         }
-        // PERF_SINGLE_TEST_POLICY § 1.4: publish wire-level stop token
-        // under k_topic so the subscriber observes the terminator and
-        // exits its blocking subscribe loop. Bounded retry through
-        // transient backpressure.
-        for (int retry = 0; retry < 100; ++retry) {
-            if (send_pubsub_stop_token (publisher)) {
-                break;
-            }
-            if (errno != EAGAIN && errno != EWOULDBLOCK
-                && errno != ETIMEDOUT && errno != EINTR) {
-                break;
-            }
-        }
+        // PERF_SINGLE_TEST_POLICY § 1.4: publish one wire-level blocking
+        // stop token under k_topic.
+        if (!perf::single::publish_stop_token_blocking (publisher, k_topic))
+            sender_ok.store (false, std::memory_order_release);
     });
 
     auto record_if_active = [&] (const zlink::topic_message_t &message_) {

@@ -109,10 +109,8 @@ bool run_pattern_dealer_router (const std::string &transport,
                 break;
             }
 
-            zlink::message_t msg =
-              zlink::message_t::from_bytes (payload.data (), payload.size ());
-            if (!msg.valid ()
-                || perf::send_socket (dealer.sock (), msg, 0) != 0) {
+            if (!perf::single::send_payload_blocking (
+                  dealer.sock (), payload.data (), payload.size ())) {
                 if (perf_debug_enabled ())
                     std::cerr << "dealer_router: send failed errno=" << errno
                               << std::endl;
@@ -121,25 +119,10 @@ bool run_pattern_dealer_router (const std::string &transport,
             }
             sent_count.fetch_add (1, std::memory_order_release);
         }
-        // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
-        // stop token. Blocking send retries through transient backpressure
-        // so the receiver always observes the terminator.
-        zlink::message_t stop_msg = zlink::message_t::from_bytes (
-          perf::single::k_stop_token,
-          std::strlen (perf::single::k_stop_token));
-        for (int retry = 0; retry < 100 && stop_msg.valid (); ++retry) {
-            try {
-                if (perf::send_socket (dealer.sock (), stop_msg, 0) == 0)
-                    break;
-            }
-            catch (const zlink::zlink_error_t &) {
-                break;
-            }
-            if (errno != EAGAIN && errno != EWOULDBLOCK
-                && errno != ETIMEDOUT && errno != EINTR) {
-                break;
-            }
-        }
+        // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
+        // wire-level blocking stop token.
+        if (!perf::single::send_stop_token_blocking (dealer.sock ()))
+            sender_ok.store (false, std::memory_order_release);
     });
 
     zlink::poller_t poller;

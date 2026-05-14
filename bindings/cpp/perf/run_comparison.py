@@ -63,6 +63,10 @@ ECHO_PATTERNS = {
     "SPOT_SENDSEND",
     "STREAM",
 }
+
+
+def report_callback_error(context, exc):
+    print(f"[runner-warning] {context} callback failed: {exc}", file=sys.stderr)
 SINGLE_ECHO_PATTERNS = set()
 ALLOW_MULTI = os.environ.get("PERF_ALLOW_MULTI", "0") == "1"
 SINGLE_COMPARISONS = [
@@ -494,8 +498,8 @@ def run_command_with_metrics(
     if on_process_start is not None:
         try:
             on_process_start(proc)
-        except Exception:
-            pass
+        except Exception as exc:
+            report_callback_error("process-start", exc)
     out_queue = queue.Queue()
     capture_limit = resolve_output_capture_limit()
     stdout_buffer = BoundedTextBuffer(capture_limit)
@@ -538,15 +542,15 @@ def run_command_with_metrics(
                 if on_stdout_line is not None:
                     try:
                         on_stdout_line(line)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        report_callback_error("stdout-line", exc)
             else:
                 stderr_buffer.append(line)
                 if on_stderr_line is not None:
                     try:
                         on_stderr_line(line)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        report_callback_error("stderr-line", exc)
 
     timed_out = False
 
@@ -558,8 +562,8 @@ def run_command_with_metrics(
             if on_sample is not None:
                 try:
                     on_sample(None, None)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    report_callback_error("sample", exc)
 
             if rc is not None and stream_done["stdout"] and stream_done["stderr"]:
                 break
@@ -1408,8 +1412,8 @@ def _emit_result_metric_callback(
         return
     try:
         result_line_callback(line_transport, line_size, metric_name, value)
-    except Exception:
-        pass
+    except Exception as exc:
+        report_callback_error("result-line", exc)
 
 
 def emit_result_metrics_from_line(
@@ -3002,8 +3006,8 @@ def run_sizes_test(
         if size_start_callback is not None:
             try:
                 size_start_callback(transport, size)
-            except Exception:
-                pass
+            except Exception as exc:
+                report_callback_error("size-start", exc)
         isolated = run_one_size_case(size)
         if (
             isolated.get("status") == "success"
@@ -3046,8 +3050,8 @@ def run_sizes_test(
         if size_result_callback is not None:
             try:
                 size_result_callback(transport, size, isolated)
-            except Exception:
-                pass
+            except Exception as exc:
+                report_callback_error("size-result", exc)
 
     return merged
 

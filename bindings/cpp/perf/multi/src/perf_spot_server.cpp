@@ -21,8 +21,6 @@
 #include <winsock2.h>
 #include <process.h>
 #else
-#include <climits>
-#include <poll.h>
 #include <unistd.h>
 #endif
 
@@ -38,26 +36,6 @@ bool perf_debug_enabled ()
     return std::getenv ("PERF_DEBUG") != NULL;
 }
 
-int perf_idle_wait_ms (long timeout_ms_)
-{
-#if defined(_WIN32)
-    const DWORD wait_ms = timeout_ms_ <= 0
-                            ? 0
-                            : static_cast<DWORD> (timeout_ms_);
-    ::Sleep (wait_ms);
-    return 0;
-#else
-    const int wait_ms =
-      timeout_ms_ > static_cast<long> (INT_MAX) ? INT_MAX
-                                                : static_cast<int> (timeout_ms_);
-    int rc = 0;
-    do {
-        rc = ::poll (NULL, 0, wait_ms);
-    } while (rc < 0 && errno == EINTR);
-    return rc < 0 ? -1 : 0;
-#endif
-}
-
 bool wait_for_spot_send_progress (zlink::poller_t *poller_, bool send_enabled_)
 {
     if (send_enabled_ && poller_) {
@@ -70,92 +48,6 @@ bool wait_for_spot_send_progress (zlink::poller_t *poller_, bool send_enabled_)
         }
     }
     return !send_enabled_;
-}
-
-bool wait_for_spot_control_progress ()
-{
-    return perf_idle_wait_ms (1) >= 0;
-}
-
-bool recv_raw_control_payload (zlink::service::spot_t &spot_,
-                               const char *channel_name_,
-                               std::string *payload_out_,
-                               bool *received_out_)
-{
-    if (received_out_)
-        *received_out_ = false;
-    if (payload_out_)
-        payload_out_->clear ();
-
-    try {
-        const std::optional<zlink::topic_message_t> received =
-          spot_.subscribe (ZLINK_DONTWAIT);
-        if (!received.has_value ())
-            return true;
-
-        if (received_out_)
-            *received_out_ = true;
-        (void) channel_name_;
-        if (payload_out_ && received->topic () == k_control_topic
-            && !received->parts ().empty ()) {
-            const zlink::message_t &part = received->parts ()[0];
-            payload_out_->assign (
-              static_cast<const char *> (part.data ()), part.size ());
-        }
-        return true;
-    }
-    catch (const zlink::recv_error_t &ex) {
-        const int err = ex.internal_errno () != 0 ? ex.internal_errno () : errno;
-        if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
-            || err == ETIMEDOUT) {
-            return true;
-        }
-        errno = err;
-        return false;
-    }
-}
-
-bool publish_raw_control_payload (zlink::service::spot_t &spot_,
-                                  const char *channel_name_,
-                                  const std::string &payload_,
-                                  int timeout_ms_)
-{
-    (void) channel_name_;
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (1, timeout_ms_));
-    while (std::chrono::steady_clock::now () < deadline) {
-        zlink::message_t part (payload_.size ());
-        if (!part.valid ())
-            return false;
-        if (!payload_.empty ())
-            std::memcpy (part.data (), payload_.data (), payload_.size ());
-
-        try {
-            if (spot_.publish (k_control_topic)
-                  .message (part)
-                  .submit ())
-                return true;
-        }
-        catch (const zlink::submit_error_t &err) {
-            errno = err.internal_errno ();
-        }
-        const int saved_errno = errno;
-        if (!part.valid ())
-            part.close ();
-        if (saved_errno == 0)
-            return true;
-        if (saved_errno != EAGAIN && saved_errno != EWOULDBLOCK
-            && saved_errno != ETIMEDOUT) {
-            errno = saved_errno;
-            return false;
-        }
-        if (!wait_for_spot_control_progress ())
-            return false;
-    }
-
-    errno = ETIMEDOUT;
-    return false;
 }
 
 void debug_log (const std::string &message_)
@@ -230,77 +122,6 @@ bool wait_for_control_connect (zlink::service::spot_node_t &control_node_,
     }
     std::cout << "CONTROL_CONNECTED," << endpoint << std::endl;
     return true;
-}
-
-bool parse_ready_count_command (const std::string &line_,
-                                size_t *msg_size_out_,
-                                size_t *ready_count_out_)
-{
-    return perf::multi::parse_size_count_command_line (
-      line_, "READY_COUNT,", msg_size_out_, ready_count_out_);
-}
-
-bool publish_control_message (zlink::service::spot_t &spot_,
-                              const std::string &channel_name_,
-                              const std::string &payload_,
-                              int timeout_ms_)
-{
-    (void) channel_name_;
-    return publish_raw_control_payload (
-      spot_, channel_name_.c_str (), payload_, timeout_ms_);
-}
-
-bool publish_control_start (zlink::service::spot_t &spot_,
-                            const std::string &channel_name_,
-                            size_t msg_size_,
-                            int timeout_ms_)
-{
-    return publish_control_message (
-      spot_,
-      channel_name_,
-      perf::multi::make_start_command (msg_size_),
-      timeout_ms_);
-}
-
-bool wait_for_ready_counts (zlink::service::spot_t &spot_,
-                            const std::string &channel_name_,
-                            size_t msg_size_,
-                            size_t expected_ready_count_,
-                            int timeout_ms_)
-{
-    (void) channel_name_;
-    if (msg_size_ == 0 || expected_ready_count_ == 0) {
-        errno = EINVAL;
-        return false;
-    }
-
-    size_t ready_count = 0;
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (1, timeout_ms_));
-    while (std::chrono::steady_clock::now () < deadline) {
-        bool received = false;
-        std::string payload;
-        if (!recv_raw_control_payload (
-              spot_, channel_name_.c_str (), &payload, &received))
-            return false;
-        if (received && !payload.empty ()) {
-            debug_log ("control recv payload=" + payload);
-            size_t ready_size = 0;
-            size_t increment = 0;
-            if (parse_ready_count_command (payload, &ready_size, &increment)
-                && ready_size == msg_size_) {
-                ready_count += increment;
-                if (ready_count >= expected_ready_count_)
-                    return true;
-            }
-        }
-        if (!wait_for_spot_control_progress ())
-            return false;
-    }
-
-    errno = ETIMEDOUT;
-    return false;
 }
 
 bool run_phase (zlink::service::spot_t &spot_,
@@ -530,20 +351,29 @@ bool perf_spot_server (const std::string &lib_name,
               debug_log("waiting ready count barrier size="
                         + std::to_string(current_size) + " expected="
                         + std::to_string(settings.clients));
-              return wait_for_ready_counts(
+              return perf::multi::wait_for_ready_counts(
                 control_sub,
                 control_channel_name,
+                k_control_topic,
                 current_size,
                 std::max<size_t>(1, settings.clients),
-                barrier_timeout_ms);
+                barrier_timeout_ms,
+                [](const std::string &payload,
+                   size_t *ready_size,
+                   size_t *increment) {
+                    return perf::multi::parse_size_count_command_line (
+                      payload, "READY_COUNT,", ready_size, increment);
+                },
+                perf::multi::spot_control_idle_sleep);
           },
               [&](size_t current_size) {
               const int barrier_timeout_ms =
                 resolve_spot_barrier_timeout_ms(settings, transport_);
-              return publish_control_start(control_pub,
-                                           control_channel_name,
-                                           current_size,
-                                           barrier_timeout_ms);
+              return perf::multi::publish_control_payload(
+                control_pub,
+                k_control_topic,
+                perf::multi::make_start_command(current_size),
+                barrier_timeout_ms);
           },
           [&](size_t current_size,
               perf_metric::phase_t phase,

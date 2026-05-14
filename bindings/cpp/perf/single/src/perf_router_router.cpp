@@ -191,16 +191,14 @@ bool send_router_samples (::perf::socket_t *sender_,
         if (!state_->target_rid.has_value ())
             return false;
 
-        zlink::message_t msg =
-          zlink::message_t::from_bytes (payload_->data (), payload_->size ());
-        if (!msg.valid () || sender_->send (*state_->target_rid, msg) != 0) {
+        if (!perf::single::send_payload_blocking (*sender_,
+                                                  *state_->target_rid,
+                                                  payload_->data (),
+                                                  payload_->size ())) {
             const int err = errno;
             if (perf_debug_enabled ())
                 std::cerr << "router_router: send failed errno=" << err
                           << std::endl;
-            if (err == EINTR || err == EAGAIN || err == EHOSTUNREACH
-                || err == ENOTCONN)
-                continue;
             return false;
         }
 
@@ -208,28 +206,10 @@ bool send_router_samples (::perf::socket_t *sender_,
         ++seq;
     }
 
-    // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
-    // stop token. Blocking send retries through transient backpressure
-    // so the receiver always observes the terminator.
-    zlink::message_t stop_msg = zlink::message_t::from_bytes (
-      perf::single::k_stop_token,
-      std::strlen (perf::single::k_stop_token));
-    for (int retry = 0; retry < 100 && stop_msg.valid (); ++retry) {
-        try {
-            if (sender_->send (*state_->target_rid, stop_msg, 0) == 0)
-                break;
-        }
-        catch (const zlink::zlink_error_t &) {
-            break;
-        }
-        if (errno != EAGAIN && errno != EWOULDBLOCK
-            && errno != ETIMEDOUT && errno != EINTR
-            && errno != EHOSTUNREACH && errno != ENOTCONN) {
-            break;
-        }
-    }
-
-    return true;
+    // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
+    // wire-level blocking stop token.
+    return perf::single::send_stop_token_blocking (
+      *sender_, *state_->target_rid);
 }
 
 } // namespace

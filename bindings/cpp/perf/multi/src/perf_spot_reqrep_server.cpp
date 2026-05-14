@@ -51,100 +51,6 @@ bind_data_endpoint (zlink::service::spot_node_t &node_,
       fixed_port_ > 0 ? fixed_port_ : perf::multi::bench_port_base (50000));
 }
 
-bool publish_control_payload (zlink::service::spot_t &spot_,
-                              const std::string &payload_,
-                              int timeout_ms_)
-{
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (1, timeout_ms_));
-    while (std::chrono::steady_clock::now () < deadline) {
-        zlink::message_t part (payload_.size ());
-        if (!part.valid ())
-            return false;
-        if (!payload_.empty ())
-            std::memcpy (part.data (), payload_.data (), payload_.size ());
-        try {
-            if (spot_.publish (k_control_topic)
-                  .message (part)
-                  .submit ())
-                return true;
-        }
-        catch (const zlink::submit_error_t &err) {
-            const int err_no = err.internal_errno ();
-            if (err_no != EAGAIN && err_no != EWOULDBLOCK
-                && err_no != ETIMEDOUT && err_no != EINTR) {
-                errno = err_no;
-                return false;
-            }
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
-    }
-    errno = ETIMEDOUT;
-    return false;
-}
-
-bool wait_ready_count_and_data_endpoint (
-  zlink::service::spot_t &control_sub_,
-  zlink::service::spot_node_t *data_node_,
-  size_t msg_size_,
-  size_t expected_ready_count_,
-  int timeout_ms_)
-{
-    size_t ready_count = 0;
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (1, timeout_ms_));
-    while (std::chrono::steady_clock::now () < deadline) {
-        try {
-            const std::optional<zlink::topic_message_t> received =
-              control_sub_.subscribe (ZLINK_DONTWAIT);
-            if (!received.has_value ()) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
-                continue;
-            }
-            if (received->topic () != k_control_topic
-                || received->parts ().empty ())
-                continue;
-            const zlink::message_t &part = received->parts ()[0];
-            const std::string payload (
-              static_cast<const char *> (part.data ()), part.size ());
-            std::string endpoint;
-            if (perf::multi::parse_endpoint_command_line (
-                  payload, "DATA_ENDPOINT,", &endpoint)) {
-                if (data_node_ && !endpoint.empty ()) {
-                    try {
-                        data_node_->connect_peer (endpoint);
-                    }
-                    catch (const std::exception &) {
-                        return false;
-                    }
-                }
-                continue;
-            }
-            size_t ready_size = 0;
-            size_t increment = 0;
-            if (perf::multi::parse_size_count_command_line (
-                  payload, "READY_COUNT,", &ready_size, &increment)
-                && ready_size == msg_size_) {
-                ready_count += increment;
-                if (ready_count >= expected_ready_count_)
-                    return true;
-            }
-        }
-        catch (const zlink::recv_error_t &err) {
-            const int err_no = err.internal_errno ();
-            if (err_no != EAGAIN && err_no != EWOULDBLOCK
-                && err_no != ETIMEDOUT && err_no != EINTR) {
-                errno = err_no;
-                return false;
-            }
-        }
-    }
-    errno = ETIMEDOUT;
-    return false;
-}
-
 bool stdin_stop_thread (zlink::service::spot_node_t *control_node_,
                         zlink::service::spot_node_t *data_node_,
                         zlink::service::spot_t *control_pub_,
@@ -173,9 +79,10 @@ bool stdin_stop_thread (zlink::service::spot_node_t *control_node_,
         if (perf::multi::parse_size_command_line (
               line, "START,", &start_size)) {
             if (!control_pub_ || !control_sub_
-                || !wait_ready_count_and_data_endpoint (
+                || !perf::multi::wait_ready_count_and_data_endpoint (
                   *control_sub_,
                   data_node_,
+                  k_control_topic,
                   start_size,
                   expected_ready_count_,
                   timeout_ms_)
@@ -183,8 +90,9 @@ bool stdin_stop_thread (zlink::service::spot_node_t *control_node_,
                     && data_node_
                     && !perf::multi::wait_for_spot_connected_peer_count (
                       *data_node_, 1, timeout_ms_))
-                || !publish_control_payload (
+                || !perf::multi::publish_control_payload (
                   *control_pub_,
+                  k_control_topic,
                   perf::multi::make_start_command (start_size),
                   timeout_ms_)) {
                 stop_requested_.store (true, std::memory_order_release);

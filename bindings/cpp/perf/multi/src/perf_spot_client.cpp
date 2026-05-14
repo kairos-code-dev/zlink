@@ -36,7 +36,6 @@ namespace {
 static const char *k_pattern = "MULTI_SPOT";
 static const char *k_topic = "bench";
 static const char *k_control_topic = "bench_ctl";
-static const char *k_control_service = "spot-control";
 perf::multi::start_signal_state_t g_start_gate;
 std::atomic<bool> g_control_link_ready (false);
 
@@ -82,84 +81,6 @@ int perf_idle_wait_ms (long timeout_ms_)
 bool wait_for_spot_control_progress ()
 {
     return perf_idle_wait_ms (1) >= 0;
-}
-
-bool recv_raw_control_payload (zlink::service::spot_t &spot_,
-                               const char *channel_name_,
-                               std::string *payload_out_,
-                               bool *received_out_)
-{
-    if (received_out_)
-        *received_out_ = false;
-    if (payload_out_)
-        payload_out_->clear ();
-
-    try {
-        const std::optional<zlink::topic_message_t> received =
-          spot_.subscribe (ZLINK_DONTWAIT);
-        if (!received.has_value ())
-            return true;
-
-        if (received_out_)
-            *received_out_ = true;
-        (void) channel_name_;
-        if (payload_out_ && received->topic () == k_control_topic
-            && !received->parts ().empty ()) {
-            const zlink::message_t &part = received->parts ()[0];
-            payload_out_->assign (
-              static_cast<const char *> (part.data ()), part.size ());
-        }
-        return true;
-    }
-    catch (const zlink::recv_error_t &ex) {
-        const int err = ex.internal_errno () != 0 ? ex.internal_errno () : errno;
-        if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
-            || err == ETIMEDOUT) {
-            return true;
-        }
-        errno = err;
-        return false;
-    }
-}
-
-bool publish_raw_control_payload (zlink::service::spot_t &spot_,
-                                  const char *channel_name_,
-                                  const std::string &payload_,
-                                  int timeout_ms_)
-{
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (1, timeout_ms_));
-    while (std::chrono::steady_clock::now () < deadline) {
-        zlink::message_t part (payload_.size ());
-        if (!part.valid ())
-            return false;
-        if (!payload_.empty ())
-            std::memcpy (part.data (), payload_.data (), payload_.size ());
-
-        try {
-            if (spot_.publish (k_control_topic)
-                  .message (part)
-                  .submit ())
-                return true;
-        }
-        catch (const zlink::submit_error_t &err) {
-            errno = err.internal_errno ();
-        }
-        const int saved_errno = errno;
-        if (saved_errno == 0)
-            return true;
-        if (saved_errno != EAGAIN && saved_errno != EWOULDBLOCK
-            && saved_errno != ETIMEDOUT) {
-            errno = saved_errno;
-            return false;
-        }
-        if (!wait_for_spot_control_progress ())
-            return false;
-    }
-
-    errno = ETIMEDOUT;
-    return false;
 }
 
 int resolve_spot_ready_settle_ms ()
@@ -276,12 +197,6 @@ bool wait_for_control_link_ready (int timeout_ms_)
     return false;
 }
 
-bool parse_control_start (const std::string &payload_, size_t *msg_size_out_)
-{
-    return perf::multi::parse_size_command_line (
-      payload_, "START,", msg_size_out_);
-}
-
 bool wait_for_spot_settle_ms (int settle_ms_)
 {
     if (settle_ms_ <= 0)
@@ -291,7 +206,6 @@ bool wait_for_spot_settle_ms (int settle_ms_)
 }
 
 bool publish_control_ready_count (zlink::service::spot_t &control_spot_,
-                                  const std::string &control_channel_name_,
                                   size_t msg_size_,
                                   size_t ready_count_,
                                   int timeout_ms_)
@@ -303,8 +217,8 @@ bool publish_control_ready_count (zlink::service::spot_t &control_spot_,
 
     const std::string payload =
       perf::multi::make_ready_count_command (msg_size_, ready_count_);
-    return publish_raw_control_payload (
-      control_spot_, control_channel_name_.c_str (), payload, timeout_ms_);
+    return perf::multi::publish_control_payload (
+      control_spot_, k_control_topic, payload, timeout_ms_);
 }
 
 struct client_slot_t
@@ -420,7 +334,6 @@ class spot_client_bench_t
                         + " count=" + std::to_string(_slots.size()));
               if (!publish_control_ready_count(
                     *_control_pub,
-                    _control_channel_name,
                     msg_size,
                     _slots.size(),
                     timeout_ms)) {
@@ -500,7 +413,6 @@ class spot_client_bench_t
           std::chrono::milliseconds (control_timeout_ms));
         _control_sub->set_subscription (k_control_topic);
 
-        _control_channel_name = k_control_service;
         if (!perf::multi::recalculate_auto_hwm (_ctx))
             return false;
         const size_t snapshot_msg_size =
@@ -558,36 +470,11 @@ class spot_client_bench_t
 
     bool wait_for_control_start (int timeout_ms_)
     {
-        const auto deadline = std::chrono::steady_clock::now ()
-                              + std::chrono::milliseconds (
-                                std::max (1, timeout_ms_));
-        while (std::chrono::steady_clock::now () < deadline) {
-            if (_active_start_ns.load (std::memory_order_acquire) != 0)
-                return true;
-
-            bool received = false;
-            std::string payload;
-            if (!recv_raw_control_payload (
-                  *_control_sub,
-                  _control_channel_name.c_str (),
-                  &payload,
-                  &received))
-                return false;
-            if (!received) {
-                if (!wait_for_spot_control_progress ())
-                    return false;
-                continue;
-            }
-            size_t start_size = 0;
-            if (parse_control_start (payload, &start_size)
-                && start_size == _msg_size) {
-                return true;
-            }
-        }
-
-        errno = ETIMEDOUT;
-        debug_log ("control start timed out");
-        return false;
+        const bool ok = perf::multi::wait_for_control_start (
+          *_control_sub, k_control_topic, _msg_size, timeout_ms_);
+        if (!ok)
+            debug_log ("control start timed out");
+        return ok;
     }
 
     bool run_active ()
@@ -915,7 +802,6 @@ class spot_client_bench_t
     std::unique_ptr<zlink::service::spot_t> _control_pub;
     std::unique_ptr<zlink::service::spot_t> _control_sub;
     std::unique_ptr<zlink::service::spot_node_t> _data_node;
-    std::string _control_channel_name;
     std::vector<std::unique_ptr<client_slot_t> > _slots;
     std::vector<recv_worker_t> _recv_workers;
     std::string _server_endpoint;

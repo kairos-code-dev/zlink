@@ -9,17 +9,6 @@
 
 namespace {
 
-bool send_single_part (void *userdata_, const void *data_, size_t size_)
-{
-    ::perf::socket_t *socket = static_cast<::perf::socket_t *> (userdata_);
-    if (!socket)
-        return false;
-
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
-    return msg.valid ()
-           && perf::send_socket (*socket, msg, ZLINK_DONTWAIT) == 0;
-}
-
 bool record_dealer_payload (const zlink::received_t &received,
                             uint32_t run_id,
                             size_t msg_size,
@@ -127,32 +116,17 @@ bool run_pattern_dealer_dealer (const std::string &transport,
                                                     msg_size,
                                                     seq++,
                                                     perf_single_metric::now_ns ())
-                || !send_single_part (
-                  &conn_socket.sock (), payload.data (), payload.size ())) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK
-                    || errno == ETIMEDOUT || errno == EINTR) {
-                    continue;
-                }
+                || !perf::single::send_payload_blocking (
+                  conn_socket.sock (), payload.data (), payload.size ())) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
             sent_count.fetch_add (1, std::memory_order_release);
         }
-        // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
-        // stop token. Blocking send retries through transient backpressure
-        // so the receiver always observes the terminator.
-        zlink::message_t stop_msg = zlink::message_t::from_bytes (
-          perf::single::k_stop_token,
-          std::strlen (perf::single::k_stop_token));
-        for (int retry = 0; retry < 100 && stop_msg.valid (); ++retry) {
-            try {
-                if (perf::send_socket (conn_socket.sock (), stop_msg, 0) == 0)
-                    break;
-            }
-            catch (const zlink::zlink_error_t &) {
-                break;
-            }
-        }
+        // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
+        // wire-level blocking stop token.
+        if (!perf::single::send_stop_token_blocking (conn_socket.sock ()))
+            sender_ok.store (false, std::memory_order_release);
     });
 
     zlink::poller_t poller;

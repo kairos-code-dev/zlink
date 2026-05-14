@@ -15,34 +15,6 @@ bool perf_debug_enabled ()
     return std::getenv ("PERF_DEBUG") != NULL;
 }
 
-bool send_single_part (void *userdata_,
-                       const void *data_,
-                       size_t size_,
-                       int flags_)
-{
-    zlink::pair_socket_t *socket = static_cast<zlink::pair_socket_t *> (userdata_);
-    if (!socket)
-        return false;
-
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
-    if (!msg.valid ())
-        return false;
-    try {
-        if (!socket->send ()
-               .message (msg)
-               .flags (flags_)
-               .submit ()) {
-            errno = EAGAIN;
-            return false;
-        }
-        return true;
-    }
-    catch (const zlink::zlink_error_t &err) {
-        errno = err.internal_errno ();
-        return false;
-    }
-}
-
 int recv_pair_payload (zlink::pair_socket_t &socket_,
                        zlink::received_t &received_,
                        zlink::recv_flags_t flags_)
@@ -242,36 +214,16 @@ bool run_pattern_pair (const std::string &transport,
                                                     msg_size,
                                                     seq++,
                                                     perf_single_metric::now_ns ())
-                || !send_single_part (
-                  &conn_socket, payload.data (), payload.size (), ZLINK_DONTWAIT)) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK
-                    || errno == ETIMEDOUT || errno == EINTR) {
-                    continue;
-                }
+                || !perf::single::send_payload_blocking (
+                  conn_socket, payload.data (), payload.size ())) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
             sent_count.fetch_add (1, std::memory_order_release);
         }
-        // PERF_SINGLE_TEST_POLICY § 1.4: send wire-level stop token to
-        // wake the receiver out of recv. Bounded retry through transient
-        // backpressure so the terminator always reaches the peer.
-        bool stop_sent = false;
-        for (int retry = 0; retry < 100; ++retry) {
-            if (send_single_part (&conn_socket,
-                                  perf::single::k_stop_token,
-                                  std::strlen (perf::single::k_stop_token),
-                                  0)) {
-                stop_sent = true;
-                break;
-            }
-            if (errno != EAGAIN && errno != EWOULDBLOCK
-                && errno != ETIMEDOUT && errno != EINTR) {
-                sender_ok.store (false, std::memory_order_release);
-                break;
-            }
-        }
-        if (!stop_sent)
+        // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
+        // wire-level blocking stop token.
+        if (!perf::single::send_stop_token_blocking (conn_socket))
             sender_ok.store (false, std::memory_order_release);
     });
 

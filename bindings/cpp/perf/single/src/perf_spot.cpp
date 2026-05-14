@@ -84,65 +84,10 @@ bool header_matches_active_run (const spot_recv_state_t &state_,
 
 bool send_spot_payload (zlink::service::spot_t &spot_,
                         const void *data_,
-                        size_t size_,
-                        bool *sent_out_)
+                        size_t size_)
 {
-    if (sent_out_)
-        *sent_out_ = false;
-
-    zlink::message_t part = zlink::message_t::from_bytes (data_, size_);
-    if (!part.valid ())
-        return false;
-
-    try {
-        const bool sent =
-          spot_.publish (k_topic)
-            .message (part)
-            .flags (ZLINK_DONTWAIT)
-            .submit ();
-        if (sent_out_)
-            *sent_out_ = sent;
-        return true;
-    }
-    catch (const zlink::submit_error_t &err) {
-        if (err.result () == zlink::submit_result_t::backpressured
-            || err.result () == zlink::submit_result_t::not_connected
-            || err.result () == zlink::submit_result_t::not_found) {
-            return true;
-        }
-        return false;
-    }
-    catch (const std::exception &) {
-        return false;
-    }
-}
-
-// Blocking variant used to publish the wire-level stop token at phase
-// end (PERF_SINGLE_TEST_POLICY § 1.4). Returns true on successful
-// submit, false on transient backpressure (caller retries) or fatal
-// error.
-bool send_spot_stop_token (zlink::service::spot_t &spot_)
-{
-    zlink::message_t part = zlink::message_t::from_bytes (
-      perf::single::k_stop_token,
-      std::strlen (perf::single::k_stop_token));
-    if (!part.valid ())
-        return false;
-
-    try {
-        return spot_.publish (k_topic).message (part).submit ();
-    }
-    catch (const zlink::submit_error_t &err) {
-        if (err.result () == zlink::submit_result_t::backpressured
-            || err.result () == zlink::submit_result_t::not_connected
-            || err.result () == zlink::submit_result_t::not_found) {
-            return false;
-        }
-        return false;
-    }
-    catch (const std::exception &) {
-        return false;
-    }
+    return perf::single::publish_payload_blocking (
+      spot_, k_topic, data_, size_);
 }
 
 bool stamp_and_publish (zlink::service::spot_t &spot_,
@@ -153,15 +98,21 @@ bool stamp_and_publish (zlink::service::spot_t &spot_,
                         perf_single_metric::phase_t phase_,
                         bool *sent_out_)
 {
-    return perf_single_metric::stamp_payload (payload_.data (),
-                                              payload_.size (),
-                                              run_id_,
-                                              phase_,
-                                              msg_size_,
-                                              seq_,
-                                              perf_single_metric::now_ns ())
-           && send_spot_payload (
-             spot_, payload_.data (), payload_.size (), sent_out_);
+    if (sent_out_)
+        *sent_out_ = false;
+    const bool ok = perf_single_metric::stamp_payload (
+                      payload_.data (),
+                      payload_.size (),
+                      run_id_,
+                      phase_,
+                      msg_size_,
+                      seq_,
+                      perf_single_metric::now_ns ())
+                    && send_spot_payload (
+                      spot_, payload_.data (), payload_.size ());
+    if (sent_out_)
+        *sent_out_ = ok;
+    return ok;
 }
 
 bool decode_spot_header (const zlink::topic_message_t &message_,
@@ -467,18 +418,12 @@ bool run_pattern_spot (const std::string &transport,
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
-            if (!sent)
-                continue;
             ++seq;
         }
-        // PERF_SINGLE_TEST_POLICY § 1.4: publish wire-level stop token
-        // under k_topic so the subscriber wakes out of blocking
-        // subscribe and exits. Bounded retry through transient
-        // backpressure.
-        for (int retry = 0; retry < 100; ++retry) {
-            if (send_spot_stop_token (stop_spot))
-                break;
-        }
+        // PERF_SINGLE_TEST_POLICY § 1.4: publish one wire-level blocking
+        // stop token under k_topic.
+        if (!perf::single::publish_stop_token_blocking (stop_spot, k_topic))
+            sender_ok.store (false, std::memory_order_release);
     });
 
     sender_thread.join ();

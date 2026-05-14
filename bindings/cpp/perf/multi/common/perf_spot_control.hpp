@@ -76,6 +76,8 @@ inline bool wait_for_spot_connected_peer_count (SpotNode &node_,
                                                 size_t expected_count_,
                                                 int timeout_ms_)
 {
+    // This is only a local mesh-link stabilization check. Benchmark readiness
+    // must still come from explicit DATA_ENDPOINT/READY_COUNT/START messages.
     if (expected_count_ == 0)
         return true;
 
@@ -418,6 +420,7 @@ inline bool publish_control_message (SpotHandle &spot_,
                                      int timeout_ms_,
                                      WaitFn wait_fn_)
 {
+    (void) channel_name_;
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (
                             std::max (1, timeout_ms_));
@@ -446,6 +449,129 @@ inline bool publish_control_message (SpotHandle &spot_,
     return false;
 }
 
+inline bool spot_control_idle_sleep ()
+{
+    std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    return true;
+}
+
+template<typename SpotHandle>
+inline bool publish_control_payload (SpotHandle &spot_,
+                                     const std::string &topic_,
+                                     const std::string &payload_,
+                                     int timeout_ms_)
+{
+    return publish_control_message (
+      spot_, std::string (), topic_, payload_, timeout_ms_,
+      spot_control_idle_sleep);
+}
+
+template<typename SpotHandle>
+inline bool wait_for_control_start (SpotHandle &spot_,
+                                    const std::string &topic_,
+                                    size_t msg_size_,
+                                    int timeout_ms_)
+{
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (
+                            std::max (1, timeout_ms_));
+    while (std::chrono::steady_clock::now () < deadline) {
+        try {
+            const std::optional<zlink::topic_message_t> received =
+              try_subscribe_nowait (spot_);
+            if (!received) {
+                if (!spot_control_idle_sleep ())
+                    return false;
+                continue;
+            }
+            if (received->topic () != topic_ || received->parts ().empty ())
+                continue;
+
+            const zlink::message_t &part = received->parts ()[0];
+            const std::string payload (
+              static_cast<const char *> (part.data ()), part.size ());
+            size_t start_size = 0;
+            if (parse_size_command_line (payload, "START,", &start_size)
+                && start_size == msg_size_)
+                return true;
+        }
+        catch (const zlink::recv_error_t &err) {
+            const int err_no = err.internal_errno ();
+            if (err_no != EAGAIN && err_no != EWOULDBLOCK
+                && err_no != ETIMEDOUT && err_no != EINTR) {
+                errno = err_no;
+                return false;
+            }
+        }
+    }
+    errno = ETIMEDOUT;
+    return false;
+}
+
+template<typename SpotHandle, typename SpotNode>
+inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
+                                                SpotNode *data_node_,
+                                                const std::string &topic_,
+                                                size_t msg_size_,
+                                                size_t expected_ready_count_,
+                                                int timeout_ms_)
+{
+    size_t ready_count = 0;
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (
+                            std::max (1, timeout_ms_));
+    while (std::chrono::steady_clock::now () < deadline) {
+        try {
+            const std::optional<zlink::topic_message_t> received =
+              try_subscribe_nowait (control_sub_);
+            if (!received) {
+                if (!spot_control_idle_sleep ())
+                    return false;
+                continue;
+            }
+            if (received->topic () != topic_ || received->parts ().empty ())
+                continue;
+
+            const zlink::message_t &part = received->parts ()[0];
+            const std::string payload (
+              static_cast<const char *> (part.data ()), part.size ());
+            std::string endpoint;
+            if (parse_endpoint_command_line (
+                  payload, "DATA_ENDPOINT,", &endpoint)) {
+                if (data_node_ && !endpoint.empty ()) {
+                    try {
+                        data_node_->connect_peer (endpoint);
+                    }
+                    catch (const std::exception &) {
+                        return false;
+                    }
+                }
+                continue;
+            }
+
+            size_t ready_size = 0;
+            size_t increment = 0;
+            if (parse_size_count_command_line (
+                  payload, "READY_COUNT,", &ready_size, &increment)
+                && ready_size == msg_size_) {
+                ready_count += increment;
+                if (ready_count >= expected_ready_count_)
+                    return true;
+            }
+        }
+        catch (const zlink::recv_error_t &err) {
+            const int err_no = err.internal_errno ();
+            if (err_no != EAGAIN && err_no != EWOULDBLOCK
+                && err_no != ETIMEDOUT && err_no != EINTR) {
+                errno = err_no;
+                return false;
+            }
+        }
+    }
+    errno = ETIMEDOUT;
+    return false;
+}
+
 template<typename SpotHandle, typename ParseFn, typename IdleFn>
 inline bool wait_for_ready_counts (SpotHandle &spot_,
                                    const std::string &channel_name_,
@@ -456,6 +582,7 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
                                    ParseFn parse_fn_,
                                    IdleFn idle_fn_)
 {
+    (void) channel_name_;
     if (expected_ready_count_ == 0)
         return true;
 

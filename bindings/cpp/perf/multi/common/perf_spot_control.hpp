@@ -15,6 +15,8 @@
 #include <string>
 #include <thread>
 
+#include <zlink/poller.hpp>
+
 #if defined(_WIN32)
 #include <process.h>
 #else
@@ -69,36 +71,6 @@ inline bool apply_spot_node_admission_hwm (SpotNode &node_,
         errno = err.internal_errno ();
         return false;
     }
-}
-
-template<typename SpotNode>
-inline bool wait_for_spot_connected_peer_count (SpotNode &node_,
-                                                size_t expected_count_,
-                                                int timeout_ms_)
-{
-    // This is only a local mesh-link stabilization check. Benchmark readiness
-    // must still come from explicit DATA_ENDPOINT/READY_COUNT/START messages.
-    if (expected_count_ == 0)
-        return true;
-
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (std::max (1, timeout_ms_));
-    while (std::chrono::steady_clock::now () < deadline) {
-        try {
-            const zlink::spot_node_status_t status =
-              node_.status_snapshot ();
-            if (status.connected_peer_count () >= expected_count_)
-                return true;
-        }
-        catch (const zlink::config_error_t &err) {
-            errno = err.internal_errno ();
-            return false;
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
-    }
-    errno = ETIMEDOUT;
-    return false;
 }
 
 struct control_connect_gate_t
@@ -186,6 +158,51 @@ try_subscribe_nowait (SpotHandle &spot_)
     if (!message.has_value ())
         return std::nullopt;
     return std::optional<zlink::topic_message_t> (std::move (*message));
+}
+
+template<typename Clock, typename Duration>
+inline std::chrono::milliseconds remaining_milliseconds_until (
+  const std::chrono::time_point<Clock, Duration> &deadline_)
+{
+    const auto now = Clock::now ();
+    if (now >= deadline_)
+        return std::chrono::milliseconds (0);
+    return std::chrono::duration_cast<std::chrono::milliseconds> (
+      deadline_ - now);
+}
+
+template<typename SpotHandle, typename Clock, typename Duration>
+inline bool wait_for_spot_control_event (
+  SpotHandle &spot_,
+  zlink::poll_event_flag_t event_,
+  const std::chrono::time_point<Clock, Duration> &deadline_)
+{
+    const std::chrono::milliseconds remaining =
+      remaining_milliseconds_until (deadline_);
+    if (remaining.count () <= 0) {
+        errno = ETIMEDOUT;
+        return false;
+    }
+
+    try {
+        zlink::poller_t poller;
+        poller.add (spot_, event_);
+        const std::optional<zlink::poll_event_t> event =
+          poller.wait (remaining);
+        if (!event.has_value ()) {
+            errno = ETIMEDOUT;
+            return false;
+        }
+        return true;
+    }
+    catch (const zlink::recv_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
+    catch (const zlink::config_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
 }
 
 inline void start_client_start_watcher (start_signal_state_t *start_gate_)
@@ -412,13 +429,12 @@ inline bool wait_for_control_connect (control_connect_gate_t *gate_,
     return true;
 }
 
-template<typename SpotHandle, typename WaitFn>
+template<typename SpotHandle>
 inline bool publish_control_message (SpotHandle &spot_,
                                      const std::string &channel_name_,
                                      const std::string &topic_,
                                      const std::string &payload_,
-                                     int timeout_ms_,
-                                     WaitFn wait_fn_)
+                                     int timeout_ms_)
 {
     (void) channel_name_;
     const auto deadline = std::chrono::steady_clock::now ()
@@ -441,18 +457,13 @@ inline bool publish_control_message (SpotHandle &spot_,
             errno = EFAULT;
             return false;
         }
-        if (!wait_fn_ ())
+        if (!wait_for_spot_control_event (
+              spot_, zlink::poll_event_flag_t::pollout, deadline))
             return false;
     }
 
     errno = ETIMEDOUT;
     return false;
-}
-
-inline bool spot_control_idle_sleep ()
-{
-    std::this_thread::sleep_for (std::chrono::milliseconds (1));
-    return true;
 }
 
 template<typename SpotHandle>
@@ -462,8 +473,7 @@ inline bool publish_control_payload (SpotHandle &spot_,
                                      int timeout_ms_)
 {
     return publish_control_message (
-      spot_, std::string (), topic_, payload_, timeout_ms_,
-      spot_control_idle_sleep);
+      spot_, std::string (), topic_, payload_, timeout_ms_);
 }
 
 template<typename SpotHandle>
@@ -480,7 +490,8 @@ inline bool wait_for_control_start (SpotHandle &spot_,
             const std::optional<zlink::topic_message_t> received =
               try_subscribe_nowait (spot_);
             if (!received) {
-                if (!spot_control_idle_sleep ())
+                if (!wait_for_spot_control_event (
+                      spot_, zlink::poll_event_flag_t::pollin, deadline))
                     return false;
                 continue;
             }
@@ -525,7 +536,8 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
             const std::optional<zlink::topic_message_t> received =
               try_subscribe_nowait (control_sub_);
             if (!received) {
-                if (!spot_control_idle_sleep ())
+                if (!wait_for_spot_control_event (
+                      control_sub_, zlink::poll_event_flag_t::pollin, deadline))
                     return false;
                 continue;
             }
@@ -572,15 +584,14 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
     return false;
 }
 
-template<typename SpotHandle, typename ParseFn, typename IdleFn>
+template<typename SpotHandle, typename ParseFn>
 inline bool wait_for_ready_counts (SpotHandle &spot_,
                                    const std::string &channel_name_,
                                    const std::string &topic_,
                                    size_t msg_size_,
                                    size_t expected_ready_count_,
                                    int timeout_ms_,
-                                   ParseFn parse_fn_,
-                                   IdleFn idle_fn_)
+                                   ParseFn parse_fn_)
 {
     (void) channel_name_;
     if (expected_ready_count_ == 0)
@@ -594,7 +605,8 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
         const std::optional<zlink::topic_message_t> maybe_received =
           try_subscribe_nowait (spot_);
         if (!maybe_received) {
-            if (!idle_fn_ ())
+            if (!wait_for_spot_control_event (
+                  spot_, zlink::poll_event_flag_t::pollin, deadline))
                 return false;
             continue;
         }

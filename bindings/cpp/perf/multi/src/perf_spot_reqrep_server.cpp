@@ -86,10 +86,6 @@ bool stdin_stop_thread (zlink::service::spot_node_t *control_node_,
                   start_size,
                   expected_ready_count_,
                   timeout_ms_)
-                || (std::getenv ("ZLINK_ENABLE_SPOT_DIRECT_ROUTE") == NULL
-                    && data_node_
-                    && !perf::multi::wait_for_spot_connected_peer_count (
-                      *data_node_, 1, timeout_ms_))
                 || !perf::multi::publish_control_payload (
                   *control_pub_,
                   k_control_topic,
@@ -187,8 +183,6 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
     perf::multi::emit_spot_node_auto_hwm_snapshot (data_node, transport, 64);
     perf::multi::emit_spot_node_auto_hwm_snapshot (control_node, transport, 64);
 
-    const bench_multi_cpu_sample_t resource_probe_start =
-      perf::multi::start_resource_probe ();
     perf::multi::print_ready (endpoint);
     std::cout << "CONTROL_READY," << control_endpoint << std::endl;
 
@@ -283,16 +277,6 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
     if (stop_thread.joinable ())
         stop_thread.join ();
 
-    const bench_multi_resource_metrics_t resource_metrics =
-      perf::multi::finish_resource_probe (resource_probe_start);
-    perf::multi::print_server_resource_metrics (
-      lib_name, k_pattern, transport, msg_size, resource_metrics);
-    perf::multi::print_server_queue_metrics (
-      lib_name,
-      k_pattern,
-      transport,
-      msg_size,
-      perf::multi::server_queue_stats_t ());
     return !failed.load (std::memory_order_acquire);
 }
 

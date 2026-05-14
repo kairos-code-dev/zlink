@@ -140,7 +140,6 @@ class router_router_client_bench_t
         }
 
         bool ok = true;
-        _resource_probe_start = perf::multi::start_resource_probe ();
         if (!run_phase (perf_metric::phase_active,
                         _phase_cfg.active_seconds,
                         &_result.active_count,
@@ -155,8 +154,6 @@ class router_router_client_bench_t
             ok = false;
         }
 
-        _resource_metrics =
-          perf::multi::finish_resource_probe (_resource_probe_start);
         if (ok)
             print_result ();
         send_stop_token ();
@@ -564,8 +561,7 @@ class router_router_client_bench_t
           _result.active_count,
           _phase_cfg.active_seconds,
           2.0,
-          _result.latency,
-          _resource_metrics);
+          _result.latency);
     }
 
     void send_stop_token ()
@@ -614,8 +610,6 @@ class router_router_client_bench_t
 
     phase_config_t _phase_cfg;
     bench_result_t _result;
-    bench_multi_cpu_sample_t _resource_probe_start;
-    bench_multi_resource_metrics_t _resource_metrics;
 };
 
 } // namespace

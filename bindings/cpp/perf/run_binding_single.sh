@@ -740,10 +740,6 @@ fi
 if [[ "${FULL_MATRIX_REQUEST}" -eq 1 ]]; then
   RUN_ENV+=(PERF_FULL_MATRIX=1)
 fi
-if [[ -n "${PERF_DISABLE_RESOURCE_METRICS:-}" ]]; then
-  RUN_ENV+=(PERF_DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS}")
-fi
-
 value_or_default() {
   local value="${1:-}"
   local fallback="${2:-}"

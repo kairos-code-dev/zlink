@@ -67,6 +67,12 @@ ECHO_PATTERNS = {
 
 def report_callback_error(context, exc):
     print(f"[runner-warning] {context} callback failed: {exc}", file=sys.stderr)
+
+
+def report_runner_warning(context, exc):
+    print(f"[runner-warning] {context} failed: {exc}", file=sys.stderr)
+
+
 SINGLE_ECHO_PATTERNS = set()
 ALLOW_MULTI = os.environ.get("PERF_ALLOW_MULTI", "0") == "1"
 SINGLE_COMPARISONS = [
@@ -510,8 +516,8 @@ def run_command_with_metrics(
         try:
             for line in iter(pipe.readline, ""):
                 out_queue.put((stream_name, line))
-        except Exception:
-            pass
+        except Exception as exc:
+            report_runner_warning(f"{stream_name}-reader", exc)
         finally:
             out_queue.put((stream_name, None))
 
@@ -582,16 +588,16 @@ def run_command_with_metrics(
         for t in reader_threads:
             try:
                 t.join(timeout=1.0)
-            except Exception:
-                pass
+            except Exception as exc:
+                report_runner_warning("reader-thread-join", exc)
         _drain_output_queue(block_timeout=0.01)
     finally:
         if proc.poll() is None:
             proc.kill()
             try:
                 proc.wait(timeout=1.0)
-            except subprocess.TimeoutExpired:
-                pass
+            except subprocess.TimeoutExpired as exc:
+                report_runner_warning("process-kill-wait", exc)
 
     return {
         "returncode": proc.returncode,
@@ -1631,8 +1637,8 @@ def _pipe_reader(pipe, stream_name, out_queue):
     try:
         for line in iter(pipe.readline, ""):
             out_queue.put((stream_name, line))
-    except Exception:
-        pass
+    except Exception as exc:
+        report_runner_warning(f"{stream_name}-pipe-reader", exc)
     finally:
         out_queue.put((stream_name, None))
 
@@ -1901,8 +1907,8 @@ def run_sizes_test_stream_shared(
                 if client_proc[0] and client_proc[0].stdin:
                     client_proc[0].stdin.write(line)
                     client_proc[0].stdin.flush()
-            except Exception:
-                pass
+            except Exception as exc:
+                report_runner_warning("forward-control-connected", exc)
         emit_result_metrics_from_line(
             line, transport, expected_sizes, result_line_callback
         )
@@ -1917,14 +1923,14 @@ def run_sizes_test_stream_shared(
                     try:
                         server_proc.stdin.write("STOP\n")
                         server_proc.stdin.flush()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        report_runner_warning("server-stop-write", exc)
                     try:
                         server_proc.stdin.close()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                    except Exception as exc:
+                        report_runner_warning("server-stdin-close", exc)
+            except Exception as exc:
+                report_runner_warning("server-stop", exc)
             wait_sec = shutdown_timeout_ms / 1000.0
             if wait_sec <= 0:
                 wait_sec = 0.1
@@ -1933,26 +1939,27 @@ def run_sizes_test_stream_shared(
             except subprocess.TimeoutExpired:
                 try:
                     server_proc.terminate()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    report_runner_warning("server-terminate", exc)
                 try:
                     server_proc.wait(timeout=max(1.0, wait_sec))
-                except Exception:
+                except Exception as exc:
+                    report_runner_warning("server-terminate-wait", exc)
                     try:
                         server_proc.kill()
-                    except Exception:
-                        pass
+                    except Exception as kill_exc:
+                        report_runner_warning("server-kill", kill_exc)
                     try:
                         server_proc.wait(timeout=2)
-                    except Exception:
-                        pass
+                    except Exception as wait_exc:
+                        report_runner_warning("server-kill-wait", wait_exc)
 
     def drain_server_output():
         for t in reader_threads:
             try:
                 t.join(timeout=1.0)
-            except Exception:
-                pass
+            except Exception as exc:
+                report_runner_warning("reader-thread-join", exc)
 
         while True:
             try:
@@ -2107,8 +2114,8 @@ def run_sizes_test_stream_shared(
                 if sent_to_client:
                     pending_ready_sizes.discard(size_value)
                     flush_pending_phase_active()
-            except Exception:
-                pass
+            except Exception as exc:
+                report_runner_warning("send-size-start", exc)
 
         def wait_for_control_connected_forward(timeout_ms):
             if not use_control_plane or control_connected[0]:
@@ -2142,8 +2149,8 @@ def run_sizes_test_stream_shared(
                             f"CONNECT_CONTROL,{client_endpoint}\n"
                         )
                         server_proc.stdin.flush()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    report_runner_warning("send-connect-control", exc)
                 if not wait_for_control_connected_forward(ready_timeout_ms):
                     try:
                         if client_proc[0] and client_proc[0].stdin:
@@ -2152,8 +2159,8 @@ def run_sizes_test_stream_shared(
                             )
                             client_proc[0].stdin.flush()
                             control_connected[0] = True
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        report_runner_warning("fallback-control-connected", exc)
                 return
             ready_size = parse_client_ready_size(line)
             if ready_size is not None:
@@ -2463,8 +2470,8 @@ def run_sizes_test_split(
                 if client_proc[0] and client_proc[0].stdin:
                     client_proc[0].stdin.write(line)
                     client_proc[0].stdin.flush()
-            except Exception:
-                pass
+            except Exception as exc:
+                report_runner_warning("forward-control-connected", exc)
         emit_result_metrics_from_line(
             line, transport, expected_sizes, result_line_callback
         )
@@ -2479,14 +2486,14 @@ def run_sizes_test_split(
                     try:
                         server_proc.stdin.write("STOP\n")
                         server_proc.stdin.flush()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        report_runner_warning("server-stop-write", exc)
                     try:
                         server_proc.stdin.close()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                    except Exception as exc:
+                        report_runner_warning("server-stdin-close", exc)
+            except Exception as exc:
+                report_runner_warning("server-stop", exc)
             wait_sec = shutdown_timeout_ms / 1000.0
             if wait_sec <= 0:
                 wait_sec = 0.1
@@ -2495,26 +2502,27 @@ def run_sizes_test_split(
             except subprocess.TimeoutExpired:
                 try:
                     server_proc.terminate()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    report_runner_warning("server-terminate", exc)
                 try:
                     server_proc.wait(timeout=max(1.0, wait_sec))
-                except Exception:
+                except Exception as exc:
+                    report_runner_warning("server-terminate-wait", exc)
                     try:
                         server_proc.kill()
-                    except Exception:
-                        pass
+                    except Exception as kill_exc:
+                        report_runner_warning("server-kill", kill_exc)
                     try:
                         server_proc.wait(timeout=2)
-                    except Exception:
-                        pass
+                    except Exception as wait_exc:
+                        report_runner_warning("server-kill-wait", wait_exc)
 
     def drain_server_output():
         for t in reader_threads:
             try:
                 t.join(timeout=1.0)
-            except Exception:
-                pass
+            except Exception as exc:
+                report_runner_warning("reader-thread-join", exc)
 
         while True:
             try:
@@ -2669,8 +2677,8 @@ def run_sizes_test_split(
                 if sent_to_client:
                     pending_ready_sizes.discard(size_value)
                     flush_pending_phase_active()
-            except Exception:
-                pass
+            except Exception as exc:
+                report_runner_warning("send-size-start", exc)
 
         def wait_for_control_connected_forward(timeout_ms):
             if not use_control_plane or control_connected[0]:
@@ -2704,8 +2712,8 @@ def run_sizes_test_split(
                             f"CONNECT_CONTROL,{client_endpoint}\n"
                         )
                         server_proc.stdin.flush()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    report_runner_warning("send-connect-control", exc)
                 if not wait_for_control_connected_forward(ready_timeout_ms):
                     try:
                         if client_proc[0] and client_proc[0].stdin:
@@ -2714,8 +2722,8 @@ def run_sizes_test_split(
                             )
                             client_proc[0].stdin.flush()
                             control_connected[0] = True
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        report_runner_warning("fallback-control-connected", exc)
                 return
             ready_size = parse_client_ready_size(line)
             if ready_size is not None:
@@ -2734,8 +2742,8 @@ def run_sizes_test_split(
                             server_proc.stdin.write("STOP\n")
                             server_proc.stdin.flush()
                             stop_requested_sizes.add(done_size)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        report_runner_warning("send-stop-after-done", exc)
                 return
             emit_result_metrics_from_line(
                 line, transport, expected_sizes, result_line_callback
@@ -2980,18 +2988,6 @@ def run_sizes_test(
                 result_line_callback=result_line_callback,
             )
 
-        def run_one_size_case_with_env(case_size, extra_env):
-            return run_sizes_test_split(
-                names["server"],
-                names["client"],
-                lib_name,
-                transport,
-                [case_size],
-                pattern_name,
-                result_line_callback=None,
-                extra_env=extra_env,
-            )
-
     merged = {
         "status": "success",
         "parsed": {},
@@ -3001,7 +2997,6 @@ def run_sizes_test(
         "warnings": [],
     }
     for size_index, size in enumerate(size_list):
-        normalized_pattern = normalize_multi_pattern_name(pattern_name)
         isolated = None
         if size_start_callback is not None:
             try:
@@ -3009,33 +3004,6 @@ def run_sizes_test(
             except Exception as exc:
                 report_callback_error("size-start", exc)
         isolated = run_one_size_case(size)
-        if (
-            isolated.get("status") == "success"
-            and normalized_pattern == "SPOT"
-            and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
-        ):
-            latency_only = run_one_size_case_with_env(
-                size, {"PERF_MULTI_SPOT_LATENCY_ONLY": "1"}
-            )
-            isolated.setdefault("warnings", [])
-            isolated["warnings"].extend(latency_only.get("warnings", []))
-            if latency_only.get("status") == "success":
-                latency_keys = (
-                    f"{transport}|{size}|latency",
-                    f"{transport}|{size}|{LATENCY_P95_METRIC}",
-                    f"{transport}|{size}|{LATENCY_P99_METRIC}",
-                )
-                for latency_key in latency_keys:
-                    if latency_key in latency_only.get("parsed", {}):
-                        isolated["parsed"][latency_key] = latency_only["parsed"][
-                            latency_key
-                        ]
-            else:
-                reason = (latency_only.get("reason", "") or "").strip()
-                isolated["warnings"].append(
-                    "spot clean latency pass failed"
-                    + (f": {reason}" if reason else "")
-                )
         merged["warnings"].extend(isolated.get("warnings", []))
         merged["parsed"].update(isolated.get("parsed", {}))
 
@@ -3057,10 +3025,8 @@ def run_sizes_test(
 
 
 def defer_live_multi_rows(pattern_name):
-    return (
-        normalize_multi_pattern_name(pattern_name) == "SPOT"
-        and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
-    )
+    _ = pattern_name
+    return False
 
 
 def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
@@ -3840,7 +3806,7 @@ def get_cpu_model():
         if cpu:
             return cpu
     except Exception:
-        pass
+        return "unknown"
     return "unknown"
 
 
@@ -3886,7 +3852,7 @@ def detect_build_type(build_dir):
                             if value:
                                 return value
             except OSError:
-                pass
+                return "Release"
     return "Release"
 
 
@@ -4132,10 +4098,6 @@ def build_effective_option_items(args, selected_patterns):
                 (
                     "stream_non_tcp_clients_max",
                     str(parse_env_int("PERF_STREAM_NON_TCP_CLIENTS_MAX", 10000)),
-                ),
-                (
-                    "disable_resource_metrics",
-                    str(max(0, parse_env_int("PERF_DISABLE_RESOURCE_METRICS", 0))),
                 ),
                 (
                     "timeout_seconds",

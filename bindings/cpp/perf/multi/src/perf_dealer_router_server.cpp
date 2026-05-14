@@ -49,8 +49,6 @@ bool perf_dealer_router_server (const std::string &lib_name,
     perf::multi::emit_auto_hwm_detail (
       server, "server", "server", transport, msg_size, "router");
 
-    const bench_multi_cpu_sample_t resource_probe_start =
-      perf::multi::start_resource_probe ();
     perf::multi::print_ready (endpoint);
 
     struct pending_reply_t
@@ -197,20 +195,6 @@ bool perf_dealer_router_server (const std::string &lib_name,
             break;
     }
 
-    const bench_multi_resource_metrics_t resource_metrics =
-      perf::multi::finish_resource_probe (resource_probe_start);
-    perf::multi::print_server_resource_metrics (
-      lib_name,
-      "MULTI_DEALER_ROUTER",
-      transport,
-      msg_size,
-      resource_metrics);
-    perf::multi::print_server_queue_metrics (
-      lib_name,
-      "MULTI_DEALER_ROUTER",
-      transport,
-      msg_size,
-      perf::multi::server_queue_stats_t ());
     return !failed;
 }
 

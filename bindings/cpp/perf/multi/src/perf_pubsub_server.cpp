@@ -154,8 +154,6 @@ bool perf_pubsub_server (const std::string &lib_name,
     perf::multi::emit_auto_hwm_detail (
       publisher.sock (), "server", "server", transport, msg_size, "pub");
 
-    const bench_multi_cpu_sample_t resource_probe_start =
-      perf::multi::start_resource_probe ();
     perf::multi::print_ready (endpoint);
 
     if (!wait_for_start_signal (msg_size)) {
@@ -186,21 +184,6 @@ bool perf_pubsub_server (const std::string &lib_name,
                     true,
                     settings))
         return false;
-
-    const bench_multi_resource_metrics_t resource_metrics =
-      perf::multi::finish_resource_probe (resource_probe_start);
-    perf::multi::print_server_resource_metrics (
-      lib_name,
-      "MULTI_PUBSUB",
-      transport,
-      msg_size,
-      resource_metrics);
-    perf::multi::print_server_queue_metrics (
-      lib_name,
-      "MULTI_PUBSUB",
-      transport,
-      msg_size,
-      perf::multi::server_queue_stats_t ());
 
     return true;
 }

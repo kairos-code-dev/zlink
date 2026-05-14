@@ -340,10 +340,6 @@ bool perf_stream_server (const std::string &lib_name,
         });
         perf::multi::print_ready (endpoint);
         event_loop_thread.join ();
-
-        perf::multi::print_server_queue_metrics (
-          lib_name, k_pattern, transport, 0,
-          perf::multi::server_queue_stats_t ());
         return true;
     }
     catch (const zlink::zlink_error_t &) {

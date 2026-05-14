@@ -112,10 +112,6 @@ void stdin_watcher (zlink::service::spot_node_t *control_node,
                   start_size,
                   expected_ready_count,
                   timeout_ms)
-                || (std::getenv ("ZLINK_ENABLE_SPOT_DIRECT_ROUTE") == NULL
-                    && data_node
-                    && !perf::multi::wait_for_spot_connected_peer_count (
-                      *data_node, 1, timeout_ms))
                 || !perf::multi::publish_control_payload (
                   *control_pub,
                   k_control_topic,

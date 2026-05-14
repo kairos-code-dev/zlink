@@ -267,9 +267,7 @@ class spot_client_bench_t
           _recv_thread_metrics (),
           _recv_metrics_epoch (0),
           _recv_stop (false),
-          _recv_fatal (false),
-          _resource_probe_start (),
-          _resource_metrics ()
+          _recv_fatal (false)
     {
         _slots.reserve (_settings.clients);
     }
@@ -354,12 +352,9 @@ class spot_client_bench_t
               return wait_for_control_start(timeout_ms);
           },
           [&]() {
-              _resource_probe_start = perf::multi::start_resource_probe();
               if (!run_active())
                   return false;
               debug_log("active window complete");
-              _resource_metrics =
-                perf::multi::finish_resource_probe(_resource_probe_start);
               return true;
           },
           [&](size_t) {
@@ -785,8 +780,7 @@ class spot_client_bench_t
                                                      _msg_size,
                                                      _active_count,
                                                      _settings.duration_seconds,
-                                                     _latency,
-                                                     _resource_metrics);
+                                                     _latency);
     }
 
     const std::string _transport;
@@ -818,8 +812,6 @@ class spot_client_bench_t
     std::atomic<uint64_t> _recv_metrics_epoch;
     std::atomic<bool> _recv_stop;
     std::atomic<bool> _recv_fatal;
-    bench_multi_cpu_sample_t _resource_probe_start;
-    bench_multi_resource_metrics_t _resource_metrics;
 };
 
 } // namespace

@@ -80,8 +80,7 @@ inline void print_spot_client_result_lines (
   size_t msg_size_,
   unsigned long long active_count_,
   int duration_seconds_,
-  const bench_latency_stats_t &latency_,
-  const bench_multi_resource_metrics_t &resource_metrics_)
+  const bench_latency_stats_t &latency_)
 {
     const double throughput =
       static_cast<double> (active_count_)
@@ -98,8 +97,6 @@ inline void print_spot_client_result_lines (
                   latency_.mean_ns,
                   latency_.p95_ns,
                   latency_.p99_ns);
-    print_client_resource_metrics (
-      lib_, pattern_, transport_, msg_size_, resource_metrics_);
 }
 
 } // namespace multi

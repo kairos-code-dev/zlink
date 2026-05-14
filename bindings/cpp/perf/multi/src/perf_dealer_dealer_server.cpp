@@ -87,8 +87,6 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
     if (endpoint.empty ())
         return false;
 
-    const bench_multi_cpu_sample_t resource_probe_start =
-      perf::multi::start_resource_probe ();
     perf::multi::print_ready (endpoint);
 
     if (!perf::multi::wait_for_start_from_stdin (msg_size))
@@ -160,8 +158,6 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
             break;
     }
 
-    const bench_multi_resource_metrics_t resource_metrics =
-      perf::multi::finish_resource_probe (resource_probe_start);
     if (failed || active_count == 0 || latency.count () == 0)
         return false;
 
@@ -180,18 +176,6 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
                                latency_stats.mean_ns,
                                latency_stats.p95_ns,
                                latency_stats.p99_ns);
-    perf::multi::print_server_resource_metrics (
-      "current",
-      "MULTI_DEALER_DEALER",
-      transport,
-      msg_size,
-      resource_metrics);
-    perf::multi::print_server_queue_metrics (
-      "current",
-      "MULTI_DEALER_DEALER",
-      transport,
-      msg_size,
-      perf::multi::server_queue_stats_t ());
     return true;
     }
     catch (const zlink::zlink_error_t &) {

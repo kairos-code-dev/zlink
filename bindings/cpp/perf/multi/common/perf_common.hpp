@@ -10,7 +10,6 @@
 #include "../../common/perf_latency_sampler.hpp"
 #include "../../common/perf_monitor_wait.hpp"
 #include "../../common/perf_socket_compat.hpp"
-#include "../../../../../bindings/c/bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -319,17 +318,6 @@ struct connect_monitor_t
     connect_monitor_t () : monitor () {}
 
     std::unique_ptr<zlink::monitor_handle_t> monitor;
-};
-
-struct server_queue_stats_t
-{
-    server_queue_stats_t () : snd_pending_max (0.0), rcv_pending_max (0.0), rcv_pending_end (0.0)
-    {
-    }
-
-    double snd_pending_max;
-    double rcv_pending_max;
-    double rcv_pending_end;
 };
 
 // Migrated to unified perf::latency_sampler_stats_t / perf::latency_sampler_t.
@@ -1129,59 +1117,6 @@ inline void print_result (const std::string &lib,
               << std::endl;
 }
 
-inline void print_server_queue_metrics (const std::string &lib,
-                                        const std::string &pattern,
-                                        const std::string &transport,
-                                        size_t size,
-                                        const server_queue_stats_t &stats)
-{
-    (void) lib;
-    (void) pattern;
-    (void) transport;
-    (void) size;
-    (void) stats;
-}
-
-inline bench_multi_cpu_sample_t start_resource_probe ()
-{
-    return bench_multi_cpu_sample_t ();
-}
-
-inline bench_multi_resource_metrics_t finish_resource_probe (
-  const bench_multi_cpu_sample_t &sample_start)
-{
-    (void) sample_start;
-    return bench_multi_resource_metrics_t ();
-}
-
-inline void print_server_resource_metrics (
-  const std::string &lib,
-  const std::string &pattern,
-  const std::string &transport,
-  size_t size,
-  const bench_multi_resource_metrics_t &metrics)
-{
-    (void) lib;
-    (void) pattern;
-    (void) transport;
-    (void) size;
-    (void) metrics;
-}
-
-inline void print_client_resource_metrics (
-  const std::string &lib,
-  const std::string &pattern,
-  const std::string &transport,
-  size_t size,
-  const bench_multi_resource_metrics_t &metrics)
-{
-    (void) lib;
-    (void) pattern;
-    (void) transport;
-    (void) size;
-    (void) metrics;
-}
-
 inline void print_client_result_lines (
   const std::string &lib,
   const std::string &pattern,
@@ -1190,8 +1125,7 @@ inline void print_client_result_lines (
   unsigned long long active_count,
   int active_seconds,
   double bandwidth_multiplier,
-  const bench_latency_stats_t &latency,
-  const bench_multi_resource_metrics_t &metrics)
+  const bench_latency_stats_t &latency)
 {
     const double throughput =
       static_cast<double> (active_count)
@@ -1208,7 +1142,6 @@ inline void print_client_result_lines (
                   latency.mean_ns,
                   latency.p95_ns,
                   latency.p99_ns);
-    print_client_resource_metrics (lib, pattern, transport, size, metrics);
 }
 
 inline void print_ready (const std::string &endpoint)

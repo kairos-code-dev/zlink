@@ -162,20 +162,12 @@ void wait_for_settle_ms (int settle_ms)
         std::this_thread::sleep_for (std::chrono::milliseconds (settle_ms));
 }
 
-bool complete_sendsend_ready_barrier (zlink::service::spot_node_t &control_node,
-                                      zlink::service::spot_node_t &data_node,
-                                      zlink::service::spot_t &control_pub,
-                                     const std::string &local_data_endpoint,
-                                     size_t msg_size,
-                                     size_t ready_count,
-                                     int timeout_ms)
+bool complete_sendsend_ready_barrier (zlink::service::spot_t &control_pub,
+                                      const std::string &local_data_endpoint,
+                                      size_t msg_size,
+                                      size_t ready_count,
+                                      int timeout_ms)
 {
-    if (bench_debug_enabled ())
-        std::cerr << "[cpp-spot-sendsend-client] wait control peer size="
-                  << msg_size << std::endl;
-    if (!perf::multi::wait_for_spot_connected_peer_count (
-          control_node, 1, timeout_ms))
-        return false;
     if (bench_debug_enabled ())
         std::cerr << "[cpp-spot-sendsend-client] publish DATA_ENDPOINT size="
                   << msg_size << std::endl;
@@ -187,13 +179,6 @@ bool complete_sendsend_ready_barrier (zlink::service::spot_node_t &control_node,
           timeout_ms))
         return false;
     wait_for_settle_ms (resolve_spot_control_settle_ms ());
-    if (bench_debug_enabled ())
-        std::cerr << "[cpp-spot-sendsend-client] wait data peer size="
-                  << msg_size << std::endl;
-    if (std::getenv ("ZLINK_ENABLE_SPOT_DIRECT_ROUTE") == NULL
-        && !perf::multi::wait_for_spot_connected_peer_count (
-          data_node, 1, timeout_ms))
-        return false;
     if (bench_debug_enabled ())
         std::cerr << "[cpp-spot-sendsend-client] publish CONNECTED/READY size="
                   << msg_size << " count=" << ready_count << std::endl;
@@ -455,8 +440,6 @@ bool run_client (const std::string &lib_name,
         const size_t msg_size = msg_sizes[i];
         const size_t ready_count = std::max<size_t> (1, settings.clients);
         if (!complete_sendsend_ready_barrier (
-              control_node,
-              data_node,
               control_pub,
               local_data_endpoint,
               msg_size,
@@ -505,8 +488,7 @@ bool run_client (const std::string &lib_name,
                                                 reply_count,
                                                 settings.duration_seconds,
                                                 2.0,
-                                                latency,
-                                                bench_multi_resource_metrics_t ());
+                                                latency);
     }
 
     signal_stop ();

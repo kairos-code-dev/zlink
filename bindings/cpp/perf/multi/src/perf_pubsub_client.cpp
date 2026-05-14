@@ -81,15 +81,12 @@ class pubsub_client_bench_t
             return false;
         }
 
-        _resource_probe_start = perf::multi::start_resource_probe ();
         if (!run_phase (perf_metric::phase_active,
                         std::chrono::seconds (_phase_cfg.active_seconds),
                         &_result.active_count,
                         &_result.latency))
             return false;
 
-        _resource_metrics =
-          perf::multi::finish_resource_probe (_resource_probe_start);
         if (_result.active_count == 0) {
             _failure_stage = "no_active_data";
             return false;
@@ -296,8 +293,7 @@ class pubsub_client_bench_t
           _result.active_count,
           _phase_cfg.active_seconds,
           1.0,
-          _result.latency,
-          _resource_metrics);
+          _result.latency);
     }
 
   private:
@@ -317,8 +313,6 @@ class pubsub_client_bench_t
     phase_config_t _phase_cfg;
     bench_result_t _result;
     const char *_failure_stage;
-    bench_multi_cpu_sample_t _resource_probe_start;
-    bench_multi_resource_metrics_t _resource_metrics;
 };
 
 } // namespace

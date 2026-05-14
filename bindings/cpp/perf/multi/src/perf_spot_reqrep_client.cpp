@@ -222,9 +222,7 @@ class spot_reqrep_client_bench_t
           _active_run_id (1U),
           _active_deadline_ns (0),
           _active_reply_count (0),
-          _active_latency (),
-          _resource_probe_start (),
-          _resource_metrics ()
+          _active_latency ()
     {
         _slots.reserve (_settings.clients);
     }
@@ -255,7 +253,6 @@ class spot_reqrep_client_bench_t
         if (!setup ())
             return false;
 
-        _resource_probe_start = perf::multi::start_resource_probe ();
         perf::multi::bench_latency_stats_t latency;
         unsigned long long active_count = 0;
         const bool active_ok =
@@ -264,8 +261,6 @@ class spot_reqrep_client_bench_t
         if (!active_ok)
             return false;
 
-        _resource_metrics =
-          perf::multi::finish_resource_probe (_resource_probe_start);
         if (active_count == 0) {
             debug_log ("active_count is zero");
             return false;
@@ -278,8 +273,7 @@ class spot_reqrep_client_bench_t
                                                 active_count,
                                                 std::max (1, _settings.duration_seconds),
                                                 2.0,
-                                                latency,
-                                                _resource_metrics);
+                                                latency);
         return true;
     }
 
@@ -561,8 +555,6 @@ class spot_reqrep_client_bench_t
     std::atomic<unsigned long long> _active_reply_count;
     perf::multi::bench_latency_sampler_t _active_latency;
     std::mutex _latency_mutex;
-    bench_multi_cpu_sample_t _resource_probe_start;
-    bench_multi_resource_metrics_t _resource_metrics;
 };
 
 bool is_supported_transport (const std::string &transport_)
@@ -632,14 +624,6 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
             stdin_thread.detach ();
         return false;
     }
-    if (!perf::multi::wait_for_spot_connected_peer_count (
-          control_node, 1, start_timeout_ms)) {
-        signal_stop ();
-        if (stdin_thread.joinable ())
-            stdin_thread.detach ();
-        return false;
-    }
-
     // This benchmark process exits immediately after one size case. Keeping
     // the data-plane bench alive until _Exit avoids draining late async
     // request callbacks while their slot userdata is being destroyed.
@@ -664,14 +648,6 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
         return false;
     }
     wait_for_settle_ms (resolve_spot_control_settle_ms ());
-    if (std::getenv ("ZLINK_ENABLE_SPOT_DIRECT_ROUTE") == NULL
-        && !perf::multi::wait_for_spot_connected_peer_count (
-          bench->data_node (), 1, start_timeout_ms)) {
-        signal_stop ();
-        if (stdin_thread.joinable ())
-            stdin_thread.detach ();
-        return false;
-    }
     if (!perf::multi::publish_control_payload (
           control_spot, k_control_topic, "CONNECTED", start_timeout_ms)) {
         signal_stop ();

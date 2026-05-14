@@ -14,13 +14,11 @@
 #include <thread>
 #include <vector>
 
-#include <zlink_enum.h>
+#include <zlink/poller.hpp>
 
-#if defined(ZLINK_HAVE_WINDOWS)
+#if defined(_WIN32)
 #include <process.h>
-#endif
-
-#if !defined(ZLINK_HAVE_WINDOWS)
+#else
 #include <unistd.h>
 #endif
 
@@ -36,7 +34,7 @@ zlink::routing_id_t routing_id_from_ascii (const char *value_)
 
 unsigned current_process_id ()
 {
-#if defined(ZLINK_HAVE_WINDOWS)
+#if defined(_WIN32)
     return static_cast<unsigned> (_getpid ());
 #else
     return static_cast<unsigned> (getpid ());
@@ -171,6 +169,34 @@ int recv_spot_header_flags (zlink::service::spot_t &subscriber_,
     }
 }
 
+template<typename Clock, typename Duration>
+std::chrono::milliseconds remaining_milliseconds_until (
+  const std::chrono::time_point<Clock, Duration> &deadline_)
+{
+    const auto now = Clock::now ();
+    if (now >= deadline_)
+        return std::chrono::milliseconds (0);
+    return std::chrono::duration_cast<std::chrono::milliseconds> (
+      deadline_ - now);
+}
+
+template<typename Clock, typename Duration>
+bool wait_for_spot_input_until (
+  zlink::poller_t &poller_,
+  const std::chrono::time_point<Clock, Duration> &deadline_)
+{
+    const std::chrono::milliseconds remaining =
+      remaining_milliseconds_until (deadline_);
+    if (remaining.count () <= 0)
+        return false;
+    try {
+        return poller_.wait (remaining).has_value ();
+    }
+    catch (const zlink::recv_error_t &) {
+        return false;
+    }
+}
+
 [[noreturn]] void fast_exit_process (int exit_code_)
 {
     std::cout.flush ();
@@ -190,6 +216,14 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
     const auto deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
+    zlink::poller_t poller;
+    try {
+        poller.add (subscriber_, zlink::poll_event_flag_t::pollin);
+    }
+    catch (const zlink::config_error_t &) {
+        return false;
+    }
+
     uint64_t seq = 0;
     while (std::chrono::steady_clock::now () < deadline) {
         bool sent = false;
@@ -226,7 +260,8 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
             }
             if (recv_rc < 0)
                 return false;
-            std::this_thread::yield ();
+            if (!wait_for_spot_input_until (poller, probe_deadline))
+                break;
         }
     }
 
@@ -362,11 +397,14 @@ bool run_pattern_spot (const std::string &transport,
     (void) recv_timeout;
 
     std::thread receiver_thread ([&]() {
-        // PERF_SINGLE_TEST_POLICY § 1.4: receiver exits on wire-level
-        // stop token instead of sender_done + drain timer. spot_t does
-        // not expose a poller-compatible socket handle, so the receive
-        // loop uses DONTWAIT + yield (same idiom dotnet/java/node use
-        // for SPOT in this binding family).
+        zlink::poller_t poller;
+        try {
+            poller.add (sub_spot, zlink::poll_event_flag_t::pollin);
+        }
+        catch (const zlink::config_error_t &) {
+            sender_ok.store (false, std::memory_order_release);
+            return;
+        }
         auto collect_header =
           [&] (const perf_single_metric::header_t &header_,
                bool header_ok_) {
@@ -381,6 +419,15 @@ bool run_pattern_spot (const std::string &transport,
               }
           };
         while (true) {
+            try {
+                if (!poller.wait ().has_value ())
+                    continue;
+            }
+            catch (const zlink::recv_error_t &) {
+                sender_ok.store (false, std::memory_order_release);
+                return;
+            }
+
             perf_single_metric::header_t header = {};
             bool header_ok = false;
             bool stop = false;
@@ -394,10 +441,8 @@ bool run_pattern_spot (const std::string &transport,
                 continue;
             }
 
-            if (recv_rc == 0) {
-                std::this_thread::yield ();
+            if (recv_rc == 0)
                 continue;
-            }
 
             sender_ok.store (false, std::memory_order_release);
             return;

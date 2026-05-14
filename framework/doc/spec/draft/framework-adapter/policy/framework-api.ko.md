@@ -124,20 +124,32 @@ framework는 monitoring 표면을 별도 축으로 설명하는 편이 맞다.
 source별 구현 차이를 숨긴 typed runtime event surface를 제공하는 편이 더
 자연스럽다.
 
-### 2.5 public contract 폴더의 타입 관리 기준
+### 2.5 public contract와 runtime 구현의 분리 기준
+
+이 기준은 `.NET` framework adapter만을 위한 규칙이 아니다. Java, Node.js,
+Python, C++, Go, Rust 같은 다른 framework adapter도 같은 정책을 따른다. 언어마다
+package, module, namespace, file layout 관례는 다를 수 있지만, 사용자에게 보이는
+public 계약과 내부 runtime 구현을 분리한다는 원칙은 동일하다.
 
 각 binding 구현은 사용자에게 보이는 public 계약을 별도 `Contracts` 폴더나 그와 같은
-역할의 위치에 모을 수 있다. 이 폴더는 사용자가 읽어야 하는 표면을 보여 주기 위한
+역할의 위치에 모을 수 있다. 이 위치는 사용자가 읽어야 하는 표면을 보여 주기 위한
 공간이다. 따라서 내부 구현체, 내부 policy, 내부 registration record처럼 framework만
 알아야 하는 타입을 이 위치에 두면 안 된다.
 
-framework project의 최상위 구조는 가능한 한 `Contracts`와 `Runtime` 두 축으로 시작한다.
-`Contracts`는 사용자와 binding 개발자가 직접 봐야 하는 public 표면이고, `Runtime`은
-framework가 public 계약을 실행하기 위해 사용하는 내부 구현이다. codec policy, handler
-scanner, dispatch queue, registration validator, message codec처럼 내부 실행을 돕는 타입은
-별도 최상위 폴더를 만들지 말고 `Runtime` 아래에 둔다.
+framework project의 최상위 구조는 가능한 한 public 계약 영역과 runtime 구현 영역 두
+축으로 시작한다. `.NET`처럼 폴더와 namespace를 명확히 나누기 쉬운 언어에서는
+`Contracts`와 `Runtime` 이름을 우선한다. 다른 언어에서는 같은 뜻을 가진 package,
+module, namespace, include 디렉토리로 대응한다. 예를 들어 `api`/`runtime`,
+`public`/`internal`, `include`/`src`처럼 언어 생태계에서 더 자연스러운 이름을 써도
+되지만, public 계약과 내부 구현이 같은 위치에 섞이면 안 된다.
 
-`Contracts` 폴더에 둘 타입은 아래 범위로 제한한다.
+`Contracts` 또는 그와 같은 public 계약 영역은 사용자와 binding 개발자가 직접 봐야
+하는 public 표면이다. `Runtime` 또는 그와 같은 내부 구현 영역은 framework가 public
+계약을 실행하기 위해 사용하는 구현이다. codec policy, handler scanner, dispatch
+queue, registration validator, message codec처럼 내부 실행을 돕는 타입은 별도 최상위
+폴더를 만들지 말고 runtime 구현 영역 아래에 둔다.
+
+public 계약 영역에 둘 타입은 아래 범위로 제한한다.
 
 - 사용자가 구현해야 하는 handler, session, actor, spot, resolver, policy interface
 - framework가 발급하고 사용자가 호출하는 client, manager, context, call, handle, view
@@ -148,7 +160,7 @@ scanner, dispatch queue, registration validator, message codec처럼 내부 실�
 - concrete 구현을 숨기기 위한 public factory. 단 factory의 반환 타입은 가능한 한
   interface나 값 객체여야 한다.
 
-반대로 아래 타입은 `Contracts` 폴더에 두지 않는다.
+반대로 아래 타입은 public 계약 영역에 두지 않는다.
 
 - framework 내부 구현 class
 - public interface를 구현하는 기본 구현체
@@ -159,6 +171,11 @@ scanner, dispatch queue, registration validator, message codec처럼 내부 실�
 public 타입을 interface로 둘지 concrete 값 객체로 둘지는 타입이 가진 도메인 의미를
 기준으로 판단한다. 필드 수가 적다는 이유만으로 값 객체로 보고, 구현 클래스가 있다는
 이유만으로 interface로 숨기지 않는다.
+
+이 판단도 모든 언어 adapter에 동일하게 적용한다. Java의 `interface`, TypeScript의
+`interface` 또는 `type`, Python의 `Protocol`, C++의 abstract class처럼 표현 방식은
+달라도 의미 기준은 같다. framework가 발급한 handle과 view는 추상 표면으로 숨기고,
+사용자가 직접 만들고 보관하는 데이터는 concrete 값 객체로 둔다.
 
 interface가 맞는 경우는 아래와 같다.
 
@@ -196,6 +213,9 @@ payload, option 값처럼 작은 구조화 데이터는 concrete record, class, 
 
 정리하면 아래 기준을 따른다.
 
+- public 계약 영역과 runtime 구현 영역은 모든 언어 adapter에서 분리한다.
+- 언어 관례상 이름이 달라도 `Contracts`는 public 계약, `Runtime`은 내부 구현이라는
+  역할을 유지한다.
 - 동작, handle, view, context, call, handler, lifecycle, codec 확장점은 interface를
   우선한다.
 - 데이터, snapshot, event payload, route value, error value, metadata value는 concrete

@@ -180,7 +180,7 @@ action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 | 문서 종류 | 역할 |
 |----------|------|
 | `README.ko.md` | 그 언어 묶음의 진입점. 문서 구조, 역할 분담, 핵심 방향을 정리한다. |
-| 인터페이스 기준 문서 | 공용 interface / context / options / attribute 또는 decorator를 한 곳에 모은다. |
+| 인터페이스 기준 문서 | 공용 interface / context / configuration surface / attribute 또는 decorator를 한 곳에 모은다. 공용 계약과 내부 runtime 구현의 분리 기준은 [framework-api.ko.md §2.5](./framework-api.ko.md#25-public-contract와-runtime-구현의-분리-기준)를 따른다. |
 | channel messaging 주제 문서 | channel 등록, handler 모델, outbound client, dispatch 흐름을 설명한다. |
 | channel messaging 샘플 문서 | 등록부터 handler, client 호출까지 한 번에 보이는 샘플을 둔다. |
 | `SPOT` 주제 문서 | 해당 언어에서 `SPOT`을 지원하면 lifecycle, publish/subscribe, channel attach를 설명한다. |

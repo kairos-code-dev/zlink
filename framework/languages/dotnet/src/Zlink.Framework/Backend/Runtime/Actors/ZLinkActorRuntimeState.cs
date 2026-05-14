@@ -1,7 +1,3 @@
-using System.Buffers;
-using Zlink.Framework.Backend.Contracts;
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorRuntimeState
@@ -121,137 +117,18 @@ internal sealed class ZLinkActorRuntimeState
         _packets.Clear();
     }
 
-    public async ValueTask DispatchAsync(
-        IServiceProvider services,
-        IZLinkActor actor,
+    public bool TryResolvePacket(
         ZlinkStreamHeader header,
-        Message body,
-        CancellationToken cancellationToken)
+        out ZLinkActorPacketDescriptor? descriptor)
     {
-        if (!_packets.TryResolve(header, out var descriptor) || descriptor is null)
-        {
-            return;
-        }
-
-        if (descriptor.ActorType is not null && !descriptor.ActorType.IsInstanceOfType(actor))
-        {
-            throw new InvalidOperationException(
-                $"Actor packet handler '{descriptor.HandlerType}' expects actor '{descriptor.ActorType}', but received '{actor.GetType()}'.");
-        }
-
-        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
-        var handler = services.GetRequiredService(descriptor.HandlerType);
-        var metadata = CreateMessageMetadata(services, header);
-        var arguments = ArrayPool<object?>.Shared.Rent(3);
-        arguments[0] = descriptor.ActorType is null ? message : actor;
-        arguments[1] = descriptor.ActorType is null
-            ? CreateSendContext(services, actor.ActorId, header, metadata, cancellationToken)
-            : message;
-        arguments[2] = cancellationToken;
-        try
-        {
-            var result = descriptor.Invoker(handler, arguments);
-            await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
-        }
-        finally
-        {
-            Array.Clear(arguments, 0, 3);
-            ArrayPool<object?>.Shared.Return(arguments);
-        }
+        return _packets.TryResolve(header, out descriptor);
     }
 
-    public async ValueTask<byte[]> DispatchForReplyAsync(
-        IServiceProvider services,
-        IZLinkActor actor,
-        ZlinkStreamHeader header,
-        Message body,
-        CancellationToken cancellationToken)
+    public bool TryResolveRequest(
+        string messageName,
+        out ZLinkActorPacketDescriptor? descriptor)
     {
-        if (!_packets.TryResolveRequest(header.Name, out var descriptor)
-            || descriptor is null
-            || descriptor.ReplyType is null)
-        {
-            throw new InvalidOperationException($"No actor request handler is registered for '{header.Name}'.");
-        }
-
-        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
-        var handler = services.GetRequiredService(descriptor.HandlerType);
-        var metadata = CreateMessageMetadata(services, header);
-        var arguments = ArrayPool<object?>.Shared.Rent(3);
-        arguments[0] = descriptor.ActorType is null ? message! : actor;
-        arguments[1] = descriptor.ActorType is null
-            ? new ZLinkActorRequestContext(
-                actor.ActorId,
-                string.Empty,
-                header.Name,
-                ZLinkEnvelopeCodec.DefaultContentType,
-                null,
-                null,
-                services,
-                cancellationToken,
-                metadata)
-            : message!;
-        arguments[2] = cancellationToken;
-        try
-        {
-            var result = descriptor.Invoker(handler, arguments);
-            var reply = await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
-            return ZLinkStreamPacketPayloadCodec.EncodeJson(reply, descriptor.ReplyType);
-        }
-        finally
-        {
-            Array.Clear(arguments, 0, 3);
-            ArrayPool<object?>.Shared.Return(arguments);
-        }
-    }
-
-    private static ZLinkActorSendContext CreateSendContext(
-        IServiceProvider services,
-        string actorId,
-        ZlinkStreamHeader header,
-        ZLinkMessageMetadata metadata,
-        CancellationToken cancellationToken)
-    {
-        return new ZLinkActorSendContext(
-            actorId,
-            string.Empty,
-            header.Name,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            null,
-            services,
-            cancellationToken,
-            metadata);
-    }
-
-    private static ZLinkMessageMetadata CreateMessageMetadata(
-        IServiceProvider services,
-        ZlinkStreamHeader header)
-    {
-        if (header.Metadata.Count == 0)
-        {
-            return ZLinkMessageMetadata.Empty;
-        }
-
-        var policy = services.GetRequiredService<IZLinkMessageMetadataPolicy>();
-        Dictionary<string, string>? application = null;
-
-        foreach (var (key, value) in header.Metadata.Values)
-        {
-            if (policy.CanForwardApplicationKey(key))
-            {
-                application ??= new Dictionary<string, string>(StringComparer.Ordinal);
-                application[key] = value;
-            }
-        }
-
-        if (application is null)
-        {
-            return ZLinkMessageMetadata.Empty;
-        }
-
-        return new ZLinkMessageMetadata(
-            application,
-            new Dictionary<string, string>(StringComparer.Ordinal));
+        return _packets.TryResolveRequest(messageName, out descriptor);
     }
 
     private async Task ClearActorCreationTaskWhenCompletedAsync(Task<IZLinkActor> creationTask)

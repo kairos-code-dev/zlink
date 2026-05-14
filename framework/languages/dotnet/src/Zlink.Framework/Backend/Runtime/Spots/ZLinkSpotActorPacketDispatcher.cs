@@ -7,6 +7,8 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
     Func<ZLinkSpotActorHandlerRegistry?> actorHandlers,
     Func<ZLinkSpotHandlerInvoker> handlerInvoker)
 {
+    private readonly ZLinkActorPacketDispatcher _actorPacketDispatcher = new(runtime.Services);
+
     public async ValueTask DispatchAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
@@ -24,8 +26,8 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
             return;
         }
 
-        await runtimeState.DispatchAsync(
-                runtime.Services,
+        await _actorPacketDispatcher.DispatchAsync(
+                runtimeState,
                 actor,
                 header,
                 body.Move(),
@@ -49,8 +51,8 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                 .ConfigureAwait(false);
         }
 
-        return await runtimeState.DispatchForReplyAsync(
-                runtime.Services,
+        return await _actorPacketDispatcher.DispatchForReplyAsync(
+                runtimeState,
                 actor,
                 header,
                 body.Move(),

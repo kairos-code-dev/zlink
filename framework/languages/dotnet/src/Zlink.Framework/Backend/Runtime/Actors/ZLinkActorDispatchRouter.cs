@@ -6,6 +6,8 @@ internal sealed class ZLinkActorDispatchRouter(
     ZLinkActorSessionRegistry actorSessions,
     Func<IZLinkActor, ZLinkActorRuntimeState, ZLinkActorContext> ensureActorContext)
 {
+    private readonly ZLinkActorPacketDispatcher _packetDispatcher = new(services);
+
     public async ValueTask SubmitByIdAsync(
         string actorId,
         ZlinkStreamHeader header,
@@ -115,7 +117,7 @@ internal sealed class ZLinkActorDispatchRouter(
                 return activation.prune;
             }
 
-            await state.DispatchAsync(services, actor, header, body, cancellationToken)
+            await _packetDispatcher.DispatchAsync(state, actor, header, body, cancellationToken)
                 .ConfigureAwait(false);
             return activation.prune;
         }
@@ -182,7 +184,7 @@ internal sealed class ZLinkActorDispatchRouter(
         Message body,
         CancellationToken cancellationToken)
     {
-        await state.DispatchAsync(services, actor, header, body, cancellationToken)
+        await _packetDispatcher.DispatchAsync(state, actor, header, body, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -193,7 +195,7 @@ internal sealed class ZLinkActorDispatchRouter(
         Message body,
         CancellationToken cancellationToken)
     {
-        return await state.DispatchForReplyAsync(services, actor, header, body, cancellationToken)
+        return await _packetDispatcher.DispatchForReplyAsync(state, actor, header, body, cancellationToken)
             .ConfigureAwait(false);
     }
 }

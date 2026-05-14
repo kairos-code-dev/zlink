@@ -17,6 +17,10 @@ internal sealed class ZLinkSpotActivationDispatcher(
     private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
     private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher =
         new(runtime, actorHandlers, handlerInvoker);
+    private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher =
+        new(runtime, nativeSpot, channelName, actorJoins, actors, handlerInvoker);
+    private readonly ZLinkSpotRouteDispatcher _routeDispatcher =
+        new(channelName, packets, handlerInvoker);
 
     public async ValueTask DispatchActorJoinDrainAsync(CancellationToken cancellationToken)
     {
@@ -40,7 +44,7 @@ internal sealed class ZLinkSpotActivationDispatcher(
 
             try
             {
-                await DispatchActorJoinAsync(request, cancellationToken).ConfigureAwait(false);
+                await _actorJoinDispatcher.DispatchAsync(request, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -141,7 +145,7 @@ internal sealed class ZLinkSpotActivationDispatcher(
                 return;
             }
 
-            await DispatchRouteAsync(received, cancellationToken);
+            await _routeDispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -150,49 +154,6 @@ internal sealed class ZLinkSpotActivationDispatcher(
         await subscriptions
             .DrainAsync(nativeSpot, InvokeSubscriptionAsync, cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private async ValueTask DispatchActorJoinAsync(
-        ZLinkBackendActorJoinRequest joinRequest,
-        CancellationToken cancellationToken)
-    {
-        var header = ZLinkEnvelopeCodec.DecodeHeader(joinRequest.Parts);
-        if (!actorJoins.TryResolveByName(header.MessageName, out var descriptor) || descriptor is null)
-        {
-            ReplyActorJoinRejected(joinRequest);
-            return;
-        }
-
-        if (!actors.TryGetActor(joinRequest.TargetActor.ActorId, out var actor) || actor is null)
-        {
-            actor = runtime.GetOrCreateActorState(joinRequest.TargetActor.ActorId).Actor;
-        }
-
-        if (actor is null)
-        {
-            ReplyActorJoinRejected(joinRequest);
-            return;
-        }
-
-        var requestObj = ZLinkEnvelopeCodec.DecodeBody(joinRequest.Parts, descriptor.RequestType)!;
-        var replyObj = await InvokeActorJoinAsync(descriptor, actor, requestObj, cancellationToken)
-            .ConfigureAwait(false);
-
-        var replyEnvelopeHeader = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Response,
-            channelName,
-            descriptor.MessageName,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            null, null, null, null, null);
-        var replyParts = ZLinkEnvelopeCodec.EncodeParts(replyEnvelopeHeader, replyObj, descriptor.ReplyType);
-        try
-        {
-            nativeSpot.ReplyActorJoin(joinRequest, accepted: true, replyParts);
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(replyParts);
-        }
     }
 
     private async ValueTask DispatchActorStreamPartAsync(
@@ -212,76 +173,6 @@ internal sealed class ZLinkSpotActivationDispatcher(
             .ConfigureAwait(false);
     }
 
-    private async ValueTask DispatchRouteAsync(Received received, CancellationToken cancellationToken)
-    {
-        using (received)
-        {
-            if (received.Parts.Count == 0)
-            {
-                return;
-            }
-
-            var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
-            if (!packets.TryResolve(header, out var descriptor) || descriptor is null)
-            {
-                return;
-            }
-
-            var message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, descriptor.MessageType);
-            if (descriptor.IsRequest)
-            {
-                var reply = await InvokeRequestAsync(descriptor, message, cancellationToken);
-                var replyHeader = new ZLinkEnvelopeHeader(
-                    ZLinkMessageKind.Response,
-                    channelName,
-                    descriptor.MessageName,
-                    ZLinkEnvelopeCodec.DefaultContentType,
-                    header.CorrelationId,
-                    null,
-                    null,
-                    null,
-                    null);
-                var replyParts = ZLinkEnvelopeCodec.EncodeParts(replyHeader, reply, descriptor.ReplyType);
-                try
-                {
-                    received.Reply()
-                        .Message(replyParts[0])
-                        .Message(replyParts[1])
-                        .Submit();
-                }
-                finally
-                {
-                    ZLinkMessageParts.DisposeAll(replyParts);
-                }
-                return;
-            }
-
-            await InvokePacketAsync(descriptor, message, cancellationToken);
-        }
-    }
-
-    private void ReplyActorJoinRejected(ZLinkBackendActorJoinRequest joinRequest)
-    {
-        using var emptyReply = Message.FromBytes(ReadOnlySpan<byte>.Empty);
-        nativeSpot.ReplyActorJoin(joinRequest, accepted: false, emptyReply);
-    }
-
-    private async ValueTask InvokePacketAsync(
-        ZLinkSpotDescriptor descriptor,
-        object? message,
-        CancellationToken cancellationToken)
-    {
-        await handlerInvoker().InvokePacketAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async ValueTask<object?> InvokeRequestAsync(
-        ZLinkSpotDescriptor descriptor,
-        object? message,
-        CancellationToken cancellationToken)
-    {
-        return await handlerInvoker().InvokeRequestAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
-    }
-
     private async ValueTask InvokeSubscriptionAsync(
         ZLinkSpotSubscriptionDescriptor descriptor,
         object? message,
@@ -290,13 +181,4 @@ internal sealed class ZLinkSpotActivationDispatcher(
         await handlerInvoker().InvokeSubscriptionAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask<object?> InvokeActorJoinAsync(
-        ZLinkSpotActorJoinDescriptor descriptor,
-        IZLinkActor actor,
-        object request,
-        CancellationToken cancellationToken)
-    {
-        return await handlerInvoker().InvokeActorJoinAsync(descriptor, actor, request, cancellationToken)
-            .ConfigureAwait(false);
-    }
 }

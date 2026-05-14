@@ -7,7 +7,19 @@ REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
 CORE_BUILD_DIR="${REPO_DIR}/core/build"
 CORE_LIB_DIR="${CORE_BUILD_DIR}/lib"
 CORE_LIB="${CORE_LIB_DIR}/libzlink.so"
+PERF_REPORT_PY="${REPO_DIR}/bindings/python/perf/perf_report.py"
 START_SECONDS="$(date +%s)"
+TOTAL_TIME_ENABLED=0
+
+print_total_time() {
+    local status="${1:-0}"
+    if [[ "${TOTAL_TIME_ENABLED}" -ne 1 ]]; then
+        return
+    fi
+    local elapsed
+    elapsed=$(($(date +%s) - START_SECONDS))
+    echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=${status})"
+}
 STREAM_BUILD_DIR="${SCRIPT_DIR}/build/stream-client"
 STREAM_CLIENT=""
 REUSE_BUILD=0
@@ -493,6 +505,7 @@ BIN_DIR="${TARGET_DIR}/release"
 
 export PERF_MULTI_DURATION_SECONDS="${DURATION}"
 prepare_core_runtime
+TOTAL_TIME_ENABLED=1
 export PERF_MULTI_SERVER_BIND_PORT="${SERVER_BIND_PORT}"
 export PERF_MULTI_MONITOR_HWM="${MONITOR_HWM}"
 [[ -n "${CONNECT_CONCURRENCY}" ]] && export PERF_MULTI_CONNECT_CONCURRENCY="${CONNECT_CONCURRENCY}"
@@ -547,7 +560,12 @@ SERVER_SHUTDOWN_TIMEOUT_SECONDS=$(( (SERVER_SHUTDOWN_TIMEOUT_MS + 999) / 1000 ))
 
 TMP_METRICS="$(mktemp)"
 TMP_CASES="$(mktemp)"
-trap 'rm -f "${TMP_METRICS}" "${TMP_CASES}"' EXIT
+cleanup() {
+    local status=$?
+    rm -f "${TMP_METRICS}" "${TMP_CASES}"
+    print_total_time "${status}"
+}
+trap cleanup EXIT
 METRICS_REGEX='^(throughput|bandwidth|latency|latency_p95|latency_p99)$'
 wait_for_pid() {
     local pid="$1"
@@ -1024,7 +1042,8 @@ python3 - "${TMP_METRICS}" "${TMP_CASES}" "${RESULTS_FILE}" "${PATTERN}" "${TRAN
   "${CLIENTS}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" "${PIN_CPU}" \
   "${COMMON_IO_THREADS}" "${SERVER_IO_THREADS}" "${CLIENT_IO_THREADS}" "${HWM}" "${SEND_HWM}" \
   "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" "${RUN_COOLDOWN_MS}" \
-  "${TRANSPORT_TRANSITION_MS}" "${PATTERN_TRANSITION_MS}" "${SECONDS}" <<'PY'
+  "${TRANSPORT_TRANSITION_MS}" "${PATTERN_TRANSITION_MS}" "${SECONDS}" \
+  "${PERF_REPORT_PY}" <<'PY'
 import csv
 import math
 import os
@@ -1035,7 +1054,9 @@ import time
 from collections import defaultdict
 from datetime import datetime
 
-metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, output_path, pin_cpu, common_io_threads, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, run_cooldown_ms, transport_transition_ms, pattern_transition_ms, elapsed_seconds = sys.argv[1:]
+metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, output_path, pin_cpu, common_io_threads, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, run_cooldown_ms, transport_transition_ms, pattern_transition_ms, elapsed_seconds, perf_report_path = sys.argv[1:]
+sys.path.insert(0, os.path.dirname(perf_report_path))
+from perf_report import multi_auto_hwm_lines
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 result_metrics = ["bandwidth", "latency", "latency_p95", "latency_p99", "throughput"]
@@ -1278,20 +1299,8 @@ for pattern_index, pattern in enumerate(patterns):
                 emit("      | {}B | FAIL | FAIL | FAIL | FAIL | FAIL |".format(size))
                 failures.append(f"{pattern} current {transport} {size}B: {reason or 'missing_result_lines'}")
         emit(f"    Testing {transport}: Done")
-        if pattern in {"MULTI_SPOT", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}:
-            emit("    Auto-HWM spotnode:")
-            for auto_size in pattern_sizes[pattern]:
-                msg_unit = max(4096, int(auto_size))
-                emit(f"      - Size(B)={auto_size}, MsgUnit(B)={msg_unit}")
-                emit("      | Socket      | Type | Role | SNDHWM | RCVHWM | SNDBUF | RCVBUF |")
-                emit("      |-------------|------|------|--------|--------|--------|--------|")
-                emit("      | unavailable | n/a  | n/a  | n/a    | n/a    | n/a    | n/a    |")
-        else:
-            emit("    Auto-HWM detail:")
-            emit("      | Size(B) | Component   | Type | UnitBudget(KB) | MsgUnit(B) | SNDHWM | RCVHWM | SNDBUF(KB) | RCVBUF(KB) |")
-            emit("      |---------|-------------|------|----------------|------------|--------|--------|------------|------------|")
-            for auto_size in pattern_sizes[pattern]:
-                emit(f"      | {auto_size:<7} | unavailable | n/a  | n/a            | {auto_size:<10} | n/a    | n/a    | n/a        | n/a        |")
+        for line in multi_auto_hwm_lines(pattern, pattern_sizes[pattern]):
+            emit(line)
     emit("")
 
 emit_effective_options("result")
@@ -1326,6 +1335,4 @@ sys.stdout.write(text)
 sys.exit(0 if expected == actual else 1)
 PY
 
-elapsed=$(($(date +%s) - START_SECONDS))
-echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=0)"
 prune_reports "${REPORT_DIR}"

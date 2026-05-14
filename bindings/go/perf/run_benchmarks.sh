@@ -14,7 +14,18 @@ VERSION_FILE="${REPO_DIR}/VERSION"
 CORE_LIB_DIR="${REPO_DIR}/core/build/lib"
 CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
 CORE_LIB="${CORE_LIB_DIR}/libzlink.so.${CORE_VERSION}"
+PERF_REPORT_PY="${REPO_DIR}/bindings/python/perf/perf_report.py"
+TOTAL_TIME_ENABLED=0
 
+print_total_time() {
+  local status="${1:-0}"
+  if [[ "${TOTAL_TIME_ENABLED}" -ne 1 ]]; then
+    return
+  fi
+  local elapsed
+  elapsed=$(($(date +%s) - START_SECONDS))
+  echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=${status})"
+}
 PATTERN="ALL"
 DURATION="5"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
@@ -34,7 +45,6 @@ SNDTIMEO_MS=""
 RCVTIMEO_MS=""
 AUTO_HWM_PROFILE=""
 RUN_COOLDOWN_MS="${PERF_SINGLE_RUN_COOLDOWN_MS:-500}"
-CASE_RETRIES="${PERF_SINGLE_CASE_RETRIES:-3}"
 
 cleanup_report_dir() {
   local dir="$1"
@@ -247,10 +257,13 @@ mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
 prepare_core_runtime
 START_SECONDS="$(date +%s)"
+TOTAL_TIME_ENABLED=1
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-single.XXXXXX")"
 RAW_RESULTS_FILE="${TMP_DIR}/result_data.log"
 cleanup() {
+  local status=$?
   rm -rf "${TMP_DIR}"
+  print_total_time "${status}"
 }
 trap cleanup EXIT
 
@@ -554,24 +567,15 @@ for run in $(seq 1 "${RUNS}"); do
       for size in "${SIZES[@]}"; do
         expected_cases=$((expected_cases + 1))
         case_log="${TMP_DIR}/${pattern}_${transport}_${size}_run${run}.log"
-        attempt=1
         case_ok=0
-        while true; do
-          if run_go_perf ./perf/single \
-            --pattern "${pattern}" \
-            --transport "${transport}" \
-            --msg-size "${size}" \
-            --duration "${DURATION}" \
-            > "${case_log}" 2>&1; then
-            case_ok=1
-            break
-          fi
-          if grep -Eq '^UNSUPPORTED,' "${case_log}" || [[ "${attempt}" -ge "${CASE_RETRIES}" ]]; then
-            break
-          fi
-          attempt=$((attempt + 1))
-          sleep_millis "${RUN_COOLDOWN_MS}"
-        done
+        if run_go_perf ./perf/single \
+          --pattern "${pattern}" \
+          --transport "${transport}" \
+          --msg-size "${size}" \
+          --duration "${DURATION}" \
+          > "${case_log}" 2>&1; then
+          case_ok=1
+        fi
         if [[ "${case_ok}" -eq 1 ]]; then
           append_case_output "${case_log}"
           case_result_lines="$(count_result_lines "${pattern}" "${transport}" "${size}" "${case_log}")"
@@ -605,9 +609,9 @@ for run in $(seq 1 "${RUNS}"); do
             progress_case_row "${pattern}" "${size}" "${case_log}"
             continue
           fi
-          echo "FAIL,current,${pattern},${transport},${size},exit_nonzero_after_${attempt}_attempts" >> "${RAW_RESULTS_FILE}"
+          echo "FAIL,current,${pattern},${transport},${size},exit_nonzero" >> "${RAW_RESULTS_FILE}"
           fail=$((fail + 1))
-          FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero_after_${attempt}_attempts")
+          FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero")
         fi
         progress_table_header
         progress_case_row "${pattern}" "${size}" "${case_log}"
@@ -635,15 +639,9 @@ fi
 
 {
   echo
-  echo "## Auto-HWM Detail"
-  for pattern in "${PATTERNS[@]}"; do
-    echo "- pattern: ${pattern}"
-    echo "| Size(B) | Component | Owner | Socket | Type | Role | SNDHWM | RCVHWM | SNDBUF(KB) | RCVBUF(KB) | MsgUnit(B) | Slots |"
-    echo "|---------|-----------|-------|--------|------|------|--------|--------|-----------|-----------|------------|-------|"
-    for size in "${SIZES[@]}"; do
-      echo "| ${size} | unavailable | binding | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |"
-    done
-  done
+  python3 "${PERF_REPORT_PY}" single-auto-hwm \
+    --patterns "${EFFECTIVE_PATTERNS_CSV}" \
+    --msg-sizes "${MSG_SIZES}"
 } >> "${RESULTS_FILE}"
 
 expected_result_lines=$((expected_cases * 5))
@@ -676,8 +674,6 @@ fi
 
 exec >&3
 cat "${RESULTS_FILE}"
-elapsed=$(($(date +%s) - START_SECONDS))
-echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=$([[ "${status}" == "complete" ]] && echo 0 || echo 1))"
 
 if [[ "${status}" != "complete" ]]; then
   exit 1

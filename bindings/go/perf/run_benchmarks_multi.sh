@@ -14,7 +14,18 @@ VERSION_FILE="${REPO_DIR}/VERSION"
 CORE_LIB_DIR="${REPO_DIR}/core/build/lib"
 CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
 CORE_LIB="${CORE_LIB_DIR}/libzlink.so.${CORE_VERSION}"
+PERF_REPORT_PY="${REPO_DIR}/bindings/python/perf/perf_report.py"
+TOTAL_TIME_ENABLED=0
 
+print_total_time() {
+  local status="${1:-0}"
+  if [[ "${TOTAL_TIME_ENABLED}" -ne 1 ]]; then
+    return
+  fi
+  local elapsed
+  elapsed=$(($(date +%s) - START_SECONDS))
+  echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=${status})"
+}
 PATTERN="ALL"
 DURATION="5"
 MSG_SIZES=""
@@ -43,7 +54,6 @@ MONITOR_HWM=""
 SERVER_SHUTDOWN_TIMEOUT_MS=""
 SERVER_BIND_PORT=""
 RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-3000}"
-CASE_RETRIES="${PERF_MULTI_CASE_RETRIES:-3}"
 TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
 PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
 
@@ -423,10 +433,13 @@ mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
 prepare_core_runtime
 START_SECONDS="$(date +%s)"
+TOTAL_TIME_ENABLED=1
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-multi.XXXXXX")"
 RAW_RESULTS_FILE="${TMP_DIR}/result_data.log"
 cleanup() {
+  local status=$?
   rm -rf "${TMP_DIR}"
+  print_total_time "${status}"
 }
 trap cleanup EXIT
 
@@ -1015,13 +1028,17 @@ run_multi_process_case() {
 }
 
 render_tables() {
-  python3 - "$TMP_DIR" <<'PY'
+  python3 - "$TMP_DIR" "$PERF_REPORT_PY" <<'PY'
 from collections import defaultdict
 import os
 import statistics
 import sys
 
 tmp_dir = sys.argv[1]
+perf_report_path = sys.argv[2]
+sys.path.insert(0, os.path.dirname(perf_report_path))
+from perf_report import multi_auto_hwm_lines
+
 metrics = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
 echo_patterns = {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}
 rows = defaultdict(lambda: defaultdict(list))
@@ -1087,20 +1104,8 @@ for pattern in sorted(by_pattern):
                 f" | {values['latency_p99']:9.3f} ms |"
             )
         print(f"    Testing {transport}: Done")
-        if pattern in {"MULTI_SPOT", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}:
-            print("    Auto-HWM spotnode:")
-            for size, _values in sorted(transports[transport]):
-                msg_unit = max(4096, int(size))
-                print(f"      - Size(B)={size}, MsgUnit(B)={msg_unit}")
-                print("      | Socket      | Type | Role | SNDHWM | RCVHWM | SNDBUF | RCVBUF |")
-                print("      |-------------|------|------|--------|--------|--------|--------|")
-                print("      | unavailable | n/a  | n/a  | n/a    | n/a    | n/a    | n/a    |")
-        else:
-            print("    Auto-HWM detail:")
-            print("      | Size(B) | Component   | Type | UnitBudget(KB) | MsgUnit(B) | SNDHWM | RCVHWM | SNDBUF(KB) | RCVBUF(KB) |")
-            print("      |---------|-------------|------|----------------|------------|--------|--------|------------|------------|")
-            for size, _values in sorted(transports[transport]):
-                print(f"      | {size:<7} | unavailable | n/a  | n/a            | {size:<10} | n/a    | n/a    | n/a        | n/a        |")
+        for line in multi_auto_hwm_lines(pattern, [size for size, _values in sorted(transports[transport])]):
+            print(line)
     print()
 PY
 }
@@ -1184,25 +1189,16 @@ for pattern_index in "${!PATTERNS[@]}"; do
           continue
         fi
         export PERF_MULTI_MSG_UNIT_BYTES="${size}"
-        attempt=1
         case_ok=0
-        while true; do
-          if run_multi_process_case \
-            "${pattern}" \
-            "${transport}" \
-            "${size}" \
-            "${DURATION}" \
-            "${resolved_clients}" \
-            "${case_log}"; then
-            case_ok=1
-            break
-          fi
-          if grep -Eq '^UNSUPPORTED,' "${case_log}" || is_unsupported_output "${case_log}" || [[ "${attempt}" -ge "${CASE_RETRIES}" ]]; then
-            break
-          fi
-          attempt=$((attempt + 1))
-          sleep_millis "${RUN_COOLDOWN_MS}"
-        done
+        if run_multi_process_case \
+          "${pattern}" \
+          "${transport}" \
+          "${size}" \
+          "${DURATION}" \
+          "${resolved_clients}" \
+          "${case_log}"; then
+          case_ok=1
+        fi
         if [[ "${case_ok}" -eq 1 ]]; then
           append_case_output "${case_log}"
           case_result_lines="$(count_result_lines "${pattern}" "${transport}" "${size}" "${case_log}")"
@@ -1256,10 +1252,10 @@ for pattern_index in "${!PATTERNS[@]}"; do
             progress_case_row "${pattern}" "${size}" "${case_log}"
             continue
           fi
-          echo "FAIL,current,${pattern},${transport},${size},exit_nonzero_after_${attempt}_attempts" >> "${RAW_RESULTS_FILE}"
+          echo "FAIL,current,${pattern},${transport},${size},exit_nonzero" >> "${RAW_RESULTS_FILE}"
           fail=$((fail + 1))
           transport_failures=$((transport_failures + 1))
-          FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero_after_${attempt}_attempts")
+          FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero")
         fi
         progress_table_header
         progress_case_row "${pattern}" "${size}" "${case_log}"
@@ -1343,36 +1339,7 @@ fi
   echo
   echo "## Result Data"
   if [[ -s "${RAW_RESULTS_FILE}" ]]; then
-    python3 - "${RAW_RESULTS_FILE}" <<'PY'
-import sys
-
-metric_order = {
-    "bandwidth": 0,
-    "latency": 1,
-    "latency_p95": 2,
-    "latency_p99": 3,
-    "throughput": 4,
-}
-
-def sort_key(line):
-    parts = line.strip().split(",")
-    if len(parts) >= 7 and parts[0] == "RESULT":
-        try:
-            size = int(parts[4])
-        except ValueError:
-            size = -1
-        return (parts[2], parts[3], size, metric_order.get(parts[5], 99), line)
-    return (parts[2] if len(parts) > 2 else "", parts[3] if len(parts) > 3 else "", -1, 99, line)
-
-with open(sys.argv[1], "r", encoding="utf-8", errors="replace") as fh:
-    lines = [
-        line.rstrip("\n")
-        for line in fh
-        if line.startswith(("RESULT,", "UNSUPPORTED,", "SKIP,", "FAIL,"))
-    ]
-for line in sorted(lines, key=sort_key):
-    print(line)
-PY
+    python3 "${PERF_REPORT_PY}" sort-result-data "${RAW_RESULTS_FILE}"
   fi
   echo
   echo "## Completion"
@@ -1393,8 +1360,6 @@ fi
 
 exec >&3
 cat "${RESULTS_FILE}"
-elapsed=$(($(date +%s) - START_SECONDS))
-echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=$([[ "${status}" == "complete" ]] && echo 0 || echo 1))"
 
 if [[ "${status}" != "complete" ]]; then
   exit 1

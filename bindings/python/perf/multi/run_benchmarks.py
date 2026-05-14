@@ -22,6 +22,7 @@ from perf_multi_common import (
     table_header_lines,
     throughput_unit,
 )
+from perf_report import multi_auto_hwm_lines, sort_result_data_lines
 
 
 ROOT = Path(__file__).resolve().parent
@@ -1175,20 +1176,8 @@ def main(argv=None):
             else:
                 suffix = "Done"
             _append_line(sections, f"    Testing {transport}: {suffix}")
-            if pattern in {"SPOT", "SPOT_REQREP", "SPOT_SENDSEND", "MULTI_SPOT", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}:
-                _append_line(sections, "    Auto-HWM spotnode:")
-                for auto_size in pattern_msg_sizes:
-                    msg_unit = max(4096, int(auto_size))
-                    _append_line(sections, f"      - Size(B)={auto_size}, MsgUnit(B)={msg_unit}")
-                    _append_line(sections, "      | Socket      | Type | Role | SNDHWM | RCVHWM | SNDBUF | RCVBUF |")
-                    _append_line(sections, "      |-------------|------|------|--------|--------|--------|--------|")
-                    _append_line(sections, "      | unavailable | n/a  | n/a  | n/a    | n/a    | n/a    | n/a    |")
-            else:
-                _append_line(sections, "    Auto-HWM detail:")
-                _append_line(sections, "      | Size(B) | Component   | Type | UnitBudget(KB) | MsgUnit(B) | SNDHWM | RCVHWM | SNDBUF(KB) | RCVBUF(KB) |")
-                _append_line(sections, "      |---------|-------------|------|----------------|------------|--------|--------|------------|------------|")
-                for auto_size in pattern_msg_sizes:
-                    _append_line(sections, f"      | {auto_size:<7} | unavailable | n/a  | n/a            | {auto_size:<10} | n/a    | n/a    | n/a        | n/a        |")
+            for line in multi_auto_hwm_lines(pattern, pattern_msg_sizes):
+                _append_line(sections, line)
             if transport_index + 1 < len(pattern_transports):
                 _append_line(
                     sections,
@@ -1205,22 +1194,7 @@ def main(argv=None):
         for line in chunk.splitlines()
         if line.startswith(("RESULT,", "UNSUPPORTED,", "SKIP,"))
     ]
-    metric_order = {
-        "bandwidth": 0,
-        "latency": 1,
-        "latency_p95": 2,
-        "latency_p99": 3,
-        "throughput": 4,
-    }
-    emitted_result_lines.sort(
-        key=lambda line: (
-            line.split(",")[2] if len(line.split(",")) > 2 else "",
-            line.split(",")[3] if len(line.split(",")) > 3 else "",
-            int(line.split(",")[4]) if len(line.split(",")) > 4 and line.split(",")[4].isdigit() else -1,
-            metric_order.get(line.split(",")[5], 99) if len(line.split(",")) > 5 else 99,
-            line,
-        )
-    )
+    emitted_result_lines = sort_result_data_lines(emitted_result_lines)
     skipped_cases = 0
     unsupported_cases = 0
     for line in status_lines:

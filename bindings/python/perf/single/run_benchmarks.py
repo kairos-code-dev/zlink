@@ -16,6 +16,7 @@ from perf_common import (
     status_row_text,
     throughput_unit,
 )
+from perf_report import SINGLE_TABLE_HEADER_LINES, single_auto_hwm_detail_lines
 
 
 ROOT = Path(__file__).resolve().parent
@@ -231,32 +232,6 @@ def _metric_row(pattern, msg_size, metrics, *, indent="      "):
     )
 
 
-def _single_table_header_lines():
-    return (
-        "| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |",
-        "|----------|------------------|--------------|--------------|--------------|--------------|",
-    )
-
-
-def _auto_hwm_detail_lines(patterns, msg_sizes):
-    yield "## Auto-HWM Detail"
-    for pattern in patterns:
-        yield f"- pattern: {pattern}"
-        yield (
-            "| Size(B) | Component | Owner | Socket | Type | Role | SNDHWM | RCVHWM | "
-            "SNDBUF(KB) | RCVBUF(KB) | MsgUnit(B) | Slots |"
-        )
-        yield (
-            "|---------|-----------|-------|--------|------|------|--------|--------|"
-            "-----------|-----------|------------|-------|"
-        )
-        for msg_size in msg_sizes:
-            yield (
-                f"| {msg_size} | unavailable | binding | n/a | n/a | n/a | "
-                "n/a | n/a | n/a | n/a | n/a | n/a |"
-            )
-
-
 def pattern_direction(_pattern):
     return "one-way"
 
@@ -408,7 +383,7 @@ def main(argv=None):
         for transport in pattern_transports:
             _append_line(sections, f"    Testing {transport}:")
             if runs == 1:
-                for header_line in _single_table_header_lines():
+                for header_line in SINGLE_TABLE_HEADER_LINES:
                     _append_line(sections, f"      {header_line}")
                 for msg_size in msg_sizes:
                     case_env = dict(env)
@@ -442,7 +417,7 @@ def main(argv=None):
                 run_outputs = {msg_size: [] for msg_size in msg_sizes}
                 for run_index in range(runs):
                     _append_line(sections, f"      run {run_index + 1}/{runs}:")
-                    for header_line in _single_table_header_lines():
+                    for header_line in SINGLE_TABLE_HEADER_LINES:
                         _append_line(sections, f"        {header_line}")
                     for msg_size in msg_sizes:
                         case_env = dict(env)
@@ -481,7 +456,7 @@ def main(argv=None):
                                 _status_row(msg_size, "FAIL", indent="        "),
                             )
                 _append_line(sections, "      median:")
-                for header_line in _single_table_header_lines():
+                for header_line in SINGLE_TABLE_HEADER_LINES:
                     _append_line(sections, f"        {header_line}")
                 for msg_size in msg_sizes:
                     metrics = _median_metrics(
@@ -536,7 +511,7 @@ def main(argv=None):
             _append_line(sections, line)
         _append_line(sections)
 
-    for line in _auto_hwm_detail_lines(patterns, msg_sizes):
+    for line in single_auto_hwm_detail_lines(patterns, msg_sizes):
         _append_line(sections, line)
     _append_line(sections)
     _append_line(sections, render_effective_options(options, section="result"))

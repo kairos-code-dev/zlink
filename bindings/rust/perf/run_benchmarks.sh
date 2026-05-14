@@ -7,8 +7,19 @@ REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
 CORE_BUILD_DIR="${REPO_DIR}/core/build"
 CORE_LIB_DIR="${CORE_BUILD_DIR}/lib"
 CORE_LIB="${CORE_LIB_DIR}/libzlink.so"
+PERF_REPORT_PY="${REPO_DIR}/bindings/python/perf/perf_report.py"
 START_SECONDS="$(date +%s)"
+TOTAL_TIME_ENABLED=0
 
+print_total_time() {
+    local status="${1:-0}"
+    if [[ "${TOTAL_TIME_ENABLED}" -ne 1 ]]; then
+        return
+    fi
+    local elapsed
+    elapsed=$(($(date +%s) - START_SECONDS))
+    echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=${status})"
+}
 source "$HOME/.cargo/env" 2>/dev/null || true
 export RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-Awarnings"
 
@@ -35,7 +46,6 @@ SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 AUTO_HWM_PROFILE="${PERF_CTX_AUTO_HWM_PROFILE:-}"
 RUN_COOLDOWN_MS="${PERF_SINGLE_RUN_COOLDOWN_MS:-500}"
-CASE_RETRIES="${PERF_SINGLE_CASE_RETRIES:-3}"
 
 print_help() {
     cat <<'EOF'
@@ -202,6 +212,7 @@ elif [[ ! -x "${SINGLE_DIR}/perf_pair" ]]; then
 fi
 
 prepare_core_runtime
+TOTAL_TIME_ENABLED=1
 [[ -n "${IO_THREADS}" ]] && export PERF_IO_THREADS="${IO_THREADS}"
 if [[ -n "${SEND_HWM}" ]]; then
     export PERF_SINGLE_SNDHWM="${SEND_HWM}"
@@ -242,7 +253,12 @@ fi
 
 TMP_METRICS="$(mktemp)"
 TMP_CASES="$(mktemp)"
-trap 'rm -f "${TMP_METRICS}" "${TMP_CASES}"' EXIT
+cleanup() {
+    local status=$?
+    rm -f "${TMP_METRICS}" "${TMP_CASES}"
+    print_total_time "${status}"
+}
+trap cleanup EXIT
 METRICS_REGEX='^(throughput|bandwidth|latency|latency_p95|latency_p99)$'
 BIN_TIMEOUT_SECONDS="${PERF_SINGLE_TIMEOUT_SECONDS:-$(( DURATION * 6 + 15 ))}"
 if [[ "${BIN_TIMEOUT_SECONDS}" -lt 30 ]]; then
@@ -267,30 +283,21 @@ for pat in "${PATTERNS[@]}"; do
             case_status="success"
             case_reason=""
             for run in $(seq 1 "${RUNS}"); do
-                attempt=1
-                while true; do
-                    if OUTPUT="$(timeout "${BIN_TIMEOUT_SECONDS}s" "${RUN_PREFIX[@]}" "${BIN}" \
-                        --pattern "${pat}" \
-                        --transport "${transport}" \
-                        --msg-size "${size}" \
-                        --duration "${DURATION}" 2>&1)"; then
-                        break
-                    fi
-                    if [[ "${attempt}" -ge "${CASE_RETRIES}" ]]; then
-                        case_status="fail"
-                        case_reason="binary_exit after ${attempt} attempts"
-                        break
-                    fi
-                    attempt=$((attempt + 1))
-                    sleep_millis "${RUN_COOLDOWN_MS}"
-                done
-                if [[ "${case_status}" == "fail" ]]; then
-                    break
+                if ! OUTPUT="$(timeout "${BIN_TIMEOUT_SECONDS}s" "${RUN_PREFIX[@]}" "${BIN}" \
+                    --pattern "${pat}" \
+                    --transport "${transport}" \
+                    --msg-size "${size}" \
+                    --duration "${DURATION}" 2>&1)"; then
+                    case_status="fail"
+                    case_reason="binary_exit"
                 fi
                 unsupported_line="$(printf '%s\n' "${OUTPUT}" | awk -F',' '/^UNSUPPORTED,/ {print; exit}')"
                 if [[ -n "${unsupported_line}" ]]; then
                     case_status="unsupported"
                     case_reason="${unsupported_line}"
+                    break
+                fi
+                if [[ "${case_status}" == "fail" ]]; then
                     break
                 fi
                 REQUIRED_COUNT="$(printf '%s\n' "${OUTPUT}" | awk -F',' '/^RESULT,/ && ($6=="throughput" || $6=="bandwidth" || $6=="latency" || $6=="latency_p95" || $6=="latency_p99") {count++} END {print count+0}')"
@@ -316,13 +323,17 @@ done
 
 python3 - "${TMP_METRICS}" "${TMP_CASES}" "${RESULTS_FILE}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
   "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" "${PIN_CPU}" "${IO_THREADS}" \
-  "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" "${SECONDS}" <<'PY'
+  "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" "${SECONDS}" \
+  "${PERF_REPORT_PY}" <<'PY'
 import csv
 import math
+import os
 import sys
 from collections import defaultdict
 
-metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, output_path, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, elapsed_seconds = sys.argv[1:]
+metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, output_path, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, elapsed_seconds, perf_report_path = sys.argv[1:]
+sys.path.insert(0, os.path.dirname(perf_report_path))
+from perf_report import SINGLE_TABLE_HEADER_LINES, single_auto_hwm_detail_lines
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 rows = defaultdict(lambda: defaultdict(list))
@@ -424,8 +435,8 @@ def rate_unit(pattern):
     return "Kops/s" if pattern_direction(pattern) == "echo" else "Kmsg/s"
 
 def emit_table_header():
-    emit("| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
-    emit("|----------|------------------|--------------|--------------|--------------|--------------|")
+    for header in SINGLE_TABLE_HEADER_LINES:
+        emit(header)
 
 def metric_value_for_run(key, metric, run_index):
     values = rows[key].get(metric, [])
@@ -454,7 +465,7 @@ for pattern_index, pattern in enumerate(patterns):
         if runs > 1:
             for run_index in range(runs):
                 emit(f"      run {run_index + 1}/{runs}:")
-                for header in ("| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |", "|----------|------------------|--------------|--------------|--------------|--------------|"):
+                for header in SINGLE_TABLE_HEADER_LINES:
                     emit(f"        {header}")
                 for size in pattern_sizes[pattern]:
                     key = (pattern, transport, size)
@@ -474,7 +485,7 @@ for pattern_index, pattern in enumerate(patterns):
                     else:
                         emit_case_row(pattern, size, metric_values)
             emit("      median:")
-        for header in ("| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |", "|----------|------------------|--------------|--------------|--------------|--------------|"):
+        for header in SINGLE_TABLE_HEADER_LINES:
             emit(f"      {header}")
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
@@ -502,13 +513,8 @@ for pattern_index, pattern in enumerate(patterns):
         emit(f"    Testing {transport}: Done")
     emit("")
 
-emit("## Auto-HWM Detail")
-for pattern in patterns:
-    emit(f"- pattern: {pattern}")
-    emit("| Size(B) | Component | Owner | Socket | Type | Role | SNDHWM | RCVHWM | SNDBUF(KB) | RCVBUF(KB) | MsgUnit(B) | Slots |")
-    emit("|---------|-----------|-------|--------|------|------|--------|--------|-----------|-----------|------------|-------|")
-    for size in pattern_sizes[pattern]:
-        emit(f"| {size} | unavailable | binding | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |")
+for line in single_auto_hwm_detail_lines(patterns, [item for item in msg_sizes_csv.split(",") if item]):
+    emit(line)
 emit("")
 emit_effective_options("result")
 emit("## Result Data")
@@ -538,6 +544,4 @@ sys.stdout.write(text)
 sys.exit(0 if expected == actual else 1)
 PY
 
-elapsed=$(($(date +%s) - START_SECONDS))
-echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=0)"
 prune_reports "${REPORT_DIR}"

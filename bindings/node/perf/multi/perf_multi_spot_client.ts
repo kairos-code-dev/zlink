@@ -51,6 +51,10 @@ function trySpotSubscribe(spot) {
         (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {
       return null;
     }
+    const text = String(error && error.message ? error.message : error);
+    if (/Device or resource busy|resource busy/i.test(text)) {
+      return null;
+    }
     throw error;
   }
 }
@@ -165,10 +169,41 @@ async function main() {
       }
       return processed;
     };
+    let resolveCompletion = null;
+    const completion = new Promise((resolve) => {
+      resolveCompletion = resolve;
+    });
+    for (let i = 0; i < slots.length; i += 1) {
+      const { spot } = slots[i];
+      spot.onDispatchEvent((info) => {
+        if (info.event !== zlink.SpotDispatchEvent.SubscribeReadable) {
+          return;
+        }
+        drainSpot(spot, (received) => {
+          const header = decodeMetricHeaderFromParts(received.parts);
+          if (!header) {
+            return;
+          }
+          if ((header.runId >>> 0) !== createRunId(1) || (header.msgSize >>> 0) !== options.msgSize) {
+            return;
+          }
+          if (header.phase === 2) {
+            cooldownSeen.add(i);
+            if (cooldownSeen.size >= slots.length) {
+              resolveCompletion?.();
+            }
+            return;
+          }
+          const nowNs = currentEpochNs();
+          if (collectActive && nowNs < activeStopNs) {
+            collector?.record(header, nowNs);
+          }
+        });
+      });
+    }
 
     const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
     while (Date.now() < stabilizationDeadline) {
-      drainSlots();
       tryControlPublish(controlPub, 'CONNECTED');
       await sleepImmediate();
     }
@@ -191,23 +226,18 @@ async function main() {
       activeStartNs: 0n,
       activeStopNs: BigInt('0xffffffffffffffff'),
     });
-    collectActive = true;
 
     await waitForRunnerStart(options.msgSize);
     await waitForControlStart(controlSub, controlSubWaiter, options.msgSize);
     trace('start-handshake-done');
 
     activeStopNs = currentEpochNs() + BigInt(Math.floor(options.duration * 1_000_000_000));
-    const idleStopNs = activeStopNs + 2_000_000_000n;
+    collectActive = true;
     trace('dispatch-ready');
-    while (currentEpochNs() < idleStopNs) {
-      if (currentEpochNs() >= activeStopNs && cooldownSeen.size >= slots.length) {
-        break;
-      }
-      if (!drainSlots()) {
-        await sleepImmediate();
-      }
-    }
+    await Promise.race([
+      completion,
+      new Promise((resolve) => setTimeout(resolve, Math.ceil(options.duration * 1000) + 2000))
+    ]);
     collectActive = false;
     trace(`drain-complete cooldown=${cooldownSeen.size}`);
     const result = collector ? await collector.finish() : { latenciesNs: [] };

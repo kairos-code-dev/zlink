@@ -43,6 +43,10 @@ function tryRecvRouted(spot) {
     if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
       return null;
     }
+    const text = String(error && error.message ? error.message : error);
+    if (/Device or resource busy|resource busy/i.test(text)) {
+      return null;
+    }
     throw error;
   }
 }
@@ -63,7 +67,6 @@ async function main() {
   let stop = false;
   let connectedControlEndpoint = '';
   let rl = null;
-  let responderLoop = null;
 
   try {
     applySpotNodeAdmission(node);
@@ -106,12 +109,11 @@ async function main() {
       }
     })();
 
-    responderLoop = (async () => {
+    const drainRouted = async () => {
       while (!stop) {
         const received = tryRecvRouted(spot);
         if (!received) {
-          await sleepImmediate();
-          continue;
+          break;
         }
         try {
           while (!stop) {
@@ -127,7 +129,22 @@ async function main() {
           received.close();
         }
       }
-    })();
+    };
+    spot.onRoutedReceive(async (received) => {
+      try {
+        while (!stop) {
+          const sent = received.send().message(received.parts[0].data())
+            .flags(zlink.SendFlags.DontWait)
+            .submit();
+          if (sent) {
+            break;
+          }
+          await spotSendWaiter.wait();
+        }
+      } finally {
+        received.close();
+      }
+    });
 
     while (!stop && !(connected && readyCount >= options.clients && startRequested)) {
       let drained = false;
@@ -166,9 +183,6 @@ async function main() {
     }
   } finally {
     stop = true;
-    if (responderLoop) {
-      await responderLoop;
-    }
     rl?.close();
     controlPubWaiter.close();
     closeQuietly(controlSub);

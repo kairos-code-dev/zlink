@@ -5,7 +5,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeaderFromParts, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createCallbackEventWaiter, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii'));
@@ -84,11 +84,6 @@ async function main() {
                 inflight: false
             });
         }
-        const sendReady = createCallbackEventWaiter((handler) => {
-            for (const slot of slots) {
-                slot.spot.onSendReady(handler);
-            }
-        });
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(controlPub, 'spotnode_control_pub', options.transport, options.msgSize);
         emitMultiSocketHwmDetail(controlSub, 'spotnode_control_sub', options.transport, options.msgSize);
@@ -118,6 +113,10 @@ async function main() {
             roundTrip: true,
         });
         let seq = 1n;
+        const poller = new zlink.Poller();
+        for (let i = 0; i < slots.length; i += 1) {
+            poller.add(slots[i].spot, [POLLIN, POLLOUT], i);
+        }
         const drainReplies = () => {
             let progressed = false;
             for (const slot of slots) {
@@ -138,32 +137,32 @@ async function main() {
             }
             return progressed;
         };
-        while (currentEpochNs() < activeStopNs) {
-            let progressed = drainReplies();
-            for (const slot of slots) {
-                if (slot.inflight) {
-                    continue;
+        try {
+            while (currentEpochNs() < activeStopNs) {
+                let progressed = drainReplies();
+                for (const slot of slots) {
+                    if (slot.inflight) {
+                        continue;
+                    }
+                    stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
+                    if (trySpotSend(slot.spot, slot.payload)) {
+                        slot.inflight = true;
+                        seq += 1n;
+                        progressed = true;
+                    }
                 }
-                stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-                if (trySpotSend(slot.spot, slot.payload)) {
-                    slot.inflight = true;
-                    seq += 1n;
-                    progressed = true;
+                if (!progressed) {
+                    poller.waitMany(Math.max(1, poller.size), -1);
                 }
             }
-            if (!progressed) {
-                if (slots.some((slot) => !slot.inflight)) {
-                    await sendReady.wait();
-                }
-                else {
-                    await sleepImmediate();
+            while (slots.some((slot) => slot.inflight)) {
+                if (!drainReplies()) {
+                    poller.waitMany(Math.max(1, poller.size), -1);
                 }
             }
         }
-        while (slots.some((slot) => slot.inflight)) {
-            if (!drainReplies()) {
-                await sleepImmediate();
-            }
+        finally {
+            poller.close();
         }
         const result = await collector.finish();
         for (const metricLine of summarizeMetrics('MULTI_SPOT_SENDSEND', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {

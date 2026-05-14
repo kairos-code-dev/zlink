@@ -24,6 +24,10 @@ function tryRecvRouted(spot) {
         if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
             return null;
         }
+        const text = String(error && error.message ? error.message : error);
+        if (/Device or resource busy|resource busy/i.test(text)) {
+            return null;
+        }
         throw error;
     }
 }
@@ -50,7 +54,6 @@ async function main() {
     let stop = false;
     let connectedControlEndpoint = '';
     let rl = null;
-    let responderLoop = null;
     try {
         applySpotNodeAdmission(node);
         configureTlsServer(node, options.transport);
@@ -91,12 +94,11 @@ async function main() {
                 }
             }
         })();
-        responderLoop = (async () => {
+        const drainRouted = () => {
             while (!stop) {
                 const received = tryRecvRouted(spot);
                 if (!received) {
-                    await sleepImmediate();
-                    continue;
+                    break;
                 }
                 try {
                     let reply = received.reply();
@@ -108,7 +110,18 @@ async function main() {
                     received.close();
                 }
             }
-        })();
+        };
+        spot.onRoutedReceive((received) => {
+            try {
+                let reply = received.reply();
+                for (const part of received.parts)
+                    reply = reply.message(part);
+                reply.submit();
+            }
+            finally {
+                received.close();
+            }
+        });
         while (!stop && !(connected && readyCount >= options.clients && startRequested)) {
             let drained = false;
             while (true) {
@@ -142,9 +155,6 @@ async function main() {
     }
     finally {
         stop = true;
-        if (responderLoop) {
-            await responderLoop;
-        }
         rl?.close();
         controlPubWaiter.close();
         closeQuietly(spot);

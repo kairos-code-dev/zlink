@@ -7,7 +7,7 @@ const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
   createRunId,
-  decodeMetricHeader,
+  decodeMetricHeaderFromParts,
   currentEpochNs,
   summarizeMetrics
 } = require('../common/perf_metrics');
@@ -60,18 +60,28 @@ async function main() {
           activeStopNs,
         });
         const poller = new zlink.Poller();
+        const completionTimer = new zlink.Timer();
         try {
           for (let i = 0; i < subs.length; i += 1) {
             poller.add(subs[i], pollEvents(POLLIN), i);
           }
-          while (currentEpochNs() < activeStopNs) {
-            const remainingNs = activeStopNs - currentEpochNs();
-            const timeoutMs = Number(remainingNs / 1_000_000n);
-            const ready = poller.waitMany(poller.size, timeoutMs > 0 ? timeoutMs : 0);
+          completionTimer.start(
+            BigInt(Math.floor((options.duration + 2) * 1_000_000_000)),
+            1n
+          );
+          poller.add(completionTimer, 'completion');
+          let cooldownSeen = false;
+          while (!cooldownSeen && currentEpochNs() < activeStopNs + 2_000_000_000n) {
+            const ready = poller.waitMany(poller.size, -1);
             if (!ready || ready.length === 0) {
               continue;
             }
             for (const event of ready) {
+              if (event.timer === completionTimer) {
+                completionTimer.recv();
+                cooldownSeen = true;
+                break;
+              }
               const index = event.tag ?? event.userData;
               if (!Number.isInteger(index)) {
                 continue;
@@ -82,10 +92,14 @@ async function main() {
                   break;
                 }
                 try {
-                  collector.record(
-                    decodeMetricHeader(received.parts[0].data()),
-                    currentEpochNs()
-                  );
+                  const header = decodeMetricHeaderFromParts(received.parts);
+                  if (header && header.phase === 2) {
+                    cooldownSeen = true;
+                    continue;
+                  }
+                  if (currentEpochNs() < activeStopNs) {
+                    collector.record(header, currentEpochNs());
+                  }
                 } finally {
                   received.close();
                 }
@@ -93,6 +107,9 @@ async function main() {
             }
           }
         } finally {
+          poller.remove(completionTimer);
+          completionTimer.stop();
+          completionTimer.close();
           poller.close();
         }
         break;

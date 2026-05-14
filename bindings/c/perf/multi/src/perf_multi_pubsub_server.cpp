@@ -176,6 +176,8 @@ build_one_way_phases (const multi_bench_settings_t &settings,
         const size_t msg_size = msg_sizes[i];
         append_one_way_phase (
           &phases, msg_size, perf_multi_metric::phase_active, active_s, true);
+        append_one_way_phase (
+          &phases, msg_size, perf_multi_metric::phase_cooldown, 1.0, true);
     }
 
     return phases;

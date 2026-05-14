@@ -6,7 +6,7 @@ const zlink = require('@zlink-systems/zlink');
 const { configureTlsServer } = require('../common/perf_tls');
 const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createCallbackEventWaiter, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, subscribeNoWait, trySocketPublish } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, subscribeNoWait, trySocketPublish } = require('./perf_multi_runtime');
 const TOPIC = 'bench';
 const CONTROL_TOPIC = 'bench';
 function trySpotPublish(spot, _channelName, topic, payload) {
@@ -75,7 +75,8 @@ async function main() {
         applySpotNodeAdmission(node);
         node.bind(dataBindEndpoint);
         spot = node.createSpot();
-        const spotSendWaiter = createCallbackEventWaiter((handler) => spot.onSendReady(handler));
+        const spotPoller = new zlink.Poller();
+        spotPoller.add(spot, [POLLOUT], 'spot');
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
         applyAutoHwmMsgUnit(controlPub, options.msgSize);
@@ -150,20 +151,25 @@ async function main() {
         const runId = createRunId(1);
         const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
         let seq = 1n;
-        while (process.hrtime.bigint() < activeStopNs) {
-            stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-            if (trySpotPublish(spot, '', TOPIC, payload)) {
-                seq += 1n;
-                continue;
+        try {
+            while (process.hrtime.bigint() < activeStopNs) {
+                stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
+                if (trySpotPublish(spot, '', TOPIC, payload)) {
+                    seq += 1n;
+                    continue;
+                }
+                spotPoller.wait(-1);
             }
-            await spotSendWaiter.wait();
+            stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
+            for (;;) {
+                if (trySpotPublish(spot, '', TOPIC, payload)) {
+                    break;
+                }
+                spotPoller.wait(-1);
+            }
         }
-        stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
-        for (;;) {
-            if (trySpotPublish(spot, '', TOPIC, payload)) {
-                break;
-            }
-            await spotSendWaiter.wait();
+        finally {
+            spotPoller.close();
         }
     }
     finally {

@@ -5,7 +5,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createCallbackEventWaiter, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
@@ -143,11 +143,6 @@ async function main() {
                 inflight: false
             });
         }
-        const sendReady = createCallbackEventWaiter((handler) => {
-            for (const slot of slots) {
-                slot.spot.onSendReady(handler);
-            }
-        });
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
         const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
@@ -178,36 +173,42 @@ async function main() {
             roundTrip: true,
         });
         let seq = 1n;
-        while (currentEpochNs() < activeStopNs) {
-            let progressed = false;
-            for (const slot of slots) {
-                if (slot.inflight) {
-                    continue;
+        const poller = new zlink.Poller();
+        for (let i = 0; i < slots.length; i += 1) {
+            poller.add(slots[i].spot, [POLLIN, POLLOUT], i);
+        }
+        try {
+            while (currentEpochNs() < activeStopNs) {
+                let progressed = false;
+                for (const slot of slots) {
+                    if (slot.inflight) {
+                        continue;
+                    }
+                    stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
+                    const submitted = tryRequestSpotReply(slot.spot, slot.payload, 2000, (header) => {
+                        collector.record(header, currentEpochNs());
+                    }, () => {
+                        slot.inflight = false;
+                    });
+                    if (!submitted) {
+                        continue;
+                    }
+                    slot.inflight = true;
+                    seq += 1n;
+                    progressed = true;
                 }
-                stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-                const submitted = tryRequestSpotReply(slot.spot, slot.payload, 2000, (header) => {
-                    collector.record(header, currentEpochNs());
-                }, () => {
-                    slot.inflight = false;
-                });
-                if (!submitted) {
-                    continue;
-                }
-                slot.inflight = true;
-                seq += 1n;
-                progressed = true;
-            }
-            if (!progressed) {
-                if (slots.some((slot) => !slot.inflight)) {
-                    await sendReady.wait();
-                }
-                else {
+                if (!progressed) {
+                    poller.waitMany(Math.max(1, poller.size), -1);
                     await sleepImmediate();
                 }
             }
+            while (slots.some((slot) => slot.inflight)) {
+                poller.waitMany(Math.max(1, poller.size), -1);
+                await sleepImmediate();
+            }
         }
-        while (slots.some((slot) => slot.inflight)) {
-            await sleepImmediate();
+        finally {
+            poller.close();
         }
         trace('requests-complete');
         const result = await collector.finish();

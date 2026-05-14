@@ -18,7 +18,6 @@ const {
   applyContextPolicy,
   applySocketPolicy,
   applySpotNodeAdmission,
-  createCallbackEventWaiter,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
   publishControlUntilSent,
@@ -96,7 +95,8 @@ async function main() {
     applySpotNodeAdmission(node);
     node.bind(dataBindEndpoint);
     spot = node.createSpot();
-    const spotSendWaiter = createCallbackEventWaiter((handler) => spot.onSendReady(handler));
+    const spotPoller = new zlink.Poller();
+    spotPoller.add(spot, [POLLOUT], 'spot');
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
     applyAutoHwmMsgUnit(controlPub, options.msgSize);
@@ -173,20 +173,24 @@ async function main() {
     const runId = createRunId(1);
     const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
     let seq = 1n;
-    while (process.hrtime.bigint() < activeStopNs) {
-      stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-      if (trySpotPublish(spot, '', TOPIC, payload)) {
-        seq += 1n;
-        continue;
+    try {
+      while (process.hrtime.bigint() < activeStopNs) {
+        stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
+        if (trySpotPublish(spot, '', TOPIC, payload)) {
+          seq += 1n;
+          continue;
+        }
+        spotPoller.wait(-1);
       }
-      await spotSendWaiter.wait();
-    }
-    stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
-    for (;;) {
-      if (trySpotPublish(spot, '', TOPIC, payload)) {
-        break;
+      stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
+      for (;;) {
+        if (trySpotPublish(spot, '', TOPIC, payload)) {
+          break;
+        }
+        spotPoller.wait(-1);
       }
-      await spotSendWaiter.wait();
+    } finally {
+      spotPoller.close();
     }
   } finally {
     rl?.close();

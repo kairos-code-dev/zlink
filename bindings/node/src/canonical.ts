@@ -3873,7 +3873,7 @@ interface RawPollerEvent {
 }
 
 export interface PollEvent {
-  readonly socket: BaseSocket | null;
+  readonly socket: BasePollable | null;
   readonly fd: number | null;
   readonly timer: Timer | null;
   readonly tag: any;
@@ -3881,44 +3881,46 @@ export interface PollEvent {
   readonly revents: readonly PollEventFlagValue[];
 }
 
+type BasePollable = BaseSocket | Spot;
+
 export class Poller {
   private _native: unknown | null;
   private _nextTagId = 1n;
   private readonly _registrations = new Map<bigint, {
-    socket: BaseSocket | null;
+    socket: BasePollable | null;
     fd: number | null;
     timer: Timer | null;
     tag: any;
     events: readonly PollEventFlagValue[];
   }>();
-  private readonly _socketIds = new WeakMap<BaseSocket, bigint>();
+  private readonly _socketIds = new WeakMap<BasePollable, bigint>();
   private readonly _timerIds = new WeakMap<Timer, bigint>();
   private readonly _fdIds = new Map<number, bigint>();
   constructor() { this._native = requireNative().pollerNew(); }
-  add(socket: BaseSocket, events: readonly PollEventFlagValue[], tag?: any): void;
+  add(socket: BasePollable, events: readonly PollEventFlagValue[], tag?: any): void;
   add(timer: Timer, tag?: any): void;
-  add(item: BaseSocket | Timer, eventsOrTag?: readonly PollEventFlagValue[] | any, tag?: any): void {
+  add(item: BasePollable | Timer, eventsOrTag?: readonly PollEventFlagValue[] | any, tag?: any): void {
     if (item instanceof Timer) {
       this.addTimerInternal(item, eventsOrTag);
       return;
     }
     this.addSocketInternal(item, flagsToMask(eventsOrTag as readonly PollEventFlagValue[]), tag, eventsOrTag as readonly PollEventFlagValue[]);
   }
-  modify(socket: BaseSocket, events: readonly PollEventFlagValue[]): void {
+  modify(socket: BasePollable, events: readonly PollEventFlagValue[]): void {
     this.modifySocketInternal(socket, flagsToMask(events));
     const id = this._socketIds.get(socket);
     const current = id ? this._registrations.get(id) : undefined;
     if (id && current) this._registrations.set(id, { ...current, events: Object.freeze(events.slice()) });
   }
-  remove(socket: BaseSocket): boolean;
+  remove(socket: BasePollable): boolean;
   remove(timer: Timer): boolean;
-  remove(item: BaseSocket | Timer): boolean {
+  remove(item: BasePollable | Timer): boolean {
     if (item instanceof Timer) {
       return this.removeTimerInternal(item);
     }
     return this.removeSocketInternal(item);
   }
-  private registerSocket(socket: BaseSocket, tag: any, events: readonly PollEventFlagValue[]): bigint {
+  private registerSocket(socket: BasePollable, tag: any, events: readonly PollEventFlagValue[]): bigint {
     const id = this._nextTagId++;
     this._socketIds.set(socket, id);
     this._registrations.set(id, {
@@ -3968,7 +3970,7 @@ export class Poller {
       revents
     };
   }
-  private addSocketInternal(socket: BaseSocket, events: number, userData?: any, eventList: readonly PollEventFlagValue[] = maskToFlags(events)): void {
+  private addSocketInternal(socket: BasePollable, events: number, userData?: any, eventList: readonly PollEventFlagValue[] = maskToFlags(events)): void {
     const id = this.registerSocket(socket, userData, eventList);
     try {
       requireNative().pollerAdd(this._native, socket.nativeHandle(), id, events | 0);
@@ -3978,12 +3980,12 @@ export class Poller {
       throw createError('config', readErrno(), nativeErrorMessage(error, 'poller socket add failed'));
     }
   }
-  private modifySocketInternal(socket: BaseSocket, events: number): void {
+  private modifySocketInternal(socket: BasePollable, events: number): void {
     configCall('poller socket modify failed', () => {
       requireNative().pollerModify(this._native, socket.nativeHandle(), events | 0);
     });
   }
-  private removeSocketInternal(socket: BaseSocket): boolean {
+  private removeSocketInternal(socket: BasePollable): boolean {
     configCall('poller socket remove failed', () => {
       requireNative().pollerRemove(this._native, socket.nativeHandle());
     });

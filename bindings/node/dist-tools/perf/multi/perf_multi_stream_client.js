@@ -6,36 +6,39 @@ const tls = require('node:tls');
 const { once } = require('node:events');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs, resolveMultiConnectConcurrency } = require('./perf_multi_common');
+const STREAM_PACKET_HEADER = Buffer.from('stream.echo', 'ascii');
+const STREAM_PACKET_PREFIX_SIZE = 6;
 function buildStreamPacketFrame(body) {
-    const frame = Buffer.allocUnsafe(6 + body.length);
-    frame.writeUInt16BE(0, 0);
+    const frame = Buffer.allocUnsafe(STREAM_PACKET_PREFIX_SIZE + STREAM_PACKET_HEADER.length + body.length);
+    frame.writeUInt16BE(STREAM_PACKET_HEADER.length, 0);
     frame.writeUInt32BE(body.length, 2);
-    body.copy(frame, 6);
+    STREAM_PACKET_HEADER.copy(frame, STREAM_PACKET_PREFIX_SIZE);
+    body.copy(frame, STREAM_PACKET_PREFIX_SIZE + STREAM_PACKET_HEADER.length);
     return frame;
 }
 function buildStreamPacketFrames(body) {
     return buildStreamPacketFrame(body);
 }
-function readFixedPayload(state, payloadSize) {
+function readBytes(state, size) {
     const first = state.chunks[0];
-    if (first.length === payloadSize) {
+    if (first.length === size) {
         state.chunks.shift();
-        state.bufferedBytes -= payloadSize;
+        state.bufferedBytes -= size;
         return first;
     }
-    if (first.length > payloadSize) {
-        const payload = first.subarray(0, payloadSize);
-        state.chunks[0] = first.subarray(payloadSize);
-        state.bufferedBytes -= payloadSize;
-        return payload;
+    if (first.length > size) {
+        const bytes = first.subarray(0, size);
+        state.chunks[0] = first.subarray(size);
+        state.bufferedBytes -= size;
+        return bytes;
     }
-    const payload = Buffer.allocUnsafe(payloadSize);
+    const bytes = Buffer.allocUnsafe(size);
     let copied = 0;
-    while (copied < payloadSize) {
+    while (copied < size) {
         const chunk = state.chunks[0];
-        const remaining = payloadSize - copied;
+        const remaining = size - copied;
         const take = Math.min(chunk.length, remaining);
-        chunk.copy(payload, copied, 0, take);
+        chunk.copy(bytes, copied, 0, take);
         copied += take;
         if (take === chunk.length) {
             state.chunks.shift();
@@ -44,17 +47,41 @@ function readFixedPayload(state, payloadSize) {
             state.chunks[0] = chunk.subarray(take);
         }
     }
-    state.bufferedBytes -= payloadSize;
-    return payload;
+    state.bufferedBytes -= size;
+    return bytes;
 }
-function parseFixedPayloads(state, chunk, payloadSize) {
+function peekPacketSize(state) {
+    if (state.bufferedBytes < STREAM_PACKET_PREFIX_SIZE) {
+        return null;
+    }
+    const prefix = state.chunks.length === 1 || state.chunks[0].length >= STREAM_PACKET_PREFIX_SIZE
+        ? state.chunks[0].subarray(0, STREAM_PACKET_PREFIX_SIZE)
+        : Buffer.concat(state.chunks, Math.min(state.bufferedBytes, STREAM_PACKET_PREFIX_SIZE)).subarray(0, STREAM_PACKET_PREFIX_SIZE);
+    const headerSize = prefix.readUInt16BE(0);
+    const bodySize = prefix.readUInt32BE(2);
+    return STREAM_PACKET_PREFIX_SIZE + headerSize + bodySize;
+}
+function parsePacketPayloads(state, chunk) {
     if (chunk.length > 0) {
         state.chunks.push(chunk);
         state.bufferedBytes += chunk.length;
     }
     const payloads = [];
-    while (state.bufferedBytes >= payloadSize) {
-        payloads.push(readFixedPayload(state, payloadSize));
+    while (true) {
+        const packetSize = peekPacketSize(state);
+        if (packetSize === null || state.bufferedBytes < packetSize) {
+            break;
+        }
+        const packet = readBytes(state, packetSize);
+        const headerSize = packet.readUInt16BE(0);
+        const bodySize = packet.readUInt32BE(2);
+        const headerStart = STREAM_PACKET_PREFIX_SIZE;
+        const bodyStart = headerStart + headerSize;
+        const header = packet.subarray(headerStart, bodyStart);
+        if (header.length !== STREAM_PACKET_HEADER.length || !header.equals(STREAM_PACKET_HEADER)) {
+            throw new Error('stream packet header mismatch');
+        }
+        payloads.push(packet.subarray(bodyStart, bodyStart + bodySize));
     }
     return payloads;
 }
@@ -73,7 +100,7 @@ function normalizeBinaryChunk(data) {
     }
     throw new Error(`unsupported stream payload type: ${typeof data}`);
 }
-function createFrameReader(transport, payloadSize) {
+function createFrameReader(transport) {
     const state = {
         chunks: [],
         bufferedBytes: 0,
@@ -86,7 +113,7 @@ function createFrameReader(transport, payloadSize) {
         }
     };
     const onData = (chunk) => {
-        const payloads = parseFixedPayloads(state, normalizeBinaryChunk(chunk), payloadSize);
+        const payloads = parsePacketPayloads(state, normalizeBinaryChunk(chunk));
         if (payloads.length > 0) {
             state.pending.push(...payloads);
             flushWaiters();

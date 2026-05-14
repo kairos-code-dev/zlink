@@ -149,25 +149,11 @@ bool run_recv_duration (const std::vector<void *> &sockets,
           active_seconds));
     std::vector<zlink_poller_event_t> events (sockets.size ());
 
-    while (true) {
-        const std::chrono::steady_clock::time_point now =
-          std::chrono::steady_clock::now ();
-        if (now >= active_deadline)
-            break;
-
-        // Wait until either the deadline or a signal-driven wakeup fires.
-        // No short timer-based cap (PERF_MULTI_TEST_POLICY § 1.3.1):
-        // pubsub publish on the peer wakes the sub fd immediately, so a
-        // 5 ms cap was just an unnecessary throughput limiter.
-        const int timeout_ms = static_cast<int> (
-          std::chrono::duration_cast<std::chrono::milliseconds> (
-            active_deadline - now)
-            .count ());
+    bool cooldown_seen = false;
+    while (!cooldown_seen) {
         const int poll_rc =
           zlink_poller_wait (poller, events.empty () ? NULL : &events[0],
-                             static_cast<int> (events.size ()),
-                             timeout_ms <= 0 ? 0 : timeout_ms,
-                             NULL);
+                             static_cast<int> (events.size ()), -1, NULL);
         if (poll_rc < 0) {
             const int err = zlink_errno ();
             if (err == EINTR || err == EAGAIN)
@@ -179,7 +165,6 @@ bool run_recv_duration (const std::vector<void *> &sockets,
             return false;
         }
 
-        bool progressed = false;
         for (int i = 0; i < poll_rc; ++i) {
             if ((events[i].events & ZLINK_POLLIN) == 0)
                 continue;
@@ -202,9 +187,15 @@ bool run_recv_duration (const std::vector<void *> &sockets,
                 if (recv_rc == 0)
                     break;
 
-                progressed = true;
                 if (header.phase
-                    != static_cast<uint8_t> (perf_multi_metric::phase_active)) {
+                    == static_cast<uint8_t> (
+                      perf_multi_metric::phase_cooldown)) {
+                    cooldown_seen = true;
+                    continue;
+                }
+                if (header.phase
+                    != static_cast<uint8_t> (perf_multi_metric::phase_active)
+                    || std::chrono::steady_clock::now () >= active_deadline) {
                     continue;
                 }
 
@@ -215,15 +206,6 @@ bool run_recv_duration (const std::vector<void *> &sockets,
                     lat_samples.add (sample_ns);
                 }
             }
-        }
-
-        if (!progressed && perf_socket_poll (NULL, 0, 1) < 0
-            && zlink_errno () != EINTR) {
-            if (bench_debug_enabled ()) {
-                std::cerr << "[multi-pubsub-client] idle poll failed err="
-                          << zlink_errno () << std::endl;
-            }
-            return false;
         }
     }
 

@@ -27,7 +27,6 @@ const {
   applySocketPolicy,
   applyContextPolicy,
   applySpotNodeAdmission,
-  createCallbackEventWaiter,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
   publishControlUntilSent,
@@ -183,11 +182,6 @@ async function main() {
         inflight: false
       });
     }
-    const sendReady = createCallbackEventWaiter((handler) => {
-      for (const slot of slots) {
-        slot.spot.onSendReady(handler);
-      }
-    });
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
 
@@ -230,36 +224,42 @@ async function main() {
       roundTrip: true,
     });
     let seq = 1n;
+    const poller = new zlink.Poller();
+    for (let i = 0; i < slots.length; i += 1) {
+      poller.add(slots[i].spot, [POLLIN, POLLOUT], i);
+    }
 
-    while (currentEpochNs() < activeStopNs) {
-      let progressed = false;
-      for (const slot of slots) {
-        if (slot.inflight) {
-          continue;
+    try {
+      while (currentEpochNs() < activeStopNs) {
+        let progressed = false;
+        for (const slot of slots) {
+          if (slot.inflight) {
+            continue;
+          }
+          stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
+          const submitted = tryRequestSpotReply(slot.spot, slot.payload, 2000, (header) => {
+            collector.record(header, currentEpochNs());
+          }, () => {
+            slot.inflight = false;
+          });
+          if (!submitted) {
+            continue;
+          }
+          slot.inflight = true;
+          seq += 1n;
+          progressed = true;
         }
-        stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-        const submitted = tryRequestSpotReply(slot.spot, slot.payload, 2000, (header) => {
-          collector.record(header, currentEpochNs());
-        }, () => {
-          slot.inflight = false;
-        });
-        if (!submitted) {
-          continue;
-        }
-        slot.inflight = true;
-        seq += 1n;
-        progressed = true;
-      }
-      if (!progressed) {
-        if (slots.some((slot) => !slot.inflight)) {
-          await sendReady.wait();
-        } else {
+        if (!progressed) {
+          poller.waitMany(Math.max(1, poller.size), -1);
           await sleepImmediate();
         }
       }
-    }
-    while (slots.some((slot) => slot.inflight)) {
-      await sleepImmediate();
+      while (slots.some((slot) => slot.inflight)) {
+        poller.waitMany(Math.max(1, poller.size), -1);
+        await sleepImmediate();
+      }
+    } finally {
+      poller.close();
     }
     trace('requests-complete');
 

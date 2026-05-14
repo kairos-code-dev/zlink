@@ -27,7 +27,6 @@ const {
   applyContextPolicy,
   applySocketPolicy,
   applySpotNodeAdmission,
-  createCallbackEventWaiter,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
   publishControlUntilSent,
@@ -121,11 +120,6 @@ async function main() {
         inflight: false
       });
     }
-    const sendReady = createCallbackEventWaiter((handler) => {
-      for (const slot of slots) {
-        slot.spot.onSendReady(handler);
-      }
-    });
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(controlPub, 'spotnode_control_pub', options.transport, options.msgSize);
     emitMultiSocketHwmDetail(controlSub, 'spotnode_control_sub', options.transport, options.msgSize);
@@ -163,6 +157,10 @@ async function main() {
       roundTrip: true,
     });
     let seq = 1n;
+    const poller = new zlink.Poller();
+    for (let i = 0; i < slots.length; i += 1) {
+      poller.add(slots[i].spot, [POLLIN, POLLOUT], i);
+    }
 
     const drainReplies = () => {
       let progressed = false;
@@ -184,31 +182,31 @@ async function main() {
       return progressed;
     };
 
-    while (currentEpochNs() < activeStopNs) {
-      let progressed = drainReplies();
-      for (const slot of slots) {
-        if (slot.inflight) {
-          continue;
+    try {
+      while (currentEpochNs() < activeStopNs) {
+        let progressed = drainReplies();
+        for (const slot of slots) {
+          if (slot.inflight) {
+            continue;
+          }
+          stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
+          if (trySpotSend(slot.spot, slot.payload)) {
+            slot.inflight = true;
+            seq += 1n;
+            progressed = true;
+          }
         }
-        stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-        if (trySpotSend(slot.spot, slot.payload)) {
-          slot.inflight = true;
-          seq += 1n;
-          progressed = true;
-        }
-      }
-      if (!progressed) {
-        if (slots.some((slot) => !slot.inflight)) {
-          await sendReady.wait();
-        } else {
-          await sleepImmediate();
+        if (!progressed) {
+          poller.waitMany(Math.max(1, poller.size), -1);
         }
       }
-    }
-    while (slots.some((slot) => slot.inflight)) {
-      if (!drainReplies()) {
-        await sleepImmediate();
+      while (slots.some((slot) => slot.inflight)) {
+        if (!drainReplies()) {
+          poller.waitMany(Math.max(1, poller.size), -1);
+        }
       }
+    } finally {
+      poller.close();
     }
 
     const result = await collector.finish();

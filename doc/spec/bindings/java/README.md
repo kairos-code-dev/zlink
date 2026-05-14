@@ -128,6 +128,7 @@ ways:
 | Actor dispatch | `zlink_remote_actor_get_ref` (async), `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_spot_node_actor_destroy` (async), `zlink_spot_node_actor_join_spot` (async + dedicated completion), `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_spot_actor_lifecycle_handler`, `zlink_spot_node_actor_leave_spot` (async), `zlink_spot_node_actor_recv_part`, `zlink_spot_node_actor_send_bound_session_msg`, `zlink_spot_node_actor_close_bound_session`, `zlink_stream_bound_actors` | `Actor`, `ActorRef`, `ActorJoinResult`, `ActorLookupResult`, `SpotActorLifecycleInfo`, `SpotNode` actor methods, `Spot.recvActorJoin`, `Spot.replyActorJoin`, `Spot.onActorLifecycle`, `StreamSocket.boundActors` | Public API |
 | Spot snapshots | `zlink_spot_node_status_snapshot`, `zlink_spot_node_peers_snapshot`, `zlink_spot_node_peers_query`, `zlink_spot_node_subjects_snapshot`, `zlink_spot_node_internal_sockets_snapshot`, `zlink_spot_node_spots_snapshot`, `zlink_spot_node_actors_snapshot`, `zlink_spot_actors_snapshot`, registry/discovery topology snapshot/query entrypoints | `statusSnapshot`, peer/subject/internal-socket/spot/actor snapshot methods, registry/discovery topology records | Public API |
 | Polling | `zlink_poll`, `zlink_poller_*` | `Poller`, `PollEvent`, `PollEventFlag` | Public API; legacy array `zlink_poll` is intentionally not exposed |
+| Spot poller registration | `zlink_poller_add`, `zlink_poller_modify`, `zlink_poller_remove` with SPOT handles | `Poller.add(Spot, ...)`, `Poller.modify(Spot, ...)`, `Poller.remove(Spot)` | Public API for SPOT recv/send readiness |
 | Poller timers | `zlink_poller_add_timer`, `zlink_poller_remove_timer` | `Poller.add(Timer, Object)`, `Poller.remove(Timer)`, `PollEvent.timer` | Required Java API |
 | Proxy | `zlink_proxy`, `zlink_proxy_steerable` | `Zlink.proxy`, `Zlink.proxySteerable` | Public API |
 | Timer | `zlink_timer_*`, `zlink_spot_timer_new` | `Timer`, `Timer.fromSpot`, `start`, `stop`, `recv`, `onFire`, `close` | Public API |
@@ -2344,11 +2345,13 @@ public record RegistryTopologyFilter(AutoConnectType autoConnectType,
 
 ### Poller
 
-Event poller for multiplexing socket, file descriptor, and timer readiness.
+Event poller for multiplexing socket, SPOT, file descriptor, and timer
+readiness.
 
-The public poller contract is generic. It reports socket, file descriptor,
-and timer readiness. SPOT dispatch ownership and drain semantics stay behind
-`Spot.onDispatchEvent(...)`.
+The public poller contract is generic. It reports socket, SPOT, file
+descriptor, and timer readiness. `Spot.onDispatchEvent(...)` remains available
+for dispatch activation callbacks, while `Poller.add(Spot, ...)` is the public
+poller path for code that needs explicit `POLLIN` / `POLLOUT` readiness.
 Implements `AutoCloseable`.
 
 ```java
@@ -2360,6 +2363,12 @@ public final class Poller implements AutoCloseable {
     void add(Socket socket, Object tag, PollEventFlag... events);    // @throws ConfigException
     void modify(Socket socket, PollEventFlag... events);             // @throws ConfigException
     boolean remove(Socket socket);                                   // @throws ConfigException
+
+    // --- SPOT registration ---
+    void add(Spot spot, PollEventFlag... events);                    // @throws ConfigException
+    void add(Spot spot, Object tag, PollEventFlag... events);        // @throws ConfigException
+    void modify(Spot spot, PollEventFlag... events);                 // @throws ConfigException
+    boolean remove(Spot spot);                                       // @throws ConfigException
 
     // --- file descriptor registration ---
     void addFd(int fd, PollEventFlag... events);                     // @throws ConfigException

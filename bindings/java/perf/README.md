@@ -34,7 +34,8 @@ not to provide demo code or hide the hot path behind a complex harness.
 - `perf/run_benchmarks_multi.sh` or `perf/multi/run_benchmarks.sh`
 
 Each suite builds and runs the Java binding perf entrypoints directly. There is
-no shared cross-binding runner.
+no shared cross-binding runner, except for the policy-mandated `MULTI_STREAM`
+raw client from `bindings/c/perf/common/streamclient`.
 
 ## Layout
 

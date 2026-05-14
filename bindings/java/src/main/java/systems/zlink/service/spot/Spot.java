@@ -186,7 +186,7 @@ public final class Spot implements AutoCloseable {
     }
 
     /** Internal bridge for binding helpers. */
-    MemorySegment handleInternal() {
+    public MemorySegment handleInternal() {
         return handle();
     }
 

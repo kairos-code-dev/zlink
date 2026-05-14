@@ -3,6 +3,7 @@
 package systems.zlink;
 
 import systems.zlink.internal.Native;
+import systems.zlink.service.spot.Spot;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -81,6 +82,34 @@ public final class Poller implements AutoCloseable {
         add(socket, PollEventFlag.combine(events), tag);
     }
 
+    void add(Spot spot, int events) {
+        add(spot, events, null);
+    }
+
+    void add(Spot spot, int events, Object tag) {
+        ensureOpen();
+        Objects.requireNonNull(spot, "spot");
+        PollItem item = newPollItem(null, spot.handleInternal(), 0, events, tag,
+          false);
+        int rc = Native.pollerAddSpotSub(handle, spot.handleInternal(),
+          item.userData, events);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_add");
+        registerItem(item);
+    }
+
+    public void add(Spot spot, PollEventFlag... events) {
+        add(spot, PollEventFlag.combine(events), null);
+    }
+
+    public void add(Spot spot, PollEventFlag event) {
+        add(spot, PollEventFlag.combine(event), null);
+    }
+
+    public void add(Spot spot, Object tag, PollEventFlag... events) {
+        add(spot, PollEventFlag.combine(events), tag);
+    }
+
     void addFd(int fd, int events) {
         addFd(fd, events, null);
     }
@@ -155,6 +184,23 @@ public final class Poller implements AutoCloseable {
         modify(socket, PollEventFlag.combine(events));
     }
 
+    void modify(Spot spot, int events) {
+        ensureOpen();
+        Objects.requireNonNull(spot, "spot");
+        int index = findSpot(spot.handleInternal());
+        if (index < 0)
+            throw new IllegalArgumentException("spot is not registered");
+        int rc = Native.pollerModifySpotSub(handle, spot.handleInternal(),
+          events);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_modify");
+        items.get(index).events = events;
+    }
+
+    public void modify(Spot spot, PollEventFlag... events) {
+        modify(spot, PollEventFlag.combine(events));
+    }
+
     void modifyFd(int fd, int events) {
         ensureOpen();
         int index = findFd(fd);
@@ -181,6 +227,19 @@ public final class Poller implements AutoCloseable {
         if (index < 0)
             return false;
         int rc = Native.pollerRemove(handle, socket.handle());
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_remove");
+        unregisterItem(index);
+        return true;
+    }
+
+    public boolean remove(Spot spot) {
+        ensureOpen();
+        Objects.requireNonNull(spot, "spot");
+        int index = findSpot(spot.handleInternal());
+        if (index < 0)
+            return false;
+        int rc = Native.pollerRemoveSpotSub(handle, spot.handleInternal());
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_poller_remove");
         unregisterItem(index);
@@ -462,6 +521,17 @@ public final class Poller implements AutoCloseable {
             PollItem item = items.get(i);
             if (!item.isSocket && !item.isTimer && item.fd == fd)
                 return i;
+        }
+        return -1;
+    }
+
+    private int findSpot(MemorySegment spotHandle) {
+        for (int i = 0; i < items.size(); i++) {
+            PollItem item = items.get(i);
+            if (!item.isSocket && !item.isTimer && item.fd == 0
+              && item.socketHandle.address() == spotHandle.address()) {
+                return i;
+            }
         }
         return -1;
     }

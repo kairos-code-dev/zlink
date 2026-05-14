@@ -4,12 +4,17 @@ package systems.zlink.perf.multi;
 
 import systems.zlink.Context;
 import systems.zlink.Message;
+import systems.zlink.PollEvent;
+import systems.zlink.PollEventFlag;
+import systems.zlink.Poller;
 import systems.zlink.RecvException;
 import systems.zlink.RecvFlags;
 import systems.zlink.RecvResult;
 import systems.zlink.Received;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
+import systems.zlink.SubmitException;
+import systems.zlink.SubmitResult;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
@@ -171,13 +176,16 @@ final class PerfMultiSpotReqRep {
                     Spot requester = requesters.get(index);
                     long activeEnd = System.nanoTime()
                         + durationSeconds * 1_000_000_000L;
-                    try (Message active = PerfUtil.payloadTemplate(config.size())) {
+                    try (Message active = PerfUtil.payloadTemplate(config.size());
+                         Poller poller = new Poller()) {
+                        poller.add(requester, PollEventFlag.POLLIN,
+                            PollEventFlag.POLLOUT);
                         while (System.nanoTime() < activeEnd) {
                             PerfUtil.resetAndWritePayload(active, config.size(),
                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                            sendToServer(requester, active, SendFlags.NONE);
+                            sendToServerWhenWritable(requester, poller, active);
                             PerfUtil.Header reply = recvExpected(requester,
-                                config.size(), activeEnd);
+                                poller, config.size(), activeEnd);
                             if (reply != null
                                 && reply.phase() == PerfUtil.PHASE_ACTIVE
                                 && System.nanoTime() < activeEnd) {
@@ -208,13 +216,33 @@ final class PerfMultiSpotReqRep {
             .submit();
     }
 
+    private static void sendToServerWhenWritable(Spot requester,
+                                                 Poller poller,
+                                                 Message payload) {
+        for (;;) {
+            try {
+                sendToServer(requester, payload, SendFlags.DONT_WAIT);
+                return;
+            } catch (SubmitException ex) {
+                if (ex.getResult() != SubmitResult.BACKPRESSURED) {
+                    throw ex;
+                }
+                waitFor(poller, PollEventFlag.POLLOUT);
+            }
+        }
+    }
+
     private static PerfUtil.Header recvExpected(Spot requester,
+                                                Poller poller,
                                                 int expectedSize,
                                                 long deadlineNs) {
-        while (System.nanoTime() < deadlineNs) {
+        for (;;) {
+            if (System.nanoTime() >= deadlineNs) {
+                return null;
+            }
+            waitFor(poller, PollEventFlag.POLLIN);
             Received received = recvRoutedNoWait(requester);
             if (received == null) {
-                sleepQuietly(1);
                 continue;
             }
             try (received) {
@@ -224,7 +252,18 @@ final class PerfMultiSpotReqRep {
                 return PerfUtil.decodeHeader(received.firstPart(), expectedSize);
             }
         }
-        return null;
+    }
+
+    private static void waitFor(Poller poller, PollEventFlag expected) {
+        List<PollEvent> events = new ArrayList<>(1);
+        for (;;) {
+            poller.wait(events, Duration.ofMillis(-1));
+            for (PollEvent event : events) {
+                if (event.revents().contains(expected)) {
+                    return;
+                }
+            }
+        }
     }
 
     private static Received recvRoutedNoWait(Spot spot) {

@@ -6,6 +6,7 @@ import systems.zlink.DealerSocket;
 import systems.zlink.Message;
 import systems.zlink.MonitorSocket;
 import systems.zlink.PairSocket;
+import systems.zlink.PollEventFlag;
 import systems.zlink.Poller;
 import systems.zlink.PubSocket;
 import systems.zlink.PubSocketOptions;
@@ -427,6 +428,13 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(Poller.class, "add", Timer.class,
             Object.class));
         assertTrue(hasPublicMethod(Poller.class, "remove", Timer.class));
+        assertTrue(hasPublicMethod(Poller.class, "add", Spot.class,
+            PollEventFlag[].class));
+        assertTrue(hasPublicMethod(Poller.class, "add", Spot.class,
+            Object.class, PollEventFlag[].class));
+        assertTrue(hasPublicMethod(Poller.class, "modify", Spot.class,
+            PollEventFlag[].class));
+        assertTrue(hasPublicMethod(Poller.class, "remove", Spot.class));
         assertFalse(hasPublicMethod(Poller.class, "readyTimer", int.class));
         assertTrue(hasPublicMethod(systems.zlink.MonitorSocket.class,
             "recv", RecvFlags.class));

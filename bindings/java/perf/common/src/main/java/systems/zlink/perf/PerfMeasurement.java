@@ -4,6 +4,7 @@ package systems.zlink.perf;
 
 import systems.zlink.Message;
 import java.net.ServerSocket;
+import java.time.Instant;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -12,8 +13,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 final class PerfMeasurement {
     private static final int MAGIC = 0x5A4C4E4B;
-    private static final long BASE_EPOCH_NS = System.currentTimeMillis() * 1_000_000L;
-    private static final long BASE_NANO = System.nanoTime();
     private static final int RUN_ID = 1;
     private static final AtomicLong SEQ = new AtomicLong();
 
@@ -45,7 +44,7 @@ final class PerfMeasurement {
     }
 
     static void writePayload(Message payload, int size, byte phase, long sentNanoTime) {
-        long sentTsNs = BASE_EPOCH_NS + (sentNanoTime - BASE_NANO);
+        long sentTsNs = nowNs();
         writePayloadHeader(payload, size, phase, SEQ.getAndIncrement(), sentTsNs);
     }
 
@@ -85,7 +84,9 @@ final class PerfMeasurement {
     }
 
     static long nowNs() {
-        return BASE_EPOCH_NS + (System.nanoTime() - BASE_NANO);
+        Instant now = Instant.now();
+        return Math.addExact(Math.multiplyExact(now.getEpochSecond(), 1_000_000_000L),
+            now.getNano());
     }
 
     static double bytesToMb(long bytes) {

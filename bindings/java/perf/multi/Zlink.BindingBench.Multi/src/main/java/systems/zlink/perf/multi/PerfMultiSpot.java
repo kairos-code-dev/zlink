@@ -17,7 +17,9 @@ import systems.zlink.service.spot.Spot;
 import systems.zlink.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
@@ -143,7 +145,8 @@ final class PerfMultiSpot {
                                              PerfUtil.Metrics metrics,
                                              PerfSpotDirectControl control) {
         boolean[] cooldownSeen = new boolean[subscribers.size()];
-        boolean[] readable = new boolean[subscribers.size()];
+        boolean[] queued = new boolean[subscribers.size()];
+        Deque<Integer> readyQueue = new ArrayDeque<>(subscribers.size());
         CountDownLatch complete = new CountDownLatch(1);
         AtomicLong activeEndRef = new AtomicLong();
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -159,9 +162,12 @@ final class PerfMultiSpot {
                         if (activeEnd == 0L) {
                             return;
                         }
-                        synchronized (readable) {
-                            readable[index] = true;
-                            readable.notifyAll();
+                        synchronized (readyQueue) {
+                            if (!queued[index]) {
+                                queued[index] = true;
+                                readyQueue.addLast(index);
+                            }
+                            readyQueue.notifyAll();
                         }
                     }
                 });
@@ -176,6 +182,13 @@ final class PerfMultiSpot {
             long activeEnd = System.nanoTime()
                 + Duration.ofSeconds(config.durationSeconds()).toNanos();
             activeEndRef.set(activeEnd);
+            synchronized (readyQueue) {
+                for (int i = 0; i < subscribers.size(); i++) {
+                    queued[i] = true;
+                    readyQueue.addLast(i);
+                }
+                readyQueue.notifyAll();
+            }
             long finishDeadline = activeEnd
                 + Duration.ofMillis(postPhaseSettleMs()).toNanos();
             while (System.nanoTime() < finishDeadline) {
@@ -190,50 +203,68 @@ final class PerfMultiSpot {
                 if (complete.getCount() == 0) {
                     return;
                 }
-                boolean progressed = false;
-                for (int i = 0; i < subscribers.size(); i++) {
-                    boolean shouldDrain;
-                    synchronized (readable) {
-                        shouldDrain = readable[i] || !cooldownSeen[i];
-                        readable[i] = false;
+                Integer index = pollReadyIndex(readyQueue, queued, finishDeadline);
+                if (index == null) {
+                    continue;
+                }
+                if (cooldownSeen[index]) {
+                    continue;
+                }
+                try {
+                    boolean drained = drainSubscriber(subscribers.get(index),
+                        metrics, config.size(), activeEnd, cooldownSeen, index);
+                    if (drained && !cooldownSeen[index]) {
+                        enqueueReadyIndex(readyQueue, queued, index);
                     }
-                    if (!shouldDrain || cooldownSeen[i]) {
-                        continue;
-                    }
-                    try {
-                        boolean drained = drainSubscriber(subscribers.get(i),
-                            metrics, config.size(), activeEnd, cooldownSeen, i);
-                        progressed |= drained;
-                        if (drained && !cooldownSeen[i]) {
-                            synchronized (readable) {
-                                readable[i] = true;
-                            }
-                        }
-                    } catch (Throwable drainFailure) {
-                        failure.compareAndSet(null, drainFailure);
-                        complete.countDown();
-                        break;
-                    }
+                } catch (Throwable drainFailure) {
+                    failure.compareAndSet(null, drainFailure);
+                    complete.countDown();
                 }
                 if (allCooldownSeen(cooldownSeen)) {
                     complete.countDown();
                     return;
                 }
-                if (!progressed) {
-                    synchronized (readable) {
-                        try {
-                            readable.wait(1L);
-                        } catch (InterruptedException interrupted) {
-                            Thread.currentThread().interrupt();
-                            throw new IllegalStateException("spot client interrupted",
-                                interrupted);
-                        }
-                    }
-                }
             }
             return;
         } catch (Throwable ex) {
             throw new IllegalStateException("spot client failed", ex);
+        }
+    }
+
+    private static void enqueueReadyIndex(Deque<Integer> readyQueue,
+                                          boolean[] queued,
+                                          int index) {
+        synchronized (readyQueue) {
+            if (!queued[index]) {
+                queued[index] = true;
+                readyQueue.addLast(index);
+                readyQueue.notifyAll();
+            }
+        }
+    }
+
+    private static Integer pollReadyIndex(Deque<Integer> readyQueue,
+                                          boolean[] queued,
+                                          long finishDeadline) {
+        synchronized (readyQueue) {
+            while (readyQueue.isEmpty()) {
+                long remainingNs = finishDeadline - System.nanoTime();
+                if (remainingNs <= 0L) {
+                    return null;
+                }
+                try {
+                    long waitMs = Math.max(1L,
+                        Duration.ofNanos(remainingNs).toMillis());
+                    readyQueue.wait(waitMs);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("spot client interrupted",
+                        interrupted);
+                }
+            }
+            int index = readyQueue.removeFirst();
+            queued[index] = false;
+            return index;
         }
     }
 

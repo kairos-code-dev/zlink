@@ -13,6 +13,7 @@ internal static class PerfMultiPubSubClient
         int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int latencySampleCap = ResolveMultiLatencySampleCap(options);
+        int latencySampleStride = ResolveMultiOnewayLatencySampleStride();
         int clientCount = ResolveMultiClients(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
         string endpoint = options.Endpoint;
@@ -66,7 +67,7 @@ internal static class PerfMultiPubSubClient
             }
 
             var result = RunMultiPubSubClientLoop(pollManager, activeClients,
-                size, latencySampleCap, durationSeconds);
+                size, latencySampleCap, latencySampleStride, durationSeconds);
 
             if (result.measureCount <= 0)
                 return 2;
@@ -87,7 +88,7 @@ internal static class PerfMultiPubSubClient
         double latencyP99Ns, long measureCount)
         RunMultiPubSubClientLoop(PollManager pollManager,
             List<SocketBase> activeClients, int msgSize, int latencySampleCap,
-            int durationSeconds)
+            int latencySampleStride, int durationSeconds)
     {
         const uint expectedRunId = 1;
         var latSamples = new List<double>(latencySampleCap);
@@ -153,12 +154,16 @@ internal static class PerfMultiPubSubClient
                         }
 
                         measureCount++;
-                        ulong nowNs = EpochNs();
-                        if (header.SentTsNs > 0 && nowNs >= header.SentTsNs)
+                        if (measureCount % latencySampleStride == 0
+                            && header.SentTsNs > 0)
                         {
-                            double sampleLatencyNs = nowNs - header.SentTsNs;
-                            ReservoirSample(latSamples, sampleLatencyNs,
-                                ref sampleSeen, latencySampleCap, ref rng);
+                            ulong nowNs = EpochNs();
+                            if (nowNs >= header.SentTsNs)
+                            {
+                                double sampleLatencyNs = nowNs - header.SentTsNs;
+                                ReservoirSample(latSamples, sampleLatencyNs,
+                                    ref sampleSeen, latencySampleCap, ref rng);
+                            }
                         }
                     }
                 }

@@ -9,11 +9,11 @@ internal static class PerfMultiDealerDealerServer
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
-        int sndTimeoutMs = ResolveMultiSndTimeoutMs(options);
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int clientCount = ResolveMultiClients(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
-        int pollTimeoutMs = ResolveMultiClientPollTimeoutMs(options);
+        int latencySampleCap = ResolveMultiLatencySampleCap(options);
+        int latencySampleStride = ResolveMultiOnewayLatencySampleStride();
         string endpoint = MultiEndpointFor(options.Transport,
             "multi-dealer-dealer", options);
 
@@ -24,13 +24,8 @@ internal static class PerfMultiDealerDealerServer
         using var server = new DealerSocket(ctx);
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
-        // Linger > 0 so wire-level stop tokens queued just before
-        // socket close are actually transmitted. Default Linger=0 from
-        // ApplyMultiSocketOptions would drop pending sends on dispose.
-        server.Options.Linger = TimeSpan.FromSeconds(2);
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
-        server.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
         server.Bind(endpoint);
         WriteStdoutLine($"READY,{endpoint}");
 
@@ -48,89 +43,114 @@ internal static class PerfMultiDealerDealerServer
         RecalculateAutoHwm(ctx);
         PrintAutoHwmSnapshot(server, "server", options.Transport, size);
 
-        var sockets = new[] { (SocketBase)server };
-        var payload = new byte[Math.Max(size, PerfMetricHeaderSize)];
-        Array.Fill(payload, (byte)'a');
+        var result = RunReceivePhase(pollManager, server, size,
+            latencySampleCap, latencySampleStride, durationSeconds, clientCount);
+        if (result.measureCount <= 0)
+            return 2;
 
-        return RunPublishPhase(pollManager, server, sockets, payload, size,
-            durationSeconds, pollTimeoutMs, controlState, clientCount) ? 0 : 2;
+        PrintResult(options.Pattern, options.Transport, size, result.throughput,
+            result.latencyNs, result.latencyP95Ns, result.latencyP99Ns);
+        return 0;
     }
 
-    private static bool RunPublishPhase(PollManager pollManager,
-        DealerSocket server, IReadOnlyList<SocketBase> pollSockets,
-        byte[] payload, int msgSize, int durationSeconds, int pollTimeoutMs,
-        RunnerControlState controlState, int clientCount)
+    private static (double throughput, double latencyNs, double latencyP95Ns,
+        double latencyP99Ns, long measureCount)
+        RunReceivePhase(PollManager pollManager, DealerSocket server,
+            int msgSize, int latencySampleCap, int latencySampleStride,
+            int durationSeconds, int expectedStops)
     {
-        _ = pollManager;
-        _ = pollSockets;
-        _ = pollTimeoutMs;
-        const uint runId = 1;
-        ulong seq = 1;
-        long activeDeadlineTicks = Stopwatch.GetTimestamp()
-            + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
+        const uint expectedRunId = 1;
+        var latSamples = new List<double>(latencySampleCap);
+        long sampleSeen = 0;
+        uint rng = 0xA341316Cu;
+        long measureCount = 0;
+        using var receivedBuffer = new Received();
+        long drainDeadlineTicks = Stopwatch.GetTimestamp()
+            + (long)Math.Max(6, durationSeconds + 5) * Stopwatch.Frequency;
 
-        // PERF_MULTI_TEST_POLICY § 1.3.1: send Active payloads until the
-        // deadline, then signal phase end via wire-level stop token.
-        // Hot-spin DontWait sends — a -1 POLLOUT wait could deadlock
-        // against the deadline check when a peer's queue is briefly
-        // full. The deadline is enforced by the application clock at
-        // the loop head.
-        while (!controlState.StopRequested
-               && Stopwatch.GetTimestamp() < activeDeadlineTicks)
+        if (!ReceiveUntilStops(server, receivedBuffer, msgSize, expectedRunId,
+                PerfPhase.Active, expectedStops, latencySampleStride, latSamples,
+                ref sampleSeen, ref rng, ref measureCount,
+                countThroughput: true, drainDeadlineTicks))
         {
-            StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Active,
-                msgSize, seq, EpochNs());
-            using Message message = new(payload.AsSpan());
-            if (server.Send().Message(message).Flags(SendFlags.DontWait)
-                .Submit())
+            return (0.0, 0.0, 0.0, 0.0, 0);
+        }
+
+        double configuredSeconds = Math.Max(1.0, durationSeconds);
+        double throughput = measureCount / configuredSeconds;
+        double fallbackLatencyNs = (configuredSeconds * 1_000_000_000.0)
+            / Math.Max(1.0, measureCount);
+        var latency = ComputeLatencyStats(latSamples);
+        double latencyNs = latency.mean > 0.0 ? latency.mean : fallbackLatencyNs;
+        double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
+        double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
+
+        return (throughput, latencyNs, latencyP95Ns, latencyP99Ns, measureCount);
+    }
+
+    private static bool ReceiveUntilStops(DealerSocket server,
+        Received receivedBuffer, int msgSize, uint expectedRunId,
+        PerfPhase expectedPhase, int expectedStops, int latencySampleStride,
+        List<double> latSamples, ref long sampleSeen, ref uint rng,
+        ref long messageCount, bool countThroughput, long deadlineTicks)
+    {
+        int stopCount = 0;
+        while (stopCount < expectedStops
+               && Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            if (!TryRecvNoWait(server, receivedBuffer))
             {
-                seq++;
+                System.Threading.Thread.Yield();
                 continue;
             }
 
-            System.Threading.Thread.Yield();
-        }
-
-        if (!controlState.StopRequested)
-        {
-            // DealerDealer fanout: round-robin to N peers means we must
-            // emit N stop tokens to terminate every client receiver.
-            int sentStops = 0;
-            long stopDeadlineTicks = Stopwatch.GetTimestamp()
-                + 30L * Stopwatch.Frequency;
-            while (sentStops < clientCount
-                   && Stopwatch.GetTimestamp() < stopDeadlineTicks)
+            while (true)
             {
-                if (TrySendStopToken(server))
+                if (Stopwatch.GetTimestamp() >= deadlineTicks)
+                    return true;
+
+                ReadOnlySpan<byte> body = receivedBuffer.SinglePartOrThrow()
+                    .AsReadOnlySpan();
+                if (IsStopTokenPayload(body))
                 {
-                    sentStops++;
+                    stopCount++;
                     continue;
                 }
 
-                System.Threading.Thread.Yield();
+                if (!PerfShared.TryDecodeMetricHeader(body,
+                        out PerfMetricHeader header)
+                    || header.RunId != expectedRunId
+                    || header.MsgSize != (uint)msgSize
+                    || header.Phase != (uint)expectedPhase)
+                {
+                    continue;
+                }
+
+                messageCount++;
+                if (countThroughput
+                    && messageCount % latencySampleStride != 0)
+                    continue;
+                if (header.SentTsNs > 0)
+                {
+                    ulong nowNs = EpochNs();
+                    if (nowNs >= header.SentTsNs)
+                    {
+                        double sampleLatencyNs = nowNs - header.SentTsNs;
+                        ReservoirSample(latSamples, sampleLatencyNs,
+                            ref sampleSeen, latSamples.Capacity, ref rng);
+                    }
+                }
+
+                if (!TryRecvNoWait(server, receivedBuffer))
+                    break;
             }
         }
 
         return true;
     }
 
-    private static bool TrySendStopToken(DealerSocket server)
+    private static bool TryRecvNoWait(DealerSocket socket, Received result)
     {
-        try
-        {
-            using Message stopMessage = new(MultiStopToken.AsSpan());
-            return server.Send().Message(stopMessage).Flags(SendFlags.DontWait)
-                .Submit();
-        }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                        || IsInterrupted(ex.InternalErrno))
-        {
-            return false;
-        }
-        catch (ObjectDisposedException)
-        {
-            return false;
-        }
+        return socket.Recv(result, RecvFlags.DontWait);
     }
-
 }

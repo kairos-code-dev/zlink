@@ -671,6 +671,12 @@ internal static partial class PerfRunner
         return options.LatencySampleCap;
     }
 
+    internal static int ResolveMultiOnewayLatencySampleStride()
+    {
+        return PerfEnv.ReadPositive("PERF_MULTI_ONEWAY_LATENCY_SAMPLE_STRIDE",
+            PerfEnv.ReadPositive("PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", 32));
+    }
+
     internal static bool IsCoreStreamServerTransport(string transport)
     {
         return transport.Equals("tcp", StringComparison.OrdinalIgnoreCase)

@@ -62,7 +62,8 @@ internal static class PerfMultiSpotClient
                 ApplyMultiSpotSocketOptions(subscriber, options);
                 subscriber.SetSubscription(Topic);
                 var slot = new SpotClientSlot(subscriber,
-                    new SpotClientSlotState(config.LatencySampleCap));
+                    new SpotClientSlotState(config.LatencySampleCap,
+                        config.LatencySampleStride));
                 subscriber.OnDispatchEvent(info =>
                 {
                     if (info.Event != SpotDispatchEvent.SubscribeReadable)
@@ -258,6 +259,7 @@ internal static class PerfMultiSpotClient
             Math.Max(1, options.Size),
             Math.Max(1, ResolveMultiDurationSeconds(options)),
             ResolveMultiLatencySampleCap(options),
+            ResolveMultiOnewayLatencySampleStride(),
             Math.Max(1, ResolveMultiClients(options)),
             ResolveMultiConnectReadyTimeoutMs(options),
             dataEndpoint,
@@ -376,13 +378,17 @@ internal static class PerfMultiSpotClient
                 }
 
                 slot.State.MeasureCount++;
-                ulong nowNs = EpochNs();
-                if (header.SentTsNs > 0 && nowNs >= header.SentTsNs)
+                if (slot.State.MeasureCount % slot.State.LatencySampleStride == 0
+                    && header.SentTsNs > 0)
                 {
-                    double sampleLatencyNs = nowNs - header.SentTsNs;
-                    ReservoirSample(slot.State.LatencySamples, sampleLatencyNs,
-                        ref slot.State.SampleSeen, slot.State.LatencySampleCap,
-                        ref slot.State.Rng);
+                    ulong nowNs = EpochNs();
+                    if (nowNs >= header.SentTsNs)
+                    {
+                        double sampleLatencyNs = nowNs - header.SentTsNs;
+                        ReservoirSample(slot.State.LatencySamples,
+                            sampleLatencyNs, ref slot.State.SampleSeen,
+                            slot.State.LatencySampleCap, ref slot.State.Rng);
+                    }
                 }
                 }
             }
@@ -475,8 +481,8 @@ internal static class PerfMultiSpotClient
     private readonly struct SpotClientConfig
     {
         internal SpotClientConfig(string transport, int size,
-            int durationSeconds, int latencySampleCap, int clientCount,
-            int connectReadyTimeoutMs,
+            int durationSeconds, int latencySampleCap, int latencySampleStride,
+            int clientCount, int connectReadyTimeoutMs,
             string dataEndpoint, string registryEndpoint, string channelName,
             string serverControlEndpoint)
         {
@@ -484,6 +490,7 @@ internal static class PerfMultiSpotClient
             Size = size;
             DurationSeconds = durationSeconds;
             LatencySampleCap = latencySampleCap;
+            LatencySampleStride = latencySampleStride;
             ClientCount = clientCount;
             ConnectReadyTimeoutMs = connectReadyTimeoutMs;
             DataEndpoint = dataEndpoint;
@@ -496,6 +503,7 @@ internal static class PerfMultiSpotClient
         internal int Size { get; }
         internal int DurationSeconds { get; }
         internal int LatencySampleCap { get; }
+        internal int LatencySampleStride { get; }
         internal int ClientCount { get; }
         internal int ConnectReadyTimeoutMs { get; }
         internal string DataEndpoint { get; }
@@ -524,15 +532,18 @@ internal static class PerfMultiSpotClient
 
     private sealed class SpotClientSlotState : IDisposable
     {
-        internal SpotClientSlotState(int latencySampleCap)
+        internal SpotClientSlotState(int latencySampleCap,
+            int latencySampleStride)
         {
             LatencySampleCap = Math.Max(0, latencySampleCap);
+            LatencySampleStride = Math.Max(1, latencySampleStride);
             LatencySamples = new List<double>(LatencySampleCap);
             Rng = 0xC0FFEEu;
         }
 
         internal List<double> LatencySamples { get; }
         internal int LatencySampleCap { get; }
+        internal int LatencySampleStride { get; }
         internal long SampleSeen;
         internal uint Rng;
         internal long MeasureCount;

@@ -1799,7 +1799,11 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
 
           write_control_line "${server_control_fd}" 'START,%s\n' "${size}"
           write_control_line "${client_control_fd}" 'START,%s\n' "${size}"
-          if ! wait_for_result_line "${client_log}" \
+          result_wait_log="${client_log}"
+          if [[ "${pattern}" == "MULTI_DEALER_DEALER" ]]; then
+            result_wait_log="${server_log}"
+          fi
+          if ! wait_for_result_line "${result_wait_log}" \
             "RESULT,dotnet,${pattern#MULTI_},${transport},${size},latency_p99," \
             "${RESULT_TIMEOUT_SECONDS}"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
@@ -1886,7 +1890,11 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           write_control_line "${server_control_fd}" 'START,%s\n' "${size}"
           write_control_line "${client_control_fd}" 'START,%s\n' "${size}"
 
-          if ! wait_for_result_line "${client_log}" \
+          result_wait_log="${client_log}"
+          if [[ "${pattern}" == "MULTI_DEALER_DEALER" ]]; then
+            result_wait_log="${server_log}"
+          fi
+          if ! wait_for_result_line "${result_wait_log}" \
             "RESULT,dotnet,${pattern#MULTI_},${transport},${size},latency_p99," \
             "${RESULT_TIMEOUT_SECONDS}"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then

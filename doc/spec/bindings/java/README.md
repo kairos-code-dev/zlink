@@ -175,7 +175,7 @@ stay focused on signatures.
 - `Spot` must expose channel-aware data-plane operation builders:
   `sendChannel(...)`, `sendToSpot(...)`, `requestChannel(...)`, and
   `publish(String topic)`.
-- `Spot.subscribe(...)` returns a `TopicMessage`.
+- `Spot.subscribe(...)` receives into caller-provided `TopicMessage` storage.
   `TopicMessage` exposes topic, parts, and optional routing id.
 - `Spot` must not expose `onSubscribe(...)`.
 - `SpotDispatchEvent.SUBSCRIBE_READABLE` and `.ROUTED_READABLE` are readiness
@@ -307,9 +307,10 @@ returns `false` only for temporary backpressure when `SendFlags.DONT_WAIT` has
 been configured via the builder's `.flags(...)` stage. Blocking submit returns
 `true` on success. Route-not-ready and other submit failures still raise
 `SubmitException`.
-Blocking no-argument receive methods do not return `null`. Nullable overloads
-that accept `RecvFlags` return `null` when `RecvFlags.DONT_WAIT` finds no data.
-Timer `recv(...)` reports no data through `RecvException` with
+Canonical caller-provided data-plane receive methods return `true` on success
+and `false` when `RecvFlags.DONT_WAIT` finds no data. Legacy nullable overloads
+and control-plane receive methods keep their documented no-data return or error
+shape. Timer `recv(...)` reports no data through `RecvException` with
 `RecvResult.NO_DATA`. All receive paths still raise `RecvException` for real
 recv failures.
 
@@ -479,8 +480,7 @@ public final class SubSocket extends Socket {
     void setSubscription(String filter);                             // @throws ConfigException
     void unsetSubscription(String filter);                           // @throws ConfigException
     Optional<SubscriptionEntry> subscriptionAt(int index);           // @throws ConfigException
-    TopicMessage subscribe();                                        // @throws RecvException
-    @Nullable TopicMessage subscribe(RecvFlags flags);               // @throws RecvException
+    boolean subscribe(TopicMessage result, RecvFlags flags);         // canonical caller-provided storage @throws RecvException
 
     SubSocketOptions options();
 }
@@ -625,8 +625,8 @@ public final class XPubSocket extends Socket {
     // --- publish (operation builder) ---
     SendOp publish(String topicId);
 
-    SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
-    @Nullable SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags); // @throws RecvException
+    boolean receiveSubscriptionEvent(SubscriptionEvent result,
+                                     RecvFlags flags);              // canonical caller-provided storage @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     PubSocketOptions options();
@@ -650,8 +650,7 @@ public final class XSubSocket extends Socket {
     void setSubscription(String filter);                             // @throws ConfigException
     void unsetSubscription(String filter);                           // @throws ConfigException
     Optional<SubscriptionEntry> subscriptionAt(int index);           // @throws ConfigException
-    TopicMessage subscribe();                                        // @throws RecvException
-    @Nullable TopicMessage subscribe(RecvFlags flags);               // @throws RecvException
+    boolean subscribe(TopicMessage result, RecvFlags flags);         // canonical caller-provided storage @throws RecvException
 
     SubSocketOptions options();
 }
@@ -1439,10 +1438,14 @@ terminated submit result.
 ### TopicMessage
 
 Topic-aware recv result used by SUB and Spot subscribe paths.
-Implements `AutoCloseable`.
+Implements `AutoCloseable`. A public empty constructor creates reusable storage
+for `subscribe(TopicMessage, ...)`; each successful subscribe overwrites the
+previous contents and closes any replaced message parts.
 
 ```java
 public final class TopicMessage implements AutoCloseable {
+    public TopicMessage();
+
     Optional<RoutingId> routingId();
     String topic();                          // UTF-8
     List<Message> parts();
@@ -1454,21 +1457,25 @@ public final class TopicMessage implements AutoCloseable {
 }
 ```
 
-`TopicMessage` instances are produced by `subscribe(...)` receive paths. Public
-constructors are not part of the contract because the binding owns the native
-message parts and service/topic decoding rules. `firstPart()` raises
+`TopicMessage` instances are caller-provided receive storage. The binding owns
+the native message parts and service/topic decoding rules. `firstPart()` raises
 `RecvException` when the message has no parts. `singlePartOrThrow()` raises
 `RecvException` unless the message has exactly one part.
 
 ### SubscriptionEvent
 
 Reports a subscribe/unsubscribe event from XPub sockets and Spot
-subscription event recv. Immutable value object; no lifecycle methods.
+subscription event recv. A public empty constructor creates reusable storage
+for `receiveSubscriptionEvent(SubscriptionEvent, ...)`.
 
 ```java
-public record SubscriptionEvent(Optional<RoutingId> routingId,
-                                String topic,           // UTF-8
-                                boolean subscribed) {}
+public final class SubscriptionEvent {
+    public SubscriptionEvent();
+
+    Optional<RoutingId> routingId();
+    String topic();                         // UTF-8
+    boolean subscribed();
+}
 ```
 
 ### SubscriptionEntry
@@ -1760,10 +1767,9 @@ public final class Spot implements AutoCloseable {
     void unsetSubscription(String topicIdOrPattern);                 // @throws ConfigException
     Optional<SubscriptionEntry> subscriptionAt(int index);            // @throws ConfigException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
-    TopicMessage subscribe();                                        // @throws RecvException
-    @Nullable TopicMessage subscribe(RecvFlags flags);               // @throws RecvException
-    SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
-    @Nullable SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags); // @throws RecvException
+    boolean subscribe(TopicMessage result, RecvFlags flags);         // canonical caller-provided storage @throws RecvException
+    boolean receiveSubscriptionEvent(SubscriptionEvent result,
+                                     RecvFlags flags);              // canonical caller-provided storage @throws RecvException
 
     // --- routed request / reply operation builders ---
     RequestOp requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
@@ -1773,8 +1779,7 @@ public final class Spot implements AutoCloseable {
     ReplyOp replyToRouter(RoutingId peerRid, long requestSeq);
 
     // --- routed receive ---
-    Received recvRouted();                                           // @throws RecvException
-    @Nullable Received recvRouted(RecvFlags flags);                  // @throws RecvException
+    boolean recvRouted(Received result, RecvFlags flags);            // canonical caller-provided storage @throws RecvException
     void onRoutedReceive(SpotRoutedHandler handler);                 // @throws HandlerException
     void onDispatchEvent(SpotDispatchEventHandler handler);          // @throws HandlerException
 
@@ -1919,8 +1924,8 @@ dispatches are readiness notifications for internal request-progress work.
 Request futures and callbacks progress their replies inside the binding; the
 public API does not expose the native DEALER subject.
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
-`subscribe(...)` / `recvRouted(...)` until the binding surfaces no data /
-`EAGAIN`.
+`subscribe(...)` / `recvRouted(...)` until the binding returns `false` or
+surfaces `EAGAIN`.
 
 ### SpotRoutedHandler
 

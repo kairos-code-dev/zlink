@@ -243,24 +243,17 @@ internal static class CoreTestSupport
         out string topic, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        using var subscribed = new Subscribed();
         while (DateTime.UtcNow < deadline)
         {
-            Subscribed? subscribed = socket.Subscribe(RecvFlags.DontWait);
-            if (subscribed != null)
+            if (socket.Subscribe(subscribed, RecvFlags.DontWait))
             {
                 topic = subscribed.Topic;
-                try
-                {
-                    return subscribed.Parts.Count == 0
-                        ? string.Empty
-                        : Encoding.UTF8.GetString(
-                            subscribed.Parts[subscribed.Parts.Count - 1]
-                                .AsReadOnlySpan()).Trim('\0');
-                }
-                finally
-                {
-                    DisposeAll(subscribed.Parts);
-                }
+                return subscribed.Parts.Count == 0
+                    ? string.Empty
+                    : Encoding.UTF8.GetString(
+                        subscribed.Parts[subscribed.Parts.Count - 1]
+                            .AsReadOnlySpan()).Trim('\0');
             }
             Thread.Sleep(10);
         }
@@ -272,13 +265,12 @@ internal static class CoreTestSupport
         out bool subscribed, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        var ev = new SubscriptionEvent();
         while (DateTime.UtcNow < deadline)
         {
             try
             {
-                SubscriptionEvent? ev = socket.ReceiveSubscriptionEvent(
-                    RecvFlags.DontWait);
-                if (ev == null)
+                if (!socket.ReceiveSubscriptionEvent(ev, RecvFlags.DontWait))
                 {
                     Thread.Sleep(10);
                     continue;
@@ -298,11 +290,12 @@ internal static class CoreTestSupport
     internal static bool ExpectNoSubscriptionEvent(XPubSocket socket, int probeMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
+        var ev = new SubscriptionEvent();
         while (DateTime.UtcNow < deadline)
         {
             try
             {
-                if (socket.ReceiveSubscriptionEvent(RecvFlags.DontWait) != null)
+                if (socket.ReceiveSubscriptionEvent(ev, RecvFlags.DontWait))
                     return false;
             }
             catch (ZlinkRecvException)
@@ -417,12 +410,11 @@ internal static class CoreTestSupport
         int probeMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
+        using var subscribed = new Subscribed();
         while (DateTime.UtcNow < deadline)
         {
-            Subscribed? subscribed = socket.Subscribe(RecvFlags.DontWait);
-            if (subscribed != null)
+            if (socket.Subscribe(subscribed, RecvFlags.DontWait))
             {
-                DisposeAll(subscribed.Parts);
                 return false;
             }
             Thread.Sleep(5);

@@ -315,10 +315,11 @@ internal static class PerfSpot
         header = default;
         headerOk = false;
         isStopToken = false;
-        TopicMessage? subscribed;
+        using var subscribed = new TopicMessage();
         try
         {
-            subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+            if (!subscriber.Subscribe(subscribed, RecvFlags.DontWait))
+                return 0;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                         || IsWouldBlock(ex.InternalErrno))
@@ -331,26 +332,20 @@ internal static class PerfSpot
             return -1;
         }
 
-        if (subscribed == null)
-            return 0;
+        if (!string.Equals(subscribed.Topic, Topic, StringComparison.Ordinal)
+            || !subscribed.IsSinglePart)
+            return 1;
 
-        using (subscribed)
+        Message body = subscribed.FirstPart();
+        ReadOnlySpan<byte> payload = body.AsReadOnlySpan();
+        if (StopToken.IsStopToken(payload))
         {
-            if (!string.Equals(subscribed.Topic, Topic, StringComparison.Ordinal)
-                || !subscribed.IsSinglePart)
-                return 1;
-
-            Message body = subscribed.FirstPart();
-            ReadOnlySpan<byte> payload = body.AsReadOnlySpan();
-            if (StopToken.IsStopToken(payload))
-            {
-                isStopToken = true;
-                return 1;
-            }
-            headerOk = TryDecodeMetricHeader(payload, out header)
-                && header.MsgSize == (uint)msgSize;
+            isStopToken = true;
             return 1;
         }
+        headerOk = TryDecodeMetricHeader(payload, out header)
+            && header.MsgSize == (uint)msgSize;
+        return 1;
     }
 
     private static bool IsSupportedTransport(string transport)

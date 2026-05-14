@@ -68,7 +68,7 @@ stay focused on signatures.
 - `Spot` must expose channel-aware data-plane operation builders:
   `SendChannel(...)`, `SendToSpot(...)`, `RequestChannel(...)`, and
   `Publish(topic)`.
-- `Spot.Subscribe(...)` returns a `TopicMessage`.
+- `Spot.Subscribe(...)` receives into caller-provided `TopicMessage` storage.
   `TopicMessage` exposes topic, parts, and optional routing id.
 - `Spot` must not expose `OnSubscribe(...)`. Use `OnDispatchEvent(...)` plus
   `Subscribe(...)` / routed recv / timer recv.
@@ -258,8 +258,10 @@ Go nonblocking data-plane helpers follow this rule:
   `SendFlagsDontWait` has been configured via the builder's `.Flags(...)`
   stage.
 - Route-not-ready and other submit failures return a non-nil error.
-- Receive methods that take `RecvFlags` return `(nil, nil)` when no message is
-  currently available and a non-nil error for real recv failures.
+- Canonical caller-provided data-plane receive methods return `(true, nil)` on
+  success, `(false, nil)` when `RecvFlagsDontWait` finds no data, and a
+  non-nil error for real recv failures. Control-plane receive methods keep
+  their documented no-data return shape.
 
 Peer weight is not a common-socket accessor. Bindings expose it only on the
 implemented weight-bearing handles (`RouterSocket` and `DealerSocket`) through
@@ -439,8 +441,10 @@ func (s *SubSocket) DisconnectRID(rid RoutingID) error
 // Subscription filter mutation returns *ConfigError on failure.
 func (s *SubSocket) SetSubscription(filter string) error
 func (s *SubSocket) UnsetSubscription(filter string) error
-// Subscribe receives the next topic message. Returns *RecvError on failure.
-func (s *SubSocket) Subscribe(flags RecvFlags) (*TopicMessage, error)
+// Subscribe receives into caller-provided TopicMessage storage. Returns
+// (true, nil) on success, (false, nil) when RecvFlagsDontWait finds no data,
+// (false, *RecvError) on hard error.
+func (s *SubSocket) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error)
 // AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
 func (s *SubSocket) AttachDiscovery(discovery *Discovery) error
 // SubscriptionAt / TopicsCount are snapshot queries. Return *ConfigError on failure.
@@ -560,8 +564,8 @@ func (s *XPubSocket) Disconnect(endpoint string) error
 func (s *XPubSocket) DisconnectRID(rid RoutingID) error
 // Publish returns an operation builder.
 func (s *XPubSocket) Publish(topic string) SendOp
-// ReceiveSubscriptionEvent receives an XPub subscription event. Returns *RecvError on failure.
-func (s *XPubSocket) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error)
+// ReceiveSubscriptionEvent receives into caller-provided storage.
+func (s *XPubSocket) ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags) (bool, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *XPubSocket) OnSendReady(handler func()) error
 // Option setters/getters return *ConfigError on failure.
@@ -600,8 +604,8 @@ func (s *XSubSocket) DisconnectRID(rid RoutingID) error
 // Subscription filter mutation returns *ConfigError on failure.
 func (s *XSubSocket) SetSubscription(filter string) error
 func (s *XSubSocket) UnsetSubscription(filter string) error
-// Subscribe receives the next topic message. Returns *RecvError on failure.
-func (s *XSubSocket) Subscribe(flags RecvFlags) (*TopicMessage, error)
+// Subscribe receives into caller-provided TopicMessage storage.
+func (s *XSubSocket) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error)
 // SubscriptionAt / TopicsCount are snapshot queries. Return *ConfigError on failure.
 func (s *XSubSocket) SubscriptionAt(index int) (string, bool, error)
 func (s *XSubSocket) TopicsCount() (int, error)
@@ -735,6 +739,8 @@ func (r RoutingID) Hex() string
 Non-topic recv result used by PAIR / DEALER / ROUTER / STREAM paths.
 
 ```go
+type Received struct { /* opaque reusable recv storage */ }
+
 // RoutingID returns the sender routing id (peer_rid on Router,
 // source_node_rid on Spot). Empty when transport carries no source id.
 func (r *Received) RoutingID() RoutingID
@@ -770,9 +776,13 @@ func (r *Received) Close() error
 
 ### TopicMessage
 
-Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
+Topic-aware recv result used by SUB / XSUB / Spot subscribe paths. Callers
+allocate one value and pass it repeatedly to `Subscribe`; each successful call
+overwrites the previous contents and closes any replaced message parts.
 
 ```go
+type TopicMessage struct { /* opaque reusable subscribe storage */ }
+
 // RoutingID returns the sender routing id. Empty when the transport does
 // not carry a source id (check with HasRoutingID).
 func (t *TopicMessage) RoutingID() RoutingID
@@ -793,9 +803,12 @@ func (t *TopicMessage) Close() error
 ### SubscriptionEvent
 
 XPub-facing subscribe/unsubscribe event and Spot subscription event recv
-result. Value struct (no lifecycle).
+result. Callers pass a pointer to reusable storage to
+`ReceiveSubscriptionEvent`.
 
 ```go
+type SubscriptionEvent struct { /* opaque reusable subscription-event storage */ }
+
 // RoutingID returns the subscriber routing id. Empty when the transport
 // does not carry a source id (check with HasRoutingID).
 func (s SubscriptionEvent) RoutingID() RoutingID
@@ -1487,11 +1500,10 @@ func (s *Spot) RequestChannel(channelName string) RequestOp
 // Subscription filter mutation returns *ConfigError on failure.
 func (s *Spot) SetSubscription(filter string) error
 func (s *Spot) UnsetSubscription(filter string) error
-// Subscribe receives the next topic message. Returns *RecvError on failure.
-func (s *Spot) Subscribe(flags RecvFlags) (*TopicMessage, error)
-// ReceiveSubscriptionEvent receives the next subscription event.
-// Returns *RecvError on failure.
-func (s *Spot) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error)
+// Subscribe receives into caller-provided TopicMessage storage.
+func (s *Spot) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error)
+// ReceiveSubscriptionEvent receives into caller-provided storage.
+func (s *Spot) ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags) (bool, error)
 // RecvActorJoin receives the next actor join request. Returns *RecvError on failure.
 func (s *Spot) RecvActorJoin(flags RecvFlags) (*ActorJoinRequest, error)
 // ReplyActorJoin returns an Actor join reply operation builder. Multipart
@@ -1535,8 +1547,8 @@ func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64
 func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64) ReplyOp
 
 // --- routed receive ---
-// RecvRouted receives a routed message. Returns *RecvError on failure.
-func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error)
+// RecvRouted receives a routed message into caller-provided storage.
+func (s *Spot) RecvRouted(out *Received, flags RecvFlags) (bool, error)
 // OnRoutedReceive registers a routed receive handler. Returns *HandlerError on failure.
 func (s *Spot) OnRoutedReceive(handler func(*Received)) error
 // OnDispatchEvent registers a source-aware dispatch handler. Returns *HandlerError on failure.
@@ -1665,7 +1677,8 @@ func (i *SpotDispatchInfo) RecvActorPart(flags RecvFlags) (*ActorPart, error)
 
 For `SpotDispatchEventSubscribeReadable` and
 `SpotDispatchEventRoutedReadable`, callers must keep draining with
-`Subscribe(...)` / routed recv until the binding reports no data / `EAGAIN`.
+`Subscribe(...)` / routed recv until the binding returns `(false, nil)` or
+reports `EAGAIN`.
 For `SpotDispatchEventChannelReplyReadable`, `SubjectKind` is
 `SpotDispatchSubjectChannelDealer`; use the attached dealer's `ChannelName()`
 metadata to identify the channel and pass `ChannelDealer` to

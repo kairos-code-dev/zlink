@@ -498,6 +498,7 @@ public sealed class test_socket_surface
             typeof(ZlinkException).FullName!,
             typeof(ZlinkHandlerException).FullName!,
             typeof(ZlinkHandlerException.ErrorCode).FullName!,
+            typeof(ZlinkPoll).FullName!,
             typeof(ZlinkRecvException).FullName!,
             typeof(ZlinkRecvException.ErrorCode).FullName!,
             typeof(ZlinkRequestException).FullName!,
@@ -567,7 +568,8 @@ public sealed class test_socket_surface
             typeof(RequestCallback),
             typeof(SendFlags), typeof(TimeSpan?)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
-            nameof(Spot.ReceiveSubscriptionEvent), typeof(RecvFlags)));
+            nameof(Spot.ReceiveSubscriptionEvent), typeof(SubscriptionEvent),
+            typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(SubscriberSocketBase),
             nameof(SubscriberSocketBase.SubscriptionAt), typeof(int)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),

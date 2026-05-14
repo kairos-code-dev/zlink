@@ -71,11 +71,11 @@ stay focused on signatures.
 - `Spot` must expose channel-aware data-plane operation builders:
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
   `publish(topic)`.
-- `Spot.subscribe(...)` returns a `TopicMessage`. `TopicMessage` exposes topic,
-  parts, and optional routing id.
+- `Spot.subscribe_into(...)` receives into caller-provided `TopicMessage`
+  storage. `TopicMessage` exposes topic, parts, and optional routing id.
 - `Spot` must not expose `on_subscribe(...)`. Use
-  `on_dispatch_event(...)` plus `subscribe(...)` / `recv_routed(...)` /
-  timer recv.
+  `on_dispatch_event(...)` plus `subscribe_into(...)` /
+  `recv_routed_into(...)` / timer recv.
 - `SpotDispatchEvent.SUBSCRIBE_READABLE` and `.ROUTED_READABLE` are readiness
   notifications, not one-event-per-message delivery counters. Binding docs and
   samples must drain until the recv path reports `EAGAIN`.
@@ -233,9 +233,10 @@ Python nonblocking data-plane helpers follow this rule:
   configured via the builder's `.flags(...)` stage.
 - Blocking submit returns `True` on success. Route-not-ready and other submit
   failures still raise `SubmitError`.
-- `recv(...)`, `subscribe(...)`, `receive_subscription_event(...)`,
-  `recv_routed(...)`, monitor `recv(...)`, and timer `recv()` return `None`
-  when the core reports no data, and still raise `RecvError` for real recv
+- Canonical caller-provided data-plane receive methods return `True` on success
+  and `False` when the core reports no data. Deprecated return-form recv
+  methods, monitor `recv(...)`, and timer `recv()` keep `None` as their
+  no-data value. All receive paths still raise `RecvError` for real recv
   failures.
 
 Python does not support runtime method overloading. Callback request variants use
@@ -306,7 +307,8 @@ class SubSocket:
     def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
     def set_subscription(self, topic: str) -> None: ...                          # Raises: ConfigError
     def unset_subscription(self, topic: str) -> None: ...                        # Raises: ConfigError
-    def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
+    # Canonical caller-provided storage subscribe.
+    def subscribe_into(self, topic: TopicMessage, *, flags: int = 0) -> bool: ...  # Raises: RecvError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -413,7 +415,7 @@ class XPubSocket:
     def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
     # Publish (operation builder).
     def publish(self, topic: str) -> SendOp: ...
-    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
+    def receive_subscription_event_into(self, event: SubscriptionEvent, *, flags: int = 0) -> bool: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -435,7 +437,8 @@ class XSubSocket:
     def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
     def set_subscription(self, topic: str) -> None: ...                          # Raises: ConfigError
     def unset_subscription(self, topic: str) -> None: ...                        # Raises: ConfigError
-    def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
+    # Canonical caller-provided storage subscribe.
+    def subscribe_into(self, topic: TopicMessage, *, flags: int = 0) -> bool: ...  # Raises: RecvError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -745,6 +748,8 @@ request-reply exchange).
 
 ```python
 class Received:
+    def __init__(self) -> None: ...
+
     routing_id: RoutingId | None             # peer_rid (Router) / source_node_rid (Spot)
     spot_rid: RoutingId | None               # set only for SPOT routed recv
     request_seq: int | None                  # set when routed over request-reply; None otherwise
@@ -771,8 +776,14 @@ class Received:
 
 ### TopicMessage
 
+Reusable result object for `subscribe_into(...)`. The same instance may be
+passed across calls; each successful subscribe overwrites the previous contents
+and closes any replaced message parts.
+
 ```python
 class TopicMessage:
+    def __init__(self) -> None: ...
+
     routing_id: RoutingId | None             # None when transport carries no source id
     topic: str                               # UTF-8
     parts: tuple[Message, ...]
@@ -787,12 +798,14 @@ class TopicMessage:
 
 ### SubscriptionEvent
 
-Value object delivered by `XPubSocket.receive_subscription_event()` and
-`Spot.receive_subscription_event()`.
-Fields only — no `close()` / lifecycle methods.
+Reusable result object filled by
+`XPubSocket.receive_subscription_event_into(...)` and
+`Spot.receive_subscription_event_into(...)`.
 
 ```python
 class SubscriptionEvent:
+    def __init__(self) -> None: ...
+
     routing_id: RoutingId | None    # subscriber routing id; None if transport carries none
     topic: str                       # UTF-8 topic string (NOT bytes)
     subscribed: bool                 # True = subscribe, False = unsubscribe
@@ -1503,8 +1516,8 @@ class Spot:
     def request_channel(self, channel_name: str) -> RequestOp: ...
     def set_subscription(self, topic_or_pattern: str) -> None: ...               # Raises: ConfigError
     def unset_subscription(self, topic_or_pattern: str) -> None: ...             # Raises: ConfigError
-    def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
-    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
+    def subscribe_into(self, topic: TopicMessage, *, flags: int = 0) -> bool: ...  # Raises: RecvError
+    def receive_subscription_event_into(self, event: SubscriptionEvent, *, flags: int = 0) -> bool: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...        # Raises: HandlerError
 
     def request_to_spot(self, dest_node_rid: RoutingId,
@@ -1517,7 +1530,7 @@ class Spot:
     def reply_to_router(self, peer_rid: RoutingId, request_seq: int) -> ReplyOp: ...
 
     # --- routed receive ---
-    def recv_routed(self, *, flags: int = 0) -> Received | None: ...             # Raises: RecvError
+    def recv_routed_into(self, received: Received, *, flags: int = 0) -> bool: ...  # Raises: RecvError
     def on_routed_receive(self, handler: Callable[[Received], None]) -> None: ...  # Raises: HandlerError
     def on_dispatch_event(self, handler: Callable[[Spot, SpotDispatchInfo], None]) -> None: ...  # Raises: HandlerError
     def recv_actor_join(self, *, flags: int = 0) -> ActorJoinRequest | None: ...  # Raises: RecvError
@@ -1576,8 +1589,8 @@ class SpotDispatchInfo:
 ```
 
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
-`subscribe(...)` / `recv_routed(...)` until the binding raises no-data /
-`EAGAIN`.
+`subscribe_into(...)` / `recv_routed_into(...)` until the binding returns
+`False` or raises `EAGAIN`.
 For `CHANNEL_REPLY_READABLE`, `subject_kind` is `CHANNEL_DEALER`; use the
 attached dealer's `get_channel_name()` metadata to identify the channel and
 pass `channel_dealer` to `drain_channel_reply_from(...)`.

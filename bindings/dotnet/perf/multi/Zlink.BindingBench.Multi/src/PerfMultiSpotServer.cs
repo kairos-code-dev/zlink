@@ -221,8 +221,8 @@ internal static class PerfMultiSpotServer
         ref int readyCount, int expectedCount, out bool ready)
     {
         ready = false;
-        using TopicMessage? received = controlSpot.Subscribe(RecvFlags.DontWait);
-        if (received == null)
+        using var received = new TopicMessage();
+        if (!controlSpot.Subscribe(received, RecvFlags.DontWait))
             return false;
         if (received.Topic != ControlTopic)
             return true;

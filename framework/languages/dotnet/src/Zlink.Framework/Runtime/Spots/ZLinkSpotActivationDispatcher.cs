@@ -133,13 +133,8 @@ internal sealed class ZLinkSpotActivationDispatcher(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            Received received;
-            try
-            {
-                received = nativeSpot.RecvRoute(RecvFlags.DontWait);
-            }
-            catch (ZlinkRecvException ex)
-                when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
+            using var received = new Received();
+            if (!nativeSpot.RecvRoute(received, RecvFlags.DontWait))
             {
                 return;
             }

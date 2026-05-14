@@ -30,15 +30,14 @@ SampleSupport.WaitOrThrow(
     5000,
     "spot peer readiness");
 
-TopicMessage? subscribed = null;
+using var subscribed = new TopicMessage();
 SampleSupport.WaitOrThrow(() =>
 {
     try
     {
         using Message message = Message.FromString(payload);
         publisher.Publish(topic).Message(message).Submit();
-        subscribed = subscriber.Subscribe(RecvFlags.DontWait);
-        return subscribed is not null;
+        return subscriber.Subscribe(subscribed, RecvFlags.DontWait);
     }
     catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
     {
@@ -46,8 +45,7 @@ SampleSupport.WaitOrThrow(() =>
     }
 }, 5000, "spot recv sample");
 
-using var subscribedMessage = subscribed!;
-string receivedTopic = subscribedMessage.Topic;
-string receivedPayload = subscribedMessage.SinglePartOrThrow().GetString();
+string receivedTopic = subscribed.Topic;
+string receivedPayload = subscribed.SinglePartOrThrow().GetString();
 Console.WriteLine(
     $"[spot/recv] service: \"{serviceName}\" tick: 1 publish: \"{topic}/{payload}\" -> recv: \"{receivedTopic}/{receivedPayload}\"");

@@ -4,6 +4,7 @@ internal sealed class ZLinkSpotSubscriptionPump
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(20);
     private Task? _task;
+    private Exception? _lastError;
 
     public string State
     {
@@ -25,6 +26,11 @@ internal sealed class ZLinkSpotSubscriptionPump
                 return "canceled";
             }
 
+            if (task.IsCompleted && _lastError is not null)
+            {
+                return _lastError.ToString();
+            }
+
             return task.IsCompleted ? "completed" : "running";
         }
     }
@@ -44,7 +50,7 @@ internal sealed class ZLinkSpotSubscriptionPump
             cancellationToken);
         _task = taskRunner.Run(
             "spot-subscription-pump",
-            ct => new ValueTask(RunAsync(ct, dispatchAsync)));
+            ct => RunAsync(ct, dispatchAsync));
     }
 
     public async ValueTask StopAsync()
@@ -66,7 +72,7 @@ internal sealed class ZLinkSpotSubscriptionPump
         }
     }
 
-    private static async Task RunAsync(
+    private async ValueTask RunAsync(
         CancellationToken cancellationToken,
         Func<CancellationToken, ValueTask> dispatchAsync)
     {
@@ -91,6 +97,11 @@ internal sealed class ZLinkSpotSubscriptionPump
                       or ZlinkRecvException.ErrorCode.InvalidHandle)
             {
                 return;
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex;
+                throw;
             }
         }
     }

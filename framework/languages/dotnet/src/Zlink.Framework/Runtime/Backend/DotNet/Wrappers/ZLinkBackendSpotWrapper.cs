@@ -17,15 +17,14 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         nativeSpot.SetSubscription(topic);
     }
 
-    public TopicMessage? Subscribe(RecvFlags flags)
+    public bool Subscribe(TopicMessage result, RecvFlags flags)
     {
-        return nativeSpot.Subscribe(flags);
+        return nativeSpot.Subscribe(result, flags);
     }
 
-    public Received RecvRoute(RecvFlags flags)
+    public bool RecvRoute(Received result, RecvFlags flags)
     {
-        return nativeSpot.RecvRouted(flags)
-            ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.NoData);
+        return nativeSpot.RecvRouted(result, flags);
     }
 
     public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)

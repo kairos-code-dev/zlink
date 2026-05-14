@@ -122,13 +122,11 @@ internal static class PerfMultiPubSubClient
 
                 while (true)
                 {
-                    TopicMessage? subscribed = TrySubscribeNoWait(
-                        (SubSocket)activeClients[i]);
-                    if (subscribed == null)
+                    using var subscribed = new TopicMessage();
+                    if (!TrySubscribeNoWait((SubSocket)activeClients[i],
+                            subscribed))
                         break;
 
-                    using (subscribed)
-                    {
                         ReadOnlySpan<byte> body = subscribed.FirstPart()
                             .AsReadOnlySpan();
                         if (IsStopTokenPayload(body))
@@ -164,7 +162,6 @@ internal static class PerfMultiPubSubClient
                         {
                             phaseDone = true;
                         }
-                    }
                 }
             }
         }
@@ -205,16 +202,17 @@ internal static class PerfMultiPubSubClient
             latencySampleCap, ref rng);
     }
 
-    private static TopicMessage? TrySubscribeNoWait(SubSocket socket)
+    private static bool TrySubscribeNoWait(SubSocket socket,
+        TopicMessage result)
     {
         try
         {
-            return socket.Subscribe(RecvFlags.DontWait);
+            return socket.Subscribe(result, RecvFlags.DontWait);
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                         || IsInterrupted(ex.InternalErrno))
         {
-            return null;
+            return false;
         }
     }
 }

@@ -95,7 +95,7 @@ stay focused on signatures.
 - `Spot.Publish(...)` does not expose or select a raw `PUB` socket. Core
   admits the publish into the `SpotNode` topic data-plane; the binding keeps
   the native part-by-part substrate internal.
-- `Spot.Subscribe(...)` returns a `TopicMessage`.
+- `Spot.Subscribe(...)` receives into caller-provided `TopicMessage` storage.
   `TopicMessage` exposes topic, parts, and optional routing id.
 - `Spot` does not expose `OnSubscribe(...)`. Topic readiness is reported
   through `OnDispatchEvent(...)`, then callers drain with `Subscribe(...)`,
@@ -359,7 +359,7 @@ void UnsetSubscription(string topicOrPattern);
 /// <exception cref="ZlinkConfigException"/>
 SubscriptionEntry? SubscriptionAt(int index);
 /// <exception cref="ZlinkRecvException"/>
-TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None);
+bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None);
 
 // Available on RoutedMessageSocketBase (operation builder)
 SendOperation Send(RoutingId routingId);
@@ -386,10 +386,12 @@ recv failures still raise `ZlinkRecvException`. Reusing the same `Received`
 across calls eliminates the per-recv allocation that the legacy
 `Received? Recv(RecvFlags)` overload incurred.
 
-`Subscribe(...)` and `ReceiveSubscriptionEvent(...)` return `null` when
-`RecvFlags.DontWait` finds no data and still raise `ZlinkRecvException` for
-real recv failures. `SocketMonitor.Recv(...)` and `Timer.Recv(...)` follow
-the same no-data rule.
+`Subscribe(...)` and `ReceiveSubscriptionEvent(...)` use the same
+caller-provided-storage recv shape. They return `true` on success, `false`
+when `RecvFlags.DontWait` finds no data, and still raise
+`ZlinkRecvException` for real recv failures. `SocketMonitor.Recv(...)` and
+`Timer.Recv(...)` are control-plane APIs and keep their nullable return-form
+no-data rule.
 
 The binding also exposes the following public infrastructure types:
 
@@ -652,7 +654,8 @@ public sealed class XPubSocket : PublisherSocketBase
     PubSocketOptions Options { get; }
 
     /// <exception cref="ZlinkRecvException"/>
-    SubscriptionEvent? ReceiveSubscriptionEvent(RecvFlags flags = RecvFlags.None);
+    bool ReceiveSubscriptionEvent(SubscriptionEvent result,
+                                  RecvFlags flags = RecvFlags.None);
 }
 ```
 
@@ -1178,11 +1181,15 @@ public sealed class Received : IDisposable
 ### TopicMessage
 
 Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
-Implements `IDisposable`.
+Implements `IDisposable`. A public empty constructor creates reusable storage
+for `Subscribe(TopicMessage, ...)`; each successful subscribe overwrites the
+previous contents and closes any replaced message parts.
 
 ```csharp
 public sealed class TopicMessage : IDisposable
 {
+    public TopicMessage();
+
     RoutingId? RoutingId { get; }            // null when transport carries no source id
     string Topic { get; }                    // UTF-8
     IReadOnlyList<Message> Parts { get; }
@@ -1209,13 +1216,19 @@ public sealed record SubscriptionEntry(string Filter, bool IsPattern);
 ### SubscriptionEvent
 
 Reports a subscribe/unsubscribe event from XPub sockets and Spot
-subscription event recv. Pure value object (no lifecycle). Defined as a record.
+subscription event recv. A public empty constructor creates reusable storage
+for `ReceiveSubscriptionEvent(SubscriptionEvent, ...)`; each successful recv
+overwrites the previous values.
 
 ```csharp
-public sealed record SubscriptionEvent(
-    RoutingId? RoutingId,                    // null when transport carries no source id
-    string Topic,                            // UTF-8
-    bool Subscribed);                        // true=subscribe, false=unsubscribe
+public sealed class SubscriptionEvent
+{
+    public SubscriptionEvent();
+
+    RoutingId? RoutingId { get; }            // null when transport carries no source id
+    string Topic { get; }                    // UTF-8
+    bool Subscribed { get; }                 // true=subscribe, false=unsubscribe
+}
 ```
 
 ### Actor Types
@@ -1820,9 +1833,10 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     SubscriptionEntry? SubscriptionAt(int index);
     /// <exception cref="ZlinkRecvException"/>
-    TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None);
+    bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkRecvException"/>
-    SubscriptionEvent? ReceiveSubscriptionEvent(RecvFlags flags = RecvFlags.None);
+    bool ReceiveSubscriptionEvent(SubscriptionEvent result,
+                                  RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 
@@ -1836,7 +1850,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
     // --- routed receive ---
     /// <exception cref="ZlinkRecvException"/>
-    Received? RecvRouted(RecvFlags flags = RecvFlags.None);
+    bool RecvRouted(Received result, RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkHandlerException"/>
     void OnRoutedReceive(Action<Received> handler);
     /// <summary>

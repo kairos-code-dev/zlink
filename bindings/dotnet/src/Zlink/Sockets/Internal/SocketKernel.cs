@@ -670,18 +670,27 @@ internal sealed class SocketKernel : IDisposable
         _sendReadyHandlerNative = native;
     }
 
-    public TopicMessage Subscribe(RecvFlags flags = RecvFlags.None)
+    public bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None)
     {
         EnsureSupports(nameof(Subscribe),
             SocketTypePolicy.SocketCapability.SubscribeReceive);
-        return SubscribeCore((int)flags);
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+        try
+        {
+            return SubscribeInto(result, (int)flags);
+        }
+        catch (ZlinkException ex) when ((flags & RecvFlags.DontWait) != 0
+            && ZlinkException.MapErrorCode(ex.InternalErrno) is ErrorCode.EAgain
+                or ErrorCode.EBusy)
+        {
+            return false;
+        }
     }
 
-    internal TopicMessage? SubscribeNoWait()
+    internal bool SubscribeNoWait(TopicMessage result)
     {
-        EnsureSupports(nameof(Subscribe),
-            SocketTypePolicy.SocketCapability.SubscribeReceive);
-        return TryReceiveCore(() => SubscribeCore(DontWaitFlag));
+        return Subscribe(result, RecvFlags.DontWait);
     }
 
     internal byte[][]? TryReceiveRawSubscribedFrames(int flags)
@@ -715,12 +724,14 @@ internal sealed class SocketKernel : IDisposable
         }
     }
 
-    public unsafe SubscriptionEvent ReceiveSubscriptionEvent(
+    public unsafe bool ReceiveSubscriptionEvent(SubscriptionEvent result,
         RecvFlags flags = RecvFlags.None)
     {
         EnsureSupports(nameof(ReceiveSubscriptionEvent),
             SocketTypePolicy.SocketCapability.SubscriptionEvents);
-        return ReceiveSubscriptionEventCore((int)flags);
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+        return ReceiveSubscriptionEventInto(result, (int)flags);
     }
 
     public unsafe void SubscribeHandler(SocketSubscribeHandler handler)
@@ -747,11 +758,9 @@ internal sealed class SocketKernel : IDisposable
         _subscribeHandlerNative = native;
     }
 
-    public SubscriptionEvent? ReceiveSubscriptionEventNoWait()
+    public bool ReceiveSubscriptionEventNoWait(SubscriptionEvent result)
     {
-        EnsureSupports(nameof(ReceiveSubscriptionEvent),
-            SocketTypePolicy.SocketCapability.SubscriptionEvents);
-        return TryReceiveCore(() => ReceiveSubscriptionEventCore(DontWaitFlag));
+        return ReceiveSubscriptionEvent(result, RecvFlags.DontWait);
     }
 
     public Received Recv(RecvFlags flags = RecvFlags.None)
@@ -1217,6 +1226,31 @@ internal sealed class SocketKernel : IDisposable
         }
     }
 
+    private unsafe bool SubscribeInto(TopicMessage result, int flags)
+    {
+        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
+        try
+        {
+            bool allowNoData = (flags & DontWaitFlag) != 0;
+            MultipartMessageCollection? parts = ReceiveSubscribedParts(flags,
+                topicBuffer, out byte[]? routingIdBytes, out string topic,
+                allowNoData: allowNoData);
+            if (parts == null)
+                return false;
+            RoutingId? routingId = routingIdBytes == null
+                ? null
+                : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
+            if (parts.Count == 0)
+                throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
+            result.Populate(routingId, topic, parts);
+            return true;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(topicBuffer);
+        }
+    }
+
     private unsafe byte[][] ReceiveRawSubscribedFramesCore(int flags)
     {
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
@@ -1269,6 +1303,38 @@ internal sealed class SocketKernel : IDisposable
                 : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
             string topic = DecodeTopic(topicBuffer, topicLength);
             return new SubscriptionEvent(routingId, topic, subscribedInt != 0);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(topicBuffer);
+        }
+    }
+
+    private unsafe bool ReceiveSubscriptionEventInto(SubscriptionEvent result,
+        int flags)
+    {
+        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
+        try
+        {
+            int rc = NativeMethods.zlink_xpub_recv_part(Handle,
+                out IntPtr sourceRoutingId, out int subscribedInt, topicBuffer,
+                (nuint)topicBuffer.Length, out nuint topicLength, flags);
+            if (rc != 0)
+            {
+                int errno = NativeMethods.zlink_errno();
+                if ((flags & DontWaitFlag) != 0
+                    && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
+                    return false;
+                throw ZlinkException.CreateRecvException(errno);
+            }
+
+            byte[]? routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
+            RoutingId? routingId = routingIdBytes == null
+                ? null
+                : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
+            string topic = DecodeTopic(topicBuffer, topicLength);
+            result.Populate(routingId, topic, subscribedInt != 0);
+            return true;
         }
         finally
         {
@@ -1819,7 +1885,8 @@ internal sealed class SocketKernel : IDisposable
                         NativeMethods.zlink_msg_close(ref part);
                     int errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
-                        && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain) {
+                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                            or ErrorCode.EBusy) {
                         return false;
                     }
                     throw ZlinkException.CreateRecvException(errno);
@@ -1893,7 +1960,8 @@ internal sealed class SocketKernel : IDisposable
                         NativeMethods.zlink_msg_close(ref part);
                     int errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
-                        && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain) {
+                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                            or ErrorCode.EBusy) {
                         return false;
                     }
                     throw ZlinkException.CreateRecvException(errno);
@@ -1968,7 +2036,8 @@ internal sealed class SocketKernel : IDisposable
                         NativeMethods.zlink_msg_close(ref part);
                     int errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
-                        && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain) {
+                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                            or ErrorCode.EBusy) {
                         return false;
                     }
 
@@ -2037,7 +2106,8 @@ internal sealed class SocketKernel : IDisposable
                         NativeMethods.zlink_msg_close(ref part);
                     int errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
-                        && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain) {
+                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                            or ErrorCode.EBusy) {
                         return null;
                     }
                     throw ZlinkException.CreateRecvException(errno);

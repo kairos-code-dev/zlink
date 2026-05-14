@@ -90,7 +90,7 @@ API lists can stay focused on signatures.
 - `Spot` must expose channel-aware data-plane operation builders:
   `sendChannel(...)`, `sendToSpot(...)`, `requestChannel(...)`, and
   `publish(topic)`.
-- `Spot.subscribe(...)` returns a `TopicMessage`.
+- `Spot.subscribe(...)` receives into caller-provided `TopicMessage` storage.
   `TopicMessage` exposes topic, parts, and optional routing id.
 - `Spot` must not expose `onSubscribe(...)`.
 - `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
@@ -303,9 +303,10 @@ Node / TypeScript nonblocking data-plane helpers follow this rule:
   configured via the builder's `.flags(...)` stage.
 - Blocking submit returns `true` on success. Route-not-ready and other submit
   failures still throw `SubmitError`.
-- `recv(...)`, `subscribe(...)`, `receiveSubscriptionEvent(...)`,
-  `recvRouted(...)`, monitor `recv(...)`, and timer `recv()` return `null`
-  when the core reports no data and still throw `RecvError` for real recv
+- Canonical caller-provided data-plane receive methods return `true` on success
+  and `false` when the core reports no data. Deprecated return-form recv
+  overloads, monitor `recv(...)`, and timer `recv()` keep `null` as their
+  no-data value. All receive paths still throw `RecvError` for real recv
   failures.
 
 Peer weight is not a common socket option. Bindings expose `peerWeight` only on
@@ -414,8 +415,8 @@ class SubSocket {
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
     subscriptionAt(index: number): SubscriptionEntry | null;
-    /** @throws {RecvError} */
-    subscribe(flags?: RecvFlags): TopicMessage | null;
+    /** Canonical caller-provided storage subscribe. @throws {RecvError} */
+    subscribe(result: TopicMessage, flags?: RecvFlags): boolean;
     /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
     /** @throws {ConfigError} */
@@ -558,8 +559,8 @@ class XPubSocket {
     disconnectRid(routingId: RoutingId): void;
     /** Publish (operation builder). */
     publish(topic: string): SendOp;
-    /** @throws {RecvError} */
-    receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent | null;
+    /** Canonical caller-provided storage subscription event recv. @throws {RecvError} */
+    receiveSubscriptionEvent(result: SubscriptionEvent, flags?: RecvFlags): boolean;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -595,8 +596,8 @@ class XSubSocket {
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
     subscriptionAt(index: number): SubscriptionEntry | null;
-    /** @throws {RecvError} */
-    subscribe(flags?: RecvFlags): TopicMessage | null;
+    /** Canonical caller-provided storage subscribe. @throws {RecvError} */
+    subscribe(result: TopicMessage, flags?: RecvFlags): boolean;
     /** @throws {ConfigError} */
     monitorOpen(events?: readonly MonitorEventType[]): MonitorSocket;
     /** @throws {CloseError} */
@@ -846,10 +847,14 @@ class Received {
 
 ### TopicMessage
 
-Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
+Topic-aware recv result used by SUB / XSUB / Spot subscribe paths. Construct
+one instance and pass it repeatedly to `subscribe(...)`; each successful call
+overwrites the previous contents and closes any replaced message parts.
 
 ```typescript
 class TopicMessage {
+    constructor();
+
     readonly routingId: RoutingId | null;    // null when transport carries no source id
     readonly topic: string;                  // UTF-8
     readonly parts: Message[];
@@ -865,11 +870,13 @@ class TopicMessage {
 
 ### SubscriptionEvent
 
-Value object emitted by `XPubSocket.receiveSubscriptionEvent` and
-`Spot.receiveSubscriptionEvent`. No lifecycle methods.
+Reusable result object filled by `XPubSocket.receiveSubscriptionEvent` and
+`Spot.receiveSubscriptionEvent`.
 
 ```typescript
 class SubscriptionEvent {
+    constructor();
+
     readonly routingId: RoutingId | null;
     readonly topic: string;                  // UTF-8
     readonly subscribed: boolean;            // true=subscribe, false=unsubscribe
@@ -1562,10 +1569,10 @@ class Spot {
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
     subscriptionAt(index: number): SubscriptionEntry | null;
-    /** @throws {RecvError} */
-    subscribe(flags?: RecvFlags): TopicMessage | null;
-    /** @throws {RecvError} */
-    receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent | null;
+    /** Canonical caller-provided storage subscribe. @throws {RecvError} */
+    subscribe(result: TopicMessage, flags?: RecvFlags): boolean;
+    /** Canonical caller-provided storage subscription event recv. @throws {RecvError} */
+    receiveSubscriptionEvent(result: SubscriptionEvent, flags?: RecvFlags): boolean;
     /** @throws {HandlerError} */
     onSendReady(handler: SpotSendReadyHandler): void;
 
@@ -1578,8 +1585,8 @@ class Spot {
     replyToRouter(peerRid: RoutingId, requestSeq: bigint): ReplyOp;
 
     // --- routed receive ---
-    /** @throws {RecvError} */
-    recvRouted(flags?: RecvFlags): Received | null;
+    /** Canonical caller-provided storage routed recv. @throws {RecvError} */
+    recvRouted(result: Received, flags?: RecvFlags): boolean;
     /** @throws {HandlerError} */
     onRoutedReceive(handler: SpotRoutedHandler): void;
     /** @throws {HandlerError} */
@@ -1734,8 +1741,8 @@ reusing the same operation object after submit must throw a validation error.
 
 `onDispatchEvent(...)` is the canonical SPOT readable-notification surface.
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
-`subscribe(...)` / `recvRouted(...)` until the binding reports no data /
-`EAGAIN`.
+`subscribe(...)` / `recvRouted(...)` until the binding returns `false` or
+reports `EAGAIN`.
 
 ### RegistryQueryClient
 
@@ -2176,8 +2183,8 @@ type TimerHandler = (timer: Timer, fireCount: bigint) => void;
 
 `onDispatchEvent(...)` is the canonical SPOT readable-notification surface.
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
-`subscribe(...)` / `recvRouted(...)` until the binding reports no data /
-`EAGAIN`.
+`subscribe(...)` / `recvRouted(...)` until the binding returns `false` or
+reports `EAGAIN`.
 For `ChannelReplyReadable`, request promises and callbacks progress their
 replies inside the binding. The public API does not expose the native channel
 dealer subject.

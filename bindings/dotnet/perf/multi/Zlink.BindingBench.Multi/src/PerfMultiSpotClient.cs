@@ -236,8 +236,8 @@ internal static class PerfMultiSpotClient
         out bool started)
     {
         started = false;
-        using TopicMessage? received = controlSub.Subscribe(RecvFlags.DontWait);
-        if (received == null)
+        using var received = new TopicMessage();
+        if (!controlSub.Subscribe(received, RecvFlags.DontWait))
             return false;
         if (received.Topic != ControlTopic)
             return true;
@@ -425,21 +425,17 @@ internal static class PerfMultiSpotClient
                 if (Stopwatch.GetTimestamp() >= activeDeadlineTicks)
                     return progressed;
 
-                TopicMessage? subscribed;
+                using var subscribed = new TopicMessage();
                 try
                 {
-                    subscribed = slot.Subscriber.Subscribe(RecvFlags.DontWait);
+                    if (!slot.Subscriber.Subscribe(subscribed, RecvFlags.DontWait))
+                        return progressed;
                 }
                 catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                                 || IsInterrupted(ex.InternalErrno))
                 {
                     return progressed;
                 }
-                using (subscribed)
-                {
-                    if (subscribed == null)
-                        return progressed;
-
                     progressed = true;
                     ReadOnlySpan<byte> payload =
                         subscribed.SinglePartOrThrow().AsReadOnlySpan();
@@ -479,7 +475,6 @@ internal static class PerfMultiSpotClient
                                 slot.State.LatencySampleCap, ref slot.State.Rng);
                         }
                     }
-                }
             }
         }
         catch (Exception ex)

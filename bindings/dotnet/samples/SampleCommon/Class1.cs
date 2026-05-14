@@ -118,7 +118,8 @@ public static class SampleSupport
         int timeoutMs)
     {
         _ = timeoutMs;
-        using TopicMessage subscribed = socket.Subscribe();
+        using var subscribed = new TopicMessage();
+        socket.Subscribe(subscribed);
         topic = subscribed.Topic;
         if (subscribed.Parts.Count == 0)
             throw new InvalidOperationException(

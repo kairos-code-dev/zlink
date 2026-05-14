@@ -1690,28 +1690,35 @@ public sealed class Spot : IZlinkSocket, IDisposable, IAsyncDisposable
         return SubscriptionIntrospection.At(_handle, index);
     }
 
-    public TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None)
+    public bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
-        return (flags & RecvFlags.DontWait) != 0
-            ? TryReceiveCore(() => SubscribeCore((int)flags))
-            : SubscribeCore((int)flags);
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+        try
+        {
+            return SubscribeInto(result, (int)flags);
+        }
+        catch (ZlinkException ex) when ((flags & RecvFlags.DontWait) != 0
+            && ZlinkException.MapErrorCode(ex.InternalErrno) is ErrorCode.EAgain
+                or ErrorCode.EBusy)
+        {
+            return false;
+        }
     }
 
-    internal bool SubscribeNoWait(out TopicMessage? subscribed)
+    internal bool SubscribeNoWait(TopicMessage result)
     {
-        EnsureNotDisposed();
-        subscribed = TryReceiveCore(() => SubscribeCore(1));
-        return subscribed != null;
+        return Subscribe(result, RecvFlags.DontWait);
     }
 
-    public SubscriptionEvent? ReceiveSubscriptionEvent(
+    public bool ReceiveSubscriptionEvent(SubscriptionEvent result,
         RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
-        return (flags & RecvFlags.DontWait) != 0
-            ? TryReceiveCore(() => ReceiveSubscriptionEventCore((int)flags))
-            : ReceiveSubscriptionEventCore((int)flags);
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+        return ReceiveSubscriptionEventInto(result, (int)flags);
     }
 
     internal int? TryReceiveRawSubscribedFrame(Span<byte> destination, int flags,
@@ -2001,8 +2008,11 @@ public sealed class Spot : IZlinkSocket, IDisposable, IAsyncDisposable
         }
     }
 
-    public unsafe Received? RecvRouted(RecvFlags flags = RecvFlags.None)
+    public unsafe bool RecvRouted(Received result,
+        RecvFlags flags = RecvFlags.None)
     {
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
         MultipartMessageCollection? parts;
         byte[]? nodeRidBytes;
         byte[]? spotRidBytes;
@@ -2010,32 +2020,37 @@ public sealed class Spot : IZlinkSocket, IDisposable, IAsyncDisposable
         try
         {
             parts = ReceiveSpotRoutedParts((int)flags, out nodeRidBytes,
-                out spotRidBytes, out requestSeq);
+                out spotRidBytes, out requestSeq,
+                allowNoData: (flags & RecvFlags.DontWait) != 0);
         }
         catch (ZlinkException ex) when ((flags & RecvFlags.DontWait) != 0
-            && ZlinkException.MapErrorCode(ex.InternalErrno) == ErrorCode.EAgain)
+            && ZlinkException.MapErrorCode(ex.InternalErrno) is ErrorCode.EAgain
+                or ErrorCode.EBusy)
         {
-            return null;
+            return false;
         }
         if (parts == null)
-            return null;
+            return false;
         RoutingId? nodeRid = nodeRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(nodeRidBytes);
         RoutingId? spotRid = spotRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
-        Received received = requestSeq == 0
-            ? Received.Create(nodeRid, parts, spotRid: spotRid)
-            : Received.Create(nodeRid, parts, requestSeq, spotRid,
-            (replyParts, sendFlags) => ReplyToSpot(
+        RoutingIdSnapshot nodeRidSnapshot = RoutingIdSnapshot.FromBytes(nodeRidBytes);
+        RoutingIdSnapshot spotRidSnapshot = RoutingIdSnapshot.FromBytes(spotRidBytes);
+        ReceivedReplyHandler? replyHandler = requestSeq == 0
+            ? null
+            : (replyParts, sendFlags) => ReplyToSpot(
                 nodeRid ?? throw new ZlinkSubmitException(
                     SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
                 spotRid ?? throw new ZlinkSubmitException(
                     SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
-                requestSeq, replyParts, sendFlags));
-        received.SetSendHandler(CreateRoutedSendHandler(nodeRid, spotRid));
-        return received;
+                requestSeq, replyParts, sendFlags);
+        result.PopulateRoutedMultipart(parts, nodeRidSnapshot, spotRidSnapshot,
+            requestSeq == 0 ? null : requestSeq, replyHandler,
+            CreateRoutedSendHandler(nodeRid, spotRid));
+        return true;
     }
 
     public ActorJoinRequest? RecvActorJoin(RecvFlags flags = RecvFlags.None)
@@ -2808,6 +2823,30 @@ public sealed class Spot : IZlinkSocket, IDisposable, IAsyncDisposable
         }
     }
 
+    private unsafe bool SubscribeInto(TopicMessage result, int flags)
+    {
+        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
+        try
+        {
+            MultipartMessageCollection? parts = ReceiveSpotSubscribedParts(flags,
+                topicBuffer, out byte[]? routingIdBytes, out string topic,
+                allowNoData: (flags & 1) != 0);
+            if (parts == null)
+                return false;
+            RoutingId? routingId = routingIdBytes == null
+                ? null
+                : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
+            if (parts.Count == 0)
+                throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
+            result.Populate(routingId, topic, parts);
+            return true;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(topicBuffer);
+        }
+    }
+
     private unsafe SubscriptionEvent ReceiveSubscriptionEventCore(int flags)
     {
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
@@ -2828,6 +2867,38 @@ public sealed class Spot : IZlinkSocket, IDisposable, IAsyncDisposable
                 : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
             string topic = DecodeBuffer(topicBuffer, topicLength);
             return new SubscriptionEvent(routingId, topic, subscribedInt != 0);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(topicBuffer);
+        }
+    }
+
+    private unsafe bool ReceiveSubscriptionEventInto(SubscriptionEvent result,
+        int flags)
+    {
+        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
+        try
+        {
+            int rc = NativeMethods.zlink_spot_subscription_event_recv(_handle,
+                out IntPtr sourceRoutingId, out int subscribedInt, topicBuffer,
+                (nuint)topicBuffer.Length, out nuint topicLength, flags);
+            if (rc != 0)
+            {
+                int errno = NativeMethods.zlink_errno();
+                if ((flags & 1) != 0
+                    && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
+                    return false;
+                throw ZlinkException.CreateRecvException(errno);
+            }
+
+            byte[]? routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
+            RoutingId? routingId = routingIdBytes == null
+                ? null
+                : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
+            string topic = DecodeBuffer(topicBuffer, topicLength);
+            result.Populate(routingId, topic, subscribedInt != 0);
+            return true;
         }
         finally
         {
@@ -2946,7 +3017,7 @@ public sealed class Spot : IZlinkSocket, IDisposable, IAsyncDisposable
 
     private unsafe MultipartMessageCollection? ReceiveSpotRoutedParts(int flags,
         out byte[]? nodeRidBytes, out byte[]? spotRidBytes,
-        out ulong requestSeq)
+        out ulong requestSeq, bool allowNoData = false)
     {
         ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
         int nativePartCount = 0;
@@ -2970,8 +3041,14 @@ public sealed class Spot : IZlinkSocket, IDisposable, IAsyncDisposable
                 {
                     if (initialized)
                         NativeMethods.zlink_msg_close(ref part);
-                    throw ZlinkException.CreateRecvException(
-                        NativeMethods.zlink_errno());
+                    int errno = NativeMethods.zlink_errno();
+                    if (allowNoData && nativePartCount == 0
+                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                            or ErrorCode.EBusy)
+                    {
+                        return null;
+                    }
+                    throw ZlinkException.CreateRecvException(errno);
                 }
 
                 initialized = false;
@@ -2994,7 +3071,7 @@ public sealed class Spot : IZlinkSocket, IDisposable, IAsyncDisposable
 
     private unsafe MultipartMessageCollection? ReceiveSpotSubscribedParts(
         int flags, byte[] topicBuffer, out byte[]? routingIdBytes,
-        out string topic)
+        out string topic, bool allowNoData = false)
     {
         ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
         int nativePartCount = 0;
@@ -3018,8 +3095,14 @@ public sealed class Spot : IZlinkSocket, IDisposable, IAsyncDisposable
                 {
                     if (initialized)
                         NativeMethods.zlink_msg_close(ref part);
-                    throw ZlinkException.CreateRecvException(
-                        NativeMethods.zlink_errno());
+                    int errno = NativeMethods.zlink_errno();
+                    if (allowNoData && nativePartCount == 0
+                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                            or ErrorCode.EBusy)
+                    {
+                        return null;
+                    }
+                    throw ZlinkException.CreateRecvException(errno);
                 }
 
                 initialized = false;

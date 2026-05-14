@@ -128,7 +128,7 @@ public sealed class test_spot_pubsub_basic
             },
             5000));
 
-        TopicMessage? subscribed = null;
+        using var subscribed = new TopicMessage();
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
@@ -137,8 +137,7 @@ public sealed class test_spot_pubsub_basic
 
                 try
                 {
-                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
-                    return subscribed is not null;
+                    return subscriber.Subscribe(subscribed, RecvFlags.DontWait);
                 }
                 catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
                 {
@@ -147,9 +146,8 @@ public sealed class test_spot_pubsub_basic
             },
             5000));
 
-        using var received = subscribed!;
-        Assert.Equal(topic, received.Topic);
-        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
+        Assert.Equal(topic, subscribed.Topic);
+        Assert.Equal(payload, subscribed.SinglePartOrThrow().GetString());
     }
 
     [Fact]
@@ -207,7 +205,7 @@ public sealed class test_spot_pubsub_basic
                 && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
             10000));
 
-        TopicMessage? subscribed = null;
+        using var subscribed = new TopicMessage();
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
@@ -216,8 +214,7 @@ public sealed class test_spot_pubsub_basic
 
                 try
                 {
-                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
-                    return subscribed is not null;
+                    return subscriber.Subscribe(subscribed, RecvFlags.DontWait);
                 }
                 catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
                 {
@@ -226,9 +223,8 @@ public sealed class test_spot_pubsub_basic
             },
             10000));
 
-        using var received = subscribed!;
-        Assert.Equal(topic, received.Topic);
-        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
+        Assert.Equal(topic, subscribed.Topic);
+        Assert.Equal(payload, subscribed.SinglePartOrThrow().GetString());
     }
 
     [Fact]
@@ -282,7 +278,7 @@ public sealed class test_spot_pubsub_basic
             "z-spot-early-publisher-spot"));
         subscriber.SetSubscription(topic);
 
-        TopicMessage? subscribed = null;
+        using var subscribed = new TopicMessage();
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
@@ -291,8 +287,7 @@ public sealed class test_spot_pubsub_basic
 
                 try
                 {
-                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
-                    return subscribed is not null;
+                    return subscriber.Subscribe(subscribed, RecvFlags.DontWait);
                 }
                 catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
                 {
@@ -301,9 +296,8 @@ public sealed class test_spot_pubsub_basic
             },
             10000));
 
-        using var received = subscribed!;
-        Assert.Equal(topic, received.Topic);
-        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
+        Assert.Equal(topic, subscribed.Topic);
+        Assert.Equal(payload, subscribed.SinglePartOrThrow().GetString());
     }
 
 }

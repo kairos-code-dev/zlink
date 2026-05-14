@@ -81,9 +81,9 @@ with these rules, the API listing must be corrected to match this section.
 - `service::spot_t` must expose channel-aware data-plane operation builders:
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
   `publish(const std::string& topic)`.
-- `service::spot_t::subscribe(...)`, raw `SUB`, and raw `XSUB` return
-  `topic_message_t`. The shared `topic_message_t` shape includes topic, parts,
-  and optional routing id.
+- `service::spot_t::subscribe(...)`, raw `SUB`, and raw `XSUB` receive into
+  caller-provided `topic_message_t` storage. The shared `topic_message_t`
+  shape includes topic, parts, and optional routing id.
 - `service::spot_t` must not expose `on_subscribe(...)`. SPOT topic readable
   notifications come from `on_dispatch_event(...)`, then callers drain with
   `subscribe(...)` / `recv_routed(...)` / timer recv.
@@ -473,12 +473,13 @@ Nonblocking data-plane helpers follow this rule:
   been configured via the builder's `.flags(...)` stage.
 - Blocking submit returns `true` on success. Route-not-ready and other submit
   failures still throw `submit_error_t`.
-- `recv(received_t& out, recv_flags_t flags)` follows a unified
+- `recv(received_t& out, recv_flags_t flags)`, `subscribe(topic_message_t& out,
+  int flags)`, `receive_subscription_event(subscription_event_t& out, int flags)`,
+  and `recv_routed(received_t& out, int flags)` follow a unified
   `0 / -1 + errno` contract: returns `0` on success, `-1` on failure with
   `errno` set (EAGAIN/EWOULDBLOCK on dontwait without data; EBUSY when the
-  socket is in callback mode; etc.). `recv` does not throw — callers branch
-  on errno. Subscriptions stay on `subscribe(...)` which still returns
-  `std::nullopt` on dontwait without data.
+  socket is in callback mode; etc.). These data-plane recv surfaces do not
+  throw; callers branch on errno.
 
 ```cpp
 // Available on all socket types
@@ -576,8 +577,9 @@ class sub_socket_t {
     std::optional<subscription_entry_t> subscription_at(size_t index);
 
     // --- receive ---
-    /// @throws recv_error_t
-    std::optional<topic_message_t> subscribe(int flags = 0);
+    /// Receive one topic message into caller-provided storage.
+    /// Returns 0 on success, -1 on error (errno set).
+    int subscribe(topic_message_t& out, int flags = 0);
     // --- sub-specific options ---
     /// @throws config_error_t
     sub_socket_options_t options();
@@ -710,9 +712,9 @@ class xpub_socket_t {
     void on_send_ready(Handler&& handler);
 
     // --- subscription events ---
-    /// @throws recv_error_t
-    std::optional<subscription_event_t> receive_subscription_event(
-        int flags = 0);
+    /// Receive one subscription event into caller-provided storage.
+    /// Returns 0 on success, -1 on error (errno set).
+    int receive_subscription_event(subscription_event_t& out, int flags = 0);
 
     // --- pub-specific options ---
     /// @throws config_error_t
@@ -737,8 +739,9 @@ class xsub_socket_t {
     std::optional<subscription_entry_t> subscription_at(size_t index);
 
     // --- receive ---
-    /// @throws recv_error_t
-    std::optional<topic_message_t> subscribe(int flags = 0);
+    /// Receive one topic message into caller-provided storage.
+    /// Returns 0 on success, -1 on error (errno set).
+    int subscribe(topic_message_t& out, int flags = 0);
 
     // --- sub-specific options ---
     /// @throws config_error_t
@@ -1297,8 +1300,9 @@ node ids, Spot ids, or request sequence values back into the API.
 
 `spot_dispatch_info_t` never exposes the native `void* subject` pointer. It is
 a readiness descriptor. For `subscribe_readable` and `routed_readable`, the
-caller drains through the corresponding `spot_t` recv method until
-`std::nullopt` is returned in nonblocking mode. For `timer_readable`, `timer`
+caller drains through the corresponding `spot_t` recv method until `-1` with
+`EAGAIN` / `EWOULDBLOCK` is returned in nonblocking mode. For
+`timer_readable`, `timer`
 identifies the timer to drain. For `channel_reply_readable`, `channel_dealer`
 and `channel_name` identify the attached channel dealer whose request replies
 must progress internally. Actor readable events may carry the actor reference
@@ -1316,6 +1320,8 @@ when `request_seq()` has a value; otherwise it throws `submit_error_t`.
 ```cpp
 class received_t {
 public:
+    received_t();
+
     // peer_rid for Router, source_node_rid for Spot, nullopt if absent.
     const std::optional<routing_id_t>& routing_id() const noexcept;
     // Set only for SPOT-origin routed recv.
@@ -1358,6 +1364,8 @@ The value owns `message_t` parts, and `close()` releases them.
 ```cpp
 class topic_message_t {
 public:
+    topic_message_t();
+
     topic_message_t(std::optional<routing_id_t> routing_id,
                     std::string topic,
                     std::vector<message_t> parts);
@@ -2673,11 +2681,12 @@ class spot_t {
     request_op_t request_channel(const std::string& channel_name);
 
     // --- subscribe ---
-    /// @throws recv_error_t
-    std::optional<topic_message_t> subscribe(int flags = 0);
-    /// @throws recv_error_t
-    std::optional<subscription_event_t> receive_subscription_event(
-        int flags = 0);
+    /// Receive one topic message into caller-provided storage.
+    /// Returns 0 on success, -1 on error (errno set).
+    int subscribe(topic_message_t& out, int flags = 0);
+    /// Receive one subscription event into caller-provided storage.
+    /// Returns 0 on success, -1 on error (errno set).
+    int receive_subscription_event(subscription_event_t& out, int flags = 0);
     /// @throws config_error_t
     void set_subscription(const std::string& filter);
     /// @throws config_error_t
@@ -2712,8 +2721,9 @@ class spot_t {
                                uint64_t request_seq);
 
     // --- routed receive ---
-    /// @throws recv_error_t
-    std::optional<received_t> recv_routed(int flags = 0);
+    /// Receive one routed SPOT message into caller-provided storage.
+    /// Returns 0 on success, -1 on error (errno set).
+    int recv_routed(received_t& out, int flags = 0);
     /// @throws handler_error_t
     template<class Handler>
     void on_routed_receive(Handler&& handler);

@@ -58,10 +58,22 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         Func<ZLinkSpotSubscriptionDescriptor, object?, CancellationToken, ValueTask> dispatchAsync,
         CancellationToken cancellationToken)
     {
+        using var message = new TopicMessage();
         while (!cancellationToken.IsCancellationRequested)
         {
-            using var message = nativeSpot.Subscribe(RecvFlags.DontWait);
-            if (message is null)
+            bool received;
+            try
+            {
+                received = nativeSpot.Subscribe(message, RecvFlags.DontWait);
+            }
+            catch (ZlinkRecvException ex)
+                when (ex.Result is ZlinkRecvException.ErrorCode.NoData
+                    or ZlinkRecvException.ErrorCode.Busy)
+            {
+                return;
+            }
+
+            if (!received)
             {
                 return;
             }

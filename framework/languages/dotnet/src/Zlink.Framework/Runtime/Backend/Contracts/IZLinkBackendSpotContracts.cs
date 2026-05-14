@@ -68,9 +68,9 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
 
     void SetSubscription(string topic);
 
-    TopicMessage? Subscribe(RecvFlags flags);
+    bool Subscribe(TopicMessage result, RecvFlags flags);
 
-    Received RecvRoute(RecvFlags flags);
+    bool RecvRoute(Received result, RecvFlags flags);
 
     void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler);
 

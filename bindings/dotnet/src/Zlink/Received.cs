@@ -470,9 +470,30 @@ public sealed class Received : IDisposable
     }
 }
 
-public sealed record SubscriptionEvent(
-    RoutingId? RoutingId,
-    string Topic,
-    bool Subscribed);
+public sealed class SubscriptionEvent
+{
+    public SubscriptionEvent()
+    {
+    }
+
+    internal SubscriptionEvent(RoutingId? routingId, string topic,
+        bool subscribed)
+    {
+        Populate(routingId, topic, subscribed);
+    }
+
+    public RoutingId? RoutingId { get; private set; }
+
+    public string Topic { get; private set; } = string.Empty;
+
+    public bool Subscribed { get; private set; }
+
+    internal void Populate(RoutingId? routingId, string topic, bool subscribed)
+    {
+        RoutingId = routingId;
+        Topic = topic ?? string.Empty;
+        Subscribed = subscribed;
+    }
+}
 
 public sealed record SubscriptionEntry(string Filter, bool IsPattern);

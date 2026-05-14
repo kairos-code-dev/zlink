@@ -12,17 +12,14 @@ public sealed class XPubSocket : PublisherSocketBase
         Options = new PubSocketOptions(this);
     }
 
-    public SubscriptionEvent? ReceiveSubscriptionEvent(
+    public bool ReceiveSubscriptionEvent(SubscriptionEvent result,
         RecvFlags flags = RecvFlags.None)
     {
-        return (flags & RecvFlags.DontWait) != 0
-            ? Kernel.ReceiveSubscriptionEventNoWait()
-            : Kernel.ReceiveSubscriptionEvent(flags);
+        return Kernel.ReceiveSubscriptionEvent(result, flags);
     }
 
-    internal bool ReceiveSubscriptionEventNoWait(out SubscriptionEvent? subscriptionEvent)
+    internal bool ReceiveSubscriptionEventNoWait(SubscriptionEvent result)
     {
-        subscriptionEvent = Kernel.ReceiveSubscriptionEventNoWait();
-        return subscriptionEvent != null;
+        return Kernel.ReceiveSubscriptionEvent(result, RecvFlags.DontWait);
     }
 }

@@ -107,10 +107,11 @@ internal static class PerfPubSub
 
                     while (true)
                     {
-                        TopicMessage? maybe = null;
+                        using var maybe = new TopicMessage();
                         try
                         {
-                            maybe = receiver.Subscribe(RecvFlags.DontWait);
+                            if (!receiver.Subscribe(maybe, RecvFlags.DontWait))
+                                break;
                         }
                         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                                         || IsWouldBlock(ex.InternalErrno))
@@ -118,33 +119,28 @@ internal static class PerfPubSub
                             break;
                         }
 
-                        using (maybe)
+                        Message body = maybe.FirstPart();
+                        ReadOnlySpan<byte> payloadSpan = body.AsReadOnlySpan();
+                        if (StopToken.IsStopToken(payloadSpan))
+                            return;
+
+                        long recvTicks = Stopwatch.GetTimestamp();
+                        if (!TryDecodeExpectedSingleHeader(payloadSpan, msgSize,
+                                ActivePhase, out var header, RunId))
                         {
-                            if (maybe == null)
-                                break;
-                            Message body = maybe.FirstPart();
-                            ReadOnlySpan<byte> payloadSpan = body.AsReadOnlySpan();
-                            if (StopToken.IsStopToken(payloadSpan))
-                                return;
+                            continue;
+                        }
 
-                            long recvTicks = Stopwatch.GetTimestamp();
-                            if (!TryDecodeExpectedSingleHeader(payloadSpan, msgSize,
-                                    ActivePhase, out var header, RunId))
-                            {
-                                continue;
-                            }
+                        if (recvTicks > deadlineTicks)
+                            continue;
 
-                            if (recvTicks > deadlineTicks)
-                                continue;
-
-                            Interlocked.Increment(ref received);
-                            ulong nowNs = EpochNs();
-                            if (nowNs >= header.SentTsNs)
-                            {
-                                double latencyNs = nowNs - header.SentTsNs;
-                                ReservoirSample(samples, latencyNs, ref sampleSeen,
-                                    latencyCap, ref rng);
-                            }
+                        Interlocked.Increment(ref received);
+                        ulong nowNs = EpochNs();
+                        if (nowNs >= header.SentTsNs)
+                        {
+                            double latencyNs = nowNs - header.SentTsNs;
+                            ReservoirSample(samples, latencyNs, ref sampleSeen,
+                                latencyCap, ref rng);
                         }
                     }
                 }

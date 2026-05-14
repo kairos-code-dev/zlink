@@ -8,8 +8,14 @@ namespace Systems.Zlink;
 
 public sealed class TopicMessage : IDisposable
 {
-    private readonly MultipartMessageCollection _parts;
+    private MultipartMessageCollection? _parts;
     private int _closed;
+    private RoutingId? _routingId;
+    private string _topic = string.Empty;
+
+    public TopicMessage()
+    {
+    }
 
     internal TopicMessage(RoutingId? routingId, string topic, Message[] parts)
         : this(routingId, topic,
@@ -20,33 +26,59 @@ public sealed class TopicMessage : IDisposable
     internal TopicMessage(RoutingId? routingId, string topic,
         MultipartMessageCollection parts)
     {
-        RoutingId = routingId;
-        Topic = topic ?? string.Empty;
-        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
+        Populate(routingId, topic, parts);
     }
 
-    public RoutingId? RoutingId { get; }
+    public RoutingId? RoutingId => _routingId;
 
-    public string Topic { get; }
+    public string Topic => _topic;
 
-    public IReadOnlyList<Message> Parts => _parts;
+    public IReadOnlyList<Message> Parts => PartsCollection;
 
-    public bool IsSinglePart => _parts.IsSinglePart;
+    public bool IsSinglePart => PartsCollection.IsSinglePart;
 
     public Message FirstPart()
     {
-        return _parts.First();
+        return PartsCollection.First();
     }
 
     public Message SinglePartOrThrow()
     {
-        return _parts.Single();
+        return PartsCollection.Single();
     }
 
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _closed, 1) != 0)
             return;
-        _parts.Dispose();
+        _parts?.Dispose();
+        _parts = null;
+    }
+
+    internal void Populate(RoutingId? routingId, string topic,
+        MultipartMessageCollection parts)
+    {
+        ResetForReuse();
+        _routingId = routingId;
+        _topic = topic ?? string.Empty;
+        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
+    }
+
+    private void ResetForReuse()
+    {
+        _parts?.Dispose();
+        _parts = null;
+        _routingId = null;
+        _topic = string.Empty;
+        _closed = 0;
+    }
+
+    private MultipartMessageCollection PartsCollection
+    {
+        get
+        {
+            return _parts ??= MultipartMessageCollection.FromMessages(
+                Array.Empty<Message>());
+        }
     }
 }

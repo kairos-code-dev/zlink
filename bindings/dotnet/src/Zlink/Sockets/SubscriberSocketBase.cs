@@ -33,16 +33,13 @@ public abstract class SubscriberSocketBase : ConnectableSocketBase
         return SubscriptionIntrospection.At(Handle, index);
     }
 
-    public TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None)
+    public bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None)
     {
-        return (flags & RecvFlags.DontWait) != 0
-            ? Kernel.SubscribeNoWait()
-            : Kernel.Subscribe(flags);
+        return Kernel.Subscribe(result, flags);
     }
 
-    internal bool SubscribeNoWait(out TopicMessage? subscribed)
+    internal bool SubscribeNoWait(TopicMessage result)
     {
-        subscribed = Kernel.SubscribeNoWait();
-        return subscribed != null;
+        return Kernel.Subscribe(result, RecvFlags.DontWait);
     }
 }

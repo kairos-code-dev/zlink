@@ -348,42 +348,32 @@ public sealed class SpotIntegrationTests
         await using var rawSubscriber = subscriberNodeRuntime.Node.CreateSpot();
         rawSubscriber.SetSubscription("stage.external");
 
-        global::Systems.Zlink.TopicMessage? received = null;
-        try
-        {
-            await RetryAsync(
-                async () =>
-	                {
-	                    await publisher.Publish(
-	                            "game.stage",
-	                            "stage.external",
-	                            new ExternalStageEvent("raw"))
-	                        .Submit();
-	                    await Task.Yield();
+        using var received = new global::Systems.Zlink.TopicMessage();
+        await RetryAsync(
+            async () =>
+            {
+                await publisher.Publish(
+                        "game.stage",
+                        "stage.external",
+                        new ExternalStageEvent("raw"))
+                    .Submit();
+                await Task.Yield();
 
-                    try
-                    {
-                        received = rawSubscriber.Subscribe(global::Systems.Zlink.RecvFlags.DontWait);
-                    }
-                    catch (global::Systems.Zlink.ZlinkRecvException ex)
-                        when (ex.Result == global::Systems.Zlink.ZlinkRecvException.ErrorCode.NoData)
-                    {
-                        received = null;
-                    }
+                try
+                {
+                    return rawSubscriber.Subscribe(received,
+                        global::Systems.Zlink.RecvFlags.DontWait);
+                }
+                catch (global::Systems.Zlink.ZlinkRecvException ex)
+                    when (ex.Result == global::Systems.Zlink.ZlinkRecvException.ErrorCode.NoData)
+                {
+                    return false;
+                }
+            },
+            static ok => ok,
+            TimeSpan.FromSeconds(10));
 
-                    return received is not null;
-                },
-                static ok => ok,
-                TimeSpan.FromSeconds(10));
-
-            Assert.NotNull(received);
-            using var topicMessage = received!;
-            Assert.Equal("stage.external", topicMessage.Topic);
-        }
-        finally
-        {
-            received?.Dispose();
-        }
+        Assert.Equal("stage.external", received.Topic);
 
         await publisherHost.StopAsync();
         await subscriberHost.StopAsync();

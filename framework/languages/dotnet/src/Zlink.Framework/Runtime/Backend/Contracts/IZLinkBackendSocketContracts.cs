@@ -112,7 +112,7 @@ internal interface IZLinkBackendSubscriberSocket : IZLinkBackendConnectableSocke
 
     void SetSubscription(string topic);
 
-    TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None);
+    bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None);
 }
 
 internal interface IZLinkBackendStreamSocket : IZLinkBackendSocket

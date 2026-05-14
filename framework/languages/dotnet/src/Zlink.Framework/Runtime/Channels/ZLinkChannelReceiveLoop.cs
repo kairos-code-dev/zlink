@@ -49,11 +49,10 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
         var backoff = new ZLinkPollingBackoff();
         while (!cancellationToken.IsCancellationRequested)
         {
-            TopicMessage? topicMessage = null;
+            using var topicMessage = new TopicMessage();
             try
             {
-                topicMessage = subscriber.Subscribe(RecvFlags.DontWait);
-                if (topicMessage is null)
+                if (!subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
                 {
                     await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                     continue;
@@ -70,10 +69,6 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
             catch (ObjectDisposedException)
             {
                 break;
-            }
-            finally
-            {
-                topicMessage?.Dispose();
             }
         }
     }

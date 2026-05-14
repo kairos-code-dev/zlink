@@ -87,7 +87,7 @@ stay focused on signatures.
 - `Spot` must expose channel-aware data-plane operation builders:
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
   `publish(topic)`.
-- `Spot::subscribe(...)` returns a `TopicMessage`.
+- `Spot::subscribe(...)` receives into caller-provided `TopicMessage` storage.
   `TopicMessage` exposes topic, parts, and optional routing id.
 - `Spot` must not expose `on_subscribe(...)`. Use `on_dispatch_event(...)`
   plus `subscribe(...)` / routed recv / timer recv.
@@ -335,8 +335,10 @@ Rust nonblocking data-plane helpers follow this rule:
   has been configured via the builder's `.flags(...)` stage.
 - Route-not-ready and other submit failures still return
   `Err(SubmitError)`.
-- `_with_flags(...)` receive variants return `Ok(None)` when no message is
-  currently available and still return `Err(RecvError)` for real recv failures.
+- Canonical caller-provided data-plane receive methods return `Ok(true)` on
+  success, `Ok(false)` when `RecvFlags::DontWait` finds no data, and
+  `Err(RecvError)` for real recv failures. Control-plane receive methods keep
+  their documented `Option` no-data shape.
 
 Peer weight is not part of `CommonSocketOptions`. Rust exposes weight only on
 `RouterSocket` and `DealerSocket`:
@@ -426,9 +428,7 @@ impl SubSocket {
     /// # Errors: ConfigError
     pub fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError>;
     /// # Errors: RecvError
-    pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
-    /// # Errors: RecvError
-    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<Option<TopicMessage>, RecvError>;
+    pub fn subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError>;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn sub_options(&self) -> SubSocketOptions<'_, Self>;
     /// # Errors: ConfigError
@@ -561,9 +561,8 @@ impl XPubSocket {
     /// Publish (operation builder).
     pub fn publish(&self, topic: &str) -> SendOp<Empty>;
     /// # Errors: RecvError
-    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError>;
-    /// # Errors: RecvError
-    pub fn receive_subscription_event_with_flags(&self, flags: RecvFlags) -> Result<Option<SubscriptionEvent>, RecvError>;
+    pub fn receive_subscription_event(&self, out: &mut SubscriptionEvent,
+        flags: RecvFlags) -> Result<bool, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -593,9 +592,7 @@ impl XSubSocket {
     /// # Errors: ConfigError
     pub fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError>;
     /// # Errors: RecvError
-    pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
-    /// # Errors: RecvError
-    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<Option<TopicMessage>, RecvError>;
+    pub fn subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError>;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn sub_options(&self) -> SubSocketOptions<'_, Self>;
     /// # Errors: CloseError
@@ -862,6 +859,8 @@ pub struct Received {
 	    // non-public: source context for send() / reply()
 }
 
+impl Default for Received;
+
 impl Received {
     pub fn is_single_part(&self) -> bool;
     /// # Errors: RecvError
@@ -888,9 +887,10 @@ impl Received {
 
 ### TopicMessage
 
-Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
-`Drop` releases owned `Message` parts; explicit `close()` is available
-for deterministic cleanup.
+Topic-aware recv result used by SUB / XSUB / Spot subscribe paths. Callers
+keep one value and pass `&mut TopicMessage` to `subscribe(...)`; each
+successful call overwrites the previous contents. `Drop` releases owned
+`Message` parts; explicit `close()` is available for deterministic cleanup.
 
 ```rust
 pub struct TopicMessage {
@@ -898,6 +898,8 @@ pub struct TopicMessage {
     pub topic: String,                   // UTF-8
     pub parts: Vec<Message>,
 }
+
+impl Default for TopicMessage;
 
 impl TopicMessage {
     pub fn is_single_part(&self) -> bool;
@@ -913,9 +915,9 @@ impl TopicMessage {
 
 ### SubscriptionEvent
 
-Value struct emitted by `XPubSocket::receive_subscription_event` and
-`Spot::receive_subscription_event`. Pure value type: no methods, no
-lifecycle. `topic` is UTF-8 `String` (never raw bytes).
+Reusable value filled by `XPubSocket::receive_subscription_event` and
+`Spot::receive_subscription_event`. `topic` is UTF-8 `String` (never raw
+bytes).
 
 ```rust
 pub struct SubscriptionEvent {
@@ -923,6 +925,8 @@ pub struct SubscriptionEvent {
     pub topic: String,                   // UTF-8 subscribe/unsubscribe topic
     pub subscribed: bool,                // true = subscribe, false = unsubscribe
 }
+
+impl Default for SubscriptionEvent;
 ```
 
 ### SubmitResult
@@ -1811,13 +1815,9 @@ impl Spot {
     /// # Errors: ConfigError
     pub fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError>;
     /// # Errors: RecvError
-    pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
-    /// # Errors: RecvError
-    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<Option<TopicMessage>, RecvError>;
-    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError>;
-    /// # Errors: RecvError
-    pub fn receive_subscription_event_with_flags(&self, flags: RecvFlags)
-        -> Result<Option<SubscriptionEvent>, RecvError>;
+    pub fn subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError>;
+    pub fn receive_subscription_event(&self, out: &mut SubscriptionEvent,
+        flags: RecvFlags) -> Result<bool, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -1832,9 +1832,7 @@ impl Spot {
 
     // --- routed receive ---
     /// # Errors: RecvError
-    pub fn recv_routed(&self) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn recv_routed_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError>;
+    pub fn recv_routed(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>;
     /// # Errors: RecvError
     pub fn recv_actor_join_with_flags(&self, flags: RecvFlags)
         -> Result<Option<ActorJoinRequest>, RecvError>;
@@ -1927,8 +1925,8 @@ references are callback-lifetime only. No native Actor pointer is part of the
 public contract.
 
 For `SubscribeReadable` and `RoutedReadable`, callers must keep draining
-`subscribe(...)` / `recv_routed(...)` until the binding reports no data /
-`EAGAIN`.
+`subscribe(...)` / `recv_routed(...)` until the binding returns `Ok(false)` or
+reports `EAGAIN`.
 
 ### RegistryQueryClient
 

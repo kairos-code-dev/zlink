@@ -35,9 +35,9 @@ internal sealed class ZLinkBackendSubscriberSocketWrapper(SubSocket nativeSocket
         nativeSocket.SetSubscription(topic);
     }
 
-    public TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None)
+    public bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None)
     {
-        return nativeSocket.Subscribe(flags);
+        return nativeSocket.Subscribe(result, flags);
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

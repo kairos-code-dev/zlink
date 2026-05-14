@@ -403,8 +403,8 @@ internal static class PerfMultiSpotReqRep
         out bool ready)
     {
         ready = false;
-        using TopicMessage? received = controlSub.Subscribe(RecvFlags.DontWait);
-        if (received == null)
+        using var received = new TopicMessage();
+        if (!controlSub.Subscribe(received, RecvFlags.DontWait))
             return false;
         if (received.Topic != Topic)
             return true;
@@ -478,8 +478,8 @@ internal static class PerfMultiSpotReqRep
         out bool started)
     {
         started = false;
-        using TopicMessage? received = controlSub.Subscribe(RecvFlags.DontWait);
-        if (received == null)
+        using var received = new TopicMessage();
+        if (!controlSub.Subscribe(received, RecvFlags.DontWait))
             return false;
         if (received.Topic != Topic)
             return true;
@@ -605,32 +605,29 @@ internal static class PerfMultiSpotReqRep
     {
         while (true)
         {
-            Received? received = null;
+            using var received = new Received();
             try
             {
-                received = replier.RecvRouted(RecvFlags.DontWait);
-                if (received == null)
+                if (!replier.RecvRouted(received, RecvFlags.DontWait))
                     return;
-                using (received)
+
+                Message reply = received.FirstPart();
+                if (mode == SpotEchoMode.RequestReply)
                 {
-                    Message reply = received.FirstPart();
-                    if (mode == SpotEchoMode.RequestReply)
+                    received.Reply().Message(reply)
+                        .Flags(SendFlags.DontWait).Submit();
+                }
+                else
+                {
+                    RoutingId? sourceNode = received.RoutingId;
+                    RoutingId? sourceSpot = received.SpotRid;
+                    if (sourceNode.HasValue && sourceSpot.HasValue)
                     {
-                        received.Reply().Message(reply)
-                            .Flags(SendFlags.DontWait).Submit();
-                    }
-                    else
-                    {
-                        RoutingId? sourceNode = received.RoutingId;
-                        RoutingId? sourceSpot = received.SpotRid;
-                        if (sourceNode.HasValue && sourceSpot.HasValue)
-                        {
-                            _ = replier.SendToSpot(sourceNode.Value,
-                                    sourceSpot.Value)
-                                .Message(reply)
-                                .Flags(SendFlags.DontWait)
-                                .Submit();
-                        }
+                        _ = replier.SendToSpot(sourceNode.Value,
+                                sourceSpot.Value)
+                            .Message(reply)
+                            .Flags(SendFlags.DontWait)
+                            .Submit();
                     }
                 }
             }
@@ -638,7 +635,6 @@ internal static class PerfMultiSpotReqRep
                                             || IsInterrupted(ex.InternalErrno)
                                             || IsTransientSubmitErrno(ex.InternalErrno))
             {
-                received?.Dispose();
                 return;
             }
         }
@@ -921,31 +917,26 @@ internal static class PerfMultiSpotReqRep
     {
         while (Stopwatch.GetTimestamp() < activeDeadlineTicks)
         {
-            Received? received = null;
+            using var received = new Received();
             try
             {
-                received = slot.Requester.RecvRouted(RecvFlags.DontWait);
-                if (received == null)
+                if (!slot.Requester.RecvRouted(received, RecvFlags.DontWait))
                     return;
-                using (received)
+
+                if (received.RequestSeq != null)
+                    continue;
+                ReadOnlySpan<byte> body = received.FirstPart().AsReadOnlySpan();
+                if (PerfShared.TryDecodeMetricHeader(body,
+                        out PerfMetricHeader header))
                 {
-                    if (received.RequestSeq != null)
-                        continue;
-                    ReadOnlySpan<byte> body =
-                        received.FirstPart().AsReadOnlySpan();
-                    if (PerfShared.TryDecodeMetricHeader(body,
-                            out PerfMetricHeader header))
-                    {
-                        Volatile.Write(ref slot.WaitingReply, 0);
-                        Volatile.Write(ref slot.SendPending, 0);
-                        RecordReply(slot, header, size);
-                    }
+                    Volatile.Write(ref slot.WaitingReply, 0);
+                    Volatile.Write(ref slot.SendPending, 0);
+                    RecordReply(slot, header, size);
                 }
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno))
             {
-                received?.Dispose();
                 return;
             }
         }
@@ -966,8 +957,7 @@ internal static class PerfMultiSpotReqRep
         ulong nowNs = EpochNs();
         if (header.SentTsNs > 0 && nowNs >= header.SentTsNs)
         {
-            lock (slot.LatencySamples)
-                slot.LatencySamples.Add((nowNs - header.SentTsNs) / 2.0);
+            slot.LatencySamples.Add((nowNs - header.SentTsNs) / 2.0);
         }
     }
 
@@ -1041,13 +1031,10 @@ internal static class PerfMultiSpotReqRep
         foreach (ClientSlot slot in slots)
         {
             measureCount += Volatile.Read(ref slot.MeasureCount);
-            lock (slot.LatencySamples)
+            for (int i = 0; i < slot.LatencySamples.Count; i++)
             {
-                for (int i = 0; i < slot.LatencySamples.Count; i++)
-                {
-                    ReservoirSample(samples, slot.LatencySamples[i],
-                        ref sampleSeen, int.MaxValue, ref rng);
-                }
+                ReservoirSample(samples, slot.LatencySamples[i],
+                    ref sampleSeen, int.MaxValue, ref rng);
             }
         }
 
@@ -1158,8 +1145,7 @@ internal static class PerfMultiSpotReqRep
             NextSeq = 1;
             PollRegistered = false;
             Wake = null;
-            lock (LatencySamples)
-                LatencySamples.Clear();
+            LatencySamples.Clear();
         }
 
         public void Dispose()

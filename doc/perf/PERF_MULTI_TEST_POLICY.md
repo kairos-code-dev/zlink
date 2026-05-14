@@ -1049,9 +1049,12 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 | `--results-tag NAME` | 결과 파일명에 태그 추가 | 없음 |
 | `--duration N` | 측정 시간(초) | 5 |
 | `--clients N` | 클라이언트 소켓 수 | 100 (stream=10000) |
-| `--hwm N` | 소켓 HWM | 100 (stream=10) |
-| `--send-hwm N` | 소켓 송신 HWM | `--hwm` fallback |
-| `--recv-hwm N` | 소켓 수신 HWM | `--hwm` fallback |
+| `--hwm N` | debug 전용 소켓 HWM 공통 fallback. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | auto-HWM |
+| `--send-hwm N` | debug 전용 소켓 송신 HWM. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--hwm` fallback |
+| `--recv-hwm N` | debug 전용 소켓 수신 HWM. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--hwm` fallback |
+| `--buf SIZE` | debug 전용 송수신 OS buffer 공통 override. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | auto-HWM |
+| `--sndbuf SIZE` | debug 전용 송신 OS buffer override. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--buf` |
+| `--rcvbuf SIZE` | debug 전용 수신 OS buffer override. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--buf` |
 | `--sndtimeo N` / `--send-timeout-ms N` | 송신 타임아웃(ms) | 200 |
 | `--rcvtimeo N` / `--recv-timeout-ms N` | 수신 타임아웃(ms) | 200 |
 | `--connect-concurrency N` | 동시 연결 수 | auto (clients≥10000: 1024, 기타: 128) |
@@ -1062,6 +1065,7 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 | `--monitor-hwm N` | 모니터 소켓 HWM | 1000 |
 | `--server-shutdown-timeout-ms N` | server 종료 대기 타임아웃(ms) | 5000 |
 | `--server-bind-port N` | server 바인드 포트 (0=자동 할당) | 0 |
+| `--auto-hwm-profile NAME` | context auto-HWM profile (`compact`, `low_latency`, `balanced`, `throughput`) | `balanced` |
 
 #### 빌드 모드 동작
 

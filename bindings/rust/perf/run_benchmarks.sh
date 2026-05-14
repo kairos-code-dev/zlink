@@ -7,6 +7,7 @@ REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
 CORE_BUILD_DIR="${REPO_DIR}/core/build"
 CORE_LIB_DIR="${CORE_BUILD_DIR}/lib"
 CORE_LIB="${CORE_LIB_DIR}/libzlink.so"
+START_SECONDS="$(date +%s)"
 
 source "$HOME/.cargo/env" 2>/dev/null || true
 export RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-Awarnings"
@@ -371,10 +372,10 @@ def median(values):
     return (usable[mid - 1] + usable[mid]) / 2.0
 
 def fmt_rate(value):
-    return "N/A" if math.isnan(value) else f"{value / 1000.0:.3f}"
+    return "N/A" if math.isnan(value) else f"{value / 1000.0:.2f}"
 
 def fmt_bandwidth(value):
-    return "N/A" if math.isnan(value) else f"{value:.3f} MB/s"
+    return "N/A" if math.isnan(value) else f"{value:.2f} MB/s"
 
 def fmt_latency_ms(value):
     return "N/A" if math.isnan(value) else f"{value:.3f} ms"
@@ -398,7 +399,7 @@ def emit_effective_options(section):
     emit(f"- runs: {runs}")
     emit(f"- duration_seconds: {duration}")
     emit("- timeout_seconds: 30")
-    emit(f"- io_threads: {io_threads or 'default(binary=1)'}")
+    emit(f"- io_threads: {io_threads or '1'}")
     emit(f"- hwm: {hwm or 'auto-hwm'}")
     emit(f"- sndhwm: {send_hwm or hwm or 'auto-hwm'}")
     emit(f"- rcvhwm: {recv_hwm or hwm or 'auto-hwm'}")
@@ -411,7 +412,8 @@ def emit_effective_options(section):
     emit(f"- patterns: {pattern_csv}")
     emit(f"- transports: {transports_csv}")
     emit(f"- msg_sizes: {msg_sizes_csv}")
-    emit("")
+    if section == "result":
+        emit("")
 
 emit_effective_options("start")
 
@@ -422,8 +424,8 @@ def rate_unit(pattern):
     return "Kops/s" if pattern_direction(pattern) == "echo" else "Kmsg/s"
 
 def emit_table_header():
-    emit("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
-    emit("|----------|--------------------|----------------|---------------|---------------|---------------|")
+    emit("| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
+    emit("|----------|------------------|--------------|--------------|--------------|--------------|")
 
 def metric_value_for_run(key, metric, run_index):
     values = rows[key].get(metric, [])
@@ -452,7 +454,7 @@ for pattern_index, pattern in enumerate(patterns):
         if runs > 1:
             for run_index in range(runs):
                 emit(f"      run {run_index + 1}/{runs}:")
-                for header in ("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |", "|----------|--------------------|----------------|---------------|---------------|---------------|"):
+                for header in ("| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |", "|----------|------------------|--------------|--------------|--------------|--------------|"):
                     emit(f"        {header}")
                 for size in pattern_sizes[pattern]:
                     key = (pattern, transport, size)
@@ -472,7 +474,7 @@ for pattern_index, pattern in enumerate(patterns):
                     else:
                         emit_case_row(pattern, size, metric_values)
             emit("      median:")
-        for header in ("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |", "|----------|--------------------|----------------|---------------|---------------|---------------|"):
+        for header in ("| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |", "|----------|------------------|--------------|--------------|--------------|--------------|"):
             emit(f"      {header}")
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
@@ -501,7 +503,12 @@ for pattern_index, pattern in enumerate(patterns):
     emit("")
 
 emit("## Auto-HWM Detail")
-emit("- unavailable: binding runner does not expose socket-level Auto-HWM metadata")
+for pattern in patterns:
+    emit(f"- pattern: {pattern}")
+    emit("| Size(B) | Component | Owner | Socket | Type | Role | SNDHWM | RCVHWM | SNDBUF(KB) | RCVBUF(KB) | MsgUnit(B) | Slots |")
+    emit("|---------|-----------|-------|--------|------|------|--------|--------|-----------|-----------|------------|-------|")
+    for size in pattern_sizes[pattern]:
+        emit(f"| {size} | unavailable | binding | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |")
 emit("")
 emit_effective_options("result")
 emit("## Result Data")
@@ -520,7 +527,6 @@ if failures:
 status = 'complete' if expected == actual else 'partial'
 emit("")
 emit(f"Saved result file: {report_path} (status={status})")
-emit(f"Total benchmark time: {elapsed_seconds}s ({elapsed_seconds}s, exit={0 if status == 'complete' else 1})")
 
 text = "\n".join(lines) + "\n"
 with open(report_path, "w", encoding="utf-8") as f:
@@ -532,4 +538,6 @@ sys.stdout.write(text)
 sys.exit(0 if expected == actual else 1)
 PY
 
+elapsed=$(($(date +%s) - START_SECONDS))
+echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=0)"
 prune_reports "${REPORT_DIR}"

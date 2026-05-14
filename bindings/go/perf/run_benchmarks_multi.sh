@@ -422,7 +422,7 @@ RESULTS_FILE="${RESULTS_DIR}/perf_go_multi_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}
 mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
 prepare_core_runtime
-START_SECONDS="${SECONDS}"
+START_SECONDS="$(date +%s)"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-multi.XXXXXX")"
 RAW_RESULTS_FILE="${TMP_DIR}/result_data.log"
 cleanup() {
@@ -1089,7 +1089,18 @@ for pattern in sorted(by_pattern):
         print(f"    Testing {transport}: Done")
         if pattern in {"MULTI_SPOT", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}:
             print("    Auto-HWM spotnode:")
-            print("      - unavailable: binding runner does not expose socket-level Auto-HWM metadata")
+            for size, _values in sorted(transports[transport]):
+                msg_unit = max(4096, int(size))
+                print(f"      - Size(B)={size}, MsgUnit(B)={msg_unit}")
+                print("      | Socket      | Type | Role | SNDHWM | RCVHWM | SNDBUF | RCVBUF |")
+                print("      |-------------|------|------|--------|--------|--------|--------|")
+                print("      | unavailable | n/a  | n/a  | n/a    | n/a    | n/a    | n/a    |")
+        else:
+            print("    Auto-HWM detail:")
+            print("      | Size(B) | Component   | Type | UnitBudget(KB) | MsgUnit(B) | SNDHWM | RCVHWM | SNDBUF(KB) | RCVBUF(KB) |")
+            print("      |---------|-------------|------|----------------|------------|--------|--------|------------|------------|")
+            for size, _values in sorted(transports[transport]):
+                print(f"      | {size:<7} | unavailable | n/a  | n/a            | {size:<10} | n/a    | n/a    | n/a        | n/a        |")
     print()
 PY
 }
@@ -1098,7 +1109,6 @@ PY
   emit_meta_lines
   echo
   emit_effective_options_multi "start"
-  echo
 } > "${RESULTS_FILE}"
 exec 3>&1
 exec >/dev/null
@@ -1373,10 +1383,8 @@ PY
   echo "- status: ${status}"
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"
-  elapsed=$((SECONDS - START_SECONDS))
   echo
   echo "Saved result file: ${RESULTS_FILE} (status=${status})"
-  echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=$([[ "${status}" == "complete" ]] && echo 0 || echo 1))"
 } >> "${RESULTS_FILE}"
 
 if [[ -n "${OUTPUT_FILE}" ]]; then
@@ -1385,6 +1393,8 @@ fi
 
 exec >&3
 cat "${RESULTS_FILE}"
+elapsed=$(($(date +%s) - START_SECONDS))
+echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=$([[ "${status}" == "complete" ]] && echo 0 || echo 1))"
 
 if [[ "${status}" != "complete" ]]; then
   exit 1

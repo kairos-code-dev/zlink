@@ -14,7 +14,6 @@ from perf_common import (
     resolve_single_timeout_seconds,
     rows_by_case,
     status_row_text,
-    table_header_lines,
     throughput_unit,
 )
 
@@ -221,15 +220,41 @@ def _status_kind(output):
 
 
 def _metric_row(pattern, msg_size, metrics, *, indent="      "):
-    throughput = f"{float(metrics.get('throughput', 0.0)) / 1000.0:8.3f} {throughput_unit(pattern)}"
+    throughput = f"{float(metrics.get('throughput', 0.0)) / 1000.0:7.2f} {throughput_unit(pattern)}"
     return (
         f"{indent}| {str(msg_size) + 'B':<8} | "
         f"{throughput:>16} | "
-        f"{float(metrics.get('bandwidth', 0.0)):>10.3f} MB/s | "
+        f"{float(metrics.get('bandwidth', 0.0)):>8.2f} MB/s | "
         f"{float(metrics.get('latency', 0.0)):>9.3f} ms | "
         f"{float(metrics.get('latency_p95', 0.0)):>9.3f} ms | "
         f"{float(metrics.get('latency_p99', 0.0)):>9.3f} ms |"
     )
+
+
+def _single_table_header_lines():
+    return (
+        "| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |",
+        "|----------|------------------|--------------|--------------|--------------|--------------|",
+    )
+
+
+def _auto_hwm_detail_lines(patterns, msg_sizes):
+    yield "## Auto-HWM Detail"
+    for pattern in patterns:
+        yield f"- pattern: {pattern}"
+        yield (
+            "| Size(B) | Component | Owner | Socket | Type | Role | SNDHWM | RCVHWM | "
+            "SNDBUF(KB) | RCVBUF(KB) | MsgUnit(B) | Slots |"
+        )
+        yield (
+            "|---------|-----------|-------|--------|------|------|--------|--------|"
+            "-----------|-----------|------------|-------|"
+        )
+        for msg_size in msg_sizes:
+            yield (
+                f"| {msg_size} | unavailable | binding | n/a | n/a | n/a | "
+                "n/a | n/a | n/a | n/a | n/a | n/a |"
+            )
 
 
 def pattern_direction(_pattern):
@@ -307,7 +332,7 @@ def _build_options(args, patterns, transports, msg_sizes):
         "runs": args.runs,
         "duration_seconds": args.duration,
         "timeout_seconds": resolve_single_timeout_seconds(float(args.duration)),
-        "io_threads": args.io_threads or "default(binary=1)",
+        "io_threads": args.io_threads or "1",
         "hwm": hwm,
         "sndhwm": sndhwm,
         "rcvhwm": rcvhwm,
@@ -372,7 +397,6 @@ def main(argv=None):
     case_ordinal = 1
 
     _append_line(sections, render_effective_options(options))
-    _append_line(sections)
 
     for pattern in patterns:
         if pattern != patterns[0]:
@@ -384,7 +408,7 @@ def main(argv=None):
         for transport in pattern_transports:
             _append_line(sections, f"    Testing {transport}:")
             if runs == 1:
-                for header_line in table_header_lines():
+                for header_line in _single_table_header_lines():
                     _append_line(sections, f"      {header_line}")
                 for msg_size in msg_sizes:
                     case_env = dict(env)
@@ -418,7 +442,7 @@ def main(argv=None):
                 run_outputs = {msg_size: [] for msg_size in msg_sizes}
                 for run_index in range(runs):
                     _append_line(sections, f"      run {run_index + 1}/{runs}:")
-                    for header_line in table_header_lines():
+                    for header_line in _single_table_header_lines():
                         _append_line(sections, f"        {header_line}")
                     for msg_size in msg_sizes:
                         case_env = dict(env)
@@ -457,7 +481,7 @@ def main(argv=None):
                                 _status_row(msg_size, "FAIL", indent="        "),
                             )
                 _append_line(sections, "      median:")
-                for header_line in table_header_lines():
+                for header_line in _single_table_header_lines():
                     _append_line(sections, f"        {header_line}")
                 for msg_size in msg_sizes:
                     metrics = _median_metrics(
@@ -512,8 +536,8 @@ def main(argv=None):
             _append_line(sections, line)
         _append_line(sections)
 
-    _append_line(sections, "## Auto-HWM Detail")
-    _append_line(sections, "- unavailable: binding runner does not expose socket-level Auto-HWM metadata")
+    for line in _auto_hwm_detail_lines(patterns, msg_sizes):
+        _append_line(sections, line)
     _append_line(sections)
     _append_line(sections, render_effective_options(options, section="result"))
     _append_line(sections)
@@ -525,20 +549,20 @@ def main(argv=None):
     _append_line(sections, f"- status: {status}")
     _append_line(sections, f"- expected_result_lines: {expected_result_lines}")
     _append_line(sections, f"- actual_result_lines: {len(rows)}")
-    final_output = "\n".join(sections).rstrip() + "\n"
-
     report_path = build_report_path(
         lang="python",
         suite="single",
         results_dir=args.results_dir or None,
         tag=args.results_tag or None,
     )
+    _append_line(sections)
+    _append_line(sections, f"Saved result file: {report_path} (status={status})")
+    final_output = "\n".join(sections).rstrip() + "\n"
+
     report_path.write_text(final_output, encoding="utf-8")
     if args.output:
         Path(args.output).write_text(final_output, encoding="utf-8")
     elapsed = max(0, int(time.perf_counter() - start_time))
-    print("", flush=True)
-    print(f"Saved result file: {report_path} (status={status})", flush=True)
     print(f"Total benchmark time: {elapsed}s ({elapsed}s, exit={0 if status == 'complete' else 1})", flush=True)
     if status != "complete":
         raise SystemExit(1)

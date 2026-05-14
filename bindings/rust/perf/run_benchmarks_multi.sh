@@ -7,6 +7,7 @@ REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
 CORE_BUILD_DIR="${REPO_DIR}/core/build"
 CORE_LIB_DIR="${CORE_BUILD_DIR}/lib"
 CORE_LIB="${CORE_LIB_DIR}/libzlink.so"
+START_SECONDS="$(date +%s)"
 STREAM_BUILD_DIR="${SCRIPT_DIR}/build/stream-client"
 STREAM_CLIENT=""
 REUSE_BUILD=0
@@ -1141,7 +1142,8 @@ def emit_effective_options(section):
     emit("- stream_non_tcp_clients_max: 10000")
     emit("- disable_resource_metrics: 0")
     emit("- timeout_seconds: auto")
-    emit("")
+    if section == "result":
+        emit("")
 
 def cpu_name():
     try:
@@ -1206,7 +1208,7 @@ def emit_case_row(pattern, size, metric_values):
     throughput = f"{fmt_rate(metric_values['throughput']):>8} {rate_unit(pattern)}"
     emit(
         f"      | {str(size) + 'B':<8} | {throughput:>16} | "
-        f"{fmt_bandwidth(metric_values['bandwidth']):>12} | "
+        f"{metric_values['bandwidth']:10.3f} MB/s | "
         f"{fmt_latency_ms(metric_values['latency']):>12} | "
         f"{fmt_latency_ms(metric_values['latency_p95']):>12} | "
         f"{fmt_latency_ms(metric_values['latency_p99']):>12} |"
@@ -1278,7 +1280,18 @@ for pattern_index, pattern in enumerate(patterns):
         emit(f"    Testing {transport}: Done")
         if pattern in {"MULTI_SPOT", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}:
             emit("    Auto-HWM spotnode:")
-            emit("      - unavailable: binding runner does not expose socket-level Auto-HWM metadata")
+            for auto_size in pattern_sizes[pattern]:
+                msg_unit = max(4096, int(auto_size))
+                emit(f"      - Size(B)={auto_size}, MsgUnit(B)={msg_unit}")
+                emit("      | Socket      | Type | Role | SNDHWM | RCVHWM | SNDBUF | RCVBUF |")
+                emit("      |-------------|------|------|--------|--------|--------|--------|")
+                emit("      | unavailable | n/a  | n/a  | n/a    | n/a    | n/a    | n/a    |")
+        else:
+            emit("    Auto-HWM detail:")
+            emit("      | Size(B) | Component   | Type | UnitBudget(KB) | MsgUnit(B) | SNDHWM | RCVHWM | SNDBUF(KB) | RCVBUF(KB) |")
+            emit("      |---------|-------------|------|----------------|------------|--------|--------|------------|------------|")
+            for auto_size in pattern_sizes[pattern]:
+                emit(f"      | {auto_size:<7} | unavailable | n/a  | n/a            | {auto_size:<10} | n/a    | n/a    | n/a        | n/a        |")
     emit("")
 
 emit_effective_options("result")
@@ -1302,7 +1315,6 @@ if failures:
 status = 'complete' if expected == actual else 'partial'
 emit("")
 emit(f"Saved result file: {report_path} (status={status})")
-emit(f"Total benchmark time: {elapsed_seconds}s ({elapsed_seconds}s, exit={0 if status == 'complete' else 1})")
 
 text = "\n".join(lines) + "\n"
 with open(report_path, "w", encoding="utf-8") as f:
@@ -1314,4 +1326,6 @@ sys.stdout.write(text)
 sys.exit(0 if expected == actual else 1)
 PY
 
+elapsed=$(($(date +%s) - START_SECONDS))
+echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=0)"
 prune_reports "${REPORT_DIR}"

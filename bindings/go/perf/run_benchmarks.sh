@@ -246,7 +246,7 @@ RESULTS_FILE="${RESULTS_DIR}/perf_go_single_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX
 mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
 prepare_core_runtime
-START_SECONDS="${SECONDS}"
+START_SECONDS="$(date +%s)"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-single.XXXXXX")"
 RAW_RESULTS_FILE="${TMP_DIR}/result_data.log"
 cleanup() {
@@ -349,7 +349,7 @@ emit_effective_options_single() {
   echo "- runs: ${RUNS}"
   echo "- duration_seconds: ${DURATION}"
   echo "- timeout_seconds: ${PERF_SINGLE_TIMEOUT_SECONDS:-30}"
-  echo "- io_threads: ${IO_THREADS:-default(binary=1)}"
+  echo "- io_threads: ${IO_THREADS:-1}"
   echo "- hwm: $(effective_or_auto "${HWM}")"
   echo "- sndhwm: $(effective_or_auto "${SEND_HWM:-${HWM}}")"
   echo "- rcvhwm: $(effective_or_auto "${RECV_HWM:-${HWM}}")"
@@ -388,8 +388,8 @@ progress_table_header() {
     return
   fi
   progress_header_printed=1
-  echo "      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |"
-  echo "      |----------|--------------------|----------------|---------------|---------------|---------------|"
+  echo "      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |"
+  echo "      |----------|------------------|--------------|--------------|--------------|--------------|"
 }
 
 progress_case_row() {
@@ -429,9 +429,9 @@ bandwidth = float(metrics["bandwidth"])
 latency = float(metrics["latency"])
 latency_p95 = float(metrics["latency_p95"])
 latency_p99 = float(metrics["latency_p99"])
-throughput_text = f"{throughput:8.3f} {unit}"
+throughput_text = f"{throughput:7.2f} {unit}"
 print(
-    f"      | {size + 'B':<8} | {throughput_text:>16} | {bandwidth:10.3f} MB/s |"
+    f"      | {size + 'B':<8} | {throughput_text:>16} | {bandwidth:8.2f} MB/s |"
     f" {latency:9.3f} ms | {latency_p95:9.3f} ms | {latency_p99:9.3f} ms |"
 )
 PY
@@ -505,17 +505,17 @@ for pattern in sorted(by_pattern):
         transports[transport].append((size, values))
     for transport in sorted(transports):
         print(f"    Testing {transport}:")
-        print("      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
-        print("      |----------|--------------------|----------------|---------------|---------------|---------------|")
+        print("      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
+        print("      |----------|------------------|--------------|--------------|--------------|--------------|")
         for size, values in sorted(transports[transport]):
             if not all(metric in values for metric in metrics):
                 continue
             unit = "Kops/s" if pattern in echo_patterns else "Kmsg/s"
-            throughput_text = f"{values['throughput'] / 1000.0:8.3f} {unit}"
+            throughput_text = f"{values['throughput'] / 1000.0:7.2f} {unit}"
             print(
                 f"      | {str(size) + 'B':<8}"
                 f" | {throughput_text:>16}"
-                f" | {values['bandwidth']:10.3f} MB/s"
+                f" | {values['bandwidth']:8.2f} MB/s"
                 f" | {values['latency']:9.3f} ms"
                 f" | {values['latency_p95']:9.3f} ms"
                 f" | {values['latency_p99']:9.3f} ms |"
@@ -527,7 +527,6 @@ PY
 
 {
   emit_effective_options_single "start"
-  echo
 } > "${RESULTS_FILE}"
 exec 3>&1
 exec >/dev/null
@@ -637,7 +636,14 @@ fi
 {
   echo
   echo "## Auto-HWM Detail"
-  echo "- unavailable: binding runner does not expose socket-level Auto-HWM metadata"
+  for pattern in "${PATTERNS[@]}"; do
+    echo "- pattern: ${pattern}"
+    echo "| Size(B) | Component | Owner | Socket | Type | Role | SNDHWM | RCVHWM | SNDBUF(KB) | RCVBUF(KB) | MsgUnit(B) | Slots |"
+    echo "|---------|-----------|-------|--------|------|------|--------|--------|-----------|-----------|------------|-------|"
+    for size in "${SIZES[@]}"; do
+      echo "| ${size} | unavailable | binding | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |"
+    done
+  done
 } >> "${RESULTS_FILE}"
 
 expected_result_lines=$((expected_cases * 5))
@@ -660,10 +666,8 @@ fi
   echo "- status: ${status}"
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"
-  elapsed=$((SECONDS - START_SECONDS))
   echo
   echo "Saved result file: ${RESULTS_FILE} (status=${status})"
-  echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=$([[ "${status}" == "complete" ]] && echo 0 || echo 1))"
 } >> "${RESULTS_FILE}"
 
 if [[ -n "${OUTPUT_FILE}" ]]; then
@@ -672,6 +676,8 @@ fi
 
 exec >&3
 cat "${RESULTS_FILE}"
+elapsed=$(($(date +%s) - START_SECONDS))
+echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=$([[ "${status}" == "complete" ]] && echo 0 || echo 1))"
 
 if [[ "${status}" != "complete" ]]; then
   exit 1

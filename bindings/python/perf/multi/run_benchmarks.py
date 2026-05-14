@@ -1007,7 +1007,6 @@ def main(argv=None):
         _append_line(sections, line)
     _append_line(sections)
     _append_line(sections, render_effective_options(options))
-    _append_line(sections)
     explicit_clients = args.clients is not None or bool(os.environ.get("PERF_MULTI_CLIENTS"))
     for pattern_index, pattern in enumerate(patterns):
         pattern_clients = _cap_default_clients_for_memory(
@@ -1176,9 +1175,20 @@ def main(argv=None):
             else:
                 suffix = "Done"
             _append_line(sections, f"    Testing {transport}: {suffix}")
-            if pattern in {"SPOT", "SPOT_REQREP", "SPOT_SENDSEND"}:
+            if pattern in {"SPOT", "SPOT_REQREP", "SPOT_SENDSEND", "MULTI_SPOT", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}:
                 _append_line(sections, "    Auto-HWM spotnode:")
-                _append_line(sections, "      - unavailable: binding runner does not expose socket-level Auto-HWM metadata")
+                for auto_size in pattern_msg_sizes:
+                    msg_unit = max(4096, int(auto_size))
+                    _append_line(sections, f"      - Size(B)={auto_size}, MsgUnit(B)={msg_unit}")
+                    _append_line(sections, "      | Socket      | Type | Role | SNDHWM | RCVHWM | SNDBUF | RCVBUF |")
+                    _append_line(sections, "      |-------------|------|------|--------|--------|--------|--------|")
+                    _append_line(sections, "      | unavailable | n/a  | n/a  | n/a    | n/a    | n/a    | n/a    |")
+            else:
+                _append_line(sections, "    Auto-HWM detail:")
+                _append_line(sections, "      | Size(B) | Component   | Type | UnitBudget(KB) | MsgUnit(B) | SNDHWM | RCVHWM | SNDBUF(KB) | RCVBUF(KB) |")
+                _append_line(sections, "      |---------|-------------|------|----------------|------------|--------|--------|------------|------------|")
+                for auto_size in pattern_msg_sizes:
+                    _append_line(sections, f"      | {auto_size:<7} | unavailable | n/a  | n/a            | {auto_size:<10} | n/a    | n/a    | n/a        | n/a        |")
             if transport_index + 1 < len(pattern_transports):
                 _append_line(
                     sections,
@@ -1243,20 +1253,20 @@ def main(argv=None):
     _append_line(sections, f"- status: {status}")
     _append_line(sections, f"- expected_result_lines: {expected_result_lines}")
     _append_line(sections, f"- actual_result_lines: {len(rows)}")
-    final_output = "\n".join(sections).rstrip() + "\n"
-
     report_path = build_report_path(
         lang="python",
         suite="multi",
         results_dir=args.results_dir or None,
         tag=args.results_tag or None,
     )
+    _append_line(sections)
+    _append_line(sections, f"Saved result file: {report_path} (status={status})")
+    final_output = "\n".join(sections).rstrip() + "\n"
+
     report_path.write_text(final_output, encoding="utf-8")
     if args.output:
         Path(args.output).write_text(final_output, encoding="utf-8")
     elapsed = max(0, int(time.perf_counter() - start_time))
-    print("", flush=True)
-    print(f"Saved result file: {report_path} (status={status})", flush=True)
     print(f"Total benchmark time: {elapsed}s ({elapsed}s, exit={0 if status == 'complete' else 1})", flush=True)
     if status != "complete":
         raise SystemExit(1)

@@ -18,42 +18,47 @@ final class PerfArgs {
         if (size < PerfUtil.HEADER_SIZE) {
             throw new IllegalArgumentException("msg size must be >= " + PerfUtil.HEADER_SIZE);
         }
-        int duration = intEnv("PERF_SINGLE_DURATION_SECONDS", 5);
+        int duration = intEnv("PERF_SINGLE_DURATION_SECONDS",
+            intEnv("PERF_DURATION_SECONDS", 5));
         int ioThreads = intEnv("PERF_IO_THREADS", 0);
         int sendHwm = intEnv("PERF_SINGLE_SNDHWM",
-            intEnv("PERF_SINGLE_HWM", 0));
+            intEnv("PERF_SNDHWM", intEnv("PERF_SINGLE_HWM",
+                intEnv("PERF_HWM", 0))));
         int recvHwm = intEnv("PERF_SINGLE_RCVHWM",
-            intEnv("PERF_SINGLE_HWM", 0));
+            intEnv("PERF_RCVHWM", intEnv("PERF_SINGLE_HWM",
+                intEnv("PERF_HWM", 0))));
         int sendBuffer = parseBufferEnv("PERF_SINGLE_SNDBUF",
             parseBufferEnv("PERF_SNDBUF", 0));
         int recvBuffer = parseBufferEnv("PERF_SINGLE_RCVBUF",
             parseBufferEnv("PERF_RCVBUF", 0));
-        int sendTimeoutMs = intEnv("PERF_SINGLE_SNDTIMEO_MS", 200);
-        int recvTimeoutMs = intEnv("PERF_SINGLE_RCVTIMEO_MS", 200);
+        int sendTimeoutMs = intEnv("PERF_SINGLE_SNDTIMEO_MS",
+            intEnv("PERF_SNDTIMEO_MS", 200));
+        int recvTimeoutMs = intEnv("PERF_SINGLE_RCVTIMEO_MS",
+            intEnv("PERF_RCVTIMEO_MS", 200));
         int monitorHwm = 1000;
         int connectReadyTimeoutMs = intEnv("PERF_CONNECT_READY_TIMEOUT_MS", 20_000);
-        for (int i = 3; i + 1 < args.length; i += 2) {
+        for (int i = 3; i < args.length; i += 2) {
+            requireOptionValue(args, i);
             switch (args[i]) {
-                case "--duration" -> duration = Integer.parseInt(args[i + 1]);
-                case "--io-threads" -> ioThreads = Integer.parseInt(args[i + 1]);
+                case "--duration" -> duration = parseIntOption(args, i);
+                case "--io-threads" -> ioThreads = parseIntOption(args, i);
                 case "--hwm" -> {
-                    int hwm = Integer.parseInt(args[i + 1]);
+                    int hwm = parseIntOption(args, i);
                     sendHwm = hwm;
                     recvHwm = hwm;
                 }
-                case "--send-hwm" -> sendHwm = Integer.parseInt(args[i + 1]);
-                case "--recv-hwm" -> recvHwm = Integer.parseInt(args[i + 1]);
+                case "--send-hwm" -> sendHwm = parseIntOption(args, i);
+                case "--recv-hwm" -> recvHwm = parseIntOption(args, i);
                 case "--sndbuf" -> sendBuffer = parseBufferSize(args[i + 1]);
                 case "--rcvbuf" -> recvBuffer = parseBufferSize(args[i + 1]);
                 case "--sndtimeo", "--send-timeout-ms" ->
-                    sendTimeoutMs = Integer.parseInt(args[i + 1]);
+                    sendTimeoutMs = parseIntOption(args, i);
                 case "--rcvtimeo", "--recv-timeout-ms" ->
-                    recvTimeoutMs = Integer.parseInt(args[i + 1]);
-                case "--monitor-hwm" -> monitorHwm = Integer.parseInt(args[i + 1]);
+                    recvTimeoutMs = parseIntOption(args, i);
+                case "--monitor-hwm" -> monitorHwm = parseIntOption(args, i);
                 case "--connect-ready-timeout-ms" ->
-                    connectReadyTimeoutMs = Integer.parseInt(args[i + 1]);
-                default -> {
-                }
+                    connectReadyTimeoutMs = parseIntOption(args, i);
+                default -> throw unknownOption(args[i]);
             }
         }
         return new PerfUtil.Config("single", pattern, transport, size, duration,
@@ -76,9 +81,11 @@ final class PerfArgs {
             throw new IllegalArgumentException("msg size must be >= " + PerfUtil.HEADER_SIZE);
         }
         boolean streamPattern = "STREAM".equals(pattern);
-        int duration = intEnv("PERF_MULTI_DURATION_SECONDS", 5);
+        int duration = intEnv("PERF_MULTI_DURATION_SECONDS",
+            intEnv("PERF_DURATION_SECONDS", 5));
         String endpoint = "";
-        int clients = intEnv("PERF_MULTI_CLIENTS", streamPattern ? 10_000 : 100);
+        int clients = intEnv("PERF_MULTI_CLIENTS",
+            intEnv("PERF_CLIENTS", streamPattern ? 10_000 : 100));
         int defaultIoThreads = intEnv("PERF_MULTI_DEFAULT_IO_THREADS", 4);
         int ioThreads = defaultIoThreads;
         if ("--multi-server".equals(args[0])) {
@@ -91,47 +98,55 @@ final class PerfArgs {
                 streamPattern ? 4 : defaultIoThreads);
         }
         int sendHwm = intEnv("PERF_MULTI_SNDHWM",
-            intEnv("PERF_MULTI_HWM", 0));
+            intEnv("PERF_SNDHWM", intEnv("PERF_MULTI_HWM",
+                intEnv("PERF_HWM", 0))));
         int recvHwm = intEnv("PERF_MULTI_RCVHWM",
-            intEnv("PERF_MULTI_HWM", 0));
+            intEnv("PERF_RCVHWM", intEnv("PERF_MULTI_HWM",
+                intEnv("PERF_HWM", 0))));
         int sendBuffer = parseBufferEnv("PERF_MULTI_SNDBUF",
             parseBufferEnv("PERF_SNDBUF", 0));
         int recvBuffer = parseBufferEnv("PERF_MULTI_RCVBUF",
             parseBufferEnv("PERF_RCVBUF", 0));
-        int sendTimeoutMs = intEnv("PERF_MULTI_SNDTIMEO_MS", 200);
-        int recvTimeoutMs = intEnv("PERF_MULTI_RCVTIMEO_MS", 200);
-        int monitorHwm = intEnv("PERF_MULTI_MONITOR_HWM", 1000);
-        int connectReadyTimeoutMs = intEnv("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000);
-        int connectConcurrency = intEnv("PERF_MULTI_CONNECT_CONCURRENCY", 0);
+        int sendTimeoutMs = intEnv("PERF_MULTI_SNDTIMEO_MS",
+            intEnv("PERF_SNDTIMEO_MS", 200));
+        int recvTimeoutMs = intEnv("PERF_MULTI_RCVTIMEO_MS",
+            intEnv("PERF_RCVTIMEO_MS", 200));
+        int monitorHwm = intEnv("PERF_MULTI_MONITOR_HWM",
+            intEnv("PERF_MONITOR_HWM", 1000));
+        int connectReadyTimeoutMs = intEnv("PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
+            intEnv("PERF_CONNECT_READY_TIMEOUT_MS", 5000));
+        int connectConcurrency = intEnv("PERF_MULTI_CONNECT_CONCURRENCY",
+            intEnv("PERF_CONNECT_CONCURRENCY", 0));
         boolean connectConcurrencySet = connectConcurrency > 0;
-        for (int i = 4; i + 1 < args.length; i += 2) {
+        for (int i = 4; i < args.length; i += 2) {
+            requireOptionValue(args, i);
             switch (args[i]) {
-                case "--duration" -> duration = Integer.parseInt(args[i + 1]);
+                case "--duration" -> duration = parseIntOption(args, i);
                 case "--endpoint" -> endpoint = args[i + 1];
-                case "--clients" -> clients = Integer.parseInt(args[i + 1]);
-                case "--io-threads" -> ioThreads = Integer.parseInt(args[i + 1]);
+                case "--clients" -> clients = parseIntOption(args, i);
+                case "--io-threads" -> ioThreads = parseIntOption(args, i);
                 case "--hwm" -> {
-                    int hwm = Integer.parseInt(args[i + 1]);
+                    int hwm = parseIntOption(args, i);
                     sendHwm = hwm;
                     recvHwm = hwm;
                 }
-                case "--send-hwm" -> sendHwm = Integer.parseInt(args[i + 1]);
-                case "--recv-hwm" -> recvHwm = Integer.parseInt(args[i + 1]);
+                case "--send-hwm" -> sendHwm = parseIntOption(args, i);
+                case "--recv-hwm" -> recvHwm = parseIntOption(args, i);
                 case "--sndbuf" -> sendBuffer = parseBufferSize(args[i + 1]);
                 case "--rcvbuf" -> recvBuffer = parseBufferSize(args[i + 1]);
                 case "--sndtimeo", "--send-timeout-ms" ->
-                    sendTimeoutMs = Integer.parseInt(args[i + 1]);
+                    sendTimeoutMs = parseIntOption(args, i);
                 case "--rcvtimeo", "--recv-timeout-ms" ->
-                    recvTimeoutMs = Integer.parseInt(args[i + 1]);
-                case "--monitor-hwm" -> monitorHwm = Integer.parseInt(args[i + 1]);
+                    recvTimeoutMs = parseIntOption(args, i);
+                case "--monitor-hwm" -> monitorHwm = parseIntOption(args, i);
                 case "--connect-ready-timeout-ms" ->
-                    connectReadyTimeoutMs = Integer.parseInt(args[i + 1]);
+                    connectReadyTimeoutMs = parseIntOption(args, i);
                 case "--connect-concurrency" -> {
-                    connectConcurrency = Integer.parseInt(args[i + 1]);
+                    connectConcurrency = parseIntOption(args, i);
                     connectConcurrencySet = true;
                 }
-                default -> {
-                }
+                case "--control-port" -> parseIntOption(args, i);
+                default -> throw unknownOption(args[i]);
             }
         }
         if (!connectConcurrencySet || connectConcurrency <= 0) {
@@ -150,6 +165,27 @@ final class PerfArgs {
             return fallback;
         }
         return Integer.parseInt(value);
+    }
+
+    private static void requireOptionValue(String[] args, int optionIndex) {
+        if (optionIndex + 1 >= args.length || args[optionIndex + 1].startsWith("--")) {
+            throw new IllegalArgumentException(
+                args[optionIndex] + " requires a value");
+        }
+    }
+
+    private static int parseIntOption(String[] args, int optionIndex) {
+        try {
+            return Integer.parseInt(args[optionIndex + 1]);
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException(
+                args[optionIndex] + " must be an integer: "
+                    + args[optionIndex + 1], ex);
+        }
+    }
+
+    private static IllegalArgumentException unknownOption(String option) {
+        return new IllegalArgumentException("unknown option: " + option);
     }
 
     private static int parseBufferEnv(String name, int fallback) {

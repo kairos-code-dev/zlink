@@ -117,7 +117,6 @@ final class PerfMultiSpotReqRep {
                 PerfControl.emitClientControlEndpoint(clientControlEndpoint);
                 PerfControl.awaitControlConnected(clientControlEndpoint,
                     "spot reqrep client");
-                waitForPeerConnected(node, config.connectReadyTimeoutMs());
                 settleAfterReady();
                 PerfUtil.recalculateAutoHwm(ctx);
                 PerfUtil.printMultiSpotNodeAutoHwm(config, node, "client");
@@ -262,7 +261,6 @@ final class PerfMultiSpotReqRep {
                 dataNode.connectPeer(normalizeClientEndpoint(endpoint,
                     config.transport()));
             }
-            waitForPeerConnected(dataNode, config.connectReadyTimeoutMs());
             while ((line = reader.readLine()) != null) {
                 if (expectedStart.equals(line)) {
                     control.publishStart(config.size());
@@ -273,18 +271,6 @@ final class PerfMultiSpotReqRep {
             throw new IllegalStateException(label + " control read failed", ex);
         }
         throw new IllegalStateException(label + " missing " + expectedStart);
-    }
-
-    private static void waitForPeerConnected(SpotNode node, int timeoutMs) {
-        long deadline = System.nanoTime()
-            + Duration.ofMillis(Math.max(1, timeoutMs)).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (node.statusSnapshot().connectedPeerCount() > 0) {
-                return;
-            }
-            sleepQuietly(10);
-        }
-        throw new IllegalStateException("spot reqrep peer connect timed out");
     }
 
     private static void settleAfterReady() {

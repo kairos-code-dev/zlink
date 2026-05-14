@@ -111,9 +111,10 @@ final class PerfPubSub {
                 }
             }, "single-pubsub-recv");
             recvThread.start();
-            while (System.nanoTime() < activeEnd) {
-                try (Message active = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+            try (Message active = PerfUtil.payloadTemplate(config.size())) {
+                while (System.nanoTime() < activeEnd) {
+                    PerfUtil.resetAndWritePayload(active, config.size(),
+                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     pub.publish(TOPIC).message(active).submit();
                 }
             }

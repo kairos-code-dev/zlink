@@ -75,15 +75,16 @@ final class PerfSpot {
 
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
-            while (System.nanoTime() < activeEnd) {
-                try (Message active = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+            try (Message active = PerfUtil.payloadTemplate(config.size())) {
+                while (System.nanoTime() < activeEnd) {
+                    PerfUtil.resetAndWritePayload(active, config.size(),
+                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     publisher.publish(topic)
                         .message(active)
                         .flags(SendFlags.DONT_WAIT)
                         .submit();
+                    drainSubscriber(subscriber, config, metrics, activeEnd, true);
                 }
-                drainSubscriber(subscriber, config, metrics, activeEnd, true);
             }
 
             // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level

@@ -53,24 +53,25 @@ final class PerfMultiSpot {
             long latencyOnlyIntervalNanos = Math.max(1,
                 latencyOnlyIntervalMicros()) * 1_000L;
             long nextSendNanos = System.nanoTime();
-            while (System.nanoTime() < activeEnd) {
-                if (latencyOnly) {
-                    long now = System.nanoTime();
-                    if (now < nextSendNanos) {
-                        sleepNanos(nextSendNanos - now);
-                        continue;
+            try (Message active = PerfUtil.payloadTemplate(config.size())) {
+                while (System.nanoTime() < activeEnd) {
+                    if (latencyOnly) {
+                        long now = System.nanoTime();
+                        if (now < nextSendNanos) {
+                            sleepNanos(nextSendNanos - now);
+                            continue;
+                        }
                     }
-                }
-                try (Message active = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                    PerfUtil.resetAndWritePayload(active, config.size(),
+                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     publisher.publish(TOPIC)
                         .message(active)
                         .flags(SendFlags.DONT_WAIT)
                         .submit();
-                }
-                if (latencyOnly) {
-                    nextSendNanos = System.nanoTime()
-                        + latencyOnlyIntervalNanos;
+                    if (latencyOnly) {
+                        nextSendNanos = System.nanoTime()
+                            + latencyOnlyIntervalNanos;
+                    }
                 }
             }
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
@@ -122,7 +123,6 @@ final class PerfMultiSpot {
                 for (Spot subscriber : subscribers) {
                     subscriber.setSubscription(TOPIC);
                 }
-                waitForPeerConnected(node, config.connectReadyTimeoutMs());
                 PerfUtil.recalculateAutoHwm(ctx);
                 PerfUtil.printMultiSpotNodeAutoHwm(config, node, "client");
                 runClientSubscribers(config, subscribers, metrics, control);
@@ -349,18 +349,6 @@ final class PerfMultiSpot {
         if (controlSettleMs > 0) {
             sleepQuietly(controlSettleMs);
         }
-    }
-
-    private static void waitForPeerConnected(SpotNode node, int timeoutMs) {
-        long deadline = System.nanoTime()
-            + Duration.ofMillis(Math.max(1, timeoutMs)).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (node.statusSnapshot().connectedPeerCount() > 0) {
-                return;
-            }
-            sleepQuietly(10);
-        }
-        throw new IllegalStateException("spot client peer connect timed out");
     }
 
     private static void awaitDirectControlStart(PerfSpotDirectControl control,

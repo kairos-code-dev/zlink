@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 CPP_PERF_DIR="${ROOT_DIR}/bindings/cpp/perf"
 CPP_RUNTIME_ROOT="${CPP_PERF_DIR}/.runtime"
+OFFICIAL_BUILD_DIR="${ROOT_DIR}/bindings/cpp/build"
+DEFAULT_CORE_BUILD_DIR="${ROOT_DIR}/core/build"
 NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
 MAKE_BIN="$(command -v gmake || command -v make)"
 
@@ -87,6 +89,8 @@ SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
 SINGLE_SNDBUF="${PERF_SINGLE_SNDBUF:-${PERF_SNDBUF:-}}"
 SINGLE_RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
+ALLOW_MANUAL_SOCKET_OVERRIDES="${PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}"
+CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 CTX_AUTO_HWM_PROFILE="${PERF_CTX_AUTO_HWM_PROFILE:-balanced}"
@@ -265,9 +269,11 @@ if [[ -z "${PATTERN}" ]]; then
   exit 1
 fi
 
+FULL_MATRIX_REQUEST=0
 if [[ "${PATTERN}" != "ALL" ]]; then
   PATTERN="$(printf '%s' "${PATTERN}" | tr '[:lower:]' '[:upper:]')"
 else
+  FULL_MATRIX_REQUEST=1
   PATTERN="${STANDARD_PATTERNS}"
 fi
 
@@ -296,6 +302,39 @@ for p in "${PATTERN_LIST[@]}"; do
       ;;
   esac
 done
+
+resolve_single_build_targets() {
+  local pattern_name=""
+  local targets=()
+  for pattern_name in "${PATTERN_LIST[@]}"; do
+    case "${pattern_name}" in
+      PAIR)
+        targets+=("cpp_perf_pair")
+        ;;
+      PUBSUB)
+        targets+=("cpp_perf_pubsub")
+        ;;
+      DEALER_DEALER)
+        targets+=("cpp_perf_dealer_dealer")
+        ;;
+      DEALER_ROUTER)
+        targets+=("cpp_perf_dealer_router")
+        ;;
+      ROUTER_ROUTER)
+        targets+=("cpp_perf_router_router")
+        ;;
+      SPOT)
+        targets+=("cpp_perf_spot")
+        ;;
+    esac
+  done
+
+  if [[ "${#targets[@]}" -eq 0 ]]; then
+    return
+  fi
+
+  printf '%s\n' "${targets[@]}" | awk '!seen[$0]++'
+}
 
 if [[ ! -f "${PERF_COMPARISON_SCRIPT}" ]]; then
   echo "Error: comparison script not found: ${PERF_COMPARISON_SCRIPT}" >&2
@@ -342,10 +381,10 @@ if [[ -n "${SINGLE_RCVTIMEO_MS}" && ( ! "${SINGLE_RCVTIMEO_MS}" =~ ^[0-9]+$ || "
   exit 1
 fi
 case "${CTX_AUTO_HWM_PROFILE}" in
-  compact|low_latency|low-latency|balanced|throughput)
+  ""|compact|low_latency|low-latency|balanced|throughput)
     ;;
   *)
-    echo "auto-hwm-profile must be compact, low_latency, balanced, or throughput." >&2
+    echo "Error: --auto-hwm-profile must be compact, low_latency, balanced, or throughput." >&2
     exit 1
     ;;
 esac
@@ -361,7 +400,6 @@ fi
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
 PERF_COMPARISON_SCRIPT="$(realpath -m "${PERF_COMPARISON_SCRIPT}")"
-OFFICIAL_BUILD_DIR="${ROOT_DIR}/bindings/cpp/build"
 
 if [[ "${BUILD_DIR}" != "${OFFICIAL_BUILD_DIR}" ]]; then
   echo "Build directory must be exactly: ${OFFICIAL_BUILD_DIR}" >&2
@@ -391,6 +429,35 @@ if [[ -n "${RESULT_FILE}" && -n "${OUTPUT_FILE}" && "${RESULT_FILE}" == "${OUTPU
   echo "Error: --output cannot point to the same file as result output." >&2
   exit 1
 fi
+
+cleanup_old_results_dirs() {
+  local root="${1:-}"
+  local retention="${PERF_RESULTS_RETENTION_DAYS:-90}"
+  if [[ -z "${root}" || ! -d "${root}" ]]; then
+    return
+  fi
+  if [[ -z "${retention}" || ! "${retention}" =~ ^[0-9]+$ || "${retention}" -le 0 ]]; then
+    return
+  fi
+
+  local cutoff
+  cutoff="$(date -u -d "-${retention} days" +%Y%m%d 2>/dev/null || true)"
+  if [[ -z "${cutoff}" ]]; then
+    return
+  fi
+
+  local dir base
+  for dir in "${root}"/*; do
+    [[ -d "${dir}" ]] || continue
+    base="$(basename "${dir}")"
+    if [[ ! "${base}" =~ ^[0-9]{8}$ ]]; then
+      continue
+    fi
+    if [[ "${base}" < "${cutoff}" ]]; then
+      rm -rf "${dir}"
+    fi
+  done
+}
 
 case "${BUILD_MODE}" in
   reuse)
@@ -456,14 +523,12 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DZLINK_CPP_BUILD_BENCHMARKS=ON
   fi
 
-  CPP_SINGLE_TARGETS=(
-    cpp_perf_pair
-    cpp_perf_pubsub
-    cpp_perf_dealer_dealer
-    cpp_perf_dealer_router
-    cpp_perf_router_router
-    cpp_perf_spot
-  )
+  mapfile -t CPP_SINGLE_TARGETS < <(resolve_single_build_targets)
+  if [[ "${#CPP_SINGLE_TARGETS[@]}" -eq 0 ]]; then
+    echo "Error: failed to resolve single benchmark build targets." >&2
+    exit 1
+  fi
+
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
     cmake --build "${BUILD_DIR}" --config Release --target "${CPP_SINGLE_TARGETS[@]}"
   else
@@ -471,6 +536,105 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
     cmake --build "${BUILD_DIR}" --target "${CPP_SINGLE_TARGETS[@]}"
   fi
 fi
+
+resolve_configured_core_build_dir() {
+  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
+  local cache_path="${build_dir}/CMakeCache.txt"
+  local configured_dir=""
+  if [[ -f "${cache_path}" ]]; then
+    configured_dir="$(
+      sed -n 's/^ZLINK_CPP_CORE_BUILD_DIR:PATH=//p' "${cache_path}" | tail -n 1
+    )"
+  fi
+  if [[ -z "${configured_dir}" ]]; then
+    configured_dir="${DEFAULT_CORE_BUILD_DIR}"
+  fi
+  realpath -m "${configured_dir}"
+}
+
+resolve_core_runtime_library() {
+  local core_build_dir="${1:-}"
+  local candidates=()
+  case "$(uname -s)" in
+    Linux*)
+      candidates=(
+        "${core_build_dir}/lib/libzlink.so"
+        "${core_build_dir}/bin/libzlink.so"
+      )
+      ;;
+    Darwin*)
+      candidates=(
+        "${core_build_dir}/lib/libzlink.dylib"
+        "${core_build_dir}/bin/libzlink.dylib"
+      )
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      candidates=(
+        "${core_build_dir}/bin/zlink.dll"
+        "${core_build_dir}/lib/zlink.dll"
+      )
+      ;;
+    *)
+      candidates=(
+        "${core_build_dir}/lib/libzlink.so"
+        "${core_build_dir}/bin/libzlink.so"
+      )
+      ;;
+  esac
+
+  local candidate=""
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "${candidate}" ]]; then
+      realpath -e "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+print_core_runtime_binding() {
+  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
+  local core_build_dir=""
+  local runtime_lib=""
+  core_build_dir="$(resolve_configured_core_build_dir "${build_dir}")"
+  if runtime_lib="$(resolve_core_runtime_library "${core_build_dir}")"; then
+    echo "Perf core build dir: ${core_build_dir}"
+    echo "Perf runtime libzlink: ${runtime_lib}"
+    return 0
+  fi
+  echo "Perf core build dir: ${core_build_dir}"
+  echo "Error: core runtime library not found under ${core_build_dir}." >&2
+  echo "Build core first so bindings/cpp/perf can link the intended runtime." >&2
+  return 1
+}
+
+ensure_core_runtime_not_stale() {
+  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
+  local core_build_dir=""
+  local runtime_lib=""
+  local newer_source=""
+  core_build_dir="$(resolve_configured_core_build_dir "${build_dir}")"
+  if ! runtime_lib="$(resolve_core_runtime_library "${core_build_dir}")"; then
+    echo "Error: core runtime library not found under ${core_build_dir}." >&2
+    echo "Build core first before running bindings/cpp/perf benchmarks." >&2
+    return 1
+  fi
+
+  newer_source="$(
+    find \
+      "${ROOT_DIR}/core/src" \
+      "${ROOT_DIR}/core/include" \
+      -type f -newer "${runtime_lib}" -print -quit 2>/dev/null || true
+  )"
+  if [[ -n "${newer_source}" ]]; then
+    echo "Error: stale core runtime detected for bindings/cpp/perf." >&2
+    echo "  runtime: ${runtime_lib}" >&2
+    echo "  newer source: ${newer_source}" >&2
+    echo "Rebuild core/build before running run_benchmarks.sh." >&2
+    return 1
+  fi
+  return 0
+}
 
 prepare_cpp_runtime_dir() {
   "${SCRIPT_DIR}/prepare_cpp_runtime.py" --suite single
@@ -498,6 +662,13 @@ else
     exit 1
   fi
 fi
+
+if [[ -n "${RESULTS_DIR}" ]]; then
+  cleanup_old_results_dirs "${RESULTS_DIR}"
+fi
+
+print_core_runtime_binding "${BUILD_DIR}"
+ensure_core_runtime_not_stale "${BUILD_DIR}"
 
 PATTERN_CSV="$(IFS=,; echo "${PATTERN_LIST[*]}")"
 RUNTIME_BUILD_DIR="$(prepare_cpp_runtime_dir)"
@@ -533,6 +704,12 @@ fi
 if [[ -n "${SINGLE_DURATION_SECONDS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}")
 fi
+if [[ -n "${CTX_AUTO_HWM_ENABLE}" ]]; then
+  RUN_ENV+=(PERF_CTX_AUTO_HWM_ENABLE="${CTX_AUTO_HWM_ENABLE}")
+fi
+if [[ -n "${CTX_AUTO_HWM_PROFILE}" ]]; then
+  RUN_ENV+=(PERF_CTX_AUTO_HWM_PROFILE="${CTX_AUTO_HWM_PROFILE}")
+fi
 if [[ -n "${SINGLE_HWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_HWM="${SINGLE_HWM}")
 fi
@@ -548,15 +725,20 @@ fi
 if [[ -n "${SINGLE_RCVBUF}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVBUF="${SINGLE_RCVBUF}")
 fi
+if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" == "1" ]]; then
+  RUN_ENV+=(PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1)
+fi
 if [[ -n "${SINGLE_SNDTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}")
 fi
 if [[ -n "${SINGLE_RCVTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}")
 fi
-RUN_ENV+=(PERF_CTX_AUTO_HWM_PROFILE="${CTX_AUTO_HWM_PROFILE}")
 if [[ "${BUILD_MODE}" == "reuse" ]]; then
   RUN_ENV+=(PERF_NO_AUTOBUILD=1)
+fi
+if [[ "${FULL_MATRIX_REQUEST}" -eq 1 ]]; then
+  RUN_ENV+=(PERF_FULL_MATRIX=1)
 fi
 if [[ -n "${PERF_DISABLE_RESOURCE_METRICS:-}" ]]; then
   RUN_ENV+=(PERF_DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS}")
@@ -577,6 +759,14 @@ print_effective_option() {
   local value="${2:-}"
   printf -- "- %s: %s\n" "${key}" "${value}"
 }
+
+if [[ -n "${SINGLE_HWM}${SINGLE_SNDHWM}${SINGLE_RCVHWM}${SINGLE_SNDBUF}${SINGLE_RCVBUF}" ]]; then
+  if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" != "1" ]]; then
+    echo "Error: single manual HWM/SNDBUF/RCVBUF overrides are debug-only." >&2
+    echo "Set PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1 to use --hwm/--send-hwm/--recv-hwm/--buf/--sndbuf/--rcvbuf." >&2
+    exit 1
+  fi
+fi
 
 EFFECTIVE_SEND_HWM="${SINGLE_SNDHWM:-${SINGLE_HWM:-}}"
 EFFECTIVE_RECV_HWM="${SINGLE_RCVHWM:-${SINGLE_HWM:-}}"
@@ -600,18 +790,24 @@ print_effective_option "build_mode" "${BUILD_MODE}"
 print_effective_option "reuse_build" "$( [[ "${BUILD_MODE}" == "reuse" ]] && echo 1 || echo 0 )"
 print_effective_option "clean_build" "$( [[ "${BUILD_MODE}" == "clean" ]] && echo 1 || echo 0 )"
 print_effective_option "runs" "${RUNS}"
-print_effective_option "lang" "cpp"
-print_effective_option "suite" "${RESULT_SUITE}"
 print_effective_option "duration_seconds" "${DISPLAY_DURATION_SECONDS}"
-print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "auto-hwm")"
-print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "auto-hwm")"
-print_effective_option "recv_hwm" "$(value_or_default "${DISPLAY_RECV_HWM}" "auto-hwm")"
-print_effective_option "sndbuf" "$(value_or_default "${DISPLAY_SNDBUF}" "auto-hwm")"
-print_effective_option "rcvbuf" "$(value_or_default "${DISPLAY_RCVBUF}" "auto-hwm")"
-print_effective_option "ctx_auto_hwm_enable" "core-default"
-print_effective_option "ctx_auto_hwm_profile" "${CTX_AUTO_HWM_PROFILE}"
+if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" == "1" ]]; then
+  print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "auto-hwm")"
+  print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "$(value_or_default "${DISPLAY_HWM}" "auto-hwm")")"
+  print_effective_option "recv_hwm" "$(value_or_default "${DISPLAY_RECV_HWM}" "$(value_or_default "${DISPLAY_HWM}" "auto-hwm")")"
+  print_effective_option "sndbuf" "$(value_or_default "${DISPLAY_SNDBUF}" "auto-hwm")"
+  print_effective_option "rcvbuf" "$(value_or_default "${DISPLAY_RCVBUF}" "auto-hwm")"
+else
+  print_effective_option "hwm" "auto-hwm"
+  print_effective_option "send_hwm" "auto-hwm"
+  print_effective_option "recv_hwm" "auto-hwm"
+  print_effective_option "sndbuf" "auto-hwm"
+  print_effective_option "rcvbuf" "auto-hwm"
+fi
 print_effective_option "sndtimeo_ms" "${DISPLAY_SNDTIMEO_MS}"
 print_effective_option "rcvtimeo_ms" "${DISPLAY_RCVTIMEO_MS}"
+print_effective_option "ctx_auto_hwm_enable" "$(value_or_default "${CTX_AUTO_HWM_ENABLE}" "core-default")"
+print_effective_option "ctx_auto_hwm_profile" "${CTX_AUTO_HWM_PROFILE}"
 print_effective_option "pin_cpu" "${PIN_CPU}"
 print_effective_option "io_threads" "${EFFECTIVE_IO_THREADS}"
 print_effective_option "msg_sizes" "$(value_or_default "${PERF_MSG_SIZES}" "default(benchmark)")"
@@ -621,8 +817,6 @@ print_effective_option "results_tag" "$(value_or_default "${RESULTS_TAG}" "none"
 print_effective_option "result_file" "${RESULT_FILE}"
 print_effective_option "output_file" "$(value_or_default "${OUTPUT_FILE}" "none")"
 print_effective_option "comparison_script" "${PERF_COMPARISON_SCRIPT}"
-print_effective_option "runtime_build_dir" "${RUNTIME_BUILD_DIR}"
-print_effective_option "runtime_bin_dir" "${RUNTIME_BIN_DIR}"
 print_effective_option "python" "${PYTHON_BIN[*]}"
 echo
 echo "## Effective Env (runner)"

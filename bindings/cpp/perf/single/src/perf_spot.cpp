@@ -331,8 +331,9 @@ bool run_pattern_spot (const std::string &transport,
     const std::string publisher_endpoint = make_spot_endpoint (transport);
 
     zlink::service::spot_t pub_spot = pub_node.create_spot ();
+    zlink::service::spot_t stop_spot = sub_node.create_spot ();
     zlink::service::spot_t sub_spot = sub_node.create_spot ();
-    if (!pub_spot.valid () || !sub_spot.valid ()) {
+    if (!pub_spot.valid () || !stop_spot.valid () || !sub_spot.valid ()) {
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return false;
     }
@@ -343,6 +344,8 @@ bool run_pattern_spot (const std::string &transport,
           routing_id_from_ascii ("a-cpp-perf-spot-subscriber"));
         pub_spot.set_routing_id (
           routing_id_from_ascii ("z-cpp-perf-spot-publisher-spot"));
+        stop_spot.set_routing_id (
+          routing_id_from_ascii ("a-cpp-perf-spot-stop-spot"));
         sub_spot.set_routing_id (
           routing_id_from_ascii ("a-cpp-perf-spot-subscriber-spot"));
         if (perf::single::single_manual_socket_overrides_enabled ()) {
@@ -380,7 +383,11 @@ bool run_pattern_spot (const std::string &transport,
     state.payload_size = payload_size;
 
     if (!wait_for_local_probe_ready (
-          pub_spot, sub_spot, payload, &state, 10000)) {
+          pub_spot,
+          sub_spot,
+          payload,
+          &state,
+          perf::single::resolve_single_connect_ready_timeout_ms ())) {
         if (perf_debug_enabled ())
             std::cerr << "spot: local probe ready barrier failed" << std::endl;
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
@@ -469,7 +476,7 @@ bool run_pattern_spot (const std::string &transport,
         // subscribe and exits. Bounded retry through transient
         // backpressure.
         for (int retry = 0; retry < 100; ++retry) {
-            if (send_spot_stop_token (pub_spot))
+            if (send_spot_stop_token (stop_spot))
                 break;
         }
     });

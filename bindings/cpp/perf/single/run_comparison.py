@@ -8,6 +8,7 @@ import datetime
 import os
 import platform
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -50,6 +51,7 @@ DEFAULT_SOCKET_TRANSPORTS = ["tcp", "tls", "ws", "wss", "inproc"]
 if not IS_WINDOWS:
     DEFAULT_SOCKET_TRANSPORTS.append("ipc")
 DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
+DEFAULT_SPOT_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 STREAM_TRANSPORT_PATTERNS = {
     "SPOT",
 }
@@ -82,6 +84,7 @@ class RunOutcome:
     reason: str = ""
     warnings: Optional[List[str]] = None
     stderr: str = ""
+    auto_hwm_details: Optional[List[Dict[str, str]]] = None
 
 
 @dataclass
@@ -129,6 +132,132 @@ def emit_result_lines(combo_results: Dict[Tuple[str, str, int], ComboRecord]) ->
                 f"RESULT,current,{pattern},{transport},{size},"
                 f"{metric_name},{value:.3f}"
             )
+
+
+def parse_auto_hwm_detail_line(line: str) -> Optional[Dict[str, str]]:
+    stripped = (line or "").strip()
+    if not stripped.startswith("AUTO_HWM_DETAIL,"):
+        return None
+    fields: Dict[str, str] = {}
+    for item in stripped.split(",")[1:]:
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        fields[key.strip()] = value.strip()
+    return fields if fields else None
+
+
+def bytes_to_kb_display(value: str) -> str:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return "?"
+    if parsed <= 0:
+        return "0"
+    if parsed % 1024 == 0:
+        return str(parsed // 1024)
+    return f"{parsed / 1024.0:.1f}"
+
+
+def auto_hwm_detail_cell_widths(
+    rows: List[Dict[str, str]],
+    columns: Tuple[Tuple[str, str], ...],
+) -> List[int]:
+    widths: List[int] = []
+    for header, key in columns:
+        width = len(header)
+        for row in rows:
+            width = max(width, len(str(row.get(key, "?"))))
+        widths.append(width)
+    return widths
+
+
+def emit_auto_hwm_detail_table(
+    rows: List[Dict[str, str]],
+    pattern: str,
+) -> bool:
+    pattern_rows = [
+        row
+        for row in rows
+        if row.get("pattern", "").upper() == pattern.upper()
+    ]
+    if not pattern_rows:
+        return False
+
+    display_rows: List[Dict[str, str]] = []
+    seen = set()
+    for row in pattern_rows:
+        display = dict(row)
+        display["sndbuf_kb"] = bytes_to_kb_display(row.get("effective_sndbuf", ""))
+        display["rcvbuf_kb"] = bytes_to_kb_display(row.get("effective_rcvbuf", ""))
+        key = tuple(
+            display.get(name, "")
+            for name in (
+                "msg_size",
+                "component",
+                "owner",
+                "socket",
+                "socket_type",
+                "role",
+                "sndhwm",
+                "rcvhwm",
+                "sndbuf_kb",
+                "rcvbuf_kb",
+                "effective_message_bytes",
+                "socket_message_slots",
+            )
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        display_rows.append(display)
+
+    if not display_rows:
+        return False
+
+    display_rows.sort(
+        key=lambda row: (
+            int(row.get("msg_size", "0") or "0"),
+            row.get("component", ""),
+            row.get("owner", ""),
+            row.get("socket", ""),
+        )
+    )
+    columns = (
+        ("Size(B)", "msg_size"),
+        ("Component", "component"),
+        ("Owner", "owner"),
+        ("Socket", "socket"),
+        ("Type", "socket_type"),
+        ("Role", "role"),
+        ("SNDHWM", "sndhwm"),
+        ("RCVHWM", "rcvhwm"),
+        ("SNDBUF(KB)", "sndbuf_kb"),
+        ("RCVBUF(KB)", "rcvbuf_kb"),
+        ("MsgUnit(B)", "effective_message_bytes"),
+        ("Slots", "socket_message_slots"),
+    )
+    widths = auto_hwm_detail_cell_widths(display_rows, columns)
+
+    print("\n## Auto-HWM Detail")
+    print(f"- pattern: {pattern}")
+    header = "| " + " | ".join(
+        f"{columns[index][0]:<{widths[index]}}"
+        for index in range(len(columns))
+    ) + " |"
+    separator = "|-" + "-|-".join("-" * width for width in widths) + "-|"
+    print(header)
+    print(separator)
+    for row in display_rows:
+        print(
+            "| "
+            + " | ".join(
+                f"{str(row.get(columns[index][1], '?')):<{widths[index]}}"
+                for index in range(len(columns))
+            )
+            + " |"
+        )
+    return True
 
 
 def env_get(name: str) -> str:
@@ -257,6 +386,39 @@ def single_result_dir(results_root: str) -> str:
     return os.path.join(results_root, "single", "report")
 
 
+def parse_raw_csv_list(value: str, cast_fn=str) -> List:
+    items = []
+    for part in (value or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            items.append(cast_fn(part))
+        except ValueError:
+            return []
+    return items
+
+
+def is_default_full_matrix(args: argparse.Namespace, patterns: List[str]) -> bool:
+    if args.pattern.upper() != "ALL" and os.getenv("PERF_FULL_MATRIX", "") != "1":
+        return False
+    env_transports = env_get("PERF_TRANSPORTS").strip()
+    if env_transports and parse_raw_csv_list(env_transports) != DEFAULT_SOCKET_TRANSPORTS:
+        return False
+    env_msg_sizes = env_get("PERF_MSG_SIZES").strip()
+    if env_msg_sizes and parse_raw_csv_list(env_msg_sizes, int) != DEFAULT_MSG_SIZES_STANDARD:
+        return False
+    return list(patterns) == DEFAULT_PATTERNS
+
+
+def copy_successful_full_run_to_baseline(result_file: str) -> str:
+    baseline_dir = os.path.join(PERF_DIR, "baseline")
+    os.makedirs(baseline_dir, exist_ok=True)
+    baseline_file = os.path.join(baseline_dir, os.path.basename(result_file))
+    shutil.copy2(result_file, baseline_file)
+    return baseline_file
+
+
 def enforce_file_retention(
     directory: str,
     max_files: int = DEFAULT_MAX_RESULT_FILES,
@@ -289,7 +451,11 @@ def enforce_file_retention(
 
 def resolve_linux_paths() -> Tuple[str, str]:
     build_root = os.path.join(ROOT_DIR, "core", "build")
-    build_dir = os.path.join(build_root, "bin")
+    bindings_perf_dir = os.path.join(build_root, "bindings", "c", "perf")
+    if os.path.isdir(bindings_perf_dir):
+        build_dir = bindings_perf_dir
+    else:
+        build_dir = os.path.join(build_root, "bin")
     if IS_WINDOWS:
         release_dir = os.path.join(build_dir, "Release")
         if os.path.isdir(release_dir):
@@ -312,6 +478,14 @@ def normalize_build_dir(path: str) -> str:
     abs_path = os.path.abspath(path)
     if not os.path.isdir(abs_path):
         return abs_path
+
+    nested_bindings_perf = os.path.join(abs_path, "bindings", "c", "perf")
+    if os.path.isdir(nested_bindings_perf):
+        return nested_bindings_perf
+
+    perf_dir = os.path.join(abs_path, "perf")
+    if os.path.isdir(perf_dir):
+        return perf_dir
 
     base = os.path.basename(abs_path)
     if base in BUILD_CONFIG_DIRS:
@@ -344,6 +518,12 @@ def derive_current_lib_dir(build_dir: str) -> str:
             build_root = os.path.dirname(bin_root)
     elif base == "bin":
         build_root = os.path.dirname(build_root)
+    if (
+        os.path.isfile(os.path.join(build_root, "libzlink.so"))
+        or os.path.isfile(os.path.join(build_root, "libzlink.dylib"))
+        or os.path.isfile(os.path.join(build_root, "zlink.dll"))
+    ):
+        return os.path.abspath(build_root)
     return os.path.abspath(os.path.join(build_root, "lib"))
 
 
@@ -395,7 +575,7 @@ def run_cmake_build(cmake_build_dir: str, targets: List[str]) -> int:
 
 def select_transports(pattern: str) -> List[str]:
     base = (
-        DEFAULT_STREAM_TRANSPORTS
+        DEFAULT_SPOT_TRANSPORTS
         if pattern in STREAM_TRANSPORT_PATTERNS
         else DEFAULT_SOCKET_TRANSPORTS
     )
@@ -487,11 +667,6 @@ def detect_special_status(
                     and transport == expected_transport
                 ):
                     return "unsupported"
-            elif len(parts) >= 3:
-                pattern = parts[1].strip().upper()
-                transport = parts[2].strip().lower()
-                if pattern == expected_pattern and transport == expected_transport:
-                    return "unsupported"
         elif line.startswith("SKIP,"):
             parts = line.split(",")
             if len(parts) >= 5:
@@ -505,69 +680,6 @@ def detect_special_status(
                 ):
                     return "skip"
     return None
-
-
-def detect_fail_token(
-    stdout: str,
-    expected_lib: str,
-    expected_pattern: str,
-    expected_transport: str,
-    expected_size: int,
-) -> bool:
-    expected_pattern = expected_pattern.upper()
-    expected_transport = expected_transport.lower()
-    for raw in stdout.splitlines():
-        line = raw.strip()
-        if not line.startswith("FAIL,"):
-            continue
-        parts = line.split(",")
-        if len(parts) < 5:
-            continue
-        try:
-            size = int(parts[4].strip())
-        except ValueError:
-            continue
-        if (
-            parts[1].strip() == expected_lib
-            and parts[2].strip().upper() == expected_pattern
-            and parts[3].strip().lower() == expected_transport
-            and size == expected_size
-        ):
-            return True
-    return False
-
-
-def is_bind_blocked_output(text: str) -> bool:
-    lowered = (text or "").lower()
-    if not lowered:
-        return False
-    markers = (
-        "operation not permitted",
-        "permission denied",
-        "address already in use",
-        "listen eperm",
-        "eaddrinuse",
-        "eperm",
-        "errno=98",
-        "errno 98",
-        "internal_errno=98",
-        "binderror(code=502, internal_errno=98)",
-        "binderror(code=0, internal_errno=1)",
-    )
-    return any(marker in lowered for marker in markers)
-
-
-def is_unsupported_output(text: str) -> bool:
-    lowered = (text or "").lower()
-    if not lowered:
-        return False
-    if "unsupported,current," in lowered or "unsupported," in lowered:
-        return True
-    return False
-
-
-def is_sandbox_blocked_transport(transport: str) -> bool:
-    return transport.lower() in {"tcp", "tls", "ws", "wss", "ipc"}
 
 
 def build_bench_cmd(binary_path: str, args: List[str], pin_cpu: bool) -> List[str]:
@@ -596,14 +708,19 @@ def single_table_separator_line() -> str:
     )
 
 
-def single_table_row_line(size: int, status: str, record: Optional[ComboRecord] = None) -> str:
+def single_table_row_line(
+    size: int,
+    status: str,
+    record: Optional[ComboRecord] = None,
+    pattern: str = "",
+) -> str:
     if status == "success" and record is not None:
         _, lat_p95, lat_p99 = resolve_latency_triplet(
             record.latency,
             record.latency_p95,
             record.latency_p99,
         )
-        tp_s = format_throughput("", record.throughput)
+        tp_s = format_throughput(pattern, record.throughput)
         bw_s = format_bandwidth(record.bandwidth)
         lat_s = format_latency_ms(record.latency)
         lat95_s = format_latency_ms(lat_p95 if lat_p95 is not None else 0.0)
@@ -653,7 +770,12 @@ def run_single_test(
 
     metrics: Dict[str, float] = {}
     warnings: List[str] = []
+    auto_hwm_details: List[Dict[str, str]] = []
     for line in stdout.splitlines():
+        auto_hwm_detail = parse_auto_hwm_detail_line(line)
+        if auto_hwm_detail:
+            auto_hwm_details.append(auto_hwm_detail)
+            continue
         parsed, warning = parse_metric_from_result_line(
             line, lib_name, pattern, transport, size
         )
@@ -678,15 +800,7 @@ def run_single_test(
         )
 
     special = detect_special_status(stdout, lib_name, pattern, transport)
-    fail_token = detect_fail_token(stdout, lib_name, pattern, transport, size)
     return_code = int(sampled.get("returncode") or 0)
-    if is_unsupported_output(stdout + "\n" + stderr):
-        return RunOutcome(
-            status="unsupported",
-            reason="unsupported",
-            warnings=warnings or None,
-            stderr=stderr,
-        )
     if return_code != 0:
         return RunOutcome(
             status="fail",
@@ -710,6 +824,7 @@ def run_single_test(
             latency_p99=latency_p99 if latency_p99 is not None else metrics["latency"],
             warnings=warnings or None,
             stderr=stderr,
+            auto_hwm_details=auto_hwm_details or None,
         )
 
     if special == "unsupported" and not metrics:
@@ -726,6 +841,7 @@ def run_single_test(
             warnings=warnings or None,
             stderr=stderr,
         )
+
     return RunOutcome(
         status="fail",
         reason="no_data",
@@ -784,11 +900,11 @@ def collect_missing_build_targets(
     return targets
 
 
-def pattern_direction_label(_pattern: str) -> str:
+def pattern_direction_label(pattern: str) -> str:
     return "one-way"
 
 
-def format_throughput(_pattern: str, throughput_per_sec: float) -> str:
+def format_throughput(pattern: str, throughput_per_sec: float) -> str:
     return f"{throughput_per_sec/1e3:6.2f} Kmsg/s"
 
 
@@ -860,27 +976,31 @@ def build_single_option_items(
     unique_transports = sorted(set(transports))
     unique_sizes = sorted(set(sizes))
     manual_socket_overrides = (
-        os.environ.get("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES") == "1"
-        or os.environ.get("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES") == "1"
-    )
-    base_hwm = parse_env_int("PERF_SINGLE_HWM", 0)
-    sndhwm = parse_env_int("PERF_SINGLE_SNDHWM", base_hwm)
-    rcvhwm = parse_env_int("PERF_SINGLE_RCVHWM", base_hwm)
+        (env_get("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
+        or (env_get("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
+    ) == "1"
+    base_hwm = parse_env_int("PERF_SINGLE_HWM", 0) if manual_socket_overrides else 0
+    sndhwm = parse_env_int("PERF_SINGLE_SNDHWM", base_hwm) if manual_socket_overrides else 0
+    rcvhwm = parse_env_int("PERF_SINGLE_RCVHWM", base_hwm) if manual_socket_overrides else 0
     sndtimeo_ms = parse_env_int("PERF_SINGLE_SNDTIMEO_MS", 200)
     rcvtimeo_ms = parse_env_int("PERF_SINGLE_RCVTIMEO_MS", 200)
     io_threads = max(1, parse_env_int("PERF_IO_THREADS", 1))
+    sndbuf = env_get("PERF_SINGLE_SNDBUF") if manual_socket_overrides else ""
+    rcvbuf = env_get("PERF_SINGLE_RCVBUF") if manual_socket_overrides else ""
     items: List[Tuple[str, str]] = [
         ("runs", str(args.runs)),
         ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),
         ("timeout_seconds", str(timeout_sec)),
         ("io_threads", str(io_threads)),
-        ("hwm", str(base_hwm) if manual_socket_overrides and base_hwm > 0 else "auto-hwm"),
-        ("sndhwm", str(sndhwm) if manual_socket_overrides and sndhwm > 0 else "auto-hwm"),
-        ("rcvhwm", str(rcvhwm) if manual_socket_overrides and rcvhwm > 0 else "auto-hwm"),
-        ("ctx_auto_hwm_enable", os.environ.get("PERF_CTX_AUTO_HWM_ENABLE") or "core-default"),
-        ("ctx_auto_hwm_profile", os.environ.get("PERF_CTX_AUTO_HWM_PROFILE") or "balanced"),
+        ("hwm", "auto-hwm" if base_hwm <= 0 else str(base_hwm)),
+        ("sndhwm", "auto-hwm" if sndhwm <= 0 else str(sndhwm)),
+        ("rcvhwm", "auto-hwm" if rcvhwm <= 0 else str(rcvhwm)),
+        ("sndbuf", sndbuf if sndbuf else "auto-hwm"),
+        ("rcvbuf", rcvbuf if rcvbuf else "auto-hwm"),
         ("sndtimeo_ms", str(sndtimeo_ms)),
         ("rcvtimeo_ms", str(rcvtimeo_ms)),
+        ("ctx_auto_hwm_enable", env_get("PERF_CTX_AUTO_HWM_ENABLE") or "core-default"),
+        ("ctx_auto_hwm_profile", env_get("PERF_CTX_AUTO_HWM_PROFILE") or "balanced"),
         ("patterns", ",".join(patterns)),
         ("transports", ",".join(unique_transports) if unique_transports else "none"),
         ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),
@@ -898,7 +1018,7 @@ def print_effective_options(label: str, items: List[Tuple[str, str]]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Measure current zlink single-pattern benchmarks from core/build."
+        description="Measure current zlink single-pattern benchmarks from bindings/cpp/build."
     )
     parser.add_argument("pattern", nargs="?", default="ALL")
     parser.add_argument("--runs", type=int, default=None)
@@ -937,7 +1057,7 @@ def main() -> int:
     if IS_WINDOWS:
         build_dir = normalize_build_dir(
             args.build_dir
-            or os.path.join(ROOT_DIR, "core", "build")
+            or os.path.join(ROOT_DIR, "bindings", "c", "build")
         )
     else:
         auto_build_dir, _ = resolve_linux_paths()
@@ -1037,6 +1157,7 @@ def main() -> int:
     all_failures: List[Tuple[str, str, int, str]] = []
     combo_results: Dict[Tuple[str, str, int], ComboRecord] = {}
     run_warnings: List[str] = []
+    auto_hwm_detail_rows: List[Dict[str, str]] = []
     table_lines: List[str] = []
     transport_transition_ms = max(
         0,
@@ -1135,6 +1256,8 @@ def main() -> int:
                             run_warnings.append(
                                 f"{pattern} {transport} {size}B run#{run_no}: {warning}"
                             )
+                    if outcome.auto_hwm_details:
+                        auto_hwm_detail_rows.extend(outcome.auto_hwm_details)
 
                     if outcome.status == "success":
                         t_samples[size].append(outcome.throughput)
@@ -1153,6 +1276,7 @@ def main() -> int:
                                 latency_p95=outcome.latency_p95,
                                 latency_p99=outcome.latency_p99,
                             ),
+                            pattern,
                         )
                         line = f"{row_indent}{row}"
                         print(line)
@@ -1162,7 +1286,9 @@ def main() -> int:
                     if outcome.status == "unsupported":
                         transport_unsupported = True
                         for remain_size in sizes[size_idx:]:
-                            row = single_table_row_line(remain_size, "unsupported", None)
+                            row = single_table_row_line(
+                                remain_size, "unsupported", None, pattern
+                            )
                             line = f"{row_indent}{row}"
                             print(line)
                             table_lines.append(line)
@@ -1177,7 +1303,9 @@ def main() -> int:
                             row_record = skip_record if remain_size == size else None
                             if row_record is not None:
                                 failed_records[remain_size] = row_record
-                            row = single_table_row_line(remain_size, "fail", row_record)
+                            row = single_table_row_line(
+                                remain_size, "fail", row_record, pattern
+                            )
                             line = f"{row_indent}{row}"
                             print(line)
                             table_lines.append(line)
@@ -1188,7 +1316,7 @@ def main() -> int:
                     all_failures.append((pattern, transport, size, reason))
                     failed_record = ComboRecord(status="fail")
                     failed_records[size] = failed_record
-                    row = single_table_row_line(size, "fail", failed_record)
+                    row = single_table_row_line(size, "fail", failed_record, pattern)
                     line = f"{row_indent}{row}"
                     print(line)
                     table_lines.append(line)
@@ -1251,11 +1379,11 @@ def main() -> int:
                 for size in sizes:
                     record = combo_results.get((pattern, transport, size))
                     if record and record.status == "success":
-                        row = single_table_row_line(size, "success", record)
+                        row = single_table_row_line(size, "success", record, pattern)
                     elif record and record.status == "unsupported":
-                        row = single_table_row_line(size, "unsupported", None)
+                        row = single_table_row_line(size, "unsupported", None, pattern)
                     else:
-                        row = single_table_row_line(size, "fail", record)
+                        row = single_table_row_line(size, "fail", record, pattern)
                     line = f"        {row}"
                     print(line)
                     table_lines.append(line)
@@ -1287,6 +1415,9 @@ def main() -> int:
         for pattern, transport, size, reason in all_failures:
             print(f"- {pattern} current {transport} {size}B: {reason}")
 
+    for pattern in patterns:
+        emit_auto_hwm_detail_table(auto_hwm_detail_rows, pattern)
+
     unsupported_combo_count = sum(
         1 for record in combo_results.values() if record.status == "unsupported"
     )
@@ -1303,6 +1434,9 @@ def main() -> int:
     )
     completion_status = (
         "complete" if expected_result_lines == actual_result_lines else "partial"
+    )
+    should_update_baseline = completion_status == "complete" and is_default_full_matrix(
+        args, patterns
     )
 
     print_effective_options("result", effective_options)
@@ -1325,6 +1459,9 @@ def main() -> int:
     sys.stdout = orig_stdout
     sys.stderr = orig_stderr
     result_log_fh.close()
+    if should_update_baseline:
+        baseline_file = copy_successful_full_run_to_baseline(result_file)
+        print(f"Updated baseline file: {baseline_file}")
     if completion_status != "complete":
         return 1
     return 0

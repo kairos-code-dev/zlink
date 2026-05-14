@@ -171,6 +171,29 @@ PUBSUB / SPOT    = [ready] -> [post_ready_settle] -> [active(duration)] -> [idle
 | active | time-based | 5s | `PERF_SINGLE_DURATION_SECONDS` |
 | idle drain | bounded recv drain | recv one-way 전체 수행 | `PERF_SINGLE_RCVTIMEO_MS` 계열 timeout bound |
 
+### 2.0.1 Single 패턴별 handshake 고정
+
+아래 표는 `bindings/c/perf` single runner와 benchmark binary가 사용하는
+패턴별 handshake 계약이다. 다른 바인딩 single perf는 같은 ready source,
+active 시작 조건, 종료 신호를 사용해야 한다.
+
+| 패턴 | process 구조 | ready gate | active 시작 | 종료 |
+|------|--------------|------------|-------------|------|
+| `PAIR` | 단일 process 안 sender thread + receiver thread | raw socket `CONNECTION_READY` | ready gate 통과 직후 `phase=active` | sender가 wire stop token 송신, receiver는 idle drain 후 종료 |
+| `DEALER_DEALER` | 단일 process 안 sender thread + receiver thread | raw socket `CONNECTION_READY` | ready gate 통과 직후 `phase=active` | sender가 wire stop token 송신, receiver는 idle drain 후 종료 |
+| `DEALER_ROUTER` | 단일 process 안 sender thread + receiver thread | raw socket `CONNECTION_READY`, routing self-check는 단발성 1회만 허용 | ready gate와 self-check 통과 직후 `phase=active` | sender가 wire stop token 송신, receiver는 idle drain 후 종료 |
+| `ROUTER_ROUTER` | 단일 process 안 sender thread + receiver thread | raw socket `CONNECTION_READY`, routing self-check는 단발성 1회만 허용 | ready gate와 self-check 통과 직후 `phase=active` | sender가 wire stop token 송신, receiver는 idle drain 후 종료 |
+| `PUBSUB` | 단일 process 안 publisher thread + subscriber drain | raw socket `CONNECTION_READY` 후 bounded post-ready settle | post-ready settle 완료 직후 `phase=active` | publisher가 wire stop token 송신, subscriber는 idle drain 후 종료 |
+| `SPOT` | 단일 process 안 publisher + `zlink_spot_subscribe()` drain | local pub/sub probe payload 수신 후 bounded post-ready settle | post-ready settle 완료 직후 `phase=active` | benchmark 전용 stop publisher가 같은 topic으로 wire stop token 송신 |
+
+- single suite에는 runner stdin/stdout `READY` / `CLIENT_READY` / `START`
+  orchestration을 만들지 않는다. single handshake는 같은 process 내부의 ready
+  gate와 wire stop token으로 닫힌다.
+- `PUBSUB`과 `SPOT`의 post-ready settle은 C 기준에 있는 bounded 절차다. 이를
+  다른 패턴으로 확장하거나, sleep 기반 별도 ready gate로 재해석하면 안 된다.
+- `SPOT` ready는 monitor event나 snapshot polling이 아니라 local probe payload
+  수신으로 판정한다.
+
 - `setup_connected_pair()`는 내부적으로 low-cost monitoring ready gate를
   캡슐화한 helper인 경우에만 허용된다. 별도/독자적인 start gate 규칙으로
   취급하지 않는다.
@@ -290,7 +313,7 @@ status   = (expected == actual) ? "complete" : "partial"
 | `--runs N` | 조합별 반복 횟수 | 1 |
 | `--duration N` | active 구간 시간(초) | 5 |
 | `--build-dir PATH` | 빌드 디렉터리 | 자동 탐색 |
-| `--results-dir PATH` | 결과 루트 디렉터리 | `core/perf/results` |
+| `--results-dir PATH` | 결과 루트 디렉터리 | `bindings/c/perf/results` |
 | `--results-tag NAME` | 결과 파일명 태그 | 없음 |
 | `--output PATH` | 콘솔 출력 tee 파일 | 없음 |
 | `--pin-cpu` | CPU pinning | off |
@@ -415,6 +438,7 @@ single perf의 기본 `PERF_IO_THREADS`는 모든 언어와 모든 패턴에서 
 |------|------|--------|
 | `PERF_SINGLE_DURATION_SECONDS` | active 구간 시간(초) | 5 |
 | `PERF_SINGLE_TIMEOUT_SECONDS` | 프로세스 timeout(초) | `max(30, duration*6+15)` |
+| `PERF_TRANSPORT_TRANSITION_MS` | transport 전환 후 다음 케이스를 시작하기 전 runner 레벨 대기(ms). 이전 transport의 소켓 정리가 다음 측정에 섞이지 않게 하기 위한 대기이며, benchmark phase가 아니다 | 3000 |
 
 ### 7.2 hwm/timeout
 

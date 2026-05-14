@@ -22,7 +22,9 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -427,6 +429,194 @@ inline bool recalculate_auto_hwm (ctx_guard_t &ctx)
         errno = err.internal_errno ();
         return false;
     }
+}
+
+inline bool auto_hwm_detail_enabled ()
+{
+    const char *value = std::getenv ("PERF_MULTI_PRINT_AUTO_HWM_DETAIL");
+    if (!value || !*value)
+        value = std::getenv ("PERF_PRINT_AUTO_HWM_DETAIL");
+    if (!value || !*value)
+        return true;
+    return std::strcmp (value, "0") != 0;
+}
+
+inline const char *auto_hwm_role_name (uint32_t role)
+{
+    switch (role) {
+    case 1:
+        return "control";
+    case 2:
+        return "routed";
+    case 3:
+        return "fanout";
+    case 4:
+        return "recv_ingress";
+    case 5:
+        return "spot_data";
+    case 6:
+        return "peer_queue";
+    case 7:
+        return "stream";
+    default:
+        return "none";
+    }
+}
+
+inline const char *auto_hwm_profile_name (uint32_t profile)
+{
+    switch (profile) {
+    case ZLINK_AUTO_HWM_PROFILE_COMPACT:
+        return "compact";
+    case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
+        return "low_latency";
+    case ZLINK_AUTO_HWM_PROFILE_BALANCED:
+        return "balanced";
+    case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
+        return "throughput";
+    default:
+        return "unknown";
+    }
+}
+
+inline const char *auto_hwm_policy_class_name (uint32_t policy_class)
+{
+    switch (policy_class) {
+    case 1:
+        return "fanout";
+    case 2:
+        return "spot_data";
+    case 3:
+        return "recv_ingress";
+    case 4:
+        return "routed";
+    case 5:
+        return "peer_queue";
+    case 6:
+        return "stream";
+    case 7:
+        return "control";
+    default:
+        return "none";
+    }
+}
+
+inline const char *auto_hwm_recalc_reason_name (uint32_t reason)
+{
+    switch (reason) {
+    case ZLINK_AUTO_HWM_RECALC_REASON_INITIAL:
+        return "initial";
+    case ZLINK_AUTO_HWM_RECALC_REASON_ROLE_CHANGE:
+        return "role_change";
+    case ZLINK_AUTO_HWM_RECALC_REASON_POLICY_TOGGLE:
+        return "policy_toggle";
+    case ZLINK_AUTO_HWM_RECALC_REASON_REFRESH:
+        return "refresh";
+    case ZLINK_AUTO_HWM_RECALC_REASON_DEFERRED_SHRINK:
+        return "deferred_shrink";
+    default:
+        return "unknown";
+    }
+}
+
+inline std::string auto_hwm_env_or_default (const char *name,
+                                            const char *default_value)
+{
+    const char *value = std::getenv (name);
+    if (value && *value)
+        return value;
+    return default_value ? default_value : "";
+}
+
+template<typename SocketLike>
+inline void emit_auto_hwm_detail (SocketLike &socket,
+                                  const std::string &component,
+                                  const std::string &label,
+                                  const std::string &transport,
+                                  size_t msg_size,
+                                  const char *socket_type)
+{
+    if (!auto_hwm_detail_enabled ())
+        return;
+
+    zlink::monitor_snapshot_t snapshot;
+    try {
+        zlink::monitor_handle_t monitor =
+          socket.monitor_handle (zlink::monitor_event::all);
+        if (!monitor.valid ())
+            return;
+        snapshot = monitor.snapshot ();
+    }
+    catch (const zlink::zlink_error_t &) {
+        return;
+    }
+
+    const std::string pattern =
+      auto_hwm_env_or_default ("PERF_MULTI_PATTERN", "unknown");
+    const std::string transport_value =
+      transport.empty ()
+        ? auto_hwm_env_or_default ("PERF_MULTI_TRANSPORT", "unknown")
+        : transport;
+    const std::string socket_type_value =
+      socket_type && *socket_type ? socket_type : "unknown";
+
+    const std::string key =
+      pattern + "|" + transport_value + "|" + component + "|" + label + "|"
+      + std::to_string (msg_size) + "|" + socket_type_value + "|"
+      + std::to_string (snapshot.auto_hwm_role) + "|"
+      + std::to_string (snapshot.auto_hwm_applied_sndhwm) + "|"
+      + std::to_string (snapshot.auto_hwm_applied_rcvhwm) + "|"
+      + std::to_string (snapshot.auto_hwm_unit_budget_bytes) + "|"
+      + std::to_string (snapshot.auto_hwm_effective_message_bytes) + "|"
+      + std::to_string (snapshot.auto_hwm_effective_sndbuf) + "|"
+      + std::to_string (snapshot.auto_hwm_effective_rcvbuf);
+
+    static std::mutex mutex;
+    static std::set<std::string> emitted;
+    {
+        std::lock_guard<std::mutex> lock (mutex);
+        if (emitted.find (key) != emitted.end ())
+            return;
+        emitted.insert (key);
+    }
+
+    std::cout << "AUTO_HWM_DETAIL"
+              << ",pattern=" << pattern
+              << ",transport=" << transport_value
+              << ",component=" << component
+              << ",label=" << label
+              << ",socket_type=" << socket_type_value
+              << ",msg_size=" << msg_size
+              << ",source=monitor_snapshot"
+              << ",enabled=" << (snapshot.auto_hwm_enabled ? 1 : 0)
+              << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
+              << ",role_id=" << snapshot.auto_hwm_role
+              << ",profile="
+              << auto_hwm_profile_name (snapshot.auto_hwm_profile)
+              << ",profile_id=" << snapshot.auto_hwm_profile
+              << ",policy_class="
+              << auto_hwm_policy_class_name (snapshot.auto_hwm_policy_class)
+              << ",policy_class_id=" << snapshot.auto_hwm_policy_class
+              << ",unit_budget_bytes="
+              << snapshot.auto_hwm_unit_budget_bytes
+              << ",size_cap=" << snapshot.auto_hwm_size_cap
+              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+              << ",socket_message_slots="
+              << snapshot.auto_hwm_socket_message_slots
+              << ",effective_message_bytes="
+              << snapshot.auto_hwm_effective_message_bytes
+              << ",effective_sndbuf=" << snapshot.auto_hwm_effective_sndbuf
+              << ",effective_rcvbuf=" << snapshot.auto_hwm_effective_rcvbuf
+              << ",last_recalc_ms=" << snapshot.auto_hwm_last_recalc_ms
+              << ",last_recalc_reason="
+              << auto_hwm_recalc_reason_name (
+                   snapshot.auto_hwm_last_recalc_reason)
+              << ",send_blocked_ratio_ppm="
+              << snapshot.auto_hwm_send_blocked_ratio_ppm
+              << ",deferred_sndhwm=" << snapshot.auto_hwm_deferred_sndhwm
+              << ",deferred_rcvhwm=" << snapshot.auto_hwm_deferred_rcvhwm
+              << std::endl;
 }
 
 template<typename SocketLike>

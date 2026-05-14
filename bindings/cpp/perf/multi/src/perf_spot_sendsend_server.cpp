@@ -19,6 +19,12 @@ namespace {
 static const char *k_pattern = "MULTI_SPOT_SENDSEND";
 static const char *k_server_node_rid = "SPOT-SENDSEND-SERVER-NODE";
 static const char *k_server_spot_rid = "SPOT-SENDSEND-SERVER-SPOT";
+static const char *k_control_topic = "bench";
+
+bool bench_debug_enabled ()
+{
+    return std::getenv ("PERF_DEBUG") != NULL;
+}
 
 struct start_gate_t
 {
@@ -70,7 +76,111 @@ bool wait_for_start (size_t msg_size, int timeout_ms)
     return true;
 }
 
-void stdin_watcher (zlink::service::spot_node_t *control_node)
+bool publish_control_payload (zlink::service::spot_t &spot,
+                              const std::string &payload,
+                              int timeout_ms)
+{
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (
+                            std::max (1, timeout_ms));
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink::message_t part (payload.size ());
+        if (!part.valid ())
+            return false;
+        if (!payload.empty ())
+            std::memcpy (part.data (), payload.data (), payload.size ());
+        try {
+            if (spot.publish (k_control_topic)
+                  .message (part)
+                  .submit ())
+                return true;
+        }
+        catch (const zlink::submit_error_t &err) {
+            const int err_no = err.internal_errno ();
+            if (err_no != EAGAIN && err_no != EWOULDBLOCK
+                && err_no != ETIMEDOUT && err_no != EINTR) {
+                errno = err_no;
+                return false;
+            }
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    errno = ETIMEDOUT;
+    return false;
+}
+
+bool wait_ready_count_and_data_endpoint (zlink::service::spot_t &control_sub,
+                                         zlink::service::spot_node_t *data_node,
+                                         size_t msg_size,
+                                         size_t expected_ready_count,
+                                         int timeout_ms)
+{
+    size_t ready_count = 0;
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (
+                            std::max (1, timeout_ms));
+    while (std::chrono::steady_clock::now () < deadline) {
+        try {
+            const std::optional<zlink::topic_message_t> received =
+              control_sub.subscribe (ZLINK_DONTWAIT);
+            if (!received.has_value ()) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                continue;
+            }
+            if (received->topic () != k_control_topic
+                || received->parts ().empty ())
+                continue;
+            const zlink::message_t &part = received->parts ()[0];
+            const std::string payload (
+              static_cast<const char *> (part.data ()), part.size ());
+            std::string endpoint;
+            if (perf::multi::parse_endpoint_command_line (
+                  payload, "DATA_ENDPOINT,", &endpoint)) {
+                if (bench_debug_enabled ())
+                    std::cerr
+                      << "[cpp-spot-sendsend-server] DATA_ENDPOINT size="
+                      << msg_size << " endpoint=" << endpoint << std::endl;
+                if (data_node && !endpoint.empty ())
+                    data_node->connect_peer (endpoint);
+                continue;
+            }
+            size_t ready_size = 0;
+            size_t increment = 0;
+            if (perf::multi::parse_size_count_command_line (
+                  payload, "READY_COUNT,", &ready_size, &increment)
+                && ready_size == msg_size) {
+                ready_count += increment;
+                if (bench_debug_enabled ())
+                    std::cerr
+                      << "[cpp-spot-sendsend-server] READY_COUNT size="
+                      << ready_size << " total=" << ready_count
+                      << " expected=" << expected_ready_count << std::endl;
+                if (ready_count >= expected_ready_count)
+                    return true;
+            }
+        }
+        catch (const zlink::recv_error_t &err) {
+            const int err_no = err.internal_errno ();
+            if (err_no != EAGAIN && err_no != EWOULDBLOCK
+                && err_no != ETIMEDOUT && err_no != EINTR) {
+                errno = err_no;
+                return false;
+            }
+        }
+        catch (const std::exception &) {
+            return false;
+        }
+    }
+    errno = ETIMEDOUT;
+    return false;
+}
+
+void stdin_watcher (zlink::service::spot_node_t *control_node,
+                    zlink::service::spot_node_t *data_node,
+                    zlink::service::spot_t *control_pub,
+                    zlink::service::spot_t *control_sub,
+                    size_t expected_ready_count,
+                    int timeout_ms)
 {
     std::string line;
     while (std::getline (std::cin, line)) {
@@ -90,6 +200,30 @@ void stdin_watcher (zlink::service::spot_node_t *control_node)
         }
         if (perf::multi::parse_size_command_line (
               line, "START,", &start_size)) {
+            if (bench_debug_enabled ())
+                std::cerr << "[cpp-spot-sendsend-server] runner START size="
+                          << start_size << std::endl;
+            if (!control_pub || !control_sub
+                || !wait_ready_count_and_data_endpoint (
+                  *control_sub,
+                  data_node,
+                  start_size,
+                  expected_ready_count,
+                  timeout_ms)
+                || (std::getenv ("ZLINK_ENABLE_SPOT_DIRECT_ROUTE") == NULL
+                    && data_node
+                    && !perf::multi::wait_for_spot_connected_peer_count (
+                      *data_node, 1, timeout_ms))
+                || !publish_control_payload (
+                  *control_pub,
+                  perf::multi::make_start_command (start_size),
+                  timeout_ms)) {
+                signal_stop ();
+                return;
+            }
+            if (bench_debug_enabled ())
+                std::cerr << "[cpp-spot-sendsend-server] direct START size="
+                          << start_size << std::endl;
             signal_start (start_size);
             continue;
         }
@@ -164,6 +298,7 @@ bool run_server (const std::string &lib_name,
         return false;
     node.set_routing_id (text_rid (k_server_node_rid));
     if (!perf::multi::configure_spot_server_tls (node, transport)
+        || !perf::multi::configure_spot_client_tls (node, transport)
         || !perf::multi::configure_spot_control_tls (control_node, transport)
         || !perf::multi::apply_spot_node_admission_hwm (
           node, settings.sndhwm, settings.rcvhwm)
@@ -172,9 +307,11 @@ bool run_server (const std::string &lib_name,
         return false;
 
     zlink::service::spot_t spot = node.create_spot ();
-    zlink::service::spot_t control_spot = control_node.create_spot ();
-    if (!spot.valid () || !control_spot.valid ())
+    zlink::service::spot_t control_pub = control_node.create_spot ();
+    zlink::service::spot_t control_sub = control_node.create_spot ();
+    if (!spot.valid () || !control_pub.valid () || !control_sub.valid ())
         return false;
+    control_sub.set_subscription (k_control_topic);
     if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;
     spot.set_routing_id (text_rid (k_server_spot_rid));
@@ -192,15 +329,22 @@ bool run_server (const std::string &lib_name,
     if (endpoint.empty () || control_endpoint.empty ())
         return false;
 
-    std::thread stdin_thread (stdin_watcher, &control_node);
+    const int start_timeout_ms =
+      std::max (settings.connect_ready_timeout_ms,
+                std::max (1000, settings.connect_ready_timeout_ms * 6));
+    std::thread stdin_thread (
+      stdin_watcher,
+      &control_node,
+      &node,
+      &control_pub,
+      &control_sub,
+      std::max<size_t> (1, settings.clients),
+      start_timeout_ms);
     std::cout << "READY," << endpoint << std::endl;
     std::cout << "CONTROL_READY," << control_endpoint << std::endl;
 
     zlink::poller_t poller;
     poller.add (spot, zlink::poll_event_flag_t::pollin);
-    const int start_timeout_ms =
-      std::max (settings.connect_ready_timeout_ms,
-                std::max (1000, settings.connect_ready_timeout_ms * 6));
 
     bool ok = true;
     for (size_t msg_size : msg_sizes) {
@@ -213,11 +357,14 @@ bool run_server (const std::string &lib_name,
                                 std::max (1, settings.duration_seconds));
         while (!g_stop.load (std::memory_order_acquire)
                && std::chrono::steady_clock::now () < deadline) {
-            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no
-            // timer cap. Outer while-loop bounds wall-time via the
-            // steady_clock deadline check.
+            const auto now = std::chrono::steady_clock::now ();
+            if (now >= deadline)
+                break;
+            const auto remaining =
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - now);
             std::optional<zlink::poll_event_t> event =
-              poller.wait (std::chrono::milliseconds (-1));
+              poller.wait (std::max (std::chrono::milliseconds (1), remaining));
             if (!event.has_value ())
                 continue;
             for (;;) {

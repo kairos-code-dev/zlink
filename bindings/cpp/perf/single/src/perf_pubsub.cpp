@@ -43,6 +43,34 @@ bool send_pubsub_payload (void *userdata_, const void *data_, size_t size_)
     }
 }
 
+bool send_pubsub_stop_token (zlink::pub_socket_t &publisher_)
+{
+    zlink::message_t part = zlink::message_t::from_bytes (
+      perf::single::k_stop_token,
+      std::strlen (perf::single::k_stop_token));
+    if (!part.valid ())
+        return false;
+
+    try {
+        return std::move (publisher_.publish (k_topic))
+          .message (part)
+          .submit ();
+    }
+    catch (const zlink::submit_error_t &err) {
+        const int err_no = err.internal_errno ();
+        if (err_no == EAGAIN || err_no == EWOULDBLOCK
+            || err_no == ETIMEDOUT || err_no == EINTR) {
+            errno = err_no;
+            return false;
+        }
+        errno = err_no;
+        return false;
+    }
+    catch (const zlink::zlink_error_t &) {
+        return false;
+    }
+}
+
 bool record_subscribed_payload (
   const zlink::topic_message_t &message,
   uint32_t run_id,
@@ -170,9 +198,7 @@ bool run_pattern_pubsub (const std::string &transport,
         // exits its blocking subscribe loop. Bounded retry through
         // transient backpressure.
         for (int retry = 0; retry < 100; ++retry) {
-            if (send_pubsub_payload (&publisher,
-                                     perf::single::k_stop_token,
-                                     std::strlen (perf::single::k_stop_token))) {
+            if (send_pubsub_stop_token (publisher)) {
                 break;
             }
             if (errno != EAGAIN && errno != EWOULDBLOCK

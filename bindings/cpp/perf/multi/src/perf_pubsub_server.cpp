@@ -151,6 +151,8 @@ bool perf_pubsub_server (const std::string &lib_name,
       publisher.sock (), transport, "cpp_multi_pubsub", settings.server_bind_port);
     if (endpoint.empty ())
         return false;
+    perf::multi::emit_auto_hwm_detail (
+      publisher.sock (), "server", "server", transport, msg_size, "pub");
 
     const bench_multi_cpu_sample_t resource_probe_start =
       perf::multi::start_resource_probe ();

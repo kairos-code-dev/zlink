@@ -154,7 +154,6 @@ class router_router_client_bench_t
             return false;
         }
 
-        send_stop_token_once ();
         _resource_metrics =
           perf::multi::finish_resource_probe (_resource_probe_start);
         print_result ();
@@ -213,6 +212,12 @@ class router_router_client_bench_t
         {
             debug_log ("wait_connect_ready_all failed");
             return false;
+        }
+        if (!perf::multi::recalculate_auto_hwm (_ctx))
+            return false;
+        if (!_holders.empty () && _holders[0].get () && _holders[0]->valid ()) {
+            perf::multi::emit_auto_hwm_detail (
+              *_holders[0], "client", "endpoint", _transport, _msg_size, "router");
         }
 
         return !_socket_states.empty ();
@@ -543,28 +548,6 @@ class router_router_client_bench_t
         }
         catch (const zlink::zlink_error_t &) {
             return false;
-        }
-    }
-
-    void send_stop_token_once ()
-    {
-        if (_socket_states.empty () || !_socket_states[0].sock)
-            return;
-
-        zlink::router_socket_t *sock = _socket_states[0].sock;
-        const char *stop = perf::multi::k_stop_token;
-        const size_t stop_len = std::strlen (stop);
-        zlink::message_t stop_msg (stop_len);
-        if (!stop_msg.valid ())
-            return;
-        std::memcpy (stop_msg.data (), stop, stop_len);
-        try {
-            (void) std::move (sock->send (_server_rid))
-              .message (stop_msg)
-              .flags (zlink::send_flags_t::dontwait)
-              .submit ();
-        } catch (const zlink::submit_error_t &) {
-            // Stop token is best-effort; ignore submit failures.
         }
     }
 

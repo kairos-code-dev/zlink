@@ -45,18 +45,9 @@ template<typename SubjectT>
 inline bool apply_spot_auto_hwm_msg_unit (SubjectT &subject_,
                                           size_t msg_size_)
 {
-    if (msg_size_ == 0)
-        return true;
-    try {
-        apply_spot_auto_hwm_msg_unit_impl (
-          subject_,
-          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)), 0);
-        return true;
-    }
-    catch (const zlink::config_error_t &err) {
-        errno = err.internal_errno ();
-        return false;
-    }
+    (void) subject_;
+    (void) msg_size_;
+    return true;
 }
 
 template<typename SpotNode>
@@ -78,6 +69,34 @@ inline bool apply_spot_node_admission_hwm (SpotNode &node_,
         errno = err.internal_errno ();
         return false;
     }
+}
+
+template<typename SpotNode>
+inline bool wait_for_spot_connected_peer_count (SpotNode &node_,
+                                                size_t expected_count_,
+                                                int timeout_ms_)
+{
+    if (expected_count_ == 0)
+        return true;
+
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (std::max (1, timeout_ms_));
+    while (std::chrono::steady_clock::now () < deadline) {
+        try {
+            const zlink::spot_node_status_t status =
+              node_.status_snapshot ();
+            if (status.connected_peer_count () >= expected_count_)
+                return true;
+        }
+        catch (const zlink::config_error_t &err) {
+            errno = err.internal_errno ();
+            return false;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    errno = ETIMEDOUT;
+    return false;
 }
 
 struct control_connect_gate_t

@@ -96,23 +96,31 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
     server.options ().auto_hwm_msg_unit_bytes (
       zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size)));
     ctx.ctx ().recalculate_auto_hwm ();
+    perf::multi::emit_auto_hwm_detail (
+      server, "server", "server", transport, msg_size, "dealer");
 
     const int active_seconds =
       settings.duration_seconds > 0 ? settings.duration_seconds : 1;
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::seconds (active_seconds);
 
-    bool stop_requested = false;
     bool failed = false;
     unsigned long long active_count = 0;
     perf::multi::bench_latency_sampler_t latency (
       static_cast<size_t> (active_seconds) * 5000000U);
     zlink::message_t part;
     std::vector<zlink::poll_event_t> events;
-    while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
-        // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (timeout=-1).
-        // Use wait(max_events=1) through the zlink_poll fast path to match C reference perf.
-        events = poller.wait (1, std::chrono::milliseconds (-1));
+    while (std::chrono::steady_clock::now () < deadline) {
+        const auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline)
+            break;
+        const long remaining_ms =
+          std::max<long> (
+            1,
+            std::chrono::duration_cast<std::chrono::milliseconds> (
+              deadline - now)
+              .count ());
+        events = poller.wait (1, std::chrono::milliseconds (remaining_ms));
         if (events.empty ())
             continue;
         if (!(static_cast<short> (events[0].revents)
@@ -127,12 +135,6 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                     break;
                 failed = true;
-                break;
-            }
-
-            if (perf::multi::is_stop_token (
-                  part.data (), part.size ())) {
-                stop_requested = true;
                 break;
             }
 

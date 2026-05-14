@@ -77,6 +77,11 @@ int resolve_single_spot_ready_settle_ms ()
     return parse_positive_env ("PERF_SINGLE_SPOT_READY_SETTLE_MS", 1000);
 }
 
+int resolve_single_connect_ready_timeout_ms ()
+{
+    return parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 3000);
+}
+
 int resolve_single_socket_hwm (bool send_)
 {
     const int base_hwm = parse_positive_env ("PERF_SINGLE_HWM", 1000);
@@ -328,14 +333,16 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
 
     apply_single_benchmark_socket_options (bind_socket_, transport_);
     apply_single_benchmark_socket_options (connect_socket_, transport_);
+    const int connect_ready_timeout_ms =
+      resolve_single_connect_ready_timeout_ms ();
     if (!wait_socket_monitor_event (
           bind_monitor,
           static_cast<uint64_t> (zlink::monitor_event::connection_ready),
-          10000)
+          connect_ready_timeout_ms)
         || !wait_socket_monitor_event (
           connect_monitor,
           static_cast<uint64_t> (zlink::monitor_event::connection_ready),
-          10000)) {
+          connect_ready_timeout_ms)) {
         return false;
     }
     return true;

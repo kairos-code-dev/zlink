@@ -5,7 +5,7 @@
 > **Date**: 2026-04-08
 > **Scope**: zlink 성능 테스트 통합 정책 — 공통 구조, 통합 실행, 비교 스크립트
 >
-> 본 정책은 `perf/`의 C++ 벤치마크와 in-repo perf 자산이 존재하는 바인딩
+> 본 정책은 `bindings/c/perf`의 C benchmark runner와 in-repo perf 자산이 존재하는 바인딩
 > (`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/rust`,
 > `bindings/go`, `bindings/node`, `bindings/python`)에 동일한 기준으로 적용한다.
 > 단, 각 언어의 구현 완성도와 지원 패턴 범위는 다를 수 있으므로 실제 parity
@@ -36,9 +36,15 @@
 
 ## 1.1 공통 원칙
 
-아래 원칙은 `core/perf`와 모든 bindings perf에 동일하게 적용한다.
+아래 원칙은 `bindings/c/perf`를 기준으로 모든 bindings perf에 동일하게 적용한다.
+`bindings/c/perf`는 바인딩 언어별 perf를 맞출 때의 기준 구현이다. 같은 항목을
+측정하는 바인딩 perf는 C perf의 handshake, phase, metric anchor, RESULT 의미를
+그대로 따라야 한다. 문서와 구현이 어긋나면 언어별 구현에서 임의로 해석하지 말고
+먼저 `bindings/c/perf` 기준을 확인한 뒤 이 정책 문서를 C 기준에 맞게 고친다.
+handshake 의미를 바꿔야 할 때는 C perf를 먼저 수정하고, 그 변경을 본 정책과
+suite별 정책 문서에 반영한 다음 다른 바인딩으로 옮긴다.
 
-- `core/perf`는 `doc/guide` 및 `doc/spec/core` 문서에 기술된 public C API만 사용한다.
+- `bindings/c/perf`는 `doc/guide` 및 `doc/spec/core` 문서에 기술된 public C API만 사용한다.
   내부 헤더나 내부 함수를 직접 호출하지 않는다.
 - `bindings/<lang>/perf`는 해당 언어 binding의 public API만 사용한다. binding
   내부/private API, 내부 구현 클래스, native 내부 helper를 직접 호출하지 않는다.
@@ -61,7 +67,7 @@
   - `ready / active`
   - `RESULT` 포맷
   - 실패 의미
-- `core/perf`와 bindings perf는 같은 이름의 metric을 서로 다른 anchor point에서
+- `bindings/c/perf`와 bindings perf는 같은 이름의 metric을 서로 다른 anchor point에서
   계산하면 안 된다. 같은 비교 surface라면 아래 측정 anchor를 동일 의미로
   유지해야 한다.
   - send timestamp 기록 위치
@@ -71,25 +77,32 @@
   - throughput count 증가 위치
   - latency sample 채취 위치
   - RESULT line 확정 위치
-- bindings perf는 측정 anchor와 결과 의미를 core와 동일하게 유지해야 하지만,
+- bindings perf는 측정 anchor와 결과 의미를 C perf 기준과 동일하게 유지해야 하지만,
   구현 스타일은 언어별 특성에 맞게 작성할 수 있다.
   - 허용: 언어별 async/runtime, 모듈 분리, 타입 시스템 차이
   - 금지: 측정 anchor point 이동, phase 의미 변경, metric 집합 변경, fail/skip/
     unsupported 의미 변경
-- `core/perf`와 `bindings/<lang>/perf`의 공식 실행 스크립트는 동일한 CLI 옵션
+- `bindings/c/perf`와 `bindings/<lang>/perf`의 공식 실행 스크립트는 동일한 CLI 옵션
   의미와 동일한 결과 출력 포맷을 따라야 한다.
   - 옵션 이름과 의미를 언어별로 바꾸지 않는다.
   - RESULT line 형식과 필수 5개 metric (throughput, bandwidth, latency, latency_p95, latency_p99) 의미를 바꾸지 않는다.
   - 사람이 읽는 테이블 형식과 complete/partial/fail 의미를 바꾸지 않는다.
+- perf runner와 benchmark process 사이의 handshake 방식은
+  `bindings/c/perf` 구현을 기준 계약으로 고정한다. 모든 binding perf는 C perf와
+  같은 stdout/stdin token, 같은 전송 방향, 같은 start/stop 의미, 같은 timeout
+  실패 의미를 사용해야 한다. 언어별 runner가 편의를 위해 별도 token을 추가하거나
+  C runner가 요구하지 않는 보정 phase를 측정 조건으로 만들면 안 된다.
 - bindings perf는 아래 비교 가능성 체크리스트를 함께 만족해야 한다.
   - 같은 pattern/transport 의미를 측정한다.
   - 같은 metric header / wire protocol contract를 사용한다.
   - 같은 필수 5개 metric (throughput, bandwidth, latency, latency_p95, latency_p99)과 같은 RESULT line 의미를 사용한다.
   - 같은 fail/skip/unsupported/complete/partial 의미를 사용한다.
   - hot path가 실제 binding public API를 통과한다.
-- bindings perf는 “binding 라이브러리 성능”을 측정해야 한다. 따라서 core native
-  perf 바이너리를 단순 wrapper로 다시 호출해 결과만 중계하는 방식은 정책 준수
-  구현으로 보지 않는다.
+- bindings perf는 “binding 라이브러리 성능”을 측정해야 한다. 따라서 각 언어
+  perf 바이너리는 해당 언어 binding의 public API로 data path를 직접 실행해야
+  한다. C 기준 perf 바이너리나 다른 언어의 perf 바이너리를 wrapper로 호출해서
+  결과만 중계하는 방식은 정책 위반이며, 그 결과는 비교 대상으로 인정하지
+  않는다.
 - managed runtime 바인딩(Java, .NET 등)은 size마다 프로세스를 재시작하므로,
   런타임 옵션으로 시작 비용을 최소화해야 한다.
   - Java: `-server`, `-XX:TieredStopAtLevel=4`(C2 fully tiered) 등. 5초 이상 측정 윈도우에서는 C1 한정(`=1`)이 hot path JIT 최적화를 막아 routed 패턴 64B 같은 wrapper-bound 조합에서 큰 ratio 손실을 만들었기 때문에 fully tiered를 권장한다. 짧은 startup만 필요한 임베디드/배포용 옵션은 별도이다.
@@ -167,7 +180,7 @@ total: 29 bytes (고정)
 - receiver는 `phase=1` 메시지만 active 집계 후보로 취급한다. warmup/cooldown
   메시지는 어떤 suite/pattern에서도 active 결과에 포함되면 안 된다.
 - active 결과 집계 조건은 suite/pattern 정책 문서에 명시된 단일 규칙으로 고정한다.
-  core와 모든 bindings는 같은 pattern에서 동일한 active 유효 메시지 의미를
+  C 기준과 모든 bindings는 같은 pattern에서 동일한 active 유효 메시지 의미를
   사용해야 한다.
 - latency sample은 내부적으로 nanosecond 단위로 누적하고, RESULT line과
   사람이 읽는 report/table에는 millisecond 단위로 표시한다.
@@ -204,54 +217,127 @@ total: 29 bytes (고정)
 - registry summary는 eventually consistent view이므로 benchmark의 final strict
   start gate로 사용하지 않는다.
 - perf 연결 준비/handshake는 pattern별로 나눈다.
-  - 일반 raw 패턴: low-cost monitor event `CONNECTION_READY`
+  - raw socket client 연결 준비: low-cost monitor event `CONNECTION_READY`
+  - runner-barrier raw start gate: `CONNECTION_READY` 확인 뒤 suite별 패턴 표의
+    `CLIENT_READY` / `START` orchestration
   - SPOT:
     - single: local probe-based ready barrier
     - multi: explicit control handshake barrier
-  - MULTI_SPOT_REQREP (multi suite 전용, routed request-reply over SpotNode mesh):
+  - MULTI_SPOT_REQREP / MULTI_SPOT_SENDSEND (multi suite 전용, routed SpotNode mesh):
     - SPOT 과 동일한 control handshake barrier
-      (`CONNECTED`/`READY_COUNT`/`START`)
+      (`DATA_ENDPOINT` + `CONNECTED` progress payload + `READY_COUNT`/`START`)
     - routed request/reply 경로는 barrier 통과 이후에만 시작한다.
-- raw perf ready gate는 expected client 수만큼 `CONNECTION_READY` 수신으로
-  판정한다.
-- SPOT / MULTI_SPOT_REQREP perf ready gate는 monitor event 나 snapshot 이
-  아니라 benchmark control protocol 로 판정한다.
+- raw socket client 연결 준비는 expected client 수만큼
+  `CONNECTION_READY` 수신으로 판정한다.
+- SPOT 계열 multi perf ready gate는 monitor event 나 snapshot 이 아니라
+  benchmark control protocol 로 판정한다.
 - single SPOT 은 별도 서비스 이벤트 스트림 대신 local pub/sub probe 를 사용한다.
   sender 가 metric header가 찍힌 probe payload 를 publish 하고, recv
   쪽에서 첫 유효 수신을 확인하면 ready 로 판정한다.
 - single SPOT 수신은 direct message callback으로 처리하지 않는다.
   `zlink_spot_subscribe()` recv drain 으로 유효 payload를 확인해야 한다.
-- multi SPOT / multi SPOT_REQREP barrier 의 `READY` 는 `connect_peer()` 직후
-  즉시 보내지 않는다. local benchmark network 정책으로, 각 client spot 이
+- multi SPOT / multi SPOT_REQREP / multi SPOT_SENDSEND barrier 의 `READY` 는
+  `connect_peer()` 직후 즉시 보내지 않는다. local benchmark network 정책으로,
+  각 client spot 이
   control link ready 와 local connect setup 을 끝낸 뒤 stabilization
   window(기본 1초)를 거쳐 server control plane 으로 `READY_COUNT` 를
   전송한다. server 는 expected client 수만큼 `READY` unit 을 모은 뒤
   `START` 를 broadcast 한다.
-- multi SPOT / multi SPOT_REQREP 의 짧은 control settle 은 control socket
-  connect 직후 request/publish 순서를 정렬하기 위한 barrier 내부 절차다.
+- multi SPOT / multi SPOT_REQREP / multi SPOT_SENDSEND 의 짧은 control settle 은
+  control socket connect 직후 request/publish 순서를 정렬하기 위한 barrier 내부
+  절차다.
   raw pattern 의 monitor ready gate 와 동일한 public 계약으로 취급하지
   않는다.
-- `setup_connected_pair()` 같은 helper는 raw pattern 의 `CONNECTION_READY`
+- `setup_connected_pair()` 같은 helper는 raw socket client 의 `CONNECTION_READY`
   counting 만 캡슐화한 경우에만 허용된다.
 - `wait_ready()` 같은 helper는 허용한다. 단:
-  - raw pattern 에서는 `CONNECTION_READY` counting 만 수행해야 한다.
+  - raw socket client 연결 준비에서는 `CONNECTION_READY` counting 만 수행해야 한다.
+  - runner-barrier raw start gate 에서는 `CONNECTION_READY` 확인 뒤 suite별 패턴
+    표의 `CLIENT_READY` / `START` orchestration 을 수행해야 한다.
   - single SPOT 에서는 local probe-based ready barrier 만 수행해야 한다.
-  - multi SPOT / multi SPOT_REQREP 에서는 control handshake
-    (`CONNECTED`/`READY_COUNT`/`START`) barrier 만 수행해야 한다.
+  - multi SPOT / multi SPOT_REQREP / multi SPOT_SENDSEND 에서는 control handshake
+    (`DATA_ENDPOINT` for routed variants + `CONNECTED` progress payload +
+    `READY_COUNT`/`START`) barrier 만 수행해야 한다.
   - delivery-ready event, 별도 서비스 이벤트 스트림, snapshot polling 을 helper 뒤에
     숨기면 안 된다.
+
+### 1.1.3 Runner Handshake Wire Contract
+
+아래 stdout/stdin token은 `bindings/c/perf`가 사용하는 benchmark orchestration
+계약이다. 모든 binding perf runner와 benchmark process는 같은 token과 방향을
+사용한다.
+
+| token | 방향 | 의미 |
+|-------|------|------|
+| `READY,<endpoint>` | server stdout → runner | server data endpoint bind 완료 |
+| `CONTROL_READY,<endpoint>` | server stdout → runner | SPOT 계열 server control endpoint bind 완료 |
+| `CLIENT_CONTROL_ENDPOINT,<endpoint>` | client stdout → runner | SPOT 계열 client control endpoint bind 완료 |
+| `CONNECT_CONTROL,<endpoint>` | runner stdin → server | server가 client control endpoint에 연결 |
+| `CONTROL_CONNECTED,<endpoint>` | server stdout → runner → client stdin | server control 연결 완료 통지 |
+| `CLIENT_READY,<msg_size>` | client stdout → runner | client가 해당 size 실행 준비 완료 |
+| `START,<msg_size>` | runner stdin → server/client | 해당 size active 실행 시작 |
+| `PHASE_ACTIVE,<msg_size>` | runner stdin → client | C runner 호환용 one-way 보조 token. active gate가 아니며 benchmark process가 필수 조건으로 요구하면 안 됨 |
+| `CLIENT_DONE,<msg_size>` | client stdout → runner | client가 해당 size RESULT 출력까지 완료 |
+| `STOP` | runner stdin → server/client | 실패, timeout, 정리 요청 |
+| `UNSUPPORTED,...` / `SKIP,...` | process stdout → runner | 해당 조합 제외 |
+| `RESULT,...` | process stdout → runner | 측정 결과 |
+
+공통 규칙:
+
+- `READY`는 endpoint bind 완료만 의미한다. raw data path가 측정 가능한 상태라는
+  뜻으로 해석하지 않는다.
+- raw multi 패턴 중 C 기준에서 runner barrier를 쓰는 패턴은 process 내부에서
+  C 기준 ready gate를 만족한 뒤 `CLIENT_READY`를 출력한다. runner는
+  `CLIENT_READY,<msg_size>`를 본 뒤 server와 client stdin에 같은
+  `START,<msg_size>`를 보낸다. 이 규칙은 suite별 패턴 표에서
+  `CLIENT_READY` / `START`를 명시한 패턴에만 적용한다.
+- C 기준에서 runner `START`를 쓰지 않는 echo/STREAM 패턴에 언어별 runner가
+  `CLIENT_READY` / `START` barrier를 새로 추가하면 안 된다.
+- `START,<msg_size>`는 C 기준에서 runner barrier를 쓰는 패턴의 active 시작
+  token이다.
+  C runner는 일부 one-way 경로에서 하위 호환을 위해 `PHASE_ACTIVE,<msg_size>`도
+  client stdin으로 보낼 수 있다. 이 token은 C 기준에서 active gate가 아니며,
+  benchmark process가 `START` 외에 `PHASE_ACTIVE` 수신을 필수 조건으로 요구하면
+  안 된다. 다른 바인딩 runner가 C runner보다 강한 phase 조건을 추가하는 것도
+  금지한다.
+- `STOP`은 runner orchestration 정리 명령이다. data-plane phase 종료 신호가
+  필요한 패턴은 suite 정책에 정의된 wire-level stop token을 사용한다.
+- SPOT 계열 control handshake는 data-plane `START` 전에 완료되어야 한다.
+  server는 `CONTROL_READY`를 출력하고, client는 `CLIENT_CONTROL_ENDPOINT`를
+  출력한다. runner는 `CONNECT_CONTROL`을 server에 전달하고, server의
+  `CONTROL_CONNECTED`를 client에 전달한다. 이후 client는 control plane으로
+  `READY_COUNT,<msg_size>,<count>`를 보내고, server는 expected count를 모은 뒤
+  control plane으로 `START,<msg_size>`를 broadcast한다. SPOT_REQREP /
+  SPOT_SENDSEND 는 `READY_COUNT` 전에 `DATA_ENDPOINT,<endpoint>` 로 data endpoint
+  도 전달한다.
+- SPOT 계열에서도 runner stdin의 `START,<msg_size>`는 process lifecycle을 여는
+  orchestration token이다. 실제 data-plane 시작은 위 control plane
+  `READY_COUNT`/`START` barrier가 닫힌 뒤에만 가능하다.
+- C perf handshake에 없는 언어별 ready token, 별도 ack, 추가 quorum, 별도 warmup
+  start 명령은 정책 위반이다. 특정 바인딩 public API 부족으로 C handshake를
+  구현할 수 없으면 binding public API를 보강하거나 해당 perf 조합을
+  `UNSUPPORTED`로 처리한다. reflection, private/internal API, native handle 우회로
+  C handshake를 흉내 내면 안 된다.
+- 이미 공식 runner의 supported/default matrix에 들어간 pattern/transport 조합에서
+  C 기준 handshake와 다른 구현을 발견했을 때는 그 조합을 default 목록에서 빼거나
+  `SKIP` / `UNSUPPORTED`로 바꾸어 비교를 통과시켜서는 안 된다. 이는 수정이 아니라
+  회귀 은폐다. 해당 조합은 C 기준 handshake에 맞게 구현을 고치고, 고치기 전에는
+  `fail`로 드러나야 한다.
+- `UNSUPPORTED`는 정책상 지원하지 않는 pattern/transport 조합이나, 아직 공식
+  supported/default matrix에 올리지 않은 새 조합을 도입하기 전의 상태를 표현할 때만
+  쓴다. C 기준과 불일치하는 기존 구현을 숨기는 용도로 쓰면 안 된다.
 - suite별 정책 문서는 pattern별 low-cost ready gate event를 명시해야 한다.
   perf는 그 표에 없는 추가 precondition(`FILTER_APPLIED`, delivery-ready exact count,
   quorum 완화, 보정용 handshake 단계)을 두지 않는다.
 - perf start gate 구현에서 아래를 금지한다.
   - `sleep`/`msleep`/고정 지연
-    - 예외 1: `multi SPOT` / `multi SPOT_REQREP` barrier 내부의
-      stabilization/control-settle 절차는 본 문서와 suite 정책에 명시된
-      경우에 한해 허용한다. 이는 별도 public gate나 일반 ready phase로
+    - 예외 1: `multi SPOT` / `multi SPOT_REQREP` / `multi SPOT_SENDSEND`
+      barrier 내부의 stabilization/control-settle 절차는 본 문서와 suite 정책에
+      명시된 경우에 한해 허용한다. 이는 별도 public gate나 일반 ready phase로
       승격하지 않는다.
     - 예외 2: `single PUBSUB`, `single SPOT` 은 ready gate 통과 직후
       bounded post-ready settle을 반드시 수행한다. 이는 추가 ready gate가
-      아니라 패턴 전용의 고정 안정화 절차이며, core/bindings 전체에 동일
+      아니라 패턴 전용의 고정 안정화 절차이며, C 기준과 bindings 전체에 동일
       의미로 적용해야 한다.
   - monitor snapshot polling
   - ad-hoc retry loop
@@ -259,8 +345,9 @@ total: 29 bytes (고정)
   - `preflight`
   - `prime`
   - `settle`
-    - 예외 1: `multi SPOT` / `multi SPOT_REQREP` barrier 내부 settle은 별도
-      lifecycle phase가 아니라 control handshake의 내부 절차로만 허용한다.
+    - 예외 1: `multi SPOT` / `multi SPOT_REQREP` / `multi SPOT_SENDSEND`
+      barrier 내부 settle은 별도 lifecycle phase가 아니라 control handshake의
+      내부 절차로만 허용한다.
     - 예외 2: `single PUBSUB` / `single SPOT` post-ready settle은 ready를
       대체하는 별도 phase가 아니라, 해당 패턴의 전달 준비를 정렬하기 위한
       bounded 안정화 절차로만 허용한다.
@@ -272,24 +359,24 @@ total: 29 bytes (고정)
       반드시 수행한다. 이 절차의 의미는 "deadline 이전에 송신되어
       queue/in-flight에 남아 있던 메시지를 추가 recv로 비운다"는 운영 절차다.
       active 결과 집계는 suite/pattern 문서가 정의한 active 유효 메시지 규칙에만
-      종속된다. 이 idle drain은 single recv one-way 공통 계약으로 core/bindings
+      종속된다. 이 idle drain은 single recv one-way 공통 계약으로 C 기준과 bindings
       전체에 동일하게 적용해야 하며, 다른 ad-hoc drain/settle 단계로 확장하면
       안 된다.
 - 위 단계가 이미 존재하지만 실제로는 “ready 이벤트 하나 기다리기” 또는
   “phase 종료 후 남은 메시지 정리”를 우회적으로 표현한 것뿐이라면, 새 단계로
   유지하지 말고 삭제하거나 기존 `ready -> active` 흐름에 흡수한다.
-- raw pattern 의 ready gate event 는
+- raw socket client 의 ready gate event 는
   [`doc/guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   raw socket monitoring 절을 단일 기준으로 따른다.
-- SPOT 과 MULTI_SPOT_REQREP 은 별도 서비스 이벤트 스트림을 사용하지 않으며,
-  perf-ready 는 suite별 benchmark barrier protocol 로만 정의한다.
+- SPOT 계열은 별도 서비스 이벤트 스트림을 사용하지 않으며, perf-ready 는
+  suite별 benchmark barrier protocol 로만 정의한다.
 - monitor event rename:
   - raw socket ready event 는 `CONNECTION_READY` 이다.
 - routing 검증이 필요한 패턴(예: ROUTER)은 monitor-ready 이후
   단발성 self-check 1회만 수행하고, 실패 시 즉시 fail 처리한다.
 - registry/bootstrap/query/summary 조회는 measurement phase 밖에서만 수행한다.
 
-### 1.1.3 오류 가시성 원칙
+### 1.1.4 오류 가시성 원칙
 
 - setup/configuration 실패는 즉시 fail로 보고한다. 오류를 삼키거나
   무시하는 패턴(빈 catch, silent ignore wrapper 등)은 허용하지 않는다.
@@ -302,7 +389,7 @@ total: 29 bytes (고정)
 
 ## 1.2 Binary And Runner Responsibilities
 
-perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`와 bindings perf에
+perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `bindings/c/perf`와 bindings perf에
 동일하게 적용한다.
 
 ### 1.2.1 바이너리 책임
@@ -409,12 +496,12 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
 
 ## 2. 디렉터리 구조
 
-### 2.0 core (CAPI 레퍼런스 구현)
+### 2.0 C perf reference
 
-> 아래 경로는 `core/perf/` 기준이다. 정책 문서 자체는 `doc/perf/`에 위치한다.
+> 아래 경로는 `bindings/c/perf/` 기준이다. 정책 문서 자체는 `doc/perf/`에 위치한다.
 
 ```text
-core/perf/
+bindings/c/perf/
 ├── run_benchmarks.sh / .ps1                # single 전용 실행 스크립트 (Linux/Windows)
 ├── run_benchmarks_multi.sh / .ps1          # multi 전용 실행 스크립트 (Linux/Windows)
 ├── run_comparison.py                       # 통합 비교/실행 스크립트
@@ -438,7 +525,7 @@ perf/                                       # bindings/<lang>/perf/
 ├── run_benchmarks_multi.sh / .ps1          # multi 공식 entrypoint
 ├── single/                                 # single 벤치마크 소스
 ├── multi/                                  # multi 벤치마크 소스
-└── results/                                # 결과 저장 루트 (core와 동일 구조)
+└── results/                                # 결과 저장 루트 (C 기준과 동일 구조)
     ├── single/
     │   └── report/
     └── multi/
@@ -479,8 +566,7 @@ perf/                                       # bindings/<lang>/perf/
 
 | 언어 | single 소스 위치 | multi 소스 위치 | 공통 유틸리티 |
 |------|-----------------|----------------|-------------|
-| Core (C++) | `perf/single/src/` | `perf/multi/src/` | `perf/single/common/`, `perf/multi/common/` |
-| C binding | `perf/single/src/` | `perf/multi/src/` | `perf/single/common/`, `perf/multi/common/`, `perf/common/streamclient/` |
+| C binding reference | `perf/single/src/` | `perf/multi/src/` | `perf/single/common/`, `perf/multi/common/`, `perf/common/streamclient/` |
 | C++ binding | `perf/single/` | `perf/multi/` | `perf_dispatch.hpp` |
 | .NET | `perf/single/Zlink.BindingBench/` | `perf/multi/<project>/` 또는 `perf/single/Zlink.BindingBench/` 내 multi role entrypoint | `PerfCommon.cs` |
 | Java | `perf/single/<project>/` | `perf/multi/<project>/` 또는 `perf/single/<project>/` 내 multi role entrypoint | `PerfUtil.java` |
@@ -568,7 +654,7 @@ packet handler delivery:
 |------|------|
 | 파일명 형식 | `perf_<lang>_<suite>_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt` |
 | 날짜 디렉터리 | 사용하지 않음 (파일명에 날짜/시간 포함) |
-| `<lang>` | `core`, `cpp`, `dotnet`, `java`, `rust`, `go`, `node`, `python` |
+| `<lang>` | `c`, `cpp`, `dotnet`, `java`, `rust`, `go`, `node`, `python` |
 | `<suite>` | `single`, `multi` |
 | `<platform>` | `linux`, `windows`, `macos` |
 | `<tag>` | `--results-tag` 옵션으로 지정 (선택) |
@@ -585,13 +671,13 @@ packet handler delivery:
 - single 엔진은 최대 파일 수를 100으로 하드코딩한다 (`PERF_RESULTS_MAX_FILES` 미참조).
 - multi 엔진은 `PERF_RESULTS_MAX_FILES` 환경 변수를 읽는다 (기본 100).
 
-#### 시간 기반 정리 (core 전용)
+#### 시간 기반 정리 (C perf reference 전용)
 
 | 환경 변수 | 기본값 | 동작 |
 |-----------|--------|------|
 | `PERF_RESULTS_RETENTION_DAYS` | 90 | 결과 디렉터리 중 `YYYYMMDD` 형식 이름이 기준일보다 오래된 디렉터리를 삭제 |
 
-- `core/perf/run_benchmarks.sh` 실행 시 자동 적용된다.
+- `bindings/c/perf/run_benchmarks.sh` 실행 시 자동 적용된다.
 - bindings 스크립트에는 적용되지 않는다.
 
 ### 2.3 저장 단위
@@ -605,17 +691,17 @@ packet handler delivery:
 
 ### 3.1 개별 실행
 
-| suite | core 스크립트 | bindings 스크립트 | 정책 문서 |
+| suite | C 기준 스크립트 | bindings 스크립트 | 정책 문서 |
 |-------|--------------|-------------------|-----------|
-| single | `core/perf/run_benchmarks.sh` / `.ps1` | `bindings/<binding>/perf/run_benchmarks.sh` / binding-local 실행기 | [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) |
-| multi | `core/perf/run_benchmarks_multi.sh` / `.ps1` | `bindings/<binding>/perf/run_benchmarks_multi.sh` / binding-local 실행기 | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) |
+| single | `bindings/c/perf/run_benchmarks.sh` / `.ps1` | `bindings/<binding>/perf/run_benchmarks.sh` / binding-local 실행기 | [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) |
+| multi | `bindings/c/perf/run_benchmarks_multi.sh` / `.ps1` | `bindings/<binding>/perf/run_benchmarks_multi.sh` / binding-local 실행기 | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) |
 
 ```bash
-# core single만 실행
-core/perf/run_benchmarks.sh --pattern PAIR
+# C 기준 single만 실행
+bindings/c/perf/run_benchmarks.sh --pattern PAIR
 
-# core multi만 실행
-core/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
+# C 기준 multi만 실행
+bindings/c/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 
 # bindings 실행 (예: cpp)
 bindings/cpp/perf/run_benchmarks.sh --pattern PAIR
@@ -624,14 +710,14 @@ bindings/cpp/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 
 각 스크립트의 상세 옵션은 개별 정책 문서의 섹션 5를 참조한다.
 
-> **정책 준수 실행기**: 아래 스크립트가 각 suite의 유일한 정책 준수 실행기이다. core는 single=`core/perf/run_benchmarks.sh`, multi=`core/perf/run_benchmarks_multi.sh`를 사용하고, bindings는 각 언어 디렉터리의 `bindings/<binding>/perf/run_benchmarks*.sh` 또는 그와 동등한 binding-local 실행기를 사용한다. 내부 실행 엔진과 wrapper 간 호출 체인은 구현 세부이며, 정책은 공식 entrypoint와 책임 분리만 규정한다.
+> **정책 준수 실행기**: 아래 스크립트가 각 suite의 유일한 정책 준수 실행기이다. C 기준은 single=`bindings/c/perf/run_benchmarks.sh`, multi=`bindings/c/perf/run_benchmarks_multi.sh`를 사용하고, 다른 bindings는 각 언어 디렉터리의 `bindings/<binding>/perf/run_benchmarks*.sh` 또는 그와 동등한 binding-local 실행기를 사용한다. 내부 실행 엔진과 공식 entrypoint 사이의 호출 체인은 구현 세부이며, 정책은 공식 entrypoint와 책임 분리만 규정한다.
 >
-> | suite | core | bindings |
+> | suite | C 기준 | bindings |
 > |-------|------|----------|
-> | single | `core/perf/run_benchmarks.sh` | `bindings/<binding>/perf/run_benchmarks.sh` 또는 동등한 binding-local 실행기 |
-> | multi | `core/perf/run_benchmarks_multi.sh` | `bindings/<binding>/perf/run_benchmarks_multi.sh` 또는 동등한 binding-local 실행기 |
+> | single | `bindings/c/perf/run_benchmarks.sh` | `bindings/<binding>/perf/run_benchmarks.sh` 또는 동등한 binding-local 실행기 |
+> | multi | `bindings/c/perf/run_benchmarks_multi.sh` | `bindings/<binding>/perf/run_benchmarks_multi.sh` 또는 동등한 binding-local 실행기 |
 >
-> core는 single/multi 스크립트가 같은 디렉터리에 있으므로 `_multi` 접미어로 구분한다. bindings는 언어별 디렉터리에서 policy-compliant 실행기를 직접 제공해야 한다.
+> C 기준은 single/multi 스크립트가 같은 디렉터리에 있으므로 `_multi` 접미어로 구분한다. 다른 bindings는 언어별 디렉터리에서 policy-compliant 실행기를 직접 제공해야 한다.
 
 ### 3.2 Smoke 테스트
 
@@ -649,11 +735,11 @@ perf smoke 테스트는 전체 패턴과 전체 transport를 대상으로 하되
   suite의 전체 패턴을 64B 크기 하나로 실행하는 검증"을 뜻한다.
 
 ```bash
-# core smoke (single)
-core/perf/run_benchmarks.sh --pattern ALL --msg-sizes 64
+# C 기준 smoke (single)
+bindings/c/perf/run_benchmarks.sh --pattern ALL --msg-sizes 64
 
-# core smoke (multi)
-core/perf/run_benchmarks_multi.sh --pattern ALL --msg-sizes 64
+# C 기준 smoke (multi)
+bindings/c/perf/run_benchmarks_multi.sh --pattern ALL --msg-sizes 64
 
 # bindings smoke (예: cpp)
 bindings/cpp/perf/run_benchmarks.sh --pattern ALL --msg-sizes 64
@@ -671,27 +757,27 @@ bindings/cpp/perf/run_benchmarks_multi.sh --pattern ALL --msg-sizes 64
 
 ### 3.3 통합 실행
 
-실행 엔트리포인트는 wrapper 스크립트다 (§ 3.1 정책 준수 실행기 테이블 참조).
-- core single: `run_benchmarks.sh` / `.ps1`
-- core multi: `run_benchmarks_multi.sh` / `.ps1`
+실행 엔트리포인트는 공식 스크립트다 (§ 3.1 정책 준수 실행기 테이블 참조).
+- C 기준 single: `bindings/c/perf/run_benchmarks.sh` / `.ps1`
+- C 기준 multi: `bindings/c/perf/run_benchmarks_multi.sh` / `.ps1`
 - bindings: `bindings/<binding>/perf/run_benchmarks*.sh` 또는 동등한 binding-local 실행기
 - 단일 실행에서 single/multi를 혼합하지 않는다.
 
 ```bash
-# core: single만 실행
-core/perf/run_benchmarks.sh --pattern ALL
+# C 기준: single만 실행
+bindings/c/perf/run_benchmarks.sh --pattern ALL
 
-# core: multi만 실행
-core/perf/run_benchmarks_multi.sh --pattern ALL
+# C 기준: multi만 실행
+bindings/c/perf/run_benchmarks_multi.sh --pattern ALL
 
-# core: 특정 패턴만
-core/perf/run_benchmarks.sh --pattern PAIR,PUBSUB
+# C 기준: 특정 패턴만
+bindings/c/perf/run_benchmarks.sh --pattern PAIR,PUBSUB
 
-# core: single 실행
-core/perf/run_benchmarks.sh --pattern PAIR
+# C 기준: single 실행
+bindings/c/perf/run_benchmarks.sh --pattern PAIR
 
-# core: 태그 추가
-core/perf/run_benchmarks.sh --results-tag v1.5.0
+# C 기준: 태그 추가
+bindings/c/perf/run_benchmarks.sh --results-tag v1.5.0
 
 # bindings: 동일한 옵션 체계 적용 (예: java)
 bindings/java/perf/run_benchmarks.sh --pattern ALL
@@ -732,7 +818,7 @@ bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 
 ```text
 ## Effective Options (start)
-- lang: core
+- lang: c
 - suite: single
 - runs: 1
 - patterns: PAIR, SPOT
@@ -753,7 +839,7 @@ bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 
 - **실행 옵션 헤더 + TABLE**을 저장한다.
 - `## Effective Options (start)` / `## Effective Options (result)` 섹션은 실행 시 사용된 옵션을 불릿 목록으로 출력한다. report/ 파일과 stdout 모두에 포함해야 한다.
-- `lang` 항목은 필수이며, 실행한 바인딩을 기록한다 (`core`, `cpp`, `dotnet`, `java`, `rust`, `go`, `node`, `python`).
+- `lang` 항목은 필수이며, 실행한 바인딩을 기록한다 (`c`, `cpp`, `dotnet`, `java`, `rust`, `go`, `node`, `python`).
 - `suite` 항목은 필수이며, `single` 또는 `multi`를 기록한다.
 
 ### 4.2 RESULT line 형식
@@ -796,7 +882,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 ```text
 ## Effective Options (start)
-- lang: core
+- lang: c
 - suite: single
 - runs: 1
 - patterns: PAIR, SPOT
@@ -989,7 +1075,7 @@ perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 be
 | TLS 설정 | `setup_tls_client`, `setup_tls_server` |
 | Context RAII | `ctx_guard_t` 등 리소스 관리 wrapper |
 | 타이머/스톱워치 | `stopwatch_t`, 시간 측정 유틸리티 |
-| Monitor 유틸리티 | raw=`CONNECTION_READY` counting helper, multi SPOT / multi SPOT_REQREP=`READY/START` barrier helper |
+| Monitor 유틸리티 | raw socket client `CONNECTION_READY` counting helper, multi SPOT / multi SPOT_REQREP / multi SPOT_SENDSEND=`READY/START` barrier helper |
 | transport 가용성 검사 | `transport_available()` |
 | 공통 cleanup | socket / monitor / context close helper |
 
@@ -1076,7 +1162,7 @@ poller event loop, latency 집계 등의 **공통 골격이 95% 이상 동일**�
 
 #### STREAM client 예외 (검증 인프라)
 
-`core/perf/common/streamclient/`의 STREAM raw/multi client 코드는
+`bindings/c/perf/common/streamclient/`의 STREAM raw/multi client 코드는
 **벤치마크 대상 라이브러리 자체가 아니라 검증 인프라**로 간주한다.
 
 - STREAM client 공통 구현은 `common/streamclient/`에 모아둘 수 있다.
@@ -1092,7 +1178,7 @@ poller event loop, latency 집계 등의 **공통 골격이 95% 이상 동일**�
 > [`AGENTS.md`](/home/hep7/project/kairos/zlink/AGENTS.md)
 
 perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 원칙을 공통으로
-적용한다. `core/perf/README*.md`는 사용 방법만 설명하며, 설계/리팩토링 기준은
+적용한다. `bindings/c/perf/README.md`는 사용 방법만 설명하며, 설계/리팩토링 기준은
 본 정책 문서가 source of truth다.
 
 ### 7.6.1 성능 비회귀 우선
@@ -1179,7 +1265,7 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 | `PERF_DISABLE_RESOURCE_METRICS` | 리소스 메트릭(CPU/메모리) 수집 비활성화 (`1`로 활성화) | 0 |
 | `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 (multi 전용) | 100 |
 
-- 위 환경 변수는 core와 모든 바인딩에서 동일하게 적용된다 (단, `PERF_RESULTS_MAX_FILES`는 multi 엔진만 참조하며, single 엔진은 100 하드코딩).
+- 위 환경 변수는 C 기준과 모든 바인딩에서 동일하게 적용된다 (단, `PERF_RESULTS_MAX_FILES`는 multi 엔진만 참조하며, single 엔진은 100 하드코딩).
 - suite별 고유 환경 변수는 개별 정책 문서를 참조한다:
   - Single: [PERF_SINGLE_TEST_POLICY.md § 11](PERF_SINGLE_TEST_POLICY.md)
   - Multi: [PERF_MULTI_TEST_POLICY.md § 12](PERF_MULTI_TEST_POLICY.md)

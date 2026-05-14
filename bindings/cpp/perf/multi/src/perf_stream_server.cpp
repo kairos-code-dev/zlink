@@ -316,6 +316,8 @@ bool perf_stream_server (const std::string &lib_name,
                 server.options ().last_endpoint ());
         if (endpoint.empty ())
             return false;
+        perf::multi::emit_auto_hwm_detail (
+          server, "server", "server", transport, msg_size, "stream");
 
         g_stop_requested.store (false, std::memory_order_release);
         install_signal_handlers ();

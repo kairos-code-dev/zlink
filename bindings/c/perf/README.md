@@ -18,6 +18,42 @@ If any file under `core/src` or `core/include` is newer than the resolved
 runtime library, the script stops immediately and asks for a `core/build`
 rebuild.
 
+## Cross-Binding Handshake Reference
+
+`bindings/c/perf` is the canonical benchmark handshake for all binding-language
+perf runners. When C, C++, .NET, Java, Rust, Go, Node, or Python perf results
+are compared, their runner/process orchestration must match the C perf
+handshake before the numbers are treated as comparable.
+
+The fixed reference surface is:
+
+- runner and benchmark process stdin/stdout tokens (`READY`, `CLIENT_READY`,
+  `CLIENT_DONE`, `START`, `PHASE_ACTIVE`, `STOP`, `RESULT`, and the SPOT
+  control tokens);
+- raw socket connection gates based on the same C perf `CONNECTION_READY`
+  meaning, plus the C perf `CLIENT_READY` / `START` start barrier for the
+  one-way raw patterns that use it;
+- SPOT-family direct control handshake (`CONNECTED` progress payload,
+  `DATA_ENDPOINT` for routed SPOT echo variants, plus `READY_COUNT` -> direct
+  `START` start barrier);
+- active window, stop/drain, timeout, fail, skip, and unsupported semantics;
+- RESULT line metric names and anchor points.
+
+`PHASE_ACTIVE,<msg_size>` is a C runner compatibility token for some one-way
+paths. Benchmark processes must not require it as an extra active gate; the
+required active gate is the pattern-specific C handshake documented in
+`doc/perf`. Only patterns that use the C runner `CLIENT_READY` / `START`
+barrier may require `START,<msg_size>`.
+
+If a binding cannot implement this handshake through its public API, add the
+missing public binding API or mark that perf combination `UNSUPPORTED`. Do not
+use private binding members, reflection, raw native handles, sleeps, or
+language-specific warmup gates to make a result line comparable.
+
+Handshake changes are made in this order: update `bindings/c/perf` first, update
+`doc/perf/PERF_POLICY.md` and the suite policy, then port the same contract to
+other binding perf runners.
+
 ## Socket Sizing Policy
 
 The default single and multi benchmark paths use context auto-HWM.

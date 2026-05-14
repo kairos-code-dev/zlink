@@ -90,6 +90,8 @@ bool perf_router_router_server (const std::string &lib_name,
         return false;
     if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;
+    perf::multi::emit_auto_hwm_detail (
+      server, "server", "server", transport, msg_size, "router");
 
     const bench_multi_cpu_sample_t resource_probe_start =
       perf::multi::start_resource_probe ();

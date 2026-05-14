@@ -116,7 +116,7 @@ class dealer_dealer_client_bench_t
                         NULL))
             return false;
 
-        send_stop_token_once ();
+        std::cout << "CLIENT_DONE," << _msg_size << std::endl;
         return _result.active_count > 0;
     }
 
@@ -186,6 +186,10 @@ class dealer_dealer_client_bench_t
               zlink::byte_size_t::bytes (static_cast<int64_t> (_msg_size)));
         }
         _ctx.ctx ().recalculate_auto_hwm ();
+        if (!_holders.empty () && _holders[0].get () && _holders[0]->valid ()) {
+            perf::multi::emit_auto_hwm_detail (
+              *_holders[0], "client", "endpoint", _transport, _msg_size, "dealer");
+        }
     }
 
     bool set_pollout (socket_state_t &state, bool enabled)
@@ -364,22 +368,6 @@ class dealer_dealer_client_bench_t
         catch (const zlink::zlink_error_t &) {
             return false;
         }
-    }
-
-    void send_stop_token_once ()
-    {
-        if (_socket_states.empty () || !_socket_states[0].sock)
-            return;
-
-        const char *stop = perf::multi::k_stop_token;
-        const size_t stop_len = std::strlen (stop);
-        zlink::message_t stop_part = zlink::message_t::from_bytes (stop, stop_len);
-        if (!stop_part.valid ())
-            return;
-        (void) std::move (_socket_states[0].sock->send ())
-          .message (stop_part)
-          .flags (zlink::send_flags_t::dontwait)
-          .submit ();
     }
 
   private:

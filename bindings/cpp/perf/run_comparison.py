@@ -8,6 +8,7 @@ import os
 import platform
 import queue
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -36,6 +37,7 @@ REQUIRED_RESULT_METRICS = (
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
 PATTERN_SEPARATOR = "==============================================================================="
 STREAM_VARIANT_PATTERNS = ("STREAM",)
+SPOT_CONTROL_PATTERNS = ("SPOT", "SPOT_REQREP", "SPOT_SENDSEND")
 PATTERN_ALIASES = {
     "STREAM": ("STREAM",),
     "STREAMS": STREAM_VARIANT_PATTERNS,
@@ -50,25 +52,19 @@ PATTERN_SUFFIX = {
     "ROUTER_ROUTER": "router_router",
     "PUBSUB": "pubsub",
     "SPOT": "spot",
-    "SPOT_SENDSEND": "spot_sendsend",
     "SPOT_REQREP": "spot_reqrep",
+    "SPOT_SENDSEND": "spot_sendsend",
     "STREAM": "stream",
 }
 ECHO_PATTERNS = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "SPOT_SENDSEND",
     "SPOT_REQREP",
+    "SPOT_SENDSEND",
     "STREAM",
 }
-SINGLE_ECHO_PATTERNS = {
-    "PAIR",
-    "DEALER_DEALER",
-    "DEALER_ROUTER",
-    "ROUTER_ROUTER",
-}
-SUITE = "single"
-ALLOW_MULTI = False
+SINGLE_ECHO_PATTERNS = set()
+ALLOW_MULTI = os.environ.get("PERF_ALLOW_MULTI", "0") == "1"
 SINGLE_COMPARISONS = [
     ("perf_pair", "PAIR"),
     ("perf_pubsub", "PUBSUB"),
@@ -83,8 +79,8 @@ MULTI_COMPARISONS = [
     ("comp_src_router_router_client", "ROUTER_ROUTER"),
     ("comp_src_pubsub_client", "PUBSUB"),
     ("comp_src_spot_client", "SPOT"),
-    ("comp_src_spot_sendsend_client", "SPOT_SENDSEND"),
     ("comp_src_spot_reqrep_client", "SPOT_REQREP"),
+    ("comp_src_spot_sendsend_client", "SPOT_SENDSEND"),
     ("perf_stream_client", "STREAM"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
@@ -94,22 +90,42 @@ SUPPORTED_MULTI_RECV_MODES = {
     "ROUTER_ROUTER": ("recv",),
     "PUBSUB": ("recv",),
     "SPOT": ("recv",),
-    "SPOT_SENDSEND": ("recv",),
     "SPOT_REQREP": ("recv",),
+    "SPOT_SENDSEND": ("recv",),
     "STREAM": ("recv",),
 }
 
-def configure_suite(suite_name):
-    global SUITE, ALLOW_MULTI
-
-    normalized = (suite_name or "single").strip().lower()
-    if normalized not in {"single", "multi"}:
-        raise ValueError(f"unsupported suite: {suite_name}")
-    SUITE = normalized
-    ALLOW_MULTI = normalized == "multi"
-    if ALLOW_MULTI:
-        sync_multi_env_aliases(os.environ)
-        sync_multi_env_aliases(base_env)
+MULTI_ENV_ALIAS_MAP = {
+    "PERF_STREAM_MSG_SIZES": "PERF_MULTI_STREAM_MSG_SIZES",
+    "PERF_PATTERN": "PERF_MULTI_PATTERN",
+    "PERF_CLIENTS": "PERF_MULTI_CLIENTS",
+    "PERF_HWM": "PERF_MULTI_HWM",
+    "PERF_DURATION_SECONDS": "PERF_MULTI_DURATION_SECONDS",
+    "PERF_SNDTIMEO_MS": "PERF_MULTI_SNDTIMEO_MS",
+    "PERF_RCVTIMEO_MS": "PERF_MULTI_RCVTIMEO_MS",
+    "PERF_CONNECT_CONCURRENCY": "PERF_MULTI_CONNECT_CONCURRENCY",
+    "PERF_CONNECT_READY_TIMEOUT_MS": "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
+    "PERF_MONITOR_HWM": "PERF_MULTI_MONITOR_HWM",
+    "PERF_SERVER_READY_TIMEOUT_MS": "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
+    "PERF_SERVER_SHUTDOWN_TIMEOUT_MS": "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
+    "PERF_SERVER_BIND_PORT": "PERF_MULTI_SERVER_BIND_PORT",
+    "PERF_SERVER_IO_THREADS": "PERF_MULTI_SERVER_IO_THREADS",
+    "PERF_CLIENT_IO_THREADS": "PERF_MULTI_CLIENT_IO_THREADS",
+    "PERF_STREAM_SERVER_IO_THREADS": "PERF_MULTI_STREAM_SERVER_IO_THREADS",
+    "PERF_STREAM_CLIENT_IO_THREADS": "PERF_MULTI_STREAM_CLIENT_IO_THREADS",
+    "PERF_DEFAULT_IO_THREADS": "PERF_MULTI_DEFAULT_IO_THREADS",
+    "PERF_TIMEOUT_SECONDS": "PERF_MULTI_TIMEOUT_SECONDS",
+    "PERF_RUN_COOLDOWN_MS": "PERF_MULTI_RUN_COOLDOWN_MS",
+    "PERF_TRANSPORT_TRANSITION_MS": "PERF_MULTI_TRANSPORT_TRANSITION_MS",
+    "PERF_PATTERN_TRANSITION_MS": "PERF_MULTI_PATTERN_TRANSITION_MS",
+    "PERF_SERVICE_CLIENTS": "PERF_MULTI_SERVICE_CLIENTS",
+    "PERF_SNDHWM": "PERF_MULTI_SNDHWM",
+    "PERF_RCVHWM": "PERF_MULTI_RCVHWM",
+    "PERF_SNDBUF": "PERF_MULTI_SNDBUF",
+    "PERF_RCVBUF": "PERF_MULTI_RCVBUF",
+    "PERF_PUBSUB_XPUB_NODROP": "PERF_MULTI_PUBSUB_XPUB_NODROP",
+    "PERF_SPOT_XPUB_NODROP": "PERF_MULTI_SPOT_XPUB_NODROP",
+}
 
 
 class TeeStream:
@@ -209,6 +225,9 @@ def resolve_required_binaries(current_bin, pattern_name):
 
 
 def collect_unsupported_patterns(pattern_names, recv_mode):
+    if not ALLOW_MULTI:
+        return []
+
     unsupported = []
     for pattern in pattern_names:
         normalized = normalize_multi_pattern_name(pattern)
@@ -250,21 +269,13 @@ def resolve_latency_triplet(latency, latency_p95, latency_p99):
 
 
 def resolve_linux_paths():
-    """Return build/library paths rooted at the official core/build directory."""
-    build_root = os.path.join(ROOT_DIR, "core", "build")
-    build_dir = os.path.join(build_root, "bin")
-    if IS_WINDOWS:
-        release_dir = os.path.join(build_dir, "Release")
-        if os.path.isdir(release_dir):
-            build_dir = release_dir
-    base = os.path.basename(build_root)
-    if base in BUILD_CONFIG_DIRS:
-        bin_root = os.path.dirname(build_root)
-        if os.path.basename(bin_root) == "bin":
-            build_root = os.path.dirname(bin_root)
-    elif base == "bin":
-        build_root = os.path.dirname(build_root)
-    current_lib_dir = os.path.abspath(os.path.join(build_root, "lib"))
+    """Return binding-local C++ perf runtime paths."""
+    suite = "multi" if ALLOW_MULTI else "single"
+    runtime_root = os.path.join(
+        ROOT_DIR, "bindings", "cpp", "perf", ".runtime", suite
+    )
+    build_dir = normalize_build_dir(os.path.join(runtime_root, "bin"))
+    current_lib_dir = derive_current_lib_dir(build_dir)
     return build_dir, current_lib_dir
 
 
@@ -274,6 +285,14 @@ def normalize_build_dir(path):
     abs_path = os.path.abspath(path)
     if not os.path.isdir(abs_path):
         return abs_path
+
+    nested_bindings_perf = os.path.join(abs_path, "bindings", "c", "perf")
+    if os.path.isdir(nested_bindings_perf):
+        return nested_bindings_perf
+
+    perf_dir = os.path.join(abs_path, "perf")
+    if os.path.isdir(perf_dir):
+        return perf_dir
 
     base = os.path.basename(abs_path)
     if base in BUILD_CONFIG_DIRS:
@@ -299,6 +318,9 @@ def normalize_build_dir(path):
 
 def derive_current_lib_dir(build_dir):
     build_root = build_dir
+    discovered_root = find_cmake_build_root(build_root)
+    if discovered_root:
+        build_root = discovered_root
     base = os.path.basename(build_root)
     if base in BUILD_CONFIG_DIRS:
         bin_root = os.path.dirname(build_root)
@@ -306,11 +328,27 @@ def derive_current_lib_dir(build_dir):
             build_root = os.path.dirname(bin_root)
     elif base == "bin":
         build_root = os.path.dirname(build_root)
+    direct_lib = os.path.join(build_root, "libzlink.so")
+    direct_lib_dylib = os.path.join(build_root, "libzlink.dylib")
+    direct_lib_dll = os.path.join(build_root, "zlink.dll")
+    if os.path.isfile(direct_lib) or os.path.isfile(direct_lib_dylib) or os.path.isfile(direct_lib_dll):
+        return os.path.abspath(build_root)
     return os.path.abspath(os.path.join(build_root, "lib"))
 
 
 def has_cmake_cache(path):
     return os.path.isfile(os.path.join(path, "CMakeCache.txt"))
+
+
+def find_cmake_build_root(path):
+    current = os.path.abspath(path)
+    while True:
+        if has_cmake_cache(current):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return ""
+        current = parent
 
 
 def derive_cmake_build_dir(runtime_build_dir):
@@ -320,8 +358,9 @@ def derive_cmake_build_dir(runtime_build_dir):
     abs_path = os.path.abspath(runtime_build_dir)
     if not os.path.isdir(abs_path):
         return ""
-    if has_cmake_cache(abs_path):
-        return abs_path
+    discovered_root = find_cmake_build_root(abs_path)
+    if discovered_root:
+        return discovered_root
 
     base = os.path.basename(abs_path)
     if base in BUILD_CONFIG_DIRS:
@@ -339,7 +378,10 @@ def derive_cmake_build_dir(runtime_build_dir):
 
 
 if IS_WINDOWS:
-    BUILD_DIR = normalize_build_dir(os.path.join(ROOT_DIR, "core", "build"))
+    _suite = "multi" if ALLOW_MULTI else "single"
+    BUILD_DIR = normalize_build_dir(
+        os.path.join(ROOT_DIR, "bindings", "cpp", "perf", ".runtime", _suite, "bin")
+    )
     CURRENT_LIB_DIR = derive_current_lib_dir(BUILD_DIR)
 else:
     BUILD_DIR, CURRENT_LIB_DIR = resolve_linux_paths()
@@ -348,9 +390,19 @@ DEFAULT_NUM_RUNS = 1
 
 
 def _read_env_value(name, *fallback_names):
+    keys = []
     for key in (name,) + fallback_names:
-        if not key:
+        if ALLOW_MULTI:
+            alias = MULTI_ENV_ALIAS_MAP.get(key)
+            if alias:
+                keys.append(alias)
+        keys.append(key)
+
+    seen = set()
+    for key in keys:
+        if not key or key in seen:
             continue
+        seen.add(key)
         val = os.environ.get(key)
         if val:
             return val
@@ -558,6 +610,10 @@ NON_SERVICE_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 if not IS_WINDOWS:
     NON_SERVICE_TRANSPORTS.append("ipc")
 
+# SPOT control-plane patterns are official perf targets on every network
+# transport used by the multi suite.
+SPOT_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
+
 # STREAM socket uses different transports (raw TCP/TLS/WS/WSS)
 STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 FAIL_FAST = os.environ.get("PERF_FAIL_FAST", "0") == "1"
@@ -571,9 +627,12 @@ def is_pattern(pattern_name):
 
 
 def select_transports(pattern_name):
-    service_or_stream = pattern_name in STREAM_VARIANT_PATTERNS or pattern_name in ("SPOT", "SPOT_SENDSEND", "SPOT_REQREP")
-    if pattern_name in ("SPOT", "SPOT_SENDSEND", "SPOT_REQREP"):
-        base = STREAM_TRANSPORTS
+    service_or_stream = (
+        pattern_name in STREAM_VARIANT_PATTERNS
+        or pattern_name in SPOT_CONTROL_PATTERNS
+    )
+    if pattern_name in SPOT_CONTROL_PATTERNS:
+        base = SPOT_TRANSPORTS
     elif service_or_stream:
         base = STREAM_TRANSPORTS
     elif is_pattern(pattern_name):
@@ -614,42 +673,6 @@ DEFAULT_RUN_COOLDOWN_MS = max(
 
 base_env = os.environ.copy()
 
-MULTI_ENV_ALIAS_MAP = {
-    "PERF_MULTI_CLIENTS": "PERF_CLIENTS",
-    "PERF_MULTI_DURATION_SECONDS": "PERF_DURATION_SECONDS",
-    "PERF_MULTI_CONNECT_CONCURRENCY": "PERF_CONNECT_CONCURRENCY",
-    "PERF_MULTI_CONNECT_READY_TIMEOUT_MS": "PERF_CONNECT_READY_TIMEOUT_MS",
-    "PERF_MULTI_MONITOR_HWM": "PERF_MONITOR_HWM",
-    "PERF_MULTI_SERVER_READY_TIMEOUT_MS": "PERF_SERVER_READY_TIMEOUT_MS",
-    "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS": "PERF_SERVER_SHUTDOWN_TIMEOUT_MS",
-    "PERF_MULTI_SERVER_BIND_PORT": "PERF_SERVER_BIND_PORT",
-    "PERF_MULTI_SERVER_IO_THREADS": "PERF_SERVER_IO_THREADS",
-    "PERF_MULTI_CLIENT_IO_THREADS": "PERF_CLIENT_IO_THREADS",
-    "PERF_MULTI_STREAM_SERVER_IO_THREADS": "PERF_STREAM_SERVER_IO_THREADS",
-    "PERF_MULTI_STREAM_CLIENT_IO_THREADS": "PERF_STREAM_CLIENT_IO_THREADS",
-    "PERF_MULTI_DEFAULT_IO_THREADS": "PERF_DEFAULT_IO_THREADS",
-    "PERF_MULTI_HWM": "PERF_HWM",
-    "PERF_MULTI_SNDHWM": "PERF_SNDHWM",
-    "PERF_MULTI_RCVHWM": "PERF_RCVHWM",
-    "PERF_MULTI_SNDBUF": "PERF_SNDBUF",
-    "PERF_MULTI_RCVBUF": "PERF_RCVBUF",
-    "PERF_MULTI_SNDTIMEO_MS": "PERF_SNDTIMEO_MS",
-    "PERF_MULTI_RCVTIMEO_MS": "PERF_RCVTIMEO_MS",
-}
-
-
-def sync_multi_env_aliases(env):
-    if not ALLOW_MULTI:
-        return
-    for source_key, alias_key in MULTI_ENV_ALIAS_MAP.items():
-        source_value = env.get(source_key, "").strip()
-        alias_value = env.get(alias_key, "").strip()
-        if source_value and not alias_value:
-            env[alias_key] = source_value
-
-
-sync_multi_env_aliases(base_env)
-
 ENV_ALIAS_KEYS = (
     "PERF_TRANSPORTS",
     "PERF_MSG_SIZES",
@@ -683,16 +706,25 @@ ENV_ALIAS_KEYS = (
     "PERF_STREAM_DRAIN_RELAY_BUDGET",
 )
 def env_pair_value(env, key):
+    if ALLOW_MULTI:
+        alias = MULTI_ENV_ALIAS_MAP.get(key)
+        if alias:
+            value = env.get(alias, "").strip()
+            if value:
+                return value
     return env.get(key, "").strip()
 
 
 def set_env_pair(env, key, value):
     env[key] = str(value)
+    if ALLOW_MULTI:
+        alias = MULTI_ENV_ALIAS_MAP.get(key)
+        if alias:
+            env[alias] = str(value)
 
 
 def get_env_for_lib(_lib_name):
     env = base_env.copy()
-    sync_multi_env_aliases(env)
     if IS_WINDOWS:
         env["PATH"] = f"{CURRENT_LIB_DIR};{env.get('PATH', '')}"
     else:
@@ -783,6 +815,592 @@ def parse_result_line(line, transport, expected_sizes):
     return (line_transport, line_size, metric, value), None
 
 
+_AUTO_HWM_DETAIL_SEEN = set()
+_AUTO_HWM_DETAIL_ROWS = []
+_AUTO_HWM_DETAIL_TABLE_SEEN = set()
+
+
+def emit_auto_hwm_detail_line(line):
+    stripped = (line or "").strip()
+    if not stripped.startswith("AUTO_HWM_DETAIL,"):
+        return
+    fields = {}
+    for item in stripped.split(",")[1:]:
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        fields[key.strip()] = value.strip()
+
+    dedup_key = (
+        fields.get("pattern", ""),
+        fields.get("transport", ""),
+        fields.get("component", ""),
+        fields.get("label", ""),
+        fields.get("msg_size", ""),
+        fields.get("source", ""),
+        fields.get("role", ""),
+        fields.get("managed_connections", ""),
+        fields.get("active_connections", ""),
+        fields.get("scope", ""),
+        fields.get("scope_count", ""),
+        fields.get("sndhwm", ""),
+        fields.get("rcvhwm", ""),
+        fields.get("effective_message_bytes", ""),
+        fields.get("effective_sndbuf", ""),
+        fields.get("effective_rcvbuf", ""),
+        fields.get("socket_message_slots", ""),
+        fields.get("auto_buffer_bytes", ""),
+        fields.get("manual_buffer_bytes", ""),
+        fields.get("unit_budget_bytes", ""),
+    )
+    if dedup_key in _AUTO_HWM_DETAIL_SEEN:
+        return
+    _AUTO_HWM_DETAIL_SEEN.add(dedup_key)
+    fields["_dedup_key"] = dedup_key
+    _AUTO_HWM_DETAIL_ROWS.append(fields)
+
+
+def _auto_hwm_cell_widths(rows, columns):
+    widths = []
+    for header, key in columns:
+        width = len(header)
+        for fields in rows:
+            width = max(width, len(str(fields.get(key, "?"))))
+        widths.append(width)
+    return widths
+
+
+def _auto_hwm_emit_markdown_table(emit, indent, columns, rows):
+    widths = _auto_hwm_cell_widths(rows, columns)
+    header_cells = [
+        f" {header:<{widths[index]}} "
+        for index, (header, _key) in enumerate(columns)
+    ]
+    sep_cells = ["-" * (width + 2) for width in widths]
+    emit(f"{indent}|" + "|".join(header_cells) + "|")
+    emit(f"{indent}|" + "|".join(sep_cells) + "|")
+    for fields in rows:
+        cells = [
+            f" {str(fields.get(key, '?')):<{widths[index]}} "
+            for index, (_header, key) in enumerate(columns)
+        ]
+        emit(f"{indent}|" + "|".join(cells) + "|")
+
+
+def _auto_hwm_pattern_is_spot(pattern_name):
+    return normalize_multi_pattern_name(pattern_name) in SPOT_CONTROL_PATTERNS
+
+
+def _auto_hwm_spot_scope_and_socket(label):
+    raw = (label or "").strip()
+    if raw.startswith("spotnode_"):
+        return "shared", raw[len("spotnode_") :]
+    if raw.startswith("spotend_"):
+        return "per-spot", raw[len("spotend_") :]
+    return "", raw or "socket"
+
+
+def _auto_hwm_active_hwm_fields(row):
+    socket_type = (row.get("socket_type") or row.get("type") or "").lower()
+    role = (row.get("role") or "").lower()
+    send_active = True
+    recv_active = True
+    if socket_type in ("pub", "xpub") and role in ("spot_data", "control"):
+        recv_active = False
+    if socket_type in ("sub", "xsub") and role in ("recv_ingress", "control"):
+        send_active = False
+    return send_active, recv_active
+
+
+def _auto_hwm_apply_active_hwm_display(row):
+    display = dict(row)
+    send_active, recv_active = _auto_hwm_active_hwm_fields(display)
+    if not send_active:
+        display["sndhwm"] = "-"
+    if not recv_active:
+        display["rcvhwm"] = "-"
+    return display
+
+
+def _auto_hwm_spot_display_rows(rows, scope):
+    display_rows = []
+    for fields in rows:
+        row_scope, socket = _auto_hwm_spot_scope_and_socket(fields.get("label", ""))
+        row_scope = fields.get("scope", "") or row_scope
+        if row_scope != scope:
+            continue
+        display = dict(fields)
+        display["scope"] = row_scope
+        display["socket"] = socket
+        display["managed"] = fields.get("managed_connections", "")
+        display["active"] = fields.get("active_connections", "")
+        display_rows.append(_auto_hwm_apply_active_hwm_display(display))
+    return display_rows
+
+
+def _auto_hwm_emit_spot_socket_table(emit, title, rows):
+    if not rows:
+        return False
+    display_rows = []
+    seen = set()
+    for row in rows:
+        key = tuple(row.get(name, "") for name in (
+            "transport",
+            "socket",
+            "scope",
+            "source",
+            "role",
+            "sndhwm",
+            "rcvhwm",
+            "effective_sndbuf",
+            "effective_rcvbuf",
+        ))
+        if key in seen:
+            continue
+        seen.add(key)
+        display_rows.append(row)
+    emit(f"    {title}:")
+    _auto_hwm_emit_markdown_table(
+        emit,
+        "      ",
+        (
+            ("Socket", "socket"),
+            ("Scope", "scope"),
+            ("Source", "source"),
+            ("Role", "role"),
+            ("SNDHWM", "sndhwm"),
+            ("RCVHWM", "rcvhwm"),
+            ("SNDBUF", "effective_sndbuf"),
+            ("RCVBUF", "effective_rcvbuf"),
+        ),
+        display_rows,
+    )
+    return True
+
+
+def _auto_hwm_emit_spot_snapshot_socket_table(emit, title, rows):
+    if not rows:
+        return False
+    display_rows = []
+    seen = set()
+    for row in sorted(
+        rows,
+        key=lambda item: (
+            _auto_hwm_parse_int(item.get("msg_size", "0")),
+            _auto_hwm_parse_int(item.get("owner_id", "0")),
+            item.get("socket", ""),
+            item.get("role", ""),
+        ),
+    ):
+        display = dict(row)
+        display["managed"] = row.get("managed_connections", "")
+        display["active"] = row.get("active_connections", "")
+        display["type"] = row.get("socket_type", "")
+        display = _auto_hwm_apply_active_hwm_display(display)
+        key = tuple(display.get(name, "") for name in (
+            "msg_size",
+            "effective_message_bytes",
+            "socket",
+            "type",
+            "role",
+            "sndhwm",
+            "rcvhwm",
+            "effective_sndbuf",
+            "effective_rcvbuf",
+        ))
+        if key in seen:
+            continue
+        seen.add(key)
+        display_rows.append(display)
+    if not display_rows:
+        return False
+    emit(f"    {title}:")
+    grouped_rows = {}
+    group_order = []
+    for row in display_rows:
+        group_key = (
+            row.get("msg_size", ""),
+            row.get("effective_message_bytes", ""),
+        )
+        if group_key not in grouped_rows:
+            grouped_rows[group_key] = []
+            group_order.append(group_key)
+        grouped_rows[group_key].append(row)
+
+    for index, group_key in enumerate(group_order):
+        msg_size, msg_unit = group_key
+        emit("      " f"- Size(B)={msg_size}, MsgUnit(B)={msg_unit}")
+        _auto_hwm_emit_markdown_table(
+            emit,
+            "      ",
+            (
+                ("Socket", "socket"),
+                ("Type", "type"),
+                ("Role", "role"),
+                ("SNDHWM", "sndhwm"),
+                ("RCVHWM", "rcvhwm"),
+                ("SNDBUF", "effective_sndbuf"),
+                ("RCVBUF", "effective_rcvbuf"),
+            ),
+            grouped_rows[group_key],
+        )
+        if index + 1 < len(group_order):
+            emit("      ")
+    return True
+
+
+def _auto_hwm_emit_spot_common_table(emit, rows):
+    common_rows = []
+    seen = set()
+    for fields in rows:
+        key = tuple(
+            fields.get(name, "")
+            for name in (
+                "unit_budget_bytes",
+                "auto_buffer_bytes",
+                "manual_buffer_bytes",
+                "buffer_connections",
+                "runtime_reserve_bytes",
+                "effective_message_bytes",
+                "enabled",
+            )
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        enabled = fields.get("enabled", "")
+        policy = "auto-hwm" if enabled == "1" else "off"
+        common_rows.append(
+            {
+                "unit_budget_bytes": fields.get("unit_budget_bytes", ""),
+                "auto_buffer_bytes": fields.get("auto_buffer_bytes", ""),
+                "manual_buffer_bytes": fields.get("manual_buffer_bytes", ""),
+                "buffer_connections": fields.get("buffer_connections", ""),
+                "runtime_reserve_bytes": fields.get("runtime_reserve_bytes", ""),
+                "effective_message_bytes": fields.get("effective_message_bytes", ""),
+                "policy": policy,
+            }
+        )
+    if not common_rows:
+        return False
+    emit("    Auto-HWM common:")
+    _auto_hwm_emit_markdown_table(
+        emit,
+        "      ",
+        (
+            ("UnitBudget(B)", "unit_budget_bytes"),
+            ("AutoBuffer(B)", "auto_buffer_bytes"),
+            ("ManualBuffer(B)", "manual_buffer_bytes"),
+            ("BufferConn", "buffer_connections"),
+            ("Runtime(B)", "runtime_reserve_bytes"),
+            ("MsgUnit(B)", "effective_message_bytes"),
+            ("Policy", "policy"),
+        ),
+        common_rows,
+    )
+    return True
+
+
+def _auto_hwm_emit_spot_policy_table(emit, rows):
+    policy_rows = []
+    seen = set()
+    for fields in rows:
+        scope, _socket = _auto_hwm_spot_scope_and_socket(fields.get("label", ""))
+        scope = fields.get("scope", "") or scope
+        if not scope:
+            continue
+        row = {
+            "transport": fields.get("transport", ""),
+            "scope": scope,
+            "scope_count": fields.get("scope_count", ""),
+            "role": fields.get("role", ""),
+            "unit_budget_bytes": fields.get("unit_budget_bytes", ""),
+            "socket_message_slots": fields.get("socket_message_slots", ""),
+            "effective_message_bytes": fields.get("effective_message_bytes", ""),
+            "sndhwm": fields.get("sndhwm", ""),
+            "rcvhwm": fields.get("rcvhwm", ""),
+            "size_cap": fields.get("size_cap", ""),
+            "managed": fields.get("managed_connections", ""),
+            "active": fields.get("active_connections", ""),
+            "base": fields.get("base_floor_per_connection", ""),
+            "reason": fields.get("last_recalc_reason", ""),
+        }
+        row = _auto_hwm_apply_active_hwm_display(row)
+        key = tuple(row.get(name, "") for name in (
+            "scope",
+            "scope_count",
+            "role",
+            "unit_budget_bytes",
+            "socket_message_slots",
+            "effective_message_bytes",
+            "sndhwm",
+            "rcvhwm",
+            "size_cap",
+            "base",
+            "reason",
+        ))
+        if key in seen:
+            continue
+        seen.add(key)
+        policy_rows.append(row)
+    if not policy_rows:
+        return False
+    emit("    Auto-HWM policy:")
+    _auto_hwm_emit_markdown_table(
+        emit,
+        "      ",
+        (
+            ("Scope", "scope"),
+            ("ScopeCount", "scope_count"),
+            ("Role", "role"),
+            ("UnitBudget(B)", "unit_budget_bytes"),
+            ("MsgUnit(B)", "effective_message_bytes"),
+            ("MsgSlots", "socket_message_slots"),
+            ("SNDHWM", "sndhwm"),
+            ("RCVHWM", "rcvhwm"),
+            ("SizeCap", "size_cap"),
+            ("Base", "base"),
+            ("Reason", "reason"),
+        ),
+        policy_rows,
+    )
+    return True
+
+
+def _auto_hwm_emit_spot_tables(emit, rows):
+    snapshot_rows = [
+        fields
+        for fields in rows
+        if fields.get("source") == "spotnode_snapshot"
+        and fields.get("socket")
+    ]
+    if snapshot_rows:
+        node_rows = [
+            fields for fields in snapshot_rows if fields.get("owner") == "node"
+        ]
+        spot_rows = [
+            fields for fields in snapshot_rows if fields.get("owner") == "spot"
+        ]
+        emitted = False
+        emitted = (
+            _auto_hwm_emit_spot_snapshot_socket_table(
+                emit, "Auto-HWM spotnode", node_rows
+            )
+            or emitted
+        )
+        emitted = (
+            _auto_hwm_emit_spot_snapshot_socket_table(
+                emit, "Auto-HWM spot handles", spot_rows
+            )
+            or emitted
+        )
+        return emitted
+
+    spot_rows = [
+        fields
+        for fields in rows
+        if fields.get("source") != "option_fallback"
+        and _auto_hwm_spot_scope_and_socket(fields.get("label", ""))[0]
+    ]
+    if not spot_rows:
+        return False
+
+    emitted = False
+    emitted = _auto_hwm_emit_spot_common_table(emit, spot_rows) or emitted
+    emitted = (
+        _auto_hwm_emit_spot_socket_table(
+            emit, "Auto-HWM spotnode", _auto_hwm_spot_display_rows(spot_rows, "shared")
+        )
+        or emitted
+    )
+    emitted = (
+        _auto_hwm_emit_spot_socket_table(
+            emit,
+            "Auto-HWM spot handles",
+            _auto_hwm_spot_display_rows(spot_rows, "per-spot"),
+        )
+        or emitted
+    )
+    emitted = _auto_hwm_emit_spot_policy_table(emit, spot_rows) or emitted
+    return emitted
+
+
+def _auto_hwm_parse_int(value, default=0):
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _auto_hwm_bytes_to_kb_display(value):
+    parsed = _auto_hwm_parse_int(value, -1)
+    if parsed < 0:
+        return ""
+    return str(parsed // 1024)
+
+
+def _auto_hwm_bytes_to_mb_display(value):
+    parsed = _auto_hwm_parse_int(value, -1)
+    if parsed < 0:
+        return ""
+    return str(parsed // (1024 * 1024))
+
+
+def _auto_hwm_expected_hwm(fields):
+    unit_budget = _auto_hwm_parse_int(fields.get("unit_budget_bytes", ""), 0)
+    msg_unit = _auto_hwm_parse_int(
+        fields.get("effective_message_bytes", ""), 0
+    )
+    size_cap = _auto_hwm_parse_int(fields.get("size_cap", ""), 0)
+    if unit_budget <= 0 or msg_unit <= 0:
+        return None
+
+    hwm = (unit_budget + msg_unit - 1) // msg_unit
+    if hwm < 1:
+        hwm = 1
+    if size_cap > 0:
+        hwm = min(hwm, size_cap)
+    return hwm
+
+
+def _auto_hwm_expected_match_score(fields):
+    expected = _auto_hwm_expected_hwm(fields)
+    if expected is None:
+        return 2
+
+    sndhwm = _auto_hwm_parse_int(fields.get("sndhwm", ""), -1)
+    rcvhwm = _auto_hwm_parse_int(fields.get("rcvhwm", ""), -1)
+    matches = 0
+    visible = 0
+    if sndhwm >= 0:
+        visible += 1
+        if sndhwm == expected:
+            matches += 1
+    if rcvhwm >= 0:
+        visible += 1
+        if rcvhwm == expected:
+            matches += 1
+    if visible == 0:
+        return 2
+    return 0 if matches == visible else 1 if matches > 0 else 2
+
+
+def _auto_hwm_select_non_spot_display_rows(rows):
+    selected = {}
+    for index, fields in enumerate(rows):
+        logical_key = (
+            fields.get("msg_size", ""),
+            fields.get("component", ""),
+            fields.get("socket_type", ""),
+            fields.get("unit_budget_bytes", ""),
+            fields.get("effective_message_bytes", ""),
+        )
+        score = _auto_hwm_expected_match_score(fields)
+        previous = selected.get(logical_key)
+        if previous is None:
+            selected[logical_key] = (score, index, fields)
+            continue
+        previous_score, previous_index, _previous_fields = previous
+        if score < previous_score or (
+            score == previous_score and index > previous_index
+        ):
+            selected[logical_key] = (score, index, fields)
+    return [item[2] for item in selected.values()]
+
+
+def emit_auto_hwm_detail_table(emit, pattern_name):
+    pattern = normalize_multi_pattern_name(pattern_name)
+    rows = []
+    for fields in _AUTO_HWM_DETAIL_ROWS:
+        row_pattern = normalize_multi_pattern_name(fields.get("pattern", ""))
+        if row_pattern != pattern:
+            continue
+        dedup_key = fields.get("_dedup_key")
+        table_key = (pattern, dedup_key)
+        if table_key in _AUTO_HWM_DETAIL_TABLE_SEEN:
+            continue
+        rows.append(fields)
+    if not rows:
+        return False
+
+    if _auto_hwm_pattern_is_spot(pattern):
+        if not _auto_hwm_emit_spot_tables(emit, rows):
+            return False
+        for fields in rows:
+            _AUTO_HWM_DETAIL_TABLE_SEEN.add((pattern, fields.get("_dedup_key")))
+        return True
+
+    rows = [
+        fields
+        for fields in rows
+        if fields.get("msg_size", "") and fields.get("msg_size", "") != "0"
+    ]
+    if not rows:
+        return False
+    rows.sort(
+        key=lambda fields: (
+            _auto_hwm_parse_int(fields.get("msg_size", ""), 0),
+            fields.get("component", ""),
+            fields.get("socket_type", ""),
+        )
+    )
+
+    emit("    Auto-HWM detail:")
+    display_rows = []
+    seen_display_rows = set()
+    for fields in _auto_hwm_select_non_spot_display_rows(rows):
+        display = dict(fields)
+        display["type"] = fields.get("socket_type", "")
+        msg_size = fields.get("msg_size", "")
+        display["msg_size_display"] = msg_size if msg_size and msg_size != "0" else "?"
+        display["unit_budget_kb"] = _auto_hwm_bytes_to_kb_display(
+            fields.get("unit_budget_bytes", "")
+        )
+        display["effective_sndbuf_kb"] = _auto_hwm_bytes_to_kb_display(
+            fields.get("effective_sndbuf", "")
+        )
+        display["effective_rcvbuf_kb"] = _auto_hwm_bytes_to_kb_display(
+            fields.get("effective_rcvbuf", "")
+        )
+        display_key = tuple(
+            display.get(name, "")
+            for name in (
+                "msg_size_display",
+                "component",
+                "type",
+                "unit_budget_kb",
+                "effective_message_bytes",
+                "sndhwm",
+                "rcvhwm",
+                "effective_sndbuf_kb",
+                "effective_rcvbuf_kb",
+            )
+        )
+        if display_key in seen_display_rows:
+            continue
+        seen_display_rows.add(display_key)
+        display_rows.append(display)
+    _auto_hwm_emit_markdown_table(
+        emit,
+        "      ",
+        (
+            ("Size(B)", "msg_size_display"),
+            ("Component", "component"),
+            ("Type", "type"),
+            ("UnitBudget(KB)", "unit_budget_kb"),
+            ("MsgUnit(B)", "effective_message_bytes"),
+            ("SNDHWM", "sndhwm"),
+            ("RCVHWM", "rcvhwm"),
+            ("SNDBUF(KB)", "effective_sndbuf_kb"),
+            ("RCVBUF(KB)", "effective_rcvbuf_kb"),
+        ),
+        display_rows,
+    )
+    for fields in rows:
+        _AUTO_HWM_DETAIL_TABLE_SEEN.add((pattern, fields.get("_dedup_key")))
+    return True
+
+
 def _emit_result_metric_callback(
     result_line_callback, line_transport, line_size, metric_name, value
 ):
@@ -822,13 +1440,6 @@ def parse_special_token(line):
                 normalize_multi_pattern_name(parts[2].strip()),
                 parts[3].strip().lower(),
             )
-        if len(parts) >= 3:
-            return (
-                "unsupported",
-                "current",
-                normalize_multi_pattern_name(parts[1].strip()),
-                parts[2].strip().lower(),
-            )
     if stripped.startswith("SKIP,"):
         parts = stripped.split(",", 5)
         if len(parts) >= 5:
@@ -867,6 +1478,9 @@ def detect_special_status(stdout, expected_lib, expected_pattern, expected_trans
 
 
 def pattern_default_clients(pattern_name, transport=None):
+    normalized = normalize_multi_pattern_name(pattern_name)
+    if normalized == "SPOT_SENDSEND":
+        return 32
     if pattern_name in STREAM_VARIANT_PATTERNS:
         base = 10000
         tr = (transport or "").strip().lower()
@@ -1012,59 +1626,6 @@ def summarize_server_startup_detail(stdout_text, stderr_text, max_len=180):
     return detail
 
 
-def is_bind_blocked_output(text):
-    lowered = (text or "").lower()
-    if not lowered:
-        return False
-
-    direct_markers = (
-        "operation not permitted",
-        "permission denied",
-        "address already in use",
-        "listen eperm",
-        "eaddrinuse",
-        "eperm",
-        "errno=98",
-        "errno 98",
-        "internal_errno=98",
-        "binderror(code=502, internal_errno=98)",
-        "binderror(code=0, internal_errno=1)",
-    )
-    if any(marker in lowered for marker in direct_markers):
-        return True
-
-    if "reason=108" in lowered:
-        bind_context = (
-            "bind",
-            "listen",
-            "server_ready_timeout",
-            "server_exit_before_ready",
-            "address already in use",
-            "operation not permitted",
-            "permission denied",
-        )
-        if any(marker in lowered for marker in bind_context):
-            return True
-
-    return False
-
-
-def is_unsupported_output(text):
-    lowered = (text or "").lower()
-    if not lowered:
-        return False
-    if "protocol not supported" in lowered:
-        return True
-    if "unsupported,current," in lowered:
-        return True
-    return is_bind_blocked_output(lowered)
-
-
-def is_sandbox_blocked_transport(transport):
-    (void_transport) = transport
-    return False
-
-
 def _pipe_reader(pipe, stream_name, out_queue):
     try:
         for line in iter(pipe.readline, ""):
@@ -1084,7 +1645,7 @@ def build_bench_cmd(binary_path, args):
 
 
 def _resolve_server_timeouts(pattern_name, transport, ready_timeout_ms, shutdown_timeout_ms):
-    if pattern_name == "SPOT" and transport in ("tls", "wss"):
+    if pattern_name in SPOT_CONTROL_PATTERNS and transport in ("tls", "wss"):
         ready_timeout_ms = max(ready_timeout_ms, 20000)
         shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
     return ready_timeout_ms, shutdown_timeout_ms
@@ -1121,29 +1682,21 @@ def _prepare_case_env(
     if force_stream_sizes or pattern_name in STREAM_VARIANT_PATTERNS:
         set_env_pair(env, "PERF_STREAM_MSG_SIZES", size_csv)
 
-    clients_value = env_pair_value(env, "PERF_CLIENTS") or env_pair_value(
-        env, "PERF_MULTI_CLIENTS"
-    )
+    clients_value = env_pair_value(env, "PERF_CLIENTS")
     if not clients_value:
         clients_value = str(pattern_default_clients(pattern_name, transport))
     set_env_pair(env, "PERF_CLIENTS", clients_value)
-    if ALLOW_MULTI:
-        set_env_pair(env, "PERF_MULTI_CLIENTS", clients_value)
     try:
         clients_int = max(1, int(clients_value))
     except ValueError:
         clients_int = pattern_default_clients(pattern_name, transport)
 
-    connect_value = env_pair_value(env, "PERF_CONNECT_CONCURRENCY") or env_pair_value(
-        env, "PERF_MULTI_CONNECT_CONCURRENCY"
-    )
+    connect_value = env_pair_value(env, "PERF_CONNECT_CONCURRENCY")
     if not connect_value:
         connect_value = str(resolve_pattern_connect_concurrency(clients_int))
     set_env_pair(env, "PERF_CONNECT_CONCURRENCY", connect_value)
-    if ALLOW_MULTI:
-        set_env_pair(env, "PERF_MULTI_CONNECT_CONCURRENCY", connect_value)
 
-    if pattern_name == "SPOT":
+    if pattern_name in SPOT_CONTROL_PATTERNS:
         spot_idle_sleep_ms = max(1, parse_env_int("PERF_SPOT_IDLE_SLEEP_MS", 1))
         set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
 
@@ -1173,6 +1726,49 @@ def run_sizes_test_stream_shared(
     pattern_name,
     result_line_callback=None,
 ):
+    if len(sizes) > 1:
+        size_transition_ms = max(
+            0, parse_env_int("PERF_STREAM_SIZE_TRANSITION_MS", 3000)
+        )
+        merged = {
+            "status": "success",
+            "parsed": {},
+            "timed_out": False,
+            "returncode": 0,
+            "reason": "",
+            "warnings": [],
+        }
+        failure_reasons = []
+        for size in sizes:
+            outcome = run_sizes_test_stream_shared(
+                server_binary_name,
+                lib_name,
+                transport,
+                [size],
+                pattern_name,
+                result_line_callback=result_line_callback,
+            )
+            merged["parsed"].update(outcome.get("parsed", {}) or {})
+            merged["warnings"].extend(outcome.get("warnings", []) or [])
+            merged["returncode"] = max(
+                int(merged.get("returncode", 0) or 0),
+                int(outcome.get("returncode", 0) or 0),
+            )
+            merged["timed_out"] = bool(merged["timed_out"] or outcome.get("timed_out"))
+
+            status = outcome.get("status", "fail")
+            if status != "success":
+                merged["status"] = "fail"
+                reason = (outcome.get("reason", "") or "").strip() or f"size_{size}_failed"
+                failure_reasons.append(f"{size}:{reason}")
+
+            if size_transition_ms > 0 and size != sizes[-1]:
+                time.sleep(size_transition_ms / 1000.0)
+
+        if failure_reasons:
+            merged["reason"] = ";".join(failure_reasons)
+        return merged
+
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     shared_client_path = os.path.join(BUILD_DIR, STREAM_SHARED_CLIENT_BINARY + EXE_SUFFIX)
     if not os.path.exists(server_binary_path) or not os.path.exists(shared_client_path):
@@ -1198,7 +1794,6 @@ def run_sizes_test_stream_shared(
     )
     bind_port = max(0, parse_env_int("PERF_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
-    fallback_size = sizes[0] if sizes else 64
 
     (
         env,
@@ -1217,10 +1812,7 @@ def run_sizes_test_stream_shared(
     set_env_pair(env, "PERF_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
     set_env_pair(env, "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
     set_env_pair(env, "PERF_SERVER_BIND_PORT", bind_port)
-    server_args = [lib_name, transport]
-    if normalize_multi_pattern_name(pattern_name) in ("SPOT", "SPOT_SENDSEND", "STREAM"):
-        server_args.append(str(fallback_size))
-    server_cmd = build_bench_cmd(server_binary_path, server_args)
+    server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
     shared_client_args = [
         "--transport",
         transport,
@@ -1244,6 +1836,10 @@ def run_sizes_test_stream_shared(
     client_cmd = build_bench_cmd(shared_client_path, shared_client_args)
     server_env = env.copy()
     client_env = env.copy()
+    server_env["PERF_MULTI_COMPONENT"] = "server"
+    client_env["PERF_MULTI_COMPONENT"] = "client"
+    server_env["PERF_MULTI_TRANSPORT"] = transport
+    client_env["PERF_MULTI_TRANSPORT"] = transport
     set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
     set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
     if pattern_name == "PUBSUB":
@@ -1256,7 +1852,7 @@ def run_sizes_test_stream_shared(
     out_queue = queue.Queue()
     reader_threads = []
     debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
-    use_control_plane = normalize_multi_pattern_name(pattern_name) in ("SPOT", "SPOT_SENDSEND")
+    use_control_plane = normalize_multi_pattern_name(pattern_name) in SPOT_CONTROL_PATTERNS
     control_connected = [not use_control_plane]
     pending_ready_sizes = set()
     pending_phase_active_sizes = set()
@@ -1289,8 +1885,7 @@ def run_sizes_test_stream_shared(
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
-        if debug_transitions:
-            sys.stderr.write(f"[server-out] {line}\n")
+        emit_auto_hwm_detail_line(line)
         if pattern_name == "PUBSUB" and line.startswith("PHASE_ACTIVE,"):
             try:
                 phase_size = int(line.split(",", 1)[1])
@@ -1482,22 +2077,6 @@ def run_sizes_test_stream_shared(
             )
             if startup_detail:
                 reason = f"{reason}::{startup_detail}"
-            combined_startup = (
-                f"{server_stdout_buffer.text()}\n"
-                f"{server_stderr_buffer.text()}\n"
-                f"{reason}"
-            )
-            if is_bind_blocked_output(combined_startup) or is_sandbox_blocked_transport(
-                transport
-            ):
-                return {
-                    "status": "unsupported",
-                    "parsed": {},
-                    "timed_out": False,
-                    "returncode": 0,
-                    "reason": "unsupported",
-                    "warnings": [],
-                }
             return {
                 "status": "fail",
                 "parsed": {},
@@ -1511,7 +2090,9 @@ def run_sizes_test_stream_shared(
         close_server_sampler = lambda: None
 
         def maybe_send_size_start(size_value):
-            if not control_connected[0] or size_value is None:
+            if size_value is None:
+                return
+            if use_control_plane and not control_connected[0]:
                 return
             try:
                 if server_proc.stdin:
@@ -1530,8 +2111,7 @@ def run_sizes_test_stream_shared(
 
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
-            if debug_transitions:
-                sys.stderr.write(f"[client] {line}\n")
+            emit_auto_hwm_detail_line(line)
             client_endpoint = parse_client_endpoint(line)
             if use_control_plane and client_endpoint:
                 try:
@@ -1626,26 +2206,6 @@ def run_sizes_test_stream_shared(
                 "warnings": warnings,
                 **progress_meta,
             }
-        if is_unsupported_output(combined_stdout + "\n" + combined_stderr):
-            return {
-                "status": "unsupported",
-                "parsed": {},
-                "timed_out": False,
-                "returncode": 0,
-                "reason": "unsupported",
-                "warnings": warnings,
-                **progress_meta,
-            }
-        if sampled.get("returncode", 0) != 0 and is_sandbox_blocked_transport(transport):
-            return {
-                "status": "unsupported",
-                "parsed": {},
-                "timed_out": False,
-                "returncode": 0,
-                "reason": "unsupported",
-                "warnings": warnings,
-                **progress_meta,
-            }
         if sampled.get("returncode", 0) != 0:
             detail = summarize_server_startup_detail(client_stdout, client_stderr)
             reason = f"non_zero_exit_{sampled.get('returncode', -1)}"
@@ -1657,16 +2217,6 @@ def run_sizes_test_stream_shared(
                 "timed_out": False,
                 "returncode": sampled.get("returncode", -1),
                 "reason": reason,
-                "warnings": warnings,
-                **progress_meta,
-            }
-        if server_rc not in (0, None) and is_sandbox_blocked_transport(transport):
-            return {
-                "status": "unsupported",
-                "parsed": {},
-                "timed_out": False,
-                "returncode": 0,
-                "reason": "unsupported",
                 "warnings": warnings,
                 **progress_meta,
             }
@@ -1707,7 +2257,7 @@ def run_sizes_test_stream_shared(
                 "warnings": warnings,
                 **progress_meta,
             }
-        if is_unsupported_output(combined_stdout + "\n" + combined_stderr):
+        if "protocol not supported" in stderr_lower:
             return {
                 "status": "unsupported",
                 "parsed": {},
@@ -1758,6 +2308,7 @@ def run_sizes_test_split(
     sizes,
     pattern_name,
     result_line_callback=None,
+    extra_env=None,
 ):
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     client_binary_path = os.path.join(BUILD_DIR, client_binary_name + EXE_SUFFIX)
@@ -1770,7 +2321,7 @@ def run_sizes_test_split(
         size_count = max(1, len(sizes))
         has_large_payload = any(sz >= 131072 for sz in sizes)
         is_secure_transport = transport in ("tls", "wss")
-        if pattern_name == "SPOT":
+        if pattern_name in SPOT_CONTROL_PATTERNS:
             timeout_sec = max(180, duration_seconds * size_count * 8 + 80)
         elif pattern_name == "DEALER_DEALER":
             # DEALER_DEALER recv sweeps can spend a long time draining and
@@ -1807,15 +2358,20 @@ def run_sizes_test_split(
     set_env_pair(env, "PERF_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
     set_env_pair(env, "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
     set_env_pair(env, "PERF_SERVER_BIND_PORT", bind_port)
-    server_args = [lib_name, transport]
-    if normalize_multi_pattern_name(pattern_name) in ("SPOT", "SPOT_SENDSEND"):
-        server_args.append(str(fallback_size))
-    server_cmd = build_bench_cmd(server_binary_path, server_args)
+    server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
     client_cmd = build_bench_cmd(
         client_binary_path, [lib_name, transport, str(fallback_size)]
     )
     server_env = env.copy()
     client_env = env.copy()
+    server_env["PERF_MULTI_COMPONENT"] = "server"
+    client_env["PERF_MULTI_COMPONENT"] = "client"
+    server_env["PERF_MULTI_TRANSPORT"] = transport
+    client_env["PERF_MULTI_TRANSPORT"] = transport
+    if extra_env:
+        for key, value in extra_env.items():
+            server_env[str(key)] = str(value)
+            client_env[str(key)] = str(value)
     set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
     set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
 
@@ -1827,7 +2383,7 @@ def run_sizes_test_split(
     out_queue = queue.Queue()
     reader_threads = []
     debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
-    use_control_plane = normalize_multi_pattern_name(pattern_name) in ("SPOT", "SPOT_SENDSEND")
+    use_control_plane = normalize_multi_pattern_name(pattern_name) in SPOT_CONTROL_PATTERNS
     control_connected = [not use_control_plane]
     pending_ready_sizes = set()
     pending_phase_active_sizes = set()
@@ -1860,8 +2416,7 @@ def run_sizes_test_split(
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
-        if debug_transitions:
-            sys.stderr.write(f"[server-out] {line}\n")
+        emit_auto_hwm_detail_line(line)
         if pattern_name in ("PUBSUB", "DEALER_DEALER") and line.startswith("PHASE_ACTIVE,"):
             try:
                 phase_size = int(line.split(",", 1)[1])
@@ -2053,22 +2608,6 @@ def run_sizes_test_split(
             )
             if startup_detail:
                 reason = f"{reason}::{startup_detail}"
-            combined_startup = (
-                f"{server_stdout_buffer.text()}\n"
-                f"{server_stderr_buffer.text()}\n"
-                f"{reason}"
-            )
-            if is_bind_blocked_output(combined_startup) or is_sandbox_blocked_transport(
-                transport
-            ):
-                return {
-                    "status": "unsupported",
-                    "parsed": {},
-                    "timed_out": False,
-                    "returncode": 0,
-                    "reason": "unsupported",
-                    "warnings": [],
-                }
             return {
                 "status": "fail",
                 "parsed": {},
@@ -2082,7 +2621,9 @@ def run_sizes_test_split(
         stop_requested_sizes = set()
 
         def maybe_send_size_start(size_value):
-            if not control_connected[0] or size_value is None:
+            if size_value is None:
+                return
+            if use_control_plane and not control_connected[0]:
                 return
             try:
                 if server_proc.stdin:
@@ -2101,8 +2642,7 @@ def run_sizes_test_split(
 
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
-            if debug_transitions:
-                sys.stderr.write(f"[client] {line}\n")
+            emit_auto_hwm_detail_line(line)
             client_endpoint = parse_client_endpoint(line)
             if use_control_plane and client_endpoint:
                 try:
@@ -2211,26 +2751,6 @@ def run_sizes_test_split(
                 "warnings": warnings,
                 **progress_meta,
             }
-        if is_unsupported_output(combined_stdout + "\n" + combined_stderr):
-            return {
-                "status": "unsupported",
-                "parsed": {},
-                "timed_out": False,
-                "returncode": 0,
-                "reason": "unsupported",
-                "warnings": warnings,
-                **progress_meta,
-            }
-        if sampled.get("returncode", 0) != 0 and is_sandbox_blocked_transport(transport):
-            return {
-                "status": "unsupported",
-                "parsed": {},
-                "timed_out": False,
-                "returncode": 0,
-                "reason": "unsupported",
-                "warnings": warnings,
-                **progress_meta,
-            }
         if sampled.get("returncode", 0) != 0:
             detail = summarize_server_startup_detail(client_stdout, client_stderr)
             reason = f"non_zero_exit_{sampled.get('returncode', -1)}"
@@ -2242,16 +2762,6 @@ def run_sizes_test_split(
                 "timed_out": False,
                 "returncode": sampled.get("returncode", -1),
                 "reason": reason,
-                "warnings": warnings,
-                **progress_meta,
-            }
-        if server_rc not in (0, None) and is_sandbox_blocked_transport(transport):
-            return {
-                "status": "unsupported",
-                "parsed": {},
-                "timed_out": False,
-                "returncode": 0,
-                "reason": "unsupported",
                 "warnings": warnings,
                 **progress_meta,
             }
@@ -2292,7 +2802,7 @@ def run_sizes_test_split(
                 "warnings": warnings,
                 **progress_meta,
             }
-        if is_unsupported_output(combined_stdout + "\n" + combined_stderr):
+        if "protocol not supported" in stderr_lower:
             return {
                 "status": "unsupported",
                 "parsed": {},
@@ -2342,6 +2852,8 @@ def run_sizes_test(
     sizes,
     pattern_name,
     result_line_callback=None,
+    size_start_callback=None,
+    size_result_callback=None,
 ):
     # Multi policy invariant:
     # each pattern/transport/size case runs in its own isolated server/client
@@ -2405,6 +2917,18 @@ def run_sizes_test(
                 result_line_callback=result_line_callback,
             )
 
+        def run_one_size_case_with_env(case_size, extra_env):
+            return run_sizes_test_split(
+                names["server"],
+                names["client"],
+                lib_name,
+                transport,
+                [case_size],
+                pattern_name,
+                result_line_callback=None,
+                extra_env=extra_env,
+            )
+
     merged = {
         "status": "success",
         "parsed": {},
@@ -2414,7 +2938,41 @@ def run_sizes_test(
         "warnings": [],
     }
     for size_index, size in enumerate(size_list):
+        normalized_pattern = normalize_multi_pattern_name(pattern_name)
+        isolated = None
+        if size_start_callback is not None:
+            try:
+                size_start_callback(transport, size)
+            except Exception:
+                pass
         isolated = run_one_size_case(size)
+        if (
+            isolated.get("status") == "success"
+            and normalized_pattern == "SPOT"
+            and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
+        ):
+            latency_only = run_one_size_case_with_env(
+                size, {"PERF_MULTI_SPOT_LATENCY_ONLY": "1"}
+            )
+            isolated.setdefault("warnings", [])
+            isolated["warnings"].extend(latency_only.get("warnings", []))
+            if latency_only.get("status") == "success":
+                latency_keys = (
+                    f"{transport}|{size}|latency",
+                    f"{transport}|{size}|{LATENCY_P95_METRIC}",
+                    f"{transport}|{size}|{LATENCY_P99_METRIC}",
+                )
+                for latency_key in latency_keys:
+                    if latency_key in latency_only.get("parsed", {}):
+                        isolated["parsed"][latency_key] = latency_only["parsed"][
+                            latency_key
+                        ]
+            else:
+                reason = (latency_only.get("reason", "") or "").strip()
+                isolated["warnings"].append(
+                    "spot clean latency pass failed"
+                    + (f": {reason}" if reason else "")
+                )
         merged["warnings"].extend(isolated.get("warnings", []))
         merged["parsed"].update(isolated.get("parsed", {}))
 
@@ -2426,7 +2984,20 @@ def run_sizes_test(
             merged["reason"] = f"{reason}_size_{size}"
             return merged
 
+        if size_result_callback is not None:
+            try:
+                size_result_callback(transport, size, isolated)
+            except Exception:
+                pass
+
     return merged
+
+
+def defer_live_multi_rows(pattern_name):
+    return (
+        normalize_multi_pattern_name(pattern_name) == "SPOT"
+        and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
+    )
 
 
 def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
@@ -2461,9 +3032,8 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
         if sampled.get("timed_out", False):
             return None
 
-        stdout = sampled.get("stdout", "") or ""
-        stderr = sampled.get("stderr", "") or ""
-        if is_unsupported_output(stdout + "\n" + stderr):
+        stderr = (sampled.get("stderr", "") or "").lower()
+        if "protocol not supported" in stderr:
             return [{"metric": "_unsupported_transport_", "value": 1.0}]
         if sampled.get("returncode", 0) != 0:
             return []
@@ -2575,9 +3145,16 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
         if table_lines is not None:
             table_lines.append(line)
 
-    emit(f"  > Benchmarking {lib_name} for {display_pattern_name(pattern_name)}...")
     final_stats = {}
     failures = []
+    benchmark_header_emitted = False
+
+    def emit_benchmark_header():
+        nonlocal benchmark_header_emitted
+        if benchmark_header_emitted:
+            return
+        emit(f"  > Benchmarking {lib_name} for {display_pattern_name(pattern_name)}...")
+        benchmark_header_emitted = True
 
     if transports is None:
         transports = TRANSPORTS
@@ -2591,6 +3168,10 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
 
     is_multi = is_pattern(pattern_name)
     sizes = STREAM_MSG_SIZES if pattern_name in STREAM_VARIANT_PATTERNS else MSG_SIZES
+    transport_headers_emitted = set()
+
+    if not is_multi:
+        emit_benchmark_header()
 
     for tr_idx, tr in enumerate(transports):
         has_next_transport = (tr_idx + 1) < len(transports)
@@ -2613,10 +3194,16 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                 )
                 pattern_runs = min(num_runs, stream_runs_limit)
 
-            emit(f"    Testing {tr}:")
             show_run_labels = pattern_runs > 1
-            if not show_run_labels:
-                _emit_table_header(emit, True, "      ")
+
+            def emit_transport_header():
+                if tr in transport_headers_emitted:
+                    return
+                emit_benchmark_header()
+                emit(f"    Testing {tr}:")
+                if not show_run_labels:
+                    _emit_table_header(emit, True, "      ")
+                transport_headers_emitted.add(tr)
 
             expected_keys = []
             for sz in sizes:
@@ -2636,6 +3223,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
             def emit_size_section(sz):
                 if sz in emitted_size_sections:
                     return
+                emit_transport_header()
                 emit(f"    Testing {tr} | {sz}B:")
                 emitted_size_sections.add(sz)
 
@@ -2715,14 +3303,68 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     live_metrics[key] = value
                     maybe_emit_live_row(line_size)
 
-                outcome = run_sizes_test(
-                    binary_name,
-                    lib_name,
-                    tr,
-                    sizes,
-                    pattern_name,
-                    result_line_callback=on_result_metric,
-                )
+                defer_rows = defer_live_multi_rows(pattern_name)
+                live_result_callback = None if defer_rows else on_result_metric
+
+                def on_size_result(line_transport, line_size, size_outcome):
+                    if not defer_rows:
+                        return
+                    if line_transport != tr.lower() or line_size not in sizes:
+                        return
+                    if line_size in live_emitted_sizes:
+                        return
+                    if size_outcome.get("status") != "success":
+                        return
+                    parsed = size_outcome.get("parsed", {}) or {}
+                    tp_key = f"{tr}|{line_size}|throughput"
+                    bw_key = f"{tr}|{line_size}|bandwidth"
+                    lat_key = f"{tr}|{line_size}|latency"
+                    lat95_key = f"{tr}|{line_size}|{LATENCY_P95_METRIC}"
+                    lat99_key = f"{tr}|{line_size}|{LATENCY_P99_METRIC}"
+                    if (
+                        tp_key not in parsed
+                        or bw_key not in parsed
+                        or lat_key not in parsed
+                        or lat95_key not in parsed
+                        or lat99_key not in parsed
+                    ):
+                        return
+                    emit_size_row(
+                        line_size,
+                        "success",
+                        throughput=parsed.get(tp_key, 0.0),
+                        bandwidth=parsed.get(bw_key, 0.0),
+                        latency=parsed.get(lat_key, 0.0),
+                        latency_p95=parsed.get(lat95_key),
+                        latency_p99=parsed.get(lat99_key),
+                    )
+                    live_emitted_sizes.add(line_size)
+
+                try:
+                    outcome = run_sizes_test(
+                        binary_name,
+                        lib_name,
+                        tr,
+                        sizes,
+                        pattern_name,
+                        result_line_callback=live_result_callback,
+                        size_start_callback=lambda _tr, sz: emit_size_section(sz),
+                        size_result_callback=on_size_result,
+                    )
+                except TypeError as exc:
+                    if (
+                        "size_start_callback" not in str(exc)
+                        and "size_result_callback" not in str(exc)
+                    ):
+                        raise
+                    outcome = run_sizes_test(
+                        binary_name,
+                        lib_name,
+                        tr,
+                        sizes,
+                        pattern_name,
+                        result_line_callback=live_result_callback,
+                    )
                 rc = outcome.get("returncode", 0)
                 for warning in outcome.get("warnings", []) or []:
                     print(f"warning: {warning}", file=sys.stderr)
@@ -3093,6 +3735,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
 
         emit(f"    Testing {tr}: Done")
 
+    emit_auto_hwm_detail_table(emit, pattern_name)
     return final_stats, failures
 def format_throughput(pattern_name, throughput_per_sec):
     unit = "Kops/s" if is_echo_pattern(pattern_name) else "Kmsg/s"
@@ -3255,11 +3898,7 @@ def build_effective_option_items(args, selected_patterns):
     ]
 
     if only:
-        manual_socket_overrides = (
-            (_read_env_value("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
-            or (_read_env_value("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
-        ) == "1"
-        hwm_raw = (_read_env_value("PERF_HWM") or "") if manual_socket_overrides else ""
+        hwm_raw = _read_env_value("PERF_HWM") or ""
         default_hwm_values = set()
         for pattern in selected_patterns:
             default_hwm_values.add(pattern_default_hwm(pattern))
@@ -3280,15 +3919,19 @@ def build_effective_option_items(args, selected_patterns):
                 + ")"
             )
 
+        manual_socket_overrides = (
+            (_read_env_value("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
+            or (_read_env_value("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
+        ) == "1"
         sndhwm = parse_env_int("PERF_SNDHWM", base_hwm) if manual_socket_overrides else 0
         rcvhwm = parse_env_int("PERF_RCVHWM", base_hwm) if manual_socket_overrides else 0
         sndbuf = (_read_env_value("PERF_SNDBUF") or "") if manual_socket_overrides else ""
         rcvbuf = (_read_env_value("PERF_RCVBUF") or "") if manual_socket_overrides else ""
-        sndhwm_display = str(sndhwm) if manual_socket_overrides else "auto-hwm"
-        rcvhwm_display = str(rcvhwm) if manual_socket_overrides else "auto-hwm"
-        if manual_socket_overrides and not (_read_env_value("PERF_SNDHWM") or ""):
+        sndhwm_display = "auto-hwm" if sndhwm <= 0 else str(sndhwm)
+        rcvhwm_display = "auto-hwm" if rcvhwm <= 0 else str(rcvhwm)
+        if not manual_socket_overrides or not (_read_env_value("PERF_SNDHWM") or ""):
             sndhwm_display = hwm_display
-        if manual_socket_overrides and not (_read_env_value("PERF_RCVHWM") or ""):
+        if not manual_socket_overrides or not (_read_env_value("PERF_RCVHWM") or ""):
             rcvhwm_display = hwm_display
         timeout_override = parse_env_int("PERF_TIMEOUT_SECONDS", 0)
         service_clients = parse_env_int("PERF_SERVICE_CLIENTS", 0)
@@ -3395,8 +4038,14 @@ def build_effective_option_items(args, selected_patterns):
                 ("rcvhwm", rcvhwm_display),
                 ("sndbuf", sndbuf or "auto-hwm"),
                 ("rcvbuf", rcvbuf or "auto-hwm"),
-                ("ctx_auto_hwm_enable", "1"),
-                ("ctx_auto_hwm_profile", _read_env_value("PERF_AUTO_HWM_PROFILE") or "balanced"),
+                (
+                    "ctx_auto_hwm_enable",
+                    _read_env_value("PERF_CTX_AUTO_HWM_ENABLE") or "core-default",
+                ),
+                (
+                    "ctx_auto_hwm_profile",
+                    _read_env_value("PERF_CTX_AUTO_HWM_PROFILE") or "balanced",
+                ),
                 ("sndtimeo_ms", str(parse_env_int("PERF_SNDTIMEO_MS", 200))),
                 ("rcvtimeo_ms", str(parse_env_int("PERF_RCVTIMEO_MS", 200))),
                 ("connect_concurrency", connect_display),
@@ -3478,6 +4127,43 @@ def resolve_results_dirs(results_root):
         "root": root,
         "report": os.path.join(root, "report"),
     }
+
+
+def parse_raw_csv_list(value, cast_fn=str):
+    items = []
+    for part in (value or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            items.append(cast_fn(part))
+        except ValueError:
+            return []
+    return items
+
+
+def is_default_full_matrix(args, selected_patterns):
+    if args["pattern_request"].upper() != "ALL" and os.getenv("PERF_FULL_MATRIX", "") != "1":
+        return False
+    env_transports = os.environ.get("PERF_TRANSPORTS", "").strip()
+    if env_transports and parse_raw_csv_list(env_transports) != ["tcp", "tls", "ws", "wss"]:
+        return False
+    env_msg_sizes = os.environ.get("PERF_MSG_SIZES", "").strip()
+    if env_msg_sizes and parse_raw_csv_list(env_msg_sizes, int) != [64, 256, 1024, 65536, 131072, 262144]:
+        return False
+    env_stream_msg_sizes = os.environ.get("PERF_STREAM_MSG_SIZES", "").strip()
+    if env_stream_msg_sizes and parse_raw_csv_list(env_stream_msg_sizes, int) != [64, 256, 1024, 65536]:
+        return False
+    expected_patterns = [pattern for _, pattern in MULTI_COMPARISONS]
+    return list(selected_patterns) == expected_patterns
+
+
+def copy_successful_full_run_to_baseline(result_file):
+    baseline_dir = os.path.join(SCRIPT_DIR, "baseline")
+    os.makedirs(baseline_dir, exist_ok=True)
+    baseline_file = os.path.join(baseline_dir, os.path.basename(result_file))
+    shutil.copy2(result_file, baseline_file)
+    return baseline_file
 
 
 def resolve_results_max_files():
@@ -3567,9 +4253,9 @@ def parse_args():
         "Options:\n"
         "  --runs N                     Iterations per configuration (default: 1)\n"
         "  --duration N                 Override PERF_SINGLE_DURATION_SECONDS (single patterns)\n"
-        "  --build-dir PATH             Official build directory (default: core/build)\n"
+        "  --build-dir PATH             Binding-local runtime bin directory (default: bindings/cpp/perf/.runtime/<suite>/bin)\n"
         "  --pin-cpu                    Pin CPU core during benchmarks (Linux taskset)\n"
-        "  --results-dir PATH           Results root directory (default: core/perf/results)\n"
+        "  --results-dir PATH           Results root directory (default: bindings/cpp/perf/results)\n"
         "  --results-tag NAME           Optional suffix tag for saved filenames\n"
         "  --result-file PATH           Explicit result file path\n"
         "  --multi-transport-transition-ms N  Transport transition cooldown (ms)\n"
@@ -3892,7 +4578,7 @@ def main():
                 file=sys.stderr,
             )
             print(
-                "Hint: pass --build-dir as the CMake build root core/build or its bin(/Release) directory.",
+                "Hint: run the binding wrapper so bindings/cpp/perf/.runtime/<suite>/bin is prepared, or pass that runtime bin directory with --build-dir.",
                 file=sys.stderr,
             )
             if missing_current:
@@ -4024,6 +4710,9 @@ def main():
 
                 status_counts[status] += 1
 
+        if FAIL_FAST and failures:
+            break
+
         if pattern_transition_ms > 0 and (pattern_idx + 1) < len(selected_comparisons):
             print(f"[pattern cooldown {pattern_transition_ms}ms]")
             time.sleep(pattern_transition_ms / 1000.0)
@@ -4034,6 +4723,9 @@ def main():
         emit_result_lines(current_results)
 
     run_status = "complete" if expected_result_lines == actual_result_lines else "partial"
+    should_update_baseline = run_status == "complete" and is_default_full_matrix(
+        args, selected_patterns
+    )
     preserve_result_file = bool(args["results_tag"] or args["result_file"])
     if not preserve_result_file:
         max_files = resolve_results_max_files()
@@ -4042,16 +4734,14 @@ def main():
             max_files,
             exclude_names=[os.path.basename(result_file)],
         )
-    print(f"\nSaved result file: {result_file} (status={run_status})")
-
-    print("\n## Status Summary")
+    print("\n## Completion")
     print(f"- success: {status_counts['success']}")
     print(f"- unsupported: {status_counts['unsupported']}")
     print(f"- skip: {status_counts['skip']}")
     print(f"- fail: {status_counts['fail']}")
-    print(f"- expected result lines: {expected_result_lines}")
-    print(f"- actual result lines: {actual_result_lines}")
     print(f"- status: {run_status}")
+    print(f"- expected_result_lines: {expected_result_lines}")
+    print(f"- actual_result_lines: {actual_result_lines}")
 
     if all_skips:
         print("\n## Skips")
@@ -4067,9 +4757,14 @@ def main():
                 f"{tr} {sz}B: {reason}"
             )
 
+    print(f"\nSaved result file: {result_file} (status={run_status})")
+
     sys.stdout = orig_stdout
     sys.stderr = orig_stderr
     result_log_fh.close()
+    if should_update_baseline:
+        baseline_file = copy_successful_full_run_to_baseline(result_file)
+        print(f"Updated baseline file: {baseline_file}")
     if run_status != "complete":
         raise SystemExit(1)
     raise SystemExit(0)

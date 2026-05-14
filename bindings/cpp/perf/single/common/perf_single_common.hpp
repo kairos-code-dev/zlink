@@ -53,6 +53,7 @@ int resolve_single_recv_timeout_ms ();
 int resolve_single_pubsub_recv_timeout_ms ();
 int resolve_single_pubsub_ready_settle_ms ();
 int resolve_single_spot_ready_settle_ms ();
+int resolve_single_connect_ready_timeout_ms ();
 int resolve_single_socket_hwm (bool send_);
 zlink::auto_hwm_profile resolve_single_ctx_auto_hwm_profile ();
 bool single_manual_socket_overrides_enabled ();
@@ -274,14 +275,16 @@ bool setup_connected_pair (BindSocketLike &bind_socket_,
 
     apply_single_benchmark_socket_options (bind_socket_, transport_);
     apply_single_benchmark_socket_options (connect_socket_, transport_);
+    const int connect_ready_timeout_ms =
+      resolve_single_connect_ready_timeout_ms ();
     if (!wait_socket_monitor_event (
           bind_monitor,
           static_cast<uint64_t> (zlink::monitor_event::connection_ready),
-          10000)
+          connect_ready_timeout_ms)
         || !wait_socket_monitor_event (
           connect_monitor,
           static_cast<uint64_t> (zlink::monitor_event::connection_ready),
-          10000)) {
+          connect_ready_timeout_ms)) {
         return false;
     }
     return true;

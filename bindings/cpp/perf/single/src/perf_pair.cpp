@@ -15,7 +15,10 @@ bool perf_debug_enabled ()
     return std::getenv ("PERF_DEBUG") != NULL;
 }
 
-bool send_single_part (void *userdata_, const void *data_, size_t size_)
+bool send_single_part (void *userdata_,
+                       const void *data_,
+                       size_t size_,
+                       int flags_)
 {
     zlink::pair_socket_t *socket = static_cast<zlink::pair_socket_t *> (userdata_);
     if (!socket)
@@ -27,7 +30,7 @@ bool send_single_part (void *userdata_, const void *data_, size_t size_)
     try {
         if (!socket->send ()
                .message (msg)
-               .flags (ZLINK_DONTWAIT)
+               .flags (flags_)
                .submit ()) {
             errno = EAGAIN;
             return false;
@@ -240,7 +243,7 @@ bool run_pattern_pair (const std::string &transport,
                                                     seq++,
                                                     perf_single_metric::now_ns ())
                 || !send_single_part (
-                  &conn_socket, payload.data (), payload.size ())) {
+                  &conn_socket, payload.data (), payload.size (), ZLINK_DONTWAIT)) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK
                     || errno == ETIMEDOUT || errno == EINTR) {
                     continue;
@@ -253,17 +256,23 @@ bool run_pattern_pair (const std::string &transport,
         // PERF_SINGLE_TEST_POLICY § 1.4: send wire-level stop token to
         // wake the receiver out of recv. Bounded retry through transient
         // backpressure so the terminator always reaches the peer.
+        bool stop_sent = false;
         for (int retry = 0; retry < 100; ++retry) {
             if (send_single_part (&conn_socket,
                                   perf::single::k_stop_token,
-                                  std::strlen (perf::single::k_stop_token))) {
+                                  std::strlen (perf::single::k_stop_token),
+                                  0)) {
+                stop_sent = true;
                 break;
             }
             if (errno != EAGAIN && errno != EWOULDBLOCK
                 && errno != ETIMEDOUT && errno != EINTR) {
+                sender_ok.store (false, std::memory_order_release);
                 break;
             }
         }
+        if (!stop_sent)
+            sender_ok.store (false, std::memory_order_release);
     });
 
     sender_thread.join ();

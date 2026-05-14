@@ -5,10 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 CPP_PERF_DIR="${ROOT_DIR}/bindings/cpp/perf"
 OFFICIAL_BUILD_DIR="${ROOT_DIR}/bindings/cpp/build"
+DEFAULT_CORE_BUILD_DIR="${ROOT_DIR}/core/build"
 NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
 MAKE_BIN="$(command -v gmake || command -v make)"
 PERF_COMPARISON_SCRIPT="${ROOT_DIR}/bindings/cpp/perf/multi/run_comparison.py"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_SENDSEND,SPOT_REQREP,STREAM"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 
@@ -136,9 +137,9 @@ resolve_memory_max_clients() {
   local budget_pct
   local base_mb
   local per_client_kb
-  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
-  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
-  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
+  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
+  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
+  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
   if ! is_uint "${budget_pct}" || (( budget_pct < 1 || budget_pct > 95 )); then
     echo ""
     return
@@ -191,11 +192,110 @@ ensure_memory_budget() {
   local budget_pct
   local base_mb
   local per_client_kb
-  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
-  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
-  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
+  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
+  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
+  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
   MEMORY_SKIP_REASON="clients=${clients},max_clients=${max_clients},mem_available_kb=${available_kb},budget_pct=${budget_pct},base_mb=${base_mb},per_client_kb=${per_client_kb}"
   return 1
+}
+
+resolve_configured_core_build_dir() {
+  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
+  local cache_path="${build_dir}/CMakeCache.txt"
+  local configured_dir=""
+  if [[ -f "${cache_path}" ]]; then
+    configured_dir="$(
+      sed -n 's/^ZLINK_CPP_CORE_BUILD_DIR:PATH=//p' "${cache_path}" | tail -n 1
+    )"
+  fi
+  if [[ -z "${configured_dir}" ]]; then
+    configured_dir="${DEFAULT_CORE_BUILD_DIR}"
+  fi
+  realpath -m "${configured_dir}"
+}
+
+resolve_core_runtime_library() {
+  local core_build_dir="${1:-}"
+  local candidates=()
+  case "$(uname -s)" in
+    Linux*)
+      candidates=(
+        "${core_build_dir}/lib/libzlink.so"
+        "${core_build_dir}/bin/libzlink.so"
+      )
+      ;;
+    Darwin*)
+      candidates=(
+        "${core_build_dir}/lib/libzlink.dylib"
+        "${core_build_dir}/bin/libzlink.dylib"
+      )
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      candidates=(
+        "${core_build_dir}/bin/zlink.dll"
+        "${core_build_dir}/lib/zlink.dll"
+      )
+      ;;
+    *)
+      candidates=(
+        "${core_build_dir}/lib/libzlink.so"
+        "${core_build_dir}/bin/libzlink.so"
+      )
+      ;;
+  esac
+
+  local candidate=""
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "${candidate}" ]]; then
+      realpath -e "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+print_core_runtime_binding() {
+  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
+  local core_build_dir=""
+  local runtime_lib=""
+  core_build_dir="$(resolve_configured_core_build_dir "${build_dir}")"
+  if runtime_lib="$(resolve_core_runtime_library "${core_build_dir}")"; then
+    echo "Perf core build dir: ${core_build_dir}"
+    echo "Perf runtime libzlink: ${runtime_lib}"
+    return 0
+  fi
+  echo "Perf core build dir: ${core_build_dir}"
+  echo "Error: core runtime library not found under ${core_build_dir}." >&2
+  echo "Build core first so bindings/cpp/perf can link the intended runtime." >&2
+  return 1
+}
+
+ensure_core_runtime_not_stale() {
+  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
+  local core_build_dir=""
+  local runtime_lib=""
+  local newer_source=""
+  core_build_dir="$(resolve_configured_core_build_dir "${build_dir}")"
+  if ! runtime_lib="$(resolve_core_runtime_library "${core_build_dir}")"; then
+    echo "Error: core runtime library not found under ${core_build_dir}." >&2
+    echo "Build core first before running bindings/cpp/perf benchmarks." >&2
+    return 1
+  fi
+
+  newer_source="$(
+    find \
+      "${ROOT_DIR}/core/src" \
+      "${ROOT_DIR}/core/include" \
+      -type f -newer "${runtime_lib}" -print -quit 2>/dev/null || true
+  )"
+  if [[ -n "${newer_source}" ]]; then
+    echo "Error: stale core runtime detected for bindings/cpp/perf." >&2
+    echo "  runtime: ${runtime_lib}" >&2
+    echo "  newer source: ${newer_source}" >&2
+    echo "Rebuild core/build before running run_benchmarks_multi.sh." >&2
+    return 1
+  fi
+  return 0
 }
 
 usage() {
@@ -204,9 +304,14 @@ Usage: bindings/cpp/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_SENDSEND,SPOT_REQREP,STREAM
-By default, this wrapper runs current zlink only.
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM
+This script invokes the shared comparison runner directly.
+By default, multi-bench uses ready -> active with a 5s duration window.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
+Policy contract:
+  - benchmark binaries execute one pattern/transport/size/run case only
+  - this runner owns pattern/transport/size iteration, cooldown, aggregation,
+    markdown table output, and result-file persistence
 
 Options:
   --pattern NAME         Benchmark pattern (default: all patterns above).
@@ -216,16 +321,18 @@ Options:
   --clean-build          Remove build directory and do a clean build.
   --results-dir PATH     Override results root directory.
   --results-tag NAME     Optional tag appended to the results filename.
-  --build-dir PATH       Official build directory (must be core/build).
+  --build-dir PATH       Official build directory (must be <repo>/bindings/cpp/build).
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias: set PERF_IO_THREADS for both roles.
   --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS
-                         (default: non-stream=2, stream=4).
+                         (default: non-stream=4, stream=4).
   --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS
-                         (default: non-stream=2, stream=4).
-  --msg-sizes LIST       Comma-separated message sizes.
+                         (default: non-stream=4, stream=4).
+  --msg-sizes LIST       Comma-separated message sizes
+                         (default: 64,256,1024,65536,131072,262144;
+                         STREAM: 64,256,1024,65536).
   --transports LIST      Comma-separated transports.
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
@@ -251,26 +358,33 @@ Options:
   --connect-ready-timeout-ms N
                          Override PERF_MULTI_CONNECT_READY_TIMEOUT_MS (default: 5000).
   --monitor-hwm N        Override PERF_MULTI_MONITOR_HWM (default: 1000).
-  --auto-hwm-profile NAME
-                         Set auto-HWM profile: compact, low_latency, balanced, throughput (default: balanced).
   --server-shutdown-timeout-ms N
                          Override PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS (default: 5000).
   --server-bind-port N
                          Override PERF_MULTI_SERVER_BIND_PORT (default: 0=auto).
+  --auto-hwm-profile NAME
+                         Set auto-HWM profile: compact, low_latency, balanced, throughput (default: balanced).
 
 Environment:
-  PERF_SKIP_NOFILE_CHECK=1   Disable nofile(limit) guard check
-  PERF_SKIP_MEMORY_CHECK=1   Disable memory guard check
+  PERF_SKIP_NOFILE_CHECK=1   Disable preflight nofile(limit) check
+  PERF_SKIP_MEMORY_CHECK=1   Disable preflight memory guard check
   PERF_MULTI_MEMORY_BUDGET_PCT=70
                             Percent of MemAvailable reserved for multi benchmark sockets
   PERF_MULTI_MEMORY_BASE_MB=512
                             Fixed memory reserve before per-client estimate
   PERF_MULTI_MEMORY_PER_CLIENT_KB=1024
                             Estimated memory per client socket for guard
+  PERF_MULTI_SPOT_CLEAN_LATENCY=0
+                            Disable the default SPOT clean-latency rerun used
+                            for the table latency columns.
 Notes:
   - result is saved under results/multi/report/ as
     perf_cpp_multi_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.
   - default build mode is incremental (configure/build without deleting build dir).
+  - this runner links zlink core from core/build and prints the resolved
+    libzlink runtime before execution.
+  - if core/src or core/include is newer than the resolved runtime library,
+    the runner fails fast and asks for a core/build rebuild.
 USAGE
 }
 
@@ -382,12 +496,12 @@ RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 OUTPUT_FILE=""
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
-EFFECTIVE_DEFAULT_IO_THREADS="${PERF_MULTI_DEFAULT_IO_THREADS:-}"
+EFFECTIVE_DEFAULT_IO_THREADS="${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-}}"
 COMMON_IO_THREADS="${PERF_IO_THREADS:-}"
-SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-}"
-CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-}"
-STREAM_SERVER_IO_THREADS="${PERF_MULTI_STREAM_SERVER_IO_THREADS:-}"
-STREAM_CLIENT_IO_THREADS="${PERF_MULTI_STREAM_CLIENT_IO_THREADS:-}"
+SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_SERVER_IO_THREADS:-}}"
+CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_CLIENT_IO_THREADS:-}}"
+STREAM_SERVER_IO_THREADS="${PERF_MULTI_STREAM_SERVER_IO_THREADS:-${PERF_STREAM_SERVER_IO_THREADS:-}}"
+STREAM_CLIENT_IO_THREADS="${PERF_MULTI_STREAM_CLIENT_IO_THREADS:-${PERF_STREAM_CLIENT_IO_THREADS:-}}"
 TRANSPORTS_OVERRIDE="${PERF_TRANSPORTS:-${TRANSPORTS}}"
 MSG_SIZES_OVERRIDE="${PERF_MSG_SIZES:-}"
 
@@ -842,6 +956,10 @@ if [[ "${BUILD_MODE}" != "reuse" && -f "${OFFICIAL_BUILD_DIR}/CMakeCache.txt" ]]
   fi
 fi
 
+echo "Using CMake source directory: ${CMAKE_SOURCE_DIR}"
+print_core_runtime_binding "${OFFICIAL_BUILD_DIR}"
+ensure_core_runtime_not_stale "${OFFICIAL_BUILD_DIR}"
+
 if [[ "${BUILD_MODE}" != "reuse" ]]; then
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
     CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
@@ -953,6 +1071,7 @@ if [[ -z "${RESULTS_DIR_OVERRIDE}" ]]; then
 fi
 
 RUN_ENV=()
+RUN_ENV+=(PERF_ALLOW_MULTI="1")
 RUN_ENV+=(PERF_POLICY="1")
 RUN_ENV+=(PERF_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
 RUN_ENV+=(PERF_TRANSPORTS="${TRANSPORTS_OVERRIDE}")
@@ -960,13 +1079,18 @@ RUN_ENV+=(PERF_MULTI_DURATION_SECONDS="${DURATION_SECONDS}")
 RUN_ENV+=(PERF_MULTI_RUN_COOLDOWN_MS="${RUN_COOLDOWN_MS}")
 RUN_ENV+=(PERF_MULTI_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")
 RUN_ENV+=(PERF_MULTI_PATTERN_TRANSITION_MS="${PATTERN_TRANSITION_MS}")
+if [[ "${#EXPLICIT_PATTERNS[@]}" -eq 0 ]]; then
+  RUN_ENV+=(PERF_FULL_MATRIX=1)
+fi
 RUN_ENV+=(PERF_MULTI_SERVER_READY_TIMEOUT_MS="${SERVER_READY_TIMEOUT_MS}")
 RUN_ENV+=(PERF_MULTI_CONNECT_READY_TIMEOUT_MS="${CONNECT_READY_TIMEOUT_MS}")
 RUN_ENV+=(PERF_MULTI_MONITOR_HWM="${MONITOR_HWM}")
 RUN_ENV+=(PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${SERVER_SHUTDOWN_TIMEOUT_MS}")
 RUN_ENV+=(PERF_MULTI_SERVER_BIND_PORT="${SERVER_BIND_PORT}")
 RUN_ENV+=(PERF_DISABLE_RESOURCE_METRICS="${DISABLE_RESOURCE_METRICS}")
-RUN_ENV+=(PERF_MULTI_DEFAULT_IO_THREADS="${EFFECTIVE_DEFAULT_IO_THREADS}")
+if [[ -n "${EFFECTIVE_DEFAULT_IO_THREADS}" ]]; then
+  RUN_ENV+=(PERF_MULTI_DEFAULT_IO_THREADS="${EFFECTIVE_DEFAULT_IO_THREADS}")
+fi
 if [[ -n "${CLIENTS}" ]]; then
   RUN_ENV+=(PERF_MULTI_CLIENTS="${CLIENTS}")
 fi
@@ -1108,7 +1232,6 @@ PATTERN_CSV_DISPLAY="$(
   echo "${local_items[*]}"
 )"
 echo "=== Running multi benchmark: ${PATTERN_CSV_DISPLAY} ==="
-echo "    lang=cpp suite=multi"
 echo "    duration=${DURATION_SECONDS}s"
 
 RUN_CMD=("${PYTHON_BIN[@]}" "${PERF_COMPARISON_SCRIPT}" "${PATTERN_CSV}" "--build-dir" "${RUNTIME_BIN_DIR}")

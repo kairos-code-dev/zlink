@@ -96,6 +96,7 @@ class pubsub_client_bench_t
         }
 
         print_result ();
+        std::cout << "CLIENT_DONE," << _msg_size << std::endl;
         return true;
     }
 
@@ -135,9 +136,15 @@ class pubsub_client_bench_t
                 return false;
             if (!perf::multi::setup_tls_client (sock, _transport))
                 return false;
+            _monitors.push_back (perf::multi::connect_monitor_t ());
+            if (!perf::multi::open_connect_monitor (sock, _monitors.back ())) {
+                close_monitors ();
+                return false;
+            }
             try {
                 sock.connect (_endpoint);
             } catch (const zlink::zlink_error_t &) {
+                close_monitors ();
                 return false;
             }
 
@@ -146,6 +153,22 @@ class pubsub_client_bench_t
         }
         if (!perf::multi::recalculate_auto_hwm (_ctx))
             return false;
+        const bool ready = perf::multi::wait_connect_ready_all (
+          _monitors, _settings.connect_ready_timeout_ms);
+        close_monitors ();
+        if (!ready) {
+            _failure_stage = "connect_ready";
+            return false;
+        }
+        if (!_holders.empty () && _holders[0].get () && _holders[0]->valid ()) {
+            perf::multi::emit_auto_hwm_detail (
+              _holders[0]->sock (),
+              "client",
+              "endpoint",
+              _transport,
+              _msg_size,
+              "sub");
+        }
         return !_sockets.empty ();
     }
 
@@ -171,11 +194,17 @@ class pubsub_client_bench_t
         const auto deadline = std::chrono::steady_clock::now () + duration;
 
         while (std::chrono::steady_clock::now () < deadline) {
-            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no
-            // timer cap. Outer loop bounds wall-time via the
-            // steady_clock deadline check.
+            const auto now = std::chrono::steady_clock::now ();
+            if (now >= deadline)
+                break;
+            const long remaining_ms =
+              std::max<long> (
+                1,
+                std::chrono::duration_cast<std::chrono::milliseconds> (
+                  deadline - now)
+                  .count ());
             _poll_events =
-              _poller.wait (0, std::chrono::milliseconds (-1));
+              _poller.wait (0, std::chrono::milliseconds (remaining_ms));
         const int poll_rc = static_cast<int> (_poll_events.size ());
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)

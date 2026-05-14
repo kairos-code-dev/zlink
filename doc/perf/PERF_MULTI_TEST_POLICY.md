@@ -5,7 +5,7 @@
 > **Date**: 2026-04-07
 > **Scope**: zlink multi-client 성능 테스트 정책
 >
-> 본 정책은 `perf/multi`의 C++ 벤치마크와 in-repo multi perf 자산이 존재하는
+> 본 정책은 `bindings/c/perf`의 multi C benchmark runner와 in-repo multi perf 자산이 존재하는
 > 바인딩에 동일한 기준으로 적용한다.
 > 단, 각 언어의 구현 완성도와 지원 패턴 범위는 다를 수 있으므로 실제 parity
 > 수준은 언어별로 점검/정렬 대상이 된다.
@@ -167,24 +167,71 @@ receiver 또는 server thread 가 sender / phase 종료를 감지해야 하는 �
 multi는 runner의 `READY,<endpoint>`/`START,<size>` orchestration과 별개로,
 각 바이너리 내부에서 아래 계약만으로 실제 메시징 시작 가능 여부를 판정한다.
 perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
+기준 구현은 `bindings/c/perf`이며, 모든 언어별 multi perf는 C perf와 같은
+process token, direct control message, ready gate, active 시작 의미를 유지해야
+한다. 언어별 runtime 편의를 위해 추가 handshake 단계나 다른 start token을
+필수 조건으로 만들면 비교 기준이 달라진다.
 
 | 패턴 | 역할 | ready gate |
 |------|------|------------|
 | MULTI_DEALER_DEALER | client 각 소켓 | `CONNECTION_READY` |
 | MULTI_DEALER_ROUTER | client 각 소켓 | `CONNECTION_READY` |
 | MULTI_ROUTER_ROUTER | client 각 소켓 | `CONNECTION_READY` |
-| MULTI_PUBSUB | client 각 소켓 | runner orchestration (`CLIENT_READY`/`START`) — connect + subscribe 후 runner START 신호로 active 진입 |
-| MULTI_SPOT | client 각 spot | control handshake barrier (`CONNECTED`/`READY_COUNT`/`START`) |
-| MULTI_SPOT_REQREP | client 각 spot(requester) | MULTI_SPOT 와 동일한 control handshake barrier (`CONNECTED`/`READY_COUNT`/`START`) |
-| MULTI_SPOT_SENDSEND | client 각 spot | MULTI_SPOT 와 동일한 control handshake barrier (`CONNECTED`/`READY_COUNT`/`START`) |
+| MULTI_PUBSUB | client 각 소켓 | `CONNECTION_READY` 확인 후 runner orchestration (`CLIENT_READY`/`START`) — subscribe 설정과 연결 준비가 끝난 뒤 runner START 신호로 active 진입 |
+| MULTI_SPOT | client 각 spot | control handshake barrier (`CONNECTED` progress payload + `READY_COUNT`/`START`) |
+| MULTI_SPOT_REQREP | client 각 spot(requester) | MULTI_SPOT control handshake에 `DATA_ENDPOINT` data link 준비를 추가한 barrier (`CONNECTED` progress payload + `DATA_ENDPOINT` + `READY_COUNT`/`START`) |
+| MULTI_SPOT_SENDSEND | client 각 spot | MULTI_SPOT control handshake에 `DATA_ENDPOINT` data link 준비를 추가한 barrier (`CONNECTED` progress payload + `DATA_ENDPOINT` + `READY_COUNT`/`START`) |
 | MULTI_STREAM | client 각 연결 | transport connect 완료 + stream protocol ready (`connect_ok == target clients`) |
 
+#### Multi 패턴별 handshake 고정
+
+아래 표는 `bindings/c/perf` multi runner와 benchmark process가 사용하는
+패턴별 handshake 계약이다. 다른 바인딩 multi perf는 token 이름, 전송 방향,
+ready 판정, active 시작 조건을 바꾸면 안 된다.
+
+| 패턴 | runner orchestration | process 내부 ready | active 시작 조건 |
+|------|----------------------|-------------------|------------------|
+| `MULTI_DEALER_ROUTER` | server `READY,<endpoint>` 후 client spawn. `CLIENT_READY` / `START` 교환 없음 | client가 각 socket의 `CONNECTION_READY`를 expected client 수만큼 확인 | client가 ready gate 통과 후 바로 request/reply active 실행 |
+| `MULTI_ROUTER_ROUTER` | server `READY,<endpoint>` 후 client spawn. `CLIENT_READY` / `START` 교환 없음 | client가 각 socket의 `CONNECTION_READY`를 expected client 수만큼 확인 | client가 ready gate 통과 후 바로 request/reply active 실행 |
+| `MULTI_DEALER_DEALER` | server `READY,<endpoint>` 후 client spawn, client `CLIENT_READY,<msg_size>` 출력, runner가 server/client에 `START,<msg_size>` 전달 | client가 각 socket의 `CONNECTION_READY`를 expected client 수만큼 확인 | server와 client가 같은 `START,<msg_size>`를 받은 뒤 active 실행 |
+| `MULTI_PUBSUB` | server `READY,<endpoint>` 후 client spawn, client `CLIENT_READY,<msg_size>` 출력, runner가 server/client에 `START,<msg_size>` 전달 | client가 subscribe 설정, connect, 각 socket의 `CONNECTION_READY` 확인을 끝낸 뒤 `CLIENT_READY` 출력 | server와 client가 같은 `START,<msg_size>`를 받은 뒤 active 실행 |
+| `MULTI_SPOT` | server `READY,<endpoint>` + `CONTROL_READY,<endpoint>`, client `CLIENT_CONTROL_ENDPOINT,<endpoint>`, runner `CONNECT_CONTROL,<endpoint>`, server `CONTROL_CONNECTED,<endpoint>` 전달 | client는 control setup 중 `CONNECTED` progress payload를 보낼 수 있다. 이후 `CONTROL_CONNECTED` 통지, ready settle, local setup을 끝낸 뒤 `READY_COUNT,<msg_size>,<count>`와 `CLIENT_READY`를 보낸다. server는 expected ready unit을 모두 수집 | runner `START,<msg_size>`와 direct control `START,<msg_size>`가 모두 닫힌 뒤 active 실행 |
+| `MULTI_SPOT_REQREP` | `MULTI_SPOT`과 동일 | `CONTROL_CONNECTED` 통지 뒤 client가 `DATA_ENDPOINT,<endpoint>`를 control channel로 보내고, requester/replier data mesh 준비 후 `CONNECTED`, `READY_COUNT,<msg_size>,<count>`, `CLIENT_READY`를 보낸다 | `MULTI_SPOT`과 동일. routed request/reply는 direct `START` 이후에만 시작 |
+| `MULTI_SPOT_SENDSEND` | `MULTI_SPOT`과 동일 | `CONTROL_CONNECTED` 통지 뒤 client가 `DATA_ENDPOINT,<endpoint>`를 control channel로 보내고, send/send data mesh 준비 후 `CONNECTED`, `READY_COUNT,<msg_size>,<count>`, `CLIENT_READY`를 보낸다 | `MULTI_SPOT`과 동일 |
+| `MULTI_STREAM` | server `READY,<endpoint>` 후 raw transport client spawn. `CLIENT_READY` / `START` 교환 없음 | raw client가 target client 수만큼 transport connect를 완료하고 stream packet protocol ready를 확인 | connect 성공 수가 target client 수와 같을 때 active 실행. 미달은 fail |
+
+- C runner가 `PUBSUB` / `DEALER_DEALER` one-way 경로에서
+  `PHASE_ACTIVE,<msg_size>`를 보낼 수 있지만, 이는 호환용 보조 token이다.
+  benchmark process가 이를 active gate로 기다리면 안 된다.
+- echo 계열(`MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_STREAM`)은
+  client가 active phase를 주도하며, runner `START` barrier를 추가하지 않는다.
+- one-way raw 계열(`MULTI_DEALER_DEALER`, `MULTI_PUBSUB`)은 runner
+  `CLIENT_READY` / `START` barrier를 사용한다.
+- SPOT 계열은 runner orchestration과 direct control handshake를 둘 다 사용한다.
+  direct control `START` 없이 data plane publish/request/reply를 시작하면 안 된다.
+- 다른 binding의 multi perf를 C 기준과 비교해서 handshake 불일치를 발견했을 때는
+  runner의 default pattern 목록에서 해당 패턴을 제거하거나 `SKIP` /
+  `UNSUPPORTED`로 바꾸면 안 된다. 이 문서에 정의된 supported/default 조합은
+  C 기준 handshake에 맞게 구현을 수정해야 하며, 수정 전에는 실패로 남겨야 한다.
+  예외는 정책에 없는 transport 또는 아직 공식 supported/default matrix에 올리지
+  않은 새 조합뿐이다.
+
 - `expected_clients`는 해당 케이스에서 runner가 요구한 client 수와 동일하다.
-- DEALER/ROUTER raw pattern 은 expected client 수만큼 low-cost `CONNECTION_READY`
-  event를 직접 counting 해서 판정한다.
-- PUBSUB 는 client 가 connect + subscribe 완료 후 `CLIENT_READY` 를 runner 에
-  보고하고, runner 의 `START` 신호로 server/client 가 동시에 active 에 진입한다.
-  PUBSUB 는 소켓 monitor 기반 `CONNECTION_READY` gate 를 사용하지 않는다.
+- raw socket client(`MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`,
+  `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`)는 expected client 수만큼 low-cost
+  `CONNECTION_READY` event를 직접 counting 해서 연결 준비를 판정한다.
+- PUBSUB 는 client 가 subscribe 설정, connect, `CONNECTION_READY` 확인을 끝낸 뒤
+  `CLIENT_READY` 를 runner 에 보고하고, runner 의 `START` 신호로 server/client 가
+  동시에 active 에 진입한다.
+- PUBSUB active 시작 stdin token은 C perf 기준으로 `START,<msg_size>` 하나만 사용한다.
+  C runner가 하위 호환 목적으로 `PHASE_ACTIVE,<msg_size>`를 client stdin에
+  보낼 수는 있지만, benchmark process는 이를 active gate로 요구하지 않는다.
+  client가 `PHASE_ACTIVE,<msg_size>` 같은 별도 stdin token을 기다리거나,
+  server가 stdout으로 추가 active token을 내보내면 안 된다.
+- PUBSUB client는 `START,<msg_size>`를 받은 시점부터 configured duration 동안
+  active 메시지를 집계하고, `RESULT`와 `CLIENT_DONE,<msg_size>`를 출력한 뒤
+  종료한다. PUBSUB active 종료는 client의 duration window로 판정하므로 stop
+  token 수신을 완료 조건으로 삼지 않는다.
 - SPOT 은 client/server control link 가 먼저 `CONNECTED` 를 교환한 뒤,
   각 client process 가 자신이 보유한 slot 수만큼 `READY` unit 을
   `READY_COUNT,<msg_size>,<count>` control message 로 보낸다. server 는
@@ -200,7 +247,7 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
 - server 도 동일하게 pattern 문서에 별도 예외가 없으면 data plane 기준
   SpotNode 1개를 사용한다. `expected_clients` 는 peer SpotNode 수가 아니라
   ready barrier 에 참여하는 client spot 수와 같아야 한다.
-- 모든 bindings 와 core perf harness 는 이 topology 를 동일하게 따라야 하며,
+- 모든 bindings perf harness 는 C perf 기준 topology 를 동일하게 따라야 하며,
   각 언어 구현이 임의로 `clients == SpotNode count` 로 재해석하면 안 된다.
 - 정식 표에 아직 없는 SPOT 계열 비교 패턴을 추가로 만들 때도, 별도 문서에서
   예외를 선언하지 않는 한 위 topology 계약을 그대로 따른다. 예를 들어
@@ -321,11 +368,13 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 - server는 client 종료까지 상시 대기하며 relay/echo를 수행한다.
 - phase 전환은 패턴별로 제어한다: echo는 client가 phase를 제어하고 server는 relay/echo 대기, one-way는 sender/receiver가 동일 순서의 phase를 수행한다. throughput/latency는 모두 active phase 한 구간에서 계산한다.
 - multi active 유효 메시지 규칙은 패턴별 정책 문서에 정의된 단일 기준으로
-  고정한다. core와 모든 bindings는 같은 pattern에서 동일한 active 유효 메시지
+  고정한다. C 기준과 모든 bindings는 같은 pattern에서 동일한 active 유효 메시지
   의미를 사용해야 한다.
 - 스크립트는 양쪽 프로세스의 stdout을 수집하고, 종료 코드를 확인하여 결과를 합산한다.
 - `READY,<endpoint>`는 프로세스 orchestration 용도다. benchmark start gate를 대체하지 않는다.
-- raw pattern 의 실제 측정 시작 조건은 각 바이너리 내부의 `CONNECTION_READY` gate가 담당한다.
+- raw socket client 의 연결 준비 조건은 각 바이너리 내부의
+  `CONNECTION_READY` gate가 담당한다. runner-barrier raw pattern 의 실제 active
+  시작 조건은 패턴별 `CLIENT_READY` / `START` 계약이 담당한다.
 - SPOT 의 실제 측정 시작 조건은 client/server spot 사이의 control handshake barrier 가 담당한다.
 
 ### 2.1.1 Runner ↔ 바이너리 Orchestration 메시지 규격
@@ -345,6 +394,7 @@ runner(스크립트/Python 엔진)와 server/client 바이너리는 **stdin/stdo
 |--------|------|------|
 | `READY` | `READY,<endpoint>` | bind 완료, benchmark endpoint 전달 |
 | `CONTROL_READY` | `CONTROL_READY,<endpoint>` | SPOT / SPOT_REQREP / SPOT_SENDSEND control plane bind 완료 |
+| `CONTROL_CONNECTED` | `CONTROL_CONNECTED,<endpoint>` | server가 client control endpoint에 연결 완료 |
 | `RESULT` | `RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>` | 측정 결과 |
 | `UNSUPPORTED` | `UNSUPPORTED,<lib>,<pattern>,<transport>` | transport 미지원 |
 
@@ -354,7 +404,7 @@ runner(스크립트/Python 엔진)와 server/client 바이너리는 **stdin/stdo
 |--------|------|------|
 | `CLIENT_READY` | `CLIENT_READY,<msg_size>` | client가 해당 size 케이스 준비 완료 |
 | `CLIENT_CONTROL_ENDPOINT` | `CLIENT_CONTROL_ENDPOINT,<endpoint>` | SPOT / SPOT_REQREP / SPOT_SENDSEND client control endpoint 전달 |
-| `CONTROL_CONNECTED` | `CONTROL_CONNECTED,<endpoint>` | SPOT / SPOT_REQREP / SPOT_SENDSEND control link 연결 완료 |
+| `CLIENT_DONE` | `CLIENT_DONE,<msg_size>` | client가 해당 size RESULT 출력까지 완료 |
 | `RESULT` | `RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>` | 측정 결과 |
 | `UNSUPPORTED` | `UNSUPPORTED,<lib>,<pattern>,<transport>` | transport 미지원 |
 | `SKIP` | `SKIP,<lib>,<pattern>,<transport>,<reason>` | 건너뛰기 |
@@ -373,7 +423,8 @@ runner(스크립트/Python 엔진)와 server/client 바이너리는 **stdin/stdo
 | 메시지 | 형식 | 의미 |
 |--------|------|------|
 | `START` | `START,<msg_size>` | 해당 size 케이스 active 시작 |
-| `PHASE_ACTIVE` | `PHASE_ACTIVE,<msg_size>` | one-way 패턴(PUBSUB, DEALER_DEALER)에서 active phase 전환 |
+| `CONTROL_CONNECTED` | `CONTROL_CONNECTED,<endpoint>` | server control 연결 완료 통지 |
+| `PHASE_ACTIVE` | `PHASE_ACTIVE,<msg_size>` | C runner 호환용 one-way 보조 token. active gate가 아니며 client가 필수 조건으로 기다리면 안 됨 |
 
 #### SPOT / SPOT_REQREP / SPOT_SENDSEND Client ↔ Server (direct control channel)
 
@@ -382,7 +433,8 @@ channel도 사용한다.
 
 | 방향 | 메시지 | 형식 | 의미 |
 |------|--------|------|------|
-| Client → Server | `CONNECTED` | `CONNECTED` (payload) | control link 연결 확인 |
+| Client → Server | `CONNECTED` | `CONNECTED` (payload) | control link progress 확인. start gate가 아님 |
+| Client → Server | `DATA_ENDPOINT` | `DATA_ENDPOINT,<endpoint>` | SPOT_REQREP / SPOT_SENDSEND client data endpoint 전달 |
 | Client → Server | `READY_COUNT` | `READY_COUNT,<msg_size>,<count>` | client가 보유한 ready slot 수 전달 |
 | Server → Client | `START` | `START,<msg_size>` | active phase broadcast |
 
@@ -392,14 +444,19 @@ SPOT / SPOT_REQREP / SPOT_SENDSEND 의 시작 전 handshake 는 아래 순서로
    control endpoint bind 뒤 `CONTROL_READY,<endpoint>` 를 출력한다.
 2. client 는 runner 가 넘긴 server control endpoint 에 연결하고, 자기 쪽
    control listener endpoint 를 runner 에 `CLIENT_CONTROL_ENDPOINT,<endpoint>`
-   로 알린다. control link 가 실제로 연결되면 `CONTROL_CONNECTED,<endpoint>` 를
-   출력한다.
+   로 알린다.
 3. runner 는 client 가 알린 endpoint 를 server 에
    `CONNECT_CONTROL,<client_endpoint>` 로 전달해서 direct control channel 을
-   완성한다.
+   완성한다. server 는 연결 완료 후 stdout 으로
+   `CONTROL_CONNECTED,<endpoint>` 를 출력하고, runner 는 이 줄을 client stdin 으로
+   전달한다.
 4. client 는 control link ready 와 local connect setup 이 모두 끝난 뒤
    stabilization window 와 짧은 control settle 을 거쳐 direct control channel 로
-   `CONNECTED` 를 보내고, 이어서 `READY_COUNT,<msg_size>,<count>` 를 보낸다.
+   `READY_COUNT,<msg_size>,<count>` 를 보낸다. `MULTI_SPOT_REQREP` /
+   `MULTI_SPOT_SENDSEND` 는 그 전에 `DATA_ENDPOINT,<endpoint>` 로 data endpoint 를
+   server 에 알리고 data link ready 를 확인한다. `CONNECTED` 는 progress
+   payload이며, C 기준에서 `MULTI_SPOT`은 control setup 중 먼저 보낼 수 있고,
+   `MULTI_SPOT_REQREP` / `MULTI_SPOT_SENDSEND` 는 data link 준비 뒤 보낸다.
 5. server 는 runner `START,<msg_size>` 를 이미 받았고 expected client 수만큼
    `READY_COUNT` 를 모두 모은 뒤에만 direct control channel 로
    `START,<msg_size>` 를 broadcast 한다.
@@ -423,7 +480,7 @@ Runner                    Server                      Client
   │<──────────────────────  │                            │
   │  spawn client           │                            │
   │─────────────────────────────────────────────────>    │
-  │                         │  ◄── CONNECTION_READY ──►  │
+  │                         │  ◄── pattern ready ──────►  │
   │                         │  relay/echo loop           │ active measurement
   │                         │                            │ RESULT lines
   │<─────────────────────────────────────────────────    │ exit 0
@@ -450,7 +507,7 @@ Runner                    Server                      Client
   │<──────────────────────  │                            │
   │  spawn client           │                            │
   │─────────────────────────────────────────────────>    │
-  │                         │  ◄── CONNECTION_READY ──►  │
+  │                         │  ◄── pattern ready ──────►  │
   │  CLIENT_READY,<size>    │                            │
   │<─────────────────────────────────────────────────    │
   │  START,<size>           │  START,<size>              │
@@ -462,9 +519,13 @@ Runner                    Server                      Client
   │──────────────────────>  │ shutdown                   │
 ```
 
-- client: connect + `CONNECTION_READY` 후 `CLIENT_READY,<msg_size>` 출력.
+- `MULTI_DEALER_DEALER` client: connect + `CONNECTION_READY` 후
+  `CLIENT_READY,<msg_size>` 출력.
+- `MULTI_PUBSUB` client: subscribe 설정, connect, `CONNECTION_READY` 확인 후
+  `CLIENT_READY,<msg_size>` 출력.
 - runner: `CLIENT_READY` 수신 후 server/client 양쪽에 `START,<msg_size>` 전달.
-- PUBSUB: runner가 client에 `PHASE_ACTIVE,<msg_size>` 도 전달.
+- PUBSUB/DEALER_DEALER: C runner가 client에 `PHASE_ACTIVE,<msg_size>`를 보낼 수
+  있다. 이는 호환용 보조 token이며, client의 active gate는 `START,<msg_size>`다.
 - server: stdin에서 `START,<msg_size>` 대기 후 active send 시작.
 
 **SPOT 패턴:**
@@ -482,7 +543,9 @@ Runner                    Server                      Client
   │<─────────────────────────────────────────────────    │
   │  CONNECT_CONTROL,<ep>   │                            │
   │──────────────────────>  │                            │
-  │                         │ ◄── CONNECTED ──────────── │
+  │  CONTROL_CONNECTED,<ep> │                            │
+  │─────────────────────────────────────────────────>    │
+  │                         │ ◄── CONNECTED(progress) ── │
   │                         │ ◄── READY_COUNT,sz,cnt ──  │
   │  CLIENT_READY,<size>    │                            │
   │<─────────────────────────────────────────────────    │
@@ -497,9 +560,13 @@ Runner                    Server                      Client
 ```
 
 - server: benchmark endpoint + control plane endpoint 를 `READY` / `CONTROL_READY` 로 출력.
-- client: control endpoint로 연결 후 `CLIENT_CONTROL_ENDPOINT` → `CONTROL_CONNECTED` 출력.
-- runner: client control endpoint를 `CONNECT_CONTROL` 로 server에 전달.
-- client↔server direct channel: `CONNECTED` → `READY_COUNT,<size>,<count>` → `START,<size>`.
+- client: control endpoint로 연결 후 `CLIENT_CONTROL_ENDPOINT` 를 출력하고,
+  runner 가 전달하는 `CONTROL_CONNECTED` stdin 통지를 기다린다.
+- runner: client control endpoint를 `CONNECT_CONTROL` 로 server에 전달하고,
+  server stdout의 `CONTROL_CONNECTED` 를 client stdin 으로 전달한다.
+- client↔server direct channel: `CONNECTED` progress payload,
+  `DATA_ENDPOINT,<endpoint>`(SPOT_REQREP / SPOT_SENDSEND), `READY_COUNT,<size>,<count>`,
+  `START,<size>`. `CONNECTED` 는 start gate가 아니며 전송 시점은 pattern별 C 구현을 따른다.
 - runner: `CLIENT_READY` 수신 후 server/client에 `START,<size>` 전달.
 
 **SPOT_REQREP 패턴:** 위 SPOT 다이어그램과 동일한 orchestration/handshake 를
@@ -512,10 +579,12 @@ Runner                    Server                      Client
   poller 기반 recv drain 으로 reply 왕복을 측정한다.
 - routed 경로는 `spot(requester) -> spot_node -> spot_node -> spot(replier)`
   이며, reply 는 역방향으로 돌아온다.
-- active 진입 전 handshake 는 SPOT 과 동일하다.
-  즉 `READY` / `CONTROL_READY` → `CLIENT_CONTROL_ENDPOINT` /
-  `CONTROL_CONNECTED` → `CONNECT_CONTROL` → `CONNECTED` →
+- active 진입 전 runner/control orchestration 은 SPOT 과 같고, routed data
+  mesh를 위해 `DATA_ENDPOINT` 교환이 추가된다.
+  즉 `READY` / `CONTROL_READY` → `CLIENT_CONTROL_ENDPOINT` →
+  `CONNECT_CONTROL` → `CONTROL_CONNECTED` → `DATA_ENDPOINT` → data link ready →
   `READY_COUNT` → runner `START` + direct `START` 순서로 진행한다.
+  `CONNECTED` 는 progress payload 이며 start gate 순서에 넣지 않는다.
 
 **STREAM 패턴:**
 
@@ -546,6 +615,8 @@ Runner                    Server                      Client (raw)
 - `CONNECTED`는 SPOT direct channel에서 payload로 전달 (stdout 아님).
 - `READY_COUNT`, `START`는 SPOT direct channel에서도, runner stdin에서도 사용된다.
   같은 형식이지만 전달 경로가 다르다.
+- `PHASE_ACTIVE,<msg_size>`는 C runner 호환용 보조 token이다. 실제 active 시작
+  조건은 아니므로, 언어별 client가 이 token을 기다리는 구조를 만들면 안 된다.
 - `READY,<endpoint>`, `CLIENT_READY,<msg_size>` 등 orchestration 메시지는
   benchmark start gate가 아니다. 실제 start gate는 바이너리 내부의
   `CONNECTION_READY` 또는 SPOT control handshake가 담당한다.
@@ -616,7 +687,7 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
-| ready | event-based | raw=`CONNECTION_READY`, SPOT/SPOT_REQREP/SPOT_SENDSEND=control handshake barrier | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS`, `PERF_MULTI_SPOT_READY_SETTLE_MS`, `PERF_MULTI_SPOT_CONTROL_SETTLE_MS` |
+| ready | event-based | raw socket client=`CONNECTION_READY`, one-way raw start=`CLIENT_READY`/`START`, SPOT/SPOT_REQREP/SPOT_SENDSEND=control handshake barrier | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS`, `PERF_MULTI_SPOT_READY_SETTLE_MS`, `PERF_MULTI_SPOT_CONTROL_SETTLE_MS` |
 | active | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
 
 > `PERF_MULTI_SETTLE_MS`는 호환성 때문에 남아 있을 수 있지만 benchmark phase를
@@ -818,7 +889,7 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 | clients | `--clients` | `PERF_MULTI_CLIENTS` | 100 (stream=10000), 메모리 가드에 의해 자동 하향 가능 |
 
 - **CLI 인자 > 환경 변수 > 기본값** 순으로 적용한다.
-- CLI/환경 변수로 clients를 명시하지 않은 경우, shell wrapper의 메모리 가드(`PERF_MULTI_MEMORY_BUDGET_PCT` 기반)가 가용 메모리에 따라 기본값을 자동 하향(capping)할 수 있다. `PERF_SKIP_MEMORY_CHECK=1`로 비활성화 가능.
+- CLI/환경 변수로 clients를 명시하지 않은 경우, shell entrypoint의 메모리 가드(`PERF_MULTI_MEMORY_BUDGET_PCT` 기반)가 가용 메모리에 따라 기본값을 자동 하향(capping)할 수 있다. `PERF_SKIP_MEMORY_CHECK=1`로 비활성화 가능.
 
 ---
 
@@ -856,8 +927,7 @@ MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MUL
 
 | 언어 | server 파일 | client 파일 | 예시 |
 |------|-----------|-----------|------|
-| Core (C++) | `perf_multi_<pattern>_server.cpp` | `perf_multi_<pattern>_client.cpp` | `perf_multi_stream_server.cpp` |
-| C binding | `perf_multi_<pattern>_server.cpp` | `perf_multi_<pattern>_client.cpp` | `perf_multi_stream_server.cpp` |
+| C binding reference | `perf_multi_<pattern>_server.cpp` | `perf_multi_<pattern>_client.cpp` | `perf_multi_stream_server.cpp` |
 | C++ binding | `perf_multi_<pattern>_server.cpp` 또는 `perf_main.cpp --multi-server` | `perf_multi_<pattern>_client.cpp` 또는 `perf_main.cpp --multi-client` | `perf_multi_stream_server.cpp` |
 | .NET | `PerfMulti<Pattern>Server.cs` | `PerfMulti<Pattern>Client.cs` 또는 `PerfMain --multi-client` | `PerfMultiStreamServer.cs` |
 | Java | `PerfMulti<Pattern>Server.java` | `PerfMulti<Pattern>Client.java` 또는 `PerfMain --multi-client` | `PerfMultiStreamServer.java` |
@@ -867,10 +937,10 @@ MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MUL
 - STREAM 계열은 public pattern 이름을 `stream` 하나만 사용한다.
 - 별도 모델 구분용 파일명 규칙을 추가하지 않는다.
 - 공통 유틸리티 파일도 `perf_` 접두어: `perf_common.hpp`, `PerfCommon.cs`, `PerfUtil.java`, `perf_common.py` 등
-- 실행 스크립트: bindings는 `perf/run_benchmarks_multi.sh` / `.ps1`, core는 `run_benchmarks_multi.sh` / `.ps1` ([PERF_POLICY.md § 3.1](PERF_POLICY.md) 참조)
+- 실행 스크립트: C 기준과 각 bindings는 `perf/run_benchmarks_multi.sh` / `.ps1` 또는 동등한 binding-local 실행기를 사용한다 ([PERF_POLICY.md § 3.1](PERF_POLICY.md) 참조)
 - 파일 분리 대신 단일 runner를 사용하는 경우에도 실행 시점에서는 반드시 server/client 별도 프로세스로 동작해야 하며 READY/RESULT 프로토콜은 동일하게 준수한다.
 
-#### 패턴별 소스 파일 / 바이너리 매핑 (Core)
+#### 패턴별 소스 파일 / 바이너리 매핑 (C binding reference)
 
 server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로 작성하는 것을 원칙으로 한다. 기본 소스 경로: `perf/multi/src/`
 
@@ -890,7 +960,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_STREAM | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
-> STREAM client 예외(core): `MULTI_STREAM` client는 [PERF_POLICY.md § 7.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. public pattern은 `MULTI_STREAM` 하나만 유지한다.
+> STREAM client 예외(C 기준): `MULTI_STREAM` client는 [PERF_POLICY.md § 7.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. public pattern은 `MULTI_STREAM` 하나만 유지한다.
 > SPOT 계열 topology 고정: `MULTI_SPOT`, `MULTI_SPOT_REQREP`,
 > `MULTI_SPOT_SENDSEND` 은 기본적으로
 > client process 당 SpotNode 1개를 만들고, `--clients N` 수만큼 logical spot을
@@ -935,7 +1005,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 패턴군 | transport |
 |--------|-----------|
-| MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB | tcp, tls, ws, wss (Python 엔진 기본값에 ipc 포함, 단 shell wrapper 기본값은 tcp,tls,ws,wss; Windows: ipc 제외) |
+| MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB | tcp, tls, ws, wss (Python 엔진 기본값에 ipc 포함, 단 shell entrypoint 기본값은 tcp,tls,ws,wss; Windows: ipc 제외) |
 | MULTI_SPOT / MULTI_SPOT_REQREP / MULTI_SPOT_SENDSEND | tcp, tls, ws, wss |
 | MULTI_STREAM | tcp, tls, ws, wss |
 
@@ -957,7 +1027,7 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 ```
 
 - 공식 계약은 `run_benchmarks_multi.sh` / `.ps1`가 multi suite의 entrypoint라는 점과, 내부 엔진이 server/client 프로세스 lifecycle 및 RESULT 수집을 책임진다는 점이다.
-- shell wrapper 간 재호출 여부, 환경 변수 전달 방식, Python 엔진 연결 방식은 구현 세부이며 정책이 고정하지 않는다.
+- shell entrypoint 간 재호출 여부, 환경 변수 전달 방식, Python 엔진 연결 방식은 구현 세부이며 정책이 고정하지 않는다.
 
 ### 9.2 CLI 옵션
 
@@ -1011,25 +1081,25 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 
 ```bash
 # 전체 멀티 패턴 실행 (stdout만)
-core/perf/run_benchmarks_multi.sh
+bindings/c/perf/run_benchmarks_multi.sh
 
 # 특정 패턴만 실행
-core/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
+bindings/c/perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 
 # 여러 패턴
-core/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_DEALER,MULTI_PUBSUB
+bindings/c/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_DEALER,MULTI_PUBSUB
 
 # 클라이언트 수/메시지 크기 제한
-core/perf/run_benchmarks_multi.sh --clients 1000 --msg-sizes 64,1024
+bindings/c/perf/run_benchmarks_multi.sh --clients 1000 --msg-sizes 64,1024
 
 # 태그 추가
-core/perf/run_benchmarks_multi.sh --results-tag debug1
+bindings/c/perf/run_benchmarks_multi.sh --results-tag debug1
 
 # 5회 반복, CPU 고정
-core/perf/run_benchmarks_multi.sh --runs 5 --pin-cpu
+bindings/c/perf/run_benchmarks_multi.sh --runs 5 --pin-cpu
 
 # 측정 시간 조정
-core/perf/run_benchmarks_multi.sh --duration 10
+bindings/c/perf/run_benchmarks_multi.sh --duration 10
 ```
 
 ### 9.4 바이너리 직접 실행
@@ -1313,26 +1383,31 @@ core/perf/run_benchmarks_multi.sh --duration 10
 - `zlink_msg_data()` 반환 포인터를 직접 참조하여 불필요한 복사를 피한다.
 - Multi의 대량 클라이언트(1000~10000) 환경에서는 per-client 버퍼도 setup 시 사전 할당하고, duration 내에서 재사용한다.
 
-### 13.2 연결 준비 확인: MONITOR low-cost event 전용
+### 13.2 연결 준비 확인: C 기준 start contract 전용
 
 client 프로세스가 server에 대한 benchmark start gate를 확인할 때는 반드시
 pattern별 공식 start contract 를 사용한다.
 
 | 항목 | 규칙 |
 |------|------|
-| raw 연결 확인 API | `zlink_socket_monitor_open(...)` 뒤에 `CONNECTION_READY` 직접 대기 helper 사용 |
-| SPOT / SPOT_REQREP / SPOT_SENDSEND 연결 확인 API | 별도 서비스 이벤트 스트림 사용 금지. spot control topic 위의 `CONNECTED`/`READY_COUNT`/`START` handshake 사용 |
+| raw socket client 연결 확인 API | `zlink_socket_monitor_open(...)` 뒤에 `CONNECTION_READY` 직접 대기 helper 사용 |
+| runner-barrier raw start API | `CONNECTION_READY` 확인 뒤 `CLIENT_READY` / `START` runner orchestration 사용 |
+| SPOT / SPOT_REQREP / SPOT_SENDSEND 연결 확인 API | 별도 서비스 이벤트 스트림 사용 금지. spot control topic 위의 `CONNECTED` progress payload, SPOT_REQREP/SPOT_SENDSEND의 `DATA_ENDPOINT`, `READY_COUNT`/`START` handshake 사용 |
 | 대기 방식 | app thread에서 타임아웃 기반 bounded wait — busy-wait/sleep 금지 |
 | 타임아웃 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` (기본 5000ms) 초과 시 run 실패 처리 |
 | Monitor HWM | raw monitor 사용 시 `PERF_MULTI_MONITOR_HWM` (기본 1,000) |
 
-- raw monitor handle은 pattern 파일 안에서 직접 열고 닫되, ready gate는
+- raw socket client monitor handle은 pattern 파일 안에서 직접 열고 닫되, ready gate는
   expected client 수 `CONNECTION_READY` counting 으로 끝낸다.
-- SPOT / SPOT_REQREP / SPOT_SENDSEND 은 `CONNECTED` 확인 뒤 client 의 `READY_COUNT` 와
-  server 의 `START` control message 로 gate 를 닫는다.
-- server 측에서도 raw는 동일하게 `CONNECTION_READY` 를 기준으로 준비를 판정하고,
-  SPOT / SPOT_REQREP / SPOT_SENDSEND 은 `READY_COUNT` 집계 후 `START` broadcast 로 준비를
-  판정한다.
+- runner-barrier raw 는 먼저 `CONNECTION_READY` 로 연결 준비를 닫고, suite별
+  패턴 표의 `CLIENT_READY` / `START` 계약으로 active start gate 를 닫는다.
+- SPOT / SPOT_REQREP / SPOT_SENDSEND 은 `CONNECTED` progress payload 를 처리하되,
+  SPOT_REQREP / SPOT_SENDSEND 은 그 전에 `DATA_ENDPOINT` 로 data link endpoint 를
+  교환한다. start gate 는 client 의 `READY_COUNT` 와 server 의 `START` control
+  message 로 닫는다.
+- server 측에서도 runner-barrier raw 는 `START` stdin token 을 기준으로 active
+  송신을 시작하고, SPOT / SPOT_REQREP / SPOT_SENDSEND 은 `READY_COUNT` 집계 후
+  `START` broadcast 로 준비를 판정한다.
 
 ### 13.3 코어 로직 인라인 (multi 보충)
 
@@ -1353,7 +1428,7 @@ pattern별 공식 start contract 를 사용한다.
   - template 내부에 pattern별 분기가 없어야 한다.
   - 구조가 다른 패턴을 같은 template에 합치지 않는다.
 
-예외: STREAM client(`core/perf/common/streamclient/`)는 검증 인프라 코드로
+예외: STREAM client(`bindings/c/perf/common/streamclient/`)는 검증 인프라 코드로
 분류하며 공통 모듈화를 허용한다.
 
 ---

@@ -140,7 +140,9 @@ fn main() {
     println!("CLIENT_CONTROL_ENDPOINT,{client_control_endpoint}");
     io::stdout().flush().ok();
 
-    data_node.connect_peer(&data_endpoint).expect("connect data");
+    data_node
+        .connect_peer(&data_endpoint)
+        .expect("connect data");
     let mut spots: Vec<Box<Spot>> = Vec::with_capacity(settings.clients);
     for index in 0..settings.clients {
         let spot = Box::new(data_node.create_spot().expect("spot"));

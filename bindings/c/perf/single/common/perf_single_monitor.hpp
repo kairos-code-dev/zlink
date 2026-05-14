@@ -165,10 +165,10 @@ inline void print_result(const std::string &lib_type,
     const double latency_p99_ms = latency_p99_ns / 1000000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",throughput," << std::fixed
-              << std::setprecision(2) << throughput << std::endl;
+              << std::setprecision(3) << throughput << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",bandwidth," << std::fixed
-              << std::setprecision(2) << bandwidth_mb_s << std::endl;
+              << std::setprecision(3) << bandwidth_mb_s << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << ","
               << transport << "," << size << ",latency," << std::fixed
               << std::setprecision(3) << latency_ms << std::endl;

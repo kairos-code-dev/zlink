@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"net"
 	"strings"
 	"sync"
 	"time"
@@ -175,74 +173,84 @@ func runMultiSpotReqRepServer(cfg multiConfig) {
 		perfcommon.Must(replier.ReplyToSpot(sourceRID, spotRID, requestSeq).Message(reply).Submit(nil))
 	}))
 
-	controlListener, controlEndpoint := listenControlEndpoint()
-	defer controlListener.Close()
-	var mu sync.Mutex
+	controlNode, err := replierCtx.SpotNode()
+	perfcommon.Must(err)
+	defer controlNode.Close()
+	perfcommon.ApplyMultiSpotNodeAdmission(controlNode, cfg.pattern)
+	perfcommon.Must(perfcommon.ConfigureTLSServer(controlNode, cfg.transport))
+	perfcommon.Must(perfcommon.ConfigureTLSClient(controlNode, cfg.transport))
+	perfcommon.Must(controlNode.SetRoutingID(zlink.NewRoutingID([]byte("SPOT-REQREP-CONTROL-SERVER-NODE"))))
+	controlPub, err := controlNode.Spot()
+	perfcommon.Must(err)
+	defer controlPub.Close()
+	controlSub, err := controlNode.Spot()
+	perfcommon.Must(err)
+	defer controlSub.Close()
+	perfcommon.Must(controlSub.SetSubscription(multiSpotTopic))
+	controlEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-control-server")
+	perfcommon.Must(controlNode.Bind(controlEndpoint))
+	controlEndpoint = spotNodeLastEndpoint(controlNode, controlEndpoint)
+
 	var readyCount int
-	var readyConn net.Conn
-	startRunner := false
-	controlConnected := false
 	dataConnected := false
-	stop := false
-	startConnCh := make(chan net.Conn, 1)
-	go func() {
-		conn, acceptErr := controlListener.Accept()
-		if acceptErr == nil {
-			startConnCh <- conn
-		}
-	}()
-	go func() {
-		stdin := bufio.NewScanner(newStdinReader())
-		for stdin.Scan() {
-			text := strings.TrimSpace(stdin.Text())
-			switch {
-			case strings.HasPrefix(text, "CONNECT_CONTROL,"):
-				endpoint := strings.TrimPrefix(text, "CONNECT_CONTROL,")
-				conn := dialControlEndpoint(endpoint, perfcommon.MultiReadyTimeout())
-				mu.Lock()
-				readyConn = conn
-				controlConnected = true
-				mu.Unlock()
-				flushControlLine("CONTROL_CONNECTED,%s", endpoint)
-				go readSpotServerControl(conn, cfg, replierNode, &mu, &readyCount, &dataConnected, &controlConnected)
-			case text == fmt.Sprintf("START,%d", cfg.msgSize):
-				mu.Lock()
-				startRunner = true
-				mu.Unlock()
-			case text == "STOP" || text == "QUIT":
-				mu.Lock()
-				stop = true
-				mu.Unlock()
-				return
-			}
-		}
-	}()
+	startRunner := false
+	events := make(chan string, 16)
+	go scanSpotRoleStdin(cfg, events)
 
 	flushControlLine("READY,%s", dataEndpoint)
 	flushControlLine("CONTROL_READY,%s", controlEndpoint)
 	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
-	var startConn net.Conn
 	for time.Now().Before(deadline) {
 		select {
-		case startConn = <-startConnCh:
+		case text := <-events:
+			switch {
+			case strings.HasPrefix(text, "CONNECT_CONTROL,"):
+				endpoint := strings.TrimPrefix(text, "CONNECT_CONTROL,")
+				perfcommon.Must(controlNode.ConnectPeer(endpoint))
+				flushControlLine("CONTROL_CONNECTED,%s", endpoint)
+			case text == fmt.Sprintf("START,%d", cfg.msgSize):
+				startRunner = true
+			case text == "STOP" || text == "QUIT":
+				return
+			}
 		default:
 		}
-		mu.Lock()
-		ready := controlConnected && dataConnected && startRunner && readyCount >= cfg.clients && startConn != nil && !stop && readyConn != nil
-		stopped := stop
-		mu.Unlock()
-		if stopped {
-			return
+		payload := receiveSpotControlPayload(controlSub)
+		switch {
+		case strings.HasPrefix(payload, "DATA_ENDPOINT,"):
+			endpoint := strings.TrimPrefix(payload, "DATA_ENDPOINT,")
+			perfcommon.Must(replierNode.ConnectPeer(endpoint))
+			dataConnected = true
+		case payload == "CONNECTED":
+		case strings.HasPrefix(payload, "READY_COUNT,"):
+			fields := strings.Split(payload, ",")
+			if len(fields) == 3 && fields[1] == fmt.Sprintf("%d", cfg.msgSize) {
+				var count int
+				_, _ = fmt.Sscanf(fields[2], "%d", &count)
+				readyCount += count
+			}
 		}
-		if ready {
+		if dataConnected && readyCount >= cfg.clients {
 			break
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if startConn == nil {
-		perfcommon.Must(fmt.Errorf("spot reqrep server control accept timeout"))
+	if !dataConnected || readyCount < cfg.clients {
+		perfcommon.Must(fmt.Errorf("spot reqrep server readiness timeout"))
 	}
-	writeControlLine(startConn, "START,%d", cfg.msgSize)
+	for !startRunner {
+		event := <-events
+		if event == fmt.Sprintf("START,%d", cfg.msgSize) {
+			startRunner = true
+			break
+		}
+		if event == "STOP" || event == "QUIT" {
+			return
+		}
+	}
+	if !publishSpotControlPayload(controlPub, fmt.Sprintf("START,%d", cfg.msgSize), perfcommon.MultiReadyTimeout()) {
+		perfcommon.Must(fmt.Errorf("spot reqrep server direct start publish timeout"))
+	}
 	time.Sleep(cfg.duration + 2*time.Second)
 }
 
@@ -253,36 +261,36 @@ func runMultiSpotReqRepClientRole(cfg multiConfig, endpoint string) perfcommon.R
 	}
 	dataEndpoint, controlEndpoint := parts[0], parts[1]
 
-	controlListener, clientControlEndpoint := listenControlEndpoint()
-	defer controlListener.Close()
-	flushControlLine("CLIENT_CONTROL_ENDPOINT,%s", clientControlEndpoint)
-
-	var mu sync.Mutex
-	runnerStart := false
-	runnerControlConnected := false
-	directStart := false
-	directStartSize := 0
-	readyConnCh := make(chan net.Conn, 1)
-	go func() {
-		conn, acceptErr := controlListener.Accept()
-		if acceptErr == nil {
-			readyConnCh <- conn
-		}
-	}()
-	startConn := dialControlEndpoint(controlEndpoint, perfcommon.MultiReadyTimeout())
-	defer startConn.Close()
-	go readSpotClientStart(startConn, &mu, &directStart, &directStartSize)
-	go readSpotClientStdin(cfg, &mu, &runnerStart, &runnerControlConnected)
-
 	clientCtx, err := perfcommon.NewMultiClientContext()
 	perfcommon.Must(err)
 	defer clientCtx.Close()
 	node, err := clientCtx.SpotNode()
 	perfcommon.Must(err)
 	defer node.Close()
+	controlNode, err := clientCtx.SpotNode()
+	perfcommon.Must(err)
+	defer controlNode.Close()
 	perfcommon.ApplyMultiSpotNodeAdmission(node, cfg.pattern)
+	perfcommon.ApplyMultiSpotNodeAdmission(controlNode, cfg.pattern)
+	perfcommon.Must(perfcommon.ConfigureTLSServer(node, cfg.transport))
 	perfcommon.Must(perfcommon.ConfigureTLSClient(node, cfg.transport))
+	perfcommon.Must(perfcommon.ConfigureTLSServer(controlNode, cfg.transport))
+	perfcommon.Must(perfcommon.ConfigureTLSClient(controlNode, cfg.transport))
 	perfcommon.Must(node.SetRoutingID(zlink.NewRoutingID([]byte("SPOT-REQREP-CLIENT-NODE"))))
+	perfcommon.Must(controlNode.SetRoutingID(zlink.NewRoutingID([]byte("SPOT-REQREP-CONTROL-CLIENT-NODE"))))
+	controlPub, err := controlNode.Spot()
+	perfcommon.Must(err)
+	defer controlPub.Close()
+	controlSub, err := controlNode.Spot()
+	perfcommon.Must(err)
+	defer controlSub.Close()
+	perfcommon.Must(controlSub.SetSubscription(multiSpotTopic))
+	controlBind := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-control-client")
+	perfcommon.Must(controlNode.Bind(controlBind))
+	perfcommon.Must(controlNode.ConnectPeer(controlEndpoint))
+	clientControlEndpoint := spotNodeLastEndpoint(controlNode, controlBind)
+	flushControlLine("CLIENT_CONTROL_ENDPOINT,%s", clientControlEndpoint)
+
 	localEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-client")
 	perfcommon.Must(node.Bind(localEndpoint))
 	perfcommon.Must(node.ConnectPeer(dataEndpoint))
@@ -300,17 +308,26 @@ func runMultiSpotReqRepClientRole(cfg multiConfig, endpoint string) perfcommon.R
 		}
 	}()
 
-	readyConn := waitSpotClientControlReady(readyConnCh, &mu, &runnerControlConnected)
-	defer readyConn.Close()
+	events := make(chan string, 16)
+	go scanSpotRoleStdin(cfg, events)
+	waitForSpotRoleEvent(events, "CONTROL_CONNECTED,")
 	time.Sleep(perfcommon.MultiSpotReadySettleDuration())
 	time.Sleep(perfcommon.MultiSpotControlSettleDuration())
-	writeControlLine(readyConn, "DATA_ENDPOINT,%s", localEndpoint)
+	if !publishSpotControlPayload(controlPub, fmt.Sprintf("DATA_ENDPOINT,%s", localEndpoint), perfcommon.MultiReadyTimeout()) {
+		perfcommon.Must(fmt.Errorf("spot reqrep client data endpoint publish timeout"))
+	}
 	time.Sleep(perfcommon.MultiSpotControlSettleDuration())
-	writeControlLine(readyConn, "CONNECTED")
 	waitMultiSpotReqRepSpotReady(spots[0], cfg.msgSize)
-	writeControlLine(readyConn, "READY_COUNT,%d,%d", cfg.msgSize, cfg.clients)
+	if !publishSpotControlPayload(controlPub, "CONNECTED", perfcommon.MultiReadyTimeout()) {
+		perfcommon.Must(fmt.Errorf("spot reqrep client connected publish timeout"))
+	}
+	time.Sleep(perfcommon.MultiSpotControlSettleDuration())
+	if !publishSpotControlPayload(controlPub, fmt.Sprintf("READY_COUNT,%d,%d", cfg.msgSize, cfg.clients), perfcommon.MultiReadyTimeout()) {
+		perfcommon.Must(fmt.Errorf("spot reqrep client ready publish timeout"))
+	}
 	flushControlLine("CLIENT_READY,%d", cfg.msgSize)
-	waitSpotClientStartBarrier(cfg, &mu, &runnerStart, &directStart, &directStartSize)
+	waitForSpotRoleEvent(events, fmt.Sprintf("START,%d", cfg.msgSize))
+	waitForSpotControlStart(controlSub, cfg.msgSize)
 
 	stats := perfcommon.NewStats()
 	window := activeDeadline(cfg.duration)

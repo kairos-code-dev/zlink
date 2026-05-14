@@ -41,12 +41,7 @@ fn drain_spot_readable(
     processed
 }
 
-fn wait_for_spot_ready(
-    publisher: &Spot,
-    subscriber: &Spot,
-    config: &common::PerfConfig,
-    channel_name: &str,
-) {
+fn wait_for_spot_ready(publisher: &Spot, subscriber: &Spot, config: &common::PerfConfig) {
     let deadline = Instant::now() + common::resolve_single_ready_timeout();
     let mut probe = vec![0u8; common::HEADER_SIZE];
     common::encode_header(&mut probe, common::PHASE_WARMUP, config.size as u32, 0);
@@ -190,7 +185,7 @@ fn main() {
         .expect("set subscription");
 
     wait_for_registry_entries(&query, &channel_name);
-    wait_for_spot_ready(&publisher, &subscriber, &config, &channel_name);
+    wait_for_spot_ready(&publisher, &subscriber, &config);
     thread::sleep(common::resolve_single_spot_ready_settle());
 
     let collector = common::MetricCollector::new();

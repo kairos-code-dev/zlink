@@ -181,9 +181,11 @@ fn main() {
     let control_pub = control_node.create_spot().expect("control pub");
     let control_sub = control_node.create_spot().expect("control sub");
     control_sub.set_subscription(TOPIC).expect("control sub");
-    let Some(control_bind) =
-        common::benchmark_endpoint(PATTERN, &args.transport, "multi-spot-sendsend-control-client")
-    else {
+    let Some(control_bind) = common::benchmark_endpoint(
+        PATTERN,
+        &args.transport,
+        "multi-spot-sendsend-control-client",
+    ) else {
         return;
     };
     control_node.bind(&control_bind).expect("control bind");
@@ -201,7 +203,9 @@ fn main() {
     };
     data_node.bind(&data_bind).expect("client data bind");
     let data_endpoint_local = data_node.last_endpoint().unwrap_or(data_bind);
-    data_node.connect_peer(&data_endpoint).expect("connect data");
+    data_node
+        .connect_peer(&data_endpoint)
+        .expect("connect data");
 
     let server_node_rid = RoutingId::from_bytes(SERVER_NODE_RID);
     let server_spot_rid = RoutingId::from_bytes(SERVER_SPOT_RID);
@@ -282,7 +286,10 @@ fn main() {
     println!("CLIENT_READY,{}", args.msg_size);
     io::stdout().flush().ok();
 
-    if !matches!(event_rx.recv_timeout(ready_timeout), Ok(ClientEvent::RunnerStart)) {
+    if !matches!(
+        event_rx.recv_timeout(ready_timeout),
+        Ok(ClientEvent::RunnerStart)
+    ) {
         panic!("spot sendsend runner start handshake timeout");
     }
     let direct_deadline = Instant::now() + ready_timeout;

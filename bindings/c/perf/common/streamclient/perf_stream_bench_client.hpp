@@ -243,19 +243,19 @@ class bench_client_t : public bench_client_iface_t
                       m.p95_ns > 0.0 ? m.p95_ns : latency_mean_ns;
                     const double latency_p99_ns =
                       m.p99_ns > 0.0 ? m.p99_ns : latency_p95_ns;
-                    std::printf ("RESULT,current,%s,%s,%zu,throughput,%.6f\n",
+                    std::printf ("RESULT,current,%s,%s,%zu,throughput,%.3f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
                                  size, throughput);
-                    std::printf ("RESULT,current,%s,%s,%zu,bandwidth,%.6f\n",
+                    std::printf ("RESULT,current,%s,%s,%zu,bandwidth,%.3f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
                                  size, bandwidth);
-                    std::printf ("RESULT,current,%s,%s,%zu,latency,%.6f\n",
+                    std::printf ("RESULT,current,%s,%s,%zu,latency,%.3f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
                                  size, latency_mean_ns / 1000000.0);
-                    std::printf ("RESULT,current,%s,%s,%zu,latency_p95,%.6f\n",
+                    std::printf ("RESULT,current,%s,%s,%zu,latency_p95,%.3f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
                                  size, latency_p95_ns / 1000000.0);
-                    std::printf ("RESULT,current,%s,%s,%zu,latency_p99,%.6f\n",
+                    std::printf ("RESULT,current,%s,%s,%zu,latency_p99,%.3f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
                                  size, latency_p99_ns / 1000000.0);
                 }

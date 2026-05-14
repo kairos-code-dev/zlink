@@ -3,8 +3,9 @@ mod common;
 
 use std::io::{self, BufRead, Write};
 use std::sync::{
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
-    mpsc, Arc, Mutex,
+    mpsc,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -209,7 +210,9 @@ fn main() {
         }
         if let Some(payload) = control_payload(&control_sub) {
             if let Some(endpoint) = payload.strip_prefix("DATA_ENDPOINT,") {
-                data_node.connect_peer(endpoint).expect("connect client data");
+                data_node
+                    .connect_peer(endpoint)
+                    .expect("connect client data");
                 data_connected = true;
             } else if let Some(rest) = payload.strip_prefix("READY_COUNT,") {
                 let mut parts = rest.split(',');
@@ -249,7 +252,11 @@ fn main() {
     if !runner_start {
         panic!("spot reqrep server start handshake timeout");
     }
-    if !publish_control(&control_pub, &format!("START,{}", args.msg_size), ready_timeout) {
+    if !publish_control(
+        &control_pub,
+        &format!("START,{}", args.msg_size),
+        ready_timeout,
+    ) {
         panic!("spot reqrep control start publish timeout");
     }
 

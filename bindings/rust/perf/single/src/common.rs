@@ -399,8 +399,8 @@ fn bandwidth_multiplier(_pattern: &str) -> f64 {
 // -- RESULT output -----------------------------------------------------------
 
 pub fn print_phase_result(key: &str, phase: &PhaseResult) {
-    println!("{key},throughput,{:.2}", phase.throughput);
-    println!("{key},bandwidth,{:.6}", phase.bandwidth);
+    println!("{key},throughput,{:.3}", phase.throughput);
+    println!("{key},bandwidth,{:.3}", phase.bandwidth);
     println!("{key},latency,{:.3}", phase.latency_mean_ns / 1_000_000.0);
     println!(
         "{key},latency_p95,{:.3}",

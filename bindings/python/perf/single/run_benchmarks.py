@@ -19,6 +19,10 @@ from perf_common import (
 
 
 ROOT = Path(__file__).resolve().parent
+REPO_ROOT = ROOT.parent.parent.parent.parent
+CORE_BUILD_DIR = REPO_ROOT / "core" / "build"
+CORE_LIB = CORE_BUILD_DIR / "lib" / "libzlink.so"
+DEFAULT_PYTHONPATH = ROOT.parent.parent / "src"
 DEFAULT_PATTERNS = (
     "PAIR",
     "PUBSUB",
@@ -47,7 +51,6 @@ RUNNABLE_TRANSPORTS = POLICY_TRANSPORTS
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(prog="run_benchmarks.sh")
-    parser.add_argument("--pythonpath", required=True)
     parser.add_argument("--pattern", default="ALL")
     parser.add_argument(
         "--duration",
@@ -73,9 +76,6 @@ def parse_args(argv):
     parser.add_argument("--rcvtimeo", "--recv-timeout-ms", dest="rcvtimeo", default="")
     parser.add_argument("--auto-hwm-profile", default="")
     parser.add_argument("--pin-cpu", action="store_true")
-    parser.add_argument(
-        "--msg-size", dest="msg_size_compat", default=None, help=argparse.SUPPRESS
-    )
     return parser.parse_args(argv)
 
 
@@ -97,8 +97,6 @@ def _parse_patterns(value):
 
 
 def _parse_msg_sizes(args):
-    if args.msg_size_compat is not None:
-        return [args.msg_size_compat]
     source = args.msg_sizes or os.environ.get("PERF_MSG_SIZES", "")
     sizes = _parse_csv(source or ",".join(DEFAULT_MSG_SIZES))
     if not sizes:
@@ -114,6 +112,37 @@ def _parse_transports(value):
     if not transports:
         raise SystemExit("--transports must not be empty")
     return transports
+
+
+def _ensure_core_runtime():
+    if not CORE_LIB.exists():
+        raise SystemExit(
+            f"core runtime not found: {CORE_LIB}\n"
+            "Build core/build before running Python perf."
+        )
+    runtime_mtime = CORE_LIB.stat().st_mtime
+    for source_root in (REPO_ROOT / "core" / "src", REPO_ROOT / "core" / "include"):
+        if not source_root.exists():
+            continue
+        for source in source_root.rglob("*"):
+            if source.is_file() and source.stat().st_mtime > runtime_mtime:
+                raise SystemExit(
+                    "Error: stale core runtime detected for bindings/python/perf.\n"
+                    f"  runtime: {CORE_LIB}\n"
+                    f"  newer source: {source}\n"
+                    "Rebuild core/build before running run_benchmarks.sh."
+                )
+    print(f"Perf core build dir: {CORE_BUILD_DIR}", flush=True)
+    print(f"Perf runtime libzlink: {CORE_LIB}", flush=True)
+
+
+def _configure_core_runtime(env):
+    _ensure_core_runtime()
+    env["ZLINK_LIBRARY_PATH"] = str(CORE_LIB)
+    lib_dir = str(CORE_LIB.parent)
+    env["LD_LIBRARY_PATH"] = (
+        f"{lib_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else lib_dir
+    )
 
 
 def _transports_for_pattern(pattern, transports):
@@ -200,6 +229,10 @@ def _metric_row(pattern, msg_size, metrics, *, indent="      "):
         f"{float(metrics.get('latency_p95', 0.0)):>9.3f} ms | "
         f"{float(metrics.get('latency_p99', 0.0)):>9.3f} ms |"
     )
+
+
+def pattern_direction(_pattern):
+    return "one-way"
 
 
 def _status_row(msg_size, status, *, indent="      "):
@@ -289,7 +322,8 @@ def main(argv=None):
     configs = _selected_configs(patterns, transports, msg_sizes)
 
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(Path(args.pythonpath).resolve())
+    env["PYTHONPATH"] = str(DEFAULT_PYTHONPATH.resolve())
+    _configure_core_runtime(env)
     if args.io_threads:
         env["PERF_IO_THREADS"] = args.io_threads
     if args.hwm:
@@ -314,6 +348,8 @@ def main(argv=None):
         if pattern != patterns[0]:
             _append_line(sections, "===============================================================================")
             _append_line(sections)
+        _append_line(sections, f"## PATTERN: {pattern} ({pattern_direction(pattern)})")
+        _append_line(sections)
         _append_line(sections, f"  > Benchmarking current for {pattern}...")
         pattern_transports = _transports_for_pattern(pattern, transports)
         for transport in pattern_transports:
@@ -429,11 +465,6 @@ def main(argv=None):
         for line in chunk.splitlines()
         if line.startswith(("RESULT,", "UNSUPPORTED,", "SKIP,"))
     ]
-    if emitted_result_lines:
-        _append_line(sections)
-        for line in emitted_result_lines:
-            _append_line(sections, line)
-        _append_line(sections)
     skipped_cases = 0
     unsupported_cases = 0
     for line in status_lines:
@@ -453,6 +484,11 @@ def main(argv=None):
         _append_line(sections)
 
     _append_line(sections, render_effective_options(options, section="result"))
+    _append_line(sections)
+    _append_line(sections, "## Result Data")
+    for line in emitted_result_lines:
+        _append_line(sections, line)
+    _append_line(sections)
     _append_line(sections, "## Completion")
     _append_line(sections, f"- status: {status}")
     _append_line(sections, f"- expected_result_lines: {expected_result_lines}")

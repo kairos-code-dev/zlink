@@ -219,6 +219,20 @@ prepare_core_runtime() {
     echo "Build core/build before running Go perf." >&2
     exit 1
   fi
+  local newer_source
+  newer_source="$(
+    find "${REPO_DIR}/core/src" "${REPO_DIR}/core/include" \
+      -type f -newer "${CORE_LIB}" -print -quit 2>/dev/null || true
+  )"
+  if [[ -n "${newer_source}" ]]; then
+    echo "Error: stale core runtime detected for bindings/go/perf." >&2
+    echo "  runtime: ${CORE_LIB}" >&2
+    echo "  newer source: ${newer_source}" >&2
+    echo "Rebuild core/build before running run_benchmarks.sh." >&2
+    exit 1
+  fi
+  echo "Perf core build dir: ${REPO_DIR}/core/build"
+  echo "Perf runtime libzlink: ${CORE_LIB}"
   export LD_LIBRARY_PATH="${CORE_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 }
 
@@ -233,6 +247,7 @@ mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
 prepare_core_runtime
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-single.XXXXXX")"
+RAW_RESULTS_FILE="${TMP_DIR}/result_data.log"
 cleanup() {
   rm -rf "${TMP_DIR}"
 }
@@ -318,9 +333,9 @@ EFFECTIVE_TRANSPORTS_CSV="$(resolve_single_effective_transports)"
 
 append_case_output() {
   local case_log="$1"
-  cat "${case_log}" >> "${RESULTS_FILE}"
+  cat "${case_log}" >> "${RAW_RESULTS_FILE}"
   if [[ -s "${case_log}" ]]; then
-    printf '\n' >> "${RESULTS_FILE}"
+    printf '\n' >> "${RAW_RESULTS_FILE}"
   fi
 }
 
@@ -548,7 +563,7 @@ for run in $(seq 1 "${RUNS}"); do
             continue
           fi
           if [[ "${case_result_lines}" -eq 0 ]]; then
-            echo "FAIL,current,${pattern},${transport},${size},no_result_lines" >> "${RESULTS_FILE}"
+            echo "FAIL,current,${pattern},${transport},${size},no_result_lines" >> "${RAW_RESULTS_FILE}"
             fail=$((fail + 1))
             FAILURES+=("${pattern} current ${transport} ${size}B: no_result_lines")
           else
@@ -563,7 +578,7 @@ for run in $(seq 1 "${RUNS}"); do
             progress_case_row "${pattern}" "${size}" "${case_log}"
             continue
           fi
-          echo "FAIL,current,${pattern},${transport},${size},exit_nonzero_after_${attempt}_attempts" >> "${RESULTS_FILE}"
+          echo "FAIL,current,${pattern},${transport},${size},exit_nonzero_after_${attempt}_attempts" >> "${RAW_RESULTS_FILE}"
           fail=$((fail + 1))
           FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero_after_${attempt}_attempts")
         fi
@@ -609,6 +624,13 @@ fi
   echo "- msg_sizes: ${MSG_SIZES}"
   echo "- runtime: ${CORE_LIB}"
   echo "- pin_cpu: ${PIN_CPU}"
+  echo
+  echo "## Result Data"
+  if [[ -s "${RAW_RESULTS_FILE}" ]]; then
+    cat "${RAW_RESULTS_FILE}"
+  fi
+  echo
+  echo "## Completion"
   echo "- status: ${status}"
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"

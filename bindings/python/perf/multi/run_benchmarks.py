@@ -23,7 +23,10 @@ from perf_multi_common import (
 
 
 ROOT = Path(__file__).resolve().parent
-RUNNER_LIB = ROOT.parent.parent.parent.parent / "core" / "build" / "lib" / "libzlink.so"
+REPO_ROOT = ROOT.parent.parent.parent.parent
+CORE_BUILD_DIR = REPO_ROOT / "core" / "build"
+RUNNER_LIB = CORE_BUILD_DIR / "lib" / "libzlink.so"
+DEFAULT_PYTHONPATH = ROOT.parent.parent / "src"
 DEFAULT_PATTERNS = (
     "DEALER_DEALER",
     "DEALER_ROUTER",
@@ -56,7 +59,6 @@ RUNNABLE_TRANSPORTS = POLICY_TRANSPORTS
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(prog="run_benchmarks_multi.sh")
-    parser.add_argument("--pythonpath", required=True)
     parser.add_argument("--pattern", default="ALL")
     parser.add_argument("--build-dir", default="")
     parser.add_argument("--reuse-build", action="store_true")
@@ -93,9 +95,6 @@ def parse_args(argv):
     parser.add_argument("--server-shutdown-timeout-ms", default="")
     parser.add_argument("--server-bind-port", default="")
     parser.add_argument("--auto-hwm-profile", default="")
-    parser.add_argument(
-        "--msg-size", dest="msg_size_compat", default=None, help=argparse.SUPPRESS
-    )
     return parser.parse_args(argv)
 
 
@@ -107,6 +106,8 @@ def _normalize_pattern(value):
     pattern = value.strip().upper()
     if pattern.startswith("MULTI_"):
         pattern = pattern[6:]
+    if pattern == "STREAMS":
+        pattern = "STREAM"
     return pattern
 
 
@@ -124,8 +125,6 @@ def _parse_patterns(value):
 
 
 def _requested_msg_sizes(args):
-    if args.msg_size_compat is not None:
-        return [args.msg_size_compat]
     if args.msg_sizes:
         sizes = _parse_csv(args.msg_sizes)
         if not sizes:
@@ -163,6 +162,37 @@ def _parse_transports(value):
     if not transports:
         raise SystemExit("--transports must not be empty")
     return transports
+
+
+def _ensure_core_runtime():
+    if not RUNNER_LIB.exists():
+        raise SystemExit(
+            f"core runtime not found: {RUNNER_LIB}\n"
+            "Build core/build before running Python perf."
+        )
+    runtime_mtime = RUNNER_LIB.stat().st_mtime
+    for source_root in (REPO_ROOT / "core" / "src", REPO_ROOT / "core" / "include"):
+        if not source_root.exists():
+            continue
+        for source in source_root.rglob("*"):
+            if source.is_file() and source.stat().st_mtime > runtime_mtime:
+                raise SystemExit(
+                    "Error: stale core runtime detected for bindings/python/perf.\n"
+                    f"  runtime: {RUNNER_LIB}\n"
+                    f"  newer source: {source}\n"
+                    "Rebuild core/build before running run_benchmarks_multi.sh."
+                )
+    print(f"Perf core build dir: {CORE_BUILD_DIR}", flush=True)
+    print(f"Perf runtime libzlink: {RUNNER_LIB}", flush=True)
+
+
+def _configure_core_runtime(env):
+    _ensure_core_runtime()
+    env["ZLINK_LIBRARY_PATH"] = str(RUNNER_LIB)
+    lib_dir = str(RUNNER_LIB.parent)
+    env["LD_LIBRARY_PATH"] = (
+        f"{lib_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else lib_dir
+    )
 
 
 def _transports_for_pattern(pattern, transports):
@@ -228,6 +258,83 @@ def _clients_for_pattern(pattern, cli_value):
     if env_value:
         return env_value
     return "10000" if pattern == "STREAM" else "100"
+
+
+def _uint(value):
+    try:
+        parsed = int(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _memory_available_kb():
+    if os.environ.get("PERF_SKIP_MEMORY_CHECK") == "1":
+        return None
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("MemAvailable:"):
+                    parts = line.split()
+                    return _uint(parts[1]) if len(parts) >= 2 else None
+    except OSError:
+        return None
+    return None
+
+
+def _memory_max_clients():
+    available_kb = _memory_available_kb()
+    if available_kb is None:
+        return None
+    budget_pct = _uint(os.environ.get("PERF_MULTI_MEMORY_BUDGET_PCT", os.environ.get("PERF_MEMORY_BUDGET_PCT", "70")))
+    base_mb = _uint(os.environ.get("PERF_MULTI_MEMORY_BASE_MB", os.environ.get("PERF_MEMORY_BASE_MB", "512")))
+    per_client_kb = _uint(os.environ.get("PERF_MULTI_MEMORY_PER_CLIENT_KB", os.environ.get("PERF_MEMORY_PER_CLIENT_KB", "1024")))
+    if budget_pct is None or budget_pct < 1 or budget_pct > 95 or base_mb is None or per_client_kb is None or per_client_kb < 1:
+        return None
+    usable_kb = available_kb * budget_pct // 100
+    base_kb = base_mb * 1024
+    if usable_kb <= base_kb:
+        return 1
+    return max(1, (usable_kb - base_kb) // per_client_kb)
+
+
+def _cap_default_clients_for_memory(clients, explicit_clients):
+    if explicit_clients:
+        return clients
+    parsed = _uint(clients)
+    max_clients = _memory_max_clients()
+    if parsed is None or max_clients is None:
+        return clients
+    return str(min(parsed, max_clients))
+
+
+def _preflight_skip(pattern, transport, msg_size, clients):
+    parsed = _uint(clients)
+    if parsed is None:
+        return None
+    if os.environ.get("PERF_SKIP_NOFILE_CHECK") != "1":
+        try:
+            import resource
+
+            soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+            required = parsed * 3 + 4096
+            if soft != resource.RLIM_INFINITY and soft < required:
+                target = required if hard == resource.RLIM_INFINITY else min(required, hard)
+                if target > soft:
+                    try:
+                        resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+                        soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+                    except (OSError, ValueError):
+                        pass
+            if soft != resource.RLIM_INFINITY and soft < required:
+                return f"SKIP,current,MULTI_{pattern},{transport},nofile_guard:clients={clients},required={required},soft={soft},hard={hard}"
+        except (ImportError, OSError, ValueError):
+            pass
+    if os.environ.get("PERF_SKIP_MEMORY_CHECK") != "1":
+        max_clients = _memory_max_clients()
+        if max_clients is not None and parsed > max_clients:
+            return f"SKIP,current,MULTI_{pattern},{transport},memory_guard:clients={clients},max_clients={max_clients}"
+    return None
 
 
 def _server_popen_kwargs():
@@ -300,6 +407,16 @@ def _metric_row(pattern, msg_size, metrics, *, indent="      "):
         f"{float(metrics.get('latency_p95', 0.0)):>9.3f} ms | "
         f"{float(metrics.get('latency_p99', 0.0)):>9.3f} ms |"
     )
+
+
+def pattern_direction(pattern):
+    return "echo" if pattern in {
+        "MULTI_DEALER_ROUTER",
+        "MULTI_ROUTER_ROUTER",
+        "MULTI_SPOT_REQREP",
+        "MULTI_SPOT_SENDSEND",
+        "MULTI_STREAM",
+    } else "one-way"
 
 
 def _status_row(msg_size, status, *, indent="      "):
@@ -759,7 +876,7 @@ def main(argv=None):
     configs = _selected_configs(patterns, transports, requested_msg_sizes)
 
     env = dict(os.environ)
-    env["PYTHONPATH"] = args.pythonpath
+    env["PYTHONPATH"] = str(DEFAULT_PYTHONPATH.resolve())
     env["PERF_MULTI_DURATION_SECONDS"] = str(args.duration)
     if args.io_threads:
         env["PERF_MULTI_SERVER_IO_THREADS"] = args.io_threads
@@ -794,14 +911,7 @@ def main(argv=None):
         env["PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS"] = args.server_shutdown_timeout_ms
     if args.server_bind_port:
         env["PERF_MULTI_SERVER_BIND_PORT"] = args.server_bind_port
-    if RUNNER_LIB.exists():
-        env["ZLINK_LIBRARY_PATH"] = str(RUNNER_LIB)
-        lib_dir = str(RUNNER_LIB.parent)
-        env["LD_LIBRARY_PATH"] = (
-            f"{lib_dir}:{env['LD_LIBRARY_PATH']}"
-            if env.get("LD_LIBRARY_PATH")
-            else lib_dir
-        )
+    _configure_core_runtime(env)
 
     run_cooldown_ms = _env_int("PERF_MULTI_RUN_COOLDOWN_MS", 3000)
     transport_transition_ms = _env_int("PERF_MULTI_TRANSPORT_TRANSITION_MS", 3000)
@@ -816,11 +926,16 @@ def main(argv=None):
     case_ordinal = 1
     _append_line(sections, render_effective_options(options))
     _append_line(sections)
+    explicit_clients = args.clients is not None or bool(os.environ.get("PERF_MULTI_CLIENTS"))
     for pattern_index, pattern in enumerate(patterns):
-        pattern_clients = _clients_for_pattern(pattern, args.clients)
+        pattern_clients = _cap_default_clients_for_memory(
+            _clients_for_pattern(pattern, args.clients), explicit_clients
+        )
         if pattern_index > 0:
             _append_line(sections, "===============================================================================")
             _append_line(sections)
+        _append_line(sections, f"## PATTERN: MULTI_{pattern} ({pattern_direction('MULTI_' + pattern)})")
+        _append_line(sections)
         _append_line(sections, f"  > Benchmarking current for MULTI_{pattern}...")
         pattern_transports = _transports_for_pattern(pattern, transports)
         pattern_msg_sizes = _msg_sizes_for_pattern(pattern, requested_msg_sizes)
@@ -834,6 +949,15 @@ def main(argv=None):
                 for header_line in table_header_lines():
                     _append_line(sections, f"      {header_line}")
                 for msg_size in pattern_msg_sizes:
+                    preflight = _preflight_skip(pattern, transport, msg_size, pattern_clients)
+                    if preflight:
+                        output = preflight
+                        emitted_chunks.append(output)
+                        status_lines.extend(_parse_status_lines(output))
+                        _append_line(sections, _status_row(msg_size, "SKIP"))
+                        run_outputs[msg_size].append(output)
+                        transport_all_unsupported = False
+                        continue
                     case_env = dict(env)
                     case_env["PERF_RUN_ID"] = str(case_ordinal)
                     case_env["PERF_MULTI_MSG_UNIT_BYTES"] = str(msg_size)
@@ -877,6 +1001,15 @@ def main(argv=None):
                     for header_line in table_header_lines():
                         _append_line(sections, f"        {header_line}")
                     for msg_size in pattern_msg_sizes:
+                        preflight = _preflight_skip(pattern, transport, msg_size, pattern_clients)
+                        if preflight:
+                            output = preflight
+                            emitted_chunks.append(output)
+                            status_lines.extend(_parse_status_lines(output))
+                            _append_line(sections, _status_row(msg_size, "SKIP", indent="        "))
+                            run_outputs[msg_size].append(output)
+                            transport_all_unsupported = False
+                            continue
                         case_env = dict(env)
                         case_env["PERF_RUN_ID"] = str(case_ordinal)
                         if (
@@ -977,11 +1110,22 @@ def main(argv=None):
         for line in chunk.splitlines()
         if line.startswith(("RESULT,", "UNSUPPORTED,", "SKIP,"))
     ]
-    if emitted_result_lines:
-        _append_line(sections)
-        for line in emitted_result_lines:
-            _append_line(sections, line)
-        _append_line(sections)
+    metric_order = {
+        "bandwidth": 0,
+        "latency": 1,
+        "latency_p95": 2,
+        "latency_p99": 3,
+        "throughput": 4,
+    }
+    emitted_result_lines.sort(
+        key=lambda line: (
+            line.split(",")[2] if len(line.split(",")) > 2 else "",
+            line.split(",")[3] if len(line.split(",")) > 3 else "",
+            int(line.split(",")[4]) if len(line.split(",")) > 4 and line.split(",")[4].isdigit() else -1,
+            metric_order.get(line.split(",")[5], 99) if len(line.split(",")) > 5 else 99,
+            line,
+        )
+    )
     skipped_cases = 0
     unsupported_cases = 0
     for line in status_lines:
@@ -993,6 +1137,7 @@ def main(argv=None):
     expected_cases = max(0, total_cases - skipped_cases - unsupported_cases)
     expected_result_lines = expected_cases * 5
     status = "complete" if len(rows) == expected_result_lines else "partial"
+    success_cases = len(rows) // 5
     if failures:
         _append_line(sections)
         _append_line(sections, "## Failures")
@@ -1000,13 +1145,19 @@ def main(argv=None):
             _append_line(sections, line)
         _append_line(sections)
     _append_line(sections, render_effective_options(options, section="result"))
+    _append_line(sections)
+    _append_line(sections, "## Result Data")
+    for line in emitted_result_lines:
+        _append_line(sections, line)
+    _append_line(sections)
     _append_line(sections, "## Completion")
+    _append_line(sections, f"- success: {success_cases}")
+    _append_line(sections, f"- unsupported: {unsupported_cases}")
+    _append_line(sections, f"- skip: {skipped_cases}")
+    _append_line(sections, f"- fail: {fail_count}")
     _append_line(sections, f"- status: {status}")
     _append_line(sections, f"- expected_result_lines: {expected_result_lines}")
     _append_line(sections, f"- actual_result_lines: {len(rows)}")
-    _append_line(sections, f"- skip_cases: {skipped_cases}")
-    _append_line(sections, f"- unsupported_cases: {unsupported_cases}")
-    _append_line(sections, f"- fail: {fail_count}")
     final_output = "\n".join(sections).rstrip() + "\n"
 
     report_path = build_report_path(

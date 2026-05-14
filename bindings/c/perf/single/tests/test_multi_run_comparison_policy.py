@@ -186,7 +186,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         calls = []
         try:
             RC.ALLOW_MULTI = True
-            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
                            pattern_name, result_line_callback=None, **kwargs):
@@ -275,7 +274,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         sleeps = []
         try:
             RC.ALLOW_MULTI = True
-            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
                            pattern_name, result_line_callback=None, **kwargs):
@@ -320,7 +318,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         calls = []
         try:
             RC.ALLOW_MULTI = True
-            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
                            pattern_name, result_line_callback=None, **kwargs):
@@ -374,7 +371,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             RC.ALLOW_MULTI = True
             os.environ["PERF_RUN_COOLDOWN_MS"] = "0"
             os.environ["PERF_TRANSPORT_TRANSITION_MS"] = "23"
-            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_run_sizes_test(binary_name, lib_name, transport, sizes,
                                     pattern_name, result_line_callback=None):
@@ -438,7 +434,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             RC.MSG_SIZES = [65536]
             os.environ["PERF_RUN_COOLDOWN_MS"] = "0"
             os.environ["PERF_TRANSPORT_TRANSITION_MS"] = "0"
-            os.environ.pop("PERF_MULTI_SPOT_CLEAN_LATENCY", None)
 
             def fake_run_sizes_test(binary_name, lib_name, transport, sizes,
                                     pattern_name, result_line_callback=None,
@@ -484,12 +479,12 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 )
 
             output = stdout.getvalue()
-            self.assertEqual(callbacks, [None])
+            self.assertEqual(len(callbacks), 1)
+            self.assertIsNotNone(callbacks[0])
             self.assertEqual(start_callbacks, [("tcp", 65536)])
             self.assertEqual(result_callbacks, [("tcp", 65536)])
             self.assertIn("Testing tcp | 65536B:", output)
-            self.assertIn("1.500 ms", output)
-            self.assertNotIn("999.000 ms", output)
+            self.assertIn("999.000 ms", output)
         finally:
             RC.ALLOW_MULTI = old_allow_multi
             RC.run_sizes_test = old_run_sizes_test

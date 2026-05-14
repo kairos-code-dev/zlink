@@ -16,13 +16,6 @@ enum ServerEvent {
     ConnectControl(String),
 }
 
-fn env_u64(name: &str, default: u64) -> u64 {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(default)
-}
-
 fn setup_tls_server(node: &SpotNode, transport: &str) {
     if matches!(transport, "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
@@ -121,7 +114,9 @@ fn main() {
         .expect("data spot rid");
     control_sub.set_subscription(TOPIC).expect("control sub");
 
-    let Some(data_bind) = common::benchmark_endpoint("MULTI_SPOT", &args.transport, "multi-spot-data") else {
+    let Some(data_bind) =
+        common::benchmark_endpoint("MULTI_SPOT", &args.transport, "multi-spot-data")
+    else {
         return;
     };
     if let Err(err) = data_node.bind(&data_bind) {
@@ -197,7 +192,11 @@ fn main() {
     if !runner_start {
         panic!("spot server start handshake timeout");
     }
-    if !publish_control(&control_pub, &format!("START,{}", args.msg_size), ready_timeout) {
+    if !publish_control(
+        &control_pub,
+        &format!("START,{}", args.msg_size),
+        ready_timeout,
+    ) {
         panic!("spot control start publish timeout");
     }
 

@@ -1274,33 +1274,6 @@ inline void print_client_result_lines (
       latency.p99_ns);
 }
 
-template<typename ResourceMetrics>
-inline void print_client_result_lines (
-  const char *pattern,
-  const std::string &lib_name,
-  const std::string &transport,
-  size_t msg_size,
-  double throughput,
-  const bench_latency_stats_t &latency,
-  const ResourceMetrics &metrics)
-{
-    print_client_result_lines (
-      pattern, lib_name, transport, msg_size, throughput, latency);
-
-    if (metrics.has_cpu_pct) {
-        std::cout << "RESULT," << lib_name << "," << pattern << ","
-                  << transport << "," << msg_size << ",client_cpu_pct,"
-                  << std::fixed << std::setprecision (2) << metrics.cpu_pct
-                  << std::endl;
-    }
-    if (metrics.has_mem_mb) {
-        std::cout << "RESULT," << lib_name << "," << pattern << ","
-                  << transport << "," << msg_size << ",client_mem_mb,"
-                  << std::fixed << std::setprecision (2) << metrics.mem_mb
-                  << std::endl;
-    }
-}
-
 inline void print_echo_client_result_lines (
   const char *pattern,
   const std::string &lib_name,

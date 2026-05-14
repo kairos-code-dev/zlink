@@ -136,9 +136,6 @@ payloads, that phase intentionally saturates the sender and receiver queues, so
 active-phase message timestamps mostly describe queue residence time rather than
 service latency.
 
-By default, the runner keeps active-phase throughput and bandwidth, then reruns
-the same SPOT size in latency-only mode and uses that low-rate pass for latency,
-p95, and p99 in both the markdown table and `RESULT` data.
-
-Use `PERF_MULTI_SPOT_CLEAN_LATENCY=0` to disable the clean-latency merge and
-show active-phase queue residence time instead.
+The runner reports the active-phase latency values in both the markdown table
+and `RESULT` data. This keeps the C runner and binding runners on the same
+single-pass measurement contract for each pattern, transport, size, and run.

@@ -2,8 +2,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHONPATH_DIR="$(cd "$SCRIPT_DIR/../../src" && pwd)"
-
 has_transports=0
 for arg in "$@"; do
     case "$arg" in
@@ -20,6 +18,5 @@ if [[ $has_transports -eq 0 && -z "${PERF_TRANSPORTS:-}" ]]; then
 fi
 
 exec python -u "$SCRIPT_DIR/run_benchmarks.py" \
-    --pythonpath "$PYTHONPATH_DIR" \
     "${default_args[@]}" \
     "$@"

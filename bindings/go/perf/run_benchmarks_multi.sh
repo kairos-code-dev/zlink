@@ -78,6 +78,105 @@ sleep_millis() {
   sleep "$((millis / 1000)).$(printf '%03d' "$((millis % 1000))")"
 }
 
+is_uint() {
+  [[ "${1:-}" =~ ^[0-9]+$ ]]
+}
+
+NOFILE_SKIP_REASON=""
+ensure_nofile_limit() {
+  local clients="${1:-}"
+  NOFILE_SKIP_REASON=""
+  if [[ "${PERF_SKIP_NOFILE_CHECK:-0}" == "1" ]] || ! is_uint "${clients}"; then
+    return 0
+  fi
+  local required=$(( clients * 3 + 4096 ))
+  local soft hard
+  soft="$(ulimit -Sn 2>/dev/null || true)"
+  hard="$(ulimit -Hn 2>/dev/null || true)"
+  [[ "${soft}" == "unlimited" ]] && return 0
+  is_uint "${soft}" || return 0
+  local hard_num=-1
+  if [[ "${hard}" != "unlimited" ]]; then
+    if is_uint "${hard}"; then hard_num="${hard}"; else hard_num="${soft}"; fi
+  fi
+  if (( soft < required )); then
+    local target="${required}"
+    if (( hard_num >= 0 && target > hard_num )); then target="${hard_num}"; fi
+    if (( target > soft )); then
+      ulimit -Sn "${target}" 2>/dev/null || true
+      soft="$(ulimit -Sn 2>/dev/null || true)"
+    fi
+  fi
+  if is_uint "${soft}" && (( soft >= required )); then
+    return 0
+  fi
+  NOFILE_SKIP_REASON="clients=${clients},required=${required},soft=${soft},hard=${hard}"
+  return 1
+}
+
+memory_available_kb() {
+  if [[ "${PERF_SKIP_MEMORY_CHECK:-0}" == "1" || ! -r /proc/meminfo ]]; then
+    printf '\n'
+    return
+  fi
+  awk '/^MemAvailable:/ { print $2; found=1; exit } END { if (!found) print "" }' /proc/meminfo 2>/dev/null || true
+}
+
+resolve_memory_max_clients() {
+  local available_kb budget_pct base_mb per_client_kb usable_kb base_kb max_clients
+  available_kb="$(memory_available_kb)"
+  is_uint "${available_kb}" || { printf '\n'; return; }
+  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
+  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
+  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
+  is_uint "${budget_pct}" && (( budget_pct >= 1 && budget_pct <= 95 )) || { printf '\n'; return; }
+  is_uint "${base_mb}" && is_uint "${per_client_kb}" && (( per_client_kb >= 1 )) || { printf '\n'; return; }
+  usable_kb=$(( available_kb * budget_pct / 100 ))
+  base_kb=$(( base_mb * 1024 ))
+  if (( usable_kb <= base_kb )); then
+    printf '1\n'
+    return
+  fi
+  max_clients=$(( (usable_kb - base_kb) / per_client_kb ))
+  (( max_clients < 1 )) && max_clients=1
+  printf '%s\n' "${max_clients}"
+}
+
+cap_default_clients_for_memory() {
+  local clients="${1:-}"
+  if [[ -n "${CLIENTS}" || -n "${PERF_MULTI_CLIENTS:-}" ]]; then
+    printf '%s\n' "${clients}"
+    return
+  fi
+  local max_clients
+  max_clients="$(resolve_memory_max_clients)"
+  if is_uint "${clients}" && is_uint "${max_clients}" && (( clients > max_clients )); then
+    printf '%s\n' "${max_clients}"
+    return
+  fi
+  printf '%s\n' "${clients}"
+}
+
+MEMORY_SKIP_REASON=""
+ensure_memory_budget() {
+  local clients="${1:-}"
+  MEMORY_SKIP_REASON=""
+  if [[ "${PERF_SKIP_MEMORY_CHECK:-0}" == "1" ]] || ! is_uint "${clients}"; then
+    return 0
+  fi
+  local max_clients available_kb budget_pct base_mb per_client_kb
+  max_clients="$(resolve_memory_max_clients)"
+  if ! is_uint "${max_clients}" || (( clients <= max_clients )); then
+    return 0
+  fi
+  available_kb="$(memory_available_kb)"
+  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
+  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
+  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
+  MEMORY_SKIP_REASON="clients=${clients},max_clients=${max_clients},mem_available_kb=${available_kb},budget_pct=${budget_pct},base_mb=${base_mb},per_client_kb=${per_client_kb}"
+  return 1
+}
+
 usage() {
   cat <<'USAGE'
 Usage: bindings/go/perf/run_benchmarks_multi.sh [options]
@@ -296,6 +395,20 @@ prepare_core_runtime() {
     echo "Build core/build before running Go perf." >&2
     exit 1
   fi
+  local newer_source
+  newer_source="$(
+    find "${REPO_DIR}/core/src" "${REPO_DIR}/core/include" \
+      -type f -newer "${CORE_LIB}" -print -quit 2>/dev/null || true
+  )"
+  if [[ -n "${newer_source}" ]]; then
+    echo "Error: stale core runtime detected for bindings/go/perf." >&2
+    echo "  runtime: ${CORE_LIB}" >&2
+    echo "  newer source: ${newer_source}" >&2
+    echo "Rebuild core/build before running run_benchmarks_multi.sh." >&2
+    exit 1
+  fi
+  echo "Perf core build dir: ${REPO_DIR}/core/build"
+  echo "Perf runtime libzlink: ${CORE_LIB}"
   export LD_LIBRARY_PATH="${CORE_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 }
 
@@ -310,6 +423,7 @@ mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
 prepare_core_runtime
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-multi.XXXXXX")"
+RAW_RESULTS_FILE="${TMP_DIR}/result_data.log"
 cleanup() {
   rm -rf "${TMP_DIR}"
 }
@@ -318,6 +432,12 @@ trap cleanup EXIT
 normalize_multi_pattern() {
   local raw="$1"
   raw="${raw^^}"
+  if [[ "${raw}" == MULTI_* ]]; then
+    raw="${raw#MULTI_}"
+  fi
+  if [[ "${raw}" == "STREAMS" ]]; then
+    raw="STREAM"
+  fi
   if [[ "${raw}" == MULTI_* ]]; then
     echo "${raw}"
   else
@@ -460,9 +580,9 @@ is_unsupported_output() {
 
 append_case_output() {
   local case_log="$1"
-  cat "${case_log}" >> "${RESULTS_FILE}"
+  cat "${case_log}" >> "${RAW_RESULTS_FILE}"
   if [[ -s "${case_log}" ]]; then
-    printf '\n' >> "${RESULTS_FILE}"
+    printf '\n' >> "${RAW_RESULTS_FILE}"
   fi
 }
 
@@ -942,6 +1062,7 @@ for pattern_index in "${!PATTERNS[@]}"; do
       resolved_clients="100"
     fi
   fi
+  resolved_clients="$(cap_default_clients_for_memory "${resolved_clients}")"
 
   transport_total=0
   for candidate_transport in "${PATTERN_XPORTS[@]}"; do
@@ -969,6 +1090,24 @@ for pattern_index in "${!PATTERNS[@]}"; do
       for size in "${SIZES[@]}"; do
         expected_cases=$((expected_cases + 1))
         case_log="${TMP_DIR}/${pattern}_${transport}_${size}_run${run}.log"
+        if ! ensure_nofile_limit "${resolved_clients}"; then
+          printf 'SKIP,current,%s,%s,nofile_guard:%s\n' "${pattern}" "${transport}" "${NOFILE_SKIP_REASON}" > "${case_log}"
+          append_case_output "${case_log}"
+          expected_cases=$((expected_cases - 1))
+          SKIPS+=("${pattern} current ${transport} ${size}B: nofile_guard:${NOFILE_SKIP_REASON}")
+          progress_table_header
+          progress_case_row "${pattern}" "${size}" "${case_log}"
+          continue
+        fi
+        if ! ensure_memory_budget "${resolved_clients}"; then
+          printf 'SKIP,current,%s,%s,memory_guard:%s\n' "${pattern}" "${transport}" "${MEMORY_SKIP_REASON}" > "${case_log}"
+          append_case_output "${case_log}"
+          expected_cases=$((expected_cases - 1))
+          SKIPS+=("${pattern} current ${transport} ${size}B: memory_guard:${MEMORY_SKIP_REASON}")
+          progress_table_header
+          progress_case_row "${pattern}" "${size}" "${case_log}"
+          continue
+        fi
         export PERF_MULTI_MSG_UNIT_BYTES="${size}"
         attempt=1
         case_ok=0
@@ -1013,7 +1152,7 @@ for pattern_index in "${!PATTERNS[@]}"; do
             progress_case_row "${pattern}" "${size}" "${case_log}"
             continue
           fi
-          echo "FAIL,current,${pattern},${transport},${size},no_result_lines" >> "${RESULTS_FILE}"
+          echo "FAIL,current,${pattern},${transport},${size},no_result_lines" >> "${RAW_RESULTS_FILE}"
           fail=$((fail + 1))
           transport_failures=$((transport_failures + 1))
           FAILURES+=("${pattern} current ${transport} ${size}B: no_result_lines")
@@ -1027,7 +1166,7 @@ for pattern_index in "${!PATTERNS[@]}"; do
             continue
           fi
           if grep -Eq '^UNSUPPORTED,' "${case_log}" || is_unsupported_output "${case_log}"; then
-            echo "UNSUPPORTED,current,${pattern},${transport}" >> "${RESULTS_FILE}"
+            echo "UNSUPPORTED,current,${pattern},${transport}" >> "${RAW_RESULTS_FILE}"
             unsupported=$((unsupported + 1))
             expected_cases=$((expected_cases - 1))
             transport_unsupported=1
@@ -1042,7 +1181,7 @@ for pattern_index in "${!PATTERNS[@]}"; do
             progress_case_row "${pattern}" "${size}" "${case_log}"
             continue
           fi
-          echo "FAIL,current,${pattern},${transport},${size},exit_nonzero_after_${attempt}_attempts" >> "${RESULTS_FILE}"
+          echo "FAIL,current,${pattern},${transport},${size},exit_nonzero_after_${attempt}_attempts" >> "${RAW_RESULTS_FILE}"
           fail=$((fail + 1))
           transport_failures=$((transport_failures + 1))
           FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero_after_${attempt}_attempts")
@@ -1135,6 +1274,46 @@ fi
   echo "- runtime: ${CORE_LIB}"
   echo "- pin_cpu: ${PIN_CPU}"
   echo "- duration_seconds: ${DURATION}"
+  echo
+  echo "## Result Data"
+  if [[ -s "${RAW_RESULTS_FILE}" ]]; then
+    python3 - "${RAW_RESULTS_FILE}" <<'PY'
+import sys
+
+metric_order = {
+    "bandwidth": 0,
+    "latency": 1,
+    "latency_p95": 2,
+    "latency_p99": 3,
+    "throughput": 4,
+}
+
+def sort_key(line):
+    parts = line.strip().split(",")
+    if len(parts) >= 7 and parts[0] == "RESULT":
+        try:
+            size = int(parts[4])
+        except ValueError:
+            size = -1
+        return (parts[2], parts[3], size, metric_order.get(parts[5], 99), line)
+    return (parts[2] if len(parts) > 2 else "", parts[3] if len(parts) > 3 else "", -1, 99, line)
+
+with open(sys.argv[1], "r", encoding="utf-8", errors="replace") as fh:
+    lines = [
+        line.rstrip("\n")
+        for line in fh
+        if line.startswith(("RESULT,", "UNSUPPORTED,", "SKIP,", "FAIL,"))
+    ]
+for line in sorted(lines, key=sort_key):
+    print(line)
+PY
+  fi
+  echo
+  echo "## Completion"
+  echo "- success: $((result_lines / 5))"
+  echo "- unsupported: ${unsupported}"
+  echo "- skip: ${#SKIPS[@]}"
+  echo "- fail: ${fail}"
   echo "- status: ${status}"
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"

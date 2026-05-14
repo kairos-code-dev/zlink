@@ -3,8 +3,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
+CORE_BUILD_DIR="${REPO_DIR}/core/build"
+CORE_LIB_DIR="${CORE_BUILD_DIR}/lib"
+CORE_LIB="${CORE_LIB_DIR}/libzlink.so"
 
 source "$HOME/.cargo/env" 2>/dev/null || true
+export RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-Awarnings"
 
 # -- Defaults (matching core/perf) -------------------------------------------
 PATTERN="ALL"
@@ -126,6 +131,29 @@ default_transports_for_pattern() {
     esac
 }
 
+prepare_core_runtime() {
+    if [[ ! -f "${CORE_LIB}" ]]; then
+        echo "core runtime not found: ${CORE_LIB}" >&2
+        echo "Build core/build before running Rust perf." >&2
+        exit 1
+    fi
+    local newer_source
+    newer_source="$(
+        find "${REPO_DIR}/core/src" "${REPO_DIR}/core/include" \
+            -type f -newer "${CORE_LIB}" -print -quit 2>/dev/null || true
+    )"
+    if [[ -n "${newer_source}" ]]; then
+        echo "Error: stale core runtime detected for bindings/rust/perf." >&2
+        echo "  runtime: ${CORE_LIB}" >&2
+        echo "  newer source: ${newer_source}" >&2
+        echo "Rebuild core/build before running run_benchmarks.sh." >&2
+        exit 1
+    fi
+    echo "Perf core build dir: ${CORE_BUILD_DIR}"
+    echo "Perf runtime libzlink: ${CORE_LIB}"
+    export LD_LIBRARY_PATH="${CORE_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+}
+
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 TAG_SUFFIX=""
 if [[ -n "${RESULTS_TAG}" ]]; then
@@ -172,8 +200,7 @@ elif [[ ! -x "${SINGLE_DIR}/perf_pair" ]]; then
     exit 1
 fi
 
-# Native library path
-export LD_LIBRARY_PATH="${PROJECT_DIR}/native/linux-x86_64:${LD_LIBRARY_PATH:-}"
+prepare_core_runtime
 [[ -n "${IO_THREADS}" ]] && export PERF_IO_THREADS="${IO_THREADS}"
 if [[ -n "${SEND_HWM}" ]]; then
     export PERF_SINGLE_SNDHWM="${SEND_HWM}"
@@ -353,7 +380,7 @@ def fmt_latency_ms(value):
     return "N/A" if math.isnan(value) else f"{value:.3f} ms"
 
 def fmt_metric(value):
-    return "N/A" if math.isnan(value) else f"{value:.2f}"
+    return "N/A" if math.isnan(value) else f"{value:.3f}"
 
 expected = 0
 actual = 0
@@ -471,19 +498,20 @@ for pattern_index, pattern in enumerate(patterns):
                 failures.append(f"{pattern} current {transport} {size}B: {reason or 'missing_result_lines'}")
         emit("")
 
+emit_effective_options("result")
+emit("## Result Data")
 for line in result_lines:
     emit(line)
-
 emit("")
-emit_effective_options("result")
 emit("## Completion")
 emit(f"- status: {'complete' if expected == actual else 'partial'}")
 emit(f"- expected_result_lines: {expected}")
 emit(f"- actual_result_lines: {actual}")
-emit("")
-emit("## Failures")
-for failure in failures:
-    emit(f"- {failure}")
+if failures:
+    emit("")
+    emit("## Failures")
+    for failure in failures:
+        emit(f"- {failure}")
 
 text = "\n".join(lines) + "\n"
 with open(report_path, "w", encoding="utf-8") as f:

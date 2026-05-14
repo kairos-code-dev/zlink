@@ -4,12 +4,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
+CORE_BUILD_DIR="${REPO_DIR}/core/build"
+CORE_LIB_DIR="${CORE_BUILD_DIR}/lib"
+CORE_LIB="${CORE_LIB_DIR}/libzlink.so"
 STREAM_BUILD_DIR="${SCRIPT_DIR}/build/stream-client"
 STREAM_CLIENT=""
 REUSE_BUILD=0
 CLEAN_BUILD=0
 
 source "$HOME/.cargo/env" 2>/dev/null || true
+export RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-Awarnings"
 
 PATTERN="ALL"
 DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
@@ -262,6 +266,29 @@ memory_available_kb() {
     awk '/^MemAvailable:/ { print $2; found=1; exit } END { if (!found) print "" }' /proc/meminfo 2>/dev/null || true
 }
 
+prepare_core_runtime() {
+    if [[ ! -f "${CORE_LIB}" ]]; then
+        echo "core runtime not found: ${CORE_LIB}" >&2
+        echo "Build core/build before running Rust perf." >&2
+        exit 1
+    fi
+    local newer_source
+    newer_source="$(
+        find "${REPO_DIR}/core/src" "${REPO_DIR}/core/include" \
+            -type f -newer "${CORE_LIB}" -print -quit 2>/dev/null || true
+    )"
+    if [[ -n "${newer_source}" ]]; then
+        echo "Error: stale core runtime detected for bindings/rust/perf." >&2
+        echo "  runtime: ${CORE_LIB}" >&2
+        echo "  newer source: ${newer_source}" >&2
+        echo "Rebuild core/build before running run_benchmarks_multi.sh." >&2
+        exit 1
+    fi
+    echo "Perf core build dir: ${CORE_BUILD_DIR}"
+    echo "Perf runtime libzlink: ${CORE_LIB}"
+    export LD_LIBRARY_PATH="${CORE_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+}
+
 resolve_memory_max_clients() {
     local available_kb
     available_kb="$(memory_available_kb)"
@@ -379,6 +406,8 @@ for token in raw.split(","):
         continue
     if value.startswith("MULTI_"):
         value = value[len("MULTI_"):]
+    if value == "STREAMS":
+        value = "STREAM"
     if value not in allowed:
         raise SystemExit(f"unsupported multi pattern: {value}")
     items.append(f"MULTI_{value}")
@@ -462,7 +491,7 @@ fi
 BIN_DIR="${TARGET_DIR}/release"
 
 export PERF_MULTI_DURATION_SECONDS="${DURATION}"
-export LD_LIBRARY_PATH="${PROJECT_DIR}/native/linux-x86_64:${LD_LIBRARY_PATH:-}"
+prepare_core_runtime
 export PERF_MULTI_SERVER_BIND_PORT="${SERVER_BIND_PORT}"
 export PERF_MULTI_MONITOR_HWM="${MONITOR_HWM}"
 [[ -n "${CONNECT_CONCURRENCY}" ]] && export PERF_MULTI_CONNECT_CONCURRENCY="${CONNECT_CONCURRENCY}"
@@ -1003,6 +1032,7 @@ from collections import defaultdict
 metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, output_path, pin_cpu, common_io_threads, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, run_cooldown_ms, transport_transition_ms, pattern_transition_ms = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
+result_metrics = ["bandwidth", "latency", "latency_p95", "latency_p99", "throughput"]
 rows = defaultdict(lambda: defaultdict(list))
 cases = {}
 patterns = []
@@ -1186,7 +1216,7 @@ for pattern_index, pattern in enumerate(patterns):
             if complete_case:
                 actual += 5
                 emit_case_row(pattern, size, metric_values)
-                for metric in required_metrics:
+                for metric in result_metrics:
                     result_lines.append(
                         f"RESULT,current,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
                     )
@@ -1195,19 +1225,24 @@ for pattern_index, pattern in enumerate(patterns):
                 failures.append(f"{pattern} current {transport} {size}B: {reason or 'missing_result_lines'}")
         emit("")
 
+emit_effective_options("result")
+emit("## Result Data")
 for line in result_lines:
     emit(line)
-
 emit("")
-emit_effective_options("result")
 emit("## Completion")
+emit(f"- success: {actual // 5}")
+emit(f"- unsupported: {sum(1 for status, _reason in cases.values() if status == 'unsupported')}")
+emit(f"- skip: {sum(1 for status, _reason in cases.values() if status == 'skip')}")
+emit(f"- fail: {len(failures)}")
 emit(f"- status: {'complete' if expected == actual else 'partial'}")
 emit(f"- expected_result_lines: {expected}")
 emit(f"- actual_result_lines: {actual}")
-emit("")
-emit("## Failures")
-for failure in failures:
-    emit(f"- {failure}")
+if failures:
+    emit("")
+    emit("## Failures")
+    for failure in failures:
+        emit(f"- {failure}")
 
 text = "\n".join(lines) + "\n"
 with open(report_path, "w", encoding="utf-8") as f:

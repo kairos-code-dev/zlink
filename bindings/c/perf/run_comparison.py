@@ -2999,33 +2999,6 @@ def run_sizes_test(
             except Exception:
                 pass
         isolated = run_one_size_case(size)
-        if (
-            isolated.get("status") == "success"
-            and normalized_pattern == "SPOT"
-            and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
-        ):
-            latency_only = run_one_size_case_with_env(
-                size, {"PERF_MULTI_SPOT_LATENCY_ONLY": "1"}
-            )
-            isolated.setdefault("warnings", [])
-            isolated["warnings"].extend(latency_only.get("warnings", []))
-            if latency_only.get("status") == "success":
-                latency_keys = (
-                    f"{transport}|{size}|latency",
-                    f"{transport}|{size}|{LATENCY_P95_METRIC}",
-                    f"{transport}|{size}|{LATENCY_P99_METRIC}",
-                )
-                for latency_key in latency_keys:
-                    if latency_key in latency_only.get("parsed", {}):
-                        isolated["parsed"][latency_key] = latency_only["parsed"][
-                            latency_key
-                        ]
-            else:
-                reason = (latency_only.get("reason", "") or "").strip()
-                isolated["warnings"].append(
-                    "spot clean latency pass failed"
-                    + (f": {reason}" if reason else "")
-                )
         merged["warnings"].extend(isolated.get("warnings", []))
         merged["parsed"].update(isolated.get("parsed", {}))
 
@@ -3044,13 +3017,6 @@ def run_sizes_test(
                 pass
 
     return merged
-
-
-def defer_live_multi_rows(pattern_name):
-    return (
-        normalize_multi_pattern_name(pattern_name) == "SPOT"
-        and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
-    )
 
 
 def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
@@ -3356,12 +3322,9 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     live_metrics[key] = value
                     maybe_emit_live_row(line_size)
 
-                defer_rows = defer_live_multi_rows(pattern_name)
-                live_result_callback = None if defer_rows else on_result_metric
+                live_result_callback = on_result_metric
 
                 def on_size_result(line_transport, line_size, size_outcome):
-                    if not defer_rows:
-                        return
                     if line_transport != tr.lower() or line_size not in sizes:
                         return
                     if line_size in live_emitted_sizes:

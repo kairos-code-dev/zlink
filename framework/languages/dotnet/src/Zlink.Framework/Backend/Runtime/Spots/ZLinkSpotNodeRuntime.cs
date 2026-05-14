@@ -9,11 +9,12 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly ZLinkFrameworkRegistration _frameworkRegistration;
     private readonly ZLinkSpotNodeRegistration _registration;
-    private readonly string _spotChannelName;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkSpotPeerConnectionSet _peerConnections = new();
     private readonly ZLinkSpotNodeBundleRegistry _bundles;
     private readonly ZLinkSpotNodeCatalog _spots;
+    private readonly ZLinkSpotMonitoringSnapshotProvider _monitoringSnapshots;
+    private readonly ZLinkSpotDiscoveryReconciler _discoveryReconciler;
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private Task? _discoveryPeerReconciliationTask;
     private IZLinkBackendSpot? _entrySpot;
@@ -34,10 +35,15 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _frameworkRegistration = frameworkRegistration;
         _registration = registration;
         Node = node;
-        _spotChannelName = spotChannelName;
         _taskRunner = new ZLinkRuntimeTaskRunner(
             new ZLinkRuntimeErrorSink(),
             _stopSource.Token);
+        _monitoringSnapshots = new ZLinkSpotMonitoringSnapshotProvider(node);
+        _discoveryReconciler = new ZLinkSpotDiscoveryReconciler(
+            spotChannelName,
+            node,
+            _peerConnections,
+            () => SpotDiscovery);
         _bundles = new ZLinkSpotNodeBundleRegistry(
             registration.SpotNodeName,
             frameworkRegistration,
@@ -201,16 +207,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot()
     {
-        return new ZLinkSpotMonitoringSnapshot(
-            Node.StatusSnapshot(),
-            Node.PeersSnapshot()
-                .OrderBy(static entry => entry.PeerEndpoint, StringComparer.Ordinal)
-                .ThenBy(static entry => entry.ChannelName, StringComparer.Ordinal)
-                .ToArray(),
-            Node.SubjectsSnapshot()
-                .OrderBy(static entry => entry.Subject, StringComparer.Ordinal)
-                .ThenBy(static entry => entry.Role)
-                .ToArray());
+        return _monitoringSnapshots.Snapshot();
     }
 
     public void AddChannelBundle(string channelName, ZLinkSpotAttachedChannelBundle bundle)
@@ -322,41 +319,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public void ConnectDiscoveredPubSubPeers()
     {
-        if (SpotDiscovery is null)
-        {
-            return;
-        }
-
-        var localEndpoint = Node.StatusSnapshot().LocalEndpoint;
-        var connectedEndpoints = Node.PeersSnapshot()
-            .Select(static peer => peer.PeerEndpoint)
-            .ToHashSet(StringComparer.Ordinal);
-        foreach (var peer in SpotDiscovery.MemberPeers())
-        {
-            if (peer.AutoConnectType != ZLinkAutoConnectType.SpotMesh
-                || peer.ServiceRole != ZLinkServiceRole.Spot
-                || !string.Equals(peer.ChannelName, _spotChannelName, StringComparison.Ordinal)
-                || string.IsNullOrWhiteSpace(peer.Endpoint)
-                || string.Equals(peer.Endpoint, localEndpoint, StringComparison.Ordinal)
-                || connectedEndpoints.Contains(peer.Endpoint))
-            {
-                continue;
-            }
-
-            if (_peerConnections.TryAddPubSubDiscovered(peer.Endpoint))
-            {
-                try
-                {
-                    Node.ConnectPeer(peer.Endpoint);
-                }
-                catch (ZlinkConnectException error)
-                    when (error.InternalErrno == 16)
-                {
-                    // Discovery may connect the same peer between the snapshot
-                    // and this manual reconciliation pass.
-                }
-            }
-        }
+        _discoveryReconciler.ConnectDiscoveredPubSubPeers();
     }
 
     public async ValueTask DisposeAsync()

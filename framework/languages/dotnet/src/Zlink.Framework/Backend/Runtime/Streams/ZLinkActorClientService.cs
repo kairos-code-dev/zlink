@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkActorClientService(
@@ -168,8 +166,9 @@ internal sealed class ZLinkActorClientRequestCall<TRequest>(
                     timeout,
                     cancellationToken)
                 .ConfigureAwait(false);
-            return JsonSerializer.Deserialize<TReply>(reply, ZLinkJsonSerializerOptions.Default)
-                ?? throw new InvalidOperationException("Actor client reply body is null.");
+            return ZLinkClientCallCodec.DecodeJsonReply<TReply>(
+                reply,
+                "Actor client reply body is null.");
         }
         catch (TimeoutException ex)
         {

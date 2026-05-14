@@ -8,6 +8,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     private readonly ZLinkSubmitQueue _pending;
     private readonly TimeSpan? _sendTimeout;
     private readonly CancellationToken _stopToken;
+    private readonly ZLinkSubmitOperationFactory _operationFactory;
     private bool _draining;
 
     public ZLinkAsyncSubmitter(
@@ -19,6 +20,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         _pending = new ZLinkSubmitQueue(capacity);
         _sendTimeout = ValidateTimeout(sendTimeout);
         _stopToken = stopToken;
+        _operationFactory = new ZLinkSubmitOperationFactory(_sendTimeout, Drain);
         registerReadyHandler(OnSendReady);
     }
 
@@ -39,18 +41,9 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             return ValueTask.CompletedTask;
         }
 
-        var deadline = ResolveDeadline();
-        if (deadline is DateTimeOffset nowDeadline && nowDeadline <= DateTimeOffset.UtcNow)
-        {
-            message.Dispose();
-            throw new TimeoutException("ZLink async submit timed out before the socket became writable.");
-        }
-
-        var pending = PendingSubmit.CreateCommand(
+        var pending = _operationFactory.CreateCommand(
             new SingleMessageParts(message),
-            parts => trySubmit(parts[0]),
-            deadline,
-            Drain);
+            parts => trySubmit(parts[0]));
         EnqueuePending(pending, cancellationToken);
         return new ValueTask(pending.Task);
     }
@@ -73,14 +66,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             return ValueTask.CompletedTask;
         }
 
-        var deadline = ResolveDeadline();
-        if (deadline is DateTimeOffset nowDeadline && nowDeadline <= DateTimeOffset.UtcNow)
-        {
-            DisposeParts(parts);
-            throw new TimeoutException("ZLink async submit timed out before the socket became writable.");
-        }
-
-        var pending = PendingSubmit.CreateCommand(parts, trySubmit, deadline, Drain);
+        var pending = _operationFactory.CreateCommand(parts, trySubmit);
         EnqueuePending(pending, cancellationToken);
         return new ValueTask(pending.Task);
     }
@@ -111,19 +97,10 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             return AwaitResultAsync<T>(completion.Task);
         }
 
-        var deadline = ResolveDeadline();
-        if (deadline is DateTimeOffset nowDeadline && nowDeadline <= DateTimeOffset.UtcNow)
-        {
-            message.Dispose();
-            throw new TimeoutException("ZLink async submit timed out before the socket became writable.");
-        }
-
         var parts = new SingleMessageParts(message);
-        var pendingSubmit = PendingSubmit.CreateRequest(
+        var pendingSubmit = _operationFactory.CreateRequest(
             parts,
             pending => Submit(pending[0]),
-            deadline,
-            Drain,
             completion);
         EnqueuePending(pendingSubmit, cancellationToken);
         return AwaitResultAsync<T>(pendingSubmit.Task);
@@ -156,14 +133,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             return AwaitResultAsync<T>(completion.Task);
         }
 
-        var deadline = ResolveDeadline();
-        if (deadline is DateTimeOffset nowDeadline && nowDeadline <= DateTimeOffset.UtcNow)
-        {
-            DisposeParts(parts);
-            throw new TimeoutException("ZLink async submit timed out before the socket became writable.");
-        }
-
-        var pendingSubmit = PendingSubmit.CreateRequest(parts, Submit, deadline, Drain, completion);
+        var pendingSubmit = _operationFactory.CreateRequest(parts, Submit, completion);
         EnqueuePending(pendingSubmit, cancellationToken);
         return AwaitResultAsync<T>(pendingSubmit.Task);
     }
@@ -312,13 +282,6 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         {
             pending.Dispose();
         }
-    }
-
-    private DateTimeOffset? ResolveDeadline()
-    {
-        return _sendTimeout is null
-            ? null
-            : DateTimeOffset.UtcNow.Add(_sendTimeout.Value);
     }
 
     private static TimeSpan? ValidateTimeout(TimeSpan? timeout)

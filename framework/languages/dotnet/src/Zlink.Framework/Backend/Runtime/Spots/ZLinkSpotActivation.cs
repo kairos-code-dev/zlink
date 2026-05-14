@@ -3,7 +3,7 @@ using Systems.Zlink.Stream.Connector.Protocol;
 
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
+internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
 {
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly AsyncServiceScope _scope;
@@ -103,103 +103,6 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
 
     internal string SubscriptionPumpState => _subscriptionPump.State;
 
-    public void AttachSpot(IZLinkSpot spot)
-    {
-        ArgumentNullException.ThrowIfNull(spot);
-        if (_spot is not null)
-        {
-            throw new InvalidOperationException("SPOT has already been attached to this context.");
-        }
-
-        _spot = spot;
-        _actorHandlers = new ZLinkSpotActorHandlerRegistry(
-            ZLinkSpotActorHandlerSurface.UserSpot,
-            spot.GetType());
-        _handlerInvoker = new ZLinkSpotHandlerInvoker(_scope.ServiceProvider, spot);
-    }
-
-    public void BindDescriptors()
-    {
-        _configurationOpen = false;
-
-        _packets.Bind(Spot);
-        _subscriptions.Bind(Spot, NativeSpot);
-        _actorJoins.Bind(Spot);
-        _actorHandlers?.Bind();
-    }
-
-    public void AddPacket<THandler>()
-        where THandler : class
-    {
-        EnsureConfigurationOpen();
-        _packets.Add(typeof(THandler));
-    }
-
-    public void AddSubscribe<THandler>(string topic)
-        where THandler : class
-    {
-        EnsureConfigurationOpen();
-        _subscriptions.Add(topic, typeof(THandler));
-    }
-
-    public void AddActorJoin<THandler, TActor, TRequest, TReply>()
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        EnsureConfigurationOpen();
-        _actorJoins.Add(
-            typeof(THandler),
-            typeof(TActor),
-            typeof(TRequest),
-            typeof(TReply));
-    }
-
-    public void AddActorPacket<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        AddActorPacketCore<THandler, TActor>(packetName: null);
-    }
-
-    public void AddActorPacket<THandler, TActor>(string packetName)
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        if (string.IsNullOrWhiteSpace(packetName))
-        {
-            throw new InvalidOperationException("Actor packet name must not be empty.");
-        }
-
-        AddActorPacketCore<THandler, TActor>(packetName);
-    }
-
-    private void AddActorPacketCore<THandler, TActor>(string? packetName)
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        EnsureConfigurationOpen();
-        (_actorHandlers ?? throw new InvalidOperationException("SPOT actor registry is not initialized."))
-            .AddPacket(typeof(THandler), typeof(TActor), packetName);
-    }
-
-    public void AddActorJoined<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        EnsureConfigurationOpen();
-        (_actorHandlers ?? throw new InvalidOperationException("SPOT actor registry is not initialized."))
-            .AddJoined(typeof(THandler), typeof(TActor));
-    }
-
-    public void AddActorLeft<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        EnsureConfigurationOpen();
-        (_actorHandlers ?? throw new InvalidOperationException("SPOT actor registry is not initialized."))
-            .AddLeft(typeof(THandler), typeof(TActor));
-    }
-
     public ValueTask JoinActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
@@ -256,21 +159,6 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
             cancellationToken);
     }
 
-    public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
-    {
-        return new ZLinkCurrentSpotPublishCall<TEvent>(this, topic, message);
-    }
-
-    public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message)
-    {
-        return new ZLinkCurrentSpotSendCall<TMessage>(this, channelName, message);
-    }
-
-    public IZLinkRequestCall RequestChannel<TRequest>(string channelName, TRequest request)
-    {
-        return new ZLinkCurrentSpotRequestCall<TRequest>(this, channelName, request);
-    }
-
     public ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
@@ -291,108 +179,6 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
                 descriptor,
                 ct),
             cancellationToken);
-    }
-
-    public async ValueTask<IReadOnlyList<Message>> RequestChannelAsync(
-        string channelName,
-        Message message,
-        TimeSpan? timeout,
-        CancellationToken cancellationToken)
-    {
-        return await _outbound.RequestChannelAsync(channelName, message, timeout, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<IReadOnlyList<Message>> RequestChannelAsync(
-        string channelName,
-        IReadOnlyList<Message> parts,
-        TimeSpan? timeout,
-        CancellationToken cancellationToken)
-    {
-        return await _outbound.RequestChannelAsync(channelName, parts, timeout, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public ValueTask SendChannelAsync(
-        string channelName,
-        Message message,
-        CancellationToken cancellationToken)
-    {
-        return _outbound.SendChannelAsync(channelName, message, cancellationToken);
-    }
-
-    public ValueTask SendChannelAsync(
-        string channelName,
-        IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
-    {
-        return _outbound.SendChannelAsync(channelName, parts, cancellationToken);
-    }
-
-    public async ValueTask<IReadOnlyList<Message>> RequestSpotAsync(
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        Message message,
-        TimeSpan? timeout,
-        CancellationToken cancellationToken)
-    {
-        return await _outbound.RequestSpotAsync(
-                targetNodeRid,
-                targetSpotRid,
-                message,
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<IReadOnlyList<Message>> RequestSpotAsync(
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        IReadOnlyList<Message> parts,
-        TimeSpan? timeout,
-        CancellationToken cancellationToken)
-    {
-        return await _outbound.RequestSpotAsync(
-                targetNodeRid,
-                targetSpotRid,
-                parts,
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public ValueTask PublishCurrentAsync(
-        string topic,
-        Message message,
-        CancellationToken cancellationToken)
-    {
-        return _outbound.PublishCurrentAsync(topic, message, cancellationToken);
-    }
-
-    public ValueTask PublishCurrentAsync(
-        string topic,
-        IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
-    {
-        return _outbound.PublishCurrentAsync(topic, parts, cancellationToken);
-    }
-
-    public bool SendToSpot(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        Message message,
-        SendFlags flags)
-    {
-        return _outbound.SendToSpot(targetRid, spotRid, message, flags);
-    }
-
-    public bool SendToSpot(
-        RoutingId targetRid,
-        RoutingId spotRid,
-        IReadOnlyList<Message> parts,
-        SendFlags flags)
-    {
-        return _outbound.SendToSpot(targetRid, spotRid, parts, flags);
     }
 
     public CancellationToken StopToken => _stopSource.Token;

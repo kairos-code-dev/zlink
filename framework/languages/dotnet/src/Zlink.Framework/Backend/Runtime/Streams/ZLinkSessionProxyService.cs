@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionProxyService(
@@ -68,7 +66,7 @@ internal sealed class ZLinkSessionProxySendCall<TMessage>(
                 route.BindingToken,
                 _packetName ?? throw new InvalidOperationException("Packet name is required."),
                 false,
-                new Dictionary<string, string>(_metadata, StringComparer.Ordinal)),
+                ZLinkClientCallCodec.CopyMetadata(_metadata)),
             message,
             message?.GetType() ?? typeof(TMessage));
 
@@ -145,7 +143,7 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
                 route.BindingToken,
                 _packetName ?? throw new InvalidOperationException("Packet name is required."),
                 true,
-                new Dictionary<string, string>(_metadata, StringComparer.Ordinal)),
+                ZLinkClientCallCodec.CopyMetadata(_metadata)),
             request,
             request?.GetType() ?? typeof(TRequest));
 
@@ -169,8 +167,9 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
                 innerException: ex);
         }
 
-            return JsonSerializer.Deserialize<TReply>(reply, ZLinkJsonSerializerOptions.Default)
-                ?? throw new InvalidOperationException("Session proxy reply body is null.");
+        return ZLinkClientCallCodec.DecodeJsonReply<TReply>(
+            reply,
+            "Session proxy reply body is null.");
     }
 
     private async ValueTask<ZLinkActorSessionRoute> ResolveRouteAsync(CancellationToken cancellationToken)

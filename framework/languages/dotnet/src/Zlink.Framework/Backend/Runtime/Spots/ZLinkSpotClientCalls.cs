@@ -93,17 +93,11 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
     {
         cancellationToken.ThrowIfCancellationRequested();
         var route = await ResolveRouteAsync(cancellationToken).ConfigureAwait(false);
-        var header = new ZLinkEnvelopeHeader(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             route.RouterChannelId,
-            _messageName ?? throw new InvalidOperationException("Message name is required."),
-            ZLinkEnvelopeCodec.DefaultContentType,
-            Guid.NewGuid().ToString("N"),
-            null,
-            null,
-            null,
-            null);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType() ?? typeof(TMessage));
+            _messageName ?? throw new InvalidOperationException("Message name is required."));
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message);
         try
         {
             if (!activation.SendToSpot(
@@ -159,17 +153,12 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
     {
         var route = await ResolveRouteAsync(cancellationToken).ConfigureAwait(false);
         var timeout = _timeout ?? activation.DefaultTimeout;
-        var header = new ZLinkEnvelopeHeader(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             route.RouterChannelId,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
-            ZLinkEnvelopeCodec.DefaultContentType,
-            Guid.NewGuid().ToString("N"),
-            DateTimeOffset.UtcNow.Add(timeout),
-            null,
-            null,
-            null);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(header, request, request?.GetType() ?? typeof(TRequest));
+            timeout);
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
         var reply = await activation.RequestSpotAsync(
             route.TargetNodeRid,
             route.SpotId.ToRoutingId(),
@@ -178,19 +167,10 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
             cancellationToken).ConfigureAwait(false);
         try
         {
-            if (reply.Count == 0)
-            {
-                throw new InvalidOperationException("SPOT request reply is empty.");
-            }
-
-            var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
-            if (replyHeader.Kind == ZLinkMessageKind.Error)
-            {
-                throw new InvalidOperationException(replyHeader.ErrorMessage ?? "SPOT request failed.");
-            }
-
-            return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply))
-                ?? throw new InvalidOperationException("SPOT reply body is null.");
+            return ZLinkClientCallCodec.DecodeEnvelopeReply<TReply>(
+                reply,
+                "SPOT request reply is empty.",
+                "SPOT request failed.");
         }
         finally
         {
@@ -227,17 +207,11 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
     public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var header = new ZLinkEnvelopeHeader(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             channelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."),
-            ZLinkEnvelopeCodec.DefaultContentType,
-            Guid.NewGuid().ToString("N"),
-            null,
-            null,
-            null,
-            null);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType() ?? typeof(TMessage));
+            _messageName ?? throw new InvalidOperationException("Message name is required."));
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message);
         return activation.SendChannelAsync(channelName, parts, cancellationToken);
     }
 }
@@ -265,33 +239,19 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
     public async ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
     {
         var timeout = _timeout ?? activation.DefaultTimeout;
-        var header = new ZLinkEnvelopeHeader(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
-            ZLinkEnvelopeCodec.DefaultContentType,
-            Guid.NewGuid().ToString("N"),
-            DateTimeOffset.UtcNow.Add(timeout),
-            null,
-            null,
-            null);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(header, request, request?.GetType() ?? typeof(TMessage));
+            timeout);
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
         var reply = await activation.RequestChannelAsync(channelName, parts, timeout, cancellationToken);
         try
         {
-            if (reply.Count == 0)
-            {
-                throw new InvalidOperationException("SPOT channel request reply is empty.");
-            }
-
-            var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
-            if (replyHeader.Kind == ZLinkMessageKind.Error)
-            {
-                throw new InvalidOperationException(replyHeader.ErrorMessage ?? "SPOT channel request failed.");
-            }
-
-            return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply))
-                ?? throw new InvalidOperationException("SPOT channel reply body is null.");
+            return ZLinkClientCallCodec.DecodeEnvelopeReply<TReply>(
+                reply,
+                "SPOT channel request reply is empty.",
+                "SPOT channel request failed.");
         }
         finally
         {

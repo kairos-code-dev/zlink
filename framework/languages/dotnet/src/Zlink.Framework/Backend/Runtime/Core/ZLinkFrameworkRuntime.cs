@@ -19,7 +19,9 @@ internal sealed class ZLinkFrameworkRuntime
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ZLinkActorSessionManager _actorSessionManager;
     private readonly ZLinkFrameworkActorFacade _actors;
-    private readonly ZLinkSessionActorBindingTable _sessionActorBindings = new();
+    private readonly ZLinkFrameworkChannelFacade _channelFacade;
+    private readonly ZLinkFrameworkSpotFacade _spotFacade;
+    private readonly ZLinkFrameworkSessionBindings _sessionBindings = new();
     private ZLinkFrameworkRuntimeState? _state;
 
     public ZLinkFrameworkRuntime(
@@ -53,6 +55,14 @@ internal sealed class ZLinkFrameworkRuntime
             _actorSessionManager,
             GetOrStartState,
             GetActorSpotNode);
+        _channelFacade = new ZLinkFrameworkChannelFacade(
+            _channels,
+            GetOrStartState,
+            GetStartedStateAsync);
+        _spotFacade = new ZLinkFrameworkSpotFacade(
+            _spots,
+            GetOrStartState,
+            GetStartedStateAsync);
     }
 
     public IZLinkBackendContext? Context => _state?.Context;
@@ -116,26 +126,22 @@ internal sealed class ZLinkFrameworkRuntime
 
     internal ZLinkChannelRuntimeBundle GetOrCreateClientBundle(string channelName)
     {
-        var state = GetOrStartState();
-        return _channels.GetOrCreateClientBundle(state, channelName);
+        return _channelFacade.GetOrCreateClientBundle(channelName);
     }
 
     internal ZLinkChannelRuntimeBundle GetOrCreatePublisherBundle(string channelName)
     {
-        var state = GetOrStartState();
-        return _channels.GetOrCreatePublisherBundle(state, channelName);
+        return _channelFacade.GetOrCreatePublisherBundle(channelName);
     }
 
     internal ZLinkRouteChannelRuntime GetRouteChannel(string routerChannelId)
     {
-        var state = GetOrStartState();
-        return _channels.GetRouteChannel(state, routerChannelId);
+        return _channelFacade.GetRouteChannel(routerChannelId);
     }
 
     internal ZLinkSpotPublisherBundle GetSpotPublisherBundle(string channelName)
     {
-        var state = GetOrStartState();
-        return _spots.GetPublisherBundle(state, channelName);
+        return _spotFacade.GetPublisherBundle(channelName);
     }
 
     internal async ValueTask<ZLinkSpotCreateResult> CreateSpotAsync(
@@ -143,27 +149,27 @@ internal sealed class ZLinkFrameworkRuntime
         RoutingId? spotRid,
         CancellationToken cancellationToken)
     {
-        return await _spots.CreateAsync(GetOrStartState(), spotName, spotRid, cancellationToken);
+        return await _spotFacade.CreateAsync(spotName, spotRid, cancellationToken);
     }
 
     internal async ValueTask<ZLinkSpotInfo?> GetSpotAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        return await _spots.GetAsync(GetOrStartState(), spotRid, cancellationToken);
+        return await _spotFacade.GetAsync(spotRid, cancellationToken);
     }
 
     internal async ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListSpotsAsync(
         CancellationToken cancellationToken)
     {
-        return await _spots.ListAsync(GetOrStartState(), cancellationToken);
+        return await _spotFacade.ListAsync(cancellationToken);
     }
 
     internal async ValueTask<bool> RemoveSpotAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        return await _spots.RemoveAsync(GetOrStartState(), spotRid, cancellationToken);
+        return await _spotFacade.RemoveAsync(spotRid, cancellationToken);
     }
 
     internal IZLinkBackendSpotNode? GetActorSpotNode()
@@ -359,7 +365,7 @@ internal sealed class ZLinkFrameworkRuntime
         ZLinkSessionContext context,
         string bindingToken)
     {
-        _sessionActorBindings.Bind(actorId, context, bindingToken);
+        _sessionBindings.Bind(actorId, context, bindingToken);
     }
 
     internal void UnbindSessionActor(
@@ -367,7 +373,7 @@ internal sealed class ZLinkFrameworkRuntime
         ZLinkSessionContext context,
         string bindingToken)
     {
-        _sessionActorBindings.Unbind(actorId, context, bindingToken);
+        _sessionBindings.Unbind(actorId, context, bindingToken);
     }
 
     internal bool TryGetSessionActorContext(
@@ -375,23 +381,21 @@ internal sealed class ZLinkFrameworkRuntime
         string bindingToken,
         out ZLinkSessionContext context)
     {
-        return _sessionActorBindings.TryGet(actorId, bindingToken, out context);
+        return _sessionBindings.TryGet(actorId, bindingToken, out context);
     }
 
     internal async ValueTask<IZLinkEndpointConnections> GetSpotRouterConnectionsAsync(
         string spotNodeName,
         CancellationToken cancellationToken)
     {
-        var state = await GetStartedStateAsync(cancellationToken);
-        return _spots.GetRouterConnections(state, spotNodeName);
+        return await _spotFacade.GetRouterConnectionsAsync(spotNodeName, cancellationToken);
     }
 
     internal async ValueTask<IZLinkEndpointConnections> GetSpotPubSubConnectionsAsync(
         string spotNodeName,
         CancellationToken cancellationToken)
     {
-        var state = await GetStartedStateAsync(cancellationToken);
-        return _spots.GetPubSubConnections(state, spotNodeName);
+        return await _spotFacade.GetPubSubConnectionsAsync(spotNodeName, cancellationToken);
     }
 
     internal async ValueTask<IZLinkEndpointConnections> GetSpotChannelClientConnectionsAsync(
@@ -399,8 +403,7 @@ internal sealed class ZLinkFrameworkRuntime
         string channelName,
         CancellationToken cancellationToken)
     {
-        var state = await GetStartedStateAsync(cancellationToken);
-        return _spots.GetChannelClientConnections(state, spotNodeName, channelName);
+        return await _spotFacade.GetChannelClientConnectionsAsync(spotNodeName, channelName, cancellationToken);
     }
 
     internal async ValueTask<IZLinkEndpointConnections> GetSpotPublisherConnectionsAsync(
@@ -408,35 +411,31 @@ internal sealed class ZLinkFrameworkRuntime
         string channelName,
         CancellationToken cancellationToken)
     {
-        var state = await GetStartedStateAsync(cancellationToken);
-        return _spots.GetPublisherConnections(state, spotNodeName, channelName);
+        return await _spotFacade.GetPublisherConnectionsAsync(spotNodeName, channelName, cancellationToken);
     }
 
     internal async ValueTask<IZLinkEndpointConnections> GetClientConnectionsAsync(
         string channelName,
         CancellationToken cancellationToken)
     {
-        var state = await GetStartedStateAsync(cancellationToken);
-        return _channels.GetClientConnections(state, channelName);
+        return await _channelFacade.GetClientConnectionsAsync(channelName, cancellationToken);
     }
 
     internal async ValueTask<IZLinkEndpointConnections> GetSubscriberConnectionsAsync(
         string channelName,
         CancellationToken cancellationToken)
     {
-        var state = await GetStartedStateAsync(cancellationToken);
-        return _channels.GetSubscriberConnections(state, channelName);
+        return await _channelFacade.GetSubscriberConnectionsAsync(channelName, cancellationToken);
     }
 
     internal IZLinkBackendSocket GetMonitoringSocket(string sourceName)
     {
-        var state = GetOrStartState();
-        return _channels.GetMonitoringSocket(state, sourceName);
+        return _channelFacade.GetMonitoringSocket(sourceName);
     }
 
     internal ZLinkSpotMonitoringSnapshot GetSpotMonitoringSnapshot(string spotNodeName)
     {
-        return _spots.GetMonitoringSnapshot(GetOrStartState(), spotNodeName);
+        return _spotFacade.GetMonitoringSnapshot(spotNodeName);
     }
 
     internal ZLinkSpotNodeRuntime GetSpotNodeRuntime(string spotNodeName)

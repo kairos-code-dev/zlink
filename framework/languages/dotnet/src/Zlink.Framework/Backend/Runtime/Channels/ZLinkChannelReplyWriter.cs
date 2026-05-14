@@ -1,0 +1,58 @@
+namespace Zlink.Framework.Runtime.Channels;
+
+internal static class ZLinkChannelReplyWriter
+{
+    public static void ReplyRequest(
+        IZLinkBackendRouterSocket router,
+        Received received,
+        ZLinkEnvelopeHeader header,
+        object? body,
+        Type? bodyType)
+    {
+        var replyParts = ZLinkEnvelopeCodec.EncodeParts(header, body, bodyType);
+        var routingId = received.RoutingId
+            ?? throw new InvalidOperationException("Request reply requires a routing id.");
+        try
+        {
+            router.Reply(routingId, received.RequestSeq ?? 0UL, replyParts);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(replyParts);
+        }
+    }
+
+    public static ZLinkEnvelopeHeader CreateReplyHeader(
+        ZLinkMessageKind kind,
+        string channelName,
+        ZLinkEnvelopeHeader request)
+    {
+        return new ZLinkEnvelopeHeader(
+            kind,
+            channelName,
+            request.MessageName,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            request.CorrelationId,
+            null,
+            null,
+            null,
+            null);
+    }
+
+    public static ZLinkEnvelopeHeader CreateErrorHeader(
+        string channelName,
+        ZLinkEnvelopeHeader request,
+        Exception exception)
+    {
+        return new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Error,
+            channelName,
+            request.MessageName,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            request.CorrelationId,
+            null,
+            null,
+            exception.GetType().Name,
+            exception.Message);
+    }
+}

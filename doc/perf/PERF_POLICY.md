@@ -103,6 +103,13 @@ suite별 정책 문서에 반영한 다음 다른 바인딩으로 옮긴다.
   한다. C 기준 perf 바이너리나 다른 언어의 perf 바이너리를 wrapper로 호출해서
   결과만 중계하는 방식은 정책 위반이며, 그 결과는 비교 대상으로 인정하지
   않는다.
+  - 예외: `MULTI_STREAM` client는 zlink binding client API를 측정하는 대상이
+    아니라, STREAM server에 붙는 외부 raw transport peer를 재현하는 검증
+    인프라다. 따라서 모든 binding perf runner는
+    `bindings/c/perf/common/streamclient/perf_stream_client.cpp`에서 만든
+    `perf_stream_client` 공용 바이너리를 그대로 사용할 수 있다. 이 예외는
+    `MULTI_STREAM` client에만 적용하며, `MULTI_STREAM` server는 각 binding의
+    public STREAM server/packet handler surface를 통해 측정해야 한다.
 - managed runtime 바인딩(Java, .NET 등)은 size마다 프로세스를 재시작하므로,
   런타임 옵션으로 시작 비용을 최소화해야 한다.
   - Java: `-server`, `-XX:TieredStopAtLevel=4`(C2 fully tiered) 등. 5초 이상 측정 윈도우에서는 C1 한정(`=1`)이 hot path JIT 최적화를 막아 routed 패턴 64B 같은 wrapper-bound 조합에서 큰 ratio 손실을 만들었기 때문에 fully tiered를 권장한다. 짧은 startup만 필요한 임베디드/배포용 옵션은 별도이다.
@@ -604,7 +611,8 @@ STREAM 계열 벤치마크는 `zlink_stream_packet_handler()`가 해석하는 pa
 └──────────────┴──────────────┴──────────────┴──────────────┘
 ```
 
-- **client**: 모든 STREAM 패턴에서 동일한 공통 raw client를 사용하며,
+- **client**: 모든 STREAM 패턴과 모든 binding perf runner에서 동일한 공통 raw
+  client(`bindings/c/perf/common/streamclient/perf_stream_client.cpp`)를 사용하며,
   `[2B header size][4B body size][header][body]` 형식으로 송신한다.
   수신(echo)도 동일한 framing으로 읽는다.
 - **server**: zlink STREAM 소켓으로 bind한 뒤,
@@ -1163,9 +1171,17 @@ poller event loop, latency 집계 등의 **공통 골격이 95% 이상 동일**�
 #### STREAM client 예외 (검증 인프라)
 
 `bindings/c/perf/common/streamclient/`의 STREAM raw/multi client 코드는
-**벤치마크 대상 라이브러리 자체가 아니라 검증 인프라**로 간주한다.
+**벤치마크 대상 라이브러리 자체가 아니라 검증 인프라**로 간주한다. STREAM
+client는 zlink socket client가 아니라 외부 raw TCP/TLS/WS/WSS peer 역할을
+하므로, 언어별 binding public API 사용 원칙의 예외다.
 
 - STREAM client 공통 구현은 `common/streamclient/`에 모아둘 수 있다.
+- C++, .NET, Java, Rust, Go, Node, Python 등 모든 binding perf runner는
+  `perf_stream_client` 공용 바이너리를 wrapper/symlink로 연결해 사용할 수 있다.
+  이것은 C perf 결과를 중계하는 우회가 아니라 STREAM server 측 binding surface를
+  동일한 raw peer 조건으로 검증하기 위한 정책상 허용된 구조다.
+- STREAM server는 이 예외에 포함되지 않는다. 각 binding의 STREAM server
+  benchmark는 해당 binding의 public server/packet handler surface를 사용해야 한다.
 - 이 예외는 STREAM 계열 client 인프라에만 적용한다.
 - STREAM 계열은 multi suite에서만 테스트하므로 single suite에는 해당 없다.
 

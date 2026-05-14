@@ -298,6 +298,25 @@ ensure_core_runtime_not_stale() {
   return 0
 }
 
+ensure_cpp_core_build_runtime_enabled() {
+  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
+  local cache_path="${build_dir}/CMakeCache.txt"
+  local configured=""
+  if [[ -f "${cache_path}" ]]; then
+    configured="$(
+      sed -n 's/^ZLINK_CPP_USE_CORE_BUILD_RUNTIME:BOOL=//p' "${cache_path}" \
+        | tail -n 1
+    )"
+  fi
+  if [[ "${configured}" != "ON" ]]; then
+    echo "Error: C++ perf build is not configured to use core/build runtime." >&2
+    echo "  cache: ${cache_path}" >&2
+    echo "Reconfigure without --reuse-build or pass -DZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON." >&2
+    return 1
+  fi
+  return 0
+}
+
 usage() {
   cat <<'USAGE'
 Usage: bindings/cpp/perf/run_benchmarks_multi.sh [options]
@@ -967,6 +986,7 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DENABLE_LTO=OFF \
       -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
       -DZLINK_CPP_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
+      -DZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON \
       -DZLINK_CPP_BUILD_BENCHMARKS=ON
     cmake --build "${OFFICIAL_BUILD_DIR}" --config Release --target \
       cpp_comp_src_dealer_dealer_server \
@@ -991,6 +1011,7 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DENABLE_LTO=OFF \
       -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
       -DZLINK_CPP_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
+      -DZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON \
       -DZLINK_CPP_BUILD_BENCHMARKS=ON
     bash "${NORMALIZE_TIMESTAMPS_SH}" "${OFFICIAL_BUILD_DIR}"
     cmake --build "${OFFICIAL_BUILD_DIR}" --target \
@@ -1011,9 +1032,14 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       cpp_comp_src_stream_server
   fi
 fi
+ensure_cpp_core_build_runtime_enabled "${OFFICIAL_BUILD_DIR}"
 
 prepare_cpp_runtime_dir() {
-  "${SCRIPT_DIR}/prepare_cpp_runtime.py" --suite multi
+  local core_build_dir=""
+  local runtime_lib=""
+  core_build_dir="$(resolve_configured_core_build_dir "${OFFICIAL_BUILD_DIR}")"
+  runtime_lib="$(resolve_core_runtime_library "${core_build_dir}")"
+  "${SCRIPT_DIR}/prepare_cpp_runtime.py" --suite multi --runtime-lib "${runtime_lib}"
 }
 
 RUNTIME_BUILD_DIR="$(prepare_cpp_runtime_dir)"

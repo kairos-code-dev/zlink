@@ -93,7 +93,7 @@ ALLOW_MANUAL_SOCKET_OVERRIDES="${PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PE
 CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
-CTX_AUTO_HWM_PROFILE="${PERF_CTX_AUTO_HWM_PROFILE:-balanced}"
+CTX_AUTO_HWM_PROFILE="${PERF_SINGLE_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}"
 PERF_COMPARISON_SCRIPT="${ROOT_DIR}/bindings/cpp/perf/single/run_comparison.py"
 
 usage() {
@@ -512,6 +512,7 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DENABLE_LTO=OFF \
       -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
       -DZLINK_CPP_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
+      -DZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON \
       -DZLINK_CPP_BUILD_BENCHMARKS=ON
   else
     cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
@@ -520,6 +521,7 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DENABLE_LTO=OFF \
       -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
       -DZLINK_CPP_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
+      -DZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON \
       -DZLINK_CPP_BUILD_BENCHMARKS=ON
   fi
 
@@ -636,8 +638,31 @@ ensure_core_runtime_not_stale() {
   return 0
 }
 
+ensure_cpp_core_build_runtime_enabled() {
+  local build_dir="${1:-${OFFICIAL_BUILD_DIR}}"
+  local cache_path="${build_dir}/CMakeCache.txt"
+  local configured=""
+  if [[ -f "${cache_path}" ]]; then
+    configured="$(
+      sed -n 's/^ZLINK_CPP_USE_CORE_BUILD_RUNTIME:BOOL=//p' "${cache_path}" \
+        | tail -n 1
+    )"
+  fi
+  if [[ "${configured}" != "ON" ]]; then
+    echo "Error: C++ perf build is not configured to use core/build runtime." >&2
+    echo "  cache: ${cache_path}" >&2
+    echo "Reconfigure without --reuse-build or pass -DZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON." >&2
+    return 1
+  fi
+  return 0
+}
+
 prepare_cpp_runtime_dir() {
-  "${SCRIPT_DIR}/prepare_cpp_runtime.py" --suite single
+  local core_build_dir=""
+  local runtime_lib=""
+  core_build_dir="$(resolve_configured_core_build_dir "${BUILD_DIR}")"
+  runtime_lib="$(resolve_core_runtime_library "${core_build_dir}")"
+  "${SCRIPT_DIR}/prepare_cpp_runtime.py" --suite single --runtime-lib "${runtime_lib}"
 }
 
 PYTHON_BIN=()
@@ -669,6 +694,7 @@ fi
 
 print_core_runtime_binding "${BUILD_DIR}"
 ensure_core_runtime_not_stale "${BUILD_DIR}"
+ensure_cpp_core_build_runtime_enabled "${BUILD_DIR}"
 
 PATTERN_CSV="$(IFS=,; echo "${PATTERN_LIST[*]}")"
 RUNTIME_BUILD_DIR="$(prepare_cpp_runtime_dir)"

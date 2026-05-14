@@ -960,7 +960,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_STREAM | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
-> STREAM client 예외(C 기준): `MULTI_STREAM` client는 [PERF_POLICY.md § 7.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. public pattern은 `MULTI_STREAM` 하나만 유지한다.
+> STREAM client 예외(C 기준): `MULTI_STREAM` client는 [PERF_POLICY.md § 7.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. C++ 등 다른 binding perf runner가 이 공용 `perf_stream_client`를 symlink나 wrapper로 연결해 실행하는 것은 정책 위반이 아니다. 이 client는 외부 raw peer 검증 인프라이며, 측정 대상 binding surface는 각 언어의 `MULTI_STREAM` server/packet handler 구현이다. public pattern은 `MULTI_STREAM` 하나만 유지한다.
 > SPOT 계열 topology 고정: `MULTI_SPOT`, `MULTI_SPOT_REQREP`,
 > `MULTI_SPOT_SENDSEND` 은 기본적으로
 > client process 당 SpotNode 1개를 만들고, `--clients N` 수만큼 logical spot을
@@ -1023,10 +1023,14 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
     → multi Python execution engine                    # 옵션 정규화/수집/집계
         → comp_src_*_server(.exe)                      # server 프로세스
         → comp_src_*_client(.exe)                      # client 프로세스
-        → perf_stream_client                           # STREAM 공유 client
+        → perf_stream_client                           # STREAM 공유 raw client
 ```
 
 - 공식 계약은 `run_benchmarks_multi.sh` / `.ps1`가 multi suite의 entrypoint라는 점과, 내부 엔진이 server/client 프로세스 lifecycle 및 RESULT 수집을 책임진다는 점이다.
+- `perf_stream_client`는 `bindings/c/perf/common/streamclient/`에서 제공하는 공용
+  raw transport client다. 모든 binding perf runner가 같은 바이너리를 재사용할
+  수 있으며, 이는 STREAM server 측 binding 성능을 같은 외부 peer 조건에서
+  비교하기 위한 예외다.
 - shell entrypoint 간 재호출 여부, 환경 변수 전달 방식, Python 엔진 연결 방식은 구현 세부이며 정책이 고정하지 않는다.
 
 ### 9.2 CLI 옵션
@@ -1433,7 +1437,10 @@ pattern별 공식 start contract 를 사용한다.
   - 구조가 다른 패턴을 같은 template에 합치지 않는다.
 
 예외: STREAM client(`bindings/c/perf/common/streamclient/`)는 검증 인프라 코드로
-분류하며 공통 모듈화를 허용한다.
+분류하며 공통 모듈화를 허용한다. 언어별 binding perf가 이 공용 client를 직접
+실행하거나 runtime bin에 연결해 쓰는 것은 허용된다. 이 예외는 STREAM client에만
+적용되며, STREAM server benchmark는 각 binding의 public API surface를 사용해야
+한다.
 
 ---
 

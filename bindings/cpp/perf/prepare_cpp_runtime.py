@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import argparse
+import shutil
 import stat
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 CPP_PERF_DIR = ROOT / "bindings" / "cpp" / "perf"
-CPP_NATIVE_DIR = ROOT / "bindings" / "cpp" / "native"
 RUNTIME_ROOT = CPP_PERF_DIR / ".runtime"
 C_STREAM_CLIENT = ROOT / "bindings" / "c" / "build" / "perf" / "perf_stream_client"
 
@@ -40,56 +40,11 @@ MULTI_CLIENT_MAP = {
 }
 
 
-def native_runtime_dir() -> Path:
-    if sys_platform() == "linux":
-        candidates = ("linux-x86_64", "linux-x64")
-    elif sys_platform() == "darwin":
-        candidates = ("darwin-aarch64", "darwin-x86_64")
-    elif sys_platform() == "windows":
-        candidates = ("windows-x86_64", "windows-aarch64")
-    else:
-        candidates = ()
-
-    for name in candidates:
-        candidate = CPP_NATIVE_DIR / name
-        if (candidate / runtime_library_name()).exists():
-            return candidate
-    raise SystemExit(
-        "missing C++ native runtime under bindings/cpp/native for this platform"
-    )
-
-
-def sys_platform() -> str:
-    import platform
-
-    system = platform.system().lower()
-    if system.startswith("linux"):
-        return "linux"
-    if system.startswith("darwin"):
-        return "darwin"
-    if system.startswith("windows"):
-        return "windows"
-    return system
-
-
-def runtime_library_name() -> str:
-    platform_name = sys_platform()
-    if platform_name == "linux":
-        return "libzlink.so"
-    if platform_name == "darwin":
-        return "libzlink.dylib"
-    if platform_name == "windows":
-        return "zlink.dll"
-    return "libzlink.so"
-
-
 def reset_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     for child in path.iterdir():
         if child.is_dir() and not child.is_symlink():
-            for sub in child.iterdir():
-                sub.unlink()
-            child.rmdir()
+            shutil.rmtree(child)
         else:
             child.unlink()
 
@@ -153,7 +108,13 @@ def prepare_multi(runtime_bin: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", choices=("single", "multi"), required=True)
+    parser.add_argument("--runtime-lib", required=True)
     args = parser.parse_args()
+
+    runtime_lib_source = Path(args.runtime_lib).resolve()
+    if not runtime_lib_source.is_file():
+        raise SystemExit(f"runtime library not found: {runtime_lib_source}")
+    runtime_lib_source_dir = runtime_lib_source.parent
 
     runtime_dir = RUNTIME_ROOT / args.suite
     runtime_bin = runtime_dir / "bin"
@@ -161,8 +122,11 @@ def main() -> int:
     runtime_dir.mkdir(parents=True, exist_ok=True)
     reset_dir(runtime_bin)
     if runtime_lib.exists() or runtime_lib.is_symlink():
-        runtime_lib.unlink()
-    runtime_lib.symlink_to(native_runtime_dir())
+        if runtime_lib.is_dir() and not runtime_lib.is_symlink():
+            shutil.rmtree(runtime_lib)
+        else:
+            runtime_lib.unlink()
+    runtime_lib.symlink_to(runtime_lib_source_dir)
 
     if args.suite == "single":
         prepare_single(runtime_bin)

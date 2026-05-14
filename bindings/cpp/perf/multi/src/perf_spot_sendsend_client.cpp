@@ -322,6 +322,11 @@ bool run_active_window (std::vector<client_slot_t> &slots,
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::seconds (
                             std::max (1, settings.duration_seconds));
+    const std::chrono::seconds active_duration (
+      std::max (1, settings.duration_seconds));
+    zlink::timer_t active_timer;
+    active_timer.start (active_duration, 1);
+    poller.add (active_timer);
     const uint64_t deadline_ns =
       perf_metric::now_ns ()
       + static_cast<uint64_t> (std::max (1, settings.duration_seconds))
@@ -341,18 +346,20 @@ bool run_active_window (std::vector<client_slot_t> &slots,
         }
 
         if (has_waiting) {
-            const auto now = std::chrono::steady_clock::now ();
-            if (now >= deadline)
-                break;
-            const auto remaining =
-              std::chrono::duration_cast<std::chrono::milliseconds> (
-                deadline - now);
             std::vector<zlink::poll_event_t> events = poller.wait (
-              slots.size (), std::max (std::chrono::milliseconds (1), remaining));
-            (void) events;
+              slots.size () + 1, std::chrono::milliseconds (-1));
+            for (size_t i = 0; i < events.size (); ++i) {
+                if (events[i].timer) {
+                    (void) active_timer.recv ();
+                    poller.remove (active_timer);
+                    latency_out = latency.snapshot ();
+                    return true;
+                }
+            }
         }
     }
 
+    poller.remove (active_timer);
     latency_out = latency.snapshot ();
     return true;
 }
@@ -422,7 +429,10 @@ bool run_client (const std::string &lib_name,
                                 + std::to_string (i);
         slots[i].spot->set_routing_id (zlink::routing_id_t (
           reinterpret_cast<const uint8_t *> (rid.data ()), rid.size ()));
-        poller.add (*slots[i].spot, zlink::poll_event_flag_t::pollin, i);
+        poller.add (*slots[i].spot,
+                    zlink::poll_event_flag_t::pollin
+                      | zlink::poll_event_flag_t::pollout,
+                    i);
     }
     if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;

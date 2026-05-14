@@ -1,4 +1,6 @@
 import sys
+import time
+from contextlib import ExitStack
 
 import zlink
 
@@ -10,10 +12,13 @@ from perf_multi_common import (
     latency_ns_from_message,
     is_active_message,
     parse_client_args,
+    perf_client_context,
     print_result_lines,
     recv_nonblocking,
+    resolve_multi_connect_ready_timeout_ms,
     result_metrics,
     safe_poll,
+    wait_monitor_event,
 )
 
 
@@ -25,26 +30,33 @@ def main(argv=None):
     latencies = []
     count = 0
 
-    with zlink.Context() as ctx:
+    with perf_client_context() as ctx:
         sockets = [zlink.SubSocket(ctx) for _ in range(args.clients)]
         try:
-            for sock in sockets:
-                apply_multi_socket_options(sock)
-                sock.connect(args.endpoint)
-                sock.set_subscription(TOPIC)
+            with ExitStack() as stack:
+                monitors = []
+                for sock in sockets:
+                    apply_multi_socket_options(sock)
+                    monitor = stack.enter_context(
+                        sock.monitor_open(zlink.MonitorEventMask.CONNECTION_READY)
+                    )
+                    sock.set_subscription(TOPIC)
+                    sock.connect(args.endpoint)
+                    monitors.append(monitor)
+                for monitor in monitors:
+                    wait_monitor_event(
+                        monitor,
+                        zlink.MonitorEventMask.CONNECTION_READY,
+                        timeout_ms=resolve_multi_connect_ready_timeout_ms(),
+                    )
             print(f"CLIENT_READY,{args.msg_size}", flush=True)
-            saw_start = False
-            saw_phase_active = False
-            while not (saw_start and saw_phase_active):
+            while True:
                 command = sys.stdin.readline().strip()
                 if command == f"START,{args.msg_size}":
-                    saw_start = True
-                    continue
-                if command == f"PHASE_ACTIVE,{args.msg_size}":
-                    saw_phase_active = True
-                    continue
+                    break
                 raise SystemExit(f"unexpected command: {command}")
 
+            active_deadline = time.perf_counter() + args.duration
             stopped = [False] * len(sockets)
             with zlink.Poller() as poller:
                 for sock in sockets:
@@ -81,7 +93,11 @@ def main(argv=None):
                                 run_id=run_id,
                             ):
                                 continue
-                            latencies.append(latency_ns_from_message(data))
+                            if time.perf_counter() >= active_deadline:
+                                continue
+                            latency = latency_ns_from_message(data)
+                            if latency is not None:
+                                latencies.append(latency)
                             count += 1
 
             if count <= 0:

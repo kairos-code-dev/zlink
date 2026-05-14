@@ -5,7 +5,7 @@ use std::io::{self, BufRead, Write};
 use std::time::{Duration, Instant};
 use zlink::*;
 
-const TOPIC: &str = "perf.topic";
+const TOPIC: &str = "bench";
 
 fn drain_subscriber(
     socket: &SubSocket,
@@ -16,7 +16,7 @@ fn drain_subscriber(
     let mut processed = false;
     loop {
         match socket.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-            Ok(topic_msg) => {
+            Ok(Some(topic_msg)) => {
                 let data = common::message_payload(topic_msg.parts());
                 if !common::is_valid_active_message(&data, msg_size) {
                     continue;
@@ -27,6 +27,7 @@ fn drain_subscriber(
                 *active_count += 1;
                 processed = true;
             }
+            Ok(None) => break,
             Err(err) if err.code == RecvResult::NoData => break,
             Err(err) => panic!("recv failed: {err}"),
         }
@@ -49,6 +50,11 @@ fn main() {
         sub.common_options()
             .set_recv_hwm(settings.recv_hwm)
             .expect("rcvhwm");
+        if settings.msg_unit_bytes > 0 {
+            sub.common_options()
+                .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
+                .expect("auto hwm msg unit");
+        }
         if matches!(args.transport.as_str(), "tls" | "wss") {
             let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
             common::setup_raw_tls_client(&sub, &tls).expect("client tls");
@@ -65,11 +71,7 @@ fn main() {
     let mut start_seen = false;
     for line in stdin.lock().lines() {
         let line = line.unwrap_or_default();
-        if matches!(
-            line.trim(),
-            text if text == format!("START,{}", args.msg_size)
-                || text == format!("PHASE_ACTIVE,{}", args.msg_size)
-        ) {
+        if line.trim() == format!("START,{}", args.msg_size) {
             start_seen = true;
             break;
         }

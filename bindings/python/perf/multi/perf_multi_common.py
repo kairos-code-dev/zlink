@@ -53,11 +53,14 @@ TOPIC = b"bench"
 def parse_client_args(argv, *, pattern):
     parser = argparse.ArgumentParser(prog=f"perf_multi_{pattern.lower()}_client.py")
     parser.add_argument("--endpoint", required=True)
+    parser.add_argument("--control-endpoint")
     parser.add_argument("--transport", default="tcp")
     parser.add_argument("--duration", type=float, default=5.0)
     parser.add_argument("--msg-size", type=int, default=64)
     parser.add_argument("--clients", type=int, default=100)
     args = parser.parse_args(argv)
+    if args.control_endpoint is None and "," in args.endpoint:
+        args.endpoint, args.control_endpoint = args.endpoint.split(",", 1)
     if args.duration <= 0 or args.msg_size < HEADER_SIZE or args.clients <= 0:
         raise SystemExit("invalid perf arguments")
     args.transport = args.transport.lower()
@@ -86,6 +89,23 @@ def _env_int(name, default):
         return int(value)
     except ValueError:
         return default
+
+
+def _perf_context(primary_env):
+    zlink_mod = _require_zlink()
+    ctx = zlink_mod.Context()
+    io_threads = _env_int(primary_env, _env_int("PERF_IO_THREADS", 4))
+    if io_threads > 0:
+        ctx.options.io_threads = io_threads
+    return ctx
+
+
+def perf_server_context():
+    return _perf_context("PERF_MULTI_SERVER_IO_THREADS")
+
+
+def perf_client_context():
+    return _perf_context("PERF_MULTI_CLIENT_IO_THREADS")
 
 
 def resolve_multi_send_hwm():
@@ -147,6 +167,7 @@ def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
     send_hwm = resolve_multi_send_hwm()
     recv_hwm = resolve_multi_recv_hwm()
     send_timeout_ms = resolve_multi_send_timeout_ms()
+    msg_unit_bytes = _env_int("PERF_MULTI_MSG_UNIT_BYTES", 0)
     recv_timeout_ms = (
         resolve_multi_recv_timeout_ms()
         if receive_timeout_ms is None
@@ -156,6 +177,8 @@ def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
         sock.options.linger_ms = 0
         sock.options.send_high_water_mark = send_hwm
         sock.options.receive_high_water_mark = recv_hwm
+        if msg_unit_bytes > 0:
+            sock.options.auto_hwm_msg_unit_bytes = msg_unit_bytes
         sock.options.send_timeout_ms = send_timeout_ms
         sock.options.receive_timeout_ms = recv_timeout_ms
 
@@ -166,6 +189,74 @@ def apply_multi_spot_node_admission(*nodes):
     for node in nodes:
         node.set_pubsub_hwm(send_hwm)
         node.set_router_hwm(recv_hwm)
+
+
+def bind_spot_node_endpoint(node, transport, prefix):
+    endpoint = benchmark_endpoint(transport, prefix)
+    node.bind(endpoint)
+    try:
+        return node.last_endpoint()
+    except Exception:
+        return endpoint
+
+
+def publish_control_payload(control_pub, payload, *, timeout_s=None):
+    zlink_mod = _require_zlink()
+    if isinstance(payload, str):
+        payload = payload.encode("utf-8")
+    deadline = time.perf_counter() + (
+        timeout_s
+        if timeout_s is not None
+        else resolve_multi_connect_ready_timeout_ms() / 1000.0
+    )
+    while time.perf_counter() < deadline:
+        try:
+            sent = (
+                control_pub.publish(TOPIC)
+                .message(payload)
+                .flags(zlink_mod.SendFlags.DONT_WAIT)
+                .submit()
+            )
+            if sent:
+                return True
+        except zlink_mod.SubmitError as exc:
+            if exc.result != zlink_mod.SubmitResult.BACKPRESSURED:
+                raise
+        time.sleep(0.001)
+    return False
+
+
+def receive_control_payload(control_sub):
+    zlink_mod = _require_zlink()
+    try:
+        message = control_sub.subscribe(flags=zlink_mod.RecvFlags.DONT_WAIT)
+    except zlink_mod.RecvError as exc:
+        if exc.result == zlink_mod.RecvResult.NO_DATA:
+            return None
+        raise
+    if message is None:
+        return None
+    with message:
+        parts = message.to_bytes_list()
+    if not parts:
+        return None
+    return parts[0].decode("utf-8", errors="replace")
+
+
+def wait_control_payload(control_sub, predicate, *, timeout_s=None):
+    deadline = time.perf_counter() + (
+        timeout_s
+        if timeout_s is not None
+        else resolve_multi_connect_ready_timeout_ms() / 1000.0
+    )
+    while time.perf_counter() < deadline:
+        payload = receive_control_payload(control_sub)
+        if payload is not None:
+            value = predicate(payload)
+            if value is not None:
+                return value
+        time.sleep(0.001)
+    return None
 
 
 def recv_nonblocking(sock, *, method="recv"):

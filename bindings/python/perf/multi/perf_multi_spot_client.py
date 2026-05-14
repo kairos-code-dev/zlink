@@ -1,24 +1,25 @@
 import os
-import socket
 import sys
 import threading
 import time
-from functools import partial
 
 import zlink
 
 from perf_multi_common import (
     TOPIC,
     apply_multi_spot_node_admission,
-    benchmark_endpoint,
+    bind_spot_node_endpoint,
     benchmark_run_id,
     configure_multi_tls_client,
+    configure_multi_tls_server,
     decode_header,
-    is_stop_token,
-    latency_ns_from_message,
     is_active_message,
+    latency_ns_from_message,
     parse_client_args,
+    perf_client_context,
     print_result_lines,
+    publish_control_payload,
+    receive_control_payload,
     resolve_multi_connect_ready_timeout_ms,
     resolve_multi_spot_control_settle_s,
     resolve_multi_spot_ready_settle_s,
@@ -26,85 +27,22 @@ from perf_multi_common import (
 )
 
 
-CHANNEL_NAME = "spot-svc"
-WAIT_SLICE_S = 0.01
-IDLE_DRAIN_S = 2.0
-
-
 def _trace(message):
     if os.environ.get("PERF_MULTI_SPOT_TRACE") == "1":
         print(f"[multi-spot-client] {message}", file=sys.stderr, flush=True)
 
 
-def _parse_tcp_endpoint(endpoint):
-    host_port = endpoint.split("://", 1)[1]
-    host, port_text = host_port.rsplit(":", 1)
-    return host, int(port_text)
-
-
-def _listen_tcp():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(("127.0.0.1", 0))
-    sock.listen(1)
-    return sock
-
-
 def main(argv=None):
     args = parse_client_args(argv or sys.argv[1:], pattern="spot")
-    if len(args.endpoint.split(",")) != 2:
-        raise SystemExit("spot client expects --endpoint registry_router_ep,control_ep")
-    registry_router_endpoint, control_endpoint = args.endpoint.split(",", 1)
+    if not args.control_endpoint:
+        raise SystemExit("spot client expects --endpoint and --control-endpoint")
 
-    latencies = []
-    received_count = 0
     run_id = benchmark_run_id()
+    handshake_timeout_s = resolve_multi_connect_ready_timeout_ms() / 1000.0
     ready_settle_s = resolve_multi_spot_ready_settle_s()
     control_settle_s = resolve_multi_spot_control_settle_s()
-    ready_timeout_s = resolve_multi_connect_ready_timeout_ms() / 1000.0
-    recv_lock = threading.Lock()
     runner_start = threading.Event()
     control_connected = threading.Event()
-    started_event = threading.Event()
-    started_size = [0]
-    stop_ready = threading.Event()
-    stop_seen = set()
-    collect_active = [False]
-    active_deadline = [0.0]
-
-    ready_listener = _listen_tcp()
-    ready_host, ready_port = ready_listener.getsockname()
-    print(f"CLIENT_CONTROL_ENDPOINT,tcp://{ready_host}:{ready_port}", flush=True)
-
-    ready_sender = [None]
-
-    def accept_ready_sender():
-        conn, _addr = ready_listener.accept()
-        ready_sender[0] = conn
-        control_connected.set()
-
-    threading.Thread(target=accept_ready_sender, daemon=True).start()
-
-    start_reader = socket.create_connection(
-        _parse_tcp_endpoint(control_endpoint), timeout=ready_timeout_s
-    )
-    start_reader.settimeout(None)
-    start_file = start_reader.makefile("r", encoding="utf-8", newline="\n")
-    print(f"CONTROL_CONNECTED,{control_endpoint}", flush=True)
-
-    def control_loop():
-        for line in start_file:
-            text = line.strip()
-            if text.startswith("START,"):
-                try:
-                    started_size[0] = int(text.split(",", 1)[1])
-                    started_event.set()
-                except ValueError as e:
-                    print(f"[spot-client] malformed START message: {text!r}: {e}", file=sys.stderr, flush=True)
-            elif text in {"STOP", "QUIT"}:
-                return
-
-    threading.Thread(target=control_loop, daemon=True).start()
 
     def stdin_loop():
         for line in sys.stdin:
@@ -113,128 +51,135 @@ def main(argv=None):
                 continue
             if text == f"START,{args.msg_size}":
                 runner_start.set()
+            elif text.startswith("CONTROL_CONNECTED,"):
+                control_connected.set()
             elif text in {"STOP", "QUIT"}:
                 return
 
     threading.Thread(target=stdin_loop, daemon=True).start()
 
-    with zlink.Context() as ctx:
-        clients = []
-        node = zlink.SpotNode(ctx)
-        configure_multi_tls_client(node, args.transport)
-        discovery = zlink.Discovery(ctx, zlink.AutoConnectType.SPOT_MESH, CHANNEL_NAME)
-        node.set_routing_id(b"a-python-multi-spot-client")
-        discovery.connect_registry(registry_router_endpoint)
-        apply_multi_spot_node_admission(node)
-        node.bind(benchmark_endpoint(args.transport, "multi-spot-client"))
-        node.attach_discovery(discovery)
+    with perf_client_context() as ctx:
+        data_node = zlink.SpotNode(ctx)
+        control_node = zlink.SpotNode(ctx)
+        configure_multi_tls_client(data_node, args.transport)
+        configure_multi_tls_server(control_node, args.transport)
+        configure_multi_tls_client(control_node, args.transport)
+        data_node.set_routing_id(b"a-python-multi-spot-client")
+        control_node.set_routing_id(b"a-python-multi-spot-control-client")
+        apply_multi_spot_node_admission(data_node, control_node)
 
-        def on_dispatch(index, current_spot, info):
-            if info.event != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE:
-                return
-            while True:
-                received = None
-                try:
-                    received = current_spot.subscribe(flags=zlink.RecvFlags.DONT_WAIT)
-                except zlink.RecvError as exc:
-                    if exc.result == zlink.RecvResult.NO_DATA:
-                        return
-                    raise
-                if received is None:
-                    return
-                with received:
-                    parts = received.to_bytes_list()
-                if not parts:
-                    continue
-                data = parts[0]
-                if not data:
-                    continue
-                # PERF_MULTI_TEST_POLICY § 1.3.1: exit on wire stop token.
-                if is_stop_token(data):
-                    with recv_lock:
-                        stop_seen.add(index)
-                        if len(stop_seen) >= len(clients):
-                            stop_ready.set()
-                    continue
-                header = decode_header(data)
-                if header is None:
-                    continue
-                if header["run_id"] != run_id or header["msg_size"] != args.msg_size:
-                    continue
-                if header["phase"] == 0:
-                    continue
-                if not collect_active[0]:
-                    continue
-                now = time.perf_counter()
-                if now > active_deadline[0]:
-                    continue
-                if not is_active_message(
-                    data,
-                    expected_msg_size=args.msg_size,
-                    run_id=run_id,
-                ):
-                    continue
-                with recv_lock:
-                    latencies.append(latency_ns_from_message(data))
-                    nonlocal_received[0] += 1
+        control_pub = control_node.create_spot()
+        control_sub = control_node.create_spot()
+        control_pub.set_routing_id(b"a-python-multi-spot-control-client-pub")
+        control_sub.set_routing_id(b"a-python-multi-spot-control-client-sub")
+        control_sub.set_subscription(TOPIC)
+        control_endpoint = bind_spot_node_endpoint(
+            control_node, args.transport, "multi-spot-control-client"
+        )
+        control_node.connect_peer(args.control_endpoint)
+        print(f"CLIENT_CONTROL_ENDPOINT,{control_endpoint}", flush=True)
 
-        nonlocal_received = [0]
+        spots = []
+        data_node.connect_peer(args.endpoint)
         for index in range(args.clients):
-            _trace(f"create-slot-start index={index}")
-            spot = node.create_spot()
+            spot = data_node.create_spot()
             spot.set_routing_id(
                 f"a-python-multi-spot-client-spot-{index}".encode("utf-8")
             )
             spot.set_subscription(TOPIC)
-            spot.on_dispatch_event(partial(on_dispatch, index))
-            clients.append((node, spot))
-            _trace(f"create-slot-done index={index}")
+            spots.append(spot)
 
-        # Single blocking wait on control handshake (start gate).
-        if not control_connected.wait(timeout=ready_timeout_s):
-            raise RuntimeError("control connection handshake timeout")
-        _trace("control-connected")
+        if not control_connected.wait(timeout=handshake_timeout_s):
+            raise RuntimeError("runner control-connected handshake timeout")
 
         time.sleep(ready_settle_s)
         time.sleep(control_settle_s)
-        ready_sender[0].sendall(b"CONNECTED\n")
-        ready_sender[0].sendall(f"READY_COUNT,{args.msg_size},{args.clients}\n".encode("utf-8"))
+        if not publish_control_payload(
+            control_pub,
+            f"READY_COUNT,{args.msg_size},{args.clients}",
+            timeout_s=handshake_timeout_s,
+        ):
+            raise RuntimeError("spot control ready publish timeout")
         print(f"CLIENT_READY,{args.msg_size}", flush=True)
-        _trace("client-ready")
 
-        # Single blocking wait on runner start (start gate).
-        if not runner_start.wait(timeout=ready_timeout_s):
-            raise RuntimeError("spot start handshake timeout")
-        _trace(f"start-handshake-done runner={runner_start.is_set()} broadcast={started_event.is_set()} size={started_size[0]}")
+        if not runner_start.wait(timeout=handshake_timeout_s):
+            raise RuntimeError("spot runner start handshake timeout")
 
-        active_deadline[0] = time.perf_counter() + args.duration
-        collect_active[0] = True
-        _trace("dispatch-ready")
-        # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. The dispatch
-        # callback will set stop_ready once every spot has observed a wire
-        # stop token. We bound the wait by the runner timeout but otherwise
-        # use a single blocking wait (no polling cadence).
-        stop_ready.wait(timeout=ready_timeout_s)
-        collect_active[0] = False
-        with recv_lock:
-            received_count = nonlocal_received[0]
-        _trace(f"drain-complete count={received_count} stop_seen={len(stop_seen)}")
+        direct_start_deadline = time.perf_counter() + handshake_timeout_s
+        direct_started = False
+        while time.perf_counter() < direct_start_deadline:
+            payload_text = receive_control_payload(control_sub)
+            if payload_text is None:
+                time.sleep(0.001)
+                continue
+            if payload_text == f"START,{args.msg_size}":
+                direct_started = True
+                break
+        if not direct_started:
+            raise RuntimeError("spot direct start handshake timeout")
+        _trace("start-handshake-done")
 
-        with recv_lock:
-            if received_count <= 0:
-                raise RuntimeError(
-                    "multi spot benchmark did not receive any active message"
-                )
-            metrics = result_metrics(
-                count=received_count,
-                msg_size=args.msg_size,
-                elapsed_s=max(args.duration, 0.001),
-                latencies_ns=list(latencies),
-            )
+        latencies = []
+        received_count = 0
+        active_deadline = time.perf_counter() + args.duration
+        with zlink.Poller() as poller:
+            for index, spot in enumerate(spots):
+                poller.add_socket(spot, zlink.PollEvent.POLLIN, tag=index)
+            while time.perf_counter() < active_deadline:
+                events = poller.poll(10)
+                if not events:
+                    continue
+                now = time.perf_counter()
+                if now > active_deadline:
+                    break
+                for event in events:
+                    current_spot = event.socket
+                    while True:
+                        try:
+                            message = current_spot.subscribe(
+                                flags=zlink.RecvFlags.DONT_WAIT
+                            )
+                        except zlink.RecvError as exc:
+                            if exc.result == zlink.RecvResult.NO_DATA:
+                                break
+                            raise
+                        if message is None:
+                            break
+                        with message:
+                            parts = message.to_bytes_list()
+                        if not parts:
+                            continue
+                        data = parts[0]
+                        header = decode_header(data)
+                        if header is None:
+                            continue
+                        if (
+                            header["run_id"] != run_id
+                            or header["msg_size"] != args.msg_size
+                            or header["phase"] == 0
+                        ):
+                            continue
+                        if not is_active_message(
+                            data,
+                            expected_msg_size=args.msg_size,
+                            run_id=run_id,
+                        ):
+                            continue
+                        received_count += 1
+                        latency = latency_ns_from_message(data)
+                        if latency is not None:
+                            latencies.append(latency)
+
+        if received_count <= 0:
+            raise RuntimeError("multi spot benchmark did not receive any active message")
+        metrics = result_metrics(
+            count=received_count,
+            msg_size=args.msg_size,
+            elapsed_s=max(args.duration, 0.001),
+            latencies_ns=latencies,
+        )
         print_result_lines("MULTI_SPOT", args.transport, args.msg_size, metrics)
         sys.stdout.flush()
-        _trace("result-flushed")
-        os._exit(0)
 
 
 if __name__ == "__main__":

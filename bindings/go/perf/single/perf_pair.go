@@ -1,12 +1,9 @@
 package main
 
-import (
-	"zlink.systems/zlink"
-	"zlink.systems/zlink/perf/internal/perfcommon"
-)
+import "zlink.systems/zlink/perf/internal/perfcommon"
 
 func runPair(cfg benchmarkConfig) perfcommon.Result {
-	ctx, err := zlink.NewContext()
+	ctx, err := perfcommon.NewSingleContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
 

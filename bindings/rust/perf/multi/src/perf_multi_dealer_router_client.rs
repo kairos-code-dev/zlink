@@ -54,6 +54,11 @@ fn main() {
         sock.common_options()
             .set_recv_hwm(settings.recv_hwm)
             .expect("rcvhwm");
+        if settings.msg_unit_bytes > 0 {
+            sock.common_options()
+                .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
+                .expect("auto hwm msg unit");
+        }
         sock.common_options()
             .set_send_timeout(Duration::from_millis(settings.send_timeout_ms))
             .expect("send timeout");

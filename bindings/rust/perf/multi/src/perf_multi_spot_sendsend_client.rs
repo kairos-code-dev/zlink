@@ -8,12 +8,22 @@ use std::time::{Duration, Instant};
 
 use zlink::*;
 
+const PATTERN: &str = "MULTI_SPOT_SENDSEND";
 const TOPIC: &str = "bench";
+const SERVER_NODE_RID: &[u8] = b"SPOT-SENDSEND-SERVER-NODE";
+const SERVER_SPOT_RID: &[u8] = b"SPOT-SENDSEND-SERVER-SPOT";
 
 enum ClientEvent {
     RunnerControlConnected,
     RunnerStart,
     Stop,
+}
+
+struct Slot {
+    spot: Box<Spot>,
+    payload: Vec<u8>,
+    seq: u64,
+    waiting_reply: bool,
 }
 
 fn env_u64(name: &str, default: u64) -> u64 {
@@ -39,12 +49,6 @@ fn setup_tls_client(node: &SpotNode, transport: &str) {
         node.set_tls_client(&pem.ca, "localhost", false)
             .expect("spot tls client");
     }
-}
-
-fn split_endpoint(endpoint: &str) -> (&str, &str) {
-    endpoint
-        .split_once(',')
-        .expect("spot client expects data,control endpoint")
 }
 
 fn control_payload(control_sub: &Spot) -> Option<String> {
@@ -78,10 +82,62 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
     false
 }
 
+fn send_payload(spot: &Spot, node_rid: &RoutingId, spot_rid: &RoutingId, payload: &[u8]) -> bool {
+    let message = Message::copy_from(payload).expect("payload message");
+    match spot
+        .send_to_spot(node_rid.clone(), spot_rid.clone())
+        .message(message)
+        .flags(SendFlags::DONT_WAIT)
+        .submit()
+    {
+        Ok(sent) => sent,
+        Err(_) => false,
+    }
+}
+
+fn drain_slot(
+    slot: &mut Slot,
+    expected_size: usize,
+    deadline: Instant,
+    latency: &mut common::LatencyStats,
+    record: bool,
+) -> bool {
+    let mut progressed = false;
+    loop {
+        match slot.spot.recv_routed_with_flags(RecvFlags::DONT_WAIT) {
+            Ok(Some(received)) => {
+                progressed = true;
+                slot.waiting_reply = false;
+                if received.request_seq().unwrap_or(0) != 0 {
+                    continue;
+                }
+                let data = common::message_payload(received.parts());
+                if record
+                    && Instant::now() <= deadline
+                    && common::is_valid_active_message(data, expected_size)
+                {
+                    let sent_ts_ns = common::decode_sent_ts_ns(data);
+                    let now_ns = common::now_ns();
+                    if sent_ts_ns > 0 && now_ns >= sent_ts_ns as u64 {
+                        latency.record_ns((now_ns - sent_ts_ns as u64) as f64 / 2.0);
+                    }
+                }
+            }
+            Ok(None) => break,
+            Err(err) if err.code() == RecvResult::NoData => break,
+            Err(_) => break,
+        }
+    }
+    progressed
+}
+
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
-    let (data_endpoint, control_endpoint) = split_endpoint(&args.endpoint);
+    let (data_endpoint, control_endpoint) = args
+        .endpoint
+        .split_once(',')
+        .expect("spot sendsend client expects data,control endpoint");
     let data_endpoint = data_endpoint.to_string();
     let control_endpoint = control_endpoint.to_string();
     let ready_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000));
@@ -112,23 +168,21 @@ fn main() {
     let ctx = common::perf_client_context();
     let data_node = SpotNode::new(&ctx).expect("spot data node");
     let control_node = SpotNode::new(&ctx).expect("spot control node");
+    setup_tls_server(&data_node, &args.transport);
     setup_tls_client(&data_node, &args.transport);
     setup_tls_server(&control_node, &args.transport);
     setup_tls_client(&control_node, &args.transport);
     common::apply_multi_spot_node_admission(&data_node, &settings);
     common::apply_multi_spot_node_admission(&control_node, &settings);
     data_node
-        .set_routing_id(&RoutingId::from_bytes(b"a-rust-multi-spot-client"))
+        .set_routing_id(&RoutingId::from_bytes(b"SPOT-SENDSEND-CLIENT-NODE"))
         .expect("data rid");
-    control_node
-        .set_routing_id(&RoutingId::from_bytes(b"a-rust-multi-spot-control-client"))
-        .expect("control rid");
 
     let control_pub = control_node.create_spot().expect("control pub");
     let control_sub = control_node.create_spot().expect("control sub");
     control_sub.set_subscription(TOPIC).expect("control sub");
     let Some(control_bind) =
-        common::benchmark_endpoint("MULTI_SPOT", &args.transport, "multi-spot-control-client")
+        common::benchmark_endpoint(PATTERN, &args.transport, "multi-spot-sendsend-control-client")
     else {
         return;
     };
@@ -140,60 +194,97 @@ fn main() {
     println!("CLIENT_CONTROL_ENDPOINT,{client_control_endpoint}");
     io::stdout().flush().ok();
 
+    let Some(data_bind) =
+        common::benchmark_endpoint(PATTERN, &args.transport, "multi-spot-sendsend-client")
+    else {
+        return;
+    };
+    data_node.bind(&data_bind).expect("client data bind");
+    let data_endpoint_local = data_node.last_endpoint().unwrap_or(data_bind);
     data_node.connect_peer(&data_endpoint).expect("connect data");
-    let mut spots: Vec<Box<Spot>> = Vec::with_capacity(settings.clients);
+
+    let server_node_rid = RoutingId::from_bytes(SERVER_NODE_RID);
+    let server_spot_rid = RoutingId::from_bytes(SERVER_SPOT_RID);
+    let mut slots = Vec::with_capacity(settings.clients);
     for index in 0..settings.clients {
         let spot = Box::new(data_node.create_spot().expect("spot"));
         spot.set_routing_id(&RoutingId::from_bytes(
-            format!("a-rust-multi-spot-client-spot-{index}").as_bytes(),
+            format!("SPOT-SENDSEND-{index}").as_bytes(),
         ))
         .expect("spot rid");
-        spot.set_subscription(TOPIC).expect("subscription");
-        spots.push(spot);
+        slots.push(Slot {
+            spot,
+            payload: vec![0u8; args.msg_size.max(common::HEADER_SIZE)],
+            seq: 1,
+            waiting_reply: false,
+        });
     }
 
-    let mut runner_control_connected = false;
-    let ready_deadline = Instant::now() + ready_timeout;
-    while Instant::now() < ready_deadline && !runner_control_connected {
-        match event_rx.recv_timeout(Duration::from_millis(10)) {
-            Ok(ClientEvent::RunnerControlConnected) => runner_control_connected = true,
-            Ok(ClientEvent::Stop) => return,
-            Ok(ClientEvent::RunnerStart) => {}
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
+    if !matches!(
+        event_rx.recv_timeout(ready_timeout),
+        Ok(ClientEvent::RunnerControlConnected)
+    ) {
+        panic!("spot sendsend client control connection timeout");
     }
-    if !runner_control_connected {
-        panic!("spot client control connection timeout");
-    }
-
     thread::sleep(ready_settle);
     thread::sleep(control_settle);
+    if !publish_control(
+        &control_pub,
+        &format!("DATA_ENDPOINT,{data_endpoint_local}"),
+        ready_timeout,
+    ) {
+        panic!("spot sendsend data endpoint publish timeout");
+    }
+    thread::sleep(control_settle);
+    let _ = publish_control(&control_pub, "CONNECTED", ready_timeout);
+
+    let mut probe_payload = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
+    common::encode_header(
+        &mut probe_payload,
+        common::PHASE_WARMUP,
+        args.msg_size as u32,
+        0,
+    );
+    let probe_deadline = Instant::now() + ready_timeout;
+    while Instant::now() < probe_deadline {
+        if !slots[0].waiting_reply
+            && send_payload(
+                &slots[0].spot,
+                &server_node_rid,
+                &server_spot_rid,
+                &probe_payload,
+            )
+        {
+            slots[0].waiting_reply = true;
+        }
+        if drain_slot(
+            &mut slots[0],
+            args.msg_size,
+            probe_deadline,
+            &mut common::LatencyStats::new(),
+            false,
+        ) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    if Instant::now() >= probe_deadline {
+        panic!("spot sendsend probe-ready timeout");
+    }
+
     if !publish_control(
         &control_pub,
         &format!("READY_COUNT,{},{}", args.msg_size, settings.clients),
         ready_timeout,
     ) {
-        panic!("spot ready publish timeout");
+        panic!("spot sendsend ready publish timeout");
     }
     println!("CLIENT_READY,{}", args.msg_size);
     io::stdout().flush().ok();
 
-    let mut runner_start = false;
-    let start_deadline = Instant::now() + ready_timeout;
-    while Instant::now() < start_deadline && !runner_start {
-        match event_rx.recv_timeout(Duration::from_millis(10)) {
-            Ok(ClientEvent::RunnerStart) => runner_start = true,
-            Ok(ClientEvent::Stop) => return,
-            Ok(ClientEvent::RunnerControlConnected) => {}
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
+    if !matches!(event_rx.recv_timeout(ready_timeout), Ok(ClientEvent::RunnerStart)) {
+        panic!("spot sendsend runner start handshake timeout");
     }
-    if !runner_start {
-        panic!("spot client runner start handshake timeout");
-    }
-
     let direct_deadline = Instant::now() + ready_timeout;
     let mut direct_started = false;
     while Instant::now() < direct_deadline {
@@ -206,33 +297,35 @@ fn main() {
         thread::sleep(Duration::from_millis(1));
     }
     if !direct_started {
-        panic!("spot client direct start handshake timeout");
+        panic!("spot sendsend direct start handshake timeout");
     }
 
-    let active_deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
-    let mut stats = common::LatencyStats::new();
-    while Instant::now() < active_deadline {
+    let mut latency = common::LatencyStats::new();
+    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
+    while Instant::now() < deadline {
         let mut progressed = false;
-        for spot in spots.iter() {
-            loop {
-                match spot.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-                    Ok(Some(received)) => {
-                        progressed = true;
-                        let data = common::message_payload(received.parts()).to_vec();
-                        if Instant::now() <= active_deadline
-                            && common::is_valid_active_message(&data, args.msg_size)
-                        {
-                            let sent_ts_ns = common::decode_sent_ts_ns(&data);
-                            let now_ns = common::now_ns();
-                            if sent_ts_ns > 0 && now_ns >= sent_ts_ns as u64 {
-                                stats.record_ns((now_ns - sent_ts_ns as u64) as f64);
-                            }
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(err) if err.code() == RecvResult::NoData => break,
-                    Err(err) => panic!("spot client subscribe failed: {err}"),
-                }
+        for slot in &mut slots {
+            if slot.waiting_reply {
+                progressed |= drain_slot(slot, args.msg_size, deadline, &mut latency, true);
+                continue;
+            }
+            common::encode_header(
+                &mut slot.payload,
+                common::PHASE_ACTIVE,
+                args.msg_size as u32,
+                slot.seq,
+            );
+            if send_payload(
+                &slot.spot,
+                &server_node_rid,
+                &server_spot_rid,
+                &slot.payload,
+            ) {
+                slot.waiting_reply = true;
+                slot.seq += 1;
+                progressed = true;
+            } else {
+                progressed |= drain_slot(slot, args.msg_size, deadline, &mut latency, true);
             }
         }
         if !progressed {
@@ -240,12 +333,11 @@ fn main() {
         }
     }
 
-    let stats = stats.finish();
     common::print_result(
-        "MULTI_SPOT",
+        PATTERN,
         &args.transport,
         args.msg_size,
         settings.duration_seconds,
-        &stats,
+        &latency.finish(),
     );
 }

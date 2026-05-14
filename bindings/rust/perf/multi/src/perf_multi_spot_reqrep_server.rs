@@ -1,51 +1,25 @@
 #[path = "perf_common.rs"]
 mod common;
 
-use std::io::{self, BufRead, BufReader, Write};
-use std::net::{TcpListener, TcpStream};
+use std::io::{self, BufRead, Write};
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
-    mpsc,
+    mpsc, Arc, Mutex,
 };
 use std::thread;
 use std::time::{Duration, Instant};
 
 use zlink::*;
 
-const SERVER_NODE_RID: &[u8] = b"perf-spot-reqrep-server-node";
-const SERVER_SPOT_RID: &[u8] = b"perf-spot-reqrep-server-spot";
-
-fn env_u64(name: &str, default: u64) -> u64 {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(default)
-}
-
-fn control_listener() -> io::Result<(TcpListener, String)> {
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    let endpoint = format!(
-        "tcp://127.0.0.1:{}",
-        listener.local_addr().expect("control addr").port()
-    );
-    Ok((listener, endpoint))
-}
-
-fn tcp_addr(endpoint: &str) -> String {
-    endpoint
-        .strip_prefix("tcp://")
-        .expect("tcp control endpoint")
-        .to_string()
-}
+const PATTERN: &str = "MULTI_SPOT_REQREP";
+const TOPIC: &str = "bench";
+const SERVER_NODE_RID: &[u8] = b"SPOT-REQREP-SERVER-NODE";
+const SERVER_SPOT_RID: &[u8] = b"SPOT-REQREP-SERVER-SPOT";
 
 enum ServerEvent {
     Stop,
     RunnerStart,
-    ClientConnected,
-    DataEndpoint(String),
-    ReadyCount,
-    StartSender(TcpStream),
+    ConnectControl(String),
 }
 
 fn trace_enabled() -> bool {
@@ -55,74 +29,76 @@ fn trace_enabled() -> bool {
         == Some("1")
 }
 
+fn setup_tls_server(node: &SpotNode, transport: &str) {
+    if matches!(transport, "tls" | "wss") {
+        let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
+        let pem = common::load_tls_pem(&tls);
+        node.set_tls_server(&pem.cert, &pem.key, false)
+            .expect("spot tls server");
+    }
+}
+
+fn setup_tls_client(node: &SpotNode, transport: &str) {
+    if matches!(transport, "tls" | "wss") {
+        let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
+        let pem = common::load_tls_pem(&tls);
+        node.set_tls_client(&pem.ca, "localhost", false)
+            .expect("spot tls client");
+    }
+}
+
+fn control_payload(control_sub: &Spot) -> Option<String> {
+    match control_sub.subscribe_with_flags(RecvFlags::DONT_WAIT) {
+        Ok(Some(message)) => {
+            let data = common::message_payload(message.parts());
+            Some(String::from_utf8_lossy(data).into_owned())
+        }
+        Ok(None) => None,
+        Err(err) if err.code() == RecvResult::NoData => None,
+        Err(err) => panic!("control subscribe failed: {err}"),
+    }
+}
+
+fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        match control_pub
+            .publish(TOPIC)
+            .message(Message::copy_from(payload.as_bytes()).expect("control message"))
+            .flags(SendFlags::DONT_WAIT)
+            .submit()
+        {
+            Ok(_) => return true,
+            Err(err) if err.code() == SubmitResult::Backpressured => {
+                thread::sleep(Duration::from_millis(1));
+            }
+            Err(err) => panic!("control publish failed: {err}"),
+        }
+    }
+    false
+}
+
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
     let stop = Arc::new(AtomicBool::new(false));
+    let ready_timeout = common::resolve_multi_connect_ready_timeout();
     let (event_tx, event_rx) = mpsc::channel::<ServerEvent>();
 
-    let (listener, control_endpoint) = match control_listener() {
-        Ok(value) => value,
-        Err(err) => panic!("control bind: {err}"),
-    };
     {
         let event_tx = event_tx.clone();
-        thread::spawn(move || {
-            let (stream, _) = listener.accept().expect("accept control");
-            stream.set_nodelay(true).ok();
-            let _ = event_tx.send(ServerEvent::StartSender(stream));
-        });
-    }
-
-    {
         let stop = Arc::clone(&stop);
-        let event_tx = event_tx.clone();
+        let msg_size = args.msg_size;
         thread::spawn(move || {
             let stdin = io::stdin();
             for line in stdin.lock().lines() {
                 let line = line.unwrap_or_default();
                 let text = line.trim();
                 if let Some(endpoint) = text.strip_prefix("CONNECT_CONTROL,") {
-                    let stream = TcpStream::connect(tcp_addr(endpoint)).expect("connect control");
-                    stream.set_nodelay(true).ok();
-                    let reader = BufReader::new(stream);
-                    let event_tx = event_tx.clone();
-                    let stop_reader = Arc::clone(&stop);
-                    thread::spawn(move || {
-                        for line in reader.lines() {
-                            let line = line.unwrap_or_default();
-                            let text = line.trim();
-                            if text == "CONNECTED" {
-                                let _ = event_tx.send(ServerEvent::ClientConnected);
-                            } else if let Some(endpoint) = text.strip_prefix("DATA_ENDPOINT,") {
-                                let _ =
-                                    event_tx.send(ServerEvent::DataEndpoint(endpoint.to_string()));
-                            } else if let Some(rest) = text.strip_prefix("READY_COUNT,") {
-                                let mut parts = rest.split(',');
-                                let size =
-                                    parts.next().and_then(|value| value.parse::<usize>().ok());
-                                let count =
-                                    parts.next().and_then(|value| value.parse::<usize>().ok());
-                                if size == Some(args.msg_size) {
-                                    let _ = count;
-                                    let _ = event_tx.send(ServerEvent::ReadyCount);
-                                }
-                            } else if matches!(text, "STOP" | "QUIT") {
-                                let _ = event_tx.send(ServerEvent::Stop);
-                                return;
-                            }
-                            if stop_reader.load(Ordering::Acquire) {
-                                return;
-                            }
-                        }
-                    });
-                    continue;
-                }
-                if text == format!("START,{}", args.msg_size) {
+                    let _ = event_tx.send(ServerEvent::ConnectControl(endpoint.to_string()));
+                } else if text == format!("START,{msg_size}") {
                     let _ = event_tx.send(ServerEvent::RunnerStart);
-                    continue;
-                }
-                if matches!(text, "STOP" | "QUIT") {
+                } else if matches!(text, "STOP" | "QUIT") {
                     stop.store(true, Ordering::Release);
                     let _ = event_tx.send(ServerEvent::Stop);
                     return;
@@ -132,24 +108,30 @@ fn main() {
     }
 
     let ctx = common::perf_server_context();
-    let node = SpotNode::new(&ctx).expect("spot node");
-    common::apply_multi_spot_node_admission(&node, &settings);
-    node.set_routing_id(&RoutingId::from_bytes(SERVER_NODE_RID))
-        .expect("node routing id");
-    if matches!(args.transport.as_str(), "tls" | "wss") {
-        let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
-        let pem = common::load_tls_pem(&tls);
-        node.set_tls_server(&pem.cert, &pem.key, false)
-            .expect("spot tls");
-    }
-    let spot = Arc::new(Mutex::new(node.create_spot().expect("spot")));
-    spot.lock()
+    let data_node = SpotNode::new(&ctx).expect("spot data node");
+    let control_node = SpotNode::new(&ctx).expect("spot control node");
+    setup_tls_server(&data_node, &args.transport);
+    setup_tls_server(&control_node, &args.transport);
+    setup_tls_client(&control_node, &args.transport);
+    common::apply_multi_spot_node_admission(&data_node, &settings);
+    common::apply_multi_spot_node_admission(&control_node, &settings);
+    data_node
+        .set_routing_id(&RoutingId::from_bytes(SERVER_NODE_RID))
+        .expect("data rid");
+    control_node
+        .set_routing_id(&RoutingId::from_bytes(b"SPOT-REQREP-CONTROL-SERVER-NODE"))
+        .expect("control rid");
+
+    let replier = Arc::new(Mutex::new(data_node.create_spot().expect("spot")));
+    replier
+        .lock()
         .expect("spot lock")
         .set_routing_id(&RoutingId::from_bytes(SERVER_SPOT_RID))
-        .expect("spot routing id");
+        .expect("spot rid");
     let stop_dispatch = Arc::clone(&stop);
-    let dispatch_spot = Arc::clone(&spot);
-    spot.lock()
+    let dispatch_spot = Arc::clone(&replier);
+    replier
+        .lock()
         .expect("spot lock")
         .on_dispatch_event(move |info| {
             if stop_dispatch.load(Ordering::Acquire)
@@ -164,14 +146,6 @@ fn main() {
                 };
                 match received {
                     Ok(Some(received)) => {
-                        if trace_enabled() {
-                            eprintln!(
-                                "spot reqrep server received routed request node_len={} spot_len={} seq={}",
-                                received.routing_id().map(|rid| rid.size()).unwrap_or(0),
-                                0,
-                                received.request_seq().unwrap_or(0)
-                            );
-                        }
                         let reply = Message::copy_from(common::message_payload(received.parts()))
                             .expect("reply");
                         if let Err(err) = received.reply().message(reply).submit() {
@@ -183,121 +157,103 @@ fn main() {
                     Ok(None) => break,
                     Err(err) if err.code() == RecvResult::NoData => break,
                     Err(err) => {
-                        eprintln!("[spot-reqrep-server] recv error in dispatch: {:?}", err);
+                        eprintln!("[spot-reqrep-server] recv error: {err}");
                         break;
                     }
                 }
             }
         })
         .expect("dispatch event");
-    let Some(data_bind_endpoint) =
-        common::resolve_server_bind_endpoint("MULTI_SPOT_REQREP", &args.transport)
+
+    let control_pub = control_node.create_spot().expect("control pub");
+    let control_sub = control_node.create_spot().expect("control sub");
+    control_sub.set_subscription(TOPIC).expect("control sub");
+
+    let Some(data_bind) = common::resolve_server_bind_endpoint(PATTERN, &args.transport) else {
+        return;
+    };
+    if let Err(err) = data_node.bind(&data_bind) {
+        if common::handle_transport_setup_error(PATTERN, &args.transport, "bind", err) {
+            return;
+        }
+        panic!("data bind: {err}");
+    }
+    let Some(control_bind) =
+        common::benchmark_endpoint(PATTERN, &args.transport, "multi-spot-reqrep-control-server")
     else {
         return;
     };
-    if let Err(err) = node.bind(&data_bind_endpoint) {
-        if common::handle_transport_setup_error("MULTI_SPOT_REQREP", &args.transport, "bind", err) {
-            return;
-        }
-        panic!("bind: {err}");
-    }
-    let endpoint = node.last_endpoint().expect("endpoint");
-    common::print_ready(&endpoint);
+    control_node.bind(&control_bind).expect("control bind");
+    let data_endpoint = data_node.last_endpoint().unwrap_or(data_bind);
+    let control_endpoint = control_node.last_endpoint().unwrap_or(control_bind);
+    common::print_ready(&data_endpoint);
     println!("CONTROL_READY,{control_endpoint}");
     io::stdout().flush().ok();
 
-    let ready_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000));
-    let control_settle = Duration::from_millis(env_u64("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25));
-    let ready_timeout = common::resolve_multi_connect_ready_timeout();
-    let mut runner_start = false;
-    let mut client_connected = false;
-    let mut data_endpoint_count = 0usize;
-    let mut start_sender = None::<TcpStream>;
-    let control_deadline = Instant::now() + ready_timeout + ready_settle + control_settle;
-    while Instant::now() < control_deadline {
-        let remaining = control_deadline
-            .saturating_duration_since(Instant::now())
-            .min(Duration::from_millis(10));
-        match event_rx.recv_timeout(remaining) {
-            Ok(ServerEvent::Stop) => return,
-            Ok(ServerEvent::RunnerStart) => runner_start = true,
-            Ok(ServerEvent::ClientConnected) => client_connected = true,
-            Ok(ServerEvent::DataEndpoint(endpoint)) => {
-                if trace_enabled() {
-                    eprintln!("spot reqrep server connect data endpoint: {endpoint}");
+    let mut data_connected = false;
+    let mut ready_units = 0usize;
+    let deadline = Instant::now() + ready_timeout;
+    while Instant::now() < deadline && !stop.load(Ordering::Acquire) {
+        while let Ok(event) = event_rx.try_recv() {
+            match event {
+                ServerEvent::Stop => return,
+                ServerEvent::RunnerStart => {}
+                ServerEvent::ConnectControl(endpoint) => {
+                    control_node
+                        .connect_peer(&endpoint)
+                        .expect("connect client control");
+                    println!("CONTROL_CONNECTED,{endpoint}");
+                    io::stdout().flush().ok();
                 }
-                node.connect_peer(&endpoint).expect("connect client data");
-                data_endpoint_count += 1;
             }
-            Ok(ServerEvent::ReadyCount) => {}
-            Ok(ServerEvent::StartSender(stream)) => start_sender = Some(stream),
-            Err(mpsc::RecvTimeoutError::Timeout) => continue,
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-        if client_connected && data_endpoint_count >= 1 && start_sender.is_some() {
+        if let Some(payload) = control_payload(&control_sub) {
+            if let Some(endpoint) = payload.strip_prefix("DATA_ENDPOINT,") {
+                data_node.connect_peer(endpoint).expect("connect client data");
+                data_connected = true;
+            } else if let Some(rest) = payload.strip_prefix("READY_COUNT,") {
+                let mut parts = rest.split(',');
+                let size = parts.next().and_then(|value| value.parse::<usize>().ok());
+                let count = parts.next().and_then(|value| value.parse::<usize>().ok());
+                if size == Some(args.msg_size) {
+                    ready_units += count.unwrap_or(0);
+                }
+            }
+        }
+        if data_connected && ready_units >= settings.clients {
             break;
         }
+        thread::sleep(Duration::from_millis(1));
     }
-    if !client_connected || data_endpoint_count < 1 || start_sender.is_none() {
-        panic!("spot reqrep server control handshake timeout");
+    if !data_connected || ready_units < settings.clients {
+        panic!("spot reqrep server readiness timeout");
     }
 
+    let mut runner_start = false;
     let start_deadline = Instant::now() + ready_timeout;
-    while Instant::now() < start_deadline {
-        let remaining = start_deadline
-            .saturating_duration_since(Instant::now())
-            .min(Duration::from_millis(10));
-        match event_rx.recv_timeout(remaining) {
+    while Instant::now() < start_deadline && !runner_start {
+        match event_rx.recv_timeout(Duration::from_millis(10)) {
             Ok(ServerEvent::Stop) => return,
             Ok(ServerEvent::RunnerStart) => runner_start = true,
-            Ok(ServerEvent::ClientConnected) => {}
-            Ok(ServerEvent::DataEndpoint(endpoint)) => {
-                if trace_enabled() {
-                    eprintln!("spot reqrep server connect late data endpoint: {endpoint}");
-                }
-                node.connect_peer(&endpoint).expect("connect client data");
+            Ok(ServerEvent::ConnectControl(endpoint)) => {
+                control_node
+                    .connect_peer(&endpoint)
+                    .expect("connect client control");
+                println!("CONTROL_CONNECTED,{endpoint}");
+                io::stdout().flush().ok();
             }
-            Ok(ServerEvent::ReadyCount) => {}
-            Ok(ServerEvent::StartSender(stream)) => start_sender = Some(stream),
-            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
-        if runner_start {
-            break;
         }
     }
     if !runner_start {
         panic!("spot reqrep server start handshake timeout");
     }
-
-    {
-        let stream = start_sender.as_mut().expect("start sender");
-        writeln!(stream, "START,{}", args.msg_size).expect("write start");
-        stream.flush().expect("flush start");
+    if !publish_control(&control_pub, &format!("START,{}", args.msg_size), ready_timeout) {
+        panic!("spot reqrep control start publish timeout");
     }
 
-    while !stop.load(Ordering::Acquire) {
-        while let Ok(event) = event_rx.try_recv() {
-            match event {
-                ServerEvent::Stop => {
-                    stop.store(true, Ordering::Release);
-                    break;
-                }
-                ServerEvent::DataEndpoint(endpoint) => {
-                    if trace_enabled() {
-                        eprintln!("spot reqrep server connect runtime data endpoint: {endpoint}");
-                    }
-                    node.connect_peer(&endpoint).expect("connect client data");
-                }
-                ServerEvent::RunnerStart
-                | ServerEvent::ClientConnected
-                | ServerEvent::ReadyCount
-                | ServerEvent::StartSender(_) => {}
-            }
-        }
-        if stop.load(Ordering::Acquire) {
-            break;
-        }
-        thread::sleep(Duration::from_millis(1));
-    }
+    let idle = Duration::from_secs(settings.duration_seconds) + Duration::from_secs(2);
+    thread::sleep(idle);
+    stop.store(true, Ordering::Release);
 }

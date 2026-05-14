@@ -423,6 +423,17 @@ def main(argv=None):
         _append_line(sections)
 
     rows = parse_result_lines("\n".join(emitted_chunks))
+    emitted_result_lines = [
+        line
+        for chunk in emitted_chunks
+        for line in chunk.splitlines()
+        if line.startswith(("RESULT,", "UNSUPPORTED,", "SKIP,"))
+    ]
+    if emitted_result_lines:
+        _append_line(sections)
+        for line in emitted_result_lines:
+            _append_line(sections, line)
+        _append_line(sections)
     skipped_cases = 0
     unsupported_cases = 0
     for line in status_lines:

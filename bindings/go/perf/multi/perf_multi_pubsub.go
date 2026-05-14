@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"zlink.systems/zlink"
@@ -10,14 +9,13 @@ import (
 )
 
 func runMultiPubSub(cfg multiConfig) perfcommon.Result {
-	ctx, err := zlink.NewContext()
+	ctx, err := perfcommon.NewMultiContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
 
-	publisher, err := ctx.XPubSocket()
+	publisher, err := ctx.PubSocket()
 	perfcommon.Must(err)
 	defer publisher.Close()
-	perfcommon.Must(publisher.SetNoDrop(perfcommon.EnvEnabled("PERF_MULTI_PUBSUB_XPUB_NODROP", true)))
 	perfcommon.ApplyMultiHWM(publisher, cfg.pattern)
 	pubMon := perfcommon.OpenMonitor(publisher)
 	defer pubMon.Close()
@@ -40,14 +38,14 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 		perfcommon.ApplyMultiHWM(sub, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(sub, cfg.transport)
 		subMon := perfcommon.OpenMonitor(sub)
+		if err := sub.SetSubscription("bench"); err != nil {
+			perfcommon.Must(fmt.Errorf("multi pubsub subscribe[%d]: %w", i, err))
+		}
 		if err := sub.Connect(endpoint); err != nil {
 			perfcommon.Must(fmt.Errorf("multi pubsub connect sub[%d]: %w", i, err))
 		}
 		perfcommon.WaitConnectedWithTimeout(perfcommon.MultiReadyTimeout(), pubMon, subMon)
 		_ = subMon.Close()
-		if err := sub.SetSubscription("bench."); err != nil {
-			perfcommon.Must(fmt.Errorf("multi pubsub subscribe[%d]: %w", i, err))
-		}
 
 	}
 	defer func() {
@@ -116,7 +114,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 				err,
 			))
 		}
-		_, err = publisher.Publish("bench.topic").Message(msg).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		_, err = publisher.Publish("bench").Message(msg).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -133,11 +131,112 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	// PERF_MULTI_TEST_POLICY § 1.3.1: emit the wire-level stop token on
 	// the bench topic so every subscriber sees it as the last in-flight
 	// payload of the active stream.
-	fmt.Fprintln(os.Stderr, "[main] sending stop token at", time.Now().Sub(window.ActiveAt))
 	sendMultiPubSubStopToken(publisher)
-	fmt.Fprintln(os.Stderr, "[main] stop token sent at", time.Now().Sub(window.ActiveAt))
 	<-recvDone
-	fmt.Fprintln(os.Stderr, "[main] recvDone closed at", time.Now().Sub(window.ActiveAt))
+	return stats.Snapshot(cfg.duration, cfg.msgSize)
+}
+
+func runMultiPubSubServer(cfg multiConfig) {
+	ctx, err := perfcommon.NewMultiServerContext()
+	perfcommon.Must(err)
+	defer ctx.Close()
+
+	publisher, err := ctx.PubSocket()
+	perfcommon.Must(err)
+	defer publisher.Close()
+	perfcommon.Must(perfcommon.ConfigureTLSServer(publisher, cfg.transport))
+	perfcommon.ApplyMultiHWM(publisher, cfg.pattern)
+	perfcommon.ApplyMultiBenchmarkSocketOptions(publisher, cfg.transport)
+	endpoint := perfcommon.BindAndResolveEndpoint(publisher, cfg.transport, "perf-multi-pubsub")
+	flushControlLine("READY,%s", endpoint)
+	if !waitForStartToken(cfg.msgSize) {
+		return
+	}
+
+	window := activeDeadline(cfg.duration)
+	payload := perfcommon.PreparePayload(cfg.msgSize)
+	for time.Now().Before(window.StopAt) {
+		perfcommon.StampWindowPayload(payload, window.ActiveAt)
+		msg, err := zlink.NewMessage(payload)
+		if err != nil {
+			perfcommon.Must(fmt.Errorf("multi pubsub create payload message size=%d clients=%d transport=%s: %w",
+				cfg.msgSize, cfg.clients, cfg.transport, err))
+		}
+		_, err = publisher.Publish("bench").Message(msg).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		if err != nil {
+			if perfcommon.IsTransient(err) {
+				continue
+			}
+			perfcommon.Must(fmt.Errorf("multi pubsub publish size=%d clients=%d transport=%s: %w",
+				cfg.msgSize, cfg.clients, cfg.transport, err))
+		}
+	}
+	sendMultiPubSubStopToken(publisher)
+}
+
+func runMultiPubSubClient(cfg multiConfig, endpoint string) perfcommon.Result {
+	ctx, err := perfcommon.NewMultiClientContext()
+	perfcommon.Must(err)
+	defer ctx.Close()
+
+	stats := perfcommon.NewStats()
+	subs := make([]*zlink.SubSocket, 0, cfg.clients)
+	for i := 0; i < cfg.clients; i++ {
+		sub, err := ctx.SubSocket()
+		if err != nil {
+			perfcommon.Must(fmt.Errorf("multi pubsub create sub socket[%d]: %w", i, err))
+		}
+		subs = append(subs, sub)
+		perfcommon.Must(perfcommon.ConfigureTLSClient(sub, cfg.transport))
+		perfcommon.ApplyMultiHWM(sub, cfg.pattern)
+		perfcommon.ApplyMultiBenchmarkSocketOptions(sub, cfg.transport)
+		subMon := perfcommon.OpenMonitor(sub)
+		if err := sub.SetSubscription("bench"); err != nil {
+			perfcommon.Must(fmt.Errorf("multi pubsub subscribe[%d]: %w", i, err))
+		}
+		if err := sub.Connect(endpoint); err != nil {
+			perfcommon.Must(fmt.Errorf("multi pubsub connect sub[%d]: %w", i, err))
+		}
+		perfcommon.WaitConnectedWithTimeout(perfcommon.MultiReadyTimeout(), subMon)
+		_ = subMon.Close()
+	}
+	defer func() {
+		for _, sub := range subs {
+			_ = sub.Close()
+		}
+	}()
+
+	flushControlLine("CLIENT_READY,%d", cfg.msgSize)
+	if !waitForStartToken(cfg.msgSize) {
+		return stats.Snapshot(cfg.duration, cfg.msgSize)
+	}
+	window := activeDeadline(cfg.duration)
+	pollers := make([]*zlink.Poller, 0, len(subs))
+	for _, sub := range subs {
+		pollers = append(pollers, perfcommon.NewSocketPoller(sub, perfcommon.ZLinkPollIn))
+	}
+	defer func() {
+		for _, p := range pollers {
+			_ = p.Close()
+		}
+	}()
+
+	stopSeen := make([]bool, len(subs))
+	stopsRemaining := len(subs)
+	for stopsRemaining > 0 {
+		event, err := pollers[0].Wait(time.Until(window.StopAt.Add(perfcommon.MultiRecvTimeout())))
+		if err != nil {
+			if perfcommon.IsTransient(err) {
+				continue
+			}
+			perfcommon.Must(fmt.Errorf("multi pubsub client poll: %w", err))
+		}
+		if event == nil {
+			break
+		}
+		drainMultiPubSubAvailable(subs, stats, cfg.msgSize, window.ActiveAt, window.StopAt, stopSeen, &stopsRemaining)
+	}
+	flushControlLine("CLIENT_DONE,%d", cfg.msgSize)
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
@@ -185,9 +284,9 @@ func drainMultiPubSubAvailable(
 	}
 }
 
-func sendMultiPubSubStopToken(publisher *zlink.XPubSocket) {
+func sendMultiPubSubStopToken(publisher *zlink.PubSocket) {
 	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
-		sent, err := publisher.Publish("bench.topic").Message(perfcommon.NewMessage(perfcommon.StopToken)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		sent, err := publisher.Publish("bench").Message(perfcommon.NewMessage(perfcommon.StopToken)).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err == nil && sent {
 			return
 		}

@@ -1,4 +1,4 @@
-//! DEALER-DEALER multi server: one-way active sender.
+//! DEALER-DEALER multi server: one-way active receiver.
 
 #[path = "perf_common.rs"]
 mod common;
@@ -21,10 +21,16 @@ fn main() {
         .common_options()
         .set_recv_hwm(settings.recv_hwm)
         .expect("rcvhwm");
+    if settings.msg_unit_bytes > 0 {
+        server
+            .common_options()
+            .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
+            .expect("auto hwm msg unit");
+    }
     server
         .common_options()
-        .set_send_timeout(Duration::from_millis(settings.send_timeout_ms))
-        .expect("sndtimeo");
+        .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
+        .expect("rcvtimeo");
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&server, &tls).expect("server tls");
@@ -61,50 +67,40 @@ fn main() {
         return;
     }
 
-    let poller = Poller::new().expect("poller");
-    poller.add_socket(&server, POLLOUT).expect("poller add");
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
-    let mut buf = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
-    let mut seq: u64 = 1;
-    let mut pending = false;
+    let mut latency_stats = common::LatencyStats::new();
+    let mut active_count: u64 = 0;
+    let mut received = Received::empty();
 
     while Instant::now() < deadline {
-        if !pending {
-            common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
-            let msg = Message::copy_from(&buf).expect("msg");
-            match server.send().message(msg).flags(SendFlags::DONT_WAIT).submit() {
-                Ok(true) => {
-                    seq += 1;
-                    continue;
+        match server.recv(&mut received, RecvFlags::NONE) {
+            Ok(true) => {
+                let data = common::message_payload(received.parts());
+                if Instant::now() < deadline && common::is_valid_active_message(data, args.msg_size)
+                {
+                    let sent_ts_ns = common::decode_sent_ts_ns(data);
+                    latency_stats.record_ns(
+                        common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
+                    );
+                    active_count += 1;
                 }
-                Ok(false) => {
-                    pending = true;
-                }
-                Err(err) if err.code() == SubmitResult::Backpressured => {
-                    pending = true;
-                }
-                Err(err) if err.code() == SubmitResult::NotConnected => {}
-                Err(err) => panic!("send failed: {err}"),
             }
-        }
-
-        // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no timer cap.
-        match poller.wait(-1) {
-            Ok(Some(event)) if event.is_writable() => {
-                pending = false;
-            }
-            Ok(Some(_)) | Ok(None) => {}
-            Err(err) => panic!("poller wait failed: {err}"),
+            Ok(false) => {}
+            Err(err) if err.code() == RecvResult::NoData => {}
+            Err(err) => panic!("recv failed: {err}"),
         }
     }
 
-    // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via wire-level stop
-    // token (blocking send, deadline ignored). Receiver exits on token arrival.
-    for _ in 0..100 {
-        let token = Message::copy_from(common::STOP_TOKEN).expect("stop token");
-        match server.send().message(token).submit().map(|_| ()) {
-            Ok(()) => break,
-            Err(_) => std::thread::sleep(Duration::from_millis(1)),
-        }
-    }
+    let stats = latency_stats.finish();
+    let final_stats = common::StatsResult {
+        count: active_count,
+        ..stats
+    };
+    common::print_result(
+        "MULTI_DEALER_DEALER",
+        &args.transport,
+        args.msg_size,
+        settings.duration_seconds,
+        &final_stats,
+    );
 }

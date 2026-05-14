@@ -72,6 +72,15 @@ def _env_int(name, default):
         return default
 
 
+def perf_context():
+    zlink_mod = _require_zlink()
+    ctx = zlink_mod.Context()
+    io_threads = _env_int("PERF_IO_THREADS", 1)
+    if io_threads > 0:
+        ctx.options.io_threads = io_threads
+    return ctx
+
+
 def resolve_single_send_hwm():
     return _env_int("PERF_SINGLE_SNDHWM", _env_int("PERF_SINGLE_HWM", 1000))
 

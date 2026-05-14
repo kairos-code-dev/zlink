@@ -64,7 +64,7 @@ func runSingleOneWay(
 		if event.Events&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
-		stop, drainErr := drainSingleOneWayUntilStop(receiver, stats, cfg.msgSize, window.ActiveAt)
+		stop, drainErr := drainSingleOneWayUntilStop(receiver, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
 		if drainErr != nil {
 			perfcommon.Must(drainErr)
 		}
@@ -84,6 +84,7 @@ func drainSingleOneWayUntilStop(
 	stats *perfcommon.Stats,
 	msgSize int,
 	activeAt time.Time,
+	stopAt time.Time,
 ) (bool, error) {
 	var received zlink.Received
 	for {
@@ -103,7 +104,7 @@ func drainSingleOneWayUntilStop(
 			return true, nil
 		}
 		if err == nil && stats != nil {
-			perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
+			perfcommon.RecordMessageLatency(stats, activeAt, stopAt, msgSize, part)
 		}
 		_ = received.Close()
 	}

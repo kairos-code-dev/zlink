@@ -2,25 +2,24 @@
 mod common;
 
 use std::io::{self, BufRead, Write};
-use std::sync::mpsc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc, Arc, Mutex,
+};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use zlink::*;
 
+const PATTERN: &str = "MULTI_SPOT_SENDSEND";
 const TOPIC: &str = "bench";
+const SERVER_NODE_RID: &[u8] = b"SPOT-SENDSEND-SERVER-NODE";
+const SERVER_SPOT_RID: &[u8] = b"SPOT-SENDSEND-SERVER-SPOT";
 
 enum ServerEvent {
     Stop,
     RunnerStart,
     ConnectControl(String),
-}
-
-fn env_u64(name: &str, default: u64) -> u64 {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(default)
 }
 
 fn setup_tls_server(node: &SpotNode, transport: &str) {
@@ -72,14 +71,41 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
     false
 }
 
+fn echo_available(spot: &Spot) {
+    loop {
+        match spot.recv_routed_with_flags(RecvFlags::DONT_WAIT) {
+            Ok(Some(received)) => {
+                if received.request_seq().unwrap_or(0) != 0 {
+                    continue;
+                }
+                let payload = common::message_payload(received.parts());
+                let message = Message::copy_from(payload).expect("echo message");
+                let _ = received
+                    .send()
+                    .message(message)
+                    .flags(SendFlags::DONT_WAIT)
+                    .submit();
+            }
+            Ok(None) => break,
+            Err(err) if err.code() == RecvResult::NoData => break,
+            Err(err) => {
+                eprintln!("[spot-sendsend-server] recv error: {err}");
+                break;
+            }
+        }
+    }
+}
+
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
+    let stop = Arc::new(AtomicBool::new(false));
     let ready_timeout = common::resolve_multi_connect_ready_timeout();
     let (event_tx, event_rx) = mpsc::channel::<ServerEvent>();
 
     {
         let event_tx = event_tx.clone();
+        let stop = Arc::clone(&stop);
         let msg_size = args.msg_size;
         thread::spawn(move || {
             let stdin = io::stdin();
@@ -91,6 +117,7 @@ fn main() {
                 } else if text == format!("START,{msg_size}") {
                     let _ = event_tx.send(ServerEvent::RunnerStart);
                 } else if matches!(text, "STOP" | "QUIT") {
+                    stop.store(true, Ordering::Release);
                     let _ = event_tx.send(ServerEvent::Stop);
                     return;
                 }
@@ -107,31 +134,46 @@ fn main() {
     common::apply_multi_spot_node_admission(&data_node, &settings);
     common::apply_multi_spot_node_admission(&control_node, &settings);
     data_node
-        .set_routing_id(&RoutingId::from_bytes(b"z-rust-multi-spot-server"))
+        .set_routing_id(&RoutingId::from_bytes(SERVER_NODE_RID))
         .expect("data rid");
-    control_node
-        .set_routing_id(&RoutingId::from_bytes(b"z-rust-multi-spot-control-server"))
-        .expect("control rid");
 
-    let data_spot = data_node.create_spot().expect("data spot");
+    let replier = Arc::new(Mutex::new(data_node.create_spot().expect("spot")));
+    replier
+        .lock()
+        .expect("spot lock")
+        .set_routing_id(&RoutingId::from_bytes(SERVER_SPOT_RID))
+        .expect("spot rid");
+    let stop_dispatch = Arc::clone(&stop);
+    let dispatch_spot = Arc::clone(&replier);
+    replier
+        .lock()
+        .expect("spot lock")
+        .on_dispatch_event(move |info| {
+            if stop_dispatch.load(Ordering::Acquire)
+                || info.event != SpotDispatchEvent::RoutedReadable
+            {
+                return;
+            }
+            let spot = dispatch_spot.lock().expect("spot lock");
+            echo_available(&spot);
+        })
+        .expect("dispatch event");
+
     let control_pub = control_node.create_spot().expect("control pub");
     let control_sub = control_node.create_spot().expect("control sub");
-    data_spot
-        .set_routing_id(&RoutingId::from_bytes(b"z-rust-multi-spot-server-spot"))
-        .expect("data spot rid");
     control_sub.set_subscription(TOPIC).expect("control sub");
 
-    let Some(data_bind) = common::benchmark_endpoint("MULTI_SPOT", &args.transport, "multi-spot-data") else {
+    let Some(data_bind) = common::resolve_server_bind_endpoint(PATTERN, &args.transport) else {
         return;
     };
     if let Err(err) = data_node.bind(&data_bind) {
-        if common::handle_transport_setup_error("MULTI_SPOT", &args.transport, "bind", err) {
+        if common::handle_transport_setup_error(PATTERN, &args.transport, "bind", err) {
             return;
         }
         panic!("data bind: {err}");
     }
     let Some(control_bind) =
-        common::benchmark_endpoint("MULTI_SPOT", &args.transport, "multi-spot-control-server")
+        common::benchmark_endpoint(PATTERN, &args.transport, "multi-spot-sendsend-control-server")
     else {
         return;
     };
@@ -142,14 +184,15 @@ fn main() {
     println!("CONTROL_READY,{control_endpoint}");
     io::stdout().flush().ok();
 
-    let mut ready_count = 0usize;
-    let mut runner_start = false;
+    let mut data_connected = false;
+    let mut ready_units = 0usize;
     let deadline = Instant::now() + ready_timeout;
-    while Instant::now() < deadline {
+    while Instant::now() < deadline && !stop.load(Ordering::Acquire) {
+        echo_available(&replier.lock().expect("spot lock"));
         while let Ok(event) = event_rx.try_recv() {
             match event {
                 ServerEvent::Stop => return,
-                ServerEvent::RunnerStart => runner_start = true,
+                ServerEvent::RunnerStart => {}
                 ServerEvent::ConnectControl(endpoint) => {
                     control_node
                         .connect_peer(&endpoint)
@@ -160,27 +203,32 @@ fn main() {
             }
         }
         if let Some(payload) = control_payload(&control_sub) {
-            if let Some(rest) = payload.strip_prefix("READY_COUNT,") {
+            if let Some(endpoint) = payload.strip_prefix("DATA_ENDPOINT,") {
+                data_node.connect_peer(endpoint).expect("connect client data");
+                data_connected = true;
+            } else if let Some(rest) = payload.strip_prefix("READY_COUNT,") {
                 let mut parts = rest.split(',');
                 let size = parts.next().and_then(|value| value.parse::<usize>().ok());
                 let count = parts.next().and_then(|value| value.parse::<usize>().ok());
                 if size == Some(args.msg_size) {
-                    ready_count += count.unwrap_or(0);
+                    ready_units += count.unwrap_or(0);
                 }
             }
         }
-        if ready_count >= settings.clients {
+        if data_connected && ready_units >= settings.clients {
             break;
         }
         thread::sleep(Duration::from_millis(1));
     }
-    if ready_count < settings.clients {
-        panic!("spot control readiness timeout");
+    if !data_connected || ready_units < settings.clients {
+        panic!("spot sendsend server readiness timeout");
     }
 
+    let mut runner_start = false;
     let start_deadline = Instant::now() + ready_timeout;
     while Instant::now() < start_deadline && !runner_start {
-        match event_rx.recv_timeout(Duration::from_millis(10)) {
+        echo_available(&replier.lock().expect("spot lock"));
+        match event_rx.recv_timeout(Duration::from_millis(1)) {
             Ok(ServerEvent::Stop) => return,
             Ok(ServerEvent::RunnerStart) => runner_start = true,
             Ok(ServerEvent::ConnectControl(endpoint)) => {
@@ -195,29 +243,15 @@ fn main() {
         }
     }
     if !runner_start {
-        panic!("spot server start handshake timeout");
+        panic!("spot sendsend server start handshake timeout");
     }
     if !publish_control(&control_pub, &format!("START,{}", args.msg_size), ready_timeout) {
-        panic!("spot control start publish timeout");
+        panic!("spot sendsend control start publish timeout");
     }
 
-    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
-    let mut buf = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
-    let mut seq = 1u64;
-    while Instant::now() < deadline {
-        common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
-        seq += 1;
-        match data_spot
-            .publish(TOPIC)
-            .message(Message::copy_from(&buf).expect("publish msg"))
-            .flags(SendFlags::DONT_WAIT)
-            .submit()
-        {
-            Ok(_) => {}
-            Err(err) if err.code() == SubmitResult::Backpressured => {
-                thread::sleep(Duration::from_millis(1));
-            }
-            Err(err) => panic!("spot publish: {err}"),
-        }
+    let idle_deadline = Instant::now() + Duration::from_secs(settings.duration_seconds + 2);
+    while Instant::now() < idle_deadline && !stop.load(Ordering::Acquire) {
+        echo_available(&replier.lock().expect("spot lock"));
+        thread::sleep(Duration::from_millis(1));
     }
 }

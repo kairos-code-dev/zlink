@@ -8,6 +8,7 @@ from perf_multi_common import (
     apply_multi_socket_options,
     benchmark_endpoint,
     parse_server_args,
+    perf_server_context,
     send_nonblocking,
 )
 
@@ -27,7 +28,7 @@ def main(argv=None):
 
     threading.Thread(target=wait_stop, daemon=True).start()
 
-    with zlink.Context() as ctx:
+    with perf_server_context() as ctx:
         with zlink.StreamSocket(ctx) as server:
             apply_multi_socket_options(server)
             server.options.tcp_no_delay = True

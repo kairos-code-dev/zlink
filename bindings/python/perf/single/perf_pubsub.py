@@ -15,6 +15,7 @@ from perf_common import (
     is_active_message,
     new_payload,
     parse_single_args,
+    perf_context,
     print_result_lines,
     resolve_single_endpoint,
     resolve_single_connect_ready_timeout_ms,
@@ -50,12 +51,11 @@ def main(argv=None):
     run_id = benchmark_run_id()
     latencies = []
 
-    def send_loop(publisher):
-        active_end = time.perf_counter() + args.duration
+    def send_loop(publisher, active_end):
         while time.perf_counter() < active_end:
             publisher.publish(TOPIC).message(stamp_payload(payload, phase=1, run_id=run_id)).submit()
         _publish_stop_token(publisher)
-    with zlink.Context() as ctx:
+    with perf_context() as ctx:
         with zlink.PubSocket(ctx) as publisher:
             with zlink.SubSocket(ctx) as subscriber:
                 endpoint = resolve_single_endpoint(args.transport, "pubsub")
@@ -79,8 +79,9 @@ def main(argv=None):
                 if wait_seconds > 0:
                     time.sleep(wait_seconds)
 
+                active_end = time.perf_counter() + args.duration
                 sender = threading.Thread(
-                    target=send_loop, args=(publisher,), daemon=True
+                    target=send_loop, args=(publisher, active_end), daemon=True
                 )
                 sender.start()
                 with zlink.Poller() as poller:
@@ -111,7 +112,11 @@ def main(argv=None):
                                     run_id=run_id,
                                 ):
                                     continue
-                                latencies.append(latency_ns_from_message(data))
+                                if time.perf_counter() >= active_end:
+                                    continue
+                                latency = latency_ns_from_message(data)
+                                if latency is not None:
+                                    latencies.append(latency)
                             if stop_received:
                                 break
 

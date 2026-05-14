@@ -22,21 +22,25 @@ server and client processes without introducing a second benchmark contract.
 
 Canonical multi patterns are:
 
-- `PUBSUB`
-- `DEALER_ROUTER`
 - `DEALER_DEALER`
+- `DEALER_ROUTER`
 - `ROUTER_ROUTER`
-- `STREAM`
+- `PUBSUB`
 - `SPOT`
+- `SPOT_REQREP`
+- `SPOT_SENDSEND`
+- `STREAM`
 
 Result line names emitted by the suite are:
 
-- `MULTI_PUBSUB`
-- `MULTI_DEALER_ROUTER`
 - `MULTI_DEALER_DEALER`
+- `MULTI_DEALER_ROUTER`
 - `MULTI_ROUTER_ROUTER`
-- `MULTI_STREAM`
+- `MULTI_PUBSUB`
 - `MULTI_SPOT`
+- `MULTI_SPOT_REQREP`
+- `MULTI_SPOT_SENDSEND`
+- `MULTI_STREAM`
 
 Each pattern keeps its own server entrypoint. Client entrypoints stay explicit
 except for `STREAM`, which uses the shared core `perf_stream_client` contract

@@ -31,6 +31,7 @@ DEFAULT_PATTERNS = (
     "PUBSUB",
     "SPOT",
     "SPOT_REQREP",
+    "SPOT_SENDSEND",
     "STREAM",
 )
 DEFAULT_MSG_SIZES = ("64", "256", "1024", "65536", "131072", "262144")
@@ -47,6 +48,7 @@ POLICY_TRANSPORTS = {
     "PUBSUB": RAW_TRANSPORTS,
     "SPOT": ("tcp", "tls", "ws", "wss"),
     "SPOT_REQREP": ("tcp", "tls", "ws", "wss"),
+    "SPOT_SENDSEND": ("tcp", "tls", "ws", "wss"),
     "STREAM": ("tcp", "tls", "ws", "wss"),
 }
 RUNNABLE_TRANSPORTS = POLICY_TRANSPORTS
@@ -457,6 +459,8 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             transport,
             "--clients",
             clients,
+            "--duration",
+            args.duration,
             "--msg-size",
             msg_size,
         ],
@@ -514,7 +518,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
         endpoint = ready.split(",", 1)[1]
         control_endpoint = ""
 
-        if pattern in {"SPOT", "SPOT_REQREP"}:
+        if pattern in {"SPOT", "SPOT_REQREP", "SPOT_SENDSEND"}:
             control_ready = _wait_for_control_line(
                 server,
                 ("CONTROL_READY,",),
@@ -526,7 +530,9 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 sys.executable,
                 str(client_path),
                 "--endpoint",
-                f"{endpoint},{control_endpoint}",
+                endpoint,
+                "--control-endpoint",
+                control_endpoint,
                 "--duration",
                 args.duration,
                 "--msg-size",
@@ -553,14 +559,16 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 stdout_chunks=stdout_chunks,
             )
             client_control_endpoint = client_control.split(",", 1)[1]
-            _wait_for_control_line(
-                client,
+            server.stdin.write(f"CONNECT_CONTROL,{client_control_endpoint}\n")
+            server.stdin.flush()
+            control_connected = _wait_for_control_line(
+                server,
                 ("CONTROL_CONNECTED,",),
                 timeout_s=ready_timeout_s,
                 stdout_chunks=stdout_chunks,
             )
-            server.stdin.write(f"CONNECT_CONTROL,{client_control_endpoint}\n")
-            server.stdin.flush()
+            client.stdin.write(f"{control_connected}\n")
+            client.stdin.flush()
             client_ready = _wait_for_control_line(
                 client,
                 ("CLIENT_READY,", "UNSUPPORTED,", "SKIP,"),
@@ -630,8 +638,6 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             server.stdin.write(f"START,{msg_size}\n")
             server.stdin.flush()
             client.stdin.write(f"START,{msg_size}\n")
-            if pattern == "PUBSUB":
-                client.stdin.write(f"PHASE_ACTIVE,{msg_size}\n")
             client.stdin.flush()
             try:
                 client.wait(timeout=client_timeout_s)
@@ -649,6 +655,12 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                     output="\n".join(stdout_chunks),
                     stderr=client_stderr,
                 )
+            try:
+                server.wait(timeout=shutdown_grace_s)
+            except subprocess.TimeoutExpired:
+                _drain_stdout_queue(server, stdout_chunks)
+                raise
+            _drain_stdout_queue(server, stdout_chunks)
         else:
             client_run = subprocess.run(
                 [
@@ -824,6 +836,7 @@ def main(argv=None):
                 for msg_size in pattern_msg_sizes:
                     case_env = dict(env)
                     case_env["PERF_RUN_ID"] = str(case_ordinal)
+                    case_env["PERF_MULTI_MSG_UNIT_BYTES"] = str(msg_size)
                     if (
                         "PERF_MULTI_HWM" not in case_env
                         and "PERF_MULTI_SNDHWM" not in case_env
@@ -958,6 +971,17 @@ def main(argv=None):
             time.sleep(pattern_transition_ms / 1000.0)
         _append_line(sections)
     rows = parse_result_lines("\n".join(emitted_chunks), warn=_warn_runner)
+    emitted_result_lines = [
+        line
+        for chunk in emitted_chunks
+        for line in chunk.splitlines()
+        if line.startswith(("RESULT,", "UNSUPPORTED,", "SKIP,"))
+    ]
+    if emitted_result_lines:
+        _append_line(sections)
+        for line in emitted_result_lines:
+            _append_line(sections, line)
+        _append_line(sections)
     skipped_cases = 0
     unsupported_cases = 0
     for line in status_lines:

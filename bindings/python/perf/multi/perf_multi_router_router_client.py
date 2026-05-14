@@ -14,6 +14,7 @@ from perf_multi_common import (
     latency_ns_from_message,
     new_payload,
     parse_client_args,
+    perf_client_context,
     print_result_lines,
     recv_nonblocking,
     resolve_multi_connect_ready_timeout_ms,
@@ -36,7 +37,7 @@ def main(argv=None):
     latencies = []
     seq = 0
 
-    with zlink.Context() as ctx:
+    with perf_client_context() as ctx:
         sockets = [zlink.RouterSocket(ctx) for _ in range(args.clients)]
         try:
             with ExitStack() as stack:
@@ -66,12 +67,24 @@ def main(argv=None):
                         )
                     # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait.
                     while not all(stopped):
-                        progressed = False
+                        events = safe_poll(poller, -1)
+                        if not events:
+                            continue
                         now = time.perf_counter()
-                        for index, current_sock in enumerate(sockets):
+                        for event in events:
+                            current_sock = event.socket
+                            try:
+                                index = sockets.index(current_sock)
+                            except ValueError:
+                                continue
                             if stopped[index]:
                                 continue
-                            if not waiting_reply[index] and send_pending[index]:
+                            ev = int(event.events)
+                            if (
+                                ev & int(zlink.PollEvent.POLLOUT)
+                                and not waiting_reply[index]
+                                and send_pending[index]
+                            ):
                                 if now < active_deadline:
                                     seq += 1
                                     payload = stamp_payload(
@@ -87,7 +100,6 @@ def main(argv=None):
                                     ):
                                         waiting_reply[index] = True
                                         send_pending[index] = False
-                                        progressed = True
                                 elif not stop_sent[index]:
                                     if send_nonblocking(
                                         current_sock,
@@ -97,7 +109,8 @@ def main(argv=None):
                                         waiting_reply[index] = True
                                         send_pending[index] = False
                                         stop_sent[index] = True
-                                        progressed = True
+                            if not (ev & int(zlink.PollEvent.POLLIN)):
+                                continue
                             while True:
                                 received = recv_nonblocking(current_sock)
                                 if received is None:
@@ -106,7 +119,6 @@ def main(argv=None):
                                     parts = received.to_bytes_list()
                                 waiting_reply[index] = False
                                 send_pending[index] = True
-                                progressed = True
                                 if is_stop_token_in_parts(parts):
                                     stopped[index] = True
                                     send_pending[index] = False
@@ -116,10 +128,10 @@ def main(argv=None):
                                     data,
                                     expected_msg_size=args.msg_size,
                                     run_id=run_id,
-                                ):
-                                    latencies.append(latency_ns_from_message(data) / 2.0)
-                        if not progressed:
-                            safe_poll(poller, -1)
+                                ) and time.perf_counter() < active_deadline:
+                                    latency = latency_ns_from_message(data)
+                                    if latency is not None:
+                                        latencies.append(latency / 2.0)
                 if not latencies:
                     raise RuntimeError(
                         "multi router-router benchmark did not receive any active reply"

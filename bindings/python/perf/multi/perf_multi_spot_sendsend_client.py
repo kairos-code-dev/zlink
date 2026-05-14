@@ -22,46 +22,50 @@ from perf_multi_common import (
     resolve_multi_spot_control_settle_s,
     resolve_multi_spot_ready_settle_s,
     result_metrics,
+    send_to_spot_nonblocking,
     stamp_payload,
 )
 
 
-SERVER_NODE_RID = b"SPOT-REQREP-SERVER-NODE"
-SERVER_SPOT_RID = b"SPOT-REQREP-SERVER-SPOT"
+SERVER_NODE_RID = b"SPOT-SENDSEND-SERVER-NODE"
+SERVER_SPOT_RID = b"SPOT-SENDSEND-SERVER-SPOT"
 
 
-def _request_spot_reply(spot, payload, timeout_s):
-    done = threading.Event()
-    box = {}
-
-    def on_reply(result, messages):
-        box["result"] = result
-        box["messages"] = messages
-        done.set()
-
-    submitted = (
-        spot.request_to_spot(SERVER_NODE_RID, SERVER_SPOT_RID)
-        .message(bytes(payload))
-        .timeout(timeout_s)
-        .flags(zlink.SendFlags.DONT_WAIT)
-        .submit(on_reply)
-    )
-    if not submitted:
-        return None
-    if not done.wait(timeout_s + 0.1):
-        return None
-    if box.get("result") != zlink.RequestResult.OK:
-        return None
-    messages = box.get("messages") or []
-    if not messages:
-        return None
-    return messages[0].to_bytes()
+def _drain_reply(spot, *, expected_msg_size, run_id, active_deadline, latencies, record):
+    progressed = False
+    while True:
+        try:
+            received = spot.recv_routed(flags=zlink.RecvFlags.DONT_WAIT)
+        except zlink.RecvError as exc:
+            if exc.result == zlink.RecvResult.NO_DATA:
+                return progressed
+            raise
+        if received is None:
+            return progressed
+        progressed = True
+        with received:
+            if received.request_seq not in (None, 0):
+                continue
+            parts = received.to_bytes_list()
+            if not parts:
+                continue
+            data = parts[-1]
+            if (
+                record
+                and time.perf_counter() < active_deadline
+                and is_active_message(
+                    data, expected_msg_size=expected_msg_size, run_id=run_id
+                )
+            ):
+                latency = latency_ns_from_message(data)
+                if latency is not None:
+                    latencies.append(latency / 2.0)
 
 
 def main(argv=None):
-    args = parse_client_args(argv or sys.argv[1:], pattern="spot_reqrep")
+    args = parse_client_args(argv or sys.argv[1:], pattern="spot_sendsend")
     if not args.control_endpoint:
-        raise SystemExit("spot reqrep client expects --endpoint and --control-endpoint")
+        raise SystemExit("spot sendsend client expects --endpoint and --control-endpoint")
 
     run_id = benchmark_run_id()
     latencies = []
@@ -93,30 +97,31 @@ def main(argv=None):
         configure_multi_tls_server(control_node, args.transport)
         configure_multi_tls_client(control_node, args.transport)
         apply_multi_spot_node_admission(data_node, control_node)
-        data_node.set_routing_id(b"SPOT-REQREP-CLIENT-NODE")
-        control_node.set_routing_id(b"SPOT-REQREP-CONTROL-CLIENT-NODE")
+        data_node.set_routing_id(b"SPOT-SENDSEND-CLIENT-NODE")
+        control_node.set_routing_id(b"SPOT-SENDSEND-CONTROL-CLIENT-NODE")
 
         control_pub = control_node.create_spot()
         control_sub = control_node.create_spot()
-        control_pub.set_routing_id(b"SPOT-REQREP-CONTROL-CLIENT-PUB")
-        control_sub.set_routing_id(b"SPOT-REQREP-CONTROL-CLIENT-SUB")
+        control_pub.set_routing_id(b"SPOT-SENDSEND-CONTROL-CLIENT-PUB")
+        control_sub.set_routing_id(b"SPOT-SENDSEND-CONTROL-CLIENT-SUB")
         control_sub.set_subscription(TOPIC)
         control_endpoint = bind_spot_node_endpoint(
-            control_node, args.transport, "multi-spot-reqrep-control-client"
+            control_node, args.transport, "multi-spot-sendsend-control-client"
         )
         control_node.connect_peer(args.control_endpoint)
         print(f"CLIENT_CONTROL_ENDPOINT,{control_endpoint}", flush=True)
 
         data_endpoint_local = bind_spot_node_endpoint(
-            data_node, args.transport, "multi-spot-reqrep-client"
+            data_node, args.transport, "multi-spot-sendsend-client"
         )
         data_node.connect_peer(args.endpoint)
         spots = []
         payloads = [bytearray(args.msg_size) for _ in range(args.clients)]
-        seq = 0
+        seqs = [1 for _ in range(args.clients)]
+        waiting = [False for _ in range(args.clients)]
         for index in range(args.clients):
             spot = data_node.create_spot()
-            spot.set_routing_id(f"spot-req-client-spot-{index}".encode("ascii"))
+            spot.set_routing_id(f"SPOT-SENDSEND-{index}".encode("ascii"))
             spots.append(spot)
 
         if not control_connected.wait(timeout=handshake_timeout_s):
@@ -129,29 +134,41 @@ def main(argv=None):
             f"DATA_ENDPOINT,{data_endpoint_local}",
             timeout_s=handshake_timeout_s,
         ):
-            raise RuntimeError("spot reqrep data endpoint publish timeout")
+            raise RuntimeError("spot sendsend data endpoint publish timeout")
         time.sleep(control_settle_s)
         publish_control_payload(control_pub, "CONNECTED", timeout_s=handshake_timeout_s)
 
         probe_deadline = time.perf_counter() + handshake_timeout_s
         probe = stamp_payload(bytearray(args.msg_size), phase=0, run_id=run_id, seq=0)
+        probe_waiting = False
         while time.perf_counter() < probe_deadline:
-            if _request_spot_reply(spots[0], probe, handshake_timeout_s) is not None:
+            if not probe_waiting and send_to_spot_nonblocking(
+                spots[0], SERVER_NODE_RID, SERVER_SPOT_RID, probe
+            ):
+                probe_waiting = True
+            if _drain_reply(
+                spots[0],
+                expected_msg_size=args.msg_size,
+                run_id=run_id,
+                active_deadline=probe_deadline,
+                latencies=[],
+                record=False,
+            ):
                 break
-            time.sleep(0.01)
+            time.sleep(0.001)
         else:
-            raise RuntimeError("spot reqrep probe-ready timeout")
+            raise RuntimeError("spot sendsend probe-ready timeout")
 
         if not publish_control_payload(
             control_pub,
             f"READY_COUNT,{args.msg_size},{args.clients}",
             timeout_s=handshake_timeout_s,
         ):
-            raise RuntimeError("spot reqrep ready publish timeout")
+            raise RuntimeError("spot sendsend ready publish timeout")
         print(f"CLIENT_READY,{args.msg_size}", flush=True)
 
         if not runner_start.wait(timeout=handshake_timeout_s):
-            raise RuntimeError("spot reqrep runner start handshake timeout")
+            raise RuntimeError("spot sendsend runner start handshake timeout")
 
         direct_start_deadline = time.perf_counter() + handshake_timeout_s
         direct_started = False
@@ -164,33 +181,51 @@ def main(argv=None):
                 direct_started = True
                 break
         if not direct_started:
-            raise RuntimeError("spot reqrep direct start handshake timeout")
+            raise RuntimeError("spot sendsend direct start handshake timeout")
 
         active_deadline = time.perf_counter() + args.duration
         while time.perf_counter() < active_deadline:
+            progressed = False
             for index, spot in enumerate(spots):
-                seq += 1
+                if waiting[index]:
+                    if _drain_reply(
+                        spot,
+                        expected_msg_size=args.msg_size,
+                        run_id=run_id,
+                        active_deadline=active_deadline,
+                        latencies=latencies,
+                        record=True,
+                    ):
+                        waiting[index] = False
+                        progressed = True
+                    continue
                 payload = stamp_payload(
                     payloads[index],
                     phase=1,
                     run_id=run_id,
-                    seq=seq,
+                    seq=seqs[index],
                 )
-                data = _request_spot_reply(spot, payload, 0.2)
-                if data is None:
-                    continue
-                if is_active_message(
-                    data,
-                    expected_msg_size=args.msg_size,
-                    run_id=run_id,
+                if send_to_spot_nonblocking(
+                    spot, SERVER_NODE_RID, SERVER_SPOT_RID, payload
                 ):
-                    latency = latency_ns_from_message(data)
-                    if latency is not None:
-                        latencies.append(latency / 2.0)
+                    waiting[index] = True
+                    seqs[index] += 1
+                    progressed = True
+                else:
+                    progressed |= _drain_reply(
+                        spot,
+                        expected_msg_size=args.msg_size,
+                        run_id=run_id,
+                        active_deadline=active_deadline,
+                        latencies=latencies,
+                        record=True,
+                    )
+            if not progressed:
+                time.sleep(0.001)
 
         if not latencies:
             raise RuntimeError(
-                "multi spot reqrep benchmark did not receive any active reply"
+                "multi spot sendsend benchmark did not receive any active reply"
             )
         metrics = result_metrics(
             count=len(latencies),
@@ -199,7 +234,7 @@ def main(argv=None):
             latencies_ns=latencies,
             bandwidth_multiplier=2.0,
         )
-        print_result_lines("MULTI_SPOT_REQREP", args.transport, args.msg_size, metrics)
+        print_result_lines("MULTI_SPOT_SENDSEND", args.transport, args.msg_size, metrics)
 
 
 if __name__ == "__main__":

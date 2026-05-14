@@ -73,6 +73,8 @@ def latency_ns_from_message(data):
     if header is None or header["magic"] != HEADER_MAGIC:
         raise RuntimeError("invalid perf message header")
     now_ns = time.time_ns()
+    if header["sent_ts_ns"] <= 0 or now_ns < header["sent_ts_ns"]:
+        return None
     return float(now_ns - header["sent_ts_ns"])
 
 
@@ -129,7 +131,7 @@ def stamp_payload(payload, phase=0, *, run_id=None, seq=None):
         int(header_seq),
         int(time.time_ns()),
     )
-    return payload
+    return bytes(payload)
 
 
 def new_payload(size):
@@ -170,10 +172,7 @@ def result_metrics(
 
 def print_result_lines(pattern, transport, msg_size, metrics):
     for name in ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99"):
-        if name.startswith("latency"):
-            value = f"{metrics[name]:.6f}"
-        else:
-            value = f"{metrics[name]:.2f}"
+        value = f"{metrics[name]:.3f}"
         print(f"RESULT,current,{pattern},{transport},{msg_size},{name},{value}", flush=True)
 
 
@@ -422,6 +421,7 @@ def pattern_direction_label(pattern):
         "MULTI_ROUTER_ROUTER",
         "MULTI_STREAM",
         "MULTI_SPOT_REQREP",
+        "MULTI_SPOT_SENDSEND",
     }:
         return "echo"
     return "one-way"

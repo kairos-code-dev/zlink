@@ -16,6 +16,7 @@ from perf_common import (
     is_active_message,
     new_payload,
     parse_single_args,
+    perf_context,
     print_result_lines,
     recv_nonblocking,
     result_metrics,
@@ -52,14 +53,13 @@ def main(argv=None):
     latencies = []
     payload = new_payload(args.msg_size)
 
-    def send_loop(dealer):
-        active_end = time.perf_counter() + args.duration
+    def send_loop(dealer, active_end):
         while time.perf_counter() < active_end:
             dealer.send().message(stamp_payload(payload, phase=1, run_id=run_id)).submit()
         # PERF_SINGLE_TEST_POLICY § 1.4: signal phase end on the wire.
         _send_stop_token(dealer)
 
-    with zlink.Context() as ctx:
+    with perf_context() as ctx:
         with zlink.DealerSocket(ctx) as server:
             with zlink.DealerSocket(ctx) as client:
                 endpoint = resolve_single_endpoint(args.transport, "dealer-dealer")
@@ -75,8 +75,9 @@ def main(argv=None):
                         timeout_ms=resolve_single_connect_ready_timeout_ms(),
                     )
 
+                active_end = time.perf_counter() + args.duration
                 sender = threading.Thread(
-                    target=send_loop, args=(client,), daemon=True
+                    target=send_loop, args=(client, active_end), daemon=True
                 )
                 sender.start()
                 with zlink.Poller() as poller:
@@ -104,7 +105,11 @@ def main(argv=None):
                                     run_id=run_id,
                                 ):
                                     continue
-                                latencies.append(latency_ns_from_message(data))
+                                if time.perf_counter() >= active_end:
+                                    continue
+                                latency = latency_ns_from_message(data)
+                                if latency is not None:
+                                    latencies.append(latency)
                             if stop_received:
                                 break
 

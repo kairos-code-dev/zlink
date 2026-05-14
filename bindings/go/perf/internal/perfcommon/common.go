@@ -73,8 +73,8 @@ func (s *Stats) Snapshot(duration time.Duration, msgSize int) Result {
 }
 
 func PrintResult(pattern, transport string, msgSize int, result Result) {
-	fmt.Printf("RESULT,current,%s,%s,%d,throughput,%.2f\n", pattern, transport, msgSize, result.Throughput)
-	fmt.Printf("RESULT,current,%s,%s,%d,bandwidth,%.2f\n", pattern, transport, msgSize, result.Bandwidth)
+	fmt.Printf("RESULT,current,%s,%s,%d,throughput,%.3f\n", pattern, transport, msgSize, result.Throughput)
+	fmt.Printf("RESULT,current,%s,%s,%d,bandwidth,%.3f\n", pattern, transport, msgSize, result.Bandwidth)
 	fmt.Printf("RESULT,current,%s,%s,%d,latency,%.3f\n", pattern, transport, msgSize, result.LatencyNs/1_000_000.0)
 	fmt.Printf("RESULT,current,%s,%s,%d,latency_p95,%.3f\n", pattern, transport, msgSize, result.LatencyP95Ns/1_000_000.0)
 	fmt.Printf("RESULT,current,%s,%s,%d,latency_p99,%.3f\n", pattern, transport, msgSize, result.LatencyP99Ns/1_000_000.0)
@@ -227,6 +227,11 @@ func ApplyMultiHWM(socket hwmSocket, pattern string) {
 	rcvhwm := resolveMultiSocketHWM(pattern, false)
 	Must(socket.SetSendHWM(sndhwm))
 	Must(socket.SetRecvHWM(rcvhwm))
+	if autoSocket, ok := any(socket).(interface{ SetAutoHwmMsgUnitBytes(int) error }); ok {
+		if msgUnit := resolveIntEnv("PERF_MULTI_MSG_UNIT_BYTES", 0); msgUnit > 0 {
+			Must(autoSocket.SetAutoHwmMsgUnitBytes(msgUnit))
+		}
+	}
 }
 
 func ApplyMultiSpotNodeAdmission(node spotNodeAdmission, pattern string) {
@@ -292,7 +297,7 @@ func FinalizeResult(pattern string, msgSize int, result Result) Result {
 
 func isEchoPattern(pattern string) bool {
 	switch pattern {
-	case "MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP":
+	case "MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND":
 		return true
 	default:
 		return false
@@ -364,6 +369,43 @@ func NewMessage(payload []byte) *zlink.Message {
 	msg, err := zlink.NewMessage(payload)
 	Must(err)
 	return msg
+}
+
+func NewSingleContext() (*zlink.Context, error) {
+	return newContextWithIOThreads(1, "PERF_IO_THREADS")
+}
+
+func NewMultiContext() (*zlink.Context, error) {
+	return newContextWithIOThreads(4, "PERF_IO_THREADS")
+}
+
+func NewMultiServerContext() (*zlink.Context, error) {
+	return newContextWithIOThreads(4, "PERF_MULTI_SERVER_IO_THREADS", "PERF_IO_THREADS")
+}
+
+func NewMultiClientContext() (*zlink.Context, error) {
+	return newContextWithIOThreads(4, "PERF_MULTI_CLIENT_IO_THREADS", "PERF_IO_THREADS")
+}
+
+func newContextWithIOThreads(defaultThreads int, envNames ...string) (*zlink.Context, error) {
+	ctx, err := zlink.NewContext()
+	if err != nil {
+		return nil, err
+	}
+	ioThreads := defaultThreads
+	for _, name := range envNames {
+		if value := resolveIntEnv(name, 0); value > 0 {
+			ioThreads = value
+			break
+		}
+	}
+	if ioThreads > 0 {
+		if err := ctx.Options().SetIOThreads(ioThreads); err != nil {
+			_ = ctx.Close()
+			return nil, err
+		}
+	}
+	return ctx, nil
 }
 
 func IsTransient(err error) bool {

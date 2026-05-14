@@ -15,6 +15,7 @@ fn drain_spot_readable(
     config: &common::PerfConfig,
     stats: Option<&std::sync::Arc<std::sync::Mutex<common::LatencyStats>>>,
     collect_active: bool,
+    active_deadline: Option<Instant>,
 ) -> bool {
     let mut processed = false;
     loop {
@@ -24,7 +25,9 @@ fn drain_spot_readable(
                     let data = common::message_payload(received.parts());
                     if collect_active {
                         if let Some(stats) = stats {
-                            common::handle_recv(data, config.size, stats);
+                            if let Some(active_deadline) = active_deadline {
+                                common::handle_recv(data, config.size, stats, active_deadline);
+                            }
                         }
                     }
                 }
@@ -63,7 +66,7 @@ fn wait_for_spot_ready(
                 ) => {}
             Err(err) => panic!("probe publish: {err}"),
         }
-        if drain_spot_readable(subscriber, config, None, false) {
+        if drain_spot_readable(subscriber, config, None, false, None) {
             return;
         }
         thread::sleep(Duration::from_millis(10));
@@ -96,7 +99,7 @@ fn spot_send_gap() -> Duration {
     let micros = std::env::var("PERF_SINGLE_SPOT_SEND_GAP_US")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(50);
+        .unwrap_or(0);
     Duration::from_micros(micros)
 }
 
@@ -107,9 +110,11 @@ fn main() {
         std::process::id(),
         common::now_ns()
     );
-    let Some(registry_pub_endpoint) =
-        common::resolve_endpoint_or_emit_unsupported("SPOT", &config.transport, "spot-registry-pub")
-    else {
+    let Some(registry_pub_endpoint) = common::resolve_endpoint_or_emit_unsupported(
+        "SPOT",
+        &config.transport,
+        "spot-registry-pub",
+    ) else {
         return;
     };
     let Some(registry_router_endpoint) = common::resolve_endpoint_or_emit_unsupported(
@@ -132,12 +137,10 @@ fn main() {
 
     let ctx = common::perf_context();
     let registry = Registry::new(&ctx).expect("registry");
-    let publisher_discovery =
-        Discovery::new(&ctx, AutoConnectType::SpotMesh, &channel_name)
-            .expect("publisher discovery");
-    let subscriber_discovery =
-        Discovery::new(&ctx, AutoConnectType::SpotMesh, &channel_name)
-            .expect("subscriber discovery");
+    let publisher_discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, &channel_name)
+        .expect("publisher discovery");
+    let subscriber_discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, &channel_name)
+        .expect("subscriber discovery");
     let query = RegistryQueryClient::new(&ctx).expect("query client");
     let publisher_node = SpotNode::new(&ctx).expect("publisher node");
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node");
@@ -173,7 +176,9 @@ fn main() {
     subscriber_node
         .attach_discovery(&subscriber_discovery)
         .expect("subscriber attach discovery");
-    publisher_node.bind(&publisher_endpoint).expect("publisher bind");
+    publisher_node
+        .bind(&publisher_endpoint)
+        .expect("publisher bind");
     subscriber_node
         .bind(&subscriber_endpoint)
         .expect("subscriber bind");
@@ -200,12 +205,7 @@ fn main() {
             let mut seq: u64 = 0;
             let mut payload = vec![0u8; config.size.max(common::HEADER_SIZE)];
             while Instant::now() < active_deadline {
-                common::encode_header(
-                    &mut payload,
-                    common::PHASE_ACTIVE,
-                    config.size as u32,
-                    seq,
-                );
+                common::encode_header(&mut payload, common::PHASE_ACTIVE, config.size as u32, seq);
                 match publisher
                     .publish(TOPIC)
                     .message(Message::copy_from(&payload).expect("active message"))
@@ -245,7 +245,7 @@ fn main() {
                 if common::is_stop_token(data) {
                     break;
                 }
-                common::handle_recv(data, config.size, &stats);
+                common::handle_recv(data, config.size, &stats, active_deadline);
             }
             Err(err) => panic!("spot subscriber recv failed: {err}"),
         }

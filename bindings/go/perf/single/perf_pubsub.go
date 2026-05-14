@@ -8,14 +8,13 @@ import (
 )
 
 func runPubSub(cfg benchmarkConfig) perfcommon.Result {
-	ctx, err := zlink.NewContext()
+	ctx, err := perfcommon.NewSingleContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
 
-	publisher, err := ctx.XPubSocket()
+	publisher, err := ctx.PubSocket()
 	perfcommon.Must(err)
 	defer publisher.Close()
-	perfcommon.Must(publisher.SetNoDrop(perfcommon.EnvEnabled("PERF_SINGLE_PUBSUB_XPUB_NODROP", true)))
 	subscriber, err := ctx.SubSocket()
 	perfcommon.Must(err)
 	defer subscriber.Close()
@@ -78,7 +77,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 		if event.Events&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
-		stop, drainErr := drainSinglePubSubUntilStop(subscriber, stats, cfg.msgSize, window.ActiveAt)
+		stop, drainErr := drainSinglePubSubUntilStop(subscriber, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
 		if drainErr != nil {
 			perfcommon.Must(drainErr)
 		}
@@ -98,6 +97,7 @@ func drainSinglePubSubUntilStop(
 	stats *perfcommon.Stats,
 	msgSize int,
 	activeAt time.Time,
+	stopAt time.Time,
 ) (bool, error) {
 	for {
 		message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
@@ -116,7 +116,7 @@ func drainSinglePubSubUntilStop(
 			return true, nil
 		}
 		if err == nil {
-			perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
+			perfcommon.RecordMessageLatency(stats, activeAt, stopAt, msgSize, part)
 		}
 		_ = message.Close()
 	}
@@ -127,7 +127,7 @@ func drainSinglePubSubUntilStop(
 // pattern used in single one-way / spot. The token is published on the
 // same `bench.topic` channel so it is delivered to subscribers that
 // matched the active stream.
-func sendPubSubStopToken(publisher *zlink.XPubSocket) {
+func sendPubSubStopToken(publisher *zlink.PubSocket) {
 	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
 		_, err := publisher.Publish("bench.topic").Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
 		if err == nil {

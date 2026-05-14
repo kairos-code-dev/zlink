@@ -19,8 +19,33 @@ from perf_multi_common import (
 )
 
 
-SERVER_NODE_RID = b"SPOT-REQREP-SERVER-NODE"
-SERVER_SPOT_RID = b"SPOT-REQREP-SERVER-SPOT"
+SERVER_NODE_RID = b"SPOT-SENDSEND-SERVER-NODE"
+SERVER_SPOT_RID = b"SPOT-SENDSEND-SERVER-SPOT"
+
+
+def _drain_replier(replier):
+    while True:
+        try:
+            received = replier.recv_routed(flags=zlink.RecvFlags.DONT_WAIT)
+        except zlink.RecvError as exc:
+            if exc.result == zlink.RecvResult.NO_DATA:
+                return
+            raise
+        if received is None:
+            return
+        with received:
+            if received.request_seq not in (None, 0):
+                continue
+            try:
+                (
+                    received.send()
+                    .messages(*received.to_bytes_list())
+                    .flags(zlink.SendFlags.DONT_WAIT)
+                    .submit()
+                )
+            except zlink.SubmitError as exc:
+                if exc.result != zlink.SubmitResult.BACKPRESSURED:
+                    raise
 
 
 def main(argv=None):
@@ -53,40 +78,21 @@ def main(argv=None):
         configure_multi_tls_client(control_node, args.transport)
         apply_multi_spot_node_admission(data_node, control_node)
         data_node.set_routing_id(SERVER_NODE_RID)
-        control_node.set_routing_id(b"SPOT-REQREP-CONTROL-SERVER-NODE")
+        control_node.set_routing_id(b"SPOT-SENDSEND-CONTROL-SERVER-NODE")
 
         replier = data_node.create_spot()
         control_pub = control_node.create_spot()
         control_sub = control_node.create_spot()
         replier.set_routing_id(SERVER_SPOT_RID)
-        control_pub.set_routing_id(b"SPOT-REQREP-CONTROL-SERVER-PUB")
-        control_sub.set_routing_id(b"SPOT-REQREP-CONTROL-SERVER-SUB")
+        control_pub.set_routing_id(b"SPOT-SENDSEND-CONTROL-SERVER-PUB")
+        control_sub.set_routing_id(b"SPOT-SENDSEND-CONTROL-SERVER-SUB")
         control_sub.set_subscription(TOPIC)
 
-        def on_dispatch(current_spot, info):
-            if info.event != zlink.SpotDispatchEvent.ROUTED_READABLE:
-                return
-            while True:
-                try:
-                    received = current_spot.recv_routed(
-                        flags=zlink.RecvFlags.DONT_WAIT
-                    )
-                except zlink.RecvError as exc:
-                    if exc.result == zlink.RecvResult.NO_DATA:
-                        return
-                    raise
-                if received is None:
-                    return
-                with received:
-                    received.reply().messages(*received.to_bytes_list()).submit()
-
-        replier.on_dispatch_event(on_dispatch)
-
         data_endpoint = bind_spot_node_endpoint(
-            data_node, args.transport, "multi-spot-reqrep"
+            data_node, args.transport, "multi-spot-sendsend"
         )
         control_endpoint = bind_spot_node_endpoint(
-            control_node, args.transport, "multi-spot-reqrep-control-server"
+            control_node, args.transport, "multi-spot-sendsend-control-server"
         )
         print(f"READY,{data_endpoint}", flush=True)
         print(f"CONTROL_READY,{control_endpoint}", flush=True)
@@ -96,6 +102,7 @@ def main(argv=None):
         ready_units = 0
         deadline = time.perf_counter() + handshake_timeout_s
         while time.perf_counter() < deadline and not stop.is_set():
+            _drain_replier(replier)
             payload_text = receive_control_payload(control_sub)
             if payload_text is None:
                 time.sleep(0.001)
@@ -116,25 +123,29 @@ def main(argv=None):
             if data_connected.is_set() and ready_units >= args.clients:
                 break
         if not data_connected.is_set() or ready_units < args.clients:
-            raise RuntimeError("spot reqrep server readiness timeout")
+            raise RuntimeError("spot sendsend server readiness timeout")
 
         start_deadline = time.perf_counter() + handshake_timeout_s
         while time.perf_counter() < start_deadline and not stop.is_set():
-            if start_runner.wait(0.01):
+            _drain_replier(replier)
+            if start_runner.wait(0.001):
                 break
         if not start_runner.is_set():
-            raise RuntimeError("spot reqrep server start handshake timeout")
+            raise RuntimeError("spot sendsend server start handshake timeout")
 
         if not publish_control_payload(
             control_pub, f"START,{args.msg_size}", timeout_s=handshake_timeout_s
         ):
-            raise RuntimeError("spot reqrep control start publish timeout")
+            raise RuntimeError("spot sendsend control start publish timeout")
 
         idle_seconds = max(
             1.0,
             float(os.environ.get("PERF_MULTI_DURATION_SECONDS", str(args.duration))),
         ) + float(os.environ.get("PERF_MULTI_SPOT_SERVER_IDLE_S", "2.0"))
-        stop.wait(idle_seconds)
+        idle_deadline = time.perf_counter() + idle_seconds
+        while not stop.is_set() and time.perf_counter() < idle_deadline:
+            _drain_replier(replier)
+            stop.wait(0.001)
 
 
 if __name__ == "__main__":

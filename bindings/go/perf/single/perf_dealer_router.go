@@ -6,7 +6,7 @@ import (
 )
 
 func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
-	ctx, err := zlink.NewContext()
+	ctx, err := perfcommon.NewSingleContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
 

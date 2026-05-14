@@ -16,6 +16,7 @@ from perf_common import (
     is_active_message,
     new_payload,
     parse_single_args,
+    perf_context,
     print_result_lines,
     recv_nonblocking,
     result_metrics,
@@ -47,9 +48,8 @@ def main(argv=None):
     latencies = []
     sender_errors = []
 
-    def send_loop(client):
+    def send_loop(client, active_end):
         try:
-            active_end = time.perf_counter() + args.duration
             while time.perf_counter() < active_end:
                 client.send().message(stamp_payload(payload, phase=1, run_id=run_id)).submit()
             # PERF_SINGLE_TEST_POLICY § 1.4: wire stop token instead of
@@ -58,7 +58,7 @@ def main(argv=None):
         except BaseException as exc:  # pragma: no cover - surfaced on main thread
             sender_errors.append(exc)
 
-    with zlink.Context() as ctx:
+    with perf_context() as ctx:
         with zlink.PairSocket(ctx) as server:
             with zlink.PairSocket(ctx) as client:
                 endpoint = resolve_single_endpoint(args.transport, "pair")
@@ -74,7 +74,8 @@ def main(argv=None):
                         timeout_ms=resolve_single_connect_ready_timeout_ms(),
                     )
 
-                sender = threading.Thread(target=send_loop, args=(client,), daemon=True)
+                active_end = time.perf_counter() + args.duration
+                sender = threading.Thread(target=send_loop, args=(client, active_end), daemon=True)
                 sender.start()
                 with zlink.Poller() as poller:
                     poller.add_socket(server, zlink.PollEvent.POLLIN)
@@ -101,7 +102,11 @@ def main(argv=None):
                                     run_id=run_id,
                                 ):
                                     continue
-                                latencies.append(latency_ns_from_message(data))
+                                if time.perf_counter() >= active_end:
+                                    continue
+                                latency = latency_ns_from_message(data)
+                                if latency is not None:
+                                    latencies.append(latency)
                             if stop_received:
                                 break
 

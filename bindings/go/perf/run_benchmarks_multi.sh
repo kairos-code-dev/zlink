@@ -121,7 +121,7 @@ Options:
   -h, --help
 
 Notes:
-  - Supported multi patterns: MULTI_PUBSUB,MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_STREAM
+  - Supported multi patterns: MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_SPOT_SENDSEND,MULTI_STREAM
 USAGE
 }
 
@@ -349,7 +349,7 @@ pattern_msg_sizes() {
 }
 
 if [[ "${PATTERN}" == "ALL" ]]; then
-  PATTERNS=("MULTI_PUBSUB" "MULTI_DEALER_DEALER" "MULTI_DEALER_ROUTER" "MULTI_ROUTER_ROUTER" "MULTI_SPOT" "MULTI_SPOT_REQREP" "MULTI_STREAM")
+  PATTERNS=("MULTI_DEALER_DEALER" "MULTI_DEALER_ROUTER" "MULTI_ROUTER_ROUTER" "MULTI_PUBSUB" "MULTI_SPOT" "MULTI_SPOT_REQREP" "MULTI_SPOT_SENDSEND" "MULTI_STREAM")
 else
   IFS=',' read -r -a RAW_PATTERNS <<< "${PATTERN}"
   PATTERNS=()
@@ -366,7 +366,7 @@ fi
 
 pattern_transports() {
   case "$1" in
-    MULTI_STREAM|MULTI_SPOT|MULTI_SPOT_REQREP|MULTI_PUBSUB|MULTI_DEALER_DEALER|MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER)
+    MULTI_STREAM|MULTI_SPOT|MULTI_SPOT_REQREP|MULTI_SPOT_SENDSEND|MULTI_PUBSUB|MULTI_DEALER_DEALER|MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER)
       echo "tcp tls ws wss"
       ;;
     *)
@@ -499,7 +499,7 @@ import sys
 
 pattern, size, path = sys.argv[1], sys.argv[2], sys.argv[3]
 metrics = {}
-echo_patterns = {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP"}
+echo_patterns = {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}
 with open(path, "r", encoding="utf-8", errors="replace") as fh:
     for raw in fh:
         parts = raw.strip().split(",")
@@ -539,6 +539,295 @@ count_result_lines() {
   ' "${case_log}"
 }
 
+timeout_seconds_from_ms() {
+  local millis="${1:-0}"
+  if [[ ! "${millis}" =~ ^[0-9]+$ || "${millis}" -le 0 ]]; then
+    echo 0
+    return
+  fi
+  echo $(((millis + 999) / 1000))
+}
+
+SERVER_READY_TIMEOUT_SECONDS="$(timeout_seconds_from_ms "${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}")"
+SERVER_SHUTDOWN_TIMEOUT_SECONDS="$(timeout_seconds_from_ms "${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}")"
+ONE_WAY_CLIENT_READY_TIMEOUT=10
+
+wait_for_file_prefix() {
+  local file_path="$1"
+  local prefix="$2"
+  local timeout_seconds="$3"
+  local deadline=$((SECONDS + timeout_seconds))
+  while (( SECONDS < deadline )); do
+    if [[ -f "${file_path}" ]]; then
+      local line
+      line="$(awk -v prefix="${prefix}" 'index($0, prefix) == 1 { print; exit }' "${file_path}" 2>/dev/null || true)"
+      if [[ -n "${line}" ]]; then
+        printf '%s\n' "${line}"
+        return 0
+      fi
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+wait_for_ready_or_unsupported() {
+  local file_path="$1"
+  local timeout_seconds="$2"
+  local deadline=$((SECONDS + timeout_seconds))
+  while (( SECONDS < deadline )); do
+    if [[ -f "${file_path}" ]]; then
+      local line
+      line="$(awk '/^(READY,|UNSUPPORTED,)/ { print; exit }' "${file_path}" 2>/dev/null || true)"
+      if [[ -n "${line}" ]]; then
+        printf '%s\n' "${line}"
+        return 0
+      fi
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+wait_for_pid() {
+  local pid="$1"
+  local timeout_seconds="$2"
+  local deadline=$((SECONDS + timeout_seconds))
+  while kill -0 "${pid}" 2>/dev/null; do
+    if (( SECONDS >= deadline )); then
+      return 1
+    fi
+    sleep 0.1
+  done
+  return 0
+}
+
+shutdown_server() {
+  local pid="$1"
+  local control_fd="$2"
+  if [[ -n "${control_fd}" ]]; then
+    if kill -0 "${pid}" 2>/dev/null; then
+      { printf 'STOP\n' >&"${control_fd}"; } 2>/dev/null || true
+    fi
+    eval "exec ${control_fd}>&-"
+  fi
+  if wait_for_pid "${pid}" "${SERVER_SHUTDOWN_TIMEOUT_SECONDS}"; then
+    wait "${pid}" 2>/dev/null || true
+    return
+  fi
+  kill "${pid}" 2>/dev/null || true
+  if wait_for_pid "${pid}" "${SERVER_SHUTDOWN_TIMEOUT_SECONDS}"; then
+    wait "${pid}" 2>/dev/null || true
+    return
+  fi
+  kill -9 "${pid}" 2>/dev/null || true
+  wait "${pid}" 2>/dev/null || true
+}
+
+resolve_client_timeout_seconds() {
+  local pattern="$1"
+  local transport="$2"
+  local size="$3"
+  local duration="$4"
+  if [[ -n "${PERF_MULTI_TIMEOUT_SECONDS:-}" ]]; then
+    echo "${PERF_MULTI_TIMEOUT_SECONDS}"
+    return
+  fi
+  if [[ "${pattern}" == "MULTI_STREAM" ]]; then
+    local stream_timeout=$((duration * 3 + 20))
+    (( stream_timeout < 45 )) && stream_timeout=45
+    echo "${stream_timeout}"
+    return
+  fi
+  if [[ "${pattern}" == MULTI_SPOT* ]] || { [[ "${transport}" == "tls" || "${transport}" == "wss" ]] && (( size >= 131072 )); }; then
+    local spot_timeout=$((duration * 6 + 30))
+    (( spot_timeout < 90 )) && spot_timeout=90
+    echo "${spot_timeout}"
+    return
+  fi
+  local timeout=$((duration * 3 + 20))
+  (( timeout < 45 )) && timeout=45
+  echo "${timeout}"
+}
+
+run_multi_process_case() {
+  local pattern="$1"
+  local transport="$2"
+  local size="$3"
+  local duration="$4"
+  local clients="$5"
+  local case_log="$6"
+
+  local srv_out client_out client_err server_fifo ready_line endpoint control_line control_endpoint
+  local server_pid server_control_fd client_pid client_control_fd client_fifo client_ready_line
+  local client_timeout case_status
+  srv_out="$(mktemp "${TMP_DIR}/server.XXXXXX")"
+  client_out="$(mktemp "${TMP_DIR}/client.XXXXXX")"
+  client_err="$(mktemp "${TMP_DIR}/client_err.XXXXXX")"
+  server_fifo="$(mktemp -u "${TMP_DIR}/server_fifo.XXXXXX")"
+  mkfifo "${server_fifo}"
+
+  run_go_perf ./perf/multi \
+    --role server \
+    --pattern "${pattern}" \
+    --transport "${transport}" \
+    --msg-size "${size}" \
+    --duration "${duration}" \
+    --clients "${clients}" \
+    < "${server_fifo}" > "${srv_out}" 2>&1 &
+  server_pid=$!
+  exec {server_control_fd}> "${server_fifo}"
+  rm -f "${server_fifo}"
+
+  ready_line="$(wait_for_ready_or_unsupported "${srv_out}" "${SERVER_READY_TIMEOUT_SECONDS}" || true)"
+  if [[ "${ready_line}" == UNSUPPORTED,* ]]; then
+    shutdown_server "${server_pid}" "${server_control_fd}"
+    cat "${srv_out}" > "${case_log}"
+    rm -f "${srv_out}" "${client_out}" "${client_err}"
+    return 1
+  fi
+  if [[ "${ready_line}" != READY,* ]]; then
+    shutdown_server "${server_pid}" "${server_control_fd}"
+    cat "${srv_out}" > "${case_log}"
+    printf 'FAIL,current,%s,%s,%s,server_ready_timeout\n' "${pattern}" "${transport}" "${size}" >> "${case_log}"
+    rm -f "${srv_out}" "${client_out}" "${client_err}"
+    return 1
+  fi
+  endpoint="${ready_line#READY,}"
+  endpoint="${endpoint//0.0.0.0/127.0.0.1}"
+  control_endpoint=""
+  if [[ "${pattern}" == MULTI_SPOT* ]]; then
+    control_line="$(wait_for_file_prefix "${srv_out}" "CONTROL_READY," "${SERVER_READY_TIMEOUT_SECONDS}" || true)"
+    if [[ "${control_line}" != CONTROL_READY,* ]]; then
+      shutdown_server "${server_pid}" "${server_control_fd}"
+      cat "${srv_out}" > "${case_log}"
+      printf 'FAIL,current,%s,%s,%s,control_ready_timeout\n' "${pattern}" "${transport}" "${size}" >> "${case_log}"
+      rm -f "${srv_out}" "${client_out}" "${client_err}"
+      return 1
+    fi
+    control_endpoint="${control_line#CONTROL_READY,}"
+    control_endpoint="${control_endpoint//0.0.0.0/127.0.0.1}"
+  fi
+  client_timeout="$(resolve_client_timeout_seconds "${pattern}" "${transport}" "${size}" "${duration}")"
+  case_status=0
+
+  if [[ "${pattern}" == "MULTI_DEALER_DEALER" || "${pattern}" == "MULTI_PUBSUB" ]]; then
+    client_fifo="$(mktemp -u "${TMP_DIR}/client_fifo.XXXXXX")"
+    mkfifo "${client_fifo}"
+    run_go_perf ./perf/multi \
+      --role client \
+      --pattern "${pattern}" \
+      --transport "${transport}" \
+      --msg-size "${size}" \
+      --duration "${duration}" \
+      --clients "${clients}" \
+      --endpoint "${endpoint}" \
+      < "${client_fifo}" > "${client_out}" 2> "${client_err}" &
+    client_pid=$!
+    exec {client_control_fd}> "${client_fifo}"
+    rm -f "${client_fifo}"
+
+    client_ready_line="$(wait_for_file_prefix "${client_out}" "CLIENT_READY," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
+    if [[ "${client_ready_line}" != "CLIENT_READY,${size}" ]]; then
+      case_status=1
+      kill "${client_pid}" 2>/dev/null || true
+      wait "${client_pid}" 2>/dev/null || true
+    else
+      printf 'START,%s\n' "${size}" >&"${server_control_fd}" || true
+      printf 'START,%s\n' "${size}" >&"${client_control_fd}" || true
+      if ! wait_for_pid "${client_pid}" "${client_timeout}"; then
+        case_status=1
+        kill "${client_pid}" 2>/dev/null || true
+        wait "${client_pid}" 2>/dev/null || true
+      elif ! wait "${client_pid}"; then
+        case_status=1
+      fi
+    fi
+    exec {client_control_fd}>&- || true
+  elif [[ "${pattern}" == MULTI_SPOT* ]]; then
+    client_fifo="$(mktemp -u "${TMP_DIR}/client_fifo.XXXXXX")"
+    mkfifo "${client_fifo}"
+    run_go_perf ./perf/multi \
+      --role client \
+      --pattern "${pattern}" \
+      --transport "${transport}" \
+      --msg-size "${size}" \
+      --duration "${duration}" \
+      --clients "${clients}" \
+      --endpoint "${endpoint},${control_endpoint}" \
+      < "${client_fifo}" > "${client_out}" 2> "${client_err}" &
+    client_pid=$!
+    exec {client_control_fd}> "${client_fifo}"
+    rm -f "${client_fifo}"
+
+    client_control_line="$(wait_for_file_prefix "${client_out}" "CLIENT_CONTROL_ENDPOINT," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
+    if [[ "${client_control_line}" != CLIENT_CONTROL_ENDPOINT,* ]]; then
+      case_status=1
+      kill "${client_pid}" 2>/dev/null || true
+      wait "${client_pid}" 2>/dev/null || true
+    else
+      client_control_endpoint="${client_control_line#CLIENT_CONTROL_ENDPOINT,}"
+      printf 'CONNECT_CONTROL,%s\n' "${client_control_endpoint}" >&"${server_control_fd}" || true
+      control_connected="$(wait_for_file_prefix "${srv_out}" "CONTROL_CONNECTED," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
+      if [[ "${control_connected}" != "CONTROL_CONNECTED,${client_control_endpoint}" ]]; then
+        case_status=1
+        kill "${client_pid}" 2>/dev/null || true
+        wait "${client_pid}" 2>/dev/null || true
+      else
+        printf '%s\n' "${control_connected}" >&"${client_control_fd}" || true
+        client_ready_line="$(wait_for_file_prefix "${client_out}" "CLIENT_READY," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
+        if [[ "${client_ready_line}" != "CLIENT_READY,${size}" ]]; then
+          case_status=1
+          kill "${client_pid}" 2>/dev/null || true
+          wait "${client_pid}" 2>/dev/null || true
+        else
+          printf 'START,%s\n' "${size}" >&"${server_control_fd}" || true
+          printf 'START,%s\n' "${size}" >&"${client_control_fd}" || true
+          if ! wait_for_pid "${client_pid}" "${client_timeout}"; then
+            case_status=1
+            kill "${client_pid}" 2>/dev/null || true
+            wait "${client_pid}" 2>/dev/null || true
+          elif ! wait "${client_pid}"; then
+            case_status=1
+          fi
+        fi
+      fi
+    fi
+    exec {client_control_fd}>&- || true
+  else
+    run_go_perf ./perf/multi \
+      --role client \
+      --pattern "${pattern}" \
+      --transport "${transport}" \
+      --msg-size "${size}" \
+      --duration "${duration}" \
+      --clients "${clients}" \
+      --endpoint "${endpoint}" \
+      > "${client_out}" 2> "${client_err}" &
+    client_pid=$!
+    if ! wait_for_pid "${client_pid}" "${client_timeout}"; then
+      case_status=1
+      kill "${client_pid}" 2>/dev/null || true
+      wait "${client_pid}" 2>/dev/null || true
+    elif ! wait "${client_pid}"; then
+      case_status=1
+    fi
+  fi
+
+  shutdown_server "${server_pid}" "${server_control_fd}"
+  {
+    cat "${srv_out}"
+    if [[ -s "${client_out}" ]]; then
+      cat "${client_out}"
+    fi
+    if [[ -s "${client_err}" ]]; then
+      cat "${client_err}"
+    fi
+  } > "${case_log}"
+  rm -f "${srv_out}" "${client_out}" "${client_err}"
+  return "${case_status}"
+}
+
 render_tables() {
   python3 - "$TMP_DIR" <<'PY'
 from collections import defaultdict
@@ -548,7 +837,7 @@ import sys
 
 tmp_dir = sys.argv[1]
 metrics = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
-echo_patterns = {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP"}
+echo_patterns = {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}
 rows = defaultdict(lambda: defaultdict(list))
 for entry in os.listdir(tmp_dir):
     if not entry.endswith(".log"):
@@ -680,16 +969,17 @@ for pattern_index in "${!PATTERNS[@]}"; do
       for size in "${SIZES[@]}"; do
         expected_cases=$((expected_cases + 1))
         case_log="${TMP_DIR}/${pattern}_${transport}_${size}_run${run}.log"
+        export PERF_MULTI_MSG_UNIT_BYTES="${size}"
         attempt=1
         case_ok=0
         while true; do
-          if run_go_perf ./perf/multi \
-            --pattern "${pattern}" \
-            --transport "${transport}" \
-            --msg-size "${size}" \
-            --duration "${DURATION}" \
-            --clients "${resolved_clients}" \
-            > "${case_log}" 2>&1; then
+          if run_multi_process_case \
+            "${pattern}" \
+            "${transport}" \
+            "${size}" \
+            "${DURATION}" \
+            "${resolved_clients}" \
+            "${case_log}"; then
             case_ok=1
             break
           fi

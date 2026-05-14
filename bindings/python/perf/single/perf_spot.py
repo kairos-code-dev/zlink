@@ -17,6 +17,7 @@ from perf_common import (
     is_active_message,
     new_payload,
     parse_single_args,
+    perf_context,
     print_result_lines,
     recv_nonblocking,
     resolve_single_connect_ready_timeout_ms,
@@ -55,7 +56,7 @@ def main(argv=None):
     probe_payload = new_payload(args.msg_size)
     active_payload = new_payload(args.msg_size)
 
-    with zlink.Context() as ctx:
+    with perf_context() as ctx:
         with zlink.Registry(ctx) as registry:
             with zlink.Discovery(
                 ctx, zlink.AutoConnectType.SPOT_MESH, CHANNEL_NAME
@@ -163,10 +164,10 @@ def main(argv=None):
                                                 continue
                                             if time.perf_counter() > active_deadline[0]:
                                                 continue
-                                            with recv_lock:
-                                                latencies.append(
-                                                    latency_ns_from_message(data)
-                                                )
+                                            latency = latency_ns_from_message(data)
+                                            if latency is not None:
+                                                with recv_lock:
+                                                    latencies.append(latency)
 
                                     subscriber.on_dispatch_event(on_dispatch)
 

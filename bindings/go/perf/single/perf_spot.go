@@ -14,7 +14,7 @@ const singleSpotTopic = "bench.topic"
 
 func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	channelName := fmt.Sprintf("%s-%d-%d", singleSpotChannelName, os.Getpid(), time.Now().UnixNano())
-	ctx, err := zlink.NewContext()
+	ctx, err := perfcommon.NewSingleContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
 
@@ -106,7 +106,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 		if event.Events&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
-		stop, drainErr := drainSingleSpotUntilStop(subscriber, stats, window.ActiveAt, cfg.msgSize)
+		stop, drainErr := drainSingleSpotUntilStop(subscriber, stats, window.ActiveAt, window.StopAt, cfg.msgSize)
 		if drainErr != nil {
 			perfcommon.Must(drainErr)
 		}
@@ -124,6 +124,7 @@ func drainSingleSpotUntilStop(
 	subscriber *zlink.Spot,
 	stats *perfcommon.Stats,
 	activeAt time.Time,
+	stopAt time.Time,
 	msgSize int,
 ) (bool, error) {
 	for {
@@ -143,7 +144,7 @@ func drainSingleSpotUntilStop(
 			return true, nil
 		}
 		if err == nil && stats != nil {
-			perfcommon.RecordMessageLatency(stats, activeAt, msgSize, part)
+			perfcommon.RecordMessageLatency(stats, activeAt, stopAt, msgSize, part)
 		}
 		_ = message.Close()
 	}

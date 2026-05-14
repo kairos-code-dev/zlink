@@ -364,11 +364,12 @@ allowed = {
     "PUBSUB",
     "SPOT",
     "SPOT_REQREP",
+    "SPOT_SENDSEND",
     "STREAM",
 }
 
 if raw == "ALL":
-    print("MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_STREAM")
+    print("MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_SPOT_SENDSEND,MULTI_STREAM")
     raise SystemExit(0)
 
 items = []
@@ -409,7 +410,7 @@ default_io_threads_for_pattern() {
     local pattern="$1"
     case "${pattern}" in
         MULTI_STREAM) printf '%s' "4" ;;
-        *) printf '%s' "2" ;;
+        *) printf '%s' "4" ;;
     esac
 }
 
@@ -628,7 +629,7 @@ resolve_client_timeout_seconds() {
         return
     fi
 
-    if [[ "${pattern}" == "MULTI_SPOT" || "${pattern}" == "MULTI_SPOT_REQREP" ]] \
+    if [[ "${pattern}" == "MULTI_SPOT" || "${pattern}" == "MULTI_SPOT_REQREP" || "${pattern}" == "MULTI_SPOT_SENDSEND" ]] \
         || { [[ "${transport}" == "tls" || "${transport}" == "wss" ]] && (( size >= 131072 )); }; then
         timeout_seconds=$(( duration * 6 + 30 ))
         if (( timeout_seconds < 90 )); then
@@ -676,6 +677,9 @@ for run in $(seq 1 "${RUNS}"); do
             MULTI_SPOT_REQREP)
                 SERVER_BIN="${BIN_DIR}/perf_multi_spot_reqrep_server"
                 CLIENT_BIN="${BIN_DIR}/perf_multi_spot_reqrep_client" ;;
+            MULTI_SPOT_SENDSEND)
+                SERVER_BIN="${BIN_DIR}/perf_multi_spot_sendsend_server"
+                CLIENT_BIN="${BIN_DIR}/perf_multi_spot_sendsend_client" ;;
             MULTI_STREAM)
                 SERVER_BIN="${BIN_DIR}/perf_multi_stream_server"
                 CLIENT_BIN="" ;;
@@ -708,6 +712,7 @@ for run in $(seq 1 "${RUNS}"); do
                 fi
                 export PERF_MULTI_SERVER_IO_THREADS="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-${ENV_PERF_IO_THREADS:-${pattern_server_io_threads}}}}"
                 export PERF_MULTI_CLIENT_IO_THREADS="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-${ENV_PERF_IO_THREADS:-${pattern_client_io_threads}}}}"
+                export PERF_MULTI_MSG_UNIT_BYTES="${size}"
                 export PERF_MULTI_HWM="${HWM:-${ENV_MULTI_HWM:-${pattern_default_hwm}}}"
                 export PERF_MULTI_SNDHWM="${SEND_HWM:-${ENV_MULTI_SNDHWM:-${PERF_MULTI_HWM}}}"
                 export PERF_MULTI_RCVHWM="${RECV_HWM:-${ENV_MULTI_RCVHWM:-${PERF_MULTI_HWM}}}"
@@ -753,7 +758,7 @@ for run in $(seq 1 "${RUNS}"); do
                 fi
 
                 CONTROL_ENDPOINT=""
-                if [[ "${pat}" == "MULTI_SPOT" || "${pat}" == "MULTI_SPOT_REQREP" ]]; then
+                if [[ "${pat}" == "MULTI_SPOT" || "${pat}" == "MULTI_SPOT_REQREP" || "${pat}" == "MULTI_SPOT_SENDSEND" ]]; then
                     CONTROL_LINE="$(wait_for_file_prefix "${SRV_OUT}" "CONTROL_READY," "${SERVER_READY_TIMEOUT_SECONDS}" || true)"
                     if [[ "${CONTROL_LINE}" == CONTROL_READY,* ]]; then
                         CONTROL_ENDPOINT="${CONTROL_LINE#CONTROL_READY,}"
@@ -789,9 +794,6 @@ for run in $(seq 1 "${RUNS}"); do
                     else
                         printf 'START,%s\n' "${size}" >&"${SERVER_CONTROL_FD}" || true
                         printf 'START,%s\n' "${size}" >&"${CLIENT_CONTROL_FD}" || true
-                        if [[ "${pat}" == "MULTI_PUBSUB" ]]; then
-                            printf 'PHASE_ACTIVE,%s\n' "${size}" >&"${CLIENT_CONTROL_FD}" || true
-                        fi
                     fi
 
                     if [[ "${case_status}" == "success" ]]; then
@@ -821,7 +823,7 @@ for run in $(seq 1 "${RUNS}"); do
                         CLIENT_OUTPUT+="$(cat "${CLIENT_ERR}")"
                     fi
                     rm -f "${CLIENT_OUT}" "${CLIENT_ERR}"
-                elif [[ "${pat}" == "MULTI_SPOT" || "${pat}" == "MULTI_SPOT_REQREP" ]]; then
+                elif [[ "${pat}" == "MULTI_SPOT" || "${pat}" == "MULTI_SPOT_REQREP" || "${pat}" == "MULTI_SPOT_SENDSEND" ]]; then
                     CLIENT_OUT="$(mktemp)"
                     CLIENT_ERR="$(mktemp)"
                     CLIENT_FIFO="$(mktemp -u)"
@@ -839,10 +841,12 @@ for run in $(seq 1 "${RUNS}"); do
                     else
                         CLIENT_CONTROL_ENDPOINT="${CLIENT_CONTROL_LINE#CLIENT_CONTROL_ENDPOINT,}"
                         printf 'CONNECT_CONTROL,%s\n' "${CLIENT_CONTROL_ENDPOINT}" >&"${SERVER_CONTROL_FD}" || true
-                        CLIENT_CONTROL_CONNECTED="$(wait_for_file_prefix "${CLIENT_OUT}" "CONTROL_CONNECTED," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
+                        CLIENT_CONTROL_CONNECTED="$(wait_for_file_prefix "${SRV_OUT}" "CONTROL_CONNECTED," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
                         if [[ "${CLIENT_CONTROL_CONNECTED}" != "CONTROL_CONNECTED,${CLIENT_CONTROL_ENDPOINT}" ]]; then
                             case_status="fail"
                             case_reason="control_connect_timeout"
+                        else
+                            printf '%s\n' "${CLIENT_CONTROL_CONNECTED}" >&"${CLIENT_CONTROL_FD}" || true
                         fi
                     fi
 
@@ -1055,7 +1059,7 @@ def fmt_latency_ms(value):
     return "N/A" if math.isnan(value) else f"{value:.3f} ms"
 
 def fmt_metric(value):
-    return "N/A" if math.isnan(value) else f"{value:.2f}"
+    return "N/A" if math.isnan(value) else f"{value:.3f}"
 
 expected = 0
 actual = 0
@@ -1102,6 +1106,7 @@ def pattern_direction(pattern):
         "MULTI_ROUTER_ROUTER",
         "MULTI_STREAM",
         "MULTI_SPOT_REQREP",
+        "MULTI_SPOT_SENDSEND",
     } else "one-way"
 
 def rate_unit(pattern):

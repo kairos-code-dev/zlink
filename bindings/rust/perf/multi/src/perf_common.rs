@@ -334,7 +334,11 @@ pub struct PhaseResult {
 
 fn bandwidth_multiplier(pattern: &str) -> f64 {
     match pattern {
-        "MULTI_DEALER_ROUTER" | "MULTI_ROUTER_ROUTER" | "MULTI_STREAM" | "MULTI_SPOT_REQREP" => 2.0,
+        "MULTI_DEALER_ROUTER"
+        | "MULTI_ROUTER_ROUTER"
+        | "MULTI_STREAM"
+        | "MULTI_SPOT_REQREP"
+        | "MULTI_SPOT_SENDSEND" => 2.0,
         _ => 1.0,
     }
 }
@@ -424,12 +428,11 @@ fn perf_context_with_env(primary_env: &str) -> Context {
         .ok()
         .or_else(|| std::env::var("PERF_IO_THREADS").ok())
         .and_then(|value| value.parse::<i32>().ok())
-        .filter(|value| *value > 0);
-    if let Some(io_threads) = io_threads {
-        ctx.options()
-            .set_io_threads(io_threads)
-            .expect("set io threads");
-    }
+        .filter(|value| *value > 0)
+        .unwrap_or(4);
+    ctx.options()
+        .set_io_threads(io_threads)
+        .expect("set io threads");
     ctx
 }
 
@@ -492,6 +495,7 @@ pub struct MultiSettings {
     pub duration_seconds: u64,
     pub send_hwm: i32,
     pub recv_hwm: i32,
+    pub msg_unit_bytes: i32,
     pub send_timeout_ms: u64,
     pub recv_timeout_ms: u64,
 }
@@ -503,6 +507,7 @@ impl MultiSettings {
             duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
             send_hwm: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 1000)),
             recv_hwm: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 1000)),
+            msg_unit_bytes: env_or_i32("PERF_MULTI_MSG_UNIT_BYTES", 0),
             send_timeout_ms: env_or("PERF_MULTI_SNDTIMEO_MS", 200) as u64,
             recv_timeout_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as u64,
         }

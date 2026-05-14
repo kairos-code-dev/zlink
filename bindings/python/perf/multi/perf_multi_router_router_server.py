@@ -8,6 +8,7 @@ from perf_multi_common import (
     apply_multi_socket_options,
     benchmark_endpoint,
     parse_server_args,
+    perf_server_context,
     recv_nonblocking,
     safe_poll,
     send_nonblocking,
@@ -29,7 +30,7 @@ def main(argv=None):
 
     threading.Thread(target=wait_stop, daemon=True).start()
 
-    with zlink.Context() as ctx:
+    with perf_server_context() as ctx:
         with zlink.RouterSocket(ctx) as router:
             router.set_routing_id(b"SERVER")
             apply_multi_socket_options(router)
@@ -51,14 +52,14 @@ def main(argv=None):
                         received = recv_nonblocking(router)
                         if received is None:
                             break
-	                        with received:
-	                            payload = received.to_bytes_list()[0]
-	                            routing_id = bytes(received.routing_id)
-	                            sent = False if pending else received.send(
-	                                payload, flags=zlink.SendFlags.DONT_WAIT
-	                            )
-	                        if not sent:
-	                            pending.append((routing_id, payload))
+                        with received:
+                            payload = received.to_bytes_list()[0]
+                            routing_id = bytes(received.routing_id)
+                            sent = False if pending else received.send(
+                                payload, flags=zlink.SendFlags.DONT_WAIT
+                            )
+                        if not sent:
+                            pending.append((routing_id, payload))
                     safe_poll(poller, -1)
 
 

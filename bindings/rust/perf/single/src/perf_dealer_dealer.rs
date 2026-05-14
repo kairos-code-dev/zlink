@@ -67,15 +67,28 @@ fn main() {
     let active = std::time::Duration::from_secs(config.duration_seconds);
     let active_deadline = std::time::Instant::now() + active;
     let send_thread = std::thread::spawn(move || {
-        common::send_loop(active_deadline, config.size, common::PHASE_ACTIVE, |msg| {
-            match sender.send().message(msg).flags(zlink::SendFlags::DONT_WAIT).submit() {
+        common::send_loop(
+            active_deadline,
+            config.size,
+            common::PHASE_ACTIVE,
+            |msg| match sender
+                .send()
+                .message(msg)
+                .flags(zlink::SendFlags::DONT_WAIT)
+                .submit()
+            {
                 Ok(sent) => sent,
                 Err(err) if err.code() == SubmitResult::NotConnected => false,
                 Err(err) => panic!("active send: {err}"),
-            }
-        });
+            },
+        );
         common::send_stop_token(|msg| {
-            sender.send().message(msg).submit().map(|_| ()).map_err(Into::into)
+            sender
+                .send()
+                .message(msg)
+                .submit()
+                .map(|_| ())
+                .map_err(Into::into)
         });
     });
 
@@ -87,7 +100,7 @@ fn main() {
                 if common::is_stop_token(data) {
                     break;
                 }
-                common::handle_recv(data, config.size, &stats);
+                common::handle_recv(data, config.size, &stats, active_deadline);
             }
             Ok(false) => continue,
             Err(err) => panic!("dealer-dealer receiver recv failed: {err}"),

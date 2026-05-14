@@ -62,3 +62,11 @@ path = "src/perf_multi_spot_reqrep_server.rs"
 [[bin]]
 name = "perf_multi_spot_reqrep_client"
 path = "src/perf_multi_spot_reqrep_client.rs"
+
+[[bin]]
+name = "perf_multi_spot_sendsend_server"
+path = "src/perf_multi_spot_sendsend_server.rs"
+
+[[bin]]
+name = "perf_multi_spot_sendsend_client"
+path = "src/perf_multi_spot_sendsend_client.rs"

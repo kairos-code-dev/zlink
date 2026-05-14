@@ -25,6 +25,12 @@ fn main() {
         .common_options()
         .set_recv_hwm(settings.recv_hwm)
         .expect("rcvhwm");
+    if settings.msg_unit_bytes > 0 {
+        router
+            .common_options()
+            .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
+            .expect("auto hwm msg unit");
+    }
     router
         .common_options()
         .set_recv_timeout(Duration::from_millis(1))
@@ -64,30 +70,30 @@ fn main() {
     while !stop.load(Ordering::Acquire) {
         let mut progressed = false;
         loop {
-	            match router.recv(&mut received, RecvFlags::DONT_WAIT) {
-	                Ok(true) => {
-	                    let Some(rid) = received.routing_id().cloned() else {
-	                        continue;
-	                    };
-	                    let reply_bytes = common::message_payload(received.parts()).to_vec();
-	                    if pending.is_empty() {
+            match router.recv(&mut received, RecvFlags::DONT_WAIT) {
+                Ok(true) => {
+                    let Some(rid) = received.routing_id().cloned() else {
+                        continue;
+                    };
+                    let reply_bytes = common::message_payload(received.parts()).to_vec();
+                    if pending.is_empty() {
                         match received
                             .send()
                             .message(Message::copy_from(&reply_bytes).expect("reply"))
                             .flags(SendFlags::DONT_WAIT)
                             .submit()
                         {
-	                            Ok(true) => {
-	                                progressed = true;
-	                                continue;
-	                            }
-	                            Ok(false) => {}
-	                            Err(err) => panic!("received send failed: {err}"),
-	                        }
-	                    }
-	                    pending.push_back((rid, reply_bytes));
-	                    progressed = true;
-	                }
+                            Ok(true) => {
+                                progressed = true;
+                                continue;
+                            }
+                            Ok(false) => {}
+                            Err(err) => panic!("received send failed: {err}"),
+                        }
+                    }
+                    pending.push_back((rid, reply_bytes));
+                    progressed = true;
+                }
                 Ok(false) => break,
                 Err(err) => panic!("router recv failed: {err}"),
             }

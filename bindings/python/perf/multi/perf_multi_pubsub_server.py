@@ -13,6 +13,7 @@ from perf_multi_common import (
     benchmark_run_id,
     new_payload,
     parse_server_args,
+    perf_server_context,
     publish_nonblocking,
     stamp_payload,
 )
@@ -42,7 +43,7 @@ def main(argv=None):
 
     threading.Thread(target=read_commands, daemon=True).start()
 
-    with zlink.Context() as ctx:
+    with perf_server_context() as ctx:
         with zlink.PubSocket(ctx) as publisher:
             apply_multi_socket_options(publisher)
             publisher.bind(endpoint)

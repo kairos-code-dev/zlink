@@ -91,6 +91,8 @@ Patterns:
 - `MULTI_ROUTER_ROUTER`
 - `MULTI_PUBSUB`
 - `MULTI_SPOT`
+- `MULTI_SPOT_REQREP`
+- `MULTI_SPOT_SENDSEND`
 - `MULTI_STREAM`
 
 Shared component contract:

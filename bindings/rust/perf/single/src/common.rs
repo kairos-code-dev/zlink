@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use zlink::{
-    Context, DealerSocket, Message, PairSocket, PubSocket, RouterSocket, SocketMonitor,
-    SubSocket, ZlinkError,
+    Context, DealerSocket, Message, PairSocket, PubSocket, RouterSocket, SocketMonitor, SubSocket,
+    ZlinkError,
 };
 
 // -- Metric header (29 bytes) ------------------------------------------------
@@ -448,8 +448,13 @@ impl MetricCollector {
 }
 
 /// Record active-phase latency if the payload matches the expected run.
-pub fn handle_recv(data: &[u8], expected_size: usize, stats: &std::sync::Mutex<LatencyStats>) {
-    if is_valid_active_message(data, expected_size) {
+pub fn handle_recv(
+    data: &[u8],
+    expected_size: usize,
+    stats: &std::sync::Mutex<LatencyStats>,
+    active_deadline: Instant,
+) {
+    if Instant::now() < active_deadline && is_valid_active_message(data, expected_size) {
         let sent_ts_ns = decode_sent_ts_ns(data);
         let latency_ns = (now_ns() as i64).saturating_sub(sent_ts_ns).max(0) as u64;
         stats.lock().unwrap().record_ns(latency_ns);
@@ -497,16 +502,6 @@ where
         } else {
             std::thread::yield_now();
         }
-    }
-
-    encode_header(&mut buf, PHASE_COOLDOWN, msg_size as u32, seq);
-    let cooldown_deadline = Instant::now() + Duration::from_millis(100);
-    while Instant::now() < cooldown_deadline {
-        let cooldown = Message::copy_from(&buf).expect("cooldown msg");
-        if send_fn(cooldown) {
-            break;
-        }
-        std::thread::yield_now();
     }
 }
 

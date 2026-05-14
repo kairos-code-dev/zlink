@@ -1,4 +1,4 @@
-//! DEALER-DEALER multi client: one-way active receiver with N dealer sockets.
+//! DEALER-DEALER multi client: one-way active sender with N dealer sockets.
 
 #[path = "perf_common.rs"]
 mod common;
@@ -6,34 +6,6 @@ mod common;
 use std::io::{self, BufRead, Write};
 use std::time::{Duration, Instant};
 use zlink::*;
-
-fn drain_socket(
-    socket: &DealerSocket,
-    msg_size: usize,
-    latency_stats: &mut common::LatencyStats,
-    active_count: &mut u64,
-) -> bool {
-    let mut processed = false;
-    let mut received = zlink::Received::empty();
-    loop {
-        match socket.recv(&mut received, RecvFlags::DONT_WAIT) {
-            Ok(true) => {
-                let data = common::message_payload(received.parts());
-                if !common::is_valid_active_message(data, msg_size) {
-                    continue;
-                }
-                let sent_ts_ns = common::decode_sent_ts_ns(data);
-                latency_stats
-                    .record_ns(common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64);
-                *active_count += 1;
-                processed = true;
-            }
-            Ok(false) => break,
-            Err(err) => panic!("recv failed: {err}"),
-        }
-    }
-    processed
-}
 
 fn main() {
     let args = common::MultiArgs::parse();
@@ -51,6 +23,11 @@ fn main() {
         sock.common_options()
             .set_recv_hwm(settings.recv_hwm)
             .expect("rcvhwm");
+        if settings.msg_unit_bytes > 0 {
+            sock.common_options()
+                .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
+                .expect("auto hwm msg unit");
+        }
         sock.common_options()
             .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
             .expect("rcvtimeo");
@@ -88,31 +65,57 @@ fn main() {
         return;
     }
 
-    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
-    let mut latency_stats = common::LatencyStats::new();
-    let mut active_count: u64 = 0;
+    let poller = Poller::new().expect("poller");
+    for socket in &sockets {
+        poller.add_socket(socket, POLLOUT).expect("poller add");
+    }
 
+    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
+    let mut payloads = (0..sockets.len())
+        .map(|_| vec![0u8; args.msg_size.max(common::HEADER_SIZE)])
+        .collect::<Vec<_>>();
+    let mut seq: u64 = 1;
     while Instant::now() < deadline {
         let mut progressed = false;
-        for socket in &sockets {
-            progressed |=
-                drain_socket(socket, args.msg_size, &mut latency_stats, &mut active_count);
+        for (index, socket) in sockets.iter().enumerate() {
+            if Instant::now() >= deadline {
+                break;
+            }
+            common::encode_header(
+                &mut payloads[index],
+                common::PHASE_ACTIVE,
+                args.msg_size as u32,
+                seq,
+            );
+            let msg = Message::copy_from(&payloads[index]).expect("msg");
+            match socket
+                .send()
+                .message(msg)
+                .flags(SendFlags::DONT_WAIT)
+                .submit()
+            {
+                Ok(true) => {
+                    seq += 1;
+                    progressed = true;
+                }
+                Ok(false) => {}
+                Err(err) if err.code() == SubmitResult::Backpressured => {}
+                Err(err) if err.code() == SubmitResult::NotConnected => {}
+                Err(err) => panic!("send failed: {err}"),
+            }
         }
         if !progressed {
-            std::thread::sleep(Duration::from_millis(1));
+            let remaining_ms = deadline
+                .saturating_duration_since(Instant::now())
+                .as_millis()
+                .max(1) as i64;
+            match poller.wait(remaining_ms) {
+                Ok(Some(_)) | Ok(None) => {}
+                Err(err) => panic!("poller wait failed: {err}"),
+            }
         }
     }
 
-    let stats = latency_stats.finish();
-    let final_stats = common::StatsResult {
-        count: active_count,
-        ..stats
-    };
-    common::print_result(
-        "MULTI_DEALER_DEALER",
-        &args.transport,
-        args.msg_size,
-        settings.duration_seconds,
-        &final_stats,
-    );
+    println!("CLIENT_DONE,{}", args.msg_size);
+    io::stdout().flush().ok();
 }

@@ -26,6 +26,12 @@ fn main() {
         .common_options()
         .set_recv_hwm(settings.recv_hwm)
         .expect("rcvhwm");
+    if settings.msg_unit_bytes > 0 {
+        stream
+            .common_options()
+            .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
+            .expect("auto hwm msg unit");
+    }
     stream
         .common_options()
         .set_send_timeout(std::time::Duration::from_millis(settings.send_timeout_ms))
@@ -43,7 +49,7 @@ fn main() {
         .on_packet(move |routing_id, header, body| {
             let packet = build_packet_frame(header.as_bytes(), body.as_bytes());
             let msg = Message::copy_from(&packet).expect("packet");
-            let _ = send_handle.send_to(&routing_id, msg);
+            let _ = send_handle.send_to(&routing_id).message(msg).submit();
         })
         .expect("on_packet");
     let Some(bind_endpoint) = common::resolve_server_bind_endpoint("MULTI_STREAM", &args.transport)

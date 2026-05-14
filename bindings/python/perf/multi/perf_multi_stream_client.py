@@ -307,7 +307,9 @@ def main(argv=None):
                         run_id=run_id,
                     ):
                         continue
-                    latencies.append(latency_ns_from_message(body) / 2.0)
+                    latency = latency_ns_from_message(body)
+                    if latency is not None:
+                        latencies.append(latency / 2.0)
 
     for key in list(selector.get_map().values()):
         selector.unregister(key.fileobj)

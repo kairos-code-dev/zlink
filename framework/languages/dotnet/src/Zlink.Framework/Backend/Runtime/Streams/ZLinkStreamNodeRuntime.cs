@@ -1,21 +1,14 @@
-using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend.Contracts;
-using System.Threading;
 using Zlink.Framework.Runtime.Core;
 
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 {
-    private readonly IServiceProvider _services;
-    private readonly Type? _headerSessionType;
-    private readonly Dictionary<string, ZLinkStreamSessionRuntime> _sessions = [];
-    private readonly Queue<(string LocalAddr, string RemoteAddr)> _pendingConnectionMetadata = [];
-    private readonly object _gate = new();
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
+    private readonly ZLinkStreamSessionTable _sessions;
     private Task? _monitorLoop;
-    private bool _stopping;
 
     public ZLinkStreamNodeRuntime(
         string nodeName,
@@ -26,11 +19,10 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         ZLinkRuntimeTaskRunner taskRunner)
     {
         NodeName = nodeName;
-        _services = services;
         Socket = socket;
         Monitor = monitor;
-        _headerSessionType = headerSessionType;
         _taskRunner = taskRunner;
+        _sessions = new ZLinkStreamSessionTable(services, socket, headerSessionType);
     }
 
     public string NodeName { get; }
@@ -54,14 +46,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        ZLinkStreamSessionRuntime[] sessions;
-        lock (_gate)
-        {
-            _stopping = true;
-            sessions = _sessions.Values.ToArray();
-            _sessions.Clear();
-            _pendingConnectionMetadata.Clear();
-        }
+        var sessions = _sessions.Stop();
 
         _stopSource.Cancel();
         await Monitor.DisposeAsync();
@@ -95,25 +80,22 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         Message body)
     {
         var routingId = ParsePublicRoutingId(routingIdText);
-        if (!TryGetOrCreateSession(routingId, out var session))
+        if (!_sessions.TryGetOrCreate(routingId, out var session))
         {
             header.Dispose();
             body.Dispose();
             return;
         }
 
-        ApplyPendingConnectionMetadata(session);
+        _sessions.ApplyPendingConnectionMetadata(session);
         session.EnqueuePacket(header, body);
     }
 
     private void OnMonitorEvent(ZLinkBackendSocketMonitorEvent monitorEvent)
     {
-        lock (_gate)
+        if (_sessions.IsStopping)
         {
-            if (_stopping)
-            {
-                return;
-            }
+            return;
         }
 
         switch (monitorEvent.NativeEvent)
@@ -121,23 +103,20 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             case ZLinkSocketNativeEventType.ConnectionReady:
                 if (monitorEvent.RoutingId is RoutingId readyRoutingId)
                 {
-                    if (TryGetOrCreateSession(readyRoutingId, out var session))
+                    if (_sessions.TryGetOrCreate(readyRoutingId, out var session))
                     {
                         session.EnqueueConnected(monitorEvent.LocalAddr, monitorEvent.RemoteAddr);
                     }
                 }
                 else
                 {
-                    lock (_gate)
-                    {
-                        _pendingConnectionMetadata.Enqueue((monitorEvent.LocalAddr, monitorEvent.RemoteAddr));
-                    }
+                    _sessions.QueueConnectionMetadata(monitorEvent.LocalAddr, monitorEvent.RemoteAddr);
                 }
                 break;
             case ZLinkSocketNativeEventType.Accepted:
                 break;
             case ZLinkSocketNativeEventType.Disconnected:
-                if (TryResolveSessionForMonitorEvent(monitorEvent.RoutingId, out var disconnectedSession))
+                if (_sessions.TryResolveMonitorSession(monitorEvent.RoutingId, out var disconnectedSession))
                 {
                     disconnectedSession.EnqueueDisconnected(
                         new ZLinkStreamError(
@@ -182,97 +161,6 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
             await Task.Yield();
         }
-    }
-
-    private bool TryGetOrCreateSession(
-        RoutingId routingId,
-        out ZLinkStreamSessionRuntime session)
-    {
-        var sessionId = routingId.ToHex();
-        lock (_gate)
-        {
-            if (_stopping)
-            {
-                session = null!;
-                return false;
-            }
-
-            if (_sessions.TryGetValue(sessionId, out var existing))
-            {
-                session = existing;
-                return true;
-            }
-
-            var created = new ZLinkStreamSessionRuntime(
-                _services.CreateAsyncScope(),
-                Socket,
-                routingId,
-                _headerSessionType,
-                RemoveSession);
-            _sessions.Add(sessionId, created);
-            session = created;
-            return true;
-        }
-    }
-
-    private void RemoveSession(RoutingId routingId)
-    {
-        RemoveSession(routingId.ToHex());
-    }
-
-    private void RemoveSession(string sessionId)
-    {
-        lock (_gate)
-        {
-            _sessions.Remove(sessionId);
-        }
-    }
-
-    private void ApplyPendingConnectionMetadata(ZLinkStreamSessionRuntime session)
-    {
-        (string LocalAddr, string RemoteAddr)? metadata = null;
-
-        lock (_gate)
-        {
-            if (session.Stream.LocalAddr is null
-                && session.Stream.RemoteAddr is null
-                && _pendingConnectionMetadata.Count > 0)
-            {
-                metadata = _pendingConnectionMetadata.Dequeue();
-            }
-        }
-
-        if (metadata is { } value)
-        {
-            session.EnqueueConnected(value.LocalAddr, value.RemoteAddr);
-        }
-    }
-
-    private bool TryResolveSessionForMonitorEvent(
-        RoutingId? routingId,
-        out ZLinkStreamSessionRuntime session)
-    {
-        lock (_gate)
-        {
-            if (routingId is RoutingId streamRoutingId)
-            {
-                var sessionId = streamRoutingId.ToHex();
-                if (_sessions.TryGetValue(sessionId, out var existing))
-                {
-                    session = existing;
-                    return true;
-                }
-            }
-
-            if (_sessions.Count == 1)
-            {
-                session = _sessions.Values.First();
-                return true;
-            }
-        }
-
-        session = null!;
-        return false;
     }
 
     private static RoutingId ParsePublicRoutingId(string routingIdText)

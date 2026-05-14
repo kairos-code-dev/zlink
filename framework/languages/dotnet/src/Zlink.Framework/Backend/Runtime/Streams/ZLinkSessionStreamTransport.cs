@@ -103,11 +103,10 @@ internal sealed class ZLinkSessionStreamTransport(
             requestSeq,
             requestHeader.Name,
             ZlinkStreamMetadata.Empty);
-        var body = JsonSerializer.SerializeToUtf8Bytes(
+        var body = ZLinkEnvelopeCodec.EncodeJsonBytes(
             new ZLinkStreamWireError(
                 exception.GetType().Name,
-                exception.Message),
-            ZLinkJsonSerializerOptions.Default);
+                exception.Message));
         WriteRawFrame(header, body, "Client stream error reply send failed.");
         return ValueTask.CompletedTask;
     }
@@ -121,7 +120,7 @@ internal sealed class ZLinkSessionStreamTransport(
         cancellationToken.ThrowIfCancellationRequested();
         using var pending = requests.Start();
 
-        ReadOnlyMemory<byte> body = JsonSerializer.SerializeToUtf8Bytes(request, ZLinkJsonSerializerOptions.Default);
+        ReadOnlyMemory<byte> body = ZLinkEnvelopeCodec.EncodeJsonBytes(request);
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
             ZlinkStreamCodec.Json,

@@ -19,6 +19,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
     private readonly IZlinkStreamPacketNameResolver _nameResolver;
     private readonly ZlinkStreamFrameSender _frameSender;
     private readonly ZlinkStreamReceiveDispatcher _receiveDispatcher;
+    private readonly ZlinkStreamReceiveLoop _receiveLoop;
     private IZlinkStreamConnection? _connection;
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
@@ -64,6 +65,12 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
             _handlerQueue,
             _frameSender,
             _callbacks);
+        _receiveLoop = new ZlinkStreamReceiveLoop(
+            _pending,
+            _receiveDispatcher,
+            _callbacks,
+            () => _connection,
+            () => Interlocked.Exchange(ref _connection, null));
         _handlerPump = _taskRunner.Run(
             "stream-handler-pump",
             _ => new ValueTask(_receiveDispatcher.HandlerPumpAsync()));
@@ -126,7 +133,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
                 _receiveCts = new CancellationTokenSource();
                 _receiveTask = _taskRunner.Run(
                     "stream-receive-loop",
-                    _ => new ValueTask(ReceiveLoopAsync(_receiveCts.Token)));
+                    _ => new ValueTask(_receiveLoop.RunAsync(_receiveCts.Token)));
             }
             catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
@@ -293,40 +300,6 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         _sendGate.Dispose();
         _lifecycleGate.Dispose();
         _lifetimeCts.Dispose();
-    }
-
-    private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                var connection = _connection;
-                if (connection is null)
-                {
-                    return;
-                }
-
-                var packet = await ZlinkStreamFrameCodec.ReadAsync(connection, cancellationToken).ConfigureAwait(false);
-                await _receiveDispatcher.DispatchPacketAsync(packet, cancellationToken).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (Exception ex)
-        {
-            var error = ex is ZlinkStreamException streamException
-                ? streamException.Error
-                : new ZlinkStreamError(ZlinkStreamErrorCode.FrameDecodeFailed, "Receive loop failed.", ex);
-            await _callbacks.PublishErrorAsync(error, CancellationToken.None).ConfigureAwait(false);
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _connection, null);
-            _pending.FailAll(new ZlinkStreamError(ZlinkStreamErrorCode.Disconnected, "Connector disconnected."));
-            await _callbacks.NotifyDisconnectedAsync(CancellationToken.None).ConfigureAwait(false);
-        }
     }
 
     private string ResolveName(Type bodyType)

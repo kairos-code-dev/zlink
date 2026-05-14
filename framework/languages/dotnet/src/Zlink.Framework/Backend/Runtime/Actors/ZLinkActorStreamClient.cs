@@ -1,7 +1,6 @@
 using Systems.Zlink.Stream.Connector.Protocol;
 using Systems.Zlink.Stream.Connector.Protocol.Compression;
 using Systems.Zlink.Stream.Connector.Contracts;
-using System.Text.Json;
 
 namespace Zlink.Framework.Runtime.Actors;
 
@@ -66,7 +65,7 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
 
         var stream = state.Stream
             ?? throw new InvalidOperationException("Actor does not have an active client stream.");
-        ReadOnlyMemory<byte> body = JsonSerializer.SerializeToUtf8Bytes(message, ZLinkJsonSerializerOptions.Default);
+        ReadOnlyMemory<byte> body = ZLinkEnvelopeCodec.EncodeJsonBytes(message);
         var flags = ZlinkStreamHeaderFlags.None;
 
         if (_compress)

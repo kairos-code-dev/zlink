@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Zlink.Framework.Runtime.SessionActorDispatch;
 
 internal static class ZLinkInternalMultipartPackets
@@ -31,7 +29,7 @@ internal static class ZLinkInternalMultipartPackets
             actorId,
             actorType,
             streamHeader,
-            JsonSerializer.SerializeToUtf8Bytes(body, bodyType, ZLinkJsonSerializerOptions.Default));
+            ZLinkEnvelopeCodec.EncodeJsonBytes(body, bodyType));
     }
 
     public static IReadOnlyList<Message> CreateSessionProxyParts(
@@ -42,10 +40,7 @@ internal static class ZLinkInternalMultipartPackets
         return
         [
             ZLinkEnvelopeCodec.EncodePart(envelope),
-            Message.FromBytes(JsonSerializer.SerializeToUtf8Bytes(
-                body,
-                bodyType,
-                ZLinkJsonSerializerOptions.Default))
+            ZLinkEnvelopeCodec.EncodeJsonPart(body, bodyType)
         ];
     }
 

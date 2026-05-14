@@ -60,5 +60,5 @@ internal static class ZLinkStreamPacketPayloadCodec
     }
 
     public static byte[] EncodeJson(object? message, Type messageType)
-        => JsonSerializer.SerializeToUtf8Bytes(message, messageType, ZLinkJsonSerializerOptions.Default);
+        => ZLinkEnvelopeCodec.EncodeJsonBytes(message, messageType);
 }

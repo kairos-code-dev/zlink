@@ -1,7 +1,6 @@
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Protocol;
 using Systems.Zlink.Stream.Connector.Protocol.Compression;
-using System.Text.Json;
 
 namespace Zlink.Framework.Runtime.Streams;
 
@@ -50,7 +49,7 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
             throw new InvalidOperationException("Stream send builders can be executed only once.");
         }
 
-        ReadOnlyMemory<byte> body = JsonSerializer.SerializeToUtf8Bytes(message, ZLinkJsonSerializerOptions.Default);
+        ReadOnlyMemory<byte> body = ZLinkEnvelopeCodec.EncodeJsonBytes(message);
         var flags = ZlinkStreamHeaderFlags.None;
 
         if (_compress)

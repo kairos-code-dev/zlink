@@ -2,7 +2,7 @@ namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal sealed class ZlinkStreamTypedHandlerRegistry
 {
-    private readonly Dictionary<string, List<TypedHandler>> _handlers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TypedHandler[]> _handlers = new(StringComparer.Ordinal);
     private readonly object _gate = new();
 
     public IDisposable Add(
@@ -17,13 +17,16 @@ internal sealed class ZlinkStreamTypedHandlerRegistry
 
         lock (_gate)
         {
-            if (!_handlers.TryGetValue(name, out var list))
+            if (!_handlers.TryGetValue(name, out var handlers))
             {
-                list = [];
-                _handlers.Add(name, list);
+                _handlers.Add(name, [typed]);
+                return new Subscription(() => Remove(name, typed));
             }
 
-            list.Add(typed);
+            var next = new TypedHandler[handlers.Length + 1];
+            Array.Copy(handlers, next, handlers.Length);
+            next[^1] = typed;
+            _handlers[name] = next;
         }
 
         return new Subscription(() => Remove(name, typed));
@@ -33,9 +36,9 @@ internal sealed class ZlinkStreamTypedHandlerRegistry
     {
         lock (_gate)
         {
-            return _handlers.TryGetValue(messageName, out var list)
-                ? list.ToArray()
-                : [];
+            return _handlers.TryGetValue(messageName, out var handlers)
+                ? handlers
+                : Array.Empty<TypedHandler>();
         }
     }
 
@@ -43,14 +46,40 @@ internal sealed class ZlinkStreamTypedHandlerRegistry
     {
         lock (_gate)
         {
-            if (_handlers.TryGetValue(name, out var list))
+            if (!_handlers.TryGetValue(name, out var handlers))
             {
-                list.Remove(typed);
-                if (list.Count == 0)
-                {
-                    _handlers.Remove(name);
-                }
+                return;
             }
+
+            var index = Array.IndexOf(handlers, typed);
+            if (index < 0)
+            {
+                return;
+            }
+
+            if (handlers.Length == 1)
+            {
+                _handlers.Remove(name);
+                return;
+            }
+
+            var next = new TypedHandler[handlers.Length - 1];
+            if (index > 0)
+            {
+                Array.Copy(handlers, 0, next, 0, index);
+            }
+
+            if (index < handlers.Length - 1)
+            {
+                Array.Copy(
+                    handlers,
+                    index + 1,
+                    next,
+                    index,
+                    handlers.Length - index - 1);
+            }
+
+            _handlers[name] = next;
         }
     }
 

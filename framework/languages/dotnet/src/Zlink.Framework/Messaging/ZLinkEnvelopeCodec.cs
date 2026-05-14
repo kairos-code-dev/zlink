@@ -39,8 +39,7 @@ internal static class ZLinkEnvelopeCodec
 
     public static Message EncodeHeader(ZLinkEnvelopeHeader header)
     {
-        return Message.FromBytes(
-            JsonSerializer.SerializeToUtf8Bytes(header, ZLinkJsonSerializerOptions.Default));
+        return EncodeJsonPart(header);
     }
 
     public static Message EncodeBody(object? body, Type? bodyType)
@@ -50,10 +49,7 @@ internal static class ZLinkEnvelopeCodec
             return Message.FromBytes(ReadOnlySpan<byte>.Empty);
         }
 
-        return Message.FromBytes(JsonSerializer.SerializeToUtf8Bytes(
-            body,
-            bodyType,
-            ZLinkJsonSerializerOptions.Default));
+        return EncodeJsonPart(body, bodyType);
     }
 
     public static T DecodePart<T>(Message message)
@@ -64,9 +60,7 @@ internal static class ZLinkEnvelopeCodec
 
     public static Message EncodePart<T>(T value)
     {
-        return Message.FromBytes(JsonSerializer.SerializeToUtf8Bytes(
-            value,
-            ZLinkJsonSerializerOptions.Default));
+        return EncodeJsonPart(value);
     }
 
     public static ZLinkEnvelopeHeader DecodeHeader(Message message)
@@ -116,6 +110,22 @@ internal static class ZLinkEnvelopeCodec
     }
 
     public static string DefaultContentType => JsonContentType;
+
+    public static Message EncodeJsonPart<T>(T value)
+    {
+        return Message.FromBytes(EncodeJsonBytes(value));
+    }
+
+    public static Message EncodeJsonPart(object? value, Type valueType)
+    {
+        return Message.FromBytes(EncodeJsonBytes(value, valueType));
+    }
+
+    public static byte[] EncodeJsonBytes<T>(T value)
+        => JsonSerializer.SerializeToUtf8Bytes(value, ZLinkJsonSerializerOptions.Default);
+
+    public static byte[] EncodeJsonBytes(object? value, Type valueType)
+        => JsonSerializer.SerializeToUtf8Bytes(value, valueType, ZLinkJsonSerializerOptions.Default);
 
     private static void EnsurePart(IReadOnlyList<Message> parts, int index, string name)
     {

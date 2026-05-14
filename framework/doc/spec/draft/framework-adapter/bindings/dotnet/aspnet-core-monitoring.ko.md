@@ -15,36 +15,43 @@
 
 ## 1. 목표
 
-운영 관점에서는 handler 호출만 관측할 수 있는 것으로는 부족하다. 다음과 같은
-runtime 변화도 framework 표면에서 함께 받을 수 있어야 한다.
+이 절은 monitoring 표면이 어떤 사건을 담아야 하는지, 그리고 왜 그렇게 정했는지를
+정리한다.
+
+운영 관점에서는 handler 호출만 관측해서는 부족하다. 다음과 같은 runtime 변화도
+framework 표면에서 함께 받을 수 있어야 한다.
 
 - socket connect / disconnect / handshake[^handshake] 실패
 - discovery[^discovery] provider up / down / changed
 - registry status / topology[^topology] 변화
 - spot node[^spot-node] peer / subject 변화
 
-문제는 하부 `.NET zlink` 표면이 source마다 모양이 다르다는 점이다.
+문제는 하부 `.NET zlink` 표면이 source 마다 모양이 다르다는 점이다.
 
 - socket: `SocketMonitor`
 - discovery: runtime event로 노출하지 않는다. 운영 조회는 registry snapshot/query로 처리한다.
 - registry: snapshot/query만 제공한다.
 - spot: status/peer/subject snapshot만 제공한다.
 
-따라서 framework는 socket은 raw monitor[^raw-monitor] 기반 event로, registry/spot은
-snapshot diff[^snapshot-diff] 기반 event로 올린다. discovery 자체는 별도 runtime
-event로 만들지 않고, registry의 topology/service/member snapshot을 조회해서 현재
-provider 상태를 확인한다.
+그래서 framework 는 source 마다 표면을 달리 둔다.
+
+- socket 은 raw monitor[^raw-monitor] 기반 event 로 올린다.
+- registry / spot 은 snapshot diff[^snapshot-diff] 기반 event 로 올린다.
+- discovery 자체는 별도 runtime event 로 만들지 않는다. registry 의 topology /
+  service / member snapshot 을 조회해서 현재 provider 상태를 확인한다.
 
 ## 2. 기본 방향
 
+이 절은 monitoring 표면이 따르는 규칙을 정리한다.
+
 이 초안은 다음 규칙을 기본으로 둔다.
 
-- event kind는 enum으로 둔다.
-- 실제 callback payload는 record struct로 둔다.
-- socket은 하부 monitor를 그대로 감싼다.
-- registry/spot은 polling[^polling] + snapshot diff로 event를 합성한다.
-- discovery 상태는 registry snapshot/query 결과로 조회한다.
-- application은 `IZLinkRuntimeEventHandler<TEvent>`를 구현해서 이벤트를 받는다.
+- event kind 는 enum 으로 둔다.
+- 실제 callback payload 는 record struct 로 둔다.
+- socket 은 하부 monitor 를 그대로 감싼다.
+- registry / spot 은 polling[^polling] 과 snapshot diff 로 event 를 합성한다.
+- discovery 상태는 registry snapshot / query 결과로 조회한다.
+- application 은 `IZLinkRuntimeEventHandler<TEvent>` 를 구현해서 이벤트를 받는다.
 
 enum 하나만으로는 충분하지 않다. 운영 코드에서는 event 종류뿐 아니라 source 이름,
 endpoint, routing id, snapshot 본문도 함께 필요하기 때문이다.
@@ -101,14 +108,16 @@ builder.Services.AddZLinkMonitoring(monitor =>
 });
 ```
 
-`AddZLinkMonitoring(...)`은 source 등록만 맡는다. 실제 socket, registry, spot
-source는 같은 애플리케이션에 `AddZLinkFramework(...)` 또는
-`AddZLinkRegistry(...)`로 이미 올라와 있어야 한다.
+`AddZLinkMonitoring(...)` 은 source 등록만 맡는다. 즉 실제 socket, registry,
+spot source 는 같은 애플리케이션에 `AddZLinkFramework(...)` 또는
+`AddZLinkRegistry(...)` 로 이미 올라와 있어야 한다.
 
-여기서 짚어 둘 점은 일반 channel capability[^capability]와 SPOT mesh가 각자 자신의
-discovery source를 가진다는 사실이다. 일반 channel은 framework 등록 루트의
-`UseDiscovery(...)`가, SPOT mesh는 `AddSpotMesh(...)` 안의
-`mesh.UseDiscovery(...)`가 registry endpoint 집합을 공급한다.
+여기서 한 가지 짚어 둘 점이 있다. 일반 channel capability[^capability] 와 SPOT
+mesh 는 각자 자신의 discovery source 를 가진다. 즉 registry endpoint 집합을
+공급하는 곳이 둘로 나뉜다.
+
+- 일반 channel: framework 등록 루트의 `UseDiscovery(...)` 가 공급한다.
+- SPOT mesh: `AddSpotMesh(...)` 안의 `mesh.UseDiscovery(...)` 가 공급한다.
 
 source 이름은 다음 규칙으로 잡는 편이 자연스럽다.
 
@@ -132,8 +141,10 @@ source 이름은 다음 규칙으로 잡는 편이 자연스럽다.
 
 ## 4. 인터페이스 초안
 
-기준이 되는 인터페이스는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의
-section 10.3을 참고한다. 핵심 모양은 다음 정도다.
+이 절은 monitoring 표면에서 사용자가 직접 마주하는 타입을 정리한다.
+
+기준이 되는 인터페이스는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)
+의 section 10.3 을 참고한다. 핵심 모양은 다음 정도다.
 
 ```csharp
 public interface IZLinkMonitoringOptions
@@ -167,17 +178,17 @@ public interface IZLinkRuntimeEventHandler<in TEvent>
 }
 ```
 
-socket/registry/spot은 각각 framework가 소유한 event kind enum과 record payload를
-가진다. backend의 raw monitor enum이나 status 값이 필요하면, event 안의 optional
-diagnostic detail로만 노출한다.
+socket, registry, spot 은 각각 framework 가 소유한 event kind enum 과 record
+payload 를 가진다. backend 의 raw monitor enum 이나 status 값이 필요하면,
+event 안의 optional diagnostic detail 로만 노출한다.
 
-이 "optional diagnostic"도 framework가 소유한 타입으로 다시 감싼다. 즉 backend
-`.NET` binding의 `MonitorEventType`, `ServiceEventType`, `SubjectKind`,
-`RegistryStatus`, `SpotNodeStatus` 같은 타입은 framework의 public surface에 직접
-노출하지 않는다.
+이 "optional diagnostic" 도 framework 가 소유한 타입으로 다시 감싼다. 즉
+backend `.NET` binding 의 `MonitorEventType`, `ServiceEventType`, `SubjectKind`,
+`RegistryStatus`, `SpotNodeStatus` 같은 타입은 framework 의 public surface 에
+직접 노출하지 않는다.
 
-`AddSocketEvents(...)`에 event kind를 따로 넘기지 않으면, 그 source에서 지원하는
-모든 logical event를 받는다는 뜻으로 해석한다.
+`AddSocketEvents(...)` 에 event kind 를 따로 넘기지 않으면, 그 source 에서
+지원하는 모든 logical event 를 받는다는 뜻으로 해석한다.
 
 ## 5. 샘플 코드
 
@@ -259,8 +270,8 @@ public sealed class RegistryMonitor
 }
 ```
 
-registry는 하부에 raw monitor가 없으므로, framework가 주기적으로 snapshot을 읽어
-직전 값과 비교하는 방식으로 event를 합성한다.
+registry 는 하부에 raw monitor 가 없다. 그래서 framework 가 주기적으로 snapshot
+을 읽고, 직전 값과 비교하는 방식으로 event 를 합성한다.
 
 ### 5.3 spot 이벤트
 
@@ -301,23 +312,27 @@ public sealed class StageNodeMonitor
 }
 ```
 
-spot도 registry와 같은 이유로, raw monitor보다 snapshot diff 표면이 더 잘 맞는다.
-즉 `StatusSnapshot()`, `PeersSnapshot()`, `SubjectsSnapshot()`를 주기적으로 읽고,
-변화가 있을 때 typed event로 올리는 방향을 기본으로 본다.
+spot 도 registry 와 같은 이유로, raw monitor 보다 snapshot diff 표면이 더 잘
+맞는다. 즉 `StatusSnapshot()`, `PeersSnapshot()`, `SubjectsSnapshot()` 를
+주기적으로 읽고, 변화가 있을 때 typed event 로 올리는 방향을 기본으로 본다.
 
-`ZLinkSpotEvent` payload에 노출되는 `ZLinkSpotNodeStatus`와
-`ZLinkSpotNodePeerEntry`는 첫 필드가 `ChannelName`이다. spot node에서 채널 이름은
-`AddSpotMesh(...)`에 넘긴 mesh 이름(예: `"game.stage"`)이 그대로 들어간다.
-framework 내부에서 위 두 record를 묶는 `ZLinkSpotMonitoringSnapshot`은 internal
-타입이므로, application 코드에서 직접 다루지 않는다.
+`ZLinkSpotEvent` payload 에 노출되는 `ZLinkSpotNodeStatus` 와
+`ZLinkSpotNodePeerEntry` 는 첫 필드가 `ChannelName` 이다. spot node 에서 채널
+이름은 `AddSpotMesh(...)` 에 넘긴 mesh 이름(예: `"game.stage"`) 이 그대로
+들어간다.
 
-## 6. 왜 raw monitor를 그대로 노출하지 않는가
+framework 내부에서 위 두 record 를 묶는 `ZLinkSpotMonitoringSnapshot` 은
+internal 타입이다. 따라서 application 코드에서 직접 다루지 않는다.
 
-하나의 API로 네 source를 전부 덮으려면 결국 가장 낮은 수준의 모양으로 내려가야
-한다. 그러면 registry와 spot는 실제 하부 표면이 가진 능력보다 더 많은 것을
-약속하게 된다.
+## 6. 왜 raw monitor 를 그대로 노출하지 않는가
 
-따라서 현재 초안은 다음과 같이 source를 나누는 편을 기본으로 본다.
+이 절은 source 별로 표면을 따로 둔 이유를 정리한다.
+
+하나의 API 로 네 source 를 전부 덮으려면, 결국 가장 낮은 수준의 모양으로
+내려가야 한다. 그러면 registry 와 spot 은 실제 하부 표면이 가진 능력보다 더
+많은 것을 약속하게 된다.
+
+따라서 현재 초안은 다음과 같이 source 를 나누는 편을 기본으로 본다.
 
 - socket
   - raw monitor 기반
@@ -328,29 +343,35 @@ framework 내부에서 위 두 record를 묶는 `ZLinkSpotMonitoringSnapshot`은
 - application
   - typed runtime event handler 기반
 
-이렇게 구분해 두어야 framework가 source별 구현 차이를 숨기면서도, 없는 기능을
+이렇게 구분해 두어야 framework 가 source 별 구현 차이를 숨기면서도, 없는 기능을
 있는 것처럼 보이지 않게 할 수 있다.
 
 ## 7. 결정된 기준
 
-- registry/spot polling 주기는 monitoring 등록 시점에 항상 명시한다. 숨은 기본
-  주기를 두지 않고, 운영 코드가 polling cost를 설정에서 바로 읽을 수 있게 하는
-  편을 기본으로 본다.
+이 절은 monitoring 표면이 따르는 고정된 결정 사항을 모아둔 것이다.
+
+- registry / spot polling 주기는 monitoring 등록 시점에 항상 명시한다. 숨은
+  기본 주기를 두지 않는다. 운영 코드가 polling cost 를 설정에서 바로 읽을 수
+  있게 하는 편을 기본으로 본다.
 - registry event 종류는 `StatusChanged`, `TopologyChanged`,
   `ServiceSummaryChanged` 세 가지로 고정한다.
 - spot event 종류는 `StatusChanged`, `PeersChanged`, `SubjectsChanged` 세 가지로
   고정한다.
-- socket event payload는 raw native enum과 상태 코드를 함께 노출한다. 반면
-  registry/spot event는 snapshot diff 기반의 합성 event이므로 별도의 native enum
-  필드를 두지 않는다. discovery는 runtime event 자체가 아니므로 별도 event
-  payload를 두지 않는다.
+- socket event payload 는 raw native enum 과 상태 코드를 함께 노출한다. 반면
+  registry / spot event 는 snapshot diff 기반의 합성 event 다. 그래서 별도의
+  native enum 필드를 두지 않는다. discovery 는 runtime event 자체가 아니므로
+  별도 event payload 를 두지 않는다.
 
 ## 8. 회귀 테스트
 
-Monitoring 문서의 항목은 등록한 source 이름이 실제 runtime capability와 맞는지,
-Registry와 SPOT 상태 변화가 typed event와 snapshot으로 관찰되는지를 확인한다. raw
-monitor event를 그대로 외부로 새어 보내지 않는다는 정책도 public surface 테스트와
-함께 점검한다.
+이 절은 monitoring 표면이 어떤 테스트로 회귀를 막는지를 정리한다.
+
+Monitoring 문서의 항목은 다음을 확인한다.
+
+- 등록한 source 이름이 실제 runtime capability 와 맞는지
+- Registry 와 SPOT 상태 변화가 typed event 와 snapshot 으로 관찰되는지
+- raw monitor event 를 그대로 외부로 새어 보내지 않는다는 정책이 public surface
+  테스트에서도 유지되는지
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|

@@ -14,10 +14,10 @@
 
 ## 1. 목적
 
-문서가 늘어나다 보면 "설명은 있지만 정작 지금 구현 계획에 들어가는가"가 흐려지기
-쉽다. 이 문서는 그 경계를 분명히 한다. 즉 현재 `.NET` 문서 묶음에서 실제로
-구현 대상으로 잡은 항목과, 처음부터 framework 기본 범위 밖으로 빼 둔 항목을
-한 자리에서 구분한다.
+문서가 늘어나다 보면 "설명은 있지만 정작 지금 구현 계획에 들어가는가" 라는 점이
+흐려지기 쉽다. 이 문서는 그 경계를 분명히 한다. 즉 현재 `.NET` 문서 묶음에서
+실제로 구현 대상으로 잡은 항목과, 처음부터 framework 기본 범위 밖으로 빼 둔
+항목을 한 자리에서 구분한다.
 
 ## 2. 현재 계획 구현 범위
 
@@ -38,12 +38,12 @@
   등록 표면
 - `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotPublisherClient`,
   `IZLinkSpotConnectionManager`
-- handler group mapping 모델 — 즉 `[ZLinkHandlerGroup("...")]` 클래스
+- handler group mapping 모델. 즉 `[ZLinkHandlerGroup("...")]` 클래스
   attribute[^attribute] 와 channel 등록 쪽의 `channel.MapHandlerGroup("...")`
   호출을 짝으로 두는 모델이다.
-  `MapHandlersFromAssemblyContaining<TMarker>()` 같은 assembly 전체 scan[^assembly-scan]
-  은 보조 수단으로만 남기고, 정식 sample, scope, regression 기준은 group
-  mapping 모델에 맞춘다.
+  `MapHandlersFromAssemblyContaining<TMarker>()` 같은 assembly 전체
+  scan[^assembly-scan] 은 보조 수단으로만 남긴다. 정식 sample, scope, regression
+  기준은 group mapping 모델에 맞춘다.
 - spot 의 packet / subscribe / timer descriptor
 - `AddStreamNode(...)` 와 framework Header 기반 packet session 등록
 - `AddZLinkRegistry(...)`, `IZLinkRegistryQuery`
@@ -51,17 +51,18 @@
 - `AddZLinkMonitoring(...)` 과 socket / registry / spot 모니터링 source
 - `.NET DI`[^di] 와 hosted service[^hosted-service] lifecycle 통합
 - backend adapter layer[^backend-adapter] 와 backend dependency policy 적용
-- 기본 codec[^codec] 은 framework core 가 JSON 하나로 lock-in 한다.
-  protobuf, msgpack 같은 추가 codec 은 framework core 패키지가 아니라 별도의
-  codec extension package(예: `Systems.Zlink.Framework.Codec.Protobuf`) 에서
-  제공한다. sample 이 protobuf payload 를 다루더라도 framework core 자체가
-  protobuf 에 의존하게 만들지는 않는다.
+- 기본 codec[^codec] 은 framework core 가 JSON 하나로 고정(lock-in) 한다.
+  protobuf, msgpack 같은 추가 codec 은 framework core 패키지에 두지 않는다.
+  대신 별도의 codec extension package
+  (예: `Systems.Zlink.Framework.Codec.Protobuf`) 에서 제공한다. sample 이
+  protobuf payload 를 다루더라도, framework core 자체가 protobuf 에 의존하게
+  만들지는 않는다.
 - 저장소가 지금 함께 패키징하는 runtime RID[^rid] 여섯 가지
   (`win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`)
   를 모두 CI[^ci] gate 범위 안에 둔다.
 
-구현 순서는 단계를 나눌 수 있어도, 위 항목 중 일부만 따로 떼어 기본 scope 밖으로
-밀어 두지는 않는다.
+구현 순서는 단계를 나눠도 된다. 다만 위 항목 중 일부만 따로 떼어 기본 scope
+밖으로 밀어 두지는 않는다.
 
 ## 3. 비목표
 
@@ -83,8 +84,8 @@
 ## 4. 별도 확장 후보
 
 아래 항목들은 framework core 와 분리해서 별도 패키지나 helper 로 두는 편을
-기본으로 본다. 즉 필요하면 확장 패키지로 추가하되, framework core 자체에
-끌어들이지는 않는다.
+기본으로 본다. 즉 필요하면 확장 패키지로 추가하되, framework core 자체에는
+끌어들이지 않는다.
 
 - typed client wrapper 패키지
 - serializer extension 패키지 묶음
@@ -104,13 +105,13 @@
   금지 규칙을 어기지 않는다.
 - 저장소가 패키징하는 여섯 runtime RID 전부에서 CI 기준이 유지된다.
 
-반대로 use case 문서에 이름이 한 번이라도 나온 모든 개념을 빠짐없이 구현하는
-것을 뜻하지는 않는다.
+반대로, use case 문서에 이름이 한 번이라도 나온 모든 개념을 빠짐없이 구현해야
+한다는 의미는 아니다.
 
 ## 6. 회귀 테스트
 
-구현 범위와 비목표는 public surface 가 의도치 않게 부풀어 오르는 것을 막는
-회귀 테스트와 함께 관리한다. 즉 새 API 가 추가되면 이 문서의 범위 표와 public
+구현 범위와 비목표는 public surface 가 의도치 않게 부풀어 오르는 것을 막아 주는
+회귀 테스트와 함께 관리한다. 즉 새 API 가 추가되면, 이 문서의 범위 표와 public
 surface 테스트를 같이 갱신해야 한다.
 
 | 테스트 케이스 | 확인 기준 |

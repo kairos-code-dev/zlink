@@ -16,9 +16,10 @@
 ## 1. 목적
 
 framework 구현은 public API 의 모양만 맞춰서는 끝나지 않는다. host 의
-lifecycle[^lifecycle], startup validation[^startup-validation], reconnect, shutdown
-순서 같은 동작 약속이 문서로 단단히 닫혀 있어야, 회귀 테스트와 실제 운영 코드가
-같은 결과를 기대할 수 있다. 이 문서는 그 약속을 한 곳에 모은다.
+lifecycle[^lifecycle], startup validation[^startup-validation], reconnect,
+shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한다. 그래야 회귀
+테스트와 실제 운영 코드가 같은 결과를 기대할 수 있다. 이 문서는 그 약속을 한
+자리에 모은다.
 
 ## 2. Startup 순서
 
@@ -36,8 +37,9 @@ lifecycle[^lifecycle], startup validation[^startup-validation], reconnect, shutd
 
 - 설정 검증에서 걸리면, bind / connect 단계에 들어가기 전에 그 자리에서 바로
   예외를 던진다.
-- embedded registry 가 있는 구성이라면, Registry 가 먼저 bind 되어야 그 위에서
-  돌아갈 discovery 기반 channel 과 SPOT[^spot] mesh 가 정상적으로 시작될 수 있다.
+- embedded registry 가 있는 구성에서는 Registry 가 먼저 bind 되어야 한다.
+  그래야 그 위에서 돌아갈 discovery 기반 channel 과 SPOT[^spot] mesh 가
+  정상적으로 시작될 수 있다.
 - monitoring 은 감시 대상 source 가 만들어진 뒤에 attach 한다.
 
 ## 3. Fail-Fast 규칙
@@ -66,10 +68,12 @@ lifecycle[^lifecycle], startup validation[^startup-validation], reconnect, shutd
 3. embedded Registry stop
 4. `Context` dispose
 
-이 순서를 따르는 이유는 두 가지다. 첫째, runtime 이 내려가는 동안 monitoring 이
-새로운 synthetic event[^synthetic-event] 를 계속 만들어 내지 않도록 하기 위해서다.
-둘째, service runtime 을 먼저 내린 뒤에 Registry 를 정리해야, 다른 노드들이
-topology[^topology] 변화를 정상적인 절차로 읽어 갈 수 있기 때문이다.
+이 순서를 따르는 이유는 두 가지다.
+
+- 첫째, runtime 이 내려가는 동안 monitoring 이 새로운
+  synthetic event[^synthetic-event] 를 계속 만들어 내지 않도록 하기 위해서다.
+- 둘째, service runtime 을 먼저 내린 뒤에 Registry 를 정리해야, 다른 노드들이
+  topology[^topology] 변화를 정상적인 절차로 읽어 갈 수 있기 때문이다.
 
 ## 5. Request / Send / Publish 실패 의미
 
@@ -80,35 +84,38 @@ topology[^topology] 변화를 정상적인 절차로 읽어 갈 수 있기 때�
 | `Publish(...).Submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
 
 `Send(...).Submit(...)` 과 `Publish(...).Submit(...)` 은 원격 peer 의 handler
-처리가 끝나기를 기다리지 않는다. framework 가 메시지를 transport 에 넘길 수 있게
-될 때까지만 기다리는 비동기 submit 이다. 일시적인 backpressure[^backpressure] 는
-`false` 반환값으로 노출하지 않고, nonblocking send, pending queue,
-ready notification 조합으로 내부에서 처리한다.
+처리가 끝나기를 기다리지 않는다. framework 가 메시지를 transport 에 넘길 수
+있게 될 때까지만 기다리는 비동기 submit 이다. 일시적인
+backpressure[^backpressure] 는 `false` 반환값으로 노출하지 않는다. 대신
+nonblocking send, pending queue, ready notification 조합으로 내부에서 처리한다.
 
 이 대기는 thread 를 블로킹하는 대기가 아니다. caller 가 `await` 하면 application
-흐름은 submit 이 끝날 때까지 기다리게 되지만, runtime 은 thread pool 의 worker
-를 backpressure 대기용으로 잡아 두지 않는다. pending queue 는 high water
-mark[^high-water-mark] 와 timeout 정책으로 크기를 제한해야 하며, runtime stop
-이나 cancellation 이 들어오면 대기 중이던 submit 을 깨워서 완료 또는 실패로
-정리해 줘야 한다.
+흐름은 submit 이 끝날 때까지 기다린다. 다만 runtime 은 thread pool 의 worker
+를 backpressure 대기용으로 잡아 두지 않는다. pending queue 의 동작 약속은 두
+가지다.
 
-`Request(...).Submit(...)` 은 두 단계로 나눠서 본다. request packet 의 submit
-자체는 `Send(...).Submit(...)` 과 같은 전송 경로를 타고 `SendTimeout` 정책을
-따른다. 그 뒤의 reply 대기는 `Timeout(...)` 으로 정한 request timeout 정책을
-따른다.
+- 크기는 high water mark[^high-water-mark] 와 timeout 정책으로 제한해야 한다.
+- runtime stop 이나 cancellation 이 들어오면, 대기 중이던 submit 을 깨워서
+  완료 또는 실패로 정리해 줘야 한다.
+
+`Request(...).Submit(...)` 은 두 단계로 나눠서 본다.
+
+- request packet 의 submit 자체는 `Send(...).Submit(...)` 과 같은 전송 경로를
+  타고 `SendTimeout` 정책을 따른다.
+- 그 뒤의 reply 대기는 `Timeout(...)` 으로 정한 request timeout 정책을 따른다.
 
 ## 6. Reconnect 와 Monitoring 의미
 
 - discovery 기반 capability 는 provider 집합이 바뀔 때마다 runtime 이 알아서
   따라간다.
-- 반면 manual capability 의 경우 framework 가 자동 reconnect 정책을 숨겨서 끼워
-  넣지 않는다. reconnect 가 필요하면 explicit `Connect(...)` 호출이나 상위의
-  retry policy 가 책임진다.
+- 반면 manual capability 의 경우, framework 가 자동 reconnect 정책을 안에
+  숨겨서 끼워 넣지 않는다. reconnect 가 필요하면 명시적인 `Connect(...)`
+  호출이나 상위의 retry policy 가 책임진다.
 - socket 단의 이벤트는 하부 monitor event 를 그대로 감싼다.
-- registry 와 spot 쪽은 polling 과 snapshot diff 를 기반으로 한 synthetic event
-  로 다시 만들어 올린다.
-- discovery 상태 자체는 별도의 event 로 노출하지 않고, registry 의 snapshot 또는
-  query 로 확인하게 한다.
+- registry 와 spot 쪽은 다르게 다룬다. polling 과 snapshot diff 를 기반으로
+  framework 가 다시 만든 synthetic event 로 올린다.
+- discovery 상태 자체는 별도의 event 로 노출하지 않는다. 대신 registry 의
+  snapshot 이나 query 로 확인하게 한다.
 
 ## 7. Stream Session Error 의미
 
@@ -148,9 +155,14 @@ mark[^high-water-mark] 와 timeout 정책으로 크기를 제한해야 하며, r
 
 ## 10. 회귀 테스트
 
-lifecycle 과 failure semantics 항목은 시작 순서, shutdown 정리 순서, request /
-send 실패 의미, stream transport error 의 범위까지 모두 테스트로 못 박는다.
-만약 구현이 오류가 더 늦게 드러나는 방향으로 바뀐다면, 이 문서와 테스트를 함께
+lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박아 둔다.
+
+- 시작 순서
+- shutdown 정리 순서
+- request / send 실패 의미
+- stream transport error 의 범위
+
+만약 구현이 오류를 더 늦게 드러내는 방향으로 바뀐다면, 이 문서와 테스트를 함께
 갱신한다.
 
 | 테스트 케이스 | 확인 기준 |

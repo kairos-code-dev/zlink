@@ -15,12 +15,18 @@
 
 ## 1. 목적
 
-`Systems.Zlink.Stream.Connector.Unity`는 일반 `.NET` package인
-`Systems.Zlink.Stream.Connector` 위에 얇게 얹는 Unity 전용 adapter다. Unity package는
-새로 wire protocol[^wire-protocol]을 만들지 않는다. TCP, TLS, WS, WSS transport,
-STREAM `header + body` framing[^framing], helper header, codec[^codec],
-compression의 의미는 모두 [.NET Stream Connector](./streaming-client.ko.md)를 그대로
-따른다.
+`Systems.Zlink.Stream.Connector.Unity` 는 Unity 전용 adapter 다.
+일반 `.NET` package 인 `Systems.Zlink.Stream.Connector` 위에 얇게 얹는 형태다.
+
+Unity package 는 새로 wire protocol[^wire-protocol] 을 만들지 않는다. 즉
+다음 요소의 의미는 모두 [.NET Stream Connector](./streaming-client.ko.md)
+를 그대로 따른다.
+
+- TCP, TLS, WS, WSS transport
+- STREAM `header + body` framing[^framing]
+- helper header
+- codec[^codec]
+- compression
 
 Unity adapter가 추가로 책임지는 영역은 다음과 같다.
 
@@ -40,9 +46,9 @@ Unity package는 일반 `.NET` connector package를 의존성으로 가져간다
 | `Systems.Zlink.Stream.Connector` | core connector, transport, framing, helper header, codec, compression |
 | `Systems.Zlink.Stream.Connector.Unity` | Unity wrapper, main thread dispatch, Unity package metadata |
 
-Unity package는 `Systems.Zlink.Stream.Connector` core를 다시 구현하지 않는다. core
-packet 의미를 바꾸면 일반 `.NET` client와 Unity client가 서로 다른 protocol을 쓰게
-되므로 허용하지 않는다.
+Unity package 는 `Systems.Zlink.Stream.Connector` core 를 다시 구현하지 않는다.
+core packet 의미를 바꾸면 일반 `.NET` client 와 Unity client 가 서로 다른
+protocol 을 쓰게 되기 때문이다. 따라서 그런 변경은 허용하지 않는다.
 
 ## 3. Unity Package 구조
 
@@ -70,7 +76,9 @@ Systems.Zlink.Stream.Connector.Unity/
 
 ## 4. Public Surface 초안
 
-Unity 사용자는 `MonoBehaviour` wrapper를 통해 연결과 callback을 다루게 된다.
+이 절은 Unity 사용자에게 노출되는 표면을 정리한다.
+
+Unity 사용자는 `MonoBehaviour` wrapper 를 통해 연결과 callback 을 다루게 된다.
 
 ```csharp
 public sealed class ZlinkUnityStreamConnectorOptions
@@ -123,29 +131,33 @@ public sealed class ZlinkStreamConnectorBehaviour : MonoBehaviour
 }
 ```
 
-Unity wrapper는 `Task`를 노출할 수는 있지만, 사용자 callback은 반드시 Unity main
-thread에서 호출되어야 한다. 사용자는 `On<TBody>(...)`로 등록한 typed callback
-안에서 `GameObject`, `Transform`, `UI` 같은 Unity 객체를 그대로 다룰 수 있어야
-하기 때문이다.
+Unity wrapper 는 `Task` 를 노출할 수 있다. 하지만 사용자 callback 은 반드시
+Unity main thread 에서 호출되어야 한다. 이유는 단순하다. 사용자는
+`On<TBody>(...)` 로 등록한 typed callback 안에서 `GameObject`, `Transform`,
+`UI` 같은 Unity 객체를 그대로 다룰 수 있어야 하기 때문이다.
 
-typed `Send`, `Request`, codec, compression helper는 core connector와 같은 의미를
-유지한다. Unity wrapper가 자체적으로 별도의 이름 규칙이나 helper header를 새로
-만들지 않는다.
+typed `Send`, `Request`, codec, compression helper 는 core connector 와 같은
+의미를 유지한다. Unity wrapper 가 자체적으로 별도의 이름 규칙이나 helper
+header 를 새로 만들지 않는다.
 
 ## 5. Callback Dispatch
 
-core connector의 receive loop는 worker thread[^worker-thread]에서 실행될 수 있다.
-Unity adapter는 worker thread에서 사용자 callback을 직접 호출하지 않는다.
+이 절은 worker thread 에서 들어오는 event 를 Unity main thread 로 어떻게
+넘기는지를 정리한다.
+
+core connector 의 receive loop 는 worker thread[^worker-thread] 에서 실행될 수
+있다. Unity adapter 는 worker thread 에서 사용자 callback 을 직접 호출하지
+않는다.
 
 권장 동작은 다음 순서다.
 
-1. core connector가 typed packet, error, disconnect event를 받는다.
-2. Unity adapter가 그 event를 thread-safe queue[^thread-safe-queue]에 넣는다.
-3. `Update()`에서 queue를 비운다.
-4. 사용자 callback을 Unity main thread에서 호출한다.
+1. core connector 가 typed packet, error, disconnect event 를 받는다.
+2. Unity adapter 가 그 event 를 thread-safe queue[^thread-safe-queue] 에 넣는다.
+3. `Update()` 에서 queue 를 비운다.
+4. 사용자 callback 을 Unity main thread 에서 호출한다.
 
-callback queue에는 최대 pending 개수를 둘 수 있다. 초과했을 때 drop할지
-disconnect할지를 옵션으로 정한다.
+callback queue 에는 최대 pending 개수를 둘 수 있다. 한도를 넘었을 때 어떻게
+처리할지 — drop 할지, disconnect 할지 — 는 옵션으로 정한다.
 
 ```csharp
 public sealed class ZlinkUnityDispatchOptions
@@ -163,9 +175,9 @@ public enum ZlinkUnityCallbackOverflowPolicy
 }
 ```
 
-기본값으로는 `Disconnect`가 적합하다. callback queue overflow는 사용자가 packet을
-제때 처리하지 못하고 있다는 신호이므로, 조용히 유실시키면 문제를 추적하기
-어려워지기 때문이다.
+기본값으로는 `Disconnect` 가 적합하다. callback queue overflow 는 사용자가
+packet 을 제때 처리하지 못하고 있다는 신호다. 이를 조용히 유실시키면 문제를
+추적하기 어려워진다. 그래서 명시적으로 끊는 쪽을 기본으로 둔다.
 
 dispatcher 구현은 다음 표면을 만족해야 한다.
 
@@ -180,9 +192,9 @@ public sealed class ZlinkUnityCallbackDispatcher : MonoBehaviour
 }
 ```
 
-`Drain()`은 `Update()`에서 호출한다. package 내부 구현은 다른 타입을 사용해도
-무방하지만, "사용자 callback은 Unity main thread에서 호출된다"는 계약만은 반드시
-유지해야 한다.
+`Drain()` 은 `Update()` 에서 호출한다. package 내부 구현은 다른 타입을 사용해도
+무방하다. 단 "사용자 callback 은 Unity main thread 에서 호출된다" 는 계약만은
+반드시 유지해야 한다.
 
 ## 6. Lifecycle
 
@@ -204,9 +216,9 @@ public enum ZlinkUnityPausePolicy
 }
 ```
 
-모바일 환경에서는 pause 중에 네트워크가 끊길 수 있으므로 `Disconnected` callback과
-명시적 reconnect helper를 함께 제공해야 한다. 자동 reconnect를 기본값으로 켜두지는
-않는다.
+모바일 환경에서는 pause 중에 네트워크가 끊길 수 있다. 따라서 `Disconnected`
+callback 과 명시적 reconnect helper 를 함께 제공해야 한다. 단 자동 reconnect
+를 기본값으로 켜두지는 않는다.
 
 ## 7. Transport
 
@@ -217,13 +229,13 @@ Unity adapter는 core connector의 transport 의미를 바꾸지 않는다.
 - WebSocket
 - WebSocket over TLS
 
-Unity build target별 실제 지원 여부는 Unity runtime과 package 구현이 제공하는
-transport 능력을 따른다. 이 draft는 특정 Unity build target의 네트워크 제한을
-공개 계약으로 못 박지 않는다.
+Unity build target 별 실제 지원 여부는 Unity runtime 과 package 구현이 제공하는
+transport 능력을 따른다. 즉 이 draft 는 특정 Unity build target 의 네트워크
+제한을 공개 계약으로 못 박지 않는다.
 
-IL2CPP[^il2cpp]와 AOT[^aot] 환경에서는 reflection 기반 codec 사용에 제약이 있을 수
-있다. Unity adapter는 MessagePack, Protobuf 같은 codec helper를 쓸 때 필요한 AOT
-설정을 샘플과 가이드에서 분명히 드러내야 한다.
+IL2CPP[^il2cpp] 와 AOT[^aot] 환경에서는 reflection 기반 codec 사용에 제약이
+있을 수 있다. 그래서 Unity adapter 는 MessagePack, Protobuf 같은 codec helper
+를 쓸 때 필요한 AOT 설정을, 샘플과 가이드에서 분명히 드러내야 한다.
 
 ## 8. Sample 기준
 
@@ -253,11 +265,14 @@ TLS/WSS 테스트는 인증서 fixture가 준비된 CI[^ci] 환경에서 실행�
 
 ## 10. 회귀 테스트
 
-Unity adapter 항목은 공통 Stream Connector 계약을 그대로 지키면서, Unity main
-thread callback dispatch와 wrapper lifecycle만 추가로 검증한다. 현재 저장소에는
-순수 Unity runtime 테스트가 없으므로, 이 표에는 공통 connector 계약을 실제로
-검증하는 테스트만 둔다. Unity runtime 전용 테스트가 새로 추가되면, 실행 가능한
-테스트 이름으로 이 표에 추가한다.
+이 절은 Unity adapter 가 어떤 테스트로 회귀를 막는지를 정리한다.
+
+Unity adapter 항목은 공통 Stream Connector 계약을 그대로 지킨다. 그 위에서
+Unity main thread callback dispatch 와 wrapper lifecycle 만 추가로 검증한다.
+
+현재 저장소에는 순수 Unity runtime 테스트가 없다. 따라서 이 표에는 공통
+connector 계약을 실제로 검증하는 테스트만 둔다. Unity runtime 전용 테스트가
+새로 추가되면, 실행 가능한 테스트 이름으로 이 표에 추가한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|

@@ -15,21 +15,22 @@
 TicTacToe 샘플은 두 가지 구성으로 나누어 둔다.
 
 - direct 샘플: 클라이언트가 API 서버에서 game 정보를 받은 뒤, Play 서버의
-  STREAM[^stream] endpoint에 직접 연결한다.
+  STREAM[^stream] endpoint 에 직접 연결한다.
 - session actor dispatch[^session-actor-dispatch] 샘플: 클라이언트는 Session
-  서버의 STREAM endpoint 하나만 알고 있고, Session 서버가 그 요청을 API 서버와
-  Play 서버로 relay한다.
+  서버의 STREAM endpoint 하나만 알고 있다. 그 뒤 Session 서버가 클라이언트의
+  요청을 API 서버와 Play 서버로 relay 한다.
 
-두 샘플 모두 actor[^actor] 식별 필드의 이름은 public DTO[^dto] 상에서 `ActorId`로
-통일한다. token은 인증 입력값으로만 쓰이며, actor identity로는 사용하지 않는다.
+두 샘플 모두 actor[^actor] 식별 필드의 이름은 public DTO[^dto] 상에서
+`ActorId` 로 통일한다. token 은 인증 입력값으로만 쓰며, actor identity 로는
+사용하지 않는다.
 
 ## 2. Direct 샘플 구성
 
-direct 샘플의 public DTO는 현재 코드 기준으로
-`framework/languages/dotnet/samples/TicTacToe/Shared/Contracts/Messages.cs`를
+direct 샘플의 public DTO 는 현재 코드 기준으로
+`framework/languages/dotnet/samples/TicTacToe/Shared/Contracts/Messages.cs` 를
 따른다.
 
-HTTP와 server channel 쪽 DTO는 다음과 같다.
+HTTP 와 server channel 쪽 DTO 는 다음과 같다.
 
 ```csharp
 public sealed record CreateGameHttpReq(string? GameName);
@@ -51,7 +52,7 @@ public sealed record AuthenticatePlayerReq(string AccessToken);
 public sealed record AuthenticatePlayerRes(string ActorId);
 ```
 
-client STREAM 쪽 DTO는 다음과 같다.
+client STREAM 쪽 DTO 는 다음과 같다.
 
 ```csharp
 public sealed record AuthenticateReq(string AccessToken);
@@ -67,8 +68,8 @@ public sealed record PlaceMarkReq(int Cell);
 public sealed record PlaceMarkRes(GameState State);
 ```
 
-Play actor가 game room SPOT[^spot]에 join할 때 사용하는 내부 request/response는
-다음과 같다.
+Play actor 가 game room SPOT[^spot] 에 join 할 때 쓰는 내부 request / response
+는 다음과 같다.
 
 ```csharp
 public sealed record TicTacToeGameJoinReq(
@@ -78,7 +79,7 @@ public sealed record TicTacToeGameJoinReq(
 public sealed record TicTacToeGameJoinRes(GameState State);
 ```
 
-server push와 state DTO는 다음과 같다.
+server push 와 state DTO 는 다음과 같다.
 
 ```csharp
 public sealed record PlayerJoinedNotify(
@@ -101,41 +102,48 @@ public sealed record GameState(
     int? LastMoveCell);
 ```
 
-direct 샘플은 일반 channel client/server 와 STREAM header session, 그리고 SPOT
-game room을 함께 사용한다. `Api` channel client와 `Play` channel client는 현재
-샘플 코드에서 `UseManualConnections(...)`로 endpoint를 직접 지정해 연결한다.
+direct 샘플은 다음 세 가지를 함께 사용한다.
+
+- 일반 channel client / server
+- STREAM header session
+- SPOT game room
+
+`Api` channel client 와 `Play` channel client 는 현재 샘플 코드에서
+`UseManualConnections(...)` 로 endpoint 를 직접 지정해 연결한다. 이 점은
 session actor dispatch 샘플의 자동 discovery 정책과 혼동하지 않도록 주의한다.
 
 ## 3. Session Actor Dispatch 샘플 구성
 
-session actor dispatch 샘플의 DTO는
-`framework/languages/dotnet/samples/TicTacToe(session-gateway)/Contracts/Messages.cs`를
-따른다.
+session actor dispatch 샘플의 DTO 는
+`framework/languages/dotnet/samples/TicTacToe(session-gateway)/Contracts/Messages.cs`
+를 따른다.
 
-이 샘플은 service channel과 routed channel 모두 전역 `UseDiscovery(...)` 기반의
-자동 연결을 사용한다. game room SPOT node는 `AddSpotMesh(...)` 안에서
-`mesh.UseDiscovery(...)`를 호출해 같은 registry에 붙는다. 샘플 코드에는
-`UseManualConnections(...)`를 두지 않는다.
+이 샘플은 service channel 과 routed channel 모두 전역 `UseDiscovery(...)`
+기반의 자동 연결을 사용한다. game room SPOT node 는 `AddSpotMesh(...)` 안에서
+`mesh.UseDiscovery(...)` 를 호출해 같은 registry 에 붙는다. 샘플 코드에는
+`UseManualConnections(...)` 를 두지 않는다.
 
 핵심 계약은 다음과 같다.
 
-- `AuthenticateReq.ActorId`가 인증 요청의 actor identity 역할을 한다.
-- 인증이 성공하면 Session 서버는 `BindActorHandleAsync(...)`로 local `SpotNode`의
-  actor runtime에서 actor handle을 만들고, 현재 stream session binding을
-  framework/core 내부 상태에 기록한다.
-- `CreateMatchReq`는 Session 서버에서 API 서버로 channel request로 relay된다.
-  클라이언트는 match id나 room 이름을 따로 지정하지 않는다.
-- API 서버는 Play 서버에 room 생성을 요청하고, Play 서버는 `IZLinkSpotManager`로
-  game room SPOT을 만든다. `CreateMatchRes.MatchId`는 생성된 room의 `SpotId`를
-  hex로 표현한 값이다.
-- `JoinMatchReq`와 `PlaceMarkReq`는 Session 서버에서 Play 서버의 actor로
-  dispatch된다.
-- Play actor는 `JoinMatchReq`를 처리하는 중에 해당 game room SPOT에 join한다.
-  이후 들어오는 `PlaceMarkReq`는 actor가 join한 room SPOT의 상태를 변경한다.
-- Play 서버가 클라이언트로 push할 때는 `IZLinkSessionProxy`를 사용한다.
-- `OpponentJoinedNotify`, `TurnChangedNotify`, `GameEndedNotify`는 actor id를
-  기준으로 현재 binding되어 있는 Session 서버를 찾고, 그 서버의 client stream을
-  통해 전달된다.
+- `AuthenticateReq.ActorId` 가 인증 요청의 actor identity 역할을 한다.
+- 인증이 성공하면, Session 서버는 두 가지 일을 한다. 먼저
+  `BindActorHandleAsync(...)` 로 local `SpotNode` 의 actor runtime 에서 actor
+  handle 을 만든다. 그 뒤 현재 stream session binding 을 framework / core
+  내부 상태에 기록한다.
+- `CreateMatchReq` 는 Session 서버에서 API 서버로 channel request 로 relay
+  된다. 클라이언트는 match id 나 room 이름을 따로 지정하지 않는다.
+- API 서버는 Play 서버에 room 생성을 요청한다. Play 서버는
+  `IZLinkSpotManager` 로 game room SPOT 을 만든다. `CreateMatchRes.MatchId` 는
+  생성된 room 의 `SpotId` 를 hex 로 표현한 값이다.
+- `JoinMatchReq` 와 `PlaceMarkReq` 는 Session 서버에서 Play 서버의 actor 로
+  dispatch 된다.
+- Play actor 는 `JoinMatchReq` 를 처리하는 중에 해당 game room SPOT 에 join
+  한다. 이후 들어오는 `PlaceMarkReq` 는 actor 가 join 한 room SPOT 의 상태를
+  변경한다.
+- Play 서버가 클라이언트로 push 할 때는 `IZLinkSessionProxy` 를 사용한다.
+- `OpponentJoinedNotify`, `TurnChangedNotify`, `GameEndedNotify` 는 actor id 를
+  기준으로 현재 binding 되어 있는 Session 서버를 찾는다. 그 뒤 해당 서버의
+  client stream 을 통해 전달된다.
 
 ## 4. 완료 기준
 
@@ -150,9 +158,14 @@ session actor dispatch 샘플의 DTO는
 
 ## 5. 회귀 테스트
 
-틱택토 샘플은 Direct 경로와 Session Actor Dispatch 경로가 모두 public framework
-표면만 사용하는지 확인한다. 샘플을 수정할 때는 API 서버, Play 서버, STREAM
-connector, SPOT actor 흐름을 아래 테스트와 함께 맞춘다.
+틱택토 샘플은 Direct 경로와 Session Actor Dispatch 경로가 모두 public
+framework 표면만 사용하는지 확인한다. 샘플을 수정할 때는 다음 흐름을 아래
+테스트와 함께 맞춘다.
+
+- API 서버
+- Play 서버
+- STREAM connector
+- SPOT actor
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|

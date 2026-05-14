@@ -15,21 +15,30 @@
 
 ## 1. 목적
 
-인터페이스 정의와 샘플 코드만 봐서는 "이 조합을 허용해도 되는가", "무엇을
-startup 실패로 봐야 하는가" 하는 질문에 답하기 어려울 수 있다. 이 문서의 목적은
-구현자가 registration surface[^registration-surface]를 만들 때, 같은 입력에 대해
-항상 같은 판정을 내리도록 기준을 미리 고정하는 데에 있다.
+인터페이스 정의와 샘플 코드만 봐서는 다음 같은 질문에 답하기 어려울 수 있다.
+
+- "이 조합을 허용해도 되는가"
+- "무엇을 startup 실패로 봐야 하는가"
+
+이 문서의 목적은 구현자가 registration surface[^registration-surface] 를 만들
+때, 같은 입력에 대해 항상 같은 판정을 내리도록 기준을 미리 고정해 두는 것이다.
 
 ## 2. 공통 원칙
 
-- 등록 단계에서 이미 잘못된 것을 판정할 수 있는 설정 오류는 host가 시작되기 전에
+각 capability 표를 읽기 전에, 표 전체에 공통으로 적용되는 다음 네 가지를 먼저
+짚어 둔다.
+
+- 등록 단계에서 이미 판정할 수 있는 설정 오류는 host 가 시작되기 전에
   fail-fast[^fail-fast] 한다.
-- 같은 capability 안에서는 `Discovery` 기반 자동 연결과 manual 연결을 섞지 않는다.
-- manual 연결도 없고 discovery 등록도 없는 outbound capability는 peer를 어디서
-  가져올지 알 길이 없으므로, startup validation 단계에서 거부한다.
-- 같은 항목을 중복으로 등록하는 경우에는 조용히 덮어쓰는 대신 예외로 처리한다.
+- 같은 capability 안에서는 `Discovery` 기반 자동 연결과 manual 연결을 섞지
+  않는다.
+- outbound capability 에 manual 연결도 없고 discovery 등록도 없으면 거부한다.
+  peer 를 어디서 가져올지 알 길이 없기 때문이다.
+- 같은 항목을 중복으로 등록한 경우, 조용히 덮어쓰지 않고 예외로 처리한다.
 
 ## 3. Channel Capability Matrix
+
+다음 표는 channel 의 capability 조합별 허용 여부와 기대 동작을 정리한다.
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
@@ -54,6 +63,8 @@ startup 실패로 봐야 하는가" 하는 질문에 답하기 어려울 수 있
 
 ## 4. Spot Capability Matrix
 
+다음 표는 SPOT 의 등록 조합별 허용 여부와 기대 동작을 정리한다.
+
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
 | `AddSpotMesh(channel, configureMesh)` | 허용 | mesh가 활성 SPOT[^spot] channel view와 node 집합을 함께 소유한다 |
@@ -71,6 +82,8 @@ startup 실패로 봐야 하는가" 하는 질문에 답하기 어려울 수 있
 
 ## 5. Stream Node Matrix
 
+다음 표는 stream node 등록의 허용 조합을 정리한다.
+
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
 | `AddHeaderSession<T>()` 하나 등록 | 허용 | zlink stream header session node를 만든다 |
@@ -78,6 +91,8 @@ startup 실패로 봐야 하는가" 하는 질문에 답하기 어려울 수 있
 | bind endpoint 없음 | 비허용 | startup validation 오류 |
 
 ### 5.1 Session Actor Dispatch Matrix
+
+다음 표는 session actor dispatch 와 routed channel 의 허용 조합을 정리한다.
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
@@ -99,6 +114,8 @@ startup 실패로 봐야 하는가" 하는 질문에 답하기 어려울 수 있
 
 ## 6. Monitoring Registration Matrix
 
+다음 표는 monitoring 등록의 허용 조합을 정리한다.
+
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
 | `AddZLinkMonitoring(...)` + 등록된 socket source 이름 | 허용 | 해당 source에 event handler를 연결한다 |
@@ -109,6 +126,8 @@ startup 실패로 봐야 하는가" 하는 질문에 답하기 어려울 수 있
 | polling source인데 interval이 0 이하 | 비허용 | startup validation 오류 |
 
 ## 7. Registry Matrix
+
+다음 표는 Registry 등록 조합의 허용 여부를 정리한다.
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
@@ -133,16 +152,18 @@ startup 실패로 봐야 하는가" 하는 질문에 답하기 어려울 수 있
 - 같은 channel server에서 `kind + packetName`이 같은 handler 중복
 - 같은 routed channel에서 `kind + packetName`이 같은 handler 중복
 
-이 오류들은 런타임에 뒤늦게 드러내지 않고 startup 단계에서 미리 막는 것이
-기본이다. 다만 actor resolver 누락처럼 실제로 service가 사용되는 시점이 되어야
-드러나는 항목은, 해당 service가 생성되거나 처음 호출되는 시점에 같은 error
-family로 명확하게 실패시킨다.
+이 오류들은 런타임에 뒤늦게 드러내지 않고, startup 단계에서 미리 막는 것이
+기본이다.
+
+다만 actor resolver 누락처럼 실제로 service 가 사용되는 시점이 되어야 드러나는
+항목도 있다. 이런 항목은 해당 service 가 생성되거나 처음 호출되는 시점에, 같은
+error family 로 명확하게 실패시킨다.
 
 ## 9. 회귀 테스트
 
-Behavior Matrix는 허용 조합과 비허용 조합을 테스트 이름 단위로 고정한다. 새
-capability 조합을 추가할 때는 표만 늘리지 말고, startup validation 또는 runtime
-integration 테스트도 같은 변경에 함께 포함시킨다.
+Behavior Matrix 는 허용 조합과 비허용 조합을 테스트 이름 단위로 고정한다. 새
+capability 조합을 추가할 때는 표만 늘리지 않는다. startup validation 또는
+runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|

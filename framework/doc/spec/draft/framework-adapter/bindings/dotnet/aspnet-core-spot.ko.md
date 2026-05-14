@@ -15,10 +15,12 @@
 
 ## 1. 목표
 
-`SPOT`은 zlink 쪽에서 이미 독립된 개념과 runtime을 갖는다. 따라서
-`ZLink Framework`는 이 개념을 새로 만들거나 없애려는 것이 아니라,
-`ASP.NET Core` 사용자가 익숙한 모양으로 자연스럽게 다룰 수 있도록 감싸는 데
-목적을 둔다.
+이 절은 `ZLink Framework` 가 `SPOT` 을 `ASP.NET Core` 안에서 어떻게 다루려고
+하는지, 그 방향을 한 문장으로 정리한다.
+
+`SPOT` 은 zlink 쪽에서 이미 독립된 개념과 runtime 을 갖는다. 즉
+`ZLink Framework` 가 이 개념을 새로 만들거나 없애려는 것이 아니다. 대신
+`ASP.NET Core` 사용자가 익숙한 모양으로 다룰 수 있도록 감싸는 것이 목적이다.
 
 이 문서가 다루는 축은 다음과 같다.
 
@@ -34,26 +36,33 @@
 
 ## 2. 기반이 되는 .NET binding
 
+이 절은 framework 가 새로 만든 것이 아니라 기존 binding 위에 얹는 작업임을
+밝히는 자리다.
+
 현재 하부 토대는 다음 binding 표면이다.
 
 - `Discovery`
 - `SpotNode`
 - `Spot`
-- `Spot` publish/subscribe
-- channel client attach 기반 channel send/request
+- `Spot` publish / subscribe
+- channel client attach 기반 channel send / request
 
-즉 이 문서의 핵심은 `SPOT` 기능 자체를 새로 만드는 일이 아니라, 이미 존재하는
-binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 정리하는 것이다.
+즉 이 문서의 핵심은 `SPOT` 기능 자체를 새로 만드는 일이 아니다. 이미 존재하는
+binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 정리하는 것이
+목적이다.
 
-등록 코드부터 handler, channel send/request, topic publish까지 한 흐름으로 보는
-샘플은 [spot-samples.ko.md](./spot-samples.ko.md)에 모아 두었다. 또한
-`playhouse`의 `Stage` 같은 상위 모델을 `SPOT` 위에 다시 감쌀 때 필요한 추가
-조건은 [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md)에서 다룬다.
+등록 코드부터 handler, channel send / request, topic publish 까지 한 흐름으로
+보는 샘플은 [spot-samples.ko.md](./spot-samples.ko.md) 에 모아 두었다. 또한
+`playhouse` 의 `Stage` 같은 상위 모델을 `SPOT` 위에 다시 감쌀 때 필요한 추가
+조건은 [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) 에서 다룬다.
 
 ## 3. SPOT을 무엇으로 보는가
 
-현재 초안에서 `SPOT`은 단순한 pub/sub helper가 아니다. 오히려 **주소 가능한
-논리 인스턴스**[^addressable-instance]로 이해하는 편이 더 정확하다. 대표적인 예는
+이 절은 `SPOT` 을 어떤 개념으로 읽어야 하는지부터 짚는다. 그 다음에 같은
+관점에서 `Spot`, `SpotNode`, channel 의 관계를 한 줄씩 정리한다.
+
+현재 초안에서 `SPOT` 은 단순한 pub / sub helper 가 아니다. 오히려 **주소 가능한
+논리 인스턴스**[^addressable-instance] 로 이해하는 편이 더 정확하다. 대표적인 예는
 다음과 같다.
 
 - 게임 room
@@ -62,8 +71,9 @@ binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 
 - MMORPG zone
 - 필요하다면 Redis pub/sub 같은 fan-out[^fan-out] 주제 공간
 
-즉 `SPOT`은 "토픽 시스템"보다 먼저 "논리 대상 인스턴스"로 설명되어야 하며,
-publish/subscribe는 그 안에서 함께 사용할 수 있는 한 가지 활용 방식일 뿐이다.
+즉 `SPOT` 은 "토픽 시스템" 이 아니라 먼저 "논리 대상 인스턴스" 로 설명되어야
+한다. publish / subscribe 는 그 안에서 함께 사용할 수 있는 한 가지 활용 방식일
+뿐이다.
 
 이 관점에서 각 요소 사이의 관계를 더 정확히 정리하면 다음과 같다.
 
@@ -94,14 +104,21 @@ publish/subscribe는 그 안에서 함께 사용할 수 있는 한 가지 활용
 - 외부 `PUB -> Spot` 입력은 generic pub/sub attach가 아니라 별도의
   ingress[^ingress] 표면으로 분리한다.
 
-여기서 경계를 분명히 짚어 두면, `SPOT`이 제공하는 것은 주소 가능한 논리
-인스턴스와 그 인스턴스에 대한 메시징, publish/subscribe, timer, lifecycle까지다.
-반면 room broadcast 정책과 도메인별 권한 모델은 여전히 응용 계층의 책임으로
-남는다. 현재 draft 구현에서는 actor join, actor factory[^factory] 등록, 그리고
-stream callback에서 `IZLinkSessionContext`로 actor packet/disconnect를 같은
-`SPOT` 실행 문맥에 올리는 브리지[^bridge]까지를 framework core 범위에 포함한다.
+여기서 경계를 분명히 짚어 두면 다음과 같다.
+
+- `SPOT` 이 제공하는 것은 주소 가능한 논리 인스턴스와 그 인스턴스에 대한
+  메시징, publish / subscribe, timer, lifecycle 까지다.
+- 반면 room broadcast 정책과 도메인별 권한 모델은 여전히 응용 계층의 책임으로
+  남는다.
+- 현재 draft 구현에서는 actor join, actor factory[^factory] 등록, 그리고
+  stream callback 에서 `IZLinkSessionContext` 로 actor packet / disconnect 를
+  같은 `SPOT` 실행 문맥에 올리는 브리지[^bridge] 까지를 framework core 범위에
+  포함한다.
 
 ## 4. ASP.NET Core 등록 모델 초안
+
+이 절은 실제 `AddZLinkFramework(...)` 등록이 어떤 모양인지부터 한 덩어리로
+보여 준 다음, 같은 코드를 한 줄씩 풀어서 설명한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -145,18 +162,22 @@ builder.Services.AddZLinkFramework(options =>
   resolver 등록
 - host shutdown 시 lifecycle 정리
 
-`AddSpotMesh(...)`는 같은 channel에 속하는 여러 `SpotNode`를 하나의 묶음으로
-등록한다. mesh 안에서는 `mesh.AddNode(name, configure)`로 노드를 추가하고, mesh
-단위의 discovery 설정은 `mesh.UseDiscovery(...)`가 담당한다. 같은 채널을 가리키는
-`SpotNode` 묶음을 한 mesh에 모아 두기 때문에, 한 앱 안에서 서로 다른 channel
-mesh를 따로 등록할 수도 있고, 한 mesh 안에 같은 channel을 공유하는 여러 노드를
-함께 둘 수도 있다.
+`AddSpotMesh(...)` 는 같은 channel 에 속하는 여러 `SpotNode` 를 하나의 묶음으로
+등록한다. 그 묶음 안에서 각 항목이 맡는 역할은 다음과 같다.
 
-mesh로 묶지 않고 discovery 없이 단일 노드만 띄우는 경우라면
+- mesh 안에서는 `mesh.AddNode(name, configure)` 로 노드를 추가한다.
+- mesh 단위의 discovery 설정은 `mesh.UseDiscovery(...)` 가 담당한다.
+
+즉 같은 채널을 가리키는 `SpotNode` 묶음을 한 mesh 에 모아 두는 모양이다. 덕분에
+한 앱 안에서 서로 다른 channel mesh 를 따로 등록할 수도 있고, 한 mesh 안에 같은
+channel 을 공유하는 여러 노드를 함께 둘 수도 있다.
+
+mesh 로 묶지 않고 discovery 없이 단일 노드만 띄우는 경우라면
 `options.AddSpotNode(...)` 표면을 직접 쓸 수 있다. 다만 이 standalone 등록은
 mesh discovery, `EnableRouter`, channel attach 같은 mesh 기능과 함께 사용할 수
-없다. RegistrationValidator는 노드가 mesh 기능을 사용하면서 standalone 등록을
-시도하면, 시작 시점에 `AddSpotMesh` 등록을 강제하는 오류로 막아 준다.
+없다는 점에 주의한다. 노드가 mesh 기능을 쓰면서 standalone 등록을 시도하면,
+`RegistrationValidator` 가 시작 시점에 `AddSpotMesh` 등록을 강제하는 오류로
+막아 준다.
 
 이 등록 함수들은 각각 다음과 같이 역할이 나뉜다.
 
@@ -184,10 +205,12 @@ mesh discovery, `EnableRouter`, channel attach 같은 mesh 기능과 함께 사�
     기준으로 어떤 factory를 쓸지 선택한다.
   - 이미 등록된 이름을 다시 사용하면 조용히 덮어쓰지 않고 예외를 던진다.
 
-즉 `SpotNode`는 더 이상 여러 service surface를 동시에 소유하는 hub처럼 설명되지
-않는다. 현재 방향에서는 `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))`
-등록이 노드의 channel 정체성을 닫고, 다른 channel 호출은 별도로 attach된 client
-경로를 통해 푸는 방식으로 가닥이 잡혀 있다.
+즉 `SpotNode` 는 더 이상 여러 service surface 를 동시에 소유하는 hub 처럼
+설명되지 않는다. 현재 방향에서 그 역할 분담은 다음과 같다.
+
+- `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))` 등록이 노드의
+  channel 정체성을 닫는다.
+- 다른 channel 호출은 별도로 attach 된 client 경로를 통해 푼다.
 
 이 모델에서 중요한 점은 다음과 같다.
 
@@ -203,10 +226,13 @@ mesh discovery, `EnableRouter`, channel attach 같은 mesh 기능과 함께 사�
 
 ### 4.1 Entry Spot과 actor handler 등록
 
-Entry Spot은 actor가 생성된 직후 처음 머무르는 기본 실행 문맥이다. application은
-raw Entry Spot handle을 직접 만들거나 보관하지 않는다. 대신
-`AddEntrySpot<TEntrySpot>()`로 Entry Spot에서 실행할 actor packet handler와
-join/leave lifecycle handler registry를 등록한다.
+이 소절은 Entry Spot 에서 어떤 handler 를 어디에 등록하는지, 그리고 그 등록을
+application 이 직접 손대지 않는 raw 표면과 어떻게 구분하는지 정리한다.
+
+Entry Spot 은 actor 가 생성된 직후 처음 머무르는 기본 실행 문맥이다. 따라서
+application 은 raw Entry Spot handle 을 직접 만들거나 보관하지 않는다. 대신
+`AddEntrySpot<TEntrySpot>()` 로 Entry Spot 에서 실행할 actor packet handler 와
+join / leave lifecycle handler registry 를 등록한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -224,9 +250,10 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-Entry Spot 클래스는 `IZLinkEntrySpot`을 구현하고, `Configure()` 안에서 Entry
-단계의 actor handler를 등록한다. 인증, 초기 상태 설정, target Spot 선택처럼
-actor가 user Spot에 join하기 전에 들어오는 packet이 모두 이곳에서 처리된다.
+Entry Spot 클래스는 `IZLinkEntrySpot` 을 구현한다. 그리고 `Configure()` 안에서
+Entry 단계의 actor handler 를 등록한다. 인증, 초기 상태 설정, target Spot
+선택처럼 actor 가 user Spot 에 join 하기 전에 들어오는 packet 이 모두 이곳에서
+처리된다.
 
 ```csharp
 public sealed class StageEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
@@ -243,9 +270,9 @@ public sealed class StageEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntry
 }
 ```
 
-user Spot 클래스는 `IZLinkSpot`을 구현하고, 같은 방식으로 user Spot 단계의 actor
-handler를 등록한다. room, stage, zone 상태를 다루는 packet은 Entry Spot이 아니라
-이쪽 registry에 둔다.
+user Spot 클래스도 같은 방식이다. `IZLinkSpot` 을 구현하고, user Spot 단계의
+actor handler 를 등록한다. room, stage, zone 상태를 다루는 packet 은 Entry Spot
+이 아니라 이쪽 registry 에 둔다.
 
 ```csharp
 public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
@@ -262,35 +289,46 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 }
 ```
 
-Entry Spot registry와 user Spot registry는 서로 다른 namespace다. 따라서 같은
-actor 타입과 packet 이름이라도 Entry 단계와 user Spot 단계에서 서로 다른
-handler로 매핑할 수 있다. 반대로 같은 registry 안에서 같은
-`actor type + packet kind + packet name` 조합을 둘 이상 등록하면 startup
-validation 오류가 된다. `AddActorJoined(...)`와 `AddActorLeft(...)` 역시 같은
-registry 안에서 같은 actor 타입에 대해 하나씩만 허용한다.
+Entry Spot registry 와 user Spot registry 는 서로 다른 namespace 다. 따라서
+같은 actor 타입과 packet 이름이라도, Entry 단계와 user Spot 단계에서 서로 다른
+handler 로 매핑할 수 있다.
 
-join/leave lifecycle은 `OnJoinActor`나 `OnLeaveActor` 같은 Spot 메서드 override로
-정의하지 않는다. Entry Spot과 user Spot 모두 `AddActorJoined(...)` /
-`AddActorLeft(...)`에 해당하는 registry 등록으로 후속 처리를 붙인다. 이 callback은
-join/leave commit이 끝난 뒤 같은 실행 문맥에서 호출되며, admission[^admission]을
-결정하는 hook이 아니라는 점에 주의한다.
+반대로 같은 registry 안에서 같은 `actor type + packet kind + packet name`
+조합을 둘 이상 등록하면 startup validation 오류가 된다. `AddActorJoined(...)`
+와 `AddActorLeft(...)` 역시 같은 registry 안에서 같은 actor 타입에 대해
+하나씩만 허용한다.
+
+join / leave lifecycle 은 `OnJoinActor` 나 `OnLeaveActor` 같은 Spot 메서드
+override 로 정의하지 않는다. Entry Spot 과 user Spot 모두
+`AddActorJoined(...)` / `AddActorLeft(...)` 에 해당하는 registry 등록으로 후속
+처리를 붙인다. 이 callback 은 join / leave commit 이 끝난 뒤 같은 실행 문맥에서
+호출된다. 그래서 admission[^admission] 을 결정하는 hook 이 아니라는 점에
+주의한다.
 
 ### 4.2 SPOT 실행 queue와 actor mailbox
 
-user Spot은 room, game, stage 같은 하나의 상태 객체로 본다. 따라서 user Spot
-안에서 실행되는 callback은 같은 Spot 실행 queue[^execution-queue]에서 순서대로
-처리한다. 여기에 포함되는 것은 Spot packet, Spot request, subscription, timer,
-actor join, 그리고 user Spot에 머무는 actor에게 전달되는 packet이다.
+이 소절은 "같은 user Spot 안의 callback 은 왜 한 줄로 실행되는가" 와
+"Entry Spot 의 actor packet 은 왜 actor 단위로 갈라지는가" 두 질문을 묶어서
+정리한다.
 
-이 규칙 덕분에, 같은 user Spot 안의 `actor A`와 `actor B`가 모두 동일한 게임판
-상태를 변경하더라도 두 handler가 동시에 실행되지 않는다. application은 user
-Spot 인스턴스의 상태를 일일이 별도 lock으로 보호하지 않아도 된다.
+user Spot 은 room, game, stage 같은 하나의 상태 객체로 본다. 따라서 user Spot
+안에서 실행되는 callback 은 같은 Spot 실행 queue[^execution-queue] 에서
+순서대로 처리한다. 여기에 포함되는 것은 다음과 같다.
 
-Entry Spot은 사정이 조금 다르다. Entry Spot은 특정 room 상태를 소유하는 곳이
-아니라, 모든 actor가 처음 거쳐 가는 공용 입구다. 그래서 Entry Spot actor packet은
-Entry Spot 전체 queue로 들어가지 않고, 대상 actor의 mailbox[^mailbox]로 들어간다.
-같은 actor의 packet은 순서대로 실행되지만, 서로 다른 actor의 packet은 굳이
-기다릴 필요 없이 병렬로 진행된다.
+- Spot packet, Spot request
+- subscription, timer
+- actor join
+- user Spot 에 머무는 actor 에게 전달되는 packet
+
+이 규칙 덕분에, 같은 user Spot 안의 `actor A` 와 `actor B` 가 모두 같은 게임판
+상태를 바꾸더라도 두 handler 가 동시에 실행되지 않는다. 즉 application 은 user
+Spot 인스턴스의 상태를 일일이 별도 lock 으로 보호하지 않아도 된다.
+
+Entry Spot 은 사정이 조금 다르다. Entry Spot 은 특정 room 상태를 소유하는 곳이
+아니라, 모든 actor 가 처음 거쳐 가는 공용 입구이기 때문이다. 그래서 Entry Spot
+actor packet 은 Entry Spot 전체 queue 가 아니라, 대상 actor 의
+mailbox[^mailbox] 로 들어간다. 같은 actor 의 packet 은 순서대로 실행되지만,
+서로 다른 actor 의 packet 은 굳이 기다릴 필요 없이 병렬로 진행된다.
 
 정리하면 다음과 같다.
 
@@ -301,18 +339,23 @@ Entry Spot 전체 queue로 들어가지 않고, 대상 actor의 mailbox[^mailbox
 | user Spot actor packet | user Spot 실행 queue |
 | user Spot packet / timer / subscription | user Spot 실행 queue |
 
-Entry Spot actor handler는 actor와 payload를 받는다. user Spot actor handler는
-spot, actor, payload를 함께 받는다. Entry Spot에는 아직 user Spot 객체가 없고,
-user Spot에서는 spot 상태와 actor 상태를 함께 다뤄야 하므로 두 handler 표면을
-구분해 둔다. 자세한 시그니처는
-[handler-interfaces.ko.md](./handler-interfaces.ko.md)의 SPOT lifecycle handler
-섹션을 기준으로 본다.
+Entry Spot actor handler 는 actor 와 payload 를 받는다. user Spot actor
+handler 는 spot, actor, payload 를 함께 받는다. 두 표면을 따로 둔 이유는 간단
+하다. Entry Spot 에는 아직 user Spot 객체가 없고, user Spot 에서는 spot 상태와
+actor 상태를 함께 다뤄야 하기 때문이다.
+
+자세한 시그니처는
+[handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 SPOT lifecycle
+handler 섹션을 기준으로 본다.
 
 ### 4.2 capability별 수동 연결
 
-SPOT 역시 일반 channel과 마찬가지로 수동 연결은 capability 단위로 나눠서 다뤄야
-한다. `router`, channel client, `pub/sub`, spot publish client는 각자 사용할
-endpoint 집합을 따로 관리한다.
+이 소절은 discovery 를 쓰지 않고 endpoint 를 직접 지정해 연결할 때, 그 설정을
+어디에 어떻게 둬야 하는지를 정리한다.
+
+SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 capability 단위로 나눠서
+다뤄야 한다. `router`, channel client, `pub/sub`, spot publish client 는 각자
+사용할 endpoint 집합을 따로 관리한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -387,10 +430,14 @@ builder.Services.AddZLinkFramework(options =>
 
 ### 4.3 Spot route resolver
 
-`IZLinkSpotRouteResolver`는 spot name 또는 spot id를 현재 user Spot이 위치한
-노드와 spot id로 변환한다. framework는 resolver가 registry, Redis, memory cache
-중 무엇을 쓰는지 알지 못한다. handler와 actor 코드 역시 `RoutingId`를 직접 들고
-다니지 않는다.
+이 소절은 application 코드가 `RoutingId` 를 직접 다루지 않고도 다른 노드의
+user Spot 으로 호출을 보낼 수 있도록, framework 가 어떤 인터페이스를 두고 그
+구현을 어떻게 위임받는지 정리한다.
+
+`IZLinkSpotRouteResolver` 는 spot name 또는 spot id 를, 현재 user Spot 이
+위치한 노드와 spot id 로 변환한다. framework 는 그 resolver 가 registry, Redis,
+memory cache 중 무엇을 쓰는지 알지 못한다. handler 와 actor 코드 역시
+`RoutingId` 를 직접 들고 다니지 않는다.
 
 ```csharp
 public readonly record struct ZLinkSpotId(string Value)
@@ -415,16 +462,16 @@ public readonly record struct ZLinkSpotRoute(
     ZLinkSpotId SpotId);
 ```
 
-resolver 입력은 spot key 하나로 제한한다. packet 이름, metadata, request body는
-resolver에 넘기지 않는다. 그런 값이 필요한 경우에는 application의 placement
-코드가 먼저 spot name 또는 spot id를 결정해 두어야 한다.
+resolver 입력은 spot key 하나로 제한한다. 즉 packet 이름, metadata, request
+body 는 resolver 에 넘기지 않는다. 그런 값이 필요한 경우라면 application 의
+placement 코드가 먼저 spot name 또는 spot id 를 결정해 두어야 한다.
 - `pub/sub`과 spot publisher client의 manual 연결은 endpoint 집합만 등록한다.
   다만 전자는 peer `SpotNode`의 mesh 주소이고, 후자는 외부 publish ingress 주소다.
 
 #### capability별 소켓 옵션
 
-소켓 옵션은 호출 단위 builder 옵션과 섞지 않고, 등록 시점의 runtime 기본값으로
-정의하는 편이 맞다.
+소켓 옵션은 호출 단위 builder 옵션과 섞지 않는다. 대신 등록 시점의 runtime
+기본값으로 정의한다.
 
 - `router.ConfigureSocket(...)`
   - 실제 `.NET` 바인딩의 `CommonSocketOptions`와 같은 공통 socket 기본값을 정한다.
@@ -527,15 +574,16 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-이때 timeout은 socket option이 아니라 실제 low-level 바인딩의
-`Spot.RequestChannelAsync(..., TimeSpan timeout, ...)`처럼 호출 단위 인자로
-들어간다. 즉 `RequestChannel(...).Timeout(...)` 같은 framework builder 옵션은
-특정 요청 하나에만 적용되고, 위 등록 설정은 runtime 기본값으로 유지된다.
+이때 timeout 은 socket option 이 아니다. 실제 low-level 바인딩의
+`Spot.RequestChannelAsync(..., TimeSpan timeout, ...)` 처럼 호출 단위 인자로
+들어가는 값이다. 즉 `RequestChannel(...).Timeout(...)` 같은 framework builder
+옵션은 특정 요청 하나에만 적용된다. 위 등록 설정은 그와 별개로 runtime
+기본값으로 유지된다.
 
 ### 4.4 spot 실행 문맥과 timer
 
-이 절의 핵심은 "timer를 어디서 만들고 어느 문맥에서 실행하는가"를 분명히 적어
-두는 데 있다.
+이 소절의 핵심은 "timer 를 어디서 만들고 어느 문맥에서 실행하는가" 를 분명히
+적어 두는 데 있다.
 
 현재 core spec 기준으로 이미 다음과 같은 점이 정해져 있다.
 
@@ -547,8 +595,8 @@ builder.Services.AddZLinkFramework(options =>
 - managed timer tick 역시 routed, subscribe, channel reply와 동일한 직렬 실행
   경로로 들어온다.
 
-여기서 핵심은 channel reply completion과 timer callback이 모두 같은 spot 실행
-계약 안에 포함된다는 점이다.
+여기서 핵심은 channel reply completion 과 timer callback 이 모두 같은 spot
+실행 계약 안에 포함된다는 점이다.
 
 - `Spot.RequestChannelAsync(...)` 호출이 반환하는 `Task`는 임의의 thread가
   아니라 **spot execution context 안에서** complete된다.
@@ -572,26 +620,31 @@ dispatch event 종류와 drain 대상은 아래처럼 정리된다.
 | `RouteReadable` | `Spot` | `RecvRoute()` |
 | `ChannelReplyReadable` | `ChannelDealer` | `DrainChannelReplyFrom(subject)` |
 
-timer는 이 low-level dispatch table에 직접 기대지 않고, framework runtime이 만든
-managed `.NET` timer tick을 같은 spot 문맥으로 enqueue해서 처리한다.
+timer 는 이 low-level dispatch table 에 직접 기대지 않는다. 대신 framework
+runtime 이 만든 managed `.NET` timer tick 을 같은 spot 문맥으로 enqueue 해서
+처리한다.
 
-즉 framework 문서에서 "같은 spot 문맥"이라고 설명하는 부분은 새 semantics를
-정의하는 일이 아니라, 기존 core 계약과 framework가 소유한 timer dispatch를
+즉 framework 문서에서 "같은 spot 문맥" 이라고 설명하는 부분은 새 semantics 를
+정의하는 작업이 아니다. 기존 core 계약과 framework 가 소유한 timer dispatch 를
 `.NET` 사용자 눈높이로 풀어 적는 일에 더 가깝다. channel reply 역시 이제 그
 "같은 spot 문맥" 안에 포함된다.
 
 ### 4.5 Spot 생성과 lifecycle 초안
 
-현재 방향에서는 handler 클래스가 spot을 만드는 것이 아니다. `Spot` 인스턴스는
-`SpotNode`가 생성하고 소유하며, handler는 이미 존재하는 spot으로 들어오는
-request, publish, subscribe를 처리할 뿐이다.
+이 소절은 `Spot` 인스턴스를 누가 만들고 누가 소유하는지를 정리한다. 그리고
+그에 맞춰 manager 표면을 어떤 모양으로 두는 것이 자연스러운지 본다.
 
-이 기준에서 manager는 `channelName`이 아니라 현재 앱의 `SpotNode`를 대상으로
-동작하는 편이 더 자연스럽다.
+현재 방향에서는 handler 클래스가 spot 을 만들지 않는다. `Spot` 인스턴스는
+`SpotNode` 가 생성하고 소유한다. handler 는 이미 존재하는 spot 으로 들어오는
+request, publish, subscribe 를 처리할 뿐이다.
 
-`IZLinkSpotManager`의 전체 정의는
-[handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 6.3을 기준으로
-본다. 이 문서에서는 그 인터페이스를 어떻게 읽고 어떤 상황에 쓰는지만 다룬다.
+이 기준에서 manager 는 `channelName` 이 아니라 현재 앱의 `SpotNode` 를
+대상으로 동작하는 편이 더 자연스럽다.
+
+`IZLinkSpotManager` 의 전체 정의는
+[handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 section 6.3 을
+기준으로 본다. 이 문서에서는 그 인터페이스를 어떻게 읽고 어떤 상황에 쓰는지만
+다룬다.
 
 이 표면은 다음 상황을 함께 설명한다.
 
@@ -600,19 +653,20 @@ request, publish, subscribe를 처리할 뿐이다.
   생성하는 경우
 - 이미 존재하는 `spotId`라면 그대로 얻어 오는 `get-or-create` 성격의 동작
 
-여기서 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle이 아니라는
-사실이다. 생성 결과는 `spotId`, `spotName`, `Created` 정도면 충분하다. 이후
-메시징은 현재 channel publish 또는 attach된 channel client를 통한 send/request로
-푸는 쪽이, 지금의 topology 초안과 더 잘 맞는다.
+여기서 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle 이
+아니라는 사실이다. 생성 결과는 `spotId`, `spotName`, `Created` 정도면
+충분하다. 이후 메시징은 현재 channel publish 또는 attach 된 channel client 를
+통한 send / request 로 푸는 쪽이, 지금의 topology 초안과 더 잘 맞는다.
 
-여러 factory를 같은 `SpotNode`에 등록할 수 있다면, 운영 코드에서
-`spotId -> spotName` 매핑을 다시 볼 수 있어야 한다. 그래서 `GetAsync(...)`와
-`ListAsync(...)`를 함께 두고, 어떤 `spotId`가 어떤 이름으로 생성됐는지 바깥에서
-다시 확인할 수 있게 한다.
+여러 factory 를 같은 `SpotNode` 에 등록할 수 있다면, 운영 코드에서
+`spotId -> spotName` 매핑을 다시 볼 수 있어야 한다. 그래서 `GetAsync(...)` 와
+`ListAsync(...)` 를 함께 둔다. 즉 어떤 `spotId` 가 어떤 이름으로 생성됐는지
+바깥에서 다시 확인할 수 있다.
 
-등록 단계에서 이름 충돌은 조용히 덮어쓰지 않는다. `AddSpotFactory<TSpot>(spotName)`
-호출이 이미 등록된 이름을 다시 받으면 startup 시점에 예외를 던져, 설정 실수를
-바로 드러내는 쪽을 기본 규칙으로 본다.
+등록 단계에서 이름 충돌은 조용히 덮어쓰지 않는다.
+`AddSpotFactory<TSpot>(spotName)` 호출이 이미 등록된 이름을 다시 받으면
+startup 시점에 예외를 던진다. 설정 실수를 바로 드러내는 쪽을 기본 규칙으로
+본다.
 
 따라서 사용자는 생성 직후 식별자만 얻고:
 
@@ -634,34 +688,43 @@ var spotInfo = await spotManager.GetAsync(stage.SpotId, cancellationToken);
 처럼 사용하면 된다. 생성된 `Spot` 인스턴스를 응용이 직접 오래 관리하는 모델은
 현재 방향에서는 다루지 않는다.
 
-초기 metadata를 함께 넘기는 create 표면은 `Stage wrapper` 같은 상위 계층에서는
-유용할 수 있다. 다만 현재 하부 C API의 공개 계약에서 바로 읽히는 내용은 아니므로,
-framework 기본 계약처럼 적기보다는 wrapper 확장 후보로 따로 다루는 편이 맞다.
+초기 metadata 를 함께 넘기는 create 표면은 `Stage wrapper` 같은 상위 계층에서는
+유용할 수 있다. 다만 현재 하부 C API 의 공개 계약에서 바로 읽히는 내용은
+아니다. 따라서 framework 기본 계약처럼 적지 않고, wrapper 확장 후보로 따로
+다루는 편이 맞다.
 
 ## 5. SPOT outbound 모델 초안
+
+이 절은 SPOT 쪽 outbound 호출이 어떤 축으로 갈라지는지, 그리고 그 축마다 어느
+표면을 쓰는지를 정리한다.
 
 현재 방향에서는 다음 세 종류를 구분하는 편이 더 자연스럽다.
 
 - 현재 SPOT channel 안의 topic publish
-- attach된 다른 channel client를 통한 channel send/request
-- spot name/id 기반 routed spot send/request
+- attach 된 다른 channel client 를 통한 channel send / request
+- spot name / id 기반 routed spot send / request
 
-`SendChannel(...)` / `RequestChannel(...)`는 attach된 channel client를 사용한다.
-`SendSpot(...)` / `RequestSpot(...)`는 spot route resolver가 찾은 target route를
-이용한다. `targetRid + spotId`를 직접 받는 raw 호출은 하부 바인딩에 남아 있더라도,
-application guide의 기본 API로 문서화하지 않는다.
+각 표면이 맡는 역할은 다음과 같다.
+
+- `SendChannel(...)` / `RequestChannel(...)` 는 attach 된 channel client 를
+  사용한다.
+- `SendSpot(...)` / `RequestSpot(...)` 는 spot route resolver 가 찾은 target
+  route 를 이용한다.
+- `targetRid + spotId` 를 직접 받는 raw 호출은 하부 바인딩에 남아 있더라도,
+  application guide 의 기본 API 로는 문서화하지 않는다.
 
 `IZLinkSpotClient` 인터페이스의 전체 정의는
-[handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5.2를 참고한다.
-현재 방향에서는 `SendSpot(...)`, `RequestSpot(...)`, `SendChannel(...)`,
-`RequestChannel(...)`, `Publish(...)`를 함께 제공하고, timer는
-`IZLinkSpotContext.AddTimer<THandler>(...)`처럼 spot lifecycle registration 표면으로
-두는 쪽이 더 자연스럽다.
+[handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 section 5.2 를
+참고한다. 현재 방향에서는 `SendSpot(...)`, `RequestSpot(...)`,
+`SendChannel(...)`, `RequestChannel(...)`, `Publish(...)` 를 함께 제공한다.
+timer 는 `IZLinkSpotContext.AddTimer<THandler>(...)` 처럼 spot lifecycle
+registration 표면으로 두는 쪽이 더 자연스럽다.
 
 현재 `.NET` framework 표면은 channel 이름 기준 호출과 spot key 기반 호출을
-구분한다. `targetRid + spotId`를 직접 받는 raw route 함수가 하부 바인딩에 있더라도,
-framework application 문서에서는 backend/internal transport helper로만 다룬다.
-일반 application은 `IZLinkSpotRouteResolver`가 숨긴 위치값을 직접 보지 않는다.
+구분한다. `targetRid + spotId` 를 직접 받는 raw route 함수가 하부 바인딩에 있어도,
+framework application 문서에서는 backend / internal transport helper 로만
+다룬다. 일반 application 은 `IZLinkSpotRouteResolver` 가 숨긴 위치값을 직접
+보지 않는다.
 
 예를 들면 다음과 같이 사용할 수 있다.
 
@@ -686,48 +749,55 @@ await client
     .Submit(cancellationToken);
 ```
 
-`Stage wrapper` 같은 상위 모델을 생각하면 timer도 함께 필요하다. 다만 현재 초안은
-이를 `IZLinkSpotClient`의 callback scheduler로 두기보다는,
-`IZLinkSpotContext.AddTimer<THandler>(...)`로 등록하는 lifecycle timer 한 가지
-모델로 정리하는 쪽이 더 자연스럽다. 그래야 stage state를 별도 lock 없이 다루는
-상위 모델을 설명하기 쉬워진다.
+`Stage wrapper` 같은 상위 모델을 생각하면 timer 도 함께 필요하다. 다만 현재
+초안은 이를 `IZLinkSpotClient` 의 callback scheduler 로 두지 않는다. 대신
+`IZLinkSpotContext.AddTimer<THandler>(...)` 로 등록하는 lifecycle timer 한 가지
+모델로 정리한다. 그래야 stage state 를 별도 lock 없이 다루는 상위 모델을
+설명하기 쉬워진다.
 
-다만 이 관계를 `IZLinkClient` 위에 `IZLinkSpotClient`를 얹는 형태로 설명하면 안
-된다. 두 인터페이스는 하부에서 서로 다른 C API를 감싸기 때문이다. 현재 방향에서는
-`IZLinkClient`가 일반 channel messaging을 맡고, `IZLinkSpotClient`는 current SPOT
-channel publish, 다른 channel send/request, spot-routed send/request를 맡는
-식으로 책임을 나누는 편이 더 자연스럽다.
+다만 이 관계를 `IZLinkClient` 위에 `IZLinkSpotClient` 를 얹는 형태로 설명하면
+안 된다. 두 인터페이스는 하부에서 서로 다른 C API 를 감싸기 때문이다. 현재
+방향에서는 책임을 다음과 같이 나눈다.
+
+- `IZLinkClient` 는 일반 channel messaging 을 맡는다.
+- `IZLinkSpotClient` 는 current SPOT channel publish, 다른 channel
+  send / request, spot-routed send / request 를 맡는다.
 
 `IZLinkSpot` 기반 클래스의 `protected Publish(topic, message)` 편의 메서드는
-`IZLinkSpotClient.Publish(...)`를 내부적으로 위임한다. 즉 spot 코드에서 직접
-`Publish(...)`를 호출하는 것과, `IZLinkSpotClient`를 constructor
-injection[^constructor-injection]해서 호출하는 것은 같은 경로를 사용한다.
-`IZLinkSpot` 외부에서 현재 SPOT channel로 publish하는 경우에는
-`IZLinkSpotClient`를 명시적으로 주입받아 쓰는 쪽이 의도를 더 분명하게 드러낸다.
+`IZLinkSpotClient.Publish(...)` 를 내부적으로 위임한다. 즉 spot 코드에서 직접
+`Publish(...)` 를 호출하는 것과, `IZLinkSpotClient` 를 constructor
+injection[^constructor-injection] 해서 호출하는 것은 같은 경로를 사용한다.
+다만 `IZLinkSpot` 외부에서 현재 SPOT channel 로 publish 하는 경우에는
+`IZLinkSpotClient` 를 명시적으로 주입받아 쓰는 쪽이 의도를 더 분명하게
+드러낸다.
 
 ## 6. publish 모델 초안
 
+이 절은 SPOT 쪽 publish 모델을 두 갈래로 나누어 정리한다. 먼저 local spot
+안에서의 topic publish 를 보고, 그 다음에 local spot 이 없는 외부 노드에서의
+SPOT channel publish 를 본다.
+
 ### 6.1 topic publish
 
-`IZLinkSpotClient`는 spot-to-spot routed call과 publish를 함께 가질 수 있다
+`IZLinkSpotClient` 는 spot-to-spot routed call 과 publish 를 함께 가질 수 있다
 ([handler-interfaces.ko.md](./handler-interfaces.ko.md) section 5.2 참고).
-이는 `SPOT` 쪽에서 두 기능을 함께 쓰는 경우가 많기 때문이다.
+이렇게 둔 이유는 `SPOT` 쪽에서 두 기능을 함께 쓰는 경우가 많기 때문이다.
 
-여기서 `topic`과 `spotId`는 역할이 서로 다르다.
+여기서 `topic` 과 `spotId` 는 역할이 서로 다르다.
 
 - `spotId`: 특정 room/stage/zone 인스턴스를 가리키는 논리 주소
 - `topic`: 여러 subscriber가 함께 듣는 fan-out 주제 이름
 
 현재 topology 초안에서는 framework 기본 표면을 `targetRid + spotId` direct
-호출 중심으로 설명하지 않는다. high-level framework 문서는 다음 세 축을 먼저
-보여 주는 편이 더 자연스럽다.
+호출 중심으로 설명하지 않는다. 대신 high-level framework 문서는 다음 세 축을
+먼저 보여 준다.
 
-- 같은 channel 안의 publish/subscribe
-- attach된 다른 channel client를 통한 send/request
-- spot name/id 기반 routed send/request
+- 같은 channel 안의 publish / subscribe
+- attach 된 다른 channel client 를 통한 send / request
+- spot name / id 기반 routed send / request
 
-이때 channel send/request, spot send/request, topic publish는 일반 channel
-messaging[^channel-messaging]과 비슷한 builder 감각으로 읽히는 편이 자연스럽다.
+이때 channel send / request, spot send / request, topic publish 는 일반
+channel messaging[^channel-messaging] 과 비슷한 builder 감각으로 읽힌다.
 
 ```csharp
 var reply = await spotClient
@@ -750,14 +820,15 @@ await spotClient
     .Submit(cancellationToken);
 ```
 
-`Stage wrapper` 같은 상위 계층이 별도의 directory나 lookup을 얹는 것은 가능하지만,
-그것을 framework의 기본 표면으로 고정하는 모델은 현재 방향에서 채택하지 않는다.
+`Stage wrapper` 같은 상위 계층이 별도의 directory 나 lookup 을 얹는 것은
+가능하다. 다만 그것을 framework 의 기본 표면으로 고정하는 모델은 현재
+방향에서 채택하지 않는다.
 
 ### 6.2 외부 노드에서의 SPOT channel publish
 
-local spot 인스턴스를 가지지 않는 외부 노드가 특정 SPOT channel로 publish해야
-하는 경우도 있다. 이런 경우에는 `IZLinkSpotClient.Publish(...)`가 아니라
-`IZLinkSpotPublisherClient.Publish(channelName, topic, ...)`를 사용한다
+local spot 인스턴스를 가지지 않는 외부 노드가 특정 SPOT channel 로 publish
+해야 하는 경우도 있다. 이때는 `IZLinkSpotClient.Publish(...)` 가 아니라
+`IZLinkSpotPublisherClient.Publish(channelName, topic, ...)` 를 사용한다
 ([handler-interfaces.ko.md](./handler-interfaces.ko.md) section 5.3 참고).
 
 ```csharp
@@ -770,25 +841,29 @@ await spotPublisherClient
 ```
 
 이 인터페이스는 local spot 문맥이 없는 외부 노드에서도 target SPOT channel
-이름을 명시해 publish할 수 있게 해 준다. 따라서 local spot 안에서 현재 channel로
-publish하는 경우와, 외부 노드에서 특정 SPOT channel로 publish하는 경우를 분리해
-설명하는 편이 맞다.
+이름을 명시해 publish 할 수 있게 해 준다. 따라서 두 경우를 분리해 설명한다.
+하나는 local spot 안에서 현재 channel 로 publish 하는 경우이고, 다른 하나는
+외부 노드에서 특정 SPOT channel 로 publish 하는 경우다.
 
-또한 subscribe handler는 router request handler와 같은 종류의 매핑으로 보면 안
-된다.
+또한 subscribe handler 는 router request handler 와 같은 종류의 매핑으로 보면
+안 된다. 두 경우 모두 문자열을 키로 쓰지만, dispatch 의미는 서로 다르기
+때문이다.
 
-- packet은 header의 `msgId`[^msg-id]를 기준으로 targeted dispatch된다.
-- subscribe는 `"stage.state.updated"` 같은 topic subscription으로 consumer
+- packet 은 header 의 `msgId`[^msg-id] 를 기준으로 targeted dispatch 된다.
+- subscribe 는 `"stage.state.updated"` 같은 topic subscription 으로 consumer
   등록된다.
-- 즉 두 경우 모두 문자열을 키로 쓰지만, dispatch 의미는 서로 다르다.
 
 ## 7. subscribe 모델 초안
 
-실제 handler 인터페이스 초안은
-[handler-interfaces.ko.md](./handler-interfaces.ko.md)를 기준으로 본다.
+이 절은 `SPOT` 안에서 packet handler, subscribe handler, timer 가 어떤
+모양으로 등록되는지를 정리한다. 핵심은 attribute 기반이 아니라 `Configure()`
+안에서 직접 등록하는 점이다.
 
-현재 `SPOT` 샘플은 attribute[^attribute] 기반보다는, spot 객체가 `Configure()`
-단계에서 직접 handler를 등록하는 쪽을 기본으로 본다.
+실제 handler 인터페이스 초안은
+[handler-interfaces.ko.md](./handler-interfaces.ko.md) 를 기준으로 본다.
+
+현재 `SPOT` 샘플은 attribute[^attribute] 기반이 아니다. 대신 spot 객체가
+`Configure()` 단계에서 직접 handler 를 등록하는 쪽을 기본으로 본다.
 
 ```csharp
 public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
@@ -833,19 +908,25 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 
 ### 7.1 room 계열 사용과 핫패스 원칙
 
-`SPOT`이 FPS 같은 게임의 room으로 쓰이더라도, 이 모델 자체가 곧바로 과한
-오버헤드를 만든다고 보지는 않는다. 다만 `SPOT` 쪽 메시지 handler 호출은 room의
-핫패스[^hot-path]가 될 수 있으므로, 일반 channel messaging보다 더 강한 성능 기준을
-적용해야 한다.
+이 소절은 `SPOT` 을 FPS 같은 게임의 room 으로 쓸 때 어떤 성능 기준을 들어야
+하는지, 그리고 실제 성능을 좌우하는 항목이 무엇인지 정리한다.
 
-- reflection[^reflection]은 registration 단계까지만 허용한다.
-- per-packet allocation, 과도한 DI 재구성, 불필요한 boxing[^boxing]은 피해야 한다.
+`SPOT` 이 FPS 같은 게임의 room 으로 쓰이더라도, 이 모델 자체가 곧바로 과한
+오버헤드를 만든다고 보지는 않는다. 다만 `SPOT` 쪽 메시지 handler 호출은 room
+의 핫패스[^hot-path] 가 될 수 있다. 따라서 일반 channel messaging 보다 더 강한
+성능 기준을 적용한다.
+
+- reflection[^reflection] 은 registration 단계까지만 허용한다.
+- per-packet allocation, 과도한 DI 재구성, 불필요한 boxing[^boxing] 은 피해야
+  한다.
 
 즉 `Context.AddPacket<THandler>(...)` 같은 등록 표면은 startup, spot
-`Configure()`, actor `Configure()` 단계에서만 비용이 들도록 두고, 실제 packet hot
-path에서는 반복적인 reflection이나 과도한 객체 생성이 남지 않게 해야 한다.
+`Configure()`, actor `Configure()` 단계에서만 비용이 들도록 둔다. 실제 packet
+hot path 에서는 반복적인 reflection 이나 과도한 객체 생성이 남지 않게 해야
+한다.
 
-실제 room 성능에 더 큰 영향을 주는 것은 보통 registration 문법보다 다음 항목들이다.
+실제 room 성능에 더 큰 영향을 주는 것은 보통 registration 문법보다 다음
+항목들이다.
 
 - protobuf encode/decode 비용
 - 같은 spot 안의 queue 적체
@@ -853,56 +934,67 @@ path에서는 반복적인 reflection이나 과도한 객체 생성이 남지 �
 - allocator pressure[^allocator-pressure]
 - lock contention[^lock-contention]
 
-따라서 framework 문서는 "class 기반 handler라서 느리다"보다 "핫패스 구현을
-어떻게 캐시하고 어떻게 줄일 것인가"를 더 중요한 원칙으로 본다. 여기서 말하는
-강한 최적화 기준은 `SPOT` packet 처리 쪽에 우선 적용된다. 반대로 일반 socket /
-service 메시지 handler의 성능을 포기해도 된다는 뜻은 아니다. 차이는 "성능을
-포기해도 된다"가 아니라, 일반 channel messaging 쪽은 `SPOT` room의 핫패스에
-비해 편의 기능을 조금 더 허용할 여지가 있다는 점에 가깝다.
+따라서 framework 문서는 "class 기반 handler 라서 느리다" 가 아니라 "핫패스
+구현을 어떻게 캐시하고 어떻게 줄일 것인가" 를 더 중요한 원칙으로 본다.
+
+여기서 말하는 강한 최적화 기준은 `SPOT` packet 처리 쪽에 우선 적용된다. 반대로
+일반 socket / service 메시지 handler 의 성능을 포기해도 된다는 뜻은 아니다.
+차이는 "성능을 포기해도 된다" 가 아니다. 일반 channel messaging 쪽은 `SPOT`
+room 의 핫패스에 비해 편의 기능을 조금 더 허용할 여지가 있다는 정도로 본다.
 
 ## 8. SPOT과 direct call의 관계
 
-`ZLink Framework`는 direct channel call만 제공하는 계층처럼 비춰져서는 안 된다.
-`SPOT` 역시 framework 안에서 동등한 축으로 다뤄야 한다.
+이 절은 framework 안에서 일반 channel messaging 과 `SPOT` 두 축을 어떻게
+구분해 설명할지를 정리한다.
+
+`ZLink Framework` 는 direct channel call 만 제공하는 계층처럼 비춰져서는 안
+된다. `SPOT` 역시 framework 안에서 동등한 축으로 다뤄야 한다.
 
 즉 다음 두 축이 함께 존재해야 한다.
 
 - `channelName` 기반 일반 channel messaging
-- `SPOT` 기반 current channel publish/subscribe와 channel send/request
+- `SPOT` 기반 current channel publish / subscribe 와 channel send / request
 
-또한 현재 하부 topology는 `SpotNode.router` peer 경로와 attach된 channel client
-경로를 함께 가진다. framework 문서에서는 다음 두 종류를 구분해서 설명하는 편이
-맞다.
+또한 현재 하부 topology 는 `SpotNode.router` peer 경로와 attach 된 channel
+client 경로를 함께 가진다. framework 문서에서는 다음 두 종류를 구분해서 설명
+한다.
 
-- 같은 channel 안의 topic publish/subscribe
-- attach된 다른 channel client를 통한 send/request
+- 같은 channel 안의 topic publish / subscribe
+- attach 된 다른 channel client 를 통한 send / request
 
 이 점은 `playhouse` 시나리오에서 특히 중요하다.
 
 - play -> api 는 direct call
 - stage/state sync 는 `SPOT`
 
-또한 `rid`[^rid]를 직접 넣는 routed 호출은 SPOT spot-to-spot 경로에만 남는다.
-특정 channel의 `ROUTER(server)`[^dealer-router]를 `rid`로 직접 지정해서 호출하는
-모델은 현재 방향에서 채택하지 않는다.
+또한 `rid`[^rid] 를 직접 넣는 routed 호출은 SPOT spot-to-spot 경로에만 남는다.
+특정 channel 의 `ROUTER(server)`[^dealer-router] 를 `rid` 로 직접 지정해서
+호출하는 모델은 현재 방향에서 채택하지 않는다.
 
-즉 `SPOT`은 pub/sub만으로 설명하면 부족하다. room/stage/zone 같은 논리 인스턴스
-모델, channel publish/send/request, 그리고 `SpotNode`가 spot 인스턴스를 생성하고
-소유하는 lifecycle까지 함께 설명해야 한다.
+즉 `SPOT` 은 pub / sub 만으로 설명하면 부족하다. 다음 세 가지를 함께 설명해야
+한다.
+
+- room / stage / zone 같은 논리 인스턴스 모델
+- channel publish / send / request
+- `SpotNode` 가 spot 인스턴스를 생성하고 소유하는 lifecycle
 
 ## 9. discovery와 service name
 
-최신 topology 초안에서는 `SpotNode`가 channel 이름을 직접 소유하지 않는다.
-`AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))` 등록이 active channel
-view를 공급하고, 그 view가 같은 channel에 속한 peer mesh의 범위를 닫는다.
+이 절은 `SpotNode` 가 어떻게 channel 정체성을 닫는지, 그리고 그 결정이
+discovery 와 어떻게 묶이는지를 짧게 정리한다.
 
-예를 들어 `AddSpotMesh("game.stage", mesh => mesh.UseDiscovery(...))`로 등록했다면,
-그 mesh에 포함된 `SpotNode`는 `game.stage` channel mesh 안에서 동작한다고
-이해하면 된다.
+최신 topology 초안에서는 `SpotNode` 가 channel 이름을 직접 소유하지 않는다.
+대신 `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))` 등록이 active
+channel view 를 공급한다. 그 view 가 같은 channel 에 속한 peer mesh 의 범위를
+닫는다.
 
-mesh 등록을 쓰지 않고 옛 방식으로 `UseSpotDiscovery(channelName, ...)`와
-`AddSpotNode(...)`를 따로 호출하는 패턴이 코드에 남아 있을 수 있지만, sample
-코드는 mesh 묶음 형태를 권장한다.
+예를 들어 `AddSpotMesh("game.stage", mesh => mesh.UseDiscovery(...))` 로
+등록했다고 하자. 이 경우 그 mesh 에 포함된 `SpotNode` 는 `game.stage` channel
+mesh 안에서 동작한다고 이해하면 된다.
+
+mesh 등록을 쓰지 않고 옛 방식으로 `UseSpotDiscovery(channelName, ...)` 와
+`AddSpotNode(...)` 를 따로 호출하는 패턴이 코드에 남아 있을 수 있다. 다만
+sample 코드는 mesh 묶음 형태를 권장한다.
 
 ## 10. 결정된 기준
 
@@ -922,15 +1014,17 @@ mesh 등록을 쓰지 않고 옛 방식으로 `UseSpotDiscovery(channelName, ...
 - subscriber concurrency와 backpressure[^backpressure]는 per-handler나 per-topic
   API가 아니라, subscriber capability option에서 노드 단위로 설정한다.
 
-`Stage wrapper`에서 필요한 metadata 전달, membership, 실행 문맥 규칙은
-framework의 기본 계약이 아니라
-[stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md)에서 다루는 상위
+`Stage wrapper` 에서 필요한 metadata 전달, membership, 실행 문맥 규칙은
+framework 의 기본 계약이 아니다. 이 항목들은
+[stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) 에서 다루는 상위
 wrapper 축으로 본다.
 
 ## 11. 회귀 테스트
 
-SPOT 문서의 항목은 factory 등록, mesh/discovery 구성, lifecycle, publish,
-actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id를 다루는 public
+이 절은 SPOT 문서가 다룬 항목들을 어떤 테스트로 검증하는지 한꺼번에 본다.
+
+SPOT 문서의 항목은 factory 등록, mesh / discovery 구성, lifecycle, publish,
+actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를 다루는 public
 표면은, 호출자가 transport 위치를 알지 못해도 동작해야 한다.
 
 | 테스트 케이스 | 확인 기준 |

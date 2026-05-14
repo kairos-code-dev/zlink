@@ -14,9 +14,9 @@
 
 ## 1. 목적
 
-use case validation 문서는 설계 설명이 어디까지 닿아 있는지를 보는 문서다. 반면
-이 문서는 구현이 바뀌더라도 "무엇이 깨지면 회귀로 본다"를 테스트 항목 단위로
-못 박는 데 목적이 있다.
+use case validation 문서는 설계 설명이 어디까지 닿아 있는지를 보는 문서다.
+반면 이 문서는 결이 다르다. 구현이 바뀌더라도 "무엇이 깨지면 회귀로 본다"는
+기준을 테스트 항목 단위로 못 박는 데 목적이 있다.
 
 ## 2. CI 계층
 
@@ -36,12 +36,17 @@ use case validation 문서는 설계 설명이 어디까지 닿아 있는지를 
 | runtime RID[^rid] | `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64` |
 | test mode | debug, release |
 
-최소 지원 버전이 `net8.0`이므로, 회귀 테스트도 위 두 target framework를 함께
-돌려야 한다. 현재 저장소의 기본 빌드는 `net8.0` 단일 TFM이며, `net10.0`은 회귀
-matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는 형태로 다룬다. 한편
-저장소의 `bindings/dotnet/runtimes/` 패키징 대상과 `.github/workflows/build.yml`이
-만들어 내는 native artifact 조합이 위 여섯 runtime RID를 기준으로 하므로,
-framework CI gate[^ci-gate]도 같은 범위를 기본으로 본다.
+최소 지원 버전이 `net8.0` 이므로, 회귀 테스트도 위 두 target framework 를
+함께 돌려야 한다.
+
+- 현재 저장소의 기본 빌드는 `net8.0` 단일 TFM 이다.
+- `net10.0` 은 회귀 matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는
+  형태로 다룬다.
+
+한편 저장소의 `bindings/dotnet/runtimes/` 패키징 대상과
+`.github/workflows/build.yml` 이 만들어 내는 native artifact 조합은 위 여섯
+runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범위를
+기본으로 본다.
 
 즉 `.NET` framework 회귀 테스트는 특정 OS 하나만 대표로 돌리고 끝내지 않는다.
 현재 계획 기준으로 반드시 통과해야 하는 플랫폼은 다음과 같다.
@@ -152,7 +157,7 @@ framework CI gate[^ci-gate]도 같은 범위를 기본으로 본다.
 
 ## 8. Release Gate
 
-아래 조건을 모두 만족해야 구현 완료로 본다.
+릴리스로 보내려면 다음 다섯 가지를 모두 만족해야 한다.
 
 1. `unit`, `integration-single-process`, `integration-multi-process` 전부 통과
 2. `net8.0`, `net10.0` 양쪽 모두 통과
@@ -160,16 +165,18 @@ framework CI gate[^ci-gate]도 같은 범위를 기본으로 본다.
 4. happy-path 샘플과 대표 failure-path가 각각 한 번 이상 커버되어 있음
 5. `behavior-matrix.ko.md`에 정리한 비허용 조합이 모두 테스트로 고정되어 있음
 
-즉 샘플이 한 번 실행되는 것만으로는 충분하지 않고, startup validation과 runtime
-failure 의미까지 테스트로 같이 고정되어 있어야 한다. native backend가 이미 해당
-플랫폼을 지원하더라도, framework는 그 위에 registration, lifecycle, DI,
-monitoring 계층을 더 쌓기 때문에 플랫폼 gate는 별도로 유지한다.
+즉 샘플이 한 번 실행되는 것만으로는 충분하지 않다. startup validation 과
+runtime failure 의미까지 테스트로 같이 고정되어 있어야 한다.
+
+또한 native backend 가 이미 해당 플랫폼을 지원하더라도, framework 는 그 위에
+registration, lifecycle, DI, monitoring 계층을 더 쌓는다. 그래서 플랫폼 gate 는
+backend gate 와 별도로 유지한다.
 
 ## 9. 문서별 회귀 테스트 단락
 
 이 디렉토리의 각 draft 문서는, 자기 항목이 어떤 테스트로 고정되어 있는지 짧은
-`회귀 테스트` 단락을 가지고 있어야 한다. 중앙 matrix만 갱신하면 세부 문서의
-독자가 어떤 테스트를 봐야 하는지 놓치기 쉽기 때문이다.
+`회귀 테스트` 단락을 갖고 있어야 한다. 중앙 matrix 만 갱신해서는 곤란하다.
+세부 문서의 독자가 어떤 테스트를 봐야 하는지 놓치기 쉽기 때문이다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|

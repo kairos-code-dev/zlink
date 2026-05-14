@@ -14,9 +14,13 @@
 
 ## 1. 이 문서의 목적
 
-`SPOT`은 room, stage, zone 같은 논리 인스턴스 모델과 targeted packet, subscribe,
-timer가 한꺼번에 얽혀 있어, 글로만 설명을 읽으면 그림이 잘 잡히지 않는다.
-그래서 이 문서는 다음 요소들을 한 자리에 모아 코드로 보여 준다.
+`SPOT` 은 다음 두 갈래가 한꺼번에 얽힌 모델이다.
+
+- room, stage, zone 같은 논리 인스턴스 모델
+- targeted packet, subscribe, timer 같은 메시지 표면
+
+그래서 글로만 설명을 읽으면 그림이 잘 잡히지 않는다. 이 문서는 다음 요소들을
+한 자리에 모아 코드로 보여 준다.
 
 1. `SpotNode`[^spotnode] 등록
 2. spot 객체 생성
@@ -26,21 +30,21 @@ timer가 한꺼번에 얽혀 있어, 글로만 설명을 읽으면 그림이 잘
 6. channel[^channel] send / request
 7. topic publish
 
-다만 현재 구현 범위를 기준으로 보면 이 문서는 두 층으로 나눠서 읽어야 한다.
+다만 현재 구현 범위를 기준으로 보면, 이 문서는 두 층으로 나눠서 읽어야 한다.
 
-- 3.1과 3.1.4, 그리고 이 절에 등장하는 `IZLinkSpot` / `IZLinkSpotClient` 예시는
-  현재 framework core의 public surface에 맞춘 샘플이다.
-- 3.2.1의 actor[^actor] / session[^session] membership 예시는 stage wrapper 같은
-  상위 확장 아이디어를 메모해 둔 부분이다. 아직 framework core의 public surface는
-  아니다.
+- 3.1 과 3.1.4, 그리고 이 절에 등장하는 `IZLinkSpot` / `IZLinkSpotClient`
+  예시는 현재 framework core 의 public surface 에 맞춘 샘플이다.
+- 3.2.1 의 actor[^actor] / session[^session] membership 예시는 stage wrapper
+  같은 상위 확장 아이디어를 메모해 둔 부분이다. 아직 framework core 의 public
+  surface 는 아니다.
 - `targetRid + spotId` 형태의 direct routed[^direct-routed] 호출은 framework
-  public surface에 포함하지 않는다. spot name / id 기반 호출은 모두
-  `IZLinkSpotClient`가 resolver[^resolver]를 거쳐 처리한다.
+  public surface 에 포함하지 않는다. spot name / id 기반 호출은 모두
+  `IZLinkSpotClient` 가 resolver[^resolver] 를 거쳐 처리한다.
 
 ## 2. 인터페이스 초안
 
-먼저 이 문서가 전제로 삼는 인터페이스 초안을 따로 살펴본다. 아래는 샘플 구현이
-의존하는 최소한의 표면 정의다.
+이 절은 샘플이 전제로 삼는 인터페이스 초안을 한 자리에 모아 둔다. 아래는
+샘플 구현이 의존하는 최소한의 표면 정의다.
 
 > **주의**: 아래 정의는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의
 > 해당 섹션과 동일하다. 인터페이스가 바뀌면 두 문서를 함께 갱신해야 하며,
@@ -274,7 +278,13 @@ public interface IZLinkDispatchOptions
 
 ## 3. 샘플 코드
 
+이 절부터 실제 등록 코드와 spot 객체, handler, session 흐름 샘플을 차례로
+보여 준다.
+
 ### 3.1 등록 코드
+
+이 등록 코드는 `SpotNode` 와 그 안의 capability(`router`, `pub/sub`, attach 된
+channel client, attach 된 spot publisher client)를 한 번에 묶어 둔 모양이다.
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
@@ -379,7 +389,8 @@ var app = builder.Build();
 app.Run();
 ```
 
-이 코드에서 capability[^capability]와 attach 함수가 각각 다른 역할을 맡는다.
+이 코드에서 capability[^capability] 와 attach 함수가 각각 다른 역할을 맡는다.
+역할을 항목별로 짚어 보면 다음과 같다.
 
 - `AttachClientServerChannelClient("orders")`
   - stage spot이 `orders` channel로 send / request를 보낼 때 사용할 outbound
@@ -408,7 +419,11 @@ app.Run();
 
 ### 3.1.1 capability별 수동 연결
 
-SPOT 역시 일반 channel과 마찬가지로 수동 연결은 capability 단위로 다뤄야 한다.
+이 절은 discovery 대신 endpoint 를 직접 지정해 capability 를 잇는 모양을
+보여 준다.
+
+SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 capability 단위로 다뤄야
+한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -471,38 +486,43 @@ builder.Services.AddZLinkFramework(options =>
 
 이 코드에서 꼭 짚어야 할 규칙은 다음과 같다.
 
-- `router`, `pub/sub`, attach된 channel client, attach된 spot publisher client는
-  서로 별개의 연결 집합을 다룬다.
-- 같은 capability 안에서는 `Discovery`[^discovery]와 `Manual` 방식을 섞지 않는다.
-- 같은 `SpotNode` 안에서 `spotName`은 비어 있으면 안 된다.
-- 이미 등록된 `spotName`을 다시 등록하면 기존 값을 덮어쓰지 않고 예외가 발생한다.
-- `router`의 수동 연결도 endpoint 집합만 등록한다. 이 초안에서는 `Connect(...)`
-  호출 시 remote router id를 별도 파라미터로 받지 않는다.
-- channel client의 수동 연결도 endpoint 집합만 등록한다. 하부 `DEALER`가 이미
-  connect된 peer 집합을 대상으로 요청을 보내므로, remote `RoutingId`를 따로
-  넘기지 않아도 된다.
-- `pub/sub`는 local publish 소켓과 local subscribe 소켓을 함께 쓰는
-  capability지만, 수동 연결에서 등록하는 주소는 "다른 `SpotNode`의 mesh publish
-  bind 주소"라는 점에 유의한다.
-- 즉 `EnablePubSub(...).UseManualConnections(...).Connect(endpoint)`는 local
+- `router`, `pub/sub`, attach 된 channel client, attach 된 spot publisher
+  client 는 서로 별개의 연결 집합을 다룬다.
+- 같은 capability 안에서는 `Discovery`[^discovery] 와 `Manual` 방식을 섞지
+  않는다.
+- 같은 `SpotNode` 안에서 `spotName` 은 비어 있으면 안 된다.
+- 이미 등록된 `spotName` 을 다시 등록하면, 기존 값을 덮어쓰지 않고 예외가
+  발생한다.
+- `router` 의 수동 연결도 endpoint 집합만 등록한다. 이 초안에서는
+  `Connect(...)` 호출 시 remote router id 를 별도 파라미터로 받지 않는다.
+- channel client 의 수동 연결도 endpoint 집합만 등록한다. 하부 `DEALER` 가
+  이미 connect 된 peer 집합을 대상으로 요청을 보내므로, remote `RoutingId` 를
+  따로 넘기지 않아도 된다.
+- `pub/sub` 는 local publish 소켓과 local subscribe 소켓을 함께 쓰는
+  capability 다. 다만 수동 연결에서 등록하는 주소는 "다른 `SpotNode` 의 mesh
+  publish bind 주소"라는 점에 유의한다.
+- 즉 `EnablePubSub(...).UseManualConnections(...).Connect(endpoint)` 는 local
   `SUB/XSUB` 쪽이 remote `PUB/XPUB` 주소에 붙는다는 의미다.
-- `pub/sub`와 spot publisher client는 둘 다 endpoint 집합만 등록하지만, 그
-  endpoint 집합 자체는 서로 다르다. 전자는 peer `SpotNode`의 mesh 주소이고,
-  후자는 외부 publish ingress[^ingress] 주소다.
+- `pub/sub` 와 spot publisher client 는 둘 다 endpoint 집합만 등록한다. 다만
+  그 endpoint 집합 자체는 서로 다르다.
+  - `pub/sub` 의 endpoint 는 peer `SpotNode` 의 mesh 주소다.
+  - spot publisher client 의 endpoint 는 외부 publish ingress[^ingress] 주소다.
 
 #### 소켓 옵션 설정 샘플
 
-`SPOT`에서는 옵션을 누가 소유하는지를 두 단계로 나눠서 보는 편이 읽기 쉽다.
+이 절은 socket 옵션과 pub/sub 옵션을 어떤 단위로 보면 좋은지 정리한다.
 
-- `SpotNode`의 pub/sub 기본값
+`SPOT` 에서는 옵션을 누가 소유하는지를 두 단계로 나눠서 보는 편이 읽기 쉽다.
+
+- `SpotNode` 의 pub/sub 기본값
   - 실제 low-level 바인딩의 `SpotNode.PublisherOptions`,
-    `SpotNode.SubscriberOptions`에 대응한다.
-- capability별 socket 기본값
-  - `router`, attach된 channel client, attach된 spot publisher client가 각각
+    `SpotNode.SubscriberOptions` 에 대응한다.
+- capability 별 socket 기본값
+  - `router`, attach 된 channel client, attach 된 spot publisher client 가 각각
     가지고 있는 `CommonSocketOptions` 계열 기본값이다.
 
-아래 코드는 확정된 계약은 아니지만, `.NET` 표면에서 이런 식으로 보이는 편이
-자연스럽다는 방향을 보여 주는 예시다.
+아래 코드는 확정된 계약은 아니다. 다만 `.NET` 표면에서 이런 식으로 보이는
+편이 자연스럽다는 방향을 보여 주는 예시다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -591,26 +611,31 @@ builder.Services.AddZLinkFramework(options =>
 
 이 예시가 의도하는 구분은 다음과 같다.
 
-- `pubsub.ConfigurePublisherOptions(...)`, `pubsub.ConfigureSubscriberOptions(...)`
-  는 실제 `.NET` 바인딩의 `SpotNode.PublisherOptions`, `SpotNode.SubscriberOptions`
-  처럼, `SPOT` mesh 자체가 소유하는 옵션 facade를 capability 표면으로 끌어올린
-  것이다.
+- `pubsub.ConfigurePublisherOptions(...)`,
+  `pubsub.ConfigureSubscriberOptions(...)` 는 실제 `.NET` 바인딩의
+  `SpotNode.PublisherOptions`, `SpotNode.SubscriberOptions` 처럼, `SPOT` mesh
+  자체가 소유하는 옵션 facade 를 capability 표면으로 끌어올린 것이다.
 - `router.ConfigureSocket(...)`, `client.ConfigureSocket(...)` 같은 표면은
   `CommonSocketOptions` 같은 공통 socket 기본 동작을 정한다.
-- `router.ConfigureRouting(...)`, `client.ConfigureRouting(...)`은 route policy와
-  outbound route policy에 대응하는 capability 전용 facade다.
+- `router.ConfigureRouting(...)`, `client.ConfigureRouting(...)` 은 route
+  policy 와 outbound route policy 에 대응하는 capability 전용 facade 다.
 - `RequestChannel(...).Timeout(...)` 같은 호출 단위 옵션은 그 호출 하나에만
-  적용되고, 위에 정리한 설정은 runtime의 기본값을 잡는 용도다.
+  적용된다. 반면 위에 정리한 설정은 runtime 의 기본값을 잡는 용도다.
 
-이렇게 두면 framework 사용자는 low-level `spot_node_option`이나 `setsockopt`
-이름을 표면에서 직접 마주칠 일이 없어진다. 또한 어떤 옵션이 node 전체에
-적용되고, 어떤 옵션이 개별 capability에만 적용되는지도 바로 구분할 수 있다.
+이렇게 두면 두 가지 이점이 생긴다.
+
+- framework 사용자는 low-level `spot_node_option` 이나 `setsockopt` 이름을
+  표면에서 직접 마주칠 일이 없다.
+- 어떤 옵션이 node 전체에 적용되고, 어떤 옵션이 개별 capability 에만
+  적용되는지 바로 구분할 수 있다.
 
 ### 3.1.2 spot 생성과 조회
 
-spot 인스턴스를 만들 때는 factory 타입이 아니라 등록할 때 사용한 이름을 넘긴다.
-이렇게 해야 같은 `SpotNode`에 여러 spot factory가 등록되어 있을 때 어떤 타입을
-만들지 명확해진다.
+이 절은 spot 인스턴스를 만들고 그 인스턴스를 다시 조회하는 표면을 정리한다.
+
+spot 인스턴스를 만들 때는 factory 타입이 아니라 등록할 때 사용한 이름을
+넘긴다. 이렇게 해야 같은 `SpotNode` 에 여러 spot factory 가 등록되어 있을 때
+어떤 타입을 만들지 명확해진다.
 
 ```csharp
 app.MapPost("/stage/create", async (
@@ -630,19 +655,25 @@ app.MapPost("/stage/create", async (
 });
 ```
 
-여기서 `SpotName`은 생성 결과와 조회 표면 양쪽 모두에서 다시 보인다. 덕분에
-운영 코드가 `spotId`만 들고 있어도, 그 인스턴스가 어떤 등록 이름으로 만들어진
+여기서 `SpotName` 은 생성 결과와 조회 표면 양쪽 모두에서 다시 보인다. 덕분에
+운영 코드가 `spotId` 만 들고 있어도, 그 인스턴스가 어떤 등록 이름으로 만들어진
 것인지 다시 확인할 수 있다.
 
 ### 3.1.3 outbound-only SPOT-aware 앱
 
-local `SpotNode`나 local spot runtime을 띄우지 않고, 다른 channel이나 다른
-spot으로 outbound 호출만 하는 앱도 있을 수 있다. 이런 경우 기본 outbound 표면은
-`IZLinkClient`다. local `SpotNode`가 없으면 attach된 channel client 경로도 존재할
-수 없으므로, `IZLinkSpotClient.RequestChannel(...)` 같은 표면을 바로 사용하는
-모델로 설명하면 안 된다. spot name / id 기반의 routed 호출이 필요하다면, local
-`SpotNode`가 있는 서버 쪽에서 `IZLinkSpotClient.SendSpot(...)` /
-`RequestSpot(...)`을 사용한다.
+이 절은 local `SpotNode` 를 띄우지 않고 다른 노드로 호출만 보내는 앱의
+표면을 다룬다.
+
+local `SpotNode` 나 local spot runtime 을 띄우지 않고, 다른 channel 이나 다른
+spot 으로 outbound 호출만 하는 앱도 있을 수 있다. 이런 경우 기본 outbound
+표면은 `IZLinkClient` 다.
+
+local `SpotNode` 가 없으면 attach 된 channel client 경로도 존재할 수 없다.
+따라서 `IZLinkSpotClient.RequestChannel(...)` 같은 표면을 바로 사용하는
+모델로 설명하면 안 된다.
+
+spot name / id 기반의 routed 호출이 필요하다면, local `SpotNode` 가 있는 서버
+쪽에서 `IZLinkSpotClient.SendSpot(...)` / `RequestSpot(...)` 을 사용한다.
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
@@ -681,23 +712,31 @@ app.MapPost("/stage/query", async (
 app.Run();
 ```
 
-현재 framework core의 public surface에는 RID[^rid] 기반의 direct routed 호출이
-열려 있지 않다. 그래서 이 샘플도 `channelName` 기준의 request / send와
-`IZLinkSpotPublisherClient` 기반 publish까지만 현행 계약으로 본다.
+현재 framework core 의 public surface 에는 RID[^rid] 기반의 direct routed
+호출이 열려 있지 않다. 그래서 이 샘플도 현행 계약을 다음 두 가지만으로
+한정해 본다.
 
-send / publish builder는 기본적으로 async submit이다. 일시적인
-backpressure[^backpressure]는 별도의 public no-wait 옵션을 호출자에게 노출하지
-않고, framework 내부에서 nonblocking send, pending queue, ready notification을
-조합해 처리한다. send 대기 한계는 channel 또는 socket의 `SendTimeout` 옵션을
-따른다.
+- `channelName` 기준의 request / send
+- `IZLinkSpotPublisherClient` 기반 publish
+
+send / publish builder 는 기본적으로 async submit 이다. 일시적인
+backpressure[^backpressure] 는 별도의 public no-wait 옵션을 호출자에게
+노출하지 않는다. 그 대신 framework 내부에서 nonblocking send, pending queue,
+ready notification 을 조합해 처리한다. send 대기 한계는 channel 또는 socket
+의 `SendTimeout` 옵션을 따른다.
 
 ### 3.1.4 외부 노드에서 SPOT channel publish
 
-local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel로 publish해야 할 때가
-있다. 이런 경우에는 `IZLinkSpotPublisherClient`를 별도로 주입받아 사용한다. 이
-샘플에서 publisher 노드는 spot mesh 등록에 attach만 걸어 두면 충분하다. 실제로
-어느 SPOT channel에 publish할지는 mesh discovery scope와
-`AttachSpotMeshPublisherClient("game.stage")`가 함께 결정한다.
+이 절은 local spot 인스턴스 없이 publish 만 해야 하는 외부 노드의 표면을
+다룬다.
+
+local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel 로 publish 해야 할
+때가 있다. 이런 경우에는 `IZLinkSpotPublisherClient` 를 별도로 주입받아
+사용한다.
+
+이 샘플에서 publisher 노드는 spot mesh 등록에 attach 만 걸어 두면 충분하다.
+실제로 어느 SPOT channel 에 publish 할지는, mesh discovery scope 와
+`AttachSpotMeshPublisherClient("game.stage")` 가 함께 결정한다.
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
@@ -751,6 +790,9 @@ app.Run();
 
 ### 3.2 spot 객체
 
+이 절은 spot 객체가 어떤 모양으로 등록되고, 어떤 상태와 handler 를 들고
+있는지를 코드로 보여 준다.
+
 ```csharp
 public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
 {
@@ -792,14 +834,20 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
 
 ### 3.2.1 room이 먼저 있고, session이 인증한 뒤 actor가 room에 들어가는 상세 샘플
 
-> 이 절은 현재 draft framework core가 포함하는 actor / session membership
-> 표면을, stage wrapper 관점에서 길게 풀어 쓴 상세 샘플이다. room 정책과 actor
-> factory 선택 규칙 자체는 응용 계층의 예시지만, `IZLinkActor`,
-> `IZLinkActorContext.JoinSpot(...)`, `IZLinkSessionContext`는 현행 public
-> surface다.
+이 절은 인증, actor 매칭, room join, 재연결까지 한 흐름으로 풀어 쓰는 가장
+긴 샘플이다.
 
-게임 서버에서는 보통 outgame, 로비, 매치메이킹을 웹 서버 쪽에서 처리하고,
-room 서버는 이미 만들어진 room에 플레이어를 들이는 역할만 맡는 경우가 많다.
+> 이 절은 현재 draft framework core 가 포함하는 actor / session membership
+> 표면을 stage wrapper 관점에서 길게 풀어 쓴 상세 샘플이다. room 정책과 actor
+> factory 선택 규칙 자체는 응용 계층의 예시다. 다만 `IZLinkActor`,
+> `IZLinkActorContext.JoinSpot(...)`, `IZLinkSessionContext` 는 현행 public
+> surface 다.
+
+게임 서버에서는 보통 다음과 같은 분담이 흔하다.
+
+- 웹 서버 쪽: outgame, 로비, 매치메이킹을 처리한다.
+- room 서버 쪽: 이미 만들어진 room 에 플레이어를 들이는 역할만 맡는다.
+
 이 절의 샘플도 같은 흐름을 그대로 따른다.
 
 샘플이 가정하는 순서는 다음과 같다.
@@ -833,22 +881,32 @@ room 서버는 이미 만들어진 room에 플레이어를 들이는 역할만 �
   - `ISampleAuthVerifier`
   - `ISampleActorFactoryRegistry`
 
-핵심은 `Spot`이 session을 직접 소유하지 않고 actor만 다룬다는 점이다.
-session handler는 인증과 재연결을 담당하는 ingress adapter이고, 실제 live 연결은
-`IZLinkSessionContext`가 관리한다. actor는 계정 단위의 논리 객체이므로, stream이
-끊겨도 actor 자체는 room에 남아 있을 수 있다. 새 stream이 같은 `accountId`로
-다시 들어오면 같은 actor에 다시 연결할 수 있다.
+핵심은 `Spot` 이 session 을 직접 소유하지 않고 actor 만 다룬다는 점이다.
+역할을 항목별로 나눠 보면 다음과 같다.
 
-이 모델을 public 계약으로 노출하려면 actor join은 `IZLinkSpot`의 override가
-아니라, session의 `CreateAndBindActorAsync(...)` 또는
-`BindActorHandleAsync(...)`, `IZLinkActorContext.JoinSpot(...)`,
-`IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>`의 조합으로
-나타나야 한다. join 승인과 membership 기록은 반드시 target `Spot`의 실행
-문맥에서 처리되어야 하기 때문이다.
+- session handler 는 인증과 재연결을 담당하는 ingress adapter 다.
+- 실제 live 연결은 `IZLinkSessionContext` 가 관리한다.
+- actor 는 계정 단위의 논리 객체다. 따라서 stream 이 끊겨도 actor 자체는
+  room 에 남아 있을 수 있다.
+- 새 stream 이 같은 `accountId` 로 다시 들어오면 같은 actor 에 다시 연결할
+  수 있다.
 
-actor 타입은 handler의 generic 인자로 명시한다. 이렇게 두면 handler 내부에서
-`IZLinkActor`를 다시 캐스팅할 필요가 없고, 잘못된 actor 타입이 등록되거나
-전달되더라도 runtime이 명확한 오류로 막을 수 있다.
+이 모델을 public 계약으로 노출하려면, actor join 은 `IZLinkSpot` 의 override
+가 아니라 다음 표면들의 조합으로 나타나야 한다.
+
+- session 의 `CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)`
+- `IZLinkActorContext.JoinSpot(...)`
+- `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>`
+
+join 승인과 membership 기록은 반드시 target `Spot` 의 실행 문맥에서 처리되어야
+하기 때문이다.
+
+actor 타입은 handler 의 generic 인자로 명시한다. 이렇게 두면 두 가지 이점이
+있다.
+
+- handler 내부에서 `IZLinkActor` 를 다시 캐스팅할 필요가 없다.
+- 잘못된 actor 타입이 등록되거나 전달되면 runtime 이 명확한 오류로 막을 수
+  있다.
 
 샘플 코드를 읽기 전에 먼저 살펴봐야 하는 framework draft 계약은 actor 계약
 하나다.
@@ -869,24 +927,27 @@ public interface IZLinkActor
 이 인터페이스를 room 모델에 대입해 보면 의미는 다음과 같다.
 
 - `IZLinkActor`
-  - `accountId`처럼 stable identity[^stable-identity]를 가진 논리 객체다.
+  - `accountId` 처럼 stable identity[^stable-identity] 를 가진 논리 객체다.
 - `IZLinkActorContext`
-  - actor 생성 시 constructor를 통해 주입되는 framework context다. actor는 이
-    context를 외부에 직접 공개하지 않고, 필요한 동작을 자기 method 안에 감싼다.
+  - actor 생성 시 constructor 를 통해 주입되는 framework context 다. actor 는
+    이 context 를 외부에 직접 공개하지 않는다. 필요한 동작을 자기 method 안에
+    감싸 둔다.
 - `IZLinkActor.Configure()`
-  - actor가 생성된 직후 한 번 호출된다. actor 자체의 초기화에만 사용하고, actor
-    packet handler 등록은 `IZLinkSpotContext.AddActorPacket<THandler, TActor>()`로
-    분리한다.
+  - actor 가 생성된 직후 한 번 호출된다. actor 자체의 초기화에만 사용한다.
+    actor packet handler 등록은
+    `IZLinkSpotContext.AddActorPacket<THandler, TActor>()` 로 분리한다.
 - `IZLinkActorContext.GetSpot<TSpot>()`
-  - 현재 들어가 있는 room 인스턴스를 가져온다. 아직 room에 join하지 않았다면
+  - 현재 들어가 있는 room 인스턴스를 가져온다. 아직 room 에 join 하지 않았다면
     실패한다.
-- stream attach / disconnect와 room join / leave는 서로 다른 수명을 가진다.
-- framework는 stale[^stale] disconnect를 내부에서 걸러낸 뒤에만
-  `OnDisconnectedAsync(...)`를 호출한다.
+- stream attach / disconnect 와 room join / leave 는 서로 다른 수명을 가진다.
+- framework 는 stale[^stale] disconnect 를 내부에서 걸러낸 뒤에만
+  `OnDisconnectedAsync(...)` 를 호출한다.
 
-bootstrap은 다음과 같이 읽는다. room은 외부에서 이미 만들어져 있다고 가정하므로,
-stream node는 client 접속을 받고 spot node는 room 인스턴스를 제공하는 역할만
-맡는다.
+bootstrap 은 다음과 같이 읽는다. room 은 외부에서 이미 만들어져 있다고
+가정하므로, 두 노드는 각자 역할만 맡는다.
+
+- stream node: client 접속을 받는다.
+- spot node: room 인스턴스를 제공한다.
 
 ```csharp
 builder.Services.AddScoped<ISampleRoomDirectory, SampleRoomDirectory>();
@@ -927,14 +988,22 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-실제 샘플 코드는 다음과 같다. `SampleSpot`은 actor table만 소유하고,
-`SampleSession`은 인증과 actor 재연결, 그리고 actor로 넘길 session packet
-정규화와 room join 요청을 맡는다.
+실제 샘플 코드는 다음과 같다. 각 타입의 역할은 다음 두 가지로 정리된다.
 
-여기서 `IZLinkSessionContext`는 stream session이 channel request, stream reply,
-actor create, actor packet dispatch를 framework runtime에 넘길 때 사용하는
-session 전용 context다. actor stream의 연결과 해제는
-`IZLinkSessionActorAttachmentContext`라는 별도의 표면에서 다룬다.
+- `SampleSpot` 은 actor table 만 소유한다.
+- `SampleSession` 은 인증, actor 재연결, actor 로 넘길 session packet 정규화,
+  room join 요청을 맡는다.
+
+여기서 `IZLinkSessionContext` 는 stream session 이 다음 작업을 framework
+runtime 에 넘길 때 사용하는 session 전용 context 다.
+
+- channel request
+- stream reply
+- actor create
+- actor packet dispatch
+
+actor stream 의 연결과 해제는 `IZLinkSessionActorAttachmentContext` 라는
+별도의 표면에서 다룬다.
 
 ```csharp
 public sealed class SampleSpot(
@@ -1404,11 +1473,12 @@ public sealed record SampleAuthenticationResult(
     string ActorType);
 ```
 
-여기서 `ISampleActorFactoryRegistry`는 `actorType -> factory` 매핑을 잡아 두고,
-인증 결과에 따라 `SampleWarriorActor`, `SampleTraderActor`처럼 서로 다른 actor
-타입을 고를 수 있게 해 주는 샘플용 registry로 보면 된다. 이 타입 선택은 인증
-또는 재연결 경계에서 한 번만 일어나야 하며, gameplay packet의 hot path[^hot-path]
-까지 다시 끌고 들어오지 않는 편이 맞다.
+여기서 `ISampleActorFactoryRegistry` 는 `actorType -> factory` 매핑을 잡아
+두는 샘플용 registry 로 보면 된다. 인증 결과에 따라 `SampleWarriorActor`,
+`SampleTraderActor` 처럼 서로 다른 actor 타입을 고를 수 있게 해 준다.
+
+이 타입 선택은 인증 또는 재연결 경계에서 한 번만 일어나야 한다. 즉 gameplay
+packet 의 hot path[^hot-path] 까지 다시 끌고 들어오지 않는 편이 맞다.
 
 이 샘플에서 각 객체의 관계를 짧게 정리하면 다음과 같다.
 
@@ -1446,19 +1516,26 @@ public sealed record SampleAuthenticationResult(
 10. room 전체 로직이 필요한 경우, handler는 인자로 받은 `SampleSpot`과 actor의
     method를 함께 사용해 처리를 이어 간다.
 
-요약하면 room은 actor만 붙들고, session handler는 room 바깥에서 인증과 재연결을
-처리하는 구조다. 이 구조라면 "같은 account의 actor는 그대로 두고 stream만
-교체한다"는 reconnect 정책을 설명하기가 훨씬 쉬워진다.
+요약하면 다음과 같다.
 
-이 샘플 코드는 framework session packet을 기준으로 작성했다. framework는 decode
-된 `IZLinkSessionPacket`을 내부 dispatch 경로로 같은 `Spot` 문맥에 올려 두고,
-최종 actor 로직은 등록된 actor packet handler가 처리한다.
+- room 은 actor 만 붙든다.
+- session handler 는 room 바깥에서 인증과 재연결을 처리한다.
 
-또한 room timer는 room에 join된 actor만 본다. 인증은 끝났지만 아직
-`SampleJoinRoomRequest`를 보내지 않은 연결은 `SampleSpot` 바깥의 stream 수명으로
-보고, room 안의 heartbeat timeout과는 구분한다.
+이 구조라면 "같은 account 의 actor 는 그대로 두고 stream 만 교체한다"는
+reconnect 정책을 설명하기가 훨씬 쉬워진다.
+
+이 샘플 코드는 framework session packet 을 기준으로 작성했다. framework 는
+decode 된 `IZLinkSessionPacket` 을 내부 dispatch 경로로 같은 `Spot` 문맥에
+올려 두고, 최종 actor 로직은 등록된 actor packet handler 가 처리한다.
+
+또한 room timer 는 room 에 join 된 actor 만 본다. 인증은 끝났지만 아직
+`SampleJoinRoomRequest` 를 보내지 않은 연결은 `SampleSpot` 바깥의 stream
+수명으로 보고, room 안의 heartbeat timeout 과는 구분한다.
 
 ### 3.3 handler 클래스
+
+이 절은 spot 객체와 분리되어 동작하는 packet / subscription / timer handler
+클래스의 모양을 보여 준다.
 
 ```csharp
  public sealed class SampleGetStateHandler
@@ -1566,21 +1643,26 @@ public sealed class SampleSessionTimeoutSweepHandler
 }
 ```
 
-이 high-level timer handler는 framework runtime이 만들어 둔 managed `.NET`
-timer 위에 얹는 wrapper로 읽어야 한다. runtime은 `PeriodicTimer` 같은 managed
-timer로부터 tick을 받고, 그 tick을 같은 spot execution context[^execution-context]
-안으로 넘긴 뒤 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)`를 호출하는
-모델이 자연스럽다.
+이 high-level timer handler 는 framework runtime 이 만들어 둔 managed `.NET`
+timer 위에 얹는 wrapper 로 읽어야 한다. 즉 다음 모델이 자연스럽다.
 
-이 샘플에서 timer가 하는 일은 상태 publish가 아니라, `LastSeenAt`을 기준으로
-오랫동안 조용했던 actor를 찾아 정리하는 sweep 역할이다. 현재 stream이 붙어
-있는 actor가 idle timeout을 넘기면 stream bind를 풀고, 이미 stream이 끊긴
-actor는 reconnect grace 시간이 지나면 room에서 제거한다.
+- runtime 은 `PeriodicTimer` 같은 managed timer 로부터 tick 을 받는다.
+- 그 tick 을 같은 spot execution context[^execution-context] 안으로 넘긴다.
+- 그 안에서 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
 
-이때 framework가 제공하는 `IZLinkTimer.CancelAsync()`는 단순한 cancel이 아니라
-managed timer loop 정리까지 함께 담는 고수준 handle에 가깝다.
+이 샘플에서 timer 가 하는 일은 상태 publish 가 아니라 sweep 이다. 즉
+`LastSeenAt` 을 기준으로 오랫동안 조용했던 actor 를 찾아 정리하는 역할이다.
+
+- 현재 stream 이 붙어 있는 actor 가 idle timeout 을 넘기면 stream bind 를 푼다.
+- 이미 stream 이 끊긴 actor 는 reconnect grace 시간이 지나면 room 에서
+  제거한다.
+
+이때 framework 가 제공하는 `IZLinkTimer.CancelAsync()` 는 단순한 cancel 이
+아니다. managed timer loop 정리까지 함께 담는 고수준 handle 에 가깝다.
 
 ### 3.4 protobuf packet 타입
+
+이 절은 샘플에 등장하는 packet 타입의 출처를 짚어 둔다.
 
 ```csharp
 // SampleGetStateRequest, SampleGetStateReply, SampleReportStateCommand,
@@ -1597,67 +1679,85 @@ managed timer loop 정리까지 함께 담는 고수준 handle에 가깝다.
 
 ## 4. 이 샘플을 어떻게 읽으면 되는가
 
+이 절은 위 샘플 코드를 읽을 때 어디에 시선을 두면 좋을지를 정리한다.
+
 이 샘플에서 중요한 포인트는 다음과 같다.
 
-- `room.node`는 논리적 `SpotNode` 이름이고,
-  `AddSpotMesh("game.room", mesh => mesh.UseDiscovery(...))`가 `game.room`
-  channel mesh의 범위를 정한다.
-- `SampleSpot`은 단순한 handler 클래스가 아니라 실제 spot 객체다.
-- `SampleSpot`은 `IZLinkSpot`을 상속받고, 자신의 `Context.SpotId`,
-  `Context.NodeRid`를 상태로 가진다.
+- `room.node` 는 논리적 `SpotNode` 이름이다. 그리고
+  `AddSpotMesh("game.room", mesh => mesh.UseDiscovery(...))` 가 `game.room`
+  channel mesh 의 범위를 정한다.
+- `SampleSpot` 은 단순한 handler 클래스가 아니라 실제 spot 객체다.
+- `SampleSpot` 은 `IZLinkSpot` 을 상속받는다. 그리고 자신의
+  `Context.SpotId`, `Context.NodeRid` 를 상태로 가진다.
 - `SampleSpot` 안에는 상태와 코어 로직만 두고, packet 처리는 별도 handler
   클래스로 분리해도 된다.
-- handler는 `IZLinkSpotClient`를 constructor injection으로 주입받을 수 있다.
-- `SampleSpot`과 그 spot에 귀속된 handler, timer handler, join handler는 모두
-  같은 per-spot DI[^di] scope에서 resolve된다고 보는 편이 맞다.
-- 그래서 public registration 함수에 매번 `IServiceProvider services`를 넘기지
-  않고, `Context.AddPacket<THandler>()`처럼 타입만 등록하는 형태가 더 자연스럽다.
-- local spot 인스턴스가 없는 외부 노드는 `IZLinkSpotPublisherClient`를 별도로
-  주입받아 SPOT channel publish를 할 수 있다.
-- `Context.AddPacket<THandler>(...)`는 request packet과 send packet을 함께
+- handler 는 `IZLinkSpotClient` 를 constructor injection 으로 주입받을 수
+  있다.
+- `SampleSpot` 과 그 spot 에 귀속된 handler, timer handler, join handler 는
+  모두 같은 per-spot DI[^di] scope 에서 resolve 된다고 보는 편이 맞다.
+- 그래서 public registration 함수에 매번 `IServiceProvider services` 를 넘기지
+  않고, `Context.AddPacket<THandler>()` 처럼 타입만 등록하는 형태가 더
+  자연스럽다.
+- local spot 인스턴스가 없는 외부 노드는 `IZLinkSpotPublisherClient` 를 별도로
+  주입받아 SPOT channel publish 를 할 수 있다.
+- `Context.AddPacket<THandler>(...)` 는 request packet 과 send packet 을 함께
   등록한다.
-- `Context.AddSubscribe<THandler>(...)`는 topic subscription consumer를 등록한다.
-- `Context.AddTimer<THandler>(...)`는 spot lifecycle[^lifecycle] 안에서 timer를
+- `Context.AddSubscribe<THandler>(...)` 는 topic subscription consumer 를
   등록한다.
-- 다른 channel로의 호출은 attach된 channel client를 통해 전송한다.
-- **`RequestChannel(...).Submit(...)`는 같은 spot execution context 안에서
-  완료된다.** 임의의 thread에서 promise를 직접 resolve하지 않으므로,
-  continuation도 spot state에 별도의 lock 없이 접근할 수 있다.
+- `Context.AddTimer<THandler>(...)` 는 spot lifecycle[^lifecycle] 안에서 timer
+  를 등록한다.
+- 다른 channel 로의 호출은 attach 된 channel client 를 통해 전송한다.
+- **`RequestChannel(...).Submit(...)` 는 같은 spot execution context 안에서
+  완료된다.** 임의의 thread 에서 promise 를 직접 resolve 하지 않는다. 따라서
+  continuation 도 spot state 에 별도의 lock 없이 접근할 수 있다.
 
 이 샘플에서 핵심은 두 가지로 요약된다.
 
-1. `SampleSpot`은 이미 생성된 spot 객체이므로, spot id를 요청 scope에서 따로
-   꺼내는 값으로 다루지 않고 `SampleSpot.Context.SpotId` 속성에서 바로 읽는다.
-2. subscribe handler, packet handler, timer handler, channel reply callback은
-   물론 room에 join된 actor의 client packet과 disconnect 처리까지 같은 spot
-   execution context에서 직렬로 실행된다. 그래서 `SampleSpot`의 mutable
-   state(`ActorCount` 등)에 별도의 lock이 필요하지 않다.
+1. `SampleSpot` 은 이미 생성된 spot 객체다. 따라서 spot id 를 요청 scope 에서
+   따로 꺼내는 값으로 다루지 않고, `SampleSpot.Context.SpotId` 속성에서 바로
+   읽는다.
+2. subscribe handler, packet handler, timer handler, channel reply callback 은
+   물론 room 에 join 된 actor 의 client packet 과 disconnect 처리까지 같은
+   spot execution context 에서 직렬로 실행된다. 그래서 `SampleSpot` 의
+   mutable state(`ActorCount` 등)에 별도의 lock 이 필요하지 않다.
 
 ## 5. packet 등록과 subscribe 등록은 어떻게 다른가
 
-이 초안에서는 `SampleSpot`이 자기 초기화 단계에서 다음 세 가지를 직접 등록한다.
+이 절은 등록 시점에 어느 표면이 어떤 의도로 호출되는지 정리한다.
+
+이 초안에서는 `SampleSpot` 이 자기 초기화 단계에서 다음 세 가지를 직접 등록한다.
 
 - `Context.AddPacket<THandler>(...)`
 - `Context.AddSubscribe<THandler>(topic)`
 - `Context.AddTimer<THandler>(name, period, ...)`
 
-반면 stream session은 `SampleSpot` 초기화 단계에서 정적으로 등록하지 않는다.
-`SampleSession`은 `stream node`가 생성하며, 인증과 actor lookup을 먼저 끝낸 뒤
-`SampleJoinRoomRequest`가 들어오면 actor packet으로 join 의도를 전달한다. 실제
-target `SampleSpot`의 join callback 호출은 actor 쪽에서
-`IZLinkActorContext.JoinSpot(...)`을 통해 수행하는 것이 이 문서의 기본 모델이다.
+반면 stream session 은 `SampleSpot` 초기화 단계에서 정적으로 등록하지 않는다.
+session 의 흐름은 다음과 같다.
 
-packet은 request와 send를 함께 묶는 상위 개념이다. 즉 `SampleGetStateHandler`
-처럼 reply를 돌려주는 handler도 packet이고, `SampleReportStateHandler`처럼
-응답 없이 상태만 반영하는 handler도 packet이다.
+- `SampleSession` 은 `stream node` 가 생성한다.
+- 인증과 actor lookup 을 먼저 끝낸 뒤, `SampleJoinRoomRequest` 가 들어오면
+  actor packet 으로 join 의도를 전달한다.
+- 실제 target `SampleSpot` 의 join callback 호출은 actor 쪽에서
+  `IZLinkActorContext.JoinSpot(...)` 을 통해 수행한다. 이것이 이 문서의 기본
+  모델이다.
 
-반면 subscribe는 packet이 아니다. subscribe는 topic fan-out consumer 등록이고,
-packet은 targeted delivery라는 점에서 의미가 다르다.
+packet 은 request 와 send 를 함께 묶는 상위 개념이다. 즉 다음 두 종류 모두
+packet 으로 본다.
 
-handler가 다른 서버나 다른 spot으로 outbound 호출을 보내야 한다면, `SampleSpot`
-에서 client를 꺼내 쓰기보다 handler가 `IZLinkSpotClient`를 직접 주입받는 편이
-더 자연스럽다. 이렇게 두면 `SampleSpot`은 상태와 코어 로직에 집중할 수 있고,
-outbound 호출 책임은 handler가 가져간다.
+- `SampleGetStateHandler` 처럼 reply 를 돌려주는 handler
+- `SampleReportStateHandler` 처럼 응답 없이 상태만 반영하는 handler
+
+반면 subscribe 는 packet 이 아니다. 의미가 다르다.
+
+- subscribe 는 topic fan-out consumer 등록이다.
+- packet 은 targeted delivery 다.
+
+handler 가 다른 서버나 다른 spot 으로 outbound 호출을 보내야 한다면,
+`SampleSpot` 에서 client 를 꺼내 쓰기보다 handler 가 `IZLinkSpotClient` 를
+직접 주입받는 편이 더 자연스럽다. 이렇게 두면 책임이 다음과 같이 나뉜다.
+
+- `SampleSpot` 은 상태와 코어 로직에 집중한다.
+- outbound 호출 책임은 handler 가 가져간다.
 
 이 샘플 기준으로 `SampleSpot` 안에 남는 요소는 대략 다음 정도다.
 
@@ -1669,46 +1769,51 @@ outbound 호출 책임은 handler가 가져간다.
 
 ## 6. packet 매핑은 무엇을 기준으로 하는가
 
-이 초안에서는 `Context.AddPacket<THandler>(...)`가 별도의 문자열을 받지 않는다.
-packet 매핑의 기준은 header의 `msgId`다.
+이 절은 `AddPacket(...)` 이 별도의 문자열 없이도 packet 타입을 어떻게
+식별하는지를 설명한다.
 
-이 문서의 전체 샘플 코드는 `options.Codecs.AddProtobuf()`를 쓰고 있으므로, 기본
-예시는 `protobuf` 기준이다. 즉 위 코드에서 packet 타입은 모두 `protoc`가 생성한
-`IMessage<T>` 계열 타입이라고 보면 된다. 이 문서는 생성된 protobuf 타입에
-framework용 marker interface[^marker-interface]를 직접 붙이는 방식을 전제로 하지
-않는다.
+이 초안에서는 `Context.AddPacket<THandler>(...)` 가 별도의 문자열을 받지
+않는다. packet 매핑의 기준은 header 의 `msgId` 다.
 
-즉 위 코드에서:
+이 문서의 전체 샘플 코드는 `options.Codecs.AddProtobuf()` 를 쓰고 있다.
+그러므로 기본 예시는 `protobuf` 기준이다. 즉 위 코드에서 packet 타입은 모두
+`protoc` 가 생성한 `IMessage<T>` 계열 타입이라고 보면 된다. 이 문서는 생성된
+protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
+붙이는 방식을 전제로 하지 않는다.
+
+위 코드의 등록은 다음과 같이 해석된다.
 
 - `Context.AddPacket<SampleGetStateHandler>()`
-  - `SampleGetStateRequest`의 protobuf `msgName`으로 등록된다.
+  - `SampleGetStateRequest` 의 protobuf `msgName` 으로 등록된다.
 - `Context.AddPacket<SampleReportStateHandler>()`
-  - `SampleReportStateCommand`의 protobuf `msgName`으로 등록된다.
+  - `SampleReportStateCommand` 의 protobuf `msgName` 으로 등록된다.
 
-같은 방식으로 읽으면 된다.
+`msgId` 가 어디서 오는지는 codec 에 따라 달라진다.
 
-- `protobuf`를 사용하는 경우
+- `protobuf` 를 사용하는 경우
   - `msgId = msgName`
-- `json`을 사용하는 경우
+- `json` 을 사용하는 경우
   - `msgId = class name`
 
-정리하면, framework는 `SampleGetStateHandler` 같은 handler 타입에서 packet
-타입을 읽어 와, 그 packet 타입의 `msgId`를 dispatch key로 등록하는 방식을 기본
-으로 본다.
+정리하면, framework 는 `SampleGetStateHandler` 같은 handler 타입에서 packet
+타입을 읽어 온다. 그 다음 그 packet 타입의 `msgId` 를 dispatch key 로
+등록하는 방식을 기본으로 본다.
 
 예를 들면 다음과 같이 매핑된다.
 
-- `SampleGetStateRequest`의 `msgId`
-  - `protobuf`면 protobuf packet name
-  - `json`이면 `SampleGetStateRequest`
-- `SampleReportStateCommand`의 `msgId`
-  - `protobuf`면 protobuf packet name
-  - `json`이면 `SampleReportStateCommand`
+- `SampleGetStateRequest` 의 `msgId`
+  - `protobuf` 면 protobuf packet name
+  - `json` 이면 `SampleGetStateRequest`
+- `SampleReportStateCommand` 의 `msgId`
+  - `protobuf` 면 protobuf packet name
+  - `json` 이면 `SampleReportStateCommand`
 
-결국 `Context.AddPacket<SampleGetStateHandler>()`는 `SampleGetStateRequest`의
-`msgId`를 기준으로 등록되는 셈이다.
+결국 `Context.AddPacket<SampleGetStateHandler>()` 는
+`SampleGetStateRequest` 의 `msgId` 를 기준으로 등록되는 셈이다.
 
 ## 7. 어떤 상황에 어떤 API를 쓰는가
+
+이 절은 상황별로 어느 표면을 골라야 하는지 간단히 정리해 둔다.
 
 - 새 spot 인스턴스를 만들고 싶다
   - `IZLinkSpotManager.CreateAsync("stage", ...)`
@@ -1733,13 +1838,16 @@ framework용 marker interface[^marker-interface]를 직접 붙이는 방식을 �
 
 ## 8. room처럼 써도 되는가
 
-`SPOT`을 room, stage, zone처럼 hot path가 있는 용도로 쓰더라도, 이 샘플 구조
-자체가 곧바로 과도한 오버헤드를 의미하지는 않는다. 다만 `SPOT`의 packet handler
-경로는 room hot path로 동작할 수 있으므로, 일반 channel messaging보다 더 강한
-최적화 기준이 필요하다.
+이 절은 `SPOT` 을 hot path 가 있는 용도로 쓸 때 어떤 기준이 추가되는지를
+다룬다.
 
-이 초안은 이 선택을 framework가 일방적으로 숨기지 않고, 사용자가 dispatch
-mode[^dispatch-mode]로 직접 고를 수 있어야 한다고 본다.
+`SPOT` 을 room, stage, zone 처럼 hot path 가 있는 용도로 쓰더라도, 이 샘플
+구조 자체가 곧바로 과도한 오버헤드를 의미하지는 않는다. 다만 `SPOT` 의 packet
+handler 경로는 room hot path 로 동작할 수 있다. 따라서 일반 channel messaging
+보다 더 강한 최적화 기준이 필요하다.
+
+이 초안은 이 선택을 framework 가 일방적으로 숨기지 않고, 사용자가 dispatch
+mode[^dispatch-mode] 로 직접 고를 수 있어야 한다고 본다.
 
 - `ZLinkDispatchMode.Compiled`
   - registration 또는 warm-up 단계까지만 reflection을 허용한다.
@@ -1756,8 +1864,8 @@ mode[^dispatch-mode]로 직접 고를 수 있어야 한다고 본다.
 - handler 호출은 캐시된 delegate 또는 그에 준하는 저비용 경로여야 한다.
 - per-packet allocation과 불필요한 DI 재구성은 최소화해야 한다.
 
-요약하면, 샘플의 class 구조보다 더 중요한 것은 실제 실행 경로가 얼마나 짧은지다.
-hot path는 대략 다음 단계 정도로 끝나야 한다.
+요약하면, 샘플의 class 구조보다 더 중요한 것은 실제 실행 경로가 얼마나
+짧은지다. hot path 는 대략 다음 단계 정도로 끝나야 한다.
 
 1. `msgId` 읽기
 2. dispatch table lookup
@@ -1765,16 +1873,19 @@ hot path는 대략 다음 단계 정도로 끝나야 한다.
 4. handler resolve 또는 재사용
 5. `HandleAsync(...)` 호출
 
-이 문서의 샘플은 어디까지나 "등록 구조"를 보여 주는 예시다. 실제 성능은 런타임이
-reflection을 어디까지 허용하느냐보다, hot path에서 그 비용을 얼마나 제거했느냐에
-훨씬 크게 좌우된다.
+이 문서의 샘플은 어디까지나 "등록 구조"를 보여 주는 예시다. 실제 성능은
+runtime 이 reflection 을 어디까지 허용하느냐보다, hot path 에서 그 비용을
+얼마나 제거했느냐에 훨씬 크게 좌우된다.
 
-물론 그렇다고 일반 socket / service handler가 성능이 낮아도 된다는 뜻은 아니다.
-다만 `SPOT` packet 처리는 room hot path이므로 더 강한 최적화를 먼저 요구하고,
-일반 channel messaging 쪽은 편의 기능을 조금 더 허용할 여지가 있다는 점에서
-차이가 있다.
+물론 그렇다고 일반 socket / service handler 가 성능이 낮아도 된다는 뜻은
+아니다. 다만 두 경로의 무게 중심이 다르다.
+
+- `SPOT` packet 처리는 room hot path 다. 더 강한 최적화를 먼저 요구한다.
+- 일반 channel messaging 쪽은 편의 기능을 조금 더 허용할 여지가 있다.
 
 ## 9. 정리
+
+이 절은 이 문서가 다룬 결론을 다시 짧게 모아 둔다.
 
 - `SPOT`의 기본 모델은 `SampleSpot : IZLinkSpot` 같은 인터페이스 기반
   lifecycle로 고정한다.
@@ -1789,9 +1900,17 @@ reflection을 어디까지 허용하느냐보다, hot path에서 그 비용을 �
 
 ## 10. 회귀 테스트
 
+이 절은 이 문서의 샘플 코드를 어느 통합 테스트와 함께 유지해야 하는지
+정리한다.
+
 SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표면만으로
-구성되는지를 확인한다. 샘플 코드를 수정할 때는 spot 생성, publish, actor join,
-channel request 흐름을 다음 테스트와 함께 맞춰 둔다.
+구성되는지를 확인한다. 샘플 코드를 수정할 때는 다음 흐름을 아래 테스트와 함께
+맞춰 둔다.
+
+- spot 생성
+- publish
+- actor join
+- channel request
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|

@@ -21,15 +21,15 @@
 - `SPOT`[^spot]을 `ASP.NET Core` 애플리케이션에서 다루는 방법
 - Registry 서버를 `ASP.NET Core`의 lifecycle 안에서 띄우고 topology[^topology]를 조회하는 방법
 
-지금 단계의 목표는 새 runtime을 만드는 것이 아니다. 기존 `.NET` 바인딩이 이미
-제공하는 `Discovery`, `DealerSocket`, `RouterSocket`, `SpotNode`, `Spot`,
-`Registry` 같은 기본 기능을 그대로 활용하면서, 프레임워크 사용자가 익숙한 DI,
-hosted service[^hosted-service], handler 모델로 감싸서 노출하는 데에 집중한다.
+지금 단계의 목표는 새 runtime 을 만드는 것이 아니다. 기존 `.NET` 바인딩은 이미
+`Discovery`, `DealerSocket`, `RouterSocket`, `SpotNode`, `Spot`, `Registry`
+같은 기본 기능을 제공한다. 이 기능들을 그대로 활용하되, framework 사용자에게는
+익숙한 DI, hosted service[^hosted-service], handler 모델로 감싸서 노출한다.
 
-현재 구현 backend는 `bindings/dotnet`을 그대로 사용한다. 다만 framework가
-사용자에게 보여 주는 public contract는 backend 구현체와 분리해서 유지하는 것을
+현재 구현 backend 는 `bindings/dotnet` 을 그대로 쓴다. 다만 framework 가
+사용자에게 보여 주는 public contract 는 backend 구현체와 분리해서 유지하는 것을
 원칙으로 둔다. 자세한 기준은
-[backend-dependency-policy.ko.md](./backend-dependency-policy.ko.md)에서 다룬다.
+[backend-dependency-policy.ko.md](./backend-dependency-policy.ko.md) 에서 다룬다.
 
 ## 1.1 지원 버전 기준
 
@@ -41,15 +41,15 @@ hosted service[^hosted-service], handler 모델로 감싸서 노출하는 데에
 
 따라서 이 디렉토리의 문서와 샘플은 위 최소 지원 기준에서 바로 컴파일·실행이
 가능한 표면을 우선해서 설명한다. `C# 13`, `C# 14`, `preview`, `latest` 전용
-문법이나 API는 공개 framework 계약의 전제 조건으로 삼지 않는다.
+문법이나 API 는 공개 framework 계약의 전제 조건으로 삼지 않는다.
 
 ## 1.1.1 CI 플랫폼 기준
 
 이 초안의 CI[^ci] 기준은 특정 OS 하나를 대표 플랫폼으로 두지 않는다. 대신 저장소
-안의 `bindings/dotnet/runtimes/`와 `.github/workflows/build.yml`이 이미 함께
+안의 `bindings/dotnet/runtimes/` 와 `.github/workflows/build.yml` 이 이미 함께
 관리하고 있는 native runtime 범위를 framework 쪽에서도 그대로 따른다.
 
-현재 기준으로 반드시 지원해야 하는 runtime RID[^rid]는 다음 여섯 가지다.
+현재 기준으로 반드시 지원해야 하는 runtime RID[^rid] 는 다음 여섯 가지다.
 
 - `win-x64`
 - `win-arm64`
@@ -58,15 +58,15 @@ hosted service[^hosted-service], handler 모델로 감싸서 노출하는 데에
 - `osx-x64`
 - `osx-arm64`
 
-따라서 `.NET` framework의 regression 테스트와 release gate[^release-gate]도 위
-여섯 플랫폼을 모두 통과하는 것을 기본 조건으로 본다.
+따라서 `.NET` framework 의 regression 테스트와 release gate[^release-gate] 도
+위 여섯 플랫폼을 모두 통과하는 것을 기본 조건으로 본다.
 
 ## 1.2 공통 정책 적용
 
 이 디렉토리의 모든 문서는
-[Framework Adapter 정책](../../policy/README.ko.md)과 그 하위 문서를 그대로
-따른다. 즉 `.NET` 상세 문서는 공통 의미를 새로 정의하지 않고, 이미 정해진 의미를
-`.NET`과 `ASP.NET Core` 표면에서 어떻게 구체화할지만 다룬다.
+[Framework Adapter 정책](../../policy/README.ko.md) 과 그 하위 문서를 그대로
+따른다. 즉 `.NET` 상세 문서는 공통 의미를 새로 정의하지 않는다. 이미 정해진
+의미를 `.NET` 과 `ASP.NET Core` 표면에서 어떻게 구체화할지만 다룬다.
 
 특히 다음 항목은 이 디렉토리 전체에 공통으로 적용된다.
 
@@ -105,11 +105,12 @@ hosted service[^hosted-service], handler 모델로 감싸서 노출하는 데에
   호출은 두지 않는다. 반면 actor join, actor factory 등록,
   stream-to-actor bridge[^stream-actor-bridge]는 현재 draft 구현 범위에 포함하므로
   공용 계약과 샘플 문서에 함께 반영한다.
-- session actor dispatch[^session-actor-dispatch]는 단일 gateway feature switch
-  형태가 아니라, `AddStreamNode(...).AddHeaderSession<TSession>()`, actor
-  factory, actor route resolver, actor-session binding, `IZLinkSessionProxy`
-  조합으로 설명한다. 공개 resolver 축은 actor 와 spot 으로 제한하고, session
-  위치 조회를 위한 별도의 public API 는 두지 않는다.
+- session actor dispatch[^session-actor-dispatch] 는 단일 gateway feature switch
+  하나를 켜고 끄는 형태가 아니다. 대신
+  `AddStreamNode(...).AddHeaderSession<TSession>()`, actor factory, actor
+  route resolver, actor-session binding, `IZLinkSessionProxy` 의 조합으로
+  설명한다. 공개 resolver 축은 actor 와 spot 으로 제한하며, session 위치
+  조회를 위한 별도의 public API 는 두지 않는다.
 
 ## 2. 문서 구조와 역할 분담
 
@@ -123,8 +124,9 @@ hosted service[^hosted-service], handler 모델로 감싸서 노출하는 데에
 
 ### 2.2 주제 문서 (programming model)
 
-각 주제 문서는 프로그래밍 모델과 사용 방향을 설명한다. 인터페이스 전체 정의를
-다시 나열하지 않고, 필요한 부분에서 handler-interfaces.ko.md 를 교차 참조한다.
+각 주제 문서는 프로그래밍 모델과 사용 방향을 설명한다. 인터페이스 전체 정의는
+다시 나열하지 않는다. 필요한 부분이 있으면 handler-interfaces.ko.md 를 교차
+참조한다.
 
 | 문서 | 다루는 범위 |
 |------|------------|
@@ -142,8 +144,9 @@ hosted service[^hosted-service], handler 모델로 감싸서 노출하는 데에
 
 ### 2.3 구현 준비 문서
 
-다음 문서들은 public API 를 소개하기 위한 문서가 아니라, 실제 구현을 어디까지
-진행할 수 있고 어떤 기준으로 완료를 판단할지를 닫아 두기 위한 문서다.
+다음 문서들은 public API 를 소개하기 위한 문서가 아니다. 실제 구현을 어디까지
+진행할 수 있는지, 그리고 어떤 기준으로 완료를 판단할지를 미리 닫아 두기 위한
+문서다.
 
 | 문서 | 다루는 범위 |
 |------|------------|
@@ -206,9 +209,12 @@ hosted service[^hosted-service], handler 모델로 감싸서 노출하는 데에
 
 ## 4. 회귀 테스트
 
-이 묶음의 모든 세부 문서는 회귀 테스트 기준을 함께 설명해야 한다. 따라서 문서가
-추가되거나 이름이 바뀌면, 아래 테스트가 문서 목록과 회귀 테스트 단락, 대표
-테스트 케이스 연결까지 함께 갱신됐는지 확인한다.
+이 묶음의 모든 세부 문서는 회귀 테스트 기준을 함께 설명해야 한다. 그래서 문서가
+추가되거나 이름이 바뀌면, 아래 테스트가 다음 세 가지를 함께 갱신했는지 확인한다.
+
+- 문서 목록
+- 각 문서의 회귀 테스트 단락
+- 대표 테스트 케이스 연결
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|

@@ -6,10 +6,12 @@ import systems.zlink.Context;
 import systems.zlink.Message;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
+import systems.zlink.SocketType;
 import systems.zlink.StreamSocket;
 import systems.zlink.SubmitException;
 import systems.zlink.SubmitResult;
 import systems.zlink.perf.PerfControl;
+import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -26,8 +28,12 @@ final class PerfMultiStream {
         Thread controlWatcher = startControlWatcher(stopRequested, stopSignal);
 
         try (Context ctx = PerfUtil.newContext(config);
-             StreamSocket server = new StreamSocket(ctx)) {
+            StreamSocket server = new StreamSocket(ctx)) {
             PerfUtil.applySocketOptions(server, config);
+            PerfUtil.applyAutoHwmMsgUnit(server, config.size());
+            PerfUtil.recalculateAutoHwm(ctx);
+            PerfUtil.printMultiSocketAutoHwm(config, server, "server",
+                "server", SocketType.STREAM);
             PerfUtil.configureServerTls(server, config.transport());
             server.options().sendTimeout(java.time.Duration.ZERO);
             server.options().recvTimeout(java.time.Duration.ZERO);
@@ -77,6 +83,11 @@ final class PerfMultiStream {
                                  AtomicBoolean stopRequested,
                                  Object stopSignal) {
         if (routingId == null) {
+            return;
+        }
+        if (PerfStopToken.isStopTokenMessage(body)) {
+            stopRequested.set(true);
+            signal(stopSignal);
             return;
         }
         try {

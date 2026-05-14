@@ -30,7 +30,7 @@ final class PerfMeasurement {
         return payload;
     }
 
-    static Message payloadTemplate(int size) {
+    private static Message payloadTemplate(int size) {
         int capacity = Math.max(size, PerfUtil.HEADER_SIZE);
         Message payload = new Message(capacity);
         payload.fill((byte) 'a');
@@ -50,24 +50,6 @@ final class PerfMeasurement {
         payload.writeLongLe(21, sentTsNs);
     }
 
-    static byte phase(Message message) {
-        if (message == null || message.size() < PerfUtil.HEADER_SIZE) {
-            return (byte) PerfUtil.PHASE_UNKNOWN;
-        }
-        return message.dataBuffer().get(8);
-    }
-
-    static long latencyNanos(Message message) {
-        if (message == null || message.size() < PerfUtil.HEADER_SIZE) {
-            return 0L;
-        }
-        return Math.max(0L, nowNs() - message.readLongLe(21));
-    }
-
-    static double latencyMillis(Message message) {
-        return latencyNanos(message) / 1_000_000.0d;
-    }
-
     static String endpoint(String transport, String token) {
         return switch (transport) {
             case "tcp", "tls", "ws", "wss" -> transport + "://127.0.0.1:" + freePort();
@@ -77,21 +59,14 @@ final class PerfMeasurement {
         };
     }
 
-    static String derivedControlEndpoint(String endpoint) {
-        int schemeSep = endpoint.indexOf("://");
-        int colon = endpoint.lastIndexOf(':');
-        if (schemeSep <= 0 || colon <= schemeSep + 2 || colon == endpoint.length() - 1) {
-            throw new IllegalArgumentException("cannot derive control endpoint from: " + endpoint);
-        }
-        int port = Integer.parseInt(endpoint.substring(colon + 1));
-        return endpoint.substring(0, colon + 1) + (port + 1);
-    }
-
     static boolean isEchoPattern(String pattern) {
         return "DEALER_ROUTER".equals(pattern)
             || "ROUTER_ROUTER".equals(pattern)
             || "STREAM".equals(pattern)
-            || "MULTI_SPOT_REQREP".equals(pattern);
+            || "SPOT_REQREP".equals(pattern)
+            || "SPOT_SENDSEND".equals(pattern)
+            || "MULTI_SPOT_REQREP".equals(pattern)
+            || "MULTI_SPOT_SENDSEND".equals(pattern);
     }
 
     static long nowNs() {

@@ -8,6 +8,7 @@ import systems.zlink.MonitorEventType;
 import systems.zlink.PollEventFlag;
 import systems.zlink.PubSocket;
 import systems.zlink.RecvFlags;
+import systems.zlink.SocketType;
 import systems.zlink.SubSocket;
 import systems.zlink.TopicMessage;
 import systems.zlink.perf.PerfSocketPollSet;
@@ -52,6 +53,16 @@ final class PerfPubSub {
             PerfUtil.waitForMonitorEvent(subMonitor, READY_EVENT, 1,
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "pubsub subscriber ready");
+            PerfUtil.applyAutoHwmMsgUnit(pub, config.size());
+            PerfUtil.applyAutoHwmMsgUnit(sub, config.size());
+            PerfUtil.recalculateAutoHwm(pubCtx);
+            if (!sharedContext) {
+                PerfUtil.recalculateAutoHwm(subCtx);
+            }
+            PerfUtil.printSingleMonitorAutoHwm(config, pubMonitor, "publisher",
+                SocketType.PUB);
+            PerfUtil.printSingleMonitorAutoHwm(config, subMonitor, "subscriber",
+                SocketType.SUB);
             } finally {
                 pubMonitor.close();
                 subMonitor.close();
@@ -60,6 +71,8 @@ final class PerfPubSub {
 
             // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits with -1 and exits
             // on wire-level stop token published on TOPIC.
+            long activeEnd = System.nanoTime()
+                + config.durationSeconds() * 1_000_000_000L;
             Thread recvThread = new Thread(() -> {
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(sub), PollEventFlag.POLLIN)) {
@@ -83,7 +96,8 @@ final class PerfPubSub {
                                 if (header == null) {
                                     continue;
                                 }
-                                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                if (header.phase() == PerfUtil.PHASE_ACTIVE
+                                    && System.nanoTime() < activeEnd) {
                                     metrics.recordNanos(header.latencyNanos());
                                 }
                             }
@@ -99,7 +113,6 @@ final class PerfPubSub {
             recvThread.start();
 
             metrics.startActiveWindow();
-            long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {

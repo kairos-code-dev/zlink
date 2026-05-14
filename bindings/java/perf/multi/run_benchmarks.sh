@@ -7,7 +7,7 @@ REPO_DIR="$(cd "${ROOT_DIR}/../../.." && pwd)"
 JAVA_BINDINGS_DIR="$(cd "${ROOT_DIR}/.." && pwd)"
 STREAM_CLIENT="${REPO_DIR}/bindings/c/build/perf/perf_stream_client"
 CORE_BUILD_DIR="${REPO_DIR}/bindings/c/build"
-RESULTS_ROOT="${ROOT_DIR}/results"
+RESULTS_ROOT="${PERF_RESULTS_DIR:-${ROOT_DIR}/results}"
 PATTERN="ALL"
 if [[ -n "${PERF_TRANSPORTS:-}" ]]; then
   TRANSPORTS="${PERF_TRANSPORTS}"
@@ -18,7 +18,7 @@ MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 CLIENTS="${PERF_MULTI_CLIENTS:-100}"
 RUNS=1
 DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
-RESULTS_TAG=""
+RESULTS_TAG="${PERF_RESULTS_TAG:-}"
 BUILD_DIR=""
 OUTPUT_PATH=""
 PIN_CPU=0
@@ -30,8 +30,12 @@ CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-}"
 HWM="${PERF_MULTI_HWM:-}"
 SEND_HWM="${PERF_MULTI_SNDHWM:-${HWM}}"
 RECV_HWM="${PERF_MULTI_RCVHWM:-${HWM}}"
+SNDBUF="${PERF_MULTI_SNDBUF:-${PERF_SNDBUF:-}}"
+RCVBUF="${PERF_MULTI_RCVBUF:-${PERF_RCVBUF:-}}"
 SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-200}"
 RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-200}"
+CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-1}"
+CTX_AUTO_HWM_PROFILE="${PERF_MULTI_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}"
 CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
 TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
 PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
@@ -47,14 +51,20 @@ explicit_clients=0
 explicit_msg_sizes=0
 SKIP_NOFILE_CHECK="${PERF_SKIP_NOFILE_CHECK:-0}"
 SKIP_MEMORY_CHECK="${PERF_SKIP_MEMORY_CHECK:-0}"
+SPOT_CLEAN_LATENCY="${PERF_MULTI_SPOT_CLEAN_LATENCY:-1}"
+DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
+TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-auto}}"
+SERVICE_CLIENTS="${PERF_MULTI_SERVICE_CLIENTS:-auto}"
+LAT_TIMEOUT_MS="${PERF_MULTI_LAT_TIMEOUT_MS:-5000}"
+STREAM_NON_TCP_CLIENTS_MAX="${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
 
 usage() {
   cat <<'USAGE'
 Usage: perf/multi/run_benchmarks.sh [options]
 
 Options:
+  -h, --help            Show this help.
   --pattern NAME         Pattern list or ALL.
-  --transport NAME       Single transport override.
   --transports LIST      Transport list override.
   --msg-sizes LIST       Payload sizes.
   --clients N            Client count.
@@ -95,7 +105,7 @@ USAGE
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pattern) PATTERN="${2:-}"; shift ;;
-    --transport|--transports) TRANSPORTS="${2:-}"; shift ;;
+    --transports) TRANSPORTS="${2:-}"; shift ;;
     --msg-sizes) MSG_SIZES="${2:-}"; explicit_msg_sizes=1; shift ;;
     --clients) CLIENTS="${2:-}"; explicit_clients=1; shift ;;
     --runs) RUNS="${2:-}"; shift ;;
@@ -111,7 +121,10 @@ while [[ $# -gt 0 ]]; do
     --hwm) HWM="${2:-}"; SEND_HWM="${2:-}"; RECV_HWM="${2:-}"; shift ;;
     --send-hwm) SEND_HWM="${2:-}"; shift ;;
     --recv-hwm) RECV_HWM="${2:-}"; shift ;;
-    --buf|--sndbuf|--rcvbuf|--auto-hwm-profile) shift ;;
+    --buf) SNDBUF="${2:-}"; RCVBUF="${2:-}"; shift ;;
+    --sndbuf) SNDBUF="${2:-}"; shift ;;
+    --rcvbuf) RCVBUF="${2:-}"; shift ;;
+    --auto-hwm-profile) CTX_AUTO_HWM_PROFILE="${2:-}"; shift ;;
     --sndtimeo|--send-timeout-ms) SNDTIMEO_MS="${2:-}"; shift ;;
     --rcvtimeo|--recv-timeout-ms) RCVTIMEO_MS="${2:-}"; shift ;;
     --connect-concurrency) CONNECT_CONCURRENCY="${2:-}"; shift ;;
@@ -148,6 +161,34 @@ for numeric_opt in COMMON_IO_THREADS SERVER_IO_THREADS CLIENT_IO_THREADS SEND_HW
   fi
 done
 
+if [[ -n "${HWM}${SEND_HWM}${RECV_HWM}${SNDBUF}${RCVBUF}" \
+  && "${PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}" != "1" ]]; then
+  echo "manual HWM/SNDBUF/RCVBUF overrides are debug-only; set PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1" >&2
+  exit 1
+fi
+
+case "${CTX_AUTO_HWM_PROFILE}" in
+  ""|compact|low_latency|low-latency|balanced|throughput) ;;
+  *)
+    echo "--auto-hwm-profile must be compact, low_latency, balanced, or throughput" >&2
+    exit 1
+    ;;
+esac
+
+case "${CTX_AUTO_HWM_ENABLE}" in
+  0|1) ;;
+  *)
+    echo "PERF_CTX_AUTO_HWM_ENABLE must be 0 or 1" >&2
+    exit 1
+    ;;
+esac
+
+export PERF_CTX_AUTO_HWM_ENABLE="${CTX_AUTO_HWM_ENABLE}"
+export PERF_CTX_AUTO_HWM_PROFILE="${CTX_AUTO_HWM_PROFILE}"
+if [[ "${PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}" == "1" ]]; then
+  export PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1
+fi
+
 for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS CONNECT_READY_TIMEOUT_MS TRANSPORT_TRANSITION_MS PATTERN_TRANSITION_MS RUN_COOLDOWN_MS SERVER_READY_TIMEOUT_MS SERVER_SHUTDOWN_TIMEOUT_MS SERVER_BIND_PORT; do
   value="${!numeric_opt}"
   if [[ -n "${value}" ]] && { ! [[ "${value}" =~ ^[0-9]+$ ]] || [[ "${value}" -lt 0 ]]; }; then
@@ -157,7 +198,7 @@ for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS CONNECT_READY_TIMEOUT_MS TRANSPORT_TR
 done
 
 if [[ "${PATTERN}" == "ALL" ]]; then
-  PATTERN="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_STREAM"
+  PATTERN="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_SPOT_SENDSEND,MULTI_STREAM"
 fi
 
 detect_platform() {
@@ -261,7 +302,14 @@ PY
 
 is_start_gated_pattern() {
   case "$1" in
-    DEALER_DEALER|PUBSUB|SPOT) return 0 ;;
+    DEALER_DEALER|PUBSUB|SPOT|SPOT_REQREP|SPOT_SENDSEND) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_spot_control_pattern() {
+  case "$1" in
+    SPOT|SPOT_REQREP|SPOT_SENDSEND) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -485,7 +533,7 @@ ensure_memory_budget() {
 
 throughput_unit_for_pattern() {
   case "$1" in
-    DEALER_ROUTER|ROUTER_ROUTER|STREAM) printf 'Kops/s' ;;
+    DEALER_ROUTER|ROUTER_ROUTER|SPOT_REQREP|SPOT_SENDSEND|STREAM) printf 'Kops/s' ;;
     *) printf 'Kmsg/s' ;;
   esac
 }
@@ -501,7 +549,7 @@ import sys
 
 pattern, transport, size, source_file, prefix = sys.argv[1:]
 size = int(size)
-unit = "Kops/s" if pattern in {"DEALER_ROUTER", "ROUTER_ROUTER", "STREAM"} else "Kmsg/s"
+unit = "Kops/s" if pattern in {"DEALER_ROUTER", "ROUTER_ROUTER", "SPOT_REQREP", "SPOT_SENDSEND", "STREAM"} else "Kmsg/s"
 metrics = {}
 with open(source_file, encoding="utf-8") as f:
     for line in f:
@@ -607,7 +655,8 @@ report="${report}.txt"
 tmp_metrics="$(mktemp)"
 tmp_progress="$(mktemp)"
 tmp_failures="$(mktemp)"
-trap 'rm -f "${tmp_metrics}" "${tmp_progress}" "${tmp_failures}"' EXIT
+tmp_auto_hwm="$(mktemp)"
+trap 'rm -f "${tmp_metrics}" "${tmp_progress}" "${tmp_failures}" "${tmp_auto_hwm}"' EXIT
 metrics_regex='^(throughput|bandwidth|latency|latency_p95|latency_p99)$'
 
 expected_result_lines=0
@@ -657,6 +706,12 @@ append_metrics() {
   actual_result_lines=$((actual_result_lines + required_count))
 }
 
+append_auto_hwm_details() {
+  local source_file="$1"
+  [[ -f "${source_file}" ]] || return 0
+  awk '/^AUTO_HWM_DETAIL,/ {print}' "${source_file}" >> "${tmp_auto_hwm}" || true
+}
+
 resolve_case_connect_concurrency() {
   local clients="$1"
   if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
@@ -676,6 +731,12 @@ append_multi_socket_args() {
   fi
   if [[ -n "${RECV_HWM}" ]]; then
     cmd_ref+=(--recv-hwm "${RECV_HWM}")
+  fi
+  if [[ -n "${SNDBUF}" ]]; then
+    cmd_ref+=(--sndbuf "${SNDBUF}")
+  fi
+  if [[ -n "${RCVBUF}" ]]; then
+    cmd_ref+=(--rcvbuf "${RCVBUF}")
   fi
 }
 
@@ -711,10 +772,10 @@ run_stream_case() {
   rm -f "${fifo}"
   mkfifo "${fifo}"
   endpoint="$(pick_endpoint "${transport}" "${bare_pattern}")"
-  exec 3<>"${fifo}"
   build_multi_role_cmd stream_server_cmd "server" "${endpoint}" "${pattern_server_io_threads}" "${concurrency}"
   "${stream_server_cmd[@]}" <"${fifo}" >"${server_log}" 2>&1 &
   local server_pid=$!
+  exec 3>"${fifo}"
   if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
     record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_ready_timeout"
     wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server"
@@ -733,6 +794,8 @@ run_stream_case() {
   exec 3>&-
   wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server"
   rm -f "${fifo}"
+  append_auto_hwm_details "${server_log}"
+  append_auto_hwm_details "${client_log}"
 
   if [[ "${stream_client_rc}" -ne 0 ]]; then
     record_failure "${pattern}" "${transport}" "${size}" "${run}" \
@@ -777,10 +840,10 @@ run_socket_case() {
   endpoint="$(pick_endpoint "${transport}" "${bare_pattern}")"
   rm -f "${server_fifo}" "${client_fifo}"
   mkfifo "${server_fifo}" "${client_fifo}"
-  exec {server_fd}<>"${server_fifo}"
   build_multi_role_cmd server_cmd "server" "${endpoint}" "${pattern_server_io_threads}" "${concurrency}"
   "${server_cmd[@]}" <"${server_fifo}" >"${server_log}" 2>&1 &
   server_pid=$!
+  exec {server_fd}>"${server_fifo}"
   if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
     record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_ready_timeout"
     wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
@@ -789,11 +852,54 @@ run_socket_case() {
     CASE_STATUS="fail"
     return 0
   fi
+  local server_control_endpoint=""
+  if is_spot_control_pattern "${bare_pattern}"; then
+    local control_line
+    control_line="$(wait_for_log_token "${server_log}" "CONTROL_READY," "${SERVER_READY_TIMEOUT_MS}" || true)"
+    if [[ "${control_line}" != CONTROL_READY,* ]]; then
+      record_failure "${pattern}" "${transport}" "${size}" "${run}" "control_ready_timeout"
+      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+      exec {server_fd}>&-
+      rm -f "${server_fifo}" "${client_fifo}"
+      CASE_STATUS="fail"
+      return 0
+    fi
+    server_control_endpoint="${control_line#CONTROL_READY,}"
+  fi
 
-  exec {client_fd}<>"${client_fifo}"
   build_multi_role_cmd client_cmd "client" "${endpoint}" "${pattern_client_io_threads}" "${concurrency}"
   "${client_cmd[@]}" <"${client_fifo}" >"${client_log}" 2>&1 &
   client_pid=$!
+  exec {client_fd}>"${client_fifo}"
+  if is_spot_control_pattern "${bare_pattern}"; then
+    local client_control_line
+    client_control_line="$(wait_for_log_token "${client_log}" "CLIENT_CONTROL_ENDPOINT," "${CONNECT_READY_TIMEOUT_MS}" || true)"
+    if [[ "${client_control_line}" != CLIENT_CONTROL_ENDPOINT,* ]]; then
+      record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_control_endpoint_timeout"
+      wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
+      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+      exec {client_fd}>&-
+      exec {server_fd}>&-
+      rm -f "${server_fifo}" "${client_fifo}"
+      CASE_STATUS="fail"
+      return 0
+    fi
+    local client_control_endpoint="${client_control_line#CLIENT_CONTROL_ENDPOINT,}"
+    printf 'CONNECT_CONTROL,%s\n' "${client_control_endpoint}" >&${server_fd}
+    local connected_line
+    connected_line="$(wait_for_log_token "${server_log}" "CONTROL_CONNECTED,${client_control_endpoint}" "${CONNECT_READY_TIMEOUT_MS}" || true)"
+    if [[ "${connected_line}" != "CONTROL_CONNECTED,${client_control_endpoint}" ]]; then
+      record_failure "${pattern}" "${transport}" "${size}" "${run}" "control_connected_timeout"
+      wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
+      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+      exec {client_fd}>&-
+      exec {server_fd}>&-
+      rm -f "${server_fifo}" "${client_fifo}"
+      CASE_STATUS="fail"
+      return 0
+    fi
+    printf '%s\n' "${connected_line}" >&${client_fd}
+  fi
   if is_start_gated_pattern "${bare_pattern}"; then
     if ! wait_for_log_token "${client_log}" "CLIENT_READY,${size}" "${CONNECT_READY_TIMEOUT_MS}" >/dev/null; then
       record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_ready_timeout"
@@ -814,10 +920,13 @@ run_socket_case() {
   wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
   exec {server_fd}>&-
   rm -f "${server_fifo}" "${client_fifo}"
+  append_auto_hwm_details "${server_log}"
+  append_auto_hwm_details "${client_log}"
 
   if [[ "${bare_pattern}" == "DEALER_ROUTER" \
      || "${bare_pattern}" == "ROUTER_ROUTER" || "${bare_pattern}" == "PUBSUB" \
      || "${bare_pattern}" == "SPOT_REQREP" \
+     || "${bare_pattern}" == "SPOT_SENDSEND" \
      || "${bare_pattern}" == "SPOT" ]]; then
     metric_log="${client_log}"
   fi
@@ -839,6 +948,64 @@ run_socket_case() {
   CASE_METRIC_LOG="${metric_log}"
 }
 
+merge_spot_clean_latency_log() {
+  local active_log="$1"
+  local latency_log="$2"
+  local merged_log="$3"
+  python3 - "$bare_pattern" "$transport" "$size" "$active_log" "$latency_log" "$merged_log" <<'PY'
+import sys
+
+pattern, transport, size, active_log, latency_log, merged_log = sys.argv[1:]
+latency_metrics = {"latency", "latency_p95", "latency_p99"}
+merged = {}
+
+def load(path, allowed):
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        for raw in handle:
+            line = raw.strip()
+            if not line.startswith("RESULT,"):
+                continue
+            parts = line.split(",")
+            if len(parts) != 7:
+                continue
+            _, _, row_pattern, row_transport, row_size, metric, value = parts
+            if row_pattern == pattern and row_transport == transport and row_size == size and metric in allowed:
+                merged[metric] = value
+
+load(active_log, {"throughput", "bandwidth", "latency", "latency_p95", "latency_p99"})
+load(latency_log, latency_metrics)
+
+with open(merged_log, "w", encoding="utf-8") as handle:
+    for metric in ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]:
+        if metric in merged:
+            handle.write(f"RESULT,current,{pattern},{transport},{size},{metric},{merged[metric]}\n")
+PY
+}
+
+run_spot_case_with_optional_clean_latency() {
+  run_socket_case "$1"
+  if [[ "${CASE_STATUS}" != "ok" || "${bare_pattern}" != "SPOT" \
+     || "${SPOT_CLEAN_LATENCY}" == "0" ]]; then
+    return 0
+  fi
+
+  local active_log="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_active.log"
+  local latency_log="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_latency.log"
+  local merged_log="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_merged.log"
+  cp -f "${CASE_METRIC_LOG}" "${active_log}"
+  sleep_ms "${RUN_COOLDOWN_MS}"
+  PERF_MULTI_SPOT_LATENCY_ONLY=1 run_socket_case "$1"
+  if [[ "${CASE_STATUS}" != "ok" ]]; then
+    echo "      warning: MULTI_SPOT clean latency pass failed; using active-pass latency" >&2
+    CASE_STATUS="ok"
+    CASE_METRIC_LOG="${active_log}"
+    return 0
+  fi
+  cp -f "${CASE_METRIC_LOG}" "${latency_log}"
+  merge_spot_clean_latency_log "${active_log}" "${latency_log}" "${merged_log}"
+  CASE_METRIC_LOG="${merged_log}"
+}
+
 IFS=',' read -r -a patterns <<< "$(trim_csv "${PATTERN}")"
 if printf '%s\n' "${patterns[@]}" | grep -qx 'MULTI_STREAM'; then
   ensure_core_stream_client
@@ -857,10 +1024,14 @@ if [[ "${PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}" == "1" \
   display_hwm="${HWM:-manual-unset}"
   display_send_hwm="${SEND_HWM:-${HWM:-manual-unset}}"
   display_recv_hwm="${RECV_HWM:-${HWM:-manual-unset}}"
+  display_sndbuf="${SNDBUF:-auto-hwm}"
+  display_rcvbuf="${RCVBUF:-auto-hwm}"
 else
   display_hwm="auto-hwm"
   display_send_hwm="auto-hwm"
   display_recv_hwm="auto-hwm"
+  display_sndbuf="auto-hwm"
+  display_rcvbuf="auto-hwm"
 fi
 skip_entries=()
 run_patterns=()
@@ -939,6 +1110,8 @@ for pattern_index in "${!patterns[@]}"; do
 
         if [[ "${bare_pattern}" == "STREAM" ]]; then
           run_stream_case "${case_connect_concurrency}"
+        elif [[ "${bare_pattern}" == "SPOT" ]]; then
+          run_spot_case_with_optional_clean_latency "${case_connect_concurrency}"
         else
           run_socket_case "${case_connect_concurrency}"
         fi
@@ -995,19 +1168,26 @@ for pattern_index in "${!patterns[@]}"; do
 done
 
 python_status=0
-python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${report}" "${requested_patterns}" "${TRANSPORTS}" "${display_msg_sizes}" \
+python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${tmp_auto_hwm}" "${report}" "${requested_patterns}" "${TRANSPORTS}" "${display_msg_sizes}" \
   "${display_clients}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" \
   "${PIN_CPU}" "${display_server_io_threads}" "${display_client_io_threads}" \
   "${display_hwm}" "${display_send_hwm}" "${display_recv_hwm}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" \
   "${CONNECT_READY_TIMEOUT_MS}" "${MONITOR_HWM}" "${SERVER_BIND_PORT}" \
-  "${CONNECT_CONCURRENCY}" "${tmp_progress}" "${expected_result_lines}" "${actual_result_lines}" <<'PY' || python_status=$?
+  "${CONNECT_CONCURRENCY}" "${display_sndbuf}" "${display_rcvbuf}" \
+  "${CTX_AUTO_HWM_ENABLE}" "${CTX_AUTO_HWM_PROFILE}" \
+  "${STREAM_DEFAULT_CLIENTS}" "${SERVICE_CLIENTS}" \
+  "${SERVER_READY_TIMEOUT_MS}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" \
+  "${TRANSPORT_TRANSITION_MS}" "${PATTERN_TRANSITION_MS}" \
+  "${LAT_TIMEOUT_MS}" "${STREAM_NON_TCP_CLIENTS_MAX}" \
+  "${DISABLE_RESOURCE_METRICS}" "${TIMEOUT_SECONDS}" \
+  "${tmp_progress}" "${expected_result_lines}" "${actual_result_lines}" <<'PY' || python_status=$?
 import csv
 import math
 import sys
 from collections import defaultdict
 from pathlib import Path
 
-helper_path, metrics_path, failures_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, progress_path, expected_result_lines, actual_result_lines = sys.argv[1:]
+helper_path, metrics_path, failures_path, auto_hwm_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, sndbuf, rcvbuf, ctx_auto_hwm_enable, ctx_auto_hwm_profile, default_stream_clients, service_clients, server_ready_timeout_ms, server_shutdown_timeout_ms, transport_transition_ms, pattern_transition_ms, lat_timeout_ms, stream_non_tcp_clients_max, disable_resource_metrics, timeout_seconds, progress_path, expected_result_lines, actual_result_lines = sys.argv[1:]
 sys.path.insert(0, str(Path(helper_path).resolve().parent))
 from report_common import emit_completion, emit_effective_options, emit_failures, load_failures, write_report
 
@@ -1039,6 +1219,20 @@ with open(metrics_path, newline="", encoding="utf-8") as f:
             rows[key][metric].append(math.nan)
 
 failures = load_failures(failures_path)
+auto_hwm_rows = []
+with open(auto_hwm_path, encoding="utf-8", errors="replace") as f:
+    for raw in f:
+        line = raw.strip()
+        if not line.startswith("AUTO_HWM_DETAIL,"):
+            continue
+        fields = {}
+        for item in line.split(",")[1:]:
+            if "=" not in item:
+                continue
+            key, value = item.split("=", 1)
+            fields[key.strip()] = value.strip()
+        if fields:
+            auto_hwm_rows.append(fields)
 
 for pattern in pattern_sizes:
     pattern_sizes[pattern].sort()
@@ -1070,6 +1264,147 @@ def fmt_latency_ms(value):
 def fmt_size(size):
     return f"{size}B"
 
+def parse_int(value, default=0):
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return default
+
+def bytes_to_kb(value):
+    parsed = parse_int(value, -1)
+    if parsed < 0:
+        return "?"
+    if parsed == 0:
+        return "0"
+    if parsed % 1024 == 0:
+        return str(parsed // 1024)
+    return f"{parsed / 1024.0:.1f}"
+
+def emit_table(indent, columns, table_rows):
+    widths = []
+    for header, key in columns:
+        width = len(header)
+        for row in table_rows:
+            width = max(width, len(str(row.get(key, "?"))))
+        widths.append(width)
+    emit(indent + "| " + " | ".join(
+        f"{columns[i][0]:<{widths[i]}}" for i in range(len(columns))
+    ) + " |")
+    emit(indent + "|-" + "-|-".join("-" * width for width in widths) + "-|")
+    for row in table_rows:
+        emit(indent + "| " + " | ".join(
+            f"{str(row.get(columns[i][1], '?')):<{widths[i]}}"
+            for i in range(len(columns))
+        ) + " |")
+
+def auto_hwm_pattern_rows(pattern):
+    return [
+        row for row in auto_hwm_rows
+        if row.get("pattern", "").upper() == pattern.upper()
+    ]
+
+def emit_multi_auto_hwm(pattern):
+    selected = auto_hwm_pattern_rows(pattern)
+    if not selected:
+        return
+    if pattern in {"MULTI_SPOT", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}:
+        emit_spot_auto_hwm(selected)
+    else:
+        emit_non_spot_auto_hwm(selected)
+
+def emit_non_spot_auto_hwm(rows_for_pattern):
+    display_rows = []
+    seen = set()
+    for row in rows_for_pattern:
+        if not row.get("msg_size") or row.get("msg_size") == "0":
+            continue
+        display = dict(row)
+        display["type"] = row.get("socket_type", "")
+        display["unit_budget_kb"] = bytes_to_kb(row.get("unit_budget_bytes", ""))
+        display["effective_sndbuf_kb"] = bytes_to_kb(row.get("effective_sndbuf", ""))
+        display["effective_rcvbuf_kb"] = bytes_to_kb(row.get("effective_rcvbuf", ""))
+        key = tuple(display.get(name, "") for name in (
+            "msg_size", "component", "type", "unit_budget_kb",
+            "effective_message_bytes", "sndhwm", "rcvhwm",
+            "effective_sndbuf_kb", "effective_rcvbuf_kb",
+        ))
+        if key in seen:
+            continue
+        seen.add(key)
+        display_rows.append(display)
+    if not display_rows:
+        return
+    display_rows.sort(key=lambda row: (
+        parse_int(row.get("msg_size", "0")),
+        row.get("component", ""),
+        row.get("type", ""),
+    ))
+    emit("    Auto-HWM detail:")
+    emit_table("      ", (
+        ("Size(B)", "msg_size"),
+        ("Component", "component"),
+        ("Type", "type"),
+        ("UnitBudget(KB)", "unit_budget_kb"),
+        ("MsgUnit(B)", "effective_message_bytes"),
+        ("SNDHWM", "sndhwm"),
+        ("RCVHWM", "rcvhwm"),
+        ("SNDBUF(KB)", "effective_sndbuf_kb"),
+        ("RCVBUF(KB)", "effective_rcvbuf_kb"),
+    ), display_rows)
+    emit("")
+
+def emit_spot_auto_hwm(rows_for_pattern):
+    def build(owner):
+        out = []
+        seen = set()
+        for row in rows_for_pattern:
+            if row.get("source") != "spotnode_snapshot":
+                continue
+            if row.get("owner") != owner:
+                continue
+            display = dict(row)
+            display["class"] = row.get("policy_class", "")
+            display["cap"] = row.get("size_cap", "")
+            display["slots"] = row.get("socket_message_slots", "")
+            key = tuple(display.get(name, "") for name in (
+                "msg_size", "effective_message_bytes", "socket",
+                "socket_type", "profile", "class", "role", "cap", "slots",
+                "sndhwm", "rcvhwm",
+            ))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(display)
+        out.sort(key=lambda row: (
+            parse_int(row.get("msg_size", "0")),
+            row.get("socket", ""),
+            row.get("role", ""),
+        ))
+        return out
+    columns = (
+        ("Size(B)", "msg_size"),
+        ("MsgUnit(B)", "effective_message_bytes"),
+        ("Socket", "socket"),
+        ("Type", "socket_type"),
+        ("Profile", "profile"),
+        ("Class", "class"),
+        ("Role", "role"),
+        ("Cap", "cap"),
+        ("Slots", "slots"),
+        ("SNDHWM", "sndhwm"),
+        ("RCVHWM", "rcvhwm"),
+    )
+    node_rows = build("node")
+    spot_rows = build("spot")
+    if node_rows:
+        emit("    Auto-HWM spotnode:")
+        emit_table("      ", columns, node_rows)
+    if spot_rows:
+        emit("    Auto-HWM spot handles:")
+        emit_table("      ", columns, spot_rows)
+    if node_rows or spot_rows:
+        emit("")
+
 lines = []
 
 def emit(line=""):
@@ -1080,20 +1415,35 @@ start_options = [
     ("patterns", pattern_csv),
     ("transports", transports_csv),
     ("msg_sizes", msg_sizes_csv),
+    ("duration_seconds", duration),
     ("clients", clients),
+    ("default_clients", "100"),
+    ("default_stream_clients", default_stream_clients),
+    ("service_clients", service_clients),
     ("pin_cpu", "on" if pin_cpu == "1" else "off"),
     ("server_io_threads", server_io_threads),
     ("client_io_threads", client_io_threads),
     ("hwm", hwm),
-    ("send_hwm", send_hwm),
-    ("recv_hwm", recv_hwm),
-    ("send_timeout_ms", sndtimeo_ms),
-    ("recv_timeout_ms", rcvtimeo_ms),
+    ("sndhwm", send_hwm),
+    ("rcvhwm", recv_hwm),
+    ("sndbuf", sndbuf),
+    ("rcvbuf", rcvbuf),
+    ("ctx_auto_hwm_enable", ctx_auto_hwm_enable),
+    ("ctx_auto_hwm_profile", ctx_auto_hwm_profile),
+    ("sndtimeo_ms", sndtimeo_ms),
+    ("rcvtimeo_ms", rcvtimeo_ms),
     ("connect_concurrency", connect_concurrency or "auto"),
     ("connect_ready_timeout_ms", connect_ready_timeout_ms),
     ("monitor_hwm", monitor_hwm),
+    ("server_ready_timeout_ms", server_ready_timeout_ms),
+    ("server_shutdown_timeout_ms", server_shutdown_timeout_ms),
     ("server_bind_port", server_bind_port),
-    ("duration_seconds", duration),
+    ("transport_transition_ms", transport_transition_ms),
+    ("pattern_transition_ms", pattern_transition_ms),
+    ("lat_timeout_ms", lat_timeout_ms),
+    ("stream_non_tcp_clients_max", stream_non_tcp_clients_max),
+    ("disable_resource_metrics", disable_resource_metrics),
+    ("timeout_seconds", timeout_seconds),
 ]
 if results_tag:
     start_options.append(("results_tag", results_tag))
@@ -1115,7 +1465,7 @@ for pattern in patterns:
         emit(f"### Transport: {transport}")
         emit("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
         emit("|----------|--------------------|----------------|---------------|---------------|---------------|")
-        rate_unit = "Kops/s" if pattern in {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM"} else "Kmsg/s"
+        rate_unit = "Kops/s" if pattern in {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND", "MULTI_STREAM"} else "Kmsg/s"
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
             metric_values = {metric: median(rows[key].get(metric, [])) for metric in all_metrics}
@@ -1133,12 +1483,14 @@ for pattern in patterns:
                         f"RESULT,current,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
                     )
         emit("")
+    emit_multi_auto_hwm(pattern)
 
+emit_effective_options(lines, "result", "java", "multi", start_options)
+emit("")
+emit("## Result Data")
 for line in result_lines:
     emit(line)
-
 emit("")
-emit_effective_options(lines, "result", "java", "multi", start_options)
 status = "complete" if expected_result_lines == actual_result_lines and not failures else "partial"
 emit_completion(lines, status, expected_result_lines, actual_result_lines)
 emit_failures(lines, failures)

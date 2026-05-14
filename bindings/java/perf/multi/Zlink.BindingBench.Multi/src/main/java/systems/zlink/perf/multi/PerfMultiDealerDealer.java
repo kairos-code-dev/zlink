@@ -9,6 +9,7 @@ import systems.zlink.MonitorEventType;
 import systems.zlink.MonitorSocket;
 import systems.zlink.PollEventFlag;
 import systems.zlink.SendFlags;
+import systems.zlink.SocketType;
 import systems.zlink.SubmitException;
 import systems.zlink.SubmitResult;
 import systems.zlink.ZlinkException;
@@ -38,6 +39,8 @@ final class PerfMultiDealerDealer {
             PerfControl.awaitStart(config.size(), "dealer/dealer server");
             PerfUtil.applyAutoHwmMsgUnit(server, config.size());
             PerfUtil.recalculateAutoHwm(ctx);
+            PerfUtil.printMultiSocketAutoHwm(config, server, "server",
+                "server", SocketType.DEALER);
             PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (-1); server
             // exits on the first wire-level stop token (any later in-flight
@@ -100,6 +103,10 @@ final class PerfMultiDealerDealer {
                 PerfUtil.applyAutoHwmMsgUnit(client, config.size());
             }
             PerfUtil.recalculateAutoHwm(ctx);
+            for (int i = 0; i < monitors.size(); i++) {
+                PerfUtil.printMultiMonitorAutoHwm(config, monitors.get(i),
+                    "client", "client[" + i + "]", SocketType.DEALER);
+            }
             PerfControl.emitClientReady(config.size());
             PerfControl.awaitStart(config.size(), "dealer/dealer client");
             List<systems.zlink.Socket> pollSockets = new ArrayList<>(clients.size());
@@ -152,6 +159,7 @@ final class PerfMultiDealerDealer {
                 while (true) {
                     try (Message stop = PerfStopToken.newMessage()) {
                         if (cooldownClient.send().message(stop).flags(SendFlags.DONT_WAIT).submit()) {
+                            PerfControl.emitClientDone(config.size());
                             return PerfUtil.Result.silent(config);
                         }
                     } catch (SubmitException ex) {

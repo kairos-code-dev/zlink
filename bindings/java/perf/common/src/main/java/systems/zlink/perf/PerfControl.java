@@ -23,6 +23,10 @@ public final class PerfControl {
         emitLine("CLIENT_READY," + size);
     }
 
+    public static void emitClientDone(int size) {
+        emitLine("CLIENT_DONE," + size);
+    }
+
     public static void emitControlReady(String endpoint) {
         emitLine("CONTROL_READY," + endpoint);
     }
@@ -42,7 +46,7 @@ public final class PerfControl {
                 new InputStreamReader(System.in, StandardCharsets.UTF_8));
             String line;
             while ((line = reader.readLine()) != null) {
-                if (expected.equals(line) || ("PHASE_ACTIVE," + size).equals(line)) {
+                if (expected.equals(line)) {
                     return;
                 }
             }
@@ -50,6 +54,44 @@ public final class PerfControl {
             throw new IllegalStateException(label + " control read failed", ex);
         }
         throw new IllegalStateException(label + " missing " + expected);
+    }
+
+    public static void awaitControlConnected(String endpoint, String label) {
+        String expected = "CONTROL_CONNECTED," + endpoint;
+        try {
+            BufferedReader reader = new BufferedReader(
+                new InputStreamReader(System.in, StandardCharsets.UTF_8));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (expected.equals(line)) {
+                    return;
+                }
+            }
+        } catch (java.io.IOException ex) {
+            throw new IllegalStateException(label + " control read failed", ex);
+        }
+        throw new IllegalStateException(label + " missing " + expected);
+    }
+
+    public static void awaitStartAndAckControl(int size, String label) {
+        String expectedStart = "START," + size;
+        try {
+            BufferedReader reader = new BufferedReader(
+                new InputStreamReader(System.in, StandardCharsets.UTF_8));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("CONNECT_CONTROL,")) {
+                    emitControlConnected(line.substring("CONNECT_CONTROL,".length()));
+                    continue;
+                }
+                if (expectedStart.equals(line)) {
+                    return;
+                }
+            }
+        } catch (java.io.IOException ex) {
+            throw new IllegalStateException(label + " control read failed", ex);
+        }
+        throw new IllegalStateException(label + " missing " + expectedStart);
     }
 
     public static AtomicBoolean watchStopSignal(String label) {

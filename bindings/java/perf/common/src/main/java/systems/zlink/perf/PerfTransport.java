@@ -27,18 +27,25 @@ final class PerfTransport {
             ctx.options().ioThreads(config.ioThreads());
         }
         ctx.options().blocky(benchCtxBlocky());
-        ctx.options().autoHwmEnabled(true);
+        ctx.options().autoHwmEnabled(benchCtxAutoHwmEnabled());
         ctx.options().autoHwmProfile(benchCtxAutoHwmProfile());
         return ctx;
     }
 
-    static boolean manualSocketOverridesEnabled() {
-        return PerfUtil.intEnv("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) > 0
+    static boolean manualSocketOverridesEnabled(String suite) {
+        String suiteEnv = "multi".equals(suite)
+            ? "PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES"
+            : "PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES";
+        return PerfUtil.intEnv(suiteEnv, 0) > 0
             || PerfUtil.intEnv("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) > 0;
     }
 
     private static boolean benchCtxBlocky() {
         return PerfUtil.intEnv("PERF_CTX_BLOCKY", 0) != 0;
+    }
+
+    private static boolean benchCtxAutoHwmEnabled() {
+        return PerfUtil.intEnv("PERF_CTX_AUTO_HWM_ENABLE", 1) != 0;
     }
 
     private static AutoHwmProfile benchCtxAutoHwmProfile() {
@@ -82,7 +89,7 @@ final class PerfTransport {
         if (!isTlsTransport(transport)) {
             return;
         }
-        node.setTlsClient(cert("ca.crt"), "localhost", true);
+        node.setTlsClient(cert("ca.crt"), "localhost", false);
     }
 
     static void configureServerTls(Registry registry, String transport) {
@@ -96,24 +103,18 @@ final class PerfTransport {
         if (!isTlsTransport(transport)) {
             return;
         }
-        discovery.setTlsClient(cert("ca.crt"), "localhost", true);
+        discovery.setTlsClient(cert("ca.crt"), "localhost", false);
     }
 
     static void applySocketOptions(Socket socket, PerfUtil.Config config) {
         socket.options().linger(Duration.ZERO);
         if ("multi".equals(config.suite())) {
-            if (manualSocketOverridesEnabled()) {
-                int sndhwm = config.sendHwm() > 0 ? config.sendHwm() : 1;
-                int rcvhwm = config.recvHwm() > 0 ? config.recvHwm() : 1;
-                socket.options().sendHwm(sndhwm);
-                socket.options().recvHwm(rcvhwm);
+            if (manualSocketOverridesEnabled(config.suite())) {
+                applyManualSocketSizing(socket, config);
             }
         } else {
-            if (config.sendHwm() > 0) {
-                socket.options().sendHwm(config.sendHwm());
-            }
-            if (config.recvHwm() > 0) {
-                socket.options().recvHwm(config.recvHwm());
+            if (manualSocketOverridesEnabled(config.suite())) {
+                applyManualSocketSizing(socket, config);
             }
         }
         if (config.sendTimeoutMs() >= 0) {
@@ -121,6 +122,21 @@ final class PerfTransport {
         }
         if (config.recvTimeoutMs() >= 0) {
             socket.options().recvTimeout(Duration.ofMillis(config.recvTimeoutMs()));
+        }
+    }
+
+    private static void applyManualSocketSizing(Socket socket, PerfUtil.Config config) {
+        if (config.sendHwm() > 0) {
+            socket.options().sendHwm(config.sendHwm());
+        }
+        if (config.recvHwm() > 0) {
+            socket.options().recvHwm(config.recvHwm());
+        }
+        if (config.sendBuffer() > 0) {
+            socket.options().sendBuffer(config.sendBuffer());
+        }
+        if (config.recvBuffer() > 0) {
+            socket.options().recvBuffer(config.recvBuffer());
         }
     }
 

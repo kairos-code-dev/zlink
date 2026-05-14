@@ -1300,7 +1300,6 @@ public final class Spot implements AutoCloseable {
         if (currentHandle == null || currentHandle.address() == 0) {
             return;
         }
-        routedSupport.close();
         ExecutorService executor = callbackExecutor;
         Arena subscribeArena = subscribeCallbackArena;
         Arena readyArena = sendReadyCallbackArena;
@@ -1316,6 +1315,7 @@ public final class Spot implements AutoCloseable {
         sendReadyCallbackStub = MemorySegment.NULL;
         handle = MemorySegment.NULL;
         Native.spotDestroy(currentHandle);
+        routedSupport.close();
         if (ownerNode != null) {
             ownerNode.releaseSpot(this);
         }
@@ -1520,8 +1520,9 @@ public final class Spot implements AutoCloseable {
                 while (true) {
                     Message part = new Message();
                     boolean success = false;
+                    int rc = RecvResult.INTERNAL_ERROR.value();
                     try {
-                        int rc = Native.spotSubscribePart(handle, ridOut,
+                        rc = Native.spotSubscribePart(handle, ridOut,
                           topicOut, TOPIC_CAPACITY, topicLenOut,
                           InternalAccess.messageNativeHandle(part),
                           hasMoreOut, nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
@@ -1559,20 +1560,27 @@ public final class Spot implements AutoCloseable {
                             }
                         }
                     }
-                    int errno = Native.errno();
+                    RecvResult result;
+                    try {
+                        result = RecvResult.fromValue(rc);
+                    } catch (IllegalArgumentException ex) {
+                        int errno = Native.errno();
+                        if (errno == ERRNO_EINTR)
+                            break;
+                        throw InternalAccess.zlinkExceptionFromLastError(
+                          "zlink_spot_subscribe_part");
+                    }
                     for (int i = 0; i < partCount; i++) {
                         try {
                             parts[i].close();
                         } catch (RuntimeException ignored) {
                         }
                     }
-                    if (errno == ERRNO_EINTR)
-                        break;
-                    if (nonBlocking && (errno == ERRNO_EAGAIN
-                        || errno == ERRNO_EWOULDBLOCK_WIN)) {
+                    if (nonBlocking && (result == RecvResult.NO_DATA
+                        || result == RecvResult.BUSY)) {
                         return Optional.empty();
                     }
-                    throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_subscribe_part");
+                    throw new RecvException(result, Native.errno());
                 }
             }
         }

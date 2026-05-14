@@ -74,7 +74,10 @@ final class SpotRoutedSupport implements AutoCloseable {
         int.class, MemorySegment.class, long.class, MemorySegment.class)),
       FD_REPLY_CALLBACK, CALLBACK_ARENA);
     private static final AtomicLong NEXT_REQUEST_ID = new AtomicLong(1L);
+    private static final AtomicLong NEXT_CALLBACK_ID = new AtomicLong(1L);
     private static final ConcurrentMap<Long, CompletableFuture<Received>> PENDING =
+      new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Long, SpotRoutedSupport> DISPATCH_RECEIVERS =
       new ConcurrentHashMap<>();
     private static final ScheduledExecutorService REQUEST_TIMEOUTS =
       Executors.newSingleThreadScheduledExecutor(new TimeoutThreadFactory());
@@ -85,6 +88,7 @@ final class SpotRoutedSupport implements AutoCloseable {
     private ExecutorService callbackExecutor;
     private Arena routedCallbackArena;
     private Arena dispatchCallbackArena;
+    private long dispatchCallbackId;
     private volatile RuntimeException callbackFailure;
     private final ThreadLocal<Received> activeLazyReceive = new ThreadLocal<>();
 
@@ -292,24 +296,31 @@ final class SpotRoutedSupport implements AutoCloseable {
         ensureNoCallbackFailure();
         ExecutorService executor = ensureCallbackExecutor("zlink-spot-dispatch-callback");
         Arena arena = Arena.ofShared();
+        long callbackId = NEXT_CALLBACK_ID.getAndIncrement();
+        DISPATCH_RECEIVERS.put(callbackId, this);
         MemorySegment stub = LINKER.upcallStub(callbackHandle(
           "handleDispatchEventCallback",
           MethodType.methodType(void.class, MemorySegment.class,
-            MemorySegment.class, MemorySegment.class), this),
+            MemorySegment.class, MemorySegment.class)),
           FD_DISPATCH_HANDLER, arena);
         boolean success = false;
         try {
             int rc = Native.spotDispatchEventHandler(handle(), stub,
-              MemorySegment.NULL);
+              MemorySegment.ofAddress(callbackId));
             if (rc != 0) {
                 throw new HandlerException(HandlerResult.fromValue(rc));
             }
             success = true;
+            if (dispatchCallbackId != 0L) {
+                DISPATCH_RECEIVERS.remove(dispatchCallbackId);
+            }
             closeArena(dispatchCallbackArena);
             dispatchCallbackArena = arena;
+            dispatchCallbackId = callbackId;
             dispatchEventHandler = handler;
         } finally {
             if (!success) {
+                DISPATCH_RECEIVERS.remove(callbackId);
                 closeArena(arena);
                 if (callbackExecutor == executor && routedHandler == null
                     && dispatchEventHandler == null) {
@@ -329,8 +340,12 @@ final class SpotRoutedSupport implements AutoCloseable {
         callbackExecutor = null;
         closeArena(routedCallbackArena);
         closeArena(dispatchCallbackArena);
+        if (dispatchCallbackId != 0L) {
+            DISPATCH_RECEIVERS.remove(dispatchCallbackId);
+        }
         routedCallbackArena = null;
         dispatchCallbackArena = null;
+        dispatchCallbackId = 0L;
     }
 
     private void handleRoutedCallback(MemorySegment sourceRid,
@@ -361,21 +376,36 @@ final class SpotRoutedSupport implements AutoCloseable {
         }
     }
 
-    private void handleDispatchEventCallback(MemorySegment spotHandle,
-                                             MemorySegment info,
-                                             MemorySegment userdata) {
+    private static void handleDispatchEventCallback(MemorySegment spotHandle,
+                                                    MemorySegment info,
+                                                    MemorySegment userdata) {
+        if (userdata == null || userdata.address() == 0L) {
+            return;
+        }
+        SpotRoutedSupport receiver = DISPATCH_RECEIVERS.get(userdata.address());
+        if (receiver == null) {
+            return;
+        }
+        receiver.handleDispatchEventCallbackImpl(spotHandle, info);
+    }
+
+    private void handleDispatchEventCallbackImpl(MemorySegment spotHandle,
+                                                 MemorySegment info) {
         SpotDispatchEventHandler handler = dispatchEventHandler;
-        ExecutorService executor = callbackExecutor;
-        if (handler == null || executor == null) {
+        if (handler == null) {
             return;
         }
         try {
             SpotDispatchInfo dispatchInfo = decodeDispatchInfo(info);
-            executor.execute(() -> dispatchEvent(handler, dispatchInfo));
-        } catch (RejectedExecutionException ex) {
-            recordCallbackFailure(ex);
+            if (dispatchInfo == null) {
+                return;
+            }
+            dispatchEvent(handler, dispatchInfo);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
+        } catch (Error ex) {
+            recordCallbackFailure(new RuntimeException(
+                "spot dispatch callback failed", ex));
         }
     }
 
@@ -420,7 +450,7 @@ final class SpotRoutedSupport implements AutoCloseable {
 
     private SpotDispatchInfo decodeDispatchInfo(MemorySegment info) {
         if (info == null || info.address() == 0) {
-            throw new IllegalArgumentException("dispatch info must not be null");
+            return null;
         }
         info = info.reinterpret(NativeLayouts.SPOT_DISPATCH_INFO_LAYOUT.byteSize());
         SpotDispatchEvent event = EnumCodecs.spotDispatchEventFromValue(info.get(
@@ -428,6 +458,9 @@ final class SpotRoutedSupport implements AutoCloseable {
         SpotDispatchSubjectKind subjectKind = EnumCodecs.spotDispatchSubjectKindFromValue(
           info.get(ValueLayout.JAVA_INT,
             NativeLayouts.SPOT_DISPATCH_INFO_SUBJECT_KIND_OFFSET));
+        if (event == null || subjectKind == null) {
+            return null;
+        }
         MemorySegment subject = info.get(ValueLayout.ADDRESS,
           NativeLayouts.SPOT_DISPATCH_INFO_SUBJECT_OFFSET);
         if (event == SpotDispatchEvent.ACTOR_READABLE

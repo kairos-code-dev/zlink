@@ -25,13 +25,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-final class PerfMultiSpotReqRep {
+final class PerfMultiSpotSendSend {
     private static final RoutingId SERVER_NODE_RID =
-        routingId("SPOT-REQREP-SERVER-NODE");
+        routingId("SPOT-SENDSEND-SERVER-NODE");
     private static final RoutingId SERVER_SPOT_RID =
-        routingId("SPOT-REQREP-SERVER-SPOT");
+        routingId("SPOT-SENDSEND-SERVER-SPOT");
 
-    private PerfMultiSpotReqRep() {
+    private PerfMultiSpotSendSend() {
     }
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
@@ -41,23 +41,23 @@ final class PerfMultiSpotReqRep {
         String controlEndpoint = derivedEndpoint(config.endpoint(), 1);
         try (Context ctx = PerfUtil.newContext(config);
              SpotNode node = new SpotNode(ctx);
-             Spot replier = node.createSpot();
+             Spot spot = node.createSpot();
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
-                 ctx, config, controlEndpoint, "reqrep-server")) {
+                 ctx, config, controlEndpoint, "sendsend-server")) {
             node.setRoutingId(SERVER_NODE_RID);
-            replier.setRoutingId(SERVER_SPOT_RID);
+            spot.setRoutingId(SERVER_SPOT_RID);
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
             node.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.emitControlReady(controlEndpoint);
-            replier.onDispatchEvent(info -> {
+            spot.onDispatchEvent(info -> {
                 if (info != null
                     && info.event()
                     == systems.zlink.SpotDispatchEvent.ROUTED_READABLE) {
                     try {
-                        drainServer(replier, config.clients(), stopSeen,
+                        drainServer(spot, config.clients(), stopSeen,
                             stopRequested);
                     } catch (Throwable ex) {
                         failure.compareAndSet(null, ex);
@@ -66,14 +66,15 @@ final class PerfMultiSpotReqRep {
                 }
             });
             awaitDirectControlStart(control, node, config,
-                "spot reqrep server");
+                "spot sendsend server");
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiSpotNodeAutoHwm(config, node, "server");
+
             while (!stopRequested.get()) {
                 Throwable ex = failure.get();
                 if (ex != null) {
                     throw new IllegalStateException(
-                        "spot reqrep dispatch drain failed", ex);
+                        "spot sendsend dispatch drain failed", ex);
                 }
                 sleepQuietly(1);
             }
@@ -87,143 +88,142 @@ final class PerfMultiSpotReqRep {
         String serverControlEndpoint = normalizeClientEndpoint(
             derivedEndpoint(config.endpoint(), 1), config.transport());
         String clientControlEndpoint = normalizeClientEndpoint(
-            PerfUtil.endpoint(config.transport(), "multi-spot-reqrep-control-client"),
+            PerfUtil.endpoint(config.transport(), "multi-spot-sendsend-control-client"),
             config.transport());
         String clientDataEndpoint = normalizeClientEndpoint(
-            PerfUtil.endpoint(config.transport(), "multi-spot-reqrep-client"),
+            PerfUtil.endpoint(config.transport(), "multi-spot-sendsend-client"),
             config.transport());
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-
         try (Context ctx = PerfUtil.newContext(config);
              SpotNode node = new SpotNode(ctx);
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
-                 ctx, config, clientControlEndpoint, "reqrep-client")) {
-            node.setRoutingId(routingId("SPOT-REQREP-CLIENT-NODE"));
+                 ctx, config, clientControlEndpoint, "sendsend-client")) {
+            node.setRoutingId(routingId("SPOT-SENDSEND-CLIENT-NODE"));
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
             node.bind(clientDataEndpoint);
             node.connectPeer(endpoint);
 
-            List<Spot> requesters = new ArrayList<>(config.clients());
+            List<Spot> spots = new ArrayList<>(config.clients());
             try {
-                for (int i = 0; i < config.clients(); i++) {
-                    Spot requester = node.createSpot();
-                    requester.setRoutingId(routingId(
-                        "SPOT-REQREP-CLIENT-SPOT-" + i));
-                    requesters.add(requester);
-                }
                 control.connectPeer(serverControlEndpoint);
                 PerfControl.emitClientControlEndpoint(clientControlEndpoint);
                 PerfControl.awaitControlConnected(clientControlEndpoint,
-                    "spot reqrep client");
+                    "spot sendsend client");
+                for (int i = 0; i < config.clients(); i++) {
+                    Spot spot = node.createSpot();
+                    spot.setRoutingId(routingId("SPOT-SENDSEND-CLIENT-SPOT-" + i));
+                    spots.add(spot);
+                }
                 waitForPeerConnected(node, config.connectReadyTimeoutMs());
                 settleAfterReady();
                 PerfUtil.recalculateAutoHwm(ctx);
                 PerfUtil.printMultiSpotNodeAutoHwm(config, node, "client");
                 control.publishDataEndpoint(clientDataEndpoint);
                 control.publishConnected();
-                control.publishReadyCount(config.size(), requesters.size());
+                control.publishReadyCount(config.size(), config.clients());
                 PerfControl.emitClientReady(config.size());
-                PerfControl.awaitStart(config.size(), "spot reqrep client");
+                PerfControl.awaitStart(config.size(), "spot sendsend client");
                 control.waitStart(config.size(), config.connectReadyTimeoutMs());
 
                 metrics.startActiveWindow();
-                runClientWorkers(requesters, config, metrics);
+                runClientWorkers(spots, config, metrics);
                 return metrics.finishMulti(config);
             } finally {
-                for (Spot requester : requesters) {
-                    requester.close();
+                for (Spot spot : spots) {
+                    spot.close();
                 }
             }
         }
     }
 
-    private static boolean drainServer(Spot replier,
+    private static boolean drainServer(Spot spot,
                                     int expectedStops,
                                     AtomicInteger stopSeen,
                                     AtomicBoolean stopRequested) {
         boolean progressed = false;
         for (;;) {
-            Received received = recvRoutedNoWait(replier);
+            Received received = recvRoutedNoWait(spot);
             if (received == null) {
                 return progressed;
             }
             progressed = true;
             try (received) {
-                boolean stop = PerfStopToken.isStopTokenMessage(
-                    received.firstPart());
-                try (Message reply = received.firstPart().move()) {
-                    received.send().message(reply).submit();
+                if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
+                    if (stopSeen.incrementAndGet() >= expectedStops) {
+                        stopRequested.set(true);
+                    }
+                    continue;
                 }
-                if (stop && stopSeen.incrementAndGet() >= expectedStops) {
-                    stopRequested.set(true);
-                    return progressed;
+                try (Message reply = received.firstPart().move()) {
+                    received.send()
+                        .message(reply)
+                        .flags(SendFlags.DONT_WAIT)
+                        .submit();
                 }
             }
         }
     }
 
-    private static void runClientWorkers(List<Spot> requesters,
+    private static void runClientWorkers(List<Spot> spots,
                                          PerfUtil.Config config,
                                          PerfUtil.Metrics metrics) {
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        PerfMultiSendLoops.runClients(requesters.size(), (index, durationSeconds) ->
+        PerfMultiSendLoops.runClients(spots.size(), (index, durationSeconds) ->
             new Thread(() -> {
                 try {
-                    Spot requester = requesters.get(index);
+                    Spot spot = spots.get(index);
                     long activeEnd = System.nanoTime()
                         + durationSeconds * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
                         try (Message active = PerfUtil.payload(config.size(),
                                  (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            sendToServer(requester, active, SendFlags.NONE);
-                            PerfUtil.Header reply = recvExpected(requester,
-                                config.size(), activeEnd);
-                            if (reply != null
-                                && reply.phase() == PerfUtil.PHASE_ACTIVE
-                                && System.nanoTime() < activeEnd) {
-                                metrics.recordNanos(reply.latencyNanos() / 2L);
-                            }
+                            sendToServer(spot, active, SendFlags.NONE);
+                        }
+                        PerfUtil.Header reply = recvExpected(spot,
+                            config.size(), activeEnd);
+                        if (reply != null
+                            && reply.phase() == PerfUtil.PHASE_ACTIVE
+                            && System.nanoTime() < activeEnd) {
+                            metrics.recordNanos(reply.latencyNanos() / 2L);
                         }
                     }
                     try (Message stop = PerfStopToken.newMessage()) {
-                        sendToServer(requester, stop, SendFlags.NONE);
+                        sendToServer(spot, stop, SendFlags.NONE);
                     }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     throw new IllegalStateException(ex);
                 }
-            }, "multi-spot-reqrep-client-" + index), config.durationSeconds());
+            }, "multi-spot-sendsend-client-" + index), config.durationSeconds());
         if (failure.get() != null) {
-            throw new IllegalStateException("spot reqrep client failed",
+            throw new IllegalStateException("spot sendsend client failed",
                 failure.get());
         }
     }
 
-    private static void sendToServer(Spot requester,
-                                     Message payload,
+    private static void sendToServer(Spot spot, Message message,
                                      SendFlags flags) {
-        requester.sendToSpot(SERVER_NODE_RID, SERVER_SPOT_RID)
-            .message(payload)
+        spot.sendToSpot(SERVER_NODE_RID, SERVER_SPOT_RID)
+            .message(message)
             .flags(flags)
             .submit();
     }
 
-    private static PerfUtil.Header recvExpected(Spot requester,
-                                                int expectedSize,
+    private static PerfUtil.Header recvExpected(Spot spot, int size,
                                                 long deadlineNs) {
         while (System.nanoTime() < deadlineNs) {
-            Received received = recvRoutedNoWait(requester);
+            Received received = recvRoutedNoWait(spot);
             if (received == null) {
-                sleepQuietly(1);
+                Thread.yield();
                 continue;
             }
             try (received) {
                 if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
                     continue;
                 }
-                return PerfUtil.decodeHeader(received.firstPart(), expectedSize);
+                return PerfUtil.decodeHeader(received.firstPart(), size);
             }
         }
         return null;
@@ -258,7 +258,8 @@ final class PerfMultiSpotReqRep {
                 }
             }
             PerfSpotDirectControl.ReadyState ready = control.waitReady(
-                config.size(), config.clients(), config.connectReadyTimeoutMs());
+                config.size(), config.clients(),
+                config.connectReadyTimeoutMs());
             for (String endpoint : ready.dataEndpoints()) {
                 dataNode.connectPeer(normalizeClientEndpoint(endpoint,
                     config.transport()));
@@ -285,7 +286,7 @@ final class PerfMultiSpotReqRep {
             }
             sleepQuietly(10);
         }
-        throw new IllegalStateException("spot reqrep peer connect timed out");
+        throw new IllegalStateException("spot sendsend peer connect timed out");
     }
 
     private static void settleAfterReady() {
@@ -300,7 +301,8 @@ final class PerfMultiSpotReqRep {
             Thread.sleep(millis);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("spot reqrep sleep interrupted", ex);
+            throw new IllegalStateException("spot sendsend sleep interrupted",
+                ex);
         }
     }
 
@@ -327,4 +329,5 @@ final class PerfMultiSpotReqRep {
     private static RoutingId routingId(String value) {
         return RoutingId.fromBytes(value.getBytes(StandardCharsets.UTF_8));
     }
+
 }

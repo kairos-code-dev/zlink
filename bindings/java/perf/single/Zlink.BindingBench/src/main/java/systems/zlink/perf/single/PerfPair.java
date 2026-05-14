@@ -7,6 +7,7 @@ import systems.zlink.Message;
 import systems.zlink.MonitorEventType;
 import systems.zlink.PollEventFlag;
 import systems.zlink.PairSocket;
+import systems.zlink.SocketType;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
@@ -44,9 +45,14 @@ final class PerfPair {
                 readyTimeout, "pair sender ready");
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENT, 1,
                 readyTimeout, "pair receiver ready");
+            PerfUtil.applyAutoHwmMsgUnit(receiver, config.size());
+            PerfUtil.applyAutoHwmMsgUnit(sender, config.size());
+            PerfUtil.recalculateAutoHwm(ctx);
 
             // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits with -1 and exits
             // on wire-level stop token; no idle-drain timer fallback.
+            long activeEnd = System.nanoTime()
+                + config.durationSeconds() * 1_000_000_000L;
             Thread receiverThread = new Thread(() -> {
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(receiver), PollEventFlag.POLLIN)) {
@@ -69,7 +75,8 @@ final class PerfPair {
                                 if (header == null) {
                                     continue;
                                 }
-                                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                if (header.phase() == PerfUtil.PHASE_ACTIVE
+                                    && System.nanoTime() < activeEnd) {
                                     metrics.recordNanos(header.latencyNanos());
                                 }
                             }
@@ -89,8 +96,6 @@ final class PerfPair {
             Thread traffic = new Thread(() -> {
                 try {
                     metrics.startActiveWindow();
-                    long activeEnd = System.nanoTime()
-                        + config.durationSeconds() * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
                         try (Message active = PerfUtil.payload(config.size(),
                                  (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
@@ -116,6 +121,10 @@ final class PerfPair {
             if (failure.get() != null) {
                 throw new IllegalStateException("pair sender failed", failure.get());
             }
+            PerfUtil.printSingleMonitorAutoHwm(config, receiverMonitor, "receiver",
+                SocketType.PAIR);
+            PerfUtil.printSingleMonitorAutoHwm(config, senderMonitor, "sender",
+                SocketType.PAIR);
             ctx.shutdown();
             return metrics.finishSingle(config);
         }

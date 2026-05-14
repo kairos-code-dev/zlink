@@ -4,22 +4,24 @@ package systems.zlink.perf.multi;
 
 import systems.zlink.Context;
 import systems.zlink.Message;
+import systems.zlink.RecvException;
 import systems.zlink.RecvFlags;
+import systems.zlink.RecvResult;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
 import systems.zlink.TopicMessage;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
-import systems.zlink.service.discovery.Discovery;
-import systems.zlink.service.registry.Registry;
-import systems.zlink.service.registry.AutoConnectType;
 import systems.zlink.service.spot.Spot;
 import systems.zlink.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfMultiSpot {
     private static final String TOPIC = "bench";
@@ -30,34 +32,45 @@ final class PerfMultiSpot {
     }
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
-        String registryPubEndpoint = derivedEndpoint(config.endpoint(), 1);
-        String registryRouterEndpoint = derivedEndpoint(config.endpoint(), 2);
+        String controlEndpoint = derivedEndpoint(config.endpoint(), 3);
         try (Context ctx = PerfUtil.newContext(config);
-             Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH, CHANNEL_NAME);
              SpotNode node = new SpotNode(ctx);
-             Spot publisher = node.createSpot()) {
+             Spot publisher = node.createSpot();
+             PerfSpotDirectControl control = PerfSpotDirectControl.bind(
+                 ctx, config, controlEndpoint, "spot-server")) {
             node.setRoutingId(routingId("z-java-multi-spot-server"));
             publisher.setRoutingId(routingId("z-java-multi-spot-server-spot"));
-            PerfUtil.configureServerTls(registry, config.transport());
-            PerfUtil.configureClientTls(discovery, config.transport());
-            registry.bind(registryPubEndpoint, registryRouterEndpoint);
-            registry.setBroadcastInterval(Duration.ofMillis(50));
-            discovery.connectRegistry(registryRouterEndpoint);
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             node.bind(config.endpoint());
-            node.attachDiscovery(discovery);
             PerfControl.emitReady(config.endpoint());
-            PerfControl.awaitStart(config.size(), "spot server");
+            PerfControl.emitControlReady(controlEndpoint);
+            awaitDirectControlStart(control, config, "spot server");
+            PerfUtil.recalculateAutoHwm(ctx);
+            PerfUtil.printMultiSpotNodeAutoHwm(config, node, "server");
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
+            boolean latencyOnly = latencyOnlyMode();
+            long latencyOnlyIntervalNanos = Math.max(1,
+                latencyOnlyIntervalMicros()) * 1_000L;
+            long nextSendNanos = System.nanoTime();
             while (System.nanoTime() < activeEnd) {
+                if (latencyOnly) {
+                    long now = System.nanoTime();
+                    if (now < nextSendNanos) {
+                        sleepNanos(nextSendNanos - now);
+                        continue;
+                    }
+                }
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
                     publisher.publish(TOPIC)
                         .message(active)
                         .flags(SendFlags.DONT_WAIT)
                         .submit();
+                }
+                if (latencyOnly) {
+                    nextSendNanos = System.nanoTime()
+                        + latencyOnlyIntervalNanos;
                 }
             }
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
@@ -73,34 +86,46 @@ final class PerfMultiSpot {
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        String registryRouterEndpoint = normalizeClientEndpoint(
-            derivedEndpoint(config.endpoint(), 2), config.transport());
+        String serverDataEndpoint = normalizeClientEndpoint(config.endpoint(),
+            config.transport());
+        String serverControlEndpoint = normalizeClientEndpoint(
+            derivedEndpoint(config.endpoint(), 3), config.transport());
+        String clientControlEndpoint = normalizeClientEndpoint(
+            PerfUtil.endpoint(config.transport(), "multi-spot-control-client"),
+            config.transport());
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         try (Context ctx = PerfUtil.newContext(config);
-             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH, CHANNEL_NAME);
-             SpotNode node = new SpotNode(ctx)) {
+             SpotNode node = new SpotNode(ctx);
+             PerfSpotDirectControl control = PerfSpotDirectControl.bind(
+                 ctx, config, clientControlEndpoint, "spot-client")) {
             node.setRoutingId(routingId("a-java-multi-spot-client"));
             PerfUtil.applySpotOptions(node, config);
+            PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
-            PerfUtil.configureClientTls(discovery, config.transport());
 
             List<Spot> subscribers = new ArrayList<>(config.clients());
             try {
+                control.connectPeer(serverControlEndpoint);
+                PerfControl.emitClientControlEndpoint(clientControlEndpoint);
+                PerfControl.awaitControlConnected(clientControlEndpoint,
+                    "spot client");
                 for (int i = 0; i < config.clients(); i++) {
                     Spot subscriber = node.createSpot();
                     subscriber.setRoutingId(routingId(
                         "a-java-multi-spot-client-spot-" + i));
                     subscribers.add(subscriber);
                 }
-                discovery.connectRegistry(registryRouterEndpoint);
-                node.bind(PerfUtil.endpoint(config.transport(),
-                    "multi-spot-client"));
-                node.attachDiscovery(discovery);
+                node.bind(normalizeClientEndpoint(PerfUtil.endpoint(
+                    config.transport(), "multi-spot-client"),
+                    config.transport()));
+                node.connectPeer(serverDataEndpoint);
                 for (Spot subscriber : subscribers) {
                     subscriber.setSubscription(TOPIC);
                 }
                 waitForPeerConnected(node, config.connectReadyTimeoutMs());
-                runClientSubscribers(config, subscribers, metrics);
+                PerfUtil.recalculateAutoHwm(ctx);
+                PerfUtil.printMultiSpotNodeAutoHwm(config, node, "client");
+                runClientSubscribers(config, subscribers, metrics, control);
                 return metrics.finishMulti(config);
             } finally {
                 for (Spot subscriber : subscribers) {
@@ -115,46 +140,111 @@ final class PerfMultiSpot {
 
     private static void runClientSubscribers(PerfUtil.Config config,
                                              List<Spot> subscribers,
-                                             PerfUtil.Metrics metrics) {
+                                             PerfUtil.Metrics metrics,
+                                             PerfSpotDirectControl control) {
         boolean[] cooldownSeen = new boolean[subscribers.size()];
+        CountDownLatch complete = new CountDownLatch(1);
+        AtomicLong activeEndRef = new AtomicLong();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
         try {
+            for (int i = 0; i < subscribers.size(); i++) {
+                final int index = i;
+                Spot subscriber = subscribers.get(i);
+                subscriber.onDispatchEvent(info -> {
+                    if (info != null
+                        && info.event()
+                        == systems.zlink.SpotDispatchEvent.SUBSCRIBE_READABLE) {
+                        long activeEnd = activeEndRef.get();
+                        if (activeEnd == 0L) {
+                            return;
+                        }
+                        try {
+                            synchronized (cooldownSeen) {
+                                if (!cooldownSeen[index]) {
+                                    drainSubscriber(subscriber, metrics,
+                                        config.size(), activeEnd, cooldownSeen,
+                                        index);
+                                }
+                                if (allCooldownSeen(cooldownSeen)) {
+                                    complete.countDown();
+                                }
+                            }
+                        } catch (Throwable ex) {
+                            failure.compareAndSet(null, ex);
+                            complete.countDown();
+                        }
+                    }
+                });
+            }
             settleReadyBarrier();
+            control.publishConnected();
+            control.publishReadyCount(config.size(), subscribers.size());
             PerfControl.emitClientReady(config.size());
             PerfControl.awaitStart(config.size(), "spot client");
+            activeEndRef.set(Long.MAX_VALUE);
+            control.waitStart(config.size(), config.connectReadyTimeoutMs());
             metrics.startActiveWindow();
             long activeEnd = System.nanoTime()
                 + Duration.ofSeconds(config.durationSeconds()).toNanos();
+            activeEndRef.set(activeEnd);
             long finishDeadline = activeEnd
                 + Duration.ofMillis(postPhaseSettleMs()).toNanos();
             while (System.nanoTime() < finishDeadline) {
-                boolean progressed = false;
-                for (int i = 0; i < subscribers.size(); i++) {
-                    if (cooldownSeen[i]) {
-                        continue;
-                    }
-                    for (int drained = 0; drained < MAX_DRAIN_PER_SPOT; drained++) {
-                        try (TopicMessage received =
-                                 subscribers.get(i).subscribe(RecvFlags.DONT_WAIT)) {
-                            if (received == null) {
-                                break;
-                            }
-                            progressed = true;
-                            int phase = handleDelivery(received, metrics,
-                                config.size(), activeEnd);
-                            if (phase == PerfUtil.PHASE_COOLDOWN) {
-                                cooldownSeen[i] = true;
-                                break;
-                            }
-                        }
-                    }
+                Throwable ex = failure.get();
+                if (ex != null) {
+                    throw new IllegalStateException(
+                        "spot dispatch drain failed: "
+                        + ex.getClass().getSimpleName()
+                        + (ex.getMessage() == null ? "" : ": " + ex.getMessage()),
+                        ex);
                 }
-                if (allCooldownSeen(cooldownSeen)) {
+                if (complete.getCount() == 0) {
                     return;
                 }
+                sleepQuietly(1);
             }
             return;
         } catch (Throwable ex) {
             throw new IllegalStateException("spot client failed", ex);
+        }
+    }
+
+    private static boolean drainSubscriber(Spot subscriber,
+                                        PerfUtil.Metrics metrics,
+                                        int expectedSize,
+                                        long activeEnd,
+                                        boolean[] cooldownSeen,
+                                        int index) {
+        boolean progressed = false;
+        for (int drained = 0; drained < MAX_DRAIN_PER_SPOT; drained++) {
+            try (TopicMessage received = subscribeNoWait(subscriber)) {
+                if (received == null) {
+                    return progressed;
+                }
+                progressed = true;
+                int phase = handleDelivery(received, metrics, expectedSize,
+                    activeEnd);
+                if (phase == PerfUtil.PHASE_COOLDOWN) {
+                    cooldownSeen[index] = true;
+                    return progressed;
+                }
+            }
+        }
+        return progressed;
+    }
+
+    private static TopicMessage subscribeNoWait(Spot subscriber) {
+        try {
+            return subscriber.subscribe(RecvFlags.DONT_WAIT);
+        } catch (RecvException ex) {
+            RecvResult result = ex.getResult();
+            if (result == RecvResult.NO_DATA
+                || result == RecvResult.BUSY
+                || result == RecvResult.TERMINATED
+                || result == RecvResult.INVALID_HANDLE) {
+                return null;
+            }
+            throw new IllegalStateException("recv_result_" + result, ex);
         }
     }
 
@@ -211,6 +301,16 @@ final class PerfMultiSpot {
         return PerfUtil.intEnv("PERF_MULTI_SPOT_POST_PHASE_SETTLE_MS", 0);
     }
 
+    private static boolean latencyOnlyMode() {
+        String value = System.getenv("PERF_MULTI_SPOT_LATENCY_ONLY");
+        return value != null && !value.isEmpty() && !"0".equals(value);
+    }
+
+    private static int latencyOnlyIntervalMicros() {
+        return PerfUtil.intEnv("PERF_MULTI_SPOT_LATENCY_ONLY_INTERVAL_US",
+            1000);
+    }
+
     private static void settleReadyBarrier() {
         int settleMs = PerfUtil.intEnv("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000);
         if (settleMs > 0) {
@@ -235,6 +335,36 @@ final class PerfMultiSpot {
         throw new IllegalStateException("spot client peer connect timed out");
     }
 
+    private static void awaitDirectControlStart(PerfSpotDirectControl control,
+                                                PerfUtil.Config config,
+                                                String label) {
+        String expectedStart = "START," + config.size();
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                 new java.io.InputStreamReader(System.in,
+                     StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("CONNECT_CONTROL,")) {
+                    String endpoint = line.substring("CONNECT_CONTROL,".length());
+                    control.connectPeer(endpoint);
+                    PerfControl.emitControlConnected(endpoint);
+                    break;
+                }
+            }
+            control.waitReadyCount(config.size(), config.clients(),
+                config.connectReadyTimeoutMs());
+            while ((line = reader.readLine()) != null) {
+                if (expectedStart.equals(line)) {
+                    control.publishStart(config.size());
+                    return;
+                }
+            }
+        } catch (java.io.IOException ex) {
+            throw new IllegalStateException(label + " control read failed", ex);
+        }
+        throw new IllegalStateException(label + " missing " + expectedStart);
+    }
+
     private static void sleepQuietly(int millis) {
         sleepQuietly((long) millis);
     }
@@ -245,6 +375,18 @@ final class PerfMultiSpot {
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("spot ready barrier interrupted", ex);
+        }
+    }
+
+    private static void sleepNanos(long nanos) {
+        try {
+            long millis = nanos / 1_000_000L;
+            int extraNanos = (int) (nanos % 1_000_000L);
+            Thread.sleep(millis, extraNanos);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("spot ready barrier interrupted",
+                ex);
         }
     }
 

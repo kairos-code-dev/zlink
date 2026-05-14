@@ -4,13 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 JAVA_BINDINGS_DIR="$(cd "${ROOT_DIR}/.." && pwd)"
-RESULTS_ROOT="${ROOT_DIR}/results"
+RESULTS_ROOT="${PERF_RESULTS_DIR:-${ROOT_DIR}/results}"
 PATTERN="ALL"
 TRANSPORTS=""
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 RUNS=1
 DURATION="${PERF_SINGLE_DURATION_SECONDS:-5}"
-RESULTS_TAG=""
+RESULTS_TAG="${PERF_RESULTS_TAG:-}"
 BUILD_DIR=""
 OUTPUT_PATH=""
 PIN_CPU=0
@@ -20,16 +20,21 @@ IO_THREADS="${PERF_IO_THREADS:-}"
 HWM="${PERF_SINGLE_HWM:-}"
 SEND_HWM="${PERF_SINGLE_SNDHWM:-${HWM}}"
 RECV_HWM="${PERF_SINGLE_RCVHWM:-${HWM}}"
+SNDBUF="${PERF_SINGLE_SNDBUF:-${PERF_SNDBUF:-}}"
+RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
 SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
+TRANSPORT_TRANSITION_MS="${PERF_TRANSPORT_TRANSITION_MS:-3000}"
+CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-1}"
+CTX_AUTO_HWM_PROFILE="${PERF_SINGLE_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}"
 
 usage() {
   cat <<'USAGE'
 Usage: perf/single/run_benchmarks.sh [options]
 
 Options:
+  -h, --help            Show this help.
   --pattern NAME         Pattern list or ALL.
-  --transport NAME       Single transport override.
   --transports LIST      Transport list override.
   --msg-sizes LIST       Payload sizes.
   --runs N               Iterations per pattern/transport/size.
@@ -59,7 +64,7 @@ USAGE
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pattern) PATTERN="${2:-}"; shift ;;
-    --transport|--transports) TRANSPORTS="${2:-}"; shift ;;
+    --transports) TRANSPORTS="${2:-}"; shift ;;
     --msg-sizes) MSG_SIZES="${2:-}"; shift ;;
     --runs) RUNS="${2:-}"; shift ;;
     --duration) DURATION="${2:-}"; shift ;;
@@ -72,7 +77,10 @@ while [[ $# -gt 0 ]]; do
     --hwm) HWM="${2:-}"; SEND_HWM="${2:-}"; RECV_HWM="${2:-}"; shift ;;
     --send-hwm) SEND_HWM="${2:-}"; shift ;;
     --recv-hwm) RECV_HWM="${2:-}"; shift ;;
-    --buf|--sndbuf|--rcvbuf|--auto-hwm-profile) shift ;;
+    --buf) SNDBUF="${2:-}"; RCVBUF="${2:-}"; shift ;;
+    --sndbuf) SNDBUF="${2:-}"; shift ;;
+    --rcvbuf) RCVBUF="${2:-}"; shift ;;
+    --auto-hwm-profile) CTX_AUTO_HWM_PROFILE="${2:-}"; shift ;;
     --sndtimeo|--send-timeout-ms) SNDTIMEO_MS="${2:-}"; shift ;;
     --rcvtimeo|--recv-timeout-ms) RCVTIMEO_MS="${2:-}"; shift ;;
     --results-dir) RESULTS_ROOT="${2:-}"; shift ;;
@@ -96,7 +104,35 @@ for numeric_opt in IO_THREADS SEND_HWM RECV_HWM; do
   fi
 done
 
-for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS; do
+if [[ -n "${HWM}${SEND_HWM}${RECV_HWM}${SNDBUF}${RCVBUF}" \
+  && "${PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}" != "1" ]]; then
+  echo "manual HWM/SNDBUF/RCVBUF overrides are debug-only; set PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1" >&2
+  exit 1
+fi
+
+case "${CTX_AUTO_HWM_PROFILE}" in
+  ""|compact|low_latency|low-latency|balanced|throughput) ;;
+  *)
+    echo "--auto-hwm-profile must be compact, low_latency, balanced, or throughput" >&2
+    exit 1
+    ;;
+esac
+
+case "${CTX_AUTO_HWM_ENABLE}" in
+  0|1) ;;
+  *)
+    echo "PERF_CTX_AUTO_HWM_ENABLE must be 0 or 1" >&2
+    exit 1
+    ;;
+esac
+
+export PERF_CTX_AUTO_HWM_ENABLE="${CTX_AUTO_HWM_ENABLE}"
+export PERF_CTX_AUTO_HWM_PROFILE="${CTX_AUTO_HWM_PROFILE}"
+if [[ "${PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}" == "1" ]]; then
+  export PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1
+fi
+
+for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS TRANSPORT_TRANSITION_MS; do
   value="${!numeric_opt}"
   if [[ -n "${value}" ]] && { ! [[ "${value}" =~ ^[0-9]+$ ]] || [[ "${value}" -lt 0 ]]; }; then
     echo "${numeric_opt,,} must be >= 0" >&2
@@ -147,6 +183,14 @@ prune_reports() {
     | while read -r old_file; do
         rm -f "${report_dir}/${old_file}"
       done
+}
+
+sleep_ms() {
+  python3 - "$1" <<'PY'
+import sys
+import time
+time.sleep(int(sys.argv[1]) / 1000.0)
+PY
 }
 
 resolve_build_dir() {
@@ -204,7 +248,8 @@ report="${report}.txt"
 
 tmp_metrics="$(mktemp)"
 tmp_failures="$(mktemp)"
-trap 'rm -f "${tmp_metrics}" "${tmp_failures}"' EXIT
+tmp_auto_hwm="$(mktemp)"
+trap 'rm -f "${tmp_metrics}" "${tmp_failures}" "${tmp_auto_hwm}"' EXIT
 
 metrics_regex='^(throughput|bandwidth|latency|latency_p95|latency_p99)$'
 runner_cmd=("${RUNNER}")
@@ -239,7 +284,8 @@ IFS=',' read -r -a msg_sizes <<< "$(trim_csv "${MSG_SIZES}")"
 for pattern in "${patterns[@]}"; do
   current_transports="${TRANSPORTS:-$(default_transports "${pattern}")}"
   IFS=',' read -r -a transports <<< "$(trim_csv "${current_transports}")"
-  for transport in "${transports[@]}"; do
+  for transport_index in "${!transports[@]}"; do
+    transport="${transports[$transport_index]}"
     for size in "${msg_sizes[@]}"; do
       for ((run=1; run<=RUNS; run++)); do
         expected_result_lines=$((expected_result_lines + 5))
@@ -253,6 +299,12 @@ for pattern in "${patterns[@]}"; do
         fi
         if [[ -n "${RECV_HWM}" ]]; then
           cmd+=(--recv-hwm "${RECV_HWM}")
+        fi
+        if [[ -n "${SNDBUF}" ]]; then
+          cmd+=(--sndbuf "${SNDBUF}")
+        fi
+        if [[ -n "${RCVBUF}" ]]; then
+          cmd+=(--rcvbuf "${RCVBUF}")
         fi
         cmd+=(--sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}")
         if ! output="$("${cmd[@]}" 2>&1)"; then
@@ -268,6 +320,10 @@ for pattern in "${patterns[@]}"; do
           continue
         fi
         while IFS= read -r line; do
+          if [[ "${line}" == AUTO_HWM_DETAIL,* ]]; then
+            printf '%s\n' "${line}" >> "${tmp_auto_hwm}"
+            continue
+          fi
           [[ "${line}" == RESULT,* ]] || continue
           IFS=',' read -r tag lib result_pattern result_transport result_size metric value <<< "${line}"
           if [[ ! "${metric}" =~ ${metrics_regex} ]]; then
@@ -284,21 +340,25 @@ for pattern in "${patterns[@]}"; do
         fi
       done
     done
+    if [[ "${TRANSPORT_TRANSITION_MS}" -gt 0 && "$((transport_index + 1))" -lt "${#transports[@]}" ]]; then
+      sleep_ms "${TRANSPORT_TRANSITION_MS}"
+    fi
   done
 done
 
 python_status=0
-python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${report}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
+python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${tmp_auto_hwm}" "${report}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
   "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${PIN_CPU}" "${expected_result_lines}" "${actual_result_lines}" \
   "${IO_THREADS}" "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" \
-  "${RCVTIMEO_MS}" "${OUTPUT_PATH}" <<'PY' || python_status=$?
+  "${RCVTIMEO_MS}" "${SNDBUF}" "${RCVBUF}" \
+  "${CTX_AUTO_HWM_ENABLE}" "${CTX_AUTO_HWM_PROFILE}" "${OUTPUT_PATH}" <<'PY' || python_status=$?
 import csv
 import math
 import sys
 from collections import defaultdict
 from pathlib import Path
 
-helper_path, metrics_path, failures_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, pin_cpu, expected_result_lines, actual_result_lines, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, output_path = sys.argv[1:]
+helper_path, metrics_path, failures_path, auto_hwm_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, pin_cpu, expected_result_lines, actual_result_lines, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, sndbuf, rcvbuf, ctx_auto_hwm_enable, ctx_auto_hwm_profile, output_path = sys.argv[1:]
 sys.path.insert(0, str(Path(helper_path).resolve().parent))
 from report_common import emit_completion, emit_effective_options, emit_failures, load_failures, write_report
 
@@ -329,6 +389,20 @@ with open(metrics_path, newline="", encoding="utf-8") as f:
             rows[key][metric].append(math.nan)
 
 failures = load_failures(failures_path)
+auto_hwm_rows = []
+with open(auto_hwm_path, encoding="utf-8", errors="replace") as f:
+    for raw in f:
+        line = raw.strip()
+        if not line.startswith("AUTO_HWM_DETAIL,"):
+            continue
+        fields = {}
+        for item in line.split(",")[1:]:
+            if "=" not in item:
+                continue
+            key, value = item.split("=", 1)
+            fields[key.strip()] = value.strip()
+        if fields:
+            auto_hwm_rows.append(fields)
 
 for pattern in pattern_sizes:
     pattern_sizes[pattern].sort()
@@ -360,6 +434,78 @@ def fmt_latency_ms(value):
 def fmt_size(size):
     return f"{size}B"
 
+def bytes_to_kb(value):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return "?"
+    if parsed <= 0:
+        return "0"
+    if parsed % 1024 == 0:
+        return str(parsed // 1024)
+    return f"{parsed / 1024.0:.1f}"
+
+def emit_table(columns, rows):
+    widths = []
+    for header, key in columns:
+        width = len(header)
+        for row in rows:
+            width = max(width, len(str(row.get(key, "?"))))
+        widths.append(width)
+    emit("| " + " | ".join(
+        f"{columns[i][0]:<{widths[i]}}" for i in range(len(columns))
+    ) + " |")
+    emit("|-" + "-|-".join("-" * width for width in widths) + "-|")
+    for row in rows:
+        emit("| " + " | ".join(
+            f"{str(row.get(columns[i][1], '?')):<{widths[i]}}"
+            for i in range(len(columns))
+        ) + " |")
+
+def emit_single_auto_hwm(pattern):
+    selected = []
+    seen = set()
+    for row in auto_hwm_rows:
+        if row.get("pattern", "").upper() != pattern.upper():
+            continue
+        display = dict(row)
+        display["sndbuf_kb"] = bytes_to_kb(row.get("effective_sndbuf", ""))
+        display["rcvbuf_kb"] = bytes_to_kb(row.get("effective_rcvbuf", ""))
+        key = tuple(display.get(name, "") for name in (
+            "msg_size", "component", "owner", "socket", "socket_type",
+            "role", "sndhwm", "rcvhwm", "sndbuf_kb", "rcvbuf_kb",
+            "effective_message_bytes", "socket_message_slots",
+        ))
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(display)
+    if not selected:
+        return
+    selected.sort(key=lambda row: (
+        int(row.get("msg_size", "0") or "0"),
+        row.get("component", ""),
+        row.get("owner", ""),
+        row.get("socket", ""),
+    ))
+    emit("## Auto-HWM Detail")
+    emit(f"- pattern: {pattern}")
+    emit_table((
+        ("Size(B)", "msg_size"),
+        ("Component", "component"),
+        ("Owner", "owner"),
+        ("Socket", "socket"),
+        ("Type", "socket_type"),
+        ("Role", "role"),
+        ("SNDHWM", "sndhwm"),
+        ("RCVHWM", "rcvhwm"),
+        ("SNDBUF(KB)", "sndbuf_kb"),
+        ("RCVBUF(KB)", "rcvbuf_kb"),
+        ("MsgUnit(B)", "effective_message_bytes"),
+        ("Slots", "socket_message_slots"),
+    ), selected)
+    emit("")
+
 lines = []
 
 def emit(line=""):
@@ -367,17 +513,21 @@ def emit(line=""):
 
 start_options = [
     ("runs", runs),
+    ("duration_seconds", duration),
     ("patterns", pattern_csv),
     ("transports", transports_csv or "default-per-pattern"),
     ("msg_sizes", msg_sizes_csv),
     ("pin_cpu", "on" if pin_cpu == "1" else "off"),
     ("io_threads", io_threads or "default(binding)"),
-    ("hwm", hwm or "default(binding)"),
-    ("send_hwm", send_hwm or "default(binding)"),
-    ("recv_hwm", recv_hwm or "default(binding)"),
-    ("send_timeout_ms", sndtimeo_ms),
-    ("recv_timeout_ms", rcvtimeo_ms),
-    ("duration_seconds", duration),
+    ("hwm", hwm or "auto-hwm"),
+    ("sndhwm", send_hwm or "auto-hwm"),
+    ("rcvhwm", recv_hwm or "auto-hwm"),
+    ("sndbuf", sndbuf or "auto-hwm"),
+    ("rcvbuf", rcvbuf or "auto-hwm"),
+    ("sndtimeo_ms", sndtimeo_ms),
+    ("rcvtimeo_ms", rcvtimeo_ms),
+    ("ctx_auto_hwm_enable", ctx_auto_hwm_enable),
+    ("ctx_auto_hwm_profile", ctx_auto_hwm_profile),
 ]
 if results_tag:
     start_options.append(("results_tag", results_tag))
@@ -407,15 +557,19 @@ for pattern in patterns:
             for metric in all_metrics:
                 if rows[key].get(metric):
                     result_lines.append(
-                        f"RESULT,java,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
+                        f"RESULT,current,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
                     )
         emit("")
 
+for pattern in patterns:
+    emit_single_auto_hwm(pattern)
+
+emit_effective_options(lines, "result", "java", "single", start_options)
+emit("")
+emit("## Result Data")
 for line in result_lines:
     emit(line)
-
 emit("")
-emit_effective_options(lines, "result", "java", "single", start_options)
 status = "complete" if expected_result_lines == actual_result_lines and not failures else "partial"
 emit_completion(lines, status, expected_result_lines, actual_result_lines)
 emit_failures(lines, failures)

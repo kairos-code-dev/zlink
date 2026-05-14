@@ -8,9 +8,6 @@ final class PerfPolicy {
     private PerfPolicy() {
     }
 
-    static void validateMultiRecvMode(PerfUtil.Config config) {
-    }
-
     static PerfUtil.Result classifyFailure(PerfUtil.Config config, Throwable failure) {
         String unsupportedReason = "multi".equals(config.suite())
             ? unsupportedReason(failure)

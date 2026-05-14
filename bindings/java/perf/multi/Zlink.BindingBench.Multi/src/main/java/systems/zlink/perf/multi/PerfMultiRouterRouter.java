@@ -12,6 +12,7 @@ import systems.zlink.RecvResult;
 import systems.zlink.RouterSocket;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
+import systems.zlink.SocketType;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
@@ -48,6 +49,8 @@ final class PerfMultiRouterRouter {
                 "router/router server ready");
             PerfUtil.applyAutoHwmMsgUnit(server, config.size());
             PerfUtil.recalculateAutoHwm(ctx);
+            PerfUtil.printMultiMonitorAutoHwm(config, monitor, "server",
+                "server", SocketType.ROUTER);
             int stops = 0;
             Deque<PendingReply> pendingReplies = new ArrayDeque<>();
             // Long-lived caller-provided Received reused across every recv on
@@ -169,6 +172,10 @@ final class PerfMultiRouterRouter {
                     PerfUtil.applyAutoHwmMsgUnit(clients.get(i), config.size());
                 }
                 PerfUtil.recalculateAutoHwm(ctx);
+                for (int i = 0; i < clientCount; i++) {
+                    PerfUtil.printMultiMonitorAutoHwm(config, monitors.get(i),
+                        "client", "client[" + i + "]", SocketType.ROUTER);
+                }
                 for (int i = 0; i < clientCount; i++) {
                     monitors.get(i).close();
                 }

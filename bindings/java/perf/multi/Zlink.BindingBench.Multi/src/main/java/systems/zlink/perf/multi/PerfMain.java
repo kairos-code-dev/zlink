@@ -15,7 +15,6 @@ public final class PerfMain {
         }
         String role = args[0].toLowerCase(Locale.ROOT);
         PerfUtil.Config config = PerfUtil.parseMultiArgs(args);
-        PerfUtil.validateMultiRecvMode(config);
         boolean serverRole = "--multi-server".equals(role);
         boolean clientRole = "--multi-client".equals(role);
         if (!serverRole && !clientRole) {
@@ -27,12 +26,23 @@ public final class PerfMain {
         } catch (Throwable failure) {
             result = PerfUtil.classifyFailure(config, failure);
         }
-        String line = result.toLine("java");
+        String line = result.toLine("current");
         if (!line.isEmpty()) {
             System.out.println(line);
+        }
+        if (clientRole && "ok".equals(result.status())
+            && emitsClientDoneAfterResult(config.pattern())) {
+            systems.zlink.perf.PerfControl.emitClientDone(config.size());
         }
         if ("fail".equals(result.status())) {
             System.exit(1);
         }
+    }
+
+    private static boolean emitsClientDoneAfterResult(String pattern) {
+        return "PUBSUB".equals(pattern)
+            || "SPOT".equals(pattern)
+            || "SPOT_REQREP".equals(pattern)
+            || "SPOT_SENDSEND".equals(pattern);
     }
 }

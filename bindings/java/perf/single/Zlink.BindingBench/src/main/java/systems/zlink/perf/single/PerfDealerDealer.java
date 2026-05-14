@@ -7,6 +7,7 @@ import systems.zlink.DealerSocket;
 import systems.zlink.Message;
 import systems.zlink.MonitorEventType;
 import systems.zlink.PollEventFlag;
+import systems.zlink.SocketType;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
@@ -44,10 +45,15 @@ final class PerfDealerDealer {
                 readyTimeout, "dealer/dealer sender ready");
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENT, 1,
                 readyTimeout, "dealer/dealer receiver ready");
+            PerfUtil.applyAutoHwmMsgUnit(receiver, config.size());
+            PerfUtil.applyAutoHwmMsgUnit(sender, config.size());
+            PerfUtil.recalculateAutoHwm(ctx);
 
             // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits with -1 (signal-driven)
             // and exits on wire-level stop token instead of an atomic + short
             // polling fallback.
+            long activeEnd = System.nanoTime()
+                + config.durationSeconds() * 1_000_000_000L;
             Thread receiverThread = new Thread(() -> {
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(receiver), PollEventFlag.POLLIN)) {
@@ -70,7 +76,8 @@ final class PerfDealerDealer {
                                 if (header == null) {
                                     continue;
                                 }
-                                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                if (header.phase() == PerfUtil.PHASE_ACTIVE
+                                    && System.nanoTime() < activeEnd) {
                                     metrics.recordNanos(header.latencyNanos());
                                 }
                             }
@@ -90,8 +97,6 @@ final class PerfDealerDealer {
             Thread traffic = new Thread(() -> {
                 try {
                     metrics.startActiveWindow();
-                    long activeEnd = System.nanoTime()
-                        + config.durationSeconds() * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
                         try (Message active = PerfUtil.payload(config.size(),
                                  (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
@@ -119,6 +124,10 @@ final class PerfDealerDealer {
                 throw new IllegalStateException("dealer/dealer receiver failed",
                     failure.get());
             }
+            PerfUtil.printSingleMonitorAutoHwm(config, receiverMonitor, "receiver",
+                SocketType.DEALER);
+            PerfUtil.printSingleMonitorAutoHwm(config, senderMonitor, "sender",
+                SocketType.DEALER);
             ctx.shutdown();
             return metrics.finishSingle(config);
         }

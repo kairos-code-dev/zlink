@@ -11,6 +11,7 @@ import systems.zlink.PollEventFlag;
 import systems.zlink.RouterSocket;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
+import systems.zlink.SocketType;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
@@ -43,6 +44,8 @@ final class PerfMultiDealerRouter {
                 "dealer/router server ready");
             PerfUtil.applyAutoHwmMsgUnit(server, config.size());
             PerfUtil.recalculateAutoHwm(ctx);
+            PerfUtil.printMultiMonitorAutoHwm(config, monitor, "server",
+                "server", SocketType.ROUTER);
             int stops = 0;
             Deque<PendingReply> pendingReplies = new ArrayDeque<>();
             systems.zlink.Received receivedBuffer = new systems.zlink.Received();
@@ -127,6 +130,10 @@ final class PerfMultiDealerRouter {
                 PerfUtil.applyAutoHwmMsgUnit(client, config.size());
             }
             PerfUtil.recalculateAutoHwm(ctx);
+            for (int i = 0; i < monitors.size(); i++) {
+                PerfUtil.printMultiMonitorAutoHwm(config, monitors.get(i),
+                    "client", "client[" + i + "]", SocketType.DEALER);
+            }
             runDealerRouterClientLoop(clients, config, metrics);
             return metrics.finishMulti(config);
         } finally {

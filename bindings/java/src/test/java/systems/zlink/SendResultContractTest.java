@@ -1,6 +1,8 @@
 package systems.zlink;
 
 import systems.zlink.SocketOptions;
+import systems.zlink.service.spot.Spot;
+import systems.zlink.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +19,17 @@ public class SendResultContractTest {
         try (Context ctx = new Context();
              SubSocket sub = new SubSocket(ctx)) {
             assertEquals(null, sub.subscribe(RecvFlags.DONT_WAIT));
+        }
+    }
+
+    @Test
+    public void spotSubscribeDontWaitReturnsNoDataWhenNoTopicDeliveryExists() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             SpotNode node = new SpotNode(ctx);
+             Spot spot = node.createSpot()) {
+            assertEquals(null, spot.subscribe(RecvFlags.DONT_WAIT));
         }
     }
 

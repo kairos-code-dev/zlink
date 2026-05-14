@@ -5,11 +5,9 @@ package systems.zlink.perf;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.LongAdder;
 
 final class PerfMetricsCollector {
-    private final int sampleCap;
     // Lock-free counters: multi-client perf can call recordNanos from N
     // threads concurrently (one thread per client socket). A single
     // synchronized hot path serializes all per-message accounting and
@@ -17,17 +15,18 @@ final class PerfMetricsCollector {
     // removes that contention.
     private final LongAdder count = new LongAdder();
     private final LongAdder sum = new LongAdder();
-    // Per-thread latency reservoirs. Merged on finish — keeps recordNanos
-    // lock-free in the hot path.
+    // Per-thread latency sample arrays. C perf stores all samples and computes
+    // interpolated percentiles; Java keeps the same metric meaning while still
+    // avoiding one global synchronized hot path.
     private final ThreadLocal<ThreadReservoir> threadReservoir;
     private final List<ThreadReservoir> registry =
         new ArrayList<>();
     private final Object registryLock = new Object();
 
     PerfMetricsCollector(String suite) {
-        sampleCap = Math.max(1, resolveInitialLatencyCapacity(suite));
         threadReservoir = ThreadLocal.withInitial(() -> {
-            ThreadReservoir reservoir = new ThreadReservoir(sampleCap);
+            ThreadReservoir reservoir = new ThreadReservoir(
+                resolveInitialLatencyCapacity(suite));
             synchronized (registryLock) {
                 registry.add(reservoir);
             }
@@ -85,43 +84,45 @@ final class PerfMetricsCollector {
             * (PerfMeasurement.isEchoPattern(config.pattern()) ? 2.0d : 1.0d)
             / 1_000_000.0d;
         double mean = (sum.sum() / (double) totalCount) / latencyDivisor;
-        double p95 = merged.length > 0
-            ? merged[index(merged.length, 0.95d)] / latencyDivisor : 0.0d;
-        double p99 = merged.length > 0
-            ? merged[index(merged.length, 0.99d)] / latencyDivisor : 0.0d;
+        double p95 = percentile(merged, 0.95d) / latencyDivisor;
+        double p99 = percentile(merged, 0.99d) / latencyDivisor;
         return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
             config.size(), throughput, bandwidth, mean, p95, p99);
     }
 
-    // Per-thread reservoir; no synchronization required because each
+    // Per-thread sample storage; no synchronization required because each
     // reservoir is owned by exactly one thread for its hot path lifetime.
     private static final class ThreadReservoir {
-        private final long[] samples;
-        private final int cap;
+        private long[] samples;
         private int size;
-        private long seen;
 
-        ThreadReservoir(int cap) {
-            this.cap = cap;
-            this.samples = new long[cap];
+        ThreadReservoir(int initialCapacity) {
+            this.samples = new long[Math.max(1, initialCapacity)];
         }
 
         void add(long value) {
-            seen++;
-            if (size < cap) {
-                samples[size++] = value;
-                return;
+            if (size == samples.length) {
+                samples = Arrays.copyOf(samples, samples.length * 2);
             }
-            long slot = ThreadLocalRandom.current().nextLong(seen);
-            if (slot < cap) {
-                samples[(int) slot] = value;
-            }
+            samples[size++] = value;
         }
     }
 
-    private static int index(int length, double percentile) {
-        return Math.max(0, Math.min(length - 1,
-            (int) Math.ceil(length * percentile) - 1));
+    private static double percentile(long[] sorted, double percentile) {
+        if (sorted.length == 0) {
+            return 0.0d;
+        }
+        if (percentile <= 0.0d) {
+            return sorted[0];
+        }
+        if (percentile >= 1.0d) {
+            return sorted[sorted.length - 1];
+        }
+        double pos = (sorted.length - 1) * percentile;
+        int lo = (int) pos;
+        int hi = lo + 1 < sorted.length ? lo + 1 : lo;
+        double frac = pos - lo;
+        return sorted[lo] + (sorted[hi] - sorted[lo]) * frac;
     }
 
     private static int resolveInitialLatencyCapacity(String suite) {

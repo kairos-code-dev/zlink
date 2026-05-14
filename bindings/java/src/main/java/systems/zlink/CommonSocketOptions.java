@@ -63,19 +63,19 @@ public class CommonSocketOptions {
         socket.setOption(SocketOptions.RCVHWM, value);
     }
 
-    int sendBuffer() {
+    public int sendBuffer() {
         return socket.getOption(SocketOptions.SNDBUF);
     }
 
-    void sendBuffer(int value) {
+    public void sendBuffer(int value) {
         socket.setOption(SocketOptions.SNDBUF, value);
     }
 
-    int recvBuffer() {
+    public int recvBuffer() {
         return socket.getOption(SocketOptions.RCVBUF);
     }
 
-    void recvBuffer(int value) {
+    public void recvBuffer(int value) {
         socket.setOption(SocketOptions.RCVBUF, value);
     }
 

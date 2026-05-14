@@ -21,9 +21,13 @@ final class PerfArgs {
         int duration = intEnv("PERF_SINGLE_DURATION_SECONDS", 5);
         int ioThreads = intEnv("PERF_IO_THREADS", 0);
         int sendHwm = intEnv("PERF_SINGLE_SNDHWM",
-            intEnv("PERF_SINGLE_HWM", 1000));
+            intEnv("PERF_SINGLE_HWM", 0));
         int recvHwm = intEnv("PERF_SINGLE_RCVHWM",
-            intEnv("PERF_SINGLE_HWM", 1000));
+            intEnv("PERF_SINGLE_HWM", 0));
+        int sendBuffer = parseBufferEnv("PERF_SINGLE_SNDBUF",
+            parseBufferEnv("PERF_SNDBUF", 0));
+        int recvBuffer = parseBufferEnv("PERF_SINGLE_RCVBUF",
+            parseBufferEnv("PERF_RCVBUF", 0));
         int sendTimeoutMs = intEnv("PERF_SINGLE_SNDTIMEO_MS", 200);
         int recvTimeoutMs = intEnv("PERF_SINGLE_RCVTIMEO_MS", 200);
         int monitorHwm = 1000;
@@ -39,6 +43,8 @@ final class PerfArgs {
                 }
                 case "--send-hwm" -> sendHwm = Integer.parseInt(args[i + 1]);
                 case "--recv-hwm" -> recvHwm = Integer.parseInt(args[i + 1]);
+                case "--sndbuf" -> sendBuffer = parseBufferSize(args[i + 1]);
+                case "--rcvbuf" -> recvBuffer = parseBufferSize(args[i + 1]);
                 case "--sndtimeo", "--send-timeout-ms" ->
                     sendTimeoutMs = Integer.parseInt(args[i + 1]);
                 case "--rcvtimeo", "--recv-timeout-ms" ->
@@ -51,8 +57,9 @@ final class PerfArgs {
             }
         }
         return new PerfUtil.Config("single", pattern, transport, size, duration,
-            "", 1, ioThreads, sendHwm, recvHwm, sendTimeoutMs, recvTimeoutMs,
-            monitorHwm, connectReadyTimeoutMs, 0, 100);
+            "", 1, ioThreads, sendHwm, recvHwm, sendBuffer, recvBuffer,
+            sendTimeoutMs, recvTimeoutMs, monitorHwm, connectReadyTimeoutMs, 0,
+            100);
     }
 
     static PerfUtil.Config parseMultiArgs(String[] args) {
@@ -84,9 +91,13 @@ final class PerfArgs {
                 streamPattern ? 4 : defaultIoThreads);
         }
         int sendHwm = intEnv("PERF_MULTI_SNDHWM",
-            intEnv("PERF_MULTI_HWM", 1000));
+            intEnv("PERF_MULTI_HWM", 0));
         int recvHwm = intEnv("PERF_MULTI_RCVHWM",
-            intEnv("PERF_MULTI_HWM", 1000));
+            intEnv("PERF_MULTI_HWM", 0));
+        int sendBuffer = parseBufferEnv("PERF_MULTI_SNDBUF",
+            parseBufferEnv("PERF_SNDBUF", 0));
+        int recvBuffer = parseBufferEnv("PERF_MULTI_RCVBUF",
+            parseBufferEnv("PERF_RCVBUF", 0));
         int sendTimeoutMs = intEnv("PERF_MULTI_SNDTIMEO_MS", 200);
         int recvTimeoutMs = intEnv("PERF_MULTI_RCVTIMEO_MS", 200);
         int monitorHwm = intEnv("PERF_MULTI_MONITOR_HWM", 1000);
@@ -106,6 +117,8 @@ final class PerfArgs {
                 }
                 case "--send-hwm" -> sendHwm = Integer.parseInt(args[i + 1]);
                 case "--recv-hwm" -> recvHwm = Integer.parseInt(args[i + 1]);
+                case "--sndbuf" -> sendBuffer = parseBufferSize(args[i + 1]);
+                case "--rcvbuf" -> recvBuffer = parseBufferSize(args[i + 1]);
                 case "--sndtimeo", "--send-timeout-ms" ->
                     sendTimeoutMs = Integer.parseInt(args[i + 1]);
                 case "--rcvtimeo", "--recv-timeout-ms" ->
@@ -126,9 +139,9 @@ final class PerfArgs {
         }
         int clientPollTimeoutMs = intEnv("PERF_CLIENT_POLL_TIMEOUT_MS", 100);
         return new PerfUtil.Config("multi", pattern, transport, size, duration,
-            endpoint, clients, ioThreads, sendHwm, recvHwm, sendTimeoutMs,
-            recvTimeoutMs, monitorHwm, connectReadyTimeoutMs, connectConcurrency,
-            clientPollTimeoutMs);
+            endpoint, clients, ioThreads, sendHwm, recvHwm, sendBuffer,
+            recvBuffer, sendTimeoutMs, recvTimeoutMs, monitorHwm,
+            connectReadyTimeoutMs, connectConcurrency, clientPollTimeoutMs);
     }
 
     private static int intEnv(String name, int fallback) {
@@ -137,5 +150,34 @@ final class PerfArgs {
             return fallback;
         }
         return Integer.parseInt(value);
+    }
+
+    private static int parseBufferEnv(String name, int fallback) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        return parseBufferSize(value);
+    }
+
+    private static int parseBufferSize(String value) {
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        int multiplier = 1;
+        if (normalized.endsWith("kb")) {
+            multiplier = 1024;
+            normalized = normalized.substring(0, normalized.length() - 2);
+        } else if (normalized.endsWith("k")) {
+            multiplier = 1024;
+            normalized = normalized.substring(0, normalized.length() - 1);
+        } else if (normalized.endsWith("mb")) {
+            multiplier = 1024 * 1024;
+            normalized = normalized.substring(0, normalized.length() - 2);
+        } else if (normalized.endsWith("m")) {
+            multiplier = 1024 * 1024;
+            normalized = normalized.substring(0, normalized.length() - 1);
+        } else if (normalized.endsWith("b")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return Math.toIntExact(Long.parseLong(normalized) * (long) multiplier);
     }
 }

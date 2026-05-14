@@ -8,6 +8,7 @@ import systems.zlink.Message;
 import systems.zlink.MonitorEventType;
 import systems.zlink.PollEventFlag;
 import systems.zlink.RouterSocket;
+import systems.zlink.SocketType;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
@@ -48,11 +49,16 @@ final class PerfDealerRouter {
                 readyTimeout, "dealer/router sender ready");
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENT, 1,
                 readyTimeout, "dealer/router receiver ready");
+            PerfUtil.applyAutoHwmMsgUnit(receiver, config.size());
+            PerfUtil.applyAutoHwmMsgUnit(sender, config.size());
+            PerfUtil.recalculateAutoHwm(ctx);
 
             // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits with -1 and exits
             // on wire-level stop token. The probe still uses a header phase
             // (PHASE_WARMUP) since it is part of the ready barrier, not a
             // shutdown signal.
+            long activeEnd = System.nanoTime()
+                + config.durationSeconds() * 1_000_000_000L;
             Thread receiverThread = new Thread(() -> {
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(receiver), PollEventFlag.POLLIN)) {
@@ -80,7 +86,8 @@ final class PerfDealerRouter {
                                     routed.countDown();
                                     continue;
                                 }
-                                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                if (header.phase() == PerfUtil.PHASE_ACTIVE
+                                    && System.nanoTime() < activeEnd) {
                                     metrics.recordNanos(header.latencyNanos());
                                 }
                             }
@@ -107,8 +114,6 @@ final class PerfDealerRouter {
             Thread traffic = new Thread(() -> {
                 try {
                     metrics.startActiveWindow();
-                    long activeEnd = System.nanoTime()
-                        + config.durationSeconds() * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
                         try (Message active = PerfUtil.payload(config.size(),
                                  (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
@@ -135,6 +140,10 @@ final class PerfDealerRouter {
                 throw new IllegalStateException("dealer/router receiver failed",
                     failure.get());
             }
+            PerfUtil.printSingleMonitorAutoHwm(config, receiverMonitor, "receiver",
+                SocketType.ROUTER);
+            PerfUtil.printSingleMonitorAutoHwm(config, senderMonitor, "sender",
+                SocketType.DEALER);
             ctx.shutdown();
             return metrics.finishSingle(config);
         }

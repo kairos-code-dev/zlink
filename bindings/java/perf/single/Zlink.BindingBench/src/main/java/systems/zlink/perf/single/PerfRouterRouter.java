@@ -8,6 +8,7 @@ import systems.zlink.MonitorEventType;
 import systems.zlink.PollEventFlag;
 import systems.zlink.RouterSocket;
 import systems.zlink.RoutingId;
+import systems.zlink.SocketType;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
@@ -61,6 +62,8 @@ final class PerfRouterRouter {
 
             // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits with -1 and exits
             // on wire-level stop token.
+            long activeEnd = System.nanoTime()
+                + config.durationSeconds() * 1_000_000_000L;
             Thread receiverThread = new Thread(() -> {
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(receiver), PollEventFlag.POLLIN)) {
@@ -88,7 +91,8 @@ final class PerfRouterRouter {
                                     routed.countDown();
                                     continue;
                                 }
-                                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                if (header.phase() == PerfUtil.PHASE_ACTIVE
+                                    && System.nanoTime() < activeEnd) {
                                     metrics.recordNanos(header.latencyNanos());
                                 }
                             }
@@ -114,8 +118,6 @@ final class PerfRouterRouter {
             Thread traffic = new Thread(() -> {
                 try {
                     metrics.startActiveWindow();
-                    long activeEnd = System.nanoTime()
-                        + config.durationSeconds() * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
                         try (Message active = PerfUtil.payload(config.size(),
                                  (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
@@ -143,6 +145,10 @@ final class PerfRouterRouter {
                 throw new IllegalStateException("router/router receiver failed",
                     failure.get());
             }
+            PerfUtil.printSingleMonitorAutoHwm(config, receiverMonitor, "receiver",
+                SocketType.ROUTER);
+            PerfUtil.printSingleMonitorAutoHwm(config, senderMonitor, "sender",
+                SocketType.ROUTER);
             senderCtx.shutdown();
             if (!sharedContext) {
                 receiverCtx.shutdown();

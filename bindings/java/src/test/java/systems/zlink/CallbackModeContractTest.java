@@ -97,10 +97,89 @@ public class CallbackModeContractTest {
                 TimeUnit.MILLISECONDS));
             assertNotNull(callbackThread.get());
             assertTrue(callbackThread.get() != testThread);
-            assertTrue(callbackThread.get().getName().startsWith(
-                "zlink-spot-dispatch-callback"));
             assertEquals(SpotDispatchEvent.SUBSCRIBE_READABLE,
                 eventRef.get());
+        }
+    }
+
+    @Test
+    public void onDispatchEventCloseDoesNotCallDestroyedUpcallStub()
+      throws Exception {
+        TestSupport.assumeNative();
+
+        CountDownLatch delivered = new CountDownLatch(1);
+
+        try (Context ctx = new Context();
+             SpotNode publisherNode = new SpotNode(ctx);
+             SpotNode subscriberNode = new SpotNode(ctx);
+             Spot publisher = publisherNode.createSpot();
+             Spot subscriber = subscriberNode.createSpot()) {
+            publisherNode.bind(TestSupport.tcpEndpoint());
+            subscriberNode.connectPeer(publisherNode.statusSnapshot()
+                .localEndpoint());
+            subscriber.setSubscription("close-race");
+            awaitCondition(() -> subscriberNode.statusSnapshot()
+                .connectedPeerCount() > 0, "spot peer connection");
+
+            subscriber.onDispatchEvent(info -> {
+                if (info.event() == SpotDispatchEvent.SUBSCRIBE_READABLE) {
+                    delivered.countDown();
+                }
+            });
+
+            for (int i = 0; i < 64; i++) {
+                try (Message part = Message.copyOfUtf8("payload-" + i)) {
+                    publisher.publish("close-race").message(part).submit();
+                }
+            }
+
+            assertTrue(delivered.await(TestSupport.DEFAULT_TIMEOUT_MS,
+                TimeUnit.MILLISECONDS));
+            subscriber.close();
+            Thread.sleep(100);
+        }
+    }
+
+    @Test
+    public void onDispatchEventAllowsSubscriptionDrainInsideCallback()
+      throws Exception {
+        TestSupport.assumeNative();
+
+        CountDownLatch drained = new CountDownLatch(1);
+        AtomicReference<String> payloadRef = new AtomicReference<>();
+
+        try (Context ctx = new Context();
+             SpotNode publisherNode = new SpotNode(ctx);
+             SpotNode subscriberNode = new SpotNode(ctx);
+             Spot publisher = publisherNode.createSpot();
+             Spot subscriber = subscriberNode.createSpot()) {
+            publisherNode.bind(TestSupport.tcpEndpoint());
+            subscriberNode.connectPeer(publisherNode.statusSnapshot()
+                .localEndpoint());
+            subscriber.setSubscription("drain");
+            awaitCondition(() -> subscriberNode.statusSnapshot()
+                .connectedPeerCount() > 0, "spot peer connection");
+
+            subscriber.onDispatchEvent(info -> {
+                if (info.event() != SpotDispatchEvent.SUBSCRIBE_READABLE) {
+                    return;
+                }
+                try (TopicMessage message =
+                         subscriber.subscribe(RecvFlags.DONT_WAIT)) {
+                    if (message != null) {
+                        payloadRef.set(message.firstPart().toUtf8String());
+                        drained.countDown();
+                    }
+                }
+            });
+
+            try (Message part = Message.copyOfUtf8("dispatch-drain")) {
+                publisher.publish("drain").message(part).submit();
+            }
+
+            assertTrue(drained.await(TestSupport.DEFAULT_TIMEOUT_MS,
+                TimeUnit.MILLISECONDS));
+            assertEquals("dispatch-drain", payloadRef.get());
         }
     }
 

@@ -11,7 +11,7 @@ import systems.zlink.RecvException;
 import systems.zlink.RecvFlags;
 import systems.zlink.RecvResult;
 import systems.zlink.Socket;
-import systems.zlink.StreamSocket;
+import systems.zlink.SocketType;
 import systems.zlink.SubSocket;
 import systems.zlink.TopicMessage;
 import systems.zlink.Context;
@@ -19,7 +19,6 @@ import systems.zlink.service.discovery.Discovery;
 import systems.zlink.service.registry.Registry;
 import systems.zlink.service.spot.SpotNode;
 import systems.zlink.service.spot.Spot;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -45,6 +44,8 @@ public final class PerfUtil {
         int ioThreads,
         int sendHwm,
         int recvHwm,
+        int sendBuffer,
+        int recvBuffer,
         int sendTimeoutMs,
         int recvTimeoutMs,
         int monitorHwm,
@@ -148,25 +149,9 @@ public final class PerfUtil {
         return PerfMeasurement.payload(size, phase, sentNanoTime);
     }
 
-    public static Message payloadTemplate(int size) {
-        return PerfMeasurement.payloadTemplate(size);
-    }
-
     public static void writePayload(Message payload, int size, byte phase,
                                     long sentNanoTime) {
         PerfMeasurement.writePayload(payload, size, phase, sentNanoTime);
-    }
-
-    public static byte phase(Message message) {
-        return PerfMeasurement.phase(message);
-    }
-
-    public static long latencyNanos(Message message) {
-        return PerfMeasurement.latencyNanos(message);
-    }
-
-    public static double latencyMillis(Message message) {
-        return PerfMeasurement.latencyMillis(message);
     }
 
     public static Header decodeHeader(Message message, int expectedSize) {
@@ -184,15 +169,8 @@ public final class PerfUtil {
         return PerfMeasurement.endpoint(transport, token);
     }
 
-    public static String derivedControlEndpoint(String endpoint) {
-        return PerfMeasurement.derivedControlEndpoint(endpoint);
-    }
-
     public static boolean isEchoPattern(String pattern) {
         return PerfMeasurement.isEchoPattern(pattern);
-    }
-
-    public static void validateMultiRecvMode(Config config) {
     }
 
     public static Result classifyFailure(Config config, Throwable failure) {
@@ -227,10 +205,6 @@ public final class PerfUtil {
         return PerfTransport.newContext(config);
     }
 
-    public static boolean manualSocketOverridesEnabled() {
-        return PerfTransport.manualSocketOverridesEnabled();
-    }
-
     public static void applySocketOptions(Socket socket, Config config) {
         PerfTransport.applySocketOptions(socket, config);
     }
@@ -241,6 +215,38 @@ public final class PerfUtil {
 
     public static void recalculateAutoHwm(Context ctx) {
         PerfTransport.recalculateAutoHwm(ctx);
+    }
+
+    public static void printSingleMonitorAutoHwm(Config config,
+                                                 MonitorSocket monitor,
+                                                 String component,
+                                                 SocketType socketType) {
+        PerfAutoHwm.printSingleMonitor(config, monitor, component, socketType);
+    }
+
+    public static void printSingleSpotNodeAutoHwm(Config config, SpotNode node,
+                                                  String component) {
+        PerfAutoHwm.printSingleSpotNode(config, node, component);
+    }
+
+    public static void printMultiSocketAutoHwm(Config config, Socket socket,
+                                               String component, String label,
+                                               SocketType socketType) {
+        PerfAutoHwm.printMultiSocket(config, socket, component, label,
+            socketType);
+    }
+
+    public static void printMultiMonitorAutoHwm(Config config,
+                                                MonitorSocket monitor,
+                                                String component, String label,
+                                                SocketType socketType) {
+        PerfAutoHwm.printMultiMonitor(config, monitor, component, label,
+            socketType);
+    }
+
+    public static void printMultiSpotNodeAutoHwm(Config config, SpotNode node,
+                                                 String component) {
+        PerfAutoHwm.printMultiSpotNode(config, node, component);
     }
 
     public static void applySpotOptions(SpotNode node, Config config) {
@@ -290,15 +296,6 @@ public final class PerfUtil {
         }
     }
 
-    public static systems.zlink.Received recvNoWait(StreamSocket socket) {
-        try {
-            systems.zlink.Received received = new systems.zlink.Received();
-            return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
-        } catch (RecvException ex) {
-            return recvExceptionToNull(ex);
-        }
-    }
-
     private static systems.zlink.Received recvExceptionToNull(RecvException ex) {
         if (ex.getResult() == RecvResult.NO_DATA
             || ex.getResult() == RecvResult.BUSY) {
@@ -319,14 +316,6 @@ public final class PerfUtil {
         PerfTransport.applyMonitorOptions(monitor, config);
     }
 
-    public static Path ensureResultsDir(Path root, String suite, String leaf) {
-        return PerfReport.ensureResultsDir(root, suite, leaf);
-    }
-
-    public static String resultFileName(String lang, String suite, String platform, String tag) {
-        return PerfReport.resultFileName(lang, suite, platform, tag);
-    }
-
     public static long nowNs() {
         return PerfMeasurement.nowNs();
     }
@@ -340,20 +329,6 @@ public final class PerfUtil {
                 return Optional.empty();
             }
             throw ex;
-        }
-    }
-
-    private static <T> T tryRecv(CheckedSupplier<T> supplier) {
-        try {
-            return supplier.get();
-        } catch (RecvException ex) {
-            if (ex.getResult() == RecvResult.NO_DATA
-                || ex.getResult() == RecvResult.BUSY) {
-                return null;
-            }
-            throw ex;
-        } catch (Exception ex) {
-            throw new IllegalStateException("recv failed", ex);
         }
     }
 

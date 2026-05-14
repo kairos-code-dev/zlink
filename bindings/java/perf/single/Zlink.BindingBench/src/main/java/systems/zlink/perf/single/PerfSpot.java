@@ -43,6 +43,7 @@ final class PerfSpot {
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
+             Spot stopPublisher = subscriberNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
             PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
             PerfUtil.configureServerTls(registry, config.transport());
@@ -56,6 +57,8 @@ final class PerfSpot {
             publisherNode.setRoutingId(routingId("z-java-perf-spot-publisher"));
             subscriberNode.setRoutingId(routingId("a-java-perf-spot-subscriber"));
             publisher.setRoutingId(routingId("z-java-perf-spot-publisher-spot"));
+            stopPublisher.setRoutingId(routingId(
+                "a-java-perf-spot-stop-publisher-spot"));
             subscriber.setRoutingId(routingId("a-java-perf-spot-subscriber-spot"));
             registry.bind(registryPub, registryRouter);
             registry.setBroadcastInterval(Duration.ofMillis(50));
@@ -68,6 +71,7 @@ final class PerfSpot {
 
             waitForReadyProbe(publisher, subscriber, config, topic, metrics);
             settleAfterReady();
+            PerfUtil.recalculateAutoHwm(ctx);
 
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
@@ -86,13 +90,12 @@ final class PerfSpot {
             // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
             // stop token published on the same topic; the drain loop below
             // exits as soon as the stop token is observed.
-            try (Message stop = PerfStopToken.newMessage()) {
-                publisher.publish(topic)
-                    .message(stop)
-                    .flags(SendFlags.DONT_WAIT)
-                    .submit();
-            }
-            drainUntilStopToken(subscriber, config, metrics, activeEnd);
+            drainUntilStopToken(stopPublisher, subscriber, config, metrics,
+                topic, activeEnd);
+            PerfUtil.printSingleSpotNodeAutoHwm(config, publisherNode,
+                "publisher");
+            PerfUtil.printSingleSpotNodeAutoHwm(config, subscriberNode,
+                "subscriber");
 
             ctx.shutdown();
             return metrics.finishSingle(config);
@@ -162,12 +165,31 @@ final class PerfSpot {
      * Drain until the wire-level stop token is observed. PERF_SINGLE_TEST_POLICY
      * § 1.4 mandates that phase-end is signaled by the stop token.
      */
-    private static void drainUntilStopToken(Spot subscriber,
+    private static void drainUntilStopToken(Spot stopPublisher,
+                                            Spot subscriber,
                                             PerfUtil.Config config,
                                             PerfUtil.Metrics metrics,
+                                            String topic,
                                             long activeEnd) {
-        while (true) {
-            try (TopicMessage subscribed = subscriber.subscribe(RecvFlags.NONE)) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        long nextStopSend = 0L;
+        while (System.nanoTime() < deadline) {
+            long now = System.nanoTime();
+            if (now >= nextStopSend) {
+                try (Message stop = PerfStopToken.newMessage()) {
+                    stopPublisher.publish(topic)
+                        .message(stop)
+                        .flags(SendFlags.NONE)
+                        .submit();
+                }
+                nextStopSend = now + Duration.ofMillis(10).toNanos();
+            }
+            try (TopicMessage subscribed =
+                     subscriber.subscribe(RecvFlags.DONT_WAIT)) {
+                if (subscribed == null) {
+                    Thread.yield();
+                    continue;
+                }
                 if (PerfStopToken.isStopTokenMessage(subscribed.firstPart())) {
                     return;
                 }
@@ -182,6 +204,7 @@ final class PerfSpot {
                 }
             }
         }
+        throw new IllegalStateException("spot stop token timed out");
     }
 
     private static void settleAfterReady() {

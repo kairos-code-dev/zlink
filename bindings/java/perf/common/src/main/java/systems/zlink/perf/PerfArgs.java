@@ -79,7 +79,7 @@ final class PerfArgs {
         int duration = intEnv("PERF_MULTI_DURATION_SECONDS", 5);
         String endpoint = "";
         int clients = intEnv("PERF_MULTI_CLIENTS", streamPattern ? 10_000 : 100);
-        int defaultIoThreads = intEnv("PERF_MULTI_DEFAULT_IO_THREADS", 2);
+        int defaultIoThreads = intEnv("PERF_MULTI_DEFAULT_IO_THREADS", 4);
         int ioThreads = defaultIoThreads;
         if ("--multi-server".equals(args[0])) {
             ioThreads = intEnv(

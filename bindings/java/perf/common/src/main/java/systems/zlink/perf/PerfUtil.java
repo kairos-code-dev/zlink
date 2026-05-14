@@ -112,16 +112,8 @@ public final class PerfUtil {
             delegate = new PerfMetricsCollector(config.suite());
         }
 
-        public void startActiveWindow() {
-            delegate.startActiveWindow();
-        }
-
         public void recordNanos(long value) {
             delegate.recordNanos(value);
-        }
-
-        public void recordMillis(double value) {
-            delegate.recordMillis(value);
         }
 
         public Result finishSingle(Config config) {
@@ -147,6 +139,15 @@ public final class PerfUtil {
 
     public static Message payload(int size, byte phase, long sentNanoTime) {
         return PerfMeasurement.payload(size, phase, sentNanoTime);
+    }
+
+    public static Message payloadTemplate(int size) {
+        return PerfMeasurement.payloadTemplateForReuse(size);
+    }
+
+    public static void resetAndWritePayload(Message payload, int size,
+                                            byte phase, long sentNanoTime) {
+        PerfMeasurement.resetAndWritePayload(payload, size, phase, sentNanoTime);
     }
 
     public static void writePayload(Message payload, int size, byte phase,

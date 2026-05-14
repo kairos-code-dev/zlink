@@ -111,6 +111,10 @@ final class PerfMultiDealerDealer {
             PerfControl.awaitStart(config.size(), "dealer/dealer client");
             List<systems.zlink.Socket> pollSockets = new ArrayList<>(clients.size());
             pollSockets.addAll(clients);
+            Message[] payloads = new Message[clients.size()];
+            for (int i = 0; i < payloads.length; i++) {
+                payloads[i] = PerfUtil.payloadTemplate(config.size());
+            }
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                      pollSockets, PollEventFlag.POLLOUT)) {
                 for (int i = 0; i < clients.size(); i++) {
@@ -126,8 +130,8 @@ final class PerfMultiDealerDealer {
                         if (pending[index]) {
                             continue;
                         }
-                        if (!trySend(clients.get(index), pollSet, pending, index, config.size(),
-                            (byte) PerfUtil.PHASE_ACTIVE)) {
+                        if (!trySend(clients.get(index), pollSet, pending, index,
+                            payloads[index], config.size(), (byte) PerfUtil.PHASE_ACTIVE)) {
                             throw new IllegalStateException("dealer/dealer send failed");
                         }
                         progress = true;
@@ -147,6 +151,8 @@ final class PerfMultiDealerDealer {
                     // POLLOUT readiness; no timer-based fallback.
                     pollWritable(pollSet, pending, -1);
                 }
+            } finally {
+                Message.closeAll(List.of(payloads));
             }
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
             // wire-level stop token from a single client. The blocking send
@@ -204,8 +210,10 @@ final class PerfMultiDealerDealer {
     }
 
     private static boolean trySend(DealerSocket socket, PerfSocketPollSet pollSet,
-                                   boolean[] pending, int index, int size, byte phase) {
-        try (Message payload = PerfUtil.payload(size, phase, System.nanoTime())) {
+                                   boolean[] pending, int index, Message payload,
+                                   int size, byte phase) {
+        PerfUtil.resetAndWritePayload(payload, size, phase, System.nanoTime());
+        try {
             if (socket.send().message(payload).flags(SendFlags.DONT_WAIT).submit()) {
                 pending[index] = false;
                 pollSet.setEvents(index);

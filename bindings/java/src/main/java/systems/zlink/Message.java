@@ -490,12 +490,19 @@ public final class Message implements AutoCloseable {
         return true;
     }
 
-    void reset(int size) {
-        if (arena == null)
+    /**
+     * Reinitializes this reusable message with a new owned frame of {@code size}
+     * bytes.
+     *
+     * <p>Sending a message transfers its native frame to the socket. Call this
+     * method before filling and sending the same {@code Message} instance again.
+     */
+    public void reset(int size) {
+        if (arena == null && ownedMsgSlotAddress == 0L)
             throw new IllegalStateException("message is not reusable");
         if (size < 0)
             throw new IllegalArgumentException("size must be >= 0");
-        if (closed || !arena.scope().isAlive())
+        if (closed || (arena != null && !arena.scope().isAlive()))
             throw new IllegalStateException("message is closed");
         if (valid) {
             int closeRc = NativeMsg.msgClose(msg);

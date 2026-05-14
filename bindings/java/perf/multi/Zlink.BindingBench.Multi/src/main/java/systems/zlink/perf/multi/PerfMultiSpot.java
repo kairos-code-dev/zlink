@@ -143,6 +143,7 @@ final class PerfMultiSpot {
                                              PerfUtil.Metrics metrics,
                                              PerfSpotDirectControl control) {
         boolean[] cooldownSeen = new boolean[subscribers.size()];
+        boolean[] readable = new boolean[subscribers.size()];
         CountDownLatch complete = new CountDownLatch(1);
         AtomicLong activeEndRef = new AtomicLong();
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -158,20 +159,9 @@ final class PerfMultiSpot {
                         if (activeEnd == 0L) {
                             return;
                         }
-                        try {
-                            synchronized (cooldownSeen) {
-                                if (!cooldownSeen[index]) {
-                                    drainSubscriber(subscriber, metrics,
-                                        config.size(), activeEnd, cooldownSeen,
-                                        index);
-                                }
-                                if (allCooldownSeen(cooldownSeen)) {
-                                    complete.countDown();
-                                }
-                            }
-                        } catch (Throwable ex) {
-                            failure.compareAndSet(null, ex);
-                            complete.countDown();
+                        synchronized (readable) {
+                            readable[index] = true;
+                            readable.notifyAll();
                         }
                     }
                 });
@@ -183,7 +173,6 @@ final class PerfMultiSpot {
             PerfControl.awaitStart(config.size(), "spot client");
             activeEndRef.set(Long.MAX_VALUE);
             control.waitStart(config.size(), config.connectReadyTimeoutMs());
-            metrics.startActiveWindow();
             long activeEnd = System.nanoTime()
                 + Duration.ofSeconds(config.durationSeconds()).toNanos();
             activeEndRef.set(activeEnd);
@@ -201,7 +190,46 @@ final class PerfMultiSpot {
                 if (complete.getCount() == 0) {
                     return;
                 }
-                sleepQuietly(1);
+                boolean progressed = false;
+                for (int i = 0; i < subscribers.size(); i++) {
+                    boolean shouldDrain;
+                    synchronized (readable) {
+                        shouldDrain = readable[i] || !cooldownSeen[i];
+                        readable[i] = false;
+                    }
+                    if (!shouldDrain || cooldownSeen[i]) {
+                        continue;
+                    }
+                    try {
+                        boolean drained = drainSubscriber(subscribers.get(i),
+                            metrics, config.size(), activeEnd, cooldownSeen, i);
+                        progressed |= drained;
+                        if (drained && !cooldownSeen[i]) {
+                            synchronized (readable) {
+                                readable[i] = true;
+                            }
+                        }
+                    } catch (Throwable drainFailure) {
+                        failure.compareAndSet(null, drainFailure);
+                        complete.countDown();
+                        break;
+                    }
+                }
+                if (allCooldownSeen(cooldownSeen)) {
+                    complete.countDown();
+                    return;
+                }
+                if (!progressed) {
+                    synchronized (readable) {
+                        try {
+                            readable.wait(1L);
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException("spot client interrupted",
+                                interrupted);
+                        }
+                    }
+                }
             }
             return;
         } catch (Throwable ex) {

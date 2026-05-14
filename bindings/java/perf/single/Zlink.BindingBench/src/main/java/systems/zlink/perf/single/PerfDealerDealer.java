@@ -96,7 +96,6 @@ final class PerfDealerDealer {
 
             Thread traffic = new Thread(() -> {
                 try {
-                    metrics.startActiveWindow();
                     while (System.nanoTime() < activeEnd) {
                         try (Message active = PerfUtil.payload(config.size(),
                                  (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {

@@ -70,6 +70,7 @@ Options:
   --clients N            Client count.
   --runs N               Iterations per pattern/transport/size.
   --duration N           Active duration seconds.
+  --run-cooldown-ms N    Cooldown between repeated runs.
   --build-dir PATH       Build directory override.
   --reuse-build          Reuse existing installDist output.
   --clean-build          Delete build dir before installDist.
@@ -110,6 +111,7 @@ while [[ $# -gt 0 ]]; do
     --clients) CLIENTS="${2:-}"; explicit_clients=1; shift ;;
     --runs) RUNS="${2:-}"; shift ;;
     --duration) DURATION="${2:-}"; shift ;;
+    --run-cooldown-ms) RUN_COOLDOWN_MS="${2:-}"; shift ;;
     --build-dir) BUILD_DIR="${2:-}"; shift ;;
     --reuse-build) REUSE_BUILD=1 ;;
     --clean-build) CLEAN_BUILD=1 ;;
@@ -324,16 +326,13 @@ wait_for_pid_or_kill() {
       kill -TERM "${pid}" 2>/dev/null || true
       sleep_ms 200
       kill -KILL "${pid}" 2>/dev/null || true
+      wait "${pid}" 2>/dev/null || true
       echo "${label} timed out" >&2
       return 1
     fi
     sleep_ms 100
   done
-  wait "${pid}" 2>/dev/null || true
-}
-
-validate_pattern_mode() {
-  return 0
+  wait "${pid}" 2>/dev/null
 }
 
 normalize_multi_pattern() {
@@ -573,6 +572,49 @@ print(
 PY
 }
 
+format_median_progress_row() {
+  local public_pattern="$1"
+  local transport="$2"
+  local size="$3"
+  local metrics_file="$4"
+  local prefix="$5"
+  python3 - "$public_pattern" "$transport" "$size" "$metrics_file" "$prefix" <<'PY'
+import csv
+import math
+import sys
+from collections import defaultdict
+
+pattern, transport, size, metrics_file, prefix = sys.argv[1:]
+size = int(size)
+bare = pattern.removeprefix("MULTI_")
+unit = "Kops/s" if pattern in {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND", "MULTI_STREAM"} else "Kmsg/s"
+values = defaultdict(list)
+with open(metrics_file, newline="", encoding="utf-8") as f:
+    for row in csv.reader(f):
+        if len(row) != 6:
+            continue
+        p, t, s, _run, metric, value = row
+        if p == pattern and t == transport and int(s) == size:
+            values[metric].append(float(value))
+
+def median(items):
+    usable = [v for v in items if not math.isnan(v)]
+    if not usable:
+        raise SystemExit(1)
+    usable.sort()
+    mid = len(usable) // 2
+    return usable[mid] if len(usable) % 2 else (usable[mid - 1] + usable[mid]) / 2.0
+
+required = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
+metrics = {metric: median(values[metric]) for metric in required}
+print(
+    f"{prefix}| {size}B | {metrics['throughput'] / 1000.0:.2f} {unit} | "
+    f"{metrics['bandwidth']:.2f} MB/s | {metrics['latency']:.3f} ms | "
+    f"{metrics['latency_p95']:.3f} ms | {metrics['latency_p99']:.3f} ms |"
+)
+PY
+}
+
 print_table_header() {
   local prefix="$1"
   echo "${prefix}| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |"
@@ -778,7 +820,7 @@ run_stream_case() {
   exec 3>"${fifo}"
   if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
     record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_ready_timeout"
-    wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server"
+    wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server" || true
     exec 3>&-
     rm -f "${fifo}"
     CASE_STATUS="fail"
@@ -792,7 +834,8 @@ run_stream_case() {
     >"${client_log}" 2>&1 || stream_client_rc=$?
   printf 'STOP\n' >&3
   exec 3>&-
-  wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server"
+  local server_exit=0
+  wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "stream server" || server_exit=$?
   rm -f "${fifo}"
   append_auto_hwm_details "${server_log}"
   append_auto_hwm_details "${client_log}"
@@ -800,6 +843,12 @@ run_stream_case() {
   if [[ "${stream_client_rc}" -ne 0 ]]; then
     record_failure "${pattern}" "${transport}" "${size}" "${run}" \
       "stream_client_exit_${stream_client_rc}"
+    CASE_STATUS="fail"
+    return 0
+  fi
+  if [[ "${server_exit}" -ne 0 ]]; then
+    record_failure "${pattern}" "${transport}" "${size}" "${run}" \
+      "stream_server_exit_${server_exit}"
     CASE_STATUS="fail"
     return 0
   fi
@@ -846,7 +895,7 @@ run_socket_case() {
   exec {server_fd}>"${server_fifo}"
   if ! wait_for_log_token "${server_log}" "READY," "${SERVER_READY_TIMEOUT_MS}" >/dev/null; then
     record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_ready_timeout"
-    wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+    wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server" || true
     exec {server_fd}>&-
     rm -f "${server_fifo}" "${client_fifo}"
     CASE_STATUS="fail"
@@ -858,7 +907,7 @@ run_socket_case() {
     control_line="$(wait_for_log_token "${server_log}" "CONTROL_READY," "${SERVER_READY_TIMEOUT_MS}" || true)"
     if [[ "${control_line}" != CONTROL_READY,* ]]; then
       record_failure "${pattern}" "${transport}" "${size}" "${run}" "control_ready_timeout"
-      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server" || true
       exec {server_fd}>&-
       rm -f "${server_fifo}" "${client_fifo}"
       CASE_STATUS="fail"
@@ -876,8 +925,8 @@ run_socket_case() {
     client_control_line="$(wait_for_log_token "${client_log}" "CLIENT_CONTROL_ENDPOINT," "${CONNECT_READY_TIMEOUT_MS}" || true)"
     if [[ "${client_control_line}" != CLIENT_CONTROL_ENDPOINT,* ]]; then
       record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_control_endpoint_timeout"
-      wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
-      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+      wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client" || true
+      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server" || true
       exec {client_fd}>&-
       exec {server_fd}>&-
       rm -f "${server_fifo}" "${client_fifo}"
@@ -890,8 +939,8 @@ run_socket_case() {
     connected_line="$(wait_for_log_token "${server_log}" "CONTROL_CONNECTED,${client_control_endpoint}" "${CONNECT_READY_TIMEOUT_MS}" || true)"
     if [[ "${connected_line}" != "CONTROL_CONNECTED,${client_control_endpoint}" ]]; then
       record_failure "${pattern}" "${transport}" "${size}" "${run}" "control_connected_timeout"
-      wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
-      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+      wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client" || true
+      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server" || true
       exec {client_fd}>&-
       exec {server_fd}>&-
       rm -f "${server_fifo}" "${client_fifo}"
@@ -903,8 +952,8 @@ run_socket_case() {
   if is_start_gated_pattern "${bare_pattern}"; then
     if ! wait_for_log_token "${client_log}" "CLIENT_READY,${size}" "${CONNECT_READY_TIMEOUT_MS}" >/dev/null; then
       record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_ready_timeout"
-      wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
-      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+      wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client" || true
+      wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server" || true
       exec {client_fd}>&-
       exec {server_fd}>&-
       rm -f "${server_fifo}" "${client_fifo}"
@@ -915,13 +964,26 @@ run_socket_case() {
     printf 'START,%s\n' "${size}" >&${client_fd}
   fi
 
-  wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client"
+  local client_exit=0
+  local server_exit=0
+  wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client" || client_exit=$?
   exec {client_fd}>&-
-  wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server"
+  wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server" || server_exit=$?
   exec {server_fd}>&-
   rm -f "${server_fifo}" "${client_fifo}"
   append_auto_hwm_details "${server_log}"
   append_auto_hwm_details "${client_log}"
+
+  if [[ "${client_exit}" -ne 0 ]]; then
+    record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_exit_${client_exit}"
+    CASE_STATUS="fail"
+    return 0
+  fi
+  if [[ "${server_exit}" -ne 0 ]]; then
+    record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_exit_${server_exit}"
+    CASE_STATUS="fail"
+    return 0
+  fi
 
   if [[ "${bare_pattern}" == "DEALER_ROUTER" \
      || "${bare_pattern}" == "ROUTER_ROUTER" || "${bare_pattern}" == "PUBSUB" \
@@ -992,10 +1054,13 @@ run_spot_case_with_optional_clean_latency() {
   local active_log="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_active.log"
   local latency_log="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_latency.log"
   local merged_log="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_merged.log"
+  local failure_mark
   cp -f "${CASE_METRIC_LOG}" "${active_log}"
   sleep_ms "${RUN_COOLDOWN_MS}"
+  failure_mark="$(wc -c < "${tmp_failures}")"
   PERF_MULTI_SPOT_LATENCY_ONLY=1 run_socket_case "$1"
   if [[ "${CASE_STATUS}" != "ok" ]]; then
+    truncate -s "${failure_mark}" "${tmp_failures}"
     echo "      warning: MULTI_SPOT clean latency pass failed; using active-pass latency" >&2
     CASE_STATUS="ok"
     CASE_METRIC_LOG="${active_log}"
@@ -1037,7 +1102,6 @@ skip_entries=()
 run_patterns=()
 for pattern in "${patterns[@]}"; do
   bare_pattern="${pattern#MULTI_}"
-  validate_pattern_mode "${bare_pattern}"
   pattern_clients="$(default_clients_for_pattern "${pattern}")"
   if ! ensure_nofile_limit "${pattern_clients}"; then
     skip_entries+=("${pattern}: nofile_guard_${NOFILE_SKIP_REASON}")
@@ -1065,6 +1129,18 @@ fi
 
 patterns=("${run_patterns[@]}")
 
+if [[ "${#skip_entries[@]}" -gt 0 ]]; then
+  echo
+  echo "## Skips"
+  printf '\n## Skips\n' >> "${tmp_progress}"
+  for item in "${skip_entries[@]}"; do
+    echo "- ${item}"
+    printf -- '- %s\n' "${item}" >> "${tmp_progress}"
+  done
+  echo
+  printf '\n' >> "${tmp_progress}"
+fi
+
 if printf '%s\n' "${patterns[@]}" | grep -qx 'MULTI_STREAM'; then
   if [[ "${explicit_msg_sizes}" -eq 0 ]]; then
     display_msg_sizes="${MSG_SIZES} (STREAM: ${STREAM_DEFAULT_MSG_SIZES})"
@@ -1089,10 +1165,8 @@ for pattern_index in "${!patterns[@]}"; do
     transport="${transports[transport_index]}"
     echo "    Testing ${transport} | ${pattern_msg_sizes}:"
     printf '    Testing %s | %s:\n' "${transport}" "${pattern_msg_sizes}" >> "${tmp_progress}"
-    if (( RUNS == 1 )); then
-      print_table_header "      "
-      print_table_header "      " >> "${tmp_progress}"
-    fi
+    print_table_header "      "
+    print_table_header "      " >> "${tmp_progress}"
     transport_failures=0
     transport_unsupported=0
     for size in "${msg_sizes[@]}"; do
@@ -1100,9 +1174,8 @@ for pattern_index in "${!patterns[@]}"; do
         case_connect_concurrency="$(resolve_case_connect_concurrency "${pattern_clients}")"
         expected_result_lines=$((expected_result_lines + 5))
         if (( RUNS > 1 )); then
-          if (( run == 1 )) || (( size == msg_sizes[0] )); then
-            :
-          fi
+          printf '      run %s/%s:\n' "${run}" "${RUNS}"
+          printf '      run %s/%s:\n' "${run}" "${RUNS}" >> "${tmp_progress}"
         fi
         server_log="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_server.log"
         client_log="${RESULTS_ROOT}/multi/tmp/${bare_pattern,,}_${transport}_${size}_client.log"
@@ -1140,6 +1213,12 @@ for pattern_index in "${!patterns[@]}"; do
           sleep_ms "${RUN_COOLDOWN_MS}"
         fi
       done
+      if (( RUNS > 1 )); then
+        if row="$(format_median_progress_row "${pattern}" "${transport}" "${size}" "${tmp_metrics}" "      median: ")"; then
+          echo "${row}"
+          echo "${row}" >> "${tmp_progress}"
+        fi
+      fi
       if (( transport_unsupported == 1 )); then
         break
       fi

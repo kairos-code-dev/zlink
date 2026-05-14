@@ -34,18 +34,11 @@ final class PerfMetricsCollector {
         });
     }
 
-    void startActiveWindow() {
-    }
-
     void recordNanos(long value) {
         count.increment();
         sum.add(value);
         ThreadReservoir reservoir = threadReservoir.get();
         reservoir.add(value);
-    }
-
-    void recordMillis(double value) {
-        recordNanos(Math.round(value * 1_000_000.0d));
     }
 
     PerfUtil.Result finishSingle(PerfUtil.Config config) {

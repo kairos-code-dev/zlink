@@ -42,9 +42,10 @@ final class PerfMultiPubSub {
             PerfControl.emitReady(config.endpoint());
             PerfControl.awaitStart(config.size(), "pubsub server");
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
-            while (System.nanoTime() < activeEnd) {
-                try (Message active = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+            try (Message active = PerfUtil.payloadTemplate(config.size())) {
+                while (System.nanoTime() < activeEnd) {
+                    PerfUtil.resetAndWritePayload(active, config.size(),
+                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     pub.publish(TOPIC).message(active).flags(SendFlags.DONT_WAIT).submit();
                 }
             }
@@ -89,7 +90,6 @@ final class PerfMultiPubSub {
             pollSockets.addAll(subscribers);
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 pollSockets, PollEventFlag.POLLIN)) {
-                metrics.startActiveWindow();
                 long activeEnd = System.nanoTime()
                     + config.durationSeconds() * 1_000_000_000L;
                 while (System.nanoTime() < activeEnd) {

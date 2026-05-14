@@ -127,8 +127,6 @@ final class PerfMultiSpotReqRep {
                 PerfControl.emitClientReady(config.size());
                 PerfControl.awaitStart(config.size(), "spot reqrep client");
                 control.waitStart(config.size(), config.connectReadyTimeoutMs());
-
-                metrics.startActiveWindow();
                 runClientWorkers(requesters, config, metrics);
                 return metrics.finishMulti(config);
             } finally {
@@ -174,9 +172,10 @@ final class PerfMultiSpotReqRep {
                     Spot requester = requesters.get(index);
                     long activeEnd = System.nanoTime()
                         + durationSeconds * 1_000_000_000L;
-                    while (System.nanoTime() < activeEnd) {
-                        try (Message active = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                    try (Message active = PerfUtil.payloadTemplate(config.size())) {
+                        while (System.nanoTime() < activeEnd) {
+                            PerfUtil.resetAndWritePayload(active, config.size(),
+                                (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                             sendToServer(requester, active, SendFlags.NONE);
                             PerfUtil.Header reply = recvExpected(requester,
                                 config.size(), activeEnd);

@@ -21,7 +21,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 
@@ -205,23 +204,20 @@ final class PerfMultiRouterRouter {
                                                   PerfUtil.Metrics metrics) {
         int n = clients.size();
         int msgSize = config.size();
-        int runId = PerfUtil.runId();
         // Reusable per-slot send payload buffer. C reference reuses one
         // payload buffer across the entire active phase (or per-socket when
         // borrow_payload_per_socket=true). We use per-socket buffers so that
         // an inflight=1 send isn't disturbed by the next slot's stamp.
-        byte[][] payloads = new byte[n][];
+        Message[] payloads = new Message[n];
         boolean[] waitingReply = new boolean[n];
         boolean[] waitingWritable = new boolean[n];
         for (int i = 0; i < n; i++) {
-            payloads[i] = new byte[Math.max(msgSize, PerfUtil.HEADER_SIZE)];
-            Arrays.fill(payloads[i], (byte) 'a');
+            payloads[i] = PerfUtil.payloadTemplate(msgSize);
         }
         List<systems.zlink.Socket> socketsAsBase = new ArrayList<>(n);
         for (RouterSocket c : clients) {
             socketsAsBase.add(c);
         }
-        long seq = 1L;
         int rrIndex = 0;
         // Long-lived Received reused across recv on every client socket. The
         // canonical ref-out recv refills it in place via populateRoutedSinglePart,
@@ -229,7 +225,6 @@ final class PerfMultiRouterRouter {
         systems.zlink.Received replyBuffer = new systems.zlink.Received();
         try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 socketsAsBase, PollEventFlag.POLLIN)) {
-            metrics.startActiveWindow();
             long activeEnd = System.nanoTime()
                 + (long) durationSeconds * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
@@ -237,9 +232,8 @@ final class PerfMultiRouterRouter {
                 for (int i = 0; i < n; i++) {
                     int idx = (startIndex + i) % n;
                     if (waitingReply[idx] || waitingWritable[idx]) continue;
-                    stampMetricHeader(payloads[idx], runId,
-                        (byte) PerfUtil.PHASE_ACTIVE, msgSize, seq++,
-                        PerfUtil.nowNs());
+                    PerfUtil.resetAndWritePayload(payloads[idx], msgSize,
+                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     if (trySendPayload(clients.get(idx), payloads[idx])) {
                         waitingReply[idx] = true;
                     } else {
@@ -266,14 +260,11 @@ final class PerfMultiRouterRouter {
                         pollSet.isReady(idx, PollEventFlag.POLLIN);
                     if (!readable) continue;
                     drainReplies(clients.get(idx), idx, waitingReply,
-                        waitingWritable, msgSize, runId, metrics, pollSet,
-                        replyBuffer);
+                        waitingWritable, msgSize, metrics, pollSet, replyBuffer);
                 }
             }
             replyBuffer.close();
-            // PERF_MULTI_TEST_POLICY §1.3.1 wire-level stop token: one per
-            // client. Best-effort send, do not block the runner past the
-            // result-line timeout.
+            Message.closeAll(List.of(payloads));
             for (int i = 0; i < n; i++) {
                 try (Message stop = PerfStopToken.newMessage()) {
                     clients.get(i).send(SERVER_ID)
@@ -293,8 +284,7 @@ final class PerfMultiRouterRouter {
     private static void drainReplies(RouterSocket client, int idx,
                                      boolean[] waitingReply,
                                      boolean[] waitingWritable,
-                                     int msgSize, int runId,
-                                     PerfUtil.Metrics metrics,
+                                     int msgSize, PerfUtil.Metrics metrics,
                                      PerfSocketPollSet pollSet,
                                      systems.zlink.Received replyBuffer) {
         while (true) {
@@ -321,46 +311,11 @@ final class PerfMultiRouterRouter {
         }
     }
 
-    private static boolean trySendPayload(RouterSocket client, byte[] payload) {
-        try (Message message = Message.copyOf(payload)) {
-            return client.send(SERVER_ID)
-                .message(message)
-                .flags(SendFlags.DONT_WAIT)
-                .submit();
-        }
-    }
-
-    // Stamps the canonical 29-byte metric header (PERF_POLICY §1.1.1) at the
-    // start of an existing send buffer. Mirrors C reference
-    // stamp_metric_payload in perf_multi_metric_header.hpp.
-    private static final int METRIC_MAGIC = 0x5A4C4E4B; // "ZLNK"
-
-    private static void stampMetricHeader(byte[] buf, int runId, byte phase,
-                                          int msgSize, long seq, long sentTsNs) {
-        writeIntLe(buf, 0, METRIC_MAGIC);
-        writeIntLe(buf, 4, runId);
-        buf[8] = phase;
-        writeIntLe(buf, 9, msgSize);
-        writeLongLe(buf, 13, seq);
-        writeLongLe(buf, 21, sentTsNs);
-    }
-
-    private static void writeIntLe(byte[] buf, int offset, int value) {
-        buf[offset] = (byte) value;
-        buf[offset + 1] = (byte) (value >>> 8);
-        buf[offset + 2] = (byte) (value >>> 16);
-        buf[offset + 3] = (byte) (value >>> 24);
-    }
-
-    private static void writeLongLe(byte[] buf, int offset, long value) {
-        buf[offset] = (byte) value;
-        buf[offset + 1] = (byte) (value >>> 8);
-        buf[offset + 2] = (byte) (value >>> 16);
-        buf[offset + 3] = (byte) (value >>> 24);
-        buf[offset + 4] = (byte) (value >>> 32);
-        buf[offset + 5] = (byte) (value >>> 40);
-        buf[offset + 6] = (byte) (value >>> 48);
-        buf[offset + 7] = (byte) (value >>> 56);
+    private static boolean trySendPayload(RouterSocket client, Message payload) {
+        return client.send(SERVER_ID)
+            .message(payload)
+            .flags(SendFlags.DONT_WAIT)
+            .submit();
     }
 
     private static void updatePollMask(PerfSocketPollSet pollSet, int idx,

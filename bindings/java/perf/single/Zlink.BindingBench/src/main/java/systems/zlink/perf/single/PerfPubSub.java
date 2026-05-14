@@ -111,8 +111,6 @@ final class PerfPubSub {
                 }
             }, "single-pubsub-recv");
             recvThread.start();
-
-            metrics.startActiveWindow();
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {

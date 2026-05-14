@@ -67,6 +67,8 @@ Multi suite pattern files:
 - `MULTI_ROUTER_ROUTER`
 - `MULTI_PUBSUB`
 - `MULTI_SPOT`
+- `MULTI_SPOT_REQREP`
+- `MULTI_SPOT_SENDSEND`
 - `MULTI_STREAM`
 
 Each messaging pattern stays in its own source file so the hot path remains
@@ -92,6 +94,6 @@ policy-supported modes and save the measured output in the documented format.
 ## Smoke
 
 ```bash
-./perf/run_benchmarks.sh --pattern PAIR --transports tcp --msg-sizes 64 --duration 1
-./perf/run_benchmarks_multi.sh --pattern MULTI_SPOT --transports tcp --msg-sizes 64 --clients 4 --duration 1
+./perf/run_benchmarks.sh --pattern ALL --msg-sizes 64 --duration 1
+./perf/run_benchmarks_multi.sh --pattern ALL --msg-sizes 64 --clients 4 --duration 1
 ```

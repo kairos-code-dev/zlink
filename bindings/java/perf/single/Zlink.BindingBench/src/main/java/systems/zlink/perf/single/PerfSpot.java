@@ -75,7 +75,6 @@ final class PerfSpot {
 
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
-            metrics.startActiveWindow();
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
@@ -187,7 +186,7 @@ final class PerfSpot {
             try (TopicMessage subscribed =
                      subscriber.subscribe(RecvFlags.DONT_WAIT)) {
                 if (subscribed == null) {
-                    Thread.yield();
+                    Thread.onSpinWait();
                     continue;
                 }
                 if (PerfStopToken.isStopTokenMessage(subscribed.firstPart())) {

@@ -30,6 +30,10 @@ final class PerfMeasurement {
         return payload;
     }
 
+    static Message payloadTemplateForReuse(int size) {
+        return payloadTemplate(size);
+    }
+
     private static Message payloadTemplate(int size) {
         int capacity = Math.max(size, PerfUtil.HEADER_SIZE);
         Message payload = new Message(capacity);
@@ -42,11 +46,22 @@ final class PerfMeasurement {
 
     static void writePayload(Message payload, int size, byte phase, long sentNanoTime) {
         long sentTsNs = BASE_EPOCH_NS + (sentNanoTime - BASE_NANO);
+        writePayloadHeader(payload, size, phase, SEQ.getAndIncrement(), sentTsNs);
+    }
+
+    static void resetAndWritePayload(Message payload, int size, byte phase,
+                                     long sentNanoTime) {
+        payload.reset(Math.max(size, PerfUtil.HEADER_SIZE));
+        writePayload(payload, size, phase, sentNanoTime);
+    }
+
+    static void writePayloadHeader(Message payload, int size, byte phase,
+                                   long seq, long sentTsNs) {
         payload.writeIntLe(0, MAGIC);
         payload.writeIntLe(4, RUN_ID);
         payload.writeByte(8, phase);
         payload.writeIntLe(9, size);
-        payload.writeLongLe(13, SEQ.getAndIncrement());
+        payload.writeLongLe(13, seq);
         payload.writeLongLe(21, sentTsNs);
     }
 

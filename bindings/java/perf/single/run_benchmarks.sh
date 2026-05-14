@@ -25,6 +25,7 @@ RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
 SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 TRANSPORT_TRANSITION_MS="${PERF_TRANSPORT_TRANSITION_MS:-3000}"
+RUN_COOLDOWN_MS="${PERF_SINGLE_RUN_COOLDOWN_MS:-3000}"
 CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-1}"
 CTX_AUTO_HWM_PROFILE="${PERF_SINGLE_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}"
 
@@ -39,6 +40,7 @@ Options:
   --msg-sizes LIST       Payload sizes.
   --runs N               Iterations per pattern/transport/size.
   --duration N           Active duration seconds.
+  --run-cooldown-ms N    Cooldown between repeated runs.
   --build-dir PATH       Build directory override.
   --reuse-build          Reuse existing installDist output.
   --clean-build          Delete build dir before installDist.
@@ -68,6 +70,7 @@ while [[ $# -gt 0 ]]; do
     --msg-sizes) MSG_SIZES="${2:-}"; shift ;;
     --runs) RUNS="${2:-}"; shift ;;
     --duration) DURATION="${2:-}"; shift ;;
+    --run-cooldown-ms) RUN_COOLDOWN_MS="${2:-}"; shift ;;
     --build-dir) BUILD_DIR="${2:-}"; shift ;;
     --reuse-build) REUSE_BUILD=1 ;;
     --clean-build) CLEAN_BUILD=1 ;;
@@ -90,6 +93,22 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+failure_reason_from_output() {
+  local output_text="$1"
+  python3 - "$output_text" <<'PY'
+import sys
+
+for raw in sys.argv[1].splitlines():
+    if not raw.startswith("FAIL,"):
+        continue
+    parts = raw.strip().split(",", 5)
+    if len(parts) == 6 and parts[5]:
+        print(parts[5])
+        raise SystemExit(0)
+print("process_exit_nonzero")
+PY
+}
 
 if ! [[ "${RUNS}" =~ ^[0-9]+$ ]] || [[ "${RUNS}" -lt 1 ]]; then
   echo "--runs must be >= 1" >&2
@@ -132,7 +151,7 @@ if [[ "${PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_O
   export PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1
 fi
 
-for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS TRANSPORT_TRANSITION_MS; do
+for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS TRANSPORT_TRANSITION_MS RUN_COOLDOWN_MS; do
   value="${!numeric_opt}"
   if [[ -n "${value}" ]] && { ! [[ "${value}" =~ ^[0-9]+$ ]] || [[ "${value}" -lt 0 ]]; }; then
     echo "${numeric_opt,,} must be >= 0" >&2
@@ -278,6 +297,45 @@ record_failure() {
     "${pattern}" "${transport}" "${size}" "${run}" "${reason}" >> "${tmp_failures}"
 }
 
+format_progress_row_from_output() {
+  local pattern="$1"
+  local transport="$2"
+  local size="$3"
+  local prefix="$4"
+  local output_text="$5"
+  python3 - "$pattern" "$transport" "$size" "$prefix" "$output_text" <<'PY'
+import sys
+
+pattern, transport, size, prefix, output_text = sys.argv[1:]
+size = int(size)
+unit = "Kops/s" if pattern in {"DEALER_ROUTER", "ROUTER_ROUTER"} else "Kmsg/s"
+metrics = {}
+for line in output_text.splitlines():
+    if not line.startswith("RESULT,"):
+        continue
+    parts = line.strip().split(",")
+    if len(parts) != 7:
+        continue
+    _, _, result_pattern, result_transport, result_size, metric, value = parts
+    if result_pattern == pattern and result_transport == transport and int(result_size) == size:
+        metrics[metric] = float(value)
+required = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
+if any(metric not in metrics for metric in required):
+    raise SystemExit(1)
+print(
+    f"{prefix}| {size}B | {metrics['throughput'] / 1000.0:.2f} {unit} | "
+    f"{metrics['bandwidth']:.2f} MB/s | {metrics['latency']:.3f} ms | "
+    f"{metrics['latency_p95']:.3f} ms | {metrics['latency_p99']:.3f} ms |"
+)
+PY
+}
+
+print_table_header() {
+  local prefix="$1"
+  echo "${prefix}| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |"
+  echo "${prefix}|------|------------|-----------|--------------|-------------|-------------|"
+}
+
 IFS=',' read -r -a patterns <<< "$(trim_csv "${PATTERN}")"
 IFS=',' read -r -a msg_sizes <<< "$(trim_csv "${MSG_SIZES}")"
 
@@ -286,6 +344,8 @@ for pattern in "${patterns[@]}"; do
   IFS=',' read -r -a transports <<< "$(trim_csv "${current_transports}")"
   for transport_index in "${!transports[@]}"; do
     transport="${transports[$transport_index]}"
+    echo "    Testing ${transport} | ${MSG_SIZES}:"
+    print_table_header "      "
     for size in "${msg_sizes[@]}"; do
       for ((run=1; run<=RUNS; run++)); do
         expected_result_lines=$((expected_result_lines + 5))
@@ -312,8 +372,12 @@ for pattern in "${patterns[@]}"; do
             expected_result_lines=$((expected_result_lines - 5))
             continue
           fi
-          record_failure "${pattern}" "${transport}" "${size}" "${run}" "process_exit_nonzero"
+          record_failure "${pattern}" "${transport}" "${size}" "${run}" \
+            "$(failure_reason_from_output "${output}")"
           continue
+        fi
+        if (( RUNS > 1 )); then
+          printf '      run %s/%s:\n' "${run}" "${RUNS}"
         fi
         if printf '%s\n' "${output}" | grep -q '^UNSUPPORTED,'; then
           expected_result_lines=$((expected_result_lines - 5))
@@ -337,6 +401,13 @@ for pattern in "${patterns[@]}"; do
           | awk -F',' '/^RESULT,/ && ($6=="throughput" || $6=="bandwidth" || $6=="latency" || $6=="latency_p95" || $6=="latency_p99") {count++} END {print count+0}')"
         if [[ "${required_count}" -ne 5 ]]; then
           record_failure "${pattern}" "${transport}" "${size}" "${run}" "missing_required_result_lines"
+        else
+          row="$(format_progress_row_from_output "${pattern}" "${transport}" "${size}" "      " "${output}")"
+          echo "${row}"
+        fi
+        if (( run < RUNS )); then
+          echo "[cooldown ${RUN_COOLDOWN_MS}ms]"
+          sleep_ms "${RUN_COOLDOWN_MS}"
         fi
       done
     done

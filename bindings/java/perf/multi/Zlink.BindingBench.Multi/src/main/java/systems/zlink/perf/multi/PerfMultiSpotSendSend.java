@@ -126,8 +126,6 @@ final class PerfMultiSpotSendSend {
                 PerfControl.emitClientReady(config.size());
                 PerfControl.awaitStart(config.size(), "spot sendsend client");
                 control.waitStart(config.size(), config.connectReadyTimeoutMs());
-
-                metrics.startActiveWindow();
                 runClientWorkers(spots, config, metrics);
                 return metrics.finishMulti(config);
             } finally {
@@ -176,17 +174,18 @@ final class PerfMultiSpotSendSend {
                     Spot spot = spots.get(index);
                     long activeEnd = System.nanoTime()
                         + durationSeconds * 1_000_000_000L;
-                    while (System.nanoTime() < activeEnd) {
-                        try (Message active = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                    try (Message active = PerfUtil.payloadTemplate(config.size())) {
+                        while (System.nanoTime() < activeEnd) {
+                            PerfUtil.resetAndWritePayload(active, config.size(),
+                                (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                             sendToServer(spot, active, SendFlags.NONE);
-                        }
-                        PerfUtil.Header reply = recvExpected(spot,
-                            config.size(), activeEnd);
-                        if (reply != null
-                            && reply.phase() == PerfUtil.PHASE_ACTIVE
-                            && System.nanoTime() < activeEnd) {
-                            metrics.recordNanos(reply.latencyNanos() / 2L);
+                            PerfUtil.Header reply = recvExpected(spot,
+                                config.size(), activeEnd);
+                            if (reply != null
+                                && reply.phase() == PerfUtil.PHASE_ACTIVE
+                                && System.nanoTime() < activeEnd) {
+                                metrics.recordNanos(reply.latencyNanos() / 2L);
+                            }
                         }
                     }
                     try (Message stop = PerfStopToken.newMessage()) {
@@ -216,7 +215,7 @@ final class PerfMultiSpotSendSend {
         while (System.nanoTime() < deadlineNs) {
             Received received = recvRoutedNoWait(spot);
             if (received == null) {
-                Thread.yield();
+                Thread.onSpinWait();
                 continue;
             }
             try (received) {

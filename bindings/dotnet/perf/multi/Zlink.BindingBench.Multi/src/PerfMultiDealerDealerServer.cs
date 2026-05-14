@@ -46,6 +46,7 @@ internal static class PerfMultiDealerDealerServer
 
         ApplyAutoHwmMsgUnit(server, size);
         RecalculateAutoHwm(ctx);
+        PrintAutoHwmSnapshot(server, "server", options.Transport, size);
 
         var sockets = new[] { (SocketBase)server };
         var payload = new byte[Math.Max(size, PerfMetricHeaderSize)];
@@ -79,7 +80,7 @@ internal static class PerfMultiDealerDealerServer
         {
             StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Active,
                 msgSize, seq, EpochNs());
-            using Message message = Message.FromBytes(payload);
+            using Message message = new(payload.AsSpan());
             if (server.Send().Message(message).Flags(SendFlags.DontWait)
                 .Submit())
             {
@@ -94,26 +95,41 @@ internal static class PerfMultiDealerDealerServer
         {
             // DealerDealer fanout: round-robin to N peers means we must
             // emit N stop tokens to terminate every client receiver.
-            for (int i = 0; i < clientCount; i++)
-                TrySendStopToken(server);
+            int sentStops = 0;
+            long stopDeadlineTicks = Stopwatch.GetTimestamp()
+                + 30L * Stopwatch.Frequency;
+            while (sentStops < clientCount
+                   && Stopwatch.GetTimestamp() < stopDeadlineTicks)
+            {
+                if (TrySendStopToken(server))
+                {
+                    sentStops++;
+                    continue;
+                }
+
+                System.Threading.Thread.Yield();
+            }
         }
 
         return true;
     }
 
-    private static void TrySendStopToken(DealerSocket server)
+    private static bool TrySendStopToken(DealerSocket server)
     {
         try
         {
-            using Message stopMessage = Message.FromBytes(MultiStopToken);
-            server.Send().Message(stopMessage).Flags(SendFlags.None).Submit();
+            using Message stopMessage = new(MultiStopToken.AsSpan());
+            return server.Send().Message(stopMessage).Flags(SendFlags.DontWait)
+                .Submit();
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                         || IsInterrupted(ex.InternalErrno))
         {
+            return false;
         }
         catch (ObjectDisposedException)
         {
+            return false;
         }
     }
 

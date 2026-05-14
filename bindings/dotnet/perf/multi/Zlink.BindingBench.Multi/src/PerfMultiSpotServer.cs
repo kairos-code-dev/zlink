@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Text;
 using Systems.Zlink;
 using static PerfRunner;
 
@@ -7,7 +8,7 @@ internal static class PerfMultiSpotServer
 {
     private const uint RunId = 1;
     private const string Topic = "bench";
-    private const string ControlTopic = "ctrl";
+    private const string ControlTopic = Topic;
 
     internal static int Run(PerfOptions options)
     {
@@ -21,6 +22,7 @@ internal static class PerfMultiSpotServer
             config.ChannelName);
         using var nodePub = new SpotNode(ctx);
         using var spotPub = nodePub.CreateSpot();
+        ApplyMultiSpotSocketOptions(spotPub, options);
 
         ConfigureSpotRegistryTlsIfNeeded(registry, config.Transport);
         registry.Bind(config.RegistryPubEndpoint, config.RegistryRouterEndpoint);
@@ -35,15 +37,32 @@ internal static class PerfMultiSpotServer
 
         using var controlNode = new SpotNode(ctx);
         ConfigureSpotNodeTlsIfNeeded(controlNode, config.Transport);
+        ConfigureSpotControlNode(controlNode, config.ReadyTimeoutMs);
+        using var controlPub = controlNode.CreateSpot();
+        using var controlSub = controlNode.CreateSpot();
+        controlSub.SetSubscription(ControlTopic);
         controlNode.Bind(config.ControlEndpoint);
+        string actualDataEndpoint = nodePub.LastEndpoint;
+        string actualControlEndpoint = controlNode.LastEndpoint;
 
         RecalculateAutoHwm(ctx);
+        PrintSpotNodeAutoHwmSnapshot(nodePub, "spotnode_data_pub",
+            config.Transport, config.Size);
+        PrintSpotNodeAutoHwmSnapshot(controlNode, "spotnode_control_pub",
+            config.Transport, config.Size);
 
         controlState.SetConnectControlCallback(peerEndpoint =>
         {
             try
             {
                 controlNode.ConnectPeer(peerEndpoint);
+                if (!WaitForControlPeerConnected(controlNode,
+                        peerEndpoint, config.ReadyTimeoutMs))
+                {
+                    Console.Error.WriteLine(
+                        "[multi-spot-server] peer connect ready timeout");
+                    return;
+                }
                 WriteStdoutLine($"CONTROL_CONNECTED,{peerEndpoint}");
             }
             catch (ZlinkException ex)
@@ -53,8 +72,8 @@ internal static class PerfMultiSpotServer
         });
 
         WriteStdoutLine(
-            $"READY,{config.DataEndpoint}|{config.RegistryRouterEndpoint}");
-        WriteStdoutLine($"CONTROL_READY,{config.ControlEndpoint}");
+            $"READY,{actualDataEndpoint}|{config.RegistryRouterEndpoint}");
+        WriteStdoutLine($"CONTROL_READY,{actualControlEndpoint}");
 
         if (!controlState.WaitForStart(config.ReadyTimeoutMs))
         {
@@ -62,6 +81,22 @@ internal static class PerfMultiSpotServer
                 Console.Error.WriteLine("multi_server_error:no_start");
             return controlState.StopRequested ? 0 : 2;
         }
+        DebugControl("server_runner_start");
+        if (!WaitForReadyCount(controlSub, config.Size,
+                ResolveMultiClients(options), config.ReadyTimeoutMs))
+        {
+            Console.Error.WriteLine("multi_server_error:control_ready_timeout");
+            return 2;
+        }
+        DebugControl("server_ready_count");
+        DebugSubjects(controlNode, "server_before_start");
+        if (!PublishControlStartBurst(controlPub, config.Size,
+                config.ReadyTimeoutMs))
+        {
+            Console.Error.WriteLine("multi_server_error:control_start_failed");
+            return 2;
+        }
+        DebugControl("server_control_start");
 
         return RunActivePhase(spotPub, controlState, config);
     }
@@ -98,6 +133,14 @@ internal static class PerfMultiSpotServer
                 TimeSpan.FromMilliseconds(config.ReadyTimeoutMs));
     }
 
+    private static void ConfigureSpotControlNode(SpotNode node, int timeoutMs)
+    {
+        TrySetSpotOption(() => node.PublisherNoDrop = true);
+        TrySetSpotOption(() =>
+            node.PublisherSendTimeout =
+                TimeSpan.FromMilliseconds(Math.Max(1000, timeoutMs)));
+    }
+
     private static int RunActivePhase(Spot spotPub,
         RunnerControlState controlState, SpotServerConfig config)
     {
@@ -130,12 +173,131 @@ internal static class PerfMultiSpotServer
         TryPublish(spotPub, config, MultiStopToken, SendFlags.None);
     }
 
+    private static bool WaitForReadyCount(Spot controlSpot, int size,
+        int expectedCount, int timeoutMs)
+    {
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        int readyCount = 0;
+        string prefix = $"READY_COUNT,{size},";
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            using TopicMessage? received =
+                controlSpot.Subscribe(RecvFlags.DontWait);
+            if (received == null)
+            {
+                System.Threading.Thread.Yield();
+                continue;
+            }
+
+            if (received.Topic != ControlTopic)
+                continue;
+
+            string payload = Encoding.ASCII.GetString(
+                received.SinglePartOrThrow().AsReadOnlySpan());
+            if (!payload.StartsWith(prefix, StringComparison.Ordinal))
+                continue;
+            if (!int.TryParse(payload.AsSpan(prefix.Length), out int increment))
+                continue;
+            readyCount += Math.Max(0, increment);
+            if (readyCount >= expectedCount)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool PublishControlStart(Spot controlSpot, int size,
+        int timeoutMs)
+    {
+        string payload = $"START,{size}";
+        return PublishControlPayload(controlSpot, payload, timeoutMs);
+    }
+
+    private static bool PublishControlStartBurst(Spot controlSpot, int size,
+        int timeoutMs)
+    {
+        bool published = false;
+        long deadlineTicks = Stopwatch.GetTimestamp()
+            + (Stopwatch.Frequency / 4);
+        do
+        {
+            published |= PublishControlStart(controlSpot, size, timeoutMs);
+            System.Threading.Thread.Sleep(1);
+        }
+        while (Stopwatch.GetTimestamp() < deadlineTicks);
+        return published;
+    }
+
+    private static bool PublishControlPayload(Spot controlSpot, string payload,
+        int timeoutMs)
+    {
+        byte[] bytes = Encoding.ASCII.GetBytes(payload);
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            try
+            {
+                using Message message = new(bytes.AsSpan());
+                if (controlSpot.Publish(ControlTopic).Message(message).Submit())
+                {
+                    DebugControl($"publish:{payload}");
+                    return true;
+                }
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
+            {
+            }
+
+            System.Threading.Thread.Yield();
+        }
+
+        return false;
+    }
+
+    private static bool WaitForControlPeerConnected(SpotNode node,
+        string peerEndpoint, int timeoutMs)
+    {
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            SpotNodePeerEntry[] peers = node.PeersQuery(new SpotNodePeerFilter(
+                PeerEndpoint: peerEndpoint,
+                State: SpotPeerState.Connected));
+            if (peers.Length > 0)
+                return true;
+            System.Threading.Thread.Sleep(1);
+        }
+
+        return false;
+    }
+
+    private static void DebugControl(string message)
+    {
+        if (PerfEnv.ReadPositive("PERF_DOTNET_CONTROL_DEBUG", 0) > 0)
+            Console.Error.WriteLine($"control_debug:{message}");
+    }
+
+    private static void DebugSubjects(SpotNode node, string label)
+    {
+        if (PerfEnv.ReadPositive("PERF_DOTNET_CONTROL_DEBUG", 0) <= 0)
+            return;
+        SpotNodeStatus status = node.StatusSnapshot();
+        Console.Error.WriteLine(
+            $"control_debug:{label}:subjects={status.SubjectCount}:ready={status.ReadySubjectCount}:peers={status.ConnectedPeerCount}");
+        foreach (SpotNodeSubjectEntry entry in node.SubjectsSnapshot())
+        {
+            Console.Error.WriteLine(
+                $"control_debug:{label}:subject:{entry.Role}:{entry.Subject}:{entry.ReadyPeerCount}:{entry.ActivePeerCount}");
+        }
+    }
+
     private static bool TryPublish(Spot spotPub, SpotServerConfig config,
         byte[] payload, SendFlags flags)
     {
         try
         {
-            using Message message = Message.FromBytes(payload);
+            using Message message = new(payload.AsSpan());
             return spotPub.Publish(Topic)
                 .Message(message)
                 .Flags(flags)

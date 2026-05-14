@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap '' PIPE
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTNET_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -18,27 +19,71 @@ PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
 MSG_SIZES="${PERF_MSG_SIZES:-}"
 CLIENTS="${PERF_MULTI_CLIENTS:-}"
+EFFECTIVE_DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
+EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
 DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
 RUNS="${PERF_RUNS:-1}"
 READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
+SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}"
+SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
+RESULT_TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-60}"
+TIMEOUT_SECONDS_DISPLAY="${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-auto}}"
 CASE_COOLDOWN_MS="${PERF_MULTI_CASE_COOLDOWN_MS:-0}"
+TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
+PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
 RESULTS_TAG=""
 CONFIGURATION="${PERF_CONFIGURATION:-Release}"
 REPORT=""
 REUSE_BUILD=0
 CLEAN_BUILD=0
 BUILD_DIR=""
-DISPLAY_IO_THREADS="${PERF_IO_THREADS:-4}"
-if [[ "${PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}" == "1" \
-  || "${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}" == "1" ]]; then
-  DISPLAY_HWM="${PERF_MULTI_HWM:-manual-unset}"
-  DISPLAY_SNDHWM="${PERF_MULTI_SNDHWM:-${PERF_MULTI_HWM:-manual-unset}}"
-  DISPLAY_RCVHWM="${PERF_MULTI_RCVHWM:-${PERF_MULTI_HWM:-manual-unset}}"
-else
-  DISPLAY_HWM="auto-hwm"
-  DISPLAY_SNDHWM="auto-hwm"
-  DISPLAY_RCVHWM="auto-hwm"
-fi
+OUTPUT_PATH=""
+PIN_CPU=0
+COMMON_IO_THREADS="${PERF_IO_THREADS:-}"
+SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_SERVER_IO_THREADS:-}}"
+CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_CLIENT_IO_THREADS:-}}"
+HWM="${PERF_MULTI_HWM:-${PERF_HWM:-}}"
+SNDHWM="${PERF_MULTI_SNDHWM:-${PERF_SNDHWM:-}}"
+RCVHWM="${PERF_MULTI_RCVHWM:-${PERF_RCVHWM:-}}"
+SNDBUF="${PERF_MULTI_SNDBUF:-${PERF_SNDBUF:-}}"
+RCVBUF="${PERF_MULTI_RCVBUF:-${PERF_RCVBUF:-}}"
+SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-${PERF_SNDTIMEO_MS:-200}}"
+RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-${PERF_RCVTIMEO_MS:-200}}"
+CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-${PERF_CONNECT_CONCURRENCY:-}}"
+MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-${PERF_MONITOR_HWM:-1000}}"
+SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-${PERF_SERVER_BIND_PORT:-0}}"
+CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-1}"
+CTX_AUTO_HWM_PROFILE="${PERF_MULTI_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}"
+ALLOW_MANUAL_SOCKET_OVERRIDES="${PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}"
+SECONDS=0
+SHOW_TOTAL_TIME=0
+
+format_elapsed() {
+  local total_sec="${1:-0}"
+  local hours=$(( total_sec / 3600 ))
+  local minutes=$(( (total_sec % 3600) / 60 ))
+  local seconds=$(( total_sec % 60 ))
+  if (( hours > 0 )); then
+    printf "%dh %dm %ds" "${hours}" "${minutes}" "${seconds}"
+  elif (( minutes > 0 )); then
+    printf "%dm %ds" "${minutes}" "${seconds}"
+  else
+    printf "%ds" "${seconds}"
+  fi
+}
+
+print_total_time() {
+  if [[ "${SHOW_TOTAL_TIME}" -ne 1 ]]; then
+    return
+  fi
+  if [[ "${PERF_SUPPRESS_TOTAL_TIME:-0}" == "1" ]]; then
+    return
+  fi
+  local status="${1:-0}"
+  local elapsed="${SECONDS}"
+  echo "Total benchmark time: $(format_elapsed "${elapsed}") (${elapsed}s, exit=${status})"
+}
+trap 'print_total_time $?' EXIT
 
 prune_report_dir() {
   local report_dir="$1"
@@ -99,7 +144,7 @@ Options:
   --reuse-build         Reuse existing build output.
   --clean-build         Remove project bin/obj before build.
   --output PATH         Tee report output to PATH.
-  --pin-cpu             Pin benchmark processes to CPU 0 on Linux.
+  --pin-cpu             Pin benchmark processes to CPU 1 on Linux.
   --io-threads N        Set both server/client io threads.
   --server-io-threads N Server io threads override.
   --client-io-threads N Client io threads override.
@@ -188,7 +233,16 @@ normalize_platform() {
 
 print_line() {
   local line="${1:-}"
-  printf '%s\n' "${line}" | tee -a "${REPORT}"
+  if [[ -n "${OUTPUT_PATH}" ]]; then
+    printf '%s\n' "${line}" | tee -a "${REPORT}" "${OUTPUT_PATH}"
+  else
+    printf '%s\n' "${line}" | tee -a "${REPORT}"
+  fi
+}
+
+sleep_ms() {
+  local ms="${1:-0}"
+  sleep "$(printf '%d.%03d' "$(( ms / 1000 ))" "$(( ms % 1000 ))")"
 }
 
 validate_uint() {
@@ -196,6 +250,33 @@ validate_uint() {
   local value="${2:-}"
   if [[ ! "${value}" =~ ^[0-9]+$ || "${value}" -lt 1 ]]; then
     echo "${label} must be a positive integer." >&2
+    exit 1
+  fi
+}
+
+validate_nonnegative_uint() {
+  local label="${1:-value}"
+  local value="${2:-}"
+  if [[ ! "${value}" =~ ^[0-9]+$ ]]; then
+    echo "${label} must be a non-negative integer." >&2
+    exit 1
+  fi
+}
+
+validate_byte_size_token() {
+  local label="${1:-value}"
+  local value="${2:-}"
+  if [[ -n "${value}" && ! "${value}" =~ ^[0-9]+([bBkKmMgG])?$ ]]; then
+    echo "${label} must be a byte size token such as 64b, 1k, or 64k." >&2
+    exit 1
+  fi
+}
+
+require_arg() {
+  local option="${1:-option}"
+  local value="${2:-}"
+  if [[ -z "${value}" || "${value}" == --* ]]; then
+    echo "Error: ${option} requires a value." >&2
     exit 1
   fi
 }
@@ -214,13 +295,15 @@ allowed = {
     "PUBSUB",
     "SPOT",
     "SPOT_REQREP",
+    "SPOT_SENDSEND",
     "STREAM",
 }
 
 if raw == "ALL":
     print(
         "MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,"
-        "MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_STREAM"
+        "MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,"
+        "MULTI_SPOT_SENDSEND,MULTI_STREAM"
     )
     raise SystemExit(0)
 
@@ -231,6 +314,8 @@ for token in raw.split(","):
         continue
     if value.startswith("MULTI_"):
         value = value[len("MULTI_") :]
+    if value == "STREAMS":
+        value = "STREAM"
     if value not in allowed:
         raise SystemExit(f"unsupported multi pattern: {value}")
     items.append(f"MULTI_{value}")
@@ -239,6 +324,47 @@ if not items:
     raise SystemExit("no valid multi pattern specified")
 
 print(",".join(items))
+PY
+}
+
+effective_msg_sizes_display() {
+  local patterns_csv="${1:-}"
+  local explicit_sizes="${2:-}"
+  if [[ -n "${explicit_sizes}" ]]; then
+    printf '%s' "${explicit_sizes}"
+    return
+  fi
+
+  python3 - "${patterns_csv}" <<'PY'
+import sys
+
+patterns = [item.strip() for item in sys.argv[1].split(",") if item.strip()]
+sizes = set()
+for pattern in patterns:
+    if pattern == "MULTI_STREAM":
+        sizes.update([64, 256, 1024, 65536])
+    else:
+        sizes.update([64, 256, 1024, 65536, 131072, 262144])
+print(",".join(str(v) for v in sorted(sizes)))
+PY
+}
+
+effective_clients_display() {
+  local patterns_csv="${1:-}"
+  local explicit_clients="${2:-}"
+  if [[ -n "${explicit_clients}" ]]; then
+    printf '%s' "${explicit_clients}"
+    return
+  fi
+
+  python3 - "${patterns_csv}" <<'PY'
+import sys
+
+patterns = [item.strip() for item in sys.argv[1].split(",") if item.strip()]
+if patterns and all(item == "MULTI_STREAM" for item in patterns):
+    print("10000")
+else:
+    print("100")
 PY
 }
 
@@ -254,16 +380,16 @@ default_msg_sizes_for_pattern() {
 default_clients_for_pattern() {
   local pattern="${1:-}"
   if [[ "${pattern}" == "MULTI_STREAM" ]]; then
-    printf '%s' "10000"
+    printf '%s' "${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
   else
-    printf '%s' "100"
+    printf '%s' "${EFFECTIVE_DEFAULT_CLIENTS}"
   fi
 }
 
 pattern_uses_control_pipe() {
   local pattern="${1:-}"
   case "${pattern}" in
-    MULTI_DEALER_DEALER|MULTI_PUBSUB|MULTI_SPOT|MULTI_SPOT_REQREP|MULTI_STREAM)
+    MULTI_DEALER_DEALER|MULTI_PUBSUB|MULTI_SPOT|MULTI_SPOT_REQREP|MULTI_SPOT_SENDSEND|MULTI_STREAM)
       return 0
       ;;
     *)
@@ -272,20 +398,16 @@ pattern_uses_control_pipe() {
   esac
 }
 
-pattern_requires_client_phase_active() {
-  local pattern="${1:-}"
-  [[ "${pattern}" == "MULTI_PUBSUB" ]]
-}
-
 wait_for_ready_endpoint() {
   local log_path="$1"
-  python3 - "${log_path}" <<'PY'
+  local timeout_ms="${2:-${SERVER_READY_TIMEOUT_MS}}"
+  python3 - "${log_path}" "${timeout_ms}" <<'PY'
 import pathlib
 import sys
 import time
 
 path = pathlib.Path(sys.argv[1])
-deadline = time.time() + 20.0
+deadline = time.time() + max(0, int(sys.argv[2])) / 1000.0
 while time.time() < deadline:
     if path.exists():
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -302,13 +424,14 @@ PY
 
 wait_for_client_ready_line() {
   local log_path="$1"
-  python3 - "${log_path}" <<'PY'
+  local timeout_ms="${2:-${READY_TIMEOUT_MS}}"
+  python3 - "${log_path}" "${timeout_ms}" <<'PY'
 import pathlib
 import sys
 import time
 
 path = pathlib.Path(sys.argv[1])
-deadline = time.time() + 20.0
+deadline = time.time() + max(0, int(sys.argv[2])) / 1000.0
 while time.time() < deadline:
     if path.exists():
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -323,13 +446,14 @@ PY
 
 wait_for_control_ready_endpoint() {
   local log_path="$1"
-  python3 - "${log_path}" <<'PY'
+  local timeout_ms="${2:-${SERVER_READY_TIMEOUT_MS}}"
+  python3 - "${log_path}" "${timeout_ms}" <<'PY'
 import pathlib
 import sys
 import time
 
 path = pathlib.Path(sys.argv[1])
-deadline = time.time() + 20.0
+deadline = time.time() + max(0, int(sys.argv[2])) / 1000.0
 while time.time() < deadline:
     if path.exists():
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -346,13 +470,14 @@ PY
 
 wait_for_client_control_endpoint() {
   local log_path="$1"
-  python3 - "${log_path}" <<'PY'
+  local timeout_ms="${2:-${READY_TIMEOUT_MS}}"
+  python3 - "${log_path}" "${timeout_ms}" <<'PY'
 import pathlib
 import sys
 import time
 
 path = pathlib.Path(sys.argv[1])
-deadline = time.time() + 20.0
+deadline = time.time() + max(0, int(sys.argv[2])) / 1000.0
 while time.time() < deadline:
     if path.exists():
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -369,13 +494,14 @@ PY
 
 wait_for_control_connected() {
   local log_path="$1"
-  python3 - "${log_path}" <<'PY'
+  local timeout_ms="${2:-${READY_TIMEOUT_MS}}"
+  python3 - "${log_path}" "${timeout_ms}" <<'PY'
 import pathlib
 import sys
 import time
 
 path = pathlib.Path(sys.argv[1])
-deadline = time.time() + 20.0
+deadline = time.time() + max(0, int(sys.argv[2])) / 1000.0
 while time.time() < deadline:
     if path.exists():
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -428,48 +554,20 @@ terminate_pid() {
   wait "${pid}" 2>/dev/null || true
 }
 
+shutdown_timeout_seconds() {
+  printf '%s' "$(( (SERVER_SHUTDOWN_TIMEOUT_MS + 999) / 1000 ))"
+}
+
+write_control_line() {
+  local fd="$1"
+  shift
+  printf "$@" >&${fd} 2>/dev/null || true
+}
+
 is_eaddrinuse_log() {
   local log="${1:-}"
   [[ -f "${log}" ]] || return 1
   grep -qi "errno 98\|address already in use" "${log}" 2>/dev/null
-}
-
-extract_required_results() {
-  local log_path="${1:-}"
-  local pattern="${2:-}"
-  local transport="${3:-}"
-  local size="${4:-}"
-
-  python3 - "${log_path}" "${pattern}" "${transport}" "${size}" <<'PY'
-import csv
-import sys
-
-expected = sys.argv[2]
-base = expected[len("MULTI_") :] if expected.startswith("MULTI_") else expected
-required = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
-found = {}
-with open(sys.argv[1], encoding="utf-8", errors="replace") as handle:
-    reader = csv.reader(handle)
-    for row in reader:
-        if len(row) != 7:
-            continue
-        if row[0] != "RESULT" or row[1] != "dotnet":
-            continue
-        if row[2] not in {expected, base}:
-            continue
-        if row[3] != sys.argv[3] or row[4] != sys.argv[4]:
-            continue
-        if row[5] in required:
-            row[2] = expected
-            found[row[5]] = row
-
-missing = [metric for metric in required if metric not in found]
-if missing:
-    raise SystemExit("missing required metrics: " + ",".join(missing))
-
-for metric in required:
-    print(",".join(found[metric]))
-PY
 }
 
 extract_results_from_logs() {
@@ -499,12 +597,13 @@ for path in (primary, secondary):
     with path.open(encoding="utf-8", errors="replace") as handle:
         reader = csv.reader(handle)
         for row in reader:
-            if len(row) != 7 or row[0] != "RESULT" or row[1] != "dotnet":
+            if len(row) != 7 or row[0] != "RESULT" or row[1] not in {"dotnet", "current"}:
                 continue
             if row[2] not in {expected, base} or row[3] != transport or row[4] != size:
                 continue
             metric = row[5]
             if metric in required:
+                row[1] = "dotnet"
                 row[2] = expected
                 merged[metric] = row
 
@@ -517,30 +616,17 @@ for metric in required:
 PY
 }
 
-emit_markdown_table() {
+emit_result_row() {
   local metrics_file="${1:-}"
   local pattern="${2:-}"
-  local transport="${3:-}"
-  local run_index="${4:-1}"
 
   if [[ ! -s "${metrics_file}" ]]; then
     return
   fi
 
-  local pattern_kind="one-way"
-  case "${pattern}" in
-    MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER|MULTI_STREAM|MULTI_SPOT_REQREP)
-      pattern_kind="echo"
-      ;;
-  esac
-
-  print_line "## PATTERN: ${pattern} (${pattern_kind})"
-  print_line "  > Benchmarking current for ${pattern}..."
-  print_line "    Testing ${transport}:"
-  python3 - "${metrics_file}" "${pattern}" <<'PY' | while IFS= read -r table_line; do
+  python3 - "${metrics_file}" "${pattern}" <<'PY'
 import csv
 import sys
-from collections import OrderedDict
 
 pattern = sys.argv[2].upper()
 echo_patterns = {
@@ -548,36 +634,35 @@ echo_patterns = {
     "MULTI_ROUTER_ROUTER",
     "MULTI_STREAM",
     "MULTI_SPOT_REQREP",
+    "MULTI_SPOT_SENDSEND",
 }
-rows = OrderedDict()
+metrics = {}
+size = ""
 with open(sys.argv[1], encoding="utf-8") as handle:
     reader = csv.reader(handle)
     for row in reader:
         if len(row) != 7 or row[0] != "RESULT":
             continue
         size = row[4]
-        metric = row[5]
-        rows.setdefault(size, {})
-        rows[size][metric] = row[6]
+        metrics[row[5]] = row[6]
 
 throughput_unit = "Kops/s" if pattern in echo_patterns else "Kmsg/s"
-print("      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
-print("      |----------|--------------------|----------------|---------------|---------------|---------------|")
-for size, metrics in rows.items():
-    throughput = float(metrics["throughput"]) / 1000.0
-    bandwidth = float(metrics["bandwidth"])
-    latency_ms = float(metrics["latency"])
-    latency_p95_ms = float(metrics["latency_p95"])
-    latency_p99_ms = float(metrics["latency_p99"])
-    throughput_text = f"{throughput:8.3f} {throughput_unit}"
-    print(
-        f"      | {size + 'B':<8} | {throughput_text:>16} | {bandwidth:>10.3f} MB/s |"
-        f" {latency_ms:>9.3f} ms | {latency_p95_ms:>9.3f} ms | {latency_p99_ms:>9.3f} ms |"
-    )
+throughput = float(metrics["throughput"]) / 1000.0
+bandwidth = float(metrics["bandwidth"])
+latency_ms = float(metrics["latency"])
+latency_p95_ms = float(metrics["latency_p95"])
+latency_p99_ms = float(metrics["latency_p99"])
+throughput_text = f"{throughput:8.3f} {throughput_unit}"
+print(
+    f"      | {size + 'B':<8} | {throughput_text:>16} | {bandwidth:>10.3f} MB/s |"
+    f" {latency_ms:>9.3f} ms | {latency_p95_ms:>9.3f} ms | {latency_p99_ms:>9.3f} ms |"
+)
 PY
-    print_line "${table_line}"
-  done
-  print_line "    Testing ${transport}: Done"
+}
+
+emit_failure_row() {
+  local size="${1:-}"
+  print_line "      | ${size}B      | FAIL               | FAIL           | FAIL          | FAIL          | FAIL          |"
 }
 
 extract_unsupported_line() {
@@ -613,10 +698,7 @@ for raw_path in sys.argv[3:]:
             raise SystemExit(1)
         if ("permission denied" in lowered
                 or "operation not permitted" in lowered
-                or "zlinkbindexception" in lowered
                 or "zlinkconnectexception" in lowered
-                or "legacyzlinkexception" in lowered
-                or "socketexception" in lowered
                 or "errno 1" in lowered
                 or "errno 13" in lowered):
             print(canonical)
@@ -626,25 +708,364 @@ raise SystemExit(1)
 PY
 }
 
+emit_auto_hwm_detail_table() {
+  local pattern_name="${1:-}"
+  shift || true
+
+  python3 - "${pattern_name}" "$@" <<'PY'
+import pathlib
+import sys
+
+SPOT_CONTROL_PATTERNS = {"SPOT", "SPOT_REQREP", "SPOT_SENDSEND"}
+
+
+def normalize_pattern(name):
+    value = (name or "").strip().upper()
+    if value.startswith("MULTI_"):
+        value = value[6:]
+    return value
+
+
+def parse_int(value, default=0):
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def bytes_to_kb(value):
+    parsed = parse_int(value, -1)
+    return "" if parsed < 0 else str(parsed // 1024)
+
+
+def parse_detail_line(line):
+    stripped = (line or "").strip()
+    if not stripped.startswith("AUTO_HWM_DETAIL,"):
+        return None
+    fields = {}
+    for item in stripped.split(",")[1:]:
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        fields[key.strip()] = value.strip()
+    return fields
+
+
+def cell_widths(rows, columns):
+    widths = []
+    for header, key in columns:
+        width = len(header)
+        for row in rows:
+            width = max(width, len(str(row.get(key, "?"))))
+        widths.append(width)
+    return widths
+
+
+def emit_markdown_table(indent, columns, rows):
+    widths = cell_widths(rows, columns)
+    header_cells = [
+        f" {header:<{widths[index]}} "
+        for index, (header, _key) in enumerate(columns)
+    ]
+    sep_cells = ["-" * (width + 2) for width in widths]
+    print(f"{indent}|" + "|".join(header_cells) + "|")
+    print(f"{indent}|" + "|".join(sep_cells) + "|")
+    for row in rows:
+        cells = [
+            f" {str(row.get(key, '?')):<{widths[index]}} "
+            for index, (_header, key) in enumerate(columns)
+        ]
+        print(f"{indent}|" + "|".join(cells) + "|")
+
+
+def active_hwm_fields(row):
+    socket_type = (row.get("socket_type") or row.get("type") or "").lower()
+    role = (row.get("role") or "").lower()
+    send_active = True
+    recv_active = True
+    if socket_type in ("pub", "xpub") and role in ("spot_data", "control"):
+        recv_active = False
+    if socket_type in ("sub", "xsub") and role in ("recv_ingress", "control"):
+        send_active = False
+    return send_active, recv_active
+
+
+def apply_active_hwm_display(row):
+    display = dict(row)
+    send_active, recv_active = active_hwm_fields(display)
+    if not send_active:
+        display["sndhwm"] = "-"
+    if not recv_active:
+        display["rcvhwm"] = "-"
+    return display
+
+
+def spot_snapshot_table(title, rows):
+    if not rows:
+        return False
+    display_rows = []
+    seen = set()
+    for row in sorted(
+        rows,
+        key=lambda item: (
+            parse_int(item.get("msg_size", "0")),
+            parse_int(item.get("owner_id", "0")),
+            item.get("socket", ""),
+            item.get("role", ""),
+        ),
+    ):
+        display = dict(row)
+        display["type"] = row.get("socket_type", "")
+        display = apply_active_hwm_display(display)
+        key = tuple(
+            display.get(name, "")
+            for name in (
+                "msg_size",
+                "effective_message_bytes",
+                "socket",
+                "type",
+                "role",
+                "sndhwm",
+                "rcvhwm",
+                "effective_sndbuf",
+                "effective_rcvbuf",
+            )
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        display_rows.append(display)
+    if not display_rows:
+        return False
+    print(f"    {title}:")
+    grouped = {}
+    order = []
+    for row in display_rows:
+        key = (row.get("msg_size", ""), row.get("effective_message_bytes", ""))
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+        grouped[key].append(row)
+    for index, key in enumerate(order):
+        msg_size, msg_unit = key
+        print(f"      - Size(B)={msg_size}, MsgUnit(B)={msg_unit}")
+        emit_markdown_table(
+            "      ",
+            (
+                ("Socket", "socket"),
+                ("Type", "type"),
+                ("Role", "role"),
+                ("SNDHWM", "sndhwm"),
+                ("RCVHWM", "rcvhwm"),
+                ("SNDBUF", "effective_sndbuf"),
+                ("RCVBUF", "effective_rcvbuf"),
+            ),
+            grouped[key],
+        )
+        if index + 1 < len(order):
+            print("      ")
+    return True
+
+
+def emit_spot_tables(rows):
+    snapshot_rows = [
+        row
+        for row in rows
+        if row.get("source") == "spotnode_snapshot" and row.get("socket")
+    ]
+    if not snapshot_rows:
+        return False
+    emitted = False
+    emitted = spot_snapshot_table(
+        "Auto-HWM spotnode",
+        [row for row in snapshot_rows if row.get("owner") == "node"],
+    ) or emitted
+    emitted = spot_snapshot_table(
+        "Auto-HWM spot handles",
+        [row for row in snapshot_rows if row.get("owner") == "spot"],
+    ) or emitted
+    return emitted
+
+
+def expected_hwm(row):
+    unit_budget = parse_int(row.get("unit_budget_bytes", ""), 0)
+    msg_unit = parse_int(row.get("effective_message_bytes", ""), 0)
+    size_cap = parse_int(row.get("size_cap", ""), 0)
+    if unit_budget <= 0 or msg_unit <= 0:
+        return None
+    hwm = (unit_budget + msg_unit - 1) // msg_unit
+    hwm = max(1, hwm)
+    if size_cap > 0:
+        hwm = min(hwm, size_cap)
+    return hwm
+
+
+def expected_match_score(row):
+    expected = expected_hwm(row)
+    if expected is None:
+        return 2
+    sndhwm = parse_int(row.get("sndhwm", ""), -1)
+    rcvhwm = parse_int(row.get("rcvhwm", ""), -1)
+    visible = 0
+    matches = 0
+    if sndhwm >= 0:
+        visible += 1
+        if sndhwm == expected:
+            matches += 1
+    if rcvhwm >= 0:
+        visible += 1
+        if rcvhwm == expected:
+            matches += 1
+    if visible == 0:
+        return 2
+    return 0 if matches == visible else 1 if matches > 0 else 2
+
+
+def select_non_spot_rows(rows):
+    selected = {}
+    for index, row in enumerate(rows):
+        key = (
+            row.get("msg_size", ""),
+            row.get("component", ""),
+            row.get("socket_type", ""),
+            row.get("unit_budget_bytes", ""),
+            row.get("effective_message_bytes", ""),
+        )
+        score = expected_match_score(row)
+        previous = selected.get(key)
+        if previous is None or score < previous[0] or (
+            score == previous[0] and index > previous[1]
+        ):
+            selected[key] = (score, index, row)
+    return [item[2] for item in selected.values()]
+
+
+pattern = normalize_pattern(sys.argv[1])
+seen = set()
+rows = []
+for raw_path in sys.argv[2:]:
+    path = pathlib.Path(raw_path)
+    if not path.exists():
+        continue
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        fields = parse_detail_line(line)
+        if not fields or normalize_pattern(fields.get("pattern", "")) != pattern:
+            continue
+        key = (
+            fields.get("pattern", ""),
+            fields.get("transport", ""),
+            fields.get("component", ""),
+            fields.get("label", ""),
+            fields.get("msg_size", ""),
+            fields.get("source", ""),
+            fields.get("role", ""),
+            fields.get("scope", ""),
+            fields.get("sndhwm", ""),
+            fields.get("rcvhwm", ""),
+            fields.get("effective_message_bytes", ""),
+            fields.get("effective_sndbuf", ""),
+            fields.get("effective_rcvbuf", ""),
+            fields.get("socket_message_slots", ""),
+            fields.get("unit_budget_bytes", ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(fields)
+
+if not rows:
+    raise SystemExit(0)
+
+if pattern in SPOT_CONTROL_PATTERNS:
+    emit_spot_tables(rows)
+    raise SystemExit(0)
+
+rows = [
+    row for row in rows
+    if row.get("msg_size", "") and row.get("msg_size", "") != "0"
+]
+if not rows:
+    raise SystemExit(0)
+rows.sort(
+    key=lambda row: (
+        parse_int(row.get("msg_size", ""), 0),
+        row.get("component", ""),
+        row.get("socket_type", ""),
+    )
+)
+display_rows = []
+seen_display = set()
+for fields in select_non_spot_rows(rows):
+    display = dict(fields)
+    display["type"] = fields.get("socket_type", "")
+    msg_size = fields.get("msg_size", "")
+    display["msg_size_display"] = msg_size if msg_size and msg_size != "0" else "?"
+    display["unit_budget_kb"] = bytes_to_kb(fields.get("unit_budget_bytes", ""))
+    display["effective_sndbuf_kb"] = bytes_to_kb(fields.get("effective_sndbuf", ""))
+    display["effective_rcvbuf_kb"] = bytes_to_kb(fields.get("effective_rcvbuf", ""))
+    key = tuple(
+        display.get(name, "")
+        for name in (
+            "msg_size_display",
+            "component",
+            "type",
+            "unit_budget_kb",
+            "effective_message_bytes",
+            "sndhwm",
+            "rcvhwm",
+            "effective_sndbuf_kb",
+            "effective_rcvbuf_kb",
+        )
+    )
+    if key in seen_display:
+        continue
+    seen_display.add(key)
+    display_rows.append(display)
+if not display_rows:
+    raise SystemExit(0)
+print("    Auto-HWM detail:")
+emit_markdown_table(
+    "      ",
+    (
+        ("Size(B)", "msg_size_display"),
+        ("Component", "component"),
+        ("Type", "type"),
+        ("UnitBudget(KB)", "unit_budget_kb"),
+        ("MsgUnit(B)", "effective_message_bytes"),
+        ("SNDHWM", "sndhwm"),
+        ("RCVHWM", "rcvhwm"),
+        ("SNDBUF(KB)", "effective_sndbuf_kb"),
+        ("RCVBUF(KB)", "effective_rcvbuf_kb"),
+    ),
+    display_rows,
+)
+PY
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pattern)
+      require_arg "$1" "${2:-}"
       PATTERN="${2:-}"
       shift
       ;;
     --transports)
+      require_arg "$1" "${2:-}"
       TRANSPORTS="${2:-}"
       shift
       ;;
     --msg-sizes)
+      require_arg "$1" "${2:-}"
       MSG_SIZES="${2:-}"
       shift
       ;;
     --clients)
+      require_arg "$1" "${2:-}"
       CLIENTS="${2:-}"
       shift
       ;;
     --build-dir)
+      require_arg "$1" "${2:-}"
       BUILD_DIR="${2:-}"
       shift
       ;;
@@ -655,26 +1076,134 @@ while [[ $# -gt 0 ]]; do
       CLEAN_BUILD=1
       ;;
     --output)
+      require_arg "$1" "${2:-}"
+      OUTPUT_PATH="${2:-}"
       shift
       ;;
     --pin-cpu)
+      PIN_CPU=1
       ;;
-    --io-threads|--server-io-threads|--client-io-threads|--hwm|--send-hwm|--recv-hwm|--buf|--sndbuf|--rcvbuf|--sndtimeo|--rcvtimeo|--send-timeout-ms|--recv-timeout-ms|--connect-concurrency|--transport-transition-ms|--pattern-transition-ms|--server-ready-timeout-ms|--connect-ready-timeout-ms|--monitor-hwm|--server-shutdown-timeout-ms|--server-bind-port|--auto-hwm-profile)
+    --io-threads)
+      require_arg "$1" "${2:-}"
+      COMMON_IO_THREADS="${2:-}"
+      shift
+      ;;
+    --server-io-threads)
+      require_arg "$1" "${2:-}"
+      SERVER_IO_THREADS="${2:-}"
+      shift
+      ;;
+    --client-io-threads)
+      require_arg "$1" "${2:-}"
+      CLIENT_IO_THREADS="${2:-}"
+      shift
+      ;;
+    --hwm)
+      require_arg "$1" "${2:-}"
+      HWM="${2:-}"
+      shift
+      ;;
+    --send-hwm)
+      require_arg "$1" "${2:-}"
+      SNDHWM="${2:-}"
+      shift
+      ;;
+    --recv-hwm)
+      require_arg "$1" "${2:-}"
+      RCVHWM="${2:-}"
+      shift
+      ;;
+    --buf)
+      require_arg "$1" "${2:-}"
+      SNDBUF="${2:-}"
+      RCVBUF="${2:-}"
+      shift
+      ;;
+    --sndbuf)
+      require_arg "$1" "${2:-}"
+      SNDBUF="${2:-}"
+      shift
+      ;;
+    --rcvbuf)
+      require_arg "$1" "${2:-}"
+      RCVBUF="${2:-}"
+      shift
+      ;;
+    --sndtimeo|--send-timeout-ms)
+      require_arg "$1" "${2:-}"
+      SNDTIMEO_MS="${2:-}"
+      shift
+      ;;
+    --rcvtimeo|--recv-timeout-ms)
+      require_arg "$1" "${2:-}"
+      RCVTIMEO_MS="${2:-}"
+      shift
+      ;;
+    --connect-concurrency)
+      require_arg "$1" "${2:-}"
+      CONNECT_CONCURRENCY="${2:-}"
+      shift
+      ;;
+    --transport-transition-ms)
+      require_arg "$1" "${2:-}"
+      TRANSPORT_TRANSITION_MS="${2:-}"
+      shift
+      ;;
+    --pattern-transition-ms)
+      require_arg "$1" "${2:-}"
+      PATTERN_TRANSITION_MS="${2:-}"
+      shift
+      ;;
+    --server-ready-timeout-ms)
+      require_arg "$1" "${2:-}"
+      SERVER_READY_TIMEOUT_MS="${2:-}"
+      shift
+      ;;
+    --connect-ready-timeout-ms)
+      require_arg "$1" "${2:-}"
+      READY_TIMEOUT_MS="${2:-}"
+      shift
+      ;;
+    --monitor-hwm)
+      require_arg "$1" "${2:-}"
+      MONITOR_HWM="${2:-}"
+      shift
+      ;;
+    --server-shutdown-timeout-ms)
+      require_arg "$1" "${2:-}"
+      SERVER_SHUTDOWN_TIMEOUT_MS="${2:-}"
+      shift
+      ;;
+    --server-bind-port)
+      require_arg "$1" "${2:-}"
+      SERVER_BIND_PORT="${2:-}"
+      shift
+      ;;
+    --auto-hwm-profile)
+      require_arg "$1" "${2:-}"
+      CTX_AUTO_HWM_PROFILE="${2:-}"
       shift
       ;;
     --duration)
+      require_arg "$1" "${2:-}"
       DURATION="${2:-}"
       shift
       ;;
     --runs)
+      require_arg "$1" "${2:-}"
       RUNS="${2:-}"
       shift
       ;;
+    --runs=*)
+      RUNS="${1#--runs=}"
+      ;;
     --results-dir)
+      require_arg "$1" "${2:-}"
       RESULTS_ROOT="${2:-}"
       shift
       ;;
     --results-tag)
+      require_arg "$1" "${2:-}"
       RESULTS_TAG="${2:-}"
       shift
       ;;
@@ -699,8 +1228,60 @@ fi
 validate_uint "--duration" "${DURATION}"
 validate_uint "--runs" "${RUNS}"
 validate_uint "PERF_MULTI_CONNECT_READY_TIMEOUT_MS" "${READY_TIMEOUT_MS}"
-if [[ ! "${CASE_COOLDOWN_MS}" =~ ^[0-9]+$ ]]; then
-  echo "PERF_MULTI_CASE_COOLDOWN_MS must be a non-negative integer." >&2
+validate_nonnegative_uint "PERF_MULTI_SERVER_READY_TIMEOUT_MS" "${SERVER_READY_TIMEOUT_MS}"
+validate_nonnegative_uint "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS" "${SERVER_SHUTDOWN_TIMEOUT_MS}"
+validate_uint "PERF_MULTI_TIMEOUT_SECONDS" "${RESULT_TIMEOUT_SECONDS}"
+validate_nonnegative_uint "PERF_MULTI_CASE_COOLDOWN_MS" "${CASE_COOLDOWN_MS}"
+validate_nonnegative_uint "PERF_MULTI_TRANSPORT_TRANSITION_MS" "${TRANSPORT_TRANSITION_MS}"
+validate_nonnegative_uint "PERF_MULTI_PATTERN_TRANSITION_MS" "${PATTERN_TRANSITION_MS}"
+validate_nonnegative_uint "PERF_MULTI_MONITOR_HWM" "${MONITOR_HWM}"
+validate_nonnegative_uint "PERF_MULTI_SERVER_BIND_PORT" "${SERVER_BIND_PORT}"
+if (( SERVER_BIND_PORT > 65535 )); then
+  echo "PERF_MULTI_SERVER_BIND_PORT must be in range 0..65535." >&2
+  exit 1
+fi
+validate_uint "PERF_MULTI_SNDTIMEO_MS" "${SNDTIMEO_MS}"
+validate_uint "PERF_MULTI_RCVTIMEO_MS" "${RCVTIMEO_MS}"
+validate_byte_size_token "PERF_MULTI_SNDBUF" "${SNDBUF}"
+validate_byte_size_token "PERF_MULTI_RCVBUF" "${RCVBUF}"
+case "${CTX_AUTO_HWM_PROFILE}" in
+  ""|compact|low_latency|low-latency|balanced|throughput) ;;
+  *)
+    echo "PERF_CTX_AUTO_HWM_PROFILE must be compact, low_latency, balanced, or throughput." >&2
+    exit 1
+    ;;
+esac
+case "${CTX_AUTO_HWM_ENABLE}" in
+  0|1) ;;
+  *)
+    echo "PERF_CTX_AUTO_HWM_ENABLE must be 0 or 1." >&2
+    exit 1
+    ;;
+esac
+if [[ -n "${COMMON_IO_THREADS}" ]]; then
+  validate_uint "--io-threads" "${COMMON_IO_THREADS}"
+fi
+if [[ -n "${SERVER_IO_THREADS}" ]]; then
+  validate_uint "--server-io-threads" "${SERVER_IO_THREADS}"
+fi
+if [[ -n "${CLIENT_IO_THREADS}" ]]; then
+  validate_uint "--client-io-threads" "${CLIENT_IO_THREADS}"
+fi
+if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
+  validate_uint "--connect-concurrency" "${CONNECT_CONCURRENCY}"
+fi
+if [[ -n "${HWM}" ]]; then
+  validate_uint "--hwm" "${HWM}"
+fi
+if [[ -n "${SNDHWM}" ]]; then
+  validate_uint "--send-hwm" "${SNDHWM}"
+fi
+if [[ -n "${RCVHWM}" ]]; then
+  validate_uint "--recv-hwm" "${RCVHWM}"
+fi
+if [[ -n "${HWM}${SNDHWM}${RCVHWM}${SNDBUF}${RCVBUF}" && "${ALLOW_MANUAL_SOCKET_OVERRIDES}" != "1" ]]; then
+  echo "Error: manual HWM/SNDBUF/RCVBUF overrides are debug-only." >&2
+  echo "Set PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1 to use --hwm/--send-hwm/--recv-hwm/--buf/--sndbuf/--rcvbuf." >&2
   exit 1
 fi
 
@@ -719,6 +1300,47 @@ if [[ ! "${TRANSPORTS}" =~ ^[a-z]+(,[a-z]+)*$ ]]; then
 fi
 
 PATTERN="$(normalize_multi_pattern_csv "${PATTERN}")"
+EFFECTIVE_MSG_SIZES_DISPLAY="$(effective_msg_sizes_display "${PATTERN}" "${MSG_SIZES}")"
+EFFECTIVE_CLIENTS_DISPLAY="$(effective_clients_display "${PATTERN}" "${CLIENTS}")"
+if [[ -n "${SERVER_IO_THREADS}" ]]; then
+  display_server_io_threads="${SERVER_IO_THREADS}"
+elif [[ -n "${COMMON_IO_THREADS}" ]]; then
+  display_server_io_threads="${COMMON_IO_THREADS} (from PERF_IO_THREADS)"
+else
+  display_server_io_threads="4 (default)"
+fi
+if [[ -n "${CLIENT_IO_THREADS}" ]]; then
+  display_client_io_threads="${CLIENT_IO_THREADS}"
+elif [[ -n "${COMMON_IO_THREADS}" ]]; then
+  display_client_io_threads="${COMMON_IO_THREADS} (from PERF_IO_THREADS)"
+else
+  display_client_io_threads="4 (default)"
+fi
+if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" == "1" ]]; then
+  DISPLAY_HWM="${HWM:-auto-hwm}"
+  DISPLAY_SNDHWM="${SNDHWM:-${HWM:-auto-hwm}}"
+  DISPLAY_RCVHWM="${RCVHWM:-${HWM:-auto-hwm}}"
+  DISPLAY_SNDBUF="${SNDBUF:-auto-hwm}"
+  DISPLAY_RCVBUF="${RCVBUF:-auto-hwm}"
+else
+  DISPLAY_HWM="auto-hwm"
+  DISPLAY_SNDHWM="auto-hwm"
+  DISPLAY_RCVHWM="auto-hwm"
+  DISPLAY_SNDBUF="auto-hwm"
+  DISPLAY_RCVBUF="auto-hwm"
+fi
+display_connect_concurrency="${CONNECT_CONCURRENCY:-}"
+if [[ -z "${display_connect_concurrency}" ]]; then
+  if [[ "${EFFECTIVE_CLIENTS_DISPLAY}" =~ ^[0-9]+$ && "${EFFECTIVE_CLIENTS_DISPLAY}" -ge 10000 ]]; then
+    display_connect_concurrency="1024 (default)"
+  else
+    display_connect_concurrency="128 (default)"
+  fi
+fi
+display_pin_cpu="off"
+if [[ "${PIN_CPU}" -eq 1 ]]; then
+  display_pin_cpu="on"
+fi
 mkdir -p "${RESULTS_ROOT}/multi/tmp" "${RESULTS_ROOT}/multi/report"
 
 platform="$(normalize_platform)"
@@ -729,10 +1351,16 @@ if [[ -n "${RESULTS_TAG}" ]]; then
 fi
 REPORT="${RESULTS_ROOT}/multi/report/${report_base}.txt"
 : > "${REPORT}"
+if [[ -n "${OUTPUT_PATH}" ]]; then
+  mkdir -p "$(dirname "${OUTPUT_PATH}")"
+  : > "${OUTPUT_PATH}"
+fi
 prune_report_dir "${RESULTS_ROOT}/multi/report" \
   "${PERF_RESULTS_MAX_FILES:-100}"
 FAILURES_FILE="${RESULTS_ROOT}/multi/tmp/${report_base}.failures.csv"
+RESULT_DATA_FILE="${RESULTS_ROOT}/multi/tmp/${report_base}.result_data.csv"
 : > "${FAILURES_FILE}"
+: > "${RESULT_DATA_FILE}"
 
 record_failure() {
   local pattern="${1:-}"
@@ -742,6 +1370,15 @@ record_failure() {
   local reason="${5:-}"
   printf '%s,%s,%s,%s,%s\n' \
     "${pattern}" "${transport}" "${size}" "${run_index}" "${reason}" >> "${FAILURES_FILE}"
+  failure_count=$(( ${failure_count:-0} + 1 ))
+  print_line "    Testing ${transport} | ${size}B:"
+  emit_failure_row "${size}"
+  if [[ "${PERF_FAIL_FAST:-0}" == "1" ]]; then
+    print_line "    Testing ${transport}: Done"
+    print_failures_section "${FAILURES_FILE}"
+    SHOW_TOTAL_TIME=1
+    exit 1
+  fi
 }
 
 run_multi_process() {
@@ -753,6 +1390,12 @@ run_multi_process() {
   shift 5
   local extra_args=("$@")
   local shell_cmd="${PERF_BINARY@Q} --multi-${role} ${pattern@Q} ${transport@Q} ${size@Q}"
+  local role_io_threads="${COMMON_IO_THREADS:-4}"
+  if [[ "${role}" == "server" && -n "${SERVER_IO_THREADS}" ]]; then
+    role_io_threads="${SERVER_IO_THREADS}"
+  elif [[ "${role}" == "client" && -n "${CLIENT_IO_THREADS}" ]]; then
+    role_io_threads="${CLIENT_IO_THREADS}"
+  fi
   local effective_ready_timeout="${READY_TIMEOUT_MS}"
   if [[ "${pattern}" == "MULTI_SPOT" || "${pattern}" == "MULTI_SPOT_REQREP" ]]; then
     if [[ "${transport}" == "tls" || "${transport}" == "wss" ]]; then
@@ -761,21 +1404,45 @@ run_multi_process() {
       fi
     fi
   fi
+  local normalized_pattern="${pattern#MULTI_}"
   local env_prefix=(
+    "PERF_PATTERN=${normalized_pattern}"
+    "PERF_MULTI_PATTERN=${normalized_pattern}"
+    "PERF_MULTI_TRANSPORT=${transport}"
+    "PERF_MULTI_COMPONENT=${role}"
     "PERF_DOTNET_SERVER_STATS=${PERF_DOTNET_SERVER_STATS:-0}"
     "PERF_DOTNET_TIMING=${PERF_DOTNET_TIMING:-0}"
     # Match bindings/c/perf/multi/common/perf_multi_runtime.hpp:54:
     # bench_io_threads() default = 4. .NET default was 0 (no override =>
     # zlink ctx default 1), which capped per-process to single-core
     # throughput vs C's multi-core internal IO workers.
-    "PERF_IO_THREADS=${PERF_IO_THREADS:-4}"
+    "PERF_IO_THREADS=${role_io_threads}"
     "PERF_MULTI_CLIENTS=${pattern_clients}"
     "PERF_MULTI_DURATION_SECONDS=${DURATION}"
     "PERF_MULTI_CONNECT_READY_TIMEOUT_MS=${effective_ready_timeout}"
+    "PERF_MULTI_SERVER_READY_TIMEOUT_MS=${SERVER_READY_TIMEOUT_MS}"
+    "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS=${SERVER_SHUTDOWN_TIMEOUT_MS}"
+    "PERF_MULTI_SERVER_BIND_PORT=${SERVER_BIND_PORT}"
+    "PERF_MULTI_SNDTIMEO_MS=${SNDTIMEO_MS}"
+    "PERF_MULTI_RCVTIMEO_MS=${RCVTIMEO_MS}"
+    "PERF_MULTI_MONITOR_HWM=${MONITOR_HWM}"
+    "PERF_CTX_AUTO_HWM_ENABLE=${CTX_AUTO_HWM_ENABLE}"
+    "PERF_CTX_AUTO_HWM_PROFILE=${CTX_AUTO_HWM_PROFILE}"
     "DOTNET_TieredCompilation=1"
     "DOTNET_TC_QuickJitForLoops=1"
     "DOTNET_ReadyToRun=1"
   )
+  if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
+    env_prefix+=("PERF_MULTI_CONNECT_CONCURRENCY=${CONNECT_CONCURRENCY}")
+  fi
+  if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" == "1" ]]; then
+    env_prefix+=("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1")
+    [[ -n "${HWM}" ]] && env_prefix+=("PERF_MULTI_HWM=${HWM}")
+    [[ -n "${SNDHWM}" ]] && env_prefix+=("PERF_MULTI_SNDHWM=${SNDHWM}")
+    [[ -n "${RCVHWM}" ]] && env_prefix+=("PERF_MULTI_RCVHWM=${RCVHWM}")
+    [[ -n "${SNDBUF}" ]] && env_prefix+=("PERF_MULTI_SNDBUF=${SNDBUF}")
+    [[ -n "${RCVBUF}" ]] && env_prefix+=("PERF_MULTI_RCVBUF=${RCVBUF}")
+  fi
 
   if [[ -n "${endpoint}" ]]; then
     shell_cmd+=" --endpoint ${endpoint@Q}"
@@ -786,9 +1453,18 @@ run_multi_process() {
     shell_cmd+=" ${extra_arg@Q}"
   done
 
+  if [[ "${PIN_CPU}" -eq 1 && "$(uname -s)" == Linux* ]] \
+    && command -v taskset >/dev/null 2>&1; then
+    shell_cmd="taskset -c 1 ${shell_cmd}"
+  fi
+
   if [[ "${background}" == "1" ]]; then
     if [[ -n "${control_fd}" ]]; then
-      env "${env_prefix[@]}" bash -lc "${shell_cmd}" <&${control_fd} > "${log_path}" 2>&1 &
+      if [[ "${control_fd}" =~ ^[0-9]+$ ]]; then
+        env "${env_prefix[@]}" bash -lc "${shell_cmd}" <&${control_fd} > "${log_path}" 2>&1 &
+      else
+        env "${env_prefix[@]}" bash -lc "${shell_cmd}" < "${control_fd}" > "${log_path}" 2>&1 &
+      fi
     else
       env "${env_prefix[@]}" bash -lc "${shell_cmd}" > "${log_path}" 2>&1 &
     fi
@@ -798,17 +1474,33 @@ run_multi_process() {
   if [[ -n "${control_fd}" ]]; then
     env "${env_prefix[@]}" bash -lc "${shell_cmd}" <&${control_fd} > "${log_path}" 2>&1
   else
-    env "${env_prefix[@]}" bash -lc "${shell_cmd}" > "${log_path}" 2>&1
+    if command -v timeout >/dev/null 2>&1; then
+      env "${env_prefix[@]}" timeout "${RESULT_TIMEOUT_SECONDS}s" \
+        bash -lc "${shell_cmd}" > "${log_path}" 2>&1
+    else
+      env "${env_prefix[@]}" bash -lc "${shell_cmd}" > "${log_path}" 2>&1
+    fi
   fi
 }
 
 run_external_stream_client() {
   local endpoint="$1"
   ensure_stream_client
-  "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
-    --sizes "${size}" --runs 1 --duration "${DURATION}" \
-    --ccu "${pattern_clients}" --send-stop-token 1 --endpoint "${endpoint}" \
-    > "${client_log}" 2>&1
+  local cmd=(
+    "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM
+    --sizes "${size}" --runs 1 --duration "${DURATION}"
+    --ccu "${pattern_clients}" --send-stop-token 1 --endpoint "${endpoint}"
+  )
+  if [[ "${PIN_CPU}" -eq 1 && "$(uname -s)" == Linux* ]] \
+    && command -v taskset >/dev/null 2>&1; then
+    cmd=(taskset -c 1 "${cmd[@]}")
+  fi
+  env \
+    "PERF_PATTERN=${pattern#MULTI_}" \
+    "PERF_MULTI_PATTERN=${pattern#MULTI_}" \
+    "PERF_MULTI_TRANSPORT=${transport}" \
+    "PERF_MULTI_COMPONENT=client" \
+    "${cmd[@]}" > "${client_log}" 2>&1
 }
 
 ensure_build_output
@@ -827,16 +1519,36 @@ print_line "- runs: ${RUNS}"
 print_line "- duration_seconds: ${DURATION}"
 print_line "- patterns: ${PATTERN}"
 print_line "- transports: ${TRANSPORTS}"
-print_line "- msg_sizes: ${MSG_SIZES:-default(pattern)}"
-print_line "- clients: ${CLIENTS:-default(pattern)}"
-print_line "- server_io_threads: ${DISPLAY_IO_THREADS}"
-print_line "- client_io_threads: ${DISPLAY_IO_THREADS}"
+print_line "- msg_sizes: ${EFFECTIVE_MSG_SIZES_DISPLAY}"
+print_line "- clients: ${EFFECTIVE_CLIENTS_DISPLAY}"
+print_line "- default_clients: 100"
+print_line "- default_stream_clients: 10000"
+print_line "- service_clients: auto"
+print_line "- server_io_threads: ${display_server_io_threads}"
+print_line "- client_io_threads: ${display_client_io_threads}"
 print_line "- hwm: ${DISPLAY_HWM}"
-print_line "- send_hwm: ${DISPLAY_SNDHWM}"
-print_line "- recv_hwm: ${DISPLAY_RCVHWM}"
+print_line "- sndhwm: ${DISPLAY_SNDHWM}"
+print_line "- rcvhwm: ${DISPLAY_RCVHWM}"
+print_line "- sndbuf: ${DISPLAY_SNDBUF}"
+print_line "- rcvbuf: ${DISPLAY_RCVBUF}"
+print_line "- ctx_auto_hwm_enable: ${CTX_AUTO_HWM_ENABLE}"
+print_line "- ctx_auto_hwm_profile: ${CTX_AUTO_HWM_PROFILE}"
+print_line "- sndtimeo_ms: ${SNDTIMEO_MS}"
+print_line "- rcvtimeo_ms: ${RCVTIMEO_MS}"
+print_line "- connect_concurrency: ${display_connect_concurrency}"
+print_line "- connect_ready_timeout_ms: ${READY_TIMEOUT_MS}"
+print_line "- monitor_hwm: ${MONITOR_HWM}"
+print_line "- server_ready_timeout_ms: ${SERVER_READY_TIMEOUT_MS}"
+print_line "- server_shutdown_timeout_ms: ${SERVER_SHUTDOWN_TIMEOUT_MS}"
+print_line "- server_bind_port: ${SERVER_BIND_PORT}"
+print_line "- transport_transition_ms: ${TRANSPORT_TRANSITION_MS}"
+print_line "- pattern_transition_ms: ${PATTERN_TRANSITION_MS}"
+print_line "- lat_timeout_ms: ${PERF_LAT_TIMEOUT_MS:-5000}"
+print_line "- stream_non_tcp_clients_max: ${PERF_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
+print_line "- disable_resource_metrics: ${PERF_DISABLE_RESOURCE_METRICS:-0}"
+print_line "- timeout_seconds: ${TIMEOUT_SECONDS_DISPLAY}"
 print_line "- runtime: ${CORE_LIB}"
-print_line "- pin_cpu: off"
-print_line "- case_cooldown_ms: ${CASE_COOLDOWN_MS}"
+print_line "- pin_cpu: ${display_pin_cpu}"
 print_line ""
 
 IFS=',' read -r -a patterns <<< "${PATTERN}"
@@ -845,8 +1557,13 @@ IFS=',' read -r -a transports <<< "${TRANSPORTS}"
 status=0
 result_lines=0
 expected_result_lines=0
+failure_count=0
+success_count=0
+unsupported_count=0
+skip_count=0
 for (( run_index=1; run_index<=RUNS; run_index++ )); do
-  for pattern in "${patterns[@]}"; do
+  for pattern_index in "${!patterns[@]}"; do
+    pattern="${patterns[pattern_index]}"
     pattern="${pattern//[[:space:]]/}"
     [[ -n "${pattern}" ]] || continue
 
@@ -860,16 +1577,32 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
     fi
 
     IFS=',' read -r -a msg_sizes <<< "${pattern_msg_sizes}"
-    for transport in "${transports[@]}"; do
+    pattern_kind="one-way"
+    case "${pattern}" in
+      MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER|MULTI_STREAM|MULTI_SPOT_REQREP|MULTI_SPOT_SENDSEND)
+        pattern_kind="echo"
+        ;;
+    esac
+    print_line ""
+    print_line "==============================================================================="
+    print_line ""
+    print_line "## PATTERN: ${pattern} (${pattern_kind})"
+    print_line "  > Benchmarking current for ${pattern}..."
+    pattern_auto_hwm_logs=()
+
+    for transport_index in "${!transports[@]}"; do
+      transport="${transports[transport_index]}"
       transport="${transport//[[:space:]]/}"
       [[ -n "${transport}" ]] || continue
       if [[ "${transport}" == "inproc" ]]; then
-        print_line "UNSUPPORTED,current,${pattern},${transport}"
+        print_line "UNSUPPORTED,dotnet,${pattern},${transport}"
+        unsupported_count=$((unsupported_count + 1))
         continue
       fi
 
-      metrics_file="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_run${run_index}.metrics"
-      : > "${metrics_file}"
+      print_line "    Testing ${transport}:"
+      print_line "      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |"
+      print_line "      |----------|--------------------|----------------|---------------|---------------|---------------|"
 
       for size in "${msg_sizes[@]}"; do
         size="${size//[[:space:]]/}"
@@ -879,6 +1612,8 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         fi
         expected_result_lines=$((expected_result_lines + 5))
 
+        metrics_file="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_run${run_index}.metrics"
+        : > "${metrics_file}"
         server_log="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_server_run${run_index}.log"
         client_log="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_client_run${run_index}.log"
         server_control_fifo="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_server_run${run_index}.ctl"
@@ -890,7 +1625,6 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         client_control_fd=''
         server_endpoint=''
         server_pid=0
-        echo "RUN pattern=${pattern} transport=${transport} size=${size} clients=${pattern_clients} run=${run_index}"
         server_started=0
         for _srv_attempt in 1 2 3; do
           [[ "${_srv_attempt}" -gt 1 ]] && sleep 2
@@ -901,14 +1635,15 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           fi
           if pattern_uses_control_pipe "${pattern}"; then
             mkfifo "${server_control_fifo}"
-            exec {server_control_fd}<>"${server_control_fifo}"
+            run_multi_process "server" "${server_log}" "" "${server_control_fifo}" 1
+            server_pid=$!
+            exec {server_control_fd}>"${server_control_fifo}"
             rm -f "${server_control_fifo}"
-            run_multi_process "server" "${server_log}" "" "${server_control_fd}" 1
           else
             run_multi_process "server" "${server_log}" "" "" 1
+            server_pid=$!
           fi
-          server_pid=$!
-          if server_endpoint="$(wait_for_ready_endpoint "${server_log}")"; then
+          if server_endpoint="$(wait_for_ready_endpoint "${server_log}" "${SERVER_READY_TIMEOUT_MS}")"; then
             server_started=1
             break
           fi
@@ -919,6 +1654,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         if [[ "${server_started}" -ne 1 ]]; then
           if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${server_log}" 2>/dev/null)"; then
             print_line "${unsupported_line}"
+            unsupported_count=$((unsupported_count + 1))
             expected_result_lines=$((expected_result_lines - 5))
             if [[ -n "${server_control_fd}" ]]; then
               exec {server_control_fd}>&-
@@ -937,14 +1673,15 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
 
         if [[ "${pattern}" == "MULTI_STREAM" ]]; then
           if run_external_stream_client "${server_endpoint}"; then
-            printf 'STOP\n' >&${server_control_fd} || true
-            if ! wait_for_pid "${server_pid}" 5; then
+            write_control_line "${server_control_fd}" 'STOP\n'
+            if ! wait_for_pid "${server_pid}" "$(shutdown_timeout_seconds)"; then
               terminate_pid "${server_pid}"
             else
               wait "${server_pid}" || true
             fi
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
+              unsupported_count=$((unsupported_count + 1))
               expected_result_lines=$((expected_result_lines - 5))
               exec {server_control_fd}>&-
               continue
@@ -958,15 +1695,16 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           else
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
+              unsupported_count=$((unsupported_count + 1))
               expected_result_lines=$((expected_result_lines - 5))
-              printf 'STOP\n' >&${server_control_fd} || true
+              write_control_line "${server_control_fd}" 'STOP\n'
               terminate_pid "${server_pid}"
               exec {server_control_fd}>&-
               continue
             fi
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
-            printf 'STOP\n' >&${server_control_fd} || true
+            write_control_line "${server_control_fd}" 'STOP\n'
             terminate_pid "${server_pid}"
             record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "process_exit_nonzero"
             status=1
@@ -974,11 +1712,11 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             continue
           fi
           exec {server_control_fd}>&-
-        elif [[ "${pattern}" == "MULTI_SPOT" ]]; then
+        elif [[ "${pattern}" == "MULTI_SPOT" || "${pattern}" == "MULTI_SPOT_REQREP" || "${pattern}" == "MULTI_SPOT_SENDSEND" ]]; then
           control_endpoint=''
-          if ! control_endpoint="$(wait_for_control_ready_endpoint "${server_log}")"; then
+          if ! control_endpoint="$(wait_for_control_ready_endpoint "${server_log}" "${SERVER_READY_TIMEOUT_MS}")"; then
             cat "${server_log}" >&2 || true
-            printf 'STOP\n' >&${server_control_fd} || true
+            write_control_line "${server_control_fd}" 'STOP\n'
             terminate_pid "${server_pid}"
             record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "server_ready_timeout"
             exec {server_control_fd}>&-
@@ -987,18 +1725,19 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           fi
 
           mkfifo "${client_control_fifo}"
-          exec {client_control_fd}<>"${client_control_fifo}"
-          rm -f "${client_control_fifo}"
-          run_multi_process "client" "${client_log}" "${server_endpoint}" "${client_control_fd}" 1 "--control-endpoint" "${control_endpoint}"
+          run_multi_process "client" "${client_log}" "${server_endpoint}" "${client_control_fifo}" 1 "--control-endpoint" "${control_endpoint}"
           client_pid=$!
+          exec {client_control_fd}>"${client_control_fifo}"
+          rm -f "${client_control_fifo}"
 
           client_ctrl_ep=''
-          if ! client_ctrl_ep="$(wait_for_client_control_endpoint "${client_log}")"; then
+          if ! client_ctrl_ep="$(wait_for_client_control_endpoint "${client_log}" "${READY_TIMEOUT_MS}")"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
+              unsupported_count=$((unsupported_count + 1))
               expected_result_lines=$((expected_result_lines - 5))
               terminate_pid "${client_pid}"
-              printf 'STOP\n' >&${server_control_fd} || true
+              write_control_line "${server_control_fd}" 'STOP\n'
               terminate_pid "${server_pid}"
               exec {server_control_fd}>&-
               exec {client_control_fd}>&-
@@ -1007,7 +1746,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
             terminate_pid "${client_pid}"
-            printf 'STOP\n' >&${server_control_fd} || true
+            write_control_line "${server_control_fd}" 'STOP\n'
             terminate_pid "${server_pid}"
             record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "client_control_timeout"
             exec {server_control_fd}>&-
@@ -1016,14 +1755,14 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             continue
           fi
 
-          printf 'CONNECT_CONTROL,%s\n' "${client_ctrl_ep}" >&${server_control_fd}
+          write_control_line "${server_control_fd}" 'CONNECT_CONTROL,%s\n' "${client_ctrl_ep}"
 
           connected_ep=''
-          if ! connected_ep="$(wait_for_control_connected "${server_log}")"; then
+          if ! connected_ep="$(wait_for_control_connected "${server_log}" "${READY_TIMEOUT_MS}")"; then
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
             terminate_pid "${client_pid}"
-            printf 'STOP\n' >&${server_control_fd} || true
+            write_control_line "${server_control_fd}" 'STOP\n'
             terminate_pid "${server_pid}"
             record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "control_connect_timeout"
             exec {server_control_fd}>&-
@@ -1032,14 +1771,15 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             continue
           fi
 
-          printf 'CONTROL_CONNECTED,%s\n' "${connected_ep}" >&${client_control_fd}
+          write_control_line "${client_control_fd}" 'CONTROL_CONNECTED,%s\n' "${connected_ep}"
 
-          if ! wait_for_client_ready_line "${client_log}"; then
+          if ! wait_for_client_ready_line "${client_log}" "${READY_TIMEOUT_MS}"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
-              print_line "${unsupported_line}"
+             print_line "${unsupported_line}"
+              unsupported_count=$((unsupported_count + 1))
               expected_result_lines=$((expected_result_lines - 5))
               terminate_pid "${client_pid}"
-              printf 'STOP\n' >&${server_control_fd} || true
+              write_control_line "${server_control_fd}" 'STOP\n'
               terminate_pid "${server_pid}"
               exec {server_control_fd}>&-
               exec {client_control_fd}>&-
@@ -1048,7 +1788,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
             terminate_pid "${client_pid}"
-            printf 'STOP\n' >&${server_control_fd} || true
+            write_control_line "${server_control_fd}" 'STOP\n'
             terminate_pid "${server_pid}"
             record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "client_ready_timeout"
             exec {server_control_fd}>&-
@@ -1057,15 +1797,16 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             continue
           fi
 
-          printf 'START,%s\n' "${size}" >&${server_control_fd}
-          printf 'START,%s\n' "${size}" >&${client_control_fd}
+          write_control_line "${server_control_fd}" 'START,%s\n' "${size}"
+          write_control_line "${client_control_fd}" 'START,%s\n' "${size}"
           if ! wait_for_result_line "${client_log}" \
-            "RESULT,dotnet,SPOT,${transport},${size},latency_p99," \
-            $((DURATION + 30)); then
+            "RESULT,dotnet,${pattern#MULTI_},${transport},${size},latency_p99," \
+            "${RESULT_TIMEOUT_SECONDS}"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
+              unsupported_count=$((unsupported_count + 1))
               expected_result_lines=$((expected_result_lines - 5))
-              printf 'STOP\n' >&${server_control_fd} || true
+              write_control_line "${server_control_fd}" 'STOP\n'
               terminate_pid "${client_pid}"
               terminate_pid "${server_pid}"
               exec {server_control_fd}>&-
@@ -1074,7 +1815,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             fi
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
-            printf 'STOP\n' >&${server_control_fd} || true
+            write_control_line "${server_control_fd}" 'STOP\n'
             terminate_pid "${client_pid}"
             terminate_pid "${server_pid}"
             record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "result_timeout"
@@ -1084,19 +1825,20 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             continue
           fi
 
-          if ! wait_for_pid "${client_pid}" 5; then
+          if ! wait_for_pid "${client_pid}" "$(shutdown_timeout_seconds)"; then
             terminate_pid "${client_pid}"
           else
             wait "${client_pid}" || true
           fi
-          if ! wait_for_pid "${server_pid}" 5; then
+          if ! wait_for_pid "${server_pid}" "$(shutdown_timeout_seconds)"; then
             terminate_pid "${server_pid}"
           else
             wait "${server_pid}" || true
           fi
           if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
-            print_line "${unsupported_line}"
-            expected_result_lines=$((expected_result_lines - 5))
+             print_line "${unsupported_line}"
+              unsupported_count=$((unsupported_count + 1))
+              expected_result_lines=$((expected_result_lines - 5))
             exec {server_control_fd}>&-
             exec {client_control_fd}>&-
             continue
@@ -1110,19 +1852,20 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           fi
           exec {server_control_fd}>&-
           exec {client_control_fd}>&-
-        elif [[ "${pattern}" == "MULTI_DEALER_DEALER" || "${pattern}" == "MULTI_PUBSUB" || "${pattern}" == "MULTI_SPOT_REQREP" ]]; then
+        elif [[ "${pattern}" == "MULTI_DEALER_DEALER" || "${pattern}" == "MULTI_PUBSUB" ]]; then
           mkfifo "${client_control_fifo}"
-          exec {client_control_fd}<>"${client_control_fifo}"
-          rm -f "${client_control_fifo}"
-          run_multi_process "client" "${client_log}" "${server_endpoint}" "${client_control_fd}" 1
+          run_multi_process "client" "${client_log}" "${server_endpoint}" "${client_control_fifo}" 1
           client_pid=$!
+          exec {client_control_fd}>"${client_control_fifo}"
+          rm -f "${client_control_fifo}"
 
-          if ! wait_for_client_ready_line "${client_log}"; then
+          if ! wait_for_client_ready_line "${client_log}" "${READY_TIMEOUT_MS}"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
-              print_line "${unsupported_line}"
+             print_line "${unsupported_line}"
+              unsupported_count=$((unsupported_count + 1))
               expected_result_lines=$((expected_result_lines - 5))
               terminate_pid "${client_pid}"
-              printf 'STOP\n' >&${server_control_fd} || true
+              write_control_line "${server_control_fd}" 'STOP\n'
               terminate_pid "${server_pid}"
               exec {server_control_fd}>&-
               exec {client_control_fd}>&-
@@ -1131,7 +1874,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
             terminate_pid "${client_pid}"
-            printf 'STOP\n' >&${server_control_fd} || true
+            write_control_line "${server_control_fd}" 'STOP\n'
             terminate_pid "${server_pid}"
             record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "client_ready_timeout"
             exec {server_control_fd}>&-
@@ -1140,19 +1883,17 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             continue
           fi
 
-          printf 'START,%s\n' "${size}" >&${server_control_fd} || true
-          printf 'START,%s\n' "${size}" >&${client_control_fd} || true
-          if pattern_requires_client_phase_active "${pattern}"; then
-            printf 'PHASE_ACTIVE,%s\n' "${size}" >&${client_control_fd} || true
-          fi
+          write_control_line "${server_control_fd}" 'START,%s\n' "${size}"
+          write_control_line "${client_control_fd}" 'START,%s\n' "${size}"
 
           if ! wait_for_result_line "${client_log}" \
             "RESULT,dotnet,${pattern#MULTI_},${transport},${size},latency_p99," \
-            $((DURATION + 30)); then
+            "${RESULT_TIMEOUT_SECONDS}"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
-              print_line "${unsupported_line}"
+             print_line "${unsupported_line}"
+              unsupported_count=$((unsupported_count + 1))
               expected_result_lines=$((expected_result_lines - 5))
-              printf 'STOP\n' >&${server_control_fd} || true
+              write_control_line "${server_control_fd}" 'STOP\n'
               terminate_pid "${client_pid}"
               terminate_pid "${server_pid}"
               exec {server_control_fd}>&-
@@ -1161,7 +1902,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             fi
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
-            printf 'STOP\n' >&${server_control_fd} || true
+            write_control_line "${server_control_fd}" 'STOP\n'
             terminate_pid "${client_pid}"
             terminate_pid "${server_pid}"
             record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "result_timeout"
@@ -1171,21 +1912,22 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             continue
           fi
 
-          printf 'STOP\n' >&${server_control_fd} || true
-          printf 'STOP\n' >&${client_control_fd} || true
-          if ! wait_for_pid "${client_pid}" 5; then
+          write_control_line "${server_control_fd}" 'STOP\n'
+          write_control_line "${client_control_fd}" 'STOP\n'
+          if ! wait_for_pid "${client_pid}" "$(shutdown_timeout_seconds)"; then
             terminate_pid "${client_pid}"
           else
             wait "${client_pid}" || true
           fi
-          if ! wait_for_pid "${server_pid}" 5; then
+          if ! wait_for_pid "${server_pid}" "$(shutdown_timeout_seconds)"; then
             terminate_pid "${server_pid}"
           else
             wait "${server_pid}" || true
           fi
           if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
-            print_line "${unsupported_line}"
-            expected_result_lines=$((expected_result_lines - 5))
+             print_line "${unsupported_line}"
+              unsupported_count=$((unsupported_count + 1))
+              expected_result_lines=$((expected_result_lines - 5))
             exec {server_control_fd}>&-
             exec {client_control_fd}>&-
             continue
@@ -1201,14 +1943,15 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           exec {client_control_fd}>&-
         else
           if run_multi_process "client" "${client_log}" "${server_endpoint}" "" 0; then
-            if ! wait_for_pid "${server_pid}" 5; then
+            if ! wait_for_pid "${server_pid}" "$(shutdown_timeout_seconds)"; then
               terminate_pid "${server_pid}"
             else
               wait "${server_pid}" || true
             fi
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
-              print_line "${unsupported_line}"
-              expected_result_lines=$((expected_result_lines - 5))
+           print_line "${unsupported_line}"
+            unsupported_count=$((unsupported_count + 1))
+            expected_result_lines=$((expected_result_lines - 5))
               continue
             fi
             if ! extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"; then
@@ -1218,8 +1961,9 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             fi
           else
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
-              print_line "${unsupported_line}"
-              expected_result_lines=$((expected_result_lines - 5))
+          print_line "${unsupported_line}"
+          unsupported_count=$((unsupported_count + 1))
+          expected_result_lines=$((expected_result_lines - 5))
               terminate_pid "${server_pid}"
               continue
             fi
@@ -1232,47 +1976,95 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           fi
         fi
 
+        pattern_auto_hwm_logs+=("${server_log}" "${client_log}")
         while IFS= read -r result_line; do
           [[ -n "${result_line}" ]] || continue
-          print_line "${result_line}"
           printf '%s\n' "${result_line}" >> "${metrics_file}"
+          printf '%s\n' "${result_line}" >> "${RESULT_DATA_FILE}"
           result_lines=$((result_lines + 1))
         done <<< "${extracted}"
+        print_line "    Testing ${transport} | ${size}B:"
+        while IFS= read -r table_line; do
+          print_line "${table_line}"
+        done < <(emit_result_row "${metrics_file}" "${pattern}")
+        success_count=$((success_count + 1))
       done
 
-      if [[ -s "${metrics_file}" ]]; then
-        print_line ""
-        emit_markdown_table "${metrics_file}" "${pattern}" "${transport}" "${run_index}"
-        print_line ""
+      print_line "    Testing ${transport}: Done"
+      if (( transport_index + 1 < ${#transports[@]} && TRANSPORT_TRANSITION_MS > 0 )); then
+        print_line "    [transport cooldown ${TRANSPORT_TRANSITION_MS}ms]"
+        sleep_ms "${TRANSPORT_TRANSITION_MS}"
       fi
     done
+
+    while IFS= read -r auto_hwm_line; do
+      [[ -n "${auto_hwm_line}" ]] || continue
+      print_line "${auto_hwm_line}"
+    done < <(emit_auto_hwm_detail_table "${pattern}" "${pattern_auto_hwm_logs[@]}")
+
+    if (( pattern_index + 1 < ${#patterns[@]} && PATTERN_TRANSITION_MS > 0 )); then
+      print_line "[pattern cooldown ${PATTERN_TRANSITION_MS}ms]"
+      sleep_ms "${PATTERN_TRANSITION_MS}"
+    fi
   done
 done
 
+print_line ""
 print_line "## Effective Options (result)"
 print_line "- lang: dotnet"
 print_line "- suite: multi"
 print_line "- runs: ${RUNS}"
 print_line "- patterns: ${PATTERN}"
 print_line "- transports: ${TRANSPORTS}"
-print_line "- msg_sizes: ${MSG_SIZES:-default(pattern)}"
-print_line "- clients: ${CLIENTS:-default(pattern)}"
+print_line "- msg_sizes: ${EFFECTIVE_MSG_SIZES_DISPLAY}"
+print_line "- clients: ${EFFECTIVE_CLIENTS_DISPLAY}"
 print_line "- duration_seconds: ${DURATION}"
-print_line "- pin_cpu: off"
-print_line "- server_io_threads: ${DISPLAY_IO_THREADS}"
-print_line "- client_io_threads: ${DISPLAY_IO_THREADS}"
+print_line "- pin_cpu: ${display_pin_cpu}"
+print_line "- default_clients: 100"
+print_line "- default_stream_clients: 10000"
+print_line "- service_clients: auto"
+print_line "- server_io_threads: ${display_server_io_threads}"
+print_line "- client_io_threads: ${display_client_io_threads}"
 print_line "- hwm: ${DISPLAY_HWM}"
-print_line "- send_hwm: ${DISPLAY_SNDHWM}"
-print_line "- recv_hwm: ${DISPLAY_RCVHWM}"
-print_line "- case_cooldown_ms: ${CASE_COOLDOWN_MS}"
+print_line "- sndhwm: ${DISPLAY_SNDHWM}"
+print_line "- rcvhwm: ${DISPLAY_RCVHWM}"
+print_line "- sndbuf: ${DISPLAY_SNDBUF}"
+print_line "- rcvbuf: ${DISPLAY_RCVBUF}"
+print_line "- ctx_auto_hwm_enable: ${CTX_AUTO_HWM_ENABLE}"
+print_line "- ctx_auto_hwm_profile: ${CTX_AUTO_HWM_PROFILE}"
+print_line "- sndtimeo_ms: ${SNDTIMEO_MS}"
+print_line "- rcvtimeo_ms: ${RCVTIMEO_MS}"
+print_line "- connect_concurrency: ${display_connect_concurrency}"
+print_line "- connect_ready_timeout_ms: ${READY_TIMEOUT_MS}"
+print_line "- monitor_hwm: ${MONITOR_HWM}"
+print_line "- server_ready_timeout_ms: ${SERVER_READY_TIMEOUT_MS}"
+print_line "- server_shutdown_timeout_ms: ${SERVER_SHUTDOWN_TIMEOUT_MS}"
+print_line "- server_bind_port: ${SERVER_BIND_PORT}"
+print_line "- transport_transition_ms: ${TRANSPORT_TRANSITION_MS}"
+print_line "- pattern_transition_ms: ${PATTERN_TRANSITION_MS}"
+print_line "- lat_timeout_ms: ${PERF_LAT_TIMEOUT_MS:-5000}"
+print_line "- stream_non_tcp_clients_max: ${PERF_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
+print_line "- disable_resource_metrics: ${PERF_DISABLE_RESOURCE_METRICS:-0}"
+print_line "- timeout_seconds: ${TIMEOUT_SECONDS_DISPLAY}"
+if [[ -s "${RESULT_DATA_FILE}" ]]; then
+  print_line ""
+  print_line "## Result Data"
+  while IFS= read -r result_line; do
+    print_line "${result_line}"
+  done < "${RESULT_DATA_FILE}"
+fi
 if [[ "${result_lines}" -eq "${expected_result_lines}" && "${status}" -eq 0 ]]; then
   completion_status="complete"
 else
   completion_status="partial"
   status=1
 fi
-print_completion_section "${completion_status}" "${expected_result_lines}" "${result_lines}"
-print_failures_section "${FAILURES_FILE}"
+print_completion_section "${completion_status}" "${expected_result_lines}" "${result_lines}" \
+  "${success_count}" "${unsupported_count}" "${skip_count}" "${failure_count}"
+if [[ "${failure_count}" -gt 0 ]]; then
+  print_failures_section "${FAILURES_FILE}"
+fi
 
-echo "saved report: ${REPORT}"
+print_line "Saved result file: ${REPORT} (status=${completion_status})"
+SHOW_TOTAL_TIME=1
 exit "${status}"

@@ -145,6 +145,60 @@ internal sealed class SpotOptions
         set => _spot.SetOption(SpotOption.RequestTimeout,
             CommonSocketOptions.EncodeDuration(value, nameof(value)));
     }
+
+    public int SendHighWaterMark
+    {
+        get => _spot.GetSocketOption(SocketOptions.SndHwm);
+        set => _spot.SetSocketOption(SocketOptions.SndHwm, value);
+    }
+
+    public int ReceiveHighWaterMark
+    {
+        get => _spot.GetSocketOption(SocketOptions.RcvHwm);
+        set => _spot.SetSocketOption(SocketOptions.RcvHwm, value);
+    }
+
+    public int SendBufferSize
+    {
+        get => _spot.GetSocketOption(SocketOptions.SndBuf);
+        set => _spot.SetSocketOption(SocketOptions.SndBuf, value);
+    }
+
+    public int ReceiveBufferSize
+    {
+        get => _spot.GetSocketOption(SocketOptions.RcvBuf);
+        set => _spot.SetSocketOption(SocketOptions.RcvBuf, value);
+    }
+
+    public TimeSpan? SendTimeout
+    {
+        get => CommonSocketOptions.DecodeDuration(
+            _spot.GetSocketOption(SocketOptions.SndTimeo));
+        set => _spot.SetSocketOption(SocketOptions.SndTimeo,
+            CommonSocketOptions.EncodeDuration(value, nameof(value)));
+    }
+
+    public TimeSpan? ReceiveTimeout
+    {
+        get => CommonSocketOptions.DecodeDuration(
+            _spot.GetSocketOption(SocketOptions.RcvTimeo));
+        set => _spot.SetSocketOption(SocketOptions.RcvTimeo,
+            CommonSocketOptions.EncodeDuration(value, nameof(value)));
+    }
+
+    public TimeSpan? Linger
+    {
+        get => CommonSocketOptions.DecodeDuration(
+            _spot.GetSocketOption(SocketOptions.Linger));
+        set => _spot.SetSocketOption(SocketOptions.Linger,
+            CommonSocketOptions.EncodeDuration(value, nameof(value)));
+    }
+
+    public int AutoHwmMessageUnitBytes
+    {
+        get => _spot.GetSocketOption(SocketOptions.AutoHwmMsgUnitBytes);
+        set => _spot.SetSocketOption(SocketOptions.AutoHwmMsgUnitBytes, value);
+    }
 }
 
 public sealed class SpotNode : IDisposable, IAsyncDisposable
@@ -1178,7 +1232,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
 
 }
 
-public sealed class Spot : IDisposable, IAsyncDisposable
+public sealed class Spot : IZlinkSocket, IDisposable, IAsyncDisposable
 {
     private static readonly NativeMethods.ZlinkReplyHandlerDelegate RoutedReplyHandler =
         OnRoutedReply;
@@ -1288,10 +1342,78 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         return value;
     }
 
+    internal unsafe void SetSocketOption(SocketOptionKey<int> option, int value)
+    {
+        EnsureNotDisposed();
+        int local = value;
+        int rc = NativeMethods.zlink_set_option(_handle, (int)option.Option,
+            (IntPtr)(&local), (nuint)sizeof(int));
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    internal unsafe int GetSocketOption(SocketOptionKey<int> option)
+    {
+        EnsureNotDisposed();
+        int value = 0;
+        nuint size = (nuint)sizeof(int);
+        int rc = NativeMethods.zlink_get_option(_handle, (int)option.Option,
+            (IntPtr)(&value), ref size);
+        ZlinkException.ThrowConfigIfError(rc);
+        return value;
+    }
+
     public TimeSpan? RequestTimeout
     {
         get => Options.RequestTimeout;
         set => Options.RequestTimeout = value;
+    }
+
+    public int SendHighWaterMark
+    {
+        get => Options.SendHighWaterMark;
+        set => Options.SendHighWaterMark = value;
+    }
+
+    public int ReceiveHighWaterMark
+    {
+        get => Options.ReceiveHighWaterMark;
+        set => Options.ReceiveHighWaterMark = value;
+    }
+
+    public int SendBufferSize
+    {
+        get => Options.SendBufferSize;
+        set => Options.SendBufferSize = value;
+    }
+
+    public int ReceiveBufferSize
+    {
+        get => Options.ReceiveBufferSize;
+        set => Options.ReceiveBufferSize = value;
+    }
+
+    public TimeSpan? SendTimeout
+    {
+        get => Options.SendTimeout;
+        set => Options.SendTimeout = value;
+    }
+
+    public TimeSpan? ReceiveTimeout
+    {
+        get => Options.ReceiveTimeout;
+        set => Options.ReceiveTimeout = value;
+    }
+
+    public TimeSpan? Linger
+    {
+        get => Options.Linger;
+        set => Options.Linger = value;
+    }
+
+    public int AutoHwmMessageUnitBytes
+    {
+        get => Options.AutoHwmMessageUnitBytes;
+        set => Options.AutoHwmMessageUnitBytes = value;
     }
 
     public SendOperation Publish(string topic)

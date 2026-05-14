@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
+using System.Threading;
 using Systems.Zlink;
 
 internal static partial class PerfRunner
@@ -21,11 +23,6 @@ internal static partial class PerfRunner
     internal static string NormalizePerfPattern(string pattern)
     {
         return PerfShared.NormalizePattern(pattern, trimMultiPrefix: true);
-    }
-
-    internal static bool IsMultiStreamPattern(string pattern)
-    {
-        return NormalizePerfPattern(pattern) == "STREAM";
     }
 
     internal static int ResolveMultiClients(PerfOptions options)
@@ -65,11 +62,6 @@ internal static partial class PerfRunner
         return MultiClientPollTimeoutMs;
     }
 
-    internal static int ResolveMultiSpotRouteWarmupMs()
-    {
-        return PerfEnv.ReadNonNegative("PERF_MULTI_SPOT_ROUTE_WARMUP_MS", 0);
-    }
-
     internal static int ResolveMultiSpotControlStabilizeMs()
     {
         return PerfEnv.ReadNonNegative("PERF_MULTI_SPOT_CONTROL_STABILIZE_MS",
@@ -88,6 +80,38 @@ internal static partial class PerfRunner
         if (bindPort > 0)
             return $"{transport}://127.0.0.1:{bindPort}";
         return EndpointFor(transport, name);
+    }
+
+    internal static string BindSpotNodeWithRetry(SpotNode node,
+        string transport, string endpointName, PerfOptions options)
+    {
+        const int maxAttempts = 8;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            string endpoint = MultiEndpointFor(transport, endpointName,
+                options);
+            try
+            {
+                node.Bind(endpoint);
+                return node.LastEndpoint;
+            }
+            catch (ZlinkException ex) when (options.ServerBindPort <= 0
+                                            && IsAddressInUse(ex.InternalErrno)
+                                            && attempt < maxAttempts)
+            {
+                Thread.Sleep(10 * attempt);
+            }
+        }
+
+        string finalEndpoint = MultiEndpointFor(transport, endpointName,
+            options);
+        node.Bind(finalEndpoint);
+        return node.LastEndpoint;
+    }
+
+    private static bool IsAddressInUse(int errno)
+    {
+        return errno is 98 or 48 or 502;
     }
 
     internal static string MultiSpotChannelName(string registryEndpoint)
@@ -192,7 +216,8 @@ internal static partial class PerfRunner
             ctx.Options.MaxSockets = options.MaxSockets;
 
         ctx.Options.Blocky = PerfEnv.ReadBool("PERF_CTX_BLOCKY", false);
-        ctx.Options.AutoHwmEnabled = true;
+        ctx.Options.AutoHwmEnabled =
+            PerfEnv.ReadNonNegative("PERF_CTX_AUTO_HWM_ENABLE", 1) != 0;
         ctx.Options.AutoHwmProfile = ResolveContextAutoHwmProfile();
     }
 
@@ -215,9 +240,36 @@ internal static partial class PerfRunner
             int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
             socket.Options.SendHighWaterMark = Math.Max(1, sndHwm);
             socket.Options.ReceiveHighWaterMark = Math.Max(1, rcvHwm);
+            if (options.MultiSndBuf > 0)
+                socket.Options.SendBufferSize = options.MultiSndBuf;
+            if (options.MultiRcvBuf > 0)
+                socket.Options.ReceiveBufferSize = options.MultiRcvBuf;
         }
         socket.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeo);
         socket.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
+    }
+
+    internal static void ApplyMultiSpotSocketOptions(Spot spot,
+        PerfOptions options)
+    {
+        int sndTimeo = ResolveMultiSndTimeoutMs(options);
+        int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
+
+        spot.Linger = TimeSpan.Zero;
+        if (ManualSocketOverridesEnabled())
+        {
+            int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
+            int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
+            spot.SendHighWaterMark = Math.Max(1, sndHwm);
+            spot.ReceiveHighWaterMark = Math.Max(1, rcvHwm);
+            if (options.MultiSndBuf > 0)
+                spot.SendBufferSize = options.MultiSndBuf;
+            if (options.MultiRcvBuf > 0)
+                spot.ReceiveBufferSize = options.MultiRcvBuf;
+        }
+        spot.SendTimeout = TimeSpan.FromMilliseconds(sndTimeo);
+        spot.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
+        ApplySpotAutoHwmMsgUnit(spot, options.Size);
     }
 
     internal static void ApplyAutoHwmMsgUnit(SocketBase socket, int msgSize)
@@ -233,6 +285,19 @@ internal static partial class PerfRunner
         }
     }
 
+    internal static void ApplySpotAutoHwmMsgUnit(Spot spot, int msgSize)
+    {
+        if (msgSize <= 0)
+            return;
+        try
+        {
+            spot.AutoHwmMessageUnitBytes = msgSize;
+        }
+        catch (ZlinkException)
+        {
+        }
+    }
+
     internal static void RecalculateAutoHwm(Context ctx)
     {
         try
@@ -242,6 +307,363 @@ internal static partial class PerfRunner
         catch (ZlinkException)
         {
         }
+    }
+
+    private static readonly object AutoHwmDetailLock = new();
+    private static readonly HashSet<string> AutoHwmDetailSeen =
+        new(StringComparer.Ordinal);
+
+    internal static bool AutoHwmDetailEnabled()
+    {
+        string value = PerfEnv.ReadString("PERF_MULTI_PRINT_AUTO_HWM_DETAIL",
+            string.Empty);
+        if (string.IsNullOrEmpty(value))
+            value = PerfEnv.ReadString("PERF_PRINT_AUTO_HWM_DETAIL",
+                string.Empty);
+        return string.IsNullOrEmpty(value)
+            || !string.Equals(value, "0", StringComparison.Ordinal);
+    }
+
+    internal static void PrintAutoHwmSnapshot(SocketBase socket, string label,
+        string transport, int msgSize)
+    {
+        if (!AutoHwmDetailEnabled())
+            return;
+
+        SocketType socketType = ResolveSocketType(socket);
+        MonitorSnapshot? snapshot = TryReadSocketMonitorSnapshot(socket);
+        bool snapshotFromMonitor = snapshot != null;
+        AutoHwmSnapshotFields fields = snapshotFromMonitor
+            ? AutoHwmSnapshotFields.FromSnapshot(snapshot!)
+            : AutoHwmSnapshotFields.FromSocketOptions(socket);
+
+        PrintAutoHwmDetailLine(label, transport, msgSize,
+            SocketTypeName(socketType),
+            snapshotFromMonitor ? "monitor_snapshot" : "option_fallback",
+            fields);
+    }
+
+    internal static void PrintSpotNodeAutoHwmSnapshot(SpotNode node,
+        string label, string transport, int msgSize)
+    {
+        if (!AutoHwmDetailEnabled())
+            return;
+
+        SpotNodeSocketSnapshotEntry[] entries;
+        try
+        {
+            entries = node.InternalSocketsSnapshot();
+        }
+        catch (ZlinkException)
+        {
+            return;
+        }
+
+        bool controlOnly = label.Contains("control",
+            StringComparison.OrdinalIgnoreCase);
+        foreach (SpotNodeSocketSnapshotEntry entry in entries)
+        {
+            if (!entry.AutoHwmVisible)
+                continue;
+            if (controlOnly
+                && entry.SocketName != "peer_ctrl_pub"
+                && entry.SocketName != "peer_ctrl_sub")
+            {
+                continue;
+            }
+
+            MonitorSnapshot snapshot = entry.Snapshot;
+            var fields = AutoHwmSnapshotFields.FromSnapshot(snapshot);
+            string owner = entry.Owner == SpotNodeSocketOwner.Node
+                ? "node"
+                : "spot";
+            string scope = entry.Owner == SpotNodeSocketOwner.Node
+                ? "shared"
+                : "per-spot";
+            string socketType = SpotNodeSocketTypeName(entry.SocketType);
+            string pattern = AutoHwmEnvOrDefault("PERF_MULTI_PATTERN",
+                "unknown");
+            string component = AutoHwmEnvOrDefault("PERF_MULTI_COMPONENT",
+                "process");
+            string detail =
+                "AUTO_HWM_DETAIL"
+                + $",pattern={pattern}"
+                + $",transport={transport}"
+                + $",component={component}"
+                + $",label={entry.SocketName}"
+                + $",owner={owner}"
+                + $",owner_id={entry.OwnerId}"
+                + $",socket={entry.SocketName}"
+                + $",socket_type={socketType}"
+                + $",msg_size={msgSize}"
+                + ",source=spotnode_snapshot"
+                + $",enabled={BoolInt(snapshot.AutoHwmEnabled)}"
+                + $",role={AutoHwmRoleName(snapshot.AutoHwmRole)}"
+                + $",role_id={snapshot.AutoHwmRole}"
+                + $",profile={AutoHwmProfileName(snapshot.AutoHwmProfile)}"
+                + $",profile_id={snapshot.AutoHwmProfile}"
+                + $",policy_class={AutoHwmPolicyClassName(snapshot.AutoHwmPolicyClass)}"
+                + $",policy_class_id={snapshot.AutoHwmPolicyClass}"
+                + $",unit_budget_bytes={snapshot.AutoHwmUnitBudgetBytes}"
+                + $",size_cap={snapshot.AutoHwmSizeCap}"
+                + $",scope={scope}"
+                + $",sndhwm={fields.SndHwm}"
+                + $",rcvhwm={fields.RcvHwm}"
+                + $",socket_message_slots={snapshot.AutoHwmSocketMessageSlots}"
+                + $",effective_message_bytes={snapshot.AutoHwmEffectiveMessageBytes}"
+                + $",effective_sndbuf={fields.EffectiveSndbuf}"
+                + $",effective_rcvbuf={fields.EffectiveRcvbuf}"
+                + $",last_recalc_reason={AutoHwmRecalcReasonName(snapshot.AutoHwmLastRecalcReason)}";
+
+            WriteAutoHwmDetailLine(detail);
+        }
+    }
+
+    private static void PrintAutoHwmDetailLine(string label, string transport,
+        int msgSize, string socketType, string source, AutoHwmSnapshotFields fields)
+    {
+        string pattern = AutoHwmEnvOrDefault("PERF_MULTI_PATTERN", "unknown");
+        string component = AutoHwmEnvOrDefault("PERF_MULTI_COMPONENT",
+            "process");
+        string resolvedTransport = string.IsNullOrEmpty(transport)
+            ? AutoHwmEnvOrDefault("PERF_MULTI_TRANSPORT", "unknown")
+            : transport;
+        string resolvedLabel = string.IsNullOrEmpty(label) ? "socket" : label;
+
+        string detail =
+            "AUTO_HWM_DETAIL"
+            + $",pattern={pattern}"
+            + $",transport={resolvedTransport}"
+            + $",component={component}"
+            + $",label={resolvedLabel}"
+            + $",socket_type={socketType}"
+            + $",msg_size={msgSize}"
+            + $",source={source}"
+            + $",enabled={BoolInt(fields.Enabled)}"
+            + $",role={AutoHwmRoleName(fields.Role)}"
+            + $",role_id={fields.Role}"
+            + $",profile={AutoHwmProfileName(fields.Profile)}"
+            + $",profile_id={fields.Profile}"
+            + $",policy_class={AutoHwmPolicyClassName(fields.PolicyClass)}"
+            + $",policy_class_id={fields.PolicyClass}"
+            + $",unit_budget_bytes={fields.UnitBudgetBytes}"
+            + $",size_cap={fields.SizeCap}"
+            + $",sndhwm={fields.SndHwm}"
+            + $",rcvhwm={fields.RcvHwm}"
+            + $",socket_message_slots={fields.SocketMessageSlots}"
+            + $",effective_message_bytes={fields.EffectiveMessageBytes}"
+            + $",effective_sndbuf={fields.EffectiveSndbuf}"
+            + $",effective_rcvbuf={fields.EffectiveRcvbuf}"
+            + $",last_recalc_ms={fields.LastRecalcMs}"
+            + $",last_recalc_reason={AutoHwmRecalcReasonName(fields.LastRecalcReason)}"
+            + $",send_blocked_ratio_ppm={fields.SendBlockedRatioPpm}"
+            + $",deferred_sndhwm={fields.DeferredSndHwm}"
+            + $",deferred_rcvhwm={fields.DeferredRcvHwm}";
+
+        WriteAutoHwmDetailLine(detail);
+    }
+
+    private static void WriteAutoHwmDetailLine(string detail)
+    {
+        lock (AutoHwmDetailLock)
+        {
+            if (!AutoHwmDetailSeen.Add(detail))
+                return;
+        }
+        WriteStdoutLine(detail);
+    }
+
+    private static MonitorSnapshot? TryReadSocketMonitorSnapshot(SocketBase socket)
+    {
+        try
+        {
+            using SocketMonitor monitor = socket.MonitorOpen(SocketEvent.All);
+            return monitor.Snapshot();
+        }
+        catch (Exception ex) when (ex is ZlinkException
+                                  || ex is ObjectDisposedException
+                                  || ex is InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static int ReadSocketOption(Func<int> getter)
+    {
+        try
+        {
+            return getter();
+        }
+        catch (ZlinkException)
+        {
+            return 0;
+        }
+    }
+
+    private static SocketType ResolveSocketType(SocketBase socket)
+        => socket switch
+        {
+            DealerSocket => SocketType.Dealer,
+            RouterSocket => SocketType.Router,
+            PubSocket => SocketType.Pub,
+            SubSocket => SocketType.Sub,
+            StreamSocket => SocketType.Stream,
+            _ => SocketType.Any,
+        };
+
+    private static string SocketTypeName(SocketType type)
+        => type switch
+        {
+            SocketType.Pair => "pair",
+            SocketType.Pub => "pub",
+            SocketType.Sub => "sub",
+            SocketType.Dealer => "dealer",
+            SocketType.Router => "router",
+            SocketType.XPub => "xpub",
+            SocketType.XSub => "xsub",
+            SocketType.Stream => "stream",
+            _ => "any",
+        };
+
+    private static string SpotNodeSocketTypeName(SpotNodeSocketType type)
+        => type switch
+        {
+            SpotNodeSocketType.Pair => "pair",
+            SpotNodeSocketType.Pub => "pub",
+            SpotNodeSocketType.Sub => "sub",
+            SpotNodeSocketType.Dealer => "dealer",
+            SpotNodeSocketType.Router => "router",
+            SpotNodeSocketType.XPub => "xpub",
+            SpotNodeSocketType.XSub => "xsub",
+            SpotNodeSocketType.Stream => "stream",
+            _ => "any",
+        };
+
+    private static string AutoHwmEnvOrDefault(string name, string fallback)
+    {
+        string value = PerfEnv.ReadString(name, string.Empty);
+        return string.IsNullOrEmpty(value) ? fallback : value;
+    }
+
+    private static int BoolInt(bool value) => value ? 1 : 0;
+
+    private static string AutoHwmRoleName(uint role)
+        => role switch
+        {
+            1 => "control",
+            2 => "routed",
+            3 => "fanout",
+            4 => "recv_ingress",
+            5 => "spot_data",
+            6 => "peer_queue",
+            7 => "stream",
+            _ => "none",
+        };
+
+    private static string AutoHwmProfileName(uint profile)
+        => profile switch
+        {
+            0 => "compact",
+            1 => "low_latency",
+            2 => "balanced",
+            3 => "throughput",
+            _ => "unknown",
+        };
+
+    private static string AutoHwmPolicyClassName(uint policyClass)
+        => policyClass switch
+        {
+            1 => "fanout",
+            2 => "spot_data",
+            3 => "recv_ingress",
+            4 => "routed",
+            5 => "peer_queue",
+            6 => "stream",
+            7 => "control",
+            _ => "none",
+        };
+
+    private static string AutoHwmRecalcReasonName(uint reason)
+        => reason switch
+        {
+            1 => "initial",
+            2 => "role_change",
+            3 => "policy_toggle",
+            4 => "refresh",
+            5 => "deferred_shrink",
+            _ => "none",
+        };
+
+    private readonly struct AutoHwmSnapshotFields
+    {
+        private AutoHwmSnapshotFields(bool enabled, uint profile, uint role,
+            uint policyClass, ulong unitBudgetBytes, uint sizeCap,
+            ulong socketMessageSlots, ulong effectiveMessageBytes,
+            int sndHwm, int rcvHwm, int effectiveSndbuf,
+            int effectiveRcvbuf, ulong lastRecalcMs, uint lastRecalcReason,
+            uint sendBlockedRatioPpm, int deferredSndHwm, int deferredRcvHwm)
+        {
+            Enabled = enabled;
+            Profile = profile;
+            Role = role;
+            PolicyClass = policyClass;
+            UnitBudgetBytes = unitBudgetBytes;
+            SizeCap = sizeCap;
+            SocketMessageSlots = socketMessageSlots;
+            EffectiveMessageBytes = effectiveMessageBytes;
+            SndHwm = sndHwm;
+            RcvHwm = rcvHwm;
+            EffectiveSndbuf = effectiveSndbuf;
+            EffectiveRcvbuf = effectiveRcvbuf;
+            LastRecalcMs = lastRecalcMs;
+            LastRecalcReason = lastRecalcReason;
+            SendBlockedRatioPpm = sendBlockedRatioPpm;
+            DeferredSndHwm = deferredSndHwm;
+            DeferredRcvHwm = deferredRcvHwm;
+        }
+
+        internal bool Enabled { get; }
+        internal uint Profile { get; }
+        internal uint Role { get; }
+        internal uint PolicyClass { get; }
+        internal ulong UnitBudgetBytes { get; }
+        internal uint SizeCap { get; }
+        internal ulong SocketMessageSlots { get; }
+        internal ulong EffectiveMessageBytes { get; }
+        internal int SndHwm { get; }
+        internal int RcvHwm { get; }
+        internal int EffectiveSndbuf { get; }
+        internal int EffectiveRcvbuf { get; }
+        internal ulong LastRecalcMs { get; }
+        internal uint LastRecalcReason { get; }
+        internal uint SendBlockedRatioPpm { get; }
+        internal int DeferredSndHwm { get; }
+        internal int DeferredRcvHwm { get; }
+
+        internal static AutoHwmSnapshotFields FromSnapshot(
+            MonitorSnapshot snapshot)
+            => new(snapshot.AutoHwmEnabled, snapshot.AutoHwmProfile,
+                snapshot.AutoHwmRole, snapshot.AutoHwmPolicyClass,
+                snapshot.AutoHwmUnitBudgetBytes, snapshot.AutoHwmSizeCap,
+                snapshot.AutoHwmSocketMessageSlots,
+                snapshot.AutoHwmEffectiveMessageBytes,
+                snapshot.AutoHwmAppliedSndHwm,
+                snapshot.AutoHwmAppliedRcvHwm,
+                snapshot.AutoHwmEffectiveSndbuf,
+                snapshot.AutoHwmEffectiveRcvbuf,
+                snapshot.AutoHwmLastRecalcMs,
+                snapshot.AutoHwmLastRecalcReason,
+                snapshot.AutoHwmSendBlockedRatioPpm,
+                snapshot.AutoHwmDeferredSndHwm,
+                snapshot.AutoHwmDeferredRcvHwm);
+
+        internal static AutoHwmSnapshotFields FromSocketOptions(SocketBase socket)
+            => new(false, 0, 0, 0, 0, 0, 0, 0,
+                ReadSocketOption(() => socket.Options.SendHighWaterMark),
+                ReadSocketOption(() => socket.Options.ReceiveHighWaterMark),
+                ReadSocketOption(() => socket.Options.SendBufferSize),
+                ReadSocketOption(() => socket.Options.ReceiveBufferSize),
+                0, 0, 0, 0, 0);
     }
 
     internal static int ResolveMultiLatencySampleCap(PerfOptions options)

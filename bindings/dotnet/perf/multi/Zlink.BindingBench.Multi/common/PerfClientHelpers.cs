@@ -95,24 +95,10 @@ internal static partial class PerfRunner
         return activeClients;
     }
 
-    internal static int PollMonitorHandles(PollManager pollManager,
-        List<MonitorSocket> monitors, int[] activeIndices, int activeCount,
-        long deadlineTicks, long nowTicks)
-    {
-        return pollManager.PollMonitors(monitors, activeIndices, activeCount,
-            deadlineTicks, nowTicks);
-    }
-
     internal static int PollSocketReadReady(PollManager pollManager,
         IReadOnlyList<SocketBase> sockets, int timeoutMs)
     {
         return pollManager.PollSockets(sockets, PollEventFlags.PollIn, timeoutMs);
-    }
-
-    internal static int PollSocketWriteReady(PollManager pollManager,
-        IReadOnlyList<SocketBase> sockets, int timeoutMs)
-    {
-        return pollManager.PollSockets(sockets, PollEventFlags.PollOut, timeoutMs);
     }
 
     internal static int PollSocketEvents(PollManager pollManager,
@@ -204,21 +190,18 @@ internal static partial class PerfRunner
     internal sealed class RunnerControlState : IDisposable
     {
         private readonly int _msgSize;
-        private readonly bool _requirePhaseActive;
         private readonly ManualResetEventSlim _startSignal = new(false);
         private readonly ManualResetEventSlim _controlConnectedSignal = new(false);
         private readonly Thread _readerThread;
         private int _startRequested;
-        private int _phaseActiveRequested;
         private int _stopRequested;
         private Action<string>? _connectControlCallback;
+        private readonly bool _debug =
+            PerfEnv.ReadPositive("PERF_DOTNET_CONTROL_DEBUG", 0) > 0;
 
-        internal RunnerControlState(int msgSize, bool requirePhaseActive = false)
+        internal RunnerControlState(int msgSize)
         {
             _msgSize = msgSize;
-            _requirePhaseActive = requirePhaseActive;
-            if (!requirePhaseActive)
-                _phaseActiveRequested = 1;
 
             _readerThread = new Thread(ReadLoop)
             {
@@ -263,7 +246,6 @@ internal static partial class PerfRunner
         private void ReadLoop()
         {
             string expectedStart = $"START,{_msgSize}";
-            string expectedPhaseActive = $"PHASE_ACTIVE,{_msgSize}";
             const string connectControlPrefix = "CONNECT_CONTROL,";
             const string controlConnectedPrefix = "CONTROL_CONNECTED,";
 
@@ -279,6 +261,8 @@ internal static partial class PerfRunner
                 }
 
                 string command = line.Trim();
+                if (_debug)
+                    Console.Error.WriteLine($"control_debug:stdin:{command}");
                 if (string.IsNullOrEmpty(command))
                     continue;
 
@@ -298,6 +282,8 @@ internal static partial class PerfRunner
                 {
                     string ep = command.Substring(connectControlPrefix.Length)
                         .Trim();
+                    if (_debug)
+                        Console.Error.WriteLine($"control_debug:connect:{ep}");
                     _connectControlCallback?.Invoke(ep);
                     continue;
                 }
@@ -312,18 +298,9 @@ internal static partial class PerfRunner
                 if (string.Equals(command, expectedStart,
                         StringComparison.Ordinal))
                 {
+                    if (_debug)
+                        Console.Error.WriteLine($"control_debug:start:{command}");
                     Volatile.Write(ref _startRequested, 1);
-                }
-                else if (_requirePhaseActive
-                         && string.Equals(command, expectedPhaseActive,
-                             StringComparison.Ordinal))
-                {
-                    Volatile.Write(ref _phaseActiveRequested, 1);
-                }
-
-                if (Volatile.Read(ref _startRequested) != 0
-                    && Volatile.Read(ref _phaseActiveRequested) != 0)
-                {
                     _startSignal.Set();
                 }
             }

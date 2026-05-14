@@ -65,21 +65,13 @@ public static class PerfShared
     public static void ReservoirSample(List<double> samples, double value,
         ref long seenCount, int cap, ref uint rngState)
     {
-        if (cap <= 0)
-            return;
-
-        if (samples.Count < cap)
-        {
-            samples.Add(value);
-            seenCount++;
-            return;
-        }
-
+        // C perf keeps every valid active latency sample and computes exact
+        // percentiles over that set. The cap/rng parameters are kept for call
+        // site compatibility but do not limit the official perf surface.
+        _ = cap;
+        _ = rngState;
+        samples.Add(value);
         seenCount++;
-        uint r = NextRandom(ref rngState);
-        long slot = r % seenCount;
-        if (slot < samples.Count)
-            samples[(int)slot] = value;
     }
 
     public static (double mean, double p95, double p99) ComputeLatencyStats(
@@ -93,11 +85,25 @@ public static class PerfShared
             sum += samples[i];
 
         samples.Sort();
-        int p95Index = Math.Min(samples.Count - 1,
-            (int)Math.Ceiling(samples.Count * 0.95) - 1);
-        int p99Index = Math.Min(samples.Count - 1,
-            (int)Math.Ceiling(samples.Count * 0.99) - 1);
-        return (sum / samples.Count, samples[p95Index], samples[p99Index]);
+        return (sum / samples.Count, PercentileFromSorted(samples, 0.95),
+            PercentileFromSorted(samples, 0.99));
+    }
+
+    private static double PercentileFromSorted(IReadOnlyList<double> sorted,
+        double q)
+    {
+        if (sorted.Count == 0)
+            return 0.0;
+        if (q <= 0.0)
+            return sorted[0];
+        if (q >= 1.0)
+            return sorted[^1];
+
+        double pos = (sorted.Count - 1) * q;
+        int lo = (int)pos;
+        int hi = lo + 1 < sorted.Count ? lo + 1 : lo;
+        double frac = pos - lo;
+        return sorted[lo] + (sorted[hi] - sorted[lo]) * frac;
     }
 
     public static string EndpointFor(string transport, string name)
@@ -250,18 +256,6 @@ public static class PerfShared
         }
 
         return normalized;
-    }
-
-    private static uint NextRandom(ref uint state)
-    {
-        if (state == 0)
-            state = 0xA341316Cu;
-        uint x = state;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        state = x;
-        return x;
     }
 
     private static void TryDeleteFile(string path)

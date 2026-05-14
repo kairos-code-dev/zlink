@@ -69,20 +69,20 @@ public sealed class Poller : IDisposable, IAsyncDisposable
     public void Add(IZlinkSocket socket, PollEventFlags events, object? tag = null)
     {
         EnsureNotDisposed();
-        SocketBase concreteSocket = SocketInterop.RequireSocket(socket,
+        IntPtr socketHandle = SocketInterop.RequirePollableHandle(socket,
             nameof(socket));
         EnumValidation.EnsurePollEvents(events, nameof(events));
 
         IntPtr userData = AllocateUserData();
-        int rc = NativeMethods.zlink_poller_add(_handle, concreteSocket.Handle,
+        int rc = NativeMethods.zlink_poller_add(_handle, socketHandle,
             userData, (short)events);
         if (rc != 0)
         {
             ReleaseUserData(userData);
             ZlinkException.ThrowConfigIfError(rc);
         }
-        RegisterItem(new PollItem(PollItemKind.Socket, concreteSocket, userData,
-            concreteSocket.Handle, 0, null, events, tag));
+        RegisterItem(new PollItem(PollItemKind.Socket, socket, userData,
+            socketHandle, 0, null, events, tag));
     }
 
     public void AddFd(int fd, PollEventFlags events, object? tag = null)
@@ -123,16 +123,16 @@ public sealed class Poller : IDisposable, IAsyncDisposable
     public void Modify(IZlinkSocket socket, PollEventFlags events)
     {
         EnsureNotDisposed();
-        SocketBase concreteSocket = SocketInterop.RequireSocket(socket,
+        IntPtr socketHandle = SocketInterop.RequirePollableHandle(socket,
             nameof(socket));
         EnumValidation.EnsurePollEvents(events, nameof(events));
 
-        int index = FindSocket(concreteSocket.Handle);
+        int index = FindSocket(socketHandle);
         if (index < 0)
             throw new ArgumentException("socket is not registered",
                 nameof(socket));
 
-        int rc = NativeMethods.zlink_poller_modify(_handle, concreteSocket.Handle,
+        int rc = NativeMethods.zlink_poller_modify(_handle, socketHandle,
             (short)events);
         ZlinkException.ThrowConfigIfError(rc);
         _items[index].Events = events;
@@ -156,14 +156,14 @@ public sealed class Poller : IDisposable, IAsyncDisposable
     public bool Remove(IZlinkSocket socket)
     {
         EnsureNotDisposed();
-        SocketBase concreteSocket = SocketInterop.RequireSocket(socket,
+        IntPtr socketHandle = SocketInterop.RequirePollableHandle(socket,
             nameof(socket));
 
-        int index = FindSocket(concreteSocket.Handle);
+        int index = FindSocket(socketHandle);
         if (index < 0)
             return false;
 
-        int rc = NativeMethods.zlink_poller_remove(_handle, concreteSocket.Handle);
+        int rc = NativeMethods.zlink_poller_remove(_handle, socketHandle);
         ZlinkException.ThrowConfigIfError(rc);
         UnregisterItem(index);
         return true;

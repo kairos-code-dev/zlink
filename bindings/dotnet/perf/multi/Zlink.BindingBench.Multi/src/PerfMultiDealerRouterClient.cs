@@ -53,6 +53,9 @@ internal static class PerfMultiDealerRouterClient
             for (int i = 0; i < clients.Count; i++)
                 ApplyAutoHwmMsgUnit(clients[i], size);
             RecalculateAutoHwm(ctx);
+            if (clients.Count > 0)
+                PrintAutoHwmSnapshot(clients[0], "endpoint",
+                    options.Transport, size);
 
             var slots = CreateSlots(activeClients, size);
             var result = RunMultiDealerRouterClientLoop(pollManager, slots,
@@ -291,7 +294,7 @@ internal static class PerfMultiDealerRouterClient
 
     private static bool TrySend(DealerRouterClientSlot slot)
     {
-        using Message message = Message.FromBytes(slot.Payload);
+        using Message message = new(slot.Payload.AsSpan());
         return ((DealerSocket)slot.Socket).Send()
             .Message(message)
             .Flags(SendFlags.DontWait)

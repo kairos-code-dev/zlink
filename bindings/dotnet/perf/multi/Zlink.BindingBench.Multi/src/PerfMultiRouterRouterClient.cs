@@ -54,6 +54,9 @@ internal static class PerfMultiRouterRouterClient
             for (int i = 0; i < clients.Count; i++)
                 ApplyAutoHwmMsgUnit(clients[i], size);
             RecalculateAutoHwm(ctx);
+            if (clients.Count > 0)
+                PrintAutoHwmSnapshot(clients[0], "endpoint",
+                    options.Transport, size);
 
             var slots = CreateSlots(activeClients, serverRoutingId, size);
             var result = RunMultiRouterRouterClientLoop(pollManager, slots,
@@ -289,7 +292,7 @@ internal static class PerfMultiRouterRouterClient
 
     private static bool TrySend(RouterRouterClientSlot slot)
     {
-        using Message message = Message.FromBytes(slot.Payload);
+        using Message message = new(slot.Payload.AsSpan());
         return ((RouterSocket)slot.Socket).Send(slot.ServerRoutingId)
             .Message(message)
             .Flags(SendFlags.DontWait)
@@ -320,7 +323,7 @@ internal static class PerfMultiRouterRouterClient
         {
             try
             {
-                using Message message = Message.FromBytes(MultiStopToken);
+                using Message message = new(MultiStopToken.AsSpan());
                 ((RouterSocket)activeClients[i]).Send(
                     RoutingId.FromBytes(serverRoutingId)).Message(message)
                     .Flags(SendFlags.DontWait).Submit();

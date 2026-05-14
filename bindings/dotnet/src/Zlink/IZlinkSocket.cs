@@ -22,4 +22,19 @@ internal static class SocketInterop
         }
         return concrete;
     }
+
+    internal static IntPtr RequirePollableHandle(IZlinkSocket socket,
+        string paramName)
+    {
+        if (socket == null)
+            throw new ArgumentNullException(paramName);
+        return socket switch
+        {
+            SocketBase concrete => concrete.Handle,
+            Spot spot => spot.Handle,
+            _ => throw new ArgumentException(
+                "socket must be a concrete zlink socket or spot instance",
+                paramName)
+        };
+    }
 }

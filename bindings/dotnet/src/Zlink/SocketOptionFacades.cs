@@ -50,13 +50,13 @@ public class CommonSocketOptions
         set => Socket.SetOption(SocketOptions.RcvHwm, value);
     }
 
-    internal int SendBufferSize
+    public int SendBufferSize
     {
         get => Socket.GetOption(SocketOptions.SndBuf);
         set => Socket.SetOption(SocketOptions.SndBuf, value);
     }
 
-    internal int ReceiveBufferSize
+    public int ReceiveBufferSize
     {
         get => Socket.GetOption(SocketOptions.RcvBuf);
         set => Socket.SetOption(SocketOptions.RcvBuf, value);

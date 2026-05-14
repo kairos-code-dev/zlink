@@ -24,6 +24,35 @@ public static class PerfEnv
             : fallback;
     }
 
+    public static int ReadByteSize(string name, int fallback)
+    {
+        string? raw = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(raw))
+            return fallback;
+
+        string token = raw.Trim();
+        int multiplier = 1;
+        char suffix = token[^1];
+        if (!char.IsDigit(suffix))
+        {
+            token = token[..^1];
+            multiplier = char.ToLowerInvariant(suffix) switch
+            {
+                'b' => 1,
+                'k' => 1024,
+                'm' => 1024 * 1024,
+                'g' => 1024 * 1024 * 1024,
+                _ => 0,
+            };
+        }
+
+        if (multiplier <= 0 || !int.TryParse(token, out int parsed) || parsed <= 0)
+            return fallback;
+
+        long bytes = (long)parsed * multiplier;
+        return bytes > int.MaxValue ? int.MaxValue : (int)bytes;
+    }
+
     public static bool ReadBool(string name, bool fallback)
     {
         string? raw = Environment.GetEnvironmentVariable(name);

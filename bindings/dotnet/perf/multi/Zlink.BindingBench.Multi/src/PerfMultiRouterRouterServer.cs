@@ -33,6 +33,7 @@ internal static class PerfMultiRouterRouterServer
 
         ApplyAutoHwmMsgUnit(server, size);
         RecalculateAutoHwm(ctx);
+        PrintAutoHwmSnapshot(server, "server", options.Transport, size);
 
         var sockets = new[] { (SocketBase)server };
         var eventMasks = new[] { SocketPollIn };
@@ -76,13 +77,6 @@ internal static class PerfMultiRouterRouterServer
                 {
                     stop = true;
                     break;
-                }
-
-                if (pendingReplies.Count == 0
-                    && receivedBuffer.Send().Message(bodyMessage)
-                        .Flags(SendFlags.DontWait).Submit())
-                {
-                    continue;
                 }
 
                 RoutingId? maybeRoutingId = receivedBuffer.RoutingId;

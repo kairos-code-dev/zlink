@@ -33,6 +33,7 @@ internal static class PerfMultiDealerRouterServer
 
         ApplyAutoHwmMsgUnit(server, size);
         RecalculateAutoHwm(ctx);
+        PrintAutoHwmSnapshot(server, "server", options.Transport, size);
 
         var sockets = new[] { (SocketBase)server };
         var eventMasks = new[] { SocketPollIn };
@@ -76,22 +77,16 @@ internal static class PerfMultiDealerRouterServer
                     break;
                 }
 
-                if (pendingReplies.Count == 0
-                    && receivedBuffer.Send().Message(bodyMessage)
-                        .Flags(SendFlags.DontWait).Submit())
-                {
-                    continue;
-                }
-
                 RoutingId? maybeRoutingId = receivedBuffer.RoutingId;
                 if (maybeRoutingId == null)
                     return 2;
                 RoutingId routingId = maybeRoutingId.Value;
 
-                using Message reply = bodyMessage.Move();
+                Message reply = bodyMessage.Move();
                 if (!EnqueueReplyOrSend(server, pendingReplies, routingId,
                         reply))
                 {
+                    reply.Dispose();
                     return 2;
                 }
             }

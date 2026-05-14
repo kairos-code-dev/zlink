@@ -36,6 +36,8 @@ internal static class PerfMultiStreamServer
         ApplyMultiSocketOptions(server, options);
         ApplyAutoHwmMsgUnit(server, options.Size);
         RecalculateAutoHwm(ctx);
+        PrintAutoHwmSnapshot(server, "server", options.Transport,
+            options.Size);
         ConfigureTlsServerIfNeeded(server, options.Transport);
         server.Options.SendTimeout = TimeSpan.FromMilliseconds(ioTimeoutMs);
         server.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(ioTimeoutMs);
@@ -52,9 +54,19 @@ internal static class PerfMultiStreamServer
 
         server.OnPacket((routingId, header, payload) =>
         {
-            header.Dispose();
             PendingStreamMessage request = new();
-            request.Assign(routingId, payload);
+            using (header)
+            using (payload)
+            {
+                ReadOnlySpan<byte> body = payload.AsReadOnlySpan();
+                if (IsStopTokenPayload(body))
+                {
+                    Interlocked.Exchange(ref control.StopRequested, 1);
+                    return;
+                }
+
+                request.Assign(routingId, BuildStreamPacket(header, payload));
+            }
             SendStatus sendStatus = TrySendPendingMessage(server, request);
             if (sendStatus == SendStatus.Done)
             {
@@ -172,6 +184,33 @@ internal static class PerfMultiStreamServer
             pendingSignal.Set();
             return true;
         }
+    }
+
+    private static Message BuildStreamPacket(Message header, Message payload)
+    {
+        ReadOnlySpan<byte> headerBytes = header.AsReadOnlySpan();
+        ReadOnlySpan<byte> payloadBytes = payload.AsReadOnlySpan();
+        if (headerBytes.Length > ushort.MaxValue
+            || payloadBytes.Length > MaxStreamFrameBytes)
+        {
+            throw new InvalidOperationException("stream packet is too large");
+        }
+
+        byte[] packet = new byte[6 + headerBytes.Length + payloadBytes.Length];
+        packet[0] = (byte)((headerBytes.Length >> 8) & 0xFF);
+        packet[1] = (byte)(headerBytes.Length & 0xFF);
+        packet[2] = (byte)((payloadBytes.Length >> 24) & 0xFF);
+        packet[3] = (byte)((payloadBytes.Length >> 16) & 0xFF);
+        packet[4] = (byte)((payloadBytes.Length >> 8) & 0xFF);
+        packet[5] = (byte)(payloadBytes.Length & 0xFF);
+        headerBytes.CopyTo(packet.AsSpan(6));
+        payloadBytes.CopyTo(packet.AsSpan(6 + headerBytes.Length));
+        return new Message(packet.AsSpan());
+    }
+
+    private static bool IsStopTokenPayload(ReadOnlySpan<byte> payload)
+    {
+        return payload.SequenceEqual(MultiStopToken);
     }
 
     private static SendStatus TrySendPendingMessage(SocketBase server,

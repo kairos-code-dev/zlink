@@ -3,7 +3,7 @@ using System;
 internal static partial class PerfRunner
 {
     internal static int RunMultiClient(string pattern, string transport, int size,
-        string endpoint)
+        string endpoint, string controlEndpoint = "")
     {
         string outputPattern = NormalizePerfPattern(pattern);
         size = Math.Max(1, size);
@@ -14,7 +14,8 @@ internal static partial class PerfRunner
         try
         {
             var options = PerfOptions.CreateMulti(PerfExecutionKind.MultiClient,
-                outputPattern, transport, size, normalizedEndpoint);
+                outputPattern, transport, size, normalizedEndpoint,
+                controlEndpoint);
             if (!MultiPerfPatternRegistry.TryGet(outputPattern,
                     out IPerfPattern perfPattern))
             {

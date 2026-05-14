@@ -14,14 +14,12 @@ internal static class PerfMultiPubSubClient
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int latencySampleCap = ResolveMultiLatencySampleCap(options);
         int clientCount = ResolveMultiClients(options);
-        int pollTimeoutMs = ResolveMultiClientPollTimeoutMs(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
         string endpoint = options.Endpoint;
 
         using var ctx = new Context();
         using var pollManager = new PollManager();
-        using var controlState = new RunnerControlState(size,
-            requirePhaseActive: true);
+        using var controlState = new RunnerControlState(size);
         ApplyMultiClientContextOptions(ctx, options);
         var clients = new List<SocketBase>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
@@ -54,6 +52,9 @@ internal static class PerfMultiPubSubClient
             for (int i = 0; i < clients.Count; i++)
                 ApplyAutoHwmMsgUnit(clients[i], size);
             RecalculateAutoHwm(ctx);
+            if (clients.Count > 0)
+                PrintAutoHwmSnapshot(clients[0], "endpoint",
+                    options.Transport, size);
 
             WriteStdoutLine($"CLIENT_READY,{size}");
 
@@ -65,13 +66,14 @@ internal static class PerfMultiPubSubClient
             }
 
             var result = RunMultiPubSubClientLoop(pollManager, activeClients,
-                size, latencySampleCap, pollTimeoutMs, durationSeconds);
+                size, latencySampleCap, durationSeconds);
 
             if (result.measureCount <= 0)
                 return 2;
 
             PrintResult(options.Pattern, options.Transport, size, result.throughput,
                 result.latencyNs, result.latencyP95Ns, result.latencyP99Ns);
+            WriteStdoutLine($"CLIENT_DONE,{size}");
             return 0;
         }
         finally
@@ -85,7 +87,6 @@ internal static class PerfMultiPubSubClient
         double latencyP99Ns, long measureCount)
         RunMultiPubSubClientLoop(PollManager pollManager,
             List<SocketBase> activeClients, int msgSize, int latencySampleCap,
-            int pollTimeoutMs,
             int durationSeconds)
     {
         const uint expectedRunId = 1;
@@ -97,13 +98,17 @@ internal static class PerfMultiPubSubClient
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
 
-        // PERF_MULTI_TEST_POLICY § 1.3.1: poller wait timeout is -1
-        // (signal-driven). The loop exits when each client has received
-        // a wire-level stop token from the publisher.
-        var stoppedClients = new bool[activeClients.Count];
-        int stoppedCount = 0;
-        while (stoppedCount < activeClients.Count)
+        // C perf contract: PUBSUB starts on START,<size> and the client owns
+        // the active duration window. It does not wait for PHASE_ACTIVE or a
+        // stop token to finish the case.
+        while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
+            long remainingTicks = benchDeadlineTicks - Stopwatch.GetTimestamp();
+            int pollTimeoutMs = remainingTicks <= 0
+                ? 0
+                : (int)Math.Min(int.MaxValue,
+                    Math.Max(1,
+                        remainingTicks * 1000 / Stopwatch.Frequency));
             int readyCount = PollSocketReadReady(pollManager, activeClients,
                 pollTimeoutMs);
             if (readyCount <= 0)
@@ -114,7 +119,7 @@ internal static class PerfMultiPubSubClient
             for (int readyOffset = 0; readyOffset < readyCount; readyOffset++)
             {
                 int i = ReadySocketIndexAt(pollManager, readyOffset);
-                if (stoppedClients[i] || !IsSocketReadReady(pollManager, i))
+                if (!IsSocketReadReady(pollManager, i))
                     continue;
 
                 while (true)
@@ -130,8 +135,6 @@ internal static class PerfMultiPubSubClient
                             .AsReadOnlySpan();
                         if (IsStopTokenPayload(body))
                         {
-                            stoppedClients[i] = true;
-                            stoppedCount++;
                             break;
                         }
 

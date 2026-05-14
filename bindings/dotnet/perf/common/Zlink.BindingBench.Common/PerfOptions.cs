@@ -28,6 +28,8 @@ public sealed record PerfOptions(
     int MultiHwm,
     int MultiSndHwm,
     int MultiRcvHwm,
+    int MultiSndBuf,
+    int MultiRcvBuf,
     int ServerBindPort,
     int PubSubXpubNoDrop,
     int SpotXpubNoDrop,
@@ -116,6 +118,8 @@ public sealed record PerfOptions(
             0,
             0,
             0,
+            0,
+            0,
             PerfEnv.ReadPositive("PERF_SINGLE_PUBSUB_XPUB_NODROP", 1),
             0,
             100);
@@ -147,6 +151,8 @@ public sealed record PerfOptions(
             PerfEnv.ReadPositive("PERF_MULTI_HWM", 1000),
             PerfEnv.ReadNonNegative("PERF_MULTI_SNDHWM", 0),
             PerfEnv.ReadNonNegative("PERF_MULTI_RCVHWM", 0),
+            PerfEnv.ReadByteSize("PERF_MULTI_SNDBUF", 0),
+            PerfEnv.ReadByteSize("PERF_MULTI_RCVBUF", 0),
             PerfEnv.ReadNonNegative("PERF_MULTI_SERVER_BIND_PORT", 0),
             PerfEnv.ReadPositive("PERF_MULTI_PUBSUB_XPUB_NODROP", 1),
             PerfEnv.ReadPositive("PERF_MULTI_SPOT_XPUB_NODROP", 1),
@@ -176,8 +182,8 @@ public sealed record PerfOptions(
     private static int ResolveMultiClients(string pattern)
     {
         int fallback = pattern.Equals("STREAM", StringComparison.OrdinalIgnoreCase)
-            ? 10000
-            : 100;
+            ? PerfEnv.ReadPositive("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 10000)
+            : PerfEnv.ReadPositive("PERF_MULTI_DEFAULT_CLIENTS", 100);
         return Math.Max(1, PerfEnv.ReadPositive("PERF_MULTI_CLIENTS", fallback));
     }
 

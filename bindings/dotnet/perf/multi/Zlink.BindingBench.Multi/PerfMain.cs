@@ -7,4 +7,4 @@ if (!PerfRunner.IsSupportedTransport(options.Transport))
 return options.ExecutionKind == PerfExecutionKind.MultiServer
     ? PerfRunner.RunMultiServer(options.Pattern, options.Transport, options.Size)
     : PerfRunner.RunMultiClient(options.Pattern, options.Transport, options.Size,
-        options.Endpoint);
+        options.Endpoint, options.ControlEndpoint);

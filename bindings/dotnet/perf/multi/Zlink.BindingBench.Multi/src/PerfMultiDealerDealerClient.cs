@@ -52,6 +52,9 @@ internal static class PerfMultiDealerDealerClient
             for (int i = 0; i < clients.Count; i++)
                 ApplyAutoHwmMsgUnit(clients[i], size);
             RecalculateAutoHwm(ctx);
+            if (clients.Count > 0)
+                PrintAutoHwmSnapshot(clients[0], "endpoint",
+                    options.Transport, size);
 
             WriteStdoutLine($"CLIENT_READY,{size}");
 
@@ -91,6 +94,8 @@ internal static class PerfMultiDealerDealerClient
 
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
+        long drainDeadlineTicks = benchDeadlineTicks
+            + (long)Math.Max(5, durationSeconds * 2) * Stopwatch.Frequency;
 
         // PERF_MULTI_TEST_POLICY § 1.3.1: poller wait timeout is -1
         // (signal-driven). The loop exits when a wire-level stop token
@@ -98,7 +103,8 @@ internal static class PerfMultiDealerDealerClient
         var stoppedClients = new bool[activeClients.Count];
         int stoppedCount = 0;
         var receivedBuffer = new Received();
-        while (stoppedCount < activeClients.Count)
+        while (stoppedCount < activeClients.Count
+               && Stopwatch.GetTimestamp() < drainDeadlineTicks)
         {
             int readyCount = PollSocketReadReady(pollManager, activeClients,
                 MultiClientPollTimeoutMs);

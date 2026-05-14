@@ -13,8 +13,7 @@ internal static class ZLinkEntrySpotActorDispatcher
         IReadOnlyList<ZLinkBackendActorPart> parts,
         CancellationToken cancellationToken)
     {
-        var activeDispatchTasks = new List<Task>();
-        var allDispatchTasks = new List<Task>();
+        var dispatchTasks = new ZLinkBoundedTaskSet(MaxConcurrentDispatches);
         int i = 0;
         while (i < parts.Count)
         {
@@ -36,9 +35,7 @@ internal static class ZLinkEntrySpotActorDispatcher
                 var header = HeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
                 headerPart.Message.Dispose();
                 var emptyBody = Message.FromBytes(ReadOnlySpan<byte>.Empty);
-                await QueueDispatchAsync(
-                        activeDispatchTasks,
-                        allDispatchTasks,
+                await dispatchTasks.AddAsync(
                         DispatchPacketAndDisposeBodyAsync(
                             runtime,
                             activation,
@@ -60,9 +57,7 @@ internal static class ZLinkEntrySpotActorDispatcher
             var bodyPart = parts[i++];
             var streamHeader = HeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
             headerPart.Message.Dispose();
-            await QueueDispatchAsync(
-                    activeDispatchTasks,
-                    allDispatchTasks,
+            await dispatchTasks.AddAsync(
                     DispatchPacketAndDisposeBodyAsync(
                         runtime,
                         activation,
@@ -74,26 +69,7 @@ internal static class ZLinkEntrySpotActorDispatcher
                 .ConfigureAwait(false);
         }
 
-        if (allDispatchTasks.Count > 0)
-        {
-            await Task.WhenAll(allDispatchTasks).ConfigureAwait(false);
-        }
-    }
-
-    private static async ValueTask QueueDispatchAsync(
-        List<Task> activeDispatchTasks,
-        List<Task> allDispatchTasks,
-        Task task)
-    {
-        activeDispatchTasks.Add(task);
-        allDispatchTasks.Add(task);
-        if (activeDispatchTasks.Count < MaxConcurrentDispatches)
-        {
-            return;
-        }
-
-        var completed = await Task.WhenAny(activeDispatchTasks).ConfigureAwait(false);
-        activeDispatchTasks.Remove(completed);
+        await dispatchTasks.DrainAsync().ConfigureAwait(false);
     }
 
     private static async Task DispatchPacketAndDisposeBodyAsync(

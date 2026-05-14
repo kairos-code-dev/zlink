@@ -3,8 +3,8 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkSpotPeerConnectionSet
 {
     private readonly object _gate = new();
-    private readonly HashSet<string> _routerManual = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _pubSubManual = new(StringComparer.Ordinal);
+    private readonly ZLinkSortedConnectionSet _routerManual = new();
+    private readonly ZLinkSortedConnectionSet _pubSubManual = new();
     private readonly HashSet<string> _pubSubDiscovered = new(StringComparer.Ordinal);
 
     public bool TryAddRouterManual(string endpoint)
@@ -53,7 +53,7 @@ internal sealed class ZLinkSpotPeerConnectionSet
     {
         lock (_gate)
         {
-            return _routerManual.OrderBy(static endpoint => endpoint, StringComparer.Ordinal).ToArray();
+            return _routerManual.Snapshot();
         }
     }
 
@@ -61,7 +61,7 @@ internal sealed class ZLinkSpotPeerConnectionSet
     {
         lock (_gate)
         {
-            return _pubSubManual.OrderBy(static endpoint => endpoint, StringComparer.Ordinal).ToArray();
+            return _pubSubManual.Snapshot();
         }
     }
 }

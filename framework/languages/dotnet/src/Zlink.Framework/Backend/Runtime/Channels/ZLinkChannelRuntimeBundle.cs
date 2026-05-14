@@ -1,14 +1,10 @@
-using System.Collections.Concurrent;
-using System.Reflection;
-using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 {
-    private readonly HashSet<string> _manualConnections = new(StringComparer.Ordinal);
+    private readonly ZLinkSortedConnectionSet _manualConnections = new();
 
     public ZLinkChannelRuntimeBundle(
         IZLinkBackendSocket socket,
@@ -52,7 +48,7 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
     {
         lock (_manualConnections)
         {
-            return _manualConnections.OrderBy(static endpoint => endpoint, StringComparer.Ordinal).ToArray();
+            return _manualConnections.Snapshot();
         }
     }
 

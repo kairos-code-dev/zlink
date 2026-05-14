@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Systems.Zlink.Stream.Connector.Protocol;
 
 namespace Zlink.Framework.Runtime.Streams;
@@ -7,8 +6,6 @@ internal sealed class ZLinkSessionStreamTransport(
     IZLinkStream stream,
     ZLinkSessionRequestTracker requests)
 {
-    private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
-
     public bool Write(Message payload)
     {
         return stream.Write(payload);
@@ -128,12 +125,7 @@ internal sealed class ZLinkSessionStreamTransport(
             pending.RequestSeq,
             packetName,
             ZlinkStreamMetadata.Empty);
-        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, body.Span);
-        using var payloadMessage = Message.FromBytes(frame);
-        if (!Write(payloadMessage))
-        {
-            throw new InvalidOperationException("Client stream request send failed.");
-        }
+        ZLinkStreamFrameWriter.Write(stream, header, body, "Client stream request send failed.");
 
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
@@ -144,8 +136,9 @@ internal sealed class ZLinkSessionStreamTransport(
         }, pending);
 
         using var reply = await pending.Task.ConfigureAwait(false);
-        return JsonSerializer.Deserialize<TReply>(reply.AsReadOnlySpan(), ZLinkJsonSerializerOptions.Default)
-            ?? throw new InvalidOperationException("Client stream request reply body is null.");
+        return ZLinkClientCallCodec.DecodeJsonReply<TReply>(
+            reply.AsReadOnlySpan(),
+            "Client stream request reply body is null.");
     }
 
     private void WriteRawFrame(
@@ -153,11 +146,6 @@ internal sealed class ZLinkSessionStreamTransport(
         ReadOnlySpan<byte> body,
         string failureMessage)
     {
-        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, body);
-        using var payloadMessage = Message.FromBytes(frame);
-        if (!Write(payloadMessage))
-        {
-            throw new InvalidOperationException(failureMessage);
-        }
+        ZLinkStreamFrameWriter.Write(stream, header, body, failureMessage);
     }
 }

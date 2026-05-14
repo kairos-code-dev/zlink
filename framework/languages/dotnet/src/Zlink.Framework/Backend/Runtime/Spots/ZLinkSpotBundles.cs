@@ -30,7 +30,7 @@ internal sealed class ZLinkSpotPublisherBundle : IAsyncDisposable
 
 internal sealed class ZLinkSpotAttachedChannelBundle : IAsyncDisposable
 {
-    private readonly HashSet<string> _manualConnections = new(StringComparer.Ordinal);
+    private readonly ZLinkSortedConnectionSet _manualConnections = new();
 
     public ZLinkSpotAttachedChannelBundle(IZLinkBackendDealerSocket socket)
     {
@@ -61,7 +61,7 @@ internal sealed class ZLinkSpotAttachedChannelBundle : IAsyncDisposable
     {
         lock (_manualConnections)
         {
-            return _manualConnections.OrderBy(static endpoint => endpoint, StringComparer.Ordinal).ToArray();
+            return _manualConnections.Snapshot();
         }
     }
 

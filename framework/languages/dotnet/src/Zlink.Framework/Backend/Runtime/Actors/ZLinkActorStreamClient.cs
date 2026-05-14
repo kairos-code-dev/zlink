@@ -24,8 +24,6 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
 {
     private static readonly IZlinkStreamPacketNameResolver MessageNameResolver = new ZlinkStreamPacketNameResolver();
     private static readonly IZlinkStreamCompressionCodec CompressionCodec = new ZlinkStreamLz4CompressionCodec();
-    private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
-
     private string _messageName = MessageNameResolver.Resolve(typeof(TMessage));
     private ZlinkStreamMetadata _metadata = ZlinkStreamMetadata.Empty;
     private bool _compress;
@@ -75,13 +73,7 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
         }
 
         var header = CreateHeader(ZlinkStreamCodec.Json, flags, _messageName, _metadata, state.CurrentDispatch);
-        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, body.Span);
-        using var payloadMessage = Message.FromBytes(frame);
-
-        if (!stream.Write(payloadMessage))
-        {
-            throw new InvalidOperationException("Client stream send failed.");
-        }
+        ZLinkStreamFrameWriter.Write(stream, header, body, "Client stream send failed.");
 
         return ValueTask.CompletedTask;
     }

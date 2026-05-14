@@ -4,7 +4,7 @@ namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkRouteConnectionSet(IZLinkBackendRouterSocket router)
 {
-    private readonly HashSet<string> _manualConnections = new(StringComparer.Ordinal);
+    private readonly ZLinkSortedConnectionSet _manualConnections = new();
 
     public void Connect(string endpoint)
     {
@@ -22,6 +22,6 @@ internal sealed class ZLinkRouteConnectionSet(IZLinkBackendRouterSocket router)
 
     public IReadOnlyList<string> List()
     {
-        return _manualConnections.OrderBy(static endpoint => endpoint, StringComparer.Ordinal).ToArray();
+        return _manualConnections.Snapshot();
     }
 }

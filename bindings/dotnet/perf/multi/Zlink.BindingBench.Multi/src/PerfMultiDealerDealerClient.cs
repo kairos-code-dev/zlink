@@ -70,6 +70,7 @@ internal static class PerfMultiDealerDealerClient
                     controlState))
                 return 2;
 
+            WriteStdoutLine($"CLIENT_DONE,{size}");
             return 0;
         }
         finally
@@ -136,7 +137,7 @@ internal static class PerfMultiDealerDealerClient
             }
         }
 
-        return SendStopTokens(activeClients);
+        return true;
     }
 
     private static bool TrySendNoWait(DealerSocket socket, ReadOnlySpan<byte> payload)
@@ -152,28 +153,6 @@ internal static class PerfMultiDealerDealerClient
         {
             return false;
         }
-    }
-
-    private static bool SendStopTokens(IReadOnlyList<SocketBase> activeClients)
-    {
-        for (int i = 0; i < activeClients.Count; i++)
-        {
-            var socket = (DealerSocket)activeClients[i];
-            try
-            {
-                socket.Options.SendTimeout = null;
-                _ = SendBlocking(socket, MultiStopToken.AsSpan(),
-                    SendFlags.None);
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine(
-                    $"multi_client_error:stop_token_send_failed:{ex.Message}");
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private static bool WaitForWritable(Poller poller, PollEvent[] events,

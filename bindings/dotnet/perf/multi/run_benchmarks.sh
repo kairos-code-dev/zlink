@@ -514,13 +514,23 @@ raise SystemExit(1)
 PY
 }
 
-wait_for_result_line() {
-  local log_path="$1"
-  local needle="$2"
-  local timeout_seconds="$3"
+wait_for_results_from_logs() {
+  local primary_log="${1:-}"
+  local secondary_log="${2:-}"
+  local pattern="${3:-}"
+  local transport="${4:-}"
+  local size="${5:-}"
+  local timeout_seconds="${6:-${RESULT_TIMEOUT_SECONDS}}"
   local deadline=$((SECONDS + timeout_seconds))
+  local extracted=""
+
   while (( SECONDS < deadline )); do
-    if [[ -f "${log_path}" ]] && grep -qF "${needle}" "${log_path}"; then
+    if extracted="$(
+      extract_results_from_logs \
+        "${primary_log}" "${secondary_log}" "${pattern}" "${transport}" "${size}" \
+        2>/dev/null
+    )"; then
+      printf '%s\n' "${extracted}"
       return 0
     fi
     sleep 0.1
@@ -1799,13 +1809,9 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
 
           write_control_line "${server_control_fd}" 'START,%s\n' "${size}"
           write_control_line "${client_control_fd}" 'START,%s\n' "${size}"
-          result_wait_log="${client_log}"
-          if [[ "${pattern}" == "MULTI_DEALER_DEALER" ]]; then
-            result_wait_log="${server_log}"
-          fi
-          if ! wait_for_result_line "${result_wait_log}" \
-            "RESULT,dotnet,${pattern#MULTI_},${transport},${size},latency_p99," \
-            "${RESULT_TIMEOUT_SECONDS}"; then
+          if ! extracted="$(wait_for_results_from_logs \
+            "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}" \
+            "${RESULT_TIMEOUT_SECONDS}")"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
               unsupported_count=$((unsupported_count + 1))
@@ -1890,13 +1896,9 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           write_control_line "${server_control_fd}" 'START,%s\n' "${size}"
           write_control_line "${client_control_fd}" 'START,%s\n' "${size}"
 
-          result_wait_log="${client_log}"
-          if [[ "${pattern}" == "MULTI_DEALER_DEALER" ]]; then
-            result_wait_log="${server_log}"
-          fi
-          if ! wait_for_result_line "${result_wait_log}" \
-            "RESULT,dotnet,${pattern#MULTI_},${transport},${size},latency_p99," \
-            "${RESULT_TIMEOUT_SECONDS}"; then
+          if ! extracted="$(wait_for_results_from_logs \
+            "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}" \
+            "${RESULT_TIMEOUT_SECONDS}")"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
              print_line "${unsupported_line}"
               unsupported_count=$((unsupported_count + 1))

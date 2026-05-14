@@ -6,6 +6,10 @@ using static PerfRunner;
 
 internal static class PerfMultiDealerDealerServer
 {
+    private const int ServerSocketTag = 0;
+    private const int ActiveDeadlineTag = -1;
+    private const int IdleDeadlineTag = -2;
+
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
@@ -43,8 +47,8 @@ internal static class PerfMultiDealerDealerServer
         RecalculateAutoHwm(ctx);
         PrintAutoHwmSnapshot(server, "server", options.Transport, size);
 
-        var result = RunReceivePhase(pollManager, server, size,
-            latencySampleCap, latencySampleStride, durationSeconds, clientCount);
+        var result = RunReceivePhase(server, size, latencySampleCap,
+            latencySampleStride, durationSeconds);
         if (result.measureCount <= 0)
             return 2;
 
@@ -55,9 +59,8 @@ internal static class PerfMultiDealerDealerServer
 
     private static (double throughput, double latencyNs, double latencyP95Ns,
         double latencyP99Ns, long measureCount)
-        RunReceivePhase(PollManager pollManager, DealerSocket server,
-            int msgSize, int latencySampleCap, int latencySampleStride,
-            int durationSeconds, int expectedStops)
+        RunReceivePhase(DealerSocket server, int msgSize, int latencySampleCap,
+            int latencySampleStride, int durationSeconds)
     {
         const uint expectedRunId = 1;
         var latSamples = new List<double>(latencySampleCap);
@@ -65,12 +68,12 @@ internal static class PerfMultiDealerDealerServer
         uint rng = 0xA341316Cu;
         long measureCount = 0;
         using var receivedBuffer = new Received();
-        _ = durationSeconds;
 
-        if (!ReceiveUntilStops(server, receivedBuffer, msgSize, expectedRunId,
-                PerfPhase.Active, expectedStops, latencySampleStride, latSamples,
-                ref sampleSeen, ref rng, ref measureCount,
-                countThroughput: true))
+        if (!ReceiveActiveWindow(server, receivedBuffer, msgSize, expectedRunId,
+                PerfPhase.Active, latencySampleStride, latSamples, ref sampleSeen,
+                ref rng, ref measureCount, durationSeconds)
+            || !DrainUntilIdle(server, receivedBuffer, msgSize, expectedRunId,
+                PerfPhase.Active))
         {
             return (0.0, 0.0, 0.0, 0.0, 0);
         }
@@ -87,66 +90,127 @@ internal static class PerfMultiDealerDealerServer
         return (throughput, latencyNs, latencyP95Ns, latencyP99Ns, measureCount);
     }
 
-    private static bool ReceiveUntilStops(DealerSocket server,
+    private static bool ReceiveActiveWindow(DealerSocket server,
         Received receivedBuffer, int msgSize, uint expectedRunId,
-        PerfPhase expectedPhase, int expectedStops, int latencySampleStride,
+        PerfPhase expectedPhase, int latencySampleStride,
         List<double> latSamples, ref long sampleSeen, ref uint rng,
-        ref long messageCount, bool countThroughput)
+        ref long messageCount, int durationSeconds)
     {
-        using var pollManager = new PollManager();
-        var sockets = new[] { (SocketBase)server };
-        int stopCount = 0;
-        while (stopCount < expectedStops)
+        using var poller = new Poller();
+        using var activeTimer = new Systems.Zlink.Timer();
+        var events = new PollEvent[2];
+        poller.Add(server, PollEventFlags.PollIn, ServerSocketTag);
+        poller.Add(activeTimer, ActiveDeadlineTag);
+        activeTimer.Start(TimeSpan.FromSeconds(Math.Max(1, durationSeconds)),
+            1);
+
+        while (true)
         {
-            int readyCount = PollSocketReadReady(pollManager, sockets,
-                MultiClientPollTimeoutMs);
-            if (readyCount <= 0)
-                continue;
+            int written = poller.Wait(events,
+                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs), out _);
 
-            if (!IsSocketReadReady(pollManager, 0))
-                continue;
-
-            while (true)
+            for (int i = 0; i < written; i++)
             {
-                if (!TryRecvNoWait(server, receivedBuffer))
-                    break;
-
-                ReadOnlySpan<byte> body = receivedBuffer.SinglePartOrThrow()
-                    .AsReadOnlySpan();
-                if (IsStopTokenPayload(body))
+                if (events[i].Tag is ActiveDeadlineTag)
                 {
-                    stopCount++;
-                    continue;
+                    _ = events[i].Timer?.Recv();
+                    poller.Remove(activeTimer);
+                    return true;
                 }
 
-                if (!PerfShared.TryDecodeMetricHeader(body,
-                        out PerfMetricHeader header)
-                    || header.RunId != expectedRunId
-                    || header.MsgSize != (uint)msgSize
-                    || header.Phase != (uint)expectedPhase)
-                {
+                if (events[i].Tag is not int tag
+                    || tag != ServerSocketTag
+                    || (events[i].Revents & PollEventFlags.PollIn) == 0)
                     continue;
-                }
 
-                messageCount++;
-                if (countThroughput
-                    && messageCount % latencySampleStride != 0)
-                    continue;
-                if (header.SentTsNs > 0)
-                {
-                    ulong nowNs = EpochNs();
-                    if (nowNs >= header.SentTsNs)
-                    {
-                        double sampleLatencyNs = nowNs - header.SentTsNs;
-                        ReservoirSample(latSamples, sampleLatencyNs,
-                            ref sampleSeen, latSamples.Capacity, ref rng);
-                    }
-                }
-
+                DrainAvailable(server, receivedBuffer, msgSize, expectedRunId,
+                    expectedPhase, latencySampleStride, latSamples,
+                    ref sampleSeen, ref rng, ref messageCount,
+                    collectMetrics: true);
             }
         }
+    }
 
-        return true;
+    private static bool DrainUntilIdle(DealerSocket server,
+        Received receivedBuffer, int msgSize, uint expectedRunId,
+        PerfPhase expectedPhase)
+    {
+        using var poller = new Poller();
+        using var idleTimer = new Systems.Zlink.Timer();
+        var events = new PollEvent[2];
+        poller.Add(server, PollEventFlags.PollIn, ServerSocketTag);
+        poller.Add(idleTimer, IdleDeadlineTag);
+        idleTimer.Start(TimeSpan.FromMilliseconds(50), 1);
+
+        long ignoredCount = 0;
+        long ignoredSampleSeen = 0;
+        uint ignoredRng = 0;
+        var ignoredSamples = new List<double>(1);
+        while (true)
+        {
+            int written = poller.Wait(events,
+                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs), out _);
+
+            for (int i = 0; i < written; i++)
+            {
+                if (events[i].Tag is IdleDeadlineTag)
+                {
+                    _ = events[i].Timer?.Recv();
+                    poller.Remove(idleTimer);
+                    return true;
+                }
+
+                if (events[i].Tag is not int tag
+                    || tag != ServerSocketTag
+                    || (events[i].Revents & PollEventFlags.PollIn) == 0)
+                    continue;
+
+                if (DrainAvailable(server, receivedBuffer, msgSize,
+                        expectedRunId, expectedPhase, 1, ignoredSamples,
+                        ref ignoredSampleSeen, ref ignoredRng, ref ignoredCount,
+                        collectMetrics: false) > 0)
+                    idleTimer.Start(TimeSpan.FromMilliseconds(50), 1);
+            }
+        }
+    }
+
+    private static int DrainAvailable(DealerSocket server, Received receivedBuffer,
+        int msgSize, uint expectedRunId, PerfPhase expectedPhase,
+        int latencySampleStride, List<double> latSamples, ref long sampleSeen,
+        ref uint rng, ref long messageCount, bool collectMetrics)
+    {
+        int drained = 0;
+        while (true)
+        {
+            if (!TryRecvNoWait(server, receivedBuffer))
+                return drained;
+
+            drained++;
+            ReadOnlySpan<byte> body = receivedBuffer.SinglePartOrThrow()
+                .AsReadOnlySpan();
+            if (!PerfShared.TryDecodeMetricHeader(body, out PerfMetricHeader header)
+                || header.RunId != expectedRunId
+                || header.MsgSize != (uint)msgSize
+                || header.Phase != (uint)expectedPhase)
+                continue;
+
+            if (!collectMetrics)
+                continue;
+
+            messageCount++;
+            if (messageCount % latencySampleStride != 0)
+                continue;
+            if (header.SentTsNs > 0)
+            {
+                ulong nowNs = EpochNs();
+                if (nowNs >= header.SentTsNs)
+                {
+                    double sampleLatencyNs = nowNs - header.SentTsNs;
+                    ReservoirSample(latSamples, sampleLatencyNs, ref sampleSeen,
+                        latSamples.Capacity, ref rng);
+                }
+            }
+        }
     }
 
     private static bool TryRecvNoWait(DealerSocket socket, Received result)

@@ -26,7 +26,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -40,7 +41,7 @@ final class PerfMultiSpotSendSend {
     }
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
-        AtomicBoolean stopRequested = new AtomicBoolean(false);
+        CountDownLatch stopped = new CountDownLatch(1);
         AtomicInteger stopSeen = new AtomicInteger();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         String controlEndpoint = derivedEndpoint(config.endpoint(), 1);
@@ -63,10 +64,10 @@ final class PerfMultiSpotSendSend {
                     == systems.zlink.SpotDispatchEvent.ROUTED_READABLE) {
                     try {
                         drainServer(spot, config.clients(), stopSeen,
-                            stopRequested);
+                            stopped);
                     } catch (Throwable ex) {
                         failure.compareAndSet(null, ex);
-                        stopRequested.set(true);
+                        stopped.countDown();
                     }
                 }
             });
@@ -74,8 +75,7 @@ final class PerfMultiSpotSendSend {
                 "spot sendsend server");
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiSpotNodeAutoHwm(config, node, "server");
-
-            while (!stopRequested.get()) {
+            while (stopped.getCount() != 0) {
                 Throwable ex = failure.get();
                 if (ex != null) {
                     throw new IllegalStateException(
@@ -143,7 +143,7 @@ final class PerfMultiSpotSendSend {
     private static boolean drainServer(Spot spot,
                                     int expectedStops,
                                     AtomicInteger stopSeen,
-                                    AtomicBoolean stopRequested) {
+                                    CountDownLatch stopped) {
         boolean progressed = false;
         for (;;) {
             Received received = recvRoutedNoWait(spot);
@@ -154,7 +154,7 @@ final class PerfMultiSpotSendSend {
             try (received) {
                 if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
                     if (stopSeen.incrementAndGet() >= expectedStops) {
-                        stopRequested.set(true);
+                        stopped.countDown();
                     }
                     continue;
                 }
@@ -165,6 +165,26 @@ final class PerfMultiSpotSendSend {
                         .submit();
                 }
             }
+        }
+    }
+
+    private static void awaitStopped(CountDownLatch stopped,
+                                     AtomicReference<Throwable> failure,
+                                     String label) {
+        try {
+            while (!stopped.await(100, TimeUnit.MILLISECONDS)) {
+                Throwable ex = failure.get();
+                if (ex != null) {
+                    throw new IllegalStateException(label, ex);
+                }
+            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(label, ex);
+        }
+        Throwable ex = failure.get();
+        if (ex != null) {
+            throw new IllegalStateException(label, ex);
         }
     }
 
@@ -300,6 +320,7 @@ final class PerfMultiSpotSendSend {
                 dataNode.connectPeer(normalizeClientEndpoint(endpoint,
                     config.transport()));
             }
+            settleAfterReady();
             while ((line = reader.readLine()) != null) {
                 if (expectedStart.equals(line)) {
                     control.publishStart(config.size());

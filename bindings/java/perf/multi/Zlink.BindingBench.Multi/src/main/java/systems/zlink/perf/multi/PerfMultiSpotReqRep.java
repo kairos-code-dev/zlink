@@ -11,6 +11,7 @@ import systems.zlink.RecvException;
 import systems.zlink.RecvFlags;
 import systems.zlink.RecvResult;
 import systems.zlink.Received;
+import systems.zlink.RequestResult;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
 import systems.zlink.SubmitException;
@@ -26,6 +27,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -183,9 +186,8 @@ final class PerfMultiSpotReqRep {
                         while (System.nanoTime() < activeEnd) {
                             PerfUtil.resetAndWritePayload(active, config.size(),
                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                            sendToServerWhenWritable(requester, poller, active);
-                            PerfUtil.Header reply = recvExpected(requester,
-                                poller, config.size(), activeEnd);
+                            PerfUtil.Header reply = requestReply(requester,
+                                poller, active, config.size(), activeEnd);
                             if (reply != null
                                 && reply.phase() == PerfUtil.PHASE_ACTIVE
                                 && System.nanoTime() < activeEnd) {
@@ -232,25 +234,71 @@ final class PerfMultiSpotReqRep {
         }
     }
 
-    private static PerfUtil.Header recvExpected(Spot requester,
+    private static PerfUtil.Header requestReply(Spot requester,
                                                 Poller poller,
+                                                Message payload,
                                                 int expectedSize,
                                                 long deadlineNs) {
         for (;;) {
-            if (System.nanoTime() >= deadlineNs) {
+            long remainingNs = deadlineNs - System.nanoTime();
+            if (remainingNs <= 0L) {
                 return null;
             }
-            waitFor(poller, PollEventFlag.POLLIN);
-            Received received = recvRoutedNoWait(requester);
-            if (received == null) {
+            CountDownLatch done = new CountDownLatch(1);
+            AtomicReference<PerfUtil.Header> replyRef = new AtomicReference<>();
+            AtomicReference<RequestResult> resultRef = new AtomicReference<>();
+            AtomicReference<Throwable> callbackFailure = new AtomicReference<>();
+            boolean submitted = requester.requestToSpot(
+                    SERVER_NODE_RID, SERVER_SPOT_RID)
+                .message(payload)
+                .timeout(Duration.ofNanos(remainingNs))
+                .flags(SendFlags.DONT_WAIT)
+                .submit((result, parts) -> {
+                    try {
+                        resultRef.set(result);
+                        if (result == RequestResult.OK
+                            && parts != null
+                            && !parts.isEmpty()) {
+                            replyRef.set(PerfUtil.decodeHeader(
+                                parts.get(0), expectedSize));
+                        }
+                    } catch (Throwable ex) {
+                        callbackFailure.compareAndSet(null, ex);
+                    } finally {
+                        Message.closeAll(parts);
+                        done.countDown();
+                    }
+                });
+            if (!submitted) {
+                waitFor(poller, PollEventFlag.POLLOUT);
                 continue;
             }
-            try (received) {
-                if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
-                    continue;
+            try {
+                long waitMillis = Math.max(1L,
+                    TimeUnit.NANOSECONDS.toMillis(remainingNs));
+                if (!done.await(waitMillis, TimeUnit.MILLISECONDS)) {
+                    return null;
                 }
-                return PerfUtil.decodeHeader(received.firstPart(), expectedSize);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("spot reqrep interrupted", ex);
             }
+            Throwable failure = callbackFailure.get();
+            if (failure != null) {
+                throw new IllegalStateException("spot reqrep callback failed",
+                    failure);
+            }
+            RequestResult result = resultRef.get();
+            if (result == RequestResult.BUSY
+                || result == RequestResult.NOT_CONNECTED
+                || result == RequestResult.TIMED_OUT) {
+                continue;
+            }
+            if (result != RequestResult.OK) {
+                throw new IllegalStateException("spot reqrep failed: "
+                    + result);
+            }
+            return replyRef.get();
         }
     }
 
@@ -300,6 +348,7 @@ final class PerfMultiSpotReqRep {
                 dataNode.connectPeer(normalizeClientEndpoint(endpoint,
                     config.transport()));
             }
+            settleAfterReady();
             while ((line = reader.readLine()) != null) {
                 if (expectedStart.equals(line)) {
                     control.publishStart(config.size());

@@ -3,6 +3,9 @@
 package systems.zlink.perf.single;
 
 import systems.zlink.Message;
+import systems.zlink.PollEvent;
+import systems.zlink.PollEventFlag;
+import systems.zlink.Poller;
 import systems.zlink.RecvFlags;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
@@ -16,6 +19,10 @@ import systems.zlink.service.spot.Spot;
 import systems.zlink.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfSpot {
     private static final String CHANNEL_NAME = "perf.spot.service";
@@ -75,23 +82,25 @@ final class PerfSpot {
 
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
-            try (Message active = PerfUtil.payloadTemplate(config.size())) {
-                while (System.nanoTime() < activeEnd) {
-                    PerfUtil.resetAndWritePayload(active, config.size(),
-                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                    publisher.publish(topic)
-                        .message(active)
-                        .flags(SendFlags.DONT_WAIT)
-                        .submit();
-                    drainSubscriber(subscriber, config, metrics, activeEnd, true);
-                }
+            CountDownLatch stopped = new CountDownLatch(1);
+            AtomicReference<Throwable> failure = new AtomicReference<>();
+            Thread receiverThread = new Thread(() -> drainUntilStopToken(
+                subscriber, config, metrics, activeEnd, stopped, failure),
+                "single-spot-receiver");
+            Thread senderThread = new Thread(() -> publishActiveAndStop(
+                publisher, stopPublisher, config, topic, activeEnd, stopped,
+                failure), "single-spot-sender");
+            receiverThread.start();
+            senderThread.start();
+            PerfUtil.await(stopped, "spot receiver",
+                Duration.ofSeconds(config.durationSeconds() + 10L));
+            PerfUtil.join(senderThread, "spot sender", Duration.ofSeconds(10));
+            PerfUtil.join(receiverThread, "spot receiver thread",
+                Duration.ofSeconds(10));
+            if (failure.get() != null) {
+                throw new IllegalStateException("spot active phase failed",
+                    failure.get());
             }
-
-            // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
-            // stop token published on the same topic; the drain loop below
-            // exits as soon as the stop token is observed.
-            drainUntilStopToken(stopPublisher, subscriber, config, metrics,
-                topic, activeEnd);
             PerfUtil.printSingleSpotNodeAutoHwm(config, publisherNode,
                 "publisher");
             PerfUtil.printSingleSpotNodeAutoHwm(config, subscriberNode,
@@ -165,46 +174,94 @@ final class PerfSpot {
      * Drain until the wire-level stop token is observed. PERF_SINGLE_TEST_POLICY
      * § 1.4 mandates that phase-end is signaled by the stop token.
      */
-    private static void drainUntilStopToken(Spot stopPublisher,
-                                            Spot subscriber,
+    private static void drainUntilStopToken(Spot subscriber,
                                             PerfUtil.Config config,
                                             PerfUtil.Metrics metrics,
-                                            String topic,
-                                            long activeEnd) {
-        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
-        long nextStopSend = 0L;
-        while (System.nanoTime() < deadline) {
-            long now = System.nanoTime();
-            if (now >= nextStopSend) {
-                try (Message stop = PerfStopToken.newMessage()) {
-                    stopPublisher.publish(topic)
-                        .message(stop)
-                        .flags(SendFlags.NONE)
-                        .submit();
+                                            long activeEnd,
+                                            CountDownLatch stopped,
+                                            AtomicReference<Throwable> failure) {
+        try (Poller poller = new Poller()) {
+            poller.add(subscriber, PollEventFlag.POLLIN);
+            while (true) {
+                waitFor(poller, PollEventFlag.POLLIN);
+                while (true) {
+                    try (TopicMessage subscribed =
+                             subscriber.subscribe(RecvFlags.DONT_WAIT)) {
+                        if (subscribed == null) {
+                            break;
+                        }
+                        if (PerfStopToken.isStopTokenMessage(
+                                subscribed.firstPart())) {
+                            stopped.countDown();
+                            return;
+                        }
+                        PerfUtil.Header header = PerfUtil.decodeHeader(
+                            subscribed.firstPart(), config.size());
+                        if (header == null) {
+                            continue;
+                        }
+                        if (header.phase() == PerfUtil.PHASE_ACTIVE
+                            && System.nanoTime() <= activeEnd) {
+                            metrics.recordNanos(header.latencyNanos());
+                        }
+                    }
                 }
-                nextStopSend = now + Duration.ofMillis(10).toNanos();
             }
-            try (TopicMessage subscribed =
-                     subscriber.subscribe(RecvFlags.DONT_WAIT)) {
-                if (subscribed == null) {
-                    Thread.onSpinWait();
-                    continue;
-                }
-                if (PerfStopToken.isStopTokenMessage(subscribed.firstPart())) {
+        } catch (Throwable ex) {
+            failure.compareAndSet(null, ex);
+            stopped.countDown();
+        }
+    }
+
+    private static void publishActiveAndStop(Spot publisher,
+                                             Spot stopPublisher,
+                                             PerfUtil.Config config,
+                                             String topic,
+                                             long activeEnd,
+                                             CountDownLatch stopped,
+                                             AtomicReference<Throwable> failure) {
+        try (Message active = PerfUtil.payloadTemplate(config.size());
+             Poller poller = new Poller()) {
+            poller.add(publisher, PollEventFlag.POLLOUT);
+            while (System.nanoTime() < activeEnd) {
+                PerfUtil.resetAndWritePayload(active, config.size(),
+                    (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+                publishWhenWritable(publisher, poller, topic, active);
+            }
+            try (Message stop = PerfStopToken.newMessage()) {
+                stopPublisher.publish(topic)
+                    .message(stop)
+                    .flags(SendFlags.NONE)
+                    .submit();
+            }
+        } catch (Throwable ex) {
+            failure.compareAndSet(null, ex);
+            stopped.countDown();
+        }
+    }
+
+    private static void publishWhenWritable(Spot publisher,
+                                            Poller poller,
+                                            String topic,
+                                            Message message) {
+        while (!publisher.publish(topic)
+            .message(message)
+            .flags(SendFlags.DONT_WAIT)
+            .submit()) {
+            waitFor(poller, PollEventFlag.POLLOUT);
+        }
+    }
+
+    private static void waitFor(Poller poller, PollEventFlag expected) {
+        List<PollEvent> events = new ArrayList<>(1);
+        for (;;) {
+            poller.wait(events, Duration.ofMillis(-1));
+            for (PollEvent event : events) {
+                if (event.revents().contains(expected)) {
                     return;
-                }
-                PerfUtil.Header header = PerfUtil.decodeHeader(
-                    subscribed.firstPart(), config.size());
-                if (header == null) {
-                    continue;
-                }
-                if (header.phase() == PerfUtil.PHASE_ACTIVE
-                    && System.nanoTime() <= activeEnd) {
-                    metrics.recordNanos(header.latencyNanos());
                 }
             }
         }
-        throw new IllegalStateException("spot stop token timed out");
     }
 
     private static void settleAfterReady() {

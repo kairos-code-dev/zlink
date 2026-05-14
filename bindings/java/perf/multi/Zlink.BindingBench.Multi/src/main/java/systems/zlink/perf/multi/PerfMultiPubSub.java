@@ -19,6 +19,7 @@ import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 final class PerfMultiPubSub {
@@ -42,11 +43,14 @@ final class PerfMultiPubSub {
             PerfControl.emitReady(config.endpoint());
             PerfControl.awaitStart(config.size(), "pubsub server");
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
-            try (Message active = PerfUtil.payloadTemplate(config.size())) {
+            try (Message active = PerfUtil.payloadTemplate(config.size());
+                 PerfSocketPollSet writable = PerfSocketPollSet.fromSockets(
+                     Collections.singletonList((Socket) pub),
+                     PollEventFlag.POLLOUT)) {
                 while (System.nanoTime() < activeEnd) {
                     PerfUtil.resetAndWritePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                    pub.publish(TOPIC).message(active).flags(SendFlags.DONT_WAIT).submit();
+                    publishWhenWritable(pub, writable, active);
                 }
             }
             return PerfUtil.Result.silent(config);
@@ -128,6 +132,17 @@ final class PerfMultiPubSub {
             // This benchmark process exits after one size case. Closing the
             // native context here can wait behind one-way PUB/SUB teardown and
             // hide the already-finished RESULT from the runner.
+        }
+    }
+
+    private static void publishWhenWritable(PubSocket pub,
+                                            PerfSocketPollSet writable,
+                                            Message message) {
+        while (!pub.publish(TOPIC)
+            .message(message)
+            .flags(SendFlags.DONT_WAIT)
+            .submit()) {
+            writable.poll(-1);
         }
     }
 

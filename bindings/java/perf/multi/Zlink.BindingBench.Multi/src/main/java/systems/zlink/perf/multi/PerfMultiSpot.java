@@ -4,6 +4,9 @@ package systems.zlink.perf.multi;
 
 import systems.zlink.Context;
 import systems.zlink.Message;
+import systems.zlink.PollEvent;
+import systems.zlink.PollEventFlag;
+import systems.zlink.Poller;
 import systems.zlink.RecvException;
 import systems.zlink.RecvFlags;
 import systems.zlink.RecvResult;
@@ -55,7 +58,9 @@ final class PerfMultiSpot {
             long latencyOnlyIntervalNanos = Math.max(1,
                 latencyOnlyIntervalMicros()) * 1_000L;
             long nextSendNanos = System.nanoTime();
-            try (Message active = PerfUtil.payloadTemplate(config.size())) {
+            try (Message active = PerfUtil.payloadTemplate(config.size());
+                 Poller poller = new Poller()) {
+                poller.add(publisher, PollEventFlag.POLLOUT);
                 while (System.nanoTime() < activeEnd) {
                     if (latencyOnly) {
                         long now = System.nanoTime();
@@ -66,10 +71,7 @@ final class PerfMultiSpot {
                     }
                     PerfUtil.resetAndWritePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                    publisher.publish(TOPIC)
-                        .message(active)
-                        .flags(SendFlags.DONT_WAIT)
-                        .submit();
+                    publishWhenWritable(publisher, poller, active);
                     if (latencyOnly) {
                         nextSendNanos = System.nanoTime()
                             + latencyOnlyIntervalNanos;
@@ -135,6 +137,29 @@ final class PerfMultiSpot {
                         subscriber.close();
                     } catch (RuntimeException ignored) {
                     }
+                }
+            }
+        }
+    }
+
+    private static void publishWhenWritable(Spot publisher,
+                                            Poller poller,
+                                            Message message) {
+        while (!publisher.publish(TOPIC)
+            .message(message)
+            .flags(SendFlags.DONT_WAIT)
+            .submit()) {
+            waitFor(poller, PollEventFlag.POLLOUT);
+        }
+    }
+
+    private static void waitFor(Poller poller, PollEventFlag expected) {
+        List<PollEvent> events = new ArrayList<>(1);
+        for (;;) {
+            poller.wait(events, Duration.ofMillis(-1));
+            for (PollEvent event : events) {
+                if (event.revents().contains(expected)) {
+                    return;
                 }
             }
         }

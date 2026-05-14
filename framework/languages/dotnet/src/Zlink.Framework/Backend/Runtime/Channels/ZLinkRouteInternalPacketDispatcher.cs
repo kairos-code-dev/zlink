@@ -10,7 +10,7 @@ internal interface IZLinkRouteInternalPacketDispatcher
         Received received,
         CancellationToken cancellationToken);
 
-    ValueTask<byte[]> DispatchRequestAsync(
+    ValueTask<Message> DispatchRequestAsync(
         Received received,
         ZLinkEnvelopeHeader routedHeader,
         CancellationToken cancellationToken);
@@ -45,7 +45,7 @@ internal sealed class ZLinkNoRouteInternalPacketDispatcher : IZLinkRouteInternal
         throw new InvalidOperationException("No routed internal send dispatcher is configured.");
     }
 
-    public ValueTask<byte[]> DispatchRequestAsync(
+    public ValueTask<Message> DispatchRequestAsync(
         Received received,
         ZLinkEnvelopeHeader routedHeader,
         CancellationToken cancellationToken)

@@ -158,7 +158,7 @@ internal sealed class ZLinkActorClientRequestCall<TRequest>(
 
         try
         {
-            var reply = await routedClient.RequestPartsTo<byte[]>(
+            var reply = await routedClient.RequestPartsTo<ReadOnlyMemory<byte>>(
                     route.RouterChannelId,
                     route.TargetNodeRid,
                     ZLinkInternalPacketNames.ActorDispatch,
@@ -167,7 +167,7 @@ internal sealed class ZLinkActorClientRequestCall<TRequest>(
                     cancellationToken)
                 .ConfigureAwait(false);
             return ZLinkClientCallCodec.DecodeJsonReply<TReply>(
-                reply,
+                reply.Span,
                 "Actor client reply body is null.");
         }
         catch (TimeoutException ex)

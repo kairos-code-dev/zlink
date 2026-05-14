@@ -37,6 +37,13 @@ internal static class ZLinkEnvelopeCodec
             EncodeBody(body, bodyType));
     }
 
+    public static IReadOnlyList<Message> EncodeRawBodyParts(
+        ZLinkEnvelopeHeader header,
+        Message body)
+    {
+        return ZLinkMessageParts.Create(EncodeHeader(header), body);
+    }
+
     public static Message EncodeHeader(ZLinkEnvelopeHeader header)
     {
         return EncodeJsonPart(header);

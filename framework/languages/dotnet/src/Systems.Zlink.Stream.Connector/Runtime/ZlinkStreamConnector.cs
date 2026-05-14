@@ -1,4 +1,3 @@
-using System.Security.Authentication;
 using System.Text;
 using System.Threading.Channels;
 
@@ -10,19 +9,16 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
     private readonly ZlinkStreamTypedHandlerRegistry _typedHandlers = new();
     private readonly Channel<ZlinkStreamHandlerWorkItem> _handlerQueue;
     private readonly SemaphoreSlim _sendGate = new(1, 1);
-    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly CancellationTokenSource _lifetimeCts = new();
     private readonly ZlinkStreamTaskRunner _taskRunner;
     private readonly ZlinkStreamConnectorCallbacks _callbacks;
     private readonly IZlinkStreamHeaderCodec _headerCodec;
     private readonly IZlinkStreamCompressionCodec? _compressionCodec;
     private readonly IZlinkStreamPacketNameResolver _nameResolver;
+    private readonly ZlinkStreamConnectorLifecycle _lifecycle;
     private readonly ZlinkStreamFrameSender _frameSender;
     private readonly ZlinkStreamReceiveDispatcher _receiveDispatcher;
     private readonly ZlinkStreamReceiveLoop _receiveLoop;
-    private IZlinkStreamConnection? _connection;
-    private CancellationTokenSource? _receiveCts;
-    private Task? _receiveTask;
     private readonly Task _handlerPump;
     private int _disposed;
 
@@ -44,6 +40,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         }
 
         _nameResolver = options.NameResolver ?? new ZlinkStreamPacketNameResolver();
+        _lifecycle = new ZlinkStreamConnectorLifecycle(options, _pending, _taskRunner);
         _handlerQueue = Channel.CreateBounded<ZlinkStreamHandlerWorkItem>(
             new BoundedChannelOptions(options.HandlerQueueCapacity)
             {
@@ -57,7 +54,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
             _headerCodec,
             _compressionCodec,
             _sendGate,
-            () => _connection);
+            () => _lifecycle.Connection);
         _receiveDispatcher = new ZlinkStreamReceiveDispatcher(
             _headerCodec,
             _pending,
@@ -69,8 +66,8 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
             _pending,
             _receiveDispatcher,
             _callbacks,
-            () => _connection,
-            () => Interlocked.Exchange(ref _connection, null));
+            () => _lifecycle.Connection,
+            _lifecycle.ClearConnection);
         _handlerPump = _taskRunner.Run(
             "stream-handler-pump",
             _ => new ValueTask(_receiveDispatcher.HandlerPumpAsync()));
@@ -100,7 +97,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         }
     }
 
-    public bool IsConnected => _connection is not null;
+    public bool IsConnected => _lifecycle.IsConnected;
 
     public ZlinkStreamConnectorOptions Options { get; }
 
@@ -115,87 +112,16 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
 
     public async ValueTask ConnectAsync(CancellationToken cancellationToken = default)
     {
-        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            ThrowIfDisposed();
-            if (_connection is not null)
-            {
-                return;
-            }
-
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(Options.ConnectTimeout);
-
-            try
-            {
-                _connection = await ZlinkStreamTransportFactory.ConnectAsync(Options, timeoutCts.Token).ConfigureAwait(false);
-                _receiveCts = new CancellationTokenSource();
-                _receiveTask = _taskRunner.Run(
-                    "stream-receive-loop",
-                    _ => new ValueTask(_receiveLoop.RunAsync(_receiveCts.Token)));
-            }
-            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                throw Error(ZlinkStreamErrorCode.ConnectTimeout, "Connect timed out.", ex);
-            }
-            catch (AuthenticationException ex)
-            {
-                throw Error(ZlinkStreamErrorCode.TlsValidationFailed, "TLS validation failed.", ex);
-            }
-            catch (Exception ex) when (ex is not ZlinkStreamException)
-            {
-                throw Error(ZlinkStreamErrorCode.Disconnected, "Connect failed.", ex);
-            }
-        }
-        finally
-        {
-            _lifecycleGate.Release();
-        }
+        await _lifecycle.ConnectAsync(
+                _receiveLoop.RunAsync,
+                ThrowIfDisposed,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken = default)
     {
-        IZlinkStreamConnection? connection;
-        CancellationTokenSource? receiveCts;
-        Task? receiveTask;
-
-        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            connection = _connection;
-            receiveCts = _receiveCts;
-            receiveTask = _receiveTask;
-            _connection = null;
-            _receiveCts = null;
-            _receiveTask = null;
-        }
-        finally
-        {
-            _lifecycleGate.Release();
-        }
-
-        receiveCts?.Cancel();
-
-        if (connection is not null)
-        {
-            await connection.CloseAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        _pending.FailAll(new ZlinkStreamError(ZlinkStreamErrorCode.Disconnected, "Connector closed."));
-
-        if (receiveTask is not null)
-        {
-            try
-            {
-                await receiveTask.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }
-
-        receiveCts?.Dispose();
+        await _lifecycle.CloseAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public ZlinkStreamSendBuilder Send(ZlinkStreamEncodedBody body)
@@ -298,7 +224,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         _handlerQueue.Writer.TryComplete();
         await _handlerPump.ConfigureAwait(false);
         _sendGate.Dispose();
-        _lifecycleGate.Dispose();
+        _lifecycle.Dispose();
         _lifetimeCts.Dispose();
     }
 

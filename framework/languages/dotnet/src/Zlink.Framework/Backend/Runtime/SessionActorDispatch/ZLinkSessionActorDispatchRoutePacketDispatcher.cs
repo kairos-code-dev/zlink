@@ -35,7 +35,7 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
         }
     }
 
-    public async ValueTask<byte[]> DispatchRequestAsync(
+    public async ValueTask<Message> DispatchRequestAsync(
         Received received,
         ZLinkEnvelopeHeader routedHeader,
         CancellationToken cancellationToken)
@@ -69,7 +69,7 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask<byte[]> DispatchActorDispatchRequestAsync(
+    private async ValueTask<Message> DispatchActorDispatchRequestAsync(
         Received received,
         CancellationToken cancellationToken)
     {
@@ -77,11 +77,13 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
         var streamHeader = ZLinkInternalMultipartPackets.DecodeActorDispatchStreamHeader(received);
         using var body = ZLinkInternalMultipartPackets.DecodeActorDispatchBody(received);
         await EnsureLocalActorAsync(runtime, metadata, cancellationToken).ConfigureAwait(false);
-        return await runtime.SubmitActorForReplyAsync(
-            metadata.ActorId,
-            streamHeader,
-            body,
-            cancellationToken).ConfigureAwait(false);
+        var reply = await runtime.SubmitActorForReplyAsync(
+                metadata.ActorId,
+                streamHeader,
+                body,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return Message.FromBytes(reply);
     }
 
     private static async ValueTask EnsureLocalActorAsync(
@@ -117,20 +119,19 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
         }
     }
 
-    private async ValueTask<byte[]> DispatchSessionProxyRequestAsync(
+    private async ValueTask<Message> DispatchSessionProxyRequestAsync(
         Received received,
         ZLinkEnvelopeHeader routedHeader,
         CancellationToken cancellationToken)
     {
         var envelope = ZLinkInternalMultipartPackets.DecodeSessionProxyEnvelope(received);
         var sessionContext = ResolveSessionContext(envelope);
-        using var reply = await sessionContext.RequestRawAsync(
+        return await sessionContext.RequestRawAsync(
             envelope.PacketName,
             ZlinkStreamCodec.Json,
             ZLinkInternalMultipartPackets.DecodeSessionProxyBody(received),
             ResolveInternalTimeout(routedHeader),
             cancellationToken).ConfigureAwait(false);
-        return reply.AsReadOnlyMemory().ToArray();
     }
 
     private ZLinkSessionContext ResolveSessionContext(ZLinkSessionProxyEnvelope envelope)

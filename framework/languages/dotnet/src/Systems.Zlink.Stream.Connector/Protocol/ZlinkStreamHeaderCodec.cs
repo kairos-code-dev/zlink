@@ -1,17 +1,5 @@
 using System.Buffers.Binary;
-using System.Collections.Concurrent;
-
-using System.Net.Security;
-
-using System.Net.Sockets;
-using System.Net.WebSockets;
-using System.Security.Authentication;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Text.Json;
-using System.Threading.Channels;
-
-using K4os.Compression.LZ4;
 
 namespace Systems.Zlink.Stream.Connector.Protocol;
 
@@ -36,7 +24,7 @@ public sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
         flags = hasRequestSeq ? flags | ZlinkStreamHeaderFlags.HasRequestSeq : flags & ~ZlinkStreamHeaderFlags.HasRequestSeq;
         flags = hasMetadata ? flags | ZlinkStreamHeaderFlags.HasMetadata : flags & ~ZlinkStreamHeaderFlags.HasMetadata;
 
-        var metadataSize = hasMetadata ? CalculateMetadataPayloadSize(header.Metadata) : 0;
+        var metadataSize = hasMetadata ? ZlinkStreamMetadataCodec.GetPayloadSize(header.Metadata) : 0;
         var size = 3 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.Length + (hasMetadata ? 2 + metadataSize : 0);
         var buffer = new byte[size];
         var offset = 0;
@@ -63,7 +51,7 @@ public sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
         {
             BinaryPrimitives.WriteUInt16BigEndian(buffer.AsSpan(offset, 2), checked((ushort)metadataSize));
             offset += 2;
-            WriteMetadata(header.Metadata, buffer.AsSpan(offset, metadataSize));
+            ZlinkStreamMetadataCodec.Write(header.Metadata, buffer.AsSpan(offset, metadataSize));
         }
 
         return buffer;
@@ -130,7 +118,7 @@ public sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
                 throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Helper header metadata is incomplete.");
             }
 
-            metadata = DecodeMetadata(span.Slice(offset, metadataLength));
+            metadata = ZlinkStreamMetadataCodec.Decode(span.Slice(offset, metadataLength));
             offset += metadataLength;
         }
 
@@ -144,107 +132,7 @@ public sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
     }
 
     internal static int GetMetadataPayloadSize(ZlinkStreamMetadata metadata)
-        => metadata.Count == 0 ? 0 : CalculateMetadataPayloadSize(metadata);
-
-    private static void WriteMetadata(ZlinkStreamMetadata metadata, Span<byte> destination)
-    {
-        var offset = 0;
-        destination[offset++] = (byte)metadata.Count;
-        foreach (var (key, value) in metadata.Values)
-        {
-            var keyLength = Encoding.UTF8.GetByteCount(key);
-            var valueLength = Encoding.UTF8.GetByteCount(value);
-
-            destination[offset++] = (byte)keyLength;
-            offset += Encoding.UTF8.GetBytes(key, destination.Slice(offset, keyLength));
-            BinaryPrimitives.WriteUInt16BigEndian(destination.Slice(offset, 2), (ushort)valueLength);
-            offset += 2;
-            offset += Encoding.UTF8.GetBytes(value, destination.Slice(offset, valueLength));
-        }
-    }
-
-    private static int CalculateMetadataPayloadSize(ZlinkStreamMetadata metadata)
-    {
-        if (metadata.Count > byte.MaxValue)
-        {
-            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.ValidationFailed, "Metadata entry count must not exceed 255.");
-        }
-
-        var size = 1;
-        foreach (var (key, value) in metadata.Values)
-        {
-            var keyLength = Encoding.UTF8.GetByteCount(key);
-            var valueLength = Encoding.UTF8.GetByteCount(value);
-            if (keyLength is 0 or > byte.MaxValue)
-            {
-                throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.ValidationFailed, "Metadata key length is invalid.");
-            }
-
-            if (valueLength > ushort.MaxValue)
-            {
-                throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.ValidationFailed, "Metadata value is too large.");
-            }
-
-            size = checked(size + 1 + keyLength + 2 + valueLength);
-        }
-
-        return size;
-    }
-
-    private static ZlinkStreamMetadata DecodeMetadata(ReadOnlySpan<byte> metadata)
-    {
-        if (metadata.Length == 0)
-        {
-            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Metadata payload is empty.");
-        }
-
-        var offset = 0;
-        var count = metadata[offset++];
-        var values = new Dictionary<string, string>(StringComparer.Ordinal);
-        for (var i = 0; i < count; i++)
-        {
-            if (metadata.Length - offset < 1)
-            {
-                throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Metadata key length is missing.");
-            }
-
-            var keyLength = metadata[offset++];
-            if (keyLength == 0 || metadata.Length - offset < keyLength)
-            {
-                throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Metadata key is invalid.");
-            }
-
-            var key = Encoding.UTF8.GetString(metadata.Slice(offset, keyLength));
-            offset += keyLength;
-
-            if (metadata.Length - offset < 2)
-            {
-                throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Metadata value length is missing.");
-            }
-
-            var valueLength = BinaryPrimitives.ReadUInt16BigEndian(metadata.Slice(offset, 2));
-            offset += 2;
-            if (metadata.Length - offset < valueLength)
-            {
-                throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Metadata value is incomplete.");
-            }
-
-            var value = Encoding.UTF8.GetString(metadata.Slice(offset, valueLength));
-            offset += valueLength;
-
-            if (!values.TryAdd(key, value))
-            {
-                throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Duplicate metadata key.");
-            }
-        }
-
-        if (offset != metadata.Length)
-        {
-            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Metadata contains trailing bytes.");
-        }
-
-        return ZlinkStreamMetadata.FromDictionary(values);
-    }
+        => ZlinkStreamMetadataCodec.GetPayloadSize(metadata);
 
     private static void ValidateEnum(
         ZlinkStreamMessageKind kind,

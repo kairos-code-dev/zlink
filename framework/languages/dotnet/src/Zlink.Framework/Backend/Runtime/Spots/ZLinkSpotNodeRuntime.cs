@@ -3,7 +3,7 @@ using Zlink.Framework.Runtime.Core;
 
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
+internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
 {
     private readonly IServiceProvider _services;
     private readonly ZLinkFrameworkRuntime _runtime;
@@ -15,8 +15,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly ZLinkSpotNodeCatalog _spots;
     private readonly ZLinkSpotMonitoringSnapshotProvider _monitoringSnapshots;
     private readonly ZLinkSpotDiscoveryReconciler _discoveryReconciler;
+    private readonly ZLinkSpotDiscoveryLoop _discoveryLoop;
+    private readonly ZLinkSpotPeerConnector _peerConnector;
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
-    private Task? _discoveryPeerReconciliationTask;
     private IZLinkBackendSpot? _entrySpot;
     private ZLinkEntrySpotActivation? _entrySpotActivation;
 
@@ -44,6 +45,12 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             node,
             _peerConnections,
             () => SpotDiscovery);
+        _discoveryLoop = new ZLinkSpotDiscoveryLoop(
+            registration.SpotNodeName,
+            _taskRunner,
+            _stopSource.Token,
+            ConnectDiscoveredPubSubPeers);
+        _peerConnector = new ZLinkSpotPeerConnector(node, _peerConnections);
         _bundles = new ZLinkSpotNodeBundleRegistry(
             registration.SpotNodeName,
             frameworkRegistration,
@@ -190,14 +197,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public void StartDiscoveryPeerReconciliation()
     {
-        if (SpotDiscovery is null || _discoveryPeerReconciliationTask is not null)
-        {
-            return;
-        }
-
-        _discoveryPeerReconciliationTask = _taskRunner.Run(
-            $"spot-discovery-reconcile:{Name}",
-            _ => new ValueTask(ReconcileDiscoveryPeersAsync()));
+        _discoveryLoop.StartIfNeeded(() => SpotDiscovery is not null);
     }
 
     public bool HasPublisherClient(string channelName)
@@ -259,52 +259,22 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public ValueTask<bool> ConnectRouterAsync(string endpoint, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!_peerConnections.TryAddRouterManual(endpoint))
-        {
-            return ValueTask.FromResult(false);
-        }
-
-        try
-        {
-            Node.ConnectPeer(endpoint);
-        }
-        catch (ZlinkConnectException error)
-            when (error.Result == ZlinkConnectException.ErrorCode.Busy)
-        {
-        }
-        return ValueTask.FromResult(true);
+        return _peerConnector.ConnectRouterAsync(endpoint, cancellationToken);
     }
 
     public ValueTask<bool> ConnectPubSubAsync(string endpoint, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!_peerConnections.TryAddPubSubManual(endpoint))
-        {
-            return ValueTask.FromResult(false);
-        }
-
-        try
-        {
-            Node.ConnectPeer(endpoint);
-        }
-        catch (ZlinkConnectException error)
-            when (error.Result == ZlinkConnectException.ErrorCode.Busy)
-        {
-        }
-        return ValueTask.FromResult(true);
+        return _peerConnector.ConnectPubSubAsync(endpoint, cancellationToken);
     }
 
     public void DisconnectRouter(string endpoint)
     {
-        Node.DisconnectPeer(endpoint);
-        _peerConnections.RemoveRouterManual(endpoint);
+        _peerConnector.DisconnectRouter(endpoint);
     }
 
     public void DisconnectPubSub(string endpoint)
     {
-        Node.DisconnectPeer(endpoint);
-        _peerConnections.RemovePubSub(endpoint);
+        _peerConnector.DisconnectPubSub(endpoint);
     }
 
     public IReadOnlyList<string> ListRouterConnections()
@@ -326,16 +296,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         _stopSource.Cancel();
 
-        if (_discoveryPeerReconciliationTask is not null)
-        {
-            try
-            {
-                await _discoveryPeerReconciliationTask;
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }
+        await _discoveryLoop.StopAsync().ConfigureAwait(false);
 
         await _spots.DisposeAsync();
 
@@ -356,29 +317,6 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _stopSource.Dispose();
     }
 
-    private async Task ReconcileDiscoveryPeersAsync()
-    {
-        while (!_stopSource.IsCancellationRequested)
-        {
-            try
-            {
-                ConnectDiscoveredPubSubPeers();
-                await Task.Delay(TimeSpan.FromMilliseconds(100), _stopSource.Token);
-            }
-            catch (OperationCanceledException) when (_stopSource.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (ObjectDisposedException) when (_stopSource.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (ZlinkException)
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(100), _stopSource.Token);
-            }
-        }
-    }
 }
 
 internal sealed record ZLinkSpotMonitoringSnapshot(

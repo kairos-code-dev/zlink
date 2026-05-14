@@ -97,15 +97,15 @@ internal sealed class ZLinkRoutePacketDispatcher(
         Received received,
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken,
-        Func<RoutingId, ZLinkEnvelopeHeader, CancellationToken, ValueTask<byte[]>> dispatch)
+        Func<RoutingId, ZLinkEnvelopeHeader, CancellationToken, ValueTask<Message>> dispatch)
     {
         var sourceRid = received.RoutingId
             ?? throw new InvalidOperationException("Internal routed request requires a source routing id.");
 
         try
         {
-            var reply = await dispatch(sourceRid, header, cancellationToken).ConfigureAwait(false);
-            Reply(sourceRid, received.RequestSeq, header, reply, typeof(byte[]));
+            using var reply = await dispatch(sourceRid, header, cancellationToken).ConfigureAwait(false);
+            ReplyRaw(sourceRid, received.RequestSeq, header, reply);
         }
         catch (Exception ex)
         {
@@ -131,6 +131,33 @@ internal sealed class ZLinkRoutePacketDispatcher(
             null,
             null);
         var replyParts = ZLinkEnvelopeCodec.EncodeParts(replyHeader, reply, replyType);
+        try
+        {
+            router.Reply(sourceRid, requestSeq ?? 0UL, replyParts);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(replyParts);
+        }
+    }
+
+    private void ReplyRaw(
+        RoutingId sourceRid,
+        ulong? requestSeq,
+        ZLinkEnvelopeHeader requestHeader,
+        Message reply)
+    {
+        var replyHeader = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Response,
+            routerChannelId,
+            requestHeader.MessageName,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            requestHeader.CorrelationId,
+            null,
+            null,
+            null,
+            null);
+        var replyParts = ZLinkEnvelopeCodec.EncodeRawBodyParts(replyHeader, reply);
         try
         {
             router.Reply(sourceRid, requestSeq ?? 0UL, replyParts);

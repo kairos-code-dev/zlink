@@ -73,7 +73,7 @@ internal sealed class ZLinkSessionActorRelay(
         }
     }
 
-    private async ValueTask<byte[]> RequestActorReplyAsync(
+    private async ValueTask<ReadOnlyMemory<byte>> RequestActorReplyAsync(
         IZLinkMultipartRouteClient routeClient,
         ZLinkActorRef actorRef,
         IReadOnlyList<Message> parts,
@@ -81,7 +81,7 @@ internal sealed class ZLinkSessionActorRelay(
     {
         try
         {
-            return await routeClient.RequestPartsTo<byte[]>(
+            return await routeClient.RequestPartsTo<ReadOnlyMemory<byte>>(
                     actorRef.RouterChannelId,
                     actorRef.TargetNodeRid,
                     ZLinkInternalPacketNames.ActorDispatch,

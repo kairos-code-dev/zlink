@@ -147,10 +147,10 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
             request,
             request?.GetType() ?? typeof(TRequest));
 
-        byte[] reply;
+        ReadOnlyMemory<byte> reply;
         try
         {
-            reply = await routedClient.RequestPartsTo<byte[]>(
+            reply = await routedClient.RequestPartsTo<ReadOnlyMemory<byte>>(
                     runtime.ResolveDefaultRouterChannelId(),
                     route.SessionRouterId,
                     ZLinkInternalPacketNames.SessionProxy,
@@ -168,7 +168,7 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
         }
 
         return ZLinkClientCallCodec.DecodeJsonReply<TReply>(
-            reply,
+            reply.Span,
             "Session proxy reply body is null.");
     }
 

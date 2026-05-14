@@ -134,6 +134,10 @@ receiver 또는 server thread 가 sender / phase 종료를 감지해야 하는 �
 종료 시 wire 위로 stop token (`__zlink_perf_stop__`) 메시지를 한 번
 송신하고, receiver 는 `-1` poller wait 으로 대기하다가 token 도착 시
 종료한다.
+예외적으로 `MULTI_PUBSUB`는 C 기준 구현처럼 active 뒤에 1초 동안
+`phase_cooldown` payload를 송신하고, client가 이 cooldown phase를 보고
+process를 닫는다. PUBSUB의 active 집계는 여전히 configured duration 안의
+`phase_active` payload만 포함한다.
 
 | 항목 | 규칙 |
 |------|------|
@@ -229,9 +233,11 @@ ready 판정, active 시작 조건을 바꾸면 안 된다.
   client가 `PHASE_ACTIVE,<msg_size>` 같은 별도 stdin token을 기다리거나,
   server가 stdout으로 추가 active token을 내보내면 안 된다.
 - PUBSUB client는 `START,<msg_size>`를 받은 시점부터 configured duration 동안
-  active 메시지를 집계하고, `RESULT`와 `CLIENT_DONE,<msg_size>`를 출력한 뒤
-  종료한다. PUBSUB active 종료는 client의 duration window로 판정하므로 stop
-  token 수신을 완료 조건으로 삼지 않는다.
+  `phase_active` 메시지만 집계한다. server는 active 송신 뒤 1초 동안
+  `phase_cooldown` payload를 송신하고, client는 이 cooldown phase를 본 뒤
+  `RESULT`와 `CLIENT_DONE,<msg_size>`를 출력한다. active 집계 종료 기준은
+  client의 duration window이며, cooldown payload는 process 종료 동기화용이다.
+  PUBSUB는 stop token 수신을 완료 조건으로 삼지 않는다.
 - SPOT 은 client/server control link 가 먼저 `CONNECTED` 를 교환한 뒤,
   각 client process 가 자신이 보유한 slot 수만큼 `READY` unit 을
   `READY_COUNT,<msg_size>,<count>` control message 로 보낸다. server 는
@@ -500,23 +506,25 @@ Runner                    Server                      Client
 **One-way 패턴 (DEALER_DEALER, PUBSUB):**
 
 ```text
-Runner                    Server                      Client
-  │  spawn server           │                            │
-  │──────────────────────>  │                            │
-  │  READY,<ep>             │                            │
-  │<──────────────────────  │                            │
-  │  spawn client           │                            │
-  │─────────────────────────────────────────────────>    │
-  │                         │  ◄── pattern ready ──────►  │
-  │  CLIENT_READY,<size>    │                            │
-  │<─────────────────────────────────────────────────    │
-  │  START,<size>           │  START,<size>              │
-  │──────────────────────>  │──────────────────────────> │
-  │                         │  send loop                 │ recv + active 측정
-  │                         │                            │ RESULT lines
-  │<─────────────────────────────────────────────────    │ exit 0
-  │  STOP                   │                            │
-  │──────────────────────>  │ shutdown                   │
+| Runner                 | Server                 | Client                 |
+|------------------------|------------------------|------------------------|
+| spawn server           |                        |                        |
+|----------------------->|                        |                        |
+| READY,<ep>             |                        |                        |
+|<-----------------------|                        |                        |
+| spawn client           |                        |                        |
+|------------------------------------------------>|                        |
+|                        |<-- pattern ready ----->|                        |
+| CLIENT_READY,<size>    |                        |                        |
+|<------------------------------------------------|                        |
+| START,<size>           | START,<size>           |                        |
+|----------------------->|----------------------->|                        |
+|                        | active send            | active count           |
+|                        | cooldown send          | cooldown seen          |
+|                        |                        | RESULT lines           |
+|<------------------------------------------------| exit 0                 |
+| STOP                   |                        |                        |
+|----------------------->| shutdown               |                        |
 ```
 
 - `MULTI_DEALER_DEALER` client: connect + `CONNECTION_READY` 후

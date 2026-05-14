@@ -132,12 +132,38 @@ internal static class PerfMultiDealerDealerClient
 
     private static bool SendStopTokens(IReadOnlyList<SocketBase> activeClients)
     {
+        var pending = new bool[activeClients.Count];
+        int remaining = 0;
+
         for (int i = 0; i < activeClients.Count; i++)
         {
             var socket = (DealerSocket)activeClients[i];
-            socket.Options.SendTimeout = TimeSpan.FromSeconds(30);
-            if (SendBlocking(socket, MultiStopToken.AsSpan(), SendFlags.None) < 0)
-                return false;
+            if (TrySendNoWait(socket, MultiStopToken.AsSpan()))
+                continue;
+
+            pending[i] = true;
+            remaining++;
+        }
+
+        while (remaining > 0)
+        {
+            bool progressed = false;
+            for (int i = 0; i < activeClients.Count; i++)
+            {
+                if (!pending[i])
+                    continue;
+
+                var socket = (DealerSocket)activeClients[i];
+                if (!TrySendNoWait(socket, MultiStopToken.AsSpan()))
+                    continue;
+
+                pending[i] = false;
+                remaining--;
+                progressed = true;
+            }
+
+            if (!progressed)
+                Thread.Yield();
         }
 
         return true;

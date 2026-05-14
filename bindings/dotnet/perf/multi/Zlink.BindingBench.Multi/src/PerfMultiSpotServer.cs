@@ -216,16 +216,7 @@ internal static class PerfMultiSpotServer
     private static bool PublishControlStartBurst(Spot controlSpot, int size,
         int timeoutMs)
     {
-        bool published = false;
-        long deadlineTicks = Stopwatch.GetTimestamp()
-            + (Stopwatch.Frequency / 4);
-        do
-        {
-            published |= PublishControlStart(controlSpot, size, timeoutMs);
-            System.Threading.Thread.Sleep(1);
-        }
-        while (Stopwatch.GetTimestamp() < deadlineTicks);
-        return published;
+        return PublishControlStart(controlSpot, size, timeoutMs);
     }
 
     private static bool PublishControlPayload(Spot controlSpot, string payload,

@@ -65,13 +65,12 @@ internal static class PerfMultiDealerDealerServer
         uint rng = 0xA341316Cu;
         long measureCount = 0;
         using var receivedBuffer = new Received();
-        long drainDeadlineTicks = Stopwatch.GetTimestamp()
-            + (long)Math.Max(6, durationSeconds + 5) * Stopwatch.Frequency;
+        _ = durationSeconds;
 
         if (!ReceiveUntilStops(server, receivedBuffer, msgSize, expectedRunId,
                 PerfPhase.Active, expectedStops, latencySampleStride, latSamples,
                 ref sampleSeen, ref rng, ref measureCount,
-                countThroughput: true, drainDeadlineTicks))
+                countThroughput: true))
         {
             return (0.0, 0.0, 0.0, 0.0, 0);
         }
@@ -92,22 +91,25 @@ internal static class PerfMultiDealerDealerServer
         Received receivedBuffer, int msgSize, uint expectedRunId,
         PerfPhase expectedPhase, int expectedStops, int latencySampleStride,
         List<double> latSamples, ref long sampleSeen, ref uint rng,
-        ref long messageCount, bool countThroughput, long deadlineTicks)
+        ref long messageCount, bool countThroughput)
     {
+        using var pollManager = new PollManager();
+        var sockets = new[] { (SocketBase)server };
         int stopCount = 0;
-        while (stopCount < expectedStops
-               && Stopwatch.GetTimestamp() < deadlineTicks)
+        while (stopCount < expectedStops)
         {
-            if (!TryRecvNoWait(server, receivedBuffer))
-            {
-                System.Threading.Thread.Yield();
+            int readyCount = PollSocketReadReady(pollManager, sockets,
+                MultiClientPollTimeoutMs);
+            if (readyCount <= 0)
                 continue;
-            }
+
+            if (!IsSocketReadReady(pollManager, 0))
+                continue;
 
             while (true)
             {
-                if (Stopwatch.GetTimestamp() >= deadlineTicks)
-                    return true;
+                if (!TryRecvNoWait(server, receivedBuffer))
+                    break;
 
                 ReadOnlySpan<byte> body = receivedBuffer.SinglePartOrThrow()
                     .AsReadOnlySpan();
@@ -141,8 +143,6 @@ internal static class PerfMultiDealerDealerServer
                     }
                 }
 
-                if (!TryRecvNoWait(server, receivedBuffer))
-                    break;
             }
         }
 

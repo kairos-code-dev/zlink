@@ -145,12 +145,6 @@ internal static class PerfMultiSpotClient
                 return controlState.StopRequested ? 0 : 2;
             }
             DebugSubjects(controlNode, "client_after_runner_start");
-            if (!PublishReadyCount(controlPub, config.Size,
-                    config.ClientCount, config.ConnectReadyTimeoutMs))
-            {
-                Console.Error.WriteLine("multi_client_error:control_ready_failed");
-                return 2;
-            }
             if (!WaitForControlStart(controlStart, controlPub, config.Size,
                     config.ClientCount, config.ConnectReadyTimeoutMs))
             {
@@ -208,8 +202,12 @@ internal static class PerfMultiSpotClient
             long nowTicks = Stopwatch.GetTimestamp();
             if (nowTicks >= nextReadyTicks)
             {
-                if (!PublishReadyCount(controlPub, size, readyCount, timeoutMs))
+                if (nextReadyTicks == 0
+                    && !PublishReadyCount(controlPub, size, readyCount,
+                        timeoutMs))
+                {
                     return false;
+                }
                 nextReadyTicks = nowTicks + (Stopwatch.Frequency / 4);
             }
 

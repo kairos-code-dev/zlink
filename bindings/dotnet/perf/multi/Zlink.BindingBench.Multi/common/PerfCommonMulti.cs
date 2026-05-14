@@ -238,8 +238,10 @@ internal static partial class PerfRunner
         {
             int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
             int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
-            socket.Options.SendHighWaterMark = Math.Max(1, sndHwm);
-            socket.Options.ReceiveHighWaterMark = Math.Max(1, rcvHwm);
+            if (sndHwm > 0)
+                socket.Options.SendHighWaterMark = sndHwm;
+            if (rcvHwm > 0)
+                socket.Options.ReceiveHighWaterMark = rcvHwm;
             if (options.MultiSndBuf > 0)
                 socket.Options.SendBufferSize = options.MultiSndBuf;
             if (options.MultiRcvBuf > 0)
@@ -260,8 +262,10 @@ internal static partial class PerfRunner
         {
             int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
             int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
-            spot.SendHighWaterMark = Math.Max(1, sndHwm);
-            spot.ReceiveHighWaterMark = Math.Max(1, rcvHwm);
+            if (sndHwm > 0)
+                spot.SendHighWaterMark = sndHwm;
+            if (rcvHwm > 0)
+                spot.ReceiveHighWaterMark = rcvHwm;
             if (options.MultiSndBuf > 0)
                 spot.SendBufferSize = options.MultiSndBuf;
             if (options.MultiRcvBuf > 0)
@@ -269,7 +273,6 @@ internal static partial class PerfRunner
         }
         spot.SendTimeout = TimeSpan.FromMilliseconds(sndTimeo);
         spot.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
-        ApplySpotAutoHwmMsgUnit(spot, options.Size);
     }
 
     internal static void ApplyAutoHwmMsgUnit(SocketBase socket, int msgSize)
@@ -279,19 +282,6 @@ internal static partial class PerfRunner
         try
         {
             socket.Options.AutoHwmMessageUnitBytes = msgSize;
-        }
-        catch (ZlinkException)
-        {
-        }
-    }
-
-    internal static void ApplySpotAutoHwmMsgUnit(Spot spot, int msgSize)
-    {
-        if (msgSize <= 0)
-            return;
-        try
-        {
-            spot.AutoHwmMessageUnitBytes = msgSize;
         }
         catch (ZlinkException)
         {
@@ -675,27 +665,6 @@ internal static partial class PerfRunner
     {
         return PerfEnv.ReadPositive("PERF_MULTI_ONEWAY_LATENCY_SAMPLE_STRIDE",
             PerfEnv.ReadPositive("PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", 32));
-    }
-
-    internal static int ResolveMultiOnewayLatencyProbeCount()
-    {
-        return PerfEnv.ReadPositive("PERF_MULTI_ONEWAY_LATENCY_PROBE_COUNT", 128);
-    }
-
-    internal static int ResolveMultiOnewayLatencyProbeIntervalUs()
-    {
-        return PerfEnv.ReadPositive("PERF_MULTI_ONEWAY_LATENCY_PROBE_INTERVAL_US",
-            PerfEnv.ReadPositive("PERF_MULTI_SPOT_LATENCY_PROBE_INTERVAL_US",
-                1000));
-    }
-
-    internal static int ResolveMultiOnewayLatencyProbeSettleMs(
-        int durationSeconds)
-    {
-        int defaultMs = Math.Max(1000, Math.Max(1, durationSeconds) * 1000);
-        return PerfEnv.ReadNonNegative("PERF_MULTI_ONEWAY_LATENCY_PROBE_SETTLE_MS",
-            PerfEnv.ReadNonNegative("PERF_MULTI_SPOT_LATENCY_PROBE_SETTLE_MS",
-                defaultMs));
     }
 
     internal static bool IsCoreStreamServerTransport(string transport)

@@ -151,113 +151,67 @@ internal static partial class PerfRunner
         }
     }
 
-    // PERF_SINGLE_TEST_POLICY § 1.4: send the wire-level stop token at
-    // end of phase with bounded backpressure retry, so the receiver
-    // (waiting on a -1 poller) always observes the terminator.
+    // PERF_SINGLE_TEST_POLICY § 1.4: send the wire-level stop token once
+    // with a blocking send; the receiver exits when it observes the token.
     internal static void SendStopTokenWithRetry(SocketBase sender, string tag)
     {
-        for (int retry = 0; retry < 100; retry++)
+        try
         {
-            try
-            {
-                if (PerfSocketIo.Send(sender, StopToken.Bytes,
-                        SendFlags.None) > 0)
-                    return;
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
-            {
-                WaitForSendReady(sender);
-                continue;
-            }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
-            {
-                continue;
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"{tag} stop-token send failed: {ex.Message}");
-                return;
-            }
+            sender.Options.SendTimeout = null;
+            if (PerfSocketIo.Send(sender, StopToken.Bytes, SendFlags.None) <= 0)
+                Console.Error.WriteLine($"{tag} stop-token send failed");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"{tag} stop-token send failed: {ex.Message}");
         }
     }
 
     internal static void SendRoutedStopTokenWithRetry(
         RoutedMessageSocketBase sender, RoutingId routingId, string tag)
     {
-        for (int retry = 0; retry < 100; retry++)
+        try
         {
-            try
-            {
-                if (PerfSocketIo.Send(sender, routingId, StopToken.Bytes,
-                        SendFlags.None) > 0)
-                    return;
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
-            {
-                WaitForSendReady(sender);
-                continue;
-            }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
-            {
-                continue;
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"{tag} stop-token send failed: {ex.Message}");
-                return;
-            }
+            sender.Options.SendTimeout = null;
+            if (PerfSocketIo.Send(sender, routingId, StopToken.Bytes,
+                    SendFlags.None) <= 0)
+                Console.Error.WriteLine($"{tag} stop-token send failed");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"{tag} stop-token send failed: {ex.Message}");
         }
     }
 
     internal static void PublishStopTokenWithRetry(
         PublisherSocketBase sender, string topic, string tag)
     {
-        for (int retry = 0; retry < 100; retry++)
+        try
         {
-            try
-            {
-                if (PerfSocketIo.Publish(sender, topic, StopToken.Bytes,
-                        SendFlags.None) > 0)
-                    return;
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno))
-            {
-                WaitForSendReady(sender);
-                continue;
-            }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
-            {
-                continue;
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"{tag} stop-token publish failed: {ex.Message}");
-                return;
-            }
+            sender.Options.SendTimeout = null;
+            if (PerfSocketIo.Publish(sender, topic, StopToken.Bytes,
+                    SendFlags.None) <= 0)
+                Console.Error.WriteLine($"{tag} stop-token publish failed");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"{tag} stop-token publish failed: {ex.Message}");
         }
     }
 
     internal static void PublishSpotStopTokenWithRetry(Spot spot, string topic,
         string tag)
     {
-        for (int retry = 0; retry < 100; retry++)
+        try
         {
-            try
-            {
-                if (PerfSocketIo.Publish(spot, topic, StopToken.Bytes,
-                        SendFlags.None) > 0)
-                    return;
-            }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
-            {
-                continue;
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"{tag} stop-token publish failed: {ex.Message}");
-                return;
-            }
+            spot.SendTimeout = null;
+            if (PerfSocketIo.Publish(spot, topic, StopToken.Bytes,
+                    SendFlags.None) <= 0)
+                Console.Error.WriteLine($"{tag} stop-token publish failed");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"{tag} stop-token publish failed: {ex.Message}");
         }
     }
 
@@ -282,8 +236,8 @@ internal static partial class PerfRunner
 
     private static int ResolveSingleHwmValue(string specificName)
     {
-        int hwm = PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000);
-        int specific = PerfEnv.ReadPositive(specificName, 0);
+        int hwm = PerfEnv.ReadNonNegative("PERF_SINGLE_HWM", 0);
+        int specific = PerfEnv.ReadNonNegative(specificName, 0);
         return specific > 0 ? specific : hwm;
     }
 
@@ -337,8 +291,10 @@ internal static partial class PerfRunner
         {
             int sndHwm = ResolveSingleHwmValue("PERF_SINGLE_SNDHWM");
             int rcvHwm = ResolveSingleHwmValue("PERF_SINGLE_RCVHWM");
-            socket.Options.SendHighWaterMark = sndHwm;
-            socket.Options.ReceiveHighWaterMark = rcvHwm;
+            if (sndHwm > 0)
+                socket.Options.SendHighWaterMark = sndHwm;
+            if (rcvHwm > 0)
+                socket.Options.ReceiveHighWaterMark = rcvHwm;
         }
     }
 

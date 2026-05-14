@@ -455,17 +455,7 @@ internal static class PerfMultiSpotReqRep
     private static bool PublishControlStartBurst(Spot controlSpot, int size,
         int timeoutMs)
     {
-        bool published = false;
-        long deadlineTicks = Stopwatch.GetTimestamp()
-            + (Stopwatch.Frequency / 4);
-        do
-        {
-            published |= PublishControlPayload(controlSpot, $"START,{size}",
-                timeoutMs);
-            Thread.Sleep(1);
-        }
-        while (Stopwatch.GetTimestamp() < deadlineTicks);
-        return published;
+        return PublishControlPayload(controlSpot, $"START,{size}", timeoutMs);
     }
 
     private static bool WaitForControlStart(
@@ -479,7 +469,8 @@ internal static class PerfMultiSpotReqRep
             long nowTicks = Stopwatch.GetTimestamp();
             if (nowTicks >= nextReadyTicks)
             {
-                if (!PublishReadyBarrier(controlPub, dataEndpoint, size,
+                if (nextReadyTicks == 0
+                    && !PublishReadyBarrier(controlPub, dataEndpoint, size,
                         readyCount, timeoutMs))
                 {
                     return false;

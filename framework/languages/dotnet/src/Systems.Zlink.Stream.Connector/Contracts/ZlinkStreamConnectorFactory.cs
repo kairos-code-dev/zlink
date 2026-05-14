@@ -1,5 +1,3 @@
-using Systems.Zlink.Stream.Connector.Runtime;
-
 namespace Systems.Zlink.Stream.Connector.Contracts;
 
 public static class ZlinkStreamConnectorFactory

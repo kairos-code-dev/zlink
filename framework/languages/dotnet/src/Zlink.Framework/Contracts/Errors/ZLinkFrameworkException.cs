@@ -1,21 +1,15 @@
 namespace Zlink.Framework.Contracts.Errors;
 
-public sealed class ZLinkFrameworkException : Exception
+public sealed class ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind kind,
+    string message,
+    bool isRetriable = false,
+    Exception? innerException = null)
+    : Exception(message, innerException)
 {
-    public ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind kind,
-        string message,
-        bool isRetriable = false,
-        Exception? innerException = null)
-        : base(message, innerException)
-    {
-        Kind = kind;
-        IsRetriable = isRetriable;
-    }
+    public ZLinkFrameworkErrorKind Kind { get; } = kind;
 
-    public ZLinkFrameworkErrorKind Kind { get; }
-
-    public bool IsRetriable { get; }
+    public bool IsRetriable { get; } = isRetriable;
 }
 
 public enum ZLinkFrameworkErrorKind

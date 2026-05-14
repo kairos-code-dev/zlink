@@ -32,9 +32,9 @@ internal sealed class ZLinkRouteChannelInitializer(
     {
         var router = adapter.CreateRouterSocket(state.Context);
         router.SetChannelName(routedRegistration.RouterChannelId);
-        if (routedRegistration.RoutingOptions.RoutingId.Size > 0)
+        if (routedRegistration.RoutingConfig.RoutingId.Size > 0)
         {
-            router.SetRoutingId(routedRegistration.RoutingOptions.RoutingId);
+            router.SetRoutingId(routedRegistration.RoutingConfig.RoutingId);
         }
 
         router.Bind(routedRegistration.BindEndpoint!);

@@ -13,7 +13,7 @@ using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Codecs;
 using Systems.Zlink.Stream.Connector.Contracts.Calls;
 using Systems.Zlink.Stream.Connector.Runtime;
-using Systems.Zlink.Stream.Connector.Protocol.Framing;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
 using StreamJson = Systems.Zlink.Stream.Connector.Json.ZlinkStreamJsonExtensions;
 

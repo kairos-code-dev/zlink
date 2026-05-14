@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace Zlink.Framework.Contracts.Configuration;
 
 public interface IZLinkDiscoveryBuilder
@@ -11,16 +9,16 @@ public interface IChannelServerCapabilityBuilder
 {
     void Bind(string endpoint);
 
-    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 
-    void ConfigureRouting(Action<IZLinkRoutePolicyOptions> configure);
+    void ConfigureRouting(Action<IZLinkRouteConfig> configure);
 }
 
 public interface IChannelClientCapabilityBuilder
 {
-    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 
-    void ConfigureRouting(Action<IZLinkOutboundRoutePolicyOptions> configure);
+    void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure);
 
     void UseManualConnections(Action<IChannelClientConnections> configure);
 }
@@ -34,46 +32,46 @@ public interface IChannelPublisherCapabilityBuilder
 {
     void Bind(string endpoint);
 
-    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 }
 
 public interface IChannelSubscriberCapabilityBuilder
 {
-    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 
     void UseManualConnections(Action<IChannelSubscriberConnections> configure);
 }
 
 public interface ISpotRouterCapabilityBuilder
 {
-    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 
-    void ConfigureRouting(Action<IZLinkRoutePolicyOptions> configure);
+    void ConfigureRouting(Action<IZLinkRouteConfig> configure);
 
     void UseManualConnections(Action<ISpotRouterConnections> configure);
 }
 
 public interface ISpotPubSubCapabilityBuilder
 {
-    void ConfigurePublisherOptions(Action<ISpotNodePublisherOptions> configure);
+    void ConfigurePublisherConfig(Action<IZLinkSpotPublisherConfig> configure);
 
-    void ConfigureSubscriberOptions(Action<ISpotNodeSubscriberOptions> configure);
+    void ConfigureSubscriberConfig(Action<IZLinkSpotSubscriberConfig> configure);
 
     void UseManualConnections(Action<ISpotPubSubConnections> configure);
 }
 
 public interface ISpotPublisherClientCapabilityBuilder
 {
-    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 
     void UseManualConnections(Action<ISpotPublisherConnections> configure);
 }
 
 public interface ISpotChannelClientCapabilityBuilder
 {
-    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 
-    void ConfigureRouting(Action<IZLinkOutboundRoutePolicyOptions> configure);
+    void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure);
 
     void UseManualConnections(Action<IChannelClientConnections> configure);
 }
@@ -91,9 +89,9 @@ public interface IZLinkRouteChannelBuilder
 {
     void Bind(string endpoint);
 
-    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 
-    void ConfigureRouting(Action<IZLinkRoutePolicyOptions> configure);
+    void ConfigureRouting(Action<IZLinkRouteConfig> configure);
 
     void UseManualConnections(Action<IRouteChannelConnections> configure);
 
@@ -206,7 +204,7 @@ public interface IZLinkFrameworkOptions
 
     void AddHandlersFromAssemblyOf(Type markerType);
 
-    void AddHandlersFromAssembly(Assembly assembly);
+    void AddHandlersFromAssembly(System.Reflection.Assembly assembly);
 
     void ConfigureMetadata(Action<IZLinkMetadataPolicyBuilder> configure);
 

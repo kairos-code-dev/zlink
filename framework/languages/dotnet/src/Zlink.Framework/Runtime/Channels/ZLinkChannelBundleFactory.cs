@@ -24,7 +24,7 @@ internal sealed class ZLinkChannelBundleFactory(
             dealer,
             new ZLinkAsyncSubmitter(
                 dealer.OnSendReady,
-                channel.Client.SocketOptions.SendTimeout,
+                channel.Client.SocketConfig.SendTimeout,
                 state.StopTokenSource.Token));
 
         try
@@ -132,7 +132,7 @@ internal sealed class ZLinkChannelBundleFactory(
             publisher,
             new ZLinkAsyncSubmitter(
                 publisher.OnSendReady,
-                channel.Publisher.SocketOptions.SendTimeout,
+                channel.Publisher.SocketConfig.SendTimeout,
                 state.StopTokenSource.Token));
 
         if (registration.Discovery is not null)

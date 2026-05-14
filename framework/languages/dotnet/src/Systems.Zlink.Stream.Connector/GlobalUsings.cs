@@ -1,8 +1,8 @@
 global using Systems.Zlink.Stream.Connector.Contracts;
 global using Systems.Zlink.Stream.Connector.Contracts.Calls;
-global using Systems.Zlink.Stream.Connector.Calls;
-global using Systems.Zlink.Stream.Connector.Protocol;
-global using Systems.Zlink.Stream.Connector.Protocol.Compression;
+global using Systems.Zlink.Stream.Connector.Runtime.Calls;
+global using Systems.Zlink.Stream.Connector.Runtime.Protocol;
+global using Systems.Zlink.Stream.Connector.Runtime.Protocol.Compression;
 global using Systems.Zlink.Stream.Connector.Runtime;
-global using Systems.Zlink.Stream.Connector.Protocol.Framing;
-global using Systems.Zlink.Stream.Connector.Transport;
+global using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
+global using Systems.Zlink.Stream.Connector.Runtime.Transport;

@@ -131,6 +131,12 @@ source별 구현 차이를 숨긴 typed runtime event surface를 제공하는 �
 공간이다. 따라서 내부 구현체, 내부 policy, 내부 registration record처럼 framework만
 알아야 하는 타입을 이 위치에 두면 안 된다.
 
+framework project의 최상위 구조는 가능한 한 `Contracts`와 `Runtime` 두 축으로 시작한다.
+`Contracts`는 사용자와 binding 개발자가 직접 봐야 하는 public 표면이고, `Runtime`은
+framework가 public 계약을 실행하기 위해 사용하는 내부 구현이다. codec policy, handler
+scanner, dispatch queue, registration validator, message codec처럼 내부 실행을 돕는 타입은
+별도 최상위 폴더를 만들지 말고 `Runtime` 아래에 둔다.
+
 `Contracts` 폴더에 둘 타입은 아래 범위로 제한한다.
 
 - 사용자가 구현해야 하는 handler, session, actor, spot, resolver, policy interface

@@ -1,4 +1,4 @@
-using Zlink.Framework.Handlers.Internal;
+using Zlink.Framework.Runtime.Handlers;
 
 namespace Zlink.Framework.Tests;
 

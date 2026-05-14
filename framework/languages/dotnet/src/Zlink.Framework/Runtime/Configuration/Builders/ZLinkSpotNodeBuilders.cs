@@ -1,0 +1,175 @@
+namespace Zlink.Framework.Runtime.Configuration.Builders;
+
+internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registration)
+    : IZLinkSpotNodeBuilder, IZLinkSpotMeshNodeBuilder
+{
+    public void Bind(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            throw new ZLinkConfigurationException("SPOT bind endpoint must not be empty.");
+        }
+
+        registration.BindEndpoint = endpoint;
+    }
+
+    public void EnableRouter(Action<ISpotRouterCapabilityBuilder>? configure = null)
+    {
+        registration.Router ??= new ZLinkSpotRouterCapabilityRegistration();
+        configure?.Invoke(new ZLinkSpotRouterCapabilityBuilder(registration.Router));
+    }
+
+    public void EnablePubSub(Action<ISpotPubSubCapabilityBuilder>? configure = null)
+    {
+        registration.PubSub ??= new ZLinkSpotPubSubCapabilityRegistration();
+        configure?.Invoke(new ZLinkSpotPubSubCapabilityBuilder(registration.PubSub));
+    }
+
+    public void AttachChannelClient(
+        string channelName,
+        Action<ISpotChannelClientCapabilityBuilder>? configure = null)
+    {
+        AttachClientServerChannelClient(channelName, configure);
+    }
+
+    public void AttachClientServerChannelClient(
+        string channelName,
+        Action<ISpotChannelClientCapabilityBuilder>? configure = null)
+    {
+        if (string.IsNullOrWhiteSpace(channelName))
+        {
+            throw new ZLinkConfigurationException("Attached client/server channel client name must not be empty.");
+        }
+
+        if (!registration.AttachedChannelClients.TryGetValue(channelName, out var attached))
+        {
+            attached = new ZLinkSpotChannelClientRegistration { ChannelName = channelName };
+            registration.AttachedChannelClients.Add(channelName, attached);
+        }
+
+        configure?.Invoke(new ZLinkSpotChannelClientCapabilityBuilder(attached));
+    }
+
+    public void AttachSpotPublisherClient(
+        string channelName,
+        Action<ISpotPublisherClientCapabilityBuilder>? configure = null)
+    {
+        AttachSpotMeshPublisherClient(channelName, configure);
+    }
+
+    public void AttachSpotMeshPublisherClient(
+        string channelName,
+        Action<ISpotPublisherClientCapabilityBuilder>? configure = null)
+    {
+        if (string.IsNullOrWhiteSpace(channelName))
+        {
+            throw new ZLinkConfigurationException("Attached SPOT mesh publisher channel name must not be empty.");
+        }
+
+        if (!registration.AttachedSpotPublisherClients.TryGetValue(channelName, out var attached))
+        {
+            attached = new ZLinkSpotPublisherClientRegistration { ChannelName = channelName };
+            registration.AttachedSpotPublisherClients.Add(channelName, attached);
+        }
+
+        configure?.Invoke(new ZLinkSpotPublisherClientCapabilityBuilder(attached));
+    }
+
+    public void AddSpotFactory<TSpot>(string spotName)
+        where TSpot : IZLinkSpot
+    {
+        if (string.IsNullOrWhiteSpace(spotName))
+        {
+            throw new ZLinkConfigurationException("Spot factory name must not be empty.");
+        }
+
+        if (!registration.SpotFactories.TryAdd(spotName, typeof(TSpot)))
+        {
+            throw new ZLinkConfigurationException(
+                $"Duplicate SPOT factory '{spotName}' on node '{registration.SpotNodeName}'.");
+        }
+    }
+
+    public void AddEntrySpot<TEntrySpot>()
+        where TEntrySpot : IZLinkEntrySpot
+    {
+        if (registration.EntrySpotType is not null)
+        {
+            throw new ZLinkConfigurationException(
+                $"Duplicate Entry Spot registry on node '{registration.SpotNodeName}'.");
+        }
+
+        registration.EntrySpotType = typeof(TEntrySpot);
+    }
+}
+
+internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapabilityRegistration registration)
+    : ISpotRouterCapabilityBuilder
+{
+    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
+    {
+        configure(registration.SocketConfig);
+    }
+
+    public void ConfigureRouting(Action<IZLinkRouteConfig> configure)
+    {
+        configure(registration.RoutingConfig);
+    }
+
+    public void UseManualConnections(Action<ISpotRouterConnections> configure)
+    {
+        configure(new ZLinkMutableConnections(registration.ManualConnections));
+    }
+}
+
+internal sealed class ZLinkSpotPubSubCapabilityBuilder(ZLinkSpotPubSubCapabilityRegistration registration)
+    : ISpotPubSubCapabilityBuilder
+{
+    public void ConfigurePublisherConfig(Action<IZLinkSpotPublisherConfig> configure)
+    {
+        configure(registration.PublisherConfig);
+    }
+
+    public void ConfigureSubscriberConfig(Action<IZLinkSpotSubscriberConfig> configure)
+    {
+        configure(registration.SubscriberConfig);
+    }
+
+    public void UseManualConnections(Action<ISpotPubSubConnections> configure)
+    {
+        configure(new ZLinkMutableConnections(registration.ManualConnections));
+    }
+}
+
+internal sealed class ZLinkSpotPublisherClientCapabilityBuilder(ZLinkSpotPublisherClientRegistration registration)
+    : ISpotPublisherClientCapabilityBuilder
+{
+    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
+    {
+        configure(registration.SocketConfig);
+    }
+
+    public void UseManualConnections(Action<ISpotPublisherConnections> configure)
+    {
+        configure(new ZLinkMutableConnections(registration.ManualConnections));
+    }
+}
+
+internal sealed class ZLinkSpotChannelClientCapabilityBuilder(ZLinkSpotChannelClientRegistration registration)
+    : ISpotChannelClientCapabilityBuilder
+{
+    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
+    {
+        configure(registration.SocketConfig);
+    }
+
+    public void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure)
+    {
+        configure(registration.RoutingConfig);
+    }
+
+    public void UseManualConnections(Action<IChannelClientConnections> configure)
+    {
+        configure(new ZLinkMutableConnections(registration.ManualConnections));
+    }
+}

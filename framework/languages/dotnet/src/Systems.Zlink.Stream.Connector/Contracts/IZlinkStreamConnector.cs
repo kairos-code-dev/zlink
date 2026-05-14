@@ -1,5 +1,3 @@
-using Systems.Zlink.Stream.Connector.Contracts.Calls;
-
 namespace Systems.Zlink.Stream.Connector.Contracts;
 
 public interface IZlinkStreamConnector : IAsyncDisposable

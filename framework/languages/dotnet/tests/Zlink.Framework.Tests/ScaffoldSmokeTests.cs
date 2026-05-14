@@ -1,5 +1,6 @@
 using System.Reflection;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Assembly;
 
 namespace Zlink.Framework.Tests;
 

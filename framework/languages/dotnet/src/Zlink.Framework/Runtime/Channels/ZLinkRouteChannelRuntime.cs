@@ -30,7 +30,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _taskRunner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), _stopSource.Token);
         _submitter = new ZLinkAsyncSubmitter(
             router.OnSendReady,
-            registration.SocketOptions.SendTimeout,
+            registration.SocketConfig.SendTimeout,
             _stopSource.Token);
         _connections = new ZLinkRouteConnectionSet(router);
         _receivePump = new ZLinkRouteReceivePump(

@@ -95,7 +95,7 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
             publisher,
             new ZLinkAsyncSubmitter(
                 publisher.OnSendReady,
-                attached.SocketOptions.SendTimeout,
+                attached.SocketConfig.SendTimeout,
                 stopToken));
 
         if (attached.ManualConnections.Count > 0)

@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Contracts.Handlers;
 
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-public sealed class ZLinkHandlerGroupAttribute(string groupName) : Attribute
+public abstract class ZLinkHandlerGroupAttribute(string groupName) : Attribute
 {
     public string GroupName { get; } = groupName;
 }

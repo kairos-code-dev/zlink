@@ -88,12 +88,12 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal RoutingId ResolveSessionRouterId(string routerChannelId)
     {
         if (!_registration.RouteChannels.TryGetValue(routerChannelId, out var routed)
-            || routed.RoutingOptions.RoutingId.Size == 0)
+            || routed.RoutingConfig.RoutingId.Size == 0)
         {
             throw new InvalidOperationException($"Route channel '{routerChannelId}' must configure a routing id.");
         }
 
-        return routed.RoutingOptions.RoutingId;
+        return routed.RoutingConfig.RoutingId;
     }
 
     internal void BindSessionActor(

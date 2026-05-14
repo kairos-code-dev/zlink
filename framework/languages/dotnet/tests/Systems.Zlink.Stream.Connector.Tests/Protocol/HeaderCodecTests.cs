@@ -10,7 +10,7 @@ using System.Text.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts.Calls;
 using Systems.Zlink.Stream.Connector.Runtime;
-using Systems.Zlink.Stream.Connector.Protocol.Framing;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
 
 

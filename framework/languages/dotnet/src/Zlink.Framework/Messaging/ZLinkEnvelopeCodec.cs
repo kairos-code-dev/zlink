@@ -32,11 +32,9 @@ internal static class ZLinkEnvelopeCodec
         object? body,
         Type? bodyType)
     {
-        return new[]
-        {
+        return ZLinkMessageParts.Create(
             EncodeHeader(header),
-            EncodeBody(body, bodyType)
-        };
+            EncodeBody(body, bodyType));
     }
 
     public static Message EncodeHeader(ZLinkEnvelopeHeader header)
@@ -93,6 +91,11 @@ internal static class ZLinkEnvelopeCodec
 
     public static object? DecodeBody(Message bodyMessage, Type bodyType)
     {
+        if (bodyType == typeof(ReadOnlyMemory<byte>))
+        {
+            return bodyMessage.AsReadOnlyMemory();
+        }
+
         if (bodyMessage.Size == 0)
         {
             return bodyType.IsValueType

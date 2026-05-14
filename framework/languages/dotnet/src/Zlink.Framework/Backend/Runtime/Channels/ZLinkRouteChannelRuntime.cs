@@ -10,6 +10,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     private readonly ZLinkRouteConnectionSet _connections;
     private readonly ZLinkRouteReceivePump _receivePump;
     private readonly CancellationTokenSource _stopSource;
+    private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private readonly IZLinkBackendDiscovery? _discovery;
     private Task? _receiveTask;
 
@@ -26,6 +27,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _router = router;
         _discovery = discovery;
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(stopToken);
+        _taskRunner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), _stopSource.Token);
         _submitter = new ZLinkAsyncSubmitter(
             router.OnSendReady,
             registration.SocketOptions.SendTimeout,
@@ -45,7 +47,9 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
 
     public void Start()
     {
-        _receiveTask = Task.Run(() => _receivePump.RunAsync(_stopSource.Token), CancellationToken.None);
+        _receiveTask = _taskRunner.Run(
+            $"route-channel:{RouterChannelId}",
+            ct => new ValueTask(_receivePump.RunAsync(ct)));
     }
 
     public void Connect(string endpoint)

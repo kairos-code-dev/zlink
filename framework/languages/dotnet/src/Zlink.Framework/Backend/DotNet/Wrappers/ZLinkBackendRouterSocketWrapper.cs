@@ -70,13 +70,10 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        var operation = nativeSocket.Send(routingId).Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
-
-        return operation.Flags(flags).Submit();
+        return nativeSocket.Send(routingId)
+            .Messages(parts)
+            .Flags(flags)
+            .Submit();
     }
 
     public bool Request(
@@ -104,11 +101,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
         SendFlags flags,
         TimeSpan? timeout)
     {
-        var operation = nativeSocket.Request(routingId).Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
+        var operation = nativeSocket.Request(routingId).Messages(parts);
 
         if (timeout is { } value)
         {
@@ -133,13 +126,9 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
         ulong requestSeq,
         IReadOnlyList<Message> parts)
     {
-        var operation = nativeSocket.Reply(routingId, requestSeq).Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
-
-        operation.Submit();
+        nativeSocket.Reply(routingId, requestSeq)
+            .Messages(parts)
+            .Submit();
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

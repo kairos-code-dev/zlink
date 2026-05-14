@@ -72,11 +72,7 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         SendFlags flags,
         TimeSpan? timeout)
     {
-        var operation = nativeSpot.RequestChannel(channelName).Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
+        var operation = nativeSpot.RequestChannel(channelName).Messages(parts);
 
         if (timeout is { } value)
         {
@@ -102,13 +98,10 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        var operation = nativeSpot.SendChannel(channelName).Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
-
-        return operation.Flags(flags).Submit();
+        return nativeSpot.SendChannel(channelName)
+            .Messages(parts)
+            .Flags(flags)
+            .Submit();
     }
 
     public bool Publish(
@@ -127,13 +120,10 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        var operation = nativeSpot.Publish(topic).Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
-
-        return operation.Flags(flags).Submit();
+        return nativeSpot.Publish(topic)
+            .Messages(parts)
+            .Flags(flags)
+            .Submit();
     }
 
     public bool SendToSpot(
@@ -154,13 +144,10 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        var operation = nativeSpot.SendToSpot(targetRid, spotRid).Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
-
-        return operation.Flags(flags).Submit();
+        return nativeSpot.SendToSpot(targetRid, spotRid)
+            .Messages(parts)
+            .Flags(flags)
+            .Submit();
     }
 
     public bool RequestToSpot(
@@ -190,11 +177,7 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         SendFlags flags,
         TimeSpan? timeout)
     {
-        var operation = nativeSpot.RequestToSpot(targetRid, spotRid).Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
+        var operation = nativeSpot.RequestToSpot(targetRid, spotRid).Messages(parts);
 
         if (timeout is { } value)
         {
@@ -242,13 +225,9 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         IReadOnlyList<Message> parts)
     {
         var nativeRequest = (ActorJoinRequest)request.NativeRequest!;
-        var operation = nativeSpot.ReplyActorJoin(nativeRequest, accepted);
-        foreach (var part in parts)
-        {
-            operation = operation.Message(part);
-        }
-
-        operation.Submit();
+        nativeSpot.ReplyActorJoin(nativeRequest, accepted)
+            .Messages(parts)
+            .Submit();
     }
 
     public ValueTask DisposeAsync() => nativeSpot.DisposeAsync();

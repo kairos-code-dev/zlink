@@ -2,17 +2,28 @@ using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Core;
 
-internal sealed class ZLinkFrameworkRuntimeState(
-    IZLinkBackendContext context,
-    ZLinkFrameworkRegistration registration) : IAsyncDisposable
+internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
 {
-    public IZLinkBackendContext Context { get; } = context;
+    public ZLinkFrameworkRuntimeState(
+        IZLinkBackendContext context,
+        ZLinkFrameworkRegistration registration)
+    {
+        Context = context;
+        Registration = registration;
+        TaskRunner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            StopTokenSource.Token);
+    }
 
-    public ZLinkFrameworkRegistration Registration { get; } = registration;
+    public IZLinkBackendContext Context { get; }
+
+    public ZLinkFrameworkRegistration Registration { get; }
 
     public object SyncRoot { get; } = new();
 
     public CancellationTokenSource StopTokenSource { get; } = new();
+
+    public ZLinkRuntimeTaskRunner TaskRunner { get; }
 
     public Dictionary<string, ZLinkChannelRuntimeBundle> ServerBundles { get; } = new(StringComparer.Ordinal);
 

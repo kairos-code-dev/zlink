@@ -195,15 +195,17 @@ internal interface IZLinkBackendStreamSocket : IZLinkBackendSocket
 
     void DisconnectPeer(RoutingId routingId);
 
-    void BindActor(
+    ValueTask BindActorAsync(
         RoutingId sessionRid,
         ZLinkBackendActorRef actor,
-        TimeSpan timeout);
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
 
-    void UnbindActor(
+    ValueTask UnbindActorAsync(
         RoutingId sessionRid,
         string actorId,
-        TimeSpan timeout);
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
 
     bool SendBoundActor(
         RoutingId sessionRid,
@@ -293,14 +295,16 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         RequestCallback callback,
         TimeSpan? timeout);
 
-    void LeaveActor(
+    ValueTask LeaveActorAsync(
         ZLinkBackendActorRef actor,
         RoutingId currentSpotRid,
-        TimeSpan timeout);
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
 
-    void DestroyActor(
+    ValueTask DestroyActorAsync(
         ZLinkBackendActorRef actor,
-        TimeSpan timeout);
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
 
 }
 

@@ -29,6 +29,11 @@ internal static class ZLinkStreamPacketPayloadCodec
             return new ZlinkStreamEncodedBody(header.Codec, payload);
         }
 
+        if (messageType == typeof(ReadOnlyMemory<byte>))
+        {
+            return payload;
+        }
+
         if (header.Codec == ZlinkStreamCodec.Raw)
         {
             if (messageType == typeof(string))

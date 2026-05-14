@@ -10,7 +10,7 @@ internal sealed class ZLinkSpotNodeInitializer(
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration)
 {
-    public void Initialize(ZLinkFrameworkRuntimeState state)
+    public async ValueTask InitializeAsync(ZLinkFrameworkRuntimeState state)
     {
         if (registration.SpotNodes.Count == 0)
         {
@@ -40,7 +40,7 @@ internal sealed class ZLinkSpotNodeInitializer(
             ConnectManualPeers(spotNodeRegistration, nodeRuntime);
             InitializePublisherBundles(spotNodeRegistration, nodeRuntime);
 
-            nodeRuntime.InitializeEntrySpot();
+            await nodeRuntime.InitializeEntrySpotAsync().ConfigureAwait(false);
             state.SpotNodes.Add(spotNodeRegistration.SpotNodeName, nodeRuntime);
         }
     }

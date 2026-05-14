@@ -140,7 +140,12 @@ internal sealed class ZLinkActorSessionManager(
         {
             try
             {
-                node.LeaveActor(actorRef, currentSpotRid, runtime.Registration.DefaultTimeout);
+                await node.LeaveActorAsync(
+                        actorRef,
+                        currentSpotRid,
+                        runtime.Registration.DefaultTimeout,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (ZlinkException)
             {
@@ -173,7 +178,11 @@ internal sealed class ZLinkActorSessionManager(
             && state.NativeActorRef is { } actorRef
             && stream is ZLinkManagedStream managedStream)
         {
-            managedStream.BindActor(actorRef, runtime.Registration.DefaultTimeout);
+            await managedStream.BindActorAsync(
+                    actorRef,
+                    runtime.Registration.DefaultTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -221,7 +230,11 @@ internal sealed class ZLinkActorSessionManager(
         {
             try
             {
-                managedStream.UnbindActor(actor.ActorId, runtime.Registration.DefaultTimeout);
+                await managedStream.UnbindActorAsync(
+                        actor.ActorId,
+                        runtime.Registration.DefaultTimeout,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (ZlinkException)
             {

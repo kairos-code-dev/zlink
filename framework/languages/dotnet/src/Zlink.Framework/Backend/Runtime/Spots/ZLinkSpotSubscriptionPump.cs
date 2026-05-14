@@ -39,9 +39,12 @@ internal sealed class ZLinkSpotSubscriptionPump
             return;
         }
 
-        _task = Task.Run(
-            () => RunAsync(cancellationToken, dispatchAsync),
-            CancellationToken.None);
+        var taskRunner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            cancellationToken);
+        _task = taskRunner.Run(
+            "spot-subscription-pump",
+            ct => new ValueTask(RunAsync(ct, dispatchAsync)));
     }
 
     public async ValueTask StopAsync()

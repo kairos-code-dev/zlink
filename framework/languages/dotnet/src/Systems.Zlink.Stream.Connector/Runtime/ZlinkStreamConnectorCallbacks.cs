@@ -1,6 +1,6 @@
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
-internal sealed class ZlinkStreamConnectorCallbacks
+internal sealed class ZlinkStreamConnectorCallbacks(ZlinkStreamTaskRunner taskRunner)
 {
     private readonly object _gate = new();
     private Func<ZlinkStreamError, CancellationToken, ValueTask>? _errorReceived;
@@ -65,25 +65,27 @@ internal sealed class ZlinkStreamConnectorCallbacks
         Func<ZlinkStreamError, TResult> failure,
         Action<TResult> callback)
     {
-        _ = Task.Run(async () =>
-        {
-            try
+        taskRunner.RunDetached(
+            "stream-request-callback",
+            async _ =>
             {
-                var reply = await request().ConfigureAwait(false);
-                callback(success(reply));
-            }
-            catch (ZlinkStreamException ex)
-            {
-                callback(failure(ex.Error));
-            }
-            catch (Exception ex)
-            {
-                callback(failure(new ZlinkStreamError(
-                    ZlinkStreamErrorCode.SendFailed,
-                    ex.Message,
-                    ex)));
-            }
-        });
+                try
+                {
+                    var reply = await request().ConfigureAwait(false);
+                    callback(success(reply));
+                }
+                catch (ZlinkStreamException ex)
+                {
+                    callback(failure(ex.Error));
+                }
+                catch (Exception ex)
+                {
+                    callback(failure(new ZlinkStreamError(
+                        ZlinkStreamErrorCode.SendFailed,
+                        ex.Message,
+                        ex)));
+                }
+            });
     }
 
     private async ValueTask InvokeUserCallbackAsync(

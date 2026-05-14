@@ -17,7 +17,14 @@ internal sealed class ZLinkRuntimeTaskRunner
         string name,
         Func<CancellationToken, ValueTask> callback)
     {
-        _ = Task.Factory.StartNew(
+        _ = Run(name, callback);
+    }
+
+    public Task Run(
+        string name,
+        Func<CancellationToken, ValueTask> callback)
+    {
+        return Task.Factory.StartNew(
             static state => RunDetachedCoreAsync((TaskState)state!),
             new TaskState(name, callback, _errorSink, _shutdownToken),
             CancellationToken.None,

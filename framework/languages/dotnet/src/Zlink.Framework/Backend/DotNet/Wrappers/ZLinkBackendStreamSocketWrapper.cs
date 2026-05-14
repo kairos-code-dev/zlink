@@ -39,18 +39,10 @@ internal sealed class ZLinkBackendStreamSocketWrapper(StreamSocket nativeSocket)
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        if (parts.Count == 0)
-        {
-            throw new ArgumentException("At least one message part is required.", nameof(parts));
-        }
-
-        var operation = nativeSocket.Send(routingId).Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
-
-        return operation.Flags(flags).Submit();
+        return nativeSocket.Send(routingId)
+            .Messages(parts)
+            .Flags(flags)
+            .Submit();
     }
 
     public void DisconnectPeer(RoutingId routingId)
@@ -58,28 +50,28 @@ internal sealed class ZLinkBackendStreamSocketWrapper(StreamSocket nativeSocket)
         nativeSocket.DisconnectRid(routingId);
     }
 
-    public void BindActor(
+    public async ValueTask BindActorAsync(
         RoutingId sessionRid,
         ZLinkBackendActorRef actor,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
-        nativeSocket.BindActor(sessionRid, actor.ToNative())
+        await nativeSocket.BindActor(sessionRid, actor.ToNative())
             .Timeout(timeout)
-            .SubmitAsync()
-            .GetAwaiter()
-            .GetResult();
+            .SubmitAsync(cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    public void UnbindActor(
+    public async ValueTask UnbindActorAsync(
         RoutingId sessionRid,
         string actorId,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
-        nativeSocket.UnbindActor(sessionRid, actorId)
+        await nativeSocket.UnbindActor(sessionRid, actorId)
             .Timeout(timeout)
-            .SubmitAsync()
-            .GetAwaiter()
-            .GetResult();
+            .SubmitAsync(cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public bool SendBoundActor(
@@ -88,18 +80,10 @@ internal sealed class ZLinkBackendStreamSocketWrapper(StreamSocket nativeSocket)
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        if (parts.Count == 0)
-        {
-            throw new ArgumentException("At least one message part is required.", nameof(parts));
-        }
-
-        var operation = nativeSocket.SendBoundActor(sessionRid, actorId).Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
-
-        return operation.Flags(flags).Submit();
+        return nativeSocket.SendBoundActor(sessionRid, actorId)
+            .Messages(parts)
+            .Flags(flags)
+            .Submit();
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

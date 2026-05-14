@@ -53,7 +53,7 @@ internal sealed class ZLinkChannelBundleFactory(
         }
         catch
         {
-            _ = Task.Run(async () => await bundle.DisposeAsync().ConfigureAwait(false));
+            _ = DisposeFailedBundleAsync(bundle);
             throw;
         }
     }
@@ -155,5 +155,10 @@ internal sealed class ZLinkChannelBundleFactory(
         return channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh
             ? ZLinkAutoConnectType.DealerMesh
             : ZLinkAutoConnectType.ClientServer;
+    }
+
+    private static async ValueTask DisposeFailedBundleAsync(ZLinkChannelRuntimeBundle bundle)
+    {
+        await bundle.DisposeAsync().ConfigureAwait(false);
     }
 }

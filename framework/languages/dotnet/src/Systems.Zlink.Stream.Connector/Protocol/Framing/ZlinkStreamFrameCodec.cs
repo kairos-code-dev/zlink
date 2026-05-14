@@ -1,17 +1,4 @@
 using System.Buffers.Binary;
-using System.Collections.Concurrent;
-
-using System.Net.Security;
-
-using System.Net.Sockets;
-using System.Net.WebSockets;
-using System.Security.Authentication;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Text.Json;
-using System.Threading.Channels;
-
-using K4os.Compression.LZ4;
 
 namespace Systems.Zlink.Stream.Connector.Protocol.Framing;
 
@@ -39,9 +26,23 @@ internal static class ZlinkStreamFrameCodec
     {
         ValidateSendFrame(headerLength, bodyLength, int.MaxValue);
         var prefix = new byte[6];
-        BinaryPrimitives.WriteUInt16BigEndian(prefix.AsSpan(0, 2), (ushort)headerLength);
-        BinaryPrimitives.WriteUInt32BigEndian(prefix.AsSpan(2, 4), (uint)bodyLength);
+        WritePrefix(prefix, headerLength, bodyLength);
         return prefix;
+    }
+
+    public static void WritePrefix(
+        Span<byte> destination,
+        int headerLength,
+        int bodyLength)
+    {
+        if (destination.Length < 6)
+        {
+            throw new ArgumentException("Frame prefix destination must be at least 6 bytes.", nameof(destination));
+        }
+
+        ValidateSendFrame(headerLength, bodyLength, int.MaxValue);
+        BinaryPrimitives.WriteUInt16BigEndian(destination[..2], (ushort)headerLength);
+        BinaryPrimitives.WriteUInt32BigEndian(destination.Slice(2, 4), (uint)bodyLength);
     }
 
     public static ReadOnlyMemory<byte> Encode(
@@ -53,11 +54,31 @@ internal static class ZlinkStreamFrameCodec
 
         var totalSize = checked(2 + 4 + header.Length + body.Length);
         var frame = new byte[totalSize];
-        BinaryPrimitives.WriteUInt16BigEndian(frame.AsSpan(0, 2), (ushort)header.Length);
-        BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(2, 4), (uint)body.Length);
-        header.Span.CopyTo(frame.AsSpan(6));
-        body.Span.CopyTo(frame.AsSpan(6 + header.Length));
+        WriteFrame(frame, header, body, maxFrameSize);
         return frame;
+    }
+
+    public static int GetFrameSize(int headerLength, int bodyLength, int maxFrameSize)
+    {
+        ValidateSendFrame(headerLength, bodyLength, maxFrameSize);
+        return checked(2 + 4 + headerLength + bodyLength);
+    }
+
+    public static void WriteFrame(
+        Span<byte> destination,
+        ReadOnlyMemory<byte> header,
+        ReadOnlyMemory<byte> body,
+        int maxFrameSize)
+    {
+        var totalSize = GetFrameSize(header.Length, body.Length, maxFrameSize);
+        if (destination.Length < totalSize)
+        {
+            throw new ArgumentException("Frame destination is smaller than the encoded frame.", nameof(destination));
+        }
+
+        WritePrefix(destination[..6], header.Length, body.Length);
+        header.Span.CopyTo(destination[6..]);
+        body.Span.CopyTo(destination[(6 + header.Length)..]);
     }
 
     public static async ValueTask<ZlinkStreamFrame> ReadAsync(

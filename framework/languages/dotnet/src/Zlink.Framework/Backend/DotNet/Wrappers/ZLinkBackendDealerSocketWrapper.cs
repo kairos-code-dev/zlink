@@ -45,13 +45,10 @@ internal sealed class ZLinkBackendDealerSocketWrapper(DealerSocket nativeSocket)
 
     public bool Send(IReadOnlyList<Message> parts, SendFlags flags)
     {
-        var operation = nativeSocket.Send().Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
-
-        return operation.Flags(flags).Submit();
+        return nativeSocket.Send()
+            .Messages(parts)
+            .Flags(flags)
+            .Submit();
     }
 
     public bool Request(
@@ -77,11 +74,7 @@ internal sealed class ZLinkBackendDealerSocketWrapper(DealerSocket nativeSocket)
         SendFlags flags,
         TimeSpan? timeout)
     {
-        var operation = nativeSocket.Request().Message(parts[0]);
-        for (var index = 1; index < parts.Count; index++)
-        {
-            operation = operation.Message(parts[index]);
-        }
+        var operation = nativeSocket.Request().Messages(parts);
 
         if (timeout is { } value)
         {

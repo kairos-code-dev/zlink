@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal sealed class ZlinkStreamFrameSender(
@@ -58,9 +60,22 @@ internal sealed class ZlinkStreamFrameSender(
             {
                 if (options.EnableSegmentedSend && connection.CanWriteSegments)
                 {
-                    await connection.WriteAsync(
-                        ZlinkStreamFrameCodec.EncodePrefix(header.Length, body.Length),
-                        cancellationToken).ConfigureAwait(false);
+                    var prefix = ArrayPool<byte>.Shared.Rent(6);
+                    try
+                    {
+                        ZlinkStreamFrameCodec.WritePrefix(
+                            prefix.AsSpan(0, 6),
+                            header.Length,
+                            body.Length);
+                        await connection.WriteAsync(
+                            prefix.AsMemory(0, 6),
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(prefix);
+                    }
+
                     if (header.Length > 0)
                     {
                         await connection.WriteAsync(header, cancellationToken).ConfigureAwait(false);
@@ -73,8 +88,26 @@ internal sealed class ZlinkStreamFrameSender(
                 }
                 else
                 {
-                    var frame = ZlinkStreamFrameCodec.Encode(header, body, options.MaxSendFrameSize);
-                    await connection.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
+                    var frameSize = ZlinkStreamFrameCodec.GetFrameSize(
+                        header.Length,
+                        body.Length,
+                        options.MaxSendFrameSize);
+                    var frame = ArrayPool<byte>.Shared.Rent(frameSize);
+                    try
+                    {
+                        ZlinkStreamFrameCodec.WriteFrame(
+                            frame.AsSpan(0, frameSize),
+                            header,
+                            body,
+                            options.MaxSendFrameSize);
+                        await connection.WriteAsync(
+                            frame.AsMemory(0, frameSize),
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(frame);
+                    }
                 }
             }
             finally

@@ -183,27 +183,8 @@ public interface IZLinkSpotNodeBuilder
         where TEntrySpot : IZLinkEntrySpot;
 }
 
-public interface IZLinkSpotMeshNodeBuilder
+public interface IZLinkSpotMeshNodeBuilder : IZLinkSpotNodeBuilder
 {
-    void Bind(string endpoint);
-
-    void EnableRouter(Action<ISpotRouterCapabilityBuilder>? configure = null);
-
-    void EnablePubSub(Action<ISpotPubSubCapabilityBuilder>? configure = null);
-
-    void AttachClientServerChannelClient(
-        string channelName,
-        Action<ISpotChannelClientCapabilityBuilder>? configure = null);
-
-    void AttachSpotMeshPublisherClient(
-        string channelName,
-        Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
-
-    void AddSpotFactory<TSpot>(string spotName)
-        where TSpot : IZLinkSpot;
-
-    void AddEntrySpot<TEntrySpot>()
-        where TEntrySpot : IZLinkEntrySpot;
 }
 
 public interface IZLinkSpotMeshBuilder

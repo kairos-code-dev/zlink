@@ -75,7 +75,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public IZLinkBackendDiscovery? SpotDiscovery { get; set; }
 
-    public void InitializeEntrySpot()
+    public async ValueTask InitializeEntrySpotAsync()
     {
         _entrySpot = Node.EntrySpot();
         var entrySpot = _entrySpot;
@@ -86,7 +86,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 _registration.EntrySpotType,
                 Node.RoutingId);
             _entrySpotActivation.Configure();
-            _entrySpotActivation.InitializeAsync(_stopSource.Token).AsTask().GetAwaiter().GetResult();
+            await _entrySpotActivation.InitializeAsync(_stopSource.Token)
+                .ConfigureAwait(false);
         }
 
         var runtime = _runtime;
@@ -188,7 +189,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             return;
         }
 
-        _discoveryPeerReconciliationTask = Task.Run(ReconcileDiscoveryPeersAsync);
+        _discoveryPeerReconciliationTask = _taskRunner.Run(
+            $"spot-discovery-reconcile:{Name}",
+            _ => new ValueTask(ReconcileDiscoveryPeersAsync()));
     }
 
     public bool HasPublisherClient(string channelName)

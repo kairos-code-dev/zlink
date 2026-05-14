@@ -13,6 +13,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     private readonly Queue<(string LocalAddr, string RemoteAddr)> _pendingConnectionMetadata = [];
     private readonly object _gate = new();
     private readonly CancellationTokenSource _stopSource = new();
+    private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private Task? _monitorLoop;
     private bool _stopping;
 
@@ -21,13 +22,15 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         IServiceProvider services,
         IZLinkBackendStreamSocket socket,
         IZLinkBackendSocketMonitor monitor,
-        Type? headerSessionType)
+        Type? headerSessionType,
+        ZLinkRuntimeTaskRunner taskRunner)
     {
         NodeName = nodeName;
         _services = services;
         Socket = socket;
         Monitor = monitor;
         _headerSessionType = headerSessionType;
+        _taskRunner = taskRunner;
     }
 
     public string NodeName { get; }
@@ -44,9 +47,9 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             return 0;
         });
 
-        _monitorLoop = Task.Run(
-            () => RunMonitorLoopAsync(_stopSource.Token),
-            CancellationToken.None);
+        _monitorLoop = _taskRunner.Run(
+            $"stream-monitor:{NodeName}",
+            _ => new ValueTask(RunMonitorLoopAsync(_stopSource.Token)));
     }
 
     public async ValueTask DisposeAsync()

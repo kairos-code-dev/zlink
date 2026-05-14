@@ -15,9 +15,9 @@ internal sealed class ZLinkSpotRuntimeManager(
         registration);
     private readonly ZLinkEntrySpotActorRouter _entrySpotActors = new();
 
-    public void InitializeSpotNodes(ZLinkFrameworkRuntimeState state)
+    public async ValueTask InitializeSpotNodesAsync(ZLinkFrameworkRuntimeState state)
     {
-        _nodeInitializer.Initialize(state);
+        await _nodeInitializer.InitializeAsync(state).ConfigureAwait(false);
     }
 
     public ZLinkSpotPublisherBundle GetPublisherBundle(

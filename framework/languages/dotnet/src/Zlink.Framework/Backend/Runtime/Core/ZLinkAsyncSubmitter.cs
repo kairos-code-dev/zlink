@@ -33,10 +33,30 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(message);
         ArgumentNullException.ThrowIfNull(trySubmit);
-        return SubmitAsync(
-            new[] { message },
+
+        cancellationToken.ThrowIfCancellationRequested();
+        _stopToken.ThrowIfCancellationRequested();
+
+        if (TrySubmitNow(message, trySubmit))
+        {
+            message.Dispose();
+            return ValueTask.CompletedTask;
+        }
+
+        var deadline = ResolveDeadline();
+        if (deadline is DateTimeOffset nowDeadline && nowDeadline <= DateTimeOffset.UtcNow)
+        {
+            message.Dispose();
+            throw new TimeoutException("ZLink async submit timed out before the socket became writable.");
+        }
+
+        var pending = PendingSubmit.CreateCommand(
+            new SingleMessageParts(message),
             parts => trySubmit(parts[0]),
-            cancellationToken);
+            deadline,
+            Drain);
+        EnqueuePending(pending, cancellationToken);
+        return new ValueTask(pending.Task);
     }
 
     public ValueTask SubmitAsync(
@@ -76,10 +96,41 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(message);
         ArgumentNullException.ThrowIfNull(trySubmit);
-        return SubmitRequestAsync<T>(
-            new[] { message },
-            (parts, complete, fail) => trySubmit(parts[0], complete, fail),
-            cancellationToken);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        _stopToken.ThrowIfCancellationRequested();
+
+        var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool Submit(Message pending)
+        {
+            return trySubmit(
+                pending,
+                result => completion.TrySetResult(result),
+                exception => completion.TrySetException(exception));
+        }
+
+        if (TrySubmitNow(message, Submit))
+        {
+            message.Dispose();
+            return AwaitResultAsync<T>(completion.Task);
+        }
+
+        var deadline = ResolveDeadline();
+        if (deadline is DateTimeOffset nowDeadline && nowDeadline <= DateTimeOffset.UtcNow)
+        {
+            message.Dispose();
+            throw new TimeoutException("ZLink async submit timed out before the socket became writable.");
+        }
+
+        var parts = new SingleMessageParts(message);
+        var pendingSubmit = PendingSubmit.CreateRequest(
+            parts,
+            pending => Submit(pending[0]),
+            deadline,
+            Drain,
+            completion);
+        EnqueuePending(pendingSubmit, cancellationToken);
+        return AwaitResultAsync<T>(pendingSubmit.Task);
     }
 
     public ValueTask<T> SubmitRequestAsync<T>(
@@ -246,6 +297,18 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         }
     }
 
+    private bool TrySubmitNow(Message message, Func<Message, bool> trySubmit)
+    {
+        try
+        {
+            return trySubmit(message);
+        }
+        catch (ZlinkException error) when (IsRetryableSubmitFailure(error))
+        {
+            return false;
+        }
+    }
+
     private static bool IsRetryableSubmitFailure(ZlinkException error)
     {
         if (error is ZlinkSubmitException
@@ -317,4 +380,22 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         }
     }
 
+    private sealed class SingleMessageParts(Message message) : IReadOnlyList<Message>
+    {
+        public int Count => 1;
+
+        public Message this[int index] => index == 0
+            ? message
+            : throw new ArgumentOutOfRangeException(nameof(index));
+
+        public IEnumerator<Message> GetEnumerator()
+        {
+            yield return message;
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+    }
 }

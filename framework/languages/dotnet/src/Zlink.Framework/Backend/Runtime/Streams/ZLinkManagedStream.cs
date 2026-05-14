@@ -54,18 +54,22 @@ internal sealed class ZLinkManagedStream : IZLinkStream
         RemoteAddr = remoteAddr;
     }
 
-    internal void BindActor(
+    internal async ValueTask BindActorAsync(
         ZLinkBackendActorRef actor,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
-        _socket.BindActor(_routingId, actor, timeout);
+        await _socket.BindActorAsync(_routingId, actor, timeout, cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    internal void UnbindActor(
+    internal async ValueTask UnbindActorAsync(
         string actorId,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
-        _socket.UnbindActor(_routingId, actorId, timeout);
+        await _socket.UnbindActorAsync(_routingId, actorId, timeout, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal bool SendBoundActor(

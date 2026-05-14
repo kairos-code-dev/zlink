@@ -409,6 +409,7 @@ public sealed class test_socket_surface
             typeof(MonitorEventType).FullName!,
             typeof(MonitorSnapshot).FullName!,
             typeof(MonitorSourceKind).FullName!,
+            typeof(OperationMessageExtensions).FullName!,
             typeof(PairSocket).FullName!,
             typeof(PollEvent).FullName!,
             typeof(PollEventFlags).FullName!,

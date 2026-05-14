@@ -16,7 +16,9 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         });
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
-    private readonly ZlinkStreamConnectorCallbacks _callbacks = new();
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private readonly ZlinkStreamTaskRunner _taskRunner;
+    private readonly ZlinkStreamConnectorCallbacks _callbacks;
     private readonly IZlinkStreamHeaderCodec _headerCodec;
     private readonly IZlinkStreamCompressionCodec? _compressionCodec;
     private readonly IZlinkStreamPacketNameResolver _nameResolver;
@@ -32,6 +34,8 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
     {
         Options = options ?? throw new ArgumentNullException(nameof(options));
         ZlinkStreamTransportFactory.ValidateOptions(options);
+        _taskRunner = new ZlinkStreamTaskRunner(_lifetimeCts.Token);
+        _callbacks = new ZlinkStreamConnectorCallbacks(_taskRunner);
 
         _headerCodec = options.HeaderCodec ?? new ZlinkStreamHeaderCodec();
         _compressionCodec = options.CompressionCodec
@@ -57,7 +61,9 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
             _handlerQueue,
             _frameSender,
             _callbacks);
-        _handlerPump = Task.Run(_receiveDispatcher.HandlerPumpAsync);
+        _handlerPump = _taskRunner.Run(
+            "stream-handler-pump",
+            _ => new ValueTask(_receiveDispatcher.HandlerPumpAsync()));
     }
 
     public event Func<ZlinkStreamError, CancellationToken, ValueTask>? ErrorReceived
@@ -115,7 +121,9 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
             {
                 _connection = await ZlinkStreamTransportFactory.ConnectAsync(Options, timeoutCts.Token).ConfigureAwait(false);
                 _receiveCts = new CancellationTokenSource();
-                _receiveTask = Task.Run(() => ReceiveLoopAsync(_receiveCts.Token));
+                _receiveTask = _taskRunner.Run(
+                    "stream-receive-loop",
+                    _ => new ValueTask(ReceiveLoopAsync(_receiveCts.Token)));
             }
             catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
@@ -276,10 +284,12 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         }
 
         await CloseAsync().ConfigureAwait(false);
+        _lifetimeCts.Cancel();
         _handlerQueue.Writer.TryComplete();
         await _handlerPump.ConfigureAwait(false);
         _sendGate.Dispose();
         _lifecycleGate.Dispose();
+        _lifetimeCts.Dispose();
     }
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)

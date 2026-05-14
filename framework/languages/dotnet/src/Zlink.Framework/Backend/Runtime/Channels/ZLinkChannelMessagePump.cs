@@ -133,51 +133,21 @@ internal sealed class ZLinkChannelMessagePump(
         {
             var reply = await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
                 .ConfigureAwait(false);
-            var replyHeader = new ZLinkEnvelopeHeader(
-                ZLinkMessageKind.Response,
-                channelName,
-                header.MessageName,
-                ZLinkEnvelopeCodec.DefaultContentType,
-                header.CorrelationId,
-                null,
-                null,
-                null,
-                null);
-            var replyParts = ZLinkEnvelopeCodec.EncodeParts(replyHeader, reply, endpoint.ReplyType);
-            var routingId = received.RoutingId
-                ?? throw new InvalidOperationException("Request reply requires a routing id.");
-            try
-            {
-                router.Reply(routingId, received.RequestSeq ?? 0UL, replyParts);
-            }
-            finally
-            {
-                ZLinkMessageParts.DisposeAll(replyParts);
-            }
+            ReplyRequest(
+                router,
+                received,
+                CreateReplyHeader(ZLinkMessageKind.Response, channelName, header),
+                reply,
+                endpoint.ReplyType);
         }
         catch (Exception ex)
         {
-            var errorHeader = new ZLinkEnvelopeHeader(
-                ZLinkMessageKind.Error,
-                channelName,
-                header.MessageName,
-                ZLinkEnvelopeCodec.DefaultContentType,
-                header.CorrelationId,
+            ReplyRequest(
+                router,
+                received,
+                CreateErrorHeader(channelName, header, ex),
                 null,
-                null,
-                ex.GetType().Name,
-                ex.Message);
-            var replyParts = ZLinkEnvelopeCodec.EncodeParts(errorHeader, null, null);
-            var routingId = received.RoutingId
-                ?? throw new InvalidOperationException("Error reply requires a routing id.");
-            try
-            {
-                router.Reply(routingId, received.RequestSeq ?? 0UL, replyParts);
-            }
-            finally
-            {
-                ZLinkMessageParts.DisposeAll(replyParts);
-            }
+                null);
         }
     }
 
@@ -242,6 +212,60 @@ internal sealed class ZLinkChannelMessagePump(
         return registration.Channels.TryGetValue(channelName, out var channel)
             ? channel.HandlerGroups
             : EmptyGroups;
+    }
+
+    private static void ReplyRequest(
+        IZLinkBackendRouterSocket router,
+        Received received,
+        ZLinkEnvelopeHeader header,
+        object? body,
+        Type? bodyType)
+    {
+        var replyParts = ZLinkEnvelopeCodec.EncodeParts(header, body, bodyType);
+        var routingId = received.RoutingId
+            ?? throw new InvalidOperationException("Request reply requires a routing id.");
+        try
+        {
+            router.Reply(routingId, received.RequestSeq ?? 0UL, replyParts);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(replyParts);
+        }
+    }
+
+    private static ZLinkEnvelopeHeader CreateReplyHeader(
+        ZLinkMessageKind kind,
+        string channelName,
+        ZLinkEnvelopeHeader request)
+    {
+        return new ZLinkEnvelopeHeader(
+            kind,
+            channelName,
+            request.MessageName,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            request.CorrelationId,
+            null,
+            null,
+            null,
+            null);
+    }
+
+    private static ZLinkEnvelopeHeader CreateErrorHeader(
+        string channelName,
+        ZLinkEnvelopeHeader request,
+        Exception exception)
+    {
+        return new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Error,
+            channelName,
+            request.MessageName,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            request.CorrelationId,
+            null,
+            null,
+            exception.GetType().Name,
+            exception.Message);
     }
 
     private static readonly IReadOnlySet<string> EmptyGroups = new HashSet<string>(StringComparer.Ordinal);

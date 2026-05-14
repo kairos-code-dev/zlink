@@ -80,24 +80,24 @@ internal sealed class ZLinkChannelRuntimeManager(
             {
                 var bundle = _bundleFactory.CreateServerBundle(state, adapter, channelName, channel);
                 state.ServerBundles.Add(channelName, bundle);
-                state.ListenerTasks.Add(Task.Run(
-                    () => channelMessagePump.RunServerLoopAsync(
+                state.ListenerTasks.Add(state.TaskRunner.Run(
+                    $"channel-server:{channelName}",
+                    ct => new ValueTask(channelMessagePump.RunServerLoopAsync(
                         channelName,
                         (IZLinkBackendRouterSocket)bundle.Socket,
-                        state.StopTokenSource.Token),
-                    state.StopTokenSource.Token));
+                        ct))));
             }
 
             if (channel.Subscriber is not null)
             {
                 var bundle = _bundleFactory.CreateSubscriberBundle(state, adapter, channelName, channel);
                 state.SubscriberBundles.Add(channelName, bundle);
-                state.ListenerTasks.Add(Task.Run(
-                    () => channelMessagePump.RunSubscriberLoopAsync(
+                state.ListenerTasks.Add(state.TaskRunner.Run(
+                    $"channel-subscriber:{channelName}",
+                    ct => new ValueTask(channelMessagePump.RunSubscriberLoopAsync(
                         channelName,
                         (IZLinkBackendSubscriberSocket)bundle.Socket,
-                        state.StopTokenSource.Token),
-                    state.StopTokenSource.Token));
+                        ct))));
             }
         }
     }

@@ -36,8 +36,8 @@ public sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
         flags = hasRequestSeq ? flags | ZlinkStreamHeaderFlags.HasRequestSeq : flags & ~ZlinkStreamHeaderFlags.HasRequestSeq;
         flags = hasMetadata ? flags | ZlinkStreamHeaderFlags.HasMetadata : flags & ~ZlinkStreamHeaderFlags.HasMetadata;
 
-        var metadataBytes = hasMetadata ? EncodeMetadata(header.Metadata) : Array.Empty<byte>();
-        var size = 3 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.Length + (hasMetadata ? 2 + metadataBytes.Length : 0);
+        var metadataSize = hasMetadata ? CalculateMetadataPayloadSize(header.Metadata) : 0;
+        var size = 3 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.Length + (hasMetadata ? 2 + metadataSize : 0);
         var buffer = new byte[size];
         var offset = 0;
         buffer[offset++] = (byte)header.Kind;
@@ -61,9 +61,9 @@ public sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
 
         if (hasMetadata)
         {
-            BinaryPrimitives.WriteUInt16BigEndian(buffer.AsSpan(offset, 2), checked((ushort)metadataBytes.Length));
+            BinaryPrimitives.WriteUInt16BigEndian(buffer.AsSpan(offset, 2), checked((ushort)metadataSize));
             offset += 2;
-            metadataBytes.CopyTo(buffer.AsSpan(offset));
+            WriteMetadata(header.Metadata, buffer.AsSpan(offset, metadataSize));
         }
 
         return buffer;
@@ -146,24 +146,21 @@ public sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
     internal static int GetMetadataPayloadSize(ZlinkStreamMetadata metadata)
         => metadata.Count == 0 ? 0 : CalculateMetadataPayloadSize(metadata);
 
-    private static byte[] EncodeMetadata(ZlinkStreamMetadata metadata)
+    private static void WriteMetadata(ZlinkStreamMetadata metadata, Span<byte> destination)
     {
-        var buffer = new byte[CalculateMetadataPayloadSize(metadata)];
         var offset = 0;
-        buffer[offset++] = (byte)metadata.Count;
+        destination[offset++] = (byte)metadata.Count;
         foreach (var (key, value) in metadata.Values)
         {
             var keyLength = Encoding.UTF8.GetByteCount(key);
             var valueLength = Encoding.UTF8.GetByteCount(value);
 
-            buffer[offset++] = (byte)keyLength;
-            offset += Encoding.UTF8.GetBytes(key, buffer.AsSpan(offset, keyLength));
-            BinaryPrimitives.WriteUInt16BigEndian(buffer.AsSpan(offset, 2), (ushort)valueLength);
+            destination[offset++] = (byte)keyLength;
+            offset += Encoding.UTF8.GetBytes(key, destination.Slice(offset, keyLength));
+            BinaryPrimitives.WriteUInt16BigEndian(destination.Slice(offset, 2), (ushort)valueLength);
             offset += 2;
-            offset += Encoding.UTF8.GetBytes(value, buffer.AsSpan(offset, valueLength));
+            offset += Encoding.UTF8.GetBytes(value, destination.Slice(offset, valueLength));
         }
-
-        return buffer;
     }
 
     private static int CalculateMetadataPayloadSize(ZlinkStreamMetadata metadata)

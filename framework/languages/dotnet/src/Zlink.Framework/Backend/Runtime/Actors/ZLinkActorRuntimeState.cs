@@ -8,7 +8,8 @@ internal sealed class ZLinkActorRuntimeState
 {
     private readonly ZLinkActorPacketRegistry _packets = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly SemaphoreSlim _dispatchGate = new(1, 1);
+    private readonly ZLinkActorDispatchMailbox _dispatchMailbox = new();
+    private Task<IZLinkActor>? _actorCreationTask;
 
     public string? SessionId { get; set; }
 
@@ -18,13 +19,40 @@ internal sealed class ZLinkActorRuntimeState
 
     public ZLinkSpotActivation? Activation { get; set; }
 
-    public ZLinkActorDispatchState? CurrentDispatch { get; set; }
+    public ZLinkActorDispatchState? CurrentDispatch { get; private set; }
 
     public ZLinkActorContext? Context { get; set; }
 
     public IZLinkActor? Actor { get; set; }
 
     public bool IsConfigured { get; set; }
+
+    public async ValueTask<ZLinkActorCreationOperation> GetOrStartActorCreationAsync(
+        Func<Task<IZLinkActor>> createActor,
+        CancellationToken cancellationToken)
+    {
+        var created = false;
+        var task = await ExecuteLockedAsync(
+            () =>
+            {
+                if (Actor is not null)
+                {
+                    return Task.FromResult(Actor);
+                }
+
+                if (_actorCreationTask is null)
+                {
+                    created = true;
+                    _actorCreationTask = createActor();
+                    _ = ClearActorCreationTaskWhenCompletedAsync(_actorCreationTask);
+                }
+
+                return _actorCreationTask;
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        return new ZLinkActorCreationOperation(task, created);
+    }
 
     public async ValueTask ExecuteLockedAsync(
         Action operation,
@@ -61,18 +89,9 @@ internal sealed class ZLinkActorRuntimeState
         Func<CancellationToken, ValueTask> operation,
         CancellationToken cancellationToken)
     {
-        await _dispatchGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var previousDispatch = CurrentDispatch;
-        CurrentDispatch = new ZLinkActorDispatchState(header);
-        try
-        {
-            await operation(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            CurrentDispatch = previousDispatch;
-            _dispatchGate.Release();
-        }
+        using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
+        using var dispatch = EnterDispatch(header);
+        await operation(cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask<T> ExecuteDispatchAsync<T>(
@@ -80,18 +99,16 @@ internal sealed class ZLinkActorRuntimeState
         Func<CancellationToken, ValueTask<T>> operation,
         CancellationToken cancellationToken)
     {
-        await _dispatchGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var previousDispatch = CurrentDispatch;
+        using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
+        using var dispatch = EnterDispatch(header);
+        return await operation(cancellationToken).ConfigureAwait(false);
+    }
+
+    public DispatchScope EnterDispatch(ZlinkStreamHeader header)
+    {
+        var previous = CurrentDispatch;
         CurrentDispatch = new ZLinkActorDispatchState(header);
-        try
-        {
-            return await operation(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            CurrentDispatch = previousDispatch;
-            _dispatchGate.Release();
-        }
+        return new DispatchScope(this, previous);
     }
 
     public void AddPacket(IZLinkActor actor, Type handlerType, string? messageName)
@@ -210,18 +227,24 @@ internal sealed class ZLinkActorRuntimeState
         IServiceProvider services,
         ZlinkStreamHeader header)
     {
+        if (header.Metadata.Count == 0)
+        {
+            return ZLinkMessageMetadata.Empty;
+        }
+
         var policy = services.GetRequiredService<IZLinkMessageMetadataPolicy>();
-        var application = new Dictionary<string, string>(StringComparer.Ordinal);
+        Dictionary<string, string>? application = null;
 
         foreach (var (key, value) in header.Metadata.Values)
         {
             if (policy.CanForwardApplicationKey(key))
             {
+                application ??= new Dictionary<string, string>(StringComparer.Ordinal);
                 application[key] = value;
             }
         }
 
-        if (application.Count == 0)
+        if (application is null)
         {
             return ZLinkMessageMetadata.Empty;
         }
@@ -231,4 +254,51 @@ internal sealed class ZLinkActorRuntimeState
             new Dictionary<string, string>(StringComparer.Ordinal));
     }
 
+    private async Task ClearActorCreationTaskWhenCompletedAsync(Task<IZLinkActor> creationTask)
+    {
+        try
+        {
+            await creationTask.ConfigureAwait(false);
+        }
+        catch
+        {
+        }
+
+        await ExecuteLockedAsync(
+            () =>
+            {
+                if (ReferenceEquals(_actorCreationTask, creationTask))
+                {
+                    _actorCreationTask = null;
+                }
+            },
+            CancellationToken.None).ConfigureAwait(false);
+    }
+
+    public readonly struct DispatchScope : IDisposable
+    {
+        private readonly ZLinkActorRuntimeState? _state;
+        private readonly ZLinkActorDispatchState? _previous;
+
+        internal DispatchScope(
+            ZLinkActorRuntimeState state,
+            ZLinkActorDispatchState? previous)
+        {
+            _state = state;
+            _previous = previous;
+        }
+
+        public void Dispose()
+        {
+            if (_state is not null)
+            {
+                _state.CurrentDispatch = _previous;
+            }
+        }
+    }
+
 }
+
+internal readonly record struct ZLinkActorCreationOperation(
+    Task<IZLinkActor> Task,
+    bool Created);

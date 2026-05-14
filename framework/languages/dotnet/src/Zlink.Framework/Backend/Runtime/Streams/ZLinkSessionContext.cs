@@ -9,13 +9,12 @@ internal sealed class ZLinkSessionContext(
     Func<CancellationToken, ValueTask> closeAsync)
     : IZLinkSessionContext, IZLinkSessionActorAttachmentContext
 {
-    private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
-
     private IZLinkActor? _actor;
     private ZlinkStreamHeader? _currentDispatchHeader;
     private readonly ZLinkSessionRequestTracker _requests = new();
     private ZLinkSessionStreamTransport? _transport;
     private readonly ZLinkSessionActorBindingRegistry _actorBindings = new(runtime);
+    private readonly ZLinkSessionActorRelay _actorRelay = new(runtime, stream);
 
     private ZLinkSessionStreamTransport Transport
         => _transport ??= new ZLinkSessionStreamTransport(stream, _requests);
@@ -124,21 +123,7 @@ internal sealed class ZLinkSessionContext(
         var actor = _actor
             ?? throw new InvalidOperationException("No actor is attached to the current session.");
 
-        var node = runtime.GetActorSpotNode();
-        var actorState = runtime.GetOrCreateActorState(actor.ActorId);
-        if (node is not null
-            && actorState.NativeActorRef is not null
-            && stream is ZLinkManagedStream managedStream)
-        {
-            using var encodedHeader = Message.FromBytes(HeaderCodec.Encode(header).Span);
-            using (body)
-            {
-                managedStream.SendBoundActor(actor.ActorId, [encodedHeader, body]);
-            }
-            return ValueTask.CompletedTask;
-        }
-
-        return runtime.SubmitActorAsync(actor, header, body, cancellationToken);
+        return _actorRelay.DispatchAttachedAsync(actor, header, body, cancellationToken);
     }
 
     public async ValueTask DispatchToActorAsync(
@@ -161,63 +146,13 @@ internal sealed class ZLinkSessionContext(
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
         }
 
-        var routeClient = runtime.RouteClient as IZLinkMultipartRouteClient
-            ?? throw new InvalidOperationException("Route client does not support multipart internal packets.");
-
-        using (body)
-        {
-            var parts = ZLinkInternalMultipartPackets.CreateActorDispatchParts(
-                actorRef.ActorId,
-                actorRef.ActorType,
+        await _actorRelay.DispatchRemoteAsync(
+                actorRef,
                 header,
-                body.AsReadOnlySpan());
-
-            if (header.RequestSeq is not null)
-            {
-                byte[] reply;
-                try
-                {
-                    reply = await routeClient.RequestPartsTo<byte[]>(
-                            actorRef.RouterChannelId,
-                            actorRef.TargetNodeRid,
-                            ZLinkInternalPacketNames.ActorDispatch,
-                            parts,
-                            runtime.Registration.DefaultTimeout,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (TimeoutException ex)
-                {
-                    throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorDispatchTimeout,
-                        $"Actor dispatch request for '{actorRef.ActorId}' timed out.",
-                        innerException: ex);
-                }
-                catch (ZLinkFrameworkException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorDispatchHandlerFailed,
-                        $"Actor dispatch request for '{actorRef.ActorId}' failed: {ex.Message}",
-                        innerException: ex);
-                }
-
-                await ReplyRawAsync(header, header.Codec, reply, cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            await routeClient.SendPartsTo(
-                    actorRef.RouterChannelId,
-                    actorRef.TargetNodeRid,
-                    ZLinkInternalPacketNames.ActorDispatch,
-                    parts,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
+                body,
+                ReplyRawAsync,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask DisconnectActorAsync(

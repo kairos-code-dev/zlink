@@ -199,6 +199,48 @@ public sealed class SerialExecutorTests
         Assert.True(thirdRan);
     }
 
+    [Fact]
+    public async Task ActorDispatchMailbox_Runs_Waiters_In_Fifo_Order()
+    {
+        var state = new ZLinkActorRuntimeState();
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var order = new List<string>();
+
+        var first = state.ExecuteDispatchAsync(
+            CreateHeader("first"),
+            async _ =>
+            {
+                order.Add("first");
+                firstStarted.SetResult();
+                await releaseFirst.Task.ConfigureAwait(false);
+            },
+            CancellationToken.None).AsTask();
+        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var second = state.ExecuteDispatchAsync(
+            CreateHeader("second"),
+            _ =>
+            {
+                order.Add("second");
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask();
+        var third = state.ExecuteDispatchAsync(
+            CreateHeader("third"),
+            _ =>
+            {
+                order.Add("third");
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask();
+
+        releaseFirst.SetResult();
+
+        await Task.WhenAll(first, second, third).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(["first", "second", "third"], order);
+    }
+
     private static ZlinkStreamHeader CreateHeader(string name)
     {
         return new ZlinkStreamHeader(

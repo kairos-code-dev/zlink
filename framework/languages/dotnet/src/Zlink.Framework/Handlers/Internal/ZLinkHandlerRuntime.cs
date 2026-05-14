@@ -28,11 +28,18 @@ internal sealed record ZLinkHandlerEndpointDescriptor(
     bool HasCancellationToken,
     IReadOnlySet<string> Groups);
 
+internal readonly record struct ZLinkHandlerSelectionKey(
+    ZLinkMessageKind Kind,
+    string ChannelName,
+    string MessageName);
+
 internal sealed class ZLinkHandlerRegistry
 {
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _requests;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _commands;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _publishes;
+    private readonly ConcurrentDictionary<ZLinkHandlerSelectionKey, ZLinkHandlerEndpointDescriptor> _singleSelections = new();
+    private readonly ConcurrentDictionary<ZLinkHandlerSelectionKey, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> _publishSelections = new();
 
     public ZLinkHandlerRegistry(IEnumerable<ZLinkHandlerEndpointDescriptor> endpoints)
     {
@@ -93,9 +100,16 @@ internal sealed class ZLinkHandlerRegistry
         IReadOnlySet<string> mappedGroups,
         string messageName)
     {
-        return _requests.TryGetValue(messageName, out var endpoints)
+        var key = new ZLinkHandlerSelectionKey(ZLinkMessageKind.Request, channelName, messageName);
+        if (_singleSelections.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var selected = _requests.TryGetValue(messageName, out var endpoints)
             ? SelectEndpoint(channelName, mappedGroups, messageName, endpoints, "request")
             : throw new InvalidOperationException($"No request handler is registered for '{messageName}'.");
+        return _singleSelections.GetOrAdd(key, selected);
     }
 
     public ZLinkHandlerEndpointDescriptor GetCommand(
@@ -103,18 +117,33 @@ internal sealed class ZLinkHandlerRegistry
         IReadOnlySet<string> mappedGroups,
         string messageName)
     {
-        return _commands.TryGetValue(messageName, out var endpoints)
+        var key = new ZLinkHandlerSelectionKey(ZLinkMessageKind.Command, channelName, messageName);
+        if (_singleSelections.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var selected = _commands.TryGetValue(messageName, out var endpoints)
             ? SelectEndpoint(channelName, mappedGroups, messageName, endpoints, "send")
             : throw new InvalidOperationException($"No send handler is registered for '{messageName}'.");
+        return _singleSelections.GetOrAdd(key, selected);
     }
 
     public IReadOnlyList<ZLinkHandlerEndpointDescriptor> GetPublishes(
+        string channelName,
         IReadOnlySet<string> mappedGroups,
         string messageName)
     {
-        return _publishes.TryGetValue(messageName, out var endpoints)
+        var key = new ZLinkHandlerSelectionKey(ZLinkMessageKind.Publish, channelName, messageName);
+        if (_publishSelections.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var selected = _publishes.TryGetValue(messageName, out var endpoints)
             ? FilterEndpoints(mappedGroups, endpoints)
             : Array.Empty<ZLinkHandlerEndpointDescriptor>();
+        return _publishSelections.GetOrAdd(key, selected);
     }
 
     private static ZLinkHandlerEndpointDescriptor SelectEndpoint(

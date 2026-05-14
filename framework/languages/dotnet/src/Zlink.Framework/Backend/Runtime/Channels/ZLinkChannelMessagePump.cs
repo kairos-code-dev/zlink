@@ -186,12 +186,20 @@ internal sealed class ZLinkChannelMessagePump(
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(topicMessage.Parts);
         var endpoints = handlerRegistry.GetPublishes(
+            channelName,
             ResolveMappedGroups(channelName),
             header.MessageName);
+        Dictionary<Type, object?>? decodedMessages = null;
 
         foreach (var endpoint in endpoints)
         {
-            var message = ZLinkEnvelopeCodec.DecodeBody(topicMessage.Parts, endpoint.MessageType);
+            decodedMessages ??= new Dictionary<Type, object?>();
+            if (!decodedMessages.TryGetValue(endpoint.MessageType, out var message))
+            {
+                message = ZLinkEnvelopeCodec.DecodeBody(topicMessage.Parts, endpoint.MessageType);
+                decodedMessages.Add(endpoint.MessageType, message);
+            }
+
             var context = new ZLinkPublishContext(
                 channelName,
                 header.MessageName,

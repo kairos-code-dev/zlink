@@ -508,6 +508,47 @@ public sealed class SpotIntegrationTests
     }
 
     [Fact]
+    public async Task CreateLocalActorAsync_Coalesces_Concurrent_Creation_For_Same_ActorId()
+    {
+        var spotNode = GetFreeTcpEndpoint();
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<ActorIntegrationRecorder>();
+        builder.Services.AddSingleton<ConcurrentActorFactoryRecorder>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("actor.factory", _ => { });
+            options.AddActorFactory<ConcurrentActorFactory>("test");
+            options.AddSpotNode("actor-node", spot =>
+            {
+                spot.Bind(spotNode);
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var recorder = host.Services.GetRequiredService<ConcurrentActorFactoryRecorder>();
+        var calls = Enumerable.Range(0, 8)
+            .Select(_ => runtime.CreateLocalActorAsync("actor-concurrent", "test").AsTask())
+            .ToArray();
+
+        await recorder.FirstFactoryCall.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(100);
+        Assert.Equal(1, Volatile.Read(ref recorder.CreateCount));
+
+        recorder.ReleaseFactory.SetResult();
+
+        var results = await Task.WhenAll(calls).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, Volatile.Read(ref recorder.CreateCount));
+        Assert.Equal(1, results.Count(static result => result.Created));
+        Assert.All(results, result => Assert.Same(results[0].Actor, result.Actor));
+
+        await host.StopAsync();
+    }
+
+    [Fact]
     public async Task EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets()
     {
         var spotNode = GetFreeTcpEndpoint();
@@ -1716,6 +1757,32 @@ public sealed class SpotIntegrationTests
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult<IZLinkActor>(new TestActor(actorId, recorder));
         }
+    }
+
+    public sealed class ConcurrentActorFactory(
+        ConcurrentActorFactoryRecorder factoryRecorder,
+        ActorIntegrationRecorder actorRecorder) : IZLinkActorFactory
+    {
+        public async ValueTask<IZLinkActor> CreateAsync(
+            string actorId,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref factoryRecorder.CreateCount);
+            factoryRecorder.FirstFactoryCall.TrySetResult();
+            await factoryRecorder.ReleaseFactory.Task.WaitAsync(cancellationToken);
+            return new TestActor(actorId, actorRecorder);
+        }
+    }
+
+    public sealed class ConcurrentActorFactoryRecorder
+    {
+        public int CreateCount;
+
+        public TaskCompletionSource FirstFactoryCall { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource ReleaseFactory { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     public sealed class ActorIntegrationRecorder

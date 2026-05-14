@@ -8,9 +8,12 @@ internal sealed class ZLinkActorSessionManager(
     Func<IZLinkBackendSpotNode?> getActorSpotNode)
 {
     private readonly ZLinkActorSessionRegistry _actorSessions = new();
+    private ZLinkActorCreationCoordinator ActorCreation => _actorCreationInitialized
+        ??= new ZLinkActorCreationCoordinator(runtime, services, getActorSpotNode, EnsureActorContext);
     private ZLinkActorDispatchRouter DispatchRouter => _dispatchRouterInitialized
         ??= new ZLinkActorDispatchRouter(runtime, services, _actorSessions, EnsureActorContext);
 
+    private ZLinkActorCreationCoordinator? _actorCreationInitialized;
     private ZLinkActorDispatchRouter? _dispatchRouterInitialized;
 
     public async ValueTask<CreateActorResult> CreateAndBindActorAsync(
@@ -18,47 +21,13 @@ internal sealed class ZLinkActorSessionManager(
         string actorType,
         CancellationToken cancellationToken = default)
     {
-        if (!runtime.Registration.ActorFactories.TryGetValue(actorType, out var factoryType))
-        {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorCreateFailed,
-                $"Actor factory '{actorType}' is not registered.");
-        }
-
         var state = _actorSessions.GetOrCreate(actorId);
-        var existingActor = await state.ExecuteLockedAsync(
-            () => state.Actor,
-            cancellationToken).ConfigureAwait(false);
-        if (existingActor is not null)
-        {
-            return new CreateActorResult(existingActor, false);
-        }
-
-        await using var scope = services.CreateAsyncScope();
-        var factory = (IZLinkActorFactory)scope.ServiceProvider.GetRequiredService(factoryType);
-        var actor = await factory.CreateAsync(actorId, cancellationToken)
+        return await ActorCreation.CreateAndBindActorAsync(
+                state,
+                actorId,
+                actorType,
+                cancellationToken)
             .ConfigureAwait(false);
-        if (actor is null)
-        {
-            throw new InvalidOperationException($"Actor factory '{factoryType}' returned null.");
-        }
-
-        if (!string.Equals(actor.ActorId, actorId, StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                $"Actor factory '{factoryType}' returned actor id '{actor.ActorId}' for requested id '{actorId}'.");
-        }
-
-        EnsureActorContext(actor, state);
-
-        var node = getActorSpotNode();
-        if (node is not null && state.NativeActorRef is null)
-        {
-            var existingRef = node.ActorLookup(actor.ActorId);
-            state.NativeActorRef = existingRef ?? node.CreateActor(actor.ActorId);
-        }
-
-        return new CreateActorResult(actor, true);
     }
 
     public async ValueTask SubmitActorByIdAsync(

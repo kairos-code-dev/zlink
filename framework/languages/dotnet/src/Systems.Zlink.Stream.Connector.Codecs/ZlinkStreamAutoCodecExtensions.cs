@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Linq.Expressions;
 using Google.Protobuf;
 using MessagePack;
 using Systems.Zlink.Stream.Connector.Calls;
@@ -12,6 +14,9 @@ namespace Systems.Zlink.Stream.Connector.Codecs;
 
 public static class ZlinkStreamAutoCodecExtensions
 {
+    private static readonly ConcurrentDictionary<Type, bool> MessagePackTypes = new();
+    private static readonly ConcurrentDictionary<Type, Func<IMessage>> ProtobufFactories = new();
+
     public static ZlinkStreamAutoCodecSendBuilder Send<TBody>(
         this ZlinkStreamConnector connector,
         TBody body)
@@ -93,18 +98,31 @@ public static class ZlinkStreamAutoCodecExtensions
             throw new InvalidOperationException($"Stream body codec is {body.Codec}, not Protobuf.");
         }
 
-        var instance = Activator.CreateInstance(typeof(TBody));
-        if (instance is not IMessage message)
-        {
-            throw new InvalidOperationException($"{typeof(TBody).FullName} must implement IMessage and have a public parameterless constructor.");
-        }
+        var message = ProtobufFactories.GetOrAdd(typeof(TBody), CreateProtobufFactory)();
 
         message.MergeFrom(body.Body.Span);
         return (TBody)message;
     }
 
     private static bool HasMessagePackObjectAttribute(Type type)
-        => type.GetCustomAttributes(typeof(MessagePackObjectAttribute), inherit: true).Length > 0;
+        => MessagePackTypes.GetOrAdd(
+            type,
+            static candidate => candidate.GetCustomAttributes(typeof(MessagePackObjectAttribute), inherit: true).Length > 0);
+
+    private static Func<IMessage> CreateProtobufFactory(Type type)
+    {
+        if (!typeof(IMessage).IsAssignableFrom(type))
+        {
+            throw new InvalidOperationException($"{type.FullName} must implement IMessage.");
+        }
+
+        var constructor = type.GetConstructor(Type.EmptyTypes)
+            ?? throw new InvalidOperationException(
+                $"{type.FullName} must have a public parameterless constructor.");
+        var instance = Expression.New(constructor);
+        var convert = Expression.Convert(instance, typeof(IMessage));
+        return Expression.Lambda<Func<IMessage>>(convert).Compile();
+    }
 }
 
 public sealed class ZlinkStreamAutoCodecSendBuilder

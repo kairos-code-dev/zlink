@@ -15,6 +15,8 @@ internal sealed class ZLinkSpotActivationDispatcher(
     Func<ZLinkSpotHandlerInvoker> handlerInvoker)
 {
     private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
+    private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher =
+        new(runtime, actorHandlers, handlerInvoker);
 
     public async ValueTask DispatchActorJoinDrainAsync(CancellationToken cancellationToken)
     {
@@ -99,31 +101,13 @@ internal sealed class ZLinkSpotActivationDispatcher(
         Message body,
         CancellationToken cancellationToken)
     {
-        var previousDispatch = runtimeState.CurrentDispatch;
-        runtimeState.CurrentDispatch = new ZLinkActorDispatchState(header);
-        try
-        {
-            if (TryResolveActorPacketDescriptor(actor.GetType(), header, out var descriptor)
-                && descriptor is not null)
-            {
-                await handlerInvoker()
-                    .InvokeActorPacketAsync(descriptor, actor, header, body, cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            await runtimeState.DispatchAsync(
-                    runtime.Services,
-                    actor,
-                    header,
-                    body.Move(),
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            runtimeState.CurrentDispatch = previousDispatch;
-        }
+        await _actorPacketDispatcher.DispatchAsync(
+                actor,
+                runtimeState,
+                header,
+                body,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<byte[]?> DispatchActorPacketForReplyAsync(
@@ -133,30 +117,13 @@ internal sealed class ZLinkSpotActivationDispatcher(
         Message body,
         CancellationToken cancellationToken)
     {
-        var previousDispatch = runtimeState.CurrentDispatch;
-        runtimeState.CurrentDispatch = new ZLinkActorDispatchState(header);
-        try
-        {
-            if (TryResolveActorPacketDescriptor(actor.GetType(), header, out var descriptor)
-                && descriptor is not null)
-            {
-                return await handlerInvoker()
-                    .InvokeActorPacketForReplyAsync(descriptor, actor, header, body, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            return await runtimeState.DispatchForReplyAsync(
-                    runtime.Services,
-                    actor,
-                    header,
-                    body.Move(),
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            runtimeState.CurrentDispatch = previousDispatch;
-        }
+        return await _actorPacketDispatcher.DispatchForReplyAsync(
+                actor,
+                runtimeState,
+                header,
+                body,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask DispatchRouteDrainAsync(CancellationToken cancellationToken)
@@ -236,27 +203,13 @@ internal sealed class ZLinkSpotActivationDispatcher(
         CancellationToken cancellationToken)
     {
         var runtimeState = runtime.GetOrCreateActorState(actorId);
-        var previousDispatch = runtimeState.CurrentDispatch;
-        runtimeState.CurrentDispatch = new ZLinkActorDispatchState(streamHeader);
-        try
-        {
-            if (TryResolveActorPacketDescriptor(actor.GetType(), streamHeader, out var descriptor)
-                && descriptor is not null)
-            {
-                await handlerInvoker()
-                    .InvokeActorPacketAsync(descriptor, actor, streamHeader, body, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            else
-            {
-                await runtimeState.DispatchAsync(runtime.Services, actor, streamHeader, body, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-        finally
-        {
-            runtimeState.CurrentDispatch = previousDispatch;
-        }
+        await _actorPacketDispatcher.DispatchAsync(
+                actor,
+                runtimeState,
+                streamHeader,
+                body,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask DispatchRouteAsync(Received received, CancellationToken cancellationToken)
@@ -305,16 +258,6 @@ internal sealed class ZLinkSpotActivationDispatcher(
 
             await InvokePacketAsync(descriptor, message, cancellationToken);
         }
-    }
-
-    private bool TryResolveActorPacketDescriptor(
-        Type actorType,
-        ZlinkStreamHeader header,
-        out ZLinkSpotActorPacketDescriptor? descriptor)
-    {
-        descriptor = null;
-        return actorHandlers() is { } handlers
-            && handlers.TryResolve(actorType, header, out descriptor);
     }
 
     private void ReplyActorJoinRejected(ZLinkBackendActorJoinRequest joinRequest)

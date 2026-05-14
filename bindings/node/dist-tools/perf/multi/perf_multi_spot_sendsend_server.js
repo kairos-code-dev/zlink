@@ -18,21 +18,6 @@ function closeQuietly(resource) {
         console.error(`[multi-spot-sendsend-server] close failed: ${err}`);
     }
 }
-function tryRecvRouted(spot) {
-    try {
-        return spot.recvRouted(zlink.RecvFlags.DontWait);
-    }
-    catch (error) {
-        if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
-            return null;
-        }
-        const text = String(error && error.message ? error.message : error);
-        if (/Device or resource busy|resource busy/i.test(text)) {
-            return null;
-        }
-        throw error;
-    }
-}
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -88,28 +73,6 @@ async function main() {
                 }
             }
         })();
-        const drainRouted = async () => {
-            while (!stop) {
-                const received = tryRecvRouted(spot);
-                if (!received) {
-                    break;
-                }
-                try {
-                    while (!stop) {
-                        const sent = received.send().message(received.parts[0].data())
-                            .flags(zlink.SendFlags.DontWait)
-                            .submit();
-                        if (sent) {
-                            break;
-                        }
-                        await spotSendWaiter.wait();
-                    }
-                }
-                finally {
-                    received.close();
-                }
-            }
-        };
         spot.onRoutedReceive(async (received) => {
             try {
                 while (!stop) {

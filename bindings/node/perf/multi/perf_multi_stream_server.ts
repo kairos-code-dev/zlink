@@ -24,6 +24,16 @@ function buildStreamPacketFrame(header, body) {
   return frame;
 }
 
+function isTransientStreamSubmit(error) {
+  const text = String(error && error.message ? error.message : error);
+  return (error instanceof zlink.SubmitError
+      && (error.result === zlink.SubmitResult.Backpressured
+        || error.result === zlink.SubmitResult.NotConnected
+        || error.result === zlink.SubmitResult.NotFound))
+    || (error && error.code === 'EAGAIN')
+    || /Resource temporarily unavailable|temporarily unavailable|would block|not connected|Host unreachable|reset/i.test(text);
+}
+
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
@@ -39,7 +49,13 @@ async function main() {
     emitMultiSocketHwmDetail(stream, 'endpoint', options.transport, options.msgSize);
     stream.bind(options.endpoint);
     stream.onPacket((routingId, header, body) => {
-      stream.send(routingId).message(buildStreamPacketFrame(header, body)).submit();
+      try {
+        stream.send(routingId).message(buildStreamPacketFrame(header, body)).submit();
+      } catch (error) {
+        if (!isTransientStreamSubmit(error)) {
+          throw error;
+        }
+      }
     });
     console.log(`READY,${options.endpoint}`);
 

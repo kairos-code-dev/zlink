@@ -16,21 +16,6 @@ function trace(message) {
         console.error(`[multi-spot-reqrep-server] ${message}`);
     }
 }
-function tryRecvRouted(spot) {
-    try {
-        return spot.recvRouted(zlink.RecvFlags.DontWait);
-    }
-    catch (error) {
-        if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
-            return null;
-        }
-        const text = String(error && error.message ? error.message : error);
-        if (/Device or resource busy|resource busy/i.test(text)) {
-            return null;
-        }
-        throw error;
-    }
-}
 function closeQuietly(resource) {
     try {
         resource?.close();
@@ -94,23 +79,6 @@ async function main() {
                 }
             }
         })();
-        const drainRouted = () => {
-            while (!stop) {
-                const received = tryRecvRouted(spot);
-                if (!received) {
-                    break;
-                }
-                try {
-                    let reply = received.reply();
-                    for (const part of received.parts)
-                        reply = reply.message(part);
-                    reply.submit();
-                }
-                finally {
-                    received.close();
-                }
-            }
-        };
         spot.onRoutedReceive((received) => {
             try {
                 let reply = received.reply();

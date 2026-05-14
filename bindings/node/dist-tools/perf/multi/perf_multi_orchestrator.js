@@ -307,6 +307,46 @@ function buildPinnedSpawn(command, args, options) {
         args: ['-c', '0', command, ...args]
     };
 }
+function resolveSharedStreamClientBinary() {
+    if (process.env.PERF_STREAM_CLIENT_BINARY) {
+        return process.env.PERF_STREAM_CLIENT_BINARY;
+    }
+    let cursor = __dirname;
+    for (let i = 0; i < 8; i += 1) {
+        const candidate = path.join(cursor, 'bindings', 'c', 'build', 'perf', 'perf_stream_client');
+        if (require('node:fs').existsSync(candidate)) {
+            return candidate;
+        }
+        const next = path.dirname(cursor);
+        if (next === cursor) {
+            break;
+        }
+        cursor = next;
+    }
+    throw new Error('shared perf_stream_client not found; build bindings/c first');
+}
+function buildClientSpawn(clientPath, clientArgs, args) {
+    if (args.pattern !== 'MULTI_STREAM') {
+        return buildPinnedSpawn(process.execPath, [clientPath, ...clientArgs], args);
+    }
+    const streamClientArgs = [
+        '--endpoint', clientArgs[1],
+        '--transport', args.transport,
+        '--pattern', 'MULTI_STREAM',
+        '--ccu', String(args.clients),
+        '--sizes', String(args.msgSize),
+        '--runs', '1',
+        '--duration', String(args.duration),
+        '--send-stop-token', '1'
+    ];
+    const ioThreads = Number.isFinite(args.clientIoThreads)
+        ? args.clientIoThreads
+        : args.ioThreads;
+    if (Number.isFinite(ioThreads) && ioThreads > 0) {
+        streamClientArgs.push('--io-threads', String(ioThreads));
+    }
+    return buildPinnedSpawn(resolveSharedStreamClientBinary(), streamClientArgs, args);
+}
 function resolveMultiTimeoutSeconds(args) {
     const override = Number(process.env.PERF_MULTI_TIMEOUT_SECONDS || 0);
     if (Number.isFinite(override) && override > 0) {
@@ -397,7 +437,7 @@ async function spawnMultiPair(serverScript, clientScript, args) {
         || args.pattern === 'MULTI_SPOT_SENDSEND') {
         await waitForPrefix(server, 'CONTROL_READY,', serverScript, 10_000);
     }
-    const clientSpawn = buildPinnedSpawn(process.execPath, [clientPath, ...clientArgs], args);
+    const clientSpawn = buildClientSpawn(clientPath, clientArgs, args);
     const client = spawn(clientSpawn.command, clientSpawn.args, {
         cwd: process.cwd(),
         env: childEnv(args),

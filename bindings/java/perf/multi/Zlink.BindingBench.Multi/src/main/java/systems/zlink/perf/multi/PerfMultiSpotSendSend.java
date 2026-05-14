@@ -13,6 +13,7 @@ import systems.zlink.RecvResult;
 import systems.zlink.Received;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
+import systems.zlink.SpotDispatchEvent;
 import systems.zlink.SubmitException;
 import systems.zlink.SubmitResult;
 import systems.zlink.perf.PerfControl;
@@ -28,8 +29,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 
 final class PerfMultiSpotSendSend {
     private static final RoutingId SERVER_NODE_RID =
@@ -59,16 +62,14 @@ final class PerfMultiSpotSendSend {
             PerfControl.emitReady(config.endpoint());
             PerfControl.emitControlReady(controlEndpoint);
             spot.onDispatchEvent(info -> {
-                if (info != null
-                    && info.event()
-                    == systems.zlink.SpotDispatchEvent.ROUTED_READABLE) {
-                    try {
-                        drainServer(spot, config.clients(), stopSeen,
-                            stopped);
-                    } catch (Throwable ex) {
-                        failure.compareAndSet(null, ex);
-                        stopped.countDown();
-                    }
+                if (info.event() != SpotDispatchEvent.ROUTED_READABLE) {
+                    return;
+                }
+                try {
+                    drainServer(spot, config.clients(), stopSeen, stopped);
+                } catch (Throwable ex) {
+                    failure.compareAndSet(null, ex);
+                    stopped.countDown();
                 }
             });
             awaitDirectControlStart(control, node, config,
@@ -125,6 +126,8 @@ final class PerfMultiSpotSendSend {
                 PerfUtil.recalculateAutoHwm(ctx);
                 PerfUtil.printMultiSpotNodeAutoHwm(config, node, "client");
                 control.publishDataEndpoint(clientDataEndpoint);
+                waitForConnectedPeers(node, 1, config.connectReadyTimeoutMs(),
+                    "spot sendsend client data link");
                 control.publishConnected();
                 control.publishReadyCount(config.size(), config.clients());
                 PerfControl.emitClientReady(config.size());
@@ -198,20 +201,31 @@ final class PerfMultiSpotSendSend {
                     Spot spot = spots.get(index);
                     long activeEnd = System.nanoTime()
                         + durationSeconds * 1_000_000_000L;
+                    AtomicBoolean waitingReply = new AtomicBoolean();
+                    spot.onDispatchEvent(info -> {
+                        if (info.event() == SpotDispatchEvent.ROUTED_READABLE) {
+                            drainClientReplies(spot, config.size(), metrics,
+                                waitingReply, activeEnd);
+                        }
+                    });
                     try (Message active = PerfUtil.payloadTemplate(config.size());
                          Poller poller = new Poller()) {
-                        poller.add(spot, PollEventFlag.POLLIN,
-                            PollEventFlag.POLLOUT);
+                        poller.add(spot, PollEventFlag.POLLOUT);
                         while (System.nanoTime() < activeEnd) {
+                            while (waitingReply.get()
+                                   && System.nanoTime() < activeEnd) {
+                                LockSupport.parkNanos(100_000L);
+                            }
+                            if (System.nanoTime() >= activeEnd) {
+                                break;
+                            }
                             PerfUtil.resetAndWritePayload(active, config.size(),
                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                            sendToServerWhenWritable(spot, poller, active);
-                            PerfUtil.Header reply = recvExpected(spot,
-                                poller, config.size(), activeEnd);
-                            if (reply != null
-                                && reply.phase() == PerfUtil.PHASE_ACTIVE
-                                && System.nanoTime() < activeEnd) {
-                                metrics.recordNanos(reply.latencyNanos() / 2L);
+                            waitingReply.set(true);
+                            if (!sendToServerWhenWritable(spot, poller, active,
+                                    activeEnd)) {
+                                waitingReply.set(false);
+                                break;
                             }
                         }
                     }
@@ -237,49 +251,65 @@ final class PerfMultiSpotSendSend {
             .submit();
     }
 
-    private static void sendToServerWhenWritable(Spot spot,
-                                                 Poller poller,
-                                                 Message message) {
+    private static boolean sendToServerWhenWritable(Spot spot,
+                                                    Poller poller,
+                                                    Message message,
+                                                    long deadlineNs) {
         for (;;) {
+            if (System.nanoTime() >= deadlineNs) {
+                return false;
+            }
             try {
                 sendToServer(spot, message, SendFlags.DONT_WAIT);
-                return;
+                return true;
             } catch (SubmitException ex) {
                 if (ex.getResult() != SubmitResult.BACKPRESSURED) {
                     throw ex;
                 }
-                waitFor(poller, PollEventFlag.POLLOUT);
+                if (!waitFor(poller, PollEventFlag.POLLOUT, deadlineNs)) {
+                    return false;
+                }
             }
         }
     }
 
-    private static PerfUtil.Header recvExpected(Spot spot, Poller poller, int size,
-                                                long deadlineNs) {
+    private static void drainClientReplies(Spot spot,
+                                           int size,
+                                           PerfUtil.Metrics metrics,
+                                           AtomicBoolean waitingReply,
+                                           long activeEnd) {
         for (;;) {
-            if (System.nanoTime() >= deadlineNs) {
-                return null;
-            }
-            waitFor(poller, PollEventFlag.POLLIN);
             Received received = recvRoutedNoWait(spot);
             if (received == null) {
-                continue;
+                return;
             }
             try (received) {
                 if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
                     continue;
                 }
-                return PerfUtil.decodeHeader(received.firstPart(), size);
+                PerfUtil.Header reply = PerfUtil.decodeHeader(
+                    received.firstPart(), size);
+                waitingReply.set(false);
+                if (reply.phase() == PerfUtil.PHASE_ACTIVE
+                    && System.nanoTime() < activeEnd) {
+                    metrics.recordNanos(reply.latencyNanos() / 2L);
+                }
             }
         }
     }
 
-    private static void waitFor(Poller poller, PollEventFlag expected) {
+    private static boolean waitFor(Poller poller, PollEventFlag expected,
+                                   long deadlineNs) {
         List<PollEvent> events = new ArrayList<>(1);
         for (;;) {
-            poller.wait(events, Duration.ofMillis(-1));
+            long remainingNs = deadlineNs - System.nanoTime();
+            if (remainingNs <= 0) {
+                return false;
+            }
+            poller.wait(events, Duration.ofNanos(remainingNs));
             for (PollEvent event : events) {
                 if (event.revents().contains(expected)) {
-                    return;
+                    return true;
                 }
             }
         }
@@ -314,13 +344,14 @@ final class PerfMultiSpotSendSend {
                 }
             }
             PerfSpotDirectControl.ReadyState ready = control.waitReady(
-                config.size(), config.clients(),
-                config.connectReadyTimeoutMs());
-            for (String endpoint : ready.dataEndpoints()) {
-                dataNode.connectPeer(normalizeClientEndpoint(endpoint,
-                    config.transport()));
+                config.size(), config.clients(), config.connectReadyTimeoutMs(),
+                endpoint -> dataNode.connectPeer(normalizeClientEndpoint(endpoint,
+                    config.transport())));
+            if (ready.dataEndpoints().isEmpty()) {
+                throw new IllegalStateException(label + " missing data endpoint");
             }
-            settleAfterReady();
+            waitForConnectedPeers(dataNode, ready.dataEndpoints().size(),
+                config.connectReadyTimeoutMs(), label + " data link");
             while ((line = reader.readLine()) != null) {
                 if (expectedStart.equals(line)) {
                     control.publishStart(config.size());
@@ -331,6 +362,21 @@ final class PerfMultiSpotSendSend {
             throw new IllegalStateException(label + " control read failed", ex);
         }
         throw new IllegalStateException(label + " missing " + expectedStart);
+    }
+
+    private static void waitForConnectedPeers(SpotNode node,
+                                              int expectedPeers,
+                                              int timeoutMs,
+                                              String label) {
+        long deadline = System.nanoTime()
+            + Duration.ofMillis(Math.max(1, timeoutMs)).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (node.statusSnapshot().connectedPeerCount() >= expectedPeers) {
+                return;
+            }
+            sleepQuietly(10);
+        }
+        throw new IllegalStateException(label + " connected peer timeout");
     }
 
     private static void settleAfterReady() {

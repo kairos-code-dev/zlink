@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 final class PerfSpotDirectControl implements AutoCloseable {
     private static final String TOPIC = "bench";
@@ -70,6 +71,11 @@ final class PerfSpotDirectControl implements AutoCloseable {
     }
 
     ReadyState waitReady(int size, int expectedCount, int timeoutMs) {
+        return waitReady(size, expectedCount, timeoutMs, null);
+    }
+
+    ReadyState waitReady(int size, int expectedCount, int timeoutMs,
+                         Consumer<String> dataEndpointHandler) {
         long deadline = System.nanoTime()
             + Duration.ofMillis(Math.max(1, timeoutMs)).toNanos();
         int ready = 0;
@@ -81,7 +87,11 @@ final class PerfSpotDirectControl implements AutoCloseable {
                 continue;
             }
             if (payload.startsWith("DATA_ENDPOINT,")) {
-                dataEndpoints.add(payload.substring("DATA_ENDPOINT,".length()));
+                String endpoint = payload.substring("DATA_ENDPOINT,".length());
+                dataEndpoints.add(endpoint);
+                if (dataEndpointHandler != null) {
+                    dataEndpointHandler.accept(endpoint);
+                }
             } else if (payload.startsWith("READY_COUNT,")) {
                 String[] parts = payload.split(",", 3);
                 if (parts.length == 3

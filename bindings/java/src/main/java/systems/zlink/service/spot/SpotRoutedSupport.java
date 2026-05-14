@@ -28,6 +28,7 @@ import systems.zlink.internal.Native;
 import systems.zlink.internal.NativeLayouts;
 import systems.zlink.internal.NativeMsg;
 import systems.zlink.internal.ReceivedPartCursor;
+import systems.zlink.internal.RequestProgressPump;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -266,7 +267,7 @@ final class SpotRoutedSupport implements AutoCloseable {
         MemorySegment stub = LINKER.upcallStub(callbackHandle(
           "handleRoutedCallback", MethodType.methodType(void.class,
             MemorySegment.class, MemorySegment.class, long.class,
-            MemorySegment.class, long.class, MemorySegment.class)),
+            MemorySegment.class, long.class, MemorySegment.class), this),
           FD_SPOT_HANDLER, arena);
         boolean success = false;
         try {
@@ -424,6 +425,11 @@ final class SpotRoutedSupport implements AutoCloseable {
                         replyParts, sendFlags);
                   }
               });
+            if (snapshot.sourceRid() != null && snapshot.spotRid() != null) {
+                InternalAccess.receivedSetSendSender(received, (sendParts, sendFlags) ->
+                    sendToSpot(snapshot.sourceRid(), snapshot.spotRid(),
+                      sendParts, sendFlags));
+            }
             InternalAccess.enterCallback();
             try (received) {
                 handler.onMessage(snapshot.sourceRid(), snapshot.spotRid(),
@@ -528,6 +534,8 @@ final class SpotRoutedSupport implements AutoCloseable {
         long timeoutMs = timeoutMillis(timeout);
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
         CompletableFuture<Received> future = registerPending(requestId, timeoutMs);
+        RequestProgressPump.trackSpotRequest(future, handle(),
+            "zlink-spot-routed-request-progress");
         try (Arena arena = Arena.ofConfined()) {
             int rc = request.invoke(arena, parts, requestId, timeoutMs);
             if (rc != 0) {
@@ -950,6 +958,9 @@ final class SpotRoutedSupport implements AutoCloseable {
     private static RoutingId readRoutingId(MemorySegment nativeRid) {
         if (nativeRid == null || nativeRid.address() == 0) {
             return null;
+        }
+        if (nativeRid.byteSize() == 0) {
+            nativeRid = nativeRid.reinterpret(NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
         }
         int size = nativeRid.get(ValueLayout.JAVA_BYTE,
           NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;

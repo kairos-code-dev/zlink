@@ -50,7 +50,9 @@ final class PerfMultiPubSub {
                 while (System.nanoTime() < activeEnd) {
                     PerfUtil.resetAndWritePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                    publishWhenWritable(pub, writable, active);
+                    if (!publishWhenWritable(pub, writable, active, activeEnd)) {
+                        break;
+                    }
                 }
             }
             return PerfUtil.Result.silent(config);
@@ -135,15 +137,26 @@ final class PerfMultiPubSub {
         }
     }
 
-    private static void publishWhenWritable(PubSocket pub,
-                                            PerfSocketPollSet writable,
-                                            Message message) {
-        while (!pub.publish(TOPIC)
-            .message(message)
-            .flags(SendFlags.DONT_WAIT)
-            .submit()) {
-            writable.poll(-1);
+    private static boolean publishWhenWritable(PubSocket pub,
+                                               PerfSocketPollSet writable,
+                                               Message message,
+                                               long deadlineNs) {
+        while (System.nanoTime() < deadlineNs) {
+            if (pub.publish(TOPIC)
+                    .message(message)
+                    .flags(SendFlags.DONT_WAIT)
+                    .submit()) {
+                return true;
+            }
+            long remainingNs = deadlineNs - System.nanoTime();
+            if (remainingNs <= 0) {
+                return false;
+            }
+            int waitMs = (int) Math.max(1L,
+                Math.min(Integer.MAX_VALUE, remainingNs / 1_000_000L));
+            writable.poll(waitMs);
         }
+        return false;
     }
 
     private static void drainSubscriber(SubSocket sub, PerfUtil.Config config,

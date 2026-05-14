@@ -71,7 +71,10 @@ final class PerfMultiSpot {
                     }
                     PerfUtil.resetAndWritePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                    publishWhenWritable(publisher, poller, active);
+                    if (!publishWhenWritable(publisher, poller, active,
+                            activeEnd)) {
+                        break;
+                    }
                     if (latencyOnly) {
                         nextSendNanos = System.nanoTime()
                             + latencyOnlyIntervalNanos;
@@ -142,24 +145,36 @@ final class PerfMultiSpot {
         }
     }
 
-    private static void publishWhenWritable(Spot publisher,
-                                            Poller poller,
-                                            Message message) {
-        while (!publisher.publish(TOPIC)
-            .message(message)
-            .flags(SendFlags.DONT_WAIT)
-            .submit()) {
-            waitFor(poller, PollEventFlag.POLLOUT);
+    private static boolean publishWhenWritable(Spot publisher,
+                                               Poller poller,
+                                               Message message,
+                                               long deadlineNs) {
+        while (System.nanoTime() < deadlineNs) {
+            if (publisher.publish(TOPIC)
+                    .message(message)
+                    .flags(SendFlags.DONT_WAIT)
+                    .submit()) {
+                return true;
+            }
+            if (!waitFor(poller, PollEventFlag.POLLOUT, deadlineNs)) {
+                return false;
+            }
         }
+        return false;
     }
 
-    private static void waitFor(Poller poller, PollEventFlag expected) {
+    private static boolean waitFor(Poller poller, PollEventFlag expected,
+                                   long deadlineNs) {
         List<PollEvent> events = new ArrayList<>(1);
         for (;;) {
-            poller.wait(events, Duration.ofMillis(-1));
+            long remainingNs = deadlineNs - System.nanoTime();
+            if (remainingNs <= 0) {
+                return false;
+            }
+            poller.wait(events, Duration.ofNanos(remainingNs));
             for (PollEvent event : events) {
                 if (event.revents().contains(expected)) {
-                    return;
+                    return true;
                 }
             }
         }

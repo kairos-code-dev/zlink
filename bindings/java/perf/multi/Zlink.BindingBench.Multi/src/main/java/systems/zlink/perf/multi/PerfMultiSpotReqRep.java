@@ -14,8 +14,7 @@ import systems.zlink.Received;
 import systems.zlink.RequestResult;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
-import systems.zlink.SubmitException;
-import systems.zlink.SubmitResult;
+import systems.zlink.SpotDispatchEvent;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
@@ -61,16 +60,15 @@ final class PerfMultiSpotReqRep {
             PerfControl.emitReady(config.endpoint());
             PerfControl.emitControlReady(controlEndpoint);
             replier.onDispatchEvent(info -> {
-                if (info != null
-                    && info.event()
-                    == systems.zlink.SpotDispatchEvent.ROUTED_READABLE) {
-                    try {
-                        drainServer(replier, config.clients(), stopSeen,
-                            stopRequested);
-                    } catch (Throwable ex) {
-                        failure.compareAndSet(null, ex);
-                        stopRequested.set(true);
-                    }
+                if (info.event() != SpotDispatchEvent.ROUTED_READABLE) {
+                    return;
+                }
+                try {
+                    drainServer(replier, config.clients(), stopSeen,
+                        stopRequested);
+                } catch (Throwable ex) {
+                    failure.compareAndSet(null, ex);
+                    stopRequested.set(true);
                 }
             });
             awaitDirectControlStart(control, node, config,
@@ -129,6 +127,8 @@ final class PerfMultiSpotReqRep {
                 PerfUtil.recalculateAutoHwm(ctx);
                 PerfUtil.printMultiSpotNodeAutoHwm(config, node, "client");
                 control.publishDataEndpoint(clientDataEndpoint);
+                waitForConnectedPeers(node, 1, config.connectReadyTimeoutMs(),
+                    "spot reqrep client data link");
                 control.publishConnected();
                 control.publishReadyCount(config.size(), requesters.size());
                 PerfControl.emitClientReady(config.size());
@@ -159,7 +159,7 @@ final class PerfMultiSpotReqRep {
                 boolean stop = PerfStopToken.isStopTokenMessage(
                     received.firstPart());
                 try (Message reply = received.firstPart().move()) {
-                    received.send().message(reply).submit();
+                    received.reply().message(reply).submit();
                 }
                 if (stop && stopSeen.incrementAndGet() >= expectedStops) {
                     stopRequested.set(true);
@@ -167,6 +167,19 @@ final class PerfMultiSpotReqRep {
                 }
             }
         }
+    }
+
+    private static boolean handleServerReceived(Received received,
+                                                int expectedStops,
+                                                AtomicInteger stopSeen,
+                                                AtomicBoolean stopRequested) {
+        if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
+            if (stopSeen.incrementAndGet() >= expectedStops) {
+                stopRequested.set(true);
+            }
+            return true;
+        }
+        return false;
     }
 
     private static void runClientWorkers(List<Spot> requesters,
@@ -218,22 +231,6 @@ final class PerfMultiSpotReqRep {
             .submit();
     }
 
-    private static void sendToServerWhenWritable(Spot requester,
-                                                 Poller poller,
-                                                 Message payload) {
-        for (;;) {
-            try {
-                sendToServer(requester, payload, SendFlags.DONT_WAIT);
-                return;
-            } catch (SubmitException ex) {
-                if (ex.getResult() != SubmitResult.BACKPRESSURED) {
-                    throw ex;
-                }
-                waitFor(poller, PollEventFlag.POLLOUT);
-            }
-        }
-    }
-
     private static PerfUtil.Header requestReply(Spot requester,
                                                 Poller poller,
                                                 Message payload,
@@ -270,7 +267,9 @@ final class PerfMultiSpotReqRep {
                     }
                 });
             if (!submitted) {
-                waitFor(poller, PollEventFlag.POLLOUT);
+                if (!waitFor(poller, PollEventFlag.POLLOUT, deadlineNs)) {
+                    return null;
+                }
                 continue;
             }
             try {
@@ -302,13 +301,18 @@ final class PerfMultiSpotReqRep {
         }
     }
 
-    private static void waitFor(Poller poller, PollEventFlag expected) {
+    private static boolean waitFor(Poller poller, PollEventFlag expected,
+                                   long deadlineNs) {
         List<PollEvent> events = new ArrayList<>(1);
         for (;;) {
-            poller.wait(events, Duration.ofMillis(-1));
+            long remainingNs = deadlineNs - System.nanoTime();
+            if (remainingNs <= 0) {
+                return false;
+            }
+            poller.wait(events, Duration.ofNanos(remainingNs));
             for (PollEvent event : events) {
                 if (event.revents().contains(expected)) {
-                    return;
+                    return true;
                 }
             }
         }
@@ -343,12 +347,14 @@ final class PerfMultiSpotReqRep {
                 }
             }
             PerfSpotDirectControl.ReadyState ready = control.waitReady(
-                config.size(), config.clients(), config.connectReadyTimeoutMs());
-            for (String endpoint : ready.dataEndpoints()) {
-                dataNode.connectPeer(normalizeClientEndpoint(endpoint,
-                    config.transport()));
+                config.size(), config.clients(), config.connectReadyTimeoutMs(),
+                endpoint -> dataNode.connectPeer(normalizeClientEndpoint(endpoint,
+                    config.transport())));
+            if (ready.dataEndpoints().isEmpty()) {
+                throw new IllegalStateException(label + " missing data endpoint");
             }
-            settleAfterReady();
+            waitForConnectedPeers(dataNode, ready.dataEndpoints().size(),
+                config.connectReadyTimeoutMs(), label + " data link");
             while ((line = reader.readLine()) != null) {
                 if (expectedStart.equals(line)) {
                     control.publishStart(config.size());
@@ -359,6 +365,21 @@ final class PerfMultiSpotReqRep {
             throw new IllegalStateException(label + " control read failed", ex);
         }
         throw new IllegalStateException(label + " missing " + expectedStart);
+    }
+
+    private static void waitForConnectedPeers(SpotNode node,
+                                              int expectedPeers,
+                                              int timeoutMs,
+                                              String label) {
+        long deadline = System.nanoTime()
+            + Duration.ofMillis(Math.max(1, timeoutMs)).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (node.statusSnapshot().connectedPeerCount() >= expectedPeers) {
+                return;
+            }
+            sleepQuietly(10);
+        }
+        throw new IllegalStateException(label + " connected peer timeout");
     }
 
     private static void settleAfterReady() {

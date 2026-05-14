@@ -191,6 +191,18 @@ int resolve_spot_start_timeout_ms (const perf::multi::multi_bench_settings_t &se
                      std::max (1000, settings_.connect_ready_timeout_ms * 6));
 }
 
+bool resolve_spot_latency_only_mode ()
+{
+    const char *value = std::getenv ("PERF_MULTI_SPOT_LATENCY_ONLY");
+    return value != NULL && value[0] != '\0' && std::strcmp (value, "0") != 0;
+}
+
+int resolve_spot_latency_only_interval_us ()
+{
+    return perf::multi::parse_positive_env (
+      "PERF_MULTI_SPOT_LATENCY_ONLY_INTERVAL_US", 1000);
+}
+
 int resolve_spot_barrier_timeout_ms (
   const perf::multi::multi_bench_settings_t &settings_,
   const std::string &transport_)
@@ -313,8 +325,21 @@ bool run_phase (zlink::service::spot_t &spot_,
     unsigned long long publish_ok_count = 0;
     unsigned long long publish_blocked_count = 0;
     unsigned long long publish_wait_count = 0;
+    const bool latency_only =
+      resolve_spot_latency_only_mode ()
+      && phase_ == perf_metric::phase_active;
+    const std::chrono::microseconds latency_only_interval (
+      resolve_spot_latency_only_interval_us ());
+    auto next_latency_probe_at = std::chrono::steady_clock::now ();
 
     while (std::chrono::steady_clock::now () < deadline) {
+        if (latency_only) {
+            const auto now = std::chrono::steady_clock::now ();
+            if (now < next_latency_probe_at) {
+                std::this_thread::sleep_until (next_latency_probe_at);
+                continue;
+            }
+        }
         (void) channel_name_;
         const auto publish_once =
           [&](zlink::send_flags_t flags_, int *saved_errno_out_) -> int {
@@ -362,6 +387,9 @@ bool run_phase (zlink::service::spot_t &spot_,
         if (rc == 0) {
             ++publish_ok_count;
             ++seq_;
+            if (latency_only)
+                next_latency_probe_at =
+                  std::chrono::steady_clock::now () + latency_only_interval;
             continue;
         }
 

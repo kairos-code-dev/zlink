@@ -302,6 +302,27 @@ class spot_reqrep_client_bench_t
         _slots.reserve (_settings.clients);
     }
 
+    ~spot_reqrep_client_bench_t ()
+    {
+        for (size_t i = 0; i < _slots.size (); ++i) {
+            if (!_slots[i])
+                continue;
+            _slots[i]->owner = NULL;
+            _slots[i]->waiting_reply.store (
+              false, std::memory_order_release);
+        }
+        for (size_t i = 0; i < _slots.size (); ++i) {
+            if (!_slots[i] || !_slots[i]->spot)
+                continue;
+            try {
+                (void) _poller.remove (*_slots[i]->spot);
+            }
+            catch (const std::exception &) {
+            }
+            _slots[i]->spot.reset ();
+        }
+    }
+
     bool run ()
     {
         if (!setup ())
@@ -692,9 +713,13 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
         return false;
     }
 
-    spot_reqrep_client_bench_t bench (
-      transport, lib_name, msg_size, endpoint, settings);
-    if (!bench.prepare_data_plane ()) {
+    // This benchmark process exits immediately after one size case. Keeping
+    // the data-plane bench alive until _Exit avoids draining late async
+    // request callbacks while their slot userdata is being destroyed.
+    spot_reqrep_client_bench_t *bench =
+      new spot_reqrep_client_bench_t (
+        transport, lib_name, msg_size, endpoint, settings);
+    if (!bench || !bench->prepare_data_plane ()) {
         signal_stop ();
         if (stdin_thread.joinable ())
             stdin_thread.detach ();
@@ -703,7 +728,7 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
     wait_for_settle_ms (resolve_spot_ready_settle_ms ());
     if (!publish_control_payload (
           control_spot,
-          std::string ("DATA_ENDPOINT,") + bench.local_data_endpoint (),
+          std::string ("DATA_ENDPOINT,") + bench->local_data_endpoint (),
           start_timeout_ms)) {
         signal_stop ();
         if (stdin_thread.joinable ())
@@ -713,7 +738,7 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
     wait_for_settle_ms (resolve_spot_control_settle_ms ());
     if (std::getenv ("ZLINK_ENABLE_SPOT_DIRECT_ROUTE") == NULL
         && !perf::multi::wait_for_spot_connected_peer_count (
-          bench.data_node (), 1, start_timeout_ms)) {
+          bench->data_node (), 1, start_timeout_ms)) {
         signal_stop ();
         if (stdin_thread.joinable ())
             stdin_thread.detach ();
@@ -749,7 +774,7 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
             stdin_thread.detach ();
         return false;
     }
-    const bool ok = bench.run ();
+    const bool ok = bench->run ();
     signal_stop ();
     if (stdin_thread.joinable ())
         stdin_thread.detach ();

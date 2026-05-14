@@ -98,18 +98,22 @@ class dealer_router_client_bench_t
         if (!setup_sockets ())
             return false;
 
+        bool ok = true;
         _resource_probe_start = perf::multi::start_resource_probe ();
         if (!run_phase (perf_metric::phase_active,
                         _phase_cfg.active_seconds,
                         &_result.active_count,
-                        &_result.latency))
-            return false;
+                        &_result.latency)) {
+            ok = false;
+        }
 
         _resource_metrics =
           perf::multi::finish_resource_probe (_resource_probe_start);
 
-        print_result ();
-        return true;
+        if (ok)
+            print_result ();
+        send_stop_token ();
+        return ok;
     }
 
   private:
@@ -392,6 +396,31 @@ class dealer_router_client_bench_t
           2.0,
           _result.latency,
           _resource_metrics);
+    }
+
+    void send_stop_token ()
+    {
+        for (size_t i = 0; i < _holders.size (); ++i) {
+            zlink::dealer_socket_t *sock = _holders[i].get ();
+            if (!sock || !sock->valid ())
+                continue;
+
+            zlink::message_t stop_msg (std::strlen (perf::multi::k_stop_token));
+            if (!stop_msg.valid ())
+                continue;
+            std::memcpy (
+              stop_msg.data (), perf::multi::k_stop_token, stop_msg.size ());
+            try {
+                if (std::move (sock->send ())
+                      .message (stop_msg)
+                      .flags (zlink::send_flags_t::none)
+                      .submit ()) {
+                    return;
+                }
+            }
+            catch (const zlink::zlink_error_t &) {
+            }
+        }
     }
 
   private:

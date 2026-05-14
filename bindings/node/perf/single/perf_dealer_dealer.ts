@@ -12,13 +12,16 @@ const {
 } = require('../common/perf_metrics');
 const {
   applyContextPolicy,
+  applyAutoHwmMsgUnit,
   applySocketPolicy,
   benchmarkEndpoint,
   closeSenderWorker,
   configureTlsServer,
   drainRecvSocket,
+  emitSingleSocketHwmDetail,
   parseSingleBinaryArgs,
   resolveSingleLatencySampleCap,
+  runLocalSocketOneWayBenchmark,
   spawnSenderWorker,
   waitForWorkerDone,
   waitForWorkerError,
@@ -27,6 +30,17 @@ const {
 } = require('./perf_single_common');
 
 async function runDealerDealerBenchmark(msgSize, options) {
+  if (options.transport === 'inproc') {
+    return runLocalSocketOneWayBenchmark({
+      pattern: 'DEALER_DEALER',
+      msgSize,
+      options,
+      endpointToken: 'dealer-dealer',
+      createReceiver: (ctx) => new zlink.DealerSocket(ctx),
+      createSender: (ctx) => new zlink.DealerSocket(ctx),
+    });
+  }
+
   const ctx = new zlink.Context();
   applyContextPolicy(ctx);
   const server = new zlink.DealerSocket(ctx);
@@ -36,6 +50,8 @@ async function runDealerDealerBenchmark(msgSize, options) {
 
   try {
     applySocketPolicy(server, options);
+    applyAutoHwmMsgUnit(server, msgSize);
+    ctx.recalculateAutoHwm();
     configureTlsServer(server, options.transport);
     server.bind(endpoint);
     worker = spawnSenderWorker({
@@ -69,6 +85,11 @@ async function runDealerDealerBenchmark(msgSize, options) {
     // PERF_SINGLE_TEST_POLICY § 1.4: receiver drains until the wire stop
     // token arrives — in-flight payloads precede it naturally, so the
     // explicit deadline-based drain is no longer needed.
+    worker.postMessage({ type: 'start' });
+    await Promise.race([
+      waitForWorkerMessage(worker, 'started'),
+      workerError.then((message) => Promise.reject(new Error(message.message)))
+    ]);
     const recvTask = drainRecvSocket(
       server,
       (received) => {
@@ -76,14 +97,14 @@ async function runDealerDealerBenchmark(msgSize, options) {
         collector.record(header, currentEpochNs());
       }
     );
-
-    worker.postMessage({ type: 'start' });
     await Promise.race([
       waitForWorkerDone(worker, options.duration),
       workerError.then((message) => Promise.reject(new Error(message.message)))
     ]);
     await recvTask;
-    return collector.finish();
+    const result = collector.finish();
+    emitSingleSocketHwmDetail(server, 'DEALER_DEALER', options.transport, 'receiver', msgSize);
+    return result;
   } finally {
     await closeSenderWorker(worker);
     serverMonitor.close();

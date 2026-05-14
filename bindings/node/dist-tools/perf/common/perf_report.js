@@ -36,6 +36,7 @@ function throughputUnit(pattern) {
         || pattern === 'MULTI_ROUTER_ROUTER'
         || pattern === 'MULTI_STREAM'
         || pattern === 'MULTI_SPOT_REQREP'
+        || pattern === 'MULTI_SPOT_SENDSEND'
         ? 'Kops/s'
         : 'Kmsg/s';
 }

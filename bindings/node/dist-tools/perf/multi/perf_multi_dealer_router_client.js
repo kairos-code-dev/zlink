@@ -3,8 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWaitInto, resolveMultiLatencySampleCap, sendStopTokenWithRetry, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, resolveMultiLatencySampleCap, sendStopTokenWithRetry, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -19,6 +20,7 @@ async function main() {
         for (let i = 0; i < options.clients; i += 1) {
             const dealer = new zlink.DealerSocket(ctx);
             applySocketPolicy(dealer);
+            configureTlsClient(dealer, options.transport);
             dealer.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`CLIENT-${i}`, 'ascii')));
             dealers.push(dealer);
             payloads.push(createPayload(options.msgSize));
@@ -32,6 +34,9 @@ async function main() {
             poller.add(dealers[i], pollEvents(POLLIN | POLLOUT), i);
         }
         ctx.recalculateAutoHwm();
+        for (const dealer of dealers) {
+            emitMultiSocketHwmDetail(dealer, 'endpoint', options.transport, options.msgSize);
+        }
         const runId = createRunId(1);
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));

@@ -8,12 +8,14 @@ const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, emitMultiSpotNodeHwmSnapshot, subscribeNoWait, trySocketPublish } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
-const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
-const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
-const TRACE = process.env.PERF_MULTI_SPOT_REQREP_TRACE === '1';
-function trace(message) {
-    if (TRACE) {
-        console.error(`[multi-spot-reqrep-server] ${message}`);
+const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii'));
+const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii'));
+function closeQuietly(resource) {
+    try {
+        resource?.close();
+    }
+    catch (err) {
+        console.error(`[multi-spot-sendsend-server] close failed: ${err}`);
     }
 }
 function tryRecvRouted(spot) {
@@ -27,23 +29,16 @@ function tryRecvRouted(spot) {
         throw error;
     }
 }
-function closeQuietly(resource) {
-    try {
-        resource?.close();
-    }
-    catch (err) {
-        console.error(`[multi-spot-reqrep-server] close failed: ${err}`);
-    }
-}
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
-    applyContextPolicy(ctx, 'server', 'MULTI_SPOT_REQREP');
+    applyContextPolicy(ctx, 'server', 'MULTI_SPOT_SENDSEND');
     const node = new zlink.SpotNode(ctx);
+    let spot = null;
     const controlPub = new zlink.PubSocket(ctx);
     const controlSub = new zlink.SubSocket(ctx);
     const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
-    let spot = null;
+    const connectedDataEndpoints = new Set();
     let readyCount = 0;
     let connected = false;
     let startRequested = false;
@@ -70,7 +65,6 @@ async function main() {
         controlSub.setSubscription(CONTROL_TOPIC);
         console.log(`READY,${options.endpoint}`);
         console.log(`CONTROL_READY,${options.controlEndpoint}`);
-        trace('ready');
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         (async () => {
             for await (const line of rl) {
@@ -79,12 +73,11 @@ async function main() {
                 }
                 else if (line.startsWith('CONNECT_CONTROL,')) {
                     const clientEndpoint = line.slice('CONNECT_CONTROL,'.length).trim();
-                    if (!clientEndpoint || clientEndpoint === connectedControlEndpoint) {
-                        continue;
+                    if (clientEndpoint && clientEndpoint !== connectedControlEndpoint) {
+                        connectedControlEndpoint = clientEndpoint;
+                        controlSub.connect(clientEndpoint);
+                        console.log(`CONTROL_CONNECTED,${clientEndpoint}`);
                     }
-                    connectedControlEndpoint = clientEndpoint;
-                    controlSub.connect(clientEndpoint);
-                    console.log(`CONTROL_CONNECTED,${clientEndpoint}`);
                 }
                 else if (line === 'STOP' || line === 'QUIT') {
                     stop = true;
@@ -99,10 +92,12 @@ async function main() {
                     continue;
                 }
                 try {
-                    let reply = received.reply();
-                    for (const part of received.parts)
-                        reply = reply.message(part);
-                    reply.submit();
+                    const sent = received.send().message(received.parts[0].data())
+                        .flags(zlink.SendFlags.DontWait)
+                        .submit();
+                    if (!sent) {
+                        await new Promise((resolve) => setImmediate(resolve));
+                    }
                 }
                 finally {
                     received.close();
@@ -120,17 +115,23 @@ async function main() {
                 const payloadText = received.parts[0].data().toString('utf8');
                 if (payloadText === 'CONNECTED') {
                     connected = true;
-                    continue;
                 }
-                if (payloadText.startsWith(`READY_COUNT,${options.msgSize},`)) {
+                else if (payloadText.startsWith('DATA_ENDPOINT,')) {
+                    const endpoint = payloadText.slice('DATA_ENDPOINT,'.length).trim();
+                    if (endpoint && !connectedDataEndpoints.has(endpoint)) {
+                        node.connectPeer(endpoint);
+                        connectedDataEndpoints.add(endpoint);
+                    }
+                }
+                else if (payloadText.startsWith(`READY_COUNT,${options.msgSize},`)) {
                     readyCount = Number(payloadText.split(',')[2]);
                 }
+                received.close();
             }
             if (!(connected && readyCount >= options.clients && startRequested) && !drained) {
                 await sleepImmediate();
             }
         }
-        trace(`control-ready connected=${connected} ready=${readyCount} start=${startRequested}`);
         if (stop) {
             return;
         }
@@ -141,9 +142,8 @@ async function main() {
             await controlPubWaiter.wait(POLLOUT);
         }
         while (!stop) {
-            await sleepImmediate();
+            await new Promise((resolve) => setImmediate(resolve));
         }
-        trace('stop');
     }
     finally {
         stop = true;
@@ -152,9 +152,9 @@ async function main() {
         }
         rl?.close();
         controlPubWaiter.close();
-        closeQuietly(spot);
-        closeQuietly(controlPub);
         closeQuietly(controlSub);
+        closeQuietly(controlPub);
+        closeQuietly(spot);
         closeQuietly(node);
         closeQuietly(ctx);
     }

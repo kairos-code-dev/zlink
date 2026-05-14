@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-const node_net_1 = __importDefault(require("node:net"));
 const zlink = require('@zlink-systems/zlink');
 const perf_metrics_1 = require("../common/perf_metrics");
 const perf_single_common_1 = require("./perf_single_common");
 const perf_stop_token_1 = require("../perf_stop_token");
-const AUTO_CONNECT_SPOT_MESH = 5;
-const CHANNEL_NAME = 'perf.spot';
-const TOPIC = 'perf.topic';
+const TOPIC = 'bench';
 function trySpotPublish(spot, payload) {
     try {
         return spot.publish(TOPIC)
@@ -21,12 +15,14 @@ function trySpotPublish(spot, payload) {
     }
     catch (error) {
         if (error instanceof zlink.SubmitError &&
-            error.result === zlink.SubmitResult.Backpressured) {
+            (error.result === zlink.SubmitResult.Backpressured ||
+                error.result === zlink.SubmitResult.NotConnected ||
+                error.result === zlink.SubmitResult.NotFound)) {
             return false;
         }
         const text = String(error && error.message ? error.message : error);
         if ((error && error.code === 'EAGAIN') ||
-            /Resource temporarily unavailable|temporarily unavailable|would block/i.test(text)) {
+            /Resource temporarily unavailable|temporarily unavailable|would block|Host unreachable|not connected/i.test(text)) {
             return false;
         }
         throw error;
@@ -71,45 +67,34 @@ function drainSpot(spot, onMessage) {
         }
     }
 }
-async function reservePort() {
-    const server = node_net_1.default.createServer();
-    server.listen(0, '127.0.0.1');
-    await new Promise((resolve) => server.once('listening', resolve));
-    const { port } = server.address();
-    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve(undefined))));
-    return port;
-}
 async function runSpotBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     (0, perf_single_common_1.applyContextPolicy)(ctx);
-    const registry = new zlink.Registry(ctx);
-    const publisherDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
-    const subscriberDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
     const publisherNode = new zlink.SpotNode(ctx);
     const subscriberNode = new zlink.SpotNode(ctx);
     let publisher = null;
     let subscriber = null;
+    let stopPublisher = null;
     try {
-        const registryPub = `tcp://127.0.0.1:${await reservePort()}`;
-        const registryRouter = `tcp://127.0.0.1:${await reservePort()}`;
-        const publisherEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-        const subscriberEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+        const publisherEndpoint = await (0, perf_single_common_1.benchmarkEndpoint)(options.transport, `spot-publisher-${msgSize}`);
         publisher = publisherNode.createSpot();
         subscriber = subscriberNode.createSpot();
+        stopPublisher = subscriberNode.createSpot();
+        ctx.recalculateAutoHwm();
         publisherNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('z-node-perf-spot-publisher')));
         subscriberNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('a-node-perf-spot-subscriber')));
         publisher.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('z-node-perf-spot-publisher-spot')));
         subscriber.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('a-node-perf-spot-subscriber-spot')));
-        registry.bind(registryPub, registryRouter);
-        registry.setBroadcastInterval(50);
-        publisherDiscovery.connectRegistry(registryRouter);
-        subscriberDiscovery.connectRegistry(registryRouter);
+        stopPublisher.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('m-node-perf-spot-stop-spot')));
+        (0, perf_single_common_1.configureTlsServer)(publisherNode, options.transport);
+        (0, perf_single_common_1.configureTlsClient)(publisherNode, options.transport);
+        (0, perf_single_common_1.configureTlsServer)(subscriberNode, options.transport);
+        (0, perf_single_common_1.configureTlsClient)(subscriberNode, options.transport);
         (0, perf_single_common_1.applySpotNodeAdmission)(publisherNode, options);
         (0, perf_single_common_1.applySpotNodeAdmission)(subscriberNode, options);
+        ctx.recalculateAutoHwm();
         publisherNode.bind(publisherEndpoint);
-        subscriberNode.bind(subscriberEndpoint);
-        publisherNode.attachDiscovery(publisherDiscovery);
-        subscriberNode.attachDiscovery(subscriberDiscovery);
+        subscriberNode.connectPeer(publisherEndpoint);
         subscriber.setSubscription(TOPIC);
         const runId = (0, perf_metrics_1.createRunId)(options.runId ?? 1);
         const payload = (0, perf_metrics_1.createPayload)(msgSize);
@@ -143,13 +128,12 @@ async function runSpotBenchmark(msgSize, options) {
                 if (!countActive ||
                     header.phase !== 1 ||
                     header.runId !== runId ||
-                    header.msgSize !== msgSize ||
-                    Date.now() > activeDeadline.value) {
+                    header.msgSize !== msgSize) {
                     return;
                 }
                 accepted += 1;
                 if (latenciesNs.length < latencySampleCap) {
-                    const nowNs = BigInt(Date.now()) * 1000000n;
+                    const nowNs = (0, perf_metrics_1.currentEpochNs)();
                     const sentTsNs = BigInt(header.sentTsNs);
                     if (nowNs >= sentTsNs) {
                         latenciesNs.push(Number(nowNs - sentTsNs));
@@ -157,7 +141,12 @@ async function runSpotBenchmark(msgSize, options) {
                 }
             });
         };
-        const readyDeadline = Date.now() + Number(process.env.PERF_CONNECT_READY_TIMEOUT_MS ?? 5000);
+        const readyDefaultMs = options.transport === 'tls' || options.transport === 'wss'
+            ? 10000
+            : 5000;
+        const readyDeadline = Date.now() + Number(process.env.PERF_SINGLE_SPOT_SUBJECT_READY_TIMEOUT_MS
+            ?? process.env.PERF_CONNECT_READY_TIMEOUT_MS
+            ?? readyDefaultMs);
         while (!probeReady && Date.now() < readyDeadline) {
             (0, perf_metrics_1.stampPayload)(payload, {
                 phase: 0,
@@ -189,11 +178,20 @@ async function runSpotBenchmark(msgSize, options) {
             collectReadable(true);
             await (0, perf_metrics_1.sleepImmediate)();
         }
+        const catchupDeadline = Date.now() + Number(process.env.PERF_SINGLE_SPOT_ACTIVE_CATCHUP_MS ?? 100);
+        while (Date.now() < catchupDeadline) {
+            if (!collectReadable(true)) {
+                await (0, perf_metrics_1.sleepImmediate)();
+            }
+            if (accepted > 0) {
+                break;
+            }
+        }
         // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire stop token
         // and drain in-flight payloads until the receiver observes it. The
         // legacy phase-2 cooldown message + timer-based idle drain are no
         // longer needed — in-flight messages naturally precede the token.
-        await publishStopToken(publisher);
+        await publishStopToken(stopPublisher);
         while (!stopReceived) {
             if (!collectReadable(false)) {
                 await (0, perf_metrics_1.sleepImmediate)();
@@ -202,6 +200,8 @@ async function runSpotBenchmark(msgSize, options) {
         if (accepted <= 0) {
             throw new Error('spot benchmark produced no measured messages');
         }
+        (0, perf_single_common_1.emitSingleSpotHwmDetail)(publisherNode, 'publisher', options.transport, msgSize);
+        (0, perf_single_common_1.emitSingleSpotHwmDetail)(subscriberNode, 'subscriber', options.transport, msgSize);
         return {
             latenciesNs,
             accepted
@@ -214,11 +214,11 @@ async function runSpotBenchmark(msgSize, options) {
         if (publisher) {
             publisher.close();
         }
+        if (stopPublisher) {
+            stopPublisher.close();
+        }
         subscriberNode.close();
         publisherNode.close();
-        subscriberDiscovery.close();
-        publisherDiscovery.close();
-        registry.close();
         ctx.close();
     }
 }

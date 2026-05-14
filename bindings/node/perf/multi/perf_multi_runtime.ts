@@ -5,9 +5,9 @@
 const zlink = require('@zlink-systems/zlink');
 const { MonitorEventType, RecvFlags, RecvResult } = zlink;
 const { sleepImmediate } = require('../common/perf_metrics');
-const { isStopTokenParts } = require('../perf_stop_token');
 const POLLIN = 1;
 const POLLOUT = 2;
+const emittedMultiAutoHwmDetails = new Set();
 
 function pollEvents(mask) {
   const events = [];
@@ -41,23 +41,6 @@ function manualSocketOverridesEnabled() {
     integerEnv('PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0 ||
     integerEnv('PERF_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0
   );
-}
-
-// PERF_MULTI_TEST_POLICY § 1.3.1: client/server poller waits use `-1`
-// (signal-driven). Phase end is signaled on the wire via the stop token,
-// so the legacy timer-based fallback (default 100 ms) is no longer
-// needed. Negative values pass through directly so callers can opt into
-// the indefinite wait without sentinel handling.
-function resolveClientPollTimeoutMs() {
-  const raw = process.env.PERF_CLIENT_POLL_TIMEOUT_MS;
-  if (raw === undefined || raw === '') {
-    return -1;
-  }
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) {
-    return -1;
-  }
-  return Math.trunc(parsed);
 }
 
 function applySocketPolicy(socket, options = {}) {
@@ -101,6 +84,326 @@ function applyAutoHwmMsgUnit(socket, msgSize) {
     socket.options.autoHwmMsgUnitBytes = msgSize;
   } catch (err) {
     // best effort — not all socket types expose this option
+  }
+}
+
+function autoHwmDetailEnabled() {
+  const value = process.env.PERF_MULTI_PRINT_AUTO_HWM_DETAIL
+    ?? process.env.PERF_PRINT_AUTO_HWM_DETAIL;
+  return value === undefined || value === '' || value !== '0';
+}
+
+function autoHwmRoleName(role) {
+  switch (role) {
+    case 1: return 'control';
+    case 2: return 'routed';
+    case 3: return 'fanout';
+    case 4: return 'recv_ingress';
+    case 5: return 'spot_data';
+    case 6: return 'peer_queue';
+    case 7: return 'stream';
+    default: return 'none';
+  }
+}
+
+function autoHwmProfileName(profile) {
+  if (zlink.AutoHwmProfile) {
+    if (profile === zlink.AutoHwmProfile.Compact) return 'compact';
+    if (profile === zlink.AutoHwmProfile.LowLatency) return 'low_latency';
+    if (profile === zlink.AutoHwmProfile.Balanced) return 'balanced';
+    if (profile === zlink.AutoHwmProfile.Throughput) return 'throughput';
+  }
+  return 'unknown';
+}
+
+function autoHwmPolicyClassName(policyClass) {
+  switch (policyClass) {
+    case 1: return 'fanout';
+    case 2: return 'spot_data';
+    case 3: return 'recv_ingress';
+    case 4: return 'routed';
+    case 5: return 'control';
+    case 6: return 'stream';
+    case 7: return 'peer_queue';
+    default: return 'unknown';
+  }
+}
+
+function autoHwmRecalcReasonName(reason) {
+  switch (reason) {
+    case 1: return 'context_create';
+    case 2: return 'socket_register';
+    case 3: return 'socket_unregister';
+    case 4: return 'socket_option';
+    case 5: return 'manual';
+    case 6: return 'budget_change';
+    case 7: return 'topology_change';
+    case 8: return 'timer';
+    default: return 'unknown';
+  }
+}
+
+function socketTypeName(socketOrType) {
+  const socketType = typeof socketOrType === 'number' ? socketOrType : null;
+  if (socketType !== null && zlink.SocketType) {
+    switch (socketType) {
+      case zlink.SocketType.Pair: return 'pair';
+      case zlink.SocketType.Pub: return 'pub';
+      case zlink.SocketType.Sub: return 'sub';
+      case zlink.SocketType.Dealer: return 'dealer';
+      case zlink.SocketType.Router: return 'router';
+      case zlink.SocketType.XPub: return 'xpub';
+      case zlink.SocketType.XSub: return 'xsub';
+      case zlink.SocketType.Stream: return 'stream';
+      default: return 'unknown';
+    }
+  }
+  const socket = socketOrType;
+  if (socket instanceof zlink.PairSocket) return 'pair';
+  if (socket instanceof zlink.PubSocket) return 'pub';
+  if (socket instanceof zlink.SubSocket) return 'sub';
+  if (socket instanceof zlink.DealerSocket) return 'dealer';
+  if (socket instanceof zlink.RouterSocket) return 'router';
+  if (zlink.StreamSocket && socket instanceof zlink.StreamSocket) return 'stream';
+  return 'unknown';
+}
+
+function autoHwmSendSideVisible(socketType, role) {
+  const roleName = autoHwmRoleName(role);
+  return roleName === 'fanout'
+    || roleName === 'spot_data'
+    || roleName === 'routed'
+    || roleName === 'control'
+    || roleName === 'peer_queue'
+    || roleName === 'stream'
+    || socketTypeName(socketType) === 'pub'
+    || socketTypeName(socketType) === 'router'
+    || socketTypeName(socketType) === 'dealer'
+    || socketTypeName(socketType) === 'stream';
+}
+
+function autoHwmRecvSideVisible(socketType, role) {
+  const roleName = autoHwmRoleName(role);
+  return roleName === 'recv_ingress'
+    || roleName === 'routed'
+    || roleName === 'control'
+    || roleName === 'peer_queue'
+    || roleName === 'stream'
+    || socketTypeName(socketType) === 'sub'
+    || socketTypeName(socketType) === 'router'
+    || socketTypeName(socketType) === 'dealer'
+    || socketTypeName(socketType) === 'stream';
+}
+
+function hwmSndBufDisplay(snapshot, socketType) {
+  return autoHwmSendSideVisible(socketType, snapshot.autoHwmRole)
+    ? String(snapshot.autoHwmEffectiveSndBuf)
+    : '-';
+}
+
+function hwmRcvBufDisplay(snapshot, socketType) {
+  return autoHwmRecvSideVisible(socketType, snapshot.autoHwmRole)
+    ? String(snapshot.autoHwmEffectiveRcvBuf)
+    : '-';
+}
+
+function spotOwnerName(owner) {
+  if (zlink.SpotNodeSocketOwner && owner === zlink.SpotNodeSocketOwner.Node) {
+    return 'node';
+  }
+  if (zlink.SpotNodeSocketOwner && owner === zlink.SpotNodeSocketOwner.Spot) {
+    return 'spot';
+  }
+  return 'unknown';
+}
+
+function includeSpotSnapshotRow(label, row) {
+  if (!String(label || '').includes('control')) {
+    return true;
+  }
+  return row.socketName === 'peer_ctrl_pub' || row.socketName === 'peer_ctrl_sub';
+}
+
+function printAutoHwmSnapshotTable(title, rows, msgSize) {
+  if (rows.length === 0) {
+    return;
+  }
+  console.log(`${title}:`);
+  console.log('  | Size(B) | MsgUnit(B) | Socket | Type | Profile | Class | Role | Cap | Slots | SNDHWM | RCVHWM |');
+  console.log('  |---------|------------|--------|------|---------|-------|------|-----|-------|--------|--------|');
+  for (const row of rows) {
+    const snapshot = row.snapshot;
+    console.log(
+      `  | ${msgSize || 0}`
+      + ` | ${snapshot.autoHwmEffectiveMessageBytes}`
+      + ` | ${row.socketName}`
+      + ` | ${socketTypeName(row.socketType)}`
+      + ` | ${autoHwmProfileName(snapshot.autoHwmProfile)}`
+      + ` | ${autoHwmPolicyClassName(snapshot.autoHwmPolicyClass)}`
+      + ` | ${autoHwmRoleName(snapshot.autoHwmRole)}`
+      + ` | ${snapshot.autoHwmSizeCap}`
+      + ` | ${snapshot.autoHwmSocketMessageSlots}`
+      + ` | ${autoHwmSendSideVisible(row.socketType, snapshot.autoHwmRole) ? snapshot.autoHwmAppliedSndHwm : '-'}`
+      + ` | ${autoHwmRecvSideVisible(row.socketType, snapshot.autoHwmRole) ? snapshot.autoHwmAppliedRcvHwm : '-'}`
+      + ' |'
+    );
+  }
+}
+
+function emitMultiSpotNodeHwmSnapshot(node, label, transport, msgSize) {
+  if (!node || !autoHwmDetailEnabled()) {
+    return;
+  }
+  let rows = [];
+  try {
+    rows = node.internalSocketsSnapshot();
+  } catch (err) {
+    return;
+  }
+  const pattern = process.env.PERF_MULTI_PATTERN || process.env.PERF_PATTERN || 'unknown';
+  const component = process.env.PERF_MULTI_COMPONENT || 'process';
+  const effectiveTransport = transport || process.env.PERF_MULTI_TRANSPORT || 'unknown';
+  const nodeRows = [];
+  const spotRows = [];
+  for (const row of rows) {
+    if (!row.autoHwmVisible || !includeSpotSnapshotRow(label, row)) {
+      continue;
+    }
+    const snapshot = row.snapshot;
+    const owner = spotOwnerName(row.owner);
+    const scope = owner === 'node' ? 'shared' : 'per-spot';
+    const key = [
+      pattern,
+      effectiveTransport,
+      component,
+      row.socketName,
+      owner,
+      String(row.ownerId),
+      msgSize || 0,
+      snapshot.autoHwmRole,
+      snapshot.autoHwmAppliedSndHwm,
+      snapshot.autoHwmAppliedRcvHwm,
+      String(snapshot.autoHwmSocketMessageSlots),
+      String(snapshot.autoHwmEffectiveMessageBytes),
+      snapshot.autoHwmEffectiveSndBuf,
+      snapshot.autoHwmEffectiveRcvBuf,
+    ].join('|');
+    if (!emittedMultiAutoHwmDetails.has(key)) {
+      emittedMultiAutoHwmDetails.add(key);
+      console.log(
+        'AUTO_HWM_DETAIL'
+        + `,pattern=${pattern}`
+        + `,transport=${effectiveTransport}`
+        + `,component=${component}`
+        + `,label=${row.socketName}`
+        + `,owner=${owner}`
+        + `,owner_id=${row.ownerId}`
+        + `,socket=${row.socketName}`
+        + `,socket_type=${socketTypeName(row.socketType)}`
+        + `,msg_size=${msgSize || 0}`
+        + ',source=spotnode_snapshot'
+        + `,enabled=${snapshot.autoHwmEnabled ? 1 : 0}`
+        + `,role=${autoHwmRoleName(snapshot.autoHwmRole)}`
+        + `,role_id=${snapshot.autoHwmRole}`
+        + `,profile=${autoHwmProfileName(snapshot.autoHwmProfile)}`
+        + `,profile_id=${snapshot.autoHwmProfile}`
+        + `,policy_class=${autoHwmPolicyClassName(snapshot.autoHwmPolicyClass)}`
+        + `,policy_class_id=${snapshot.autoHwmPolicyClass}`
+        + `,unit_budget_bytes=${snapshot.autoHwmUnitBudgetBytes}`
+        + `,size_cap=${snapshot.autoHwmSizeCap}`
+        + `,scope=${scope}`
+        + `,sndhwm=${snapshot.autoHwmAppliedSndHwm}`
+        + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwm}`
+        + `,socket_message_slots=${snapshot.autoHwmSocketMessageSlots}`
+        + `,effective_message_bytes=${snapshot.autoHwmEffectiveMessageBytes}`
+        + `,effective_sndbuf=${hwmSndBufDisplay(snapshot, row.socketType)}`
+        + `,effective_rcvbuf=${hwmRcvBufDisplay(snapshot, row.socketType)}`
+        + `,last_recalc_reason=${autoHwmRecalcReasonName(snapshot.autoHwmLastRecalcReason)}`
+      );
+    }
+    if (owner === 'node') {
+      nodeRows.push(row);
+    } else if (owner === 'spot') {
+      spotRows.push(row);
+    }
+  }
+  const sortRows = (items) => items.sort((lhs, rhs) =>
+    String(lhs.socketName).localeCompare(String(rhs.socketName))
+    || Number(lhs.ownerId - rhs.ownerId)
+    || Number(lhs.snapshot.autoHwmRole - rhs.snapshot.autoHwmRole)
+  );
+  printAutoHwmSnapshotTable('Auto-HWM spotnode', sortRows(nodeRows), msgSize);
+  printAutoHwmSnapshotTable('Auto-HWM spot handles', sortRows(spotRows), msgSize);
+}
+
+function emitMultiSocketHwmDetail(socket, label, transport, msgSize) {
+  if (!socket || !autoHwmDetailEnabled()) {
+    return;
+  }
+  let monitor = null;
+  try {
+    monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
+    const snapshot = monitor.snapshot();
+    const pattern = process.env.PERF_MULTI_PATTERN || process.env.PERF_PATTERN || 'unknown';
+    const component = process.env.PERF_MULTI_COMPONENT || 'process';
+    const effectiveTransport = transport || process.env.PERF_MULTI_TRANSPORT || 'unknown';
+    const socketType = socketTypeName(socket);
+    const key = [
+      pattern,
+      effectiveTransport,
+      component,
+      label || 'socket',
+      msgSize || 0,
+      autoHwmRoleName(snapshot.autoHwmRole),
+      snapshot.autoHwmAppliedSndHwm,
+      snapshot.autoHwmAppliedRcvHwm,
+      snapshot.autoHwmProfile,
+      snapshot.autoHwmPolicyClass,
+      String(snapshot.autoHwmUnitBudgetBytes),
+      snapshot.autoHwmSizeCap,
+      String(snapshot.autoHwmSocketMessageSlots),
+      String(snapshot.autoHwmEffectiveMessageBytes),
+      snapshot.autoHwmEffectiveSndBuf,
+      snapshot.autoHwmEffectiveRcvBuf,
+    ].join('|');
+    if (emittedMultiAutoHwmDetails.has(key)) {
+      return;
+    }
+    emittedMultiAutoHwmDetails.add(key);
+    console.log(
+      'AUTO_HWM_DETAIL'
+      + `,pattern=${pattern}`
+      + `,transport=${effectiveTransport}`
+      + `,component=${component}`
+      + `,label=${label || 'socket'}`
+      + `,socket_type=${socketType}`
+      + `,msg_size=${msgSize || 0}`
+      + ',source=monitor_snapshot'
+      + `,enabled=${snapshot.autoHwmEnabled ? 1 : 0}`
+      + `,role=${autoHwmRoleName(snapshot.autoHwmRole)}`
+      + `,role_id=${snapshot.autoHwmRole}`
+      + `,profile=${autoHwmProfileName(snapshot.autoHwmProfile)}`
+      + `,profile_id=${snapshot.autoHwmProfile}`
+      + `,policy_class=${autoHwmPolicyClassName(snapshot.autoHwmPolicyClass)}`
+      + `,policy_class_id=${snapshot.autoHwmPolicyClass}`
+      + `,unit_budget_bytes=${snapshot.autoHwmUnitBudgetBytes}`
+      + `,size_cap=${snapshot.autoHwmSizeCap}`
+      + `,sndhwm=${snapshot.autoHwmAppliedSndHwm}`
+      + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwm}`
+      + `,socket_message_slots=${snapshot.autoHwmSocketMessageSlots}`
+      + `,effective_message_bytes=${snapshot.autoHwmEffectiveMessageBytes}`
+      + `,effective_sndbuf=${hwmSndBufDisplay(snapshot, socket)}`
+      + `,effective_rcvbuf=${hwmRcvBufDisplay(snapshot, socket)}`
+      + `,last_recalc_ms=${snapshot.autoHwmLastRecalcMs}`
+      + `,last_recalc_reason=${autoHwmRecalcReasonName(snapshot.autoHwmLastRecalcReason)}`
+      + `,send_blocked_ratio_ppm=${snapshot.autoHwmSendBlockedRatioPpm}`
+      + `,deferred_sndhwm=${snapshot.autoHwmDeferredSndHwm}`
+      + `,deferred_rcvhwm=${snapshot.autoHwmDeferredRcvHwm}`
+    );
+  } catch (err) {
+    // Diagnostic output must not turn a valid perf run into a failure.
+  } finally {
+    monitor?.close();
   }
 }
 
@@ -302,57 +605,6 @@ function trySocketPublish(socket, topic, payload) {
   }
 }
 
-// PERF_MULTI_TEST_POLICY § 1.3.1: receivers wait with `-1` (signal-driven)
-// and exit on the wire-level stop token. The legacy `shouldStop()` flag is
-// kept as an optional belt-and-suspenders so callers can still bail out
-// (e.g. when a connection close races the sentinel), but it is no longer
-// the primary termination signal.
-async function drainRecvSocket(socket, onMessage, shouldStop) {
-  const poller = new zlink.Poller();
-  poller.add(socket, pollEvents(POLLIN));
-  const useSubscribe = typeof socket.subscribe === 'function';
-  const checkStop = typeof shouldStop === 'function' ? shouldStop : () => false;
-
-  try {
-    let stopReceived = false;
-    while (!stopReceived && !checkStop()) {
-      // Yield to the event loop before each blocking wait so queued
-      // postMessages, timers, and stdin events are delivered. The native
-      // `pollerWait(-1)` is synchronous and would otherwise starve the
-      // rest of the JS world.
-      await sleepImmediate();
-      let ready = null;
-      try {
-        ready = poller.wait(-1);
-      } catch (error) {
-        const text = String(error && error.message ? error.message : error);
-        if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
-          continue;
-        }
-        throw error;
-      }
-      if (!ready) {
-        // `-1` should not normally produce a null event; treat as spurious
-        // wake-up and re-arm.
-        continue;
-      }
-      while (true) {
-        const received = useSubscribe ? subscribeNoWait(socket) : recvNoWait(socket);
-        if (!received) {
-          break;
-        }
-        if (isStopTokenParts(received.parts)) {
-          stopReceived = true;
-          break;
-        }
-        onMessage(received);
-      }
-    }
-  } finally {
-    poller.close();
-  }
-}
-
 function createSocketEventWaiter(socket, events) {
   const poller = new zlink.Poller();
   poller.add(socket, pollEvents(events));
@@ -394,13 +646,12 @@ module.exports = {
   applySpotNodeAdmission,
   applySocketPolicy,
   createSocketEventWaiter,
-  drainRecvSocket,
-  manualSocketOverridesEnabled,
+  emitMultiSocketHwmDetail,
+  emitMultiSpotNodeHwmSnapshot,
   pollEvents,
   pollEventHas,
   recvNoWait,
   recvNoWaitInto,
-  resolveClientPollTimeoutMs,
   resolveMultiLatencySampleCap,
   sendStopTokenWithRetry,
   subscribeNoWait,

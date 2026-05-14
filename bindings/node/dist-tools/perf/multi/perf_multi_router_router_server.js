@@ -3,9 +3,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
+const { configureTlsServer } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { isStopTokenParts } = require('../perf_stop_token');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWaitInto, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -18,10 +19,12 @@ async function main() {
     let stop = false;
     try {
         applySocketPolicy(router);
+        configureTlsServer(router, options.transport);
         router.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('multi-router-router-server', 'ascii')));
         router.bind(options.endpoint);
         applyAutoHwmMsgUnit(router, options.msgSize);
         ctx.recalculateAutoHwm();
+        emitMultiSocketHwmDetail(router, 'endpoint', options.transport, options.msgSize);
         poller.add(router, pollEvents(POLLIN));
         const readyBarrier = waitForConnectionReadyCount(router, options.clients);
         console.log(`READY,${options.endpoint}`);

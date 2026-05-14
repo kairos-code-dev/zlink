@@ -137,7 +137,8 @@ function isEchoPattern(pattern) {
   return pattern === 'MULTI_DEALER_ROUTER'
     || pattern === 'MULTI_ROUTER_ROUTER'
     || pattern === 'MULTI_STREAM'
-    || pattern === 'MULTI_SPOT_REQREP';
+    || pattern === 'MULTI_SPOT_REQREP'
+    || pattern === 'MULTI_SPOT_SENDSEND';
 }
 
 function summarizeMetrics(
@@ -149,6 +150,9 @@ function summarizeMetrics(
   libName = 'current',
   throughputCount = latenciesNs.length
 ) {
+  if (!Number.isFinite(throughputCount) || throughputCount <= 0 || latenciesNs.length === 0) {
+    throw new Error(`no measured messages for ${pattern} ${transport} ${msgSize}B`);
+  }
   const metrics = computeMetrics(
     latenciesNs,
     durationSeconds,
@@ -157,9 +161,7 @@ function summarizeMetrics(
     throughputCount
   );
   return Object.entries(metrics).map(([metric, value]) => {
-    const formatted = metric.startsWith('latency')
-      ? value.toFixed(6)
-      : value.toFixed(2);
+    const formatted = value.toFixed(3);
     return `RESULT,${libName},${pattern},${transport},${msgSize},${metric},${formatted}`;
   });
 }

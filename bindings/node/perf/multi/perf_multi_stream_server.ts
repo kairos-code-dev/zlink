@@ -4,11 +4,13 @@
 
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
+const { configureTlsServer } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
   applyAutoHwmMsgUnit,
   applyContextPolicy,
-  applySocketPolicy
+  applySocketPolicy,
+  emitMultiSocketHwmDetail
 } = require('./perf_multi_runtime');
 
 async function main() {
@@ -20,8 +22,10 @@ async function main() {
 
   try {
     applySocketPolicy(stream);
+    configureTlsServer(stream, options.transport);
     applyAutoHwmMsgUnit(stream, options.msgSize);
     ctx.recalculateAutoHwm();
+    emitMultiSocketHwmDetail(stream, 'endpoint', options.transport, options.msgSize);
     stream.bind(options.endpoint);
     stream.onPacket((routingId, header, body) => {
       stream.send(routingId).message(body.data()).submit();

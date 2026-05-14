@@ -3,8 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWaitInto, resolveMultiLatencySampleCap, sendStopTokenWithRetry, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, resolveMultiLatencySampleCap, sendStopTokenWithRetry, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
 const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
 async function main() {
@@ -21,6 +22,7 @@ async function main() {
         for (let i = 0; i < options.clients; i += 1) {
             const router = new zlink.RouterSocket(ctx);
             applySocketPolicy(router);
+            configureTlsClient(router, options.transport);
             router.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`multi-router-client-${i}`, 'ascii')));
             routers.push(router);
             payloads.push(createPayload(options.msgSize));
@@ -34,6 +36,9 @@ async function main() {
             poller.add(routers[i], pollEvents(POLLIN | POLLOUT), i);
         }
         ctx.recalculateAutoHwm();
+        for (const router of routers) {
+            emitMultiSocketHwmDetail(router, 'endpoint', options.transport, options.msgSize);
+        }
         const runId = createRunId(1);
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));

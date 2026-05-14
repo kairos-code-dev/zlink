@@ -219,6 +219,7 @@ function resolveMultiPatternNames(pattern) {
       'MULTI_PUBSUB',
       'MULTI_SPOT',
       'MULTI_SPOT_REQREP',
+      'MULTI_SPOT_SENDSEND',
       'MULTI_STREAM'
     ]
     : normalized.split(',').map(normalizeMultiPatternName).filter(Boolean);

@@ -3,8 +3,18 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRecvSocket, emitSingleSocketHwmDetail, parseSingleBinaryArgs, resolveSingleLatencySampleCap, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 async function runDealerRouterBenchmark(msgSize, options) {
+    if (options.transport === 'inproc') {
+        return runLocalSocketOneWayBenchmark({
+            pattern: 'DEALER_ROUTER',
+            msgSize,
+            options,
+            endpointToken: 'dealer-router',
+            createReceiver: (ctx) => new zlink.RouterSocket(ctx),
+            createSender: (ctx) => new zlink.DealerSocket(ctx),
+        });
+    }
     const ctx = new zlink.Context();
     applyContextPolicy(ctx);
     const router = new zlink.RouterSocket(ctx);
@@ -13,6 +23,8 @@ async function runDealerRouterBenchmark(msgSize, options) {
     let worker = null;
     try {
         applySocketPolicy(router, options);
+        applyAutoHwmMsgUnit(router, msgSize);
+        ctx.recalculateAutoHwm();
         configureTlsServer(router, options.transport);
         router.bind(endpoint);
         worker = spawnSenderWorker({
@@ -42,17 +54,23 @@ async function runDealerRouterBenchmark(msgSize, options) {
             sampleCap: resolveSingleLatencySampleCap()
         });
         // PERF_SINGLE_TEST_POLICY § 1.4: receiver drains until wire stop token.
+        worker.postMessage({ type: 'start' });
+        await Promise.race([
+            waitForWorkerMessage(worker, 'started'),
+            workerError.then((message) => Promise.reject(new Error(message.message)))
+        ]);
         const recvTask = drainRecvSocket(router, (received) => {
             const header = decodeMetricHeaderFromParts(received.parts);
             collector.record(header, currentEpochNs());
         });
-        worker.postMessage({ type: 'start' });
         await Promise.race([
             waitForWorkerDone(worker, options.duration),
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
         await recvTask;
-        return collector.finish();
+        const result = collector.finish();
+        emitSingleSocketHwmDetail(router, 'DEALER_ROUTER', options.transport, 'receiver', msgSize);
+        return result;
     }
     finally {
         await closeSenderWorker(worker);

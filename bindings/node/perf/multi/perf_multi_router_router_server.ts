@@ -4,6 +4,7 @@
 
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
+const { configureTlsServer } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { isStopTokenParts } = require('../perf_stop_token');
 const {
@@ -12,6 +13,7 @@ const {
   applyAutoHwmMsgUnit,
   applyContextPolicy,
   applySocketPolicy,
+  emitMultiSocketHwmDetail,
   pollEvents,
   pollEventHas,
   recvNoWaitInto,
@@ -32,12 +34,14 @@ async function main() {
 
   try {
     applySocketPolicy(router);
+    configureTlsServer(router, options.transport);
     router.setRoutingId(
       zlink.RoutingId.fromBytes(Buffer.from('multi-router-router-server', 'ascii'))
     );
     router.bind(options.endpoint);
     applyAutoHwmMsgUnit(router, options.msgSize);
     ctx.recalculateAutoHwm();
+    emitMultiSocketHwmDetail(router, 'endpoint', options.transport, options.msgSize);
     poller.add(router, pollEvents(POLLIN));
     const readyBarrier = waitForConnectionReadyCount(router, options.clients);
     console.log(`READY,${options.endpoint}`);

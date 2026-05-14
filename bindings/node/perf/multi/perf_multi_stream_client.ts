@@ -368,24 +368,55 @@ async function main() {
       sampleCap: resolveMultiLatencySampleCap()
     });
     let seq = 1n;
+    let fatalError = null;
+    const inflight = new Array(transports.length).fill(false);
+
+    const submitOne = (index) => {
+      const currentSeq = seq;
+      seq += 1n;
+      inflight[index] = true;
+      stampPayload(payloads[index], { phase: 1, runId, msgSize: options.msgSize, seq: currentSeq });
+      transports[index].writeFrame(buildStreamPacketFrames(payloads[index]))
+        .then(() => nextFrameWithTimeout(
+          readers[index],
+          Number(process.env.PERF_MULTI_STREAM_FRAME_TIMEOUT_MS ?? 1000)
+        ))
+        .then((echoed) => {
+          if (echoed) {
+            collector.record(
+              decodeMetricHeader(echoed),
+              currentEpochNs()
+            );
+          }
+        })
+        .catch((error) => {
+          fatalError = error;
+        })
+        .finally(() => {
+          inflight[index] = false;
+        });
+    };
 
     while (currentEpochNs() < activeStopNs) {
-      for (let i = 0; i < transports.length; i += 1) {
-        stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-        await transports[i].writeFrame(buildStreamPacketFrames(payloads[i]));
-        const echoed = await nextFrameWithTimeout(
-          readers[i],
-          Number(process.env.PERF_MULTI_STREAM_FRAME_TIMEOUT_MS ?? 1000)
-        );
-        if (!echoed) {
-          break;
-        }
-        collector.record(
-          decodeMetricHeader(echoed),
-          currentEpochNs()
-        );
-        seq += 1n;
+      if (fatalError) {
+        throw fatalError;
       }
+      let submitted = false;
+      for (let i = 0; i < transports.length; i += 1) {
+        if (!inflight[i]) {
+          submitOne(i);
+          submitted = true;
+        }
+      }
+      if (!submitted) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    }
+    while (inflight.some(Boolean)) {
+      if (fatalError) {
+        throw fatalError;
+      }
+      await new Promise((resolve) => setImmediate(resolve));
     }
 
     const result = await collector.finish();

@@ -11,13 +11,18 @@ const {
   currentEpochNs,
   summarizeMetrics
 } = require('../common/perf_metrics');
+const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
+  POLLIN,
   applyAutoHwmMsgUnit,
   applyContextPolicy,
   applySocketPolicy,
-  drainRecvSocket,
-  resolveMultiLatencySampleCap
+  emitMultiSocketHwmDetail,
+  pollEvents,
+  resolveMultiLatencySampleCap,
+  subscribeNoWait,
+  waitForConnectionReady
 } = require('./perf_multi_runtime');
 
 async function main() {
@@ -32,32 +37,21 @@ async function main() {
     for (let i = 0; i < options.clients; i += 1) {
       const sub = new zlink.SubSocket(ctx);
       applySocketPolicy(sub);
+      configureTlsClient(sub, options.transport);
       sub.setSubscription('perf.topic');
-      sub.connect(options.endpoint);
+      await waitForConnectionReady(sub, () => sub.connect(options.endpoint));
       applyAutoHwmMsgUnit(sub, options.msgSize);
       subs.push(sub);
     }
     ctx.recalculateAutoHwm();
-
-    // PERF_MULTI_TEST_POLICY § 1.3.1: each subscriber drains until it sees
-    // the wire-level stop token emitted by the publisher at phase end.
-    const recvTasks = subs.map((sub) => drainRecvSocket(
-      sub,
-      (received) => {
-        if (!collector) {
-          return;
-        }
-        collector.record(
-          decodeMetricHeader(received.parts[0].data()),
-          currentEpochNs()
-        );
-      }
-    ));
+    for (const sub of subs) {
+      emitMultiSocketHwmDetail(sub, 'endpoint', options.transport, options.msgSize);
+    }
 
     console.log(`CLIENT_READY,${options.msgSize}`);
     rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     for await (const line of rl) {
-      if (line === `PHASE_ACTIVE,${options.msgSize}`) {
+      if (line === `START,${options.msgSize}`) {
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
         collector = createMetricCollector({
@@ -67,11 +61,46 @@ async function main() {
           activeStopNs,
           sampleCap: resolveMultiLatencySampleCap()
         });
+        const poller = new zlink.Poller();
+        try {
+          for (let i = 0; i < subs.length; i += 1) {
+            poller.add(subs[i], pollEvents(POLLIN), i);
+          }
+          while (currentEpochNs() < activeStopNs) {
+            const remainingNs = activeStopNs - currentEpochNs();
+            const timeoutMs = Number(remainingNs / 1_000_000n);
+            const ready = poller.waitMany(poller.size, timeoutMs > 0 ? timeoutMs : 0);
+            if (!ready || ready.length === 0) {
+              continue;
+            }
+            for (const event of ready) {
+              const index = event.tag ?? event.userData;
+              if (!Number.isInteger(index)) {
+                continue;
+              }
+              while (true) {
+                const received = subscribeNoWait(subs[index]);
+                if (!received) {
+                  break;
+                }
+                try {
+                  collector.record(
+                    decodeMetricHeader(received.parts[0].data()),
+                    currentEpochNs()
+                  );
+                } finally {
+                  received.close();
+                }
+              }
+            }
+          }
+        } finally {
+          poller.close();
+        }
         break;
       }
     }
 
-    await Promise.all(recvTasks);
     const result = collector ? await collector.finish() : { latenciesNs: [] };
     for (const line of summarizeMetrics(
       'MULTI_PUBSUB',
@@ -84,6 +113,7 @@ async function main() {
     )) {
       console.log(line);
     }
+    console.log(`CLIENT_DONE,${options.msgSize}`);
   } finally {
     rl?.close();
     for (const sub of subs) {

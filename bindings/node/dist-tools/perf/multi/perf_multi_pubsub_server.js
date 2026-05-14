@@ -4,8 +4,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { createPayload, createRunId, stampPayload } = require('../common/perf_metrics');
+const { configureTlsServer } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, sendStopTokenWithRetry, trySocketPublish } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, trySocketPublish } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -18,9 +19,11 @@ async function main() {
         applySocketPolicy(pub, {
             noDrop: Number(process.env.PERF_MULTI_PUBSUB_XPUB_NODROP ?? 1) !== 0
         });
+        configureTlsServer(pub, options.transport);
         pub.bind(options.endpoint);
         applyAutoHwmMsgUnit(pub, options.msgSize);
         ctx.recalculateAutoHwm();
+        emitMultiSocketHwmDetail(pub, 'endpoint', options.transport, options.msgSize);
         poller.add(pub, pollEvents(POLLOUT));
         console.log(`READY,${options.endpoint}`);
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -54,9 +57,17 @@ async function main() {
                     break;
                 }
             }
-            // PERF_MULTI_TEST_POLICY § 1.3.1: emit wire-level stop token at phase
-            // end so subscribers waiting on `wait(-1)` exit promptly.
-            await sendStopTokenWithRetry(pub, (bytes) => trySocketPublish(pub, 'perf.topic', bytes));
+            stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
+            for (let sent = 0; sent < Math.max(options.clients * 16, options.clients);) {
+                if (trySocketPublish(pub, 'perf.topic', payload)) {
+                    sent += 1;
+                    continue;
+                }
+                const ready = poller.wait(-1);
+                if (!ready || !pollEventHas(ready, POLLOUT)) {
+                    continue;
+                }
+            }
             break;
         }
     }

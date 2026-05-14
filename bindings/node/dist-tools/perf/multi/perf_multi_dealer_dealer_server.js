@@ -4,8 +4,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { createPayload, createRunId, stampPayload } = require('../common/perf_metrics');
+const { configureTlsServer } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, sendStopTokenWithRetry, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, sendStopTokenWithRetry, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -16,9 +17,11 @@ async function main() {
     let rl = null;
     try {
         applySocketPolicy(server);
+        configureTlsServer(server, options.transport);
         server.bind(options.endpoint);
         applyAutoHwmMsgUnit(server, options.msgSize);
         ctx.recalculateAutoHwm();
+        emitMultiSocketHwmDetail(server, 'endpoint', options.transport, options.msgSize);
         poller.add(server, pollEvents(POLLOUT));
         const readyBarrier = waitForConnectionReadyCount(server, options.clients);
         console.log(`READY,${options.endpoint}`);
@@ -60,7 +63,9 @@ async function main() {
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via the wire-level
             // stop token (retries through transient backpressure with a poller
             // POLLOUT wait — no 1-25 ms timer fallback).
-            await sendStopTokenWithRetry(server, (bytes) => trySocketSend(server, bytes));
+            for (let i = 0; i < Math.max(options.clients * 16, options.clients); i += 1) {
+                await sendStopTokenWithRetry(server, (bytes) => trySocketSend(server, bytes));
+            }
             break;
         }
     }

@@ -4,8 +4,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics } = require('../common/perf_metrics');
+const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, drainRecvSocket, resolveMultiLatencySampleCap, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, recvNoWait, resolveMultiLatencySampleCap, waitForConnectionReady } = require('./perf_multi_runtime');
+const { isStopTokenParts } = require('../perf_stop_token');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -17,6 +19,7 @@ async function main() {
         for (let i = 0; i < options.clients; i += 1) {
             const dealer = new zlink.DealerSocket(ctx);
             applySocketPolicy(dealer);
+            configureTlsClient(dealer, options.transport);
             dealers.push(dealer);
         }
         for (const dealer of dealers) {
@@ -24,16 +27,9 @@ async function main() {
             applyAutoHwmMsgUnit(dealer, options.msgSize);
         }
         ctx.recalculateAutoHwm();
-        // PERF_MULTI_TEST_POLICY § 1.3.1: each receiver drains until it sees
-        // the wire-level stop token emitted by the server when its duration
-        // elapses. No time-based `stop` flag is needed — phase end is observed
-        // on the wire.
-        const recvTasks = dealers.map((dealer) => drainRecvSocket(dealer, (received) => {
-            if (!collector) {
-                return;
-            }
-            collector.record(decodeMetricHeader(received.parts[0].data()), currentEpochNs());
-        }));
+        for (const dealer of dealers) {
+            emitMultiSocketHwmDetail(dealer, 'endpoint', options.transport, options.msgSize);
+        }
         console.log(`CLIENT_READY,${options.msgSize}`);
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
@@ -50,7 +46,41 @@ async function main() {
             activeStopNs,
             sampleCap: resolveMultiLatencySampleCap()
         });
-        await Promise.all(recvTasks);
+        const poller = new zlink.Poller();
+        try {
+            for (let i = 0; i < dealers.length; i += 1) {
+                poller.add(dealers[i], pollEvents(POLLIN), i);
+            }
+            let stopReceived = false;
+            while (!stopReceived) {
+                const ready = poller.waitMany(poller.size, -1);
+                for (const event of ready) {
+                    const index = event.tag ?? event.userData;
+                    if (!Number.isInteger(index)) {
+                        continue;
+                    }
+                    while (true) {
+                        const received = recvNoWait(dealers[index]);
+                        if (!received) {
+                            break;
+                        }
+                        try {
+                            if (isStopTokenParts(received.parts)) {
+                                stopReceived = true;
+                                break;
+                            }
+                            collector.record(decodeMetricHeader(received.parts[0].data()), currentEpochNs());
+                        }
+                        finally {
+                            received.close();
+                        }
+                    }
+                }
+            }
+        }
+        finally {
+            poller.close();
+        }
         const result = collector ? await collector.finish() : { latenciesNs: [] };
         for (const line of summarizeMetrics('MULTI_DEALER_DEALER', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
             console.log(line);

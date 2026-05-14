@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const { parentPort, workerData } = require('node:worker_threads');
 const zlink = require('@zlink-systems/zlink');
 const { createPayload, stampPayload } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, configureTlsClient, configureTlsServer, waitForConnectionReady, } = require('./perf_single_common');
+const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, configureTlsClient, configureTlsServer, emitSingleSocketHwmDetail, waitForConnectionReady, } = require('./perf_single_common');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 const DEFAULT_TOPIC = 'perf.topic';
 function ensureParentPort() {
@@ -45,6 +45,10 @@ async function handshakeRouterSender(port, sender, receiverRoutingId) {
         if (text !== 'PONG') {
             throw new Error('router-router handshake reply failed');
         }
+        if (reply.routingId) {
+            return reply.routingId;
+        }
+        return receiverRoutingId;
     }
     finally {
         reply.close();
@@ -73,17 +77,49 @@ function sendStopToken(kind, socket, receiverRoutingId, topic) {
             return;
         }
         catch (error) {
+            const text = String(error && error.message ? error.message : error);
             if (error instanceof zlink.SubmitError
                 && error.result === zlink.SubmitResult.Backpressured) {
                 continue;
             }
-            const text = String(error && error.message ? error.message : error);
             if ((error && error.code === 'EAGAIN')
-                || text.includes('Resource temporarily unavailable')) {
+                || text.includes('Resource temporarily unavailable')
+                || text.includes('Host unreachable')
+                || text.includes('Transport endpoint is not connected')) {
                 continue;
             }
             throw error;
         }
+    }
+}
+function submitActiveMessage(kind, socket, payload, receiverRoutingId, topic) {
+    try {
+        if (kind === 'pubsub') {
+            socket.publish(topic).message(payload).flags(zlink.SendFlags.DontWait).submit();
+        }
+        else if (kind === 'router_router') {
+            socket.send(receiverRoutingId).message(payload).flags(zlink.SendFlags.DontWait).submit();
+        }
+        else {
+            socket.send().message(payload).flags(zlink.SendFlags.DontWait).submit();
+        }
+        return true;
+    }
+    catch (error) {
+        const text = String(error && error.message ? error.message : error);
+        if (error instanceof zlink.SubmitError
+            && (error.result === zlink.SubmitResult.Backpressured
+                || error.result === zlink.SubmitResult.NotConnected
+                || error.result === zlink.SubmitResult.NotFound)) {
+            return false;
+        }
+        if ((error && error.code === 'EAGAIN')
+            || text.includes('Resource temporarily unavailable')
+            || text.includes('Host unreachable')
+            || text.includes('Transport endpoint is not connected')) {
+            return false;
+        }
+        throw error;
     }
 }
 function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, receiverRoutingId, topic) {
@@ -91,27 +127,13 @@ function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, rec
     let seq = seqStart;
     while (process.hrtime.bigint() < activeStopNs) {
         stampPayload(payload, { phase: 1, runId, msgSize, seq });
-        if (kind === 'pubsub') {
-            socket.publish(topic).message(payload).flags(zlink.SendFlags.DontWait).submit();
-        }
-        else if (kind === 'router_router') {
-            socket.send(receiverRoutingId).message(payload).submit();
-        }
-        else {
-            socket.send().message(payload).submit();
+        if (!submitActiveMessage(kind, socket, payload, receiverRoutingId, topic)) {
+            continue;
         }
         seq += 1n;
     }
     stampPayload(payload, { phase: 2, runId, msgSize, seq });
-    if (kind === 'pubsub') {
-        socket.publish(topic).message(payload).flags(zlink.SendFlags.DontWait).submit();
-    }
-    else if (kind === 'router_router') {
-        socket.send(receiverRoutingId).message(payload).submit();
-    }
-    else {
-        socket.send().message(payload).submit();
-    }
+    submitActiveMessage(kind, socket, payload, receiverRoutingId, topic);
     sendStopToken(kind, socket, receiverRoutingId, topic);
 }
 async function main() {
@@ -124,21 +146,30 @@ async function main() {
     applyContextPolicy(ctx);
     const payload = createPayload(msgSize);
     let socket = null;
+    let activeReceiverRoutingId = receiverRoutingIdBytes
+        ? zlink.RoutingId.fromBytes(Buffer.from(receiverRoutingIdBytes))
+        : null;
     try {
         switch (kind) {
             case 'pair':
                 socket = new zlink.PairSocket(ctx);
                 applySocketPolicy(socket, options);
+                applyAutoHwmMsgUnit(socket, msgSize);
+                ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);
                 break;
             case 'dealer_dealer':
                 socket = new zlink.DealerSocket(ctx);
                 applySocketPolicy(socket, options);
+                applyAutoHwmMsgUnit(socket, msgSize);
+                ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);
                 break;
             case 'dealer_router':
                 socket = new zlink.DealerSocket(ctx);
                 applySocketPolicy(socket, options);
+                applyAutoHwmMsgUnit(socket, msgSize);
+                ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);
                 break;
             case 'pubsub':
@@ -154,7 +185,7 @@ async function main() {
                 applySocketPolicy(socket, options);
                 socket.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(senderRoutingIdBytes)));
                 await connectSender(kind, socket, endpoint, transport);
-                await handshakeRouterSender(port, socket, zlink.RoutingId.fromBytes(Buffer.from(receiverRoutingIdBytes)));
+                activeReceiverRoutingId = await handshakeRouterSender(port, socket, activeReceiverRoutingId);
                 break;
             }
             default:
@@ -174,11 +205,19 @@ async function main() {
         trace('waiting start');
         await waitForCommand(port, 'start');
         trace('start received');
+        port.postMessage({ type: 'started' });
         trace(`sendLoop begin kind=${kind} duration=${duration} msgSize=${msgSize}`);
-        sendLoop(kind, socket, payload, duration, runId, msgSize, 1n, receiverRoutingIdBytes
-            ? zlink.RoutingId.fromBytes(Buffer.from(receiverRoutingIdBytes))
-            : null, topic);
+        sendLoop(kind, socket, payload, duration, runId, msgSize, 1n, activeReceiverRoutingId, topic);
         trace('send loop done');
+        if (kind === 'pair') {
+            emitSingleSocketHwmDetail(socket, 'PAIR', transport, 'sender', msgSize);
+        }
+        else if (kind === 'dealer_dealer') {
+            emitSingleSocketHwmDetail(socket, 'DEALER_DEALER', transport, 'sender', msgSize);
+        }
+        else if (kind === 'dealer_router') {
+            emitSingleSocketHwmDetail(socket, 'DEALER_ROUTER', transport, 'sender', msgSize);
+        }
         port.postMessage({ type: 'done' });
         trace('waiting stop');
         await waitForCommand(port, 'stop');

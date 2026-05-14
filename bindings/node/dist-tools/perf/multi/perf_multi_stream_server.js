@@ -3,8 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
+const { configureTlsServer } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy } = require('./perf_multi_runtime');
+const { applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -13,8 +14,10 @@ async function main() {
     let rl = null;
     try {
         applySocketPolicy(stream);
+        configureTlsServer(stream, options.transport);
         applyAutoHwmMsgUnit(stream, options.msgSize);
         ctx.recalculateAutoHwm();
+        emitMultiSocketHwmDetail(stream, 'endpoint', options.transport, options.msgSize);
         stream.bind(options.endpoint);
         stream.onPacket((routingId, header, body) => {
             stream.send(routingId).message(body.data()).submit();

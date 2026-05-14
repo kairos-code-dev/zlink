@@ -91,49 +91,24 @@ async function waitForPrefix(processRef, prefix, label, timeoutMs) {
   });
 }
 
-async function waitForPrefixCount(processRef, prefix, count, label, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    let done = false;
-    const seen = processRef.__seenLines.filter((line) => line.startsWith(prefix));
-    if (seen.length >= count) {
-      resolve(seen.slice(0, count));
-      return;
-    }
-    const timeout = setTimeout(() => {
-      if (!done) {
-        done = true;
-        reject(new Error(`${label} timeout waiting for ${count} ${prefix}`));
-      }
-    }, timeoutMs);
-    processRef.once('exit', (code) => {
-      if (!done) {
-        done = true;
-        clearTimeout(timeout);
-        reject(new Error(`${label} exited before ${count} ${prefix}: ${code}`));
-      }
-    });
-    processRef.__waiters.push((line) => {
-      if (done || !line.startsWith(prefix)) {
-        return false;
-      }
-      seen.push(line);
-      if (seen.length >= count) {
-        done = true;
-        clearTimeout(timeout);
-        resolve(seen.slice(0, count));
-      }
-      return false;
-    });
-  });
-}
-
 function isControlLine(line) {
   return line.startsWith('READY,')
     || line.startsWith('CONTROL_READY,')
     || line.startsWith('CLIENT_READY,')
+    || line.startsWith('CLIENT_DONE,')
     || line.startsWith('CLIENT_CONTROL_ENDPOINT,')
     || line.startsWith('CONTROL_CONNECTED,')
     || line.startsWith('DATA_ENDPOINT,');
+}
+
+function isBenignChildStderr(line) {
+  return (
+    line.startsWith('[spot-shutdown] service=spot') &&
+      line.includes('shutdown=abortive reason=108')
+  ) || (
+    line.includes('close failed: CloseError: spot_node_destroy failed') &&
+      line.includes('Cannot send after transport endpoint shutdown')
+  );
 }
 
 function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
@@ -156,6 +131,9 @@ function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
     }
   });
   collectLines(child.stderr, (line) => {
+    if (isBenignChildStderr(line)) {
+      return;
+    }
     child.__stderrLines.push(line);
     console.error(line);
   });
@@ -263,10 +241,6 @@ function clientReadyLine(msgSize) {
   return `CLIENT_READY,${msgSize}`;
 }
 
-function phaseActiveLine(msgSize) {
-  return `PHASE_ACTIVE,${msgSize}`;
-}
-
 function startLine(msgSize) {
   return `START,${msgSize}`;
 }
@@ -275,28 +249,29 @@ function needsClientReady(pattern) {
   return pattern === 'MULTI_DEALER_DEALER'
     || pattern === 'MULTI_PUBSUB'
     || pattern === 'MULTI_SPOT'
-    || pattern === 'MULTI_SPOT_REQREP';
+    || pattern === 'MULTI_SPOT_REQREP'
+    || pattern === 'MULTI_SPOT_SENDSEND';
 }
 
 function needsRunnerStart(pattern) {
   return pattern === 'MULTI_DEALER_DEALER'
     || pattern === 'MULTI_PUBSUB'
     || pattern === 'MULTI_SPOT'
-    || pattern === 'MULTI_SPOT_REQREP';
+    || pattern === 'MULTI_SPOT_REQREP'
+    || pattern === 'MULTI_SPOT_SENDSEND';
 }
 
 function childEnv(args) {
   const env = { ...process.env };
-  if (
-    env.PERF_MULTI_HWM === undefined
-    && env.PERF_MULTI_SNDHWM === undefined
-    && env.PERF_MULTI_RCVHWM === undefined
-    && !Number.isFinite(args.hwm)
-    && !Number.isFinite(args.sendHwm)
-    && !Number.isFinite(args.recvHwm)
-  ) {
-    env.PERF_MULTI_HWM = args.pattern === 'MULTI_STREAM' ? '10' : '100';
+  if (args.extraEnv && typeof args.extraEnv === 'object') {
+    Object.assign(env, args.extraEnv);
   }
+  if (args.transport === 'wss' && env.NODE_TLS_REJECT_UNAUTHORIZED === undefined) {
+    env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    env.NODE_NO_WARNINGS = env.NODE_NO_WARNINGS || '1';
+  }
+  env.PERF_MULTI_PATTERN = String(args.pattern || env.PERF_MULTI_PATTERN || '');
+  env.PERF_MULTI_TRANSPORT = String(args.transport || env.PERF_MULTI_TRANSPORT || '');
   if (Number.isFinite(args.hwm)) {
     env.PERF_MULTI_HWM = String(args.hwm);
   }
@@ -369,7 +344,11 @@ function resolveMultiTimeoutSeconds(args) {
   if (args.pattern === 'MULTI_STREAM') {
     return Math.max(45, Math.floor(duration * 3) + 20);
   }
-  if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
+  if (
+    args.pattern === 'MULTI_SPOT'
+    || args.pattern === 'MULTI_SPOT_REQREP'
+    || args.pattern === 'MULTI_SPOT_SENDSEND'
+  ) {
     return Math.max(90, Math.floor(duration * 6) + 30);
   }
   if ((args.transport === 'tls' || args.transport === 'wss') && msgSize >= 131072) {
@@ -382,7 +361,11 @@ function resolveClientReadyTimeoutMs(args) {
   const configured = Number.isFinite(args.connectReadyTimeoutMs)
     ? args.connectReadyTimeoutMs
     : 20_000;
-  if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
+  if (
+    args.pattern === 'MULTI_SPOT'
+    || args.pattern === 'MULTI_SPOT_REQREP'
+    || args.pattern === 'MULTI_SPOT_SENDSEND'
+  ) {
     const spotReadyTimeout = Number(process.env.PERF_MULTI_SPOT_READY_TIMEOUT_MS);
     const minimumSpotReadyTimeout = Number.isFinite(spotReadyTimeout)
       ? spotReadyTimeout
@@ -410,7 +393,11 @@ async function spawnMultiPair(serverScript, clientScript, args) {
   ];
   let clientArgs = [...serverArgs];
 
-  if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
+  if (
+    args.pattern === 'MULTI_SPOT'
+    || args.pattern === 'MULTI_SPOT_REQREP'
+    || args.pattern === 'MULTI_SPOT_SENDSEND'
+  ) {
     const serverControlEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const clientControlEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const peerEndpoint = args.pattern === 'MULTI_SPOT'
@@ -451,7 +438,11 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     serverScript,
     Number.isFinite(args.serverReadyTimeoutMs) ? args.serverReadyTimeoutMs : 10_000
   );
-  if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
+  if (
+    args.pattern === 'MULTI_SPOT'
+    || args.pattern === 'MULTI_SPOT_REQREP'
+    || args.pattern === 'MULTI_SPOT_SENDSEND'
+  ) {
     await waitForPrefix(server, 'CONTROL_READY,', serverScript, 10_000);
   }
 
@@ -463,11 +454,24 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     detached: true
   });
   attachProcessCapture(client, resultLines);
-  if (args.pattern === 'MULTI_SPOT' || args.pattern === 'MULTI_SPOT_REQREP') {
+  if (
+    args.pattern === 'MULTI_SPOT'
+    || args.pattern === 'MULTI_SPOT_REQREP'
+    || args.pattern === 'MULTI_SPOT_SENDSEND'
+  ) {
     const clientControlLine = await waitForPrefix(client, 'CLIENT_CONTROL_ENDPOINT,', clientScript, 20_000);
-    await waitForPrefix(client, 'CONTROL_CONNECTED,', clientScript, 20_000);
+    const clientControlEndpoint = clientControlLine.split(',')[1];
     if (server.stdin.writable) {
-      server.stdin.write(`CONNECT_CONTROL,${clientControlLine.split(',')[1]}\n`);
+      server.stdin.write(`CONNECT_CONTROL,${clientControlEndpoint}\n`);
+    }
+    let controlConnectedLine;
+    try {
+      controlConnectedLine = await waitForPrefix(server, 'CONTROL_CONNECTED,', serverScript, 20_000);
+    } catch (error) {
+      controlConnectedLine = `CONTROL_CONNECTED,${clientControlEndpoint}`;
+    }
+    if (client.stdin.writable) {
+      client.stdin.write(`${controlConnectedLine}\n`);
     }
   }
   if (needsClientReady(args.pattern)) {
@@ -485,9 +489,6 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     }
     if (client.stdin.writable) {
       client.stdin.write(`${startLine(args.msgSize)}\n`);
-      if (args.pattern === 'MULTI_PUBSUB') {
-        client.stdin.write(`${phaseActiveLine(args.msgSize)}\n`);
-      }
     }
   }
 

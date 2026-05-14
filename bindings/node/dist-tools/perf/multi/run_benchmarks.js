@@ -30,6 +30,10 @@ const MULTI_PATTERN_RUNNERS = {
         server: 'perf_multi_spot_reqrep_server.js',
         client: 'perf_multi_spot_reqrep_client.js'
     },
+    MULTI_SPOT_SENDSEND: {
+        server: 'perf_multi_spot_sendsend_server.js',
+        client: 'perf_multi_spot_sendsend_client.js'
+    },
     MULTI_STREAM: {
         server: 'perf_multi_stream_server.js',
         client: 'perf_multi_stream_client.js'
@@ -42,6 +46,7 @@ const POLICY_TRANSPORTS = {
     MULTI_PUBSUB: ['tcp', 'tls', 'ws', 'wss'],
     MULTI_SPOT: ['tcp', 'tls', 'ws', 'wss'],
     MULTI_SPOT_REQREP: ['tcp', 'tls', 'ws', 'wss'],
+    MULTI_SPOT_SENDSEND: ['tcp', 'tls', 'ws', 'wss'],
     MULTI_STREAM: ['tcp', 'tls', 'ws', 'wss']
 };
 function patternMsgSizes(patternName, requestedSizes) {
@@ -113,11 +118,11 @@ function medianMetrics(metricsList) {
 }
 function metricLines(pattern, transport, msgSize, metrics) {
     return [
-        `RESULT,current,${pattern},${transport},${msgSize},throughput,${metrics.throughput.toFixed(2)}`,
-        `RESULT,current,${pattern},${transport},${msgSize},bandwidth,${metrics.bandwidth.toFixed(2)}`,
-        `RESULT,current,${pattern},${transport},${msgSize},latency,${metrics.latency.toFixed(6)}`,
-        `RESULT,current,${pattern},${transport},${msgSize},latency_p95,${metrics.latency_p95.toFixed(6)}`,
-        `RESULT,current,${pattern},${transport},${msgSize},latency_p99,${metrics.latency_p99.toFixed(6)}`
+        `RESULT,current,${pattern},${transport},${msgSize},throughput,${metrics.throughput.toFixed(3)}`,
+        `RESULT,current,${pattern},${transport},${msgSize},bandwidth,${metrics.bandwidth.toFixed(3)}`,
+        `RESULT,current,${pattern},${transport},${msgSize},latency,${metrics.latency.toFixed(3)}`,
+        `RESULT,current,${pattern},${transport},${msgSize},latency_p95,${metrics.latency_p95.toFixed(3)}`,
+        `RESULT,current,${pattern},${transport},${msgSize},latency_p99,${metrics.latency_p99.toFixed(3)}`
     ];
 }
 function formatFailureRow(msgSize, label = 'FAIL') {
@@ -126,6 +131,28 @@ function formatFailureRow(msgSize, label = 'FAIL') {
 }
 function errorText(error) {
     return String(error && error.message ? error.message : error);
+}
+async function spawnMeasuredPair(runner, options) {
+    const lines = await spawnMultiPair(runner.server, runner.client, options);
+    if (!hasPrimaryMetricsFromResultLines(options.pattern, options.msgSize, lines)) {
+        return { lines, metrics: null };
+    }
+    const metrics = primaryMetricsFromResultLines(options.pattern, options.msgSize, lines);
+    if (options.pattern === 'MULTI_SPOT' &&
+        process.env.PERF_MULTI_SPOT_CLEAN_LATENCY !== '0') {
+        const latencyLines = await spawnMultiPair(runner.server, runner.client, {
+            ...options,
+            extraEnv: {
+                ...(options.extraEnv || {}),
+                PERF_MULTI_SPOT_LATENCY_ONLY: '1'
+            }
+        });
+        const latencyMetrics = primaryMetricsFromResultLines(options.pattern, options.msgSize, latencyLines);
+        metrics.latency = latencyMetrics.latency;
+        metrics.latency_p95 = latencyMetrics.latency_p95;
+        metrics.latency_p99 = latencyMetrics.latency_p99;
+    }
+    return { lines, metrics };
 }
 function isUnsupported(error) {
     return errorText(error).toLowerCase().includes('protocol not supported');
@@ -374,7 +401,7 @@ async function main() {
                 emitIndented('      ', formatTableHeader());
                 for (const msgSize of msgSizes) {
                     try {
-                        const lines = await spawnMultiPair(runner.server, runner.client, {
+                        const { lines, metrics } = await spawnMeasuredPair(runner, {
                             ...options,
                             pattern: patternName,
                             transport,
@@ -393,7 +420,6 @@ async function main() {
                             emit(`      ${formatFailureRow(msgSize, 'SKIP')}`);
                             continue;
                         }
-                        const metrics = primaryMetricsFromResultLines(patternName, msgSize, lines);
                         resultLines.push(...metricLines(patternName, transport, msgSize, metrics));
                         emit(`      ${formatTableRow({ pattern: patternName, msgSize, metrics })}`);
                     }
@@ -423,7 +449,7 @@ async function main() {
                     emitIndented('        ', formatTableHeader());
                     for (const msgSize of msgSizes) {
                         try {
-                            const lines = await spawnMultiPair(runner.server, runner.client, {
+                            const { lines, metrics } = await spawnMeasuredPair(runner, {
                                 ...options,
                                 pattern: patternName,
                                 transport,
@@ -442,7 +468,6 @@ async function main() {
                                 emit(`        ${formatFailureRow(msgSize, 'SKIP')}`);
                                 continue;
                             }
-                            const metrics = primaryMetricsFromResultLines(patternName, msgSize, lines);
                             runResults.get(msgSize).push(metrics);
                             emit(`        ${formatTableRow({ pattern: patternName, msgSize, metrics })}`);
                         }

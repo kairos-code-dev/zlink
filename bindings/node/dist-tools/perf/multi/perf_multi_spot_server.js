@@ -4,22 +4,46 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { configureTlsServer } = require('../common/perf_tls');
-const { createPayload, createRunId, stampPayload } = require('../common/perf_metrics');
+const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
-const TOPIC = 'perf.topic';
-const CONTROL_TOPIC = 'perf.control';
-const CHANNEL_NAME = 'perf.spot';
-const AUTO_CONNECT_SPOT_MESH = 5;
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, emitMultiSpotNodeHwmSnapshot, subscribeNoWait, trySocketPublish } = require('./perf_multi_runtime');
+const TOPIC = 'bench';
+const CONTROL_TOPIC = 'bench';
+function integerEnv(name, fallback) {
+    const raw = process.env[name];
+    if (raw === undefined || raw === '') {
+        return fallback;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+}
+function latencyOnlyEnabled() {
+    const raw = process.env.PERF_MULTI_SPOT_LATENCY_ONLY;
+    return raw !== undefined && raw !== '' && raw !== '0';
+}
+async function sleepMicroseconds(microseconds) {
+    const milliseconds = Math.max(1, Math.ceil(microseconds / 1000));
+    await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 function trySpotPublish(spot, _channelName, topic, payload) {
-    return trySocketPublish({
-        publish(currentTopic, currentPayload, flags) {
-            return spot.publish(currentTopic)
-                .message(currentPayload)
-                .flags(flags)
-                .submit();
+    try {
+        return spot.publish(topic)
+            .message(payload)
+            .flags(zlink.SendFlags.DontWait)
+            .submit();
+    }
+    catch (error) {
+        if (error instanceof zlink.SubmitError &&
+            error.result === zlink.SubmitResult.Backpressured) {
+            return false;
         }
-    }, topic, payload);
+        const text = String(error && error.message ? error.message : error);
+        if ((error && error.code === 'EAGAIN') ||
+            /Resource temporarily unavailable|temporarily unavailable|would block/i.test(text)) {
+            return false;
+        }
+        throw error;
+    }
 }
 function closeQuietly(resource) {
     try {
@@ -48,17 +72,13 @@ async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
     applyContextPolicy(ctx, 'server', 'MULTI_SPOT');
-    const registry = new zlink.Registry(ctx);
-    const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
     const node = new zlink.SpotNode(ctx);
     const controlPub = new zlink.PubSocket(ctx);
     const controlSub = new zlink.SubSocket(ctx);
     const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
-    const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
     let spot = null;
     const payload = createPayload(options.msgSize);
     let readyCount = 0;
-    let connected = false;
     let startRequested = false;
     let stopRequested = false;
     let connectedControlEndpoint = '';
@@ -66,13 +86,8 @@ async function main() {
     let rl = null;
     try {
         configureTlsServer(node, options.transport);
-        const registryPubEndpoint = await benchmarkEndpoint(options.transport, 'multi-spot-registry-pub');
-        const registryRouterEndpoint = options.endpoint;
         const dataBindEndpoint = options.peerEndpoint ||
             await benchmarkEndpoint(options.transport, 'multi-spot-data');
-        registry.bind(registryPubEndpoint, registryRouterEndpoint);
-        discovery.connectRegistry(registryRouterEndpoint);
-        node.attachDiscovery(discovery);
         applySpotNodeAdmission(node);
         node.bind(dataBindEndpoint);
         spot = node.createSpot();
@@ -83,6 +98,9 @@ async function main() {
         controlPub.bind(options.controlEndpoint);
         controlSub.setSubscription(CONTROL_TOPIC);
         ctx.recalculateAutoHwm();
+        emitMultiSocketHwmDetail(controlPub, 'spotnode_control_pub', options.transport, options.msgSize);
+        emitMultiSocketHwmDetail(controlSub, 'spotnode_control_sub', options.transport, options.msgSize);
+        emitMultiSpotNodeHwmSnapshot(node, 'spotnode_data', options.transport, options.msgSize);
         console.log(`READY,${options.endpoint}`);
         console.log(`CONTROL_READY,${options.controlEndpoint}`);
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -96,8 +114,9 @@ async function main() {
                     if (!clientEndpoint || clientEndpoint === connectedControlEndpoint) {
                         continue;
                     }
-                    await waitForConnectionReady(controlSub, () => controlSub.connect(clientEndpoint));
+                    controlSub.connect(clientEndpoint);
                     connectedControlEndpoint = clientEndpoint;
+                    console.log(`CONTROL_CONNECTED,${clientEndpoint}`);
                 }
                 else if (line.startsWith('DATA_ENDPOINT,')) {
                     const endpoint = line.slice('DATA_ENDPOINT,'.length).trim();
@@ -109,70 +128,33 @@ async function main() {
                 }
             }
         })();
-        if (process.env.PERF_NODE_MULTI_SPOT_LOCAL_RUN !== '0') {
-            while (!stopRequested && !startRequested) {
-                await sleepImmediate();
-            }
-            if (!stopRequested) {
-                await new Promise((resolve) => setTimeout(resolve, Math.max(0, options.duration * 1000 + 500)));
-            }
-            return;
-        }
-        const readyDeadlineMs = Date.now() + 20_000;
-        while (!stopRequested && readyCount < options.clients && Date.now() < readyDeadlineMs) {
+        while (!stopRequested && !(startRequested && readyCount >= options.clients)) {
             let drained = false;
             while (true) {
                 const received = subscribeNoWait(controlSub);
                 if (!received) {
                     break;
                 }
-                drained = true;
-                const payloadText = received.parts[0].data().toString('utf8');
-                if (payloadText === 'CONNECTED') {
-                    connected = true;
-                    continue;
+                try {
+                    drained = true;
+                    const payloadText = received.parts[0].data().toString('utf8');
+                    if (payloadText === 'CONNECTED') {
+                        continue;
+                    }
+                    if (payloadText.startsWith('DATA_ENDPOINT,')) {
+                        const endpoint = payloadText.slice('DATA_ENDPOINT,'.length).trim();
+                        connectDataEndpoint(node, connectedDataEndpoints, endpoint);
+                        continue;
+                    }
+                    if (payloadText.startsWith(`READY_COUNT,${options.msgSize},`)) {
+                        readyCount = Number(payloadText.split(',')[2]);
+                    }
                 }
-                if (payloadText.startsWith('DATA_ENDPOINT,')) {
-                    const endpoint = payloadText.slice('DATA_ENDPOINT,'.length).trim();
-                    connectDataEndpoint(node, connectedDataEndpoints, endpoint);
-                    continue;
-                }
-                if (payloadText.startsWith(`READY_COUNT,${options.msgSize},`)) {
-                    readyCount = Number(payloadText.split(',')[2]);
-                }
-            }
-            stampPayload(payload, { phase: 0, runId: createRunId(1), msgSize: options.msgSize, seq: 0n });
-            trySpotPublish(spot, CHANNEL_NAME, TOPIC, payload);
-            if (readyCount < options.clients && !drained) {
-                await sleepImmediate();
-            }
-        }
-        if (readyCount < options.clients) {
-            throw new Error(`spot warmup readiness timeout ${readyCount}/${options.clients}`);
-        }
-        while (!stopRequested && !startRequested) {
-            let drained = false;
-            while (true) {
-                const received = subscribeNoWait(controlSub);
-                if (!received) {
-                    break;
-                }
-                drained = true;
-                const payloadText = received.parts[0].data().toString('utf8');
-                if (payloadText === 'CONNECTED') {
-                    connected = true;
-                    continue;
-                }
-                if (payloadText.startsWith('DATA_ENDPOINT,')) {
-                    const endpoint = payloadText.slice('DATA_ENDPOINT,'.length).trim();
-                    connectDataEndpoint(node, connectedDataEndpoints, endpoint);
-                    continue;
-                }
-                if (payloadText.startsWith(`READY_COUNT,${options.msgSize},`)) {
-                    readyCount = Number(payloadText.split(',')[2]);
+                finally {
+                    received.close();
                 }
             }
-            if (!startRequested && !drained) {
+            if (!(startRequested && readyCount >= options.clients) && !drained) {
                 await sleepImmediate();
             }
         }
@@ -187,18 +169,23 @@ async function main() {
         }
         const runId = createRunId(1);
         const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
+        const latencyOnly = latencyOnlyEnabled();
+        const latencyIntervalUs = integerEnv('PERF_MULTI_SPOT_LATENCY_ONLY_INTERVAL_US', 1000);
         let seq = 1n;
         while (process.hrtime.bigint() < activeStopNs) {
             stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-            if (trySpotPublish(spot, CHANNEL_NAME, TOPIC, payload)) {
+            if (trySpotPublish(spot, '', TOPIC, payload)) {
                 seq += 1n;
+                if (latencyOnly) {
+                    await sleepMicroseconds(latencyIntervalUs);
+                }
                 continue;
             }
             await sleepImmediate();
         }
         stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
         for (;;) {
-            if (trySpotPublish(spot, CHANNEL_NAME, TOPIC, payload)) {
+            if (trySpotPublish(spot, '', TOPIC, payload)) {
                 break;
             }
             await sleepImmediate();
@@ -206,13 +193,10 @@ async function main() {
     }
     finally {
         rl?.close();
-        controlSubWaiter.close();
         controlPubWaiter.close();
         closeQuietly(spot);
         closeQuietly(controlPub);
         closeQuietly(controlSub);
-        closeQuietly(discovery);
-        closeQuietly(registry);
         closeQuietly(node);
         closeQuietly(ctx);
     }

@@ -12,6 +12,7 @@ const {
   summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
+const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLIN,
@@ -19,6 +20,7 @@ const {
   applyAutoHwmMsgUnit,
   applyContextPolicy,
   applySocketPolicy,
+  emitMultiSocketHwmDetail,
   pollEvents,
   pollEventHas,
   recvNoWaitInto,
@@ -46,6 +48,7 @@ async function main() {
     for (let i = 0; i < options.clients; i += 1) {
       const router = new zlink.RouterSocket(ctx);
       applySocketPolicy(router);
+      configureTlsClient(router, options.transport);
       router.setRoutingId(
         zlink.RoutingId.fromBytes(Buffer.from(`multi-router-client-${i}`, 'ascii'))
       );
@@ -61,6 +64,9 @@ async function main() {
       poller.add(routers[i], pollEvents(POLLIN | POLLOUT), i);
     }
     ctx.recalculateAutoHwm();
+    for (const router of routers) {
+      emitMultiSocketHwmDetail(router, 'endpoint', options.transport, options.msgSize);
+    }
     const runId = createRunId(1);
     const activeStartNs = currentEpochNs();
     const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));

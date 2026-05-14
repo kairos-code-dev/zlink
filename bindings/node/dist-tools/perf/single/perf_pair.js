@@ -3,8 +3,18 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRecvSocket, emitSingleSocketHwmDetail, parseSingleBinaryArgs, resolveSingleLatencySampleCap, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 async function runPairBenchmark(msgSize, options) {
+    if (options.transport === 'inproc') {
+        return runLocalSocketOneWayBenchmark({
+            pattern: 'PAIR',
+            msgSize,
+            options,
+            endpointToken: 'pair',
+            createReceiver: (ctx) => new zlink.PairSocket(ctx),
+            createSender: (ctx) => new zlink.PairSocket(ctx),
+        });
+    }
     const ctx = new zlink.Context();
     applyContextPolicy(ctx);
     const server = new zlink.PairSocket(ctx);
@@ -13,6 +23,8 @@ async function runPairBenchmark(msgSize, options) {
     let worker = null;
     try {
         applySocketPolicy(server, options);
+        applyAutoHwmMsgUnit(server, msgSize);
+        ctx.recalculateAutoHwm();
         configureTlsServer(server, options.transport);
         server.bind(endpoint);
         worker = spawnSenderWorker({
@@ -44,17 +56,23 @@ async function runPairBenchmark(msgSize, options) {
         // PERF_SINGLE_TEST_POLICY § 1.4: receiver drains until the wire stop
         // token arrives. The deadline-based idle drain is no longer needed —
         // in-flight messages naturally precede the stop token on the wire.
+        worker.postMessage({ type: 'start' });
+        await Promise.race([
+            waitForWorkerMessage(worker, 'started'),
+            workerError.then((message) => Promise.reject(new Error(message.message)))
+        ]);
         const recvTask = drainRecvSocket(server, (received) => {
             const header = decodeMetricHeaderFromParts(received.parts);
             collector.record(header, currentEpochNs());
         });
-        worker.postMessage({ type: 'start' });
         await Promise.race([
             waitForWorkerDone(worker, options.duration),
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
         await recvTask;
-        return collector.finish();
+        const result = collector.finish();
+        emitSingleSocketHwmDetail(server, 'PAIR', options.transport, 'receiver', msgSize);
+        return result;
     }
     finally {
         await closeSenderWorker(worker);

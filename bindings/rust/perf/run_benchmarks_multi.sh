@@ -1023,13 +1023,18 @@ python3 - "${TMP_METRICS}" "${TMP_CASES}" "${RESULTS_FILE}" "${PATTERN}" "${TRAN
   "${CLIENTS}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" "${PIN_CPU}" \
   "${COMMON_IO_THREADS}" "${SERVER_IO_THREADS}" "${CLIENT_IO_THREADS}" "${HWM}" "${SEND_HWM}" \
   "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" "${RUN_COOLDOWN_MS}" \
-  "${TRANSPORT_TRANSITION_MS}" "${PATTERN_TRANSITION_MS}" <<'PY'
+  "${TRANSPORT_TRANSITION_MS}" "${PATTERN_TRANSITION_MS}" "${SECONDS}" <<'PY'
 import csv
 import math
+import os
+import platform
+import subprocess
 import sys
+import time
 from collections import defaultdict
+from datetime import datetime
 
-metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, output_path, pin_cpu, common_io_threads, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, run_cooldown_ms, transport_transition_ms, pattern_transition_ms = sys.argv[1:]
+metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, output_path, pin_cpu, common_io_threads, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, run_cooldown_ms, transport_transition_ms, pattern_transition_ms, elapsed_seconds = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 result_metrics = ["bandwidth", "latency", "latency_p95", "latency_p99", "throughput"]
@@ -1108,27 +1113,72 @@ def emit_effective_options(section):
     emit(f"- patterns: {pattern_csv}")
     emit(f"- transports: {transports_csv}")
     emit(f"- msg_sizes: {msg_sizes_csv}")
-    emit(f"- clients: {clients}")
-    emit(f"- pin_cpu: {'on' if pin_cpu == '1' else 'off'}")
-    emit(f"- io_threads: {common_io_threads or 'default(binding)'}")
-    emit(f"- server_io_threads: {server_io_threads or 'default(binding)'}")
-    emit(f"- client_io_threads: {client_io_threads or 'default(binding)'}")
-    emit(f"- hwm: {hwm or 'default(binding)'}")
-    emit(f"- send_hwm: {send_hwm or 'default(binding)'}")
-    emit(f"- recv_hwm: {recv_hwm or 'default(binding)'}")
-    emit(f"- send_timeout_ms: {sndtimeo_ms}")
-    emit(f"- recv_timeout_ms: {rcvtimeo_ms}")
     emit(f"- duration_seconds: {duration}")
-    emit(f"- run_cooldown_ms: {run_cooldown_ms}")
+    emit(f"- clients: {clients}")
+    emit("- default_clients: 100")
+    emit("- default_stream_clients: 10000")
+    emit("- service_clients: auto")
+    emit(f"- server_io_threads: {server_io_threads or common_io_threads or '4 (default)'}")
+    emit(f"- client_io_threads: {client_io_threads or common_io_threads or '4 (default)'}")
+    emit(f"- hwm: {hwm or 'auto-hwm'}")
+    emit(f"- sndhwm: {send_hwm or hwm or 'auto-hwm'}")
+    emit(f"- rcvhwm: {recv_hwm or hwm or 'auto-hwm'}")
+    emit("- sndbuf: auto-hwm")
+    emit("- rcvbuf: auto-hwm")
+    emit("- ctx_auto_hwm_enable: 1")
+    emit("- ctx_auto_hwm_profile: balanced")
+    emit(f"- sndtimeo_ms: {sndtimeo_ms}")
+    emit(f"- rcvtimeo_ms: {rcvtimeo_ms}")
+    emit("- connect_concurrency: 128 (default)")
+    emit("- connect_ready_timeout_ms: 5000")
+    emit("- monitor_hwm: 1000")
+    emit("- server_ready_timeout_ms: 10000")
+    emit("- server_shutdown_timeout_ms: 5000")
+    emit("- server_bind_port: 0")
     emit(f"- transport_transition_ms: {transport_transition_ms}")
     emit(f"- pattern_transition_ms: {pattern_transition_ms}")
-    if results_tag:
-        emit(f"- results_tag: {results_tag}")
+    emit("- lat_timeout_ms: 5000")
+    emit("- stream_non_tcp_clients_max: 10000")
+    emit("- disable_resource_metrics: 0")
+    emit("- timeout_seconds: auto")
     emit("")
 
-emit_effective_options("start")
-emit("===============================================================================")
+def cpu_name():
+    try:
+        with open("/proc/cpuinfo", encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                if line.startswith("model name"):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return platform.processor() or "unknown"
+
+def git_commit():
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return "unknown"
+
+try:
+    load_avg = " ".join(f"{value:.2f}" for value in os.getloadavg())
+except OSError:
+    load_avg = "unknown"
+
+emit(f"META,os,{platform.system()} {platform.release()}")
+emit(f"META,cpu,{cpu_name()}")
+emit(f"META,cores,{os.cpu_count() or 0}")
+emit("META,build,Release")
+emit(f"META,commit,{git_commit()}")
+emit(f"META,timestamp,{datetime.now().astimezone().isoformat(timespec='seconds')}")
+emit(f"META,load_avg,{load_avg}")
+emit(f"META,runs,{runs}")
+emit(f"META,clients,{clients}")
 emit("")
+emit_effective_options("start")
 
 def pattern_direction(pattern):
     return "echo" if pattern in {
@@ -1155,7 +1205,7 @@ def metric_value_for_run(key, metric, run_index):
 def emit_case_row(pattern, size, metric_values):
     throughput = f"{fmt_rate(metric_values['throughput']):>8} {rate_unit(pattern)}"
     emit(
-        f"| {str(size) + 'B':<8} | {throughput:>16} | "
+        f"      | {str(size) + 'B':<8} | {throughput:>16} | "
         f"{fmt_bandwidth(metric_values['bandwidth']):>12} | "
         f"{fmt_latency_ms(metric_values['latency']):>12} | "
         f"{fmt_latency_ms(metric_values['latency_p95']):>12} | "
@@ -1167,47 +1217,49 @@ for pattern_index, pattern in enumerate(patterns):
         emit("===============================================================================")
         emit("")
     emit(f"## PATTERN: {pattern} ({pattern_direction(pattern)})")
-    emit("")
+    emit(f"  > Benchmarking current for {pattern}...")
     for transport in pattern_transports[pattern]:
-        emit(f"### Transport: {transport}")
+        emit(f"    Testing {transport}:")
         if runs > 1:
             for run_index in range(runs):
-                emit(f"run {run_index + 1}/{runs}:")
-                emit_table_header()
+                emit(f"      run {run_index + 1}/{runs}:")
+                for header in ("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |", "|----------|--------------------|----------------|---------------|---------------|---------------|"):
+                    emit(f"        {header}")
                 for size in pattern_sizes[pattern]:
                     key = (pattern, transport, size)
                     status, _reason = cases.get(key, ("fail", "missing_case_status"))
                     if status == "unsupported":
                         emit(
-                            f"| {size}B | UNSUPPORTED | UNSUPPORTED | "
+                            f"        | {size}B | UNSUPPORTED | UNSUPPORTED | "
                             f"UNSUPPORTED | UNSUPPORTED | UNSUPPORTED |"
                         )
                         continue
                     if status == "skip":
-                        emit(f"| {size}B | FAIL | FAIL | FAIL | FAIL | FAIL |")
+                        emit(f"        | {size}B | FAIL | FAIL | FAIL | FAIL | FAIL |")
                         continue
                     metric_values = {
                         metric: metric_value_for_run(key, metric, run_index)
                         for metric in required_metrics
                     }
                     if any(math.isnan(value) for value in metric_values.values()):
-                        emit(f"| {size}B | FAIL | FAIL | FAIL | FAIL | FAIL |")
+                        emit(f"        | {size}B | FAIL | FAIL | FAIL | FAIL | FAIL |")
                     else:
                         emit_case_row(pattern, size, metric_values)
-                emit("")
-            emit("median:")
-        emit_table_header()
+            emit("      median:")
+        for header in ("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |", "|----------|--------------------|----------------|---------------|---------------|---------------|"):
+            emit(f"      {header}")
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
+            emit(f"    Testing {transport} | {size}B:")
             status, reason = cases.get(key, ("fail", "missing_case_status"))
             if status == "unsupported":
                 emit(
-                    f"| {size}B | UNSUPPORTED | UNSUPPORTED | "
+                    f"      | {size}B | UNSUPPORTED | UNSUPPORTED | "
                     f"UNSUPPORTED | UNSUPPORTED | UNSUPPORTED |"
                 )
                 continue
             if status == "skip":
-                emit("| {}B | FAIL | FAIL | FAIL | FAIL | FAIL |".format(size))
+                emit("      | {}B | FAIL | FAIL | FAIL | FAIL | FAIL |".format(size))
                 continue
 
             expected += 5
@@ -1221,9 +1273,13 @@ for pattern_index, pattern in enumerate(patterns):
                         f"RESULT,current,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
                     )
             else:
-                emit("| {}B | FAIL | FAIL | FAIL | FAIL | FAIL |".format(size))
+                emit("      | {}B | FAIL | FAIL | FAIL | FAIL | FAIL |".format(size))
                 failures.append(f"{pattern} current {transport} {size}B: {reason or 'missing_result_lines'}")
-        emit("")
+        emit(f"    Testing {transport}: Done")
+        if pattern in {"MULTI_SPOT", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}:
+            emit("    Auto-HWM spotnode:")
+            emit("      - unavailable: binding runner does not expose socket-level Auto-HWM metadata")
+    emit("")
 
 emit_effective_options("result")
 emit("## Result Data")
@@ -1243,6 +1299,10 @@ if failures:
     emit("## Failures")
     for failure in failures:
         emit(f"- {failure}")
+status = 'complete' if expected == actual else 'partial'
+emit("")
+emit(f"Saved result file: {report_path} (status={status})")
+emit(f"Total benchmark time: {elapsed_seconds}s ({elapsed_seconds}s, exit={0 if status == 'complete' else 1})")
 
 text = "\n".join(lines) + "\n"
 with open(report_path, "w", encoding="utf-8") as f:

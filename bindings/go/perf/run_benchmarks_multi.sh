@@ -422,6 +422,7 @@ RESULTS_FILE="${RESULTS_DIR}/perf_go_multi_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}
 mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
 prepare_core_runtime
+START_SECONDS="${SECONDS}"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-multi.XXXXXX")"
 RAW_RESULTS_FILE="${TMP_DIR}/result_data.log"
 cleanup() {
@@ -572,6 +573,71 @@ elif [[ -n "${PERF_MULTI_CLIENTS:-}" ]]; then
 else
   CLIENTS_DISPLAY="auto (default=100, stream=10000)"
 fi
+
+effective_or_auto() {
+  local value="$1"
+  local fallback="${2:-auto-hwm}"
+  if [[ -n "${value}" ]]; then
+    printf '%s\n' "${value}"
+  else
+    printf '%s\n' "${fallback}"
+  fi
+}
+
+emit_meta_lines() {
+  local cpu_name="unknown"
+  if [[ -r /proc/cpuinfo ]]; then
+    cpu_name="$(awk -F: '/^model name/ { sub(/^ /, "", $2); print $2; exit }' /proc/cpuinfo)"
+  fi
+  echo "META,os,$(uname -s) $(uname -r)"
+  echo "META,cpu,${cpu_name:-unknown}"
+  echo "META,cores,$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)"
+  echo "META,build,Release"
+  echo "META,commit,$(git -C "${REPO_DIR}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  echo "META,timestamp,$(date -Iseconds)"
+  echo "META,load_avg,$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || echo unknown)"
+  echo "META,runs,${RUNS}"
+  echo "META,clients,${CLIENTS_DISPLAY}"
+}
+
+emit_effective_options_multi() {
+  local section="$1"
+  echo "## Effective Options (${section})"
+  echo "- lang: go"
+  echo "- suite: multi"
+  echo "- runs: ${RUNS}"
+  echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
+  echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
+  echo "- msg_sizes: ${EFFECTIVE_MSG_SIZES_CSV}"
+  echo "- duration_seconds: ${DURATION}"
+  echo "- clients: ${CLIENTS_DISPLAY}"
+  echo "- default_clients: ${PERF_MULTI_DEFAULT_CLIENTS:-100}"
+  echo "- default_stream_clients: ${PERF_MULTI_STREAM_CLIENTS:-10000}"
+  echo "- service_clients: auto"
+  echo "- server_io_threads: ${SERVER_IO_THREADS:-${IO_THREADS:-4 (default)}}"
+  echo "- client_io_threads: ${CLIENT_IO_THREADS:-${IO_THREADS:-4 (default)}}"
+  echo "- hwm: $(effective_or_auto "${HWM}")"
+  echo "- sndhwm: $(effective_or_auto "${SEND_HWM:-${HWM}}")"
+  echo "- rcvhwm: $(effective_or_auto "${RECV_HWM:-${HWM}}")"
+  echo "- sndbuf: $(effective_or_auto "${SNDBUF}")"
+  echo "- rcvbuf: $(effective_or_auto "${RCVBUF}")"
+  echo "- ctx_auto_hwm_enable: ${PERF_CTX_AUTO_HWM_ENABLE:-1}"
+  echo "- ctx_auto_hwm_profile: ${AUTO_HWM_PROFILE:-${PERF_MULTI_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}}"
+  echo "- sndtimeo_ms: ${SNDTIMEO_MS:-${PERF_MULTI_SNDTIMEO_MS:-200}}"
+  echo "- rcvtimeo_ms: ${RCVTIMEO_MS:-${PERF_MULTI_RCVTIMEO_MS:-200}}"
+  echo "- connect_concurrency: ${CONNECT_CONCURRENCY:-128 (default)}"
+  echo "- connect_ready_timeout_ms: ${CONNECT_READY_TIMEOUT_MS:-${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}}"
+  echo "- monitor_hwm: ${MONITOR_HWM:-${PERF_MULTI_MONITOR_HWM:-1000}}"
+  echo "- server_ready_timeout_ms: ${SERVER_READY_TIMEOUT_MS:-${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}}"
+  echo "- server_shutdown_timeout_ms: ${SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}"
+  echo "- server_bind_port: ${SERVER_BIND_PORT:-${PERF_MULTI_SERVER_BIND_PORT:-0}}"
+  echo "- transport_transition_ms: ${TRANSPORT_TRANSITION_MS}"
+  echo "- pattern_transition_ms: ${PATTERN_TRANSITION_MS}"
+  echo "- lat_timeout_ms: ${PERF_MULTI_LAT_TIMEOUT_MS:-5000}"
+  echo "- stream_non_tcp_clients_max: ${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
+  echo "- disable_resource_metrics: ${PERF_MULTI_DISABLE_RESOURCE_METRICS:-0}"
+  echo "- timeout_seconds: ${PERF_MULTI_TIMEOUT_SECONDS:-auto}"
+}
 
 is_unsupported_output() {
   local output_file="$1"
@@ -998,45 +1064,44 @@ for pattern in sorted(by_pattern):
     printed_first_pattern = True
     direction = "echo" if pattern in echo_patterns else "one-way"
     print(f"## PATTERN: {pattern} ({direction})")
-    print()
+    print(f"  > Benchmarking current for {pattern}...")
     transports = defaultdict(list)
     for transport, size, values in by_pattern[pattern]:
         transports[transport].append((size, values))
     for transport in sorted(transports):
-        print(f"### Transport: {transport}")
-        print("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
-        print("|----------|--------------------|----------------|---------------|---------------|---------------|")
+        print(f"    Testing {transport}:")
+        print("      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
+        print("      |----------|--------------------|----------------|---------------|---------------|---------------|")
         for size, values in sorted(transports[transport]):
+            print(f"    Testing {transport} | {size}B:")
             if not all(metric in values for metric in metrics):
                 continue
             unit = "Kops/s" if pattern in echo_patterns else "Kmsg/s"
             throughput_text = f"{values['throughput'] / 1000.0:8.3f} {unit}"
             print(
-                f"| {str(size) + 'B':<8}"
+                f"      | {str(size) + 'B':<8}"
                 f" | {throughput_text:>16}"
                 f" | {values['bandwidth']:10.3f} MB/s"
                 f" | {values['latency']:9.3f} ms"
                 f" | {values['latency_p95']:9.3f} ms"
                 f" | {values['latency_p99']:9.3f} ms |"
             )
-        print()
+        print(f"    Testing {transport}: Done")
+        if pattern in {"MULTI_SPOT", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}:
+            print("    Auto-HWM spotnode:")
+            print("      - unavailable: binding runner does not expose socket-level Auto-HWM metadata")
+    print()
 PY
 }
 
 {
-  echo "## Effective Options (start)"
-  echo "- lang: go"
-  echo "- suite: multi"
-  echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
-  echo "- runs: ${RUNS}"
-  echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
-  echo "- msg_sizes: ${EFFECTIVE_MSG_SIZES_CSV}"
-  echo "- clients: ${CLIENTS_DISPLAY}"
-  echo "- runtime: ${CORE_LIB}"
-  echo "- pin_cpu: ${PIN_CPU}"
-  echo "- duration_seconds: ${DURATION}"
+  emit_meta_lines
+  echo
+  emit_effective_options_multi "start"
   echo
 } > "${RESULTS_FILE}"
+exec 3>&1
+exec >/dev/null
 
 result_lines=0
 unsupported=0
@@ -1232,7 +1297,7 @@ done
 
 table_output="$(render_tables)"
 if [[ -n "${table_output}" ]]; then
-  printf '\n%s\n' "${table_output}" >> "${RESULTS_FILE}"
+  printf '%s\n' "${table_output}" >> "${RESULTS_FILE}"
 fi
 
 if [[ "${#SKIPS[@]}" -gt 0 ]]; then
@@ -1264,16 +1329,7 @@ fi
 {
   echo
   echo "## Effective Options (result)"
-  echo "- lang: go"
-  echo "- suite: multi"
-  echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
-  echo "- runs: ${RUNS}"
-  echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
-  echo "- msg_sizes: ${EFFECTIVE_MSG_SIZES_CSV}"
-  echo "- clients: ${CLIENTS_DISPLAY}"
-  echo "- runtime: ${CORE_LIB}"
-  echo "- pin_cpu: ${PIN_CPU}"
-  echo "- duration_seconds: ${DURATION}"
+  emit_effective_options_multi "result" | sed '1d'
   echo
   echo "## Result Data"
   if [[ -s "${RAW_RESULTS_FILE}" ]]; then
@@ -1317,12 +1373,17 @@ PY
   echo "- status: ${status}"
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"
+  elapsed=$((SECONDS - START_SECONDS))
+  echo
+  echo "Saved result file: ${RESULTS_FILE} (status=${status})"
+  echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=$([[ "${status}" == "complete" ]] && echo 0 || echo 1))"
 } >> "${RESULTS_FILE}"
 
 if [[ -n "${OUTPUT_FILE}" ]]; then
   cp "${RESULTS_FILE}" "${OUTPUT_FILE}"
 fi
 
+exec >&3
 cat "${RESULTS_FILE}"
 
 if [[ "${status}" != "complete" ]]; then

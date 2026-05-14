@@ -315,13 +315,13 @@ done
 
 python3 - "${TMP_METRICS}" "${TMP_CASES}" "${RESULTS_FILE}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
   "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" "${PIN_CPU}" "${IO_THREADS}" \
-  "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" <<'PY'
+  "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" "${SECONDS}" <<'PY'
 import csv
 import math
 import sys
 from collections import defaultdict
 
-metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, output_path, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms = sys.argv[1:]
+metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, output_path, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, elapsed_seconds = sys.argv[1:]
 runs = int(runs)
 required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
 rows = defaultdict(lambda: defaultdict(list))
@@ -396,24 +396,24 @@ def emit_effective_options(section):
     emit("- lang: rust")
     emit("- suite: single")
     emit(f"- runs: {runs}")
+    emit(f"- duration_seconds: {duration}")
+    emit("- timeout_seconds: 30")
+    emit(f"- io_threads: {io_threads or 'default(binary=1)'}")
+    emit(f"- hwm: {hwm or 'auto-hwm'}")
+    emit(f"- sndhwm: {send_hwm or hwm or 'auto-hwm'}")
+    emit(f"- rcvhwm: {recv_hwm or hwm or 'auto-hwm'}")
+    emit("- sndbuf: auto-hwm")
+    emit("- rcvbuf: auto-hwm")
+    emit(f"- sndtimeo_ms: {sndtimeo_ms}")
+    emit(f"- rcvtimeo_ms: {rcvtimeo_ms}")
+    emit("- ctx_auto_hwm_enable: core-default")
+    emit("- ctx_auto_hwm_profile: balanced")
     emit(f"- patterns: {pattern_csv}")
     emit(f"- transports: {transports_csv}")
     emit(f"- msg_sizes: {msg_sizes_csv}")
-    emit(f"- pin_cpu: {'on' if pin_cpu == '1' else 'off'}")
-    emit(f"- io_threads: {io_threads or 'default(binding)'}")
-    emit(f"- hwm: {hwm or 'default(binding)'}")
-    emit(f"- send_hwm: {send_hwm or 'default(binding)'}")
-    emit(f"- recv_hwm: {recv_hwm or 'default(binding)'}")
-    emit(f"- send_timeout_ms: {sndtimeo_ms}")
-    emit(f"- recv_timeout_ms: {rcvtimeo_ms}")
-    emit(f"- duration_seconds: {duration}")
-    if results_tag:
-        emit(f"- results_tag: {results_tag}")
     emit("")
 
 emit_effective_options("start")
-emit("===============================================================================")
-emit("")
 
 def pattern_direction(pattern):
     return "one-way"
@@ -434,7 +434,7 @@ def metric_value_for_run(key, metric, run_index):
 def emit_case_row(pattern, size, metric_values):
     throughput = f"{fmt_rate(metric_values['throughput']):>8} {rate_unit(pattern)}"
     emit(
-        f"| {str(size) + 'B':<8} | {throughput:>16} | "
+        f"      | {str(size) + 'B':<8} | {throughput:>16} | "
         f"{fmt_bandwidth(metric_values['bandwidth']):>12} | "
         f"{fmt_latency_ms(metric_values['latency']):>12} | "
         f"{fmt_latency_ms(metric_values['latency_p95']):>12} | "
@@ -446,19 +446,20 @@ for pattern_index, pattern in enumerate(patterns):
         emit("===============================================================================")
         emit("")
     emit(f"## PATTERN: {pattern} ({pattern_direction(pattern)})")
-    emit("")
+    emit(f"  > Benchmarking current for {pattern}...")
     for transport in pattern_transports[pattern]:
-        emit(f"### Transport: {transport}")
+        emit(f"    Testing {transport}:")
         if runs > 1:
             for run_index in range(runs):
-                emit(f"run {run_index + 1}/{runs}:")
-                emit_table_header()
+                emit(f"      run {run_index + 1}/{runs}:")
+                for header in ("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |", "|----------|--------------------|----------------|---------------|---------------|---------------|"):
+                    emit(f"        {header}")
                 for size in pattern_sizes[pattern]:
                     key = (pattern, transport, size)
                     status, _reason = cases.get(key, ("fail", "missing_case_status"))
                     if status == "unsupported":
                         emit(
-                            f"| {size}B | {status.upper()} | {status.upper()} | "
+                            f"        | {size}B | {status.upper()} | {status.upper()} | "
                             f"{status.upper()} | {status.upper()} | {status.upper()} |"
                         )
                         continue
@@ -467,18 +468,18 @@ for pattern_index, pattern in enumerate(patterns):
                         for metric in required_metrics
                     }
                     if any(math.isnan(value) for value in metric_values.values()):
-                        emit(f"| {size}B | FAIL | FAIL | FAIL | FAIL | FAIL |")
+                        emit(f"        | {size}B | FAIL | FAIL | FAIL | FAIL | FAIL |")
                     else:
                         emit_case_row(pattern, size, metric_values)
-                emit("")
-            emit("median:")
-        emit_table_header()
+            emit("      median:")
+        for header in ("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |", "|----------|--------------------|----------------|---------------|---------------|---------------|"):
+            emit(f"      {header}")
         for size in pattern_sizes[pattern]:
             key = (pattern, transport, size)
             status, reason = cases.get(key, ("fail", "missing_case_status"))
             if status == "unsupported":
                 emit(
-                    f"| {size}B | {status.upper()} | {status.upper()} | "
+                    f"      | {size}B | {status.upper()} | {status.upper()} | "
                     f"{status.upper()} | {status.upper()} | {status.upper()} |"
                 )
                 continue
@@ -494,10 +495,14 @@ for pattern_index, pattern in enumerate(patterns):
                         f"RESULT,current,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
                     )
             else:
-                emit("| {}B | FAIL | FAIL | FAIL | FAIL | FAIL |".format(size))
+                emit("      | {}B | FAIL | FAIL | FAIL | FAIL | FAIL |".format(size))
                 failures.append(f"{pattern} current {transport} {size}B: {reason or 'missing_result_lines'}")
-        emit("")
+        emit(f"    Testing {transport}: Done")
+    emit("")
 
+emit("## Auto-HWM Detail")
+emit("- unavailable: binding runner does not expose socket-level Auto-HWM metadata")
+emit("")
 emit_effective_options("result")
 emit("## Result Data")
 for line in result_lines:
@@ -512,6 +517,10 @@ if failures:
     emit("## Failures")
     for failure in failures:
         emit(f"- {failure}")
+status = 'complete' if expected == actual else 'partial'
+emit("")
+emit(f"Saved result file: {report_path} (status={status})")
+emit(f"Total benchmark time: {elapsed_seconds}s ({elapsed_seconds}s, exit={0 if status == 'complete' else 1})")
 
 text = "\n".join(lines) + "\n"
 with open(report_path, "w", encoding="utf-8") as f:

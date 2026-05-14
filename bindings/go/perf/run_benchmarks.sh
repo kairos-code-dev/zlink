@@ -246,6 +246,7 @@ RESULTS_FILE="${RESULTS_DIR}/perf_go_single_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX
 mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
 prepare_core_runtime
+START_SECONDS="${SECONDS}"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-single.XXXXXX")"
 RAW_RESULTS_FILE="${TMP_DIR}/result_data.log"
 cleanup() {
@@ -330,6 +331,38 @@ resolve_single_effective_transports() {
 
 EFFECTIVE_PATTERNS_CSV="$(join_by "," "${PATTERNS[@]}")"
 EFFECTIVE_TRANSPORTS_CSV="$(resolve_single_effective_transports)"
+effective_or_auto() {
+  local value="$1"
+  local fallback="${2:-auto-hwm}"
+  if [[ -n "${value}" ]]; then
+    printf '%s\n' "${value}"
+  else
+    printf '%s\n' "${fallback}"
+  fi
+}
+
+emit_effective_options_single() {
+  local section="$1"
+  echo "## Effective Options (${section})"
+  echo "- lang: go"
+  echo "- suite: single"
+  echo "- runs: ${RUNS}"
+  echo "- duration_seconds: ${DURATION}"
+  echo "- timeout_seconds: ${PERF_SINGLE_TIMEOUT_SECONDS:-30}"
+  echo "- io_threads: ${IO_THREADS:-default(binary=1)}"
+  echo "- hwm: $(effective_or_auto "${HWM}")"
+  echo "- sndhwm: $(effective_or_auto "${SEND_HWM:-${HWM}}")"
+  echo "- rcvhwm: $(effective_or_auto "${RECV_HWM:-${HWM}}")"
+  echo "- sndbuf: $(effective_or_auto "${SNDBUF}")"
+  echo "- rcvbuf: $(effective_or_auto "${RCVBUF}")"
+  echo "- sndtimeo_ms: ${SNDTIMEO_MS:-${PERF_SINGLE_SNDTIMEO_MS:-200}}"
+  echo "- rcvtimeo_ms: ${RCVTIMEO_MS:-${PERF_SINGLE_RCVTIMEO_MS:-200}}"
+  echo "- ctx_auto_hwm_enable: ${PERF_CTX_AUTO_HWM_ENABLE:-core-default}"
+  echo "- ctx_auto_hwm_profile: ${AUTO_HWM_PROFILE:-${PERF_SINGLE_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}}"
+  echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
+  echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
+  echo "- msg_sizes: ${MSG_SIZES}"
+}
 
 append_case_output() {
   local case_log="$1"
@@ -466,43 +499,38 @@ for pattern in sorted(by_pattern):
     printed_first_pattern = True
     direction = "echo" if pattern in echo_patterns else "one-way"
     print(f"## PATTERN: {pattern} ({direction})")
-    print()
+    print(f"  > Benchmarking current for {pattern}...")
     transports = defaultdict(list)
     for transport, size, values in by_pattern[pattern]:
         transports[transport].append((size, values))
     for transport in sorted(transports):
-        print(f"### Transport: {transport}")
-        print("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
-        print("|----------|--------------------|----------------|---------------|---------------|---------------|")
+        print(f"    Testing {transport}:")
+        print("      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
+        print("      |----------|--------------------|----------------|---------------|---------------|---------------|")
         for size, values in sorted(transports[transport]):
             if not all(metric in values for metric in metrics):
                 continue
             unit = "Kops/s" if pattern in echo_patterns else "Kmsg/s"
             throughput_text = f"{values['throughput'] / 1000.0:8.3f} {unit}"
             print(
-                f"| {str(size) + 'B':<8}"
+                f"      | {str(size) + 'B':<8}"
                 f" | {throughput_text:>16}"
                 f" | {values['bandwidth']:10.3f} MB/s"
                 f" | {values['latency']:9.3f} ms"
                 f" | {values['latency_p95']:9.3f} ms"
                 f" | {values['latency_p99']:9.3f} ms |"
             )
-        print()
+        print(f"    Testing {transport}: Done")
+    print()
 PY
 }
 
 {
-  echo "## Effective Options (start)"
-  echo "- lang: go"
-  echo "- suite: single"
-  echo "- runs: ${RUNS}"
-  echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
-  echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
-  echo "- msg_sizes: ${MSG_SIZES}"
-  echo "- runtime: ${CORE_LIB}"
-  echo "- pin_cpu: ${PIN_CPU}"
+  emit_effective_options_single "start"
   echo
 } > "${RESULTS_FILE}"
+exec 3>&1
+exec >/dev/null
 
 result_lines=0
 unsupported_cases=0
@@ -593,7 +621,7 @@ done
 
 table_output="$(render_tables)"
 if [[ -n "${table_output}" ]]; then
-  printf '\n%s\n' "${table_output}" >> "${RESULTS_FILE}"
+  printf '%s\n' "${table_output}" >> "${RESULTS_FILE}"
 fi
 
 if [[ "${#FAILURES[@]}" -gt 0 ]]; then
@@ -606,6 +634,12 @@ if [[ "${#FAILURES[@]}" -gt 0 ]]; then
   } >> "${RESULTS_FILE}"
 fi
 
+{
+  echo
+  echo "## Auto-HWM Detail"
+  echo "- unavailable: binding runner does not expose socket-level Auto-HWM metadata"
+} >> "${RESULTS_FILE}"
+
 expected_result_lines=$((expected_cases * 5))
 status="partial"
 if [[ "${fail}" -eq 0 && "${result_lines}" -eq "${expected_result_lines}" ]]; then
@@ -615,31 +649,28 @@ fi
 {
   expected_result_lines=$((expected_cases * 5))
   echo
-  echo "## Effective Options (result)"
-  echo "- lang: go"
-  echo "- suite: single"
-  echo "- runs: ${RUNS}"
-  echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
-  echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
-  echo "- msg_sizes: ${MSG_SIZES}"
-  echo "- runtime: ${CORE_LIB}"
-  echo "- pin_cpu: ${PIN_CPU}"
+  emit_effective_options_single "result"
   echo
   echo "## Result Data"
   if [[ -s "${RAW_RESULTS_FILE}" ]]; then
-    cat "${RAW_RESULTS_FILE}"
+    grep -E '^(RESULT|UNSUPPORTED|SKIP|FAIL),' "${RAW_RESULTS_FILE}" || true
   fi
   echo
   echo "## Completion"
   echo "- status: ${status}"
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"
+  elapsed=$((SECONDS - START_SECONDS))
+  echo
+  echo "Saved result file: ${RESULTS_FILE} (status=${status})"
+  echo "Total benchmark time: ${elapsed}s (${elapsed}s, exit=$([[ "${status}" == "complete" ]] && echo 0 || echo 1))"
 } >> "${RESULTS_FILE}"
 
 if [[ -n "${OUTPUT_FILE}" ]]; then
   cp "${RESULTS_FILE}" "${OUTPUT_FILE}"
 fi
 
+exec >&3
 cat "${RESULTS_FILE}"
 
 if [[ "${status}" != "complete" ]]; then

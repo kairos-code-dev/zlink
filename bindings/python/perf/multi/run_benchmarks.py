@@ -1,5 +1,6 @@
 import argparse
 import os
+import platform
 import queue
 import signal
 import statistics
@@ -8,6 +9,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from datetime import datetime
 
 from perf_multi_common import (
     build_report_path,
@@ -843,6 +845,13 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
 
 
 def _build_options(args, patterns, transports, requested_msg_sizes, clients):
+    hwm = args.hwm or "auto-hwm"
+    sndhwm = args.send_hwm or args.hwm or "auto-hwm"
+    rcvhwm = args.recv_hwm or args.hwm or "auto-hwm"
+    sndbuf = args.sndbuf or args.buf or "auto-hwm"
+    rcvbuf = args.rcvbuf or args.buf or "auto-hwm"
+    transport_transition_ms = args.transport_transition_ms or os.environ.get("PERF_MULTI_TRANSPORT_TRANSITION_MS", "3000")
+    pattern_transition_ms = args.pattern_transition_ms or os.environ.get("PERF_MULTI_PATTERN_TRANSITION_MS", "3000")
     return {
         "lang": "python",
         "suite": "multi",
@@ -856,13 +865,74 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
             patterns,
             lambda pattern: _msg_sizes_for_pattern(pattern, requested_msg_sizes),
         ),
-        "clients": clients,
-        "pin_cpu": "on" if args.pin_cpu else "off",
         "duration_seconds": args.duration,
+        "clients": clients,
+        "default_clients": os.environ.get("PERF_MULTI_DEFAULT_CLIENTS", "100"),
+        "default_stream_clients": os.environ.get("PERF_MULTI_STREAM_CLIENTS", "10000"),
+        "service_clients": "auto",
+        "server_io_threads": args.server_io_threads or args.io_threads or "4 (default)",
+        "client_io_threads": args.client_io_threads or args.io_threads or "4 (default)",
+        "hwm": hwm,
+        "sndhwm": sndhwm,
+        "rcvhwm": rcvhwm,
+        "sndbuf": sndbuf,
+        "rcvbuf": rcvbuf,
+        "ctx_auto_hwm_enable": os.environ.get("PERF_CTX_AUTO_HWM_ENABLE", "1"),
+        "ctx_auto_hwm_profile": args.auto_hwm_profile
+        or os.environ.get("PERF_MULTI_CTX_AUTO_HWM_PROFILE")
+        or os.environ.get("PERF_CTX_AUTO_HWM_PROFILE", "balanced"),
+        "sndtimeo_ms": args.send_timeout_ms or os.environ.get("PERF_MULTI_SNDTIMEO_MS", "200"),
+        "rcvtimeo_ms": args.recv_timeout_ms or os.environ.get("PERF_MULTI_RCVTIMEO_MS", "200"),
+        "connect_concurrency": args.connect_concurrency or "128 (default)",
+        "connect_ready_timeout_ms": args.connect_ready_timeout_ms or os.environ.get("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", "5000"),
+        "monitor_hwm": args.monitor_hwm or os.environ.get("PERF_MULTI_MONITOR_HWM", "1000"),
+        "server_ready_timeout_ms": args.server_ready_timeout_ms or os.environ.get("PERF_MULTI_SERVER_READY_TIMEOUT_MS", "10000"),
+        "server_shutdown_timeout_ms": args.server_shutdown_timeout_ms or os.environ.get("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", "5000"),
+        "server_bind_port": args.server_bind_port or os.environ.get("PERF_MULTI_SERVER_BIND_PORT", "0"),
+        "transport_transition_ms": transport_transition_ms,
+        "pattern_transition_ms": pattern_transition_ms,
+        "lat_timeout_ms": os.environ.get("PERF_MULTI_LAT_TIMEOUT_MS", "5000"),
+        "stream_non_tcp_clients_max": os.environ.get("PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", "10000"),
+        "disable_resource_metrics": os.environ.get("PERF_MULTI_DISABLE_RESOURCE_METRICS", "0"),
+        "timeout_seconds": os.environ.get("PERF_MULTI_TIMEOUT_SECONDS", "auto"),
     }
 
 
+def _meta_lines(args, clients):
+    def git_commit():
+        try:
+            return subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=str(REPO_ROOT),
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+        except Exception:
+            return "unknown"
+
+    def cpu_name():
+        if Path("/proc/cpuinfo").exists():
+            for line in Path("/proc/cpuinfo").read_text(errors="ignore").splitlines():
+                if line.startswith("model name"):
+                    return line.split(":", 1)[1].strip()
+        return platform.processor() or "unknown"
+
+    load_avg = " ".join(f"{value:.2f}" for value in os.getloadavg()) if hasattr(os, "getloadavg") else "unknown"
+    return [
+        f"META,os,{platform.system()} {platform.release()}",
+        f"META,cpu,{cpu_name()}",
+        f"META,cores,{os.cpu_count() or 0}",
+        "META,build,Release",
+        f"META,commit,{git_commit()}",
+        f"META,timestamp,{datetime.now().astimezone().isoformat(timespec='seconds')}",
+        f"META,load_avg,{load_avg}",
+        f"META,runs,{args.runs}",
+        f"META,clients,{clients}",
+    ]
+
+
 def main(argv=None):
+    start_time = time.perf_counter()
     args = parse_args(argv or sys.argv[1:])
     if args.pin_cpu and not pin_current_process_cpu0():
         print("warning: cpu pinning requested but could not pin to cpu 0", file=sys.stderr)
@@ -891,6 +961,15 @@ def main(argv=None):
         env["PERF_MULTI_SNDHWM"] = args.send_hwm
     if args.recv_hwm:
         env["PERF_MULTI_RCVHWM"] = args.recv_hwm
+    if args.buf:
+        env["PERF_MULTI_SNDBUF"] = args.buf
+        env["PERF_MULTI_RCVBUF"] = args.buf
+    if args.sndbuf:
+        env["PERF_MULTI_SNDBUF"] = args.sndbuf
+    if args.rcvbuf:
+        env["PERF_MULTI_RCVBUF"] = args.rcvbuf
+    if args.auto_hwm_profile:
+        env["PERF_CTX_AUTO_HWM_PROFILE"] = args.auto_hwm_profile
     if args.send_timeout_ms:
         env["PERF_MULTI_SNDTIMEO_MS"] = args.send_timeout_ms
     if args.recv_timeout_ms:
@@ -924,6 +1003,9 @@ def main(argv=None):
     failures = []
     fail_count = 0
     case_ordinal = 1
+    for line in _meta_lines(args, clients):
+        _append_line(sections, line)
+    _append_line(sections)
     _append_line(sections, render_effective_options(options))
     _append_line(sections)
     explicit_clients = args.clients is not None or bool(os.environ.get("PERF_MULTI_CLIENTS"))
@@ -935,13 +1017,11 @@ def main(argv=None):
             _append_line(sections, "===============================================================================")
             _append_line(sections)
         _append_line(sections, f"## PATTERN: MULTI_{pattern} ({pattern_direction('MULTI_' + pattern)})")
-        _append_line(sections)
         _append_line(sections, f"  > Benchmarking current for MULTI_{pattern}...")
         pattern_transports = _transports_for_pattern(pattern, transports)
         pattern_msg_sizes = _msg_sizes_for_pattern(pattern, requested_msg_sizes)
-        size_label = ",".join(f"{msg_size}B" for msg_size in pattern_msg_sizes)
         for transport_index, transport in enumerate(pattern_transports):
-            _append_line(sections, f"    Testing {transport} | {size_label}:")
+            _append_line(sections, f"    Testing {transport}:")
             transport_failures = 0
             transport_all_unsupported = True
             run_outputs = {msg_size: [] for msg_size in pattern_msg_sizes}
@@ -949,6 +1029,7 @@ def main(argv=None):
                 for header_line in table_header_lines():
                     _append_line(sections, f"      {header_line}")
                 for msg_size in pattern_msg_sizes:
+                    _append_line(sections, f"    Testing {transport} | {msg_size}B:")
                     preflight = _preflight_skip(pattern, transport, msg_size, pattern_clients)
                     if preflight:
                         output = preflight
@@ -1001,6 +1082,7 @@ def main(argv=None):
                     for header_line in table_header_lines():
                         _append_line(sections, f"        {header_line}")
                     for msg_size in pattern_msg_sizes:
+                        _append_line(sections, f"      Testing {transport} | {msg_size}B:")
                         preflight = _preflight_skip(pattern, transport, msg_size, pattern_clients)
                         if preflight:
                             output = preflight
@@ -1094,6 +1176,9 @@ def main(argv=None):
             else:
                 suffix = "Done"
             _append_line(sections, f"    Testing {transport}: {suffix}")
+            if pattern in {"SPOT", "SPOT_REQREP", "SPOT_SENDSEND"}:
+                _append_line(sections, "    Auto-HWM spotnode:")
+                _append_line(sections, "      - unavailable: binding runner does not expose socket-level Auto-HWM metadata")
             if transport_index + 1 < len(pattern_transports):
                 _append_line(
                     sections,
@@ -1169,6 +1254,10 @@ def main(argv=None):
     report_path.write_text(final_output, encoding="utf-8")
     if args.output:
         Path(args.output).write_text(final_output, encoding="utf-8")
+    elapsed = max(0, int(time.perf_counter() - start_time))
+    print("", flush=True)
+    print(f"Saved result file: {report_path} (status={status})", flush=True)
+    print(f"Total benchmark time: {elapsed}s ({elapsed}s, exit={0 if status == 'complete' else 1})", flush=True)
     if status != "complete":
         raise SystemExit(1)
 

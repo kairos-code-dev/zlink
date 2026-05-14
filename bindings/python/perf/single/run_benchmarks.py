@@ -1,5 +1,6 @@
 import argparse
 import os
+import time
 import statistics
 import subprocess
 import sys
@@ -295,21 +296,37 @@ def _run_pattern(args, env, pattern, transport, msg_size):
 
 
 def _build_options(args, patterns, transports, msg_sizes):
+    hwm = args.hwm or "auto-hwm"
+    sndhwm = args.send_hwm or args.hwm or "auto-hwm"
+    rcvhwm = args.recv_hwm or args.hwm or "auto-hwm"
+    sndbuf = args.sndbuf or args.buf or "auto-hwm"
+    rcvbuf = args.rcvbuf or args.buf or "auto-hwm"
     return {
         "lang": "python",
         "suite": "single",
         "runs": args.runs,
+        "duration_seconds": args.duration,
+        "timeout_seconds": resolve_single_timeout_seconds(float(args.duration)),
+        "io_threads": args.io_threads or "default(binary=1)",
+        "hwm": hwm,
+        "sndhwm": sndhwm,
+        "rcvhwm": rcvhwm,
+        "sndbuf": sndbuf,
+        "rcvbuf": rcvbuf,
+        "sndtimeo_ms": args.sndtimeo or os.environ.get("PERF_SINGLE_SNDTIMEO_MS", "200"),
+        "rcvtimeo_ms": args.rcvtimeo or os.environ.get("PERF_SINGLE_RCVTIMEO_MS", "200"),
+        "ctx_auto_hwm_enable": os.environ.get("PERF_CTX_AUTO_HWM_ENABLE", "core-default"),
+        "ctx_auto_hwm_profile": args.auto_hwm_profile
+        or os.environ.get("PERF_SINGLE_CTX_AUTO_HWM_PROFILE")
+        or os.environ.get("PERF_CTX_AUTO_HWM_PROFILE", "balanced"),
         "patterns": ",".join(patterns),
-        "transports": _grouped_option_text(
-            patterns,
-            lambda pattern: _transports_for_pattern(pattern, transports),
-        ),
+        "transports": _grouped_option_text(patterns, lambda pattern: _transports_for_pattern(pattern, transports)),
         "msg_sizes": ",".join(msg_sizes),
-        "pin_cpu": "on" if args.pin_cpu else "off",
     }
 
 
 def main(argv=None):
+    start_time = time.perf_counter()
     args = parse_args(argv or sys.argv[1:])
     if args.pin_cpu and not pin_current_process_cpu0():
         print("warning: cpu pinning requested but could not pin to cpu 0", file=sys.stderr)
@@ -332,6 +349,19 @@ def main(argv=None):
         env["PERF_SINGLE_SNDHWM"] = args.send_hwm
     if args.recv_hwm:
         env["PERF_SINGLE_RCVHWM"] = args.recv_hwm
+    if args.buf:
+        env["PERF_SINGLE_SNDBUF"] = args.buf
+        env["PERF_SINGLE_RCVBUF"] = args.buf
+    if args.sndbuf:
+        env["PERF_SINGLE_SNDBUF"] = args.sndbuf
+    if args.rcvbuf:
+        env["PERF_SINGLE_RCVBUF"] = args.rcvbuf
+    if args.sndtimeo:
+        env["PERF_SINGLE_SNDTIMEO_MS"] = args.sndtimeo
+    if args.rcvtimeo:
+        env["PERF_SINGLE_RCVTIMEO_MS"] = args.rcvtimeo
+    if args.auto_hwm_profile:
+        env["PERF_CTX_AUTO_HWM_PROFILE"] = args.auto_hwm_profile
 
     options = _build_options(args, patterns, transports, msg_sizes)
     sections = []
@@ -349,7 +379,6 @@ def main(argv=None):
             _append_line(sections, "===============================================================================")
             _append_line(sections)
         _append_line(sections, f"## PATTERN: {pattern} ({pattern_direction(pattern)})")
-        _append_line(sections)
         _append_line(sections, f"  > Benchmarking current for {pattern}...")
         pattern_transports = _transports_for_pattern(pattern, transports)
         for transport in pattern_transports:
@@ -483,6 +512,9 @@ def main(argv=None):
             _append_line(sections, line)
         _append_line(sections)
 
+    _append_line(sections, "## Auto-HWM Detail")
+    _append_line(sections, "- unavailable: binding runner does not expose socket-level Auto-HWM metadata")
+    _append_line(sections)
     _append_line(sections, render_effective_options(options, section="result"))
     _append_line(sections)
     _append_line(sections, "## Result Data")
@@ -493,9 +525,6 @@ def main(argv=None):
     _append_line(sections, f"- status: {status}")
     _append_line(sections, f"- expected_result_lines: {expected_result_lines}")
     _append_line(sections, f"- actual_result_lines: {len(rows)}")
-    _append_line(sections, f"- skip_cases: {skipped_cases}")
-    _append_line(sections, f"- unsupported_cases: {unsupported_cases}")
-    _append_line(sections, f"- fail: {fail_count}")
     final_output = "\n".join(sections).rstrip() + "\n"
 
     report_path = build_report_path(
@@ -507,6 +536,10 @@ def main(argv=None):
     report_path.write_text(final_output, encoding="utf-8")
     if args.output:
         Path(args.output).write_text(final_output, encoding="utf-8")
+    elapsed = max(0, int(time.perf_counter() - start_time))
+    print("", flush=True)
+    print(f"Saved result file: {report_path} (status={status})", flush=True)
+    print(f"Total benchmark time: {elapsed}s ({elapsed}s, exit={0 if status == 'complete' else 1})", flush=True)
     if status != "complete":
         raise SystemExit(1)
 

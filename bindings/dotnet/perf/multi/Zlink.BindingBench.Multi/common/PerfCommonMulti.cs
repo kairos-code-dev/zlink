@@ -677,6 +677,27 @@ internal static partial class PerfRunner
             PerfEnv.ReadPositive("PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", 32));
     }
 
+    internal static int ResolveMultiOnewayLatencyProbeCount()
+    {
+        return PerfEnv.ReadPositive("PERF_MULTI_ONEWAY_LATENCY_PROBE_COUNT", 128);
+    }
+
+    internal static int ResolveMultiOnewayLatencyProbeIntervalUs()
+    {
+        return PerfEnv.ReadPositive("PERF_MULTI_ONEWAY_LATENCY_PROBE_INTERVAL_US",
+            PerfEnv.ReadPositive("PERF_MULTI_SPOT_LATENCY_PROBE_INTERVAL_US",
+                1000));
+    }
+
+    internal static int ResolveMultiOnewayLatencyProbeSettleMs(
+        int durationSeconds)
+    {
+        int defaultMs = Math.Max(1000, Math.Max(1, durationSeconds) * 1000);
+        return PerfEnv.ReadNonNegative("PERF_MULTI_ONEWAY_LATENCY_PROBE_SETTLE_MS",
+            PerfEnv.ReadNonNegative("PERF_MULTI_SPOT_LATENCY_PROBE_SETTLE_MS",
+                defaultMs));
+    }
+
     internal static bool IsCoreStreamServerTransport(string transport)
     {
         return transport.Equals("tcp", StringComparison.OrdinalIgnoreCase)

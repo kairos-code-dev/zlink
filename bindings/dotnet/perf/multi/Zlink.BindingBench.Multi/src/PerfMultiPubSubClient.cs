@@ -16,6 +16,10 @@ internal static class PerfMultiPubSubClient
         int latencySampleStride = ResolveMultiOnewayLatencySampleStride();
         int clientCount = ResolveMultiClients(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
+        int probeCount = ResolveMultiOnewayLatencyProbeCount();
+        int probeIntervalUs = ResolveMultiOnewayLatencyProbeIntervalUs();
+        int probeSettleMs =
+            ResolveMultiOnewayLatencyProbeSettleMs(durationSeconds);
         string endpoint = options.Endpoint;
 
         using var ctx = new Context();
@@ -67,7 +71,8 @@ internal static class PerfMultiPubSubClient
             }
 
             var result = RunMultiPubSubClientLoop(pollManager, activeClients,
-                size, latencySampleCap, latencySampleStride, durationSeconds);
+                size, latencySampleCap, latencySampleStride, durationSeconds,
+                probeCount, probeIntervalUs, probeSettleMs);
 
             if (result.measureCount <= 0)
                 return 2;
@@ -88,11 +93,14 @@ internal static class PerfMultiPubSubClient
         double latencyP99Ns, long measureCount)
         RunMultiPubSubClientLoop(PollManager pollManager,
             List<SocketBase> activeClients, int msgSize, int latencySampleCap,
-            int latencySampleStride, int durationSeconds)
+            int latencySampleStride, int durationSeconds, int probeCount,
+            int probeIntervalUs, int probeSettleMs)
     {
         const uint expectedRunId = 1;
-        var latSamples = new List<double>(latencySampleCap);
-        long sampleSeen = 0;
+        var activeLatSamples = new List<double>(latencySampleCap);
+        var probeLatSamples = new List<double>(latencySampleCap);
+        long activeSampleSeen = 0;
+        long probeSampleSeen = 0;
         uint rng = 0xA341316Cu;
         long measureCount = 0;
 
@@ -153,16 +161,15 @@ internal static class PerfMultiPubSubClient
                             continue;
                         }
 
-                        measureCount++;
-                        if (measureCount % latencySampleStride == 0
-                            && header.SentTsNs > 0)
+                        if (header.Phase == (uint)PerfPhase.Active)
                         {
-                            ulong nowNs = EpochNs();
-                            if (nowNs >= header.SentTsNs)
+                            measureCount++;
+                            if (measureCount % latencySampleStride == 0
+                                && header.SentTsNs > 0)
                             {
-                                double sampleLatencyNs = nowNs - header.SentTsNs;
-                                ReservoirSample(latSamples, sampleLatencyNs,
-                                    ref sampleSeen, latencySampleCap, ref rng);
+                                AddLatencySample(activeLatSamples,
+                                    ref activeSampleSeen, latencySampleCap,
+                                    ref rng, header);
                             }
                         }
                     }
@@ -170,16 +177,82 @@ internal static class PerfMultiPubSubClient
             }
         }
 
+        long probeDeadlineTicks = Stopwatch.GetTimestamp()
+            + ((long)Math.Max(0, probeSettleMs) * Stopwatch.Frequency / 1000)
+            + ((long)Math.Max(1, probeCount) * Math.Max(1, probeIntervalUs)
+                * Stopwatch.Frequency / 1_000_000)
+            + 5L * Stopwatch.Frequency;
+        DrainProbeMessages(pollManager, activeClients, msgSize, expectedRunId,
+            latencySampleCap, ref probeSampleSeen, ref rng, probeLatSamples,
+            probeDeadlineTicks);
+
         double configuredSeconds = Math.Max(1.0, durationSeconds);
         double throughput = measureCount / configuredSeconds;
         double fallbackLatencyNs = (configuredSeconds * 1_000_000_000.0)
             / Math.Max(1.0, measureCount);
-        var latency = ComputeLatencyStats(latSamples);
+        var latency = ComputeLatencyStats(probeLatSamples.Count > 0
+            ? probeLatSamples
+            : activeLatSamples);
         double latencyNs = latency.mean > 0.0 ? latency.mean : fallbackLatencyNs;
         double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
         double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
 
         return (throughput, latencyNs, latencyP95Ns, latencyP99Ns, measureCount);
+    }
+
+    private static void DrainProbeMessages(PollManager pollManager,
+        List<SocketBase> activeClients, int msgSize, uint expectedRunId,
+        int latencySampleCap, ref long sampleSeen, ref uint rng,
+        List<double> samples, long deadlineTicks)
+    {
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            int readyCount = PollSocketReadReady(pollManager, activeClients, 1);
+            if (readyCount <= 0)
+                continue;
+
+            for (int readyOffset = 0; readyOffset < readyCount; readyOffset++)
+            {
+                int i = ReadySocketIndexAt(pollManager, readyOffset);
+                if (!IsSocketReadReady(pollManager, i))
+                    continue;
+
+                while (true)
+                {
+                    using TopicMessage? subscribed = TrySubscribeNoWait(
+                        (SubSocket)activeClients[i]);
+                    if (subscribed == null)
+                        break;
+
+                    ReadOnlySpan<byte> body = subscribed.FirstPart()
+                        .AsReadOnlySpan();
+                    if (!PerfRunner.TryDecodeMetricHeader(body,
+                            out PerfMetricHeader header)
+                        || header.RunId != expectedRunId
+                        || header.MsgSize != (uint)msgSize)
+                    {
+                        continue;
+                    }
+
+                    if (header.Phase == (uint)PerfPhase.Cooldown)
+                        AddLatencySample(samples, ref sampleSeen,
+                            latencySampleCap, ref rng, header);
+                }
+            }
+        }
+    }
+
+    private static void AddLatencySample(List<double> samples,
+        ref long sampleSeen, int latencySampleCap, ref uint rng,
+        PerfMetricHeader header)
+    {
+        if (header.SentTsNs == 0)
+            return;
+        ulong nowNs = EpochNs();
+        if (nowNs < header.SentTsNs)
+            return;
+        ReservoirSample(samples, nowNs - header.SentTsNs, ref sampleSeen,
+            latencySampleCap, ref rng);
     }
 
     private static TopicMessage? TrySubscribeNoWait(SubSocket socket)

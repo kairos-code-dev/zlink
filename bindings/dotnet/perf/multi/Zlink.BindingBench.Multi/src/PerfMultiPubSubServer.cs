@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Threading;
 using Systems.Zlink;
 using static PerfRunner;
 
@@ -15,6 +16,10 @@ internal static class PerfMultiPubSubServer
         int clientCount = ResolveMultiClients(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
         int pollTimeoutMs = ResolveMultiClientPollTimeoutMs(options);
+        int probeCount = ResolveMultiOnewayLatencyProbeCount();
+        int probeIntervalUs = ResolveMultiOnewayLatencyProbeIntervalUs();
+        int probeSettleMs =
+            ResolveMultiOnewayLatencyProbeSettleMs(durationSeconds);
         string endpoint = MultiEndpointFor(options.Transport, "multi-pubsub",
             options);
 
@@ -50,6 +55,16 @@ internal static class PerfMultiPubSubServer
                 durationSeconds, controlState))
         {
             return 2;
+        }
+
+        if (!controlState.StopRequested)
+        {
+            Thread.Sleep(probeSettleMs);
+            if (!RunLatencyProbePhase(server, payload, runId, size, ref seq,
+                    probeCount, probeIntervalUs, controlState))
+            {
+                return 2;
+            }
         }
 
         return 0;
@@ -97,5 +112,41 @@ internal static class PerfMultiPubSubServer
         }
 
         return true;
+    }
+
+    private static bool RunLatencyProbePhase(PubSocket server, byte[] payload,
+        uint runId, int size, ref ulong seq, int probeCount, int intervalUs,
+        RunnerControlState controlState)
+    {
+        long intervalTicks = Math.Max(1,
+            intervalUs * Stopwatch.Frequency / 1_000_000L);
+        long nextTicks = Stopwatch.GetTimestamp();
+        for (int i = 0; i < probeCount && !controlState.StopRequested; i++)
+        {
+            WaitUntil(nextTicks);
+            StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Cooldown,
+                size, seq, EpochNs());
+            if (PublishNoWait(server, payload.AsSpan()))
+                seq++;
+            nextTicks = Stopwatch.GetTimestamp() + intervalTicks;
+        }
+
+        return true;
+    }
+
+    private static void WaitUntil(long targetTicks)
+    {
+        while (true)
+        {
+            long nowTicks = Stopwatch.GetTimestamp();
+            if (nowTicks >= targetTicks)
+                return;
+            long remainingTicks = targetTicks - nowTicks;
+            int sleepMs = (int)(remainingTicks * 1000 / Stopwatch.Frequency);
+            if (sleepMs > 0)
+                Thread.Sleep(sleepMs);
+            else
+                Thread.Yield();
+        }
     }
 }

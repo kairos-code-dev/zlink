@@ -306,22 +306,6 @@ async function connectStreamTransport(endpoint, transport) {
   throw new Error(`unsupported stream transport: ${transport}`);
 }
 
-async function nextFrameWithTimeout(reader, timeoutMs) {
-  let timeout = null;
-  try {
-    return await Promise.race([
-      reader.nextFrame(),
-      new Promise((resolve) => {
-        timeout = setTimeout(() => resolve(null), timeoutMs);
-      })
-    ]);
-  } finally {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-  }
-}
-
 async function connectAllStreamTransports(endpoint, transport, clientCount) {
   const concurrency = resolveMultiConnectConcurrency(clientCount);
   const connected = [];
@@ -375,10 +359,7 @@ async function main() {
       inflight[index] = true;
       stampPayload(payloads[index], { phase: 1, runId, msgSize: options.msgSize, seq: currentSeq });
       transports[index].writeFrame(buildStreamPacketFrames(payloads[index]))
-        .then(() => nextFrameWithTimeout(
-          readers[index],
-          Number(process.env.PERF_MULTI_STREAM_FRAME_TIMEOUT_MS ?? 1000)
-        ))
+        .then(() => readers[index].nextFrame())
         .then((echoed) => {
           if (echoed) {
             collector.record(

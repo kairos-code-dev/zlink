@@ -457,6 +457,40 @@ async function waitForRunnerControlConnected() {
   }
 }
 
+async function waitForRunnerStart(msgSize) {
+  const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+  try {
+    for await (const line of rl) {
+      if (line === `START,${msgSize}` || line === 'STOP' || line === 'QUIT') {
+        return line;
+      }
+    }
+    return null;
+  } finally {
+    rl.close();
+  }
+}
+
+async function waitForControlStart(controlSub, waiter, msgSize) {
+  for (;;) {
+    while (true) {
+      const received = subscribeNoWait(controlSub);
+      if (!received) {
+        break;
+      }
+      try {
+        const payloadText = received.parts[0].data().toString('utf8');
+        if (payloadText === `START,${msgSize}`) {
+          return;
+        }
+      } finally {
+        received.close();
+      }
+    }
+    await waiter.wait(POLLIN);
+  }
+}
+
 function createSocketEventWaiter(socket, events) {
   const poller = new zlink.Poller();
   poller.add(socket, pollEvents(events));
@@ -508,7 +542,9 @@ module.exports = {
   subscribeNoWait,
   trySocketPublish,
   trySocketSend,
+  waitForControlStart,
   waitForRunnerControlConnected,
+  waitForRunnerStart,
   waitForConnectionReadyCount,
   waitForConnectionReady
 };

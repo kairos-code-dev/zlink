@@ -42,6 +42,10 @@ function tryRecvRouted(spot) {
     if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
       return null;
     }
+    const text = String(error && error.message ? error.message : error);
+    if (/Device or resource busy|resource busy/i.test(text)) {
+      return null;
+    }
     throw error;
   }
 }
@@ -116,7 +120,7 @@ async function main() {
             .flags(zlink.SendFlags.DontWait)
             .submit();
           if (!sent) {
-            await new Promise((resolve) => setImmediate(resolve));
+            await sleepImmediate();
           }
         } finally {
           received.close();

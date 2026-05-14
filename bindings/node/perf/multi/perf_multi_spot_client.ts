@@ -2,7 +2,6 @@
 
 'use strict';
 
-const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { configureTlsClient } = require('../common/perf_tls');
 const {
@@ -20,6 +19,7 @@ const {
 } = require('./perf_multi_common');
 const {
   POLLOUT,
+  POLLIN,
   applyAutoHwmMsgUnit,
   applySocketPolicy,
   applyContextPolicy,
@@ -27,9 +27,10 @@ const {
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
   publishControlUntilSent,
-  subscribeNoWait,
   trySocketPublish,
-  waitForRunnerControlConnected
+  waitForControlStart,
+  waitForRunnerControlConnected,
+  waitForRunnerStart
 } = require('./perf_multi_runtime');
 
 const TOPIC = 'bench';
@@ -48,6 +49,10 @@ function trySpotSubscribe(spot) {
   } catch (error) {
     if (error instanceof zlink.RecvError &&
         (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {
+      return null;
+    }
+    const text = String(error && error.message ? error.message : error);
+    if (/Device or resource busy|resource busy/i.test(text)) {
       return null;
     }
     throw error;
@@ -100,9 +105,9 @@ async function main() {
   const controlPub = new zlink.PubSocket(ctx);
   const controlSub = new zlink.SubSocket(ctx);
   const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
+  const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
   const slots = [];
   let sharedNode = null;
-  let rl = null;
   let collector = null;
   let activeStopNs = 0n;
   let collectActive = false;
@@ -192,37 +197,9 @@ async function main() {
     });
     collectActive = true;
 
-    rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-    let startRequested = false;
-    let startBroadcast = false;
-    (async () => {
-      for await (const line of rl) {
-        if (line === `START,${options.msgSize}`) {
-          startRequested = true;
-        }
-      }
-    })();
-
-    while (!startRequested || !startBroadcast) {
-      let drained = false;
-      tryControlPublish(controlPub, `READY_COUNT,${options.msgSize},${options.clients}`);
-      while (true) {
-        const received = subscribeNoWait(controlSub);
-        if (!received) {
-          break;
-        }
-        drained = true;
-        const payloadText = received.parts[0].data().toString('utf8');
-        if (payloadText === `START,${options.msgSize}`) {
-          startBroadcast = true;
-        }
-      }
-      if ((!startRequested || !startBroadcast) && !drained) {
-        drainSlots();
-        await sleepImmediate();
-      }
-    }
-    trace(`start-handshake-done runner=${startRequested} broadcast=${startBroadcast}`);
+    await waitForRunnerStart(options.msgSize);
+    await waitForControlStart(controlSub, controlSubWaiter, options.msgSize);
+    trace('start-handshake-done');
 
     activeStopNs = currentEpochNs() + BigInt(Math.floor(options.duration * 1_000_000_000));
     const idleStopNs = activeStopNs + 2_000_000_000n;
@@ -253,8 +230,8 @@ async function main() {
     await new Promise((resolve) => process.stdout.write('', resolve));
     process.exit(0);
   } finally {
-    rl?.close();
     controlPubWaiter.close();
+    controlSubWaiter.close();
     closeQuietly(controlSub);
     closeQuietly(controlPub);
     for (const slot of slots) {

@@ -2,7 +2,6 @@
 
 'use strict';
 
-const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
@@ -22,6 +21,7 @@ const {
   resolveMultiSpotReadySettleMs
 } = require('./perf_multi_common');
 const {
+  POLLIN,
   POLLOUT,
   applyAutoHwmMsgUnit,
   applySocketPolicy,
@@ -30,8 +30,9 @@ const {
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
   publishControlUntilSent,
-  subscribeNoWait,
-  waitForRunnerControlConnected
+  waitForControlStart,
+  waitForRunnerControlConnected,
+  waitForRunnerStart
 } = require('./perf_multi_runtime');
 
 const CONTROL_TOPIC = 'bench';
@@ -146,9 +147,9 @@ async function main() {
   const controlPub = new zlink.PubSocket(ctx);
   const controlSub = new zlink.SubSocket(ctx);
   const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
+  const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
   const node = new zlink.SpotNode(ctx);
   const slots = [];
-  let rl = null;
 
   try {
     applySocketPolicy(controlPub);
@@ -208,34 +209,8 @@ async function main() {
     console.log(`CLIENT_READY,${options.msgSize}`);
     trace('client-ready');
 
-    rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-    let startRequested = false;
-    let startBroadcast = false;
-    (async () => {
-      for await (const line of rl) {
-        if (line === `START,${options.msgSize}`) {
-          startRequested = true;
-        }
-      }
-    })();
-
-    while (!startRequested || !startBroadcast) {
-      let drained = false;
-      while (true) {
-        const received = subscribeNoWait(controlSub);
-        if (!received) {
-          break;
-        }
-        drained = true;
-        const payloadText = received.parts[0].data().toString('utf8');
-        if (payloadText === `START,${options.msgSize}`) {
-          startBroadcast = true;
-        }
-      }
-      if ((!startRequested || !startBroadcast) && !drained) {
-        await sleepImmediate();
-      }
-    }
+    await waitForRunnerStart(options.msgSize);
+    await waitForControlStart(controlSub, controlSubWaiter, options.msgSize);
     trace('start-ready');
 
     const runId = createRunId(1);
@@ -292,8 +267,8 @@ async function main() {
     }
     trace('result-flushed');
   } finally {
-    rl?.close();
     controlPubWaiter.close();
+    controlSubWaiter.close();
     closeQuietly(controlSub);
     closeQuietly(controlPub);
     for (const slot of slots) {

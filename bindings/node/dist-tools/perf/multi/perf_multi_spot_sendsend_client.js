@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeaderFromParts, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, subscribeNoWait, waitForRunnerControlConnected } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii'));
@@ -24,6 +23,10 @@ function tryRecvRouted(spot) {
     }
     catch (error) {
         if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
+            return null;
+        }
+        const text = String(error && error.message ? error.message : error);
+        if (/Device or resource busy|resource busy/i.test(text)) {
             return null;
         }
         throw error;
@@ -56,9 +59,9 @@ async function main() {
     const controlPub = new zlink.PubSocket(ctx);
     const controlSub = new zlink.SubSocket(ctx);
     const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
+    const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
     const node = new zlink.SpotNode(ctx);
     const slots = [];
-    let rl = null;
     try {
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
@@ -101,34 +104,8 @@ async function main() {
         }
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${slots.length}`);
         console.log(`CLIENT_READY,${options.msgSize}`);
-        rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-        let startRequested = false;
-        let startBroadcast = false;
-        (async () => {
-            for await (const line of rl) {
-                if (line === `START,${options.msgSize}`) {
-                    startRequested = true;
-                }
-            }
-        })();
-        while (!startRequested || !startBroadcast) {
-            let drained = false;
-            while (true) {
-                const received = subscribeNoWait(controlSub);
-                if (!received) {
-                    break;
-                }
-                drained = true;
-                const payloadText = received.parts[0].data().toString('utf8');
-                if (payloadText === `START,${options.msgSize}`) {
-                    startBroadcast = true;
-                }
-                received.close();
-            }
-            if ((!startRequested || !startBroadcast) && !drained) {
-                await sleepImmediate();
-            }
-        }
+        await waitForRunnerStart(options.msgSize);
+        await waitForControlStart(controlSub, controlSubWaiter, options.msgSize);
         const runId = createRunId(1);
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
@@ -188,8 +165,8 @@ async function main() {
         }
     }
     finally {
-        rl?.close();
         controlPubWaiter.close();
+        controlSubWaiter.close();
         closeQuietly(controlSub);
         closeQuietly(controlPub);
         for (const slot of slots) {

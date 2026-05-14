@@ -11,7 +11,7 @@ internal static class ZLinkBackendNativeAccess
                 $"Expected native instance '{typeof(T).FullName}'.");
     }
 
-    public static SocketMonitor OpenNativeMonitor(this IZLinkBackendSocket socket)
+    public static ISocketMonitor OpenNativeMonitor(this IZLinkBackendSocket socket)
     {
         return socket.NativeInstance switch
         {

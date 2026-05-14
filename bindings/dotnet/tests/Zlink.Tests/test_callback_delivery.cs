@@ -103,9 +103,9 @@ public sealed class test_callback_delivery
         SocketMonitorEvent? observed = null;
         int callbackThreadId = -1;
 
-        SocketMonitor monitor = callbackContext.Invoke(() =>
+        ISocketMonitor monitor = callbackContext.Invoke(() =>
         {
-            SocketMonitor opened = server.MonitorOpen(
+            ISocketMonitor opened = server.MonitorOpen(
                 SocketEvent.ConnectionReady | SocketEvent.Disconnected);
             opened.OnEvent(evt =>
             {

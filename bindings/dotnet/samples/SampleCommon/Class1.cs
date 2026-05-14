@@ -53,13 +53,13 @@ public static class SampleSupport
         return port;
     }
 
-    public static void WaitConnected(params SocketMonitor[] monitors)
+    public static void WaitConnected(params ISocketMonitor[] monitors)
     {
-        foreach (SocketMonitor monitor in monitors)
+        foreach (ISocketMonitor monitor in monitors)
             WaitMonitorEvent(monitor, 5000, SocketEvent.ConnectionReady);
     }
 
-    public static MonitorEvent WaitMonitorEvent(SocketMonitor monitor,
+    public static MonitorEvent WaitMonitorEvent(ISocketMonitor monitor,
         int timeoutMs, params SocketEvent[] expectedEvents)
     {
         if (expectedEvents == null || expectedEvents.Length == 0)

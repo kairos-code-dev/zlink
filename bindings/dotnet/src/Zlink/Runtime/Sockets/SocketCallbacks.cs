@@ -1,0 +1,121 @@
+// SPDX-License-Identifier: MPL-2.0
+
+using System;
+
+namespace Systems.Zlink;
+
+internal delegate void StreamFramedPacketHandler(
+    string routingId,
+    Message header,
+    Message body);
+
+internal delegate int StreamRawPacketHandler(string routingId, Message payload);
+
+internal delegate int StreamUInt32PacketHandler(uint routingId, Message payload);
+
+internal delegate void StreamUInt32FramedPacketHandler(uint routingId,
+    Message header, Message body);
+
+internal delegate void SocketRecvHandler(string routingId, Message[] parts);
+
+internal delegate void SocketSubscribeHandler(string routingId, string topic,
+    Message[] parts);
+
+internal static class SocketInterop
+{
+    internal static SocketBase RequireSocket(IZlinkSocket socket, string paramName)
+    {
+        if (socket == null)
+            throw new ArgumentNullException(paramName);
+        if (socket is not SocketBase concrete)
+        {
+            throw new ArgumentException(
+                "socket must be a concrete zlink socket instance",
+                paramName);
+        }
+        return concrete;
+    }
+
+    internal static IntPtr RequirePollableHandle(IZlinkSocket socket,
+        string paramName)
+    {
+        if (socket == null)
+            throw new ArgumentNullException(paramName);
+        return socket switch
+        {
+            SocketBase concrete => concrete.Handle,
+            Spot spot => spot.Handle,
+            _ => throw new ArgumentException(
+                "socket must be a concrete zlink socket or spot instance",
+                paramName)
+        };
+    }
+
+    internal static Discovery RequireDiscovery(IDiscovery discovery,
+        string paramName)
+    {
+        if (discovery == null)
+            throw new ArgumentNullException(paramName);
+        if (discovery is not Discovery concrete)
+        {
+            throw new ArgumentException(
+                "discovery must be a concrete zlink discovery instance",
+                paramName);
+        }
+        return concrete;
+    }
+
+    internal static DealerSocket RequireDealerSocket(IDealerSocket socket,
+        string paramName)
+    {
+        if (socket == null)
+            throw new ArgumentNullException(paramName);
+        if (socket is not DealerSocket concrete)
+        {
+            throw new ArgumentException(
+                "socket must be a concrete zlink dealer socket instance",
+                paramName);
+        }
+        return concrete;
+    }
+
+    internal static PubSocket RequirePubSocket(IPubSocket socket,
+        string paramName)
+    {
+        if (socket == null)
+            throw new ArgumentNullException(paramName);
+        if (socket is not PubSocket concrete)
+        {
+            throw new ArgumentException(
+                "socket must be a concrete zlink pub socket instance",
+                paramName);
+        }
+        return concrete;
+    }
+
+    internal static Spot RequireSpot(ISpot spot, string paramName)
+    {
+        if (spot == null)
+            throw new ArgumentNullException(paramName);
+        if (spot is not Spot concrete)
+        {
+            throw new ArgumentException(
+                "spot must be a concrete zlink spot instance",
+                paramName);
+        }
+        return concrete;
+    }
+
+    internal static Timer RequireTimer(IZlinkTimer timer, string paramName)
+    {
+        if (timer == null)
+            throw new ArgumentNullException(paramName);
+        if (timer is not Timer concrete)
+        {
+            throw new ArgumentException(
+                "timer must be a concrete zlink timer instance",
+                paramName);
+        }
+        return concrete;
+    }
+}

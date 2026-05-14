@@ -289,6 +289,64 @@ public sealed class test_socket_surface
     }
 
     [Fact]
+    public void contract_interfaces_do_not_depend_on_runtime_concrete_types()
+    {
+        Assert.Equal(typeof(ISocketMonitor),
+            typeof(ISocket).GetMethod(nameof(ISocket.MonitorOpen))!.ReturnType);
+        Assert.Equal(typeof(IDiscovery),
+            typeof(IDealerSocket).GetMethod(nameof(IDealerSocket.AttachDiscovery))!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IDiscovery),
+            typeof(IRouterSocket).GetMethod(nameof(IRouterSocket.AttachDiscovery))!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IDiscovery),
+            typeof(IPubSocket).GetMethod(nameof(IPubSocket.AttachDiscovery))!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IDiscovery),
+            typeof(ISubSocket).GetMethod(nameof(ISubSocket.AttachDiscovery))!
+                .GetParameters()[0].ParameterType);
+
+        Assert.Equal(typeof(ISpot),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.CreateSpot))!.ReturnType);
+        Assert.Equal(typeof(ISpot),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.EntrySpot))!.ReturnType);
+        Assert.Equal(typeof(ISpot),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.SpotLookup))!.ReturnType);
+        Assert.Equal(typeof(IActor),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.CreateActor))!.ReturnType);
+        Assert.Equal(typeof(IDiscovery),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.AttachDiscovery))!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IDiscovery),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.AttachChannelDealer))!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IDealerSocket),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.AttachChannelDealer))!
+                .GetParameters()[1].ParameterType);
+        Assert.Equal(typeof(IPubSocket),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.AttachPubIngress))!
+                .GetParameters()[0].ParameterType);
+
+        Assert.Equal(typeof(ISpot),
+            typeof(IActor).GetMethod(nameof(IActor.Join))!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(ISpot),
+            typeof(IActor).GetMethod(nameof(IActor.Leave))!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IZlinkTimer),
+            typeof(IPoller).GetMethod(nameof(IPoller.Add),
+                new[] { typeof(IZlinkTimer), typeof(object) })!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IZlinkTimer),
+            typeof(IPoller).GetMethod(nameof(IPoller.Remove),
+                new[] { typeof(IZlinkTimer) })!
+                .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(Action<IZlinkTimer, ulong>),
+            typeof(IZlinkTimer).GetMethod(nameof(IZlinkTimer.OnFire))!
+                .GetParameters()[0].ParameterType);
+    }
+
+    [Fact]
     public void actor_enums_match_core_contract_values()
     {
         Assert.Equal(105, (int)RequestResult.InternalError);
@@ -401,7 +459,35 @@ public sealed class test_socket_surface
             typeof(DealerSocket).FullName!,
             typeof(DealerSocketOptions).FullName!,
             typeof(Discovery).FullName!,
+            typeof(IActor).FullName!,
+            typeof(IAtomicCounter).FullName!,
+            typeof(IConnectableRoutedMessageSocket).FullName!,
+            typeof(IConnectableSocket).FullName!,
+            typeof(IContext).FullName!,
+            typeof(IContextOptions).FullName!,
+            typeof(IDealerSocket).FullName!,
+            typeof(IDiscovery).FullName!,
+            typeof(IMessageSocket).FullName!,
+            typeof(IPoller).FullName!,
+            typeof(IPubSocket).FullName!,
+            typeof(IPublisherSocket).FullName!,
+            typeof(IRegistry).FullName!,
+            typeof(IRegistryQueryClient).FullName!,
+            typeof(IRouterSocket).FullName!,
+            typeof(IRoutedMessageSocket).FullName!,
+            typeof(ISocket).FullName!,
+            typeof(ISocketMonitor).FullName!,
+            typeof(ISpot).FullName!,
+            typeof(ISpotNode).FullName!,
+            typeof(IStreamSocket).FullName!,
+            typeof(ISubSocket).FullName!,
+            typeof(ISubscriberSocket).FullName!,
+            typeof(IXPubSocket).FullName!,
+            typeof(IXSubSocket).FullName!,
             typeof(IZlinkSocket).FullName!,
+            typeof(IZlinkStopwatch).FullName!,
+            typeof(IZlinkThread).FullName!,
+            typeof(IZlinkTimer).FullName!,
             typeof(MemberPeerEntry).FullName!,
             typeof(Message).FullName!,
             typeof(MessageSocketBase).FullName!,
@@ -600,7 +686,7 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(Spot),
             "DrainChannelReplyFrom", typeof(IntPtr)));
         Assert.Null(typeof(SpotDispatchInfo).GetProperty("Subject"));
-        Assert.Equal(typeof(Timer),
+        Assert.Equal(typeof(IZlinkTimer),
             typeof(SpotDispatchInfo).GetProperty(nameof(SpotDispatchInfo.Timer))!
                 .PropertyType);
         Assert.True(HasPublicInstanceMethod(typeof(SpotDispatchInfo),
@@ -713,9 +799,9 @@ public sealed class test_socket_surface
         Assert.Equal(typeof(int),
             typeof(Poller).GetProperty(nameof(Poller.Size))!.PropertyType);
         Assert.True(HasPublicInstanceMethod(typeof(Poller),
-            nameof(Poller.Add), typeof(Timer), typeof(object)));
+            nameof(Poller.Add), typeof(IZlinkTimer), typeof(object)));
         Assert.True(HasPublicInstanceMethod(typeof(Poller),
-            nameof(Poller.Remove), typeof(Timer)));
+            nameof(Poller.Remove), typeof(IZlinkTimer)));
         Assert.True(HasPublicInstanceMethod(typeof(Poller),
             nameof(Poller.Wait), typeof(TimeSpan)));
         Assert.True(HasPublicInstanceMethod(typeof(Poller),
@@ -725,7 +811,7 @@ public sealed class test_socket_surface
             new[] { typeof(Span<PollEvent>), typeof(int), typeof(int).MakeByRefType() }));
         Assert.Equal(typeof(IZlinkSocket),
             typeof(PollEvent).GetProperty(nameof(PollEvent.Socket))!.PropertyType);
-        Assert.Equal(typeof(Timer),
+        Assert.Equal(typeof(IZlinkTimer),
             typeof(PollEvent).GetProperty(nameof(PollEvent.Timer))!.PropertyType);
         Assert.Equal(typeof(PollEventFlags),
             typeof(PollEvent).GetProperty(nameof(PollEvent.Revents))!.PropertyType);

@@ -5,9 +5,9 @@ using Systems.Zlink;
 
 public sealed class MonitorReadyPoller : IDisposable
 {
-    private readonly List<SocketMonitor> _activeMonitors = new();
+    private readonly List<ISocketMonitor> _activeMonitors = new();
 
-    public int Poll(List<SocketMonitor> monitors, int[] activeIndices,
+    public int Poll(List<ISocketMonitor> monitors, int[] activeIndices,
         int activeCount, long deadlineTicks, long nowTicks)
     {
         if (activeCount <= 0)
@@ -245,7 +245,7 @@ public sealed class PollManager : IDisposable
     private readonly MonitorReadyPoller _monitorPoller = new();
     private readonly SocketReadyPoller _socketPoller = new();
 
-    public int PollMonitors(List<SocketMonitor> monitors, int[] activeIndices,
+    public int PollMonitors(List<ISocketMonitor> monitors, int[] activeIndices,
         int activeCount, long deadlineTicks, long nowTicks)
     {
         return _monitorPoller.Poll(monitors, activeIndices, activeCount,

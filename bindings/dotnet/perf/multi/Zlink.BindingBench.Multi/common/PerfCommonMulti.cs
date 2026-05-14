@@ -467,7 +467,7 @@ internal static partial class PerfRunner
     {
         try
         {
-            using SocketMonitor monitor = socket.MonitorOpen(SocketEvent.All);
+            using ISocketMonitor monitor = socket.MonitorOpen(SocketEvent.All);
             return monitor.Snapshot();
         }
         catch (Exception ex) when (ex is ZlinkException

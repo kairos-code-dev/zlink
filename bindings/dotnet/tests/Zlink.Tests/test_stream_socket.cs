@@ -405,7 +405,7 @@ public sealed class test_stream_socket
         stream.Bind(endpoint);
 
         using var monitorEvents = new CallbackEventQueue<SocketMonitorEvent>();
-        using SocketMonitor monitor = stream.MonitorOpen(
+        using ISocketMonitor monitor = stream.MonitorOpen(
             SocketEvent.ConnectionReady | SocketEvent.Disconnected);
         monitor.OnEvent(monitorEvents.Enqueue);
 
@@ -504,7 +504,7 @@ public sealed class test_stream_socket
         stream.Bind(endpoint);
 
         using var monitorEvents = new CallbackEventQueue<SocketMonitorEvent>();
-        using SocketMonitor monitor = stream.MonitorOpen(
+        using ISocketMonitor monitor = stream.MonitorOpen(
             SocketEvent.ConnectionReady | SocketEvent.Disconnected);
         monitor.OnEvent(monitorEvents.Enqueue);
 

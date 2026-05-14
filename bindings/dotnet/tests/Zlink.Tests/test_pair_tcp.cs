@@ -281,7 +281,7 @@ public sealed class test_pair_tcp
             "pair-monitor-shape");
         server.Bind(endpoint);
 
-        using SocketMonitor monitor = server.MonitorOpen(SocketEvent.ConnectionReady
+        using ISocketMonitor monitor = server.MonitorOpen(SocketEvent.ConnectionReady
             | SocketEvent.Disconnected);
         int callbackCount = 0;
         monitor.OnEvent(_ => Interlocked.Increment(ref callbackCount));

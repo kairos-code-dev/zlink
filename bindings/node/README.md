@@ -21,9 +21,8 @@ Aligned Node bindings for `libzlink`.
   `recv(flags?)`,
   `onSendReady(handler)`
 - subscriber sockets: `setSubscription(topicOrPattern)`,
-  `unsetSubscription(topicOrPattern)`, `subscribe(flags?)`
-- `XPubSocket`: `receiveSubscriptionEvent()`,
-  `receiveSubscriptionEvent(flags?)`
+  `unsetSubscription(topicOrPattern)`, `subscribe(topicMessage, flags?)`
+- `XPubSocket`: `receiveSubscriptionEvent(subscriptionEvent, flags?)`
 - `StreamSocket`: `setRoutingId()`, `getRoutingId()`, `recv(flags?)`,
   `onPacket(handler)`
 - TLS helpers: `setTlsServer(cert, key, requireClient?)`,
@@ -86,8 +85,9 @@ is not exposed as a public `StreamSocket` method.
 `Spot` is service-aware and uses explicit service names on the data plane:
 `publish(serviceName, topic, ...)`, `sendChannel(channelName, ...)`,
 `requestChannel(channelName, ...)`, `setSubscription()` /
-`unsetSubscription()`, `subscribe(flags?)`,
-`receiveSubscriptionEvent()`, `onRoutedReceive()`, `onDispatchEvent()`, and
+`unsetSubscription()`, `subscribe(topicMessage, flags?)`,
+`receiveSubscriptionEvent(subscriptionEvent, flags?)`, `recvRouted(received, flags?)`,
+`onRoutedReceive()`, `onDispatchEvent()`, and
 `onSendReady()`.
 
 `Discovery` uses `connectRegistry()`, `setValue()` / `getValue()`,

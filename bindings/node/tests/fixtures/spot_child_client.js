@@ -31,16 +31,17 @@ async function main() {
     console.log('CLIENT_READY');
 
     const deadline = Date.now() + 5000;
+    const received = new zlink.TopicMessage();
     while (Date.now() < deadline) {
-      let received = null;
+      let hasReceived = false;
       try {
-        received = spot.subscribe(zlink.RecvFlags.DontWait);
+        hasReceived = spot.subscribe(received, zlink.RecvFlags.DontWait);
       } catch (error) {
         if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
           throw error;
         }
       }
-      if (received) {
+      if (hasReceived) {
         console.log(`RECEIVED,${received.topic},${received.parts[0].data().toString()}`);
         return;
       }

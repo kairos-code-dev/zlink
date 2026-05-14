@@ -19,7 +19,7 @@ class dealer_socket_t : public message_socket_t
     service::send_op_t send ();
 
     // Receive one message into a caller-provided received_t.
-    // Returns 0 on success, -1 on error (errno set).
+    // Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
     int recv (received_t &out_,
               recv_flags_t flags_ = recv_flags_t::none)
     {

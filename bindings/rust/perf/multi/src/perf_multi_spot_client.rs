@@ -48,12 +48,13 @@ fn split_endpoint(endpoint: &str) -> (&str, &str) {
 }
 
 fn control_payload(control_sub: &Spot) -> Option<String> {
-    match control_sub.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-        Ok(Some(message)) => {
+    let mut message = TopicMessage::empty();
+    match control_sub.subscribe(&mut message, RecvFlags::DONT_WAIT) {
+        Ok(true) => {
             let data = common::message_payload(message.parts());
             Some(String::from_utf8_lossy(data).into_owned())
         }
-        Ok(None) => None,
+        Ok(false) => None,
         Err(err) if err.code() == RecvResult::NoData => None,
         Err(err) => panic!("control subscribe failed: {err}"),
     }
@@ -217,8 +218,9 @@ fn main() {
         let mut progressed = false;
         for spot in spots.iter() {
             loop {
-                match spot.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-                    Ok(Some(received)) => {
+                let mut received = TopicMessage::empty();
+                match spot.subscribe(&mut received, RecvFlags::DONT_WAIT) {
+                    Ok(true) => {
                         progressed = true;
                         let data = common::message_payload(received.parts()).to_vec();
                         if Instant::now() <= active_deadline
@@ -231,7 +233,7 @@ fn main() {
                             }
                         }
                     }
-                    Ok(None) => break,
+                    Ok(false) => break,
                     Err(err) if err.code() == RecvResult::NoData => break,
                     Err(err) => panic!("spot client subscribe failed: {err}"),
                 }

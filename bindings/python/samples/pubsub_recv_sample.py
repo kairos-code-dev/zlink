@@ -15,11 +15,15 @@ def main():
                         subscriber.set_subscription(b"prices")
                         wait_connected(publisher_monitor, subscriber_monitor)
 
-                event = publisher.receive_subscription_event()
+                event = zlink.SubscriptionEvent()
+                if not publisher.receive_subscription_event_into(event):
+                    raise AssertionError("missing subscription event")
                 if not event.subscribed or event.topic != "prices":
                     raise AssertionError("unexpected subscription event")
                 publisher.publish(b"prices").message(b"101.25").submit()
-                with subscriber.subscribe() as received:
+                received = zlink.TopicMessage()
+                assert subscriber.subscribe_into(received)
+                with received:
                     if received.topic != "prices":
                         raise AssertionError(f"unexpected pubsub topic: {received.topic!r}")
                     if received.to_bytes_list() != [b"101.25"]:

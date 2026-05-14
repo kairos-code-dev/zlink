@@ -15,7 +15,10 @@ template<typename SpotT> class has_subscribe_result_t
   private:
     template<typename T>
     static auto test (int)
-      -> decltype (std::declval<T &> ().subscribe (), std::true_type ());
+      -> decltype (std::declval<T &> ().subscribe (
+                      std::declval<zlink::topic_message_t &> (),
+                      std::declval<zlink::recv_flags_t> ()),
+                    std::true_type ());
 
     template<typename> static std::false_type test (...);
 
@@ -88,7 +91,9 @@ template<typename SpotT> class has_receive_subscription_event_t
   private:
     template<typename T>
     static auto test (int)
-      -> decltype (std::declval<T &> ().receive_subscription_event (),
+      -> decltype (std::declval<T &> ().receive_subscription_event (
+                      std::declval<zlink::subscription_event_t &> (),
+                      std::declval<zlink::recv_flags_t> ()),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -503,19 +508,22 @@ void test_unified_spot_self_delivery_recv_contract ()
                                       'l', 'f', '-', 'r', 'i', 'd'}));
     spot.publish ("topic:service-self").message (outbound).submit ();
 
-    std::optional<zlink::topic_message_t> inbound;
+    zlink::topic_message_t inbound;
+    bool received = false;
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < deadline) {
-        inbound = spot.subscribe (ZLINK_DONTWAIT);
-        if (inbound.has_value ())
+        const int rc = spot.subscribe (inbound, ZLINK_DONTWAIT);
+        if (rc == static_cast<int> (zlink::recv_result_t::ok)) {
+            received = true;
             break;
+        }
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
-    assert (inbound.has_value ());
-    assert (inbound->topic () == "topic:service-self");
-    assert (inbound->parts ().size () == 1);
-    assert (inbound->parts ()[0].to_string () == "service-self");
+    assert (received);
+    assert (inbound.topic () == "topic:service-self");
+    assert (inbound.parts ().size () == 1);
+    assert (inbound.parts ()[0].to_string () == "service-self");
 
 }
 

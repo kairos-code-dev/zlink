@@ -332,7 +332,7 @@ export class RoutingId {
 }
 
 class MultipartEnvelope {
-  readonly parts: Message[];
+  parts: Message[];
 
   constructor(parts: readonly Message[]) {
     this.parts = freezeMessageParts(parts);
@@ -360,6 +360,11 @@ class MultipartEnvelope {
     for (const part of this.parts) {
       part.close();
     }
+  }
+
+  protected replaceParts(parts: readonly Message[]): void {
+    this.close();
+    this.parts = freezeMessageParts(parts);
   }
 }
 
@@ -518,15 +523,28 @@ export class Received {
 }
 
 export class TopicMessage extends MultipartEnvelope {
-  readonly routingId: RoutingId | null;
-  readonly topic: string;
+  routingId: RoutingId | null;
+  topic: string;
 
-  private constructor(
+  constructor();
+  constructor(
     token: symbol,
     topic: string,
     parts: readonly Message[],
+    routingId?: RoutingId | null
+  );
+  constructor(
+    token?: symbol,
+    topic: string = '',
+    parts: readonly Message[] = [],
     routingId: RoutingId | null = null
   ) {
+    if (token === undefined) {
+      super([]);
+      this.routingId = null;
+      this.topic = '';
+      return;
+    }
     if (token !== DOMAIN_CREATE_TOKEN) {
       throw new TypeError('TopicMessage values are created by subscribe operations');
     }
@@ -543,19 +561,42 @@ export class TopicMessage extends MultipartEnvelope {
   ): TopicMessage {
     return new TopicMessage(DOMAIN_CREATE_TOKEN, topic, parts, routingId);
   }
+
+  /** @internal */
+  adoptFrom(source: TopicMessage): void {
+    this.replaceParts(source.parts);
+    source.parts = [];
+    this.routingId = source.routingId;
+    this.topic = source.topic;
+    source.routingId = null;
+    source.topic = '';
+  }
 }
 
 export class SubscriptionEvent {
-  readonly routingId: RoutingId | null;
-  readonly topic: string;
-  readonly subscribed: boolean;
+  routingId: RoutingId | null;
+  topic: string;
+  subscribed: boolean;
 
-  private constructor(
+  constructor();
+  constructor(
     token: symbol,
     topic: string,
     subscribed: boolean,
+    routingId?: RoutingId | null
+  );
+  constructor(
+    token?: symbol,
+    topic: string = '',
+    subscribed: boolean = false,
     routingId: RoutingId | null = null
   ) {
+    if (token === undefined) {
+      this.routingId = null;
+      this.topic = '';
+      this.subscribed = false;
+      return;
+    }
     if (token !== DOMAIN_CREATE_TOKEN) {
       throw new TypeError('SubscriptionEvent values are created by subscription event operations');
     }
@@ -571,6 +612,13 @@ export class SubscriptionEvent {
     routingId: RoutingId | null = null
   ): SubscriptionEvent {
     return new SubscriptionEvent(DOMAIN_CREATE_TOKEN, topic, subscribed, routingId);
+  }
+
+  /** @internal */
+  adoptFrom(source: SubscriptionEvent): void {
+    this.routingId = source.routingId;
+    this.topic = source.topic;
+    this.subscribed = source.subscribed;
   }
 }
 

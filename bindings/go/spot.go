@@ -1092,18 +1092,33 @@ func (s *Spot) UnsetSubscription(filter string) error {
 	})
 }
 
-func (s *Spot) Subscribe(flags RecvFlags) (*TopicMessage, error) {
-	return recvSpotTopicMessage(func(rid **C.zlink_routing_id_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+func (s *Spot) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error) {
+	if out == nil {
+		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+	}
+	fresh, err := recvSpotTopicMessage(func(rid **C.zlink_routing_id_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_spot_subscribe_part(s.raw(), rid, topic, C.size_t(recvTopicBufferCap), topicLen, part, hasMore, recvFlags))
 	}, flags)
+	if err != nil {
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return false, nil
+		}
+		return false, err
+	}
+	out.adoptFrom(fresh)
+	return true, nil
 }
 
-func (s *Spot) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error) {
+func (s *Spot) ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags) (bool, error) {
+	if out == nil {
+		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+	}
 	if s == nil || s.core == nil || s.core.closed {
-		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	_ = flags
-	return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.ENOTSUP)}
+	return false, &RecvError{Result: RecvNotSupported, internalErrno: int(C.ENOTSUP)}
 }
 
 func (s *Spot) OnSendReady(handler func()) error {
@@ -1127,7 +1142,10 @@ func (s *Spot) OnSendReady(handler func()) error {
 	return nil
 }
 
-func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error) {
+func (s *Spot) RecvRouted(out *Received, flags RecvFlags) (bool, error) {
+	if out == nil {
+		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+	}
 	var sourceRID *C.zlink_routing_id_t
 	var spotRID *C.zlink_routing_id_t
 	var requestSeq C.uint64_t
@@ -1135,9 +1153,13 @@ func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error) {
 		return recvErrorFromResult(C.zlink_spot_recv_part(s.raw(), &sourceRID, &spotRID, &requestSeq, part, hasMore, recvFlags))
 	})
 	if err != nil {
-		return nil, err
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return false, nil
+		}
+		return false, err
 	}
-	return &Received{
+	out.AdoptFrom(&Received{
 		routingID:     routingIDFromCPtr(sourceRID),
 		spotRID:       routingIDFromCPtr(spotRID),
 		parts:         clonedParts,
@@ -1145,7 +1167,8 @@ func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error) {
 		hasRequestSeq: requestSeq != 0,
 		reply:         receivedReplyToSpot(s, routingIDFromCPtr(sourceRID), routingIDFromCPtr(spotRID), uint64(requestSeq)),
 		send:          receivedSendFromSpot(s, routingIDFromCPtr(sourceRID), routingIDFromCPtr(spotRID)),
-	}, nil
+	})
+	return true, nil
 }
 
 func (s *Spot) OnRoutedReceive(handler func(*Received)) error {

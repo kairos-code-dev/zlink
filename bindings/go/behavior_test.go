@@ -97,12 +97,13 @@ func TestSubSubscribeEmpty(t *testing.T) {
 	socket, _ := ctx.SubSocket()
 	defer socket.Close()
 
-	message, err := socket.Subscribe(zlink.RecvFlagsDontWait)
-	if err == nil {
-		t.Fatalf("Subscribe() should return an error on empty non-blocking receive")
+	var message zlink.TopicMessage
+	ok, err := socket.Subscribe(&message, zlink.RecvFlagsDontWait)
+	if err != nil {
+		t.Fatalf("Subscribe() error = %v", err)
 	}
-	if message != nil {
-		t.Fatalf("Subscribe() = %v, want nil", message)
+	if ok {
+		t.Fatalf("Subscribe() returned ok=true on empty non-blocking receive")
 	}
 }
 
@@ -168,9 +169,13 @@ func TestPubSubRoundTrip(t *testing.T) {
 		t.Fatalf("Publish() error = %v", err)
 	}
 
-	message, err := subSocket.Subscribe(zlink.RecvFlagsNone)
+	var message zlink.TopicMessage
+	ok, err := subSocket.Subscribe(&message, zlink.RecvFlagsNone)
 	if err != nil {
 		t.Fatalf("Subscribe() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("Subscribe() returned ok=false")
 	}
 	defer message.Close()
 
@@ -186,11 +191,12 @@ func TestXPubReceiveSubscriptionEventEmpty(t *testing.T) {
 	socket, _ := ctx.XPubSocket()
 	defer socket.Close()
 
-	event, err := socket.ReceiveSubscriptionEvent(zlink.RecvFlagsDontWait)
-	if err == nil {
-		t.Fatalf("ReceiveSubscriptionEvent() should return an error on empty non-blocking receive")
+	var event zlink.SubscriptionEvent
+	ok, err := socket.ReceiveSubscriptionEvent(&event, zlink.RecvFlagsDontWait)
+	if err != nil {
+		t.Fatalf("ReceiveSubscriptionEvent() error = %v", err)
 	}
-	if event != nil {
-		t.Fatalf("ReceiveSubscriptionEvent() = %v, want nil", event)
+	if ok {
+		t.Fatalf("ReceiveSubscriptionEvent() returned ok=true on empty non-blocking receive")
 	}
 }

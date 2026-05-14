@@ -3,7 +3,9 @@ package systems.zlink.samples;
 import systems.zlink.Context;
 import systems.zlink.Message;
 import systems.zlink.PubSocket;
+import systems.zlink.RecvFlags;
 import systems.zlink.SubSocket;
+import systems.zlink.TopicMessage;
 
 public final class PubSubRecvSample {
     public static void main(String[] args) {
@@ -27,7 +29,10 @@ public final class PubSubRecvSample {
                 pub.publish(SampleSupport.PUBSUB_TOPIC).message(payload).submit();
             }
 
-            try (var received = sub.subscribe()) {
+            try (var received = new TopicMessage()) {
+                if (!sub.subscribe(received, RecvFlags.NONE)) {
+                    throw new IllegalStateException("no pubsub delivery");
+                }
                 String value = received.topic() + "/"
                     + received.singlePartOrThrow().toUtf8String();
                 if (!published.equals(value)) {

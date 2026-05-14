@@ -15,8 +15,9 @@ fn drain_subscriber(
 ) -> bool {
     let mut processed = false;
     loop {
-        match socket.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-            Ok(Some(topic_msg)) => {
+        let mut topic_msg = TopicMessage::empty();
+        match socket.subscribe(&mut topic_msg, RecvFlags::DONT_WAIT) {
+            Ok(true) => {
                 let data = common::message_payload(topic_msg.parts());
                 if !common::is_valid_active_message(&data, msg_size) {
                     continue;
@@ -27,7 +28,7 @@ fn drain_subscriber(
                 *active_count += 1;
                 processed = true;
             }
-            Ok(None) => break,
+            Ok(false) => break,
             Err(err) if err.code == RecvResult::NoData => break,
             Err(err) => panic!("recv failed: {err}"),
         }

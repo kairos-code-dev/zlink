@@ -7,15 +7,33 @@ import java.util.Optional;
 
 /** Topic-aware recv result used by raw SUB and unified Spot subscribe paths. */
 public final class TopicMessage implements AutoCloseable {
-    private final RoutingId routingId;
-    private final String topic;
-    private final List<Message> parts;
+    private RoutingId routingId;
+    private String topic;
+    private List<Message> parts;
     private boolean closed;
+
+    public TopicMessage() {
+        this(null, "", null);
+    }
 
     TopicMessage(RoutingId routingId, String topicId, Message[] parts) {
         this.routingId = routingId;
         this.topic = topicId == null ? "" : topicId;
         this.parts = parts == null ? List.of() : List.of(parts);
+    }
+
+    public void adoptFrom(TopicMessage source) {
+        if (source == this)
+            return;
+        close();
+        this.routingId = source.routingId;
+        this.topic = source.topic;
+        this.parts = source.parts;
+        this.closed = false;
+        source.routingId = null;
+        source.topic = "";
+        source.parts = List.of();
+        source.closed = true;
     }
 
     public Optional<RoutingId> routingId() {

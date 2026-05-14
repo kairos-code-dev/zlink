@@ -19,23 +19,24 @@ int main ()
     const std::string topic = detail::k_pubsub_topic;
     subscriber.set_subscription (topic);
 
-    const std::optional<zlink::subscription_event_t> event =
-      publisher.receive_subscription_event ();
-    assert (event.has_value ());
-    assert (event->subscribed);
-    assert (event->topic == topic);
+    zlink::subscription_event_t event;
+    assert (publisher.receive_subscription_event (event)
+            == static_cast<int> (zlink::recv_result_t::ok));
+    assert (event.subscribed);
+    assert (event.topic == topic);
 
     const std::string sent = detail::k_pubsub_payload;
     zlink::message_t outbound = detail::make_message (sent);
     publisher.publish (topic).message (outbound).submit ();
 
-    std::optional<zlink::topic_message_t> inbound = subscriber.subscribe ();
-    assert (inbound.has_value ());
-    assert (inbound->topic () == topic);
-    assert (inbound->parts ().size () == 1);
-    const std::string received = inbound->parts ()[0].to_string ();
+    zlink::topic_message_t inbound;
+    assert (subscriber.subscribe (inbound)
+            == static_cast<int> (zlink::recv_result_t::ok));
+    assert (inbound.topic () == topic);
+    assert (inbound.parts ().size () == 1);
+    const std::string received = inbound.parts ()[0].to_string ();
     assert (received == detail::k_pubsub_payload);
-    inbound->close ();
+    inbound.close ();
     std::printf ("[pubsub/recv] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
                  topic.c_str (), sent.c_str (), topic.c_str (), received.c_str ());
     return 0;

@@ -41,16 +41,10 @@ class sub_socket_t : public subscriber_socket_t
         return filter;
     }
 
-    std::optional<topic_message_t> subscribe (recv_flags_t flags_ = recv_flags_t::none)
+    int subscribe (topic_message_t &out_,
+                   recv_flags_t flags_ = recv_flags_t::none)
     {
-        topic_message_t message;
-        const recv_result_t rc = static_cast<recv_result_t> (
-          base_socket_t::subscribe (message, flags_));
-        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
-            return std::nullopt;
-        if (rc != recv_result_t::ok)
-            throw recv_error_t (rc, zlink_errno ());
-        return std::optional<topic_message_t> (std::move (message));
+        return base_socket_t::subscribe (out_, flags_);
     }
 
     template<typename DiscoveryT>
@@ -67,7 +61,6 @@ class sub_socket_t : public subscriber_socket_t
 
   private:
     using subscriber_socket_t::set_subscription;
-    using subscriber_socket_t::subscribe;
     using subscriber_socket_t::subscription_at;
     using subscriber_socket_t::unset_subscription;
 };

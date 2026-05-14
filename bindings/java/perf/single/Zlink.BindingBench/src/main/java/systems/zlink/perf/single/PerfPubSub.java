@@ -83,8 +83,8 @@ final class PerfPubSub {
                         }
                         boolean stop = false;
                         while (true) {
-                            try (TopicMessage received = sub.subscribe(RecvFlags.DONT_WAIT)) {
-                                if (received == null) {
+                            try (TopicMessage received = new TopicMessage()) {
+                                if (!sub.subscribe(received, RecvFlags.DONT_WAIT)) {
                                     break;
                                 }
                                 if (PerfStopToken.isStopTokenMessage(received.firstPart())) {

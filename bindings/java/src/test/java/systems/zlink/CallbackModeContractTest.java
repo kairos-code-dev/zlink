@@ -164,9 +164,8 @@ public class CallbackModeContractTest {
                 if (info.event() != SpotDispatchEvent.SUBSCRIBE_READABLE) {
                     return;
                 }
-                try (TopicMessage message =
-                         subscriber.subscribe(RecvFlags.DONT_WAIT)) {
-                    if (message != null) {
+                try (TopicMessage message = new TopicMessage()) {
+                    if (subscriber.subscribe(message, RecvFlags.DONT_WAIT)) {
                         payloadRef.set(message.firstPart().toUtf8String());
                         drained.countDown();
                     }

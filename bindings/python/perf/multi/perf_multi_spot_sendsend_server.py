@@ -24,14 +24,17 @@ SERVER_SPOT_RID = b"SPOT-SENDSEND-SERVER-SPOT"
 
 
 def _drain_replier(replier):
+    received = zlink.Received()
     while True:
         try:
-            received = replier.recv_routed(flags=zlink.RecvFlags.DONT_WAIT)
+            has_received = replier.recv_routed_into(
+                received, flags=zlink.RecvFlags.DONT_WAIT
+            )
         except zlink.RecvError as exc:
             if exc.result == zlink.RecvResult.NO_DATA:
                 return
             raise
-        if received is None:
+        if not has_received:
             return
         with received:
             if received.request_seq not in (None, 0):

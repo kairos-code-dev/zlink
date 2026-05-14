@@ -19,8 +19,7 @@ class router_socket_t : public routed_message_socket_t
     service::send_op_t send (const routing_id_t &target_rid_);
 
     // Receive one message into a caller-provided received_t.
-    // Returns 0 on success, -1 on error (errno set; EAGAIN/EWOULDBLOCK on
-    // dontwait with no data). The caller may keep a long-lived received_t
+    // Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set. The caller may keep a long-lived received_t
     // across recv calls so that the parts vector / routing id storage is
     // reused without reallocation.
     int recv (received_t &out_,

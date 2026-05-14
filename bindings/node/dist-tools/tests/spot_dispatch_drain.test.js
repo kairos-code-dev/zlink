@@ -49,8 +49,8 @@ test('spot onDispatchEvent permits subscribe drain after async callback delivery
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
         assert.notEqual(readableEvents, 0);
-        const received = subscriber.subscribe(zlink.RecvFlags.DontWait);
-        assert.notEqual(received, null);
+        const received = new zlink.TopicMessage();
+        assert.equal(subscriber.subscribe(received, zlink.RecvFlags.DontWait), true);
         try {
             assert.equal(received.topic, 'dispatch-drain');
             assert.equal(received.parts[0].data().toString(), 'dispatch-payload');

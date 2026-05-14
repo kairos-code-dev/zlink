@@ -52,7 +52,8 @@ fn sub_socket_has_subscribe_no_send() {
     sock.set_subscription("").unwrap();
 
     // SubSocket exposes: subscribe, set_subscription, unset_subscription
-    let _ = sock.subscribe_with_flags(RecvFlags::DONT_WAIT);
+    let mut message = TopicMessage::empty();
+    let _ = sock.subscribe(&mut message, RecvFlags::DONT_WAIT);
     // No send on SubSocket – compile-time enforced
 }
 
@@ -101,7 +102,8 @@ fn xpub_socket_has_subscription_event() {
     sock.bind("inproc://surface-xpub").unwrap();
 
     // XPubSocket: publish, receive_subscription_event, on_send_ready
-    let _ = sock.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
+    let mut event = SubscriptionEvent::empty();
+    let _ = sock.receive_subscription_event(&mut event, RecvFlags::DONT_WAIT);
     let _method = XPubSocket::on_send_ready::<fn()>;
 }
 
@@ -112,7 +114,8 @@ fn xsub_socket_has_subscribe_no_send() {
     sock.connect("inproc://surface-xsub-target").unwrap();
     sock.set_subscription("").unwrap();
 
-    let _ = sock.subscribe_with_flags(RecvFlags::DONT_WAIT);
+    let mut message = TopicMessage::empty();
+    let _ = sock.subscribe(&mut message, RecvFlags::DONT_WAIT);
     let _ = sock.sub_options().topics_count();
 }
 

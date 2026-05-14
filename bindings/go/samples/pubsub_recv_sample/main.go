@@ -31,7 +31,8 @@ func main() {
 
 	topic := "prices"
 	samplecommon.Must(subscriber.SetSubscription(topic))
-	event, err := publisher.ReceiveSubscriptionEvent(zlink.RecvFlagsNone)
+	var event zlink.SubscriptionEvent
+	_, err = publisher.ReceiveSubscriptionEvent(&event, zlink.RecvFlagsNone)
 	samplecommon.Must(err)
 	if !event.Subscribed() || event.Topic() != topic {
 		samplecommon.Must(fmt.Errorf("unexpected subscription event"))
@@ -41,7 +42,8 @@ func main() {
 	_, err = publisher.Publish(topic).Message(samplecommon.Message(payload)).Submit(nil)
 	samplecommon.Must(err)
 
-	message, err := subscriber.Subscribe(zlink.RecvFlagsNone)
+	var message zlink.TopicMessage
+	_, err = subscriber.Subscribe(&message, zlink.RecvFlagsNone)
 	samplecommon.Must(err)
 	defer message.Close()
 	part, err := message.SinglePartOrError()

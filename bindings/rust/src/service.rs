@@ -3520,34 +3520,22 @@ impl Spot {
         check_config_rc(unsafe { ffi::zlink_unset_subscription(self.handle, c.as_ptr()) })
     }
 
-    pub fn subscribe(&self) -> Result<TopicMessage, RecvError> {
-        self.subscribe_with_flags(RecvFlags::NONE)?
-            .ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))
-    }
-
-    pub fn subscribe_with_flags(
-        &self,
-        flags: RecvFlags,
-    ) -> Result<Option<TopicMessage>, RecvError> {
+    pub fn subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError> {
         let mut topic_buf = [0i8; 256];
-        let result = recv_spot_subscribed_parts(self.handle, &mut topic_buf, flags.bits())?;
-        match result {
-            None => Ok(None),
+        match recv_spot_subscribed_parts(self.handle, &mut topic_buf, flags.bits())? {
             Some((routing_id, topic, parts)) => {
-                Ok(Some(TopicMessage::new(routing_id, topic, parts)))
+                out.adopt_from(TopicMessage::new(routing_id, topic, parts));
+                Ok(true)
             }
+            None => Ok(false),
         }
     }
 
-    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError> {
-        self.receive_subscription_event_with_flags(RecvFlags::NONE)?
-            .ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))
-    }
-
-    pub fn receive_subscription_event_with_flags(
+    pub fn receive_subscription_event(
         &self,
+        _out: &mut SubscriptionEvent,
         _flags: RecvFlags,
-    ) -> Result<Option<SubscriptionEvent>, RecvError> {
+    ) -> Result<bool, RecvError> {
         Err(RecvError::new(
             crate::error::RecvResult::NotSupported,
             libc::ENOTSUP,
@@ -3680,18 +3668,20 @@ impl Spot {
     }
 
     /// Receive a routed message, blocking until one is available.
-    pub fn recv_routed(&self) -> Result<Received, RecvError> {
-        self.recv_routed_with_flags(RecvFlags::NONE)?
-            .ok_or_else(|| RecvError::new(RecvResult::NoData, libc::EAGAIN))
-    }
-
-    /// Receive a routed message. Returns `Ok(None)` when no message is currently available.
-    pub fn recv_routed_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError> {
-        recv_spot_routed_parts(self.handle, flags.bits()).map(|opt| {
-            opt.map(|(node_rid, spot_rid, req_seq, parts)| {
-                spot_received_from_raw(self.handle, node_rid, spot_rid, req_seq, parts)
-            })
-        })
+    pub fn recv_routed(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
+        match recv_spot_routed_parts(self.handle, flags.bits())? {
+            Some((node_rid, spot_rid, req_seq, parts)) => {
+                out.adopt_from(spot_received_from_raw(
+                    self.handle,
+                    node_rid,
+                    spot_rid,
+                    req_seq,
+                    parts,
+                ));
+                Ok(true)
+            }
+            None => Ok(false),
+        }
     }
 
     #[allow(dead_code)]

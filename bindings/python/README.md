@@ -34,9 +34,9 @@ API directly. The public contract is:
 - `*_READY_CHANGED` monitor events do not expose aggregate ready counts
 - monitor snapshots are state/queue inspection surfaces, not ready-count gates
 - callback registration uses canonical names `on_packet`, `on_send_ready`,
-  `on_routed_receive`, and `on_dispatch_event`; topic
-  subscription uses `subscribe()` / `receive_subscription_event()` instead of
-  a direct `on_subscribe` callback
+  `on_routed_receive`, and `on_dispatch_event`; topic subscription uses
+  `subscribe_into()` / `receive_subscription_event_into()` instead of a direct
+  `on_subscribe` callback
 - callback removal by passing `None` is not part of the public contract;
   callback lifecycle ends with socket close
 
@@ -70,9 +70,9 @@ Examples of policy-enforced capability boundaries:
   `attach_pub_ingress` on top of discovery and topology management.
 - `Spot` is a service-aware pub/sub and routed facade on top of `SpotNode`;
   it exposes `publish(channel_name, topic, ...)`, `send_channel`,
-  `request_channel`, `subscribe`, `receive_subscription_event`,
+  `request_channel`, `subscribe_into`, `receive_subscription_event_into`,
   `set_subscription`, `unset_subscription`, `on_send_ready`,
-  `reply_to_spot`, `reply_to_router`, `recv_routed`,
+  `reply_to_spot`, `reply_to_router`, `recv_routed_into`,
   `on_routed_receive`, and `on_dispatch_event`, but not direct `recv` / `send`
 - `attach_discovery()` is only available on the discovery-aware socket subset,
   and after `attach_discovery` the native lifecycle contract blocks manual

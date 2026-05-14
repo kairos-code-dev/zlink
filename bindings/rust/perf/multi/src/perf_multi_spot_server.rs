@@ -35,12 +35,13 @@ fn setup_tls_client(node: &SpotNode, transport: &str) {
 }
 
 fn control_payload(control_sub: &Spot) -> Option<String> {
-    match control_sub.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-        Ok(Some(message)) => {
+    let mut message = TopicMessage::empty();
+    match control_sub.subscribe(&mut message, RecvFlags::DONT_WAIT) {
+        Ok(true) => {
             let data = common::message_payload(message.parts());
             Some(String::from_utf8_lossy(data).into_owned())
         }
-        Ok(None) => None,
+        Ok(false) => None,
         Err(err) if err.code() == RecvResult::NoData => None,
         Err(err) => panic!("control subscribe failed: {err}"),
     }

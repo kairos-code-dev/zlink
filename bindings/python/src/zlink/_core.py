@@ -990,11 +990,18 @@ class ReceivedMultipart:
 class TopicMessage:
     def __init__(
         self,
-        topic,
-        owner,
+        topic=None,
+        owner=None,
         routing_id=None,
         request_seq=None,
     ):
+        if owner is None:
+            self.topic = ""
+            self._owner = None
+            self.parts = ()
+            self.routing_id = None
+            self.request_seq = None
+            return
         self.topic = topic
         self._owner = owner
         self.parts = tuple(
@@ -1003,6 +1010,25 @@ class TopicMessage:
         )
         self.routing_id = routing_id
         self.request_seq = request_seq
+
+    def _adopt_from(self, source):
+        if source is self:
+            return
+        if self._owner is not None:
+            try:
+                self._owner.close()
+            except Exception:  # noqa: BLE001
+                pass
+        self.topic = source.topic
+        self._owner = source._owner
+        self.parts = source.parts
+        self.routing_id = source.routing_id
+        self.request_seq = source.request_seq
+        source.topic = ""
+        source._owner = None
+        source.parts = ()
+        source.routing_id = None
+        source.request_seq = None
 
     def __iter__(self):
         return iter(self.parts)
@@ -1027,7 +1053,11 @@ class TopicMessage:
         return self.parts[0]
 
     def close(self):
+        if self._owner is None:
+            return
         self._owner.close()
+        self._owner = None
+        self.parts = ()
 
     def __enter__(self):
         return self
@@ -1066,10 +1096,20 @@ class Subscribed(TopicMessage):
 
 
 class SubscriptionEvent:
-    def __init__(self, topic, subscribed, routing_id=None):
+    def __init__(self, topic="", subscribed=False, routing_id=None):
         self.routing_id = routing_id
         self.topic = topic
         self.subscribed = subscribed
+
+    def _adopt_from(self, source):
+        if source is self:
+            return
+        self.routing_id = source.routing_id
+        self.topic = source.topic
+        self.subscribed = source.subscribed
+        source.routing_id = None
+        source.topic = ""
+        source.subscribed = False
 
 
 # Per-message metadata key range.

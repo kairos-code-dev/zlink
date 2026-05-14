@@ -359,7 +359,8 @@ func submitMultiSpotSendSend(spot *zlink.Spot, payload []byte) bool {
 
 func drainMultiSpotSendSendServer(replier *zlink.Spot) {
 	for {
-		received, err := replier.RecvRouted(zlink.RecvFlagsDontWait)
+		var received zlink.Received
+		ok, err := replier.RecvRouted(&received, zlink.RecvFlagsDontWait)
 		if err != nil {
 			var recvErr *zlink.RecvError
 			if errors.As(err, &recvErr) && recvErr.Result == zlink.RecvNoData {
@@ -367,7 +368,7 @@ func drainMultiSpotSendSendServer(replier *zlink.Spot) {
 			}
 			perfcommon.Must(err)
 		}
-		if received == nil {
+		if !ok {
 			return
 		}
 		if received.HasRequestSeq() {
@@ -397,7 +398,8 @@ func drainMultiSpotSendSend(
 ) bool {
 	progressed := false
 	for {
-		received, err := spot.RecvRouted(zlink.RecvFlagsDontWait)
+		var received zlink.Received
+		ok, err := spot.RecvRouted(&received, zlink.RecvFlagsDontWait)
 		if err != nil {
 			var recvErr *zlink.RecvError
 			if errors.As(err, &recvErr) && recvErr.Result == zlink.RecvNoData {
@@ -405,10 +407,10 @@ func drainMultiSpotSendSend(
 			}
 			perfcommon.Must(err)
 		}
-		progressed = true
-		if received == nil {
+		if !ok {
 			return progressed
 		}
+		progressed = true
 		parts := received.Parts()
 		if record && time.Now().Before(activeStopAt) && !received.HasRequestSeq() && len(parts) > 0 {
 			if sentAt, ok := perfcommon.SentAtFromMessage(parts[0], msgSize); ok {

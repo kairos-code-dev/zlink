@@ -222,10 +222,17 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
             const zlink::spot_dispatch_info_t &info_) {
               (void) info_;
               while (!stop_requested.load (std::memory_order_acquire)) {
-                  std::optional<zlink::received_t> received;
+                  zlink::received_t received;
                   try {
-                      received = responder.recv_routed (
-                        zlink::recv_flags_t::dontwait);
+                      const int rc = responder.recv_routed (
+                        received, zlink::recv_flags_t::dontwait);
+                      if (rc == static_cast<int> (zlink::recv_result_t::no_data))
+                          return;
+                      if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
+                          failed.store (true, std::memory_order_release);
+                          request_stop ();
+                          return;
+                      }
                   }
                   catch (const zlink::recv_error_t &err) {
                       if (err.result ()
@@ -238,18 +245,16 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
                       request_stop ();
                       return;
                   }
-                  if (!received.has_value ())
-                      return;
-                  if (received->parts ().empty ())
+                  if (received.parts ().empty ())
                       continue;
                   try {
                       // echo: reply with the same payload through the
                       // received_t.reply() helper, which routes back to
                       // the originating spot via the spot mesh.
                       std::vector<zlink::message_t> &parts =
-                        received->parts ();
+                        received.parts ();
                       zlink::service::reply_ready_op_t reply =
-                        received->reply ().message (parts[0]);
+                        received.reply ().message (parts[0]);
                       for (size_t i = 1; i < parts.size (); ++i)
                           reply = std::move (reply).message (parts[i]);
                       std::move (reply).submit ();

@@ -186,7 +186,11 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     publisher.publish(b"topic").message(b"payload").flags(
                         zlink.SendFlags.NONE
                     ).submit()
-                    with subscriber.subscribe(flags=zlink.RecvFlags.NONE) as received:
+                    received = zlink.TopicMessage()
+                    self.assertTrue(
+                        subscriber.subscribe_into(received, flags=zlink.RecvFlags.NONE)
+                    )
+                    with received:
                         self.assertEqual(received.topic, "topic")
                         self.assertEqual(received.single_part_or_throw().to_bytes(), b"payload")
 
@@ -263,11 +267,13 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertTrue(hasattr(spot, "reply_to_spot"))
                     self.assertTrue(hasattr(spot, "reply_to_router"))
                     self.assertTrue(hasattr(spot, "recv_routed"))
+                    self.assertTrue(hasattr(spot, "recv_routed_into"))
                     self.assertTrue(hasattr(spot, "on_routed_receive"))
                     self.assertTrue(hasattr(spot, "on_dispatch_event"))
                     self.assertTrue(hasattr(spot, "send_channel"))
                     self.assertTrue(hasattr(spot, "request_channel"))
                     self.assertTrue(hasattr(spot, "receive_subscription_event"))
+                    self.assertTrue(hasattr(spot, "receive_subscription_event_into"))
                     self.assertFalse(hasattr(spot, "on_subscribe"))
 
             with zlink.SpotNode(ctx) as loopback_node:

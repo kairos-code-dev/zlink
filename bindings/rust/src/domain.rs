@@ -367,12 +367,29 @@ pub struct TopicMessage {
 }
 
 impl TopicMessage {
+    pub fn empty() -> Self {
+        Self {
+            routing_id: None,
+            topic: String::new(),
+            parts: Vec::new(),
+        }
+    }
+
     pub(crate) fn new(routing_id: Option<RoutingId>, topic: String, parts: Vec<Message>) -> Self {
         Self {
             routing_id,
             topic,
             parts,
         }
+    }
+
+    pub(crate) fn adopt_from(&mut self, mut source: TopicMessage) {
+        for part in &mut self.parts {
+            part.close_now();
+        }
+        self.routing_id = source.routing_id.take();
+        self.topic = std::mem::take(&mut source.topic);
+        self.parts = std::mem::take(&mut source.parts);
     }
 
     pub fn is_single_part(&self) -> bool {
@@ -421,11 +438,25 @@ pub struct SubscriptionEvent {
 }
 
 impl SubscriptionEvent {
+    pub fn empty() -> Self {
+        Self {
+            routing_id: None,
+            topic: String::new(),
+            subscribed: false,
+        }
+    }
+
     pub(crate) fn new(routing_id: Option<RoutingId>, subscribed: bool, topic: String) -> Self {
         Self {
             routing_id,
             topic,
             subscribed,
         }
+    }
+
+    pub(crate) fn adopt_from(&mut self, source: SubscriptionEvent) {
+        self.routing_id = source.routing_id;
+        self.topic = source.topic;
+        self.subscribed = source.subscribed;
     }
 }

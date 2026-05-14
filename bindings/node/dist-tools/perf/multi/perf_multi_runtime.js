@@ -293,8 +293,9 @@ function recvNoWaitInto(socket, received) {
     }
 }
 function subscribeNoWait(socket) {
+    const received = new zlink.TopicMessage();
     try {
-        return socket.subscribe(RecvFlags.DontWait);
+        return socket.subscribe(received, RecvFlags.DontWait) ? received : null;
     }
     catch (error) {
         if (error instanceof zlink.RecvError && error.result === RecvResult.NoData) {

@@ -185,9 +185,8 @@ final class PerfSpot {
             while (true) {
                 waitFor(poller, PollEventFlag.POLLIN);
                 while (true) {
-                    try (TopicMessage subscribed =
-                             subscriber.subscribe(RecvFlags.DONT_WAIT)) {
-                        if (subscribed == null) {
+                    try (TopicMessage subscribed = new TopicMessage()) {
+                        if (!subscriber.subscribe(subscribed, RecvFlags.DONT_WAIT)) {
                             break;
                         }
                         if (PerfStopToken.isStopTokenMessage(

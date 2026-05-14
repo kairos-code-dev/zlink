@@ -58,7 +58,8 @@ async function publishStopToken(spot: any) {
 
 function trySpotSubscribe(spot: any) {
   try {
-    return spot.subscribe(zlink.RecvFlags.DontWait);
+    const received = new zlink.TopicMessage();
+    return spot.subscribe(received, zlink.RecvFlags.DontWait) ? received : null;
   } catch (error: any) {
     if (error instanceof zlink.RecvError &&
         (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {

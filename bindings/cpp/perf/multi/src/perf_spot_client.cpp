@@ -539,9 +539,15 @@ class spot_client_bench_t
     bool drain_recv (client_slot_t &slot_, bool sync_only_, bool *progressed_out_)
     {
         for (;;) {
-            std::optional<zlink::topic_message_t> subscribed;
+            zlink::topic_message_t subscribed;
             try {
-                subscribed = slot_.spot->subscribe (ZLINK_DONTWAIT);
+                const int rc = slot_.spot->subscribe (subscribed, ZLINK_DONTWAIT);
+                if (rc == static_cast<int> (zlink::recv_result_t::no_data))
+                    return true;
+                if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
+                    errno = zlink_errno ();
+                    return false;
+                }
             }
             catch (const zlink::recv_error_t &ex) {
                 const int err = ex.internal_errno () != 0 ? ex.internal_errno () : errno;
@@ -552,18 +558,16 @@ class spot_client_bench_t
                 errno = err;
                 return false;
             }
-            if (!subscribed.has_value ())
-                return true;
 
             if (progressed_out_)
                 *progressed_out_ = true;
 
-            if (subscribed->topic () != k_topic
-                || subscribed->parts ().size () != 1) {
+            if (subscribed.topic () != k_topic
+                || subscribed.parts ().size () != 1) {
                 continue;
             }
 
-            const zlink::message_t &part = subscribed->parts ()[0];
+            const zlink::message_t &part = subscribed.parts ()[0];
             perf_metric::header_t header;
             if (!perf_metric::decode_payload_header (part.data (),
                                                      part.size (),

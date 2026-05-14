@@ -209,7 +209,8 @@ func TestSubscribeDoesNotSwallowClosedSocketErrors(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	if _, err := socket.Subscribe(zlink.RecvFlagsDontWait); err == nil {
+	var message zlink.TopicMessage
+	if _, err := socket.Subscribe(&message, zlink.RecvFlagsDontWait); err == nil {
 		t.Fatalf("Subscribe() on closed socket should surface an error")
 	}
 }
@@ -223,7 +224,8 @@ func TestReceiveSubscriptionEventDoesNotSwallowClosedSocketErrors(t *testing.T) 
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	if _, err := socket.ReceiveSubscriptionEvent(zlink.RecvFlagsDontWait); err == nil {
+	var event zlink.SubscriptionEvent
+	if _, err := socket.ReceiveSubscriptionEvent(&event, zlink.RecvFlagsDontWait); err == nil {
 		t.Fatalf("ReceiveSubscriptionEvent() on closed socket should surface an error")
 	}
 }

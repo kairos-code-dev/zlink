@@ -173,8 +173,8 @@ test('value and handle objects without documented constructors are runtime guard
     const pub = new zlink.PubSocket(ctx);
     assert.throws(() => new zlink.RoutingId(Buffer.from('id')), TypeError);
     assert.throws(() => new zlink.Received([]), TypeError);
-    assert.throws(() => new zlink.TopicMessage('topic', []), TypeError);
-    assert.throws(() => new zlink.SubscriptionEvent('topic', true), TypeError);
+    assert.doesNotThrow(() => new zlink.TopicMessage());
+    assert.doesNotThrow(() => new zlink.SubscriptionEvent());
     assert.throws(() => new zlink.MonitorEvent({ event: zlink.MonitorEventType.Connected, value: 0 }), TypeError);
     assert.throws(() => new zlink.Actor(), TypeError);
     assert.throws(() => new zlink.Spot(ctx), TypeError);

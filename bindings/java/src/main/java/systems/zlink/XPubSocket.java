@@ -20,8 +20,7 @@ public final class XPubSocket extends Socket {
         return SocketOperations.send((parts, flags) ->
             super.publish(topicId, parts, SendFlag.fromValue(flags.value())));
     }
-    public SubscriptionEvent receiveSubscriptionEvent() { return super.receiveSubscriptionEvent(); }
-    public SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags) { return super.receiveSubscriptionEvent(ReceiveFlag.fromValue(flags.value())); }
+    public boolean receiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags) { return super.receiveSubscriptionEvent(result, ReceiveFlag.fromValue(flags.value())); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     @Override public PubSocketOptions options() { return options; }
 }

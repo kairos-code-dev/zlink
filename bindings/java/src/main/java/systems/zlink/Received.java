@@ -145,7 +145,7 @@ public final class Received implements AutoCloseable {
      * this call, {@code source} is left in an empty (already-detached) state
      * and should not be reused.
      */
-    void adoptFrom(Received source) {
+    public void adoptFrom(Received source) {
         Objects.requireNonNull(source, "source");
         if (source == this) return;
 

@@ -35,9 +35,17 @@ test('router requestToSpot promise resolves through spot routed reply', async ()
         requester.connect(endpoint);
         const handled = new Promise((resolve, reject) => {
             const deadline = Date.now() + 5000;
+            const received = new zlink.Received();
             const poll = () => {
                 try {
-                    const received = responder.recvRouted(zlink.RecvFlags.DontWait);
+                    if (!responder.recvRouted(received, zlink.RecvFlags.DontWait)) {
+                        if (Date.now() < deadline) {
+                            setImmediate(poll);
+                            return;
+                        }
+                        reject(new Error('timed out waiting for routed request'));
+                        return;
+                    }
                     try {
                         assert.ok(received.routingId);
                         assert.equal(received.spotRid, null);

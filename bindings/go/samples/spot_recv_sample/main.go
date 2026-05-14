@@ -43,7 +43,8 @@ func main() {
 	samplecommon.WaitSpotPeerConnected(publisherNode, 15*time.Second)
 	samplecommon.WaitSpotPeerConnected(subscriberNode, 15*time.Second)
 
-	var message *zlink.TopicMessage
+	var message zlink.TopicMessage
+	messageReceived := false
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		_, _ = publisherNode.StatusSnapshot()
@@ -53,18 +54,18 @@ func main() {
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
-		received, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+		received, err := subscriber.Subscribe(&message, zlink.RecvFlagsDontWait)
 		if err != nil {
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
-		if received != nil {
-			message = received
+		if received {
+			messageReceived = true
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if message == nil {
+	if !messageReceived {
 		samplecommon.Must(fmt.Errorf("spot delivery did not arrive within 5s"))
 	}
 	defer func() { samplecommon.MustStep("message.Close", message.Close()) }()

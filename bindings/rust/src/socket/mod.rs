@@ -179,22 +179,19 @@ impl SocketInner {
 
     // -- Subscribe (blocking recv) -----------------------------------------
 
-    pub fn subscribe_recv(&self) -> Result<TopicMessage, RecvError> {
-        self.subscribe_recv_with_flags(RecvFlags::NONE)
-            .and_then(|opt| {
-                opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))
-            })
-    }
-
-    pub fn subscribe_recv_with_flags(
+    pub fn subscribe_recv(
         &self,
+        out: &mut TopicMessage,
         flags: RecvFlags,
-    ) -> Result<Option<TopicMessage>, RecvError> {
+    ) -> Result<bool, RecvError> {
         let mut topic_buf = [0i8; 256];
-        Ok(
-            recv_subscribed_parts(self.handle, &mut topic_buf, flags.bits())?
-                .map(|(routing_id, topic, parts)| TopicMessage::new(routing_id, topic, parts)),
-        )
+        match recv_subscribed_parts(self.handle, &mut topic_buf, flags.bits())? {
+            Some((routing_id, topic, parts)) => {
+                out.adopt_from(TopicMessage::new(routing_id, topic, parts));
+                Ok(true)
+            }
+            None => Ok(false),
+        }
     }
 
     pub(crate) fn subscribe_recv_no_wait(&self) -> Result<Option<TopicMessage>, RecvError> {
@@ -218,17 +215,11 @@ impl SocketInner {
 
     // -- Subscription event (XPUB) -----------------------------------------
 
-    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError> {
-        self.receive_subscription_event_with_flags(RecvFlags::NONE)
-            .and_then(|opt| {
-                opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))
-            })
-    }
-
-    pub fn receive_subscription_event_with_flags(
+    pub fn receive_subscription_event(
         &self,
+        out: &mut SubscriptionEvent,
         flags: RecvFlags,
-    ) -> Result<Option<SubscriptionEvent>, RecvError> {
+    ) -> Result<bool, RecvError> {
         let mut subscribed: i32 = 0;
         let mut topic_buf = [0i8; 256];
         let mut topic_len: usize = 256;
@@ -246,28 +237,32 @@ impl SocketInner {
             )
         };
         if rc == RecvResult::NoData as i32 {
-            return Ok(None);
+            return Ok(false);
         }
         if rc != 0 {
             let errno = unsafe { ffi::zlink_errno() };
             if errno == libc::EAGAIN {
-                return Ok(None);
+                return Ok(false);
             }
             return Err(RecvError::new(crate::error::RecvResult::Terminated, errno));
         }
 
         let topic = cstr_buf_to_string(&topic_buf, topic_len);
-        Ok(Some(SubscriptionEvent::new(
+        out.adopt_from(SubscriptionEvent::new(
             routing_id_from_ptr(source_rid_ptr),
             subscribed != 0,
             topic,
-        )))
+        ));
+        Ok(true)
     }
 
     pub(crate) fn try_receive_subscription_event(
         &self,
     ) -> Result<Option<SubscriptionEvent>, RecvError> {
-        self.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT)
+        let mut event = SubscriptionEvent::empty();
+        Ok(self
+            .receive_subscription_event(&mut event, RecvFlags::DONT_WAIT)?
+            .then_some(event))
     }
 
     // -- Callback installation ---------------------------------------------

@@ -18,7 +18,7 @@ public class SendResultContractTest {
 
         try (Context ctx = new Context();
              SubSocket sub = new SubSocket(ctx)) {
-            assertEquals(null, sub.subscribe(RecvFlags.DONT_WAIT));
+            assertFalse(sub.subscribe(new TopicMessage(), RecvFlags.DONT_WAIT));
         }
     }
 
@@ -29,7 +29,7 @@ public class SendResultContractTest {
         try (Context ctx = new Context();
              SpotNode node = new SpotNode(ctx);
              Spot spot = node.createSpot()) {
-            assertEquals(null, spot.subscribe(RecvFlags.DONT_WAIT));
+            assertFalse(spot.subscribe(new TopicMessage(), RecvFlags.DONT_WAIT));
         }
     }
 
@@ -39,9 +39,8 @@ public class SendResultContractTest {
 
         try (Context ctx = new Context();
              XPubSocket pub = new XPubSocket(ctx)) {
-            RecvException ex = assertThrows(RecvException.class,
-                () -> pub.receiveSubscriptionEvent(RecvFlags.DONT_WAIT));
-            assertEquals(RecvResult.NO_DATA, ex.getResult());
+            assertFalse(pub.receiveSubscriptionEvent(
+                new SubscriptionEvent(), RecvFlags.DONT_WAIT));
         }
     }
 

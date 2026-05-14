@@ -1095,6 +1095,18 @@ class XPubSocket(_SendReadySocket, _EndpointSocket, _PublisherOptionSocket, _Pub
     def receive_subscription_event(self, *, flags=0):
         return self._subscription_event(flags)
 
+    def receive_subscription_event_into(self, event, *, flags=0):
+        if event is None or not hasattr(event, "_adopt_from"):
+            raise TypeError("event must be a SubscriptionEvent")
+        try:
+            fresh = self._subscription_event(flags)
+        except RecvError as ex:
+            if (int(flags) & 1) and ex.result == RecvResult.NO_DATA:
+                return False
+            raise
+        event._adopt_from(fresh)
+        return True
+
 
 class XSubSocket(_EndpointSocket, _SubscriberOptionSocket, _SubscriberSocket):
     _socket_type_value = SocketType.XSUB

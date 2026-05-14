@@ -19,8 +19,13 @@ static bool recv_spot_with_timeout (zlink::service::spot_t &spot_,
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
         try {
-            message_ = spot_.subscribe (zlink::recv_flags_t::dontwait);
-            return true;
+            const int rc =
+              spot_.subscribe (message_, zlink::recv_flags_t::dontwait);
+            if (rc == static_cast<int> (zlink::recv_result_t::ok))
+                return true;
+            if (rc != static_cast<int> (zlink::recv_result_t::no_data)
+                && rc != static_cast<int> (zlink::recv_result_t::busy))
+                return false;
         }
         catch (const zlink::recv_error_t &err) {
             if (err.result () != zlink::recv_result_t::no_data

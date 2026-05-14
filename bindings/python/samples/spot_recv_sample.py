@@ -64,9 +64,11 @@ def main():
                                         publisher.publish(TOPIC).message(
                                             b"hello-spot"
                                         ).submit()
+                                        received = zlink.TopicMessage()
                                         try:
-                                            received = subscriber.subscribe(
-                                                flags=zlink.RecvFlags.DONT_WAIT
+                                            has_received = subscriber.subscribe_into(
+                                                received,
+                                                flags=zlink.RecvFlags.DONT_WAIT,
                                             )
                                         except zlink.RecvError as exc:
                                             if (
@@ -75,7 +77,7 @@ def main():
                                             ):
                                                 raise
                                             return False
-                                        if received is None:
+                                        if not has_received:
                                             return False
                                         with received:
                                             if received.topic != "room:lobby":

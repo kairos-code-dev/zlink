@@ -5,7 +5,8 @@ const assert = require('node:assert/strict');
 const zlink = require('@zlink-systems/zlink');
 function recvSubscriptionEventMaybe(socket) {
     try {
-        return socket.receiveSubscriptionEvent(zlink.RecvFlags.DontWait);
+        const event = new zlink.SubscriptionEvent();
+        return socket.receiveSubscriptionEvent(event, zlink.RecvFlags.DontWait) ? event : null;
     }
     catch (error) {
         if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
@@ -25,7 +26,8 @@ test('xpub exposes subscription events and dedicated option helpers', () => {
     xpub.options.noDrop = true;
     xsub.setSubscription('topic');
     assert.equal(typeof xsub.options.topicsCount, 'number');
-    const event = xpub.receiveSubscriptionEvent();
+    const event = new zlink.SubscriptionEvent();
+    assert.equal(xpub.receiveSubscriptionEvent(event), true);
     assert.equal(event.topic, 'topic');
     assert.equal(event.subscribed, true);
     assert.equal(recvSubscriptionEventMaybe(xpub), null);

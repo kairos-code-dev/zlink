@@ -59,8 +59,8 @@ public final class SpotRecvSample {
                 try (Message payload = Message.copyOfUtf8(SampleSupport.SPOT_PAYLOAD)) {
                     publisher.publish(topic).message(payload).submit();
                 }
-                try (TopicMessage topicMessage = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
-                    if (topicMessage == null) {
+                try (TopicMessage topicMessage = new TopicMessage()) {
+                    if (!subscriber.subscribe(topicMessage, RecvFlags.DONT_WAIT)) {
                         Thread.onSpinWait();
                         continue;
                     }

@@ -263,15 +263,20 @@ bool drain_reply (client_slot_t &slot,
                   perf::multi::bench_latency_sampler_t &latency)
 {
     try {
-        std::optional<zlink::received_t> received =
-          slot.spot->recv_routed (zlink::recv_flags_t::dontwait);
-        if (!received.has_value ())
+        zlink::received_t received;
+        const int rc = slot.spot->recv_routed (
+          received, zlink::recv_flags_t::dontwait);
+        if (rc == static_cast<int> (zlink::recv_result_t::no_data))
             return true;
+        if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
+            errno = zlink_errno ();
+            return false;
+        }
         slot.waiting_reply = false;
-        if (received->parts ().empty ())
+        if (received.parts ().empty ())
             return true;
 
-        const zlink::message_t &part = received->parts ().front ();
+        const zlink::message_t &part = received.parts ().front ();
         perf_metric::header_t header;
         if (!perf_metric::decode_payload_header (
               part.data (), part.size (), &header)

@@ -143,17 +143,19 @@ int recv_spot_header_flags (zlink::service::spot_t &subscriber_,
     if (stop_out_)
         *stop_out_ = false;
     try {
-        std::optional<zlink::topic_message_t> message =
-          subscriber_.subscribe (flags_);
-        if (!message.has_value ())
+        zlink::topic_message_t message;
+        const int rc = subscriber_.subscribe (message, flags_);
+        if (rc == static_cast<int> (zlink::recv_result_t::no_data))
             return 0;
-        if (stop_out_ && message->parts ().size () == 1
-            && perf::single::is_stop_token_message (message->parts ()[0])) {
+        if (rc != static_cast<int> (zlink::recv_result_t::ok))
+            return -1;
+        if (stop_out_ && message.parts ().size () == 1
+            && perf::single::is_stop_token_message (message.parts ()[0])) {
             *stop_out_ = true;
             return 1;
         }
         bool header_ok =
-          decode_spot_header (*message, payload_size_, header_out_);
+          decode_spot_header (message, payload_size_, header_out_);
         if (header_ok_out_)
             *header_ok_out_ = header_ok;
         return 1;

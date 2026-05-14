@@ -254,14 +254,15 @@ func drainMultiPubSubAvailable(
 			continue
 		}
 		for {
-			message, err := socket.Subscribe(zlink.RecvFlagsDontWait)
+			var message zlink.TopicMessage
+			ok, err := socket.Subscribe(&message, zlink.RecvFlagsDontWait)
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					break
 				}
 				perfcommon.Must(fmt.Errorf("multi pubsub subscribe[%d]: %w", index, err))
 			}
-			if message == nil {
+			if !ok {
 				break
 			}
 			part, err := message.SinglePartOrError()

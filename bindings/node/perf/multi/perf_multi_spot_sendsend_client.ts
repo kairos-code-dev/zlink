@@ -51,12 +51,12 @@ function closeQuietly(resource) {
   }
 }
 
-function tryRecvRouted(spot) {
+function tryRecvRouted(spot, received) {
   try {
-    return spot.recvRouted(zlink.RecvFlags.DontWait);
+    return spot.recvRouted(received, zlink.RecvFlags.DontWait);
   } catch (error) {
     if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
-      return null;
+      return false;
     }
     throw error;
   }
@@ -117,7 +117,8 @@ async function main() {
       slots.push({
         spot,
         payload: createPayload(options.msgSize),
-        inflight: false
+        inflight: false,
+        received: new zlink.Received()
       });
     }
     ctx.recalculateAutoHwm();
@@ -166,16 +167,16 @@ async function main() {
       let progressed = false;
       for (const slot of slots) {
         while (true) {
-          const received = tryRecvRouted(slot.spot);
-          if (!received) {
+          const hasReceived = tryRecvRouted(slot.spot, slot.received);
+          if (!hasReceived) {
             break;
           }
           try {
             slot.inflight = false;
-            collector.record(decodeMetricHeaderFromParts(received.parts), currentEpochNs());
+            collector.record(decodeMetricHeaderFromParts(slot.received.parts), currentEpochNs());
             progressed = true;
           } finally {
-            received.close();
+            slot.received.close();
           }
         }
       }

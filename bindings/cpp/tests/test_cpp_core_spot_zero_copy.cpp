@@ -48,8 +48,16 @@ bool recv_spot_with_timeout (zlink::service::spot_t &spot_,
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
         try {
-            const zlink::topic_message_t message =
-              spot_.subscribe (zlink::recv_flags_t::dontwait);
+            zlink::topic_message_t message;
+            const int rc =
+              spot_.subscribe (message, zlink::recv_flags_t::dontwait);
+            if (rc == static_cast<int> (zlink::recv_result_t::no_data)
+                || rc == static_cast<int> (zlink::recv_result_t::busy)) {
+                sleep_ms (5);
+                continue;
+            }
+            if (rc != static_cast<int> (zlink::recv_result_t::ok))
+                return false;
             parts_ = message.parts ();
             topic_ = message.topic ();
             return true;

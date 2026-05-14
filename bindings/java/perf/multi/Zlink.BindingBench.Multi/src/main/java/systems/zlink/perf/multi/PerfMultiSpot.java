@@ -334,7 +334,8 @@ final class PerfMultiSpot {
 
     private static TopicMessage subscribeNoWait(Spot subscriber) {
         try {
-            return subscriber.subscribe(RecvFlags.DONT_WAIT);
+            TopicMessage message = new TopicMessage();
+            return subscriber.subscribe(message, RecvFlags.DONT_WAIT) ? message : null;
         } catch (RecvException ex) {
             RecvResult result = ex.getResult();
             if (result == RecvResult.NO_DATA

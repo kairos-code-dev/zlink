@@ -110,18 +110,18 @@ void test_sub_subscribe_nonblocking_returns_empty_without_data ()
 {
     zlink::context_t ctx;
     zlink::sub_socket_t socket (ctx);
-    const std::optional<zlink::topic_message_t> received =
-      socket.subscribe (ZLINK_DONTWAIT);
-    assert (!received.has_value ());
+    zlink::topic_message_t received;
+    const int rc = socket.subscribe (received, ZLINK_DONTWAIT);
+    assert (rc == static_cast<int> (zlink::recv_result_t::no_data));
 }
 
 void test_xpub_receive_subscription_event_nonblocking_returns_empty_without_data ()
 {
     zlink::context_t ctx;
     zlink::xpub_socket_t socket (ctx);
-    const std::optional<zlink::subscription_event_t> event =
-      socket.receive_subscription_event (ZLINK_DONTWAIT);
-    assert (!event.has_value ());
+    zlink::subscription_event_t event;
+    const int rc = socket.receive_subscription_event (event, ZLINK_DONTWAIT);
+    assert (rc == static_cast<int> (zlink::recv_result_t::no_data));
 }
 
 void test_pair_send_without_peer_preserves_submit_surface ()

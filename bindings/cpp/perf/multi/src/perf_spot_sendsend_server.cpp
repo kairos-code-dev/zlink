@@ -137,20 +137,25 @@ void stdin_watcher (zlink::service::spot_node_t *control_node,
 bool echo_one (zlink::service::spot_t &spot)
 {
     try {
-        std::optional<zlink::received_t> received =
-          spot.recv_routed (zlink::recv_flags_t::dontwait);
-        if (!received.has_value ())
+        zlink::received_t received;
+        const int rc =
+          spot.recv_routed (received, zlink::recv_flags_t::dontwait);
+        if (rc == static_cast<int> (zlink::recv_result_t::no_data))
             return true;
-        if (!received->routing_id ().has_value ()
-            || !received->spot_rid ().has_value ()
-            || received->parts ().empty ()) {
+        if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
+            errno = zlink_errno ();
+            return false;
+        }
+        if (!received.routing_id ().has_value ()
+            || !received.spot_rid ().has_value ()
+            || received.parts ().empty ()) {
             errno = EPROTO;
             return false;
         }
-        std::vector<zlink::message_t> parts = std::move (received->parts ());
+        std::vector<zlink::message_t> parts = std::move (received.parts ());
         try {
             const bool sent =
-              spot.send_to_spot (*received->routing_id (), *received->spot_rid ())
+              spot.send_to_spot (*received.routing_id (), *received.spot_rid ())
                 .message (parts.front ())
                 .flags (ZLINK_DONTWAIT)
                 .submit ();
@@ -278,21 +283,23 @@ bool run_server (const std::string &lib_name,
                     signal_stop ();
                     break;
                 }
-                std::optional<zlink::received_t> probe =
-                  spot.recv_routed (zlink::recv_flags_t::dontwait);
-                if (!probe.has_value ())
+                zlink::received_t probe;
+                const int rc =
+                  spot.recv_routed (probe, zlink::recv_flags_t::dontwait);
+                if (rc == static_cast<int> (zlink::recv_result_t::no_data))
                     break;
-                if (!probe->routing_id () || !probe->spot_rid ()
-                    || probe->parts ().empty ()) {
+                if (rc != static_cast<int> (zlink::recv_result_t::ok)
+                    || !probe.routing_id () || !probe.spot_rid ()
+                    || probe.parts ().empty ()) {
                     ok = false;
                     signal_stop ();
                     break;
                 }
                 std::vector<zlink::message_t> parts =
-                  std::move (probe->parts ());
+                  std::move (probe.parts ());
                 try {
-                    (void) spot.send_to_spot (*probe->routing_id (),
-                                              *probe->spot_rid ())
+                    (void) spot.send_to_spot (*probe.routing_id (),
+                                              *probe.spot_rid ())
                       .message (parts.front ())
                       .flags (ZLINK_DONTWAIT)
                       .submit ();

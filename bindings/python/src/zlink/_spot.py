@@ -77,6 +77,7 @@ from ._core import (
     RoutingId,
     SubmitError,
     SubmitResult,
+    SubscriptionEvent,
     _SOCKET_SEND_READY_HANDLER,
     _ReceivedPartsOwner,
     _REPLY_HANDLER,
@@ -741,6 +742,29 @@ def _recv_spot_subscribed(handle, flags):
         topic,
         owner,
         _routing_id_bytes(routing_id) if routing_id is not None else None,
+    )
+
+
+def _recv_spot_subscription_event(handle, flags):
+    routing_id = ctypes.POINTER(ZlinkRoutingId)()
+    subscribed = ctypes.c_int()
+    topic_buf = ctypes.create_string_buffer(256)
+    topic_len = ctypes.c_size_t(len(topic_buf))
+    rc = lib().zlink_spot_subscription_event_recv(
+        handle,
+        ctypes.byref(routing_id),
+        ctypes.byref(subscribed),
+        topic_buf,
+        len(topic_buf),
+        ctypes.byref(topic_len),
+        int(flags),
+    )
+    if rc != 0:
+        _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+    return SubscriptionEvent(
+        topic=_decode_topic_text(topic_buf.raw[: topic_len.value]),
+        subscribed=bool(subscribed.value),
+        routing_id=_routing_id_bytes(routing_id.contents) if routing_id else None,
     )
 
 
@@ -2613,9 +2637,37 @@ class Spot:
                 return None
             raise
 
+    def subscribe_into(self, topic_message, *, flags=0):
+        if topic_message is None or not hasattr(topic_message, "_adopt_from"):
+            raise TypeError("topic_message must be a TopicMessage")
+        try:
+            fresh = self._recv_subscribed(flags)
+        except RecvError as ex:
+            if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                return False
+            raise
+        topic_message._adopt_from(fresh)
+        return True
+
     def receive_subscription_event(self, *, flags=0):
-        _ = flags
-        raise RecvError(RecvResult.NOT_SUPPORTED, _ERRNO_ENOTSUP)
+        try:
+            return _recv_spot_subscription_event(self._handle, flags)
+        except RecvError as ex:
+            if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                return None
+            raise
+
+    def receive_subscription_event_into(self, event, *, flags=0):
+        if event is None or not hasattr(event, "_adopt_from"):
+            raise TypeError("event must be a SubscriptionEvent")
+        try:
+            fresh = _recv_spot_subscription_event(self._handle, flags)
+        except RecvError as ex:
+            if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                return False
+            raise
+        event._adopt_from(fresh)
+        return True
 
     def set_subscription(self, topic):
         rc = lib().zlink_set_subscription(
@@ -2884,6 +2936,32 @@ class Spot:
             if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
                 return None
             raise
+
+    def recv_routed_into(self, received, *, flags=0):
+        if received is None or not hasattr(received, "_adopt_from"):
+            raise TypeError("received must be a Received")
+        try:
+            fresh = _recv_spot_routed(
+                self._handle,
+                flags,
+                reply_sender_factory=lambda node_rid, spot_rid, seq: _make_spot_routed_reply_sender(
+                    self,
+                    node_rid,
+                    spot_rid,
+                    seq,
+                ),
+                send_sender_factory=lambda node_rid, spot_rid: _make_spot_routed_send_sender(
+                    self,
+                    node_rid,
+                    spot_rid,
+                ),
+            )
+        except RecvError as ex:
+            if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                return False
+            raise
+        received._adopt_from(fresh)
+        return True
 
     def on_routed_receive(self, handler):
         if handler is None:

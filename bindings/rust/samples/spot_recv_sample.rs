@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use zlink::{
     AutoConnectType, Context, Discovery, Message, RecvFlags, RecvResult, Registry,
-    RegistryQueryClient, SpotNode, SubmitResult,
+    RegistryQueryClient, SpotNode, SubmitResult, TopicMessage,
 };
 
 #[path = "sample_support.rs"]
@@ -50,7 +50,9 @@ fn main() {
         .set_routing_id(&zlink::RoutingId::from_bytes(b"z-rust-spot-recv-publisher"))
         .expect("publisher routing id failed");
     subscriber_node
-        .set_routing_id(&zlink::RoutingId::from_bytes(b"a-rust-spot-recv-subscriber"))
+        .set_routing_id(&zlink::RoutingId::from_bytes(
+            b"a-rust-spot-recv-subscriber",
+        ))
         .expect("subscriber routing id failed");
     publisher_node
         .bind(&publisher_endpoint)
@@ -110,8 +112,9 @@ fn main() {
             }
             Err(err) => panic!("publish failed: {err}"),
         }
-        match subscriber.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-            Ok(Some(message)) => {
+        let mut message = TopicMessage::empty();
+        match subscriber.subscribe(&mut message, RecvFlags::DONT_WAIT) {
+            Ok(true) => {
                 let payload = message.parts[0].as_str().unwrap_or("(binary)");
                 assert_eq!(message.topic, TOPIC);
                 assert_eq!(payload, "hello-spot");
@@ -121,7 +124,7 @@ fn main() {
                 );
                 return;
             }
-            Ok(None) => {
+            Ok(false) => {
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(err)

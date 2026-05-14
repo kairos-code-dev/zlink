@@ -3,6 +3,7 @@ package systems.zlink.contract;
 import systems.zlink.Context;
 import systems.zlink.Message;
 import systems.zlink.MonitorEventType;
+import systems.zlink.RecvFlags;
 import systems.zlink.SubscriptionEvent;
 import systems.zlink.SubscriptionEntry;
 import systems.zlink.PubSocket;
@@ -64,7 +65,8 @@ public class SocketSubscriptionContractTest {
             TestSupport.awaitMonitorEvent(pubMonitor,
                 MonitorEventType.CONNECTION_READY);
 
-            SubscriptionEvent event = pub.receiveSubscriptionEvent();
+            SubscriptionEvent event = new SubscriptionEvent();
+            assertTrue(pub.receiveSubscriptionEvent(event, RecvFlags.NONE));
             assertTrue(event.subscribed());
             assertEquals("topic-a", event.topic());
 
@@ -72,7 +74,8 @@ public class SocketSubscriptionContractTest {
                 pub.publish("topic-a").message(part).submit();
             }
 
-            try (TopicMessage received = sub.subscribe()) {
+            try (TopicMessage received = new TopicMessage()) {
+                assertTrue(sub.subscribe(received, RecvFlags.NONE));
                 assertEquals("topic-a", received.topic());
                 assertArrayEquals("payload".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
@@ -102,7 +105,8 @@ public class SocketSubscriptionContractTest {
                 pub.publish("topic-b").message(part).submit();
             }
 
-            try (TopicMessage received = sub.subscribe()) {
+            try (TopicMessage received = new TopicMessage()) {
+                assertTrue(sub.subscribe(received, RecvFlags.NONE));
                 assertEquals("topic-b", received.topic());
                 assertArrayEquals("payload-b".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
@@ -123,7 +127,8 @@ public class SocketSubscriptionContractTest {
             sub.setSubscription("manual-topic");
             sub.connect(endpoint);
 
-            SubscriptionEvent event = pub.receiveSubscriptionEvent();
+            SubscriptionEvent event = new SubscriptionEvent();
+            assertTrue(pub.receiveSubscriptionEvent(event, RecvFlags.NONE));
             assertTrue(event.subscribed());
             assertEquals("manual-topic", event.topic());
         }

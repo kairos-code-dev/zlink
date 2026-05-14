@@ -247,7 +247,8 @@ public class SocketContractTest {
                 pub.publish("socket-topic").message(payload).submit();
             }
 
-            try (TopicMessage received = sub.subscribe()) {
+            try (TopicMessage received = new TopicMessage()) {
+                assertTrue(sub.subscribe(received, RecvFlags.NONE));
                 assertEquals("socket-topic", received.topic());
                 assertArrayEquals("socket-payload".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());

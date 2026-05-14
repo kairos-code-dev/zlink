@@ -95,7 +95,7 @@ API lists can stay focused on signatures.
 - `Spot` must not expose `onSubscribe(...)`.
 - `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
   one-event-per-message delivery counters. Binding docs and samples must drain
-  until the recv path reports no data / `EAGAIN`.
+  until the caller-provided recv overload returns `false`.
 - Peer weight is exposed only on `RouterSocket` and `DealerSocket` through
   typed option/property surfaces. The value range is `0..100`, default
   `100`; `0` drains new outbound selection. Submit
@@ -415,6 +415,8 @@ class SubSocket {
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
     subscriptionAt(index: number): SubscriptionEntry | null;
+    /** @deprecated allocates TopicMessage per call; use the caller-provided overload. */
+    subscribe(flags?: RecvFlags): TopicMessage | null;
     /** Canonical caller-provided storage subscribe. @throws {RecvError} */
     subscribe(result: TopicMessage, flags?: RecvFlags): boolean;
     /** @throws {ConfigError} */
@@ -559,6 +561,8 @@ class XPubSocket {
     disconnectRid(routingId: RoutingId): void;
     /** Publish (operation builder). */
     publish(topic: string): SendOp;
+    /** @deprecated allocates SubscriptionEvent per call; use the caller-provided overload. */
+    receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent | null;
     /** Canonical caller-provided storage subscription event recv. @throws {RecvError} */
     receiveSubscriptionEvent(result: SubscriptionEvent, flags?: RecvFlags): boolean;
     /** @throws {HandlerError} */
@@ -1569,8 +1573,12 @@ class Spot {
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
     subscriptionAt(index: number): SubscriptionEntry | null;
+    /** @deprecated allocates TopicMessage per call; use the caller-provided overload. */
+    subscribe(flags?: RecvFlags): TopicMessage | null;
     /** Canonical caller-provided storage subscribe. @throws {RecvError} */
     subscribe(result: TopicMessage, flags?: RecvFlags): boolean;
+    /** @deprecated allocates SubscriptionEvent per call; use the caller-provided overload. */
+    receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent | null;
     /** Canonical caller-provided storage subscription event recv. @throws {RecvError} */
     receiveSubscriptionEvent(result: SubscriptionEvent, flags?: RecvFlags): boolean;
     /** @throws {HandlerError} */
@@ -1585,6 +1593,8 @@ class Spot {
     replyToRouter(peerRid: RoutingId, requestSeq: bigint): ReplyOp;
 
     // --- routed receive ---
+    /** @deprecated allocates Received per call; use the caller-provided overload. */
+    recvRouted(flags?: RecvFlags): Received | null;
     /** Canonical caller-provided storage routed recv. @throws {RecvError} */
     recvRouted(result: Received, flags?: RecvFlags): boolean;
     /** @throws {HandlerError} */
@@ -1741,8 +1751,7 @@ reusing the same operation object after submit must throw a validation error.
 
 `onDispatchEvent(...)` is the canonical SPOT readable-notification surface.
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
-`subscribe(...)` / `recvRouted(...)` until the binding returns `false` or
-reports `EAGAIN`.
+`subscribe(...)` / `recvRouted(...)` until the binding returns `false`.
 
 ### RegistryQueryClient
 
@@ -2183,8 +2192,7 @@ type TimerHandler = (timer: Timer, fireCount: bigint) => void;
 
 `onDispatchEvent(...)` is the canonical SPOT readable-notification surface.
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
-`subscribe(...)` / `recvRouted(...)` until the binding returns `false` or
-reports `EAGAIN`.
+`subscribe(...)` / `recvRouted(...)` until the binding returns `false`.
 For `ChannelReplyReadable`, request promises and callbacks progress their
 replies inside the binding. The public API does not expose the native channel
 dealer subject.

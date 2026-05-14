@@ -19,7 +19,6 @@ public final class XSubSocket extends Socket {
     public void setSubscription(String filter) { super.setSubscription(filter); }
     public void unsetSubscription(String filter) { super.unsetSubscription(filter); }
     public Optional<SubscriptionEntry> subscriptionAt(int index) { return options.subscriptionAt(index); }
-    public TopicMessage subscribe() { return super.subscribe(); }
-    public TopicMessage subscribe(RecvFlags flags) { return super.subscribe(ReceiveFlag.fromValue(flags.value())); }
+    public boolean subscribe(TopicMessage result, RecvFlags flags) { return super.subscribe(result, ReceiveFlag.fromValue(flags.value())); }
     @Override public SubSocketOptions options() { return options; }
 }

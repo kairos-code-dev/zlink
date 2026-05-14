@@ -150,14 +150,15 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	}()
 	for time.Now().Before(window.StopAt) {
 		for _, sub := range subs {
-			message, err := sub.spot.Subscribe(zlink.RecvFlagsDontWait)
+			var message zlink.TopicMessage
+			ok, err := sub.spot.Subscribe(&message, zlink.RecvFlagsDontWait)
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					continue
 				}
 				perfcommon.Must(err)
 			}
-			if message == nil {
+			if !ok {
 				continue
 			}
 			part, err := message.SinglePartOrError()
@@ -338,14 +339,15 @@ func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
 	stopAt := time.Now().Add(cfg.duration)
 	for time.Now().Before(stopAt) {
 		for _, spot := range spots {
-			message, err := spot.Subscribe(zlink.RecvFlagsDontWait)
+			var message zlink.TopicMessage
+			ok, err := spot.Subscribe(&message, zlink.RecvFlagsDontWait)
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					continue
 				}
 				perfcommon.Must(err)
 			}
-			if message == nil {
+			if !ok {
 				continue
 			}
 			part, err := message.SinglePartOrError()
@@ -420,14 +422,15 @@ func publishSpotControlPayload(spot *zlink.Spot, payload string, timeout time.Du
 }
 
 func receiveSpotControlPayload(spot *zlink.Spot) string {
-	message, err := spot.Subscribe(zlink.RecvFlagsDontWait)
+	var message zlink.TopicMessage
+	ok, err := spot.Subscribe(&message, zlink.RecvFlagsDontWait)
 	if err != nil {
 		if perfcommon.IsTransient(err) {
 			return ""
 		}
 		perfcommon.Must(err)
 	}
-	if message == nil {
+	if !ok {
 		return ""
 	}
 	defer message.Close()

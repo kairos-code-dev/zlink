@@ -18,7 +18,9 @@ def main():
                         wait_connected(pub_mon, sub_mon)
 
                 pub.publish(b"prices").message(b"101.25").submit()
-                with sub.subscribe() as received:
+                received = zlink.TopicMessage()
+                assert sub.subscribe_into(received)
+                with received:
                     topic = received.topic
                     data = received.to_bytes_list()[0].decode("utf-8")
                     print(f'[pubsub/recv] publish: "{topic}/{data}" \u2192 subscribe: "{topic}/{data}"')

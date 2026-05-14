@@ -163,9 +163,11 @@ bool run_pattern_pubsub (const std::string &transport,
     while (!stop_received) {
         // PERF_SINGLE_TEST_POLICY § 1.4: blocking subscribe wakes when
         // the stop token arrives on the wire.
-        std::optional<zlink::topic_message_t> message;
+        zlink::topic_message_t message;
         try {
-            message = subscriber.subscribe ();
+            const int rc = subscriber.subscribe (message);
+            if (rc != static_cast<int> (zlink::recv_result_t::ok))
+                continue;
         }
         catch (const zlink::recv_error_t &error) {
             const int err = error.internal_errno ();
@@ -175,22 +177,25 @@ bool run_pattern_pubsub (const std::string &transport,
             sender_ok.store (false, std::memory_order_release);
             break;
         }
-        if (!message.has_value ())
-            continue;
-
-        if (is_stop_message (*message)) {
+        if (is_stop_message (message)) {
             stop_received = true;
             break;
         }
 
-        if (!record_if_active (*message)) {
+        if (!record_if_active (message)) {
             sender_ok.store (false, std::memory_order_release);
             break;
         }
 
         for (;;) {
             try {
-                message = subscriber.subscribe (ZLINK_DONTWAIT);
+                const int rc = subscriber.subscribe (message, ZLINK_DONTWAIT);
+                if (rc == static_cast<int> (zlink::recv_result_t::no_data))
+                    break;
+                if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
+                    sender_ok.store (false, std::memory_order_release);
+                    break;
+                }
             }
             catch (const zlink::recv_error_t &error) {
                 const int err = error.internal_errno ();
@@ -200,15 +205,12 @@ bool run_pattern_pubsub (const std::string &transport,
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
-            if (!message.has_value ())
-                break;
-
-            if (is_stop_message (*message)) {
+            if (is_stop_message (message)) {
                 stop_received = true;
                 break;
             }
 
-            if (!record_if_active (*message)) {
+            if (!record_if_active (message)) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }

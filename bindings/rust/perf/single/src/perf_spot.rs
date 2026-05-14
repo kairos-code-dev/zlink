@@ -19,8 +19,9 @@ fn drain_spot_readable(
 ) -> bool {
     let mut processed = false;
     loop {
-        match subscriber.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-            Ok(Some(received)) => {
+        let mut received = TopicMessage::empty();
+        match subscriber.subscribe(&mut received, RecvFlags::DONT_WAIT) {
+            Ok(true) => {
                 {
                     let data = common::message_payload(received.parts());
                     if collect_active {
@@ -31,10 +32,9 @@ fn drain_spot_readable(
                         }
                     }
                 }
-                drop(received);
                 processed = true;
             }
-            Ok(None) => break,
+            Ok(false) => break,
             Err(err) => panic!("spot subscribe drain failed: {err}"),
         }
     }
@@ -234,14 +234,16 @@ fn main() {
     });
 
     loop {
-        match subscriber.subscribe() {
-            Ok(received) => {
+        let mut received = TopicMessage::empty();
+        match subscriber.subscribe(&mut received, RecvFlags::NONE) {
+            Ok(true) => {
                 let data = common::message_payload(received.parts());
                 if common::is_stop_token(data) {
                     break;
                 }
                 common::handle_recv(data, config.size, &stats, active_deadline);
             }
+            Ok(false) => continue,
             Err(err) => panic!("spot subscriber recv failed: {err}"),
         }
     }

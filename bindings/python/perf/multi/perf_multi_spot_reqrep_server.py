@@ -66,16 +66,17 @@ def main(argv=None):
         def on_dispatch(current_spot, info):
             if info.event != zlink.SpotDispatchEvent.ROUTED_READABLE:
                 return
+            received = zlink.Received()
             while True:
                 try:
-                    received = current_spot.recv_routed(
-                        flags=zlink.RecvFlags.DONT_WAIT
+                    has_received = current_spot.recv_routed_into(
+                        received, flags=zlink.RecvFlags.DONT_WAIT
                     )
                 except zlink.RecvError as exc:
                     if exc.result == zlink.RecvResult.NO_DATA:
                         return
                     raise
-                if received is None:
+                if not has_received:
                     return
                 with received:
                     received.reply().messages(*received.to_bytes_list()).submit()

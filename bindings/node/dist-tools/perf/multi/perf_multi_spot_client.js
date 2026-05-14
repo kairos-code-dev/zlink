@@ -16,7 +16,8 @@ function trace(message) {
 }
 function trySpotSubscribe(spot) {
     try {
-        return spot.subscribe(zlink.RecvFlags.DontWait);
+        const received = new zlink.TopicMessage();
+        return spot.subscribe(received, zlink.RecvFlags.DontWait) ? received : null;
     }
     catch (error) {
         if (error instanceof zlink.RecvError &&

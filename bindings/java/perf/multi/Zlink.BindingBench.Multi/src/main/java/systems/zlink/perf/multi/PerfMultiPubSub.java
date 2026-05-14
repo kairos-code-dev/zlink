@@ -163,8 +163,8 @@ final class PerfMultiPubSub {
                                         PerfUtil.Metrics metrics,
                                         long activeEnd) {
         while (System.nanoTime() < activeEnd) {
-            try (TopicMessage received = sub.subscribe(RecvFlags.DONT_WAIT)) {
-                if (received == null) {
+            try (TopicMessage received = new TopicMessage()) {
+                if (!sub.subscribe(received, RecvFlags.DONT_WAIT)) {
                     break;
                 }
                 PerfUtil.Header header = PerfUtil.decodeHeader(

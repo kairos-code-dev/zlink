@@ -1,6 +1,6 @@
 //! PUB/SUB direct recv sample – demonstrates topic publish/subscribe.
 
-use zlink::{Context, Message, SocketMonitor};
+use zlink::{Context, Message, RecvFlags, SocketMonitor, TopicMessage};
 
 pub fn reserve_tcp_port() -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -69,7 +69,12 @@ fn main() {
         .submit()
         .expect("publish failed");
 
-    let topic_msg = sub_sock.subscribe().expect("subscribe recv failed");
+    let mut topic_msg = TopicMessage::empty();
+    assert!(
+        sub_sock
+            .subscribe(&mut topic_msg, RecvFlags::NONE)
+            .expect("subscribe recv failed")
+    );
     assert_eq!(topic_msg.topic(), "prices");
     assert_eq!(topic_msg.parts()[0].as_str().unwrap(), "101.25");
     println!(

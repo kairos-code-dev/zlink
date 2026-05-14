@@ -89,14 +89,16 @@ fn main() {
         });
 
     loop {
-        match sub_sock.subscribe() {
-            Ok(received) => {
+        let mut received = TopicMessage::empty();
+        match sub_sock.subscribe(&mut received, RecvFlags::NONE) {
+            Ok(true) => {
                 let data = common::message_payload(received.parts());
                 if common::is_stop_token(data) {
                     break;
                 }
                 common::handle_recv(data, config.size, &stats, active_deadline);
             }
+            Ok(false) => continue,
             Err(err) => panic!("pubsub subscriber recv failed: {err}"),
         }
     }

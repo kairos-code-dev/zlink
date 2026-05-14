@@ -94,7 +94,8 @@ fn spot_callback_surfaces_exist() {
         .message(Message::copy_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit(|_result| {});
-    let _ = spot.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
+    let mut event = SubscriptionEvent::empty();
+    let _ = spot.receive_subscription_event(&mut event, RecvFlags::DONT_WAIT);
     let _on_send_ready = Spot::on_send_ready::<fn()>;
     let _on_routed_receive = Spot::on_routed_receive::<fn(Received)>;
     let _on_dispatch_event = Spot::on_dispatch_event::<fn(SpotDispatchInfo<'_>)>;

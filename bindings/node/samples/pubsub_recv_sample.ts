@@ -40,12 +40,13 @@ async function main() {
     const sent = '101.25';
     sub.setSubscription(topic);
     const deadline = Date.now() + 5000;
-    let received = null;
+    const received = new zlink.TopicMessage();
+    let hasReceived = false;
     while (Date.now() < deadline) {
       pub.publish(topic).message(Buffer.from(sent)).submit();
       try {
-        received = sub.subscribe(zlink.RecvFlags.DontWait);
-        if (received) {
+        if (sub.subscribe(received, zlink.RecvFlags.DontWait)) {
+          hasReceived = true;
           break;
         }
       } catch (error) {
@@ -55,7 +56,7 @@ async function main() {
       }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    assert.notEqual(received, null);
+    assert.equal(hasReceived, true);
     try {
       const recv = received.parts[0].data().toString();
       assert.equal(received.topic, topic);

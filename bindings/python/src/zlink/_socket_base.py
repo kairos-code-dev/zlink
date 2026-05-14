@@ -1188,6 +1188,18 @@ class _SubscriberSocket(_Socket):
                 return None
             raise
 
+    def subscribe_into(self, topic_message, *, flags=0):
+        if topic_message is None or not hasattr(topic_message, "_adopt_from"):
+            raise TypeError("topic_message must be a TopicMessage")
+        try:
+            fresh = self._subscribe_once(flags)
+        except RecvError as ex:
+            if (int(flags) & 1) and ex.result == RecvResult.NO_DATA:
+                return False
+            raise
+        topic_message._adopt_from(fresh)
+        return True
+
     def set_subscription(self, topic):
         topic_bytes = _validated_c_string_value(topic, field="subscription")
         rc = lib().zlink_set_subscription(self._handle, topic_bytes)

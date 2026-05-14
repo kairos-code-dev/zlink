@@ -298,7 +298,7 @@ return-form (또는 언어별 `Optional` / nullable / `Option`) 을 유지한다
 
 | Binding | Canonical 시그니처 |
 |---|---|
-| C++ | `int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);` 0 = 성공, -1 = 실패 (errno 설정). multipart 결과는 `out.parts` 에 채워진다. dealer 같은 single-part socket 은 `int recv(message_t& part, recv_flags_t flags)` 오버로드도 같은 ref-out 규칙으로 제공한다. `subscribe(topic_message_t& out, int flags)`, `receive_subscription_event(subscription_event_t& out, int flags)` 도 동일 규칙. |
+| C++ | `int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);` 0 = 성공, 실패나 데이터 없음은 `recv_result_t` 정수값을 반환한다. 바인딩 내부에서 메시지 초기화 같은 local 실패가 나면 -1을 반환하고 errno를 설정한다. multipart 결과는 `out.parts` 에 채워진다. dealer 같은 single-part socket 은 `int recv(message_t& part, recv_flags_t flags)` 오버로드도 같은 ref-out 규칙으로 제공한다. `subscribe(topic_message_t& out, int flags)`, `receive_subscription_event(subscription_event_t& out, int flags)` 도 동일 규칙. |
 | .NET | `bool Recv(Received result, RecvFlags flags = RecvFlags.None);` `bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None);` `bool ReceiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags = RecvFlags.None);` true = 받음, false = 데이터 없음 (DontWait). hard error 는 `ZlinkException`. |
 | Java | `boolean recv(Received result, RecvFlags flags);` `boolean subscribe(TopicMessage result, RecvFlags flags);` `boolean receiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags);` |
 | Node | `recv(received: Received, flags?: RecvFlag): boolean;` `subscribe(topic: TopicMessage, flags?: RecvFlag): boolean;` `receiveSubscriptionEvent(event: SubscriptionEvent, flags?: RecvFlag): boolean;` |
@@ -309,6 +309,9 @@ return-form (또는 언어별 `Optional` / nullable / `Option`) 을 유지한다
 C ABI binding 은 이 절의 적용 대상이 아니다. C 바인딩은 `zlink.h` 의 typed
 substrate (`zlink_router_recv_part`, `zlink_subscribe_part` 등) 를 그대로
 노출한다.
+
+언어별 세부 문서에는 과거 호환성을 위한 deprecated overload가 별도로 적힐 수
+있다. 위 표는 새 코드와 sample/perf가 따라야 하는 canonical 경로만 정리한다.
 
 #### 결과 저장소 재사용 계약
 
@@ -529,8 +532,10 @@ streamSocket.bindActor(sessionRid, actorRef)
   축에 속한다. Actor readable 이벤트는 어떤 Actor를 drain해야 하는지 알 수
   있어야 하며, Actor join readable 이벤트는 `Spot`의 join 수신 표면으로
   drain해야 한다.
-- SPOT dispatch consumer 는 `subscribe` / `recv_routed` 를 `EAGAIN` 까지 drain 하는
-  규칙을 문서와 sample 에 같이 반영해야 한다.
+- SPOT dispatch consumer 는 `subscribe` / `recv_routed` 를 각 언어의
+  no-data 표현이 나올 때까지 drain 하는 규칙을 문서와 sample 에 같이 반영해야
+  한다. 예를 들어 C++은 `recv_result_t::no_data` 반환값을 사용하고,
+  Java/Node/Python은 `false` 또는 `None` 같은 언어별 empty 표현을 사용한다.
 - 첫 SPOT routed recv 는 hidden activation, hidden queue open, hidden target registration 을
   수행하면 안 된다. 바인딩도 같은 전제를 두고 lazy bootstrap 로직을 올리지 않는다.
 - `zlink_send_ready_handler()` 와 poller `ZLINK_POLLOUT` 은 같은
@@ -833,7 +838,7 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 | 언어 | 처리 방식 | 에러 타입 | 코드 접근 | 내부 errno |
 |---|---|---|---|---|
 | C | return | 함수별 result enum 반환 | enum 값 자체 | `zlink_errno()` |
-| C++ | throw | `zlink_error_t` | `.code()` | `.internal_errno()` |
+| C++ | return / throw | caller-provided recv는 `int`, 그 외 실패는 `zlink_error_t` | recv는 반환값, 예외는 `.code()` | recv `-1`일 때 `errno`, 예외는 `.internal_errno()` |
 | Java | throw | `ZlinkException` | `.getCode()` | `.getInternalErrno()` |
 | .NET | throw | `ZlinkException` | `.Code` | `.InternalErrno` |
 | Go | return | `error` | `.Code()` | `.InternalErrno()` |
@@ -935,11 +940,18 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
 
 - flags 기본값은 `0` (blocking).
 - non-blocking 호출의 temporary 상태는 언어별 public 계약에 맞춰 전달한다.
-  - `.NET` / `Java` / `Node` / `Python` / `C++`
+  - `.NET` / `Java` / `Node` / `Python`
     - `send`, `publish`, callback `request`: temporary backpressure 면
       `false`
     - `recv`, `subscribe`: 현재 데이터가 없으면 empty 표현
     - 그 외 실패: typed exception
+  - C++
+    - operation builder `send` / `publish` / callback `request`: temporary
+      backpressure 면 `false`
+    - caller-provided `recv` / `subscribe` /
+      `receive_subscription_event`: 현재 데이터가 없으면 `recv_result_t::no_data`
+      정수값 반환
+    - binding-local 실패만 `-1`을 반환하고 `errno`를 설정
   - return-based 언어 (C/Go/Rust): 에러 반환 (C=result enum,
     Go=`error`, Rust=`Err(E)`).
 - 언어별 flags 표현 (builder 단계로 통일):
@@ -1685,8 +1697,8 @@ Actor dispatch event는 SPOT dispatch event handler와 같은 readiness 모델�
   part를 nonblocking으로 미리 drain해서 public dispatch info가 그 part를
   반환하게 해야 한다.
 - `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE` 은 Spot의 Actor join request
-  plane readiness다. 바인딩은 `Spot.recvActorJoin` 또는 동등한 public 표면으로
-  `EAGAIN`까지 drain할 수 있게 해야 한다.
+plane readiness다. 바인딩은 `Spot.recvActorJoin` 또는 동등한 public 표면으로
+  언어별 no-data 표현이 나올 때까지 drain할 수 있게 해야 한다.
 
 ### SpotNode Capability Matrix
 
@@ -3758,10 +3770,10 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - `send` backpressure 예외 확인
 - `send` not-ready 예외 확인
 - `publish` backpressure 또는 not-ready 예외 확인
-- `EAGAIN` 외 오류가 무시되지 않는지 확인
+- native `NO_DATA` 외 오류가 무시되지 않는지 확인
 - callback mode와 direct recv 충돌 시 native 계약대로 오류가 전달되는지 확인
 - direct recv 불가 상태에서 empty/null로 숨기지 않는지 확인
-- `EAGAIN`만 empty/non-success 결과로 처리되는지 확인
+- native `NO_DATA`만 empty/non-success 결과로 처리되는지 확인
 
 ### Required: Boundary Validation Tests
 - `RoutingId` 최대 길이 경계 (255바이트 OK)
@@ -4194,7 +4206,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 ### Error Contract Follow-Ups
 - binding validation 예외와 native 예외가 혼재된 경로 조사
 - 바인딩이 errno를 임의로 해석하는 경로 조사
-- `EAGAIN` 외 오류를 잘못 empty/bool 경로로 숨기는 코드 조사
+- native `NO_DATA` 외 오류를 잘못 empty/bool 경로로 숨기는 코드 조사
 - blocking send 실패를 무시하는 helper/sample 조사
 
 ### Performance Follow-Ups

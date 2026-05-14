@@ -67,15 +67,16 @@ async function main() {
     await waitForSpotPeer(publisherNode);
     await waitForSpotPeer(subscriberNode);
     const deadline = Date.now() + 15000;
-    let received = null;
+    const received = new zlink.TopicMessage();
+    let hasReceived = false;
     while (Date.now() < deadline) {
       publisherNode.statusSnapshot();
       subscriberNode.statusSnapshot();
       subscriberNode.subjectsSnapshot();
       publisher.publish(topic).message(Buffer.from(sent)).submit();
       try {
-        received = subscriber.subscribe(zlink.RecvFlags.DontWait);
-        if (received) {
+        if (subscriber.subscribe(received, zlink.RecvFlags.DontWait)) {
+          hasReceived = true;
           break;
         }
       } catch (error) {
@@ -88,7 +89,7 @@ async function main() {
       }
       await delay(25);
     }
-    if (!received) {
+    if (!hasReceived) {
       throw new Error('spot delivery did not arrive');
     }
     try {

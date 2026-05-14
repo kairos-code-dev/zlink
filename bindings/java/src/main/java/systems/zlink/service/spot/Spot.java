@@ -732,20 +732,14 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    public TopicMessage subscribe() {
-        return receiveTopicMessage(false).orElseThrow(
-            () -> new IllegalStateException(
-                "blocking subscribe returned no delivery"));
-    }
-
-    public TopicMessage subscribe(RecvFlags flags) {
+    public boolean subscribe(TopicMessage result, RecvFlags flags) {
+        Objects.requireNonNull(result, "result");
         Objects.requireNonNull(flags, "flags");
-        if (flags == RecvFlags.DONT_WAIT) {
-            return receiveTopicMessage(true).orElse(null);
-        }
-        return receiveTopicMessage(false).orElseThrow(
-            () -> new IllegalStateException(
-                "blocking subscribe returned no delivery"));
+        Optional<TopicMessage> fresh = receiveTopicMessage(flags == RecvFlags.DONT_WAIT);
+        if (fresh.isEmpty())
+            return false;
+        result.adoptFrom(fresh.get());
+        return true;
     }
 
     Optional<TopicMessage> subscribeNoWait() {
@@ -753,15 +747,16 @@ public final class Spot implements AutoCloseable {
     }
 
     /** Receives the next subscription event for this spot. */
-    public SubscriptionEvent receiveSubscriptionEvent() {
-        return receiveSubscriptionEvent(RecvFlags.NONE);
-    }
-
-    public SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags) {
+    public boolean receiveSubscriptionEvent(SubscriptionEvent result,
+                                            RecvFlags flags) {
+        Objects.requireNonNull(result, "result");
         Objects.requireNonNull(flags, "flags");
-        return receiveSubscriptionEvent(flags == RecvFlags.DONT_WAIT)
-          .orElseThrow(() -> new RecvException(RecvResult.NO_DATA,
-            ERRNO_EAGAIN));
+        Optional<SubscriptionEvent> fresh =
+          receiveSubscriptionEvent(flags == RecvFlags.DONT_WAIT);
+        if (fresh.isEmpty())
+            return false;
+        result.adoptFrom(fresh.get());
+        return true;
     }
 
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
@@ -807,12 +802,13 @@ public final class Spot implements AutoCloseable {
         routedSupport.replyToRouter(peerRid, requestSeq, parts, flags);
     }
 
-    public Received recvRouted() {
-        return routedSupport.recvRouted(RecvFlags.NONE);
-    }
-
-    public Received recvRouted(RecvFlags flags) {
-        return routedSupport.recvRouted(flags);
+    public boolean recvRouted(Received result, RecvFlags flags) {
+        Objects.requireNonNull(result, "result");
+        Received fresh = routedSupport.recvRouted(flags);
+        if (fresh == null)
+            return false;
+        result.adoptFrom(fresh);
+        return true;
     }
 
     public void onRoutedReceive(SpotRoutedHandler handler) {

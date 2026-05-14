@@ -89,7 +89,7 @@ with these rules, the API listing must be corrected to match this section.
   `subscribe(...)` / `recv_routed(...)` / timer recv.
 - `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
   one-event-per-message delivery counters. Binding docs and samples must use
-  drain-until-`EAGAIN` loops.
+  drain-until-`recv_result_t::no_data` loops.
 - `service::spot_t::publish(...)` maps to the core SPOT data-plane publish
   ingress path. It does not expose the internal publish queue, external
   pub-ingress attachment socket, or mesh/local fanout sockets as C++ public
@@ -476,10 +476,7 @@ Nonblocking data-plane helpers follow this rule:
 - `recv(received_t& out, recv_flags_t flags)`, `subscribe(topic_message_t& out,
   int flags)`, `receive_subscription_event(subscription_event_t& out, int flags)`,
   and `recv_routed(received_t& out, int flags)` follow a unified
-  `0 / -1 + errno` contract: returns `0` on success, `-1` on failure with
-  `errno` set (EAGAIN/EWOULDBLOCK on dontwait without data; EBUSY when the
-  socket is in callback mode; etc.). These data-plane recv surfaces do not
-  throw; callers branch on errno.
+  `recv_result_t` integer contract: returns `0` on success and a non-zero `recv_result_t` value such as `no_data` or `busy` when the core receive reports that state. A binding-local failure, such as message initialization failure, returns `-1` and sets `errno`. These data-plane recv surfaces do not throw; callers branch on the returned code first and inspect `errno` only for `-1`.
 
 ```cpp
 // Available on all socket types
@@ -525,8 +522,7 @@ class pair_socket_t {
 
     // --- receive ---
     /// Receive one message into a caller-provided received_t.
-    /// Returns 0 on success, -1 on error (errno set).
-    /// EAGAIN/EWOULDBLOCK on dontwait with no data.
+    /// Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
     /// The caller may keep a long-lived received_t across calls so that
     /// the parts vector / routing-id storage is reused without reallocation.
     int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);
@@ -578,7 +574,7 @@ class sub_socket_t {
 
     // --- receive ---
     /// Receive one topic message into caller-provided storage.
-    /// Returns 0 on success, -1 on error (errno set).
+    /// Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
     int subscribe(topic_message_t& out, int flags = 0);
     // --- sub-specific options ---
     /// @throws config_error_t
@@ -602,8 +598,7 @@ class dealer_socket_t {
     send_op_t send();
 
     // --- receive ---
-    /// Returns 0 on success, -1 on error (errno set).
-    /// EAGAIN/EWOULDBLOCK on dontwait with no data.
+    /// Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
     int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
     template<class Handler>
@@ -652,8 +647,7 @@ class router_socket_t {
     // One recv surface covers regular ROUTER traffic and spot-origin routed
     // traffic. Empty received_t::spot_rid() means regular ROUTER traffic.
     // A populated spot_rid() means reply_to_spot must be used.
-    /// Returns 0 on success, -1 on error (errno set).
-    /// EAGAIN/EWOULDBLOCK on dontwait with no data.
+    /// Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
     /// On success, received_t carries source routing id, optional spot routing id,
     /// optional request_seq, and an internally bound reply_fn for
     /// received_t::reply(...).
@@ -713,7 +707,7 @@ class xpub_socket_t {
 
     // --- subscription events ---
     /// Receive one subscription event into caller-provided storage.
-    /// Returns 0 on success, -1 on error (errno set).
+    /// Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
     int receive_subscription_event(subscription_event_t& out, int flags = 0);
 
     // --- pub-specific options ---
@@ -740,7 +734,7 @@ class xsub_socket_t {
 
     // --- receive ---
     /// Receive one topic message into caller-provided storage.
-    /// Returns 0 on success, -1 on error (errno set).
+    /// Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
     int subscribe(topic_message_t& out, int flags = 0);
 
     // --- sub-specific options ---
@@ -762,9 +756,8 @@ class stream_socket_t {
     send_op_t send(const routing_id_t& target_rid);
 
     // --- receive (two mutually-exclusive modes) ---
-    /// (1) raw recv. Returns 0 on success, -1 on error (errno set).
-    /// EAGAIN/EWOULDBLOCK on dontwait with no data, EBUSY when the socket
-    /// is in packet-callback mode.
+    /// (1) raw recv. Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
+    /// recv_result_t::busy is returned when the socket is in packet-callback mode.
     int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);
     /// (2) framed packet callback (zlink_stream_packet_handler). Wire frame
     /// is big-endian u16 header_size + u32 body_size + header + body.
@@ -1300,8 +1293,8 @@ node ids, Spot ids, or request sequence values back into the API.
 
 `spot_dispatch_info_t` never exposes the native `void* subject` pointer. It is
 a readiness descriptor. For `subscribe_readable` and `routed_readable`, the
-caller drains through the corresponding `spot_t` recv method until `-1` with
-`EAGAIN` / `EWOULDBLOCK` is returned in nonblocking mode. For
+caller drains through the corresponding `spot_t` recv method until
+`recv_result_t::no_data` is returned in nonblocking mode. For
 `timer_readable`, `timer`
 identifies the timer to drain. For `channel_reply_readable`, `channel_dealer`
 and `channel_name` identify the attached channel dealer whose request replies
@@ -1931,8 +1924,10 @@ public:
 
 ##### recv_error_t
 
-Wraps `recv_result_t`. Thrown by `recv` / `subscribe` /
-`receive_subscription_event` / monitor `recv` / timer `recv` failures.
+Wraps `recv_result_t`. Public caller-provided socket recv surfaces return the
+`recv_result_t` integer value directly. `recv_error_t` is still used by
+callback helpers, monitor/timer recv, and internal helpers that expose an
+exception-based surface.
 
 ```cpp
 class recv_error_t : public zlink_error_t {
@@ -2682,10 +2677,10 @@ class spot_t {
 
     // --- subscribe ---
     /// Receive one topic message into caller-provided storage.
-    /// Returns 0 on success, -1 on error (errno set).
+    /// Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
     int subscribe(topic_message_t& out, int flags = 0);
     /// Receive one subscription event into caller-provided storage.
-    /// Returns 0 on success, -1 on error (errno set).
+    /// Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
     int receive_subscription_event(subscription_event_t& out, int flags = 0);
     /// @throws config_error_t
     void set_subscription(const std::string& filter);
@@ -2722,7 +2717,7 @@ class spot_t {
 
     // --- routed receive ---
     /// Receive one routed SPOT message into caller-provided storage.
-    /// Returns 0 on success, -1 on error (errno set).
+    /// Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
     int recv_routed(received_t& out, int flags = 0);
     /// @throws handler_error_t
     template<class Handler>
@@ -2941,7 +2936,7 @@ support `timeout(...)` and either `submit_async()` or `submit(callback)`.
 `on_dispatch_event(...)` is the canonical SPOT readable-notification surface.
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining with
 `subscribe(...)` / `recv_routed(...)` until the underlying recv reports
-`no_data` / `EAGAIN`.
+`no_data`.
 
 ### service::actor_t
 

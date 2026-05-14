@@ -78,7 +78,8 @@ stay focused on signatures.
   `recv_routed_into(...)` / timer recv.
 - `SpotDispatchEvent.SUBSCRIBE_READABLE` and `.ROUTED_READABLE` are readiness
   notifications, not one-event-per-message delivery counters. Binding docs and
-  samples must drain until the recv path reports `EAGAIN`.
+  samples must drain until `subscribe_into(...)` / `recv_routed_into(...)`
+  returns `False`.
 - `Spot.on_routed_receive(...)` and `on_dispatch_event(...)` are mutually
   exclusive on the routed axis.
 - Peer weight is exposed only on `RouterSocket` and `DealerSocket` through
@@ -307,6 +308,8 @@ class SubSocket:
     def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
     def set_subscription(self, topic: str) -> None: ...                          # Raises: ConfigError
     def unset_subscription(self, topic: str) -> None: ...                        # Raises: ConfigError
+    # Deprecated: allocates a fresh TopicMessage per call. Prefer subscribe_into.
+    def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
     # Canonical caller-provided storage subscribe.
     def subscribe_into(self, topic: TopicMessage, *, flags: int = 0) -> bool: ...  # Raises: RecvError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
@@ -415,6 +418,8 @@ class XPubSocket:
     def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
     # Publish (operation builder).
     def publish(self, topic: str) -> SendOp: ...
+    # Deprecated: allocates a fresh SubscriptionEvent per call. Prefer receive_subscription_event_into.
+    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
     def receive_subscription_event_into(self, event: SubscriptionEvent, *, flags: int = 0) -> bool: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
@@ -1516,7 +1521,11 @@ class Spot:
     def request_channel(self, channel_name: str) -> RequestOp: ...
     def set_subscription(self, topic_or_pattern: str) -> None: ...               # Raises: ConfigError
     def unset_subscription(self, topic_or_pattern: str) -> None: ...             # Raises: ConfigError
+    # Deprecated: allocates a fresh TopicMessage per call. Prefer subscribe_into.
+    def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
     def subscribe_into(self, topic: TopicMessage, *, flags: int = 0) -> bool: ...  # Raises: RecvError
+    # Deprecated: allocates a fresh SubscriptionEvent per call. Prefer receive_subscription_event_into.
+    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
     def receive_subscription_event_into(self, event: SubscriptionEvent, *, flags: int = 0) -> bool: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...        # Raises: HandlerError
 
@@ -1530,6 +1539,8 @@ class Spot:
     def reply_to_router(self, peer_rid: RoutingId, request_seq: int) -> ReplyOp: ...
 
     # --- routed receive ---
+    # Deprecated: allocates a fresh Received per call. Prefer recv_routed_into.
+    def recv_routed(self, *, flags: int = 0) -> Received | None: ...             # Raises: RecvError
     def recv_routed_into(self, received: Received, *, flags: int = 0) -> bool: ...  # Raises: RecvError
     def on_routed_receive(self, handler: Callable[[Received], None]) -> None: ...  # Raises: HandlerError
     def on_dispatch_event(self, handler: Callable[[Spot, SpotDispatchInfo], None]) -> None: ...  # Raises: HandlerError
@@ -1590,7 +1601,7 @@ class SpotDispatchInfo:
 
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
 `subscribe_into(...)` / `recv_routed_into(...)` until the binding returns
-`False` or raises `EAGAIN`.
+`False`. Hard recv failures still raise `RecvError`.
 For `CHANNEL_REPLY_READABLE`, `subject_kind` is `CHANNEL_DEALER`; use the
 attached dealer's `get_channel_name()` metadata to identify the channel and
 pass `channel_dealer` to `drain_channel_reply_from(...)`.

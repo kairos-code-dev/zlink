@@ -16,15 +16,20 @@ def main():
                         sub_node.connect_peer(endpoint)
                         sub_spot.set_subscription(b"room:lobby")
                         deadline = time.monotonic() + 5.0
+                        received = zlink.TopicMessage()
                         while time.monotonic() < deadline:
                             pub_spot.publish("room:lobby").message(b"hello-spot").submit()
                             try:
-                                received = sub_spot.subscribe(
+                                has_received = sub_spot.subscribe_into(
+                                    received,
                                     flags=zlink.RecvFlags.DONT_WAIT
                                 )
                             except zlink.RecvError as exc:
                                 if exc.result != zlink.RecvResult.NO_DATA:
                                     raise
+                                time.sleep(0.01)
+                                continue
+                            if not has_received:
                                 time.sleep(0.01)
                                 continue
                             with received:

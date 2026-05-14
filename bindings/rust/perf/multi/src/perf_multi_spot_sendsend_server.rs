@@ -42,12 +42,13 @@ fn setup_tls_client(node: &SpotNode, transport: &str) {
 }
 
 fn control_payload(control_sub: &Spot) -> Option<String> {
-    match control_sub.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-        Ok(Some(message)) => {
+    let mut message = TopicMessage::empty();
+    match control_sub.subscribe(&mut message, RecvFlags::DONT_WAIT) {
+        Ok(true) => {
             let data = common::message_payload(message.parts());
             Some(String::from_utf8_lossy(data).into_owned())
         }
-        Ok(None) => None,
+        Ok(false) => None,
         Err(err) if err.code() == RecvResult::NoData => None,
         Err(err) => panic!("control subscribe failed: {err}"),
     }
@@ -74,8 +75,9 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
 
 fn echo_available(spot: &Spot) {
     loop {
-        match spot.recv_routed_with_flags(RecvFlags::DONT_WAIT) {
-            Ok(Some(received)) => {
+        let mut received = Received::empty();
+        match spot.recv_routed(&mut received, RecvFlags::DONT_WAIT) {
+            Ok(true) => {
                 if received.request_seq().unwrap_or(0) != 0 {
                     continue;
                 }
@@ -87,7 +89,7 @@ fn echo_available(spot: &Spot) {
                     .flags(SendFlags::DONT_WAIT)
                     .submit();
             }
-            Ok(None) => break,
+            Ok(false) => break,
             Err(err) if err.code() == RecvResult::NoData => break,
             Err(err) => {
                 eprintln!("[spot-sendsend-server] recv error: {err}");

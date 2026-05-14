@@ -132,8 +132,9 @@ final class PerfSpotDirectControl implements AutoCloseable {
     }
 
     private String recvPayload() {
-        try (TopicMessage message = sub.subscribe(RecvFlags.DONT_WAIT)) {
-            if (message == null || message.parts().isEmpty()) {
+        try (TopicMessage message = new TopicMessage()) {
+            if (!sub.subscribe(message, RecvFlags.DONT_WAIT)
+                || message.parts().isEmpty()) {
                 return null;
             }
             return message.firstPart().toUtf8String();

@@ -35,20 +35,24 @@ int main ()
 
     zlink::message_t published = detail::make_message (publish_payload);
     topic_spot.publish (topic).message (published).submit ();
-    std::optional<zlink::topic_message_t> inbound;
+    zlink::topic_message_t inbound;
+    bool received_topic = false;
     const std::chrono::steady_clock::time_point subscribe_deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < subscribe_deadline) {
-        inbound = topic_spot.subscribe (ZLINK_DONTWAIT);
-        if (inbound.has_value ())
+        const int rc = topic_spot.subscribe (inbound, ZLINK_DONTWAIT);
+        if (rc == static_cast<int> (zlink::recv_result_t::ok)) {
+            received_topic = true;
             break;
+        }
+        assert (rc == static_cast<int> (zlink::recv_result_t::no_data));
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
-    assert (inbound.has_value ());
-    assert (inbound->topic () == topic);
-    assert (inbound->parts ().size () == 1);
-    assert (inbound->parts ()[0].to_string () == publish_payload);
-    inbound->close ();
+    assert (received_topic);
+    assert (inbound.topic () == topic);
+    assert (inbound.parts ().size () == 1);
+    assert (inbound.parts ()[0].to_string () == publish_payload);
+    inbound.close ();
 
     timer.start (std::chrono::milliseconds (20), 1);
     std::optional<uint64_t> fire_count = timer.recv ();

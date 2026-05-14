@@ -99,7 +99,5 @@ fn main() {
         "gateway actor payload",
     );
 
-    println!(
-        "[actor/gateway] stream payload: \"client-input\" -> actor: \"client-input\""
-    );
+    println!("[actor/gateway] stream payload: \"client-input\" -> actor: \"client-input\"");
 }

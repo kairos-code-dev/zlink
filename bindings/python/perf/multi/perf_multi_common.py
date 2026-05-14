@@ -228,13 +228,16 @@ def publish_control_payload(control_pub, payload, *, timeout_s=None):
 
 def receive_control_payload(control_sub):
     zlink_mod = _require_zlink()
+    message = zlink_mod.TopicMessage()
     try:
-        message = control_sub.subscribe(flags=zlink_mod.RecvFlags.DONT_WAIT)
+        received = control_sub.subscribe_into(
+            message, flags=zlink_mod.RecvFlags.DONT_WAIT
+        )
     except zlink_mod.RecvError as exc:
         if exc.result == zlink_mod.RecvResult.NO_DATA:
             return None
         raise
-    if message is None:
+    if not received:
         return None
     with message:
         parts = message.to_bytes_list()

@@ -128,14 +128,15 @@ func drainSingleSpotUntilStop(
 	msgSize int,
 ) (bool, error) {
 	for {
-		message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+		var message zlink.TopicMessage
+		ok, err := subscriber.Subscribe(&message, zlink.RecvFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				return false, nil
 			}
 			return false, err
 		}
-		if message == nil {
+		if !ok {
 			return false, nil
 		}
 		part, err := message.SinglePartOrError()
@@ -155,14 +156,15 @@ func drainSingleSpotUntilStop(
 func drainSingleSpotProbe(subscriber *zlink.Spot) bool {
 	processed := false
 	for {
-		message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+		var message zlink.TopicMessage
+		ok, err := subscriber.Subscribe(&message, zlink.RecvFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				return processed
 			}
 			perfcommon.Must(err)
 		}
-		if message == nil {
+		if !ok {
 			return processed
 		}
 		processed = true

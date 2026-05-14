@@ -67,7 +67,10 @@ fn hot_paths_use_part_substrate_not_aggregate_calls() {
         .join("\n");
 
     for symbol in REQUIRED_PART_SYMBOLS {
-        assert!(all.contains(symbol), "missing required helper substrate {symbol}");
+        assert!(
+            all.contains(symbol),
+            "missing required helper substrate {symbol}"
+        );
     }
 
     let mut violations = Vec::new();

@@ -563,14 +563,17 @@ class socket_t
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
             if constexpr (std::is_same<socket_type_t, sub_socket_t>::value) {
                 try {
-                    std::optional<topic_message_t> maybe_message =
-                      socket_.subscribe (flags_);
-                    if (!maybe_message.has_value ()) {
+                    const int rc = socket_.subscribe (
+                      topic_message_out_,
+                      static_cast<recv_flags_t> (flags_));
+                    if (rc == static_cast<int> (recv_result_t::ok))
+                        return 0;
+                    if (rc == static_cast<int> (recv_result_t::no_data)) {
                         errno = EAGAIN;
                         return -1;
                     }
-                    topic_message_out_ = std::move (*maybe_message);
-                    return 0;
+                    errno = zlink_errno ();
+                    return -1;
                 }
                 catch (const recv_error_t &err) {
                     errno = err.internal_errno ();

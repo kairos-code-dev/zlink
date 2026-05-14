@@ -793,6 +793,19 @@ class _Lib:
             ],
             ctypes.c_int,
         )
+        self._require(
+            "zlink_spot_subscription_event_recv",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
+                ctypes.POINTER(ctypes.c_int),
+                ctypes.POINTER(ctypes.c_char),
+                ctypes.c_size_t,
+                ctypes.POINTER(ctypes.c_size_t),
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
 
         self._require(
             "zlink_socket_monitor_open",

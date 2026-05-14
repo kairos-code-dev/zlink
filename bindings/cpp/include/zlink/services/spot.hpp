@@ -542,37 +542,30 @@ class spot_t
     }
 
   public:
-    std::optional<topic_message_t> subscribe (recv_flags_t flags_ = recv_flags_t::none)
+    int subscribe (topic_message_t &out_,
+                   recv_flags_t flags_ = recv_flags_t::none)
     {
-        topic_message_t message;
-        const recv_result_t rc = static_cast<recv_result_t> (subscribe_impl (
-          message, flags_));
-        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
-            return std::nullopt;
-        if (rc != recv_result_t::ok)
-            throw recv_error_t (rc, zlink_errno ());
-        return std::optional<topic_message_t> (std::move (message));
+        return subscribe_impl (out_, flags_);
     }
 
-    std::optional<subscription_event_t>
-    receive_subscription_event (recv_flags_t flags_ = recv_flags_t::none)
+    int receive_subscription_event (
+      subscription_event_t &out_,
+      recv_flags_t flags_ = recv_flags_t::none)
     {
-        subscription_event_t event;
         std::string topic;
         routing_id_t source_rid = zlink::detail::unchecked_empty_routing_id ();
         bool subscribed = false;
         const recv_result_t rc = static_cast<recv_result_t> (
           subscription_event_impl (
             source_rid, subscribed, topic, flags_));
-        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
-            return std::nullopt;
         if (rc != recv_result_t::ok)
-            throw recv_error_t (rc, zlink_errno ());
+            return static_cast<int> (rc);
+        out_ = subscription_event_t ();
         if (!zlink::detail::routing_id_empty (source_rid))
-            event.routing_id = source_rid;
-        event.topic = std::move (topic);
-        event.subscribed = subscribed;
-        return std::optional<subscription_event_t> (std::move (event));
+            out_.routing_id = source_rid;
+        out_.topic = std::move (topic);
+        out_.subscribed = subscribed;
+        return static_cast<int> (recv_result_t::ok);
     }
 
     void set_subscription (const std::string &filter_)
@@ -1182,7 +1175,9 @@ class spot_t
         return reply_op_t (std::move (state));
     }
 
-    std::optional<received_t> recv_routed (recv_flags_t flags_ = recv_flags_t::none)
+  private:
+    std::optional<received_t>
+    recv_routed_optional (recv_flags_t flags_ = recv_flags_t::none)
     {
         const zlink_routing_id_t *source_node_rid = NULL;
         const zlink_routing_id_t *source_spot_rid = NULL;
@@ -1319,6 +1314,30 @@ class spot_t
 	          request_seq != 0u ? std::optional<uint64_t> (request_seq)
 	                            : std::nullopt,
 	          std::move (parts), std::move (reply_fn), std::move (send_fn)));
+    }
+
+  public:
+    int recv_routed (received_t &out_,
+                     recv_flags_t flags_ = recv_flags_t::none)
+    {
+        try {
+            std::optional<received_t> received = recv_routed_optional (flags_);
+            if (!received.has_value ())
+                return static_cast<int> (recv_result_t::no_data);
+            out_ = std::move (*received);
+            return static_cast<int> (recv_result_t::ok);
+        }
+        catch (const recv_error_t &err) {
+            return static_cast<int> (err.result ());
+        }
+        catch (const zlink_error_t &err) {
+            errno = err.internal_errno () != 0 ? err.internal_errno () : EFAULT;
+            return -1;
+        }
+        catch (...) {
+            errno = EFAULT;
+            return -1;
+        }
     }
 
     void on_routed_receive (std::function<void(received_t)> handler_)

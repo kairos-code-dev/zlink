@@ -791,6 +791,15 @@ public abstract class Socket implements AutoCloseable {
         return topicPlane.subscribe(flags);
     }
 
+    boolean subscribe(TopicMessage result, ReceiveFlag flags) {
+        Objects.requireNonNull(result, "result");
+        TopicMessage fresh = subscribe(flags);
+        if (fresh == null)
+            return false;
+        result.adoptFrom(fresh);
+        return true;
+    }
+
     Optional<TopicMessage> subscribeNoWait() {
         return topicPlane.subscribeNoWait();
     }
@@ -801,6 +810,16 @@ public abstract class Socket implements AutoCloseable {
 
     SubscriptionEvent receiveSubscriptionEvent(ReceiveFlag flags) {
         return topicPlane.subscriptionEvent(flags);
+    }
+
+    boolean receiveSubscriptionEvent(SubscriptionEvent result,
+                                     ReceiveFlag flags) {
+        Objects.requireNonNull(result, "result");
+        SubscriptionEvent fresh = receiveSubscriptionEvent(flags);
+        if (fresh == null)
+            return false;
+        result.adoptFrom(fresh);
+        return true;
     }
 
     SubscriptionEvent subscriptionEvent(ReceiveFlag flags) {

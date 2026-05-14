@@ -153,11 +153,13 @@ template<typename SpotHandle>
 inline std::optional<zlink::topic_message_t>
 try_subscribe_nowait (SpotHandle &spot_)
 {
-    std::optional<zlink::topic_message_t> message =
-      spot_.subscribe (ZLINK_DONTWAIT);
-    if (!message.has_value ())
+    zlink::topic_message_t message;
+    const int rc = spot_.subscribe (message, ZLINK_DONTWAIT);
+    if (rc == static_cast<int> (zlink::recv_result_t::no_data))
         return std::nullopt;
-    return std::optional<zlink::topic_message_t> (std::move (*message));
+    if (rc != static_cast<int> (zlink::recv_result_t::ok))
+        return std::nullopt;
+    return std::optional<zlink::topic_message_t> (std::move (message));
 }
 
 template<typename Clock, typename Duration>

@@ -366,6 +366,19 @@ func (t *TopicMessage) Parts() []*Message {
 	return t.parts
 }
 
+func (t *TopicMessage) adoptFrom(source *TopicMessage) {
+	if t == nil || source == nil {
+		return
+	}
+	_ = t.Close()
+	t.routingID = source.routingID
+	t.topic = source.topic
+	t.parts = source.parts
+	source.routingID = RoutingID{}
+	source.topic = ""
+	source.parts = nil
+}
+
 func (t *TopicMessage) IsSinglePart() bool {
 	return t != nil && len(t.parts) == 1
 }
@@ -407,6 +420,15 @@ type SubscriptionEvent struct {
 	routingID  RoutingID
 	subscribed bool
 	topic      string
+}
+
+func (s *SubscriptionEvent) adoptFrom(source *SubscriptionEvent) {
+	if s == nil || source == nil {
+		return
+	}
+	s.routingID = source.routingID
+	s.subscribed = source.subscribed
+	s.topic = source.topic
 }
 
 func (s SubscriptionEvent) RoutingID() RoutingID {

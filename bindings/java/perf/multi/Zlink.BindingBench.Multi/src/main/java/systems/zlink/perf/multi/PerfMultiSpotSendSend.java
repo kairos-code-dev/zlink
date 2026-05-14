@@ -317,7 +317,8 @@ final class PerfMultiSpotSendSend {
 
     private static Received recvRoutedNoWait(Spot spot) {
         try {
-            return spot.recvRouted(RecvFlags.DONT_WAIT);
+            Received received = new Received();
+            return spot.recvRouted(received, RecvFlags.DONT_WAIT) ? received : null;
         } catch (RecvException ex) {
             if (ex.getResult() == RecvResult.NO_DATA
                 || ex.getResult() == RecvResult.BUSY) {

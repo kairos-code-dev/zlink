@@ -33,15 +33,12 @@ impl XPubSocket {
         crate::service::socket_publish_op(self.inner.handle, topic)
     }
 
-    pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError> {
-        self.inner.receive_subscription_event()
-    }
-
-    pub fn receive_subscription_event_with_flags(
+    pub fn receive_subscription_event(
         &self,
+        out: &mut SubscriptionEvent,
         flags: RecvFlags,
-    ) -> Result<Option<SubscriptionEvent>, RecvError> {
-        self.inner.receive_subscription_event_with_flags(flags)
+    ) -> Result<bool, RecvError> {
+        self.inner.receive_subscription_event(out, flags)
     }
 
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>

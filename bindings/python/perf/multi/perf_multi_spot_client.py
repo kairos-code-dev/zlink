@@ -135,15 +135,16 @@ def main(argv=None):
                 for event in events:
                     current_spot = event.socket
                     while True:
+                        message = zlink.TopicMessage()
                         try:
-                            message = current_spot.subscribe(
-                                flags=zlink.RecvFlags.DONT_WAIT
+                            has_message = current_spot.subscribe_into(
+                                message, flags=zlink.RecvFlags.DONT_WAIT
                             )
                         except zlink.RecvError as exc:
                             if exc.result == zlink.RecvResult.NO_DATA:
                                 break
                             raise
-                        if message is None:
+                        if not has_message:
                             break
                         with message:
                             parts = message.to_bytes_list()

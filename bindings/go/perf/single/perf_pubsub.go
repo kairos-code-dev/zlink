@@ -100,14 +100,15 @@ func drainSinglePubSubUntilStop(
 	stopAt time.Time,
 ) (bool, error) {
 	for {
-		message, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
+		var message zlink.TopicMessage
+		ok, err := subscriber.Subscribe(&message, zlink.RecvFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				return false, nil
 			}
 			return false, err
 		}
-		if message == nil {
+		if !ok {
 			return false, nil
 		}
 		part, err := message.SinglePartOrError()

@@ -306,11 +306,17 @@ public final class PerfUtil {
     }
 
     public static Optional<TopicMessage> subscribeNoWait(SubSocket socket) {
-        return tryOptional(() -> socket.subscribe(RecvFlags.DONT_WAIT));
+        TopicMessage message = new TopicMessage();
+        return socket.subscribe(message, RecvFlags.DONT_WAIT)
+            ? Optional.of(message)
+            : Optional.empty();
     }
 
     public static Optional<TopicMessage> subscribeNoWait(Spot spot) {
-        return tryOptional(() -> spot.subscribe(RecvFlags.DONT_WAIT));
+        TopicMessage message = new TopicMessage();
+        return spot.subscribe(message, RecvFlags.DONT_WAIT)
+            ? Optional.of(message)
+            : Optional.empty();
     }
 
     public static void applyMonitorOptions(MonitorSocket monitor, Config config) {

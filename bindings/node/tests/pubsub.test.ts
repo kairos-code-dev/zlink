@@ -62,22 +62,23 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
           && clientNode.statusSnapshot().connectedPeerCount > 0) {
         serverSpot.publish(topic).message('payload').submit();
       }
-      let received = null;
+      const received = new zlink.TopicMessage();
       try {
-        received = clientSpot.subscribe(zlink.RecvFlags.DontWait);
+        if (!clientSpot.subscribe(received, zlink.RecvFlags.DontWait)) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          continue;
+        }
       } catch (error) {
         if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
           throw error;
         }
       }
-      if (received) {
-        assert.equal(received.topic, topic);
-        assert.deepEqual(
-          received.parts.map((part) => part.data().toString()),
-          ['payload']
-        );
-        return;
-      }
+      assert.equal(received.topic, topic);
+      assert.deepEqual(
+        received.parts.map((part) => part.data().toString()),
+        ['payload']
+      );
+      return;
       await new Promise((resolve) => setImmediate(resolve));
     }
 
@@ -260,7 +261,8 @@ test('canonical pub/sub surface hides opposite-direction methods', () => {
 
 function subscribeMaybe(socket) {
   try {
-    return socket.subscribe(zlink.RecvFlags.DontWait);
+    const received = new zlink.TopicMessage();
+    return socket.subscribe(received, zlink.RecvFlags.DontWait) ? received : null;
   } catch (error) {
     if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
       return null;
@@ -282,7 +284,8 @@ test('sub sockets receive TopicMessage domain objects and non-blocking receive r
 
   pub.publish('topic').message('payload').submit();
 
-  const received = sub.subscribe();
+  const received = new zlink.TopicMessage();
+  assert.equal(sub.subscribe(received), true);
   assert.equal(received.topic, 'topic');
   assert.ok(received.routingId === null || received.routingId instanceof zlink.RoutingId);
   assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
@@ -305,8 +308,11 @@ test('subscribe returns topic-aware multipart payloads without callback mode', a
   let received = null;
   while (Date.now() < deadline) {
     try {
-      received = sub.subscribe(zlink.RecvFlags.DontWait);
-      break;
+      const candidate = new zlink.TopicMessage();
+      if (sub.subscribe(candidate, zlink.RecvFlags.DontWait)) {
+        received = candidate;
+        break;
+      }
     } catch (error) {
       if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
         throw error;

@@ -71,7 +71,8 @@ int main ()
     spot.set_subscription ("topic:alpha");
     assert (wait_for_spot_ready (node, false, 0u, 10000));
 
-    std::optional<zlink::topic_message_t> inbound;
+    zlink::topic_message_t inbound;
+    bool received = false;
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < deadline) {
@@ -80,14 +81,16 @@ int main ()
         spot.publish ("topic:alpha")
           .message (outbound)
           .submit ();
-        inbound = spot.subscribe (ZLINK_DONTWAIT);
-        if (inbound.has_value ())
+        const int rc = spot.subscribe (inbound, ZLINK_DONTWAIT);
+        if (rc == static_cast<int> (zlink::recv_result_t::ok)) {
+            received = true;
             break;
+        }
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
-    assert (inbound.has_value ());
-    assert (inbound->topic () == "topic:alpha");
-    assert (inbound->parts ().size () == 1);
+    assert (received);
+    assert (inbound.topic () == "topic:alpha");
+    assert (inbound.parts ().size () == 1);
     const std::string received = inbound->parts ()[0].to_string ();
     assert (received == "spot-callback");
     spot.close ();

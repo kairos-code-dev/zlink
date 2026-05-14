@@ -115,7 +115,8 @@ fn pub_sub_roundtrip() {
         .submit()
         .unwrap();
 
-    let topic_msg = sub_sock.subscribe().unwrap();
+    let mut topic_msg = TopicMessage::empty();
+    assert!(sub_sock.subscribe(&mut topic_msg, RecvFlags::NONE).unwrap());
     assert_eq!(topic_msg.topic(), "market.price");
     assert_eq!(topic_msg.parts()[0].as_bytes(), b"price=42.5");
 }
@@ -127,8 +128,9 @@ fn sub_try_subscribe_empty() {
     sub_sock.connect("inproc://beh-sub-try").unwrap();
     sub_sock.set_subscription("").unwrap();
 
-    let result = sub_sock.subscribe_with_flags(RecvFlags::DONT_WAIT);
-    assert!(result.unwrap().is_none());
+    let mut topic_msg = TopicMessage::empty();
+    let result = sub_sock.subscribe(&mut topic_msg, RecvFlags::DONT_WAIT);
+    assert!(!result.unwrap());
 }
 
 #[test]
@@ -166,8 +168,9 @@ fn xpub_try_receive_subscription_event_empty() {
     let xpub = ctx.xpub_socket().unwrap();
     xpub.bind("inproc://beh-xpub-try").unwrap();
 
-    let result = xpub.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
-    assert!(result.unwrap().is_none());
+    let mut event = SubscriptionEvent::empty();
+    let result = xpub.receive_subscription_event(&mut event, RecvFlags::DONT_WAIT);
+    assert!(!result.unwrap());
 }
 
 // ---------------------------------------------------------------------------

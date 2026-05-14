@@ -1303,18 +1303,33 @@ func (s *subscribeSocket) UnsetSubscription(filter string) error {
 	})
 }
 
-func (s *subscribeSocket) Subscribe(flags RecvFlags) (*TopicMessage, error) {
-	return recvTopicMessage(func(rid **C.zlink_routing_id_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+func (s *subscribeSocket) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error) {
+	if out == nil {
+		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+	}
+	fresh, err := recvTopicMessage(func(rid **C.zlink_routing_id_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_subscribe_part(s.raw(), rid, topic, recvTopicBufferCap, topicLen, part, hasMore, recvFlags))
 	}, flags)
+	if err != nil {
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return false, nil
+		}
+		return false, err
+	}
+	out.adoptFrom(fresh)
+	return true, nil
 }
 
 type xpubSubscribeSocket struct {
 	*publishSocket
 }
 
-func (s *xpubSubscribeSocket) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error) {
-	return recvSubscriptionEvent(func(rid *C.zlink_routing_id_t, subscribed *C.int, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
+func (s *xpubSubscribeSocket) ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags) (bool, error) {
+	if out == nil {
+		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+	}
+	fresh, err := recvSubscriptionEvent(func(rid *C.zlink_routing_id_t, subscribed *C.int, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
 		var sourceRID *C.zlink_routing_id_t
 		if err := recvErrorFromResult(C.zlink_xpub_recv_part(s.raw(), &sourceRID, subscribed, topic, recvTopicBufferCap, topicLen, recvFlags)); err != nil {
 			return err
@@ -1326,6 +1341,15 @@ func (s *xpubSubscribeSocket) ReceiveSubscriptionEvent(flags RecvFlags) (*Subscr
 		}
 		return nil
 	}, flags)
+	if err != nil {
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return false, nil
+		}
+		return false, err
+	}
+	out.adoptFrom(fresh)
+	return true, nil
 }
 
 func (s *connectionSocket) setSendReady(handler func()) error {

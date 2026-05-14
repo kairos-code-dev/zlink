@@ -1179,6 +1179,14 @@ function materializeTopicMessage(raw: {
   );
 }
 
+function adoptTopicMessage(result: TopicMessage, raw: {
+  topic: string;
+  parts: MessageSnapshot[];
+  routingId?: Buffer | null;
+}): void {
+  result.adoptFrom(materializeTopicMessage(raw));
+}
+
 class NativeHandle {
   /** @internal */
   protected _native: unknown | null;
@@ -1804,7 +1812,12 @@ class SubscriberSocket extends ConnectableSocket {
       requireNative().subscriptionAt(this.nativeHandle(), index >>> 0) as SubscriptionEntry | null
     );
   }
-  subscribe(flags: RecvFlags = RecvFlags.None): TopicMessage | null {
+  subscribe(result: TopicMessage, flags?: RecvFlags): boolean;
+  subscribe(flags?: RecvFlags): TopicMessage | null;
+  subscribe(resultOrFlags: TopicMessage | RecvFlags = RecvFlags.None,
+            maybeFlags: RecvFlags = RecvFlags.None): TopicMessage | null | boolean {
+    const hasResult = resultOrFlags instanceof TopicMessage;
+    const flags = hasResult ? maybeFlags : resultOrFlags as RecvFlags;
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
@@ -1813,7 +1826,14 @@ class SubscriberSocket extends ConnectableSocket {
     } catch (error) {
       throw recvNativeError(error, flags, 'subscribe failed');
     }
-    return raw ? materializeTopicMessage(raw) : null;
+    if (!raw) {
+      return hasResult ? false : null;
+    }
+    if (hasResult) {
+      adoptTopicMessage(resultOrFlags, raw);
+      return true;
+    }
+    return materializeTopicMessage(raw);
   }
 }
 
@@ -1916,7 +1936,12 @@ export class PubSocket extends PublisherSocket {
 export class XPubSocket extends PublisherSocket {
   readonly options: PubSocketOptions;
   constructor(ctx: Context) { super(ctx, NativeSocketType.XPUB); this.options = PubSocketOptions.create(this); }
-  receiveSubscriptionEvent(flags: RecvFlags = RecvFlags.None): SubscriptionEvent | null {
+  receiveSubscriptionEvent(result: SubscriptionEvent, flags?: RecvFlags): boolean;
+  receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent | null;
+  receiveSubscriptionEvent(resultOrFlags: SubscriptionEvent | RecvFlags = RecvFlags.None,
+                           maybeFlags: RecvFlags = RecvFlags.None): SubscriptionEvent | null | boolean {
+    const hasResult = resultOrFlags instanceof SubscriptionEvent;
+    const flags = hasResult ? maybeFlags : resultOrFlags as RecvFlags;
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
@@ -1925,7 +1950,15 @@ export class XPubSocket extends PublisherSocket {
     } catch (error) {
       throw recvNativeError(error, flags, 'subscription event recv failed');
     }
-    return raw ? SubscriptionEvent.create(raw.topic, raw.subscribed, wrapRoutingId(raw.routingId ?? null)) : null;
+    if (!raw) {
+      return hasResult ? false : null;
+    }
+    const event = SubscriptionEvent.create(raw.topic, raw.subscribed, wrapRoutingId(raw.routingId ?? null));
+    if (hasResult) {
+      resultOrFlags.adoptFrom(event);
+      return true;
+    }
+    return event;
   }
   onSendReady(handler: SocketSendReadyHandler): void {
     handlerCall('send-ready handler registration failed', () => {
@@ -3389,7 +3422,12 @@ export class Spot extends NativeHandle {
       requireNative().subscriptionAt(this._native, index >>> 0) as SubscriptionEntry | null
     );
   }
-  subscribe(flags: RecvFlags = RecvFlags.None): TopicMessage | null {
+  subscribe(result: TopicMessage, flags?: RecvFlags): boolean;
+  subscribe(flags?: RecvFlags): TopicMessage | null;
+  subscribe(resultOrFlags: TopicMessage | RecvFlags = RecvFlags.None,
+            maybeFlags: RecvFlags = RecvFlags.None): TopicMessage | null | boolean {
+    const hasResult = resultOrFlags instanceof TopicMessage;
+    const flags = hasResult ? maybeFlags : resultOrFlags as RecvFlags;
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
@@ -3398,9 +3436,21 @@ export class Spot extends NativeHandle {
     } catch (error) {
       throw recvNativeError(error, flags, 'subscribe failed');
     }
-    return raw ? materializeTopicMessage(raw) : null;
+    if (!raw) {
+      return hasResult ? false : null;
+    }
+    if (hasResult) {
+      adoptTopicMessage(resultOrFlags, raw);
+      return true;
+    }
+    return materializeTopicMessage(raw);
   }
-  receiveSubscriptionEvent(flags: RecvFlags = RecvFlags.None): SubscriptionEvent | null {
+  receiveSubscriptionEvent(result: SubscriptionEvent, flags?: RecvFlags): boolean;
+  receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent | null;
+  receiveSubscriptionEvent(resultOrFlags: SubscriptionEvent | RecvFlags = RecvFlags.None,
+                           maybeFlags: RecvFlags = RecvFlags.None): SubscriptionEvent | null | boolean {
+    const hasResult = resultOrFlags instanceof SubscriptionEvent;
+    const flags = hasResult ? maybeFlags : resultOrFlags as RecvFlags;
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
@@ -3417,11 +3467,19 @@ export class Spot extends NativeHandle {
     } catch (error) {
       throw recvNativeError(error, flags, 'spot subscription event recv failed');
     }
-    return raw ? SubscriptionEvent.create(
+    if (!raw) {
+      return hasResult ? false : null;
+    }
+    const event = SubscriptionEvent.create(
       raw.topic,
       raw.subscribed,
       wrapRoutingId(raw.routingId ?? null)
-    ) : null;
+    );
+    if (hasResult) {
+      resultOrFlags.adoptFrom(event);
+      return true;
+    }
+    return event;
   }
   onSendReady(handler: SpotSendReadyHandler): void {
     handlerCall('spot send-ready handler registration failed', () => {
@@ -3684,15 +3742,20 @@ export class Spot extends NativeHandle {
       throw submitNativeError(error, flags, 'spot replyToRouter failed');
     }
   }
-  recvRouted(flags: RecvFlags = RecvFlags.None): Received | null {
+  recvRouted(result: Received, flags?: RecvFlags): boolean;
+  recvRouted(flags?: RecvFlags): Received | null;
+  recvRouted(resultOrFlags: Received | RecvFlags = RecvFlags.None,
+             maybeFlags: RecvFlags = RecvFlags.None): Received | null | boolean {
+    const hasResult = resultOrFlags instanceof Received;
+    const flags = hasResult ? maybeFlags : resultOrFlags as RecvFlags;
     let raw;
     try {
       raw = requireNative().spotRecvRouted(this._native, flags | 0) as { sourceRid?: Buffer | null; spotRid?: Buffer | null; requestSeq?: bigint | null; parts: MessageSnapshot[] } | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'recvRouted failed');
     }
-    if (!raw) return null;
-    return materializeReceived(
+    if (!raw) return hasResult ? false : null;
+    const received = materializeReceived(
       {
         parts: raw.parts,
         routingId: raw.sourceRid ?? null,
@@ -3722,6 +3785,11 @@ export class Spot extends NativeHandle {
         );
       }
     );
+    if (hasResult) {
+      resultOrFlags._adoptFrom(received);
+      return true;
+    }
+    return received;
   }
   onRoutedReceive(handler: SpotRoutedHandler): void {
     handlerCall('spot routed handler registration failed', () => {

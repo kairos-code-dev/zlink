@@ -33,14 +33,17 @@ SERVER_SPOT_RID = b"SPOT-SENDSEND-SERVER-SPOT"
 
 def _drain_reply(spot, *, expected_msg_size, run_id, active_deadline, latencies, record):
     progressed = False
+    received = zlink.Received()
     while True:
         try:
-            received = spot.recv_routed(flags=zlink.RecvFlags.DONT_WAIT)
+            has_received = spot.recv_routed_into(
+                received, flags=zlink.RecvFlags.DONT_WAIT
+            )
         except zlink.RecvError as exc:
             if exc.result == zlink.RecvResult.NO_DATA:
                 return progressed
             raise
-        if received is None:
+        if not has_received:
             return progressed
         progressed = True
         with received:

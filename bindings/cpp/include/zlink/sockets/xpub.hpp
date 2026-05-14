@@ -22,7 +22,8 @@ class xpub_socket_t : public publisher_socket_t
         base_socket_t::on_send_ready (std::move (handler_));
     }
 
-    std::optional<subscription_event_t> receive_subscription_event (
+    int receive_subscription_event (
+      subscription_event_t &out_,
       recv_flags_t flags_ = recv_flags_t::none)
     {
         subscription_event_t event;
@@ -51,12 +52,9 @@ class xpub_socket_t : public publisher_socket_t
             event.topic.assign (topic_buffer.data (), topic_size);
         }
 
-        const recv_result_t result = static_cast<recv_result_t> (rc);
-        if (result == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
-            return std::nullopt;
-        if (result != recv_result_t::ok)
-            throw recv_error_t (result, zlink_errno ());
-        return std::optional<subscription_event_t> (std::move (event));
+        if (rc == ZLINK_RECV_OK)
+            out_ = std::move (event);
+        return static_cast<int> (rc);
     }
 
     pub_socket_options_t options ()

@@ -23,11 +23,9 @@ fn eagain_sub_returns_none() {
     sub.connect("inproc://rf-sub-eagain-target").unwrap();
     sub.set_subscription("").unwrap();
 
-    let result = sub.subscribe_with_flags(RecvFlags::DONT_WAIT);
-    assert!(
-        result.unwrap().is_none(),
-        "EAGAIN on sub must return Ok(None)"
-    );
+    let mut message = TopicMessage::empty();
+    let result = sub.subscribe(&mut message, RecvFlags::DONT_WAIT);
+    assert!(!result.unwrap(), "EAGAIN on sub must return Ok(false)");
 }
 
 #[test]
@@ -36,11 +34,9 @@ fn eagain_xpub_subscription_event_returns_none() {
     let xpub = ctx.xpub_socket().unwrap();
     xpub.bind("inproc://rf-xpub-eagain").unwrap();
 
-    let result = xpub.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
-    assert!(
-        result.unwrap().is_none(),
-        "EAGAIN on xpub must return Ok(None)"
-    );
+    let mut event = SubscriptionEvent::empty();
+    let result = xpub.receive_subscription_event(&mut event, RecvFlags::DONT_WAIT);
+    assert!(!result.unwrap(), "EAGAIN on xpub must return Ok(false)");
 }
 
 #[test]

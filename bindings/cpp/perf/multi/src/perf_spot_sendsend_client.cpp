@@ -504,6 +504,8 @@ bool run_client (const std::string &lib_name,
     }
     if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;
+    perf::multi::emit_spot_node_auto_hwm_snapshot (control_node, transport, 64);
+    perf::multi::emit_spot_node_auto_hwm_snapshot (data_node, transport, 64);
 
     std::thread stdin_thread (stdin_watcher);
     int rc = 0;

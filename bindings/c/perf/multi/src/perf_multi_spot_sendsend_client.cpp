@@ -537,6 +537,8 @@ bool create_control_spot(ctx_guard_t &ctx,
                       << zlink_errno() << std::endl;
         return false;
     }
+    apply_benchmark_auto_hwm_msg_unit(
+      state->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
     state->control_pub = perf_create_default_spot_handle(state->control_node);
     state->control_sub = perf_create_default_spot_handle(state->control_node);
     if (!state->control_pub || !state->control_sub
@@ -596,6 +598,8 @@ bool create_spot_slots(ctx_guard_t &ctx,
                       << zlink_errno() << std::endl;
         return false;
     }
+    apply_benchmark_auto_hwm_msg_unit(
+      state->data_node, ZLINK_SOCKET_DEALER, max_msg_size);
     const std::string local_endpoint =
       bind_client_spot_endpoint(state->data_node, transport, 0);
     if (local_endpoint.empty()) {

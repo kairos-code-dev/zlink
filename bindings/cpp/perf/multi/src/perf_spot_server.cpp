@@ -450,6 +450,11 @@ bool perf_spot_server (const std::string &lib_name,
         return false;
     if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;
+    const size_t snapshot_msg_size = msg_sizes.empty () ? msg_size_ : msg_sizes[0];
+    perf::multi::emit_spot_node_auto_hwm_snapshot (
+      node, transport_, snapshot_msg_size);
+    perf::multi::emit_spot_node_auto_hwm_snapshot (
+      control_node, transport_, snapshot_msg_size);
 
     const int base_port = settings.server_bind_port > 0
                             ? settings.server_bind_port

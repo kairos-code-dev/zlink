@@ -276,6 +276,8 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
         return false;
 
     (void) perf::multi::recalculate_auto_hwm (ctx);
+    perf::multi::emit_spot_node_auto_hwm_snapshot (data_node, transport, 64);
+    perf::multi::emit_spot_node_auto_hwm_snapshot (control_node, transport, 64);
 
     const bench_multi_cpu_sample_t resource_probe_start =
       perf::multi::start_resource_probe ();

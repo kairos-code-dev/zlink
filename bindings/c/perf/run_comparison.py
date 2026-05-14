@@ -1472,9 +1472,6 @@ def detect_special_status(stdout, expected_lib, expected_pattern, expected_trans
 
 
 def pattern_default_clients(pattern_name, transport=None):
-    normalized = normalize_multi_pattern_name(pattern_name)
-    if normalized == "SPOT_SENDSEND":
-        return 32
     if pattern_name in STREAM_VARIANT_PATTERNS:
         base = 10000
         tr = (transport or "").strip().lower()
@@ -2103,6 +2100,27 @@ def run_sizes_test_stream_shared(
             except Exception:
                 pass
 
+        def wait_for_control_connected_forward(timeout_ms):
+            if not use_control_plane or control_connected[0]:
+                return True
+            deadline = time.monotonic() + (max(1, timeout_ms) / 1000.0)
+            while time.monotonic() < deadline and not control_connected[0]:
+                try:
+                    stream_name, queued_line = out_queue.get(timeout=0.02)
+                except queue.Empty:
+                    if server_proc.poll() is not None:
+                        break
+                    continue
+                if queued_line is None:
+                    continue
+                if stream_name == "stdout":
+                    append_server_stdout_line(queued_line)
+                else:
+                    server_stderr_buffer.append(queued_line)
+                    if debug_transitions:
+                        sys.stderr.write(f"[server] {queued_line}")
+            return control_connected[0]
+
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
             emit_auto_hwm_detail_line(line)
@@ -2116,6 +2134,16 @@ def run_sizes_test_stream_shared(
                         server_proc.stdin.flush()
                 except Exception:
                     pass
+                if not wait_for_control_connected_forward(ready_timeout_ms):
+                    try:
+                        if client_proc[0] and client_proc[0].stdin:
+                            client_proc[0].stdin.write(
+                                f"CONTROL_CONNECTED,{client_endpoint}\n"
+                            )
+                            client_proc[0].stdin.flush()
+                            control_connected[0] = True
+                    except Exception:
+                        pass
                 return
             ready_size = parse_client_ready_size(line)
             if ready_size is not None:
@@ -2634,6 +2662,27 @@ def run_sizes_test_split(
             except Exception:
                 pass
 
+        def wait_for_control_connected_forward(timeout_ms):
+            if not use_control_plane or control_connected[0]:
+                return True
+            deadline = time.monotonic() + (max(1, timeout_ms) / 1000.0)
+            while time.monotonic() < deadline and not control_connected[0]:
+                try:
+                    stream_name, queued_line = out_queue.get(timeout=0.02)
+                except queue.Empty:
+                    if server_proc.poll() is not None:
+                        break
+                    continue
+                if queued_line is None:
+                    continue
+                if stream_name == "stdout":
+                    append_server_stdout_line(queued_line)
+                else:
+                    server_stderr_buffer.append(queued_line)
+                    if debug_transitions:
+                        sys.stderr.write(f"[server] {queued_line}")
+            return control_connected[0]
+
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
             emit_auto_hwm_detail_line(line)
@@ -2647,6 +2696,16 @@ def run_sizes_test_split(
                         server_proc.stdin.flush()
                 except Exception:
                     pass
+                if not wait_for_control_connected_forward(ready_timeout_ms):
+                    try:
+                        if client_proc[0] and client_proc[0].stdin:
+                            client_proc[0].stdin.write(
+                                f"CONTROL_CONNECTED,{client_endpoint}\n"
+                            )
+                            client_proc[0].stdin.flush()
+                            control_connected[0] = True
+                    except Exception:
+                        pass
                 return
             ready_size = parse_client_ready_size(line)
             if ready_size is not None:

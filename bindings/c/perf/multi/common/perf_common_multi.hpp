@@ -103,8 +103,6 @@ inline int resolve_default_clients (const char *pattern)
     const std::string normalized = normalize_multi_pattern_name (pattern);
     if (normalized == "STREAM")
         return 10000;
-    if (normalized == "SPOT_SENDSEND")
-        return 32;
 
     return 100;
 }

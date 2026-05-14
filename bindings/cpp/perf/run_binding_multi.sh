@@ -1189,7 +1189,7 @@ for raw_pattern in "${PATTERNS[@]}"; do
 
   pattern_clients="${CLIENTS}"
   if [[ -z "${pattern_clients}" ]]; then
-    if [[ "${pattern}" == STREAM_* ]]; then
+    if [[ "${pattern}" == "STREAM" || "${pattern}" == STREAM_* ]]; then
       pattern_clients="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
     else
       pattern_clients="${EFFECTIVE_DEFAULT_CLIENTS}"

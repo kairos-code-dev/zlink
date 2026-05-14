@@ -169,7 +169,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             ):
                 os.environ.pop(key, None)
             self.assertEqual(RC.pattern_default_clients("DEALER_DEALER"), 100)
-            self.assertEqual(RC.pattern_default_clients("SPOT_SENDSEND"), 32)
+            self.assertEqual(RC.pattern_default_clients("SPOT_SENDSEND"), 100)
             self.assertEqual(RC.pattern_default_clients("STREAM"), 10000)
             self.assertEqual(RC.pattern_default_hwm("DEALER_DEALER"), 0)
             self.assertEqual(RC.pattern_default_hwm("STREAM"), 0)

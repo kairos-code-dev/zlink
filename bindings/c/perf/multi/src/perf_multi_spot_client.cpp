@@ -1004,6 +1004,8 @@ bool create_control_spot(ctx_guard_t &ctx,
             zlink_spot_node_destroy(&state->control_node);
         return false;
     }
+    apply_benchmark_auto_hwm_msg_unit(
+      state->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
     if (!apply_benchmark_spot_node_hwm(
           state->control_node, settings.hwm, true, true)) {
         zlink_spot_node_destroy(&state->control_node);
@@ -1053,14 +1055,6 @@ bool create_control_spot(ctx_guard_t &ctx,
         }
         return false;
     }
-    if (!perf_multi_spot_control::publish_connected(state->control_pub,
-                                                    k_topic)) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-client] control connected publish failed"
-                      << " err=" << zlink_errno() << std::endl;
-        }
-        return false;
-    }
     state->control_connected.store(true, std::memory_order_release);
 
     std::cout << k_control_ready_prefix << state->control_endpoint << std::endl;
@@ -1105,6 +1099,8 @@ bool create_spot_slots(ctx_guard_t &ctx,
                 zlink_spot_node_destroy(&state->data_node);
             return false;
         }
+        apply_benchmark_auto_hwm_msg_unit(
+          state->data_node, ZLINK_SOCKET_DEALER, max_msg_size);
         if (!apply_benchmark_spot_node_hwm(
               state->data_node, settings.hwm, true, true)) {
             g_last_spot_slot_failure =

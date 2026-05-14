@@ -554,11 +554,12 @@ inline bool publish_control_payload(void *control_pub,
             return false;
         std::memcpy(zlink_msg_data(&part), payload.data(), payload.size());
 
-        const int rc = perf_zlink_publish_parts (control_pub,
-                                     topic,
-                                     &part,
-                                     1,
-                                     static_cast<zlink_send_flags_t>(0));
+        const int rc = perf_zlink_spot_publish_parts (
+          control_pub,
+          topic,
+          &part,
+          1,
+          static_cast<zlink_send_flags_t>(0));
         const int saved_errno = rc == 0 ? 0 : errno;
         if (rc == 0)
             return true;
@@ -615,13 +616,14 @@ inline bool receive_control_payload(void *control_sub,
     char topic[256];
     size_t topic_len = sizeof(topic) - 1;
     const int rc =
-      perf_zlink_subscribe_parts (control_sub,
-                      NULL,
-                      &parts,
-                      &part_count,
-                      topic,
-                      &topic_len,
-                      static_cast<zlink_recv_flags_t>(ZLINK_DONTWAIT));
+      perf_zlink_spot_subscribe_parts (
+        control_sub,
+        NULL,
+        &parts,
+        &part_count,
+        topic,
+        &topic_len,
+        static_cast<zlink_recv_flags_t>(ZLINK_DONTWAIT));
     if (rc != 0) {
         const int err = zlink_errno() != 0 ? zlink_errno() : errno;
         if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK

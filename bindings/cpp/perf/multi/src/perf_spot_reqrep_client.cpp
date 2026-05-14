@@ -398,6 +398,8 @@ class spot_reqrep_client_bench_t
         }
         if (!perf::multi::recalculate_auto_hwm (_ctx))
             return false;
+        perf::multi::emit_spot_node_auto_hwm_snapshot (
+          *_data_node, _transport, _msg_size);
 
         // Register every slot spot in a single poller so the user thread
         // can wait once for any reply readiness signal.
@@ -666,6 +668,9 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
     catch (const std::exception &) {
         return false;
     }
+    (void) perf::multi::recalculate_auto_hwm (control_ctx);
+    perf::multi::emit_spot_node_auto_hwm_snapshot (
+      control_node, transport, 64);
     std::cout << "CLIENT_CONTROL_ENDPOINT," << local_control_endpoint
               << std::endl;
 

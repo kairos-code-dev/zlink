@@ -503,6 +503,10 @@ class spot_client_bench_t
         _control_channel_name = k_control_service;
         if (!perf::multi::recalculate_auto_hwm (_ctx))
             return false;
+        const size_t snapshot_msg_size =
+          _msg_sizes.empty () ? static_cast<size_t> (64) : _msg_sizes[0];
+        perf::multi::emit_spot_node_auto_hwm_snapshot (
+          *_control_node, _transport, snapshot_msg_size);
         std::cout << "CLIENT_CONTROL_ENDPOINT," << local_control_endpoint
                   << std::endl;
         return true;
@@ -545,6 +549,10 @@ class spot_client_bench_t
             return false;
         if (!perf::multi::recalculate_auto_hwm (_ctx))
             return false;
+        const size_t snapshot_msg_size =
+          _msg_sizes.empty () ? static_cast<size_t> (64) : _msg_sizes[0];
+        perf::multi::emit_spot_node_auto_hwm_snapshot (
+          *_data_node, _transport, snapshot_msg_size);
         return !_slots.empty ();
     }
 

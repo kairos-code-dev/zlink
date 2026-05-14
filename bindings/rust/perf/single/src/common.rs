@@ -461,7 +461,7 @@ pub fn handle_recv(
     }
 }
 
-/// Send the stop token once via the supplied closure with bounded retry to
+/// Send the stop token once via the supplied closure with bounded attempts to
 /// ride through transient backpressure / not-connected races.
 ///
 /// The closure performs a blocking send and returns `Ok(())` on success.

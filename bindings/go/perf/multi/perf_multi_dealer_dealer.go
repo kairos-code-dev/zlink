@@ -269,10 +269,10 @@ func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
 }
 
 // sendMultiDealerStopToken pushes the wire-level stop token through the
-// dealer socket. Bounded retry through transient backpressure mirrors
+// dealer socket. Bounded attempts through transient backpressure mirror
 // the cpp / java / dotnet implementations.
 func sendMultiDealerStopToken(socket *zlink.DealerSocket) {
-	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
+	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		sent, err := socket.Send().Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
 		if err == nil && sent {
 			return

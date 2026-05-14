@@ -85,7 +85,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 			}
 		}
 		// PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
-		// stop token. Bounded retry through transient backpressure so
+		// stop token. Bounded attempts through transient backpressure so
 		// the subscriber always observes the terminator.
 		sendSpotStopToken(publisher)
 	}()
@@ -171,9 +171,9 @@ func drainSingleSpotProbe(subscriber *zlink.Spot) bool {
 }
 
 // sendSpotStopToken pushes the wire-level stop token onto the bench
-// topic. Bounded retry through transient backpressure.
+// topic with bounded attempts through transient backpressure.
 func sendSpotStopToken(publisher *zlink.Spot) {
-	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
+	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		_, err := publisher.Publish(singleSpotTopic).Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
 		if err == nil {
 			return

@@ -285,7 +285,7 @@ func drainMultiPubSubAvailable(
 }
 
 func sendMultiPubSubStopToken(publisher *zlink.PubSocket) {
-	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
+	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		sent, err := publisher.Publish("bench").Message(perfcommon.NewMessage(perfcommon.StopToken)).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err == nil && sent {
 			return

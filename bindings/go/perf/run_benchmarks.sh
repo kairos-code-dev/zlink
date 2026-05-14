@@ -410,44 +410,18 @@ progress_case_row() {
   local size="$2"
   local case_log="$3"
   if grep -Eq '^UNSUPPORTED,' "${case_log}"; then
-    printf '      | %-8s | %16s | %12s | %12s | %12s | %12s |\n' "${size}B" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED" "UNSUPPORTED"
+    python3 "${PERF_REPORT_PY}" status-row --suite single --size "$size" --status unsupported
     return
   fi
   if grep -Eq '^SKIP,' "${case_log}"; then
-    printf '      | %-8s | %16s | %12s | %12s | %12s | %12s |\n' "${size}B" "SKIP" "SKIP" "SKIP" "SKIP" "SKIP"
+    python3 "${PERF_REPORT_PY}" status-row --suite single --size "$size" --status skip
     return
   fi
-  python3 - "$pattern" "$size" "$case_log" <<'PY'
-import sys
-
-pattern, size, path = sys.argv[1], sys.argv[2], sys.argv[3]
-metrics = {}
-with open(path, "r", encoding="utf-8", errors="replace") as fh:
-    for raw in fh:
-        parts = raw.strip().split(",")
-        if len(parts) != 7 or parts[0] != "RESULT" or parts[1] != "current":
-            continue
-        if parts[2] != pattern or parts[4] != size:
-            continue
-        metrics[parts[5]] = parts[6]
-
-required = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
-if not all(key in metrics for key in required):
-    print(f"      | {size + 'B':<8} | {'FAIL':>16} | {'FAIL':>12} | {'FAIL':>12} | {'FAIL':>12} | {'FAIL':>12} |")
-    raise SystemExit(0)
-
-unit = "Kmsg/s"
-throughput = float(metrics["throughput"]) / 1000.0
-bandwidth = float(metrics["bandwidth"])
-latency = float(metrics["latency"])
-latency_p95 = float(metrics["latency_p95"])
-latency_p99 = float(metrics["latency_p99"])
-throughput_text = f"{throughput:7.2f} {unit}"
-print(
-    f"      | {size + 'B':<8} | {throughput_text:>16} | {bandwidth:8.2f} MB/s |"
-    f" {latency:9.3f} ms | {latency_p95:9.3f} ms | {latency_p99:9.3f} ms |"
-)
-PY
+  python3 "${PERF_REPORT_PY}" progress-case-row \
+    --suite single \
+    --pattern "$pattern" \
+    --size "$size" \
+    --case-log "$case_log"
 }
 
 count_result_lines() {
@@ -462,80 +436,7 @@ count_result_lines() {
 }
 
 render_tables() {
-  python3 - "$TMP_DIR" <<'PY'
-from collections import defaultdict
-import os
-import re
-import statistics
-import sys
-
-tmp_dir = sys.argv[1]
-metrics = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
-echo_patterns = set()
-rows = defaultdict(lambda: defaultdict(list))
-for entry in os.listdir(tmp_dir):
-    if not entry.endswith(".log"):
-        continue
-    path = os.path.join(tmp_dir, entry)
-    with open(path, "r", encoding="utf-8") as fh:
-        for raw in fh:
-            parts = raw.strip().split(",")
-            if len(parts) != 7 or parts[0] != "RESULT" or parts[1] != "current":
-                continue
-            pattern, transport, size, metric, value = parts[2], parts[3], parts[4], parts[5], parts[6]
-            if metric not in metrics:
-                continue
-            try:
-                rows[(pattern, transport, int(size))][metric].append(float(value))
-            except ValueError:
-                continue
-
-by_pattern = defaultdict(list)
-for key, metric_values in rows.items():
-    values = {}
-    for metric in metrics:
-        samples = metric_values.get(metric)
-        if not samples:
-            break
-        values[metric] = statistics.median(samples)
-    if len(values) != len(metrics):
-        continue
-    pattern, transport, size = key
-    by_pattern[pattern].append((transport, size, values))
-
-printed_first_pattern = False
-for pattern in sorted(by_pattern):
-    if printed_first_pattern:
-        print()
-        print("===============================================================================")
-        print()
-    printed_first_pattern = True
-    direction = "echo" if pattern in echo_patterns else "one-way"
-    print(f"## PATTERN: {pattern} ({direction})")
-    print(f"  > Benchmarking current for {pattern}...")
-    transports = defaultdict(list)
-    for transport, size, values in by_pattern[pattern]:
-        transports[transport].append((size, values))
-    for transport in sorted(transports):
-        print(f"    Testing {transport}:")
-        print("      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
-        print("      |----------|------------------|--------------|--------------|--------------|--------------|")
-        for size, values in sorted(transports[transport]):
-            if not all(metric in values for metric in metrics):
-                continue
-            unit = "Kops/s" if pattern in echo_patterns else "Kmsg/s"
-            throughput_text = f"{values['throughput'] / 1000.0:7.2f} {unit}"
-            print(
-                f"      | {str(size) + 'B':<8}"
-                f" | {throughput_text:>16}"
-                f" | {values['bandwidth']:8.2f} MB/s"
-                f" | {values['latency']:9.3f} ms"
-                f" | {values['latency_p95']:9.3f} ms"
-                f" | {values['latency_p99']:9.3f} ms |"
-            )
-        print(f"    Testing {transport}: Done")
-    print()
-PY
+  python3 "${PERF_REPORT_PY}" render-log-tables --suite single --tmp-dir "$TMP_DIR"
 }
 
 {

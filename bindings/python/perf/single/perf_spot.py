@@ -33,7 +33,7 @@ TOPIC = "bench.topic"
 
 
 def _spot_publish_blocking(spot, topic, payload):
-    """Blocking spot publish that retries through transient backpressure."""
+    """Blocking spot publish with bounded transient-backpressure attempts."""
 
     for _ in range(100):
         try:

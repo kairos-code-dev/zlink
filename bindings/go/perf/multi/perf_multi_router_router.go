@@ -386,10 +386,10 @@ func startMultiRouterEchoServer(server *zlink.RouterSocket) (chan struct{}, chan
 }
 
 // sendMultiRouterStopToken pushes the wire-level stop token through the
-// supplied router socket addressed to the server. Bounded retry through
+// supplied router socket addressed to the server. Bounded attempts through
 // transient backpressure.
 func sendMultiRouterStopToken(socket *zlink.RouterSocket, serverID zlink.RoutingID) {
-	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
+	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		sent, err := socket.SendTo(serverID).Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
 		if err == nil && sent {
 			return

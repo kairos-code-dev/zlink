@@ -321,227 +321,25 @@ for pat in "${PATTERNS[@]}"; do
     done
 done
 
-python3 - "${TMP_METRICS}" "${TMP_CASES}" "${RESULTS_FILE}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
-  "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${OUTPUT_FILE}" "${PIN_CPU}" "${IO_THREADS}" \
-  "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" "${SECONDS}" \
-  "${PERF_REPORT_PY}" <<'PY'
-import csv
-import math
-import os
-import sys
-from collections import defaultdict
-
-metrics_path, cases_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, output_path, pin_cpu, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, elapsed_seconds, perf_report_path = sys.argv[1:]
-sys.path.insert(0, os.path.dirname(perf_report_path))
-from perf_report import SINGLE_TABLE_HEADER_LINES, single_auto_hwm_detail_lines
-runs = int(runs)
-required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
-rows = defaultdict(lambda: defaultdict(list))
-cases = {}
-patterns = []
-pattern_transports = defaultdict(list)
-pattern_sizes = defaultdict(list)
-
-with open(metrics_path, newline="", encoding="utf-8") as f:
-    reader = csv.reader(f)
-    for pattern, transport, size, run, metric, value in reader:
-        key = (pattern, transport, int(size))
-        if pattern not in patterns:
-            patterns.append(pattern)
-        if transport not in pattern_transports[pattern]:
-            pattern_transports[pattern].append(transport)
-        if int(size) not in pattern_sizes[pattern]:
-            pattern_sizes[pattern].append(int(size))
-        try:
-            rows[key][metric].append(float(value))
-        except ValueError:
-            rows[key][metric].append(math.nan)
-
-with open(cases_path, newline="", encoding="utf-8") as f:
-    reader = csv.reader(f)
-    for pattern, transport, size, status, reason in reader:
-        size = int(size)
-        cases[(pattern, transport, size)] = (status, reason)
-        if pattern not in patterns:
-            patterns.append(pattern)
-        if transport not in pattern_transports[pattern]:
-            pattern_transports[pattern].append(transport)
-        if size not in pattern_sizes[pattern]:
-            pattern_sizes[pattern].append(size)
-
-for pattern in pattern_sizes:
-    pattern_sizes[pattern].sort()
-
-def median(values):
-    usable = [v for v in values if not math.isnan(v)]
-    if not usable:
-        return math.nan
-    usable.sort()
-    mid = len(usable) // 2
-    if len(usable) % 2:
-        return usable[mid]
-    return (usable[mid - 1] + usable[mid]) / 2.0
-
-def fmt_rate(value):
-    return "N/A" if math.isnan(value) else f"{value / 1000.0:.2f}"
-
-def fmt_bandwidth(value):
-    return "N/A" if math.isnan(value) else f"{value:.2f} MB/s"
-
-def fmt_latency_ms(value):
-    return "N/A" if math.isnan(value) else f"{value:.3f} ms"
-
-def fmt_metric(value):
-    return "N/A" if math.isnan(value) else f"{value:.3f}"
-
-expected = 0
-actual = 0
-lines = []
-result_lines = []
-failures = []
-
-def emit(line=""):
-    lines.append(line)
-
-def emit_effective_options(section):
-    emit(f"## Effective Options ({section})")
-    emit("- lang: rust")
-    emit("- suite: single")
-    emit(f"- runs: {runs}")
-    emit(f"- duration_seconds: {duration}")
-    emit("- timeout_seconds: 30")
-    emit(f"- io_threads: {io_threads or '1'}")
-    emit(f"- hwm: {hwm or 'auto-hwm'}")
-    emit(f"- sndhwm: {send_hwm or hwm or 'auto-hwm'}")
-    emit(f"- rcvhwm: {recv_hwm or hwm or 'auto-hwm'}")
-    emit("- sndbuf: auto-hwm")
-    emit("- rcvbuf: auto-hwm")
-    emit(f"- sndtimeo_ms: {sndtimeo_ms}")
-    emit(f"- rcvtimeo_ms: {rcvtimeo_ms}")
-    emit("- ctx_auto_hwm_enable: core-default")
-    emit("- ctx_auto_hwm_profile: balanced")
-    emit(f"- patterns: {pattern_csv}")
-    emit(f"- transports: {transports_csv}")
-    emit(f"- msg_sizes: {msg_sizes_csv}")
-    if section == "result":
-        emit("")
-
-emit_effective_options("start")
-
-def pattern_direction(pattern):
-    return "one-way"
-
-def rate_unit(pattern):
-    return "Kops/s" if pattern_direction(pattern) == "echo" else "Kmsg/s"
-
-def emit_table_header():
-    for header in SINGLE_TABLE_HEADER_LINES:
-        emit(header)
-
-def metric_value_for_run(key, metric, run_index):
-    values = rows[key].get(metric, [])
-    if run_index < len(values):
-        return values[run_index]
-    return math.nan
-
-def emit_case_row(pattern, size, metric_values):
-    throughput = f"{fmt_rate(metric_values['throughput']):>8} {rate_unit(pattern)}"
-    emit(
-        f"      | {str(size) + 'B':<8} | {throughput:>16} | "
-        f"{fmt_bandwidth(metric_values['bandwidth']):>12} | "
-        f"{fmt_latency_ms(metric_values['latency']):>12} | "
-        f"{fmt_latency_ms(metric_values['latency_p95']):>12} | "
-        f"{fmt_latency_ms(metric_values['latency_p99']):>12} |"
-    )
-
-for pattern_index, pattern in enumerate(patterns):
-    if pattern_index:
-        emit("===============================================================================")
-        emit("")
-    emit(f"## PATTERN: {pattern} ({pattern_direction(pattern)})")
-    emit(f"  > Benchmarking current for {pattern}...")
-    for transport in pattern_transports[pattern]:
-        emit(f"    Testing {transport}:")
-        if runs > 1:
-            for run_index in range(runs):
-                emit(f"      run {run_index + 1}/{runs}:")
-                for header in SINGLE_TABLE_HEADER_LINES:
-                    emit(f"        {header}")
-                for size in pattern_sizes[pattern]:
-                    key = (pattern, transport, size)
-                    status, _reason = cases.get(key, ("fail", "missing_case_status"))
-                    if status == "unsupported":
-                        emit(
-                            f"        | {size}B | {status.upper()} | {status.upper()} | "
-                            f"{status.upper()} | {status.upper()} | {status.upper()} |"
-                        )
-                        continue
-                    metric_values = {
-                        metric: metric_value_for_run(key, metric, run_index)
-                        for metric in required_metrics
-                    }
-                    if any(math.isnan(value) for value in metric_values.values()):
-                        emit(f"        | {size}B | FAIL | FAIL | FAIL | FAIL | FAIL |")
-                    else:
-                        emit_case_row(pattern, size, metric_values)
-            emit("      median:")
-        for header in SINGLE_TABLE_HEADER_LINES:
-            emit(f"      {header}")
-        for size in pattern_sizes[pattern]:
-            key = (pattern, transport, size)
-            status, reason = cases.get(key, ("fail", "missing_case_status"))
-            if status == "unsupported":
-                emit(
-                    f"      | {size}B | {status.upper()} | {status.upper()} | "
-                    f"{status.upper()} | {status.upper()} | {status.upper()} |"
-                )
-                continue
-
-            expected += 5
-            metric_values = {metric: median(rows[key].get(metric, [])) for metric in required_metrics}
-            complete_case = all(len(rows[key].get(metric, [])) == runs for metric in required_metrics)
-            if complete_case:
-                actual += 5
-                emit_case_row(pattern, size, metric_values)
-                for metric in required_metrics:
-                    result_lines.append(
-                        f"RESULT,current,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
-                    )
-            else:
-                emit("      | {}B | FAIL | FAIL | FAIL | FAIL | FAIL |".format(size))
-                failures.append(f"{pattern} current {transport} {size}B: {reason or 'missing_result_lines'}")
-        emit(f"    Testing {transport}: Done")
-    emit("")
-
-for line in single_auto_hwm_detail_lines(patterns, [item for item in msg_sizes_csv.split(",") if item]):
-    emit(line)
-emit("")
-emit_effective_options("result")
-emit("## Result Data")
-for line in result_lines:
-    emit(line)
-emit("")
-emit("## Completion")
-emit(f"- status: {'complete' if expected == actual else 'partial'}")
-emit(f"- expected_result_lines: {expected}")
-emit(f"- actual_result_lines: {actual}")
-if failures:
-    emit("")
-    emit("## Failures")
-    for failure in failures:
-        emit(f"- {failure}")
-status = 'complete' if expected == actual else 'partial'
-emit("")
-emit(f"Saved result file: {report_path} (status={status})")
-
-text = "\n".join(lines) + "\n"
-with open(report_path, "w", encoding="utf-8") as f:
-    f.write(text)
-if output_path:
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(text)
-sys.stdout.write(text)
-sys.exit(0 if expected == actual else 1)
-PY
+python3 "${PERF_REPORT_PY}" render-single \
+  --metrics "${TMP_METRICS}" \
+  --cases "${TMP_CASES}" \
+  --report "${RESULTS_FILE}" \
+  --patterns "${PATTERN}" \
+  --transports "${TRANSPORTS}" \
+  --msg-sizes "${MSG_SIZES}" \
+  --runs "${RUNS}" \
+  --duration "${DURATION}" \
+  --results-tag "${RESULTS_TAG}" \
+  --output "${OUTPUT_FILE}" \
+  --pin-cpu "${PIN_CPU}" \
+  --io-threads "${IO_THREADS}" \
+  --hwm "${HWM}" \
+  --send-hwm "${SEND_HWM}" \
+  --recv-hwm "${RECV_HWM}" \
+  --sndtimeo-ms "${SNDTIMEO_MS}" \
+  --rcvtimeo-ms "${RCVTIMEO_MS}" \
+  --elapsed-seconds "${SECONDS}" \
+  --lang rust
 
 prune_reports "${REPORT_DIR}"

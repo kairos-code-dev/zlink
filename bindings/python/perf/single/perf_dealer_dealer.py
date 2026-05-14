@@ -29,7 +29,7 @@ from perf_common import (
 
 
 def _send_stop_token(sock):
-    """Send wire-level stop token once with bounded backpressure retry.
+    """Send wire-level stop token once with bounded backpressure attempts.
 
     PERF_SINGLE_TEST_POLICY § 1.4: phase end is signalled on the wire by
     sending ``__zlink_perf_stop__`` once. The send is allowed to block

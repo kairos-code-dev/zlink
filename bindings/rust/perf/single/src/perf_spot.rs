@@ -192,7 +192,7 @@ fn main() {
     let stats = collector.shared();
     let active_deadline = Instant::now() + Duration::from_secs(config.duration_seconds);
     // PERF_SINGLE_TEST_POLICY § 1.4: sender publishes wire-level stop token
-    // at phase end (blocking, bounded retry); receiver loops on blocking
+    // at phase end (blocking, bounded attempts); receiver loops on blocking
     // `subscribe()` and exits when the stop token arrives.
     let publisher_thread = thread::spawn({
         let send_gap = spot_send_gap();

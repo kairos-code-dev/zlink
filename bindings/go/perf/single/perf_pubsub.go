@@ -123,12 +123,12 @@ func drainSinglePubSubUntilStop(
 }
 
 // sendPubSubStopToken pushes the wire-level stop token on the bench
-// topic. Bounded retry through transient backpressure mirrors the
+// topic. Bounded attempts through transient backpressure mirror the
 // pattern used in single one-way / spot. The token is published on the
 // same `bench.topic` channel so it is delivered to subscribers that
 // matched the active stream.
 func sendPubSubStopToken(publisher *zlink.PubSocket) {
-	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
+	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		_, err := publisher.Publish("bench.topic").Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
 		if err == nil {
 			return

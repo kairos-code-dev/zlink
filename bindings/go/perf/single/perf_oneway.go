@@ -40,7 +40,7 @@ func runSingleOneWay(
 			}
 		}
 		// PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
-		// stop token. Blocking send retries through transient backpressure
+		// stop token. Blocking send uses bounded transient-backpressure attempts
 		// so the receiver always observes the terminator.
 		sendStopTokenSingle(send)
 	}()
@@ -135,11 +135,11 @@ func drainSingleOneWayProbe(receiver recvSocket) bool {
 }
 
 // sendStopTokenSingle attempts to push the wire-level stop token onto the
-// connection. The send is bounded-retry: each transient backpressure /
+// connection. The send is bounded: each transient backpressure /
 // EAGAIN response yields for `StopTokenSendBackoff`, capped by
-// `StopTokenSendRetries` total attempts. A non-transient error is fatal.
+// `StopTokenSendAttempts`. A non-transient error is fatal.
 func sendStopTokenSingle(send func([]byte) error) {
-	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
+	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		err := send(perfcommon.StopToken)
 		if err == nil {
 			return
@@ -153,7 +153,7 @@ func sendStopTokenSingle(send func([]byte) error) {
 		time.Sleep(perfcommon.StopTokenSendBackoff)
 	}
 	if os.Getenv("PERF_DEBUG") != "" {
-		fmt.Fprintln(os.Stderr, "single stop token send: retries exhausted")
+		fmt.Fprintln(os.Stderr, "single stop token send: attempts exhausted")
 	}
 }
 

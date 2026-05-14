@@ -73,6 +73,11 @@ REQUIRED_RESULT_METRICS = (
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
 PATTERN_SEPARATOR = "==============================================================================="
 
+
+def report_runner_warning(context: str, exc: BaseException) -> None:
+    print(f"[runner-warning] {context} failed: {exc}", file=sys.stderr)
+
+
 @dataclass
 class RunOutcome:
     status: str  # success | unsupported | skip | fail
@@ -445,8 +450,8 @@ def enforce_file_retention(
     for _, path in files[:excess]:
         try:
             os.remove(path)
-        except OSError:
-            pass
+        except OSError as exc:
+            report_runner_warning("prune-result-file", exc)
 
 
 def resolve_linux_paths() -> Tuple[str, str]:

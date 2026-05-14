@@ -523,11 +523,11 @@ class spot_client_bench_t
           + resolve_spot_drain_grace_ns (active_duration_ns, _msg_size);
         {
             std::unique_lock<std::mutex> lock (_phase_mutex);
-            while (!_recv_fatal.load (std::memory_order_acquire)) {
-                if (perf_metric::now_ns () > deadline_ns)
-                    break;
-                _phase_cv.wait_for (lock, std::chrono::milliseconds (5));
-            }
+            const std::chrono::system_clock::time_point deadline_time {
+              std::chrono::nanoseconds (deadline_ns)};
+            _phase_cv.wait_until (lock, deadline_time, [&]() {
+                return _recv_fatal.load (std::memory_order_acquire);
+            });
         }
         if (_recv_fatal.load (std::memory_order_acquire))
             return false;

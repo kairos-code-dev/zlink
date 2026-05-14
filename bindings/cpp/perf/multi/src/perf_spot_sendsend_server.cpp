@@ -256,18 +256,22 @@ bool run_server (const std::string &lib_name,
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::seconds (
                                 std::max (1, settings.duration_seconds));
+        zlink::timer_t active_timer;
+        active_timer.start (
+          std::chrono::seconds (std::max (1, settings.duration_seconds)), 1);
+        poller.add (active_timer);
         while (!g_stop.load (std::memory_order_acquire)
                && std::chrono::steady_clock::now () < deadline) {
-            const auto now = std::chrono::steady_clock::now ();
-            if (now >= deadline)
-                break;
-            const auto remaining =
-              std::chrono::duration_cast<std::chrono::milliseconds> (
-                deadline - now);
             std::optional<zlink::poll_event_t> event =
-              poller.wait (std::max (std::chrono::milliseconds (1), remaining));
+              poller.wait (std::chrono::milliseconds (-1));
             if (!event.has_value ())
                 continue;
+            if (event->timer) {
+                (void) active_timer.recv ();
+                break;
+            }
+            if (std::chrono::steady_clock::now () >= deadline)
+                break;
             for (;;) {
                 if (!echo_one (spot)) {
                     ok = false;
@@ -306,6 +310,7 @@ bool run_server (const std::string &lib_name,
                     break;
             }
         }
+        (void) poller.remove (active_timer);
         if (!ok)
             break;
     }

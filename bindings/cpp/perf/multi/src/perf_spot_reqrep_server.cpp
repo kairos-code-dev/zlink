@@ -15,9 +15,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -57,8 +59,13 @@ bool stdin_stop_thread (zlink::service::spot_node_t *control_node_,
                         zlink::service::spot_t *control_sub_,
                         size_t expected_ready_count_,
                         int timeout_ms_,
-                        std::atomic<bool> &stop_requested_)
+                        std::atomic<bool> &stop_requested_,
+                        std::condition_variable &stop_cv_)
 {
+    const auto request_stop = [&stop_requested_, &stop_cv_]() {
+        stop_requested_.store (true, std::memory_order_release);
+        stop_cv_.notify_all ();
+    };
     std::string line;
     while (std::getline (std::cin, line)) {
         std::string endpoint;
@@ -71,7 +78,7 @@ bool stdin_stop_thread (zlink::service::spot_node_t *control_node_,
                 std::cout << "CONTROL_CONNECTED," << endpoint << std::endl;
             }
             catch (const std::exception &) {
-                stop_requested_.store (true, std::memory_order_release);
+                request_stop ();
                 return true;
             }
             continue;
@@ -91,16 +98,17 @@ bool stdin_stop_thread (zlink::service::spot_node_t *control_node_,
                   k_control_topic,
                   perf::multi::make_start_command (start_size),
                   timeout_ms_)) {
-                stop_requested_.store (true, std::memory_order_release);
+                request_stop ();
                 return true;
             }
             continue;
         }
         if (line == "STOP") {
-            stop_requested_.store (true, std::memory_order_release);
+            request_stop ();
             return true;
         }
     }
+    request_stop ();
     return true;
 }
 
@@ -188,6 +196,12 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
 
     std::atomic<bool> stop_requested (false);
     std::atomic<bool> failed (false);
+    std::mutex stop_mutex;
+    std::condition_variable stop_cv;
+    const auto request_stop = [&stop_requested, &stop_cv]() {
+        stop_requested.store (true, std::memory_order_release);
+        stop_cv.notify_all ();
+    };
     const int start_timeout_ms =
       std::max (settings.connect_ready_timeout_ms,
                 std::max (1000, settings.connect_ready_timeout_ms * 6));
@@ -199,11 +213,12 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
       &control_sub,
       std::max<size_t> (1, settings.clients),
       start_timeout_ms,
-      std::ref (stop_requested));
+      std::ref (stop_requested),
+      std::ref (stop_cv));
 
     try {
         responder.on_dispatch_event (
-          [&responder, &stop_requested, &failed] (
+          [&responder, &stop_requested, &failed, &request_stop] (
             const zlink::spot_dispatch_info_t &info_) {
               (void) info_;
               while (!stop_requested.load (std::memory_order_acquire)) {
@@ -220,8 +235,7 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
                           return;
                       }
                       failed.store (true, std::memory_order_release);
-                      stop_requested.store (
-                        true, std::memory_order_release);
+                      request_stop ();
                       return;
                   }
                   if (!received.has_value ())
@@ -253,15 +267,14 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
                           continue;
                       }
                       failed.store (true, std::memory_order_release);
-                      stop_requested.store (
-                        true, std::memory_order_release);
+                      request_stop ();
                       return;
                   }
               }
           });
     }
     catch (const std::exception &) {
-        stop_requested.store (true, std::memory_order_release);
+        request_stop ();
         if (stop_thread.joinable ())
             stop_thread.join ();
         return false;
@@ -270,9 +283,10 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
     // Idle until STOP comes through stdin or the dispatch handler signals
     // a fatal error. The dispatch handler does the actual recv/reply work
     // off the io thread; the main thread just waits for shutdown.
-    while (!stop_requested.load (std::memory_order_acquire)) {
-        std::this_thread::sleep_for (std::chrono::milliseconds (10));
-    }
+    std::unique_lock<std::mutex> stop_lock (stop_mutex);
+    stop_cv.wait (stop_lock, [&stop_requested]() {
+        return stop_requested.load (std::memory_order_acquire);
+    });
 
     if (stop_thread.joinable ())
         stop_thread.join ();

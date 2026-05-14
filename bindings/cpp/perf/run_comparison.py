@@ -1880,7 +1880,8 @@ def run_sizes_test_stream_shared(
             client_proc[0].stdin.flush()
             pending_phase_active_sizes.discard(size_int)
             return True
-        except Exception:
+        except Exception as exc:
+            report_runner_warning("send-phase-active", exc)
             pending_phase_active_sizes.add(size_int)
             return False
 
@@ -2152,15 +2153,10 @@ def run_sizes_test_stream_shared(
                 except Exception as exc:
                     report_runner_warning("send-connect-control", exc)
                 if not wait_for_control_connected_forward(ready_timeout_ms):
-                    try:
-                        if client_proc[0] and client_proc[0].stdin:
-                            client_proc[0].stdin.write(
-                                f"CONTROL_CONNECTED,{client_endpoint}\n"
-                            )
-                            client_proc[0].stdin.flush()
-                            control_connected[0] = True
-                    except Exception as exc:
-                        report_runner_warning("fallback-control-connected", exc)
+                    report_runner_warning(
+                        "control-connected-forward",
+                        TimeoutError("server did not emit CONTROL_CONNECTED"),
+                    )
                 return
             ready_size = parse_client_ready_size(line)
             if ready_size is not None:
@@ -2315,15 +2311,15 @@ def run_sizes_test_stream_shared(
             "warnings": warnings,
             **progress_meta,
         }
-    except Exception:
+    except Exception as exc:
         stop_server()
         return {
             "status": "fail",
             "parsed": {},
             "timed_out": False,
             "returncode": -1,
-            "reason": "exception",
-            "warnings": [],
+            "reason": f"exception:{exc}",
+            "warnings": [f"exception:{exc}"],
         }
     finally:
         if close_server_sampler is not None:
@@ -2443,7 +2439,8 @@ def run_sizes_test_split(
             client_proc[0].stdin.flush()
             pending_phase_active_sizes.discard(size_int)
             return True
-        except Exception:
+        except Exception as exc:
+            report_runner_warning("send-phase-active", exc)
             pending_phase_active_sizes.add(size_int)
             return False
 
@@ -2657,6 +2654,7 @@ def run_sizes_test_split(
                 "warnings": [],
             }
 
+        final_size = sizes[-1] if sizes else fallback_size
         close_server_sampler = lambda: None
         stop_requested_sizes = set()
 
@@ -2715,15 +2713,10 @@ def run_sizes_test_split(
                 except Exception as exc:
                     report_runner_warning("send-connect-control", exc)
                 if not wait_for_control_connected_forward(ready_timeout_ms):
-                    try:
-                        if client_proc[0] and client_proc[0].stdin:
-                            client_proc[0].stdin.write(
-                                f"CONTROL_CONNECTED,{client_endpoint}\n"
-                            )
-                            client_proc[0].stdin.flush()
-                            control_connected[0] = True
-                    except Exception as exc:
-                        report_runner_warning("fallback-control-connected", exc)
+                    report_runner_warning(
+                        "control-connected-forward",
+                        TimeoutError("server did not emit CONTROL_CONNECTED"),
+                    )
                 return
             ready_size = parse_client_ready_size(line)
             if ready_size is not None:
@@ -2892,15 +2885,15 @@ def run_sizes_test_split(
             "warnings": warnings,
             **progress_meta,
         }
-    except Exception:
+    except Exception as exc:
         stop_server()
         return {
             "status": "fail",
             "parsed": {},
             "timed_out": False,
             "returncode": -1,
-            "reason": "exception",
-            "warnings": [],
+            "reason": f"exception:{exc}",
+            "warnings": [f"exception:{exc}"],
         }
     finally:
         if close_server_sampler is not None:

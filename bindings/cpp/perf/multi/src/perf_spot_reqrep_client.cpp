@@ -166,6 +166,13 @@ void stdin_watcher ()
     signal_stop ();
 }
 
+void stop_and_release_stdin_thread (std::thread &thread_)
+{
+    signal_stop ();
+    if (thread_.joinable ())
+        thread_.detach ();
+}
+
 std::string parse_control_endpoint_arg (int argc, char **argv)
 {
     for (int i = 4; i + 1 < argc; ++i) {
@@ -619,9 +626,7 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
       std::max (settings.connect_ready_timeout_ms,
                 std::max (1000, settings.connect_ready_timeout_ms * 6));
     if (!wait_for_control_connected (start_timeout_ms)) {
-        signal_stop ();
-        if (stdin_thread.joinable ())
-            stdin_thread.detach ();
+        stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
     // This benchmark process exits immediately after one size case. Keeping
@@ -631,9 +636,7 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
       new spot_reqrep_client_bench_t (
         transport, lib_name, msg_size, endpoint, settings);
     if (!bench || !bench->prepare_data_plane ()) {
-        signal_stop ();
-        if (stdin_thread.joinable ())
-            stdin_thread.detach ();
+        stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
     wait_for_settle_ms (resolve_spot_ready_settle_ms ());
@@ -642,17 +645,13 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
           k_control_topic,
           std::string ("DATA_ENDPOINT,") + bench->local_data_endpoint (),
           start_timeout_ms)) {
-        signal_stop ();
-        if (stdin_thread.joinable ())
-            stdin_thread.detach ();
+        stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
     wait_for_settle_ms (resolve_spot_control_settle_ms ());
     if (!perf::multi::publish_control_payload (
           control_spot, k_control_topic, "CONNECTED", start_timeout_ms)) {
-        signal_stop ();
-        if (stdin_thread.joinable ())
-            stdin_thread.detach ();
+        stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
     wait_for_settle_ms (resolve_spot_control_settle_ms ());
@@ -662,29 +661,21 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
           perf::multi::make_ready_count_command (
             msg_size, std::max<size_t> (1, settings.clients)),
           start_timeout_ms)) {
-        signal_stop ();
-        if (stdin_thread.joinable ())
-            stdin_thread.detach ();
+        stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
     std::cout << "CLIENT_READY," << msg_size << std::endl;
     if (!wait_for_start (msg_size, start_timeout_ms)) {
-        signal_stop ();
-        if (stdin_thread.joinable ())
-            stdin_thread.detach ();
+        stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
     if (!perf::multi::wait_for_control_start (
           control_spot, k_control_topic, msg_size, start_timeout_ms)) {
-        signal_stop ();
-        if (stdin_thread.joinable ())
-            stdin_thread.detach ();
+        stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
     const bool ok = bench->run ();
-    signal_stop ();
-    if (stdin_thread.joinable ())
-        stdin_thread.detach ();
+    stop_and_release_stdin_thread (stdin_thread);
     return ok;
 }
 

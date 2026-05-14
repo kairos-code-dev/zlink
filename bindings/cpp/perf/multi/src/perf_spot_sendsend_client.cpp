@@ -135,6 +135,13 @@ void stdin_watcher ()
     signal_stop ();
 }
 
+void stop_and_release_stdin_thread (std::thread &thread)
+{
+    signal_stop ();
+    if (thread.joinable ())
+        thread.detach ();
+}
+
 std::string parse_control_endpoint_arg (int argc, char **argv)
 {
     for (int i = 4; i + 1 < argc; ++i) {
@@ -428,9 +435,7 @@ bool run_client (const std::string &lib_name,
       std::max (settings.connect_ready_timeout_ms,
                 std::max (1000, settings.connect_ready_timeout_ms * 6));
     if (!wait_for_control_connected (start_timeout_ms)) {
-        signal_stop ();
-        if (stdin_thread.joinable ())
-            stdin_thread.detach ();
+        stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
     if (bench_debug_enabled ())
@@ -491,9 +496,7 @@ bool run_client (const std::string &lib_name,
                                                 latency);
     }
 
-    signal_stop ();
-    if (stdin_thread.joinable ())
-        stdin_thread.detach ();
+    stop_and_release_stdin_thread (stdin_thread);
     return rc == 0;
 }
 

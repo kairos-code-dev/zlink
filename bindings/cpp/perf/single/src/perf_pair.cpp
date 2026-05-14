@@ -5,6 +5,7 @@
 #include "../common/perf_single_runner.hpp"
 
 #include <atomic>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -137,16 +138,38 @@ bool run_pattern_pair (const std::string &transport,
       std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
 
     std::thread receiver_thread ([&]() {
-        // PERF_SINGLE_TEST_POLICY § 1.4: shutdown via wire-level stop
-        // token (see perf::single::is_stop_token_message). The socket
-        // recv_timeout still bounds individual recv calls but only
-        // serves to recover from EAGAIN/EINTR; phase end is purely
-        // signaled by the stop token arriving on the wire.
+        zlink::poller_t poller;
+        try {
+            poller.add (bind_socket, zlink::poll_event_flag_t::pollin);
+        }
+        catch (const zlink::config_error_t &) {
+            sender_ok.store (false, std::memory_order_release);
+            return;
+        }
+
         while (true) {
-            zlink::received_t received;
-            const int recv_rc =
-              recv_pair_payload (bind_socket, received, zlink::recv_flags_t::none);
-            if (recv_rc == 0) {
+            try {
+                const std::optional<zlink::poll_event_t> event =
+                  poller.wait (std::chrono::milliseconds (-1));
+                if (!event.has_value ())
+                    continue;
+            }
+            catch (const zlink::recv_error_t &) {
+                sender_ok.store (false, std::memory_order_release);
+                return;
+            }
+
+            for (;;) {
+                zlink::received_t received;
+                const int recv_rc =
+                  recv_pair_payload (
+                    bind_socket, received, zlink::recv_flags_t::dontwait);
+                if (recv_rc != 0) {
+                    if (errno == EAGAIN || errno == EINTR)
+                        break;
+                    sender_ok.store (false, std::memory_order_release);
+                    return;
+                }
                 if (received.parts ().size () == 1
                     && perf::single::is_stop_token_message (
                          received.parts ()[0])) {
@@ -162,45 +185,7 @@ bool run_pattern_pair (const std::string &transport,
                     sender_ok.store (false, std::memory_order_release);
                     return;
                 }
-
-                for (;;) {
-                    zlink::received_t burst_received;
-                    const int burst_rc =
-                      recv_pair_payload (
-                        bind_socket,
-                        burst_received,
-                        zlink::recv_flags_t::dontwait);
-                    if (burst_rc != 0) {
-                        if (errno == EAGAIN || errno == EINTR)
-                            break;
-                        sender_ok.store (false, std::memory_order_release);
-                        return;
-                    }
-                    if (burst_received.parts ().size () == 1
-                        && perf::single::is_stop_token_message (
-                             burst_received.parts ()[0])) {
-                        return;
-                    }
-                    if (std::chrono::steady_clock::now () < active_deadline
-                        && !record_pair_payload (burst_received,
-                                                 run_id,
-                                                 msg_size,
-                                                 payload_size,
-                                                 received_count,
-                                                 latency_builder)) {
-                        sender_ok.store (false, std::memory_order_release);
-                        return;
-                    }
-                }
-                continue;
             }
-
-            if (errno != EAGAIN && errno != EINTR) {
-                sender_ok.store (false, std::memory_order_release);
-                return;
-            }
-            // socket recv_timeout fired with no data; stop token has not
-            // arrived yet — keep waiting.
         }
     });
 

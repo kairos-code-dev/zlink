@@ -189,20 +189,14 @@ class pubsub_client_bench_t
         unsigned long long count = 0;
         const bool active_phase = phase == perf_metric::phase_active;
         const auto deadline = std::chrono::steady_clock::now () + duration;
+        zlink::timer_t phase_timer;
+        phase_timer.start (duration, 1);
+        _poller.add (phase_timer);
 
         while (std::chrono::steady_clock::now () < deadline) {
-            const auto now = std::chrono::steady_clock::now ();
-            if (now >= deadline)
-                break;
-            const long remaining_ms =
-              std::max<long> (
-                1,
-                std::chrono::duration_cast<std::chrono::milliseconds> (
-                  deadline - now)
-                  .count ());
             _poll_events =
-              _poller.wait (0, std::chrono::milliseconds (remaining_ms));
-        const int poll_rc = static_cast<int> (_poll_events.size ());
+              _poller.wait (0, std::chrono::milliseconds (-1));
+            const int poll_rc = static_cast<int> (_poll_events.size ());
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)
                     continue;
@@ -212,6 +206,15 @@ class pubsub_client_bench_t
                 continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
+                if (_poll_events[i].timer) {
+                    (void) phase_timer.recv ();
+                    _poller.remove (phase_timer);
+                    if (count_out)
+                        *count_out = count;
+                    if (lat_out)
+                        *lat_out = latency.snapshot ();
+                    return true;
+                }
                 ::perf::socket_t *sock = NULL;
                 if (::perf::socket_t *const *tag =
                       std::any_cast<::perf::socket_t *> (&_poll_events[i].tag))
@@ -275,6 +278,7 @@ class pubsub_client_bench_t
                 }
             }
         }
+        _poller.remove (phase_timer);
 
         if (count_out)
             *count_out = count;

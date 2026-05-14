@@ -108,19 +108,19 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
       static_cast<size_t> (active_seconds) * 5000000U);
     zlink::message_t part;
     std::vector<zlink::poll_event_t> events;
+    zlink::timer_t active_timer;
+    active_timer.start (std::chrono::seconds (active_seconds), 1);
+    poller.add (active_timer);
     while (std::chrono::steady_clock::now () < deadline) {
-        const auto now = std::chrono::steady_clock::now ();
-        if (now >= deadline)
-            break;
-        const long remaining_ms =
-          std::max<long> (
-            1,
-            std::chrono::duration_cast<std::chrono::milliseconds> (
-              deadline - now)
-              .count ());
-        events = poller.wait (1, std::chrono::milliseconds (remaining_ms));
+        events = poller.wait (1, std::chrono::milliseconds (-1));
         if (events.empty ())
             continue;
+        if (events[0].timer) {
+            (void) active_timer.recv ();
+            break;
+        }
+        if (std::chrono::steady_clock::now () >= deadline)
+            break;
         if (!(static_cast<short> (events[0].revents)
               & static_cast<short> (zlink::poll_event_flag_t::pollin))) {
             continue;
@@ -157,6 +157,7 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
         if (failed)
             break;
     }
+    (void) poller.remove (active_timer);
 
     if (failed || active_count == 0 || latency.count () == 0)
         return false;

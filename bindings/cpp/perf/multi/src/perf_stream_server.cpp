@@ -23,7 +23,6 @@ namespace {
 
 static const char *k_pattern = "MULTI_STREAM";
 static const char k_stop_token[] = "__zlink_perf_stop__";
-static const int k_aux_poll_wait_ms = 100;
 static std::atomic<bool> g_stop_requested (false);
 static std::mutex g_stop_mutex;
 static std::condition_variable g_stop_cv;
@@ -222,10 +221,11 @@ void run_server_event_loop (stream_handler_context_t &handler_context_)
 
         if (pending_packet_count (handler_context_) == 0) {
             std::unique_lock<std::mutex> stop_lock (g_stop_mutex);
-            g_stop_cv.wait_for (
-              stop_lock, std::chrono::milliseconds (k_aux_poll_wait_ms),
-              []() {
-                  return g_stop_requested.load (std::memory_order_acquire);
+            g_stop_cv.wait (
+              stop_lock,
+              [&handler_context_]() {
+                  return g_stop_requested.load (std::memory_order_acquire)
+                         || pending_packet_count (handler_context_) > 0;
               });
             continue;
         }
@@ -236,7 +236,7 @@ void run_server_event_loop (stream_handler_context_t &handler_context_)
               *handler_context_.server, zlink::poll_event_flag_t::pollout, 0);
             const std::vector<zlink::poll_event_t> events =
               poller.wait (
-                1, std::chrono::milliseconds (k_aux_poll_wait_ms));
+                1, std::chrono::milliseconds (-1));
             for (size_t i = 0; i < events.size (); ++i) {
                 const short revents = static_cast<short> (events[i].revents);
                 if (revents

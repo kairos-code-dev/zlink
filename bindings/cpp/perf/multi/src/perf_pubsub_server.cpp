@@ -9,7 +9,6 @@
 #include <chrono>
 #include <cerrno>
 #include <cstring>
-#include <thread>
 #include <vector>
 
 namespace {
@@ -21,15 +20,12 @@ bool wait_for_start_signal (size_t msg_size)
     return perf::multi::wait_for_start_from_stdin (msg_size);
 }
 
-long compute_wait_ms (const perf::multi::multi_bench_settings_t &settings,
-                      const std::chrono::steady_clock::time_point &deadline)
+long compute_wait_ms (const std::chrono::steady_clock::time_point &deadline)
 {
-    long wait_ms = settings.client_poll_timeout_ms > 0 ? settings.client_poll_timeout_ms : 1;
     const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
                              deadline - std::chrono::steady_clock::now ())
                              .count ();
-    if (remain_ms < wait_ms)
-        wait_ms = remain_ms;
+    long wait_ms = remain_ms;
     if (wait_ms < 1)
         wait_ms = 1;
     return wait_ms;
@@ -44,17 +40,13 @@ bool run_phase (::perf::socket_t &publisher,
                 uint64_t &seq,
                 perf_metric::phase_t phase,
                 std::chrono::steady_clock::duration duration,
-                bool send_active,
-                const perf::multi::multi_bench_settings_t &settings)
+                bool send_active)
 {
     if (duration <= std::chrono::steady_clock::duration::zero ())
         return true;
 
-    if (!send_active) {
-        std::this_thread::sleep_for (
-          std::chrono::duration_cast<std::chrono::milliseconds> (duration));
+    if (!send_active)
         return true;
-    }
 
     try {
     bool pending = false;
@@ -97,7 +89,7 @@ bool run_phase (::perf::socket_t &publisher,
 
         events = poller.wait (
           0,
-          std::chrono::milliseconds (compute_wait_ms (settings, deadline)));
+          std::chrono::milliseconds (compute_wait_ms (deadline)));
         const int poll_rc = static_cast<int> (events.size ());
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -181,8 +173,19 @@ bool perf_pubsub_server (const std::string &lib_name,
                     seq,
                     perf_metric::phase_active,
                     std::chrono::seconds (std::max (1, settings.duration_seconds)),
-                    true,
-                    settings))
+                    true))
+        return false;
+
+    if (!run_phase (publisher.sock (),
+                    poller,
+                    events,
+                    payload,
+                    msg_size,
+                    run_id,
+                    seq,
+                    perf_metric::phase_cooldown,
+                    std::chrono::seconds (1),
+                    true))
         return false;
 
     return true;

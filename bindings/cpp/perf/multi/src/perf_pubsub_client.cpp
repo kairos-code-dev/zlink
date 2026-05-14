@@ -81,10 +81,10 @@ class pubsub_client_bench_t
             return false;
         }
 
-        if (!run_phase (perf_metric::phase_active,
-                        std::chrono::seconds (_phase_cfg.active_seconds),
-                        &_result.active_count,
-                        &_result.latency))
+        if (!run_active_until_cooldown (
+              std::chrono::seconds (_phase_cfg.active_seconds),
+              &_result.active_count,
+              &_result.latency))
             return false;
 
         if (_result.active_count == 0) {
@@ -169,10 +169,10 @@ class pubsub_client_bench_t
         return !_sockets.empty ();
     }
 
-    bool run_phase (perf_metric::phase_t phase,
-                    std::chrono::milliseconds duration,
-                    unsigned long long *count_out,
-                    perf::multi::bench_latency_stats_t *lat_out)
+    bool run_active_until_cooldown (
+      std::chrono::milliseconds duration,
+      unsigned long long *count_out,
+      perf::multi::bench_latency_stats_t *lat_out)
     {
         if (duration.count () <= 0) {
             if (count_out)
@@ -187,13 +187,10 @@ class pubsub_client_bench_t
 
         perf::multi::bench_latency_sampler_t latency;
         unsigned long long count = 0;
-        const bool active_phase = phase == perf_metric::phase_active;
         const auto deadline = std::chrono::steady_clock::now () + duration;
-        zlink::timer_t phase_timer;
-        phase_timer.start (duration, 1);
-        _poller.add (phase_timer);
+        bool cooldown_seen = false;
 
-        while (std::chrono::steady_clock::now () < deadline) {
+        while (!cooldown_seen) {
             _poll_events =
               _poller.wait (0, std::chrono::milliseconds (-1));
             const int poll_rc = static_cast<int> (_poll_events.size ());
@@ -206,15 +203,6 @@ class pubsub_client_bench_t
                 continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
-                if (_poll_events[i].timer) {
-                    (void) phase_timer.recv ();
-                    _poller.remove (phase_timer);
-                    if (count_out)
-                        *count_out = count;
-                    if (lat_out)
-                        *lat_out = latency.snapshot ();
-                    return true;
-                }
                 ::perf::socket_t *sock = NULL;
                 if (::perf::socket_t *const *tag =
                       std::any_cast<::perf::socket_t *> (&_poll_events[i].tag))
@@ -242,11 +230,6 @@ class pubsub_client_bench_t
                     const zlink::message_t &part = received.parts ()[0];
                     const size_t recv_size = part.size ();
 
-                    if (!active_phase) {
-                        ++count;
-                        continue;
-                    }
-
                     perf_metric::header_t header;
                     if (!perf_metric::decode_payload_header (
                           part.data (),
@@ -261,24 +244,32 @@ class pubsub_client_bench_t
                     }
 
                     if (header.phase
-                        != static_cast<uint32_t> (active_phase
-                                                    ? perf_metric::phase_active
-                                                    : phase))
+                        == static_cast<uint8_t> (perf_metric::phase_cooldown)) {
+                        cooldown_seen = true;
                         continue;
+                    }
+                    if (header.phase
+                        != static_cast<uint8_t> (perf_metric::phase_active)
+                        || std::chrono::steady_clock::now () >= deadline) {
+                        continue;
+                    }
 
                     ++count;
-                    if (lat_out && phase == perf_metric::phase_active) {
+                    if (lat_out) {
                         const uint64_t now_ns = perf_metric::now_ns ();
-                        const double latency_ns = now_ns >= header.sent_ts_ns
+                        const double latency_ns = header.sent_ts_ns > 0
+                                                    && now_ns >= static_cast<uint64_t> (
+                                                      header.sent_ts_ns)
                                                     ? static_cast<double> (
-                                                        now_ns - header.sent_ts_ns)
+                                                        now_ns
+                                                        - static_cast<uint64_t> (
+                                                          header.sent_ts_ns))
                                                     : 0.0;
                         latency.add (latency_ns);
                     }
                 }
             }
         }
-        _poller.remove (phase_timer);
 
         if (count_out)
             *count_out = count;

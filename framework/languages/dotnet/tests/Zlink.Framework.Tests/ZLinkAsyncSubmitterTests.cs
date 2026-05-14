@@ -46,4 +46,42 @@ public sealed class ZLinkAsyncSubmitterTests
 
         await Assert.ThrowsAsync<TimeoutException>(async () => await task.AsTask());
     }
+
+    [Fact]
+    public async Task SubmitAsync_ThrowsWhenQueueIsFull()
+    {
+        await using var submitter = new ZLinkAsyncSubmitter(
+            _ => { },
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None,
+            capacity: 1);
+
+        var first = submitter.SubmitAsync(
+            Message.FromString("first"),
+            _ => false);
+
+        Assert.False(first.IsCompleted);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            submitter.SubmitAsync(
+                Message.FromString("second"),
+                _ => false));
+    }
+
+    [Fact]
+    public async Task DisposeAsync_FailsPendingItems()
+    {
+        var submitter = new ZLinkAsyncSubmitter(
+            _ => { },
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+
+        var pending = submitter.SubmitAsync(
+            Message.FromString("payload"),
+            _ => false);
+
+        await submitter.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () => await pending.AsTask());
+    }
 }

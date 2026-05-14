@@ -4,9 +4,12 @@ namespace Zlink.Framework.Runtime.Core;
 
 internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 {
+    private const int DefaultCapacity = 4096;
+
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private readonly IZLinkRuntimeErrorSink _errorSink;
     private readonly CancellationToken _executionToken;
+    private readonly int _capacity;
     private readonly Channel<ZLinkSerialWorkItem> _queue =
         Channel.CreateUnbounded<ZLinkSerialWorkItem>(
             new UnboundedChannelOptions
@@ -25,19 +28,27 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
     public ZLinkSerialExecutionQueue(
         ZLinkRuntimeTaskRunner taskRunner,
         IZLinkRuntimeErrorSink errorSink,
-        CancellationToken executionToken)
+        CancellationToken executionToken,
+        int capacity = DefaultCapacity)
     {
         _taskRunner = taskRunner;
         _errorSink = errorSink;
         _executionToken = executionToken;
+        _capacity = capacity > 0
+            ? capacity
+            : throw new ArgumentOutOfRangeException(nameof(capacity));
     }
 
     public async ValueTask<ZLinkSerialWorkItem> PostAsync(
         Func<CancellationToken, ValueTask> callback,
         CancellationToken cancellationToken)
     {
+        if (!TryReserveSlot())
+        {
+            throw new InvalidOperationException("ZLink serial execution queue is full.");
+        }
+
         var item = new ZLinkSerialWorkItem(callback);
-        Interlocked.Increment(ref _pendingCount);
         try
         {
             await _queue.Writer.WriteAsync(item, cancellationToken).ConfigureAwait(false);
@@ -56,8 +67,13 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         Func<CancellationToken, ValueTask> callback,
         out ZLinkSerialWorkItem item)
     {
+        if (!TryReserveSlot())
+        {
+            item = null!;
+            return false;
+        }
+
         item = new ZLinkSerialWorkItem(callback);
-        Interlocked.Increment(ref _pendingCount);
         if (_queue.Writer.TryWrite(item))
         {
             ScheduleDrain();
@@ -66,6 +82,23 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
         CompletePendingItem();
         return false;
+    }
+
+    private bool TryReserveSlot()
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref _pendingCount);
+            if (current >= _capacity)
+            {
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _pendingCount, current + 1, current) == current)
+            {
+                return true;
+            }
+        }
     }
 
     public async ValueTask RunAsync(

@@ -8,12 +8,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
 {
     private readonly ZlinkStreamPendingRequests _pending = new();
     private readonly ZlinkStreamTypedHandlerRegistry _typedHandlers = new();
-    private readonly Channel<ZlinkStreamHandlerWorkItem> _handlerQueue =
-        Channel.CreateUnbounded<ZlinkStreamHandlerWorkItem>(new UnboundedChannelOptions
-        {
-            SingleReader = true,
-            SingleWriter = false
-        });
+    private readonly Channel<ZlinkStreamHandlerWorkItem> _handlerQueue;
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly CancellationTokenSource _lifetimeCts = new();
@@ -48,6 +43,14 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         }
 
         _nameResolver = options.NameResolver ?? new ZlinkStreamPacketNameResolver();
+        _handlerQueue = Channel.CreateBounded<ZlinkStreamHandlerWorkItem>(
+            new BoundedChannelOptions(options.HandlerQueueCapacity)
+            {
+                SingleReader = true,
+                SingleWriter = false,
+                FullMode = BoundedChannelFullMode.Wait,
+                AllowSynchronousContinuations = false
+            });
         _frameSender = new ZlinkStreamFrameSender(
             options,
             _headerCodec,

@@ -152,6 +152,40 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
+    public async Task SerialExecutionQueue_TryPost_ReturnsFalse_WhenQueueIsFull()
+    {
+        await using var queue = CreateQueue(CancellationToken.None, capacity: 1);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(queue.TryPost(
+            async _ => await releaseFirst.Task.ConfigureAwait(false),
+            out _));
+        Assert.False(queue.TryPost(
+            _ => ValueTask.CompletedTask,
+            out _));
+
+        releaseFirst.SetResult();
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_PostAsync_Throws_WhenQueueIsFull()
+    {
+        await using var queue = CreateQueue(CancellationToken.None, capacity: 1);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(queue.TryPost(
+            async _ => await releaseFirst.Task.ConfigureAwait(false),
+            out _));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => queue.PostAsync(
+                _ => ValueTask.CompletedTask,
+                CancellationToken.None).AsTask());
+
+        releaseFirst.SetResult();
+    }
+
+    [Fact]
     public async Task ActorDispatchCancellation_Does_Not_Stop_Current_Or_Later_Dispatch()
     {
         var state = new ZLinkActorRuntimeState();
@@ -252,12 +286,15 @@ public sealed class SerialExecutorTests
             ZlinkStreamMetadata.Empty);
     }
 
-    private static ZLinkSerialExecutionQueue CreateQueue(CancellationToken executionToken)
+    private static ZLinkSerialExecutionQueue CreateQueue(
+        CancellationToken executionToken,
+        int capacity = 4096)
     {
         var errorSink = new ZLinkRuntimeErrorSink();
         return new ZLinkSerialExecutionQueue(
             new ZLinkRuntimeTaskRunner(errorSink, executionToken),
             errorSink,
-            executionToken);
+            executionToken,
+            capacity);
     }
 }

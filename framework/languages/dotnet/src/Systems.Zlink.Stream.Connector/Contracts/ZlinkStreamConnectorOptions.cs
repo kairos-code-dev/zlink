@@ -35,6 +35,8 @@ public sealed class ZlinkStreamConnectorOptions
 
     public int MaxSendMetadataSize { get; init; } = 1024;
 
+    public int HandlerQueueCapacity { get; init; } = 4096;
+
     public bool SkipServerCertificateValidation { get; init; }
 
     public bool EnableSegmentedSend { get; init; } = true;

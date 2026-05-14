@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace Zlink.Framework.Runtime.Core;
 
 internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
@@ -7,12 +5,10 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     private const int DefaultCapacity = 4096;
 
     private readonly object _gate = new();
-    private readonly Queue<PendingSubmit> _pending = new();
-    private readonly int _capacity;
+    private readonly ZLinkSubmitQueue _pending;
     private readonly TimeSpan? _sendTimeout;
     private readonly CancellationToken _stopToken;
     private bool _draining;
-    private bool _disposed;
 
     public ZLinkAsyncSubmitter(
         Action<Action> registerReadyHandler,
@@ -20,7 +16,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         CancellationToken stopToken,
         int capacity = DefaultCapacity)
     {
-        _capacity = capacity > 0 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity));
+        _pending = new ZLinkSubmitQueue(capacity);
         _sendTimeout = ValidateTimeout(sendTimeout);
         _stopToken = stopToken;
         registerReadyHandler(OnSendReady);
@@ -174,22 +170,18 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
-        Queue<PendingSubmit> remaining;
-        lock (_gate)
-        {
-            if (_disposed)
-            {
-                return ValueTask.CompletedTask;
-            }
-
-            _disposed = true;
-            remaining = new Queue<PendingSubmit>(_pending);
-            _pending.Clear();
-        }
+        var remaining = _pending.DisposeAll();
 
         foreach (var item in remaining)
         {
-            item.TryFail(new ObjectDisposedException(nameof(ZLinkAsyncSubmitter)));
+            try
+            {
+                item.TryFail(new ObjectDisposedException(nameof(ZLinkAsyncSubmitter)));
+            }
+            finally
+            {
+                item.Dispose();
+            }
         }
 
         return ValueTask.CompletedTask;
@@ -206,12 +198,6 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         {
             lock (_gate)
             {
-                ThrowIfDisposed();
-                if (_pending.Count >= _capacity)
-                {
-                    throw new InvalidOperationException("ZLink async submit queue is full.");
-                }
-
                 _pending.Enqueue(pending);
             }
 
@@ -228,7 +214,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     {
         lock (_gate)
         {
-            if (_draining || _disposed)
+            if (_draining)
             {
                 return;
             }
@@ -241,13 +227,10 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             while (true)
             {
                 PendingSubmit? item;
-                lock (_gate)
+                _pending.TryPeek(out item);
+                if (item is null)
                 {
-                    item = _pending.Count > 0 ? _pending.Peek() : null;
-                    if (item is null)
-                    {
-                        return;
-                    }
+                    return;
                 }
 
                 if (item.IsCompleted)
@@ -325,12 +308,9 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
     private void Dequeue(PendingSubmit expected)
     {
-        lock (_gate)
+        if (_pending.TryDequeue(expected, out var pending) && pending is not null)
         {
-            if (_pending.Count > 0 && ReferenceEquals(_pending.Peek(), expected))
-            {
-                _pending.Dequeue().Dispose();
-            }
+            pending.Dispose();
         }
     }
 
@@ -339,14 +319,6 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         return _sendTimeout is null
             ? null
             : DateTimeOffset.UtcNow.Add(_sendTimeout.Value);
-    }
-
-    private void ThrowIfDisposed()
-    {
-        if (_disposed)
-        {
-            throw new ObjectDisposedException(nameof(ZLinkAsyncSubmitter));
-        }
     }
 
     private static TimeSpan? ValidateTimeout(TimeSpan? timeout)

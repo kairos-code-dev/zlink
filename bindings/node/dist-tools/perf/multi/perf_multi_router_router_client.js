@@ -5,7 +5,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, resolveMultiLatencySampleCap, sendStopTokenWithRetry, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, sendStopTokenOnce, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
 const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
 async function main() {
@@ -48,7 +48,6 @@ async function main() {
             activeStartNs,
             activeStopNs,
             roundTrip: true,
-            sampleCap: resolveMultiLatencySampleCap()
         });
         let seq = 1n;
         const drainReply = (index) => {
@@ -104,7 +103,7 @@ async function main() {
             }
         }
         // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via wire stop token.
-        await sendStopTokenWithRetry(routers[0], (bytes) => trySocketSend(routers[0], SERVER_ROUTING_ID, bytes));
+        await sendStopTokenOnce(routers[0], (bytes) => trySocketSend(routers[0], SERVER_ROUTING_ID, bytes));
         const result = await collector.finish();
         for (const metricLine of summarizeMetrics('MULTI_ROUTER_ROUTER', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
             console.log(metricLine);

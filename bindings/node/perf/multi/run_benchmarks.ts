@@ -9,9 +9,12 @@ const {
   completionLines,
   defaultMultiMsgSizes,
   DEFAULT_MULTI_TRANSPORTS,
+  formatFailureRow,
   formatTableHeader,
   formatTableRow,
   hasPrimaryMetricsFromResultLines,
+  medianMetrics,
+  metricLines,
   parseCommonArgs,
   patternDirection,
   primaryMetricsFromResultLines,
@@ -118,40 +121,6 @@ Options:
   --pin-cpu            Pin server/client benchmark processes to CPU 0 on Linux.`);
 }
 
-function median(values) {
-  const sorted = values.slice().sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if ((sorted.length % 2) === 0) {
-    return (sorted[mid - 1] + sorted[mid]) / 2;
-  }
-  return sorted[mid];
-}
-
-function medianMetrics(metricsList) {
-  return {
-    throughput: median(metricsList.map((item) => item.throughput)),
-    bandwidth: median(metricsList.map((item) => item.bandwidth)),
-    latency: median(metricsList.map((item) => item.latency)),
-    latency_p95: median(metricsList.map((item) => item.latency_p95)),
-    latency_p99: median(metricsList.map((item) => item.latency_p99))
-  };
-}
-
-function metricLines(pattern, transport, msgSize, metrics) {
-  return [
-    `RESULT,current,${pattern},${transport},${msgSize},throughput,${metrics.throughput.toFixed(3)}`,
-    `RESULT,current,${pattern},${transport},${msgSize},bandwidth,${metrics.bandwidth.toFixed(3)}`,
-    `RESULT,current,${pattern},${transport},${msgSize},latency,${metrics.latency.toFixed(3)}`,
-    `RESULT,current,${pattern},${transport},${msgSize},latency_p95,${metrics.latency_p95.toFixed(3)}`,
-    `RESULT,current,${pattern},${transport},${msgSize},latency_p99,${metrics.latency_p99.toFixed(3)}`
-  ];
-}
-
-function formatFailureRow(msgSize, label = 'FAIL') {
-  const cell = String(label).padStart(16);
-  return `| ${String(msgSize).padEnd(8)}B | ${cell} | ${'FAIL'.padStart(10)} | ${'FAIL'.padStart(13)} | ${'FAIL'.padStart(13)} | ${'FAIL'.padStart(13)} |`;
-}
-
 function errorText(error) {
   return String(error && error.message ? error.message : error);
 }
@@ -162,26 +131,6 @@ async function spawnMeasuredPair(runner, options) {
     return { lines, metrics: null };
   }
   const metrics = primaryMetricsFromResultLines(options.pattern, options.msgSize, lines);
-  if (
-    options.pattern === 'MULTI_SPOT' &&
-    process.env.PERF_MULTI_SPOT_CLEAN_LATENCY !== '0'
-  ) {
-    const latencyLines = await spawnMultiPair(runner.server, runner.client, {
-      ...options,
-      extraEnv: {
-        ...(options.extraEnv || {}),
-        PERF_MULTI_SPOT_LATENCY_ONLY: '1'
-      }
-    });
-    const latencyMetrics = primaryMetricsFromResultLines(
-      options.pattern,
-      options.msgSize,
-      latencyLines
-    );
-    metrics.latency = latencyMetrics.latency;
-    metrics.latency_p95 = latencyMetrics.latency_p95;
-    metrics.latency_p99 = latencyMetrics.latency_p99;
-  }
   return { lines, metrics };
 }
 
@@ -195,6 +144,115 @@ function hasUnsupportedToken(lines) {
 
 function hasSkipToken(lines) {
   return lines.some((line) => line.startsWith('SKIP,'));
+}
+
+function parseAutoHwmDetailLine(line) {
+  const stripped = String(line || '').trim();
+  if (!stripped.startsWith('AUTO_HWM_DETAIL,')) {
+    return null;
+  }
+  const fields = {};
+  for (const item of stripped.split(',').slice(1)) {
+    const pos = item.indexOf('=');
+    if (pos < 0) {
+      continue;
+    }
+    fields[item.slice(0, pos).trim()] = item.slice(pos + 1).trim();
+  }
+  return Object.keys(fields).length > 0 ? fields : null;
+}
+
+function bytesToKbDisplay(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return '?';
+  }
+  if (parsed <= 0) {
+    return '0';
+  }
+  return (parsed % 1024) === 0 ? String(parsed / 1024) : (parsed / 1024).toFixed(1);
+}
+
+function cellWidths(rows, columns) {
+  return columns.map(([header, key]) => rows.reduce(
+    (width, row) => Math.max(width, String(row[key] ?? '?').length),
+    header.length
+  ));
+}
+
+function autoHwmDetailTableLines(rows, pattern) {
+  const patternRows = rows
+    .filter((row) => String(row.pattern || '').toUpperCase() === pattern.toUpperCase());
+  if (patternRows.length === 0) {
+    return [];
+  }
+
+  const seen = new Set();
+  const displayRows = [];
+  for (const row of patternRows) {
+    const display = {
+      ...row,
+      effective_sndbuf_kb: bytesToKbDisplay(row.effective_sndbuf),
+      effective_rcvbuf_kb: bytesToKbDisplay(row.effective_rcvbuf),
+    };
+    const key = [
+      'msg_size',
+      'component',
+      'label',
+      'socket_type',
+      'role',
+      'sndhwm',
+      'rcvhwm',
+      'effective_sndbuf_kb',
+      'effective_rcvbuf_kb',
+      'effective_message_bytes',
+      'socket_message_slots',
+    ].map((name) => display[name] ?? '').join('\0');
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    displayRows.push(display);
+  }
+  if (displayRows.length === 0) {
+    return [];
+  }
+
+  displayRows.sort((lhs, rhs) => {
+    const sizeDiff = Number(lhs.msg_size || 0) - Number(rhs.msg_size || 0);
+    if (sizeDiff !== 0) return sizeDiff;
+    return String(lhs.component || '').localeCompare(String(rhs.component || ''))
+      || String(lhs.label || '').localeCompare(String(rhs.label || ''));
+  });
+
+  const columns = [
+    ['Size(B)', 'msg_size'],
+    ['Component', 'component'],
+    ['Label', 'label'],
+    ['Type', 'socket_type'],
+    ['Role', 'role'],
+    ['SNDHWM', 'sndhwm'],
+    ['RCVHWM', 'rcvhwm'],
+    ['SNDBUF(KB)', 'effective_sndbuf_kb'],
+    ['RCVBUF(KB)', 'effective_rcvbuf_kb'],
+    ['MsgUnit(B)', 'effective_message_bytes'],
+    ['Slots', 'socket_message_slots'],
+  ];
+  const widths = cellWidths(displayRows, columns);
+  const header = '| ' + columns
+    .map(([name], index) => name.padEnd(widths[index]))
+    .join(' | ') + ' |';
+  const separator = '|-' + widths.map((width) => '-'.repeat(width)).join('-|-') + '-|';
+  return [
+    '',
+    '## Auto-HWM Detail',
+    `- pattern: ${pattern}`,
+    header,
+    separator,
+    ...displayRows.map((row) => '| ' + columns
+      .map(([, key], index) => String(row[key] ?? '?').padEnd(widths[index]))
+      .join(' | ') + ' |')
+  ];
 }
 
 function explicitClientCount() {
@@ -360,6 +418,7 @@ async function main() {
   const reportLines = [];
   const failures = [];
   const skips = [];
+  const autoHwmDetails = [];
   let requestedCombos = 0;
   let unsupportedCombos = 0;
   let skippedCombos = 0;
@@ -463,6 +522,12 @@ async function main() {
               msgSize,
               clients
             });
+            for (const line of lines) {
+              const detail = parseAutoHwmDetailLine(line);
+              if (detail) {
+                autoHwmDetails.push(detail);
+              }
+            }
             const hasMetrics = hasPrimaryMetricsFromResultLines(patternName, msgSize, lines);
             if (!hasMetrics && hasUnsupportedToken(lines)) {
               unsupportedCombos += msgSizes.length;
@@ -509,6 +574,12 @@ async function main() {
                 msgSize,
                 clients
               });
+              for (const line of lines) {
+                const detail = parseAutoHwmDetailLine(line);
+                if (detail) {
+                  autoHwmDetails.push(detail);
+                }
+              }
               const hasMetrics = hasPrimaryMetricsFromResultLines(patternName, msgSize, lines);
               if (!hasMetrics && hasUnsupportedToken(lines)) {
                 unsupportedCombos += msgSizes.length;
@@ -594,6 +665,12 @@ async function main() {
     emit('## Skips');
     for (const skip of skips) {
       emit(`- ${skip}`);
+    }
+  }
+
+  for (const patternName of patternNames) {
+    for (const line of autoHwmDetailTableLines(autoHwmDetails, patternName)) {
+      emit(line);
     }
   }
 

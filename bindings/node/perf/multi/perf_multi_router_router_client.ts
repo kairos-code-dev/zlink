@@ -24,8 +24,7 @@ const {
   pollEvents,
   pollEventHas,
   recvNoWaitInto,
-  resolveMultiLatencySampleCap,
-  sendStopTokenWithRetry,
+  sendStopTokenOnce,
   trySocketSend,
   waitForConnectionReady
 } = require('./perf_multi_runtime');
@@ -76,7 +75,6 @@ async function main() {
       activeStartNs,
       activeStopNs,
       roundTrip: true,
-      sampleCap: resolveMultiLatencySampleCap()
     });
     let seq = 1n;
 
@@ -138,7 +136,7 @@ async function main() {
     }
 
     // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via wire stop token.
-    await sendStopTokenWithRetry(
+    await sendStopTokenOnce(
       routers[0],
       (bytes) => trySocketSend(routers[0], SERVER_ROUTING_ID, bytes)
     );

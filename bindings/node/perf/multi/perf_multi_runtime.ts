@@ -3,8 +3,15 @@
 'use strict';
 
 const zlink = require('@zlink-systems/zlink');
+const readline = require('node:readline');
 const { MonitorEventType, RecvFlags, RecvResult } = zlink;
-const { sleepImmediate } = require('../common/perf_metrics');
+const {
+  applyAutoHwmMsgUnit,
+  applyAutoHwmProfile,
+  integerEnv,
+  manualSocketOverridesEnabled,
+  sleepImmediate
+} = require('../common/perf_metrics');
 const POLLIN = 1;
 const POLLOUT = 2;
 const emittedMultiAutoHwmDetails = new Set();
@@ -27,29 +34,13 @@ function pollEventHas(event, mask) {
   return ((event?.events ?? 0) & mask) !== 0;
 }
 
-function integerEnv(name, fallback) {
-  const raw = process.env[name];
-  if (raw === undefined || raw === '') {
-    return fallback;
-  }
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
-}
-
-function manualSocketOverridesEnabled() {
-  return (
-    integerEnv('PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0 ||
-    integerEnv('PERF_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0
-  );
-}
-
 function applySocketPolicy(socket, options = {}) {
   const sendTimeout = integerEnv('PERF_MULTI_SNDTIMEO_MS', 200);
   const recvTimeout = integerEnv('PERF_MULTI_RCVTIMEO_MS', 200);
   const linger = integerEnv('PERF_MULTI_LINGER_MS', 0);
 
   if (socket.options) {
-    if (manualSocketOverridesEnabled()) {
+    if (manualSocketOverridesEnabled('multi')) {
       const hwm = integerEnv('PERF_MULTI_HWM', 1000);
       const sendHwm = integerEnv('PERF_MULTI_SNDHWM', hwm);
       const recvHwm = integerEnv('PERF_MULTI_RCVHWM', hwm);
@@ -66,7 +57,7 @@ function applySocketPolicy(socket, options = {}) {
 }
 
 function applySpotNodeAdmission(node) {
-  if (!manualSocketOverridesEnabled()) {
+  if (!manualSocketOverridesEnabled('multi')) {
     return;
   }
   const hwm = integerEnv('PERF_MULTI_HWM', 1000);
@@ -74,17 +65,6 @@ function applySpotNodeAdmission(node) {
   const recvHwm = integerEnv('PERF_MULTI_RCVHWM', hwm);
   node.pubsubHwm = sendHwm;
   node.routerHwm = recvHwm;
-}
-
-function applyAutoHwmMsgUnit(socket, msgSize) {
-  if (msgSize <= 0 || !socket.options) {
-    return;
-  }
-  try {
-    socket.options.autoHwmMsgUnitBytes = msgSize;
-  } catch (err) {
-    // best effort — not all socket types expose this option
-  }
 }
 
 function autoHwmDetailEnabled() {
@@ -207,135 +187,6 @@ function hwmRcvBufDisplay(snapshot, socketType) {
     : '-';
 }
 
-function spotOwnerName(owner) {
-  if (zlink.SpotNodeSocketOwner && owner === zlink.SpotNodeSocketOwner.Node) {
-    return 'node';
-  }
-  if (zlink.SpotNodeSocketOwner && owner === zlink.SpotNodeSocketOwner.Spot) {
-    return 'spot';
-  }
-  return 'unknown';
-}
-
-function includeSpotSnapshotRow(label, row) {
-  if (!String(label || '').includes('control')) {
-    return true;
-  }
-  return row.socketName === 'peer_ctrl_pub' || row.socketName === 'peer_ctrl_sub';
-}
-
-function printAutoHwmSnapshotTable(title, rows, msgSize) {
-  if (rows.length === 0) {
-    return;
-  }
-  console.log(`${title}:`);
-  console.log('  | Size(B) | MsgUnit(B) | Socket | Type | Profile | Class | Role | Cap | Slots | SNDHWM | RCVHWM |');
-  console.log('  |---------|------------|--------|------|---------|-------|------|-----|-------|--------|--------|');
-  for (const row of rows) {
-    const snapshot = row.snapshot;
-    console.log(
-      `  | ${msgSize || 0}`
-      + ` | ${snapshot.autoHwmEffectiveMessageBytes}`
-      + ` | ${row.socketName}`
-      + ` | ${socketTypeName(row.socketType)}`
-      + ` | ${autoHwmProfileName(snapshot.autoHwmProfile)}`
-      + ` | ${autoHwmPolicyClassName(snapshot.autoHwmPolicyClass)}`
-      + ` | ${autoHwmRoleName(snapshot.autoHwmRole)}`
-      + ` | ${snapshot.autoHwmSizeCap}`
-      + ` | ${snapshot.autoHwmSocketMessageSlots}`
-      + ` | ${autoHwmSendSideVisible(row.socketType, snapshot.autoHwmRole) ? snapshot.autoHwmAppliedSndHwm : '-'}`
-      + ` | ${autoHwmRecvSideVisible(row.socketType, snapshot.autoHwmRole) ? snapshot.autoHwmAppliedRcvHwm : '-'}`
-      + ' |'
-    );
-  }
-}
-
-function emitMultiSpotNodeHwmSnapshot(node, label, transport, msgSize) {
-  if (!node || !autoHwmDetailEnabled()) {
-    return;
-  }
-  let rows = [];
-  try {
-    rows = node.internalSocketsSnapshot();
-  } catch (err) {
-    return;
-  }
-  const pattern = process.env.PERF_MULTI_PATTERN || process.env.PERF_PATTERN || 'unknown';
-  const component = process.env.PERF_MULTI_COMPONENT || 'process';
-  const effectiveTransport = transport || process.env.PERF_MULTI_TRANSPORT || 'unknown';
-  const nodeRows = [];
-  const spotRows = [];
-  for (const row of rows) {
-    if (!row.autoHwmVisible || !includeSpotSnapshotRow(label, row)) {
-      continue;
-    }
-    const snapshot = row.snapshot;
-    const owner = spotOwnerName(row.owner);
-    const scope = owner === 'node' ? 'shared' : 'per-spot';
-    const key = [
-      pattern,
-      effectiveTransport,
-      component,
-      row.socketName,
-      owner,
-      String(row.ownerId),
-      msgSize || 0,
-      snapshot.autoHwmRole,
-      snapshot.autoHwmAppliedSndHwm,
-      snapshot.autoHwmAppliedRcvHwm,
-      String(snapshot.autoHwmSocketMessageSlots),
-      String(snapshot.autoHwmEffectiveMessageBytes),
-      snapshot.autoHwmEffectiveSndBuf,
-      snapshot.autoHwmEffectiveRcvBuf,
-    ].join('|');
-    if (!emittedMultiAutoHwmDetails.has(key)) {
-      emittedMultiAutoHwmDetails.add(key);
-      console.log(
-        'AUTO_HWM_DETAIL'
-        + `,pattern=${pattern}`
-        + `,transport=${effectiveTransport}`
-        + `,component=${component}`
-        + `,label=${row.socketName}`
-        + `,owner=${owner}`
-        + `,owner_id=${row.ownerId}`
-        + `,socket=${row.socketName}`
-        + `,socket_type=${socketTypeName(row.socketType)}`
-        + `,msg_size=${msgSize || 0}`
-        + ',source=spotnode_snapshot'
-        + `,enabled=${snapshot.autoHwmEnabled ? 1 : 0}`
-        + `,role=${autoHwmRoleName(snapshot.autoHwmRole)}`
-        + `,role_id=${snapshot.autoHwmRole}`
-        + `,profile=${autoHwmProfileName(snapshot.autoHwmProfile)}`
-        + `,profile_id=${snapshot.autoHwmProfile}`
-        + `,policy_class=${autoHwmPolicyClassName(snapshot.autoHwmPolicyClass)}`
-        + `,policy_class_id=${snapshot.autoHwmPolicyClass}`
-        + `,unit_budget_bytes=${snapshot.autoHwmUnitBudgetBytes}`
-        + `,size_cap=${snapshot.autoHwmSizeCap}`
-        + `,scope=${scope}`
-        + `,sndhwm=${snapshot.autoHwmAppliedSndHwm}`
-        + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwm}`
-        + `,socket_message_slots=${snapshot.autoHwmSocketMessageSlots}`
-        + `,effective_message_bytes=${snapshot.autoHwmEffectiveMessageBytes}`
-        + `,effective_sndbuf=${hwmSndBufDisplay(snapshot, row.socketType)}`
-        + `,effective_rcvbuf=${hwmRcvBufDisplay(snapshot, row.socketType)}`
-        + `,last_recalc_reason=${autoHwmRecalcReasonName(snapshot.autoHwmLastRecalcReason)}`
-      );
-    }
-    if (owner === 'node') {
-      nodeRows.push(row);
-    } else if (owner === 'spot') {
-      spotRows.push(row);
-    }
-  }
-  const sortRows = (items) => items.sort((lhs, rhs) =>
-    String(lhs.socketName).localeCompare(String(rhs.socketName))
-    || Number(lhs.ownerId - rhs.ownerId)
-    || Number(lhs.snapshot.autoHwmRole - rhs.snapshot.autoHwmRole)
-  );
-  printAutoHwmSnapshotTable('Auto-HWM spotnode', sortRows(nodeRows), msgSize);
-  printAutoHwmSnapshotTable('Auto-HWM spot handles', sortRows(spotRows), msgSize);
-}
-
 function emitMultiSocketHwmDetail(socket, label, transport, msgSize) {
   if (!socket || !autoHwmDetailEnabled()) {
     return;
@@ -435,20 +286,6 @@ function resolveMultiIoThreads(role, pattern) {
   return 4;
 }
 
-function resolveAutoHwmProfile() {
-  const env = process.env.PERF_CTX_AUTO_HWM_PROFILE || process.env.PERF_AUTO_HWM_PROFILE || '';
-  if (env === 'compact') {
-    return zlink.AutoHwmProfile.Compact;
-  }
-  if (env === 'low_latency' || env === 'low-latency') {
-    return zlink.AutoHwmProfile.LowLatency;
-  }
-  if (env === 'throughput') {
-    return zlink.AutoHwmProfile.Throughput;
-  }
-  return zlink.AutoHwmProfile.Balanced;
-}
-
 function applyContextPolicy(ctx, role, pattern) {
   ctx.options.ioThreads = resolveMultiIoThreads(role, pattern);
   const maxSockets = integerEnv('PERF_MAX_SOCKETS', NaN);
@@ -457,12 +294,7 @@ function applyContextPolicy(ctx, role, pattern) {
   }
   ctx.options.blocky = integerEnv('PERF_CTX_BLOCKY', 0) !== 0;
   ctx.options.autoHwmEnabled = true;
-  ctx.options.autoHwmProfile = resolveAutoHwmProfile();
-}
-
-function resolveMultiLatencySampleCap() {
-  const configured = integerEnv('PERF_MULTI_LATENCY_SAMPLE_CAP', 200000);
-  return configured > 0 ? configured : 200000;
+  applyAutoHwmProfile(ctx, zlink);
 }
 
 function recvNoWait(socket) {
@@ -571,17 +403,11 @@ function trySocketSend(socket, ...args) {
 
 // PERF_MULTI_TEST_POLICY § 1.3.1: emit the wire-level stop token once at
 // phase end. Callers pass a closure that performs the actual send (e.g.
-// router.send(routingId, ...)). The active loop has already exited and
-// the socket's existing poller is no longer being driven, so we yield to
-// the event loop on transient backpressure rather than registering the
-// same socket with a second poller.
-async function sendStopTokenWithRetry(_socket, sendFn) {
+// router.send(routingId, ...)); a failed sentinel is a benchmark failure.
+async function sendStopTokenOnce(_socket, sendFn) {
   const stopBytes = require('../perf_stop_token').STOP_TOKEN_BYTES;
-  for (let retry = 0; retry < 100; retry += 1) {
-    if (sendFn(stopBytes)) {
-      return;
-    }
-    await sleepImmediate();
+  if (!sendFn(stopBytes)) {
+    throw new Error('stop token send failed');
   }
 }
 
@@ -602,6 +428,32 @@ function trySocketPublish(socket, topic, payload) {
       return false;
     }
     throw error;
+  }
+}
+
+async function publishControlUntilSent(socket, waiter, topic, payload) {
+  const body = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
+  for (;;) {
+    if (trySocketPublish(socket, topic, body)) {
+      return;
+    }
+    await waiter.wait(POLLOUT);
+  }
+}
+
+async function waitForRunnerControlConnected() {
+  const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+  try {
+    for await (const line of rl) {
+      if (line.startsWith('CONTROL_CONNECTED,')) {
+        return;
+      }
+      if (line === 'STOP' || line === 'QUIT') {
+        return;
+      }
+    }
+  } finally {
+    rl.close();
   }
 }
 
@@ -647,16 +499,16 @@ module.exports = {
   applySocketPolicy,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
-  emitMultiSpotNodeHwmSnapshot,
   pollEvents,
   pollEventHas,
+  publishControlUntilSent,
   recvNoWait,
   recvNoWaitInto,
-  resolveMultiLatencySampleCap,
-  sendStopTokenWithRetry,
+  sendStopTokenOnce,
   subscribeNoWait,
   trySocketPublish,
   trySocketSend,
+  waitForRunnerControlConnected,
   waitForConnectionReadyCount,
   waitForConnectionReady
 };

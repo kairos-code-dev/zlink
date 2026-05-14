@@ -56,6 +56,11 @@ function formatTableRow(row) {
   return `| ${`${row.msgSize}B`.padEnd(8)} | ${throughput.padStart(16)} | ${bandwidth.padStart(12)} | ${`${row.metrics.latency.toFixed(3).padStart(9)} ms`.padStart(12)} | ${`${row.metrics.latency_p95.toFixed(3).padStart(9)} ms`.padStart(12)} | ${`${row.metrics.latency_p99.toFixed(3).padStart(9)} ms`.padStart(12)} |`;
 }
 
+function formatFailureRow(msgSize, label = 'FAIL') {
+  const cell = String(label).padStart(16);
+  return `| ${String(msgSize).padEnd(8)}B | ${cell} | ${'FAIL'.padStart(10)} | ${'FAIL'.padStart(13)} | ${'FAIL'.padStart(13)} | ${'FAIL'.padStart(13)} |`;
+}
+
 function formatTableRows(rows) {
   return [
     ...formatTableHeader(),
@@ -137,6 +142,7 @@ function writeReport(reportDir, lang, suite, options, renderedSections, completi
 module.exports = {
   buildEffectiveOptions,
   completionLines,
+  formatFailureRow,
   formatTableRows,
   formatTableHeader,
   formatTableRow,

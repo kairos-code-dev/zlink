@@ -133,6 +133,25 @@ function computeMetrics(
   };
 }
 
+function median(values) {
+  const sorted = values.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if ((sorted.length % 2) === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return sorted[mid];
+}
+
+function medianMetrics(metricsList) {
+  return {
+    throughput: median(metricsList.map((item) => item.throughput)),
+    bandwidth: median(metricsList.map((item) => item.bandwidth)),
+    latency: median(metricsList.map((item) => item.latency)),
+    latency_p95: median(metricsList.map((item) => item.latency_p95)),
+    latency_p99: median(metricsList.map((item) => item.latency_p99))
+  };
+}
+
 function isEchoPattern(pattern) {
   return pattern === 'MULTI_DEALER_ROUTER'
     || pattern === 'MULTI_ROUTER_ROUTER'
@@ -163,6 +182,16 @@ function summarizeMetrics(
   return Object.entries(metrics).map(([metric, value]) => {
     const formatted = value.toFixed(3);
     return `RESULT,${libName},${pattern},${transport},${msgSize},${metric},${formatted}`;
+  });
+}
+
+function metricLines(pattern, transport, msgSize, metrics, libName = 'current') {
+  return PRIMARY_METRICS.map((metric) => {
+    const value = metrics[metric];
+    if (typeof value !== 'number') {
+      throw new Error(`missing metric ${metric} for ${pattern} ${transport} ${msgSize}B`);
+    }
+    return `RESULT,${libName},${pattern},${transport},${msgSize},${metric},${value.toFixed(3)}`;
   });
 }
 
@@ -230,9 +259,6 @@ function createMetricCollector(config) {
     ? BigInt('0xffffffffffffffff')
     : BigInt(config.activeStopNs);
   const rttDivisor = config.roundTrip ? 2n : 1n;
-  const sampleCap = Number.isFinite(config.sampleCap) && config.sampleCap > 0
-    ? Math.trunc(config.sampleCap)
-    : Number.POSITIVE_INFINITY;
   let accepted = 0;
   let rejected = 0;
   let closed = false;
@@ -259,9 +285,7 @@ function createMetricCollector(config) {
         return;
       }
       accepted += 1;
-      if (latenciesNs.length < sampleCap) {
-        latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
-      }
+      latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
     },
     async finish() {
       closed = true;
@@ -290,6 +314,8 @@ module.exports = {
   decodeMetricHeaderFromParts,
   currentEpochNs,
   latencyNsFromPayload,
+  medianMetrics,
+  metricLines,
   hasPrimaryMetricsFromResultLines,
   primaryMetricsFromResultLines,
   sleepImmediate,

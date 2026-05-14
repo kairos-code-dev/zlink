@@ -5,8 +5,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 //
 // PERF_SINGLE_TEST_POLICY § 1.4 / PERF_MULTI_TEST_POLICY § 1.3.1 mandate
 // using a single sentinel message instead of `senderDone` flags + short
-// polling cadences. The sender emits this token once at phase end with
-// bounded backpressure retry; the receiver, waiting on `poller.wait(-1)`
+// polling cadences. The sender emits this token once at phase end; the
+// receiver, waiting on `poller.wait(-1)`
 // or `poller.waitMany(n, -1)`, drains in-flight messages and exits when
 // it sees the token. This mirrors `k_stop_token` / `is_stop_token` in
 // `bindings/cpp/perf/single/common/perf_single_common.hpp` and keeps

@@ -21,7 +21,6 @@ const {
   emitMultiSocketHwmDetail,
   pollEvents,
   recvNoWait,
-  resolveMultiLatencySampleCap,
   waitForConnectionReady
 } = require('./perf_multi_runtime');
 const { isStopTokenParts } = require('../perf_stop_token');
@@ -65,7 +64,6 @@ async function main() {
       msgSize: options.msgSize,
       activeStartNs,
       activeStopNs,
-      sampleCap: resolveMultiLatencySampleCap()
     });
 
     const poller = new zlink.Poller();

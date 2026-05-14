@@ -6,7 +6,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, recvNoWait, resolveMultiLatencySampleCap, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, recvNoWait, waitForConnectionReady } = require('./perf_multi_runtime');
 const { isStopTokenParts } = require('../perf_stop_token');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
@@ -44,7 +44,6 @@ async function main() {
             msgSize: options.msgSize,
             activeStartNs,
             activeStopNs,
-            sampleCap: resolveMultiLatencySampleCap()
         });
         const poller = new zlink.Poller();
         try {

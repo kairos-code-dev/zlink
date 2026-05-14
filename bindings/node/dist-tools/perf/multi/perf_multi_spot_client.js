@@ -6,7 +6,7 @@ const zlink = require('@zlink-systems/zlink');
 const { configureTlsClient } = require('../common/perf_tls');
 const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, emitMultiSpotNodeHwmSnapshot, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, subscribeNoWait, trySocketPublish, waitForRunnerControlConnected } = require('./perf_multi_runtime');
 const TOPIC = 'bench';
 const CONTROL_TOPIC = 'bench';
 const TRACE = process.env.PERF_MULTI_SPOT_TRACE === '1';
@@ -65,22 +65,6 @@ function connectPeerIfNeeded(node, endpoint) {
         }
     }
 }
-async function waitForRunnerControlConnected() {
-    const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-    try {
-        for await (const line of rl) {
-            if (line.startsWith('CONTROL_CONNECTED,')) {
-                return;
-            }
-            if (line === 'STOP' || line === 'QUIT') {
-                return;
-            }
-        }
-    }
-    finally {
-        rl.close();
-    }
-}
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -123,7 +107,7 @@ async function main() {
             slots.push({ spot });
         }
         ctx.recalculateAutoHwm();
-        emitMultiSpotNodeHwmSnapshot(sharedNode, 'spotnode_data', options.transport, options.msgSize);
+        emitMultiSocketHwmDetail(sharedNode, 'spotnode_data', options.transport, options.msgSize);
         const drainSlots = () => {
             let processed = false;
             for (let i = 0; i < slots.length; i += 1) {
@@ -156,23 +140,12 @@ async function main() {
             tryControlPublish(controlPub, 'CONNECTED');
             await sleepImmediate();
         }
-        for (;;) {
-            const connectedSent = tryControlPublish(controlPub, 'CONNECTED');
-            if (connectedSent) {
-                break;
-            }
-            await controlPubWaiter.wait(POLLOUT);
-        }
+        await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
         const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
         while (Date.now() < controlSettleDeadline) {
             await sleepImmediate();
         }
-        for (;;) {
-            if (tryControlPublish(controlPub, `READY_COUNT,${options.msgSize},${options.clients}`)) {
-                break;
-            }
-            await controlPubWaiter.wait(POLLOUT);
-        }
+        await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${options.clients}`);
         console.log(`CLIENT_READY,${options.msgSize}`);
         trace('client-ready');
         collector = createMetricCollector({
@@ -180,7 +153,6 @@ async function main() {
             msgSize: options.msgSize,
             activeStartNs: 0n,
             activeStopNs: BigInt('0xffffffffffffffff'),
-            sampleCap: resolveMultiLatencySampleCap()
         });
         collectActive = true;
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });

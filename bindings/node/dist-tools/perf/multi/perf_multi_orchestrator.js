@@ -95,11 +95,6 @@ function isControlLine(line) {
         || line.startsWith('CONTROL_CONNECTED,')
         || line.startsWith('DATA_ENDPOINT,');
 }
-function isBenignChildStderr(line) {
-    return (line.startsWith('[spot-shutdown] service=spot') &&
-        line.includes('shutdown=abortive reason=108')) || (line.includes('close failed: CloseError: spot_node_destroy failed') &&
-        line.includes('Cannot send after transport endpoint shutdown'));
-}
 function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
     child.__waiters = [];
     child.__seenLines = [];
@@ -111,7 +106,10 @@ function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
                 return;
             }
         }
-        if (line.startsWith(resultPrefix) || line.startsWith('UNSUPPORTED,') || line.startsWith('SKIP,')) {
+        if (line.startsWith(resultPrefix)
+            || line.startsWith('UNSUPPORTED,')
+            || line.startsWith('SKIP,')
+            || line.startsWith('AUTO_HWM_DETAIL,')) {
             resultLines.push(line);
             return;
         }
@@ -120,9 +118,6 @@ function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
         }
     });
     collectLines(child.stderr, (line) => {
-        if (isBenignChildStderr(line)) {
-            return;
-        }
         child.__stderrLines.push(line);
         console.error(line);
     });

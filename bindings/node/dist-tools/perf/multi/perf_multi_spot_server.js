@@ -6,25 +6,9 @@ const zlink = require('@zlink-systems/zlink');
 const { configureTlsServer } = require('../common/perf_tls');
 const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, emitMultiSpotNodeHwmSnapshot, subscribeNoWait, trySocketPublish } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, subscribeNoWait, trySocketPublish } = require('./perf_multi_runtime');
 const TOPIC = 'bench';
 const CONTROL_TOPIC = 'bench';
-function integerEnv(name, fallback) {
-    const raw = process.env[name];
-    if (raw === undefined || raw === '') {
-        return fallback;
-    }
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
-}
-function latencyOnlyEnabled() {
-    const raw = process.env.PERF_MULTI_SPOT_LATENCY_ONLY;
-    return raw !== undefined && raw !== '' && raw !== '0';
-}
-async function sleepMicroseconds(microseconds) {
-    const milliseconds = Math.max(1, Math.ceil(microseconds / 1000));
-    await new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
 function trySpotPublish(spot, _channelName, topic, payload) {
     try {
         return spot.publish(topic)
@@ -100,7 +84,7 @@ async function main() {
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(controlPub, 'spotnode_control_pub', options.transport, options.msgSize);
         emitMultiSocketHwmDetail(controlSub, 'spotnode_control_sub', options.transport, options.msgSize);
-        emitMultiSpotNodeHwmSnapshot(node, 'spotnode_data', options.transport, options.msgSize);
+        emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
         console.log(`READY,${options.endpoint}`);
         console.log(`CONTROL_READY,${options.controlEndpoint}`);
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -161,24 +145,14 @@ async function main() {
         if (stopRequested) {
             return;
         }
-        for (;;) {
-            if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`START,${options.msgSize}`))) {
-                break;
-            }
-            await controlPubWaiter.wait(POLLOUT);
-        }
+        await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `START,${options.msgSize}`);
         const runId = createRunId(1);
         const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
-        const latencyOnly = latencyOnlyEnabled();
-        const latencyIntervalUs = integerEnv('PERF_MULTI_SPOT_LATENCY_ONLY_INTERVAL_US', 1000);
         let seq = 1n;
         while (process.hrtime.bigint() < activeStopNs) {
             stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
             if (trySpotPublish(spot, '', TOPIC, payload)) {
                 seq += 1n;
-                if (latencyOnly) {
-                    await sleepMicroseconds(latencyIntervalUs);
-                }
                 continue;
             }
             await sleepImmediate();

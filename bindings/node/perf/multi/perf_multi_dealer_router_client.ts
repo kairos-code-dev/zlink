@@ -24,8 +24,7 @@ const {
   pollEvents,
   pollEventHas,
   recvNoWaitInto,
-  resolveMultiLatencySampleCap,
-  sendStopTokenWithRetry,
+  sendStopTokenOnce,
   trySocketSend,
   waitForConnectionReady
 } = require('./perf_multi_runtime');
@@ -71,7 +70,6 @@ async function main() {
       activeStartNs,
       activeStopNs,
       roundTrip: true,
-      sampleCap: resolveMultiLatencySampleCap()
     });
     let seq = 1n;
 
@@ -137,7 +135,7 @@ async function main() {
     // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end to the echo server
     // via the wire-level stop token. The server's recv loop exits on the
     // first stop token observed.
-    await sendStopTokenWithRetry(dealers[0], (bytes) => trySocketSend(dealers[0], bytes));
+    await sendStopTokenOnce(dealers[0], (bytes) => trySocketSend(dealers[0], bytes));
 
     const result = await collector.finish();
     for (const metricLine of summarizeMetrics(

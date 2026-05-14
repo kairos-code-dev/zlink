@@ -6,7 +6,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeaderFromParts, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, emitMultiSpotNodeHwmSnapshot, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, subscribeNoWait, waitForRunnerControlConnected } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii'));
@@ -49,22 +49,6 @@ function trySpotSend(spot, payload) {
         throw error;
     }
 }
-async function waitForRunnerControlConnected() {
-    const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-    try {
-        for await (const line of rl) {
-            if (line.startsWith('CONTROL_CONNECTED,')) {
-                return;
-            }
-            if (line === 'STOP' || line === 'QUIT') {
-                return;
-            }
-        }
-    }
-    finally {
-        rl.close();
-    }
-}
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -104,33 +88,18 @@ async function main() {
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(controlPub, 'spotnode_control_pub', options.transport, options.msgSize);
         emitMultiSocketHwmDetail(controlSub, 'spotnode_control_sub', options.transport, options.msgSize);
-        emitMultiSpotNodeHwmSnapshot(node, 'spotnode_data', options.transport, options.msgSize);
+        emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
         const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
         while (Date.now() < stabilizationDeadline) {
             await sleepImmediate();
         }
-        for (;;) {
-            if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`DATA_ENDPOINT,${dataEndpoint}`))) {
-                break;
-            }
-            await controlPubWaiter.wait(POLLOUT);
-        }
-        for (;;) {
-            if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from('CONNECTED'))) {
-                break;
-            }
-            await controlPubWaiter.wait(POLLOUT);
-        }
+        await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
+        await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
         const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
         while (Date.now() < controlSettleDeadline) {
             await sleepImmediate();
         }
-        for (;;) {
-            if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`READY_COUNT,${options.msgSize},${slots.length}`))) {
-                break;
-            }
-            await controlPubWaiter.wait(POLLOUT);
-        }
+        await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${slots.length}`);
         console.log(`CLIENT_READY,${options.msgSize}`);
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         let startRequested = false;
@@ -169,7 +138,6 @@ async function main() {
             activeStartNs,
             activeStopNs,
             roundTrip: true,
-            sampleCap: resolveMultiLatencySampleCap()
         });
         let seq = 1n;
         const drainReplies = () => {

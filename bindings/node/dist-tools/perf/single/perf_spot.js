@@ -6,11 +6,11 @@ const perf_metrics_1 = require("../common/perf_metrics");
 const perf_single_common_1 = require("./perf_single_common");
 const perf_stop_token_1 = require("../perf_stop_token");
 const TOPIC = 'bench';
-function trySpotPublish(spot, payload) {
+function trySpotPublish(spot, payload, flags = zlink.SendFlags.DontWait) {
     try {
         return spot.publish(TOPIC)
             .message(payload)
-            .flags(zlink.SendFlags.DontWait)
+            .flags(flags)
             .submit();
     }
     catch (error) {
@@ -30,14 +30,8 @@ function trySpotPublish(spot, payload) {
 }
 async function publishStopToken(spot) {
     // PERF_SINGLE_TEST_POLICY § 1.4: emit the wire-level stop token. Spot
-    // does not expose a POLLOUT poller wait, so we yield via setImmediate
-    // through any transient backpressure. Bounded retry to avoid hangs.
-    for (let retry = 0; retry < 100; retry += 1) {
-        if (trySpotPublish(spot, perf_stop_token_1.STOP_TOKEN_BYTES)) {
-            return;
-        }
-        await (0, perf_metrics_1.sleepImmediate)();
-    }
+    // stop delivery is a required phase-end signal, so failure is surfaced.
+    spot.publish(TOPIC).message(perf_stop_token_1.STOP_TOKEN_BYTES).flags(zlink.SendFlags.None).submit();
 }
 function trySpotSubscribe(spot) {
     try {
@@ -102,7 +96,6 @@ async function runSpotBenchmark(msgSize, options) {
         let probeReady = false;
         let stopReceived = false;
         const activeDeadline = { value: 0 };
-        const latencySampleCap = Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000);
         const latenciesNs = [];
         let accepted = 0;
         const collectReadable = (countActive) => {
@@ -132,12 +125,10 @@ async function runSpotBenchmark(msgSize, options) {
                     return;
                 }
                 accepted += 1;
-                if (latenciesNs.length < latencySampleCap) {
-                    const nowNs = (0, perf_metrics_1.currentEpochNs)();
-                    const sentTsNs = BigInt(header.sentTsNs);
-                    if (nowNs >= sentTsNs) {
-                        latenciesNs.push(Number(nowNs - sentTsNs));
-                    }
+                const nowNs = (0, perf_metrics_1.currentEpochNs)();
+                const sentTsNs = BigInt(header.sentTsNs);
+                if (nowNs >= sentTsNs) {
+                    latenciesNs.push(Number(nowNs - sentTsNs));
                 }
             });
         };
@@ -200,8 +191,8 @@ async function runSpotBenchmark(msgSize, options) {
         if (accepted <= 0) {
             throw new Error('spot benchmark produced no measured messages');
         }
-        (0, perf_single_common_1.emitSingleSpotHwmDetail)(publisherNode, 'publisher', options.transport, msgSize);
-        (0, perf_single_common_1.emitSingleSpotHwmDetail)(subscriberNode, 'subscriber', options.transport, msgSize);
+        (0, perf_single_common_1.emitSingleSocketHwmDetail)(publisherNode, 'SPOT', options.transport, 'publisher_node', msgSize);
+        (0, perf_single_common_1.emitSingleSocketHwmDetail)(subscriberNode, 'SPOT', options.transport, 'subscriber_node', msgSize);
         return {
             latenciesNs,
             accepted

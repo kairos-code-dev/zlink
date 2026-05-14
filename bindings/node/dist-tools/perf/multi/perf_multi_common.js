@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const net = require('node:net');
-const os = require('node:os');
-const path = require('node:path');
-const { once } = require('node:events');
 const { MIN_MSG_SIZE } = require('../common/perf_metrics');
+const { benchmarkEndpoint: commonBenchmarkEndpoint, reservePort } = require('../common/perf_endpoint');
 function parseArgs(argv, defaults = {}) {
     const options = {
         endpoint: '',
@@ -55,25 +52,8 @@ function parseArgs(argv, defaults = {}) {
     }
     return options;
 }
-async function reservePort() {
-    const server = net.createServer();
-    server.listen(0, '127.0.0.1');
-    await once(server, 'listening');
-    const address = server.address();
-    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-    return address.port;
-}
 async function benchmarkEndpoint(transport, token, bindPort = 0) {
-    if (transport === 'ipc') {
-        return `ipc://${path.join(os.tmpdir(), `zlink-node-multi-perf-${process.pid}-${token}.sock`)}`;
-    }
-    if (transport === 'tcp' || transport === 'tls' || transport === 'ws' || transport === 'wss') {
-        const port = Number.isFinite(bindPort) && bindPort > 0
-            ? Math.trunc(bindPort)
-            : await reservePort();
-        return `${transport}://127.0.0.1:${port}`;
-    }
-    throw new Error(`unsupported multi transport: ${transport}`);
+    return commonBenchmarkEndpoint(transport, token, { suite: 'multi', bindPort });
 }
 function resolveMultiConnectConcurrency(clientCount) {
     const configured = Number(process.env.PERF_MULTI_CONNECT_CONCURRENCY);

@@ -5,7 +5,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, resolveMultiLatencySampleCap, sendStopTokenWithRetry, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, sendStopTokenOnce, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -46,7 +46,6 @@ async function main() {
             activeStartNs,
             activeStopNs,
             roundTrip: true,
-            sampleCap: resolveMultiLatencySampleCap()
         });
         let seq = 1n;
         const drainReply = (index) => {
@@ -106,7 +105,7 @@ async function main() {
         // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end to the echo server
         // via the wire-level stop token. The server's recv loop exits on the
         // first stop token observed.
-        await sendStopTokenWithRetry(dealers[0], (bytes) => trySocketSend(dealers[0], bytes));
+        await sendStopTokenOnce(dealers[0], (bytes) => trySocketSend(dealers[0], bytes));
         const result = await collector.finish();
         for (const metricLine of summarizeMetrics('MULTI_DEALER_ROUTER', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
             console.log(metricLine);

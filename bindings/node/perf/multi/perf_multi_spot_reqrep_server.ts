@@ -15,9 +15,8 @@ const {
   applySpotNodeAdmission,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
-  emitMultiSpotNodeHwmSnapshot,
+  publishControlUntilSent,
   subscribeNoWait,
-  trySocketPublish
 } = require('./perf_multi_runtime');
 
 const CONTROL_TOPIC = 'bench';
@@ -86,7 +85,7 @@ async function main() {
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(controlPub, 'spotnode_control_pub', options.transport, options.msgSize);
     emitMultiSocketHwmDetail(controlSub, 'spotnode_control_sub', options.transport, options.msgSize);
-    emitMultiSpotNodeHwmSnapshot(node, 'spotnode_data', options.transport, options.msgSize);
+    emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
     controlPub.bind(options.controlEndpoint);
     controlSub.setSubscription(CONTROL_TOPIC);
 
@@ -157,12 +156,7 @@ async function main() {
       return;
     }
 
-    for (;;) {
-      if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`START,${options.msgSize}`))) {
-        break;
-      }
-      await controlPubWaiter.wait(POLLOUT);
-    }
+    await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `START,${options.msgSize}`);
 
     while (!stop) {
       await sleepImmediate();

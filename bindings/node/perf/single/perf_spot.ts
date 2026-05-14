@@ -17,7 +17,7 @@ import {
   benchmarkEndpoint,
   configureTlsClient,
   configureTlsServer,
-  emitSingleSpotHwmDetail,
+  emitSingleSocketHwmDetail,
   parseSingleBinaryArgs,
   waitForPostReadySettle
 } from './perf_single_common';
@@ -28,11 +28,11 @@ import {
 
 const TOPIC = 'bench';
 
-function trySpotPublish(spot: any, payload: Buffer): boolean {
+function trySpotPublish(spot: any, payload: Buffer, flags = zlink.SendFlags.DontWait): boolean {
   try {
     return spot.publish(TOPIC)
       .message(payload)
-      .flags(zlink.SendFlags.DontWait)
+      .flags(flags)
       .submit();
   } catch (error: any) {
     if (error instanceof zlink.SubmitError &&
@@ -52,14 +52,8 @@ function trySpotPublish(spot: any, payload: Buffer): boolean {
 
 async function publishStopToken(spot: any) {
   // PERF_SINGLE_TEST_POLICY § 1.4: emit the wire-level stop token. Spot
-  // does not expose a POLLOUT poller wait, so we yield via setImmediate
-  // through any transient backpressure. Bounded retry to avoid hangs.
-  for (let retry = 0; retry < 100; retry += 1) {
-    if (trySpotPublish(spot, STOP_TOKEN_BYTES)) {
-      return;
-    }
-    await sleepImmediate();
-  }
+  // stop delivery is a required phase-end signal, so failure is surfaced.
+  spot.publish(TOPIC).message(STOP_TOKEN_BYTES).flags(zlink.SendFlags.None).submit();
 }
 
 function trySpotSubscribe(spot: any) {
@@ -128,7 +122,6 @@ async function runSpotBenchmark(msgSize: number, options: any) {
     let probeReady = false;
     let stopReceived = false;
     const activeDeadline = { value: 0 };
-    const latencySampleCap = Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000);
     const latenciesNs: number[] = [];
     let accepted = 0;
     const collectReadable = (countActive: boolean) => {
@@ -158,12 +151,10 @@ async function runSpotBenchmark(msgSize: number, options: any) {
           return;
         }
         accepted += 1;
-        if (latenciesNs.length < latencySampleCap) {
-          const nowNs = currentEpochNs();
-          const sentTsNs = BigInt(header.sentTsNs);
-          if (nowNs >= sentTsNs) {
-            latenciesNs.push(Number(nowNs - sentTsNs));
-          }
+        const nowNs = currentEpochNs();
+        const sentTsNs = BigInt(header.sentTsNs);
+        if (nowNs >= sentTsNs) {
+          latenciesNs.push(Number(nowNs - sentTsNs));
         }
       });
     };
@@ -231,9 +222,8 @@ async function runSpotBenchmark(msgSize: number, options: any) {
     if (accepted <= 0) {
       throw new Error('spot benchmark produced no measured messages');
     }
-
-    emitSingleSpotHwmDetail(publisherNode, 'publisher', options.transport, msgSize);
-    emitSingleSpotHwmDetail(subscriberNode, 'subscriber', options.transport, msgSize);
+    emitSingleSocketHwmDetail(publisherNode, 'SPOT', options.transport, 'publisher_node', msgSize);
+    emitSingleSocketHwmDetail(subscriberNode, 'SPOT', options.transport, 'subscriber_node', msgSize);
 
     return {
       latenciesNs,

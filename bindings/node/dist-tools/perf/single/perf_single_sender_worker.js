@@ -56,70 +56,29 @@ async function handshakeRouterSender(port, sender, receiverRoutingId) {
 }
 function sendStopToken(kind, socket, receiverRoutingId, topic) {
     // PERF_SINGLE_TEST_POLICY § 1.4: emit the wire-level stop token once at
-    // phase end. Use blocking send (no DontWait) so transient backpressure
-    // is absorbed by the socket; bound retries to avoid hanging if the peer
-    // has gone away. For pubsub the publisher is configured with
-    // `no_drop=true` (see `perf_pubsub.ts`), so the sentinel cannot be
-    // silently discarded by XPUB.
+    // phase end. Use blocking send (no DontWait) so a failed sentinel is a
+    // real benchmark failure rather than a hidden recovery path.
     trace(`sendStopToken begin kind=${kind}`);
-    for (let retry = 0; retry < 100; retry += 1) {
-        try {
-            if (kind === 'pubsub') {
-                socket.publish(topic).message(STOP_TOKEN_BYTES).submit();
-            }
-            else if (kind === 'router_router') {
-                socket.send(receiverRoutingId).message(STOP_TOKEN_BYTES).submit();
-            }
-            else {
-                socket.send().message(STOP_TOKEN_BYTES).submit();
-            }
-            trace(`sendStopToken sent kind=${kind} retry=${retry}`);
-            return;
-        }
-        catch (error) {
-            const text = String(error && error.message ? error.message : error);
-            if (error instanceof zlink.SubmitError
-                && error.result === zlink.SubmitResult.Backpressured) {
-                continue;
-            }
-            if ((error && error.code === 'EAGAIN')
-                || text.includes('Resource temporarily unavailable')
-                || text.includes('Host unreachable')
-                || text.includes('Transport endpoint is not connected')) {
-                continue;
-            }
-            throw error;
-        }
+    if (kind === 'pubsub') {
+        socket.publish(topic).message(STOP_TOKEN_BYTES).submit();
     }
+    else if (kind === 'router_router') {
+        socket.send(receiverRoutingId).message(STOP_TOKEN_BYTES).submit();
+    }
+    else {
+        socket.send().message(STOP_TOKEN_BYTES).submit();
+    }
+    trace(`sendStopToken sent kind=${kind}`);
 }
 function submitActiveMessage(kind, socket, payload, receiverRoutingId, topic) {
-    try {
-        if (kind === 'pubsub') {
-            socket.publish(topic).message(payload).flags(zlink.SendFlags.DontWait).submit();
-        }
-        else if (kind === 'router_router') {
-            socket.send(receiverRoutingId).message(payload).flags(zlink.SendFlags.DontWait).submit();
-        }
-        else {
-            socket.send().message(payload).flags(zlink.SendFlags.DontWait).submit();
-        }
-        return true;
+    if (kind === 'pubsub') {
+        socket.publish(topic).message(payload).submit();
     }
-    catch (error) {
-        const text = String(error && error.message ? error.message : error);
-        if (error instanceof zlink.SubmitError
-            && (error.result === zlink.SubmitResult.Backpressured
-                || error.result === zlink.SubmitResult.NotConnected
-                || error.result === zlink.SubmitResult.NotFound)) {
-            return false;
-        }
-        if ((error && error.code === 'EAGAIN')
-            || text.includes('Resource temporarily unavailable')
-            || text.includes('Host unreachable')
-            || text.includes('Transport endpoint is not connected')) {
-            return false;
-        }
-        throw error;
+    else if (kind === 'router_router') {
+        socket.send(receiverRoutingId).message(payload).submit();
+    }
+    else {
+        socket.send().message(payload).submit();
     }
 }
 function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, receiverRoutingId, topic) {
@@ -127,9 +86,7 @@ function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, rec
     let seq = seqStart;
     while (process.hrtime.bigint() < activeStopNs) {
         stampPayload(payload, { phase: 1, runId, msgSize, seq });
-        if (!submitActiveMessage(kind, socket, payload, receiverRoutingId, topic)) {
-            continue;
-        }
+        submitActiveMessage(kind, socket, payload, receiverRoutingId, topic);
         seq += 1n;
     }
     stampPayload(payload, { phase: 2, runId, msgSize, seq });
@@ -183,7 +140,9 @@ async function main() {
             case 'router_router': {
                 socket = new zlink.RouterSocket(ctx);
                 applySocketPolicy(socket, options);
+                applyAutoHwmMsgUnit(socket, msgSize);
                 socket.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(senderRoutingIdBytes)));
+                ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);
                 activeReceiverRoutingId = await handshakeRouterSender(port, socket, activeReceiverRoutingId);
                 break;

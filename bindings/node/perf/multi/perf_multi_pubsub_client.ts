@@ -20,7 +20,6 @@ const {
   applySocketPolicy,
   emitMultiSocketHwmDetail,
   pollEvents,
-  resolveMultiLatencySampleCap,
   subscribeNoWait,
   waitForConnectionReady
 } = require('./perf_multi_runtime');
@@ -59,7 +58,6 @@ async function main() {
           msgSize: options.msgSize,
           activeStartNs,
           activeStopNs,
-          sampleCap: resolveMultiLatencySampleCap()
         });
         const poller = new zlink.Poller();
         try {

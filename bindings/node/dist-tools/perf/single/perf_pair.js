@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
-const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRecvSocket, emitSingleSocketHwmDetail, parseSingleBinaryArgs, resolveSingleLatencySampleCap, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRecvSocket, emitSingleSocketHwmDetail, parseSingleBinaryArgs, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 async function runPairBenchmark(msgSize, options) {
     if (options.transport === 'inproc') {
         return runLocalSocketOneWayBenchmark({
@@ -51,7 +51,6 @@ async function runPairBenchmark(msgSize, options) {
             msgSize,
             activeStartNs,
             activeStopNs,
-            sampleCap: resolveSingleLatencySampleCap()
         });
         // PERF_SINGLE_TEST_POLICY § 1.4: receiver drains until the wire stop
         // token arrives. The deadline-based idle drain is no longer needed —

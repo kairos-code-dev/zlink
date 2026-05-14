@@ -6,7 +6,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createPayload, createRunId, stampPayload } = require('../common/perf_metrics');
 const { configureTlsServer } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, sendStopTokenWithRetry, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, sendStopTokenOnce, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -64,7 +64,7 @@ async function main() {
             // stop token (retries through transient backpressure with a poller
             // POLLOUT wait — no 1-25 ms timer fallback).
             for (let i = 0; i < Math.max(options.clients * 16, options.clients); i += 1) {
-                await sendStopTokenWithRetry(server, (bytes) => trySocketSend(server, bytes));
+                await sendStopTokenOnce(server, (bytes) => trySocketSend(server, bytes));
             }
             break;
         }

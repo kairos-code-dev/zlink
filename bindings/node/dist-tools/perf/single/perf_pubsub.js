@@ -2,9 +2,8 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createPayload, createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, summarizeMetrics, stampPayload, } = require('../common/perf_metrics');
-const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, configureTlsClient, configureTlsServer, emitSingleSocketHwmDetail, parseSingleBinaryArgs, resolveSingleLatencySampleCap, waitForPostReadySettle, waitForMonitorConnectionReady, } = require('./perf_single_common');
-const { isStopTokenParts, STOP_TOKEN_BYTES } = require('../perf_stop_token');
+const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
+const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, drainRecvSocket, emitSingleSocketHwmDetail, parseSingleBinaryArgs, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForPostReadySettle, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 function trace(message) {
     if (process.env.PERF_NODE_TRACE === '1') {
         console.error(`[pubsub] ${message}`);
@@ -13,118 +12,77 @@ function trace(message) {
 async function runPubSubBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     applyContextPolicy(ctx);
-    const pub = new zlink.PubSocket(ctx);
     const sub = new zlink.SubSocket(ctx);
-    const pubMonitor = pub.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
     const subMonitor = sub.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
     const endpoint = await benchmarkEndpoint(options.transport, `pubsub-${msgSize}`);
-    const topic = 'bench';
-    function subscribeNoWait() {
-        try {
-            return sub.subscribe(zlink.RecvFlags.DontWait);
-        }
-        catch (error) {
-            if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
-                return null;
-            }
-            throw error;
-        }
-    }
-    function drain(collector) {
-        while (true) {
-            const received = subscribeNoWait();
-            if (!received) {
-                return false;
-            }
-            if (isStopTokenParts(received.parts)) {
-                return true;
-            }
-            const header = decodeMetricHeaderFromParts(received.parts);
-            collector.record(header, currentEpochNs());
-        }
-    }
-    function publishPayload(payload, flags = zlink.SendFlags.DontWait) {
-        try {
-            return pub.publish(topic).message(payload).flags(flags).submit();
-        }
-        catch (error) {
-            const text = String(error && error.message ? error.message : error);
-            if ((error instanceof zlink.SubmitError
-                && (error.result === zlink.SubmitResult.Backpressured
-                    || error.result === zlink.SubmitResult.NotConnected
-                    || error.result === zlink.SubmitResult.NotFound))
-                || (error && error.code === 'EAGAIN')
-                || text.includes('Resource temporarily unavailable')) {
-                return false;
-            }
-            throw error;
-        }
-    }
+    let worker = null;
     try {
-        applySocketPolicy(pub, {
-            ...options,
-            noDrop: process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP === '0'
-                ? false
-                : true
-        });
         applySocketPolicy(sub, {
             ...options,
             recvTimeout: Number(process.env.PERF_SINGLE_PUBSUB_RCVTIMEO_MS
                 ?? process.env.PERF_SINGLE_RCVTIMEO_MS
                 ?? 200)
         });
-        applyAutoHwmMsgUnit(pub, msgSize);
         applyAutoHwmMsgUnit(sub, msgSize);
         ctx.recalculateAutoHwm();
-        configureTlsServer(pub, options.transport);
-        configureTlsClient(sub, options.transport);
         sub.setSubscription('');
-        pub.bind(endpoint);
         sub.connect(endpoint);
+        worker = spawnSenderWorker({
+            kind: 'pubsub',
+            transport: options.transport,
+            endpoint,
+            duration: options.duration,
+            msgSize,
+            runId: options.runId ?? 1,
+            topic: 'bench',
+            options: {
+                ...options,
+                noDrop: process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP === '0'
+                    ? false
+                    : true
+            },
+        });
+        const workerError = waitForWorkerError(worker);
+        await Promise.race([
+            waitForWorkerMessage(worker, 'bound'),
+            workerError.then((message) => Promise.reject(new Error(message.message)))
+        ]);
+        worker.postMessage({ type: 'ready' });
         await waitForMonitorConnectionReady(subMonitor);
-        await waitForMonitorConnectionReady(pubMonitor);
         trace('connection ready');
         await waitForPostReadySettle(Number(process.env.PERF_SINGLE_PUBSUB_READY_SETTLE_MS ?? 1000));
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs
             + BigInt(Math.floor(options.duration * 1_000_000_000));
         const runId = createRunId(options.runId ?? 1);
-        const payload = createPayload(msgSize);
         const collector = createMetricCollector({
             runId,
             msgSize,
             activeStartNs,
             activeStopNs,
-            sampleCap: resolveSingleLatencySampleCap()
         });
-        let seq = 1n;
-        while (currentEpochNs() < activeStopNs) {
-            stampPayload(payload, { phase: 1, runId, msgSize, seq });
-            if (publishPayload(payload)) {
-                seq += 1n;
-            }
-            drain(collector);
-        }
-        stampPayload(payload, { phase: 2, runId, msgSize, seq });
-        publishPayload(payload);
-        for (let retry = 0; retry < 100; retry += 1) {
-            if (publishPayload(STOP_TOKEN_BYTES, zlink.SendFlags.None)) {
-                break;
-            }
-        }
-        while (!drain(collector)) {
-            // Drain until the wire-level stop token arrives.
-        }
+        worker.postMessage({ type: 'start' });
+        await Promise.race([
+            waitForWorkerMessage(worker, 'started'),
+            workerError.then((message) => Promise.reject(new Error(message.message)))
+        ]);
+        const recvTask = drainRecvSocket(sub, (received) => {
+            const header = decodeMetricHeaderFromParts(received.parts);
+            collector.record(header, currentEpochNs());
+        });
+        await Promise.race([
+            waitForWorkerDone(worker, options.duration),
+            workerError.then((message) => Promise.reject(new Error(message.message)))
+        ]);
+        await recvTask;
         const result = collector.finish();
-        emitSingleSocketHwmDetail(pub, 'PUBSUB', options.transport, 'publisher', msgSize);
         emitSingleSocketHwmDetail(sub, 'PUBSUB', options.transport, 'subscriber', msgSize);
         return result;
     }
     finally {
         trace('closing');
-        pubMonitor.close();
+        await closeSenderWorker(worker);
         subMonitor.close();
-        pub.close();
         sub.close();
         trace('sub closed');
         ctx.close();

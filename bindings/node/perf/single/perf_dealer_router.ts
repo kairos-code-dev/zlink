@@ -20,7 +20,6 @@ const {
   drainRecvSocket,
   emitSingleSocketHwmDetail,
   parseSingleBinaryArgs,
-  resolveSingleLatencySampleCap,
   runLocalSocketOneWayBenchmark,
   spawnSenderWorker,
   waitForWorkerDone,
@@ -79,7 +78,6 @@ async function runDealerRouterBenchmark(msgSize, options) {
       msgSize,
       activeStartNs,
       activeStopNs,
-      sampleCap: resolveSingleLatencySampleCap()
     });
 
     // PERF_SINGLE_TEST_POLICY § 1.4: receiver drains until wire stop token.

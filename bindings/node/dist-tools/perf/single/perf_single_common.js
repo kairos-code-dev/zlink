@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const net = require('node:net');
-const os = require('node:os');
 const path = require('node:path');
-const { once } = require('node:events');
 const { Worker } = require('node:worker_threads');
 const zlink = require('@zlink-systems/zlink');
 const { MonitorEventType, RecvFlags, RecvResult } = zlink;
-const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeaderFromParts, MIN_MSG_SIZE, integerEnv, sleepImmediate, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeaderFromParts, MIN_MSG_SIZE, applyAutoHwmMsgUnit, applyAutoHwmProfile, integerEnv, manualSocketOverridesEnabled, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer, } = require('../common/perf_tls');
 const { isStopTokenParts } = require('../perf_stop_token');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
+const { benchmarkEndpoint: commonBenchmarkEndpoint } = require('../common/perf_endpoint');
 const POLLIN = 1;
 function pollEvents(mask) {
     const events = [];
@@ -20,40 +18,11 @@ function pollEvents(mask) {
     }
     return events;
 }
-async function reservePort() {
-    const server = net.createServer();
-    server.listen(0, '127.0.0.1');
-    await once(server, 'listening');
-    const address = server.address();
-    await new Promise((resolve, reject) => {
-        server.close((error) => {
-            if (error) {
-                reject(error);
-                return;
-            }
-            resolve();
-        });
-    });
-    return address.port;
-}
 async function benchmarkEndpoint(transport, token) {
-    if (transport === 'inproc') {
-        return `inproc://perf-${token}-${process.pid}`;
-    }
-    if (transport === 'ipc') {
-        return `ipc://${path.join(os.tmpdir(), `zlink-node-perf-${process.pid}-${token}.sock`)}`;
-    }
-    if (transport === 'tcp'
-        || transport === 'tls'
-        || transport === 'ws'
-        || transport === 'wss') {
-        return `${transport}://127.0.0.1:${await reservePort()}`;
-    }
-    throw new Error(`unsupported single transport: ${transport}`);
+    return commonBenchmarkEndpoint(transport, token, { suite: 'single' });
 }
 function applySocketPolicy(socket, options = {}) {
-    const manualOverrides = integerEnv('PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0
-        || integerEnv('PERF_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0;
+    const manualOverrides = manualSocketOverridesEnabled('single');
     const hwm = Number.isFinite(options.hwm)
         ? options.hwm
         : integerEnv('PERF_SINGLE_HWM', NaN);
@@ -89,20 +58,8 @@ function applySocketPolicy(socket, options = {}) {
         }
     }
 }
-function applyAutoHwmMsgUnit(socket, msgSize) {
-    if (msgSize <= 0 || !socket.options) {
-        return;
-    }
-    try {
-        socket.options.autoHwmMsgUnitBytes = msgSize;
-    }
-    catch (err) {
-        // best effort: only raw sockets exposing the option participate.
-    }
-}
 function applySpotNodeAdmission(node, options = {}) {
-    const manualOverrides = integerEnv('PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0
-        || integerEnv('PERF_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0;
+    const manualOverrides = manualSocketOverridesEnabled('single');
     if (!manualOverrides) {
         return;
     }
@@ -190,69 +147,6 @@ function emitSingleSocketHwmDetail(socket, pattern, transport, component, msgSiz
         monitor?.close();
     }
 }
-function spotSocketOwnerName(owner) {
-    if (zlink.SpotNodeSocketOwner && owner === zlink.SpotNodeSocketOwner.Node) {
-        return 'node';
-    }
-    if (zlink.SpotNodeSocketOwner && owner === zlink.SpotNodeSocketOwner.Spot) {
-        return 'spot';
-    }
-    return 'unknown';
-}
-function spotSocketTypeName(socketType) {
-    if (!zlink.SocketType) {
-        return 'unknown';
-    }
-    switch (socketType) {
-        case zlink.SocketType.Pair: return 'pair';
-        case zlink.SocketType.Pub: return 'pub';
-        case zlink.SocketType.Sub: return 'sub';
-        case zlink.SocketType.Dealer: return 'dealer';
-        case zlink.SocketType.Router: return 'router';
-        case zlink.SocketType.XPub: return 'xpub';
-        case zlink.SocketType.XSub: return 'xsub';
-        case zlink.SocketType.Stream: return 'stream';
-        default: return 'unknown';
-    }
-}
-function emitSingleSpotHwmDetail(node, component, transport, msgSize) {
-    if (!node || !component) {
-        return;
-    }
-    let entries = [];
-    try {
-        entries = node.internalSocketsSnapshot();
-    }
-    catch (err) {
-        return;
-    }
-    for (const entry of entries) {
-        if (!entry.autoHwmVisible) {
-            continue;
-        }
-        const snapshot = entry.snapshot;
-        if (Number(snapshot.autoHwmAppliedSndHwm) <= 0
-            && Number(snapshot.autoHwmAppliedRcvHwm) <= 0) {
-            continue;
-        }
-        console.log('AUTO_HWM_DETAIL'
-            + ',pattern=SPOT'
-            + `,transport=${transport}`
-            + `,component=${component}`
-            + `,msg_size=${msgSize}`
-            + `,owner=${spotSocketOwnerName(entry.owner)}`
-            + `,owner_id=${entry.ownerId}`
-            + `,socket=${entry.socketName}`
-            + `,socket_type=${spotSocketTypeName(entry.socketType)}`
-            + `,role=${autoHwmRoleName(snapshot.autoHwmRole)}`
-            + `,sndhwm=${snapshot.autoHwmAppliedSndHwm}`
-            + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwm}`
-            + `,effective_message_bytes=${snapshot.autoHwmEffectiveMessageBytes}`
-            + `,effective_sndbuf=${snapshot.autoHwmEffectiveSndBuf}`
-            + `,effective_rcvbuf=${snapshot.autoHwmEffectiveRcvBuf}`
-            + `,socket_message_slots=${snapshot.autoHwmSocketMessageSlots}`);
-    }
-}
 function applyContextPolicy(ctx) {
     const ioThreads = integerEnv('PERF_IO_THREADS', 0);
     if (ioThreads > 0) {
@@ -265,25 +159,7 @@ function applyContextPolicy(ctx) {
     if ('autoHwmEnabled' in ctx.options) {
         ctx.options.autoHwmEnabled = integerEnv('PERF_CTX_AUTO_HWM_ENABLE', 1) !== 0;
     }
-    if ('autoHwmProfile' in ctx.options && zlink.AutoHwmProfile) {
-        const profile = String(process.env.PERF_CTX_AUTO_HWM_PROFILE || '').trim();
-        if (profile === 'compact') {
-            ctx.options.autoHwmProfile = zlink.AutoHwmProfile.Compact;
-        }
-        else if (profile === 'low_latency' || profile === 'low-latency') {
-            ctx.options.autoHwmProfile = zlink.AutoHwmProfile.LowLatency;
-        }
-        else if (profile === 'throughput') {
-            ctx.options.autoHwmProfile = zlink.AutoHwmProfile.Throughput;
-        }
-        else {
-            ctx.options.autoHwmProfile = zlink.AutoHwmProfile.Balanced;
-        }
-    }
-}
-function resolveSingleLatencySampleCap() {
-    const configured = integerEnv('PERF_SINGLE_LATENCY_SAMPLE_CAP', 200000);
-    return configured > 0 ? configured : 200000;
+    applyAutoHwmProfile(ctx, zlink);
 }
 function recvNoWait(socket) {
     const received = new zlink.Received();
@@ -442,6 +318,9 @@ function sendSocketNoWait(socket, payload, flags = zlink.SendFlags.DontWait) {
         throw error;
     }
 }
+function sendSocketRequired(socket, payload, flags = zlink.SendFlags.None) {
+    socket.send().message(payload).flags(flags).submit();
+}
 function drainRecvSocketNoWaitUntilIdle(socket, collector) {
     let stopReceived = false;
     while (true) {
@@ -491,7 +370,6 @@ async function runLocalSocketOneWayBenchmark({ pattern, msgSize, options, endpoi
             msgSize,
             activeStartNs,
             activeStopNs,
-            sampleCap: resolveSingleLatencySampleCap()
         });
         let seq = 1n;
         while (currentEpochNs() < activeStopNs) {
@@ -503,11 +381,7 @@ async function runLocalSocketOneWayBenchmark({ pattern, msgSize, options, endpoi
         }
         stampPayload(payload, { phase: 2, runId, msgSize, seq });
         sendSocketNoWait(sender, payload);
-        for (let retry = 0; retry < 100; retry += 1) {
-            if (sendSocketNoWait(sender, STOP_TOKEN_BYTES, zlink.SendFlags.None)) {
-                break;
-            }
-        }
+        sendSocketRequired(sender, STOP_TOKEN_BYTES);
         while (!drainRecvSocketNoWaitUntilIdle(receiver, collector)) {
             // Drain until the wire-level stop token arrives.
         }
@@ -651,13 +525,12 @@ module.exports = {
     configureTlsClient,
     configureTlsServer,
     emitSingleSocketHwmDetail,
-    emitSingleSpotHwmDetail,
     benchmarkEndpoint,
     closeSenderWorker,
     drainRecvSocket,
     parseSingleBinaryArgs,
-    resolveSingleLatencySampleCap,
     runLocalSocketOneWayBenchmark,
+    sendSocketRequired,
     spawnSenderWorker,
     waitForWorkerDone,
     waitForWorkerError,

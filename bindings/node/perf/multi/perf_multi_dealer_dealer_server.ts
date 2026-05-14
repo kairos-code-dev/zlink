@@ -19,7 +19,7 @@ const {
   emitMultiSocketHwmDetail,
   pollEvents,
   pollEventHas,
-  sendStopTokenWithRetry,
+  sendStopTokenOnce,
   trySocketSend,
   waitForConnectionReadyCount
 } = require('./perf_multi_runtime');
@@ -85,7 +85,7 @@ async function main() {
       // stop token (retries through transient backpressure with a poller
       // POLLOUT wait — no 1-25 ms timer fallback).
       for (let i = 0; i < Math.max(options.clients * 16, options.clients); i += 1) {
-        await sendStopTokenWithRetry(server, (bytes) => trySocketSend(server, bytes));
+        await sendStopTokenOnce(server, (bytes) => trySocketSend(server, bytes));
       }
       break;
     }

@@ -29,10 +29,9 @@ const {
   applySpotNodeAdmission,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
-  emitMultiSpotNodeHwmSnapshot,
-  resolveMultiLatencySampleCap,
+  publishControlUntilSent,
   subscribeNoWait,
-  trySocketPublish
+  waitForRunnerControlConnected
 } = require('./perf_multi_runtime');
 
 const CONTROL_TOPIC = 'bench';
@@ -140,22 +139,6 @@ async function waitForProbeReady(slots, runId, msgSize) {
   }
 }
 
-async function waitForRunnerControlConnected() {
-  const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-  try {
-    for await (const line of rl) {
-      if (line.startsWith('CONTROL_CONNECTED,')) {
-        return;
-      }
-      if (line === 'STOP' || line === 'QUIT') {
-        return;
-      }
-    }
-  } finally {
-    rl.close();
-  }
-}
-
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
@@ -199,39 +182,29 @@ async function main() {
       });
     }
     ctx.recalculateAutoHwm();
-    emitMultiSpotNodeHwmSnapshot(node, 'spotnode_data', options.transport, options.msgSize);
+    emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
 
     const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
     while (Date.now() < stabilizationDeadline) {
       await sleepImmediate();
     }
-    for (;;) {
-      if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`DATA_ENDPOINT,${dataEndpoint}`))) {
-        break;
-      }
-      await controlPubWaiter.wait(POLLOUT);
-    }
+    await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
     await waitForProbeReady(
       slots,
       createRunId(1),
       options.msgSize
     );
-    for (;;) {
-      if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from('CONNECTED'))) {
-        break;
-      }
-      await controlPubWaiter.wait(POLLOUT);
-    }
+    await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
     const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
     while (Date.now() < controlSettleDeadline) {
       await sleepImmediate();
     }
-    for (;;) {
-      if (trySocketPublish(controlPub, CONTROL_TOPIC, Buffer.from(`READY_COUNT,${options.msgSize},${slots.length}`))) {
-        break;
-      }
-      await controlPubWaiter.wait(POLLOUT);
-    }
+    await publishControlUntilSent(
+      controlPub,
+      controlPubWaiter,
+      CONTROL_TOPIC,
+      `READY_COUNT,${options.msgSize},${slots.length}`
+    );
     console.log(`CLIENT_READY,${options.msgSize}`);
     trace('client-ready');
 
@@ -274,7 +247,6 @@ async function main() {
       activeStartNs,
       activeStopNs,
       roundTrip: true,
-      sampleCap: resolveMultiLatencySampleCap()
     });
     let seq = 1n;
 

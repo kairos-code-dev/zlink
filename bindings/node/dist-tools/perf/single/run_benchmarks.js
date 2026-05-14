@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const { spawn } = require('node:child_process');
 const path = require('node:path');
-const { buildEffectiveOptions, completionLines, defaultSingleMsgSizes, DEFAULT_SINGLE_TRANSPORTS, formatTableHeader, formatTableRow, hasPrimaryMetricsFromResultLines, parseCommonArgs, patternDirection, primaryMetricsFromResultLines, resolveSinglePatternNames, writeReport } = require('../common/perf_metrics');
+const { buildEffectiveOptions, completionLines, defaultSingleMsgSizes, DEFAULT_SINGLE_TRANSPORTS, formatFailureRow, formatTableHeader, formatTableRow, hasPrimaryMetricsFromResultLines, medianMetrics, metricLines, parseCommonArgs, patternDirection, primaryMetricsFromResultLines, resolveSinglePatternNames, writeReport } = require('../common/perf_metrics');
 const PATTERNS = {
     PAIR: { script: 'perf_pair.js' },
     PUBSUB: { script: 'perf_pubsub.js' },
@@ -69,32 +69,6 @@ function buildPinnedSpawn(command, args, options) {
         command: 'taskset',
         args: ['-c', '0', command, ...args]
     };
-}
-function median(values) {
-    const sorted = values.slice().sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    if ((sorted.length % 2) === 0) {
-        return (sorted[mid - 1] + sorted[mid]) / 2;
-    }
-    return sorted[mid];
-}
-function medianMetrics(metricsList) {
-    return {
-        throughput: median(metricsList.map((item) => item.throughput)),
-        bandwidth: median(metricsList.map((item) => item.bandwidth)),
-        latency: median(metricsList.map((item) => item.latency)),
-        latency_p95: median(metricsList.map((item) => item.latency_p95)),
-        latency_p99: median(metricsList.map((item) => item.latency_p99))
-    };
-}
-function metricLines(pattern, transport, msgSize, metrics) {
-    return [
-        `RESULT,current,${pattern},${transport},${msgSize},throughput,${metrics.throughput.toFixed(3)}`,
-        `RESULT,current,${pattern},${transport},${msgSize},bandwidth,${metrics.bandwidth.toFixed(3)}`,
-        `RESULT,current,${pattern},${transport},${msgSize},latency,${metrics.latency.toFixed(3)}`,
-        `RESULT,current,${pattern},${transport},${msgSize},latency_p95,${metrics.latency_p95.toFixed(3)}`,
-        `RESULT,current,${pattern},${transport},${msgSize},latency_p99,${metrics.latency_p99.toFixed(3)}`
-    ];
 }
 function parseAutoHwmDetailLine(line) {
     const stripped = String(line || '').trim();
@@ -201,10 +175,6 @@ function autoHwmDetailTableLines(rows, pattern) {
             .map(([, key], index) => String(row[key] ?? '?').padEnd(widths[index]))
             .join(' | ') + ' |')
     ];
-}
-function formatFailureRow(msgSize, label = 'FAIL') {
-    const cell = String(label).padStart(16);
-    return `| ${String(msgSize).padEnd(8)}B | ${cell} | ${'FAIL'.padStart(10)} | ${'FAIL'.padStart(13)} | ${'FAIL'.padStart(13)} | ${'FAIL'.padStart(13)} |`;
 }
 function isPlatformSkip(pattern, transport) {
     return process.platform === 'win32' && transport === 'ipc' && pattern !== 'SPOT';

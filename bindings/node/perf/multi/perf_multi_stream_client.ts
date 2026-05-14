@@ -18,7 +18,6 @@ const {
   parseMultiArgs,
   resolveMultiConnectConcurrency
 } = require('./perf_multi_common');
-const { resolveMultiLatencySampleCap } = require('./perf_multi_runtime');
 
 function buildStreamPacketFrame(body) {
   const frame = Buffer.allocUnsafe(6 + body.length);
@@ -365,7 +364,6 @@ async function main() {
       activeStartNs,
       activeStopNs,
       roundTrip: true,
-      sampleCap: resolveMultiLatencySampleCap()
     });
     let seq = 1n;
     let fatalError = null;

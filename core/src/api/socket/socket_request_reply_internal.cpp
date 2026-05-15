@@ -8,7 +8,7 @@
 #include "api/socket/request_completion_queue_internal.hpp"
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/service/service_api_internal.hpp"
-#include "api/spot/service_spot_dispatch_surface_internal.hpp"
+#include "api/spot/dispatch/service_spot_dispatch_surface_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 
 namespace zlink

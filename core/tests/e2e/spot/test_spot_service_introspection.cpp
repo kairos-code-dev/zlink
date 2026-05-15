@@ -5,11 +5,11 @@
 #include "../../testutil_monitoring.hpp"
 #include "../../../src/api/service/service_api_internal.hpp"
 #include "../../zlink_testing.hpp"
-#include "../../../src/runtime/services/spot/spot_handle.hpp"
-#include "../../../src/runtime/services/spot/spot_node.hpp"
-#include "../../../src/runtime/services/spot/spot_node_access.hpp"
-#include "../../../src/runtime/services/spot/spot_pub.hpp"
-#include "../../../src/runtime/services/spot/spot_subject_access.hpp"
+#include "../../../src/runtime/services/spot/runtime/spot_handle.hpp"
+#include "../../../src/runtime/services/spot/node/spot_node.hpp"
+#include "../../../src/runtime/services/spot/node/spot_node_access.hpp"
+#include "../../../src/runtime/services/spot/pubsub/spot_pub.hpp"
+#include "../../../src/runtime/services/spot/pubsub/spot_subject_access.hpp"
 #include "../../../src/runtime/core/msg.hpp"
 
 #include <unity.h>

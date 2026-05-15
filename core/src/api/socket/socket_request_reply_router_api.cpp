@@ -7,7 +7,7 @@
 #include "api/socket/part_helper_internal.hpp"
 #include "api/message/recv_result_internal.hpp"
 #include "api/service/service_mode_internal.hpp"
-#include "api/spot/service_spot_request_reply_internal.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_wait_internal.hpp"
 #include "core/socket_poller.hpp"

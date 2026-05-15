@@ -5,7 +5,7 @@
 #include "utils/err.hpp"
 #include "api/service/service_handle_internal.hpp"
 
-#include "services/spot/spot_subject_access.hpp"
+#include "services/spot/pubsub/spot_subject_access.hpp"
 
 int validate_recv_flags (int flags_)
 {

@@ -4,7 +4,7 @@
 
 #include <chrono>
 
-#include "api/spot/service_spot_dispatch_surface_internal.hpp"
+#include "api/spot/dispatch/service_spot_dispatch_surface_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
 
 timer_handle_t::timer_handle_t (backend_kind_t backend_,

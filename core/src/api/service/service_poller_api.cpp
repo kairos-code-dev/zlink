@@ -5,10 +5,10 @@
 #include "utils/err.hpp"
 #include "api/service/service_handle_internal.hpp"
 #include "api/service/service_mode_internal.hpp"
-#include "api/spot/service_spot_request_reply_internal.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
 
-#include "services/spot/spot_subject_access.hpp"
+#include "services/spot/pubsub/spot_subject_access.hpp"
 
 int validate_spot_generic_poller_events (short events_, bool *is_pub_out_)
 {

@@ -5,8 +5,8 @@
 #include "api/core/config_result_internal.hpp"
 #include "api/service/service_option_surface_internal.hpp"
 #include "api/core/zlink_option_internal.hpp"
-#include "services/spot/spot_node_access.hpp"
-#include "services/spot/spot_subject_access.hpp"
+#include "services/spot/node/spot_node_access.hpp"
+#include "services/spot/pubsub/spot_subject_access.hpp"
 
 extern "C" int zlink_socket_request_reply_set_default_timeout (
   void *socket_,

@@ -2,7 +2,7 @@
 
 #include "../testutil_unity.hpp"
 
-#include "services/spot/spot_runtime.hpp"
+#include "services/spot/runtime/spot_runtime.hpp"
 
 namespace
 {

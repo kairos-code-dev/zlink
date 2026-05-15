@@ -2,8 +2,8 @@
 
 #include "../testutil_unity.hpp"
 
-#include "api/spot/service_spot_request_reply_internal.hpp"
-#include "api/spot/service_spot_request_reply_utils_internal.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_utils_internal.hpp"
 
 #include <chrono>
 #include <memory>

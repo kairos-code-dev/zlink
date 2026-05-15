@@ -35,7 +35,7 @@ struct iovec
 #include "api/monitoring/poller_api_internal.hpp"
 #include "api/service/service_handle_internal.hpp"
 #include "api/service/service_poller_surface_internal.hpp"
-#include "api/spot/service_spot_request_reply_internal.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/core/close_result_internal.hpp"

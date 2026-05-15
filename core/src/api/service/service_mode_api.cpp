@@ -6,9 +6,9 @@
 #include "api/service/service_handle_internal.hpp"
 #include "api/service/service_mode_internal.hpp"
 
-#include "services/spot/spot_node.hpp"
-#include "services/spot/spot_node_access.hpp"
-#include "services/spot/spot_subject_access.hpp"
+#include "services/spot/node/spot_node.hpp"
+#include "services/spot/node/spot_node_access.hpp"
+#include "services/spot/pubsub/spot_subject_access.hpp"
 
 namespace
 {

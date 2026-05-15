@@ -5,11 +5,11 @@
 #include "api/service/service_api_internal.hpp"
 #include "services/actor/service_spot_actor_internal.hpp"
 #include "zlink_testing.hpp"
-#include "services/spot/spot_handle.hpp"
-#include "services/spot/spot_node.hpp"
-#include "services/spot/spot_pub.hpp"
-#include "services/spot/spot_sub.hpp"
-#include "services/spot/spot_subject_access.hpp"
+#include "services/spot/runtime/spot_handle.hpp"
+#include "services/spot/node/spot_node.hpp"
+#include "services/spot/pubsub/spot_pub.hpp"
+#include "services/spot/pubsub/spot_sub.hpp"
+#include "services/spot/pubsub/spot_subject_access.hpp"
 
 namespace zlink
 {

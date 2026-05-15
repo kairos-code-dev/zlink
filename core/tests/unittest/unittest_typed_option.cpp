@@ -7,9 +7,9 @@
 #include "../zlink_testing.hpp"
 #include "core/internal_defs.hpp"
 #include "core/options_owner.hpp"
-#include "../../src/runtime/services/spot/spot_handle.hpp"
-#include "../../src/runtime/services/spot/spot_node.hpp"
-#include "../../src/runtime/services/spot/spot_node_access.hpp"
+#include "../../src/runtime/services/spot/runtime/spot_handle.hpp"
+#include "../../src/runtime/services/spot/node/spot_node.hpp"
+#include "../../src/runtime/services/spot/node/spot_node_access.hpp"
 
 #include <string.h>
 #include <unity.h>

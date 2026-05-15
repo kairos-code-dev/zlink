@@ -1,0 +1,767 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/node/spot_node.hpp"
+#include "services/spot/node/spot_node_access.hpp"
+#include "services/spot/common/spot_auto_hwm_internal.hpp"
+#include "services/spot/dispatch/spot_dispatch_worker_pool.hpp"
+#include "services/spot/pubsub/spot_pub.hpp"
+#include "services/spot/runtime/spot_runtime.hpp"
+#include "services/spot/runtime/spot_runtime_internal.hpp"
+#include "services/spot/pubsub/spot_sub.hpp"
+#include "core/auto_hwm_policy.hpp"
+
+namespace zlink
+{
+namespace
+{
+static void copy_int_option_value (const void *optval_,
+                                   size_t optvallen_,
+                                   int *out_)
+{
+    if (!optval_ || !out_ || optvallen_ == 0)
+        return;
+
+    *out_ = 0;
+    memcpy (out_, optval_, std::min (optvallen_, sizeof (*out_)));
+}
+
+static void refresh_runtime_pubsub_admission_hwm (spot_runtime_t *runtime_,
+                                                  int hwm_)
+{
+    if (!runtime_)
+        return;
+
+    if (runtime_->mesh_pub)
+        (void) runtime_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                               &hwm_, sizeof (hwm_));
+    if (runtime_->mesh_xsub)
+        (void) runtime_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                                &hwm_, sizeof (hwm_));
+}
+
+static void refresh_runtime_router_admission_hwm (spot_runtime_t *runtime_,
+                                                  int hwm_)
+{
+    if (!runtime_)
+        return;
+
+    if (runtime_->external_router) {
+        (void) runtime_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_SNDHWM, &hwm_, sizeof (hwm_));
+        (void) runtime_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_RCVHWM, &hwm_, sizeof (hwm_));
+    }
+}
+
+static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
+                                               const void *optval_,
+                                               size_t optvallen_)
+{
+    if (!runtime_ || !optval_ || optvallen_ == 0)
+        return;
+
+    int msg_unit = 0;
+    copy_int_option_value (optval_, optvallen_, &msg_unit);
+
+    socket_base_t *sockets[] = {
+      runtime_->mesh_pub,
+	      runtime_->local_fanout_xpub,
+	      runtime_->mesh_xsub,
+	      runtime_->external_router};
+
+    for (size_t i = 0; i != sizeof (sockets) / sizeof (sockets[0]); ++i) {
+        socket_base_t *socket = sockets[i];
+        if (!socket)
+            continue;
+        (void) socket->setsockopt (ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                                   optval_, optvallen_);
+    }
+
+    ctx_t *ctx = runtime_->ctx ();
+    if (!ctx)
+        return;
+
+    size_t local_pub_count = 0;
+    size_t local_sub_count = 0;
+    size_t connected_peer_count = 0;
+    size_t active_peer_count = 0;
+    runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
+                                        &connected_peer_count,
+                                        &active_peer_count);
+    const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
+    const bool pubsub_hwm_override = spot_node_pubsub_hwm_overridden (hwm);
+    const bool router_hwm_override = spot_node_router_hwm_overridden (hwm);
+
+    apply_spot_internal_auto_hwm (
+      ctx, runtime_->mesh_pub,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
+                                      ZLINK_CORE_SOCKET_PUB,
+                                      connected_peer_count,
+                                      active_peer_count,
+                                      0, 0,
+                                      true, false,
+                                      true, true, auto_hwm_scope_shared, 1,
+                                      msg_unit});
+    apply_spot_internal_auto_hwm (
+      ctx, runtime_->local_fanout_xpub,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
+                                      ZLINK_CORE_SOCKET_PUB,
+                                      local_sub_count, local_sub_count,
+                                      0, 0,
+                                      true, false,
+                                      true, true, auto_hwm_scope_shared, 1,
+                                      msg_unit});
+    apply_spot_internal_auto_hwm (
+      ctx, runtime_->mesh_xsub,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress,
+                                      ZLINK_CORE_SOCKET_XSUB,
+                                      connected_peer_count,
+                                      active_peer_count,
+                                      0, 0, false, true,
+                                      true, true, auto_hwm_scope_shared, 1,
+                                      msg_unit});
+    apply_spot_internal_auto_hwm (
+      ctx, runtime_->external_router,
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_routed,
+                                      ZLINK_CORE_SOCKET_ROUTER,
+                                      connected_peer_count,
+                                      active_peer_count,
+                                      0, 0, true, true,
+                                      true, true, auto_hwm_scope_shared, 1,
+                                      msg_unit});
+
+    const int zero = 0;
+    const int pubsub_hwm = spot_node_pubsub_admission_hwm (hwm);
+    const int router_hwm = spot_node_router_admission_hwm (hwm);
+    if (pubsub_hwm_override && runtime_->mesh_pub)
+        (void) runtime_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                               &pubsub_hwm, sizeof (pubsub_hwm));
+    if (runtime_->local_fanout_xpub)
+        (void) runtime_->local_fanout_xpub->setsockopt (
+          ZLINK_INTERNAL_OPT_SNDHWM, &zero, sizeof (zero));
+    if (pubsub_hwm_override && runtime_->mesh_xsub)
+        (void) runtime_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                                &pubsub_hwm, sizeof (pubsub_hwm));
+    if (router_hwm_override && runtime_->external_router) {
+        (void) runtime_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_SNDHWM, &router_hwm, sizeof (router_hwm));
+        (void) runtime_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_RCVHWM, &router_hwm, sizeof (router_hwm));
+    }
+}
+
+static void spot_internal_receiver_fanout_handler (
+  const zlink_routing_id_t *source_rid_,
+  const char *topic_,
+  size_t topic_len_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_)
+{
+    spot_node_t *node = static_cast<spot_node_t *> (userdata_);
+    if (!node || !node->check_tag ()) {
+        zlink_multipart_close (parts_, part_count_);
+        return;
+    }
+
+    const std::string topic (topic_ ? topic_ : "", topic_len_);
+    (void) node->fanout_local_publish (
+      source_rid_, topic.c_str (), parts_, part_count_);
+    zlink_multipart_close (parts_, part_count_);
+}
+
+static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,
+                                      int option_,
+                                      const void *optval_,
+                                      size_t optvallen_)
+{
+    if (!config_ || !optval_ || optvallen_ == 0 || optvallen_ > sizeof (int))
+        return false;
+
+    int value = 0;
+    copy_int_option_value (optval_, optvallen_, &value);
+    switch (option_) {
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE:
+            if (!spot_node_valid_hwm_profile (value))
+                return false;
+            config_->router_profile =
+              static_cast<zlink_auto_hwm_profile_t> (value);
+            return true;
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM:
+            if (value < 0)
+                return false;
+            config_->router_hwm_override = value;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE:
+            if (!spot_node_valid_hwm_profile (value))
+                return false;
+            config_->pubsub_profile =
+              static_cast<zlink_auto_hwm_profile_t> (value);
+            return true;
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM:
+            if (value < 0)
+                return false;
+            config_->pubsub_hwm_override = value;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN:
+            if (value < 1)
+                return false;
+            config_->dispatch_workers_min = value;
+            if (config_->dispatch_workers_max > 0
+                && config_->dispatch_workers_max < value)
+                config_->dispatch_workers_max = value;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX:
+            if (value < 1)
+                return false;
+            config_->dispatch_workers_max = value;
+            if (config_->dispatch_workers_min > value)
+                return false;
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool read_runtime_hwm_option (ctx_t *ctx_,
+                                     const spot_runtime_t *runtime_,
+                                     const spot_node_hwm_config_t &config_,
+                                     int option_,
+                                     int *value_out_)
+{
+    if (!value_out_)
+        return false;
+    LIBZLINK_UNUSED (ctx_);
+    LIBZLINK_UNUSED (runtime_);
+
+    switch (option_) {
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE:
+            *value_out_ = config_.router_profile;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM:
+            *value_out_ = spot_node_router_admission_hwm (config_);
+            return true;
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE:
+            *value_out_ = config_.pubsub_profile;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM:
+            *value_out_ = spot_node_pubsub_admission_hwm (config_);
+            return true;
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN:
+            *value_out_ =
+              config_.dispatch_workers_min > 0
+                ? config_.dispatch_workers_min
+                : spot_dispatch_default_workers_min ();
+            return true;
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX:
+            *value_out_ =
+              config_.dispatch_workers_max > 0
+                ? config_.dispatch_workers_max
+                : spot_dispatch_default_workers_max ();
+            return true;
+        default:
+            return false;
+    }
+}
+
+}
+
+spot_node_default_handles_t::spot_node_default_handles_t () :
+    _default_sub (NULL),
+    _internal_receiver (NULL),
+    _default_sub_fast (NULL),
+    _internal_receiver_fast (NULL)
+{
+}
+
+int spot_node_default_handles_t::validate_pub_option (int option_,
+                                                      const void *optval_,
+                                                      size_t optvallen_)
+{
+    if (!optval_ || optvallen_ == 0 || optvallen_ > sizeof (int)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (zlink::is_spot_pub_default_option (option_))
+        return 0;
+    errno = EINVAL;
+    return -1;
+}
+
+int spot_node_default_handles_t::validate_sub_option (int option_,
+                                                      const void *optval_,
+                                                      size_t optvallen_)
+{
+    if (!optval_ || optvallen_ == 0 || optvallen_ > sizeof (int)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (zlink::is_spot_sub_default_option (option_))
+        return 0;
+    errno = EINVAL;
+    return -1;
+}
+
+void spot_node_default_handles_t::copy_option_setting (option_setting_t *dst_,
+                                                       const void *optval_,
+                                                       size_t optvallen_)
+{
+    zlink::copy_spot_option_setting (dst_, optval_, optvallen_);
+}
+
+void spot_node_default_handles_t::store_pub_option (int option_,
+                                                    const void *optval_,
+                                                    size_t optvallen_)
+{
+    (void) zlink::store_spot_pub_default (&_pub_defaults, option_, optval_,
+                                          optvallen_);
+}
+
+void spot_node_default_handles_t::store_sub_option (int option_,
+                                                    const void *optval_,
+                                                    size_t optvallen_)
+{
+    (void) zlink::store_spot_sub_default (&_sub_defaults, option_, optval_,
+                                          optvallen_);
+}
+
+int spot_node_default_handles_t::set_pub_option (int option_,
+                                                 const void *optval_,
+                                                 size_t optvallen_)
+{
+    if (validate_pub_option (option_, optval_, optvallen_) != 0)
+        return -1;
+
+    scoped_lock_t lock (_sync);
+    store_pub_option (option_, optval_, optvallen_);
+    return 0;
+}
+
+int spot_node_default_handles_t::set_sub_option (int option_,
+                                                 const void *optval_,
+                                                 size_t optvallen_)
+{
+    if (validate_sub_option (option_, optval_, optvallen_) != 0)
+        return -1;
+
+    scoped_lock_t init_lock (_default_sub_sync);
+    spot_sub_t *default_sub = NULL;
+    spot_internal_receiver_t *internal_receiver = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        default_sub = _default_sub;
+        internal_receiver = _internal_receiver;
+    }
+
+    if (default_sub && default_sub->set_option (option_, optval_, optvallen_) != 0)
+        return -1;
+    if (internal_receiver
+        && internal_receiver->impl () != default_sub
+        && internal_receiver->set_option (option_, optval_, optvallen_) != 0)
+        return -1;
+
+    {
+        scoped_lock_t lock (_sync);
+        store_sub_option (option_, optval_, optvallen_);
+    }
+    return 0;
+}
+
+spot_node_default_handles_t::pub_defaults_t
+spot_node_default_handles_t::load_pub_defaults () const
+{
+    scoped_lock_t lock (_sync);
+    return _pub_defaults;
+}
+
+spot_node_default_handles_t::sub_defaults_t
+spot_node_default_handles_t::load_sub_defaults () const
+{
+    scoped_lock_t lock (_sync);
+    return _sub_defaults;
+}
+
+spot_sub_t *spot_node_default_handles_t::default_sub () const
+{
+    scoped_lock_t lock (_sync);
+    return _default_sub;
+}
+
+spot_internal_receiver_t *spot_node_default_handles_t::internal_receiver () const
+{
+    scoped_lock_t lock (_sync);
+    return _internal_receiver;
+}
+
+spot_sub_t *spot_node_default_handles_t::fast_default_sub () const
+{
+    return _default_sub_fast.load (std::memory_order_acquire);
+}
+
+spot_internal_receiver_t *
+spot_node_default_handles_t::fast_internal_receiver () const
+{
+    return _internal_receiver_fast.load (std::memory_order_acquire);
+}
+
+void spot_node_default_handles_t::publish_default_sub (spot_sub_t *sub_)
+{
+    scoped_lock_t lock (_sync);
+    _default_sub = sub_;
+    _default_sub_fast.store (sub_, std::memory_order_release);
+}
+
+spot_internal_receiver_t *spot_node_default_handles_t::publish_internal_receiver (
+  spot_internal_receiver_t *receiver_,
+  spot_sub_t *created_sub_,
+  spot_sub_t *previous_default_sub_,
+  bool *installed_out_)
+{
+    if (installed_out_)
+        *installed_out_ = false;
+
+    scoped_lock_t lock (_sync);
+    if (_default_sub == created_sub_)
+        _default_sub = previous_default_sub_;
+
+    if (_internal_receiver && _internal_receiver != receiver_) {
+        _default_sub_fast.store (_default_sub, std::memory_order_release);
+        return _internal_receiver;
+    }
+
+    _internal_receiver = receiver_;
+    _internal_receiver_fast.store (receiver_, std::memory_order_release);
+    _default_sub_fast.store (_default_sub, std::memory_order_release);
+    if (installed_out_)
+        *installed_out_ = true;
+    return receiver_;
+}
+
+void spot_node_default_handles_t::remove_spot_pub (spot_pub_t *pub_)
+{
+    LIBZLINK_UNUSED (pub_);
+}
+
+bool spot_node_default_handles_t::remove_spot_sub (spot_sub_t *sub_)
+{
+    bool had_filters = false;
+    scoped_lock_t lock (_sync);
+    if (_default_sub == sub_) {
+        _default_sub = NULL;
+        _default_sub_fast.store (NULL, std::memory_order_release);
+    }
+    if (_internal_receiver && _internal_receiver->impl () == sub_) {
+        _internal_receiver = NULL;
+        _internal_receiver_fast.store (NULL, std::memory_order_release);
+    }
+    had_filters = sub_ && sub_->has_filters ();
+    return had_filters;
+}
+
+void spot_node_default_handles_t::snapshot_destroy_handles (
+  const std::set<spot_pub_t *> &pubs_,
+  const std::set<spot_sub_t *> &subs_,
+  std::vector<spot_pub_t *> *pubs_out_,
+  std::vector<spot_sub_t *> *subs_out_)
+{
+    if (!pubs_out_ || !subs_out_)
+        return;
+
+    pubs_out_->clear ();
+    subs_out_->clear ();
+
+    scoped_lock_t lock (_sync);
+    pubs_out_->assign (pubs_.begin (), pubs_.end ());
+    for (std::set<spot_sub_t *>::const_iterator it = subs_.begin ();
+         it != subs_.end (); ++it) {
+        if (_internal_receiver && *it == _internal_receiver->impl ())
+            continue;
+        subs_out_->push_back (*it);
+    }
+
+    _default_sub = NULL;
+    _default_sub_fast.store (NULL, std::memory_order_release);
+    _internal_receiver_fast.store (NULL, std::memory_order_release);
+}
+
+spot_internal_receiver_t *spot_node_default_handles_t::detach_internal_receiver ()
+{
+    scoped_lock_t lock (_sync);
+    spot_internal_receiver_t *receiver = _internal_receiver;
+    _internal_receiver = NULL;
+    _internal_receiver_fast.store (NULL, std::memory_order_release);
+    return receiver;
+}
+
+int spot_node_t::set_pub_option (int option_,
+                                 const void *optval_,
+                                 size_t optvallen_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    const int rc = _handle_state.handle_defaults.set_pub_option (option_, optval_, optvallen_);
+    if (rc != 0)
+        return rc;
+
+    if (option_ == ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES)
+        refresh_runtime_auto_hwm_msg_unit (_runtime, optval_, optvallen_);
+    return 0;
+}
+
+int spot_node_t::set_sub_option (int option_,
+                                 const void *optval_,
+                                 size_t optvallen_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    const int rc = _handle_state.handle_defaults.set_sub_option (option_, optval_, optvallen_);
+    if (rc != 0)
+        return rc;
+
+    if (option_ == ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES)
+        refresh_runtime_auto_hwm_msg_unit (_runtime, optval_, optvallen_);
+    return 0;
+}
+
+int spot_node_t::set_node_option (int option_,
+                                  const void *optval_,
+                                  size_t optvallen_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!_runtime || !optval_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    spot_node_hwm_config_t hwm_config = _runtime->hwm_config_snapshot ();
+    if (!apply_runtime_hwm_option (&hwm_config, option_, optval_, optvallen_)) {
+        errno = EINVAL;
+        return -1;
+    }
+    const int router_hwm = spot_node_router_admission_hwm (hwm_config);
+    const int pubsub_hwm = spot_node_pubsub_admission_hwm (hwm_config);
+    _runtime->set_hwm_config (hwm_config);
+
+    switch (option_) {
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE:
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM:
+            refresh_runtime_router_admission_hwm (_runtime, router_hwm);
+            return 0;
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE:
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM:
+            refresh_runtime_pubsub_admission_hwm (_runtime, pubsub_hwm);
+            return 0;
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN:
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX:
+            return 0;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+}
+
+int spot_node_t::get_node_option (int option_,
+                                  void *optval_,
+                                  size_t *optvallen_) const
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!_runtime || !optval_ || !optvallen_ || *optvallen_ < sizeof (int)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    int value = 0;
+    const spot_node_hwm_config_t hwm_config = _runtime->hwm_config_snapshot ();
+    if (!read_runtime_hwm_option (_ctx, _runtime, hwm_config, option_, &value)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    memcpy (optval_, &value, sizeof (value));
+    *optvallen_ = sizeof (value);
+    return 0;
+}
+
+spot_node_t::pub_defaults_t spot_node_t::load_pub_defaults () const
+{
+    return _handle_state.handle_defaults.load_pub_defaults ();
+}
+
+spot_node_t::sub_defaults_t spot_node_t::load_sub_defaults () const
+{
+    return _handle_state.handle_defaults.load_sub_defaults ();
+}
+
+
+spot_pub_t *spot_node_t::create_spot_pub ()
+{
+    pub_defaults_t defaults;
+    memset (&defaults, 0, sizeof (defaults));
+    return create_spot_pub_with_defaults (defaults, false);
+}
+
+spot_sub_t *spot_node_t::create_spot_sub ()
+{
+    sub_defaults_t defaults;
+    memset (&defaults, 0, sizeof (defaults));
+    return create_spot_sub_with_defaults (defaults, false);
+}
+
+spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
+{
+    spot_internal_receiver_t *receiver = _handle_state.handle_defaults.fast_internal_receiver ();
+    if (receiver)
+        return receiver;
+
+    scoped_lock_t init_lock (_handle_state.handle_defaults.default_sub_init_lock ());
+
+    spot_sub_t *previous_default_sub = NULL;
+    receiver = _handle_state.handle_defaults.internal_receiver ();
+    if (receiver)
+        return receiver;
+    previous_default_sub = _handle_state.handle_defaults.default_sub ();
+
+    sub_defaults_t defaults = _handle_state.handle_defaults.load_sub_defaults ();
+    receiver = _handle_state.handle_defaults.internal_receiver ();
+    if (receiver)
+        return receiver;
+
+    spot_sub_t *sub = create_spot_sub_with_defaults (defaults, true);
+    if (!sub)
+        return NULL;
+    receiver = new (std::nothrow) spot_internal_receiver_t (sub);
+    if (!receiver) {
+        (void) sub->abort_create ();
+        delete sub;
+        errno = ENOMEM;
+        return NULL;
+    }
+    if (receiver->set_direct_handler (&spot_internal_receiver_fanout_handler,
+                                      this)
+        != 0) {
+        const int err = errno;
+        (void) receiver->abort_create ();
+        delete receiver;
+        delete sub;
+        errno = err;
+        return NULL;
+    }
+
+    bool installed = false;
+    spot_internal_receiver_t *published_receiver =
+      _handle_state.handle_defaults.publish_internal_receiver (receiver, sub,
+                                                 previous_default_sub,
+                                                 &installed);
+    if (!installed) {
+        {
+            scoped_lock_t lock (_sync);
+            _handle_state.subs.erase (sub);
+        }
+        (void) receiver->abort_create ();
+        delete receiver;
+        delete sub;
+        return published_receiver;
+    }
+
+    return receiver;
+}
+
+spot_internal_receiver_t *spot_node_t::internal_receiver () const
+{
+    return _handle_state.handle_defaults.internal_receiver ();
+}
+
+spot_sub_t *spot_node_t::default_sub () const
+{
+    return _handle_state.handle_defaults.default_sub ();
+}
+
+void spot_node_t::remove_spot_pub (spot_pub_t *pub_)
+{
+    _handle_state.handle_defaults.remove_spot_pub (pub_);
+    scoped_lock_t lock (_sync);
+    _handle_state.pubs.erase (pub_);
+}
+
+void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
+{
+    const bool had_filters = _handle_state.handle_defaults.remove_spot_sub (sub_);
+    scoped_lock_t lock (_sync);
+    _handle_state.subs.erase (sub_);
+    if (had_filters)
+        note_local_sub_filters_changed (true, false);
+}
+
+int spot_node_t::destroy_handles ()
+{
+    std::vector<spot_pub_t *> pubs;
+    std::vector<spot_sub_t *> subs;
+    int first_error = 0;
+    {
+        scoped_lock_t lock (_sync);
+        _handle_state.handle_defaults.snapshot_destroy_handles (_handle_state.pubs, _handle_state.subs, &pubs, &subs);
+        for (size_t i = 0; i < pubs.size (); ++i)
+            _handle_state.pubs.erase (pubs[i]);
+        for (size_t i = 0; i < subs.size (); ++i)
+            _handle_state.subs.erase (subs[i]);
+    }
+
+    for (size_t i = 0; i < pubs.size (); ++i) {
+        preserve_first_error (pubs[i]->destroy_from_node (), &first_error);
+        delete pubs[i];
+    }
+    for (size_t i = 0; i < subs.size (); ++i) {
+        preserve_first_error (subs[i]->destroy_from_node (), &first_error);
+        delete subs[i];
+    }
+    if (first_error != 0) {
+        errno = first_error;
+        return -1;
+    }
+    return 0;
+}
+
+int spot_node_t::destroy_internal_receiver ()
+{
+    spot_internal_receiver_t *receiver = _handle_state.handle_defaults.detach_internal_receiver ();
+    {
+        scoped_lock_t lock (_sync);
+        if (receiver)
+            _handle_state.subs.erase (receiver->impl ());
+    }
+
+    if (!receiver)
+        return 0;
+
+    const bool had_filters = receiver->has_filters ();
+    const int rc = receiver->abort_create ();
+    spot_sub_t *sub = receiver->impl ();
+    delete receiver;
+    delete sub;
+    if (had_filters)
+        note_local_sub_filters_changed (true, false);
+    return rc;
+}
+
+void spot_node_t::stop_data_plane_sockets ()
+{
+    if (_runtime)
+        _runtime->stop_sockets ();
+}
+
+void spot_node_t::close_control_sockets ()
+{
+    if (_runtime)
+        _runtime->close_control_sockets ();
+}
+}

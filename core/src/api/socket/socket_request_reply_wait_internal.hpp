@@ -3,7 +3,7 @@
 #ifndef __ZLINK_API_SOCKET_REQUEST_REPLY_WAIT_INTERNAL_HPP_INCLUDED__
 #define __ZLINK_API_SOCKET_REQUEST_REPLY_WAIT_INTERNAL_HPP_INCLUDED__
 
-#include "api/spot/service_spot_request_reply_internal.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "core/socket_poller.hpp"
 

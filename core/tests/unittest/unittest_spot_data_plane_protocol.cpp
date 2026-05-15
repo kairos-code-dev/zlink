@@ -3,10 +3,10 @@
 #include "../testutil_unity.hpp"
 
 #include "core/ctx.hpp"
-#include "services/spot/spot_control_protocol.hpp"
-#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/common/spot_control_protocol.hpp"
+#include "services/spot/data_plane/spot_data_plane_internal.hpp"
 #include "sockets/common/socket_base.hpp"
-#include "services/spot/spot_runtime.hpp"
+#include "services/spot/runtime/spot_runtime.hpp"
 
 #include <string.h>
 #include <thread>

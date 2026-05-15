@@ -10,10 +10,10 @@
 #include "api/core/close_result_internal.hpp"
 #include "api/core/config_result_internal.hpp"
 #include "api/monitoring/poller_api_internal.hpp"
-#include "api/spot/service_spot_request_reply_internal.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
-#include "services/spot/spot_subject_access.hpp"
+#include "services/spot/pubsub/spot_subject_access.hpp"
 #include "utils/clock.hpp"
 
 namespace

@@ -872,38 +872,38 @@ set(api-registry-sources
     src/api/registry/service_registry_api.cpp)
 
 set(api-spot-sources
-    src/api/spot/service_spot_node_api.cpp
-    src/api/spot/service_spot_api.cpp
-    src/api/spot/service_spot_dispatch_context.cpp
-    src/api/spot/service_spot_request_reply_internal.cpp
-    src/api/spot/service_spot_routed_codec.cpp
-    src/api/spot/service_spot_request_reply_utils.cpp
-    src/api/spot/service_spot_request_reply_registry.cpp
-    src/api/spot/service_spot_request_reply_lifecycle.cpp
-    src/api/spot/service_spot_request_reply_identity_registry.cpp
-    src/api/spot/service_spot_request_reply_pending.cpp
-    src/api/spot/service_spot_request_reply_timeout.cpp
-    src/api/spot/service_spot_request_reply_queue.cpp
-    src/api/spot/service_spot_request_reply_local_dispatch.cpp
-    src/api/spot/service_spot_request_reply_local_reply.cpp
-    src/api/spot/service_spot_request_reply_local_request.cpp
-    src/api/spot/service_spot_request_reply_local_direct.cpp
-    src/api/spot/service_spot_request_reply_channel_bridge.cpp
-    src/api/spot/service_spot_request_reply_completion.cpp
-    src/api/spot/service_spot_request_reply_callback_api.cpp
-    src/api/spot/service_spot_request_reply_ingress_api.cpp
-    src/api/spot/service_spot_request_reply_part_submit.cpp
-    src/api/spot/service_spot_request_reply_routed_delivery.cpp
-    src/api/spot/service_spot_request_reply_progress.cpp
-    src/api/spot/service_spot_request_reply_api.cpp
-    src/api/spot/service_spot_request_reply_submit_api.cpp
-    src/api/spot/service_spot_subject_option_api.cpp
-    src/api/spot/service_spot_subject_subscription_api.cpp
-    src/api/spot/service_spot_subject_api.cpp
-    src/api/spot/service_option_spot_api.cpp)
+    src/api/spot/core/service_spot_node_api.cpp
+    src/api/spot/core/service_spot_api.cpp
+    src/api/spot/dispatch/service_spot_dispatch_context.cpp
+    src/api/spot/request_reply/service_spot_request_reply_internal.cpp
+    src/api/spot/request_reply/service_spot_routed_codec.cpp
+    src/api/spot/request_reply/service_spot_request_reply_utils.cpp
+    src/api/spot/request_reply/service_spot_request_reply_registry.cpp
+    src/api/spot/request_reply/service_spot_request_reply_lifecycle.cpp
+    src/api/spot/request_reply/service_spot_request_reply_identity_registry.cpp
+    src/api/spot/request_reply/service_spot_request_reply_pending.cpp
+    src/api/spot/request_reply/service_spot_request_reply_timeout.cpp
+    src/api/spot/request_reply/service_spot_request_reply_queue.cpp
+    src/api/spot/request_reply/service_spot_request_reply_local_dispatch.cpp
+    src/api/spot/request_reply/service_spot_request_reply_local_reply.cpp
+    src/api/spot/request_reply/service_spot_request_reply_local_request.cpp
+    src/api/spot/request_reply/service_spot_request_reply_local_direct.cpp
+    src/api/spot/request_reply/service_spot_request_reply_channel_bridge.cpp
+    src/api/spot/request_reply/service_spot_request_reply_completion.cpp
+    src/api/spot/request_reply/service_spot_request_reply_callback_api.cpp
+    src/api/spot/request_reply/service_spot_request_reply_ingress_api.cpp
+    src/api/spot/request_reply/service_spot_request_reply_part_submit.cpp
+    src/api/spot/request_reply/service_spot_request_reply_routed_delivery.cpp
+    src/api/spot/request_reply/service_spot_request_reply_progress.cpp
+    src/api/spot/request_reply/service_spot_request_reply_api.cpp
+    src/api/spot/request_reply/service_spot_request_reply_submit_api.cpp
+    src/api/spot/subject/service_spot_subject_option_api.cpp
+    src/api/spot/subject/service_spot_subject_subscription_api.cpp
+    src/api/spot/subject/service_spot_subject_api.cpp
+    src/api/spot/core/service_option_spot_api.cpp)
 
 set(api-actor-sources
-    src/api/actor/service_spot_actor_api.cpp)
+    src/api/actor/spot/service_spot_actor_api.cpp)
 
 set(api-sources
     ${api-core-sources}
@@ -997,56 +997,56 @@ set(runtime-service-registry-sources
     src/runtime/services/registry/registry_state.cpp)
 
 set(runtime-service-actor-sources
-    src/runtime/services/actor/service_spot_actor_async_internal.cpp
-    src/runtime/services/actor/service_spot_actor_multipart_internal.cpp
-    src/runtime/services/actor/service_spot_actor_packet_internal.cpp
-    src/runtime/services/actor/service_spot_actor_result_internal.cpp
-    src/runtime/services/actor/service_spot_actor_validation_internal.cpp)
+    src/runtime/services/actor/async/service_spot_actor_async_internal.cpp
+    src/runtime/services/actor/multipart/service_spot_actor_multipart_internal.cpp
+    src/runtime/services/actor/packet/service_spot_actor_packet_internal.cpp
+    src/runtime/services/actor/result/service_spot_actor_result_internal.cpp
+    src/runtime/services/actor/validation/service_spot_actor_validation_internal.cpp)
 
 set(runtime-service-spot-sources
-    src/runtime/services/spot/spot_data_plane.cpp
-    src/runtime/services/spot/spot_data_plane_forwarding.cpp
-    src/runtime/services/spot/spot_data_plane_loop.cpp
-    src/runtime/services/spot/spot_data_plane_control.cpp
-    src/runtime/services/spot/spot_data_plane_mesh.cpp
-    src/runtime/services/spot/spot_data_plane_message_io.cpp
-    src/runtime/services/spot/spot_data_plane_runtime.cpp
-    src/runtime/services/spot/spot_data_plane_pending.cpp
-    src/runtime/services/spot/spot_data_plane_protocol.cpp
-    src/runtime/services/spot/spot_mesh_pub_hwm.cpp
-    src/runtime/services/spot/spot_subject_access.cpp
-    src/runtime/services/spot/spot_subject_handler.cpp
-    src/runtime/services/spot/spot_subject_option.cpp
-    src/runtime/services/spot/spot_subject_poller.cpp
-    src/runtime/services/spot/spot_subject_publish.cpp
-    src/runtime/services/spot/spot_subject_query.cpp
-    src/runtime/services/spot/spot_node_access.cpp
-    src/runtime/services/spot/spot_node.cpp
-    src/runtime/services/spot/spot_node_control.cpp
-    src/runtime/services/spot/spot_node_control_peer.cpp
-    src/runtime/services/spot/spot_node_control_ready.cpp
-    src/runtime/services/spot/spot_node_control_task.cpp
-    src/runtime/services/spot/spot_node_control_policy.cpp
-    src/runtime/services/spot/spot_node_defaults.cpp
-    src/runtime/services/spot/spot_node_handles.cpp
-    src/runtime/services/spot/spot_node_lifecycle.cpp
-    src/runtime/services/spot/spot_node_shutdown.cpp
-    src/runtime/services/spot/spot_node_service_attachment.cpp
-    src/runtime/services/spot/spot_node_service_attachment_cache.cpp
-    src/runtime/services/spot/spot_node_service_attachment_recv.cpp
-    src/runtime/services/spot/spot_node_summary.cpp
-    src/runtime/services/spot/spot_pub.cpp
-    src/runtime/services/spot/spot_dispatch_context.cpp
-    src/runtime/services/spot/spot_dispatch_worker_pool.cpp
-    src/runtime/services/spot/spot_runtime.cpp
-    src/runtime/services/spot/spot_runtime_attachment.cpp
-    src/runtime/services/spot/spot_runtime_execution.cpp
-    src/runtime/services/spot/spot_runtime_shutdown.cpp
-    src/runtime/services/spot/spot_sub_lifecycle.cpp
-    src/runtime/services/spot/spot_sub_option.cpp
-    src/runtime/services/spot/spot_sub_recv.cpp
-    src/runtime/services/spot/spot_sub_subject_state.cpp
-    src/runtime/services/spot/spot_sub.cpp)
+    src/runtime/services/spot/data_plane/spot_data_plane.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_forwarding.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_loop.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_control.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_mesh.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_message_io.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_runtime.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_pending.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_protocol.cpp
+    src/runtime/services/spot/data_plane/spot_mesh_pub_hwm.cpp
+    src/runtime/services/spot/pubsub/spot_subject_access.cpp
+    src/runtime/services/spot/pubsub/spot_subject_handler.cpp
+    src/runtime/services/spot/pubsub/spot_subject_option.cpp
+    src/runtime/services/spot/pubsub/spot_subject_poller.cpp
+    src/runtime/services/spot/pubsub/spot_subject_publish.cpp
+    src/runtime/services/spot/pubsub/spot_subject_query.cpp
+    src/runtime/services/spot/node/spot_node_access.cpp
+    src/runtime/services/spot/node/spot_node.cpp
+    src/runtime/services/spot/node/spot_node_control.cpp
+    src/runtime/services/spot/node/spot_node_control_peer.cpp
+    src/runtime/services/spot/node/spot_node_control_ready.cpp
+    src/runtime/services/spot/node/spot_node_control_task.cpp
+    src/runtime/services/spot/node/spot_node_control_policy.cpp
+    src/runtime/services/spot/node/spot_node_defaults.cpp
+    src/runtime/services/spot/node/spot_node_handles.cpp
+    src/runtime/services/spot/node/spot_node_lifecycle.cpp
+    src/runtime/services/spot/node/spot_node_shutdown.cpp
+    src/runtime/services/spot/node/spot_node_service_attachment.cpp
+    src/runtime/services/spot/node/spot_node_service_attachment_cache.cpp
+    src/runtime/services/spot/node/spot_node_service_attachment_recv.cpp
+    src/runtime/services/spot/node/spot_node_summary.cpp
+    src/runtime/services/spot/pubsub/spot_pub.cpp
+    src/runtime/services/spot/dispatch/spot_dispatch_context.cpp
+    src/runtime/services/spot/dispatch/spot_dispatch_worker_pool.cpp
+    src/runtime/services/spot/runtime/spot_runtime.cpp
+    src/runtime/services/spot/runtime/spot_runtime_attachment.cpp
+    src/runtime/services/spot/runtime/spot_runtime_execution.cpp
+    src/runtime/services/spot/runtime/spot_runtime_shutdown.cpp
+    src/runtime/services/spot/pubsub/spot_sub_lifecycle.cpp
+    src/runtime/services/spot/pubsub/spot_sub_option.cpp
+    src/runtime/services/spot/pubsub/spot_sub_recv.cpp
+    src/runtime/services/spot/pubsub/spot_sub_subject_state.cpp
+    src/runtime/services/spot/pubsub/spot_sub.cpp)
 
 set(service-sources
     ${runtime-service-control-sources}

@@ -1091,10 +1091,6 @@ class Received(ReceivedMultipart):
         return self._reply_sender()
 
 
-class Subscribed(TopicMessage):
-    pass
-
-
 class SubscriptionEvent:
     def __init__(self, topic="", subscribed=False, routing_id=None):
         self.routing_id = routing_id

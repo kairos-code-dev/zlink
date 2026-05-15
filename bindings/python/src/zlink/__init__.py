@@ -35,7 +35,6 @@ __all__ = [
     "XSubSocket",
     "Message",
     "Received",
-    "Subscribed",
     "TopicMessage",
     "RoutingId",
     "SubscriptionEvent",

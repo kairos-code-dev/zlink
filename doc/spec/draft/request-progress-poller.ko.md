@@ -200,6 +200,34 @@ completion worker는 `zlink_poller_wait()`에 최소 1개 이상의 event slot�
 completion-only 경로는 public event를 기대하지 않지만, 기존 poller 구현은 event
 buffer가 있는 경로를 기준으로 동작하므로 빈 buffer에 의존하지 않는다.
 
+## Subject Lifetime 규칙
+
+completion-only poller registration은 subject lifetime을 안전하게 붙잡아야 한다.
+바인딩 runtime에서는 request가 pending인 동안에도 JS, Go, .NET, Java 객체가
+close를 호출할 수 있으므로, close와 poller wait가 경합해도 use-after-free가
+나면 안 된다.
+
+core 구현은 아래 둘 중 하나를 보장해야 한다.
+
+1. poller registration이 subject의 core handle 또는 completion state에 안전한
+   reference를 잡고, remove 또는 poller destroy 시 release한다.
+2. subject close가 poller registration을 먼저 무효화하고, 이미 wait 중인 poller가
+   무효화된 registration을 관찰해도 freed memory를 접근하지 않도록 tombstone이나
+   shared state를 사용한다.
+
+이 초안은 1번을 권장한다. request completion queue와 signal socket의 수명은
+subject public handle보다 길거나 같아야 하고, pending termination completion을
+drain할 수 있을 때까지 살아 있어야 한다. 바인딩은 pending count로 remove를
+보내지만, 바인딩의 remove가 close보다 항상 먼저 도착한다고 가정하면 안 된다.
+
+close 경합 규칙:
+
+1. subject close는 pending request를 termination completion으로 정리한다.
+2. subject close 중에도 completion-only poller wait는 termination completion을
+   drain할 수 있다.
+3. close가 완료된 뒤 같은 subject를 새로 add하면 invalid handle을 반환한다.
+4. close와 remove가 경합해도 core는 double release나 use-after-free를 내지 않는다.
+
 ## 일반 Readiness와의 관계
 
 `ZLINK_POLLIN`과 `ZLINK_POLLOUT`은 기존 의미를 유지한다.
@@ -408,6 +436,11 @@ int zlink_spot_channel_reply_progress_from(void *spot_, void *dealer_);
 
 core 내부에서 같은 동작이 필요하면 C export가 아닌 내부 helper로 남긴다. 새
 바인딩은 이 helper를 볼 수 없어야 한다.
+
+이 제거는 모든 바인딩 전환과 같은 커밋 또는 같은 릴리스 단위로 진행한다. Node만
+poller 경로로 바꾸고 internal progress export를 제거하면 Go, Rust, Java, .NET,
+C++ 바인딩이 동시에 깨질 수 있다. 따라서 core export 제거, 바인딩 migration,
+테스트 갱신은 하나의 브레이킹 변경 묶음으로 다룬다.
 
 ## 오류 처리
 

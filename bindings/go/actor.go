@@ -213,12 +213,6 @@ func (n *SpotNode) DestroyActor(actor ActorRef) ActorDestroyOp {
 	})
 }
 
-// DestroyRemoteActor is an alias retained for surface compatibility; it
-// returns the same async builder as DestroyActor.
-func (n *SpotNode) DestroyRemoteActor(actor ActorRef) ActorDestroyOp {
-	return n.DestroyActor(actor)
-}
-
 // JoinActor returns a user-Spot join builder. Completion delivers
 // ActorJoinResult plus reply parts. destSpotRID must be a user Spot.
 func (n *SpotNode) JoinActor(actor ActorRef, destNodeRID, destSpotRID RoutingID) ActorJoinOp {

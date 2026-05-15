@@ -999,6 +999,7 @@ set(runtime-service-registry-sources
 set(runtime-service-actor-sources
     src/runtime/services/actor/service_spot_actor_async_internal.cpp
     src/runtime/services/actor/service_spot_actor_multipart_internal.cpp
+    src/runtime/services/actor/service_spot_actor_packet_internal.cpp
     src/runtime/services/actor/service_spot_actor_result_internal.cpp
     src/runtime/services/actor/service_spot_actor_validation_internal.cpp)
 

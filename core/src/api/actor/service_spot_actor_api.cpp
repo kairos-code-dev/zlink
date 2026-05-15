@@ -9,6 +9,7 @@
 #include "services/actor/service_spot_actor_async_internal.hpp"
 #include "services/actor/service_spot_actor_internal.hpp"
 #include "services/actor/service_spot_actor_multipart_internal.hpp"
+#include "services/actor/service_spot_actor_packet_internal.hpp"
 #include "services/actor/service_spot_actor_result_internal.hpp"
 #include "services/actor/service_spot_actor_validation_internal.hpp"
 #include "api/spot/service_spot_request_reply_internal.hpp"
@@ -26,7 +27,6 @@
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_subject_access.hpp"
 #include "core/recv_tls_view.hpp"
-#include "protocol/wire.hpp"
 #include "utils/clock.hpp"
 
 #include <algorithm>
@@ -2089,33 +2089,6 @@ zlink_submit_result_t enqueue_bound_actor_part_locked (
     return ZLINK_SUBMIT_OK;
 }
 
-zlink_submit_result_t build_packet_frame (zlink_msg_t *header_,
-                                          zlink_msg_t *body_,
-                                          zlink_msg_t *frame_out_)
-{
-    const size_t header_size = zlink_msg_size (header_);
-    const size_t body_size = zlink_msg_size (body_);
-    if (header_size > UINT16_MAX || body_size > UINT32_MAX
-        || header_size > SIZE_MAX - body_size - 6u) {
-        errno = EMSGSIZE;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-
-    const size_t total_size = 6u + header_size + body_size;
-    memset (frame_out_, 0, sizeof (*frame_out_));
-    if (zlink_msg_init_size (frame_out_, total_size) != ZLINK_CONFIG_OK)
-        return ZLINK_SUBMIT_INTERNAL_ERROR;
-
-    unsigned char *data =
-      static_cast<unsigned char *> (zlink_msg_data (frame_out_));
-    zlink::put_uint16 (data, static_cast<uint16_t> (header_size));
-    zlink::put_uint32 (data + 2, static_cast<uint32_t> (body_size));
-    if (header_size > 0)
-        memcpy (data + 6, zlink_msg_data (header_), header_size);
-    if (body_size > 0)
-        memcpy (data + 6 + header_size, zlink_msg_data (body_), body_size);
-    return ZLINK_SUBMIT_OK;
-}
 }
 
 void zlink_actor_run_lifecycle_for_spot (void *spot_)

@@ -150,7 +150,8 @@ func (t *Timer) Stop() error {
 
 // Recv drains the next timer fire. Returns (count, true, nil) when data is
 // available, (0, false, nil) when no timer fire is pending (EAGAIN), or
-// (0, false, err) on error.
+// (0, false, err) on error. Value-return form is allowed for monitor/timer
+// control-plane APIs by doc/spec/bindings/go/README.md §Receive And Subscribe Shape.
 func (t *Timer) Recv() (uint64, bool, error) {
 	if t == nil || t.closed || t.handle == nil {
 		return 0, false, &RecvError{Result: RecvTerminated, internalErrno: int(C.EFAULT)}

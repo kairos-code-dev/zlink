@@ -156,6 +156,9 @@ func OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*Socket
 	return &SocketMonitor{handle: handle}, nil
 }
 
+// Recv returns the next monitor event. Returns (nil, *RecvError{Result:RecvNoData})
+// when DONTWAIT finds nothing. Value-return form is allowed for monitor/timer
+// control-plane APIs by doc/spec/bindings/go/README.md §Receive And Subscribe Shape.
 func (m *SocketMonitor) Recv(flags RecvFlags) (*MonitorEvent, error) {
 	var raw C.zlink_socket_monitor_event_t
 	if err := recvErrorFromResult(C.zlink_socket_monitor_recv(m.handle, &raw, C.zlink_recv_flags_t(flags))); err != nil {

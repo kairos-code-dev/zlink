@@ -22,6 +22,7 @@ from ..core.core import (
     ZlinkMsg,
     _REPLY_HANDLER,
     _ROUTER_HANDLER,
+    _ReceivedPartsOwner,
     _clone_native_msg,
     _copy_routing_id,
     _report_unhandled_callback_exception,
@@ -213,32 +214,3 @@ class _RequestProgressPump:
             with self._lock:
                 if self._thread is threading.current_thread():
                     self._thread = None
-
-
-class _ReceivedPartsOwner:
-    def __init__(self, parts_ptr, part_count):
-        self._parts_ptr = parts_ptr
-        self._part_count = part_count
-        self._closed = False
-        self._open_parts = [True] * part_count
-
-    def msg(self, index):
-        if self._closed or not self._open_parts[index]:
-            raise RuntimeError("received message is closed")
-        return self._parts_ptr[index]
-
-    def close_part(self, index):
-        if self._closed or not self._open_parts[index]:
-            return
-        self._open_parts[index] = False
-        if not any(self._open_parts):
-            self.close()
-
-    def close(self):
-        if self._closed:
-            return
-        for index in range(self._part_count):
-            lib().zlink_msg_close(ctypes.byref(self._parts_ptr[index]))
-        self._parts_ptr = None
-        self._open_parts = [False] * self._part_count
-        self._closed = True

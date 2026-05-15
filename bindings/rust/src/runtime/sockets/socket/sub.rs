@@ -1,12 +1,7 @@
-use std::ffi::c_void;
-
-use super::{
-    SocketInner, impl_attach_discovery, impl_base_socket, impl_connect
-    
-};
+use super::{SocketInner, impl_attach_discovery, impl_base_socket, impl_connect};
 use crate::ctx::Context;
 use crate::domain::TopicMessage;
-use crate::error::{ConfigError, RecvError, check_config_rc};
+use crate::error::{ConfigError, RecvError};
 use crate::ffi;
 use crate::flags::RecvFlags;
 use crate::options::{CommonSocketOptions, SubSocketOptions};
@@ -43,24 +38,8 @@ impl SubSocket {
         CommonSocketOptions::new(&self.inner)
     }
 
-    pub fn sub_options(&self) -> SubSocketOptions<'_, Self> {
-        SubSocketOptions::new(self)
-    }
-
-    // -- SUB-specific typed options ----------------------------------------
-
-    pub(crate) fn topics_count(&self) -> Result<i32, ConfigError> {
-        let mut v: i32 = 0;
-        let mut len = std::mem::size_of::<i32>();
-        check_config_rc(unsafe {
-            ffi::zlink_get_sub_option(
-                self.inner.handle,
-                ffi::zlink_sub_option_t::ZLINK_SUB_OPT_TOPICS_COUNT,
-                &mut v as *mut i32 as *mut c_void,
-                &mut len,
-            )
-        })?;
-        Ok(v)
+    pub fn sub_options(&self) -> SubSocketOptions<'_> {
+        SubSocketOptions::new(&self.inner)
     }
 }
 

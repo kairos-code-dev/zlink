@@ -654,6 +654,107 @@ impl SocketInner {
         self.packet_cb = None;
         Ok(())
     }
+
+    // -- PUB-option helpers ------------------------------------------------
+    //
+    // These were previously duplicated as free functions in pub_socket.rs and
+    // xpub.rs plus pub(crate) methods on both PubSocket and XPubSocket. Hosting
+    // them on SocketInner lets PubSocketOptions hold a `&SocketInner` directly
+    // and call them without the trait + impl trampoline chain.
+
+    pub(crate) fn set_pub_bool_opt(
+        &self,
+        opt: ffi::zlink_pub_option_t,
+        value: bool,
+    ) -> Result<(), ConfigError> {
+        let v: i32 = if value { 1 } else { 0 };
+        check_config_rc(unsafe {
+            ffi::zlink_set_pub_option(
+                self.handle,
+                opt,
+                &v as *const i32 as *const c_void,
+                std::mem::size_of::<i32>(),
+            )
+        })
+    }
+
+    pub(crate) fn get_pub_int_opt(&self, opt: ffi::zlink_pub_option_t) -> Result<i32, ConfigError> {
+        let mut value: i32 = 0;
+        let mut len = std::mem::size_of::<i32>();
+        check_config_rc(unsafe {
+            ffi::zlink_get_pub_option(
+                self.handle,
+                opt,
+                &mut value as *mut i32 as *mut c_void,
+                &mut len,
+            )
+        })?;
+        Ok(value)
+    }
+
+    pub(crate) fn get_pub_bool_opt(
+        &self,
+        opt: ffi::zlink_pub_option_t,
+    ) -> Result<bool, ConfigError> {
+        Ok(self.get_pub_int_opt(opt)? != 0)
+    }
+
+    pub(crate) fn set_pub_bytes_opt(
+        &self,
+        opt: ffi::zlink_pub_option_t,
+        value: &[u8],
+    ) -> Result<(), ConfigError> {
+        let ptr = if value.is_empty() {
+            std::ptr::null()
+        } else {
+            value.as_ptr() as *const c_void
+        };
+        check_config_rc(unsafe { ffi::zlink_set_pub_option(self.handle, opt, ptr, value.len()) })
+    }
+
+    pub(crate) fn get_pub_message_opt(
+        &self,
+        opt: ffi::zlink_pub_option_t,
+    ) -> Result<crate::message::Message, ConfigError> {
+        // Two-step query: first probe the length with a null buffer, then
+        // allocate exactly what's needed. Previously this always allocated a
+        // 64 KiB scratch buffer up front; for the welcome-message case the
+        // payload is typically a few hundred bytes at most.
+        let mut len: usize = 0;
+        check_config_rc(unsafe {
+            ffi::zlink_get_pub_option(self.handle, opt, std::ptr::null_mut(), &mut len)
+        })?;
+        if len == 0 {
+            return crate::message::Message::copy_from(&[]);
+        }
+        let mut buf = vec![0u8; len];
+        let mut filled = len;
+        check_config_rc(unsafe {
+            ffi::zlink_get_pub_option(
+                self.handle,
+                opt,
+                buf.as_mut_ptr() as *mut c_void,
+                &mut filled,
+            )
+        })?;
+        crate::message::Message::copy_from(&buf[..filled])
+    }
+
+    // -- SUB-option helper -------------------------------------------------
+
+    pub(crate) fn get_sub_int_opt(&self, opt: ffi::zlink_sub_option_t) -> Result<i32, ConfigError> {
+        let mut value: i32 = 0;
+        let mut len = std::mem::size_of::<i32>();
+        check_config_rc(unsafe {
+            ffi::zlink_get_sub_option(
+                self.handle,
+                opt,
+                &mut value as *mut i32 as *mut c_void,
+                &mut len,
+            )
+        })?;
+        Ok(value)
+    }
 }
 
 impl Drop for SocketInner {
@@ -1030,7 +1131,7 @@ macro_rules! impl_base_socket {
             ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tls_client(ca_cert, hostname, trust_system)
             }
-            pub(crate) fn handle(&self) -> *mut c_void {
+            pub(crate) fn handle(&self) -> *mut std::ffi::c_void {
                 self.inner.handle
             }
         }

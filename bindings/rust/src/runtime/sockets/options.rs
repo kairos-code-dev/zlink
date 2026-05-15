@@ -2,9 +2,7 @@ use std::time::Duration;
 
 use crate::error::ConfigError;
 use crate::message::{Message, RoutingId};
-use crate::socket::{
-    DealerSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket, XSubSocket,
-};
+use crate::socket::{DealerSocket, RouterSocket, StreamSocket};
 
 use super::socket::SocketInner;
 
@@ -220,174 +218,96 @@ impl<'a> StreamSocketOptions<'a> {
     }
 }
 
-pub(crate) trait PubSocketOptionAccess {
-    fn set_verbose(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn set_verboser(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn set_nodrop(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn set_manual(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn manual_last_value(&self) -> Result<bool, ConfigError>;
-    fn set_manual_last_value(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn welcome_message(&self) -> Result<Message, ConfigError>;
-    fn set_welcome_message(&self, message: &Message) -> Result<(), ConfigError>;
-    fn approve_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError>;
-    fn reject_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError>;
-    fn topics_count(&self) -> Result<i32, ConfigError>;
+/// Public-facing namespace for the option set shared by PUB-style sockets.
+///
+/// Holds a borrow of the underlying [`SocketInner`] and forwards directly to
+/// its FFI-backed methods, mirroring the same single-hop layout we adopted
+/// for [`CommonSocketOptions`]. The previous design routed every call
+/// through a `PubSocketOptionAccess` trait with per-socket impl blocks; that
+/// indirection is now gone.
+pub struct PubSocketOptions<'a> {
+    inner: &'a SocketInner,
 }
 
-impl PubSocketOptionAccess for PubSocket {
-    fn set_verbose(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.set_verbose(enabled)
+impl<'a> PubSocketOptions<'a> {
+    pub(crate) fn new(inner: &'a SocketInner) -> Self {
+        Self { inner }
     }
-    fn set_verboser(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.set_verboser(enabled)
-    }
-    fn set_nodrop(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.set_nodrop(enabled)
-    }
-    fn set_manual(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.set_manual(enabled)
-    }
-    fn manual_last_value(&self) -> Result<bool, ConfigError> {
-        self.manual_last_value()
-    }
-    fn set_manual_last_value(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.set_manual_last_value(enabled)
-    }
-    fn welcome_message(&self) -> Result<Message, ConfigError> {
-        self.welcome_message()
-    }
-    fn set_welcome_message(&self, message: &Message) -> Result<(), ConfigError> {
-        self.set_welcome_message(message)
-    }
-    fn approve_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError> {
-        self.approve_subscribe(routing_id)
-    }
-    fn reject_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError> {
-        self.reject_subscribe(routing_id)
-    }
-    fn topics_count(&self) -> Result<i32, ConfigError> {
-        self.topics_count()
-    }
-}
 
-impl PubSocketOptionAccess for XPubSocket {
-    fn set_verbose(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.set_verbose(enabled)
-    }
-    fn set_verboser(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.set_verboser(enabled)
-    }
-    fn set_nodrop(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.set_nodrop(enabled)
-    }
-    fn set_manual(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.set_manual(enabled)
-    }
-    fn manual_last_value(&self) -> Result<bool, ConfigError> {
-        self.manual_last_value()
-    }
-    fn set_manual_last_value(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.set_manual_last_value(enabled)
-    }
-    fn welcome_message(&self) -> Result<Message, ConfigError> {
-        self.welcome_message()
-    }
-    fn set_welcome_message(&self, message: &Message) -> Result<(), ConfigError> {
-        self.set_welcome_message(message)
-    }
-    fn approve_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError> {
-        self.approve_subscribe(routing_id)
-    }
-    fn reject_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError> {
-        self.reject_subscribe(routing_id)
-    }
-    fn topics_count(&self) -> Result<i32, ConfigError> {
-        self.topics_count()
-    }
-}
-
-pub struct PubSocketOptions<'a, T> {
-    socket: &'a T,
-}
-
-impl<'a, T> PubSocketOptions<'a, T> {
-    pub(crate) fn new(socket: &'a T) -> Self {
-        Self { socket }
-    }
-}
-
-#[allow(private_bounds)]
-impl<T> PubSocketOptions<'_, T>
-where
-    T: PubSocketOptionAccess,
-{
     pub fn set_verbose(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_verbose(enabled)
+        self.inner.set_pub_bool_opt(
+            crate::ffi::zlink_pub_option_t::ZLINK_PUB_OPT_VERBOSE,
+            enabled,
+        )
     }
     pub fn set_verboser(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_verboser(enabled)
+        self.inner.set_pub_bool_opt(
+            crate::ffi::zlink_pub_option_t::ZLINK_PUB_OPT_VERBOSER,
+            enabled,
+        )
     }
     pub fn set_nodrop(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_nodrop(enabled)
+        self.inner.set_pub_bool_opt(
+            crate::ffi::zlink_pub_option_t::ZLINK_PUB_OPT_NODROP,
+            enabled,
+        )
     }
     pub fn set_manual(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_manual(enabled)
+        self.inner.set_pub_bool_opt(
+            crate::ffi::zlink_pub_option_t::ZLINK_PUB_OPT_MANUAL,
+            enabled,
+        )
     }
     pub fn manual_last_value(&self) -> Result<bool, ConfigError> {
-        self.socket.manual_last_value()
+        self.inner
+            .get_pub_bool_opt(crate::ffi::zlink_pub_option_t::ZLINK_PUB_OPT_MANUAL_LAST_VALUE)
     }
     pub fn set_manual_last_value(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_manual_last_value(enabled)
+        self.inner.set_pub_bool_opt(
+            crate::ffi::zlink_pub_option_t::ZLINK_PUB_OPT_MANUAL_LAST_VALUE,
+            enabled,
+        )
     }
     pub fn welcome_message(&self) -> Result<Message, ConfigError> {
-        self.socket.welcome_message()
+        self.inner
+            .get_pub_message_opt(crate::ffi::zlink_pub_option_t::ZLINK_PUB_OPT_WELCOME_MSG)
     }
     pub fn set_welcome_message(&self, message: &Message) -> Result<(), ConfigError> {
-        self.socket.set_welcome_message(message)
+        self.inner.set_pub_bytes_opt(
+            crate::ffi::zlink_pub_option_t::ZLINK_PUB_OPT_WELCOME_MSG,
+            message.as_bytes(),
+        )
     }
     pub fn approve_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError> {
-        self.socket.approve_subscribe(routing_id)
+        self.inner.set_pub_bytes_opt(
+            crate::ffi::zlink_pub_option_t::ZLINK_PUB_OPT_APPROVE_SUBSCRIBE,
+            routing_id.data(),
+        )
     }
     pub fn reject_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError> {
-        self.socket.reject_subscribe(routing_id)
+        self.inner.set_pub_bytes_opt(
+            crate::ffi::zlink_pub_option_t::ZLINK_PUB_OPT_REJECT_SUBSCRIBE,
+            routing_id.data(),
+        )
     }
     pub fn topics_count(&self) -> Result<i32, ConfigError> {
-        self.socket.topics_count()
+        self.inner
+            .get_pub_int_opt(crate::ffi::zlink_pub_option_t::ZLINK_PUB_OPT_TOPICS_COUNT)
     }
 }
 
-pub(crate) trait SubSocketOptionAccess {
-    fn topics_count(&self) -> Result<i32, ConfigError>;
+/// SUB-style options shared by SubSocket and XSubSocket.
+pub struct SubSocketOptions<'a> {
+    inner: &'a SocketInner,
 }
 
-impl SubSocketOptionAccess for SubSocket {
-    fn topics_count(&self) -> Result<i32, ConfigError> {
-        self.topics_count()
+impl<'a> SubSocketOptions<'a> {
+    pub(crate) fn new(inner: &'a SocketInner) -> Self {
+        Self { inner }
     }
-}
 
-impl SubSocketOptionAccess for XSubSocket {
-    fn topics_count(&self) -> Result<i32, ConfigError> {
-        self.topics_count()
-    }
-}
-
-pub struct SubSocketOptions<'a, T> {
-    socket: &'a T,
-}
-
-impl<'a, T> SubSocketOptions<'a, T> {
-    pub(crate) fn new(socket: &'a T) -> Self {
-        Self { socket }
-    }
-}
-
-#[allow(private_bounds)]
-impl<T> SubSocketOptions<'_, T>
-where
-    T: SubSocketOptionAccess,
-{
     pub fn topics_count(&self) -> Result<i32, ConfigError> {
-        self.socket.topics_count()
+        self.inner
+            .get_sub_int_opt(crate::ffi::zlink_sub_option_t::ZLINK_SUB_OPT_TOPICS_COUNT)
     }
 }

@@ -34,6 +34,7 @@ type callbackDispatcher struct {
 	mu       sync.Mutex
 	cond     *sync.Cond
 	queue    []*callbackTask
+	head     int
 	closed   bool
 	done     chan struct{}
 	workerID atomic.Uint64
@@ -41,13 +42,18 @@ type callbackDispatcher struct {
 
 func newCallbackDispatcher() *callbackDispatcher {
 	dispatcher := &callbackDispatcher{
-		done: make(chan struct{}),
+		done:  make(chan struct{}),
+		queue: make([]*callbackTask, 0, 16),
 	}
 	dispatcher.cond = sync.NewCond(&dispatcher.mu)
 	go dispatcher.loop()
 	return dispatcher
 }
 
+// enqueue appends a task; loop() consumes via the `head` cursor so dequeue
+// is O(1) and the per-message copy/shift that previously ran in loop() is
+// gone. The cursor is compacted back to zero whenever the queue drains so
+// the underlying slice does not grow unbounded.
 func (d *callbackDispatcher) enqueue(task *callbackTask) bool {
 	if d == nil || task == nil {
 		return false
@@ -86,17 +92,22 @@ func (d *callbackDispatcher) loop() {
 	d.workerID.Store(currentGoroutineID())
 	for {
 		d.mu.Lock()
-		for len(d.queue) == 0 && !d.closed {
+		for d.head >= len(d.queue) && !d.closed {
 			d.cond.Wait()
 		}
-		if len(d.queue) == 0 && d.closed {
+		if d.head >= len(d.queue) && d.closed {
 			d.mu.Unlock()
 			return
 		}
-		task := d.queue[0]
-		copy(d.queue, d.queue[1:])
-		d.queue[len(d.queue)-1] = nil
-		d.queue = d.queue[:len(d.queue)-1]
+		task := d.queue[d.head]
+		d.queue[d.head] = nil
+		d.head++
+		// Reset the cursor when the queue drains; avoids unbounded growth
+		// of the underlying slice header. Cheap because head==len here.
+		if d.head == len(d.queue) {
+			d.head = 0
+			d.queue = d.queue[:0]
+		}
 		d.mu.Unlock()
 		task.run()
 	}

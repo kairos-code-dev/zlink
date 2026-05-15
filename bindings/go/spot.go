@@ -837,6 +837,21 @@ func (s *Spot) raw() unsafe.Pointer {
 	return s.core.raw()
 }
 
+// isInvalid centralizes the s==nil / core==nil / closed guard. Callers that
+// need a typed error use checkValid; recv/handler paths just inspect the
+// bool so they can construct their own context-specific error type.
+func (s *Spot) isInvalid() bool {
+	return s == nil || s.core == nil || s.core.closed
+}
+
+// checkValid returns a ConfigError if the spot is unusable, otherwise nil.
+func (s *Spot) checkValid() error {
+	if s.isInvalid() {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	return nil
+}
+
 func (s *Spot) Close() error {
 	if s == nil || s.core == nil {
 		return nil
@@ -845,16 +860,16 @@ func (s *Spot) Close() error {
 }
 
 func (s *Spot) SetRoutingID(rid RoutingID) error {
-	if s == nil || s.core == nil || s.core.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	if err := s.checkValid(); err != nil {
+		return err
 	}
 	raw := rid.toC()
 	return configErrorFromResult(C.zlink_set_routing_id(s.raw(), routingIDPointer(&raw), C.size_t(raw.size)))
 }
 
 func (s *Spot) RoutingID() (RoutingID, error) {
-	if s == nil || s.core == nil || s.core.closed {
-		return RoutingID{}, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	if err := s.checkValid(); err != nil {
+		return RoutingID{}, err
 	}
 	return getHandleRoutingID(s.raw())
 }
@@ -880,8 +895,8 @@ func (s *Spot) SetSendTimeout(value time.Duration) error {
 }
 
 func (s *Spot) SetRequestTimeout(value time.Duration) error {
-	if s == nil || s.core == nil || s.core.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	if err := s.checkValid(); err != nil {
+		return err
 	}
 	ms, err := durationToMillis(value)
 	if err != nil {
@@ -892,8 +907,8 @@ func (s *Spot) SetRequestTimeout(value time.Duration) error {
 }
 
 func (s *Spot) RequestTimeout() (time.Duration, error) {
-	if s == nil || s.core == nil || s.core.closed {
-		return 0, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	if err := s.checkValid(); err != nil {
+		return 0, err
 	}
 	var raw C.int
 	size := C.size_t(C.sizeof_int)
@@ -1108,7 +1123,7 @@ func (s *Spot) ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags)
 	if out == nil {
 		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
 	}
-	if s == nil || s.core == nil || s.core.closed {
+	if s.isInvalid() {
 		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	_ = flags
@@ -1119,7 +1134,7 @@ func (s *Spot) OnSendReady(handler func()) error {
 	if handler == nil {
 		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	if s == nil || s.core == nil || s.core.closed {
+	if s.isInvalid() {
 		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EFAULT)}
 	}
 	state := newSendReadyCallbackState(sendReadyCallback(handler))

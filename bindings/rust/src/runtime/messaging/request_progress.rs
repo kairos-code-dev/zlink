@@ -128,10 +128,7 @@ fn run_worker(worker: Weak<ProgressWorker>) {
                             std::ptr::null_mut(),
                         );
                     }
-                    let _ = ffi::zlink_poller_remove(
-                        poller,
-                        active_worker.handle as *mut c_void,
-                    );
+                    let _ = ffi::zlink_poller_remove(poller, active_worker.handle as *mut c_void);
                 }
                 let mut poller_to_destroy = poller;
                 let _ = ffi::zlink_poller_destroy(&mut poller_to_destroy);

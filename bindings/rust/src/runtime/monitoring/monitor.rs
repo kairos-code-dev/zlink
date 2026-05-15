@@ -40,11 +40,11 @@ pub const MONITOR_EVENT_ALL: SocketMonitorEventMask = SocketMonitorEventMask::AL
 pub const MONITOR_EVENT_CONNECTION_READY: SocketMonitorEventMask =
     SocketMonitorEventMask::CONNECTION_READY;
 
+use crate::ctx::AutoHwmRecalcReason;
 use crate::error::{
     CloseError, ConfigError, HandlerError, RecvError, check_close_rc, check_config_rc,
     check_handler_rc, check_recv_rc,
 };
-use crate::ctx::AutoHwmRecalcReason;
 use crate::ffi;
 use crate::message::RoutingId;
 use crate::socket::*;

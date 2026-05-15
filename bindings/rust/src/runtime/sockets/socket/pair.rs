@@ -1,5 +1,3 @@
-use std::ffi::c_void;
-
 use crate::ctx::Context;
 use crate::domain::Received;
 use crate::error::{ConfigError, HandlerError, RecvError};
@@ -8,9 +6,7 @@ use crate::flags::RecvFlags;
 use crate::options::CommonSocketOptions;
 use crate::service::{Empty, SendOp};
 
-use super::{
-    SendHandle, SocketInner, impl_base_socket, impl_connect,
-};
+use super::{SendHandle, SocketInner, impl_base_socket, impl_connect};
 
 /// PAIR socket – bidirectional one-to-one messaging.
 ///

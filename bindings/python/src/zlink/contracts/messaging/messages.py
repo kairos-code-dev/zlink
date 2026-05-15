@@ -336,11 +336,22 @@ class Message:
     def data(self):
         if not self._valid:
             return memoryview(b"")
+        # Cache the memoryview keyed by (ptr, size). The underlying msg can
+        # only be mutated by close()/_adopt_from()-style transitions, both of
+        # which clear `_valid` and therefore invalidate this cache via the
+        # ``not self._valid`` short-circuit above. Reading `.data` repeatedly
+        # — common when forwarding a payload between parts of a pipeline —
+        # would otherwise allocate a fresh `from_address` view every call.
         ptr = _msg_data_ptr(self._msg)
         size = self.size()
         if not ptr or size <= 0:
             return memoryview(b"")
-        return memoryview((ctypes.c_ubyte * size).from_address(ptr))
+        cache = getattr(self, "_data_view_cache", None)
+        if cache is not None and cache[0] == ptr and cache[1] == size:
+            return cache[2]
+        view = memoryview((ctypes.c_ubyte * size).from_address(ptr))
+        self._data_view_cache = (ptr, size, view)
+        return view
 
     def to_bytes(self):
         return _msg_to_bytes(self._msg) if self._valid else b""
@@ -363,6 +374,7 @@ class Message:
         rc = lib().zlink_msg_close(ctypes.byref(self._msg))
         self._valid = False
         self._keepalive = None
+        self._data_view_cache = None
         if rc != 0:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 

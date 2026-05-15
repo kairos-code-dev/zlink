@@ -177,8 +177,12 @@ impl TryFrom<Vec<u8>> for Message {
 /// A validated routing identifier (max 255 bytes).
 ///
 /// The `data[255]` bound matches `zlink_routing_id_t`. Construction validates
-/// the length; overflow is rejected immediately (fail-fast).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// the length; overflow is rejected immediately (fail-fast). `Copy` because
+/// the underlying FFI struct is plain bytes and is small enough that pass-by-
+/// value beats the indirection of borrowing — callers in `service.rs` and the
+/// router/stream sockets previously paid for a 256-byte memcpy via `clone()`
+/// on every send/request path.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RoutingId {
     raw: ffi::zlink_routing_id_t,
 }

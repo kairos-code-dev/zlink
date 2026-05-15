@@ -37,12 +37,6 @@ impl RouterSocket {
     /// Canonical caller-provided storage routed recv. See
     /// `doc/spec/bindings/README.md`.
     pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
-        if flags.bits() == 0 {
-            if let Some(received) = recv_router_once(self.inner.handle, ffi::ZLINK_DONTWAIT)? {
-                out.adopt_from(received);
-                return Ok(true);
-            }
-        }
         match recv_router_once(self.inner.handle, flags.bits())? {
             Some(received) => {
                 out.adopt_from(received);

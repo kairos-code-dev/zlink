@@ -11,10 +11,7 @@ use crate::message::{Message, RoutingId};
 use crate::options::{CommonSocketOptions, StreamSocketOptions};
 use crate::service::{ActorBindOp, ActorRef, ActorUnbindOp, Empty, SendOp};
 
-use super::{
-    SendHandle, SocketInner, impl_base_socket, impl_routing_id_options,
-    
-};
+use super::{SendHandle, SocketInner, impl_base_socket, impl_routing_id_options};
 
 /// STREAM socket – raw TCP/transport-level messaging with routing-id.
 ///

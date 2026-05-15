@@ -351,9 +351,6 @@ func TestSurfaceActorCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "ActorLookup") {
 		t.Fatalf("SpotNode should expose ActorLookup")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "DestroyRemoteActor") {
-		t.Fatalf("SpotNode should expose DestroyRemoteActor")
-	}
 	if !hasMethod((*zlink.SpotNode)(nil), "JoinActor") {
 		t.Fatalf("SpotNode should expose JoinActor")
 	}

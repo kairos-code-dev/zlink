@@ -52,7 +52,7 @@ func main() {
 	samplecommon.Must(leave.Err)
 	leaveParts := leave.Parts
 	zlink.MultipartClose(leaveParts)
-	destroyCh, err := gatewayNode.DestroyRemoteActor(actorRef).Timeout(time.Second).SubmitAsync(nil)
+	destroyCh, err := gatewayNode.DestroyActor(actorRef).Timeout(time.Second).SubmitAsync(nil)
 	samplecommon.Must(err)
 	destroy := <-destroyCh
 	samplecommon.Must(destroy.Err)

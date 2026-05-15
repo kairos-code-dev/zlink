@@ -196,10 +196,13 @@ class _RequestProgressPump:
                     return
                 events = (ZlinkPollerEvent * 1)()
                 error_out = ctypes.c_int()
+                # Use a finite wait timeout so the worker can observe
+                # _is_active() turning false (e.g. when the owning socket
+                # closes and cancels its pending requests).
                 while self._is_active():
                     try:
                         lib().zlink_poller_wait(
-                            poller, events, 1, -1, ctypes.byref(error_out)
+                            poller, events, 1, 50, ctypes.byref(error_out)
                         )
                     except Exception:
                         break

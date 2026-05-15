@@ -52,7 +52,7 @@ pub fn decode<T: prost::Message + Default>(msg: &zlink::Message) -> Result<T, Er
 pub fn encode<T: prost::Message>(v: &T) -> Result<zlink::Message, Error> {
     let mut buf = Vec::with_capacity(prost::Message::encoded_len(v));
     prost::Message::encode(v, &mut buf)?;
-    zlink::Message::from_bytes(&buf).map_err(Error::from)
+    zlink::Message::copy_from(&buf).map_err(Error::from)
 }
 
 #[cfg(test)]

@@ -199,5 +199,5 @@ pub(crate) fn get_pub_message(
     check_config_rc(unsafe {
         ffi::zlink_get_pub_option(handle, opt, buf.as_mut_ptr() as *mut c_void, &mut len)
     })?;
-    Message::from_bytes(&buf[..len])
+    Message::copy_from(&buf[..len])
 }

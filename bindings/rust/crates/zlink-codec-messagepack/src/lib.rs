@@ -51,7 +51,7 @@ pub fn decode<T: serde::de::DeserializeOwned>(msg: &zlink::Message) -> Result<T,
 
 pub fn encode<T: serde::Serialize>(v: &T) -> Result<zlink::Message, Error> {
     let bytes = rmp_serde::to_vec(v)?;
-    zlink::Message::from_bytes(&bytes).map_err(Error::from)
+    zlink::Message::copy_from(&bytes).map_err(Error::from)
 }
 
 #[cfg(test)]

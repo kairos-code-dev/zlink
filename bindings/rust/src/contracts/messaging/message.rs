@@ -59,11 +59,6 @@ impl Message {
         Self::copy_from(data.as_ref())
     }
 
-    /// Create a message by copying the given byte slice.
-    pub fn from_bytes(data: &[u8]) -> Result<Self, ConfigError> {
-        Self::copy_from(data)
-    }
-
     /// View the message payload as a byte slice.
     pub fn as_bytes(&self) -> &[u8] {
         unsafe {

@@ -79,41 +79,15 @@ from ..._runtime.sockets.socket_base import (
     _RouterOptionSocket,
     _SendReadySocket,
     _Socket,
+    _STREAM_PACKET_HANDLER,
     _StreamOptionSocket,
     _SubscriberOptionSocket,
     _SubscriberSocket,
+    _close_native_parts,
     _leave_callback,
+    _part_flag,
+    _submit_parts,
 )
-
-_STREAM_PACKET_HANDLER = ctypes.CFUNCTYPE(
-    None,
-    ctypes.c_void_p,
-    ctypes.POINTER(ZlinkRoutingId),
-    ctypes.POINTER(ZlinkMsg),
-    ctypes.POINTER(ZlinkMsg),
-    ctypes.c_void_p,
-)
-
-
-
-def _part_flag(part_index, part_count):
-    return ZLINK_PART_FINAL if part_index == part_count - 1 else ZLINK_PART_MORE
-
-
-def _close_native_parts(native_parts, start=0):
-    for native in native_parts[start:]:
-        lib().zlink_msg_close(ctypes.byref(native))
-
-
-def _submit_parts(native_parts, submit_part):
-    part_count = len(native_parts)
-    for index, native in enumerate(native_parts):
-        rc = submit_part(ctypes.byref(native), _part_flag(index, part_count))
-        if rc != 0:
-            err = lib().zlink_errno()
-            _close_native_parts(native_parts, index)
-            return rc, err
-    return 0, 0
 
 
 class PairSocket(_SendReadySocket, _EndpointSocket, _MessageSocket):

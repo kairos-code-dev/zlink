@@ -134,6 +134,34 @@ def _part_flag(part_index, part_count):
     return ZLINK_PART_FINAL if part_index == part_count - 1 else ZLINK_PART_MORE
 
 
+def _submit_parts(native_parts, submit_part):
+    """Submit `native_parts` one by one through `submit_part(part_ptr, part_flag)`.
+
+    Returns ``(rc, errno)``. On failure, releases the remaining parts.
+    """
+    part_count = len(native_parts)
+    for index, native in enumerate(native_parts):
+        rc = submit_part(ctypes.byref(native), _part_flag(index, part_count))
+        if rc != 0:
+            err = lib().zlink_errno()
+            _close_native_parts(native_parts, index)
+            return rc, err
+    return 0, 0
+
+
+# Stream packet callback trampoline type. Lives in the runtime/native bridge
+# because it is a raw FFI callback signature; concrete socket classes import
+# it when wiring StreamSocket.on_packet handlers.
+_STREAM_PACKET_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_void_p,
+    ctypes.POINTER(ZlinkRoutingId),
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.c_void_p,
+)
+
+
 def _classify_nonblocking_send_errno():
     err = lib().zlink_errno()
     if err == _errno.EAGAIN:

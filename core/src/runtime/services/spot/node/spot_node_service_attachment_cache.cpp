@@ -5,10 +5,16 @@
 #include "services/spot/node/spot_node.hpp"
 #include "services/spot/common/spot_debug.hpp"
 
+#include "core/socket_poller.hpp"
 #include "sockets/common/socket_base.hpp"
 
 namespace zlink
 {
+struct spot_node_service_attachment_state_t::service_sub_recv_cache_t::impl_t
+{
+    zlink::socket_poller_t poller;
+};
+
 namespace
 {
 typedef spot_node_service_attachment_state_t service_attachment_state_t;
@@ -25,19 +31,72 @@ static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
     va_end (args);
 }
 
-static void add_service_sub_recv_cache_entry_local (
-  service_attachment_state_t::service_sub_recv_cache_t &cache_,
+}
+
+spot_node_service_attachment_state_t::service_sub_recv_cache_t::
+  service_sub_recv_cache_t () :
+    impl (new impl_t ())
+{
+}
+
+spot_node_service_attachment_state_t::service_sub_recv_cache_t::
+  ~service_sub_recv_cache_t ()
+{
+}
+
+void spot_node_service_attachment_state_t::service_sub_recv_cache_t::reserve (
+  size_t capacity_)
+{
+    entries.reserve (capacity_);
+}
+
+void spot_node_service_attachment_state_t::service_sub_recv_cache_t::add (
   const std::string &channel_name_,
   socket_base_t *socket_)
 {
     if (!socket_)
         return;
 
-    service_attachment_state_t::service_sub_cache_entry_t entry;
+    service_sub_cache_entry_t entry;
     entry.channel_name = channel_name_;
     entry.socket = socket_;
-    cache_.entries.push_back (entry);
+    const size_t index = entries.size ();
+    if (impl->poller.add (socket_, reinterpret_cast<void *> (index),
+                          ZLINK_POLLIN)
+        != 0)
+        return;
+    entries.push_back (entry);
 }
+
+bool spot_node_service_attachment_state_t::service_sub_recv_cache_t::
+  wait_ready_socket (zlink_recv_flags_t flags_,
+                     socket_base_t **ready_socket_out_) const
+{
+    if (ready_socket_out_)
+        *ready_socket_out_ = NULL;
+    if (entries.empty ()) {
+        errno = (flags_ & ZLINK_DONTWAIT) != 0 ? EAGAIN : ENOTCONN;
+        return false;
+    }
+
+    zlink::socket_poller_t::event_t event;
+    memset (&event, 0, sizeof (event));
+    const int rc = impl->poller.wait (&event, 1,
+                                      (flags_ & ZLINK_DONTWAIT) != 0 ? 0 : -1);
+    if (rc <= 0) {
+        errno = rc < 0 ? errno : EAGAIN;
+        return false;
+    }
+
+    const size_t index = reinterpret_cast<size_t> (event.user_data);
+    if (index >= entries.size () || event.socket != entries[index].socket) {
+        errno = EAGAIN;
+        return false;
+    }
+
+    if (ready_socket_out_)
+        *ready_socket_out_ = entries[index].socket;
+    return true;
 }
 
 void spot_node_t::rebuild_service_attachment_caches_locked ()
@@ -46,8 +105,7 @@ void spot_node_t::rebuild_service_attachment_caches_locked ()
       sub_recv_cache (
         new service_attachment_state_t::service_sub_recv_cache_t ());
 
-    sub_recv_cache->entries.reserve (
-      _service_attachment_state.attachments.size () * 2);
+    sub_recv_cache->reserve (_service_attachment_state.attachments.size () * 2);
     for (std::map<std::string, service_attachment_t>::iterator it =
            _service_attachment_state.attachments.begin ();
          it != _service_attachment_state.attachments.end (); ++it) {
@@ -65,12 +123,10 @@ void spot_node_t::rebuild_service_attachment_caches_locked ()
         }
 
         if (it->second.has_manual_pubsub ()) {
-            add_service_sub_recv_cache_entry_local (
-              *sub_recv_cache, it->first, it->second.manual.sub);
+            sub_recv_cache->add (it->first, it->second.manual.sub);
         }
         if (it->second.has_auto_pubsub ()) {
-            add_service_sub_recv_cache_entry_local (
-              *sub_recv_cache, it->first, it->second.discovered.sub);
+            sub_recv_cache->add (it->first, it->second.discovered.sub);
         }
     }
 

@@ -186,7 +186,7 @@ int zlink::request_completion::enqueue (queue_state_t *state_,
             state_->signal_pending = true;
             static const unsigned char signal_byte = 0x7a;
             const int signal_rc = zlink::internal_pair_queue::send_buffer_frame (
-              state_->signal.tx, &signal_byte, sizeof (signal_byte), 0);
+              state_->signal.tx_socket (), &signal_byte, sizeof (signal_byte), 0);
             if (signal_rc != 0) {
                 state_->signal_pending = false;
                 return -1;
@@ -222,7 +222,7 @@ int zlink::request_completion::signal (queue_state_t *state_,
         state_->signal_pending = true;
         static const unsigned char signal_byte = 0x7a;
         const int signal_rc = zlink::internal_pair_queue::send_buffer_frame (
-          state_->signal.tx, &signal_byte, sizeof (signal_byte), 0);
+          state_->signal.tx_socket (), &signal_byte, sizeof (signal_byte), 0);
         if (signal_rc != 0) {
             state_->signal_pending = false;
             return -1;
@@ -256,7 +256,7 @@ int zlink::request_completion::drain (queue_state_t *state_,
             // the next drain comes around through the poller's timeout, which
             // caps throughput at 1 / poll_timeout per client.
             if (state_->signal_pending) {
-                drain_signal_socket_nonblocking (state_->signal.rx);
+                drain_signal_socket_nonblocking (state_->signal.rx_socket ());
                 state_->signal_pending = false;
             }
             if (state_->pending.empty ()) {
@@ -293,11 +293,12 @@ void zlink::request_completion::close (queue_state_t *state_)
         state_->pending.clear ();
         state_->owner_thread_valid = false;
         state_->close_requested = true;
-        if (state_->poller_refs > 0 && state_->signal.tx && !state_->signal_pending) {
+        if (state_->poller_refs > 0 && state_->signal.tx_socket ()
+            && !state_->signal_pending) {
             state_->signal_pending = true;
             static const unsigned char signal_byte = 0x7a;
             if (zlink::internal_pair_queue::send_buffer_frame (
-                  state_->signal.tx, &signal_byte, sizeof (signal_byte),
+                  state_->signal.tx_socket (), &signal_byte, sizeof (signal_byte),
                   ZLINK_DONTWAIT)
                 != 0) {
                 state_->signal_pending = false;
@@ -319,7 +320,7 @@ int zlink::request_completion::acquire_signal_poller_ref (queue_state_t *state_)
     }
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    if (state_->close_requested || !state_->signal.rx) {
+    if (state_->close_requested || !state_->signal.rx_socket ()) {
         errno = ETERM;
         return -1;
     }
@@ -378,7 +379,7 @@ bool zlink::request_completion::has_pending (queue_state_t *state_)
 zlink::socket_base_t *
 zlink::request_completion::signal_socket (queue_state_t *state_)
 {
-    return state_ ? state_->signal.rx : NULL;
+    return state_ ? state_->signal.rx_socket () : NULL;
 }
 
 bool zlink::request_completion::in_request_completion_callback (

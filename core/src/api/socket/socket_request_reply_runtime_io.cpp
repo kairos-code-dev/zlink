@@ -204,16 +204,16 @@ int queue_router_message (socket_request_reply_state_t *state_,
       has_valid_routing_id (source_spot_rid_) ? source_spot_rid_->data : NULL;
     const size_t source_spot_size =
       has_valid_routing_id (source_spot_rid_) ? source_spot_rid_->size : 0;
+    zlink::socket_base_t *queue_tx = state_->recv_queue.tx_socket ();
     if (zlink::internal_pair_queue::send_buffer_frame (
-          state_->recv_queue.tx, source_node_data, source_node_size,
+          queue_tx, source_node_data, source_node_size,
           ZLINK_SNDMORE)
         != 0
         || zlink::internal_pair_queue::send_buffer_frame (
-             state_->recv_queue.tx, source_spot_data, source_spot_size,
-             ZLINK_SNDMORE)
+             queue_tx, source_spot_data, source_spot_size, ZLINK_SNDMORE)
              != 0
         || zlink::internal_pair_queue::send_buffer_frame (
-             state_->recv_queue.tx, seq_buf, sizeof (seq_buf), ZLINK_SNDMORE)
+             queue_tx, seq_buf, sizeof (seq_buf), ZLINK_SNDMORE)
              != 0) {
         zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
         return -1;
@@ -221,7 +221,7 @@ int queue_router_message (socket_request_reply_state_t *state_,
 
     for (size_t i = 0; i < part_count_; ++i) {
         const int flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
-        if (state_->recv_queue.tx->send (
+        if (queue_tx->send (
               reinterpret_cast<zlink::msg_t *> (&parts_[i]), flags)
             != 0) {
             zlink::request_reply::consume_send_frames_from (parts_, i,
@@ -267,7 +267,7 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
                                 int flags_,
                                 int timeout_ms_)
 {
-    if (!queue_ || !queue_->rx || !source_node_rid_out_
+    if (!queue_ || !queue_->rx_socket () || !source_node_rid_out_
         || !source_spot_rid_out_ || !request_seq_out_ || !parts_out_
         || !part_count_out_) {
         errno = EFAULT;
@@ -290,8 +290,9 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
     zlink::clock_t clock;
     const uint64_t deadline_ms =
       timeout_ms_ > 0 ? clock.now_ms () + static_cast<uint64_t> (timeout_ms_) : 0;
+    zlink::socket_base_t *queue_rx = queue_->rx_socket ();
 
-    if (recv_internal_queue_frame (queue_->rx, &source_node_frame, flags_,
+    if (recv_internal_queue_frame (queue_rx, &source_node_frame, flags_,
                                    timeout_ms_, deadline_ms)
         != 0) {
         const int saved_errno = errno;
@@ -301,7 +302,7 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
         return -1;
     }
     if (zlink::internal_pair_queue::recv_followup_with_retry (
-          queue_->rx, &source_spot_frame, flags_)
+          queue_rx, &source_spot_frame, flags_)
         != 0) {
         const int saved_errno = errno;
         zlink_msg_close (&source_node_frame);
@@ -312,7 +313,7 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
         return -1;
     }
     if (zlink::internal_pair_queue::recv_followup_with_retry (
-          queue_->rx, &seq_frame, flags_)
+          queue_rx, &seq_frame, flags_)
         != 0) {
         const int saved_errno = errno;
         zlink_msg_close (&source_node_frame);
@@ -331,7 +332,7 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
         return -1;
     }
     if (zlink::internal_pair_queue::recv_followup_with_retry (
-          queue_->rx, first_payload, flags_)
+          queue_rx, first_payload, flags_)
         != 0) {
         const int saved_errno = errno;
         zlink_msg_close (&source_node_frame);
@@ -364,7 +365,7 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
         return -1;
     }
     return zlink::export_reserved_followup_msg_sequence (
-      queue_->rx, parts_out_, part_count_out_, true);
+      queue_rx, parts_out_, part_count_out_, true);
 }
 
 int recv_router_message_direct (socket_handle_t handle_,

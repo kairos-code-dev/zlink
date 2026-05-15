@@ -44,6 +44,7 @@ struct poller_registration_t
         subject_kind (poller_subject_none),
         user_data (NULL),
         events (0),
+        completion_queue (NULL),
         state_ref ()
     {
     }
@@ -54,6 +55,7 @@ struct poller_registration_t
     poller_subject_kind_t subject_kind;
     void *user_data;
     short events;
+    zlink::request_completion::queue_state_t *completion_queue;
     std::shared_ptr<void> state_ref;
 };
 

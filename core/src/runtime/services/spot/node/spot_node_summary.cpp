@@ -88,6 +88,18 @@ static std::string spot_subject_snapshot_key_local (
     return std::string (prefix) + subject_;
 }
 
+static uint32_t ready_subject_count_local (
+  const std::vector<spot_node_summary_state_t::subject_snapshot_entry_t>
+    &entries_)
+{
+    uint32_t ready_count = 0;
+    for (size_t i = 0; i < entries_.size (); ++i) {
+        if (entries_[i].ready)
+            ++ready_count;
+    }
+    return ready_count;
+}
+
 static uint32_t unique_peer_count_local (const std::set<std::string> &manual_,
                                          const std::set<std::string> &discovery_)
 {
@@ -583,37 +595,33 @@ void spot_node_t::snapshot_subscription_subjects (
     }
 }
 
-void spot_node_t::snapshot_status_subject_counts (
-  uint32_t *subject_count_out_, uint32_t *ready_subject_count_out_) const
+void spot_node_t::snapshot_subject_summary_entries (
+  std::vector<spot_node_summary_state_t::subject_snapshot_entry_t> *out_) const
 {
-    if (subject_count_out_)
-        *subject_count_out_ = 0;
-    if (ready_subject_count_out_)
-        *ready_subject_count_out_ = 0;
-    if (!subject_count_out_ && !ready_subject_count_out_)
+    if (!out_)
         return;
+    out_->clear ();
 
     while (true) {
         std::vector<spot_sub_t *> subs;
+        std::map<std::string, uint64_t> subject_last_changed;
         uint64_t generation = 0;
         {
             scoped_lock_t lock (_sync);
             if (_summary_state.cached_subject_counts_generation
                 == _summary_state.subject_counts_generation) {
-                if (subject_count_out_)
-                    *subject_count_out_ = _summary_state.cached_subject_count;
-                if (ready_subject_count_out_) {
-                    *ready_subject_count_out_ =
-                      _summary_state.cached_ready_subject_count;
-                }
+                *out_ = _summary_state.cached_subject_entries;
                 return;
             }
             generation = _summary_state.subject_counts_generation;
             subs.reserve (_handle_state.subs.size ());
             subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
+            subject_last_changed = _summary_state.subject_last_changed_ms;
         }
 
-        std::unordered_map<subject_snapshot_key_t, bool,
+        std::unordered_map<
+          subject_snapshot_key_t,
+          spot_node_summary_state_t::subject_snapshot_entry_t,
                            subject_snapshot_key_hash_t>
           grouped;
         grouped.reserve (subs.size () * 2);
@@ -626,32 +634,63 @@ void spot_node_t::snapshot_status_subject_counts (
                 subject_snapshot_key_t key;
                 key.subject_kind = subjects[j].subject_kind;
                 key.subject = subjects[j].subject;
-                grouped[key] = grouped[key] || subjects[j].ready;
+                spot_node_summary_state_t::subject_snapshot_entry_t &entry =
+                  grouped[key];
+                if (entry.subject_kind == 0 && entry.subject.empty ()) {
+                    entry.subject = subjects[j].subject;
+                    entry.subject_kind = subjects[j].subject_kind;
+                    entry.ready = false;
+                    entry.last_changed_ms = 0;
+                }
+                entry.ready = entry.ready || subjects[j].ready;
+                std::map<std::string, uint64_t>::const_iterator tsit =
+                  subject_last_changed.find (spot_subject_snapshot_key_local (
+                    subjects[j].subject, subjects[j].subject_kind));
+                if (tsit != subject_last_changed.end ()
+                    && tsit->second > entry.last_changed_ms) {
+                    entry.last_changed_ms = tsit->second;
+                }
             }
         }
 
-        uint32_t ready_count = 0;
-        for (std::unordered_map<subject_snapshot_key_t, bool,
-                                subject_snapshot_key_hash_t>::const_iterator it =
+        std::vector<spot_node_summary_state_t::subject_snapshot_entry_t>
+          entries;
+        entries.reserve (grouped.size ());
+        for (std::unordered_map<
+               subject_snapshot_key_t,
+               spot_node_summary_state_t::subject_snapshot_entry_t,
+               subject_snapshot_key_hash_t>::const_iterator it =
                grouped.begin ();
              it != grouped.end (); ++it) {
-            if (it->second)
-                ++ready_count;
+            entries.push_back (it->second);
         }
-        const uint32_t subject_count = static_cast<uint32_t> (grouped.size ());
 
         scoped_lock_t lock (_sync);
         if (_summary_state.subject_counts_generation != generation)
             continue;
-        _summary_state.cached_subject_count = subject_count;
-        _summary_state.cached_ready_subject_count = ready_count;
+        _summary_state.cached_subject_entries = entries;
         _summary_state.cached_subject_counts_generation = generation;
-        if (subject_count_out_)
-            *subject_count_out_ = subject_count;
-        if (ready_subject_count_out_)
-            *ready_subject_count_out_ = ready_count;
+        *out_ = _summary_state.cached_subject_entries;
         return;
     }
+}
+
+void spot_node_t::snapshot_status_subject_counts (
+  uint32_t *subject_count_out_, uint32_t *ready_subject_count_out_) const
+{
+    if (subject_count_out_)
+        *subject_count_out_ = 0;
+    if (ready_subject_count_out_)
+        *ready_subject_count_out_ = 0;
+    if (!subject_count_out_ && !ready_subject_count_out_)
+        return;
+
+    std::vector<spot_node_summary_state_t::subject_snapshot_entry_t> entries;
+    snapshot_subject_summary_entries (&entries);
+    if (subject_count_out_)
+        *subject_count_out_ = static_cast<uint32_t> (entries.size ());
+    if (ready_subject_count_out_)
+        *ready_subject_count_out_ = ready_subject_count_local (entries);
 }
 
 int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_)
@@ -857,61 +896,28 @@ int spot_node_t::snapshot_subjects (
     out_->clear ();
 
     uint32_t active_peer_count = 0;
-    std::vector<spot_sub_t *> subs;
-    std::map<std::string, uint64_t> subject_last_changed;
     {
         scoped_lock_t lock (_sync);
         active_peer_count = static_cast<uint32_t> (_peer_state.active_endpoints.size ());
-        subs.reserve (_handle_state.subs.size ());
-        subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
-        subject_last_changed = _summary_state.subject_last_changed_ms;
     }
 
-    std::unordered_map<subject_snapshot_key_t,
-                       zlink_spot_node_subject_entry_t,
-                       subject_snapshot_key_hash_t>
-      grouped;
-    grouped.reserve (subs.size () * 2);
-    for (size_t i = 0; i < subs.size (); ++i) {
-        if (!subs[i])
-            continue;
-        std::vector<spot_sub_t::subject_snapshot_t> subjects;
-        subs[i]->append_subject_snapshots (&subjects);
-        for (size_t j = 0; j < subjects.size (); ++j) {
-            const spot_sub_t::subject_snapshot_t &subject = subjects[j];
-            subject_snapshot_key_t key;
-            key.subject_kind = subject.subject_kind;
-            key.subject = subject.subject;
-            zlink_spot_node_subject_entry_t &entry = grouped[key];
-            if (entry.role == 0) {
-                memset (&entry, 0, sizeof (entry));
-                entry.role = ZLINK_SPOT_ROLE_SUB;
-                entry.subject_kind = subject.subject_kind;
-                copy_fixed_c_string_from_bytes (entry.subject,
-                                                sizeof (entry.subject),
-                                                subject.subject.data (),
-                                                subject.subject.size ());
-            }
-            entry.active_peer_count = active_peer_count;
-            if (subject.ready)
-                entry.ready_peer_count = 1;
-            std::map<std::string, uint64_t>::const_iterator tsit =
-              subject_last_changed.find (spot_subject_snapshot_key_local (
-                subject.subject, subject.subject_kind));
-            if (tsit != subject_last_changed.end ()
-                && tsit->second > entry.last_changed_ms) {
-                entry.last_changed_ms = tsit->second;
-            }
-        }
-    }
+    std::vector<spot_node_summary_state_t::subject_snapshot_entry_t> snapshots;
+    snapshot_subject_summary_entries (&snapshots);
 
-    out_->reserve (grouped.size ());
-    for (std::unordered_map<subject_snapshot_key_t,
-                            zlink_spot_node_subject_entry_t,
-                            subject_snapshot_key_hash_t>::const_iterator it =
-           grouped.begin ();
-         it != grouped.end (); ++it) {
-        const zlink_spot_node_subject_entry_t &entry = it->second;
+    out_->reserve (snapshots.size ());
+    for (size_t i = 0; i < snapshots.size (); ++i) {
+        const spot_node_summary_state_t::subject_snapshot_entry_t &snapshot =
+          snapshots[i];
+        zlink_spot_node_subject_entry_t entry;
+        memset (&entry, 0, sizeof (entry));
+        entry.role = ZLINK_SPOT_ROLE_SUB;
+        entry.subject_kind = snapshot.subject_kind;
+        entry.ready_peer_count = snapshot.ready ? 1 : 0;
+        entry.active_peer_count = active_peer_count;
+        entry.last_changed_ms = snapshot.last_changed_ms;
+        copy_fixed_c_string_from_bytes (entry.subject, sizeof (entry.subject),
+                                        snapshot.subject.data (),
+                                        snapshot.subject.size ());
         if (filter_) {
             if (filter_->role != 0 && filter_->role != entry.role)
                 continue;

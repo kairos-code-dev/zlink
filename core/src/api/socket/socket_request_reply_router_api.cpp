@@ -151,7 +151,8 @@ zlink_recv_result_t zlink_router_recv_part (
           static_cast<zlink_recv_flags_t> (flags_ | ZLINK_DONTWAIT);
         const bool blocking = (flags_ & ZLINK_DONTWAIT) == 0;
         zlink::socket_base_t *input_socket =
-          use_helper_queue && state ? state->recv_queue.rx : handle.socket;
+          use_helper_queue && state ? state->recv_queue.rx_socket ()
+                                    : handle.socket;
         zlink::socket_base_t *socket_signal =
           state ? reqrep::completion_signal_socket (state) : NULL;
         zlink::socket_base_t *router_spot_signal =
@@ -246,7 +247,8 @@ zlink_recv_result_t zlink_router_recv_part (
 
         const int stage_rc = zlink::part_helper_internal::stage_recv_sequence (
           helper_state, zlink::part_helper_internal::recv_family_router,
-          use_helper_queue && state ? state->recv_queue.rx : handle.socket,
+          use_helper_queue && state ? state->recv_queue.rx_socket ()
+                                    : handle.socket,
           source_node_rid, source_spot_rid, request_seq, parts, part_count,
           std::this_thread::get_id ());
         zlink_multipart_close (parts, part_count);
@@ -274,7 +276,8 @@ zlink_recv_result_t zlink_router_recv_part (
     }
 
     zlink::socket_base_t *source_socket =
-      use_helper_queue && state ? state->recv_queue.rx : handle.socket;
+      use_helper_queue && state ? state->recv_queue.rx_socket ()
+                                : handle.socket;
     bool first_part = false;
     if (zlink::part_helper_internal::prepare_recv_step (
           router_, zlink::part_helper_internal::recv_family_router,

@@ -333,6 +333,7 @@ int poller_add_hidden_completion_registration (
     }
 
     poller_->registrations.back ().state_ref = state_ref_;
+    poller_->registrations.back ().completion_queue = queue_;
     errno = 0;
     return 0;
 }

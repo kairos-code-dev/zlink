@@ -62,40 +62,14 @@ void release_poller_registration (const poller_registration_t &registration_)
             break;
         case poller_subject_fd:
             break;
-        case poller_subject_socket_request_completion: {
-            std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
-              state =
-                std::static_pointer_cast<
-                  zlink::socket_reqrep_internal::socket_request_reply_state_t> (
-                  registration_.state_ref);
-            if (state)
+        case poller_subject_socket_request_completion:
+        case poller_subject_router_spot_request_completion:
+        case poller_subject_spot_request_completion:
+            if (registration_.completion_queue) {
                 zlink::request_completion::release_signal_poller_ref (
-                  &state->completion);
+                  registration_.completion_queue);
+            }
             break;
-        }
-        case poller_subject_router_spot_request_completion: {
-            std::shared_ptr<
-              zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-              state =
-                std::static_pointer_cast<
-                  zlink::spot_reqrep_internal::router_spot_request_reply_state_t> (
-                  registration_.state_ref);
-            if (state)
-                zlink::request_completion::release_signal_poller_ref (
-                  &state->completion);
-            break;
-        }
-        case poller_subject_spot_request_completion: {
-            std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
-              state =
-                std::static_pointer_cast<
-                  zlink::spot_reqrep_internal::spot_request_reply_state_t> (
-                  registration_.state_ref);
-            if (state)
-                zlink::request_completion::release_signal_poller_ref (
-                  &state->completion_state.direct);
-            break;
-        }
         case poller_subject_spot_pub:
         case poller_subject_spot_sub:
             decrement_spot_poller_ref (

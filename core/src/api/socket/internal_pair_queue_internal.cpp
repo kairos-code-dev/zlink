@@ -98,20 +98,54 @@ bool handshake_internal_pair (zlink::socket_base_t *rx_,
 }
 }
 
+zlink::internal_pair_queue::queue_t::queue_t () : _rx (NULL), _tx (NULL) {}
+
+zlink::socket_base_t *zlink::internal_pair_queue::queue_t::rx_socket () const
+{
+    return _rx;
+}
+
+zlink::socket_base_t *zlink::internal_pair_queue::queue_t::tx_socket () const
+{
+    return _tx;
+}
+
+bool zlink::internal_pair_queue::queue_t::ready () const
+{
+    return _rx && _tx;
+}
+
+void zlink::internal_pair_queue::queue_t::adopt (
+  zlink::socket_base_t *rx_,
+  zlink::socket_base_t *tx_,
+  const char *endpoint_)
+{
+    _rx = rx_;
+    _tx = tx_;
+    _endpoint = endpoint_ ? endpoint_ : "";
+}
+
+void zlink::internal_pair_queue::queue_t::clear ()
+{
+    _rx = NULL;
+    _tx = NULL;
+    _endpoint.clear ();
+}
+
 void zlink::internal_pair_queue::close (queue_t *queue_)
 {
     if (!queue_)
         return;
 
-    if (queue_->tx) {
-        close_internal_pair_socket (queue_->tx);
-        queue_->tx = NULL;
+    if (queue_->_tx) {
+        close_internal_pair_socket (queue_->_tx);
+        queue_->_tx = NULL;
     }
-    if (queue_->rx) {
-        close_internal_pair_socket (queue_->rx);
-        queue_->rx = NULL;
+    if (queue_->_rx) {
+        close_internal_pair_socket (queue_->_rx);
+        queue_->_rx = NULL;
     }
-    queue_->endpoint.clear ();
+    queue_->clear ();
 }
 
 void zlink::internal_pair_queue::close_and_wait (queue_t *queue_)
@@ -119,8 +153,8 @@ void zlink::internal_pair_queue::close_and_wait (queue_t *queue_)
     if (!queue_)
         return;
 
-    zlink::socket_base_t *tx = queue_->tx;
-    zlink::socket_base_t *rx = queue_->rx;
+    zlink::socket_base_t *tx = queue_->_tx;
+    zlink::socket_base_t *rx = queue_->_rx;
     zlink::ctx_t *ctx = rx ? rx->get_ctx () : tx ? tx->get_ctx () : NULL;
 
     close (queue_);
@@ -140,7 +174,7 @@ int zlink::internal_pair_queue::ensure (zlink::ctx_t *ctx_,
         errno = EFAULT;
         return -1;
     }
-    if (queue_->rx && queue_->tx)
+    if (queue_->ready ())
         return 0;
 
     char endpoint[128];
@@ -171,9 +205,7 @@ int zlink::internal_pair_queue::ensure (zlink::ctx_t *ctx_,
         return -1;
     }
 
-    queue_->rx = rx;
-    queue_->tx = tx;
-    queue_->endpoint = endpoint;
+    queue_->adopt (rx, tx, endpoint);
     errno = 0;
     return 0;
 }

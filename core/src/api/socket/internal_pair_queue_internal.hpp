@@ -16,11 +16,27 @@ namespace internal_pair_queue
 {
 struct queue_t
 {
-    queue_t () : rx (NULL), tx (NULL) {}
+    queue_t ();
+    queue_t (const queue_t &) = delete;
+    queue_t &operator= (const queue_t &) = delete;
 
-    zlink::socket_base_t *rx;
-    zlink::socket_base_t *tx;
-    std::string endpoint;
+    zlink::socket_base_t *rx_socket () const;
+    zlink::socket_base_t *tx_socket () const;
+
+  private:
+    friend void close (queue_t *queue_);
+    friend void close_and_wait (queue_t *queue_);
+    friend int ensure (zlink::ctx_t *ctx_, const char *prefix_, queue_t *queue_);
+
+    bool ready () const;
+    void adopt (zlink::socket_base_t *rx_,
+                zlink::socket_base_t *tx_,
+                const char *endpoint_);
+    void clear ();
+
+    zlink::socket_base_t *_rx;
+    zlink::socket_base_t *_tx;
+    std::string _endpoint;
 };
 
 void close (queue_t *queue_);

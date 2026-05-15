@@ -148,6 +148,9 @@ class spot_node_t : public discovery_observer_t
                                           bool subscribe_);
     void snapshot_subscription_subjects (
       std::vector<spot_sub_t::subject_descriptor_t> *out_) const;
+    void snapshot_subject_summary_entries (
+      std::vector<spot_node_summary_state_t::subject_snapshot_entry_t> *out_)
+      const;
     void snapshot_status_subject_counts (uint32_t *subject_count_out_,
                                          uint32_t *ready_subject_count_out_)
       const;

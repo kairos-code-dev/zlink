@@ -157,28 +157,51 @@ int drain_spot_channel_reply_sources (
     return drained;
 }
 
+int drain_spot_direct_reply_source (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  void *owner_handle_)
+{
+    return zlink::spot_reqrep_internal::drain_spot_reply_completions (
+      state_, owner_handle_);
+}
+
+int drain_spot_channel_bridge_source (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  void *owner_handle_)
+{
+    (void) owner_handle_;
+    return zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
+      state_);
+}
+
+typedef int (*spot_completion_drain_source_fn) (
+  const std::shared_ptr<spot_request_reply_state_t> &, void *);
+
+struct spot_completion_drain_source_t
+{
+    spot_completion_drain_source_fn drain;
+};
+
+const spot_completion_drain_source_t spot_completion_drain_sources[] = {
+    {&drain_spot_channel_bridge_source},
+    {&drain_spot_direct_reply_source},
+    {&drain_spot_channel_reply_sources}};
+
 int drain_spot_completion_pass (
   const std::shared_ptr<spot_request_reply_state_t> &state_,
   void *owner_handle_)
 {
-    int drained =
-      zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
-        state_);
-    if (drained < 0)
-        return -1;
-
-    const int direct_rc =
-      zlink::spot_reqrep_internal::drain_spot_reply_completions (state_,
-                                                                 owner_handle_);
-    if (direct_rc < 0)
-        return -1;
-    drained += direct_rc;
-
-    const int source_rc =
-      drain_spot_channel_reply_sources (state_, owner_handle_);
-    if (source_rc < 0)
-        return -1;
-    drained += source_rc;
+    int drained = 0;
+    const size_t source_count =
+      sizeof (spot_completion_drain_sources)
+      / sizeof (spot_completion_drain_sources[0]);
+    for (size_t i = 0; i < source_count; ++i) {
+        const int rc =
+          spot_completion_drain_sources[i].drain (state_, owner_handle_);
+        if (rc < 0)
+            return -1;
+        drained += rc;
+    }
 
     zlink::spot_reqrep_internal::run_spot_dispatch_events_once (owner_handle_);
     return drained;

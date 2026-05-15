@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
-from ..._runtime.core.core import Context, ContextOptions, RoutingId
+from .context import Context, ContextOptions
+from .routing_id import RoutingId
 from ..._runtime.core.utils import (
     AtomicCounter,
     Stopwatch,

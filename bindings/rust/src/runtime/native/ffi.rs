@@ -864,9 +864,19 @@ pub struct zlink_pollitem_t {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+pub enum zlink_poller_source_kind_t {
+    ZLINK_POLLER_SOURCE_SOCKET = 1,
+    ZLINK_POLLER_SOURCE_FD = 2,
+    ZLINK_POLLER_SOURCE_TIMER = 3,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
 pub struct zlink_poller_event_t {
+    pub source_kind: zlink_poller_source_kind_t,
     pub socket: *mut c_void,
     pub fd: zlink_fd_t,
+    pub timer: *mut c_void,
     pub user_data: *mut c_void,
     pub events: i16,
 }
@@ -1602,6 +1612,12 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_poller_modify_fd(poller: *mut c_void, fd: zlink_fd_t, events: i16) -> c_int;
     pub fn zlink_poller_remove_fd(poller: *mut c_void, fd: zlink_fd_t) -> c_int;
+    pub fn zlink_poller_add_timer(
+        poller: *mut c_void,
+        timer: *mut c_void,
+        user_data: *mut c_void,
+    ) -> c_int;
+    pub fn zlink_poller_remove_timer(poller: *mut c_void, timer: *mut c_void) -> c_int;
     pub fn zlink_poller_wait(
         poller: *mut c_void,
         events: *mut zlink_poller_event_t,
@@ -1614,7 +1630,7 @@ unsafe extern "C" {
     pub fn zlink_timer_destroy(timer_p: *mut *mut c_void) -> c_int;
     pub fn zlink_timer_start(timer: *mut c_void, interval_ns: u64, repeat_count: u64) -> c_int;
     pub fn zlink_timer_stop(timer: *mut c_void) -> c_int;
-    pub fn zlink_timer_recv(timer: *mut c_void, out: *mut u64, flags: c_int) -> c_int;
+    pub fn zlink_timer_recv(timer: *mut c_void, fire_count_out: *mut u64) -> c_int;
     pub fn zlink_timer_handler(
         timer: *mut c_void,
         handler: unsafe extern "C" fn(timer: *mut c_void, count: u64, userdata: *mut c_void),

@@ -85,7 +85,7 @@ fn main() {
     .expect("dispatch handler failed");
 
     stream
-        .send_bound_actor_part(&session, "room-player-1")
+        .send_bound_actor(&session, "room-player-1")
         .message(Message::copy_from(b"move:north").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()

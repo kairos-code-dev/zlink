@@ -109,7 +109,7 @@ impl StreamSocket {
     }
 
     /// Session-bound relay send (operation builder).
-    pub fn send_bound_actor_part(&self, session_rid: &RoutingId, actor_id: &str) -> SendOp<Empty> {
+    pub fn send_bound_actor(&self, session_rid: &RoutingId, actor_id: &str) -> SendOp<Empty> {
         let c_actor_id = crate::service::fixed_cstring_or_panic(actor_id, "actor_id");
         crate::service::stream_bound_actor_send_op(
             self.inner.handle,

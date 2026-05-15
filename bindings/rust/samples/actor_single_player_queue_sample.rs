@@ -64,7 +64,7 @@ fn main() {
     first_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
 
     stream
-        .send_bound_actor_part(&session, "single-player")
+        .send_bound_actor(&session, "single-player")
         .message(Message::copy_from(b"before").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()
@@ -80,7 +80,7 @@ fn main() {
         .unwrap()
         .unwrap();
     stream
-        .send_bound_actor_part(&session, "single-player")
+        .send_bound_actor(&session, "single-player")
         .message(Message::copy_from(b"between").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()

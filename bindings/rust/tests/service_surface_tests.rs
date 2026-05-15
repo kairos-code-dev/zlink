@@ -228,7 +228,7 @@ fn actor_surfaces_exist() {
         .bind_actor(&session_rid, &actor_ref)
         .timeout(std::time::Duration::from_millis(1));
     let _ = stream
-        .send_bound_actor_part(&session_rid, "actor-surface")
+        .send_bound_actor(&session_rid, "actor-surface")
         .message(Message::copy_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT);
     let _ = stream

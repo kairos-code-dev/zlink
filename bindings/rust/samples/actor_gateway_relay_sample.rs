@@ -87,7 +87,7 @@ fn main() {
     let _join_result = join_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
 
     stream
-        .send_bound_actor_part(&session, "play-session-actor")
+        .send_bound_actor(&session, "play-session-actor")
         .message(Message::copy_from(b"client-input").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()

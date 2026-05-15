@@ -25,16 +25,6 @@ namespace detail
 inline void *native_handle (service::spot_t &spot_) noexcept;
 inline const void *native_handle (const service::spot_t &spot_) noexcept;
 
-template<typename T>
-struct is_service_handle : std::false_type {};
-template<>
-struct is_service_handle<service::spot_t> : std::true_type {};
-template<>
-struct is_service_handle<const service::spot_t> : std::true_type {};
-template<>
-struct is_service_handle<service::spot_node_t> : std::true_type {};
-template<>
-struct is_service_handle<const service::spot_node_t> : std::true_type {};
 } // namespace detail
 
 struct poll_event_t
@@ -57,12 +47,9 @@ class poller_t
     poller_t (poller_t &&other) noexcept
         : _poller (other._poller),
           _items (std::move (other._items)),
-          _native_events (std::move (other._native_events)),
-          _poll_items (std::move (other._poll_items)),
-          _has_service_items (other._has_service_items)
+          _native_events (std::move (other._native_events))
     {
         other._poller = NULL;
-        other._has_service_items = false;
     }
 
     poller_t &operator= (poller_t &&other) noexcept
@@ -74,10 +61,7 @@ class poller_t
         _poller = other._poller;
         _items = std::move (other._items);
         _native_events = std::move (other._native_events);
-        _poll_items = std::move (other._poll_items);
-        _has_service_items = other._has_service_items;
         other._poller = NULL;
-        other._has_service_items = false;
         return *this;
     }
 
@@ -277,7 +261,6 @@ class poller_t
         if (!_poller) {
             delete_items ();
             _native_events.clear ();
-            _poll_items.clear ();
             return;
         }
 
@@ -288,7 +271,6 @@ class poller_t
         _poller = NULL;
         delete_items ();
         _native_events.clear ();
-        _poll_items.clear ();
     }
 
   private:
@@ -314,8 +296,6 @@ class poller_t
           max_events_ > 0
             ? std::min (max_events_, static_cast<size_t> (registered))
             : static_cast<size_t> (registered);
-        if (can_wait_with_poll_items ())
-            return wait_poll_items_into_impl (events_, capacity, timeout_);
 
         _native_events.resize (capacity);
         error = ZLINK_CONFIG_OK;
@@ -343,67 +323,10 @@ class poller_t
         return static_cast<size_t> (rc);
     }
 
-    bool can_wait_with_poll_items () const noexcept
-    {
-        // zlink_poll only resolves raw socket handles; SPOT and timer items
-        // must go through the persistent zlink_poller_wait path.
-        if (_has_service_items)
-            return false;
-        for (size_t i = 0; i < _items.size (); ++i) {
-            if (_items[i]->source_kind == poll_source_kind_t::timer)
-                return false;
-        }
-        return true;
-    }
-
-    size_t wait_poll_items_into_impl (std::vector<poll_event_t> &events_,
-                                      size_t capacity_,
-                                      long timeout_)
-    {
-        _poll_items.resize (_items.size ());
-        for (size_t i = 0; i < _items.size (); ++i) {
-            _poll_items[i].socket = _items[i]->socket_handle;
-            _poll_items[i].fd = _items[i]->fd;
-            _poll_items[i].events = static_cast<short> (_items[i]->events);
-            _poll_items[i].revents = 0;
-        }
-
-        const int rc = zlink_poll (
-          _poll_items.empty () ? NULL : &_poll_items[0],
-          static_cast<int> (_poll_items.size ()),
-          timeout_,
-          NULL);
-        if (rc <= 0) {
-            if (rc == 0) {
-                events_.clear ();
-                return 0;
-            }
-            const int err = zlink_errno ();
-            if (err == EINTR || err == EAGAIN) {
-                errno = err;
-                events_.clear ();
-                return 0;
-            }
-            throw recv_error_t (recv_result_t::invalid_handle, err);
-        }
-
-        events_.clear ();
-        events_.reserve (capacity_);
-        for (size_t i = 0; i < _poll_items.size () && events_.size () < capacity_;
-             ++i) {
-            if (_poll_items[i].revents == 0)
-                continue;
-            events_.push_back (
-              make_event (*_items[i], _poll_items[i].revents));
-        }
-        return events_.size ();
-    }
-
     void destroy_noexcept () noexcept
     {
         delete_items ();
         _native_events.clear ();
-        _poll_items.clear ();
 
         if (!_poller)
             return;
@@ -420,7 +343,6 @@ class poller_t
         void *timer_handle;
         timer_t *timer;
         poll_source_kind_t source_kind;
-        bool is_service_handle = false;
         poll_event_flag_t events;
         void *raw_tag;
         std::any tag;
@@ -435,9 +357,6 @@ class poller_t
     void commit_added_item (std::unique_ptr<item_t> item_, config_result_t rc_)
     {
         detail::throw_if_failed<config_error_t> (rc_);
-
-        if (item_->is_service_handle)
-            _has_service_items = true;
         _items.push_back (std::move (item_));
     }
 
@@ -459,8 +378,6 @@ class poller_t
         item->timer_handle = NULL;
         item->timer = NULL;
         item->source_kind = poll_source_kind_t::socket;
-        item->is_service_handle =
-          detail::is_service_handle<typename std::remove_reference<SocketLike>::type>::value;
         item->events = events_;
         item->raw_tag = use_raw_tag_ ? raw_tag_ : NULL;
         item->tag = use_raw_tag_ ? std::any () : std::move (tag_);
@@ -580,25 +497,6 @@ class poller_t
         return event;
     }
 
-    poll_event_t make_event (const item_t &item_, short revents_) const
-      noexcept
-    {
-        poll_event_t event;
-        if (item_.source_kind == poll_source_kind_t::fd)
-            event.fd = item_.fd;
-        else
-            event.fd = std::nullopt;
-        event.timer = NULL;
-        event.raw_tag = item_.raw_tag;
-        if (item_.tag.has_value ())
-            event.tag = item_.tag;
-        else
-            event.tag.reset ();
-        event.events = item_.events;
-        event.revents = static_cast<poll_event_flag_t> (revents_);
-        return event;
-    }
-
     static poll_source_kind_t
     to_source_kind (zlink_poller_source_kind_t source_kind_) noexcept
     {
@@ -621,8 +519,6 @@ class poller_t
     void *_poller;
     std::vector<std::unique_ptr<item_t>> _items;
     std::vector<zlink_poller_event_t> _native_events;
-    std::vector<zlink_pollitem_t> _poll_items;
-    bool _has_service_items = false;
 };
 
 } // namespace zlink

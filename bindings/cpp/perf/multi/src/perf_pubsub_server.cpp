@@ -20,20 +20,7 @@ bool wait_for_start_signal (size_t msg_size)
     return perf::multi::wait_for_start_from_stdin (msg_size);
 }
 
-long compute_wait_ms (const std::chrono::steady_clock::time_point &deadline)
-{
-    const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                             deadline - std::chrono::steady_clock::now ())
-                             .count ();
-    long wait_ms = remain_ms;
-    if (wait_ms < 1)
-        wait_ms = 1;
-    return wait_ms;
-}
-
 bool run_phase (::perf::socket_t &publisher,
-                zlink::poller_t &poller,
-                std::vector<zlink::poll_event_t> &events,
                 std::vector<char> &payload,
                 size_t msg_size,
                 uint32_t run_id,
@@ -49,19 +36,16 @@ bool run_phase (::perf::socket_t &publisher,
         return true;
 
     try {
-    bool pending = false;
     const auto deadline = std::chrono::steady_clock::now () + duration;
     while (std::chrono::steady_clock::now () < deadline) {
-        if (!pending) {
-            if (!perf_metric::stamp_payload (payload.data (),
-                                             payload.size (),
-                                             run_id,
-                                             phase,
-                                             msg_size,
-                                             seq++,
-                                             perf_metric::now_ns ())) {
-                return false;
-            }
+        if (!perf_metric::stamp_payload (payload.data (),
+                                         payload.size (),
+                                         run_id,
+                                         phase,
+                                         msg_size,
+                                         seq++,
+                                         perf_metric::now_ns ())) {
+            return false;
         }
 
         zlink::message_t payload_part (payload.size ());
@@ -74,30 +58,12 @@ bool run_phase (::perf::socket_t &publisher,
 
         const int sent = publisher.publish (
           k_topic, payload_part, ZLINK_DONTWAIT);
-        if (sent == 0) {
-            pending = false;
-            publisher.poller_modify (poller, zlink::poll_event_flag_t::none);
+        if (sent == 0)
             continue;
-        }
 
-        if (errno == EAGAIN) {
-            pending = true;
-            publisher.poller_modify (poller, zlink::poll_event_flag_t::pollout);
-        } else {
-            return false;
-        }
-
-        events = poller.wait (
-          0,
-          std::chrono::milliseconds (compute_wait_ms (deadline)));
-        const int poll_rc = static_cast<int> (events.size ());
-        if (poll_rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            return false;
-        }
-        if (poll_rc == 0)
+        if (errno == EAGAIN || errno == EINTR)
             continue;
+        return false;
     }
 
     return true;
@@ -158,15 +124,8 @@ bool perf_pubsub_server (const std::string &lib_name,
       std::max<size_t> (msg_size, perf_metric::header_size ()), 'p');
     const uint32_t run_id = 1U;
     uint64_t seq = 1;
-    zlink::poller_t poller;
-    std::vector<zlink::poll_event_t> events;
-    events.reserve (1);
-    publisher.sock ().poller_add (poller, zlink::poll_event_flag_t::pollout);
-    publisher.sock ().poller_modify (poller, zlink::poll_event_flag_t::none);
 
     if (!run_phase (publisher.sock (),
-                    poller,
-                    events,
                     payload,
                     msg_size,
                     run_id,
@@ -177,8 +136,6 @@ bool perf_pubsub_server (const std::string &lib_name,
         return false;
 
     if (!run_phase (publisher.sock (),
-                    poller,
-                    events,
                     payload,
                     msg_size,
                     run_id,

@@ -364,13 +364,13 @@ using zlink::spot_actor_internal::adopt_multipart_payload;
 using zlink::spot_actor_internal::actor_missing_request_result_from_errno;
 using zlink::spot_actor_internal::actor_missing_submit_result_from_errno;
 using zlink::spot_actor_internal::consume_multipart_payload;
-using zlink::spot_actor_internal::copy_msg_to_temp;
+using zlink::spot_actor_internal::copy_msg_for_stream_send;
 using zlink::spot_actor_internal::errno_to_request_result;
 using zlink::spot_actor_internal::errno_to_submit_result;
 using zlink::spot_actor_internal::request_result_to_submit_result;
 using zlink::spot_actor_internal::same_actor_ref_identity;
 using zlink::spot_actor_internal::same_routing_id;
-using zlink::spot_actor_internal::send_temp_to_bound_stream;
+using zlink::spot_actor_internal::send_copied_msg_to_bound_stream;
 using zlink::spot_actor_internal::valid_actor_id;
 using zlink::spot_actor_internal::valid_multipart_payload;
 using zlink::spot_actor_internal::valid_routing_id;
@@ -3000,15 +3000,17 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg (
             return bound_rc;
     }
 
-    zlink_msg_t temp;
-    const zlink_submit_result_t copy_rc = copy_msg_to_temp (message_, &temp);
+    zlink_msg_t copied_message;
+    const zlink_submit_result_t copy_rc =
+      copy_msg_for_stream_send (message_, &copied_message);
     if (copy_rc != ZLINK_SUBMIT_OK)
         return copy_rc;
 
     const zlink_submit_result_t send_rc =
-      send_temp_to_bound_stream (stream, &session_rid, &temp, flags_);
+      send_copied_msg_to_bound_stream (stream, &session_rid, &copied_message,
+                                       flags_);
     if (send_rc != ZLINK_SUBMIT_OK) {
-        (void) zlink_msg_close (&temp);
+        (void) zlink_msg_close (&copied_message);
         return send_rc;
     }
     (void) zlink_msg_close (message_);

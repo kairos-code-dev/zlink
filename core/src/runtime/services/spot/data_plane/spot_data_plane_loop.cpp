@@ -42,9 +42,9 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_xsub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->pub_ingress_sub);
     spot_data_plane_forwarder_t::pump_socket_commands (
-      state_->mesh_pub_monitor);
+      state_->mesh_peer_observer.pub_monitor);
     spot_data_plane_forwarder_t::pump_socket_commands (
-      state_->mesh_xsub_monitor);
+      state_->mesh_peer_observer.xsub_monitor);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_pub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_sub);
     spot_data_plane_forwarder_t::pump_socket_commands (
@@ -121,8 +121,7 @@ bool is_ctrl_event (socket_base_t *socket_,
 {
     return socket_ == state_.ctrl || socket_ == state_.peer_ctrl_sub
            || socket_ == state_.external_router
-           || socket_ == state_.mesh_pub_monitor
-           || socket_ == state_.mesh_xsub_monitor;
+           || state_.mesh_peer_observer.owns (socket_);
 }
 
 bool handle_ctrl_event (socket_base_t *socket_,
@@ -166,8 +165,7 @@ bool handle_ctrl_event (socket_base_t *socket_,
         return true;
     }
 
-    if (socket_ != state_->mesh_pub_monitor
-        && socket_ != state_->mesh_xsub_monitor)
+    if (!state_->mesh_peer_observer.owns (socket_))
         return false;
 
     socket_base_t *monitor = socket_;

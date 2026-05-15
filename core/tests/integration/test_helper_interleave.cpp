@@ -59,6 +59,9 @@ void test_send_part_more_rejects_different_send_helper_on_same_handle ()
     recv_string_expect_success (router, "D1", 0);
     recv_string_expect_success (router, "hello", 1);
     recv_string_expect_success (router, "world", 0);
+
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
 }
 
 void test_send_part_rid_more_rejects_interleaved_target_change ()
@@ -123,6 +126,10 @@ void test_send_part_rid_more_rejects_interleaved_target_change ()
 
     recv_string_expect_success (dealer1, "frame-a", 1);
     recv_string_expect_success (dealer1, "frame-c", 0);
+
+    test_context_socket_close_zero_linger (dealer2);
+    test_context_socket_close_zero_linger (dealer1);
+    test_context_socket_close_zero_linger (router);
 }
 
 int main (void)

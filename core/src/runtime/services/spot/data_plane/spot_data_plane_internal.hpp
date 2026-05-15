@@ -452,12 +452,28 @@ struct spot_data_plane_runtime_state_t
         bool mesh_xsub_pollin_armed;
     };
 
+    struct mesh_peer_observer_state_t
+    {
+        mesh_peer_observer_state_t () :
+            pub_monitor (NULL),
+            xsub_monitor (NULL)
+        {
+        }
+
+        bool owns (const socket_base_t *socket_) const
+        {
+            return socket_ == pub_monitor || socket_ == xsub_monitor;
+        }
+
+        socket_base_t *pub_monitor;
+        socket_base_t *xsub_monitor;
+    };
+
     socket_base_t *ctrl;
     socket_base_t *mesh_pub;
     socket_base_t *mesh_xsub;
     socket_base_t *pub_ingress_sub;
-    socket_base_t *mesh_pub_monitor;
-    socket_base_t *mesh_xsub_monitor;
+    mesh_peer_observer_state_t mesh_peer_observer;
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
     socket_base_t *external_router;

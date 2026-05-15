@@ -7,6 +7,7 @@
 #include "api/message/recv_result_internal.hpp"
 #include "api/socket/socket_message_api_internal.hpp"
 #include "core/recv_internal.hpp"
+#include "core/socket_poller.hpp"
 #include "sockets/common/socket_base.hpp"
 
 namespace zlink
@@ -28,14 +29,31 @@ static bool wait_for_service_socket_event_local (const T &items_,
     }
 
     const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0;
-    for (size_t attempt = 0; attempt < items_.size (); ++attempt) {
-        const int timeout_ms =
-          dontwait || attempt + 1 < items_.size () ? 0 : 25;
-        if (zlink::wait_socket_events_internal (
-              socket_selector_ (items_[attempt]), events_, timeout_ms)
-            > 0) {
+    zlink::socket_poller_t poller;
+    for (size_t i = 0; i < items_.size (); ++i) {
+        zlink::socket_base_t *socket = socket_selector_ (items_[i]);
+        if (!socket)
+            continue;
+        if (poller.add (socket, NULL, events_) != 0)
+            return false;
+    }
+    if (poller.size () == 0) {
+        errno = EAGAIN;
+        return false;
+    }
+
+    zlink::socket_poller_t::event_t event;
+    memset (&event, 0, sizeof (event));
+    const int rc = poller.wait (&event, 1, dontwait ? 0 : -1);
+    if (rc <= 0) {
+        errno = rc < 0 ? errno : EAGAIN;
+        return false;
+    }
+
+    for (size_t i = 0; i < items_.size (); ++i) {
+        if (event.socket == socket_selector_ (items_[i])) {
             if (ready_index_out_)
-                *ready_index_out_ = attempt;
+                *ready_index_out_ = i;
             return true;
         }
     }

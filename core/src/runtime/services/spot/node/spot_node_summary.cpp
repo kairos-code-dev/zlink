@@ -13,6 +13,7 @@
 #include "core/c_api_copy_internal.hpp"
 #include "core/internal_defs.hpp"
 #include "services/discovery/discovery_access.hpp"
+#include "services/spot/data_plane/spot_data_plane_internal.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "utils/clock.hpp"
 
@@ -637,8 +638,21 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_)
         return -1;
     }
 
-    refresh_discovery_peers ();
-    refresh_connected_peer_endpoints ();
+    bool should_wake_control_task = false;
+    {
+        scoped_lock_t lock (_sync);
+        if (_runtime) {
+            should_wake_control_task =
+              !_discovery_state.pending_service_updates.empty ()
+              || _peer_state.subscription_replay_pending
+              || _peer_state.subscription_ready_refresh_pending
+              || _peer_state.pub_delivery_ready_refresh_pending
+              || mesh_peer_version (&_runtime->execution.mesh_peer_state)
+                   != _runtime->connected_peer_version_seen ();
+        }
+    }
+    if (should_wake_control_task)
+        wake_control_task ();
 
     memset (out_, 0, sizeof (*out_));
 

@@ -22,27 +22,27 @@ mod ffi;
 #[path = "runtime/messaging/request_progress.rs"]
 mod request_progress;
 
-#[path = "contracts/core/ctx.rs"]
+#[path = "runtime/core/ctx.rs"]
 mod ctx;
-#[path = "contracts/messaging/domain.rs"]
+#[path = "runtime/messaging/domain.rs"]
 mod domain;
 #[path = "contracts/errors/error.rs"]
 mod error;
 #[path = "contracts/enums/flags.rs"]
 mod flags;
-#[path = "contracts/messaging/message.rs"]
+#[path = "runtime/messaging/message.rs"]
 mod message;
-#[path = "contracts/monitoring/monitor.rs"]
+#[path = "runtime/monitoring/monitor.rs"]
 pub mod monitor;
-#[path = "contracts/sockets/options.rs"]
+#[path = "runtime/sockets/options.rs"]
 mod options;
-#[path = "contracts/monitoring/poller.rs"]
+#[path = "runtime/monitoring/poller.rs"]
 pub mod poller;
 #[path = "contracts/core/runtime.rs"]
 mod runtime;
-#[path = "contracts/service/service.rs"]
+#[path = "runtime/service/service.rs"]
 pub mod service;
-#[path = "contracts/sockets/socket/mod.rs"]
+#[path = "runtime/sockets/socket/mod.rs"]
 pub mod socket;
 
 // -- Public re-exports -------------------------------------------------------

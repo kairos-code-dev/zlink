@@ -21,7 +21,6 @@ from ...contracts.enums.enums import (  # noqa: F401
     HandlerResult,
     MonitorEvent,
     MonitorEventMask,
-    PollEvent,
     PollEventFlag,
     PollSourceKind,
     ProtocolError,

@@ -73,7 +73,7 @@ class EnumTypeTests(unittest.TestCase):
 
     def test_int_flag_is_int(self):
         self.assertIsInstance(zlink.MonitorEventMask.CONNECTED, int)
-        self.assertIsInstance(zlink.PollEvent.POLLIN, int)
+        self.assertIsInstance(zlink.PollEventFlag.POLLIN, int)
 
     def test_flag_or_operation(self):
         combined = zlink.MonitorEventMask.CONNECTED | zlink.MonitorEventMask.DISCONNECTED

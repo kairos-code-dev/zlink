@@ -74,7 +74,7 @@ def main(argv=None):
                 )
                 sender.start()
                 with zlink.Poller() as poller:
-                    poller.add_socket(router, zlink.PollEvent.POLLIN)
+                    poller.add_socket(router, zlink.PollEventFlag.POLLIN)
                     stop_received = False
                     # PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait.
                     while not stop_received:

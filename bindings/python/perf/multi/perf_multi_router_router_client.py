@@ -63,7 +63,7 @@ def main(argv=None):
                     for sock in sockets:
                         poller.add_socket(
                             sock,
-                            zlink.PollEvent.POLLIN | zlink.PollEvent.POLLOUT,
+                            zlink.PollEventFlag.POLLIN | zlink.PollEventFlag.POLLOUT,
                         )
                     # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait
                     # bounded by the active duration for the stop-token
@@ -130,7 +130,7 @@ def main(argv=None):
                                 continue
                             ev = int(event.events)
                             if (
-                                ev & int(zlink.PollEvent.POLLOUT)
+                                ev & int(zlink.PollEventFlag.POLLOUT)
                                 and not waiting_reply[index]
                                 and send_pending[index]
                             ):
@@ -158,7 +158,7 @@ def main(argv=None):
                                         waiting_reply[index] = True
                                         send_pending[index] = False
                                         stop_sent[index] = True
-                            if not (ev & int(zlink.PollEvent.POLLIN)):
+                            if not (ev & int(zlink.PollEventFlag.POLLIN)):
                                 continue
                             while True:
                                 received = recv_nonblocking(current_sock)

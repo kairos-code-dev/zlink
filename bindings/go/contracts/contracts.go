@@ -97,10 +97,10 @@ type (
 	XPubSocket                   = root.XPubSocket
 	XSubSocket                   = root.XSubSocket
 	StreamSocket                 = root.StreamSocket
-	PollerEventFlag              = root.PollerEventFlag
-	PollerSourceKind             = root.PollerSourceKind
+	PollEventFlag              = root.PollEventFlag
+	PollSourceKind             = root.PollSourceKind
 	PollItem                     = root.PollItem
-	PollerEvent                  = root.PollerEvent
+	PollEvent                  = root.PollEvent
 	Poller                       = root.Poller
 	Timer                        = root.Timer
 	ZlinkError                   = root.ZlinkError

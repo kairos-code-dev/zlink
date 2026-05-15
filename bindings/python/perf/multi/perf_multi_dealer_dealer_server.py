@@ -51,7 +51,7 @@ def main(argv=None):
                 with zlink.Poller() as poller:
                     poller.add_socket(
                         dealer,
-                        zlink.PollEvent.POLLIN | zlink.PollEvent.POLLOUT,
+                        zlink.PollEventFlag.POLLIN | zlink.PollEventFlag.POLLOUT,
                     )
                     start_event.wait()
                     if stop_event.is_set():
@@ -68,7 +68,7 @@ def main(argv=None):
                         if not events:
                             continue
                         for event in events:
-                            if int(event.events) & int(zlink.PollEvent.POLLIN):
+                            if int(event.events) & int(zlink.PollEventFlag.POLLIN):
                                 while True:
                                     received = recv_nonblocking(dealer)
                                     if received is None:

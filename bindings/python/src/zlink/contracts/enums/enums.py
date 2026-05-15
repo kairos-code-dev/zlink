@@ -264,16 +264,17 @@ class DisconnectReason(IntEnum):
     CTX_TERM = 5
 
 
-class PollEvent(IntFlag):
+class PollEventFlag(IntFlag):
+    """Mirrors ``zlink_poller_event_flag_e`` in the C ABI. ``POLLCOMPLETION``
+    is reserved for binding runtime workers that drive request completion;
+    application code generally uses ``POLLIN`` / ``POLLOUT``."""
+
     POLLIN = 1
     POLLOUT = 2
     POLLERR = 4
     POLLPRI = 8
-
-
-class PollEventFlag(IntFlag):
-    IN = 1
-    OUT = 2
+    POLLITEMS_DFLT = 16
+    POLLCOMPLETION = 32
 
 
 class AutoConnectType(IntEnum):

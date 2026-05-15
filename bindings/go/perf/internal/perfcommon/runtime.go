@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	ZLinkPollIn  zlink.PollerEventFlag = 1
-	ZLinkPollOut zlink.PollerEventFlag = 2
+	ZLinkPollIn  zlink.PollEventFlag = 1
+	ZLinkPollOut zlink.PollEventFlag = 2
 )
 
 type BenchmarkWindow struct {
@@ -106,7 +106,7 @@ func MultiSpotControlSettleDuration() time.Duration {
 	return durationFromEnv("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25*time.Millisecond)
 }
 
-func NewSocketPoller(socket zlink.SocketTarget, events zlink.PollerEventFlag) *zlink.Poller {
+func NewSocketPoller(socket zlink.SocketTarget, events zlink.PollEventFlag) *zlink.Poller {
 	poller, err := zlink.NewPoller()
 	Must(err)
 	Must(poller.AddSocket(socket, events))

@@ -16,7 +16,7 @@ from ..._runtime.core.core import _raise_last_error, _raise_result_error
 
 
 @dataclass(frozen=True)
-class PollerEvent:
+class PollEvent:
     source_kind: PollSourceKind
     events: PollEventFlag
     socket: object | None = None
@@ -136,7 +136,7 @@ class Poller:
             else:
                 source_kind = PollSourceKind.TIMER
             results.append(
-                PollerEvent(
+                PollEvent(
                     source_kind=source_kind,
                     events=PollEventFlag(int(event.events)),
                     socket=item["socket"],

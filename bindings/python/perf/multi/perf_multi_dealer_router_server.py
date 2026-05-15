@@ -39,7 +39,7 @@ def main(argv=None):
             with zlink.Poller() as poller:
                 poller.add_socket(
                     router,
-                    zlink.PollEvent.POLLIN | zlink.PollEvent.POLLOUT,
+                    zlink.PollEventFlag.POLLIN | zlink.PollEventFlag.POLLOUT,
                 )
                 # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. The
                 # echo server has no in-band phase end of its own; the

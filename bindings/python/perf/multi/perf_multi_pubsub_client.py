@@ -60,7 +60,7 @@ def main(argv=None):
             stopped = [False] * len(sockets)
             with zlink.Poller() as poller:
                 for sock in sockets:
-                    poller.add_socket(sock, zlink.PollEvent.POLLIN)
+                    poller.add_socket(sock, zlink.PollEventFlag.POLLIN)
                 # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. Each
                 # subscriber exits on the wire-level stop token.
                 while not all(stopped):

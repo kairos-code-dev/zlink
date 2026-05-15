@@ -114,7 +114,6 @@ __all__ = [
     "ProtocolError",
     "MonitorEventMask",
     "DisconnectReason",
-    "PollEvent",
     "PollEventFlag",
     "RidDuplicatePolicy",
     "RegistryState",
@@ -139,5 +138,5 @@ __all__ = [
     "SubjectKind",
     "SpotRole",
     "PollSourceKind",
-    "PollerEvent",
+    "PollEvent",
 ]

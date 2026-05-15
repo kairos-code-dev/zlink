@@ -52,7 +52,7 @@ def main(argv=None):
                 active_deadline = time.perf_counter() + args.duration
                 with zlink.Poller() as poller:
                     for sock in sockets:
-                        poller.add_socket(sock, zlink.PollEvent.POLLOUT)
+                        poller.add_socket(sock, zlink.PollEventFlag.POLLOUT)
                     while time.perf_counter() < active_deadline:
                         progressed = False
                         for index, current_sock in enumerate(sockets):

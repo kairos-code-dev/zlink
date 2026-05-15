@@ -124,7 +124,7 @@ def main(argv=None):
         active_deadline = time.perf_counter() + args.duration
         with zlink.Poller() as poller:
             for index, spot in enumerate(spots):
-                poller.add_socket(spot, zlink.PollEvent.POLLIN, tag=index)
+                poller.add_socket(spot, zlink.PollEventFlag.POLLIN, tag=index)
             while time.perf_counter() < active_deadline:
                 events = poller.poll(10)
                 if not events:

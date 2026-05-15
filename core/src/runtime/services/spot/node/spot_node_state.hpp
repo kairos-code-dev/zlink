@@ -28,13 +28,28 @@ class spot_sub_t;
 
 struct spot_node_summary_state_t
 {
-    spot_node_summary_state_t () : last_summary_error (0), summary_last_changed_ms (0)
+    spot_node_summary_state_t () :
+        last_summary_error (0),
+        summary_last_changed_ms (0),
+        cached_subject_count (0),
+        cached_ready_subject_count (0),
+        subject_counts_generation (1),
+        cached_subject_counts_generation (0)
     {
+    }
+
+    void mark_subject_counts_changed ()
+    {
+        ++subject_counts_generation;
     }
 
     std::map<std::string, uint64_t> subject_last_changed_ms;
     int last_summary_error;
     uint64_t summary_last_changed_ms;
+    mutable uint32_t cached_subject_count;
+    mutable uint32_t cached_ready_subject_count;
+    uint64_t subject_counts_generation;
+    mutable uint64_t cached_subject_counts_generation;
 };
 
 struct spot_node_aggregate_subscription_state_t

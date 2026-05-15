@@ -227,28 +227,10 @@ int add_spot_completion_registration (
         return -1;
     }
 
-    if (zlink::request_completion::acquire_signal_poller_ref (
-          &state_->completion_state.direct)
-        != 0) {
-        return -1;
-    }
-
-    zlink::socket_base_t *completion_socket =
-      zlink::spot_reqrep_internal::spot_completion_signal_socket (state_);
-    if (!completion_socket
-        || poller_add_registration (
-             poller_, completion_socket, NULL, ZLINK_POLLIN, spot_,
-             poller_subject_spot_request_completion)
-             != 0) {
-        const int err = errno ? errno : EFAULT;
-        zlink::request_completion::release_signal_poller_ref (
-          &state_->completion_state.direct);
-        errno = err;
-        return -1;
-    }
-
-    poller_->registrations.back ().state_ref = state_;
-    return 0;
+    return poller_add_hidden_completion_registration (
+      poller_, zlink::spot_reqrep_internal::spot_completion_signal_socket (state_),
+      spot_, poller_subject_spot_request_completion,
+      &state_->completion_state.direct, state_);
 }
 
 int add_spot_completion_only_registration (poller_handle_t *poller_,

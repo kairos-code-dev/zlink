@@ -106,6 +106,7 @@ spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
     {
         scoped_lock_t lock (_sync);
         _handle_state.subs.insert (sub);
+        _summary_state.mark_subject_counts_changed ();
     }
     if (node_owned_default_)
         _handle_state.handle_defaults.publish_default_sub (sub);

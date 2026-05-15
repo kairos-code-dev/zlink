@@ -12,6 +12,14 @@
 #include "api/socket/socket_api_internal.hpp"
 #include "core/socket_poller.hpp"
 
+namespace zlink
+{
+namespace request_completion
+{
+struct queue_state_t;
+}
+}
+
 enum poller_subject_kind_t
 {
     poller_subject_none = 0,
@@ -93,6 +101,13 @@ int poller_add_fd_registration (poller_handle_t *poller_,
                                 short events_,
                                 void *subject_,
                                 poller_subject_kind_t subject_kind_);
+int poller_add_hidden_completion_registration (
+  poller_handle_t *poller_,
+  zlink::socket_base_t *signal_socket_,
+  void *subject_,
+  poller_subject_kind_t subject_kind_,
+  zlink::request_completion::queue_state_t *queue_,
+  const std::shared_ptr<void> &state_ref_);
 int poller_find_registration_index (poller_handle_t *poller_, void *subject_);
 int poller_find_registration_index (poller_handle_t *poller_,
                                     void *subject_,

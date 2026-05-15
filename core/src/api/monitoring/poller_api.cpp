@@ -11,6 +11,7 @@
 #include "api/core/config_result_internal.hpp"
 #include "api/monitoring/poller_api_internal.hpp"
 #include "api/monitoring/poller_completion_internal.hpp"
+#include "api/socket/request_completion_queue_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
 #include "services/spot/pubsub/spot_subject_access.hpp"
 #include "utils/clock.hpp"
@@ -303,6 +304,36 @@ int poller_add_fd_registration (poller_handle_t *poller_,
     poller_->registrations.push_back (registration);
     poller_->fd_registration_indices[registration.fd] =
       poller_->registrations.size () - 1;
+    return 0;
+}
+
+int poller_add_hidden_completion_registration (
+  poller_handle_t *poller_,
+  zlink::socket_base_t *signal_socket_,
+  void *subject_,
+  poller_subject_kind_t subject_kind_,
+  zlink::request_completion::queue_state_t *queue_,
+  const std::shared_ptr<void> &state_ref_)
+{
+    if (!poller_ || !signal_socket_ || !subject_ || !queue_ || !state_ref_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (zlink::request_completion::acquire_signal_poller_ref (queue_) != 0)
+        return -1;
+
+    if (poller_add_registration (poller_, signal_socket_, NULL, ZLINK_POLLIN,
+                                 subject_, subject_kind_)
+        != 0) {
+        const int err = errno ? errno : EFAULT;
+        zlink::request_completion::release_signal_poller_ref (queue_);
+        errno = err;
+        return -1;
+    }
+
+    poller_->registrations.back ().state_ref = state_ref_;
+    errno = 0;
     return 0;
 }
 

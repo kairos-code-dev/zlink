@@ -29,6 +29,15 @@ namespace zlink
 namespace
 {
 const int data_plane_idle_tick_ms = 100;
+const int data_plane_min_event_capacity = 8;
+const unsigned int data_plane_ready_yield_loop_limit = 64;
+
+enum data_plane_dispatch_pass_t
+{
+    data_plane_dispatch_control_pass = 0,
+    data_plane_dispatch_ingress_pass,
+    data_plane_dispatch_pass_count
+};
 
 void service_runtime_sockets (spot_runtime_t *runtime_,
                               spot_data_plane_runtime_state_t *state_,
@@ -122,6 +131,18 @@ bool is_ctrl_event (socket_base_t *socket_,
     return socket_ == state_.ctrl || socket_ == state_.peer_ctrl_sub
            || socket_ == state_.external_router
            || state_.mesh_peer_observer.owns (socket_);
+}
+
+bool should_handle_pollin_event_in_pass (
+  data_plane_dispatch_pass_t pass_,
+  socket_base_t *socket_,
+  const spot_data_plane_runtime_state_t &state_)
+{
+    if (pass_ == data_plane_dispatch_control_pass)
+        return is_ctrl_event (socket_, state_);
+    if (pass_ == data_plane_dispatch_ingress_pass)
+        return socket_ == state_.mesh_xsub || socket_ == state_.pub_ingress_sub;
+    return false;
 }
 
 bool handle_ctrl_event (socket_base_t *socket_,
@@ -280,7 +301,10 @@ int dispatch_ready_events (const socket_poller_t::event_t *events_,
         }
     }
 
-    for (int pass = 0; pass < 3 && *running_out_; ++pass) {
+    for (int pass = 0; pass < data_plane_dispatch_pass_count && *running_out_;
+         ++pass) {
+        const data_plane_dispatch_pass_t dispatch_pass =
+          static_cast<data_plane_dispatch_pass_t> (pass);
         for (int i = 0; i < event_count_; ++i) {
             if ((events_[i].events & ZLINK_POLLIN) == 0)
                 continue;
@@ -318,11 +342,8 @@ int dispatch_ready_events (const socket_poller_t::event_t *events_,
 
             socket_base_t *socket =
               static_cast<socket_base_t *> (events_[i].socket);
-            if ((pass == 0 && !is_ctrl_event (socket, *state_))
-                || (pass == 1
-                    && socket != state_->mesh_xsub
-                    && socket != state_->pub_ingress_sub)
-                || pass == 2) {
+            if (!should_handle_pollin_event_in_pass (dispatch_pass, socket,
+                                                     *state_)) {
                 continue;
             }
 
@@ -434,7 +455,8 @@ int spot_data_plane_loop_t::run_until_shutdown (
             break;
         }
         const size_t event_capacity =
-          static_cast<size_t> (std::max (state_->poller->size (), 8));
+          static_cast<size_t> (
+            std::max (state_->poller->size (), data_plane_min_event_capacity));
         if (events.size () < event_capacity)
             events.resize (event_capacity);
         const int rc = state_->poller->wait (
@@ -447,7 +469,9 @@ int spot_data_plane_loop_t::run_until_shutdown (
             fatal_errno = errno;
             break;
         }
-        if (rc > 0 && ++consecutive_ready_loops >= 64) {
+        if (rc > 0
+            && ++consecutive_ready_loops
+                 >= data_plane_ready_yield_loop_limit) {
             std::this_thread::yield ();
             consecutive_ready_loops = 0;
         }
@@ -500,7 +524,7 @@ int spot_data_plane_loop_t::run_once (
     if (drain_direct_route_messages (node_, state_) != 0)
         return errno;
     std::vector<socket_poller_t::event_t> events (
-      std::max (state_->poller->size (), 8));
+      std::max (state_->poller->size (), data_plane_min_event_capacity));
     const int rc = state_->poller->wait (
       events.empty () ? NULL : &events[0], static_cast<int> (events.size ()), 0);
     if (rc < 0) {

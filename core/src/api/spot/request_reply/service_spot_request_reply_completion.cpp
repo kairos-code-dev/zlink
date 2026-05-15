@@ -136,6 +136,54 @@ bool spot_completion_has_pending (
              state_);
 }
 
+int drain_spot_channel_reply_sources (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  void *owner_handle_)
+{
+    std::vector<void *> dealers;
+    zlink::spot_reqrep_internal::snapshot_spot_channel_reply_dealers (state_,
+                                                                      &dealers);
+
+    int drained = 0;
+    for (size_t i = 0; i < dealers.size (); ++i) {
+        const int rc =
+          zlink::spot_reqrep_internal::drain_spot_channel_reply_completions_from (
+            state_, owner_handle_, dealers[i]);
+        if (rc < 0 && errno != ENOENT)
+            return -1;
+        if (rc > 0)
+            drained += rc;
+    }
+    return drained;
+}
+
+int drain_spot_completion_pass (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  void *owner_handle_)
+{
+    int drained =
+      zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
+        state_);
+    if (drained < 0)
+        return -1;
+
+    const int direct_rc =
+      zlink::spot_reqrep_internal::drain_spot_reply_completions (state_,
+                                                                 owner_handle_);
+    if (direct_rc < 0)
+        return -1;
+    drained += direct_rc;
+
+    const int source_rc =
+      drain_spot_channel_reply_sources (state_, owner_handle_);
+    if (source_rc < 0)
+        return -1;
+    drained += source_rc;
+
+    zlink::spot_reqrep_internal::run_spot_dispatch_events_once (owner_handle_);
+    return drained;
+}
+
 }
 
 int zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
@@ -432,29 +480,10 @@ int zlink::spot_reqrep_internal::drain_spot_completion_progress (
 
     int drained = 0;
     while (true) {
-        int pass_drained = drain_attached_channel_reply_bridge_progress (state_);
+        const int pass_drained =
+          drain_spot_completion_pass (state_, owner_handle_);
         if (pass_drained < 0)
             return -1;
-
-        const int direct_rc =
-          drain_spot_reply_completions (state_, owner_handle_);
-        if (direct_rc < 0)
-            return -1;
-        pass_drained += direct_rc;
-
-        std::vector<void *> dealers;
-        snapshot_spot_channel_reply_dealers (state_, &dealers);
-        for (size_t i = 0; i < dealers.size (); ++i) {
-            const int rc =
-              drain_spot_channel_reply_completions_from (
-                state_, owner_handle_, dealers[i]);
-            if (rc < 0 && errno != ENOENT)
-                return -1;
-            if (rc > 0)
-                pass_drained += rc;
-        }
-
-        run_spot_dispatch_events_once (owner_handle_);
         drained += pass_drained;
         if (pass_drained == 0 && !spot_completion_has_pending (state_))
             break;

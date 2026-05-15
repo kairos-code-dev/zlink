@@ -17,6 +17,8 @@ namespace zlink
 {
 namespace
 {
+const int spot_control_task_interval_ms = 10;
+
 static void spot_control_diagf (const char *fmt_, ...)
 {
     va_list args;
@@ -97,7 +99,8 @@ int spot_node_t::ensure_control_task_running ()
     }
 
     const uint64_t task_id =
-      runtime->add_periodic_task (control_task, this, 10, true);
+      runtime->add_periodic_task (control_task, this,
+                                  spot_control_task_interval_ms, true);
     if (task_id == 0)
         return -1;
 

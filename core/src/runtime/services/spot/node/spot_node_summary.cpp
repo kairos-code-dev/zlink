@@ -275,6 +275,7 @@ void spot_node_t::mark_subject_changed (const std::string &subject_,
     _summary_state.subject_last_changed_ms[std::string (prefix) + subject_] =
       now_ms;
     _summary_state.summary_last_changed_ms = now_ms;
+    _summary_state.mark_subject_counts_changed ();
 }
 
 void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
@@ -592,42 +593,65 @@ void spot_node_t::snapshot_status_subject_counts (
     if (!subject_count_out_ && !ready_subject_count_out_)
         return;
 
-    std::vector<spot_sub_t *> subs;
-    {
-        scoped_lock_t lock (_sync);
-        subs.reserve (_handle_state.subs.size ());
-        subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
-    }
-
-    std::unordered_map<subject_snapshot_key_t, bool,
-                       subject_snapshot_key_hash_t>
-      grouped;
-    grouped.reserve (subs.size () * 2);
-    for (size_t i = 0; i < subs.size (); ++i) {
-        if (!subs[i])
-            continue;
-        std::vector<spot_sub_t::subject_snapshot_t> subjects;
-        subs[i]->append_subject_snapshots (&subjects);
-        for (size_t j = 0; j < subjects.size (); ++j) {
-            subject_snapshot_key_t key;
-            key.subject_kind = subjects[j].subject_kind;
-            key.subject = subjects[j].subject;
-            grouped[key] = grouped[key] || subjects[j].ready;
+    while (true) {
+        std::vector<spot_sub_t *> subs;
+        uint64_t generation = 0;
+        {
+            scoped_lock_t lock (_sync);
+            if (_summary_state.cached_subject_counts_generation
+                == _summary_state.subject_counts_generation) {
+                if (subject_count_out_)
+                    *subject_count_out_ = _summary_state.cached_subject_count;
+                if (ready_subject_count_out_) {
+                    *ready_subject_count_out_ =
+                      _summary_state.cached_ready_subject_count;
+                }
+                return;
+            }
+            generation = _summary_state.subject_counts_generation;
+            subs.reserve (_handle_state.subs.size ());
+            subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
         }
-    }
 
-    uint32_t ready_count = 0;
-    for (std::unordered_map<subject_snapshot_key_t, bool,
-                            subject_snapshot_key_hash_t>::const_iterator it =
-           grouped.begin ();
-         it != grouped.end (); ++it) {
-        if (it->second)
-            ++ready_count;
+        std::unordered_map<subject_snapshot_key_t, bool,
+                           subject_snapshot_key_hash_t>
+          grouped;
+        grouped.reserve (subs.size () * 2);
+        for (size_t i = 0; i < subs.size (); ++i) {
+            if (!subs[i])
+                continue;
+            std::vector<spot_sub_t::subject_snapshot_t> subjects;
+            subs[i]->append_subject_snapshots (&subjects);
+            for (size_t j = 0; j < subjects.size (); ++j) {
+                subject_snapshot_key_t key;
+                key.subject_kind = subjects[j].subject_kind;
+                key.subject = subjects[j].subject;
+                grouped[key] = grouped[key] || subjects[j].ready;
+            }
+        }
+
+        uint32_t ready_count = 0;
+        for (std::unordered_map<subject_snapshot_key_t, bool,
+                                subject_snapshot_key_hash_t>::const_iterator it =
+               grouped.begin ();
+             it != grouped.end (); ++it) {
+            if (it->second)
+                ++ready_count;
+        }
+        const uint32_t subject_count = static_cast<uint32_t> (grouped.size ());
+
+        scoped_lock_t lock (_sync);
+        if (_summary_state.subject_counts_generation != generation)
+            continue;
+        _summary_state.cached_subject_count = subject_count;
+        _summary_state.cached_ready_subject_count = ready_count;
+        _summary_state.cached_subject_counts_generation = generation;
+        if (subject_count_out_)
+            *subject_count_out_ = subject_count;
+        if (ready_subject_count_out_)
+            *ready_subject_count_out_ = ready_count;
+        return;
     }
-    if (subject_count_out_)
-        *subject_count_out_ = static_cast<uint32_t> (grouped.size ());
-    if (ready_subject_count_out_)
-        *ready_subject_count_out_ = ready_count;
 }
 
 int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_)

@@ -8,6 +8,9 @@
 
 namespace
 {
+const long internal_pair_handshake_timeout_ms = 100;
+const int internal_pair_socket_removal_timeout_ms = 1000;
+
 void set_internal_pair_socket_defaults (zlink::socket_base_t *socket_)
 {
     if (!socket_)
@@ -42,6 +45,21 @@ bool recv_internal_pair_handshake (zlink::socket_base_t *socket_,
     return rc == 0;
 }
 
+void close_internal_pair_socket (zlink::socket_base_t *socket_)
+{
+    if (!socket_)
+        return;
+    socket_->stop ();
+    socket_->close ();
+}
+
+void close_internal_pair_sockets (zlink::socket_base_t *rx_,
+                                  zlink::socket_base_t *tx_)
+{
+    close_internal_pair_socket (tx_);
+    close_internal_pair_socket (rx_);
+}
+
 bool handshake_internal_pair (zlink::socket_base_t *rx_,
                               zlink::socket_base_t *tx_)
 {
@@ -61,7 +79,7 @@ bool handshake_internal_pair (zlink::socket_base_t *rx_,
     }
     msg.close ();
 
-    if (!recv_internal_pair_handshake (rx_, 100))
+    if (!recv_internal_pair_handshake (rx_, internal_pair_handshake_timeout_ms))
         return false;
 
     if (msg.init_size (sizeof (ack)) != 0)
@@ -73,7 +91,7 @@ bool handshake_internal_pair (zlink::socket_base_t *rx_,
     }
     msg.close ();
 
-    if (!recv_internal_pair_handshake (tx_, 100))
+    if (!recv_internal_pair_handshake (tx_, internal_pair_handshake_timeout_ms))
         return false;
 
     return true;
@@ -86,13 +104,11 @@ void zlink::internal_pair_queue::close (queue_t *queue_)
         return;
 
     if (queue_->tx) {
-        queue_->tx->stop ();
-        queue_->tx->close ();
+        close_internal_pair_socket (queue_->tx);
         queue_->tx = NULL;
     }
     if (queue_->rx) {
-        queue_->rx->stop ();
-        queue_->rx->close ();
+        close_internal_pair_socket (queue_->rx);
         queue_->rx = NULL;
     }
     queue_->endpoint.clear ();
@@ -109,9 +125,11 @@ void zlink::internal_pair_queue::close_and_wait (queue_t *queue_)
 
     close (queue_);
     if (ctx && tx)
-        (void) ctx->wait_for_socket_removal (tx, 1000);
+        (void) ctx->wait_for_socket_removal (
+          tx, internal_pair_socket_removal_timeout_ms);
     if (ctx && rx)
-        (void) ctx->wait_for_socket_removal (rx, 1000);
+        (void) ctx->wait_for_socket_removal (
+          rx, internal_pair_socket_removal_timeout_ms);
 }
 
 int zlink::internal_pair_queue::ensure (zlink::ctx_t *ctx_,
@@ -132,14 +150,7 @@ int zlink::internal_pair_queue::ensure (zlink::ctx_t *ctx_,
     zlink::socket_base_t *rx = ctx_->create_socket (ZLINK_CORE_SOCKET_PAIR);
     zlink::socket_base_t *tx = ctx_->create_socket (ZLINK_CORE_SOCKET_PAIR);
     if (!rx || !tx) {
-        if (tx) {
-            tx->stop ();
-            tx->close ();
-        }
-        if (rx) {
-            rx->stop ();
-            rx->close ();
-        }
+        close_internal_pair_sockets (rx, tx);
         return -1;
     }
 
@@ -148,20 +159,14 @@ int zlink::internal_pair_queue::ensure (zlink::ctx_t *ctx_,
 
     if (rx->bind (endpoint) != 0 || tx->connect (endpoint) != 0) {
         const int saved_errno = errno;
-        tx->stop ();
-        tx->close ();
-        rx->stop ();
-        rx->close ();
+        close_internal_pair_sockets (rx, tx);
         errno = saved_errno;
         return -1;
     }
 
     if (!handshake_internal_pair (rx, tx)) {
         const int saved_errno = errno != 0 ? errno : EPROTO;
-        tx->stop ();
-        tx->close ();
-        rx->stop ();
-        rx->close ();
+        close_internal_pair_sockets (rx, tx);
         errno = saved_errno;
         return -1;
     }

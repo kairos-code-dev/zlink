@@ -557,6 +557,9 @@ func submitActorRequestNative(progressSpot unsafe.Pointer, native func(cb cgo.Ha
 
 // submitActorLookupNative drives the actor lookup operation. The lookup
 // trampoline carries the lookup result through a dedicated channel.
+// Progress is driven by the shared per-handle progress pump (same one the
+// reply-style actor operations and dealer/router requests use), not by a
+// dedicated goroutine + poller_wait(-1) per call.
 func submitActorLookupNative(progressSpot unsafe.Pointer, native func(cb cgo.Handle) error, callback actorLookupCallback) error {
 	state := &actorLookupCallbackState{
 		result: make(chan ActorLookupResult, 1),
@@ -568,26 +571,7 @@ func submitActorLookupNative(progressSpot unsafe.Pointer, native func(cb cgo.Han
 		return err
 	}
 	if progressSpot != nil {
-		go func() {
-			poller := C.zlink_poller_new()
-			if poller == nil {
-				return
-			}
-			defer C.zlink_poller_destroy(&poller)
-			if C.zlink_poller_add(poller, progressSpot, nil, C.short(32)) != C.ZLINK_CONFIG_OK {
-				return
-			}
-			defer C.zlink_poller_remove(poller, progressSpot)
-			var event C.zlink_poller_event_t
-			for {
-				select {
-				case <-state.done:
-					return
-				default:
-				}
-				C.zlink_poller_wait(poller, &event, 1, -1, nil)
-			}
-		}()
+		attachSpotProgressDone(progressSpot, state.done)
 	}
 	go func() {
 		result := <-state.result

@@ -251,11 +251,18 @@ var (
 )
 
 func startSocketRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
-	getOrCreateProgressPump(&socketProgressPumps, handle).attach(state)
+	getOrCreateProgressPump(&socketProgressPumps, handle).attachDone(state.done)
 }
 
 func startSpotRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
-	getOrCreateProgressPump(&spotProgressPumps, handle).attach(state)
+	getOrCreateProgressPump(&spotProgressPumps, handle).attachDone(state.done)
+}
+
+// attachSpotProgressDone wires arbitrary operation-completion channels (e.g.
+// actor lookup) onto the shared per-handle progress pump for a spot. The
+// caller owns `done` and must close it when the operation completes.
+func attachSpotProgressDone(handle unsafe.Pointer, done <-chan struct{}) {
+	getOrCreateProgressPump(&spotProgressPumps, handle).attachDone(done)
 }
 
 func getOrCreateProgressPump(m *sync.Map, handle unsafe.Pointer) *progressPump {
@@ -267,10 +274,10 @@ func getOrCreateProgressPump(m *sync.Map, handle unsafe.Pointer) *progressPump {
 	return actual.(*progressPump)
 }
 
-func (p *progressPump) attach(state *replyCallbackState) {
+func (p *progressPump) attachDone(done <-chan struct{}) {
 	atomic.AddInt64(&p.activeCount, 1)
 	go func() {
-		<-state.done
+		<-done
 		atomic.AddInt64(&p.activeCount, -1)
 	}()
 	if atomic.CompareAndSwapInt32(&p.workerOn, 0, 1) {

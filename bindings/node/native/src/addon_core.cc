@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "addon_api.h"
+#include "addon_core_api.h"
 #include <algorithm>
 #include <errno.h>
 #include <atomic>
@@ -59,10 +59,20 @@ struct stream_js_payload_t
     std::vector<std::vector<unsigned char> > packets;
 };
 
+void close_recv_parts(zlink_msg_t *parts, size_t part_count);
+
 struct recv_handler_js_payload_t
 {
+    recv_handler_js_payload_t() : part_count(0) {}
+    ~recv_handler_js_payload_t()
+    {
+        if (part_count > 0)
+            close_recv_parts(parts.data(), part_count);
+    }
+
     std::vector<unsigned char> routing_id;
-    std::vector<std::vector<unsigned char> > parts;
+    std::vector<zlink_msg_t> parts;
+    size_t part_count;
 };
 
 struct router_handler_js_payload_t
@@ -87,8 +97,16 @@ struct socket_monitor_handler_js_payload_t
 
 struct request_result_js_payload_t
 {
+    request_result_js_payload_t() : errnum(0), part_count(0) {}
+    ~request_result_js_payload_t()
+    {
+        if (part_count > 0)
+            close_recv_parts(parts.data(), part_count);
+    }
+
     int errnum;
-    std::vector<std::vector<unsigned char> > parts;
+    std::vector<zlink_msg_t> parts;
+    size_t part_count;
 };
 
 struct request_js_state_t
@@ -836,6 +854,55 @@ napi_value create_buffer_copy_or_empty(napi_env env, const void *data, size_t le
     return out;
 }
 
+void finalize_external_msg_buffer(napi_env env, void *data, void *hint)
+{
+    (void) env;
+    (void) data;
+    zlink_msg_t *msg = static_cast<zlink_msg_t *>(hint);
+    if (!msg)
+        return;
+    zlink_msg_close(msg);
+    delete msg;
+}
+
+napi_value create_message_data_buffer(napi_env env, zlink_msg_t *msg)
+{
+    const size_t size = zlink_msg_size(msg);
+    if (size == 0)
+        return create_buffer_copy_or_empty(env, NULL, 0);
+
+    zlink_msg_t *owned = new (std::nothrow) zlink_msg_t;
+    if (!owned) {
+        napi_throw_error(env, NULL, "message buffer allocation failed");
+        return NULL;
+    }
+    if (zlink_msg_init(owned) != 0) {
+        delete owned;
+        return throw_last_error(env, "message buffer init failed");
+    }
+    if (zlink_msg_move(owned, msg) != 0) {
+        zlink_msg_close(owned);
+        delete owned;
+        return throw_last_error(env, "message buffer move failed");
+    }
+
+    napi_value data;
+    napi_status status = napi_create_external_buffer(
+      env,
+      size,
+      zlink_msg_data(owned),
+      finalize_external_msg_buffer,
+      owned,
+      &data);
+    if (status != napi_ok) {
+        zlink_msg_close(owned);
+        delete owned;
+        napi_throw_error(env, NULL, "message buffer creation failed");
+        return NULL;
+    }
+    return data;
+}
+
 napi_value create_routing_id_value(napi_env env, const zlink_routing_id_t &rid)
 {
     if (rid.size == 0) {
@@ -1029,9 +1096,6 @@ napi_value create_message_snapshot_value(napi_env env,
     napi_value obj;
     napi_create_object(env, &obj);
 
-    napi_value data;
-    napi_create_buffer_copy(
-      env, zlink_msg_size(msg), zlink_msg_data(msg), NULL, &data);
     zlink_config_result_t refcnt_err = ZLINK_CONFIG_OK;
     const int refcnt = zlink_msg_refcnt(msg, &refcnt_err);
     if (refcnt_err != ZLINK_CONFIG_OK)
@@ -1039,6 +1103,9 @@ napi_value create_message_snapshot_value(napi_env env,
     napi_value ref_count;
     napi_create_int32(env, refcnt, &ref_count);
     napi_value props = create_message_properties_snapshot(env, routing_id, msg);
+    napi_value data = create_message_data_buffer(env, msg);
+    if (!data)
+        return NULL;
 
     napi_set_named_property(env, obj, "data", data);
     napi_set_named_property(env, obj, "refCount", ref_count);
@@ -1365,12 +1432,8 @@ void recv_handler_tsfn_call_js(napi_env env,
         return;
     }
     for (size_t i = 0; i < payload->parts.size(); ++i) {
-        const std::vector<unsigned char> &part = payload->parts[i];
-        napi_value part_buf;
-        if (napi_create_buffer_copy(
-              env, part.size(), part.empty() ? NULL : part.data(), NULL,
-              &part_buf)
-            != napi_ok) {
+        napi_value part_buf = create_message_data_buffer(env, &payload->parts[i]);
+        if (!part_buf) {
             return;
         }
         napi_set_element(env, argv[1], static_cast<uint32_t>(i), part_buf);
@@ -1554,9 +1617,9 @@ void request_tsfn_call_js(napi_env env,
         napi_value parts_array;
         napi_create_array_with_length(env, payload->parts.size(), &parts_array);
         for (size_t i = 0; i < payload->parts.size(); ++i) {
-            const std::vector<unsigned char> &part = payload->parts[i];
-            napi_value part_buf = create_buffer_copy_or_empty(
-              env, part.empty() ? NULL : part.data(), part.size());
+            napi_value part_buf = create_message_data_buffer(env, &payload->parts[i]);
+            if (!part_buf)
+                return;
             napi_set_element(env, parts_array, static_cast<uint32_t>(i), part_buf);
         }
         argv[1] = parts_array;
@@ -1582,8 +1645,20 @@ void request_reply_callback_trampoline(zlink_request_result_t errnum_,
     std::unique_ptr<request_result_js_payload_t> payload(
       new request_result_js_payload_t());
     payload->errnum = errnum_;
-    if (errnum_ == 0)
-        copy_recv_parts_to_vectors(parts_, part_count_, &payload->parts);
+    if (errnum_ == 0) {
+        payload->parts.resize(part_count_);
+        for (size_t i = 0; i < part_count_; ++i) {
+            if (zlink_msg_init(&payload->parts[i]) != 0) {
+                close_recv_parts(parts_, part_count_);
+                return;
+            }
+            payload->part_count = i + 1;
+            if (zlink_msg_move(&payload->parts[i], &parts_[i]) != 0) {
+                close_recv_parts(parts_, part_count_);
+                return;
+            }
+        }
+    }
     close_recv_parts(parts_, part_count_);
 
     if (napi_call_threadsafe_function(
@@ -1889,20 +1964,19 @@ void subscribe_handler_release_slot(void *socket)
         (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
 }
 
-template <size_t Slot>
-void recv_handler_slot_callback(const zlink_routing_id_t *source_rid_,
-                                zlink_msg_t *parts_,
-                                size_t part_count_,
-                                void *userdata_)
+void recv_handler_dispatch(const zlink_routing_id_t *source_rid_,
+                           zlink_msg_t *parts_,
+                           size_t part_count_,
+                           void *userdata_)
 {
-    (void) userdata_;
+    recv_handler_js_state_t *state =
+      static_cast<recv_handler_js_state_t *>(userdata_);
     std::unique_ptr<recv_handler_js_payload_t> payload(
       new recv_handler_js_payload_t());
-    recv_handler_js_state_t *state = &g_recv_handler_slots[Slot];
     napi_threadsafe_function tsfn = NULL;
     {
         std::lock_guard<std::mutex> lock(g_recv_handler_slots_mu);
-        if (!state->used || !state->tsfn) {
+        if (!state || !state->used || !state->tsfn) {
             close_recv_parts(parts_, part_count_);
             return;
         }
@@ -1911,7 +1985,20 @@ void recv_handler_slot_callback(const zlink_routing_id_t *source_rid_,
             payload->routing_id.assign(
               source_rid_->data, source_rid_->data + source_rid_->size);
         }
-        copy_recv_parts_to_vectors(parts_, part_count_, &payload->parts);
+    }
+
+    payload->parts.resize(part_count_);
+    size_t moved = 0;
+    for (; moved < part_count_; ++moved) {
+        if (zlink_msg_init(&payload->parts[moved]) != 0) {
+            close_recv_parts(parts_, part_count_);
+            return;
+        }
+        payload->part_count = moved + 1;
+        if (zlink_msg_move(&payload->parts[moved], &parts_[moved]) != 0) {
+            close_recv_parts(parts_, part_count_);
+            return;
+        }
     }
     close_recv_parts(parts_, part_count_);
     if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
@@ -1993,10 +2080,6 @@ void subscribe_handler_slot_callback(const zlink_routing_id_t *source_rid_,
     }
 }
 
-typedef void (*recv_handler_slot_callback_t)(const zlink_routing_id_t *,
-                                             zlink_msg_t *,
-                                             size_t,
-                                             void *);
 typedef void (*router_handler_slot_callback_t)(const zlink_routing_id_t *,
                                                const zlink_routing_id_t *,
                                                uint64_t,
@@ -2009,20 +2092,6 @@ typedef void (*subscribe_handler_slot_callback_t)(const zlink_routing_id_t *,
                                                   zlink_msg_t *,
                                                   size_t,
                                                   void *);
-
-#define RECV_HANDLER_SLOT_CALLBACK(N) &recv_handler_slot_callback<N>
-static recv_handler_slot_callback_t
-  g_recv_handler_slot_callbacks[k_recv_handler_slot_count] = {
-    RECV_HANDLER_SLOT_CALLBACK(0),
-    RECV_HANDLER_SLOT_CALLBACK(1),
-    RECV_HANDLER_SLOT_CALLBACK(2),
-    RECV_HANDLER_SLOT_CALLBACK(3),
-    RECV_HANDLER_SLOT_CALLBACK(4),
-    RECV_HANDLER_SLOT_CALLBACK(5),
-    RECV_HANDLER_SLOT_CALLBACK(6),
-    RECV_HANDLER_SLOT_CALLBACK(7),
-};
-#undef RECV_HANDLER_SLOT_CALLBACK
 
 #define ROUTER_HANDLER_SLOT_CALLBACK(N) &router_handler_slot_callback<N>
 static router_handler_slot_callback_t
@@ -2132,7 +2201,6 @@ static send_ready_handler_slot_callback_t
 bool attach_recv_handler(napi_env env, void *socket, napi_value handler)
 {
     recv_handler_js_state_t *slot = NULL;
-    size_t slot_index = 0;
     {
         std::lock_guard<std::mutex> lock(g_recv_handler_slots_mu);
         if (find_recv_handler_slot_by_socket_unsafe(socket)) {
@@ -2144,7 +2212,6 @@ bool attach_recv_handler(napi_env env, void *socket, napi_value handler)
             napi_throw_error(env, NULL, "no free recvHandler slot");
             return false;
         }
-        slot_index = static_cast<size_t>(slot - g_recv_handler_slots);
     }
 
     napi_value resource_name;
@@ -2167,7 +2234,7 @@ bool attach_recv_handler(napi_env env, void *socket, napi_value handler)
         slot->tsfn = tsfn;
     }
 
-    int rc = zlink_recv_handler(socket, g_recv_handler_slot_callbacks[slot_index], slot);
+    int rc = zlink_recv_handler(socket, recv_handler_dispatch, slot);
     if (rc != 0) {
         recv_handler_release_slot(socket);
         throw_last_error(env, "recvHandler failed");

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "addon_api.h"
+#include "addon_spot_api.h"
 #include <chrono>
 #include <condition_variable>
 #include <memory>
@@ -19,6 +19,7 @@ static napi_value create_message_snapshot_value(napi_env env,
 static napi_value create_buffer_copy_or_empty(napi_env env,
                                               const void *data,
                                               size_t len);
+static napi_value create_message_data_buffer(napi_env env, zlink_msg_t *msg);
 static void set_uint32_property(napi_env env,
                                 napi_value obj,
                                 const char *name,
@@ -1008,6 +1009,55 @@ static napi_value create_buffer_copy_or_empty(napi_env env,
     return out;
 }
 
+static void finalize_external_msg_buffer(napi_env env, void *data, void *hint)
+{
+    (void) env;
+    (void) data;
+    zlink_msg_t *msg = static_cast<zlink_msg_t *>(hint);
+    if (!msg)
+        return;
+    zlink_msg_close(msg);
+    delete msg;
+}
+
+static napi_value create_message_data_buffer(napi_env env, zlink_msg_t *msg)
+{
+    const size_t size = zlink_msg_size(msg);
+    if (size == 0)
+        return create_buffer_copy_or_empty(env, NULL, 0);
+
+    zlink_msg_t *owned = new (std::nothrow) zlink_msg_t;
+    if (!owned) {
+        napi_throw_error(env, NULL, "message buffer allocation failed");
+        return NULL;
+    }
+    if (zlink_msg_init(owned) != 0) {
+        delete owned;
+        return throw_last_error(env, "message buffer init failed");
+    }
+    if (zlink_msg_move(owned, msg) != 0) {
+        zlink_msg_close(owned);
+        delete owned;
+        return throw_last_error(env, "message buffer move failed");
+    }
+
+    napi_value data;
+    napi_status status = napi_create_external_buffer(
+      env,
+      size,
+      zlink_msg_data(owned),
+      finalize_external_msg_buffer,
+      owned,
+      &data);
+    if (status != napi_ok) {
+        zlink_msg_close(owned);
+        delete owned;
+        napi_throw_error(env, NULL, "message buffer creation failed");
+        return NULL;
+    }
+    return data;
+}
+
 static spot_routed_js_state_t *find_spot_routed_slot_by_spot_unsafe(void *spot)
 {
     for (size_t i = 0; i < k_spot_routed_slot_count; ++i) {
@@ -1775,9 +1825,6 @@ napi_value create_message_snapshot_value(napi_env env,
     napi_value obj;
     napi_create_object(env, &obj);
 
-    napi_value data;
-    napi_create_buffer_copy(
-      env, zlink_msg_size(msg), zlink_msg_data(msg), NULL, &data);
     zlink_config_result_t refcnt_err = ZLINK_CONFIG_OK;
     const int refcnt = zlink_msg_refcnt(msg, &refcnt_err);
     if (refcnt_err != ZLINK_CONFIG_OK)
@@ -1785,6 +1832,9 @@ napi_value create_message_snapshot_value(napi_env env,
     napi_value ref_count;
     napi_create_int32(env, refcnt, &ref_count);
     napi_value props = create_message_properties_snapshot(env, routing_id, msg);
+    napi_value data = create_message_data_buffer(env, msg);
+    if (!data)
+        return NULL;
 
     napi_set_named_property(env, obj, "data", data);
     napi_set_named_property(env, obj, "refCount", ref_count);
@@ -2551,7 +2601,7 @@ napi_value spot_actor_join_recv(napi_env env, napi_callback_info info)
     napi_set_named_property(env, out, "parts", parts_array);
     napi_value message;
     if (part_count > 0) {
-        message = create_message_snapshot_value(env, NULL, &parts[0]);
+        napi_get_element(env, parts_array, 0, &message);
     } else {
         zlink_msg_t empty;
         if (zlink_msg_init(&empty) != 0) {

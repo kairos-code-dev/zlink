@@ -1,0 +1,52 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#pragma once
+
+#include "addon_common_api.h"
+
+napi_value registry_new(napi_env env, napi_callback_info info);
+napi_value registry_set_endpoints(napi_env env, napi_callback_info info);
+napi_value registry_set_id(napi_env env, napi_callback_info info);
+napi_value registry_add_peer(napi_env env, napi_callback_info info);
+napi_value registry_set_heartbeat(napi_env env, napi_callback_info info);
+napi_value registry_set_broadcast(napi_env env, napi_callback_info info);
+napi_value registry_set_tls_server(napi_env env, napi_callback_info info);
+napi_value registry_set_tls_client(napi_env env, napi_callback_info info);
+napi_value registry_start(napi_env env, napi_callback_info info);
+napi_value registry_setsockopt(napi_env env, napi_callback_info info);
+napi_value registry_destroy(napi_env env, napi_callback_info info);
+
+napi_value discovery_new(napi_env env, napi_callback_info info);
+napi_value discovery_connect(napi_env env, napi_callback_info info);
+napi_value discovery_provider_count(napi_env env, napi_callback_info info);
+napi_value discovery_service_available(napi_env env, napi_callback_info info);
+napi_value discovery_get_providers(napi_env env, napi_callback_info info);
+napi_value discovery_set_value(napi_env env, napi_callback_info info);
+napi_value discovery_get_value(napi_env env, napi_callback_info info);
+napi_value discovery_resolve_spot(napi_env env, napi_callback_info info);
+napi_value discovery_resolve_actor(napi_env env, napi_callback_info info);
+napi_value discovery_destroy(napi_env env, napi_callback_info info);
+napi_value discovery_set_tls_client(napi_env env, napi_callback_info info);
+
+napi_value registry_status_snapshot(napi_env env, napi_callback_info info);
+napi_value registry_service_summary_snapshot(napi_env env, napi_callback_info info);
+napi_value registry_topology_snapshot(napi_env env, napi_callback_info info);
+napi_value registry_topology_query(napi_env env, napi_callback_info info);
+napi_value registry_member_peers(napi_env env, napi_callback_info info);
+napi_value registry_query_client_new(napi_env env, napi_callback_info info);
+napi_value registry_query_client_connect(napi_env env, napi_callback_info info);
+napi_value registry_query_snapshot(napi_env env, napi_callback_info info);
+napi_value registry_query_destroy(napi_env env, napi_callback_info info);
+
+napi_value provider_new(napi_env env, napi_callback_info info);
+napi_value provider_bind(napi_env env, napi_callback_info info);
+napi_value provider_connect_registry(napi_env env, napi_callback_info info);
+napi_value provider_register(napi_env env, napi_callback_info info);
+napi_value provider_update_weight(napi_env env, napi_callback_info info);
+napi_value provider_unregister(napi_env env, napi_callback_info info);
+napi_value provider_register_result(napi_env env, napi_callback_info info);
+napi_value provider_set_tls_server(napi_env env, napi_callback_info info);
+napi_value provider_router(napi_env env, napi_callback_info info);
+napi_value provider_router_peers(napi_env env, napi_callback_info info);
+napi_value provider_setsockopt(napi_env env, napi_callback_info info);
+napi_value provider_destroy(napi_env env, napi_callback_info info);

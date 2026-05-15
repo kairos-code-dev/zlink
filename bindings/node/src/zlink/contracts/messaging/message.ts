@@ -314,6 +314,11 @@ export class RoutingId {
     return Buffer.from(this._bytes);
   }
 
+  /** @internal */
+  borrowedBytes(): Buffer {
+    return this._bytes;
+  }
+
   get size(): number {
     return this._bytes.length;
   }

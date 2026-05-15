@@ -55,6 +55,23 @@ test('recvHandler delivers multipart Message instances', () => {
     sender.close();
     ctx.close();
 });
+test('pair supports buffer fast paths', () => {
+    const ctx = new zlink.Context();
+    const sender = new zlink.PairSocket(ctx);
+    const receiver = new zlink.PairSocket(ctx);
+    sender.bind('inproc://pair-buffer-fast-path');
+    receiver.connect('inproc://pair-buffer-fast-path');
+    assert.equal(sender.sendFrom(Buffer.from('buffer-ping')), true);
+    assert.equal(receiver.recvBuffer().toString(), 'buffer-ping');
+    assert.equal(sender.sendFrom(Buffer.from('buffer-pong')), true);
+    const target = Buffer.alloc(32);
+    const size = receiver.recvInto(target);
+    assert.equal(size, 'buffer-pong'.length);
+    assert.equal(target.subarray(0, size).toString(), 'buffer-pong');
+    receiver.close();
+    sender.close();
+    ctx.close();
+});
 test('pair surface stays recv-only on the canonical api', () => {
     const ctx = new zlink.Context();
     const receiver = new zlink.PairSocket(ctx);

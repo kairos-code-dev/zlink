@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 from .messages import Message, Received, SubscriptionEvent, TopicMessage
-from ..._runtime.service.spot import ReplyOp, RequestCallbackOp, RequestOp, SendOp
+from ..service.spot import ReplyOp, RequestCallbackOp, RequestOp, SendOp
 
 __all__ = [
     "Message",

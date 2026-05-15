@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
-from ..._runtime.service.discovery import (
+from .discovery import (
     Discovery,
     MemberPeerEntry,
     Registry,
@@ -11,7 +11,7 @@ from ..._runtime.service.discovery import (
     RegistryTopologyEntry,
     RegistryTopologyFilter,
 )
-from ..._runtime.service.spot import (
+from .spot import (
     Actor,
     ActorJoinInfo,
     ActorJoinRequest,

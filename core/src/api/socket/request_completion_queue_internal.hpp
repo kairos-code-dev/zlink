@@ -70,6 +70,18 @@ bool current_thread_is_owner (queue_state_t *state_);
 bool has_pending (queue_state_t *state_);
 zlink::socket_base_t *signal_socket (queue_state_t *state_);
 bool in_request_completion_callback (void *owner_handle_);
+
+struct wait_signal_t
+{
+    zlink::socket_base_t *socket;
+    bool *ready_out;
+};
+
+int wait_input_or_signals (zlink::socket_base_t *input_,
+                           const wait_signal_t *signals_,
+                           size_t signal_count_,
+                           long timeout_ms_,
+                           bool *input_ready_out_);
 int wait_input_or_signal (zlink::socket_base_t *input_,
                           zlink::socket_base_t *signal_,
                           long timeout_ms_,

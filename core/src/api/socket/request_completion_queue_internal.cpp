@@ -396,15 +396,40 @@ int zlink::request_completion::wait_input_or_signal (
   bool *input_ready_out_,
   bool *signal_ready_out_)
 {
-    if (!input_ || !input_ready_out_ || !signal_ready_out_) {
+    if (!signal_ready_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+    *signal_ready_out_ = false;
+    wait_signal_t signal = {signal_, signal_ready_out_};
+    return wait_input_or_signals (input_, signal_ ? &signal : NULL,
+                                  signal_ ? 1 : 0, timeout_ms_,
+                                  input_ready_out_);
+}
+
+int zlink::request_completion::wait_input_or_signals (
+  zlink::socket_base_t *input_,
+  const wait_signal_t *signals_,
+  size_t signal_count_,
+  long timeout_ms_,
+  bool *input_ready_out_)
+{
+    if (!input_ || !input_ready_out_
+        || (signal_count_ > 0 && !signals_)) {
         errno = EFAULT;
         return -1;
     }
 
     *input_ready_out_ = false;
-    *signal_ready_out_ = false;
+    for (size_t i = 0; i < signal_count_; ++i) {
+        if (!signals_[i].socket || !signals_[i].ready_out) {
+            errno = EFAULT;
+            return -1;
+        }
+        *signals_[i].ready_out = false;
+    }
 
-    if (!signal_) {
+    if (signal_count_ == 0) {
         const int wait_rc =
           zlink::wait_socket_events_internal (input_, ZLINK_POLLIN, timeout_ms_);
         if (wait_rc < 0)
@@ -418,19 +443,28 @@ int zlink::request_completion::wait_input_or_signal (
     zlink::socket_poller_t poller;
     if (poller.add (input_, NULL, ZLINK_POLLIN) != 0)
         return -1;
-    if (poller.add (signal_, NULL, ZLINK_POLLIN) != 0)
-        return -1;
+    for (size_t i = 0; i < signal_count_; ++i) {
+        if (poller.add (signals_[i].socket, NULL, ZLINK_POLLIN) != 0)
+            return -1;
+    }
 
-    zlink::socket_poller_t::event_t events[2];
-    const int rc = poller.wait (events, 2, timeout_ms_);
+    const int event_capacity = static_cast<int> (signal_count_ + 1);
+    std::vector<zlink::socket_poller_t::event_t> events (event_capacity);
+    const int rc = poller.wait (&events[0], event_capacity, timeout_ms_);
     if (rc <= 0)
         return rc;
 
     for (int i = 0; i < rc; ++i) {
         if (events[i].socket == input_)
             *input_ready_out_ = true;
-        else if (events[i].socket == signal_)
-            *signal_ready_out_ = true;
+        else {
+            for (size_t j = 0; j < signal_count_; ++j) {
+                if (events[i].socket == signals_[j].socket) {
+                    *signals_[j].ready_out = true;
+                    break;
+                }
+            }
+        }
     }
     return rc;
 }

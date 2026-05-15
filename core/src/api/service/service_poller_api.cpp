@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "utils/err.hpp"
+#include "api/monitoring/poller_completion_internal.hpp"
 #include "api/service/service_handle_internal.hpp"
 #include "api/service/service_mode_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
@@ -62,14 +63,6 @@ void release_poller_registration (const poller_registration_t &registration_)
             break;
         case poller_subject_fd:
             break;
-        case poller_subject_socket_request_completion:
-        case poller_subject_router_spot_request_completion:
-        case poller_subject_spot_request_completion:
-            if (registration_.completion_queue) {
-                zlink::request_completion::release_signal_poller_ref (
-                  registration_.completion_queue);
-            }
-            break;
         case poller_subject_spot_pub:
         case poller_subject_spot_sub:
             decrement_spot_poller_ref (
@@ -83,6 +76,11 @@ void release_poller_registration (const poller_registration_t &registration_)
               registration_.events);
             break;
         default:
+            if (poller_subject_is_completion (registration_.subject_kind)
+                && registration_.completion_queue) {
+                zlink::request_completion::release_signal_poller_ref (
+                  registration_.completion_queue);
+            }
             break;
     }
 }

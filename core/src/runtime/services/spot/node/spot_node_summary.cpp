@@ -287,7 +287,7 @@ void spot_node_t::mark_subject_changed (const std::string &subject_,
     _summary_state.subject_last_changed_ms[std::string (prefix) + subject_] =
       now_ms;
     _summary_state.summary_last_changed_ms = now_ms;
-    _summary_state.mark_subject_counts_changed ();
+    _summary_state.mark_subject_snapshot_changed ();
 }
 
 void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
@@ -608,12 +608,12 @@ void spot_node_t::snapshot_subject_summary_entries (
         uint64_t generation = 0;
         {
             scoped_lock_t lock (_sync);
-            if (_summary_state.cached_subject_counts_generation
-                == _summary_state.subject_counts_generation) {
+            if (_summary_state.cached_subject_snapshot_generation
+                == _summary_state.subject_snapshot_generation) {
                 *out_ = _summary_state.cached_subject_entries;
                 return;
             }
-            generation = _summary_state.subject_counts_generation;
+            generation = _summary_state.subject_snapshot_generation;
             subs.reserve (_handle_state.subs.size ());
             subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
             subject_last_changed = _summary_state.subject_last_changed_ms;
@@ -666,10 +666,10 @@ void spot_node_t::snapshot_subject_summary_entries (
         }
 
         scoped_lock_t lock (_sync);
-        if (_summary_state.subject_counts_generation != generation)
+        if (_summary_state.subject_snapshot_generation != generation)
             continue;
         _summary_state.cached_subject_entries = entries;
-        _summary_state.cached_subject_counts_generation = generation;
+        _summary_state.cached_subject_snapshot_generation = generation;
         *out_ = _summary_state.cached_subject_entries;
         return;
     }

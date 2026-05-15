@@ -5,7 +5,6 @@
 
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
-#include "core/socket_poller.hpp"
 
 namespace zlink
 {
@@ -44,30 +43,22 @@ inline int wait_router_input_or_completion (
     *socket_signal_ready_out_ = false;
     *router_spot_signal_ready_out_ = false;
 
-    zlink::socket_poller_t poller;
-    if (poller.add (input_, NULL, ZLINK_POLLIN) != 0)
-        return -1;
-    if (socket_signal_ && poller.add (socket_signal_, NULL, ZLINK_POLLIN) != 0)
-        return -1;
-    if (router_spot_signal_
-        && poller.add (router_spot_signal_, NULL, ZLINK_POLLIN) != 0) {
-        return -1;
+    zlink::request_completion::wait_signal_t signals[2];
+    size_t signal_count = 0;
+    if (socket_signal_) {
+        signals[signal_count].socket = socket_signal_;
+        signals[signal_count].ready_out = socket_signal_ready_out_;
+        ++signal_count;
+    }
+    if (router_spot_signal_) {
+        signals[signal_count].socket = router_spot_signal_;
+        signals[signal_count].ready_out = router_spot_signal_ready_out_;
+        ++signal_count;
     }
 
-    zlink::socket_poller_t::event_t events[3];
-    const int rc = poller.wait (events, 3, timeout_ms_);
-    if (rc <= 0)
-        return rc;
-
-    for (int i = 0; i < rc; ++i) {
-        if (events[i].socket == input_)
-            *input_ready_out_ = true;
-        else if (events[i].socket == socket_signal_)
-            *socket_signal_ready_out_ = true;
-        else if (events[i].socket == router_spot_signal_)
-            *router_spot_signal_ready_out_ = true;
-    }
-    return rc;
+    return zlink::request_completion::wait_input_or_signals (
+      input_, signal_count > 0 ? signals : NULL, signal_count, timeout_ms_,
+      input_ready_out_);
 }
 }
 }

@@ -7,14 +7,17 @@
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 
+bool poller_subject_is_completion (poller_subject_kind_t subject_kind_)
+{
+    return subject_kind_ == poller_subject_socket_request_completion
+           || subject_kind_ == poller_subject_router_spot_request_completion
+           || subject_kind_ == poller_subject_spot_request_completion;
+}
+
 bool poller_completion_is_hidden (const poller_registration_t *registration_)
 {
-    if (!registration_)
-        return false;
-    return registration_->subject_kind == poller_subject_socket_request_completion
-           || registration_->subject_kind
-                == poller_subject_router_spot_request_completion
-           || registration_->subject_kind == poller_subject_spot_request_completion;
+    return registration_
+           && poller_subject_is_completion (registration_->subject_kind);
 }
 
 int poller_completion_drain_hidden (

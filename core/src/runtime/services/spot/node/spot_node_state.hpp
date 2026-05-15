@@ -39,21 +39,21 @@ struct spot_node_summary_state_t
     spot_node_summary_state_t () :
         last_summary_error (0),
         summary_last_changed_ms (0),
-        subject_counts_generation (1),
-        cached_subject_counts_generation (0)
+        subject_snapshot_generation (1),
+        cached_subject_snapshot_generation (0)
     {
     }
 
-    void mark_subject_counts_changed ()
+    void mark_subject_snapshot_changed ()
     {
-        ++subject_counts_generation;
+        ++subject_snapshot_generation;
     }
 
     std::map<std::string, uint64_t> subject_last_changed_ms;
     int last_summary_error;
     uint64_t summary_last_changed_ms;
-    uint64_t subject_counts_generation;
-    mutable uint64_t cached_subject_counts_generation;
+    uint64_t subject_snapshot_generation;
+    mutable uint64_t cached_subject_snapshot_generation;
     mutable std::vector<subject_snapshot_entry_t> cached_subject_entries;
 };
 
@@ -300,14 +300,6 @@ struct spot_node_service_attachment_t
 
 struct spot_node_service_attachment_state_t
 {
-    struct service_sub_cache_entry_t
-    {
-        std::string channel_name;
-        socket_base_t *socket;
-    };
-
-    typedef std::vector<service_sub_cache_entry_t> service_sub_cache_t;
-
     struct service_sub_recv_cache_t
     {
         service_sub_recv_cache_t ();
@@ -321,11 +313,9 @@ struct spot_node_service_attachment_state_t
         bool wait_ready_socket (zlink_recv_flags_t flags_,
                                 socket_base_t **ready_socket_out_) const;
 
-        service_sub_cache_t entries;
-
       private:
         struct impl_t;
-        std::shared_ptr<impl_t> impl;
+        std::unique_ptr<impl_t> impl;
     };
 
     std::map<std::string, spot_node_service_attachment_t> attachments;

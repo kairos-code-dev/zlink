@@ -666,7 +666,7 @@ spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
         {
             scoped_lock_t lock (_sync);
             _handle_state.subs.erase (sub);
-            _summary_state.mark_subject_counts_changed ();
+            _summary_state.mark_subject_snapshot_changed ();
         }
         (void) receiver->abort_create ();
         delete receiver;
@@ -699,7 +699,7 @@ void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
     const bool had_filters = _handle_state.handle_defaults.remove_spot_sub (sub_);
     scoped_lock_t lock (_sync);
     _handle_state.subs.erase (sub_);
-    _summary_state.mark_subject_counts_changed ();
+    _summary_state.mark_subject_snapshot_changed ();
     if (had_filters) {
         note_local_sub_filters_changed (true, false);
     }
@@ -718,7 +718,7 @@ int spot_node_t::destroy_handles ()
         for (size_t i = 0; i < subs.size (); ++i)
             _handle_state.subs.erase (subs[i]);
         if (!subs.empty ())
-            _summary_state.mark_subject_counts_changed ();
+            _summary_state.mark_subject_snapshot_changed ();
     }
 
     for (size_t i = 0; i < pubs.size (); ++i) {
@@ -744,7 +744,7 @@ int spot_node_t::destroy_internal_receiver ()
         if (receiver)
             _handle_state.subs.erase (receiver->impl ());
         if (receiver)
-            _summary_state.mark_subject_counts_changed ();
+            _summary_state.mark_subject_snapshot_changed ();
     }
 
     if (!receiver)

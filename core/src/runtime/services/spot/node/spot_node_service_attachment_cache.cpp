@@ -12,7 +12,16 @@ namespace zlink
 {
 struct spot_node_service_attachment_state_t::service_sub_recv_cache_t::impl_t
 {
+    struct entry_t
+    {
+        std::string channel_name;
+        socket_base_t *socket;
+    };
+
+    typedef std::vector<entry_t> entries_t;
+
     zlink::socket_poller_t poller;
+    entries_t entries;
 };
 
 namespace
@@ -47,7 +56,7 @@ spot_node_service_attachment_state_t::service_sub_recv_cache_t::
 void spot_node_service_attachment_state_t::service_sub_recv_cache_t::reserve (
   size_t capacity_)
 {
-    entries.reserve (capacity_);
+    impl->entries.reserve (capacity_);
 }
 
 void spot_node_service_attachment_state_t::service_sub_recv_cache_t::add (
@@ -57,15 +66,15 @@ void spot_node_service_attachment_state_t::service_sub_recv_cache_t::add (
     if (!socket_)
         return;
 
-    service_sub_cache_entry_t entry;
+    impl_t::entry_t entry;
     entry.channel_name = channel_name_;
     entry.socket = socket_;
-    const size_t index = entries.size ();
+    const size_t index = impl->entries.size ();
     if (impl->poller.add (socket_, reinterpret_cast<void *> (index),
                           ZLINK_POLLIN)
         != 0)
         return;
-    entries.push_back (entry);
+    impl->entries.push_back (entry);
 }
 
 bool spot_node_service_attachment_state_t::service_sub_recv_cache_t::
@@ -74,7 +83,7 @@ bool spot_node_service_attachment_state_t::service_sub_recv_cache_t::
 {
     if (ready_socket_out_)
         *ready_socket_out_ = NULL;
-    if (entries.empty ()) {
+    if (impl->entries.empty ()) {
         errno = (flags_ & ZLINK_DONTWAIT) != 0 ? EAGAIN : ENOTCONN;
         return false;
     }
@@ -89,13 +98,14 @@ bool spot_node_service_attachment_state_t::service_sub_recv_cache_t::
     }
 
     const size_t index = reinterpret_cast<size_t> (event.user_data);
-    if (index >= entries.size () || event.socket != entries[index].socket) {
+    if (index >= impl->entries.size ()
+        || event.socket != impl->entries[index].socket) {
         errno = EAGAIN;
         return false;
     }
 
     if (ready_socket_out_)
-        *ready_socket_out_ = entries[index].socket;
+        *ready_socket_out_ = impl->entries[index].socket;
     return true;
 }
 

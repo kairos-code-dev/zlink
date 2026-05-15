@@ -39,24 +39,8 @@ enum data_plane_dispatch_pass_t
     data_plane_dispatch_pass_count
 };
 
-typedef void (*data_plane_runtime_stage_fn) (
-  spot_runtime_t *,
-  spot_data_plane_runtime_state_t *,
-  const spot_data_plane_protocol_state_t *);
-
-struct data_plane_runtime_stage_t
+void pump_data_plane_socket_commands (spot_data_plane_runtime_state_t *state_)
 {
-    data_plane_runtime_stage_fn run;
-};
-
-void pump_data_plane_socket_commands (
-  spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  const spot_data_plane_protocol_state_t *protocol_state_)
-{
-    (void) runtime_;
-    (void) protocol_state_;
-
     spot_data_plane_forwarder_t::pump_socket_commands (state_->ctrl);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_pub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_xsub);
@@ -87,12 +71,8 @@ void sync_data_plane_attachment_targets (
 }
 
 void apply_data_plane_socket_policy_once (
-  spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  const spot_data_plane_protocol_state_t *protocol_state_)
+  spot_data_plane_runtime_state_t *state_)
 {
-    (void) runtime_;
-    (void) protocol_state_;
     if (!state_->runtime_sockets_nodelay_applied) {
         if (state_->mesh_pub)
             state_->mesh_pub->set_all_pipes_nodelay ();
@@ -112,10 +92,8 @@ void apply_data_plane_socket_policy_once (
 
 void refresh_data_plane_limits_and_hwm (
   spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  const spot_data_plane_protocol_state_t *protocol_state_)
+  spot_data_plane_runtime_state_t *state_)
 {
-    (void) protocol_state_;
     spot_mesh_pub_hwm_t::refresh_live_socket (
       runtime_, state_->mesh_pub, &state_->mesh_pub_hwm.current_sndhwm,
       &state_->mesh_pub_hwm.last_hwm_version,
@@ -125,10 +103,8 @@ void refresh_data_plane_limits_and_hwm (
 
 void drain_data_plane_queued_ingress (
   spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  const spot_data_plane_protocol_state_t *protocol_state_)
+  spot_data_plane_runtime_state_t *state_)
 {
-    (void) protocol_state_;
     (void) spot_reqrep_internal::drain_runtime_external_router_ingress_queue (
       runtime_);
     (void) spot_data_plane_forwarder_t::drain_pub_ingress_socket (runtime_,
@@ -140,34 +116,18 @@ void drain_data_plane_queued_ingress (
 
 void flush_data_plane_pending_output (
   spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  const spot_data_plane_protocol_state_t *protocol_state_)
+  spot_data_plane_runtime_state_t *state_)
 {
-    (void) protocol_state_;
     (void) spot_data_plane_forwarder_t::flush_mesh_pub_pending (runtime_, state_);
     (void) spot_data_plane_forwarder_t::flush_local_fanout_pending (runtime_,
                                                                     state_);
     (void) spot_data_plane_forwarder_t::flush_staged_messages (runtime_, state_);
 }
 
-void refresh_data_plane_poller_interest (
-  spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  const spot_data_plane_protocol_state_t *protocol_state_)
+void refresh_data_plane_poller_interest (spot_data_plane_runtime_state_t *state_)
 {
-    (void) runtime_;
-    (void) protocol_state_;
     spot_data_plane_forwarder_t::refresh_poller_interest (state_);
 }
-
-const data_plane_runtime_stage_t data_plane_runtime_stages[] = {
-    {&pump_data_plane_socket_commands},
-    {&sync_data_plane_attachment_targets},
-    {&apply_data_plane_socket_policy_once},
-    {&refresh_data_plane_limits_and_hwm},
-    {&drain_data_plane_queued_ingress},
-    {&flush_data_plane_pending_output},
-    {&refresh_data_plane_poller_interest}};
 
 void service_runtime_sockets (spot_runtime_t *runtime_,
                               spot_data_plane_runtime_state_t *state_,
@@ -176,10 +136,13 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     if (!runtime_ || !state_)
         return;
 
-    const size_t stage_count =
-      sizeof (data_plane_runtime_stages) / sizeof (data_plane_runtime_stages[0]);
-    for (size_t i = 0; i < stage_count; ++i)
-        data_plane_runtime_stages[i].run (runtime_, state_, protocol_state_);
+    pump_data_plane_socket_commands (state_);
+    sync_data_plane_attachment_targets (runtime_, state_, protocol_state_);
+    apply_data_plane_socket_policy_once (state_);
+    refresh_data_plane_limits_and_hwm (runtime_, state_);
+    drain_data_plane_queued_ingress (runtime_, state_);
+    flush_data_plane_pending_output (runtime_, state_);
+    refresh_data_plane_poller_interest (state_);
 }
 
 int drain_peer_ctrl_messages (spot_node_t *node_,

@@ -130,7 +130,8 @@ impl Message {
     /// This is a diagnostic helper only. It does not affect ownership or
     /// message lifetime.
     pub fn ref_count(&self) -> i32 {
-        unsafe { ffi::zlink_msg_refcnt(&self.inner) }
+        let mut err = ffi::zlink_config_result_t::ZLINK_CONFIG_OK;
+        unsafe { ffi::zlink_msg_refcnt(&self.inner, &mut err) }
     }
 
     /// Construct from a raw `zlink_msg_t` whose ownership is being transferred

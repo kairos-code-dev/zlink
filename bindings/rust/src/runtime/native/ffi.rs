@@ -919,7 +919,10 @@ unsafe extern "C" {
     pub fn zlink_msg_copy(dest: *mut zlink_msg_t, src: *mut zlink_msg_t) -> c_int;
     pub fn zlink_msg_data(msg: *mut zlink_msg_t) -> *mut c_void;
     pub fn zlink_msg_size(msg: *const zlink_msg_t) -> usize;
-    pub fn zlink_msg_refcnt(msg: *const zlink_msg_t) -> c_int;
+    pub fn zlink_msg_refcnt(
+        msg: *const zlink_msg_t,
+        error_out: *mut zlink_config_result_t,
+    ) -> c_int;
     pub fn zlink_msg_gets(msg: *const zlink_msg_t, property: *const c_char) -> *const c_char;
 
     // -- Socket create / close ---------------------------------------------

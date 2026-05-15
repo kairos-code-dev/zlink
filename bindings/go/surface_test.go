@@ -619,8 +619,8 @@ func TestSurfaceCallbackCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Spot)(nil), "OnDispatchEvent") {
 		t.Fatalf("Spot should expose OnDispatchEvent")
 	}
-	if !hasMethod((*zlink.Spot)(nil), "DrainChannelReplyFrom") {
-		t.Fatalf("Spot should expose DrainChannelReplyFrom")
+	if hasMethod((*zlink.Spot)(nil), "DrainChannelReplyFrom") {
+		t.Fatalf("Spot should not expose DrainChannelReplyFrom; channel reply progress is driven by the poller")
 	}
 	if !hasMethod((*zlink.Spot)(nil), "ReceiveSubscriptionEvent") {
 		t.Fatalf("Spot should expose ReceiveSubscriptionEvent")

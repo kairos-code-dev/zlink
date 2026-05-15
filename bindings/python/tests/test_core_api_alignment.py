@@ -268,7 +268,11 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 with node.create_spot() as spot:
                     self.assertIsInstance(spot, zlink.Spot)
                     self.assertTrue(hasattr(spot, "on_dispatch_event"))
-                    self.assertTrue(hasattr(spot, "drain_channel_reply_from"))
+                    self.assertFalse(
+                        hasattr(spot, "drain_channel_reply_from"),
+                        "channel reply progress is now driven by the per-spot"
+                        " poller; explicit drain must not be on the public API",
+                    )
                     spot.set_routing_id(b"spot-1")
                     self.assertEqual(spot.routing_id, zlink.RoutingId.from_bytes(b"spot-1"))
                     self.assertTrue(hasattr(spot, "send_to_spot"))

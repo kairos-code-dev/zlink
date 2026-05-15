@@ -3128,18 +3128,6 @@ class Spot:
         self._dispatch_handler = handler
         self._dispatch_handler_cb = callback
 
-    def drain_channel_reply_from(self, subject):
-        # Channel reply progress is now driven by the per-spot poller
-        # (zlink_poller_wait with ZLINK_POLLCOMPLETION). This method is
-        # retained as a no-op for source compatibility; new code should not
-        # rely on an explicit drain.
-        if hasattr(subject, "_handle"):
-            subject = subject._handle
-        if isinstance(subject, ctypes.c_void_p):
-            subject = subject.value
-        if not subject:
-            raise ValueError("subject must not be null")
-
     def recv_actor_join(self, *, flags=0):
         info = ZlinkActorJoinInfo()
         parts = ctypes.POINTER(ZlinkMsg)()

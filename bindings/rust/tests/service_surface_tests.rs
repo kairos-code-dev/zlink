@@ -100,7 +100,6 @@ fn spot_callback_surfaces_exist() {
     let _on_routed_receive = Spot::on_routed_receive::<fn(Received)>;
     let _on_dispatch_event = Spot::on_dispatch_event::<fn(SpotDispatchInfo<'_>)>;
     let dealer = ctx.dealer_socket().unwrap();
-    let _ = spot.drain_channel_reply_from(&dealer);
     let _ = dealer.set_channel_name("surface-channel");
     let _ = dealer.channel_name();
 }

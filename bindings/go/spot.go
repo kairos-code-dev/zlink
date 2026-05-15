@@ -1207,16 +1207,6 @@ func (s *Spot) OnDispatchEvent(handler func(*Spot, SpotDispatchInfo)) error {
 	return nil
 }
 
-func (s *Spot) DrainChannelReplyFrom(dealer *DealerSocket) error {
-	if s == nil || s.core == nil || s.core.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	if dealer == nil || dealer.raw() == nil {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	return nil
-}
-
 func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout

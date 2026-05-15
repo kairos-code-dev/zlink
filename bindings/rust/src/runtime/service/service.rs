@@ -3502,14 +3502,6 @@ impl Spot {
         }
     }
 
-    pub fn drain_channel_reply_from(
-        &self,
-        dealer: &crate::socket::DealerSocket,
-    ) -> Result<(), ConfigError> {
-        let _ = dealer;
-        Ok(())
-    }
-
     pub fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError> {
         check_config_rc(unsafe {
             ffi::zlink_set_routing_id(self.handle, rid.data().as_ptr() as *const c_void, rid.len())

@@ -1010,7 +1010,7 @@ class _MessageSocket(_Socket):
                 return False
             raise
 
-    def _recv_into_impl(self, received, *, flags=0):
+    def recv_into(self, received, *, flags=0):
         """Canonical caller-provided storage recv.
 
         Pass a long-lived :py:class:`Received` as the first positional
@@ -1033,9 +1033,6 @@ class _MessageSocket(_Socket):
         fresh = Received(owner, routing)
         received._adopt_from(fresh)
         return True
-
-    def recv_into(self, received, *, flags=0):
-        return self._recv_into_impl(received, flags=flags)
 
     def _attach_recv_handler(self, handler):
         if handler is None:

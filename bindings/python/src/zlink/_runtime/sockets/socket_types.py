@@ -483,7 +483,7 @@ class RouterSocket(
         if rc != 0:
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
-    def _recv_into_impl(self, received, *, flags=0):
+    def recv_into(self, received, *, flags=0):
         """Canonical caller-provided storage routed recv.
 
         Pass a long-lived :py:class:`Received` as the first positional
@@ -570,9 +570,6 @@ class RouterSocket(
         )
         received._adopt_from(fresh)
         return True
-
-    def recv_into(self, received, *, flags=0):
-        return self._recv_into_impl(received, flags=flags)
 
     def send_to_spot(self, dest_node_rid, dest_spot_rid):
         from ..service.spot import SendOp

@@ -70,7 +70,69 @@ class ReceivedMessage:
         self.close()
 
 
-class ReceivedMultipart:
+class _BaseReceived:
+    """Shared parts/lifecycle for received-message containers.
+
+    ReceivedMultipart and TopicMessage previously carried byte-identical
+    copies of the iterator, length, byte-extraction, single-part, and
+    context-manager methods; they only diverge in which routing fields
+    their __init__/_adopt_from manage. The common surface lives here so
+    the two stay in lockstep.
+    """
+
+    _owner = None
+    parts = ()
+
+    @staticmethod
+    def _build_parts(owner):
+        return tuple(
+            ReceivedMessage._from_owner(owner, index)
+            for index in range(owner._part_count)
+        )
+
+    def __iter__(self):
+        return iter(self.parts)
+
+    def __len__(self):
+        return len(self.parts)
+
+    def to_bytes_list(self):
+        return [message.to_bytes() for message in self.parts]
+
+    def is_single_part(self):
+        return len(self.parts) == 1
+
+    def first_part(self):
+        if not self.parts:
+            raise RecvError(RecvResult.NO_DATA, 0)
+        return self.parts[0]
+
+    def single_part_or_throw(self):
+        if len(self.parts) != 1:
+            raise RecvError(RecvResult.NO_DATA, 0)
+        return self.parts[0]
+
+    def close(self):
+        if self._owner is None:
+            return
+        self._owner.close()
+        self._owner = None
+        self.parts = ()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.close()
+
+
+class ReceivedMultipart(_BaseReceived):
     def __init__(
         self,
         owner=None,
@@ -95,10 +157,7 @@ class ReceivedMultipart:
             self._send_sender = None
             return
         self._owner = owner
-        self.parts = tuple(
-            ReceivedMessage._from_owner(owner, index)
-            for index in range(owner._part_count)
-        )
+        self.parts = self._build_parts(owner)
         self.routing_id = routing_id
         self.spot_rid = spot_rid
         self.request_seq = request_seq
@@ -131,49 +190,8 @@ class ReceivedMultipart:
         source._reply_sender = None
         source._send_sender = None
 
-    def __iter__(self):
-        return iter(self.parts)
 
-    def __len__(self):
-        return len(self.parts)
-
-    def to_bytes_list(self):
-        return [message.to_bytes() for message in self.parts]
-
-    def is_single_part(self):
-        return len(self.parts) == 1
-
-    def first_part(self):
-        if not self.parts:
-            raise RecvError(RecvResult.NO_DATA, 0)
-        return self.parts[0]
-
-    def single_part_or_throw(self):
-        if len(self.parts) != 1:
-            raise RecvError(RecvResult.NO_DATA, 0)
-        return self.parts[0]
-
-    def close(self):
-        if self._owner is None:
-            return
-        self._owner.close()
-        self._owner = None
-        self.parts = ()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        self.close()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        self.close()
-
-
-class TopicMessage:
+class TopicMessage(_BaseReceived):
     def __init__(
         self,
         topic=None,
@@ -190,10 +208,7 @@ class TopicMessage:
             return
         self.topic = topic
         self._owner = owner
-        self.parts = tuple(
-            ReceivedMessage._from_owner(owner, index)
-            for index in range(owner._part_count)
-        )
+        self.parts = self._build_parts(owner)
         self.routing_id = routing_id
         self.request_seq = request_seq
 
@@ -215,47 +230,6 @@ class TopicMessage:
         source.parts = ()
         source.routing_id = None
         source.request_seq = None
-
-    def __iter__(self):
-        return iter(self.parts)
-
-    def __len__(self):
-        return len(self.parts)
-
-    def to_bytes_list(self):
-        return [message.to_bytes() for message in self.parts]
-
-    def is_single_part(self):
-        return len(self.parts) == 1
-
-    def first_part(self):
-        if not self.parts:
-            raise RecvError(RecvResult.NO_DATA, 0)
-        return self.parts[0]
-
-    def single_part_or_throw(self):
-        if len(self.parts) != 1:
-            raise RecvError(RecvResult.NO_DATA, 0)
-        return self.parts[0]
-
-    def close(self):
-        if self._owner is None:
-            return
-        self._owner.close()
-        self._owner = None
-        self.parts = ()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        self.close()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        self.close()
 
 
 class Received(ReceivedMultipart):

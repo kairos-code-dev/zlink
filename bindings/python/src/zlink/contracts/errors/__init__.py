@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
-from ..._runtime.core.core import (
+from .errors import (
     BindError,
     CloseError,
     ConfigError,

@@ -108,6 +108,8 @@ _ERRNO_ENOTSUP = getattr(errno, "ENOTSUP", getattr(errno, "EOPNOTSUPP", 95))
 _SPOT_INIT_TOKEN = object()
 _UNSET = object()
 _REQUEST_PROGRESS_IDLE_GRACE_S = 0.1
+_PROGRESS_SPIN_ITERATIONS = 32
+_PROGRESS_MAX_DELAY_S = 0.008
 
 _SPOT_ROUTED_HANDLER = ctypes.CFUNCTYPE(
     None,
@@ -666,23 +668,34 @@ class _RequestProgressPump:
 
     def _run(self):
         idle_since = None
+        idle_iterations = 0
         try:
             while not self._stop.is_set():
                 if self._is_active():
                     idle_since = None
+                    idle_iterations = 0
                     try:
                         self._step()
                     except Exception:
                         pass
-                else:
-                    if idle_since is None:
-                        idle_since = time.monotonic()
-                    elif (
-                        time.monotonic() - idle_since
-                        >= _REQUEST_PROGRESS_IDLE_GRACE_S
-                    ):
+                    continue
+                if idle_since is None:
+                    idle_since = time.monotonic()
+                elif (
+                    time.monotonic() - idle_since
+                    >= _REQUEST_PROGRESS_IDLE_GRACE_S
+                ):
+                    break
+                idle_iterations += 1
+                if idle_iterations <= _PROGRESS_SPIN_ITERATIONS:
+                    if self._stop.wait(0):
                         break
-                self._stop.wait(0.001)
+                    time.sleep(0)
+                    continue
+                shift = min(3, idle_iterations - _PROGRESS_SPIN_ITERATIONS - 1)
+                delay = min(_PROGRESS_MAX_DELAY_S, (1 << shift) / 1000.0)
+                if self._stop.wait(delay):
+                    break
         finally:
             with self._lock:
                 if self._thread is threading.current_thread():

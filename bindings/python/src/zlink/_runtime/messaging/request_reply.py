@@ -147,6 +147,10 @@ class _PendingRequest:
             _report_unhandled_callback_exception(self.callback)
 
 
+_PROGRESS_SPIN_ITERATIONS = 32
+_PROGRESS_MAX_DELAY_S = 0.008
+
+
 class _RequestProgressPump:
     def __init__(self, step, is_active):
         self._step = step
@@ -167,6 +171,7 @@ class _RequestProgressPump:
 
     def _run(self):
         try:
+            idle = 0
             while self._is_active():
                 try:
                     self._step()
@@ -174,7 +179,12 @@ class _RequestProgressPump:
                     pass
                 if not self._is_active():
                     break
-                time.sleep(0.001)
+                idle += 1
+                if idle <= _PROGRESS_SPIN_ITERATIONS:
+                    time.sleep(0)
+                    continue
+                shift = min(3, idle - _PROGRESS_SPIN_ITERATIONS - 1)
+                time.sleep(min(_PROGRESS_MAX_DELAY_S, (1 << shift) / 1000.0))
         finally:
             with self._lock:
                 if self._thread is threading.current_thread():

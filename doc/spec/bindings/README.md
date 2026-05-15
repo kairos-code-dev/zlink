@@ -20,9 +20,9 @@
 각 바인딩 구현이 실제로 외부에 제공해야 하는 public API contract를 정의한다.
 이 문서들이 규정하는 것은 공개 타입, 메서드, 시그니처, 반환값, 오류 의미이며,
 바인딩 구현이 노출하는 public 인터페이스는 이 계약과 달라지면 안 된다.
-다만 이 문서는 실제 구현 클래스 계층이나 내부 파일 구조까지 규정하지는 않는다.
-각 바인딩은 같은 공개 계약을 유지하는 범위에서 내부 구조를 언어 관례에 맞게
-자유롭게 설계할 수 있다.
+또한 C를 제외한 wrapper binding은 `Contracts/`와 `Runtime/` 물리 구조를
+따른다. 이 고정 구조 안에서 각 바인딩은 같은 공개 계약을 유지하는 범위에서
+타입 설계, export 방식, package/module 선언을 언어 관례에 맞게 선택할 수 있다.
 
 이 문서는 단순 스타일 가이드가 아니다. 다음을 위한 설계 기준 문서다.
 - public API 설계 기준
@@ -179,12 +179,20 @@ core가 aggregate 함수와 `*_part` substrate를 모두 제공하던 시기에�
 ## Public vs Internal API Boundary
 
 각 binding은 public contract와 internal implementation surface를 분리해야 한다.
-이 문서와 각 언어별 spec에 적힌 것만 public API다.
+이 문서와 각 언어별 README는 public API의 경계와 라이브러리 모양을 정의한다.
+정확한 함수, 메서드, 타입 목록은 C를 제외한 wrapper binding의
+`bindings/<lang>/src/<library-root>/Contracts/`가 소유한다. 설치 헤더,
+package entrypoint, `.d.ts`, `__init__.py`, `lib.rs` re-export는 이 계약을
+사용자에게 노출하는 projection이다. C는 예외로, `core/include/zlink.h`가
+public C ABI의 단일 기준이다.
 
 아래 원칙은 모든 binding에 공통으로 적용한다.
 
-- public으로 문서화되지 않은 타입, 함수, 메서드, 모듈, 패키지, 네임스페이스는
-  모두 internal implementation detail로 본다.
+- 언어별 public contract source에 포함되지 않은 타입, 함수, 메서드, 모듈,
+  패키지, 네임스페이스는 모두 internal implementation detail로 본다.
+- 언어별 README는 모든 public member를 반복해서 나열하지 않는다. 대신
+  public contract source 위치, source layout, API 변경 절차, runtime/internal
+  경계, 성능 정책을 정의한다.
 - internal API는 이름만 internal처럼 보이게 두면 충분하지 않다. 가능한 언어는
   패키지 export, module export, assembly visibility, crate re-export,
   package `exports`, `internal/` directory 같은 언어 고유 경계를 사용해
@@ -201,9 +209,156 @@ core가 aggregate 함수와 `*_part` substrate를 모두 제공하던 시기에�
 - internal 구조를 리팩터링할 자유는 보장하되, 그 자유는 public contract를
   유지하는 범위 안에서만 허용된다.
 
-즉 이 문서의 목적은 "public API를 문서화하는 것"일 뿐 아니라,
-"public이 아닌 API를 public처럼 사용하지 못하게 경계를 강제하는 것"까지
-포함한다.
+즉 이 문서의 목적은 public API 경계와 라이브러리 모양을 정의하는 것뿐 아니라,
+public이 아닌 API를 public처럼 사용하지 못하게 경계를 강제하는 것까지 포함한다.
+
+### Language-Specific Contract / Runtime Separation
+
+C를 제외한 wrapper binding은 public contract와 runtime implementation을 물리
+폴더로 분리해야 한다. 이 폴더 구조는 바인딩마다 다르게 만들지 않는다. 각
+wrapper binding은 source root 아래에 `Contracts/`와 `Runtime/`을 두고, 그 안의
+카테고리 이름도 같은 이름으로 유지한다. 언어별 차이는 파일 확장자, 타입 설계,
+export 방식, package/module 선언에서만 허용한다.
+
+C는 native C ABI baseline이다. C public contract는 `core/include/zlink.h`이고,
+`bindings/c`는 그 C API를 기준으로 sample, test, perf, packaging과 필요한 mapping
+정책을 정렬한다. C에는 별도 `Contracts/`와 `Runtime/` 계층을 강제하지 않는다.
+
+`Contracts/`는 사용자가 확인해야 하는 public contract source다. `Runtime/`은
+native handle, callback bridge, request progress pump, helper substrate 호출,
+object lifetime 보정 같은 구현 세부사항을 담는다. `Runtime/Native/`는 FFI,
+P/Invoke, JNI/Panama, N-API, cgo 같은 native bridge 전용 위치다.
+
+`Contracts/`와 `Runtime/`은 repository ownership folder다. 이것이 곧 public
+package, namespace, module, import path 이름이라는 뜻은 아니다. Java, Go, Rust,
+Python처럼 디렉터리 구조가 언어의 package/module 경로에 직접 영향을 주는
+언어는 `Contracts`나 `Runtime`을 public import path로 노출하지 않는다. 대신
+고정 폴더의 계약과 구현을 언어 관례에 맞는 public package/module로 projection
+한다.
+
+#### Contract / Runtime Placement Rules
+
+아래 기준은 C를 제외한 wrapper binding에 적용한다. 새 public API를 추가하거나
+구현을 옮길 때 이 표를 먼저 확인한다.
+
+| 항목 | 위치 |
+|---|---|
+| 사용자가 호출하거나 타입으로 참조하는 공개 동작 계약 | `Contracts/<Category>/` |
+| public constructor, factory, builder 시작점의 계약 | `Contracts/<Category>/` |
+| public free function, static facade, extension helper, module function | `Contracts/<Category>/` |
+| public builder convenience method or helper | `Contracts/<Category>/` |
+| DTO, value object, enum, public error/result type | `Contracts/<Category>/` |
+| runtime concrete class, socket kernel, handle owner | `Runtime/<Category>/` |
+| request progress pump, callback trampoline, part-loop helper | `Runtime/<Category>/` |
+| native handle wrapper, FFI declaration, struct mirror, marshalling helper | `Runtime/Native/` |
+| generated native loading code, platform artifact lookup | `Runtime/Native/` |
+
+판정 규칙은 아래와 같다.
+
+- `Contracts/` 타입의 public signature는 `Runtime/Native/` 타입을 참조하지
+  않는다.
+- `Runtime/`에 user-facing method가 필요해지면 먼저 `Contracts/`에 계약을
+  추가한다. runtime 구현은 그 계약을 구현하거나 projection한다.
+- 사용자가 직접 호출하는 helper가 class method, static method, free function,
+  extension method, module function 중 어떤 모양이든 public 이면 `Contracts/`에
+  계약을 둔다. 단순 편의 함수라는 이유로 runtime 전용 위치에 남기지 않는다.
+- public factory가 `Runtime/` concrete type을 반환할 수는 있다. 단 그 생성
+  동작과 반환 타입의 사용자 관찰 가능 동작은 `Contracts/`에서 설명 가능해야
+  한다.
+- `Runtime/` 폴더명, module path, package path 자체를 public API로 노출하지
+  않는다. 다만 `Context`, socket, `SpotNode`, `Poller`, `Timer` 같은 기본 구현
+  클래스나 타입은 언어별 public projection으로 노출할 수 있다. 이 경우 사용자가
+  관찰하는 public behavior는 `Contracts/`에서 설명 가능해야 한다.
+- `Contracts/` 타입의 public signature는 native bridge 타입을 참조하지 않는다.
+  concrete value object 내부가 native-backed storage를 써야 하는 경우에도
+  P/Invoke/JNI/N-API/cgo 선언과 marshalling 전용 struct mirror는
+  `Runtime/Native/`에 둔다.
+- 값만 담는 DTO/value/enum/error/result 타입은 구체 타입으로 둔다. symmetry를
+  이유로 의미 없는 interface, trait, protocol로 감싸지 않는다.
+
+고정 카테고리는 아래와 같다.
+
+- `Core/`: context, version, capability, utility resource.
+- `Messaging/`: message, routing id, received, topic message, multipart.
+- `Sockets/`: socket contracts, socket implementations, socket options.
+- `Monitoring/`: monitor, poller, timer, readiness event.
+- `Service/`: registry, discovery, SPOT, actor, topology.
+- `Errors/`: public error/result/exception domains and runtime mapping.
+- `Enums/`: public enum domains and runtime enum conversion.
+- `Native/`: `Runtime/` 아래에만 두는 native bridge category.
+
+이 카테고리 이름은 대소문자까지 고정한다. 바인딩별로 번역하거나 줄여 쓰지
+않는다. 특정 언어에서 당장 파일이 없더라도 이 구조를 유지한다. 새 카테고리가
+필요하면 이 공통 정책과 C를 제외한 언어별 README의 구조를 함께 바꾼 뒤 사용한다.
+`Contracts/Native/`는 만들지 않는다. native bridge는 항상 `Runtime/Native/`에
+둔다.
+
+wrapper binding 공통 구조는 아래 모양으로 고정한다. C를 제외한 각 언어 README는
+같은 구조를 그대로 보여야 하며, 실제 구현도 이 구조를 목표로 정리한다.
+
+```text
+bindings/<lang>/
++-- src/
+|   +-- <library-root>/
+|   |   +-- Contracts/
+|   |   |   +-- Core/
+|   |   |   +-- Messaging/
+|   |   |   +-- Sockets/
+|   |   |   +-- Monitoring/
+|   |   |   +-- Service/
+|   |   |   +-- Errors/
+|   |   |   +-- Enums/
+|   |   +-- Runtime/
+|   |   |   +-- Core/
+|   |   |   +-- Messaging/
+|   |   |   +-- Sockets/
+|   |   |   +-- Monitoring/
+|   |   |   +-- Service/
+|   |   |   +-- Errors/
+|   |   |   +-- Enums/
+|   |   |   +-- Native/
++-- codecs/
++-- tests/
++-- samples/
++-- perf/
++-- native/
++-- runtimes/
+```
+
+공통으로 적용되는 기준은 아래와 같다.
+
+- 사용자가 확인해야 하는 공개 API 계약은 찾기 쉬운 위치에 모여 있어야 한다.
+- native handle, callback bridge, request progress pump, helper substrate 호출,
+  object lifetime 보정 같은 구현 세부사항은 공개 계약과 섞이지 않아야 한다.
+- DTO, value object, enum, error/result object는 구체 타입으로 유지한다.
+  값만 담는 타입을 의미 없는 interface나 trait로 감싸지 않는다.
+- socket, context, monitor, timer, service node, spot, actor처럼 native
+  resource와 동작을 숨기는 타입은 언어 관례에 맞는 추상 경계를 둘 수 있다.
+- perf, sample, framework adapter도 원칙적으로 공개 contract를 기준으로
+  작성한다. 같은 저장소 안에 있다는 이유로 runtime 내부 타입에 의존하면
+  public/internal 경계가 약해진다.
+
+언어별 적용 방향은 다음과 같다.
+
+| Binding | 적용 기준 |
+|---|---|
+| C | `core/include/zlink.h`가 public C ABI의 단일 기준이다. `bindings/c`는 별도 contract/runtime 계층을 추가하지 않고, C API 기준의 mapping, sample, test, perf, packaging 정책만 정렬한다. |
+| C++ | `src/zlink/Contracts/`가 공개 C++ 계약 위치다. 설치되는 `include/zlink/...` 헤더는 이 계약의 projection이다. RAII class와 concrete value를 우선하고, public class를 virtual interface로 과도하게 감싸지 않는다. |
+| .NET | `src/Zlink/Contracts/` 아래에 public contract interface와 value/DTO 타입을 모으고, native handle 구현과 callback bridge는 같은 카테고리의 `Runtime/` 아래에 둔다. DTO와 value object는 concrete로 유지한다. |
+| Java | `src/zlink/Contracts/`가 공개 계약 위치다. Java package와 JPMS module export는 이 계약을 `systems.zlink` 아래의 소문자 package로 projection한다. `systems.zlink.Contracts` 같은 public package를 만들지 않는다. |
+| Node | `src/zlink/Contracts/`가 공개 계약 위치다. TypeScript `type`/`interface`, `index.ts`, `.d.ts`, package export는 이 계약을 노출하는 projection이다. runtime class 구현과 native addon은 `Runtime/` 아래에 숨긴다. |
+| Python | `src/zlink/Contracts/`가 공개 계약 위치다. `__init__.py` export와 type hint는 이 계약을 `zlink` package로 projection한다. `Protocol`은 type checking 목적일 때만 사용하고, native/FFI 구현은 `Runtime/Native/`에 둔다. |
+| Go | `src/zlink/Contracts/`가 공개 계약 위치다. Go package export는 이 계약을 flat `zlink` package로 projection한다. 제공자 package가 큰 interface를 미리 만들지 않고, concrete exported type과 작은 method set을 유지한다. |
+| Rust | `src/zlink/Contracts/`가 공개 계약 위치다. `lib.rs` re-export와 rustdoc public module은 이 계약을 idiomatic Rust module로 projection한다. resource 동작 추상화가 필요한 경우에만 trait를 쓴다. |
+
+리뷰에서는 단순히 "interface가 있는가"가 아니라 아래 질문으로 판단한다.
+
+- 공개 contract만 보고 사용자가 사용할 수 있는 API를 이해할 수 있는가?
+- 공개 contract가 runtime concrete type, native handle, helper bridge 타입을
+  직접 요구하지 않는가?
+- 값 타입을 추상화하느라 오히려 equality, ownership, 비용 모델이 흐려지지
+  않았는가?
+- 언어 생태계의 자연스러운 캡슐화 수단을 사용했는가?
 
 ### Package / Namespace Identity Policy
 
@@ -214,16 +369,61 @@ core가 aggregate 함수와 `*_part` substrate를 모두 제공하던 시기에�
 
 | Binding | Canonical public identity |
 |---|---|
+| C | public header는 `zlink.h`, symbol prefix는 `zlink_` |
+| C++ | namespace는 `zlink`, 설치 header root는 `include/zlink/` |
 | .NET | NuGet package id와 root namespace는 `Systems.Zlink` |
 | Java | Maven group id, JPMS module, root package는 `systems.zlink` |
+| Node | npm package는 `@zlink-systems/zlink`, public entrypoint는 package root |
+| Python | distribution name과 import package는 `zlink` |
+| Go | module path는 `zlink.systems/zlink`, public package는 `zlink` |
+| Rust | crate name과 public crate root는 `zlink` |
 
 - .NET extension package와 namespace는 `Systems.Zlink.*` 아래에 둔다.
   예: `Systems.Zlink.Codecs.Protobuf`.
 - Java extension package는 `systems.zlink.*` 아래에 둔다.
   예: `systems.zlink.codec.protobuf`.
+- Go extension module이나 subpackage를 추가할 때는 `zlink.systems/zlink/...`
+  아래에서 출발한다.
+- Node, Python, Rust의 extension package 이름은 생태계 관례를 따르되,
+  public identity가 `zlink`와 `zlink.systems` 도메인에서 벗어나지 않게 한다.
 - 새 문서, 샘플, 테스트는 canonical identity만 사용한다.
 - 기존 `Zlink` root namespace 또는 package id가 구현 호환성 때문에 남아 있더라도
   canonical public identity가 아니며, 새 public API를 그 아래에 추가하지 않는다.
+
+### Core Interface Shape Rules
+
+이 절은 C를 제외한 wrapper binding의 필수 공개 인터페이스 모양을 요약한다.
+자세한 계약은 뒤의 recv 절과 operation builder 절을 따른다. C는
+`core/include/zlink.h`의 함수형 ABI를 그대로 유지하므로 이 wrapper 규칙을
+적용하지 않는다.
+
+- data-plane `recv`와 `subscribe` 계열은 caller-provided output storage를
+  받는다. `Received`, `TopicMessage`, `SubscriptionEvent` 같은 결과 객체를
+  호출자가 만들고, binding은 그 객체를 갱신한다.
+- data-plane receive 반환값은 "데이터를 받았는가"만 표현한다. hard error는
+  언어 관용에 맞는 typed exception, `error`, `Result`로 전달한다.
+- `Monitor.recv`, `Timer.recv` 같은 control-plane API는 호출 빈도가 낮고
+  결과가 작으므로 언어별 nullable, optional, value-return 형태를 허용한다.
+- `Spot.recvActorJoin` 같은 service control/admission receive도 data-plane
+  drain 경로가 아니므로 언어별 nullable, optional, result-value 형태를 허용한다.
+  단 no-data와 hard error는 분리되어야 하며, public 계약에서 이 예외를 분명히
+  설명해야 한다.
+- `send`, routed send, `publish`, `request`, `reply`, SPOT send/request/reply,
+  Actor 위치·session attach 계열은 operation builder를 반환한다.
+- builder 시작점 인자는 목적지, topic, channel, routing id, request sequence처럼
+  operation의 대상만 받는다. payload, flags, timeout, callback, async/callback
+  submit 선택은 builder 단계에서 표현한다.
+- multipart payload는 builder의 `message(...)` 반복으로 누적한다. 언어 관례에
+  따라 `messages(...)` convenience를 둘 수 있지만, canonical 경로는 builder다.
+  이런 convenience도 public 이면 builder contract의 일부이며 `Contracts/`에
+  위치해야 한다.
+- `sendNoWait`, `publishWithFlags`, `requestAsync`, `requestCallback`처럼 operation
+  시작점 이름을 늘리는 방식은 만들지 않는다. 같은 operation 이름을 유지하고
+  builder 단계가 변형을 흡수한다. 단, builder의 terminal method는 언어 관례에
+  맞게 `SubmitAsync`, `submit_async`, `submit(callback)` 같은 이름을 사용할 수
+  있다.
+- sample, perf, framework adapter는 이 canonical 인터페이스만 사용한다. runtime
+  내부 helper나 legacy overload를 기준으로 새 코드를 작성하지 않는다.
 
 ### Send/Recv Public Shape Is Fixed
 
@@ -273,6 +473,9 @@ canonical recv 표면은 이 절을 만족해야 한다.
 `Monitor.recv` (`MonitorEvent`) 와 `Timer.recv` (`uint64`) 는 control plane 이며
 호출 빈도가 낮고 결과가 가벼운 value 형이므로 이 절의 적용 대상이 아니다.
 return-form (또는 언어별 `Optional` / nullable / `Option`) 을 유지한다.
+`Spot.recvActorJoin` 처럼 Actor join admission 요청을 받는 service control-plane
+API도 같은 예외를 적용할 수 있다. 이 경우 public 계약은 no-data 표현과 hard
+error 표현을 분리해서 설명해야 한다.
 
 #### 기본 계약
 
@@ -282,8 +485,9 @@ return-form (또는 언어별 `Optional` / nullable / `Option`) 을 유지한다
 - 반환값은 "받았는가" boolean (또는 success/no-data 를 구분하는 동등 표현) 만
   포함한다. hard error 는 언어 관용대로 예외 또는 error code 로 전달한다.
 - `recv_flags_t::dontwait` 등 non-blocking flag 가 적용된 호출에서 데이터가
-  없으면 false / `Option::None` / `nil` 같이 언어별 "데이터 없음" 표현으로
-  반환한다. exception 으로 EAGAIN 을 알리지 않는다.
+  없으면 `false`, `recv_result_t::no_data`, `(false, nil)`, `Ok(false)` 같이
+  caller-provided storage와 함께 쓰는 no-data 표현을 반환한다. exception 으로
+  EAGAIN 을 알리지 않는다.
 - multipart 결과는 caller 결과 저장소에 누적 노출한다. binding 이 임시
   컬렉션을 만들어 caller 결과 저장소와 별도로 캐싱하면 안 된다 (할당이 사라지지
   않는다).
@@ -385,6 +589,9 @@ attach 표면**에서 동일한 패턴으로 노출한다. 이름은 언어 관�
   `ActorBindOp`, `ActorUnbindOp` 같은 언어별 operation builder를 반환한다.
   서로 다른 시작점이라도 multipart payload 표현은 모두 `.message(...)`
   반복으로 통일한다.
+- `.messages(...)`, `.flags(...)`, `.timeout(...)`, `.submitAsync(...)`,
+  callback submit 같은 builder convenience와 terminal method도 public 이면
+  builder contract의 일부다. runtime 내부 shortcut으로만 정의하지 않는다.
 - payload는 builder의 `message(part)` 반복 호출로 누적한다. 단일 payload와
   multipart payload를 별도 시작점 오버로드로 나누지 않는다. 외부 List/Vector
   컨테이너로 multipart를 포장하지 않는다.
@@ -535,7 +742,8 @@ streamSocket.bindActor(sessionRid, actorRef)
 - SPOT dispatch consumer 는 `subscribe` / `recv_routed` 를 각 언어의
   no-data 표현이 나올 때까지 drain 하는 규칙을 문서와 sample 에 같이 반영해야
   한다. 예를 들어 C++은 `recv_result_t::no_data` 반환값을 사용하고,
-  Java/Node/Python은 `false` 또는 `None` 같은 언어별 empty 표현을 사용한다.
+  Java/Node/Python은 caller-provided result storage를 채우는 API에서 `false`를
+  사용한다.
 - 첫 SPOT routed recv 는 hidden activation, hidden queue open, hidden target registration 을
   수행하면 안 된다. 바인딩도 같은 전제를 두고 lazy bootstrap 로직을 올리지 않는다.
 - `zlink_send_ready_handler()` 와 poller `ZLINK_POLLOUT` 은 같은
@@ -606,7 +814,7 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   `StreamSocket.sendBoundActor(...)` 를 사용한다.
 - Actor recv info 의 `source_node_rid` 와 `source_session_rid` 는 core 구조체의
   값 필드이므로 nullable / optional 로 문서화하지 않는다. no-data 는 recv 결과
-  자체의 empty/null/exception 표현으로만 전달한다.
+  자체의 `false`, no-data result, `Ok(false)` 같은 표현으로만 전달한다.
 - Actor readable dispatch event는 어떤 Actor를 drain해야 하는지 알 수 있어야
   한다. callback을 다른 실행 컨텍스트로 넘기는 언어는 callback 진입 시점에
   Actor part를 nonblocking으로 미리 drain해서 public dispatch info가 그 part를
@@ -805,23 +1013,23 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
      `ZlinkError` 로 승격한다. 에러 값에는 `int` 코드가 포함된다.
      `?` 연산자로 호출측 전파를 쓴다.
 3. **`Try*` 대신 `flags` 와 반환 규칙으로 blocking 여부를 표현한다.**
-   - C / Go / Rust 는 기존 C 스타일, return-based 계약을 유지한다.
+   - C 는 C ABI 함수형 계약을 유지한다.
+   - Go / Rust 는 return-based 오류 전달을 유지하되, wrapper binding의
+     ref-out recv와 operation builder 규칙은 그대로 적용한다.
    - `.NET` / `Java` / `Node` / `Python` / `C++` 는 public
      `trySend`, `tryRecv`, `tryRequest` 를 두지 않는다.
-   - 위 언어에서 blocking과 non-blocking은 같은 함수 이름과 `flags` 인자로
+   - C ABI 는 blocking 과 non-blocking 을 함수 인자의 `flags` 로 표현한다.
+   - wrapper binding 의 send/publish/request/reply 계열은 builder 의
+     `.flags(...)` 단계로 non-blocking submit 을 표현한다. operation 시작점
+     시그니처에 별도 `flags` 인자를 늘리지 않는다.
+   - wrapper binding 의 data-plane `recv`, routed recv, `subscribe` 는
+     caller-provided result storage 를 채우고, 반환값은 "데이터를 받았는가"만
      표현한다.
-   - `send`, `publish`, callback completion `request` 는 성공 여부를 `bool`
-     계열 반환값으로 드러낸다.
-   - blocking submit 성공 시 반환값은 항상 `true` 다.
-   - non-blocking submit 에서 temporary backpressure 만 `false` 로 돌려주고,
-     route-not-ready 를 포함한 다른 submit 오류는 예외로 전달한다.
-   - `recv`, `subscribe` 는 payload 를 돌려주는 함수이므로 `bool` 이 아니라
-     payload 또는 empty 표현을 반환한다.
-   - non-blocking receive 에서 현재 읽을 데이터가 없으면 언어 관용구에 맞는
-     empty 표현 (`null`, `None`, `optional` 등) 을 반환하고, 진짜 오류만
-     예외 또는 반환 에러로 전달한다.
-   - coroutine / await request 는 지금처럼 별도 `request` surface 를 유지하고,
-     submit flags 를 받지 않는다.
+   - non-blocking receive 에서 현재 읽을 데이터가 없으면 `false` / `nil,false` /
+     `Ok(false)` 같은 언어별 no-data 표현을 반환하고, 진짜 오류만 예외 또는
+     반환 에러로 전달한다.
+   - coroutine / await request 는 같은 `request` operation builder 의 async
+     submit 단계로 선택하고, submit flags 를 받지 않는다.
    - `sendNoWait`, `recvNoWait`, `publishNoWait` 같은 transport-style 이름은
      공개 surface 에 두지 않는다.
 4. **`INTERNAL_ERROR` 상세 조회.**
@@ -943,7 +1151,8 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
   - `.NET` / `Java` / `Node` / `Python`
     - `send`, `publish`, callback `request`: temporary backpressure 면
       `false`
-    - `recv`, `subscribe`: 현재 데이터가 없으면 empty 표현
+    - caller-provided `recv`, `subscribe`,
+      `receiveSubscriptionEvent`: 현재 데이터가 없으면 `false`
     - 그 외 실패: typed exception
   - C++
     - operation builder `send` / `publish` / callback `request`: temporary
@@ -954,12 +1163,13 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
     - binding-local 실패만 `-1`을 반환하고 `errno`를 설정
   - return-based 언어 (C/Go/Rust): 에러 반환 (C=result enum,
     Go=`error`, Rust=`Err(E)`).
-- 언어별 flags 표현 (builder 단계로 통일):
+- 언어별 flags 표현:
   - C: `int flags = 0` (C ABI는 builder 정책 적용 안 됨)
-  - C++ / Java / .NET / Node / Python / Go / Rust: builder의 `.flags(...)`
-    단계로 표현한다. 모든 send/request/reply/publish/Actor 송신·attach
-    표면이 builder를 반환하므로 raw socket 시그니처에 별도 `flags` 인자나
-    `_with_flags` 변형을 두지 않는다.
+  - C++ / Java / .NET / Node / Python / Go / Rust 송신·요청·응답·게시·Actor
+    attach 표면: builder의 `.flags(...)` 단계로 표현한다. operation 시작점
+    시그니처에 별도 `flags` 인자나 `_with_flags` 변형을 두지 않는다.
+  - C++ / Java / .NET / Node / Python / Go / Rust data-plane recv/subscribe 표면:
+    caller-provided output storage와 함께 `flags` 인자를 받는다.
 
 ### Naming Policy
 
@@ -2136,7 +2346,10 @@ public surface 의 일부가 아니다. 바인딩은 다음 함수나 상수를 
 
 ```c
 typedef void (*zlink_reply_handler_fn)(
-    zlink_request_result_t result_, zlink_msg_t *parts, size_t part_count, void *userdata);
+    zlink_request_result_t result_,
+    zlink_msg_t *parts,
+    size_t part_count,
+    void *userdata);
 
 ```
 
@@ -2342,8 +2555,12 @@ zlink_recv_result_t zlink_spot_subscribe_part(void *spot,
     zlink_part_flag_t *has_more_out, zlink_recv_flags_t flags);
 
 /* subscription filter */
-zlink_config_result_t zlink_set_subscription(void *handle, const char *filter);
-zlink_config_result_t zlink_unset_subscription(void *handle, const char *filter);
+zlink_config_result_t zlink_set_subscription(
+    void *handle,
+    const char *filter);
+zlink_config_result_t zlink_unset_subscription(
+    void *handle,
+    const char *filter);
 ```
 
 바인딩 규칙:
@@ -2535,12 +2752,12 @@ callback 안에서 event 종류를 확인하고 recv 를 호출하면서 Spot �
 
 ```c
 typedef enum zlink_spot_dispatch_event_t {
-    ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,  /* pub/sub readable work */
-    ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE    = 2,  /* routed/request readable work */
-    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE     = 3,  /* timer fire */
-    ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4, /* channel reply completion */
-    ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE     = 5,  /* actor part readable work */
-    ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE = 6  /* actor join request readable work */
+    ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
+    ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE = 2,
+    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3,
+    ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4,
+    ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE = 5,
+    ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE = 6
 } zlink_spot_dispatch_event_t;
 
 typedef enum zlink_spot_dispatch_subject_kind_t {
@@ -2670,7 +2887,10 @@ typedef void (*zlink_spot_handler_fn)(
     uint64_t request_seq,
     zlink_msg_t *parts, size_t part_count, void *userdata);
 
-zlink_handler_result_t zlink_spot_handler(void *spot, zlink_spot_handler_fn handler, void *userdata);
+zlink_handler_result_t zlink_spot_handler(
+    void *spot,
+    zlink_spot_handler_fn handler,
+    void *userdata);
 zlink_recv_result_t zlink_spot_recv_part(void *spot, ...);
 ```
 
@@ -4125,7 +4345,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
    - 이름 정규화로 교체된 옛 이름의 함수/메서드/타입이 남아 있지 않다.
    - 호출되지 않는 private/internal helper가 남아 있지 않다.
    - 참조되지 않는 상수, enum 값, 타입 alias가 남아 있지 않다.
-   - 주석으로 처리된 코드 블록(`// removed`, `// deprecated`, `// TODO: remove`)이
+   - 주석으로 처리된 코드 블록(`// removed`, `// deprecated`, `// remove later`)이
      남아 있지 않다.
    - 빈 파일, 빈 클래스, 빈 모듈이 남아 있지 않다.
    - dead code는 "나중에 쓸 수 있으니까" 남겨 두지 않는다. 필요하면 git

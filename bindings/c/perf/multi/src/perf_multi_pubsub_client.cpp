@@ -18,6 +18,14 @@ static const char *k_pattern = "MULTI_PUBSUB";
 static const zlink_socket_type_t k_client_socket_type = ZLINK_SOCKET_SUB;
 static const char *k_pubsub_topic = "bench";
 
+enum pubsub_recv_result_t
+{
+    pubsub_recv_error = -1,
+    pubsub_recv_empty = 0,
+    pubsub_recv_payload = 1,
+    pubsub_recv_stop = 2
+};
+
 using perf_multi_client::close_client_monitors;
 using perf_multi_client::close_client_sockets;
 using perf_multi_client::create_client_sockets;
@@ -28,12 +36,13 @@ using perf_multi_client::refresh_connected_client_auto_hwm;
 using perf_multi_client::resolve_case_msg_sizes;
 using perf_multi_client::wait_client_connect_ready_all;
 
-int recv_one_pubsub_message (void *socket,
-                             size_t expected_msg_size,
-                             uint32_t expected_run_id,
-                             perf_multi_metric::header_t *header_out,
-                             double *sample_ns_out,
-                             bool *have_sample_out)
+pubsub_recv_result_t recv_one_pubsub_message (
+  void *socket,
+  size_t expected_msg_size,
+  uint32_t expected_run_id,
+  perf_multi_metric::header_t *header_out,
+  double *sample_ns_out,
+  bool *have_sample_out)
 {
     const zlink_routing_id_t *source_rid = NULL;
     zlink_msg_t part;
@@ -41,7 +50,7 @@ int recv_one_pubsub_message (void *socket,
     char topic[256];
     size_t topic_len = sizeof (topic);
     if (zlink_msg_init (&part) != 0)
-        return -1;
+        return pubsub_recv_error;
     const int rc = zlink_subscribe_part (
       socket, &source_rid, topic, sizeof (topic), &topic_len, &part, &has_more,
       ZLINK_RECV_FLAGS_DONTWAIT);
@@ -49,8 +58,8 @@ int recv_one_pubsub_message (void *socket,
         const int err = zlink_errno ();
         zlink_msg_close (&part);
         if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
+            return pubsub_recv_empty;
+        return pubsub_recv_error;
     }
 
     if (topic_len != std::strlen (k_pubsub_topic) || source_rid
@@ -61,7 +70,12 @@ int recv_one_pubsub_message (void *socket,
                       << static_cast<int> (has_more) << std::endl;
         }
         zlink_msg_close (&part);
-        return 1;
+        return pubsub_recv_payload;
+    }
+
+    if (is_stop_token_message (part)) {
+        zlink_msg_close (&part);
+        return pubsub_recv_stop;
     }
 
     perf_multi_metric::header_t header;
@@ -80,7 +94,7 @@ int recv_one_pubsub_message (void *socket,
                       << " size=" << header.msg_size
                       << " expected_size=" << expected_msg_size << std::endl;
         }
-        return 1;
+        return pubsub_recv_payload;
     }
 
     if (header_out)
@@ -97,7 +111,7 @@ int recv_one_pubsub_message (void *socket,
         if (have_sample_out)
             *have_sample_out = true;
     }
-    return 1;
+    return pubsub_recv_payload;
 }
 
 bool create_pubsub_poller (const std::vector<void *> &sockets,
@@ -149,8 +163,8 @@ bool run_recv_duration (const std::vector<void *> &sockets,
           active_seconds));
     std::vector<zlink_poller_event_t> events (sockets.size ());
 
-    bool cooldown_seen = false;
-    while (!cooldown_seen) {
+    bool phase_done = false;
+    while (!phase_done) {
         const int poll_rc =
           zlink_poller_wait (poller, events.empty () ? NULL : &events[0],
                              static_cast<int> (events.size ()), -1, NULL);
@@ -175,22 +189,26 @@ bool run_recv_duration (const std::vector<void *> &sockets,
                 std::memset (&header, 0, sizeof (header));
                 double sample_ns = 0.0;
                 bool have_sample = false;
-                const int recv_rc = recv_one_pubsub_message (
+                const pubsub_recv_result_t recv_rc = recv_one_pubsub_message (
                   socket, msg_size, run_id, &header, &sample_ns, &have_sample);
-                if (recv_rc < 0) {
+                if (recv_rc == pubsub_recv_error) {
                     if (bench_debug_enabled ()) {
                         std::cerr << "[multi-pubsub-client] recv error err="
                                   << zlink_errno () << std::endl;
                     }
                     return false;
                 }
-                if (recv_rc == 0)
+                if (recv_rc == pubsub_recv_empty)
                     break;
+                if (recv_rc == pubsub_recv_stop) {
+                    phase_done = true;
+                    continue;
+                }
 
                 if (header.phase
                     == static_cast<uint8_t> (
                       perf_multi_metric::phase_cooldown)) {
-                    cooldown_seen = true;
+                    phase_done = true;
                     continue;
                 }
                 if (header.phase

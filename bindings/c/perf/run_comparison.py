@@ -2298,14 +2298,14 @@ def run_sizes_test_stream_shared(
             "warnings": warnings,
             **progress_meta,
         }
-    except Exception:
+    except Exception as exc:
         stop_server()
         return {
             "status": "fail",
             "parsed": {},
             "timed_out": False,
             "returncode": -1,
-            "reason": "exception",
+            "reason": f"exception:{type(exc).__name__}:{exc}",
             "warnings": [],
         }
     finally:
@@ -2642,6 +2642,54 @@ def run_sizes_test_split(
         close_server_sampler = lambda: None
         stop_requested_sizes = set()
 
+        def wait_for_server_result_lines():
+            if pattern_name != "DEALER_DEALER":
+                return
+            if not expected_sizes:
+                return
+
+            deadline = time.monotonic() + max(
+                0.1, timeout_sec, shutdown_timeout_ms / 1000.0
+            )
+
+            def has_expected_results():
+                seen = set()
+                for buffered_line in server_stdout_buffer.text().splitlines():
+                    parsed_line, _warning = parse_result_line(
+                        buffered_line, transport, expected_sizes
+                    )
+                    if not parsed_line:
+                        continue
+                    line_transport, line_size, metric, _value = parsed_line
+                    if line_transport == transport and line_size in expected_sizes:
+                        seen.add((line_size, metric))
+                for size_value in expected_sizes:
+                    for metric_name in REQUIRED_RESULT_METRICS:
+                        if (size_value, metric_name) not in seen:
+                            return False
+                return True
+
+            while (
+                server_proc
+                and server_proc.poll() is None
+                and time.monotonic() < deadline
+            ):
+                pump_server_output_nonblocking()
+                if has_expected_results():
+                    return
+                try:
+                    stream_name, line = out_queue.get(timeout=0.02)
+                except queue.Empty:
+                    continue
+                if line is None:
+                    continue
+                if stream_name == "stdout":
+                    append_server_stdout_line(line)
+                else:
+                    server_stderr_buffer.append(line)
+                    if debug_transitions:
+                        sys.stderr.write(f"[server] {line}")
+
         def maybe_send_size_start(size_value):
             if size_value is None:
                 return
@@ -2764,6 +2812,7 @@ def run_sizes_test_split(
         if use_control_plane:
             progress_meta["server_control_endpoint"] = control_endpoint
 
+        wait_for_server_result_lines()
         stop_server()
         drain_server_output()
         server_rc = server_proc.returncode if server_proc else 0
@@ -2874,14 +2923,14 @@ def run_sizes_test_split(
             "warnings": warnings,
             **progress_meta,
         }
-    except Exception:
+    except Exception as exc:
         stop_server()
         return {
             "status": "fail",
             "parsed": {},
             "timed_out": False,
             "returncode": -1,
-            "reason": "exception",
+            "reason": f"exception:{type(exc).__name__}:{exc}",
             "warnings": [],
         }
     finally:
@@ -3009,6 +3058,34 @@ def run_sizes_test(
             reason = isolated.get("reason", "size_case_failed")
             merged["reason"] = f"{reason}_size_{size}"
             return merged
+
+        if (
+            normalized_pattern == "SPOT"
+            and parse_env_int("PERF_MULTI_SPOT_CLEAN_LATENCY", 1) != 0
+        ):
+            clean_latency = run_one_size_case_with_env(
+                size,
+                {
+                    "PERF_MULTI_SPOT_LATENCY_ONLY": "1",
+                    "PERF_MULTI_SPOT_CLEAN_LATENCY": "0",
+                },
+            )
+            merged["warnings"].extend(clean_latency.get("warnings", []))
+            if clean_latency.get("status") != "success":
+                merged["status"] = clean_latency.get("status", "fail")
+                merged["timed_out"] = clean_latency.get("timed_out", False)
+                merged["returncode"] = clean_latency.get("returncode", -1)
+                reason = clean_latency.get("reason", "clean_latency_failed")
+                merged["reason"] = f"{reason}_clean_latency_size_{size}"
+                return merged
+
+            clean_parsed = clean_latency.get("parsed", {}) or {}
+            active_parsed = isolated.get("parsed", {}) or {}
+            for key, value in clean_parsed.items():
+                metric = key.rsplit("|", 1)[-1]
+                if metric in ("latency", LATENCY_P95_METRIC, LATENCY_P99_METRIC):
+                    active_parsed[key] = value
+                    merged["parsed"][key] = value
 
         if size_result_callback is not None:
             try:
@@ -3320,6 +3397,8 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         return
                     key = f"{line_transport}|{line_size}|{metric_name}"
                     live_metrics[key] = value
+                    if normalize_multi_pattern_name(pattern_name) == "SPOT":
+                        return
                     maybe_emit_live_row(line_size)
 
                 live_result_callback = on_result_metric

@@ -178,7 +178,7 @@ bool wait_for_spot_send_progress(void *pub, bool send_enabled)
     item.fd = 0;
     item.events = ZLINK_POLLOUT;
     item.revents = 0;
-    return perf_socket_poll(&item, 1, 2) >= 0;
+    return perf_socket_poll(&item, 1, -1) >= 0;
 }
 
 double resolve_spot_latency_probe_seconds()

@@ -103,17 +103,44 @@ inline bool publish_once (void *server,
         }
         if (publish_wait_count)
             ++(*publish_wait_count);
-        zlink_pollitem_t item;
-        item.socket = server;
-        item.fd = 0;
-        item.events = ZLINK_POLLOUT;
-        item.revents = 0;
-        if (perf_socket_poll (&item, 1, 1) < 0 && zlink_errno () != EINTR)
-            return false;
+        zlink_msg_close (&payload_part);
         return true;
     }
 
     return perf_stop_requested ().load (std::memory_order_acquire);
+}
+
+inline bool publish_stop_token (void *server)
+{
+    if (!server)
+        return false;
+
+    const size_t token_size = std::strlen (k_stop_token);
+    while (!perf_stop_requested ().load (std::memory_order_acquire)) {
+        zlink_msg_t part;
+        if (zlink_msg_init_size (&part, token_size) != 0)
+            return false;
+        std::memcpy (zlink_msg_data (&part), k_stop_token, token_size);
+
+        const zlink_submit_result_t rc = ::perf_zlink_publish_parts (
+          server, k_pubsub_topic, &part, 1, ZLINK_SEND_FLAGS_NONE);
+        if (rc == ZLINK_SUBMIT_OK) {
+            if (bench_debug_enabled ()) {
+                std::cerr << "[multi-pubsub-server] publish stop token"
+                          << std::endl;
+            }
+            return true;
+        }
+
+        const int err = zlink_errno ();
+        zlink_msg_close (&part);
+        if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
+            || err == ETIMEDOUT)
+            continue;
+        return false;
+    }
+
+    return true;
 }
 
 inline size_t resolve_max_size (const std::vector<size_t> &sizes)
@@ -176,8 +203,6 @@ build_one_way_phases (const multi_bench_settings_t &settings,
         const size_t msg_size = msg_sizes[i];
         append_one_way_phase (
           &phases, msg_size, perf_multi_metric::phase_active, active_s, true);
-        append_one_way_phase (
-          &phases, msg_size, perf_multi_metric::phase_cooldown, 1.0, true);
     }
 
     return phases;
@@ -237,6 +262,10 @@ inline bool run_server_loop (void *ctx,
             while (phase_started && phase_index < phases.size ()
                    && now >= phase_deadline) {
                 log_phase_summary ("deadline");
+                if (current_phase == perf_multi_metric::phase_active
+                    && !publish_stop_token (server)) {
+                    return false;
+                }
                 ++phase_index;
                 phase_started = false;
                 publish_ok_count = 0;

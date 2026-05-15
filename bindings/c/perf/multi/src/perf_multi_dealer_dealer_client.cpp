@@ -111,6 +111,34 @@ inline send_status_t send_one_message (void *socket,
     return send_status_fatal;
 }
 
+inline bool send_stop_token (void *socket)
+{
+    if (!socket)
+        return false;
+
+    const size_t token_size = std::strlen (k_stop_token);
+    while (!g_stop_requested.load (std::memory_order_acquire)) {
+        zlink_msg_t part;
+        if (zlink_msg_init_size (&part, token_size) != 0)
+            return false;
+        std::memcpy (zlink_msg_data (&part), k_stop_token, token_size);
+
+        const zlink_submit_result_t rc =
+          ::perf_zlink_send_parts (socket, &part, 1, ZLINK_SEND_FLAGS_NONE);
+        if (rc == ZLINK_SUBMIT_OK)
+            return true;
+
+        const int err = zlink_errno ();
+        zlink_msg_close (&part);
+        if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
+            || err == ETIMEDOUT)
+            continue;
+        return false;
+    }
+
+    return true;
+}
+
 inline bool run_send_window (const std::vector<void *> &sockets,
                              size_t payload_size,
                              uint32_t run_id,
@@ -204,16 +232,10 @@ inline bool run_send_window (const std::vector<void *> &sockets,
             ++poll_count;
         }
 
-        const long remaining_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds> (
-            deadline - std::chrono::steady_clock::now ())
-            .count ();
-        const int poll_timeout_ms =
-          progressed ? 0 : (remaining_ms > 0 ? remaining_ms : 0);
         const int poll_rc = perf_socket_poll (
           poll_count > 0 ? &poll_items[0] : NULL,
           static_cast<int> (poll_count),
-          poll_timeout_ms);
+          -1);
         if (poll_rc < 0) {
             if (zlink_errno () == EINTR)
                 continue;
@@ -263,6 +285,11 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
           true,
           &seq)) {
         return false;
+    }
+
+    for (size_t i = 0; i < sockets.size (); ++i) {
+        if (!send_stop_token (sockets[i]))
+            return false;
     }
 
     return true;

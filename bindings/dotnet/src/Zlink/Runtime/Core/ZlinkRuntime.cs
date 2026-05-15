@@ -6,7 +6,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public static class Zlink
+internal static class ZlinkRuntime
 {
     internal static int Errno()
     {

@@ -168,7 +168,7 @@ public sealed record SessionActorDispatchClientResult(
     IReadOnlyList<OpponentJoinedNotify> OpponentJoinedNotifications,
     IReadOnlyList<GameEndedNotify> GameEndedNotifications)
 {
-    public TicTacToeState FinalState => Moves[^1].State;
+    private TicTacToeState FinalState => Moves[^1].State;
 
     public void WriteTo(TextWriter writer)
     {

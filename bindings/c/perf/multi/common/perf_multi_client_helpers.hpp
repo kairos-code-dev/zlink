@@ -786,11 +786,10 @@ inline bool run_one_way_window_loop (
         for (size_t i = 0; i < poll_items.size (); ++i)
             poll_items[i].revents = 0;
 
-        const int timeout_ms = remaining_poll_timeout_ms (deadline);
         const int prc = perf_socket_poll (
           &poll_items[0],
           static_cast<int> (poll_items.size ()),
-          timeout_ms);
+          -1);
         if (prc < 0) {
             if (zlink_errno () != EINTR) {
                 fatal_error = true;
@@ -1055,11 +1054,10 @@ inline bool run_echo_window_round_robin (
             continue;
         }
 
-        const int timeout_ms = remaining_poll_timeout_ms (deadline);
         const int poll_rc = perf_socket_poll (
           &poll_items[0],
           static_cast<int> (poll_count),
-          timeout_ms);
+          -1);
         if (poll_rc < 0) {
             if (bench_debug_enabled ()) {
                 std::cerr << "[perf-multi-echo] poll error phase="

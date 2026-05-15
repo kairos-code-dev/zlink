@@ -131,19 +131,21 @@ multi 패턴의 client/server poller wait 호출은 모두 **`-1` (signal-driven
 
 receiver 또는 server thread 가 sender / phase 종료를 감지해야 하는 경우
 **별도의 fd / signal helper 를 사용하지 않는다**. 대신 sender 가 phase
-종료 시 wire 위로 stop token (`__zlink_perf_stop__`) 메시지를 한 번
-송신하고, receiver 는 `-1` poller wait 으로 대기하다가 token 도착 시
-종료한다.
-예외적으로 `MULTI_PUBSUB`는 C 기준 구현처럼 active 뒤에 1초 동안
-`phase_cooldown` payload를 송신하고, client가 이 cooldown phase를 보고
-process를 닫는다. PUBSUB의 active 집계는 여전히 configured duration 안의
-`phase_active` payload만 포함한다.
+종료 시 wire 위로 stop token (`__zlink_perf_stop__`) 메시지를 송신한다.
+receiver 는 `-1` poller wait 으로 대기하다가 메시지를 받으면 먼저 stop
+token인지 검사한다. active 집계 구간은 pattern별 application clock 으로
+닫으며, stop token은 `-1` wait 을 깨우고 phase 종료를 알리는 wire-level
+신호다.
+`MULTI_PUBSUB`도 같은 규칙을 따른다. active payload와 같은 topic 위로
+stop token을 blocking publish 하며, client는 payload header를 해석하기 전에
+stop token을 먼저 검사한다. PUBSUB의 active 집계는 여전히 configured
+duration 안의 `phase_active` payload만 포함한다.
 
 | 항목 | 규칙 |
 |------|------|
 | stop token literal | `__zlink_perf_stop__` (multi/single 공통, `k_stop_token`) |
-| sender 측 | active phase 종료 후 stop token 한 번 blocking send (deadline 무시) |
-| receiver 측 | `-1` poller wait → recv → `is_stop_token(...)` 검사 → 종료 |
+| sender 측 | active phase 종료 후 stop token blocking send/publish (deadline 무시). raw one-way는 필요한 socket마다 송신한다 |
+| receiver 측 | `-1` poller wait → recv → `is_stop_token(...)` 먼저 검사 → pattern별 phase 종료 처리 |
 | atomic flag + 짧은 polling 패턴 | **금지**. 동일 process 내 thread 간 종료 동기화도 wire stop token 으로 통일 |
 
 이 패턴의 장점:
@@ -151,8 +153,7 @@ process를 닫는다. PUBSUB의 active 집계는 여전히 configured duration �
   분기 없음
 - 모든 binding 이 동일한 idiom 으로 구현 가능
 - 기존 multi server 의 stop token 처리와 일치 (`is_stop_token` 헬퍼 그대로 활용)
-- in-flight 메시지가 stop token 보다 먼저 도착하므로 자연스러운 drain
-  순서 보장
+- poller timeout fallback 없이도 phase 종료 시 receiver 를 깨울 수 있음
 
 > 회귀 가드: `core/tests/integration/test_spot_poller.cpp` 의
 > `test_spot_poller_wait_all_returns_promptly_after_*` 와
@@ -233,11 +234,11 @@ ready 판정, active 시작 조건을 바꾸면 안 된다.
   client가 `PHASE_ACTIVE,<msg_size>` 같은 별도 stdin token을 기다리거나,
   server가 stdout으로 추가 active token을 내보내면 안 된다.
 - PUBSUB client는 `START,<msg_size>`를 받은 시점부터 configured duration 동안
-  `phase_active` 메시지만 집계한다. server는 active 송신 뒤 1초 동안
-  `phase_cooldown` payload를 송신하고, client는 이 cooldown phase를 본 뒤
-  `RESULT`와 `CLIENT_DONE,<msg_size>`를 출력한다. active 집계 종료 기준은
-  client의 duration window이며, cooldown payload는 process 종료 동기화용이다.
-  PUBSUB는 stop token 수신을 완료 조건으로 삼지 않는다.
+  `phase_active` 메시지만 집계한다. server는 active 송신이 끝난 뒤 같은 topic에
+  stop token을 blocking publish 한다. client는 payload header를 해석하기 전에
+  stop token을 먼저 검사하고, stop token을 받으면 `RESULT`와
+  `CLIENT_DONE,<msg_size>`를 출력한다. active 집계 종료 기준은 client의 duration
+  window이며, stop token은 process 종료 동기화용이다.
 - SPOT 은 client/server control link 가 먼저 `CONNECTED` 를 교환한 뒤,
   각 client process 가 자신이 보유한 slot 수만큼 `READY` unit 을
   `READY_COUNT,<msg_size>,<count>` control message 로 보낸다. server 는
@@ -520,7 +521,7 @@ Runner                    Server                      Client
 | START,<size>           | START,<size>           |                        |
 |----------------------->|----------------------->|                        |
 |                        | active send            | active count           |
-|                        | cooldown send          | cooldown seen          |
+|                        | stop token             | stop token             |
 |                        |                        | RESULT lines           |
 |<------------------------------------------------| exit 0                 |
 | STOP                   |                        |                        |
@@ -535,6 +536,9 @@ Runner                    Server                      Client
 - PUBSUB/DEALER_DEALER: C runner가 client에 `PHASE_ACTIVE,<msg_size>`를 보낼 수
   있다. 이는 호환용 보조 token이며, client의 active gate는 `START,<msg_size>`다.
 - server: stdin에서 `START,<msg_size>` 대기 후 active send 시작.
+- active 종료는 wire-level stop token으로 알린다. `MULTI_PUBSUB`는 active
+  payload와 같은 topic에 stop token을 publish 하고, `MULTI_DEALER_DEALER`는
+  각 client socket에서 stop token을 보낸다.
 
 **SPOT 패턴:**
 
@@ -698,8 +702,8 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 | ready | event-based | raw socket client=`CONNECTION_READY`, one-way raw start=`CLIENT_READY`/`START`, SPOT/SPOT_REQREP/SPOT_SENDSEND=control handshake barrier | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS`, `PERF_MULTI_SPOT_READY_SETTLE_MS`, `PERF_MULTI_SPOT_CONTROL_SETTLE_MS` |
 | active | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
 
-> `PERF_MULTI_SETTLE_MS`는 호환성 때문에 남아 있을 수 있지만 benchmark phase를
-> 추가하는 용도로 사용하지 않는다.
+> `PERF_MULTI_SETTLE_MS`는 C multi perf에서 삭제됐다. benchmark phase를 추가하는
+> 호환용 settle 환경 변수는 두지 않는다.
 
 ### 3.3 Cooldown
 
@@ -1310,7 +1314,7 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PERF_MULTI_DURATION_SECONDS` | 측정 시간(초) | 5 |
-| `PERF_MULTI_SETTLE_MS` | deprecated. 호환성용 잔존 변수이며 benchmark phase를 만들지 않는다 | 500 |
+| `PERF_MULTI_SETTLE_MS` | 삭제됨. C multi perf는 이 값을 읽지 않으며 benchmark phase를 만들지 않는다 | — |
 | `PERF_MULTI_TRANSPORT_TRANSITION_MS` | transport 전환 cooldown(ms) | 3000 |
 | `PERF_MULTI_PATTERN_TRANSITION_MS` | pattern 전환 cooldown(ms) | 3000 |
 | `PERF_MULTI_SIZE_TRANSITION_MS` | **삭제 대상**. 구현에 존재하면 제거해야 한다 | — |
@@ -1319,7 +1323,10 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
+| `PERF_MULTI_MSG_SIZES` | multi benchmark 바이너리에서 읽는 size 목록 fallback. runner는 보통 공통 `PERF_MSG_SIZES`로 전달한다 | 공통 기본값 |
 | `PERF_MULTI_CLIENTS` | 클라이언트 소켓 수 | 100 (stream=10000) |
+| `PERF_MULTI_DEFAULT_CLIENTS` | `PERF_MULTI_CLIENTS` 미설정 시 raw/spot 계열 기본 client 수 | 100 |
+| `PERF_MULTI_DEFAULT_STREAM_CLIENTS` | `PERF_MULTI_CLIENTS` 미설정 시 STREAM 계열 기본 client 수 | 10000 |
 | `PERF_MULTI_STREAM_MSG_SIZES` | STREAM 계열 전용 size 목록. 미설정 시 `PERF_MSG_SIZES`가 설정되어 있으면 그 값을 사용하고, 둘 다 미설정이면 기본값 사용 | `64,256,1024,65536` |
 | `PERF_MULTI_HWM` | debug 전용 공통 HWM override. allow flag가 켜진 경우에만 사용 | 비활성 |
 | `PERF_MULTI_SNDHWM` | debug 전용 송신 HWM override | 비활성 |
@@ -1328,6 +1335,18 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` | 연결 준비 타임아웃(ms) | 5000 |
 | `PERF_MULTI_SERVICE_CLIENTS` | 서비스 클라이언트 수 상한 (0=제한 없음) | 0 |
 | `PERF_MULTI_SPOT_CLEAN_LATENCY` | runner의 `MULTI_SPOT` latency-only 재실행 병합 사용 여부. `0`이면 비활성 | 1 |
+| `PERF_MULTI_SPOT_READY_SETTLE_MS` | SPOT 계열 client가 control/data 준비 뒤 `READY_COUNT`를 보내기 전 안정화 대기(ms) | 1000 |
+| `PERF_MULTI_SPOT_CONTROL_SETTLE_MS` | SPOT 계열 control socket 연결 직후 control message 순서를 안정화하기 위한 짧은 대기(ms) | 25 |
+| `PERF_MULTI_SPOT_POST_PHASE_SETTLE_MS` | `MULTI_SPOT` one-way client가 큰 payload phase 뒤 남은 수신 처리를 정리하기 위한 대기(ms). size별 기본값을 사용한다 | size별 자동값 |
+| `PERF_MULTI_SPOT_PHASE_TIMEOUT_MS` | `MULTI_SPOT` one-way phase 완료 대기 timeout(ms). size와 connect timeout을 기준으로 계산한 값이 기본이다 | 자동 |
+| `PERF_MULTI_SPOT_RECV_WORKERS` | `MULTI_SPOT` one-way 수신 worker 수. `0`이면 C perf 기본값을 사용한다 | 0 |
+| `PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE` | `MULTI_SPOT` one-way active latency sample 간격. N개 메시지마다 1개를 sample 한다 | 32 |
+| `PERF_MULTI_SPOT_LATENCY_ONLY` | `MULTI_SPOT` server를 latency-only pass로 실행한다. runner가 clean latency 병합을 위해 내부적으로 사용한다 | 0 |
+| `PERF_MULTI_SPOT_LATENCY_ONLY_INTERVAL_US` | latency-only pass에서 probe publish 간격(us) | 1000 |
+| `PERF_MULTI_SPOT_LATENCY_PROBE_SECONDS` | `MULTI_SPOT` latency probe 실행 시간(초). `0`이면 duration 기반 기본 동작을 사용한다 | 0 |
+| `PERF_MULTI_SPOT_LATENCY_PROBE_INTERVAL_US` | latency probe publish 간격(us) | 1000 |
+| `PERF_MULTI_SPOT_LATENCY_PROBE_SETTLE_MS` | latency probe 시작 전 subscriber 안정화 대기(ms) | `max(1000, duration*1000)` |
+| `PERF_MULTI_SPOT_TRACE` | `MULTI_SPOT_REQREP` / `MULTI_SPOT_SENDSEND` 디버그 trace 출력 플래그 | 비활성 |
 
 ### 12.3 송수신 제어
 
@@ -1335,9 +1354,13 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 |------|------|--------|
 | `PERF_MULTI_SNDTIMEO_MS` | 송신 타임아웃(ms) | 200 |
 | `PERF_MULTI_RCVTIMEO_MS` | 수신 타임아웃(ms) | 200 |
+| `PERF_MULTI_SNDBUF` | debug 전용 송신 OS buffer override. allow flag가 켜진 경우에만 사용 | 비활성 |
+| `PERF_MULTI_RCVBUF` | debug 전용 수신 OS buffer override. allow flag가 켜진 경우에만 사용 | 비활성 |
+| `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES` | 수동 HWM/SNDBUF/RCVBUF override 허용 플래그 | 0 |
 | `PERF_MULTI_MONITOR_HWM` | 모니터 소켓 HWM | 1000 |
 | `PERF_MULTI_PUBSUB_XPUB_NODROP` | PUBSUB 서버의 `ZLINK_XPUB_NODROP` 기본값 | 1 |
 | `PERF_MULTI_SPOT_XPUB_NODROP` | SPOT 서버의 `ZLINK_XPUB_NODROP` 기본값 | 1 |
+| `PERF_MULTI_PRINT_AUTO_HWM_DETAIL` | auto-HWM detail 출력 여부. `0`이면 출력하지 않는다 | 1 |
 
 - `PERF_MULTI_CLIENT_POLL_TIMEOUT_MS`, `PERF_MULTI_CLIENT_IDLE_SLEEP_US`, `PERF_MULTI_SEND_BACKOFF_US`, `PERF_MULTI_BLOCKING_SEND`는 삭제됐다.
 - `PERF_MULTI_RECV_BATCH`, `PERF_MULTI_SEND_WORKERS`, `PERF_SERVER_RECV_THREADS`는 삭제됐다.
@@ -1350,6 +1373,8 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 | `PERF_MULTI_SERVER_READY_TIMEOUT_MS` | server READY 대기 타임아웃(ms) | 10000 |
 | `PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS` | server 종료 대기 타임아웃(ms) | 5000 |
 | `PERF_MULTI_SERVER_BIND_PORT` | server bind 포트 (0=자동 할당) | 0 |
+| `PERF_MULTI_SERVER_CONTROL_BIND_PORT` | SPOT 계열 server control plane bind 포트 (0=자동 할당) | 0 |
+| `PERF_MULTI_CLIENT_BIND_PORT` | SPOT 계열 client control/data listener bind 포트 (0=자동 할당) | 0 |
 
 - server READY 타임아웃 초과 시 해당 run을 실패 처리하고 server 프로세스를 강제 종료한다.
 - server 종료 시퀀스: stdin `STOP\n` 송신 → shutdown timeout 대기 → `terminate()` (SIGTERM) → 2차 timeout 대기 → `kill()` (SIGKILL).

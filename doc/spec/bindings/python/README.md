@@ -1,1968 +1,232 @@
 [Spec Index](../../README.md) · [Bindings Policy](../README.md)
 
-# Python Binding Specification
+# Python Binding Implementation Blueprint
 
-This document defines the complete public API surface of the zlink Python binding.
-Every class, method, and type listed here is part of the contract that the binding
-must expose. Internal/private methods are omitted.
+This document defines the expected Python library shape. It is not an
+exhaustive list of every class or method. The concrete public contract is
+`bindings/python/src/zlink/Contracts/`.
 
-Only names re-exported from the public `zlink` package are part of the
-contract. Modules such as `_core`, `_ffi`, `_native`, and other underscore
-prefixed helpers are internal implementation details. Perf, samples, and tests
-must import from `zlink` only and must not rely on private underscore modules.
+A Python implementation is aligned when `Contracts/`, `zlink` export
+projections, type hints, tests, samples, perf runners, and runtime behavior
+follow this blueprint and map stable `core/include/zlink.h` capabilities into
+Python-idiomatic APIs.
 
-## Design Basis
+## Public Contract Source
 
-The Python binding follows the repository POSD design policy. Public classes
-and functions must hide native sequencing, ownership, and option encoding
-behind typed, deep interfaces so callers do not need core implementation
-details.
+- Public contract: `bindings/python/src/zlink/Contracts/`.
+- Package projection: names exported from `zlink`.
+- Internal implementation: underscore-prefixed modules such as `_native`,
+  `_ffi`, `_core`, private extension modules, callback bridge code, request
+  progress helpers, and raw part-loop helpers.
+- Documentation role: this README defines shape and semantic coverage.
+  `Contracts/` owns the exact member list; public exports and generated API
+  reference must project it intentionally.
 
-The public `zlink` surface must model stable domain concepts, not FFI call
-steps. Public classes and functions are justified when they own context/socket
-lifetime, message ownership, receive metadata, service membership, callbacks,
-or typed options. Native handles, part-loop sequencing, request tokens,
-callback userdata, and raw option encoding stay inside underscore-prefixed
-modules and private attributes.
+Perf, samples, and tests must import from `zlink`, not from underscore modules.
 
-Design review uses these POSD constraints:
+## Repository Layout
 
-- shared send/recv, nonblocking, ownership, and exception mapping rules are
-  centralized instead of copied across socket classes
-- canonical result and facade methods do not ask callers to pass state already
-  captured by the object, such as a source socket, request sequence, or
-  service address
-- compatibility aliases, if retained, are not the canonical API and are not
-  used by new docs, samples, or tests
-- a public wrapper that only forwards to FFI without adding validation,
-  ownership, lifetime, or result-shape semantics is too shallow and must be
-  removed or made private
+Use these paths consistently when changing the Python binding.
 
----
+- Public contract: `bindings/python/src/zlink/Contracts/`.
+- Runtime implementation: `bindings/python/src/zlink/Runtime/`.
+- Native bridge/artifacts: `bindings/python/src/zlink/Runtime/Native/`.
+- Codec extensions: `bindings/python/codecs/`.
+- Tests: `bindings/python/tests/`.
+- Samples: `bindings/python/samples/` and `bindings/python/examples/`.
+- Perf: `bindings/python/perf/`.
 
-## High-Performance Requirements
+Underscore-prefixed modules are implementation detail. If a user needs a name,
+re-export it from `zlink` intentionally and document the public behavior.
+`Contracts/` and `Runtime/` are fixed repository folders. `__init__.py`, type
+hints, and generated API reference are the Python package projection of that
+contract.
+Do not expose `zlink.Contracts` or `zlink.Runtime` as public import paths.
 
-The Python binding is part of a high-performance messaging library. Hot paths
-must not use reflection-style attribute lookup, dynamic dispatch by string,
-unnecessary allocation, avoidable bytes copies, coarse lock contention, hidden
-waits, sleeps, busy waits, or thread joins. Native extension or FFI code must
-construct public `Message` and result objects directly from the core `*_part`
-substrate and must not create native aggregate arrays only to copy them into
-Python lists.
-
-## Core Alignment Rules
-
-The detailed sections below are the canonical Python binding contract. This
-section states cross-cutting constraints once so the per-type API lists can
-stay focused on signatures.
-
-- `PairSocket`, `DealerSocket`, and `RouterSocket` keep their documented
-  send, recv, request, and reply methods, but they do not expose direct
-  data-plane receive callbacks such as `on_receive(...)`.
-- `SubSocket` and `XSubSocket` are receive-only topic sockets and do not
-  expose direct topic callbacks such as `on_subscribe(...)`.
-- `StreamSocket` keeps `recv(...)` and exposes a packet callback surface
-  mapped to `zlink_stream_packet_handler()` as `on_packet(...)`.
-- `SpotNode` must expose channel-aware attachment APIs:
-  `attach_discovery(...)`,
-  `attach_channel_dealer(...)`,
-  `attach_channel_dealer_manual(...)`, and
-  `attach_pub_ingress(...)`.
-- `Spot` must expose channel-aware data-plane operation builders:
-  `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
-  `publish(topic)`.
-- `Spot.subscribe_into(...)` receives into caller-provided `TopicMessage`
-  storage. `TopicMessage` exposes topic, parts, and optional routing id.
-- `Spot` must not expose `on_subscribe(...)`. Use
-  `on_dispatch_event(...)` plus `subscribe_into(...)` /
-  `recv_routed_into(...)` / timer recv.
-- `SpotDispatchEvent.SUBSCRIBE_READABLE` and `.ROUTED_READABLE` are readiness
-  notifications, not one-event-per-message delivery counters. Binding docs and
-  samples must drain until `subscribe_into(...)` / `recv_routed_into(...)`
-  returns `False`.
-- `Spot.on_routed_receive(...)` and `on_dispatch_event(...)` are mutually
-  exclusive on the routed axis.
-- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through
-  typed option/property surfaces. The value range is `0..100`, default
-  `100`; `0` drains new outbound selection. Submit attempts to a weight-`0`
-  peer raise `SubmitError` whose `code` is `SubmitResult.NOT_ADMITTED`.
-- `POLLOUT` is a send-recovery readiness signal, shared with
-  `on_send_ready(...)`. It is not a "transport writable" bit.
-- ROUTER / PUB socket option defaults follow the core header: `mandatory =
-  True`, `handover = False`, `nodrop = True`.
-- SPOT admission HWM defaults follow the core header. Router and pubsub
-  admission profile/numeric options are exposed through `SpotNode`; relay and
-  delivery HWM stay `0` and are not public Python options.
-- SPOT dispatch worker min/max are `SpotNode` callback worker-pool options.
-  They are not context options and must not be described as transport I/O
-  threads.
-- Internal pairing rule: when auto-connect pairs two same-service ROUTERs
-  via Discovery, the library picks one initiator per pair by a total order
-  on `(routing_id, advertise_endpoint)`. Users do not configure this.
-
-## Actor Dispatch Public Surface
-
-Python exposes Actor dispatch through public `zlink` package symbols only.
-
-```python
-class ActorRef: ...
-class ActorRoute: ...
-class ActorRecvInfo: ...
-class ActorJoinInfo: ...
-class ActorPart: ...
-class ActorJoinRequest: ...
-class SpotNodeSpotEntry: ...
-class SpotNodeActorEntry: ...
-class Actor: ...
-class ActorJoinResult: ...
-class ActorLookupResult: ...
-class SpotActorLifecycleInfo: ...
+```text
+bindings/python/
++-- src/
+|   +-- zlink/
+|   |   +-- __init__.py
+|   |   +-- Contracts/
+|   |   |   +-- Core/
+|   |   |   +-- Messaging/
+|   |   |   +-- Sockets/
+|   |   |   +-- Monitoring/
+|   |   |   +-- Service/
+|   |   |   +-- Errors/
+|   |   |   +-- Enums/
+|   |   +-- Runtime/
+|   |   |   +-- Core/
+|   |   |   +-- Messaging/
+|   |   |   +-- Sockets/
+|   |   |   +-- Monitoring/
+|   |   |   +-- Service/
+|   |   |   +-- Errors/
+|   |   |   +-- Enums/
+|   |   |   +-- Native/
++-- codecs/
++-- tests/
++-- samples/
++-- examples/
++-- perf/
 ```
 
-`SpotNode` exposes `actor`, `actor_lookup`, `remote_actor_get_ref` (async),
-`destroy_actor` (async), `join_actor` (async), `leave_actor` (async),
-`spots_snapshot`, and `actors_snapshot`. `Spot` exposes `recv_actor_join`,
-`reply_actor_join`, `on_actor_lifecycle`, and `actors_snapshot`.
-`StreamSocket` exposes `bind_actor` (async), `unbind_actor` (async),
-`send_bound_actor`, and `bound_actors`. `Discovery` exposes `resolve_actor`.
-
-`ActorRef.generation == 0` is an unchecked remote ref. Actor creation places
-the Actor in the Entry Spot. The application cannot remove the Entry Spot.
-Actor IDs are non-empty UTF-8 strings up to 255 bytes and must not contain NUL.
-Leaving a Spot does not drain unread Actor messages. There is no remote-Actor
-create API and no admission handler; Actors that must originate on a remote
-node are created on that SpotNode directly via `actor`. `remote_actor_get_ref`
-is an async lookup that returns a checked ref. **A bound STREAM session is
-not required to join a user Spot** — Actor location and session attach are
-independent state transitions. One Actor can join only one Spot at a time, and
-a STREAM session can bind multiple Actors. Actor readable dispatch uses a
-callback-lifetime ActorRef subject, not a native Actor pointer.
-
-## Core
-
-### Context
-
-```python
-class Context:
-    def __init__(self) -> None: ...
-    @property
-    def options(self) -> ContextOptions: ...  # Raises: ConfigError
-    def recalculate_auto_hwm(self) -> None: ...  # Raises: ConfigError
-    def shutdown(self) -> None: ...           # Raises: CloseError
-    def close(self) -> None: ...              # Raises: CloseError
-    # supports `with` and `async with` — __exit__ raises CloseError
-```
-
-### ContextOptions
-
-All `ContextOptions` getters, setters, and mutator methods raise
-`ConfigError` on failure.
-
-```python
-class ContextOptions:
-    @property
-    def io_threads(self) -> int: ...
-    @io_threads.setter
-    def io_threads(self, value: int) -> None: ...
-    @property
-    def max_sockets(self) -> int: ...
-    @max_sockets.setter
-    def max_sockets(self, value: int) -> None: ...
-    @property
-    def max_msg_size(self) -> int: ...
-    @max_msg_size.setter
-    def max_msg_size(self, value: int) -> None: ...
-    @property
-    def thread_priority(self) -> int: ...
-    @thread_priority.setter
-    def thread_priority(self, value: int) -> None: ...
-    @property
-    def thread_scheduling_policy(self) -> int: ...
-    @thread_scheduling_policy.setter
-    def thread_scheduling_policy(self, value: int) -> None: ...
-    @property
-    def thread_name_prefix(self) -> str: ...
-    @thread_name_prefix.setter
-    def thread_name_prefix(self, value: str) -> None: ...
-    @property
-    def blocky(self) -> bool: ...
-    @blocky.setter
-    def blocky(self, value: bool) -> None: ...
-    @property
-    def auto_hwm_enabled(self) -> bool: ...
-    @auto_hwm_enabled.setter
-    def auto_hwm_enabled(self, value: bool) -> None: ...
-    @property
-    def auto_hwm_recalc_debounce(self) -> int: ...
-    @auto_hwm_recalc_debounce.setter
-    def auto_hwm_recalc_debounce(self, value: int) -> None: ...
-    @property
-    def auto_hwm_profile(self) -> AutoHwmProfile: ...
-    @auto_hwm_profile.setter
-    def auto_hwm_profile(self, value: AutoHwmProfile) -> None: ...
-    @property
-    def socket_limit(self) -> int: ...       # read-only
-    @property
-    def msg_t_size(self) -> int: ...          # read-only
-    def add_thread_affinity(self, cpu: int) -> None: ...
-    def remove_thread_affinity(self, cpu: int) -> None: ...
-```
-
-The native context memory-budget and bootstrap auto-HWM options are
-deprecated no-op compatibility options. The Python binding does not expose
-typed properties for them.
-
-```python
-class AutoHwmProfile(IntEnum):
-    COMPACT = 0
-    LOW_LATENCY = 1
-    BALANCED = 2
-    THROUGHPUT = 3
-```
-
----
-
-## Socket Types
-
-All sockets support `with` / `async with` context managers.
-
-Python nonblocking data-plane helpers follow this rule:
-
-- Operation builder submits — `send().message(...).submit()`,
-  `publish(topic).message(...).submit()`, and other builder paths — return
-  `False` only for temporary backpressure when `DONTWAIT` has been
-  configured via the builder's `.flags(...)` stage.
-- Blocking submit returns `True` on success. Route-not-ready and other submit
-  failures still raise `SubmitError`.
-- Canonical caller-provided data-plane receive methods return `True` on success
-  and `False` when the core reports no data. Deprecated return-form recv
-  methods, monitor `recv(...)`, and timer `recv()` keep `None` as their
-  no-data value. All receive paths still raise `RecvError` for real recv
-  failures.
-
-Python does not support runtime method overloading. Callback request variants use
-the minimal `_callback` suffix so the public surface is implementable and
-unambiguous.
-
-Peer weight is not a common-socket accessor. Bindings expose it only on the
-implemented weight-bearing handles (`RouterSocket` and `DealerSocket`) through their typed option/property surfaces.
-
-### PairSocket
-
-```python
-class PairSocket:
-    def __init__(self, context: Context) -> None: ...
-    @property
-    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
-    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
-    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
-    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
-    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
-    # Send (operation builder).
-    def send(self) -> SendOp: ...
-    # Deprecated: allocates a fresh Received per call. Prefer recv_into.
-    def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
-    # Canonical caller-provided storage recv. See doc/spec/bindings/README.md.
-    def recv_into(self, received: Received, *, flags: int = 0) -> bool: ...      # Raises: RecvError
-    def on_send_ready(self, handler: Callable[[PairSocket], None]) -> None: ...  # Raises: HandlerError
-    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-### PubSocket
-
-```python
-class PubSocket:
-    def __init__(self, context: Context) -> None: ...
-    @property
-    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
-    @property
-    def publisher_options(self) -> PubSocketOptions: ...                         # Raises: ConfigError
-    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
-    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
-    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
-    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
-    # Publish (operation builder).
-    def publish(self, topic: str) -> SendOp: ...
-    def on_send_ready(self, handler: Callable[[PubSocket], None]) -> None: ...   # Raises: HandlerError
-    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
-    def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-### SubSocket
-
-```python
-class SubSocket:
-    def __init__(self, context: Context) -> None: ...
-    @property
-    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
-    @property
-    def subscriber_options(self) -> SubSocketOptions: ...                        # Raises: ConfigError
-    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
-    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
-    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
-    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
-    def set_subscription(self, topic: str) -> None: ...                          # Raises: ConfigError
-    def unset_subscription(self, topic: str) -> None: ...                        # Raises: ConfigError
-    # Deprecated: allocates a fresh TopicMessage per call. Prefer subscribe_into.
-    def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
-    # Canonical caller-provided storage subscribe.
-    def subscribe_into(self, topic: TopicMessage, *, flags: int = 0) -> bool: ...  # Raises: RecvError
-    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
-    def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-### DealerSocket
-
-```python
-class DealerSocket:
-    def __init__(self, context: Context) -> None: ...
-    @property
-    def options(self) -> CommonSocketOptions: ...                                  # Raises: ConfigError
-    @property
-    def dealer_options(self) -> DealerSocketOptions: ...                           # Raises: ConfigError
-    def bind(self, endpoint: str) -> None: ...                                     # Raises: BindError
-    def unbind(self, endpoint: str) -> None: ...                                   # Raises: ConnectError
-    def connect(self, endpoint: str) -> None: ...                                  # Raises: ConnectError
-    def disconnect(self, endpoint: str) -> None: ...                               # Raises: ConnectError
-    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                   # Raises: ConnectError
-    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...           # Raises: ConfigError
-    def get_routing_id(self) -> RoutingId | None: ...                              # Raises: ConfigError
-    def set_channel_name(self, channel_name: str) -> None: ...                     # Raises: ConfigError
-    def get_channel_name(self) -> str: ...                                         # Raises: ConfigError
-    # Send (operation builder).
-    def send(self) -> SendOp: ...
-    # Deprecated: allocates a fresh Received per call. Prefer recv_into.
-    def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
-    # Canonical caller-provided storage recv. See doc/spec/bindings/README.md.
-    def recv_into(self, received: Received, *, flags: int = 0) -> bool: ...      # Raises: RecvError
-    def on_send_ready(self, handler: Callable[[DealerSocket], None]) -> None: ...  # Raises: HandlerError
-    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
-    def attach_discovery(self, discovery: Discovery) -> None: ...                  # Raises: ConfigError
-
-    # Dealer request (operation builder).
-    def request(self) -> RequestOp: ...
-
-    def close(self) -> None: ...                                                   # Raises: CloseError
-```
-
-### RouterSocket
-
-```python
-class RouterSocket:
-    def __init__(self, context: Context) -> None: ...
-    @property
-    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
-    @property
-    def router_options(self) -> RouterSocketOptions: ...                         # Raises: ConfigError
-    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
-    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
-    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
-    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
-    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
-    def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
-    # Routed send (operation builder).
-    def send(self, routing_id: RoutingId) -> SendOp: ...
-    # Deprecated: allocates a fresh Received per call. Prefer recv_into.
-    def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
-    # Canonical caller-provided storage recv. See doc/spec/bindings/README.md.
-    def recv_into(self, received: Received, *, flags: int = 0) -> bool: ...      # Raises: RecvError
-    def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
-    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
-    def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
-
-    # Request to a specific peer (operation builder).
-    def request(self, peer_rid: RoutingId) -> RequestOp: ...
-    # Reply to a received request (operation builder).
-    def reply(self, routing_id: RoutingId, request_seq: int) -> ReplyOp: ...
-
-    # Router → spot routed send (operation builder).
-    def send_to_spot(self, dest_node_rid: RoutingId,
-                     dest_spot_rid: RoutingId) -> SendOp: ...
-    # Router → spot routed request (operation builder).
-    def request_to_spot(self, dest_node_rid: RoutingId,
-                        dest_spot_rid: RoutingId) -> RequestOp: ...
-    # Router → spot routed reply (operation builder).
-    def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                      request_seq: int) -> ReplyOp: ...
-
-    # NOTE: RouterSocket has one routed receive surface. recv receives both
-    # regular ROUTER traffic and spot-origin routed traffic.
-    # `Received.routing_id` is source_node_rid, and `Received.spot_rid` is set
-    # only for spot-origin traffic. ROUTER does not expose a data-plane
-    # callback install surface such as on_receive. Request completion remains
-    # available only through request().
-
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-### XPubSocket
-
-```python
-class XPubSocket:
-    def __init__(self, context: Context) -> None: ...
-    @property
-    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
-    @property
-    def publisher_options(self) -> PubSocketOptions: ...                         # Raises: ConfigError
-    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
-    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
-    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
-    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
-    # Publish (operation builder).
-    def publish(self, topic: str) -> SendOp: ...
-    # Deprecated: allocates a fresh SubscriptionEvent per call. Prefer receive_subscription_event_into.
-    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
-    def receive_subscription_event_into(self, event: SubscriptionEvent, *, flags: int = 0) -> bool: ...  # Raises: RecvError
-    def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
-    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-### XSubSocket
-
-```python
-class XSubSocket:
-    def __init__(self, context: Context) -> None: ...
-    @property
-    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
-    @property
-    def subscriber_options(self) -> SubSocketOptions: ...                        # Raises: ConfigError
-    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
-    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
-    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
-    def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
-    def set_subscription(self, topic: str) -> None: ...                          # Raises: ConfigError
-    def unset_subscription(self, topic: str) -> None: ...                        # Raises: ConfigError
-    # Canonical caller-provided storage subscribe.
-    def subscribe_into(self, topic: TopicMessage, *, flags: int = 0) -> bool: ...  # Raises: RecvError
-    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-### StreamSocket
-
-```python
-class StreamSocket:
-    def __init__(self, context: Context) -> None: ...
-    @property
-    def options(self) -> CommonSocketOptions: ...                                # Raises: ConfigError
-    @property
-    def stream_options(self) -> StreamSocketOptions: ...                         # Raises: ConfigError
-    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
-    def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
-    def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
-    def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
-    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
-    # Routed send (operation builder).
-    def send(self, routing_id: RoutingId) -> SendOp: ...
-    # Two mutually-exclusive receive modes on the same StreamSocket:
-    #   (1) recv(), (2) on_packet(handler). Second attach raises
-    #   HandlerError(code=HandlerResult.BUSY).
-    # Deprecated: allocates a fresh Received per call. Prefer recv_into.
-    def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
-    # Canonical caller-provided storage recv. See doc/spec/bindings/README.md.
-    def recv_into(self, received: Received, *, flags: int = 0) -> bool: ...      # Raises: RecvError
-    # Mode (3): framed packet callback mapped to
-    # zlink_stream_packet_handler(). Wire frame is big-endian u16
-    # header_size + u32 body_size + header + body. The handler receives
-    # the source routing id, a header Message, and a body Message; both
-    # messages transfer ownership to the handler.
-    def on_packet(
-        self,
-        handler: Callable[[RoutingId, "Message", "Message"], None],
-    ) -> None: ...                                                               # Raises: HandlerError
-    def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
-    # Async Actor bind (operation builder). The stream is bound to its
-    # session-owner SpotNode at attach time; no SpotNode argument is required
-    # here. A bind does not require nor imply a Spot join.
-    def bind_actor(self, session_rid: RoutingId, actor: ActorRef) -> ActorBindOp: ...
-    # Async Actor unbind (operation builder).
-    def unbind_actor(self, session_rid: RoutingId, actor_id: str) -> ActorUnbindOp: ...
-    # Session-bound relay send (operation builder).
-    def send_bound_actor(self, session_rid: RoutingId, actor_id: str) -> SendOp: ...
-    # Snapshot of Actor refs attached to the given session (local mapping only).
-    def bound_actors(self, session_rid: RoutingId) -> list[ActorRef]: ...        # Raises: ConfigError
-    def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-### Socket Option Classes
-
-All option-class getters and setters raise `ConfigError` on failure.
-
-```python
-class CommonSocketOptions:
-    @property
-    def rid_duplicate_policy(self) -> RidDuplicatePolicy: ...
-    @rid_duplicate_policy.setter
-    def rid_duplicate_policy(self, value: RidDuplicatePolicy) -> None: ...
-    @property
-    def auto_hwm_msg_unit_bytes(self) -> int: ...
-    @auto_hwm_msg_unit_bytes.setter
-    def auto_hwm_msg_unit_bytes(self, value: int) -> None: ...
-    @property
-    def linger_ms(self) -> int: ...
-    @linger_ms.setter
-    def linger_ms(self, value: int) -> None: ...
-    @property
-    def send_high_water_mark(self) -> int: ...
-    @send_high_water_mark.setter
-    def send_high_water_mark(self, value: int) -> None: ...
-    @property
-    def receive_high_water_mark(self) -> int: ...
-    @receive_high_water_mark.setter
-    def receive_high_water_mark(self, value: int) -> None: ...
-    @property
-    def send_timeout_ms(self) -> int: ...
-    @send_timeout_ms.setter
-    def send_timeout_ms(self, value: int) -> None: ...
-    @property
-    def receive_timeout_ms(self) -> int: ...
-    @receive_timeout_ms.setter
-    def receive_timeout_ms(self, value: int) -> None: ...
-    @property
-    def immediate(self) -> bool: ...
-    @immediate.setter
-    def immediate(self, value: bool) -> None: ...
-    @property
-    def connect_timeout_ms(self) -> int: ...
-    @connect_timeout_ms.setter
-    def connect_timeout_ms(self, value: int) -> None: ...
-    @property
-    def ipv6(self) -> bool: ...
-    @ipv6.setter
-    def ipv6(self, value: bool) -> None: ...
-    @property
-    def tcp_no_delay(self) -> bool: ...
-    @tcp_no_delay.setter
-    def tcp_no_delay(self, value: bool) -> None: ...
-    @property
-    def tcp_keepalive(self) -> int: ...
-    @tcp_keepalive.setter
-    def tcp_keepalive(self, value: int) -> None: ...
-    @property
-    def heartbeat_interval_ms(self) -> int: ...
-    @heartbeat_interval_ms.setter
-    def heartbeat_interval_ms(self, value: int) -> None: ...
-    @property
-    def heartbeat_ttl_ms(self) -> int: ...
-    @heartbeat_ttl_ms.setter
-    def heartbeat_ttl_ms(self, value: int) -> None: ...
-    @property
-    def heartbeat_timeout_ms(self) -> int: ...
-    @heartbeat_timeout_ms.setter
-    def heartbeat_timeout_ms(self, value: int) -> None: ...
-    @property
-    def max_msg_size(self) -> int: ...
-    @max_msg_size.setter
-    def max_msg_size(self, value: int) -> None: ...
-    @property
-    def backlog(self) -> int: ...
-    @backlog.setter
-    def backlog(self, value: int) -> None: ...
-    @property
-    def reconnect_interval_ms(self) -> int: ...
-    @reconnect_interval_ms.setter
-    def reconnect_interval_ms(self, value: int) -> None: ...
-    @property
-    def reconnect_interval_max_ms(self) -> int: ...
-    @reconnect_interval_max_ms.setter
-    def reconnect_interval_max_ms(self, value: int) -> None: ...
-
-class DealerSocketOptions:
-    @property
-    def probe(self) -> bool: ...
-    @probe.setter
-    def probe(self, value: bool) -> None: ...
-    @property
-    def weight(self) -> int: ...
-    @weight.setter
-    def weight(self, value: int) -> None: ...
-    @property
-    def request_timeout_ms(self) -> int: ...
-    @request_timeout_ms.setter
-    def request_timeout_ms(self, value: int) -> None: ...
-
-class RouterSocketOptions:
-    @property
-    def mandatory(self) -> bool: ...
-    @mandatory.setter
-    def mandatory(self, value: bool) -> None: ...
-    @property
-    def handover(self) -> bool: ...
-    @handover.setter
-    def handover(self, value: bool) -> None: ...
-    @property
-    def probe(self) -> bool: ...
-    @probe.setter
-    def probe(self, value: bool) -> None: ...
-    @property
-    def connect_routing_id(self) -> RoutingId: ...
-    @connect_routing_id.setter
-    def connect_routing_id(self, routing_id: RoutingId | bytes) -> None: ...
-    @property
-    def weight(self) -> int: ...
-    @weight.setter
-    def weight(self, value: int) -> None: ...
-    @property
-    def request_timeout_ms(self) -> int: ...
-    @request_timeout_ms.setter
-    def request_timeout_ms(self, value: int) -> None: ...
-
-class PubSocketOptions:
-    @property
-    def verbose(self) -> bool: ...
-    @verbose.setter
-    def verbose(self, value: bool) -> None: ...
-    @property
-    def verboser(self) -> bool: ...
-    @verboser.setter
-    def verboser(self, value: bool) -> None: ...
-    @property
-    def manual(self) -> bool: ...
-    @manual.setter
-    def manual(self, value: bool) -> None: ...
-    @property
-    def no_drop(self) -> bool: ...
-    @no_drop.setter
-    def no_drop(self, value: bool) -> None: ...
-    @property
-    def manual_last_value(self) -> bool: ...
-    @manual_last_value.setter
-    def manual_last_value(self, value: bool) -> None: ...
-    @property
-    def welcome_message(self) -> Message: ...
-    @welcome_message.setter
-    def welcome_message(self, value: Message | bytes) -> None: ...
-    @property
-    def topics_count(self) -> int: ...   # read-only
-    def approve_subscribe(self, routing_id: RoutingId | bytes) -> None: ...
-    def reject_subscribe(self, routing_id: RoutingId | bytes) -> None: ...
-
-class SubSocketOptions:
-    @property
-    def topics_count(self) -> int: ...   # read-only
-
-class StreamSocketOptions:
-    @property
-    def notify(self) -> bool: ...
-    @notify.setter
-    def notify(self, value: bool) -> None: ...
-```
-
----
-
-## Send / Recv Flags
-
-### SendFlags
-
-```python
-class RidDuplicatePolicy(IntEnum):
-    REJECT = 0
-    HANDOVER = 1
-
-class SendFlags:
-    NONE = 0
-    DONT_WAIT = 1
-```
-
-### RecvFlags
-
-```python
-class RecvFlags:
-    NONE = 0
-    DONT_WAIT = 1
-```
-
----
-
-## Message / Domain
-
-### Message
-
-```python
-class Message:
-    def __init__(self, size: int | None = None) -> None: ...                 # Raises: ConfigError
-    @classmethod
-    def copy_from(cls, data: bytes | bytearray | memoryview) -> Message: ... # Raises: ConfigError
-    @staticmethod
-    def from_bytes(data: bytes | bytearray | memoryview) -> Message: ...     # Raises: ConfigError
-    # Public input adapters are copy-based only; borrowed external-wrap APIs
-    # are intentionally not exposed on managed bindings.
-    def size(self) -> int: ...                                               # Raises: ConfigError
-    @property
-    def data(self) -> memoryview: ...                                        # Raises: ConfigError
-    def to_bytes(self) -> bytes: ...                                         # Raises: ConfigError
-    def get_property(self, name: str) -> str | None: ...                     # Raises: ConfigError
-    def ref_count(self) -> int: ...                                          # Raises: ConfigError
-    def close(self) -> None: ...                                             # Raises: CloseError
-    # supports `with` and `async with` — __exit__ raises CloseError
-```
-
-### Codec Extensions
-
-Codec adapters are separate public extension packages layered on top of the
-core package. Their contract lives in
-[Python Codec Extension Specification](codec.md). The core `zlink` package
-does not expose codec entrypoints or require codec dependencies.
-
-### RoutingId
-
-Binary-safe immutable value type (1-255 bytes). Construction from a raw
-`str` is **not** supported by default; string conversion is exposed only
-through convenience helpers (`to_hex()`, `__str__`).
-
-```python
-class RoutingId:
-    def __init__(self, data: bytes | bytearray) -> None: ...      # Raises: ConfigError
-    @classmethod
-    def from_bytes(cls, data: bytes | bytearray) -> "RoutingId": ...  # Raises: ConfigError
-    @classmethod
-    def from_string(cls, value: str) -> "RoutingId": ...  # Parses to_hex(); max 510 hex chars; invalid or >255 decoded bytes raises ValueError
-
-    def to_bytes(self) -> bytes: ...
-
-    @property
-    def size(self) -> int: ...       # byte length (1..255)
-
-    def __bytes__(self) -> bytes: ...
-    def __eq__(self, other: object) -> bool: ...
-    def __hash__(self) -> int: ...
-
-    # Convenience only — not part of the canonical shape:
-    def to_hex(self) -> str: ...
-    def __str__(self) -> str: ...
-    def __repr__(self) -> str: ...
-```
-
-### Received
-
-`Received` is the PAIR / DEALER / ROUTER recv result. It mirrors the
-canonical `Received` shape defined in the binding spec (no `topic` field,
-but with `request_seq` populated when the message arrived as part of a
-request-reply exchange).
-
-```python
-class Received:
-    def __init__(self) -> None: ...
-
-    routing_id: RoutingId | None             # peer_rid (Router) / source_node_rid (Spot)
-    spot_rid: RoutingId | None               # set only for SPOT routed recv
-    request_seq: int | None                  # set when routed over request-reply; None otherwise
-    parts: tuple[Message, ...]
-
-    def is_single_part(self) -> bool: ...
-	    def first_part(self) -> Message: ...              # Raises: RecvError
-	    def single_part_or_throw(self) -> Message: ...    # Raises: RecvError
-
-    # Send a regular routed message back to the sender of this Received.
-    # Source rid / spot rid are encapsulated; the builder accumulates payload
-    # via .message(...).
-    def send(self) -> SendOp: ...
-
-    # Reply to this received request (operation builder). Valid only when
-    # request_seq is present. routing_id / spot_rid / request_seq are
-    # encapsulated.
-    def reply(self) -> ReplyOp: ...
-
-    def close(self) -> None: ...                      # Raises: CloseError
-    def __enter__(self) -> "Received": ...
-    def __exit__(self, *args) -> None: ...            # Raises: CloseError
-```
-
-### TopicMessage
-
-Reusable result object for `subscribe_into(...)`. The same instance may be
-passed across calls; each successful subscribe overwrites the previous contents
-and closes any replaced message parts.
-
-```python
-class TopicMessage:
-    def __init__(self) -> None: ...
-
-    routing_id: RoutingId | None             # None when transport carries no source id
-    topic: str                               # UTF-8
-    parts: tuple[Message, ...]
-
-    def is_single_part(self) -> bool: ...
-    def first_part(self) -> Message: ...
-    def single_part_or_throw(self) -> Message: ...
-    def close(self) -> None: ...             # Raises: CloseError
-    def __enter__(self) -> "TopicMessage": ...
-    def __exit__(self, *args) -> None: ...
-```
-
-### SubscriptionEvent
-
-Reusable result object filled by
-`XPubSocket.receive_subscription_event_into(...)` and
-`Spot.receive_subscription_event_into(...)`.
-
-```python
-class SubscriptionEvent:
-    def __init__(self) -> None: ...
-
-    routing_id: RoutingId | None    # subscriber routing id; None if transport carries none
-    topic: str                       # UTF-8 topic string (NOT bytes)
-    subscribed: bool                 # True = subscribe, False = unsubscribe
-```
-
-### Actor Value Types
-
-Actor value objects mirror the public Actor structs in `core/include/zlink.h`.
-The native reply context stored inside `zlink_actor_join_info_t` remains
-internal and is not exposed as a Python field.
-
-```python
-@dataclass(frozen=True)
-class ActorRef:
-    node_rid: RoutingId
-    actor_id: str
-    generation: int
-
-@dataclass(frozen=True)
-class ActorJoinResult:
-    result: RequestResult
-    actor: ActorRef
-    joined_spot_rid: RoutingId
-    join_epoch: int
-    flags: int
-
-@dataclass(frozen=True)
-class ActorLookupResult:
-    result: RequestResult
-    actor: ActorRef
-    flags: int
-
-@dataclass(frozen=True)
-class SpotActorLifecycleInfo:
-    previous_actor: ActorRef
-    current_actor: ActorRef
-    previous_spot_rid: RoutingId | None
-    current_spot_rid: RoutingId | None
-    join_epoch: int
-    flags: int
-
-@dataclass(frozen=True)
-class ActorRoute:
-    actor: ActorRef
-    joined: bool
-    joined_spot_rid: RoutingId | None
-
-@dataclass(frozen=True)
-class ActorRecvInfo:
-    actor: ActorRef
-    source_node_rid: RoutingId
-    source_session_rid: RoutingId
-    flags: int
-
-@dataclass(frozen=True)
-class ActorJoinInfo:
-    source_actor: ActorRef
-    target_actor: ActorRef
-    source_node_rid: RoutingId
-    source_spot_rid: RoutingId
-    target_node_rid: RoutingId
-    target_spot_rid: RoutingId
-    join_epoch: int
-    flags: int
-
-@dataclass(frozen=True)
-class ActorPart:
-    info: ActorRecvInfo
-    message: Message
-    more: bool
-
-@dataclass(frozen=True)
-class ActorJoinRequest:
-    info: ActorJoinInfo
-    message: Message
-```
-
-### SubmitResult
-
-Result codes for send/request/reply/publish operations.
-All failures raise `SubmitError` (a `ZlinkError` subclass) with
-`.result` exposing the typed enum and `.code` the globally unique int.
-
-```python
-class SubmitResult(IntEnum):
-    OK = 0
-    BACKPRESSURED = 1
-    NOT_CONNECTED = 2
-    NOT_FOUND = 3
-    TERMINATED = 4
-    INVALID_HANDLE = 5
-    INVALID_ARGUMENT = 6
-    NOT_SUPPORTED = 7
-    INVALID_STATE = 8
-    THREAD_VIOLATION = 9
-    OUT_OF_MEMORY = 10
-    SEQ_EXHAUSTED = 11
-    INTERNAL_ERROR = 12
-    NOT_ADMITTED = 13   # target peer has weight 0
-```
-
-### RequestResult
-
-Result codes for request completion callbacks.
-
-```python
-class RequestResult(IntEnum):
-    OK = 0
-    TIMED_OUT = 101
-    NOT_FOUND = 102
-    TERMINATED = 103
-    PROTOCOL_ERROR = 104
-    INTERNAL_ERROR = 105
-    REJECTED = 106
-    CONFLICT = 107
-    BUSY = 108
-    NOT_CONNECTED = 109
-    INVALID_ARGUMENT = 110
-    INVALID_STATE = 111
-    NOT_SUPPORTED = 112
-```
-
-### RecvResult
-
-Result codes for recv, subscribe, and subscription event operations.
-
-```python
-class RecvResult(IntEnum):
-    OK = 0
-    NO_DATA = 201
-    BUSY = 202
-    TERMINATED = 203
-    INVALID_HANDLE = 204
-    NOT_SUPPORTED = 205
-    INTERNAL_ERROR = 206
-```
-
-### HandlerResult
-
-Result codes for handler registration operations (`on_packet`,
-`on_send_ready`, `on_routed_receive`, `on_dispatch_event`, etc.).
-
-```python
-class HandlerResult(IntEnum):
-    OK = 0
-    INVALID_ARGUMENT = 301
-    BUSY = 302
-    NOT_SUPPORTED = 303
-    DEADLOCK = 304
-    INVALID_HANDLE = 305
-    INTERNAL_ERROR = 306
-```
-
-### CloseResult
-
-Result codes for close and destroy operations.
-
-```python
-class CloseResult(IntEnum):
-    OK = 0
-    BUSY = 401
-    SHUTDOWN = 402
-    INVALID_HANDLE = 403
-    INTERNAL_ERROR = 404
-```
-
-### BindResult
-
-Result codes for bind operations.
-
-```python
-class BindResult(IntEnum):
-    OK = 0
-    INVALID_ARGUMENT = 501
-    ADDR_IN_USE = 502
-    NOT_SUPPORTED = 503
-    INVALID_HANDLE = 504
-    INTERNAL_ERROR = 505
-```
-
-### ConnectResult
-
-Result codes for connect, disconnect, and unbind operations.
-
-```python
-class ConnectResult(IntEnum):
-    OK = 0
-    INVALID_ARGUMENT = 601
-    NOT_SUPPORTED = 602
-    INVALID_HANDLE = 603
-    INTERNAL_ERROR = 604
-    NOT_FOUND = 605
-    CONFLICT = 606
-    BUSY = 607
-```
-
-### ConfigResult
-
-Result codes for configuration, option, and snapshot operations.
-
-```python
-class ConfigResult(IntEnum):
-    OK = 0
-    INVALID_HANDLE = 701
-    INVALID_ARGUMENT = 702
-    NOT_SUPPORTED = 703
-    INTERNAL_ERROR = 704
-    INVALID_STATE = 705
-    NOT_FOUND = 706
-```
-
-### ZlinkError
-
-Common base class for all zlink exceptions. Per the binding-wide
-**Per-Function Error Type Hierarchy** policy, `ZlinkError` is never
-raised directly; each failing operation raises one of the **8
-function-category subclasses** below. Callers that want to handle every
-zlink failure uniformly can still catch `ZlinkError`; callers that need
-discrimination catch the specific subclass.
-
-Every subclass wraps the matching C-API result enum
-(`SubmitResult` / `RequestResult` / `RecvResult` / `HandlerResult` /
-`CloseResult` / `BindResult` / `ConnectResult` / `ConfigResult`) in its
-`result` property and exposes the platform `internal_errno` captured
-at failure site.
-
-The `code` property is a globally unique `int` that spans all result
-enum ranges (0-706). The code alone identifies the error without
-needing to know which enum it belongs to; `result` provides the typed
-enum view for code that prefers enum matching.
-
-```python
-class ZlinkError(Exception):
-    def __init__(self, code: int, internal_errno: int = 0): ...
-
-    @property
-    def code(self) -> int: ...
-
-    @property
-    def internal_errno(self) -> int: ...
-```
-
-### SubmitError
-
-Raised by send / publish / request submit / reply submit operations.
-Wraps `SubmitResult`.
-
-```python
-class SubmitError(ZlinkError):
-    def __init__(self, result: SubmitResult, internal_errno: int = 0) -> None: ...
-
-    @property
-    def result(self) -> SubmitResult: ...
-```
-
-### RequestError
-
-Reported to request-completion callbacks (and raised by async request
-variants) when a request fails after submit. Wraps `RequestResult`.
-
-```python
-class RequestError(ZlinkError):
-    def __init__(self, result: RequestResult, internal_errno: int = 0) -> None: ...
-
-    @property
-    def result(self) -> RequestResult: ...
-```
-
-### RecvError
-
-Raised by recv / subscribe / subscription-event / monitor recv / timer
-recv operations. Wraps `RecvResult`.
-
-```python
-class RecvError(ZlinkError):
-    def __init__(self, result: RecvResult, internal_errno: int = 0) -> None: ...
-
-    @property
-    def result(self) -> RecvResult: ...
-```
-
-### HandlerError
-
-Raised by handler-registration operations (`on_packet`,
-`on_send_ready`, `on_event`, `on_fire`, `on_routed_receive`,
-`on_dispatch_event`, etc.).
-Wraps `HandlerResult`.
-
-```python
-class HandlerError(ZlinkError):
-    def __init__(self, result: HandlerResult, internal_errno: int = 0) -> None: ...
-
-    @property
-    def result(self) -> HandlerResult: ...
-```
-
-### CloseError
-
-Raised by `close()` / `destroy()` / `__exit__` / `shutdown()`
-operations. Wraps `CloseResult`.
-
-```python
-class CloseError(ZlinkError):
-    def __init__(self, result: CloseResult, internal_errno: int = 0) -> None: ...
-
-    @property
-    def result(self) -> CloseResult: ...
-```
-
-### BindError
-
-Raised by `bind()` operations. Wraps `BindResult`.
-
-```python
-class BindError(ZlinkError):
-    def __init__(self, result: BindResult, internal_errno: int = 0) -> None: ...
-
-    @property
-    def result(self) -> BindResult: ...
-```
-
-### ConnectError
-
-Raised by `connect()` / `disconnect()` / `unbind()` operations.
-Wraps `ConnectResult`.
-
-```python
-class ConnectError(ZlinkError):
-    def __init__(self, result: ConnectResult, internal_errno: int = 0) -> None: ...
-
-    @property
-    def result(self) -> ConnectResult: ...
-```
-
-### ConfigError
-
-Raised by option set/get, snapshot, poller mutation, timer config,
-`attach_discovery`, message lifecycle, and `set_tls_*` operations.
-Wraps `ConfigResult`.
-
-```python
-class ConfigError(ZlinkError):
-    def __init__(self, result: ConfigResult, internal_errno: int = 0) -> None: ...
-
-    @property
-    def result(self) -> ConfigResult: ...
-```
-
----
-
-## Monitoring
-
-### MonitorSocket (SocketMonitor)
-
-Starts in recv model. `on_event(...)` transitions one-way to callback-only
-model; after that `recv()` raises a busy recv error and `snapshot()` still works.
-
-```python
-class MonitorSocket:
-    # No-op callback for callback-only model. Pass to on_event() to keep a
-    # valid handler when the application does not care about events; once
-    # installed the monitor is in callback-only model and recv() raises a
-    # busy recv error (snapshot() still works). To drive the monitor via
-    # snapshot() / recv() instead, leave on_event unset.
-    # Maps to zlink_monitor_ignore_handler.
-    ignore_handler: ClassVar[Callable[[MonitorEvent], None]]
-
-    def recv(self, *, flags: int = 0) -> MonitorEvent | None: ...                # Raises: RecvError
-    def on_event(self, handler: Callable[[MonitorEvent], None]) -> None: ...     # Raises: HandlerError
-    def snapshot(self) -> MonitorSnapshot: ...                                   # Raises: ConfigError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-### MonitorSnapshot
-
-Runtime state snapshot exposed by `MonitorSocket.snapshot()` and
-the socket-monitor path. Every binding is required to expose the canonical
-fields together with the `is_ready()` convenience accessor.
-
-```python
-class MonitorSnapshot:
-    source_kind: int                 # monitor target kind
-    state_flags: int                 # state bitmask
-    detail_flags: int                # detail bitmask
-    snd_pending_msgs: int            # pending send-queue messages
-    rcv_pending_msgs: int            # pending receive-queue messages
-    auto_hwm_enabled: bool
-    auto_hwm_profile: int
-    auto_hwm_role: int
-    auto_hwm_policy_class: int
-    auto_hwm_unit_budget_bytes: int
-    auto_hwm_size_cap: int
-    auto_hwm_socket_message_slots: int
-    auto_hwm_effective_message_bytes: int
-    auto_hwm_applied_sndhwm: int
-    auto_hwm_applied_rcvhwm: int
-    auto_hwm_effective_sndbuf: int
-    auto_hwm_effective_rcvbuf: int
-    auto_hwm_last_recalc_ms: int
-    auto_hwm_last_recalc_reason: int
-    auto_hwm_send_blocked_ratio_ppm: int
-    auto_hwm_deferred_sndhwm: int
-    auto_hwm_deferred_rcvhwm: int
-
-    def is_ready(self) -> bool: ...  # True when the ready bit is set in state_flags
-```
-
-### MonitorEvent
-
-Value object emitted by `MonitorSocket.recv()` / `on_event(...)`. The
-canonical name is `MonitorEvent`. `SocketMonitorEvent` is a compatibility-only
-alias; new docs, samples, and tests must use `MonitorEvent`.
-
-```python
-class MonitorEvent:
-    event: MonitorEventType          # enum (CONNECTION_READY, CONNECTED, DISCONNECTED, PEER_WEIGHT_CHANGED, ...)
-    value: int                       # event-specific detail (PEER_WEIGHT_CHANGED carries the new 0..100 weight)
-    routing_id: RoutingId | None     # peer routing id when carried by the event, else None
-    local_addr: str                  # local endpoint
-    remote_addr: str                 # remote endpoint
-
-SocketMonitorEvent = MonitorEvent    # compatibility-only alias
-```
-
-`MonitorEventType` includes `PEER_WEIGHT_CHANGED` (bit 15).
-
-### MonitorEventMask
-
-Bitflag type supplied to `monitor_open(events=...)` to select which
-monitor events to deliver. `ALL` selects every event.
-
-```python
-class MonitorEventMask(IntFlag):
-    NONE = 0
-    ALL = ...
-    # Individual event bits match the C-side MonitorEventType values.
-```
-
----
-
-## Services
-
-### Registry
-
-```python
-class Registry:
-    def __init__(self, ctx: Context) -> None: ...
-    def bind(self, pub_endpoint: str, router_endpoint: str) -> None: ...         # Raises: BindError
-    def set_id(self, registry_id: int) -> None: ...                              # Raises: ConfigError
-    def add_peer(self, peer_pub_endpoint: str) -> None: ...                      # Raises: ConfigError
-    def set_tls_server(self, cert: str, key: str,
-                       require_client_cert: bool = False) -> None: ...           # Raises: ConfigError
-    def set_tls_client(self, ca_cert: str | None, hostname: str | None,
-                       trust_system: bool = False) -> None: ...                  # Raises: ConfigError
-    def set_heartbeat(self, interval_ms: int, timeout_ms: int) -> None: ...      # Raises: ConfigError
-    def set_broadcast_interval(self, interval_ms: int) -> None: ...              # Raises: ConfigError
-    def status_snapshot(self) -> RegistryStatus: ...                             # Raises: ConfigError
-    def service_summary_snapshot(self,
-        filter_: RegistryServiceSummaryFilter | None = None
-    ) -> list[RegistryServiceSummaryEntry]: ...                                  # Raises: ConfigError
-    def member_peers(self, channel_name: str) -> list[MemberPeerEntry]: ...       # Raises: ConfigError
-    def topology_snapshot(self) -> list[RegistryTopologyEntry]: ...              # Raises: ConfigError
-    def topology_query(self, filter_: RegistryTopologyFilter) -> list[RegistryTopologyEntry]: ...  # Raises: ConfigError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-### AutoConnectType
-
-```python
-class AutoConnectType(IntEnum):
-    INVALID = 0
-    ROUTE_MESH = 1
-    CLIENT_SERVER = 2
-    DEALER_MESH = 3
-    FANOUT = 4
-    SPOT_MESH = 5
-```
-
-### Discovery
-
-```python
-class Discovery:
-    def __init__(self, ctx: Context, auto_connect_type: AutoConnectType, channel_name: str) -> None: ...
-    def connect_registry(self, registry_endpoint: str) -> None: ...              # Raises: ConnectError
-    def set_value(self, value: int) -> None: ...                                 # Raises: ConfigError
-    def get_value(self) -> int: ...                                              # Raises: ConfigError
-    def member_peers(self) -> list[MemberPeerEntry]: ...                         # Raises: ConfigError
-    spot_owner_sync_enabled: bool                                                # set/get; publishes SPOT owner rows when True
-    def resolve_spot(self, spot_rid: RoutingId) -> RoutingId: ...                # Raises: ConfigError — maps to zlink_discovery_resolve_spot; publisher must enable SPOT owner sync for Registry-backed lookup
-    actor_route_sync_enabled: bool                                               # set/get; publishes actor route rows when True
-    def resolve_actor(self, actor_id: str) -> ActorRoute: ...                    # Raises: ConfigError — maps to zlink_discovery_resolve_actor
-    def set_tls_client(self, ca_cert: str | None, hostname: str | None,
-                       trust_system: bool = False) -> None: ...                  # Raises: ConfigError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-### SpotNode
-
-```python
-class SpotNodeMode(IntEnum):
-    PUBSUB = 1
-    ROUTED = 2
-    ALL = 3
-
-class SpotNode:
-    def __init__(self, ctx: Context, mode: SpotNodeMode | int | None = None): ...
-    def __init__(self, ctx: Context) -> None: ...
-    def bind(self, endpoint: str) -> None: ...                                   # Raises: BindError
-    def last_endpoint(self) -> str: ...                                          # Raises: ConfigError
-    def connect_peer(self, endpoint: str) -> None: ...                           # Raises: ConnectError
-    def disconnect_peer(self, endpoint: str) -> None: ...                        # Raises: ConnectError
-    def disconnect_peer_rid(self, target_node_rid: RoutingId) -> None: ...       # Raises: ConnectError
-    def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
-    def attach_channel_dealer(self, discovery: Discovery, dealer: DealerSocket) -> None: ...  # Raises: ConfigError
-    def attach_channel_dealer_manual(self, channel_name: str, dealer: DealerSocket) -> None: ...  # Raises: ConfigError
-    def attach_pub_ingress(self, pub: PubSocket) -> None: ...                    # Raises: ConfigError
-
-    # SpotNode admission and dispatch-worker options. These map to the six
-    # public zlink_spot_node_option_t values; no raw option bag is public.
-    router_hwm_profile: AutoHwmProfile                                           # get/set; Raises: ConfigError
-    router_hwm: int                                                              # get/set; Raises: ConfigError
-    pubsub_hwm_profile: AutoHwmProfile                                           # get/set; Raises: ConfigError
-    pubsub_hwm: int                                                              # get/set; Raises: ConfigError
-    dispatch_workers_min: int                                                    # get/set; Raises: ConfigError
-    dispatch_workers_max: int                                                    # get/set; Raises: ConfigError
-
-    # --- identity / routing ---
-    # SpotNode's logical address. Maps to zlink_set_routing_id(node, ...) /
-    # zlink_get_routing_id(node, ...).
-    def set_routing_id(self, rid: RoutingId) -> None: ...                        # Raises: ConfigError
-    @property
-    def routing_id(self) -> RoutingId: ...                                       # Raises: ConfigError
-
-    def set_tls_server(self, cert: str, key: str,
-                       require_client_cert: bool = False) -> None: ...           # Raises: ConfigError
-    def set_tls_client(self, ca_cert: str | None, hostname: str | None,
-                       trust_system: bool = False) -> None: ...                  # Raises: ConfigError
-    def entry_spot(self) -> Spot: ...                                            # Raises: ConfigError
-    def create_spot(self) -> Spot: ...                                           # Raises: ConfigError
-    def spot_lookup(self, spot_rid: RoutingId) -> Spot | None: ...               # Raises: ConfigError
-    def actor(self, actor_id: str) -> Actor: ...                                 # Raises: ConfigError
-    def actor_lookup(self, actor_id: str) -> ActorRef: ...                       # Raises: ConfigError
-    # Async remote Actor lookup (operation builder). Completion delivers
-    # ActorLookupResult (checked ref on success).
-    def remote_actor_get_ref(self, target_node_rid: RoutingId,
-                             actor_id: str) -> ActorLookupOp: ...
-    # Async destroy (operation builder). Succeeds only when the Actor is in
-    # the Entry Spot.
-    def destroy_actor(self, actor_ref: ActorRef) -> ActorDestroyOp: ...
-    # Async user-Spot join (operation builder). Completion delivers
-    # ActorJoinResult plus reply parts. dest_spot_rid must be a user Spot.
-    # No bound STREAM session is required.
-    def join_actor(self, actor_ref: ActorRef,
-                   dest_node_rid: RoutingId,
-                   dest_spot_rid: RoutingId) -> ActorJoinOp: ...
-    # Async leave to the same node's Entry Spot (operation builder).
-    def leave_actor(self, actor_ref: ActorRef,
-                    current_spot_rid: RoutingId) -> ActorLeaveOp: ...
-    # Actor-to-session relay (operation builder).
-    def send_bound_session_msg(self, actor_ref: ActorRef) -> SendOp: ...
-    def status_snapshot(self) -> SpotNodeStatus: ...                             # Raises: ConfigError
-    def peers_snapshot(self) -> list[SpotNodePeerEntry]: ...                     # Raises: ConfigError
-    def peers_query(self, filter_: SpotNodePeerFilter | None = None
-                    ) -> list[SpotNodePeerEntry]: ...                            # Raises: ConfigError
-    def subjects_snapshot(self, filter_: SpotNodeSubjectFilter | None = None
-                          ) -> list[SpotNodeSubjectEntry]: ...                   # Raises: ConfigError
-    def internal_sockets_snapshot(
-        self,
-        filter_: SpotNodeSocketSnapshotFilter | None = None
-    ) -> list[SpotNodeSocketSnapshotEntry]: ...                                  # Raises: ConfigError
-    def spots_snapshot(self) -> list[SpotNodeSpotEntry]: ...                     # Raises: ConfigError
-    def actors_snapshot(self) -> list[SpotNodeActorEntry]: ...                   # Raises: ConfigError
-    # close() cascades: closes all live Spot handles before the node becomes invalid.
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-`SpotNode` owns the lifecycle. `Spot` handles are created through
-`SpotNode.create_spot()`, Entry Spot facades through `SpotNode.entry_spot()`,
-and lookup facades through `SpotNode.spot_lookup(...)`. Direct `Spot(node)`
-construction is internal and is not part of the public API contract.
-
-`dispatch_workers_min` must be at least `1`; `dispatch_workers_max` must be at
-least `dispatch_workers_min`. If unset, core defaults are CPU count `1`:
-`min=max=1`; otherwise `min=2`, `max=cpu_count`. These values size only the
-SpotNode dispatch callback worker pool.
-
-### Actor
-
-```python
-class Actor:
-    @property
-    def actor_ref(self) -> ActorRef: ...
-    def ref(self) -> ActorRef: ...
-    # Async user-Spot join (operation builder). Completion delivers
-    # ActorJoinResult plus reply parts. spot must be a user Spot.
-    # A bound STREAM session is NOT required.
-    def join(self, spot: Spot) -> ActorJoinOp: ...
-    # Async leave to the same node's Entry Spot (operation builder).
-    def leave(self, spot: Spot) -> ActorLeaveOp: ...
-    def recv_part(self, *, flags: int = 0) -> ActorPart | None: ...             # Raises: RecvError
-    # Actor-to-session relay (operation builder).
-    def send_bound_session(self) -> SendOp: ...
-    def close_bound_session(self, *, timeout: int = 0) -> None: ...             # Raises: RequestError
-    def close(self, *, timeout: int = 0) -> None: ...                           # Raises: RequestError
-```
-
-`Actor` is a ref-centered public object. The public contract does not expose a
-native Actor pointer.
-
-### Spot
-
-```python
-class SendOp:
-    def message(self, payload: Message | bytes) -> SendOp: ...
-    def messages(self, *payloads: Message | bytes) -> SendOp: ...
-    def flags(self, flags: int) -> SendOp: ...
-    def submit(self) -> bool: ...                                                # Raises: SubmitError
-
-class RequestOp:
-    def message(self, payload: Message | bytes) -> RequestOp: ...
-    def messages(self, *payloads: Message | bytes) -> RequestOp: ...
-    def timeout(self, timeout: int) -> RequestOp: ...
-    def flags(self, flags: int) -> RequestCallbackOp: ...
-    async def submit_async(self) -> list[Message]: ...                           # Raises: SubmitError, RequestError
-    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
-
-class RequestCallbackOp:
-    def message(self, payload: Message | bytes) -> RequestCallbackOp: ...
-    def messages(self, *payloads: Message | bytes) -> RequestCallbackOp: ...
-    def timeout(self, timeout: int) -> RequestCallbackOp: ...
-    def flags(self, flags: int) -> RequestCallbackOp: ...
-    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
-
-class ReplyOp:
-    def message(self, payload: Message | bytes) -> ReplyOp: ...
-    def messages(self, *payloads: Message | bytes) -> ReplyOp: ...
-    def flags(self, flags: int) -> ReplyOp: ...
-    def submit(self) -> None: ...                                                # Raises: SubmitError
-
-# --- Actor operation builders ---
-
-# SpotNode.join_actor(...) / Actor.join(spot) return ActorJoinOp.
-# Multipart join state payload is mandatory; the builder stays in the
-# message-required stage until the first message(...) is added.
-class ActorJoinOp:
-    def message(self, payload: Message | bytes) -> ActorJoinOp: ...
-    def messages(self, *payloads: Message | bytes) -> ActorJoinOp: ...
-    def timeout(self, timeout: int) -> ActorJoinOp: ...
-    def flags(self, flags: int) -> ActorJoinCallbackOp: ...
-    async def submit_async(self) -> tuple[ActorJoinResult, list[Message]]: ...   # Raises: SubmitError, RequestError
-    def submit(self, callback: Callable[[ActorJoinResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
-
-class ActorJoinCallbackOp:
-    def message(self, payload: Message | bytes) -> ActorJoinCallbackOp: ...
-    def messages(self, *payloads: Message | bytes) -> ActorJoinCallbackOp: ...
-    def timeout(self, timeout: int) -> ActorJoinCallbackOp: ...
-    def flags(self, flags: int) -> ActorJoinCallbackOp: ...
-    def submit(self, callback: Callable[[ActorJoinResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
-
-# Spot.reply_actor_join(request, accepted) returns ActorJoinReplyOp.
-# Multipart reply payload is optional; submit() is visible directly.
-class ActorJoinReplyOp:
-    def message(self, payload: Message | bytes) -> ActorJoinReplyOp: ...
-    def messages(self, *payloads: Message | bytes) -> ActorJoinReplyOp: ...
-    def submit(self) -> None: ...                                                # Raises: SubmitError
-
-# Payload-less Actor operation builders: leave, destroy, lookup, bind, unbind.
-class ActorLeaveOp:
-    def timeout(self, timeout: int) -> ActorLeaveOp: ...
-    async def submit_async(self) -> list[Message]: ...                           # Raises: SubmitError, RequestError
-    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
-
-class ActorDestroyOp:
-    def timeout(self, timeout: int) -> ActorDestroyOp: ...
-    async def submit_async(self) -> list[Message]: ...                           # Raises: SubmitError, RequestError
-    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
-
-class ActorLookupOp:
-    def timeout(self, timeout: int) -> ActorLookupOp: ...
-    async def submit_async(self) -> ActorLookupResult: ...                       # Raises: SubmitError, RequestError
-    def submit(self, callback: Callable[[ActorLookupResult], None]) -> bool: ...  # Raises: SubmitError
-
-class ActorBindOp:
-    def timeout(self, timeout: int) -> ActorBindOp: ...
-    async def submit_async(self) -> list[Message]: ...                           # Raises: SubmitError, RequestError
-    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
-
-class ActorUnbindOp:
-    def timeout(self, timeout: int) -> ActorUnbindOp: ...
-    async def submit_async(self) -> list[Message]: ...                           # Raises: SubmitError, RequestError
-    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
-
-class Spot:
-    # __init__(node) is internal. Public code obtains Spot handles through
-    # SpotNode factories.
-
-    # --- identity / routing ---
-    # Spot's logical address / routed ownership key.
-    # Maps to zlink_set_routing_id(spot, ...) / zlink_get_routing_id(spot, ...).
-    def set_routing_id(self, rid: RoutingId) -> None: ...                        # Raises: ConfigError
-    @property
-    def routing_id(self) -> RoutingId: ...                                       # Raises: ConfigError
-
-    def publish(self, topic: str) -> SendOp: ...
-    def send_channel(self, channel_name: str) -> SendOp: ...
-    def send_to_spot(self, dest_node_rid: RoutingId,
-                     dest_spot_rid: RoutingId) -> SendOp: ...
-    def request_channel(self, channel_name: str) -> RequestOp: ...
-    def set_subscription(self, topic_or_pattern: str) -> None: ...               # Raises: ConfigError
-    def unset_subscription(self, topic_or_pattern: str) -> None: ...             # Raises: ConfigError
-    # Deprecated: allocates a fresh TopicMessage per call. Prefer subscribe_into.
-    def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
-    def subscribe_into(self, topic: TopicMessage, *, flags: int = 0) -> bool: ...  # Raises: RecvError
-    # Deprecated: allocates a fresh SubscriptionEvent per call. Prefer receive_subscription_event_into.
-    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
-    def receive_subscription_event_into(self, event: SubscriptionEvent, *, flags: int = 0) -> bool: ...  # Raises: RecvError
-    def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...        # Raises: HandlerError
-
-    def request_to_spot(self, dest_node_rid: RoutingId,
-                        dest_spot_rid: RoutingId) -> RequestOp: ...
-    def request_to_router(self, peer_rid: RoutingId) -> RequestOp: ...
-
-    # --- routed reply operation builders ---
-    def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                      request_seq: int) -> ReplyOp: ...
-    def reply_to_router(self, peer_rid: RoutingId, request_seq: int) -> ReplyOp: ...
-
-    # --- routed receive ---
-    # Deprecated: allocates a fresh Received per call. Prefer recv_routed_into.
-    def recv_routed(self, *, flags: int = 0) -> Received | None: ...             # Raises: RecvError
-    def recv_routed_into(self, received: Received, *, flags: int = 0) -> bool: ...  # Raises: RecvError
-    def on_routed_receive(self, handler: Callable[[Received], None]) -> None: ...  # Raises: HandlerError
-    def on_dispatch_event(self, handler: Callable[[Spot, SpotDispatchInfo], None]) -> None: ...  # Raises: HandlerError
-    def recv_actor_join(self, *, flags: int = 0) -> ActorJoinRequest | None: ...  # Raises: RecvError
-    # Reply to an Actor join admission request (operation builder).
-    # Multipart reply payload accumulates through .message(...); a
-    # zero-message submit() is allowed.
-    def reply_actor_join(self, request: ActorJoinRequest,
-                         accepted: bool) -> ActorJoinReplyOp: ...
-    # Register Actor lifecycle callbacks for this Spot. Passing None for
-    # both removes the registration. Handlers receive SpotActorLifecycleInfo.
-    def on_actor_lifecycle(
-        self,
-        on_join: Callable[[Spot, SpotActorLifecycleInfo], None] | None,
-        on_leave: Callable[[Spot, SpotActorLifecycleInfo], None] | None,
-    ) -> None: ...                                                              # Raises: HandlerError
-    def actors_snapshot(self) -> list[ActorRef]: ...                            # Raises: ConfigError
-    def drain_channel_reply_from(self, dealer: DealerSocket) -> None: ...        # Raises: ConfigError
-
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-`SendOp`, `RequestOp`, and `ReplyOp` are Python fluent operation builders.
-`message(...)` appends one payload part and `messages(*payloads)` appends
-multiple parts without forcing callers to build a list. `submit` without any
-payload raises a validation error before calling native code. Async request
-submission uses `submit_async()` and must not use submit flags; callback
-submission uses `submit(callback)` and may use `flags(...)`. Calling
-`flags(...)` on a request operation returns `RequestCallbackOp`, where
-`submit_async()` is not part of the public contract. Submit consumes the
-operation; reusing the same operation object after submit raises a validation
-error.
-
-```python
-class SpotDispatchEvent(IntEnum):
-    SUBSCRIBE_READABLE = 1
-    ROUTED_READABLE = 2
-    TIMER_READABLE = 3
-    CHANNEL_REPLY_READABLE = 4
-    ACTOR_READABLE = 5
-    ACTOR_JOIN_READABLE = 6
-
-class SpotDispatchSubjectKind(IntEnum):
-    SPOT = 1
-    TIMER = 2
-    CHANNEL_DEALER = 3
-    ACTOR = 4
-
-@dataclass(frozen=True)
-class SpotDispatchInfo:
-    event: SpotDispatchEvent
-    subject_kind: SpotDispatchSubjectKind
-    timer: Timer | None
-    channel_dealer: DealerSocket | None
-    actor: ActorRef | None
-    def recv_actor_part(self, *, flags: int = 0) -> ActorPart | None: ...
-```
-
-For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
-`subscribe_into(...)` / `recv_routed_into(...)` until the binding returns
-`False`. Hard recv failures still raise `RecvError`.
-For `CHANNEL_REPLY_READABLE`, `subject_kind` is `CHANNEL_DEALER`; use the
-attached dealer's `get_channel_name()` metadata to identify the channel and
-pass `channel_dealer` to `drain_channel_reply_from(...)`.
-For `ACTOR_READABLE`, `actor` identifies the readable Actor. No native Actor
-pointer is part of the public contract.
-
-### RegistryQueryClient
-
-```python
-class RegistryQueryClient:
-    def __init__(self, ctx: Context) -> None: ...
-    def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
-    def snapshot(self, filter_: RegistryTopologyFilter | None = None
-                 ) -> list[RegistryTopologyEntry]: ...                           # Raises: ConfigError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-```
-
-### Service-Layer Entry Types
-
-Value objects returned by service-layer snapshot/query APIs. All are
-frozen dataclass-shaped: named fields only, no mutation, no lifecycle
-methods. Field types follow the canonical C struct definitions exposed
-in `core/include/zlink.h`; fixed-size C strings are decoded to `str`.
-
-Primary entry types used in the default service flow:
-
-```python
-class ServiceKind(IntEnum): ...
-class ServiceRole(IntEnum): ...
-class SpotNodeState(IntEnum): ...
-class SpotPeerSource(IntEnum): ...
-class SpotPeerState(IntEnum): ...
-class RegistryState(IntEnum): ...
-class TopologySource(IntEnum): ...
-class TopologyState(IntEnum): ...
-class SpotRole(IntEnum): ...
-class SubjectKind(IntEnum): ...
-class SpotNodeSocketOwner(IntEnum): ...
-class SocketType(IntEnum): ...
-
-@dataclass(frozen=True)
-class MemberPeerEntry:
-    auto_connect_type: AutoConnectType
-    service_role: ServiceRole
-    channel_name: str
-    endpoint: str
-    routing_id: RoutingId
-    value: int                       # int64
-    weight: int                      # uint32, 0..100
-
-@dataclass(frozen=True)
-class RegistryTopologyEntry:
-    auto_connect_type: AutoConnectType
-    routing_id: RoutingId
-    service_kind: ServiceKind
-    service_role: ServiceRole
-    channel_name: str
-    endpoint: str
-    source: TopologySource
-    state: TopologyState
-    desired_count: int
-    ready_count: int
-    error_code: int
-    last_reported_ms: int
-
-@dataclass(frozen=True)
-class SpotNodeStatus:
-    channel_name: str
-    local_endpoint: str
-    node_routing_id: RoutingId
-    state: SpotNodeState
-    configured_peer_count: int
-    active_peer_count: int
-    connected_peer_count: int
-    subject_count: int
-    ready_subject_count: int
-    disconnected_sub_target_count: int
-    disconnected_routed_target_count: int
-    last_error: int
-    last_changed_ms: int
-```
-
-Advanced / Diagnostic entry types and filters:
-
-```python
-@dataclass(frozen=True)
-class RegistryServiceSummaryEntry:
-    auto_connect_type: AutoConnectType
-    service_role: ServiceRole
-    channel_name: str
-    total_count: int
-    connecting_count: int
-    ready_count: int
-    error_count: int
-    stopped_count: int
-    last_reported_ms: int
-
-@dataclass(frozen=True)
-class RegistryStatus:
-    registry_id: int
-    bind_endpoint: str
-    state: RegistryState
-    topology_entry_count: int
-    peer_registry_count: int
-    connected_peer_registry_count: int
-    list_seq: int
-    last_error: int
-    last_changed_ms: int
-
-@dataclass(frozen=True)
-class SpotNodePeerEntry:
-    channel_name: str
-    local_endpoint: str
-    peer_endpoint: str
-    source: SpotPeerSource
-    state: SpotPeerState
-    weight: int                      # uint32, 0..100
-    connected_since_ms: int
-    last_changed_ms: int
-
-@dataclass(frozen=True)
-class SpotNodeSubjectEntry:
-    role: SpotRole
-    subject: str
-    subject_kind: SubjectKind
-    ready_peer_count: int
-    active_peer_count: int
-    last_changed_ms: int
-
-@dataclass(frozen=True)
-class SpotNodeSocketSnapshotFilter:
-    owner: SpotNodeSocketOwner | None = None
-    socket_type: SocketType | None = None
-    socket_name: str | None = None
-
-@dataclass(frozen=True)
-class SpotNodeSocketSnapshotEntry:
-    owner: SpotNodeSocketOwner
-    owner_id: int
-    owner_name: str
-    socket_name: str
-    socket_type: SocketType
-    auto_hwm_visible: bool
-    snapshot: MonitorSnapshot
-
-@dataclass(frozen=True)
-class RegistryServiceSummaryFilter:
-    auto_connect_type: AutoConnectType | None = None
-    service_role: ServiceRole | None = None
-    channel_name: str | None = None
-
-@dataclass(frozen=True)
-class RegistryTopologyFilter:
-    auto_connect_type: AutoConnectType | None = None
-    service_kind: ServiceKind | None = None
-    service_role: ServiceRole | None = None
-    channel_name: str | None = None
-    routing_id: RoutingId | None = None
-    state: TopologyState | None = None
-    source: TopologySource | None = None
-
-@dataclass(frozen=True)
-class SpotNodePeerFilter:
-    peer_endpoint: str | None = None
-    source: SpotPeerSource | None = None
-    state: SpotPeerState | None = None
-
-@dataclass(frozen=True)
-class SpotNodeSubjectFilter:
-    role: SpotRole | None = None
-    subject: str | None = None
-    subject_kind: SubjectKind | None = None
-```
-
----
-
-## Poller
-
-```python
-class PollEventFlag(IntFlag):
-    IN = 1
-    OUT = 2
-
-class PollSourceKind(IntEnum):
-    SOCKET = 1
-    FD = 2
-    TIMER = 3
-
-@dataclass(frozen=True)
-class PollerEvent:
-    source_kind: PollSourceKind
-    events: PollEventFlag
-    socket: object | None = None
-    fd: int | None = None
-    timer: Timer | None = None
-    tag: object | None = None
-
-class Poller:
-    def __init__(self) -> None: ...
-    def add_socket(self, socket, events: PollEventFlag, tag: object = None) -> None: ...  # Raises: ConfigError
-    def add_fd(self, fd: int, events: PollEventFlag, tag: object = None) -> None: ...  # Raises: ConfigError
-    def add_timer(self, timer: Timer, user_data: object = None) -> None: ...     # Raises: ConfigError
-    def modify_socket(self, socket, events: PollEventFlag) -> None: ...          # Raises: ConfigError
-    def modify_fd(self, fd: int, events: PollEventFlag) -> None: ...             # Raises: ConfigError
-    def remove_socket(self, socket) -> None: ...                                 # Raises: ConfigError
-    def remove_fd(self, fd: int) -> None: ...                                    # Raises: ConfigError
-    def remove_timer(self, timer: Timer) -> None: ...                            # Raises: ConfigError
-    def size(self) -> int: ...                                                   # Raises: ConfigError — number of registered items; maps to zlink_poller_size
-    def poll(self, timeout_ms: int) -> list[PollerEvent]: ...                    # Raises: RecvError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-    # supports `with` and `async with` — __exit__ raises CloseError
-```
-
-`PollEventFlag.OUT` is send-recovery readiness shared with
-`on_send_ready(...)`, not a general transport-writable bit.
-
-The current public poller contract is still generic. It does not yet expose a
-Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
-subject together.
-
----
-
-## Timer
-
-### Timer
-
-```python
-class Timer:
-    def __init__(self) -> None: ...
-    @classmethod
-    def from_spot(cls, spot: Spot) -> Timer: ...                                 # Raises: ConfigError
-    def start(self, interval_ns: int, repeat_count: int) -> None: ...            # Raises: ConfigError
-    def stop(self) -> None: ...                                                  # Raises: ConfigError
-    def recv(self) -> int | None: ...                                            # Raises: RecvError
-    def on_fire(self, handler: Callable[[Timer, int], None]) -> None: ...        # Raises: HandlerError
-    def close(self) -> None: ...                                                 # Raises: CloseError
-    # supports `with` and `async with` — __exit__ raises CloseError
-```
-
----
-
-## Utilities
-
-### Stopwatch
-
-High-resolution stopwatch for measuring elapsed time.
-
-```python
-class Stopwatch:
-    def __init__(self) -> None: ...
-
-    def intermediate(self) -> int:
-        """Return elapsed microseconds without stopping.
-
-        Raises: ConfigError
-        """
-        ...
-
-    def stop(self) -> int:
-        """Stop the stopwatch and return total elapsed microseconds.
-
-        Raises: ConfigError
-        """
-        ...
-
-    def close(self) -> None: ...                 # Raises: CloseError
-    # supports `with` and `async with` — __exit__ raises CloseError
-```
-
-### Thread
-
-Background thread managed by the C library.
-
-```python
-class Thread:
-    def __init__(self, target: Callable[[], None]) -> None:
-        """Start a new thread running the given callable.
-
-        Raises: ConfigError
-        """
-        ...
-
-    def join(self) -> None:
-        """Wait for the thread to finish and release its handle.
-
-        Raises: CloseError
-        """
-        ...
-```
-
-### AtomicCounter
-
-Lock-free atomic counter.
-
-```python
-class AtomicCounter:
-    def __init__(self) -> None: ...
-
-    def set(self, value: int) -> None: ...       # Raises: ConfigError
-    def increment(self) -> int: ...              # Raises: ConfigError
-    def decrement(self) -> int: ...              # Raises: ConfigError
-    @property
-    def value(self) -> int: ...                  # Raises: ConfigError
-
-    def close(self) -> None: ...                 # Raises: CloseError
-    # supports `with` and `async with` — __exit__ raises CloseError
-```
-
----
-
-## Module-Level
-
-```python
-def version() -> tuple[int, int, int]: ...
-
-# Module-level errno() is NOT public. Access internal errno via
-# ZlinkError.internal_errno on the caught exception.
-
-def strerror(code: int) -> str:
-    """Return a human-readable string for the given error number."""
-    ...
-
-def has(capability: str) -> bool:
-    """Check if the library supports a given capability (e.g. 'ipc', 'tls')."""
-    ...
-
-def proxy(frontend, backend, capture=None) -> None:
-    """Start a built-in proxy between frontend and backend sockets.
-
-    Raises: ConfigError
-    """
-    ...
-
-def proxy_steerable(frontend, backend, capture, control) -> None:
-    """Start a steerable proxy with an additional control socket.
-
-    Raises: ConfigError
-    """
-    ...
-
-def sleep(seconds: int) -> None:
-    """Sleep for the given number of seconds."""
-    ...
-
-def multipart_close(parts: list[Message]) -> None:
-    """Close all parts in a multipart message array.
-
-    Raises: CloseError
-    """
-    ...
-```
-
-## Peer Disconnect by Routing ID
-
-Python bindings expose `Socket.disconnect_rid(routing_id)` and
-`SpotNode.disconnect_peer_rid(target_node_rid)`. The duplicate policy option
-and `NOT_FOUND` / `CONFLICT` / `BUSY` connect errors mirror the C core. `Spot`
-does not expose a peer-rid disconnect method.
-
-## Core API Surface 6.0.0 Alignment
-
-Actor create and join payloads use aggregate multipart payloads. Public binding APIs accept a message collection for remote actor create, actor join, actor join receive, and actor join reply. A single-message convenience path may remain, but it must call the multipart path internally so empty payload and one empty message stay distinguishable. Admission handlers receive a borrowed payload view that is valid only during the callback.
-
-Registry scalar configuration uses the registry option surface as the canonical API. Bindings expose typed options for registry id, heartbeat interval, heartbeat timeout, and broadcast interval. Existing named setters may remain as compatibility aliases and must delegate to the option API.
+## API Change Workflow
+
+When mapping a new core capability:
+
+1. Add the public class, function, enum, exception, or type alias to the
+   correct `Contracts/` category.
+2. Update the `zlink` package export, type hints, and API reference projection.
+3. Keep native extension/FFI calls and request progress helpers in private
+   modules.
+4. Add tests that import `zlink`, not private modules.
+5. Update samples and perf only through public exports.
+6. Check that private extension objects do not leak through return values or
+   exceptions.
+
+## Library Shape
+
+The binding should feel like a Python package with a native backend.
+
+- Public classes own native resource lifetime and provide `close()`.
+- Resource classes should support context manager usage when practical.
+- Type hints describe public call shapes, but private native state remains
+  hidden.
+- `Protocol` may be used for static typing when it removes real caller
+  complexity. It must not replace a clear runtime API.
+- Values such as message, routing id, received metadata, topic message,
+  snapshots, options, enums, and exceptions stay concrete Python types.
+- Native handles, raw FFI pointers, callback userdata, request pumps, and
+  part-loop sequencing stay in private modules.
+
+Do not expose private extension objects for convenience in perf or samples.
+
+## Contract / Runtime Placement Rules
+
+- Public classes, type aliases, exceptions, enums, and builder contracts belong
+  in `Contracts/`.
+- Public module functions, class/static helpers, convenience methods, and builder
+  helper functions belong in `Contracts/` when callers can use them directly.
+- Python runtime implementations, handle owners, request pumps, callback
+  adapters, and part-loop helpers belong in `Runtime/`.
+- Native extension bindings, FFI declarations, native struct mirrors,
+  marshalling helpers, and platform loading code belong in `Runtime/Native/`.
+- `zlink.__init__`, type hints, and generated API reference must project
+  `Contracts/`, not expose `Runtime/` modules.
+- If a runtime concrete class is exported for construction, its public behavior
+  must still be described by `Contracts/`.
+
+## Contract Folder Layout
+
+`Contracts/` is the source ownership map for names exported from `zlink`.
+
+- `Core/`: context, context options, routing id, version/capability helpers, and
+  utility contracts.
+- `Messaging/`: message, received metadata, topic messages, subscription events,
+  stream packet data, and builder payload helpers.
+- `Sockets/`: socket behavior, socket families, typed options, request/reply,
+  and publish/subscribe surfaces.
+- `Monitoring/`: monitor, monitor snapshot/event, poller, poll event, timer, and
+  public poll helpers.
+- `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
+  actor refs, actor lifecycle, and operation builders.
+- `Errors/`: typed exception domains.
+- `Enums/`: public enum domains shared across the binding.
+
+## Canonical Interface Rules
+
+- Data-plane `recv_into`, routed recv, `subscribe_into`, and
+  subscription-event receive fill caller-provided `Received`, `TopicMessage`,
+  or `SubscriptionEvent` objects and return `bool`.
+- Send, routed send, publish, request, reply, SPOT operations, and Actor
+  location/session operations return fluent builders.
+- Builder start methods take only the target identity, topic, channel, routing
+  id, or request sequence. Payload, flags, timeout, callback, and async submit
+  choices are builder steps.
+- Multipart payload is accumulated by repeated `message(...)` calls. A
+  Python-style `messages(*parts)` convenience may delegate to the same builder.
+  That convenience is public contract when exported and belongs in `Contracts/`.
+- Do not add operation-start method families such as `send_no_wait`,
+  `publish_with_flags`, or `request_async`; keep one operation name and let
+  the builder absorb the variation. Terminal builder methods may use idiomatic
+  names such as `submit_async`.
+
+## Public Package Shape
+
+The `zlink` package should expose domain-level groups.
+
+- Core: context, version/capability helpers, options, and utilities.
+- Messaging: message, routing id, received metadata, topic message,
+  subscription event, and stream packet data.
+- Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, typed options,
+  callbacks, request/reply, publish/subscribe, and stream packet APIs.
+- Monitoring: monitor, monitor snapshot/event, poller, poll event, and timer.
+- Service: registry, discovery, SPOT node, SPOT handle, topology snapshots,
+  actor refs, actor lifecycle, and operation builders.
+- Errors: typed exception classes preserving core result domains.
+
+## Required Capability Coverage
+
+The public package must cover stable user-facing core capabilities.
+
+- Context lifecycle, options, shutdown, auto-HWM recalculation, version,
+  capability, and strerror.
+- Message ownership, multipart payloads, routing ids, received metadata, topic
+  messages, subscription events, and stream packet callbacks.
+- All socket families and their typed options.
+- Monitor, poller, timer, and readiness semantics.
+- Registry, discovery, SPOT node, SPOT handle, topology snapshots, actors, and
+  stream actor binding.
+
+Python names may follow Python style, but behavior must match the core
+capability meaning.
+
+## Receive And Subscribe Shape
+
+- Data-plane receive and subscribe APIs must use caller-provided result objects
+  for reusable storage.
+- Nonblocking no-data returns `False` and is distinct from hard receive
+  failure.
+- Hard receive failures raise the documented zlink exception.
+- SPOT readable dispatch events are readiness notifications. Callers drain the
+  matching receive API until no-data.
+- Service control/admission receive paths such as Actor join request receive may
+  use `None`, optional, or typed result-return forms when they are clearer than
+  reusable data-plane storage. They must still distinguish no-data from hard
+  receive failure.
+
+## Error And Validation Policy
+
+- Validate native fixed-size ids and strings before calling extension or FFI
+  code.
+- Do not silently truncate routing ids, actor ids, endpoints, channel names, or
+  topics.
+- Preserve submit, request, recv, handler, close, bind, connect, and config
+  error domains in typed exceptions.
+- Public APIs must not require callers to inspect native errno directly.
+
+## Performance Policy
+
+- Hot paths must not use reflection-style attribute lookup, dynamic dispatch by
+  string, avoidable allocation, avoidable `bytes` copies, hidden sleeps, busy
+  waits, broad locks, or thread joins.
+- Native extension or FFI code should materialize public Python values
+  directly from the core part substrate.
+- Avoid one polling thread or timer per request when progress can be shared by
+  handle.
+- Perf, samples, and tests use public `zlink` exports only.
+
+## Implementation Checklist
+
+- `zlink.__all__` or the package export surface matches the intended public
+  contract.
+- Underscore modules do not leak through public signatures.
+- Resource classes have explicit close semantics.
+- Exported module functions and builder convenience methods are declared in
+  `Contracts/`, not only in runtime helpers.
+- Receive/subscription semantics match the shared binding policy.
+- Service control/admission receive exceptions are documented where they differ
+  from data-plane caller-provided storage.
+- Perf meaning matches `bindings/c/perf`.

@@ -2,10 +2,6 @@
 
 from .contracts import *  # noqa: F401,F403
 
-for _legacy_name in ("SendResult", "SendFlag", "ReceiveFlag"):
-    globals().pop(_legacy_name, None)
-del _legacy_name
-
 AUTO_CONNECT_ROUTE_MESH = AutoConnectType.ROUTE_MESH
 AUTO_CONNECT_CLIENT_SERVER = AutoConnectType.CLIENT_SERVER
 AUTO_CONNECT_DEALER_MESH = AutoConnectType.DEALER_MESH

@@ -199,12 +199,6 @@ class ConfigResult(IntEnum):
     NOT_FOUND = 706
 
 
-class SendResult(IntEnum):
-    SENT = 0
-    BACKPRESSURED = 1
-    NOT_READY = 2
-
-
 class RouterOption(IntEnum):
     MANDATORY = 0x3101
     PROBE = 0x3103

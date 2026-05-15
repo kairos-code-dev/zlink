@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from ..._runtime.core.utils import Timer
 from ..._runtime.monitoring.monitor import MonitorEvent, MonitorSnapshot, MonitorSocket, SocketMonitorEvent
 from ..._runtime.monitoring.poller import Poller, PollerEvent
 
@@ -10,4 +11,5 @@ __all__ = [
     "SocketMonitorEvent",
     "Poller",
     "PollerEvent",
+    "Timer",
 ]

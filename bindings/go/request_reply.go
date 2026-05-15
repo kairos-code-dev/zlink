@@ -375,12 +375,11 @@ func cloneParts(parts []*Message) ([]*Message, error) {
 //export goZlinkReplyTrampoline
 func goZlinkReplyTrampoline(result C.zlink_request_result_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
 	handle := cgo.Handle(userdata)
-	value, ok := safeHandleValue(userdata)
+	state, ok := safeHandleAs[*replyCallbackState](userdata)
 	if !ok {
 		return
 	}
 	defer handle.Delete()
-	state := value.(*replyCallbackState)
 	if result == C.ZLINK_REQUEST_OK {
 		clonedParts, err := takeParts(parts, partCount)
 		if err != nil {

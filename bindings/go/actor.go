@@ -703,15 +703,11 @@ func waitActorReply(submit func(cgo.Handle) error) error {
 //export goZlinkActorJoinTrampoline
 func goZlinkActorJoinTrampoline(result *C.zlink_actor_join_result_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
 	handle := cgo.Handle(userdata)
-	value, ok := safeHandleValue(userdata)
-	if !ok {
-		return
-	}
-	defer handle.Delete()
-	state, ok := value.(*replyCallbackState)
+	state, ok := safeHandleAs[*replyCallbackState](userdata)
 	if !ok || state == nil {
 		return
 	}
+	defer handle.Delete()
 	var resultCode RequestResult
 	if result == nil {
 		resultCode = RequestInternalError
@@ -750,11 +746,10 @@ func goZlinkSpotActorLifecycleLeaveTrampoline(_ unsafe.Pointer, info *C.zlink_sp
 }
 
 func dispatchSpotActorLifecycle(isJoin bool, info *C.zlink_spot_actor_lifecycle_info_t, userdata C.uintptr_t) {
-	value, ok := safeHandleValue(userdata)
-	if !ok || info == nil {
+	if info == nil {
 		return
 	}
-	state, ok := value.(*spotActorLifecycleCallbackState)
+	state, ok := safeHandleAs[*spotActorLifecycleCallbackState](userdata)
 	if !ok || state == nil {
 		return
 	}

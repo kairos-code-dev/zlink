@@ -577,15 +577,11 @@ func submitActorLookupNative(progressSpot unsafe.Pointer, native func(cb cgo.Han
 //export goZlinkActorLookupTrampoline
 func goZlinkActorLookupTrampoline(result *C.zlink_actor_lookup_result_t, userdata C.uintptr_t) {
 	handle := cgo.Handle(userdata)
-	value, ok := safeHandleValue(userdata)
-	if !ok {
-		return
-	}
-	defer handle.Delete()
-	state, ok := value.(*actorLookupCallbackState)
+	state, ok := safeHandleAs[*actorLookupCallbackState](userdata)
 	if !ok || state == nil {
 		return
 	}
+	defer handle.Delete()
 	var out ActorLookupResult
 	if result != nil {
 		out = ActorLookupResult{

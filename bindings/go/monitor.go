@@ -222,11 +222,10 @@ func monitorEventFromC(raw C.zlink_socket_monitor_event_t) *MonitorEvent {
 
 //export goZlinkMonitorTrampoline
 func goZlinkMonitorTrampoline(event *C.zlink_monitor_event_t, userdata C.uintptr_t) {
-	value, ok := safeHandleValue(userdata)
+	state, ok := safeHandleAs[*monitorCallbackState](userdata)
 	if !ok {
 		return
 	}
-	state := value.(*monitorCallbackState)
 	payload := monitorEventFromC(*event)
 	state.dispatcher.enqueue(&callbackTask{
 		label: "socket-monitor",

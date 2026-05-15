@@ -327,23 +327,42 @@ func releaseCallbackHandle(handle cgo.Handle) {
 	handle.Delete()
 }
 
-func safeHandleValue(userdata C.uintptr_t) (value any, ok bool) {
+// safeHandleAs looks up a cgo.Handle and type-asserts it to T in one step.
+//
+// The previous design returned `value any` from safeHandleValue and forced
+// every trampoline to do its own `value.(*X)` assertion immediately after,
+// which is on the hot path of every recv/subscribe/send-ready/packet
+// callback. Folding the assertion in here removes the extra interface
+// variable per call and lets the compiler see the concrete type at the
+// call site.
+//
+// The defer/recover guard is preserved because cgo.Handle.Value panics if
+// the handle was already deleted (e.g. socket close racing an in-flight
+// callback dispatch); we want a swallowed callback instead of a process
+// crash in that window.
+func safeHandleAs[T any](userdata C.uintptr_t) (value T, ok bool) {
 	defer func() {
 		if recover() != nil {
-			value = nil
+			var zero T
+			value = zero
 			ok = false
 		}
 	}()
-	return cgo.Handle(userdata).Value(), true
+	raw := cgo.Handle(userdata).Value()
+	typed, ok := raw.(T)
+	if !ok {
+		var zero T
+		return zero, false
+	}
+	return typed, true
 }
 
 //export goZlinkRecvTrampoline
 func goZlinkRecvTrampoline(sourceRID *C.zlink_routing_id_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	value, ok := safeHandleValue(userdata)
+	state, ok := safeHandleAs[*recvCallbackState](userdata)
 	if !ok {
 		return
 	}
-	state := value.(*recvCallbackState)
 	received := &Received{
 		routingID: routingIDFromCPtr(sourceRID),
 		parts:     mustTakeParts(parts, partCount),
@@ -364,11 +383,10 @@ func goZlinkRecvTrampoline(sourceRID *C.zlink_routing_id_t, parts *C.zlink_msg_t
 
 //export goZlinkRouterRecvTrampoline
 func goZlinkRouterRecvTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpotRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	value, ok := safeHandleValue(userdata)
+	state, ok := safeHandleAs[*recvCallbackState](userdata)
 	if !ok {
 		return
 	}
-	state := value.(*recvCallbackState)
 	received := &Received{
 		routingID:     routingIDFromCPtr(sourceNodeRID),
 		spotRID:       routingIDFromCPtr(sourceSpotRID),
@@ -395,11 +413,10 @@ func goZlinkRouterRecvTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpot
 
 //export goZlinkSubscribeTrampoline
 func goZlinkSubscribeTrampoline(sourceRID *C.zlink_routing_id_t, topic *C.char, topicLen C.size_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	value, ok := safeHandleValue(userdata)
+	state, ok := safeHandleAs[*subscribeCallbackState](userdata)
 	if !ok {
 		return
 	}
-	state := value.(*subscribeCallbackState)
 	message := &TopicMessage{
 		routingID: routingIDFromCPtr(sourceRID),
 		topic:     C.GoStringN(topic, C.int(topicLen)),
@@ -421,11 +438,10 @@ func goZlinkSubscribeTrampoline(sourceRID *C.zlink_routing_id_t, topic *C.char, 
 
 //export goZlinkSendReadyTrampoline
 func goZlinkSendReadyTrampoline(_ unsafe.Pointer, userdata C.uintptr_t) {
-	value, ok := safeHandleValue(userdata)
+	state, ok := safeHandleAs[*sendReadyCallbackState](userdata)
 	if !ok {
 		return
 	}
-	state := value.(*sendReadyCallbackState)
 	state.dispatcher.enqueue(&callbackTask{
 		label: "send-ready",
 		invoke: func() {
@@ -436,11 +452,10 @@ func goZlinkSendReadyTrampoline(_ unsafe.Pointer, userdata C.uintptr_t) {
 
 //export goZlinkStreamPacketTrampoline
 func goZlinkStreamPacketTrampoline(_ unsafe.Pointer, sourceRID *C.zlink_routing_id_t, header *C.zlink_msg_t, body *C.zlink_msg_t, userdata C.uintptr_t) {
-	value, ok := safeHandleValue(userdata)
+	state, ok := safeHandleAs[*streamPacketCallbackState](userdata)
 	if !ok {
 		return
 	}
-	state := value.(*streamPacketCallbackState)
 	headerParts, err := takeParts(header, 1)
 	if err != nil {
 		return
@@ -475,11 +490,10 @@ func goZlinkStreamPacketTrampoline(_ unsafe.Pointer, sourceRID *C.zlink_routing_
 
 //export goZlinkSpotRoutedTrampoline
 func goZlinkSpotRoutedTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpotRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	value, ok := safeHandleValue(userdata)
+	state, ok := safeHandleAs[*spotRoutedCallbackState](userdata)
 	if !ok {
 		return
 	}
-	state := value.(*spotRoutedCallbackState)
 	clonedParts, err := takeParts(parts, partCount)
 	if err != nil {
 		_ = err
@@ -513,12 +527,11 @@ func goZlinkSpotRoutedTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpot
 
 //export goZlinkSpotDispatchEventTrampoline
 func goZlinkSpotDispatchEventTrampoline(_ unsafe.Pointer, info *C.zlink_spot_dispatch_info_t, userdata C.uintptr_t) {
-	value, ok := safeHandleValue(userdata)
-	if !ok {
+	if info == nil {
 		return
 	}
-	state, ok := value.(*spotDispatchCallbackState)
-	if !ok || state == nil || info == nil {
+	state, ok := safeHandleAs[*spotDispatchCallbackState](userdata)
+	if !ok || state == nil {
 		return
 	}
 	nodeHandle := state.spot.core.owner.handle
@@ -566,11 +579,10 @@ func goZlinkSpotDispatchEventTrampoline(_ unsafe.Pointer, info *C.zlink_spot_dis
 
 //export goZlinkTimerTrampoline
 func goZlinkTimerTrampoline(timer unsafe.Pointer, fireCount C.uint64_t, userdata C.uintptr_t) {
-	value, ok := safeHandleValue(userdata)
+	state, ok := safeHandleAs[*timerCallbackState](userdata)
 	if !ok {
 		return
 	}
-	state := value.(*timerCallbackState)
 	state.dispatcher.enqueue(&callbackTask{
 		label: "timer-fire",
 		invoke: func() {

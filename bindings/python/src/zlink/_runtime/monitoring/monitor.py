@@ -4,7 +4,7 @@ import ctypes
 import queue
 import threading
 
-from ..enums.enums import MonitorEventMask
+from ..enums.enums import AutoHwmRecalcReason, MonitorEventMask
 from ..._native.ffi import (
     ZlinkMonitorSnapshot,
     ZlinkMonitorEvent,
@@ -120,7 +120,9 @@ def _monitor_snapshot_from_native(snapshot):
         auto_hwm_effective_sndbuf=int(snapshot.auto_hwm_effective_sndbuf),
         auto_hwm_effective_rcvbuf=int(snapshot.auto_hwm_effective_rcvbuf),
         auto_hwm_last_recalc_ms=int(snapshot.auto_hwm_last_recalc_ms),
-        auto_hwm_last_recalc_reason=int(snapshot.auto_hwm_last_recalc_reason),
+        auto_hwm_last_recalc_reason=AutoHwmRecalcReason(
+            int(snapshot.auto_hwm_last_recalc_reason)
+        ),
         auto_hwm_send_blocked_ratio_ppm=int(
             snapshot.auto_hwm_send_blocked_ratio_ppm
         ),

@@ -98,6 +98,7 @@ __all__ = [
     "SocketType",
     "ContextOption",
     "AutoHwmProfile",
+    "AutoHwmRecalcReason",
     "SocketOption",
     "RouterOption",
     "SendFlags",

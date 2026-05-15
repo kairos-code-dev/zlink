@@ -56,6 +56,30 @@ impl AutoHwmProfile {
     }
 }
 
+/// Recalculation trigger reported by the auto-HWM v2 monitor snapshot.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum AutoHwmRecalcReason {
+    None,
+    Initial,
+    RoleChange,
+    PolicyToggle,
+    Refresh,
+    DeferredShrink,
+}
+
+impl AutoHwmRecalcReason {
+    pub(crate) fn from_raw(raw: u32) -> Self {
+        match raw {
+            1 => AutoHwmRecalcReason::Initial,
+            2 => AutoHwmRecalcReason::RoleChange,
+            3 => AutoHwmRecalcReason::PolicyToggle,
+            4 => AutoHwmRecalcReason::Refresh,
+            5 => AutoHwmRecalcReason::DeferredShrink,
+            _ => AutoHwmRecalcReason::None,
+        }
+    }
+}
+
 /// The zlink context – foundation for creating sockets.
 ///
 /// A context manages I/O threads and internal infrastructure. Dropping a

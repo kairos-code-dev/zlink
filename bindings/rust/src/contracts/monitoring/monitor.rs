@@ -44,6 +44,7 @@ use crate::error::{
     CloseError, ConfigError, HandlerError, RecvError, check_close_rc, check_config_rc,
     check_handler_rc, check_recv_rc,
 };
+use crate::ctx::AutoHwmRecalcReason;
 use crate::ffi;
 use crate::message::RoutingId;
 use crate::socket::*;
@@ -169,7 +170,7 @@ pub struct MonitorSnapshot {
     pub auto_hwm_effective_sndbuf: i32,
     pub auto_hwm_effective_rcvbuf: i32,
     pub auto_hwm_last_recalc_ms: u64,
-    pub auto_hwm_last_recalc_reason: u32,
+    pub auto_hwm_last_recalc_reason: AutoHwmRecalcReason,
     pub auto_hwm_send_blocked_ratio_ppm: u32,
     pub auto_hwm_deferred_sndhwm: i32,
     pub auto_hwm_deferred_rcvhwm: i32,
@@ -206,7 +207,9 @@ impl MonitorSnapshot {
             auto_hwm_effective_sndbuf: raw.auto_hwm_effective_sndbuf,
             auto_hwm_effective_rcvbuf: raw.auto_hwm_effective_rcvbuf,
             auto_hwm_last_recalc_ms: raw.auto_hwm_last_recalc_ms,
-            auto_hwm_last_recalc_reason: raw.auto_hwm_last_recalc_reason,
+            auto_hwm_last_recalc_reason: AutoHwmRecalcReason::from_raw(
+                raw.auto_hwm_last_recalc_reason,
+            ),
             auto_hwm_send_blocked_ratio_ppm: raw.auto_hwm_send_blocked_ratio_ppm,
             auto_hwm_deferred_sndhwm: raw.auto_hwm_deferred_sndhwm,
             auto_hwm_deferred_rcvhwm: raw.auto_hwm_deferred_rcvhwm,

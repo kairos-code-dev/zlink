@@ -87,7 +87,7 @@ type MonitorSnapshot struct {
 	AutoHwmEffectiveSndBuf       int32
 	AutoHwmEffectiveRcvBuf       int32
 	AutoHwmLastRecalcMs          uint64
-	AutoHwmLastRecalcReason      uint32
+	AutoHwmLastRecalcReason      AutoHwmRecalcReason
 	AutoHwmSendBlockedRatioPPM   uint32
 	AutoHwmDeferredSndHwm        int32
 	AutoHwmDeferredRcvHwm        int32
@@ -117,7 +117,7 @@ func monitorSnapshotFromC(raw C.zlink_monitor_snapshot_t) MonitorSnapshot {
 		AutoHwmEffectiveSndBuf:       int32(raw.auto_hwm_effective_sndbuf),
 		AutoHwmEffectiveRcvBuf:       int32(raw.auto_hwm_effective_rcvbuf),
 		AutoHwmLastRecalcMs:          uint64(raw.auto_hwm_last_recalc_ms),
-		AutoHwmLastRecalcReason:      uint32(raw.auto_hwm_last_recalc_reason),
+		AutoHwmLastRecalcReason:      AutoHwmRecalcReason(raw.auto_hwm_last_recalc_reason),
 		AutoHwmSendBlockedRatioPPM:   uint32(raw.auto_hwm_send_blocked_ratio_ppm),
 		AutoHwmDeferredSndHwm:        int32(raw.auto_hwm_deferred_sndhwm),
 		AutoHwmDeferredRcvHwm:        int32(raw.auto_hwm_deferred_rcvhwm),

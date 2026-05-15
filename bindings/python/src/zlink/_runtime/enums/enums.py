@@ -39,6 +39,15 @@ class AutoHwmProfile(IntEnum):
     THROUGHPUT = 3
 
 
+class AutoHwmRecalcReason(IntEnum):
+    NONE = 0
+    INITIAL = 1
+    ROLE_CHANGE = 2
+    POLICY_TOGGLE = 3
+    REFRESH = 4
+    DEFERRED_SHRINK = 5
+
+
 class SocketOption(IntEnum):
     AFFINITY = 0x3001
     RATE = 0x3003

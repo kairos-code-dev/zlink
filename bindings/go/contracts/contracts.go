@@ -59,6 +59,7 @@ type (
 	Context                      = root.Context
 	ContextOptions               = root.ContextOptions
 	AutoHwmProfile               = root.AutoHwmProfile
+	AutoHwmRecalcReason          = root.AutoHwmRecalcReason
 	AutoConnectType              = root.AutoConnectType
 	ServiceRole                  = root.ServiceRole
 	ServiceKind                  = root.ServiceKind
@@ -163,6 +164,12 @@ const (
 	AutoHwmProfileLowLatency              = root.AutoHwmProfileLowLatency
 	AutoHwmProfileBalanced                = root.AutoHwmProfileBalanced
 	AutoHwmProfileThroughput              = root.AutoHwmProfileThroughput
+	AutoHwmRecalcReasonNone               = root.AutoHwmRecalcReasonNone
+	AutoHwmRecalcReasonInitial            = root.AutoHwmRecalcReasonInitial
+	AutoHwmRecalcReasonRoleChange         = root.AutoHwmRecalcReasonRoleChange
+	AutoHwmRecalcReasonPolicyToggle       = root.AutoHwmRecalcReasonPolicyToggle
+	AutoHwmRecalcReasonRefresh            = root.AutoHwmRecalcReasonRefresh
+	AutoHwmRecalcReasonDeferredShrink     = root.AutoHwmRecalcReasonDeferredShrink
 	AutoConnectInvalid                    = root.AutoConnectInvalid
 	AutoConnectRouteMesh                  = root.AutoConnectRouteMesh
 	AutoConnectClientServer               = root.AutoConnectClientServer

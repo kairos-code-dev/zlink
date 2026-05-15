@@ -50,6 +50,7 @@ struct spot_op_state_t
     std::optional<routing_id_t> second_rid;
     uint64_t request_seq = 0;
     std::optional<message_t> single_part;
+    message_t *single_part_source = NULL;
     std::vector<message_t> parts;
     send_flags_t flags = send_flags_t::none;
     std::chrono::milliseconds timeout {};
@@ -89,8 +90,27 @@ inline void append_send_part (spot_op_state_t &state_, message_t &part_)
     if (state_.single_part.has_value ()) {
         state_.parts.push_back (std::move (*state_.single_part));
         state_.single_part.reset ();
+        state_.single_part_source = NULL;
     }
     state_.parts.push_back (std::move (part_));
+}
+
+inline void restore_single_send_part_to_source (spot_op_state_t &state_) noexcept
+{
+    if (!state_.single_part_source || !state_.single_part.has_value ()
+        || !state_.single_part->valid ())
+        return;
+    *state_.single_part_source = std::move (*state_.single_part);
+    state_.single_part_source = NULL;
+}
+
+inline void restore_single_send_part_to_source (
+  spot_op_state_t &state_, std::vector<message_t> &parts_) noexcept
+{
+    if (!state_.single_part_source || parts_.size () != 1u || !parts_[0].valid ())
+        return;
+    *state_.single_part_source = std::move (parts_[0]);
+    state_.single_part_source = NULL;
 }
 } // namespace detail
 

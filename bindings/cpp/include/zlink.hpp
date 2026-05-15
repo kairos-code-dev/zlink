@@ -3,6 +3,7 @@
 #define ZLINK_CPP_HPP_INCLUDED
 
 #include "zlink/Contracts/Core/common.hpp"
+#include "zlink/Contracts/Core/enums.hpp"
 #include "zlink/Contracts/Core/types.hpp"
 #include "zlink/Contracts/Errors/error.hpp"
 #include "zlink/Contracts/Messaging/message.hpp"

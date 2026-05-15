@@ -337,13 +337,10 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, pair_socket_t>::value
                           || std::is_same<socket_type_t, dealer_socket_t>::value) {
                 try {
-                    message_t attempt = part_;
                     const bool sent = std::move (socket_.send ())
-                                        .message (attempt)
+                                        .message (part_)
                                         .flags (flags_)
                                         .submit ();
-                    if (sent)
-                        part_.close ();
                     return bool_result_to_errno (sent);
                 }
                 catch (const zlink_error_t &err) {
@@ -366,13 +363,10 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, router_socket_t>::value
                           || std::is_same<socket_type_t, stream_socket_t>::value) {
                 try {
-                    message_t attempt = part_;
                     const bool sent = std::move (socket_.send (routing_id_))
-                                        .message (attempt)
+                                        .message (part_)
                                         .flags (flags_)
                                         .submit ();
-                    if (sent)
-                        part_.close ();
                     return bool_result_to_errno (sent);
                 }
                 catch (const zlink_error_t &err) {
@@ -395,13 +389,10 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, pub_socket_t>::value
                           || std::is_same<socket_type_t, xpub_socket_t>::value) {
                 try {
-                    message_t attempt = part_;
                     const bool sent = std::move (socket_.publish (topic_id_))
-                                        .message (attempt)
+                                        .message (part_)
                                         .flags (flags_)
                                         .submit ();
-                    if (sent)
-                        part_.close ();
                     return bool_result_to_errno (sent);
                 }
                 catch (const zlink_error_t &err) {

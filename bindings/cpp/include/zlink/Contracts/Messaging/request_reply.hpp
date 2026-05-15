@@ -48,6 +48,7 @@ class send_op_t
     send_ready_op_t message (message_t &part_) &&
     {
         _state.single_part.emplace (std::move (part_));
+        _state.single_part_source = &part_;
         return send_ready_op_t (std::move (_state));
     }
 

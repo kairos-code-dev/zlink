@@ -20,17 +20,68 @@ inline std::unordered_map<void *, std::unordered_map<int, int>>
     return values;
 }
 
-template<typename T>
-inline T get_common_option_value (void *handle_, compat::options::socket_option option_)
+template<typename T, typename NativeOption, typename Getter>
+inline T get_option_value (void *handle_,
+                           NativeOption option_,
+                           Getter getter_)
 {
     ensure_config_handle (handle_);
     T value {};
     size_t size = sizeof (value);
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
-        zlink_get_option (
-          handle_, static_cast<zlink_option_t> (option_), &value, &size)));
+        getter_ (handle_, option_, &value, &size)));
     return value;
+}
+
+template<typename T, typename NativeOption, typename Setter>
+inline void set_option_value (void *handle_,
+                              NativeOption option_,
+                              const T &value_,
+                              Setter setter_)
+{
+    ensure_config_handle (handle_);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        setter_ (handle_, option_, &value_, sizeof (value_))));
+}
+
+template<typename NativeOption, typename Getter>
+inline std::string get_option_string_value (
+  void *handle_,
+  NativeOption option_,
+  size_t initial_cap_,
+  Getter getter_)
+{
+    ensure_config_handle (handle_);
+    size_t cap = initial_cap_;
+    const size_t max_cap = 64u * 1024u;
+    while (cap <= max_cap) {
+        std::vector<char> buffer (cap);
+        size_t size = cap;
+        const config_result_t result = static_cast<config_result_t> (
+          getter_ (handle_, option_, buffer.data (), &size));
+        if (result == config_result_t::ok) {
+            const size_t bounded = size <= buffer.size () ? size : buffer.size ();
+            size_t out_size = bounded;
+            if (out_size > 0 && buffer[out_size - 1] == '\0')
+                --out_size;
+            return std::string (buffer.data (), out_size);
+        }
+        if (errno != EINVAL || cap == max_cap)
+            throw config_error_t (result, zlink_errno ());
+        cap *= 2u;
+        if (cap > max_cap)
+            cap = max_cap;
+    }
+    throw config_error_t (config_result_t::invalid_argument, EINVAL);
+}
+
+template<typename T>
+inline T get_common_option_value (void *handle_, compat::options::socket_option option_)
+{
+    return get_option_value<T> (
+      handle_, static_cast<zlink_option_t> (option_), zlink_get_option);
 }
 
 template<typename T>
@@ -38,83 +89,32 @@ inline void set_common_option_value (void *handle_,
                                      compat::options::socket_option option_,
                                      const T &value_)
 {
-    ensure_config_handle (handle_);
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_set_option (
-          handle_, static_cast<zlink_option_t> (option_), &value_,
-          sizeof (value_))));
+    set_option_value<T> (
+      handle_, static_cast<zlink_option_t> (option_), value_, zlink_set_option);
 }
 
 inline std::string get_common_option_string (void *handle_, compat::options::socket_option option_)
 {
-    ensure_config_handle (handle_);
-    size_t cap = option_ == compat::options::socket_option::last_endpoint ? 1024u : 256u;
-    const size_t max_cap = 64u * 1024u;
-    while (cap <= max_cap) {
-        std::vector<char> buffer (cap);
-        size_t size = cap;
-        const config_result_t result = static_cast<config_result_t> (
-          zlink_get_option (
-            handle_, static_cast<zlink_option_t> (option_), buffer.data (),
-            &size));
-        if (result == config_result_t::ok) {
-            const size_t bounded = size <= buffer.size () ? size : buffer.size ();
-            size_t out_size = bounded;
-            if (out_size > 0 && buffer[out_size - 1] == '\0')
-                --out_size;
-            return std::string (buffer.data (), out_size);
-        }
-        if (errno != EINVAL || cap == max_cap)
-            throw config_error_t (result, zlink_errno ());
-        cap *= 2u;
-        if (cap > max_cap)
-            cap = max_cap;
-    }
-    throw config_error_t (config_result_t::invalid_argument, EINVAL);
+    const size_t cap =
+      option_ == compat::options::socket_option::last_endpoint ? 1024u : 256u;
+    return get_option_string_value (
+      handle_, static_cast<zlink_option_t> (option_), cap, zlink_get_option);
 }
 
 inline std::string get_pub_option_string (void *handle_,
                                           compat::options::pub_option option_)
 {
-    ensure_config_handle (handle_);
-    size_t cap = 256u;
-    const size_t max_cap = 64u * 1024u;
-    while (cap <= max_cap) {
-        std::vector<char> buffer (cap);
-        size_t size = cap;
-        const config_result_t result = static_cast<config_result_t> (
-          zlink_get_pub_option (
-            handle_, static_cast<zlink_pub_option_t> (option_),
-            buffer.data (), &size));
-        if (result == config_result_t::ok) {
-            const size_t bounded = size <= buffer.size () ? size : buffer.size ();
-            size_t out_size = bounded;
-            if (out_size > 0 && buffer[out_size - 1] == '\0')
-                --out_size;
-            return std::string (buffer.data (), out_size);
-        }
-        if (errno != EINVAL || cap == max_cap)
-            throw config_error_t (result, zlink_errno ());
-        cap *= 2u;
-        if (cap > max_cap)
-            cap = max_cap;
-    }
-    throw config_error_t (config_result_t::invalid_argument, EINVAL);
+    return get_option_string_value (
+      handle_, static_cast<zlink_pub_option_t> (option_), 256u,
+      zlink_get_pub_option);
 }
 
 template<typename T>
 inline T get_router_option_value (void *handle_, compat::options::router_option option_)
 {
-    ensure_config_handle (handle_);
-    T value {};
-    size_t size = sizeof (value);
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_get_router_option (
-          handle_, static_cast<zlink_router_option_t> (option_), &value,
-          &size)));
-    return value;
+    return get_option_value<T> (
+      handle_, static_cast<zlink_router_option_t> (option_),
+      zlink_get_router_option);
 }
 
 template<typename T>
@@ -122,12 +122,9 @@ inline void set_router_option_value (void *handle_,
                                      compat::options::router_option option_,
                                      const T &value_)
 {
-    ensure_config_handle (handle_);
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_set_router_option (
-          handle_, static_cast<zlink_router_option_t> (option_), &value_,
-          sizeof (value_))));
+    set_option_value<T> (
+      handle_, static_cast<zlink_router_option_t> (option_), value_,
+      zlink_set_router_option);
 }
 
 template<typename T>
@@ -156,11 +153,9 @@ inline void set_dealer_option_value (void *handle_,
                                      const T &value_)
 {
     ensure_config_handle (handle_);
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_set_dealer_option (
-          handle_, static_cast<zlink_dealer_option_t> (option_), &value_,
-          sizeof (value_))));
+    set_option_value<T> (
+      handle_, static_cast<zlink_dealer_option_t> (option_), value_,
+      zlink_set_dealer_option);
     dealer_option_store ()[handle_][static_cast<int> (option_)] =
       static_cast<int> (value_);
 }
@@ -168,14 +163,8 @@ inline void set_dealer_option_value (void *handle_,
 template<typename T>
 inline T get_pub_option_value (void *handle_, compat::options::pub_option option_)
 {
-    ensure_config_handle (handle_);
-    T value {};
-    size_t size = sizeof (value);
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_get_pub_option (
-          handle_, static_cast<zlink_pub_option_t> (option_), &value, &size)));
-    return value;
+    return get_option_value<T> (
+      handle_, static_cast<zlink_pub_option_t> (option_), zlink_get_pub_option);
 }
 
 template<typename T>
@@ -183,39 +172,24 @@ inline void set_pub_option_value (void *handle_,
                                   compat::options::pub_option option_,
                                   const T &value_)
 {
-    ensure_config_handle (handle_);
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_set_pub_option (
-          handle_, static_cast<zlink_pub_option_t> (option_), &value_,
-          sizeof (value_))));
+    set_option_value<T> (
+      handle_, static_cast<zlink_pub_option_t> (option_), value_,
+      zlink_set_pub_option);
 }
 
 template<typename T>
 inline T get_sub_option_value (void *handle_, compat::options::sub_option option_)
 {
-    ensure_config_handle (handle_);
-    T value {};
-    size_t size = sizeof (value);
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_get_sub_option (
-          handle_, static_cast<zlink_sub_option_t> (option_), &value, &size)));
-    return value;
+    return get_option_value<T> (
+      handle_, static_cast<zlink_sub_option_t> (option_), zlink_get_sub_option);
 }
 
 template<typename T>
 inline T get_stream_option_value (void *handle_, compat::options::stream_option option_)
 {
-    ensure_config_handle (handle_);
-    T value {};
-    size_t size = sizeof (value);
-    throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_get_stream_option (
-          handle_, static_cast<zlink_stream_option_t> (option_), &value,
-          &size)));
-    return value;
+    return get_option_value<T> (
+      handle_, static_cast<zlink_stream_option_t> (option_),
+      zlink_get_stream_option);
 }
 
 template<typename T>
@@ -223,12 +197,9 @@ inline void set_stream_option_value (void *handle_,
                                      compat::options::stream_option option_,
                                      const T &value_)
 {
-    ensure_config_handle (handle_);
-    throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_set_stream_option (
-          handle_, static_cast<zlink_stream_option_t> (option_), &value_,
-          sizeof (value_))));
+    set_option_value<T> (
+      handle_, static_cast<zlink_stream_option_t> (option_), value_,
+      zlink_set_stream_option);
 }
 
 inline recv_error_t invalid_single_part_error ()

@@ -132,15 +132,15 @@ inline actor_join_callback_ready_op_t actor_join_ready_op_t::flags (int flags_) 
 inline async_result_t<actor_join_result_t>
 actor_join_ready_op_t::submit_async () &&
 {
-    detail::actor_join_result_state_t *state =
-      detail::make_future_actor_join_state ();
+    std::unique_ptr<detail::actor_join_result_state_t> state (
+      detail::make_future_actor_join_state ());
     std::future<actor_join_result_t> future = state->promise->get_future ();
-    const int rc = detail::submit_actor_join (_state, state);
+    const int rc = detail::submit_actor_join (_state, state.get ());
     if (rc != ZLINK_SUBMIT_OK) {
-        delete state;
         throw submit_error_t (
           static_cast<submit_result_t> (rc), zlink_errno ());
     }
+    state.release ();
     return async_result_t<actor_join_result_t> (std::move (future));
 }
 
@@ -154,11 +154,10 @@ actor_join_ready_op_t::submit (actor_join_callback_t callback_) &&
 inline bool
 actor_join_callback_ready_op_t::submit (actor_join_callback_t callback_) &&
 {
-    detail::actor_join_result_state_t *state =
-      detail::make_callback_actor_join_state (std::move (callback_));
-    const int rc = detail::submit_actor_join (_state, state);
+    std::unique_ptr<detail::actor_join_result_state_t> state (
+      detail::make_callback_actor_join_state (std::move (callback_)));
+    const int rc = detail::submit_actor_join (_state, state.get ());
     if (rc != ZLINK_SUBMIT_OK) {
-        delete state;
         if (_state.flags == send_flags_t::dontwait
             && static_cast<submit_result_t> (rc)
                  == submit_result_t::backpressured)
@@ -166,6 +165,7 @@ actor_join_callback_ready_op_t::submit (actor_join_callback_t callback_) &&
         throw submit_error_t (
           static_cast<submit_result_t> (rc), zlink_errno ());
     }
+    state.release ();
     return true;
 }
 
@@ -235,36 +235,35 @@ class actor_leave_op_t
 
     async_result_t<std::vector<message_t>> submit_async () &&
     {
-        detail::request_state_t *state = detail::make_future_request_state ();
+        std::unique_ptr<detail::request_state_t> state (
+          detail::make_future_request_state ());
         std::future<std::vector<message_t>> future =
           state->promise->get_future ();
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_spot_node_actor_leave_spot (
             _state.node, zlink::detail::actor_ref_native (_state.actor),
             zlink::detail::routing_id_native (_state.aux_rid),
-            &detail::request_callback_trampoline, state,
+            &detail::request_callback_trampoline, state.get (),
             static_cast<uint32_t> (_state.timeout.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
+        if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
-        }
+        state.release ();
         return async_result_t<std::vector<message_t>> (std::move (future));
     }
 
     bool submit (request_callback_t callback_) &&
     {
-        detail::request_state_t *state =
-          detail::make_callback_request_state (std::move (callback_));
+        std::unique_ptr<detail::request_state_t> state (
+          detail::make_callback_request_state (std::move (callback_)));
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_spot_node_actor_leave_spot (
             _state.node, zlink::detail::actor_ref_native (_state.actor),
             zlink::detail::routing_id_native (_state.aux_rid),
-            &detail::request_callback_trampoline, state,
+            &detail::request_callback_trampoline, state.get (),
             static_cast<uint32_t> (_state.timeout.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
+        if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
-        }
+        state.release ();
         return true;
     }
 
@@ -293,34 +292,33 @@ class actor_destroy_op_t
 
     async_result_t<std::vector<message_t>> submit_async () &&
     {
-        detail::request_state_t *state = detail::make_future_request_state ();
+        std::unique_ptr<detail::request_state_t> state (
+          detail::make_future_request_state ());
         std::future<std::vector<message_t>> future =
           state->promise->get_future ();
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_spot_node_actor_destroy (
             _state.node, zlink::detail::actor_ref_native (_state.actor),
-            &detail::request_callback_trampoline, state,
+            &detail::request_callback_trampoline, state.get (),
             static_cast<uint32_t> (_state.timeout.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
+        if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
-        }
+        state.release ();
         return async_result_t<std::vector<message_t>> (std::move (future));
     }
 
     bool submit (request_callback_t callback_) &&
     {
-        detail::request_state_t *state =
-          detail::make_callback_request_state (std::move (callback_));
+        std::unique_ptr<detail::request_state_t> state (
+          detail::make_callback_request_state (std::move (callback_)));
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_spot_node_actor_destroy (
             _state.node, zlink::detail::actor_ref_native (_state.actor),
-            &detail::request_callback_trampoline, state,
+            &detail::request_callback_trampoline, state.get (),
             static_cast<uint32_t> (_state.timeout.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
+        if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
-        }
+        state.release ();
         return true;
     }
 
@@ -348,37 +346,35 @@ class actor_lookup_op_t
 
     async_result_t<actor_lookup_result_t> submit_async () &&
     {
-        detail::actor_lookup_result_state_t *state =
-          detail::make_future_actor_lookup_state ();
+        std::unique_ptr<detail::actor_lookup_result_state_t> state (
+          detail::make_future_actor_lookup_state ());
         std::future<actor_lookup_result_t> future =
           state->promise->get_future ();
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_remote_actor_get_ref (
             _state.node, zlink::detail::routing_id_native (_state.aux_rid),
             _state.actor_id.c_str (),
-            &detail::actor_lookup_result_trampoline, state,
+            &detail::actor_lookup_result_trampoline, state.get (),
             static_cast<uint32_t> (_state.timeout.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
+        if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
-        }
+        state.release ();
         return async_result_t<actor_lookup_result_t> (std::move (future));
     }
 
     bool submit (actor_lookup_callback_t callback_) &&
     {
-        detail::actor_lookup_result_state_t *state =
-          detail::make_callback_actor_lookup_state (std::move (callback_));
+        std::unique_ptr<detail::actor_lookup_result_state_t> state (
+          detail::make_callback_actor_lookup_state (std::move (callback_)));
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_remote_actor_get_ref (
             _state.node, zlink::detail::routing_id_native (_state.aux_rid),
             _state.actor_id.c_str (),
-            &detail::actor_lookup_result_trampoline, state,
+            &detail::actor_lookup_result_trampoline, state.get (),
             static_cast<uint32_t> (_state.timeout.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
+        if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
-        }
+        state.release ();
         return true;
     }
 
@@ -406,7 +402,8 @@ class actor_bind_op_t
 
     async_result_t<std::vector<message_t>> submit_async () &&
     {
-        detail::request_state_t *state = detail::make_future_request_state ();
+        std::unique_ptr<detail::request_state_t> state (
+          detail::make_future_request_state ());
         std::future<std::vector<message_t>> future =
           state->promise->get_future ();
         const submit_result_t rc = static_cast<submit_result_t> (
@@ -414,30 +411,28 @@ class actor_bind_op_t
             _state.stream,
             zlink::detail::routing_id_native (_state.session_rid),
             zlink::detail::actor_ref_native (_state.actor),
-            &detail::request_callback_trampoline, state,
+            &detail::request_callback_trampoline, state.get (),
             static_cast<uint32_t> (_state.timeout.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
+        if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
-        }
+        state.release ();
         return async_result_t<std::vector<message_t>> (std::move (future));
     }
 
     bool submit (request_callback_t callback_) &&
     {
-        detail::request_state_t *state =
-          detail::make_callback_request_state (std::move (callback_));
+        std::unique_ptr<detail::request_state_t> state (
+          detail::make_callback_request_state (std::move (callback_)));
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_stream_bind_actor (
             _state.stream,
             zlink::detail::routing_id_native (_state.session_rid),
             zlink::detail::actor_ref_native (_state.actor),
-            &detail::request_callback_trampoline, state,
+            &detail::request_callback_trampoline, state.get (),
             static_cast<uint32_t> (_state.timeout.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
+        if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
-        }
+        state.release ();
         return true;
     }
 
@@ -466,7 +461,8 @@ class actor_unbind_op_t
 
     async_result_t<std::vector<message_t>> submit_async () &&
     {
-        detail::request_state_t *state = detail::make_future_request_state ();
+        std::unique_ptr<detail::request_state_t> state (
+          detail::make_future_request_state ());
         std::future<std::vector<message_t>> future =
           state->promise->get_future ();
         const submit_result_t rc = static_cast<submit_result_t> (
@@ -474,30 +470,28 @@ class actor_unbind_op_t
             _state.stream,
             zlink::detail::routing_id_native (_state.session_rid),
             _state.actor_id.c_str (),
-            &detail::request_callback_trampoline, state,
+            &detail::request_callback_trampoline, state.get (),
             static_cast<uint32_t> (_state.timeout.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
+        if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
-        }
+        state.release ();
         return async_result_t<std::vector<message_t>> (std::move (future));
     }
 
     bool submit (request_callback_t callback_) &&
     {
-        detail::request_state_t *state =
-          detail::make_callback_request_state (std::move (callback_));
+        std::unique_ptr<detail::request_state_t> state (
+          detail::make_callback_request_state (std::move (callback_)));
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_stream_unbind_actor (
             _state.stream,
             zlink::detail::routing_id_native (_state.session_rid),
             _state.actor_id.c_str (),
-            &detail::request_callback_trampoline, state,
+            &detail::request_callback_trampoline, state.get (),
             static_cast<uint32_t> (_state.timeout.count ())));
-        if (rc != submit_result_t::ok) {
-            delete state;
+        if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
-        }
+        state.release ();
         return true;
     }
 

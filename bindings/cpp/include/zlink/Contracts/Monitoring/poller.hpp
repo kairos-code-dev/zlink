@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <any>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -97,183 +98,35 @@ class poller_t
               poll_event_flag_t events_,
               std::any tag_ = {})
     {
-        if (!_poller) {
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
-        }
-        if (find_socket (detail::native_handle (socket_)) >= 0) {
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
-        }
-
-        item_t *item = new item_t ();
-        item->socket_handle = detail::native_handle (socket_);
-        item->fd = 0;
-        item->timer_handle = NULL;
-        item->timer = NULL;
-        item->source_kind = poll_source_kind_t::socket;
-        item->is_service_handle =
-          detail::is_service_handle<typename std::remove_reference<SocketLike>::type>::value;
-        item->events = events_;
-        item->raw_tag = NULL;
-        item->tag = std::move (tag_);
-
-        const config_result_t rc = static_cast<config_result_t> (
-          zlink_poller_add (_poller, detail::native_handle (socket_), item,
-                            static_cast<short> (events_)));
-        if (rc != config_result_t::ok)
-            delete item;
-        detail::throw_if_failed<config_error_t> (rc);
-
-        _items.push_back (item);
-        if (item->is_service_handle)
-            _has_service_items = true;
+        add_socket_impl (socket_, events_, std::move (tag_), NULL, false);
     }
 
     template<typename SocketLike>
     void add (SocketLike &socket_, poll_event_flag_t events_, void *raw_tag_)
     {
-        if (!_poller) {
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
-        }
-        if (find_socket (detail::native_handle (socket_)) >= 0) {
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
-        }
-
-        item_t *item = new item_t ();
-        item->socket_handle = detail::native_handle (socket_);
-        item->fd = 0;
-        item->timer_handle = NULL;
-        item->timer = NULL;
-        item->source_kind = poll_source_kind_t::socket;
-        item->is_service_handle =
-          detail::is_service_handle<typename std::remove_reference<SocketLike>::type>::value;
-        item->events = events_;
-        item->raw_tag = raw_tag_;
-        item->tag = {};
-
-        const config_result_t rc = static_cast<config_result_t> (
-          zlink_poller_add (_poller, detail::native_handle (socket_), item,
-                            static_cast<short> (events_)));
-        if (rc != config_result_t::ok)
-            delete item;
-        detail::throw_if_failed<config_error_t> (rc);
-
-        _items.push_back (item);
-        if (item->is_service_handle)
-            _has_service_items = true;
+        add_socket_impl (socket_, events_, {}, raw_tag_, true);
     }
 
     void add_fd (zlink_fd_t fd_,
                  poll_event_flag_t events_,
                  std::any tag_ = {})
     {
-        if (!_poller) {
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
-        }
-        if (find_fd (fd_) >= 0) {
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
-        }
-
-        item_t *item = new item_t ();
-        item->socket_handle = NULL;
-        item->fd = fd_;
-        item->timer_handle = NULL;
-        item->timer = NULL;
-        item->source_kind = poll_source_kind_t::fd;
-        item->events = events_;
-        item->raw_tag = NULL;
-        item->tag = std::move (tag_);
-
-        const config_result_t rc = static_cast<config_result_t> (
-          zlink_poller_add_fd (_poller, fd_, item, static_cast<short> (events_)));
-        if (rc != config_result_t::ok)
-            delete item;
-        detail::throw_if_failed<config_error_t> (rc);
-
-        _items.push_back (item);
+        add_fd_impl (fd_, events_, std::move (tag_), NULL, false);
     }
 
     void add_fd (zlink_fd_t fd_, poll_event_flag_t events_, void *raw_tag_)
     {
-        if (!_poller) {
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
-        }
-        if (find_fd (fd_) >= 0) {
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
-        }
-
-        item_t *item = new item_t ();
-        item->socket_handle = NULL;
-        item->fd = fd_;
-        item->timer_handle = NULL;
-        item->timer = NULL;
-        item->source_kind = poll_source_kind_t::fd;
-        item->events = events_;
-        item->raw_tag = raw_tag_;
-        item->tag = {};
-
-        const config_result_t rc = static_cast<config_result_t> (
-          zlink_poller_add_fd (_poller, fd_, item, static_cast<short> (events_)));
-        if (rc != config_result_t::ok)
-            delete item;
-        detail::throw_if_failed<config_error_t> (rc);
-
-        _items.push_back (item);
+        add_fd_impl (fd_, events_, {}, raw_tag_, true);
     }
 
     void add (timer_t &timer_, std::any tag_ = {})
     {
-        if (!_poller) {
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
-        }
-        if (find_timer (detail::native_handle (timer_)) >= 0) {
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
-        }
-
-        item_t *item = new item_t ();
-        item->socket_handle = NULL;
-        item->fd = 0;
-        item->timer_handle = detail::native_handle (timer_);
-        item->timer = &timer_;
-        item->source_kind = poll_source_kind_t::timer;
-        item->events = poll_event_flag_t::pollin;
-        item->raw_tag = NULL;
-        item->tag = std::move (tag_);
-
-        const config_result_t rc = static_cast<config_result_t> (
-          zlink_poller_add_timer (_poller, detail::native_handle (timer_), item));
-        if (rc != config_result_t::ok)
-            delete item;
-        detail::throw_if_failed<config_error_t> (rc);
-
-        _items.push_back (item);
+        add_timer_impl (timer_, std::move (tag_), NULL, false);
     }
 
     void add (timer_t &timer_, void *raw_tag_)
     {
-        if (!_poller) {
-            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
-        }
-        if (find_timer (detail::native_handle (timer_)) >= 0) {
-            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
-        }
-
-        item_t *item = new item_t ();
-        item->socket_handle = NULL;
-        item->fd = 0;
-        item->timer_handle = detail::native_handle (timer_);
-        item->timer = &timer_;
-        item->source_kind = poll_source_kind_t::timer;
-        item->events = poll_event_flag_t::pollin;
-        item->raw_tag = raw_tag_;
-        item->tag = {};
-
-        const config_result_t rc = static_cast<config_result_t> (
-          zlink_poller_add_timer (_poller, detail::native_handle (timer_), item));
-        if (rc != config_result_t::ok)
-            delete item;
-        detail::throw_if_failed<config_error_t> (rc);
-
-        _items.push_back (item);
+        add_timer_impl (timer_, {}, raw_tag_, true);
     }
 
     template<typename SocketLike>
@@ -327,7 +180,6 @@ class poller_t
           zlink_poller_remove (_poller, detail::native_handle (socket_)));
         detail::throw_if_failed<config_error_t> (rc);
 
-        delete _items[static_cast<size_t> (index)];
         _items.erase (_items.begin () + index);
         return true;
     }
@@ -346,7 +198,6 @@ class poller_t
           zlink_poller_remove_timer (_poller, detail::native_handle (timer_)));
         detail::throw_if_failed<config_error_t> (rc);
 
-        delete _items[static_cast<size_t> (index)];
         _items.erase (_items.begin () + index);
         return true;
     }
@@ -365,7 +216,6 @@ class poller_t
           zlink_poller_remove_fd (_poller, fd_));
         detail::throw_if_failed<config_error_t> (rc);
 
-        delete _items[static_cast<size_t> (index)];
         _items.erase (_items.begin () + index);
         return true;
     }
@@ -576,6 +426,105 @@ class poller_t
         std::any tag;
     };
 
+    void ensure_addable () const
+    {
+        if (!_poller)
+            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
+    }
+
+    void commit_added_item (std::unique_ptr<item_t> item_, config_result_t rc_)
+    {
+        detail::throw_if_failed<config_error_t> (rc_);
+
+        if (item_->is_service_handle)
+            _has_service_items = true;
+        _items.push_back (std::move (item_));
+    }
+
+    template<typename SocketLike>
+    void add_socket_impl (SocketLike &socket_,
+                          poll_event_flag_t events_,
+                          std::any tag_,
+                          void *raw_tag_,
+                          bool use_raw_tag_)
+    {
+        ensure_addable ();
+        void *socket_handle = detail::native_handle (socket_);
+        if (find_socket (socket_handle) >= 0)
+            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+
+        std::unique_ptr<item_t> item (new item_t ());
+        item->socket_handle = socket_handle;
+        item->fd = 0;
+        item->timer_handle = NULL;
+        item->timer = NULL;
+        item->source_kind = poll_source_kind_t::socket;
+        item->is_service_handle =
+          detail::is_service_handle<typename std::remove_reference<SocketLike>::type>::value;
+        item->events = events_;
+        item->raw_tag = use_raw_tag_ ? raw_tag_ : NULL;
+        item->tag = use_raw_tag_ ? std::any () : std::move (tag_);
+
+        item_t *raw_item = item.get ();
+        const config_result_t rc = static_cast<config_result_t> (
+          zlink_poller_add (
+            _poller, socket_handle, raw_item, static_cast<short> (events_)));
+        commit_added_item (std::move (item), rc);
+    }
+
+    void add_fd_impl (zlink_fd_t fd_,
+                      poll_event_flag_t events_,
+                      std::any tag_,
+                      void *raw_tag_,
+                      bool use_raw_tag_)
+    {
+        ensure_addable ();
+        if (find_fd (fd_) >= 0)
+            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+
+        std::unique_ptr<item_t> item (new item_t ());
+        item->socket_handle = NULL;
+        item->fd = fd_;
+        item->timer_handle = NULL;
+        item->timer = NULL;
+        item->source_kind = poll_source_kind_t::fd;
+        item->events = events_;
+        item->raw_tag = use_raw_tag_ ? raw_tag_ : NULL;
+        item->tag = use_raw_tag_ ? std::any () : std::move (tag_);
+
+        item_t *raw_item = item.get ();
+        const config_result_t rc = static_cast<config_result_t> (
+          zlink_poller_add_fd (
+            _poller, fd_, raw_item, static_cast<short> (events_)));
+        commit_added_item (std::move (item), rc);
+    }
+
+    void add_timer_impl (timer_t &timer_,
+                         std::any tag_,
+                         void *raw_tag_,
+                         bool use_raw_tag_)
+    {
+        ensure_addable ();
+        void *timer_handle = detail::native_handle (timer_);
+        if (find_timer (timer_handle) >= 0)
+            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+
+        std::unique_ptr<item_t> item (new item_t ());
+        item->socket_handle = NULL;
+        item->fd = 0;
+        item->timer_handle = timer_handle;
+        item->timer = &timer_;
+        item->source_kind = poll_source_kind_t::timer;
+        item->events = poll_event_flag_t::pollin;
+        item->raw_tag = use_raw_tag_ ? raw_tag_ : NULL;
+        item->tag = use_raw_tag_ ? std::any () : std::move (tag_);
+
+        item_t *raw_item = item.get ();
+        const config_result_t rc = static_cast<config_result_t> (
+          zlink_poller_add_timer (_poller, timer_handle, raw_item));
+        commit_added_item (std::move (item), rc);
+    }
+
     int find_socket (const void *socket_handle_) const noexcept
     {
         for (size_t i = 0; i < _items.size (); ++i) {
@@ -666,13 +615,11 @@ class poller_t
 
     void delete_items () noexcept
     {
-        for (size_t i = 0; i < _items.size (); ++i)
-            delete _items[i];
         _items.clear ();
     }
 
     void *_poller;
-    std::vector<item_t *> _items;
+    std::vector<std::unique_ptr<item_t>> _items;
     std::vector<zlink_poller_event_t> _native_events;
     std::vector<zlink_pollitem_t> _poll_items;
     bool _has_service_items = false;

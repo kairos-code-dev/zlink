@@ -12,6 +12,8 @@ class base_socket_t;
 class monitor_handle_t;
 namespace detail
 {
+inline void *native_handle (base_socket_t &socket_) noexcept;
+inline const void *native_handle (const base_socket_t &socket_) noexcept;
 inline void *native_handle (monitor_handle_t &monitor_) noexcept;
 inline const void *native_handle (const monitor_handle_t &monitor_) noexcept;
 } // namespace detail

@@ -3,6 +3,7 @@
 #define ZLINK_CPP_TYPES_HPP_INCLUDED
 
 #include "common.hpp"
+#include "enums.hpp"
 #include "../Messaging/message.hpp"
 
 #include <chrono>
@@ -11,6 +12,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <type_traits>
 #include <unordered_map>
@@ -53,61 +55,6 @@ class actor_lookup_op_t;
 class actor_bind_op_t;
 class actor_unbind_op_t;
 } // namespace service
-
-enum class socket_type : int
-{
-    any = ZLINK_SOCKET_ANY,
-    pair = ZLINK_SOCKET_PAIR,
-    pub = ZLINK_SOCKET_PUB,
-    sub = ZLINK_SOCKET_SUB,
-    dealer = ZLINK_SOCKET_DEALER,
-    router = ZLINK_SOCKET_ROUTER,
-    xpub = ZLINK_SOCKET_XPUB,
-    xsub = ZLINK_SOCKET_XSUB,
-    stream = ZLINK_SOCKET_STREAM
-};
-
-enum class context_option : int
-{
-    io_threads = ZLINK_IO_THREADS,
-    max_sockets = ZLINK_MAX_SOCKETS,
-    socket_limit = ZLINK_SOCKET_LIMIT,
-    thread_priority = ZLINK_THREAD_PRIORITY,
-    thread_sched_policy = ZLINK_THREAD_SCHED_POLICY,
-    max_msgsz = ZLINK_MAX_MSGSZ,
-    msg_t_size = ZLINK_MSG_T_SIZE,
-    thread_affinity_cpu_add = ZLINK_THREAD_AFFINITY_CPU_ADD,
-    thread_affinity_cpu_remove = ZLINK_THREAD_AFFINITY_CPU_REMOVE,
-    thread_name_prefix = ZLINK_THREAD_NAME_PREFIX,
-    blocky = ZLINK_CTX_OPT_BLOCKY,
-    auto_hwm_enable = ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
-    auto_hwm_recalc_debounce_ms =
-      ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS,
-    auto_hwm_profile = ZLINK_CTX_OPT_AUTO_HWM_PROFILE
-};
-
-enum class auto_hwm_profile : int
-{
-    compact = ZLINK_AUTO_HWM_PROFILE_COMPACT,
-    low_latency = ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY,
-    balanced = ZLINK_AUTO_HWM_PROFILE_BALANCED,
-    throughput = ZLINK_AUTO_HWM_PROFILE_THROUGHPUT
-};
-
-enum class thread_scheduling_policy_t : int
-{
-    default_policy = ZLINK_THREAD_SCHED_POLICY_DFLT,
-    other = 0,
-    fifo = 1,
-    round_robin = 2
-};
-
-enum class rid_duplicate_policy_t : int
-{
-    reject = ZLINK_RID_DUPLICATE_REJECT,
-    handover = ZLINK_RID_DUPLICATE_HANDOVER,
-    replace = ZLINK_RID_DUPLICATE_HANDOVER
-};
 
 class io_thread_count_t
 {
@@ -1501,40 +1448,75 @@ class received_t
   public:
     received_t () = default;
 
+    received_t (const received_t &other)
+        : _routing_id (other._routing_id),
+          _spot_rid (other._spot_rid),
+          _request_seq (other._request_seq),
+          _single_part (other._single_part),
+          _parts (other._parts),
+          _runtime (clone_runtime_state (other._runtime))
+    {
+    }
+
+    received_t &operator= (const received_t &other)
+    {
+        if (this == &other)
+            return *this;
+
+        _routing_id = other._routing_id;
+        _spot_rid = other._spot_rid;
+        _request_seq = other._request_seq;
+        _single_part = other._single_part;
+        _parts = other._parts;
+        _runtime = clone_runtime_state (other._runtime);
+        return *this;
+    }
+
+    received_t (received_t &&) noexcept = default;
+    received_t &operator= (received_t &&) noexcept = default;
+
     received_t (std::optional<routing_id_t> routing_id_,
                 std::optional<routing_id_t> spot_rid_,
-	                std::optional<uint64_t> request_seq_,
-	                std::vector<message_t> parts_,
-	                std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
-	                  std::function<void(std::vector<message_t> &, send_flags_t)> (),
-	                std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_ =
-	                  std::function<bool(std::vector<message_t> &, send_flags_t)> ())
+                std::optional<uint64_t> request_seq_,
+                std::vector<message_t> parts_,
+                std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
+                  std::function<void(std::vector<message_t> &, send_flags_t)> (),
+                std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_ =
+                  std::function<bool(std::vector<message_t> &, send_flags_t)> ())
         : _routing_id (std::move (routing_id_)),
           _spot_rid (std::move (spot_rid_)),
           _request_seq (std::move (request_seq_)),
-	          _single_part (),
-	          _parts (std::move (parts_)),
-	          _reply_fn (std::move (reply_fn_)),
-	          _send_fn (std::move (send_fn_))
+          _single_part (),
+          _parts (std::move (parts_)),
+          _runtime ()
     {
+        if (reply_fn_ || send_fn_) {
+            ensure_runtime_state ();
+            _runtime->_reply_fn = std::move (reply_fn_);
+            _runtime->_send_fn = std::move (send_fn_);
+        }
     }
 
     received_t (std::optional<routing_id_t> routing_id_,
                 std::optional<routing_id_t> spot_rid_,
-	                std::optional<uint64_t> request_seq_,
-	                message_t part_,
-	                std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
-	                  std::function<void(std::vector<message_t> &, send_flags_t)> (),
-	                std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_ =
-	                  std::function<bool(std::vector<message_t> &, send_flags_t)> ())
+                std::optional<uint64_t> request_seq_,
+                message_t part_,
+                std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
+                  std::function<void(std::vector<message_t> &, send_flags_t)> (),
+                std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_ =
+                  std::function<bool(std::vector<message_t> &, send_flags_t)> ())
         : _routing_id (std::move (routing_id_)),
           _spot_rid (std::move (spot_rid_)),
           _request_seq (std::move (request_seq_)),
-	          _single_part (std::move (part_)),
-	          _parts (),
-	          _reply_fn (std::move (reply_fn_)),
-	          _send_fn (std::move (send_fn_))
+          _single_part (std::move (part_)),
+          _parts (),
+          _runtime ()
     {
+        if (reply_fn_ || send_fn_) {
+            ensure_runtime_state ();
+            _runtime->_reply_fn = std::move (reply_fn_);
+            _runtime->_send_fn = std::move (send_fn_);
+        }
     }
 
     const std::optional<routing_id_t> &routing_id () const noexcept
@@ -1568,19 +1550,21 @@ class received_t
     /// Returns an operation builder; accumulate reply payload via
     /// `.message(...)`. Submit throws if there is no valid reply context.
     service::reply_op_t reply ();
-	    void close ();
+    void close ();
 
     void set_reply_fn (
       std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_)
-	    {
-	        _reply_fn = std::move (reply_fn_);
-	    }
+    {
+        ensure_runtime_state ();
+        _runtime->_reply_fn = std::move (reply_fn_);
+    }
 
-	    void set_send_fn (
-	      std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_)
-	    {
-	        _send_fn = std::move (send_fn_);
-	    }
+    void set_send_fn (
+      std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_)
+    {
+        ensure_runtime_state ();
+        _runtime->_send_fn = std::move (send_fn_);
+    }
 
   private:
     friend class base_socket_t;
@@ -1598,22 +1582,62 @@ class received_t
     };
 
     void materialize_parts () const;
-    void set_send_context (void *handle_, send_context_kind_t kind_) noexcept
+    void set_send_context (void *handle_, send_context_kind_t kind_)
     {
-        _send_context_handle = handle_;
-        _send_context_kind = kind_;
+        ensure_runtime_state ();
+        _runtime->_send_context_handle = handle_;
+        _runtime->_send_context_kind = kind_;
+    }
+
+    bool has_reply_fn () const noexcept
+    {
+        return _runtime && static_cast<bool> (_runtime->_reply_fn);
+    }
+
+    bool has_send_fn () const noexcept
+    {
+        return _runtime && static_cast<bool> (_runtime->_send_fn);
+    }
+
+    void invoke_reply_fn (std::vector<message_t> &parts_, send_flags_t flags_)
+    {
+        _runtime->_reply_fn (parts_, flags_);
+    }
+
+    bool invoke_send_fn (std::vector<message_t> &parts_, send_flags_t flags_)
+    {
+        return _runtime->_send_fn (parts_, flags_);
+    }
+
+    struct runtime_state_t
+    {
+        std::function<void(std::vector<message_t> &, send_flags_t)> _reply_fn;
+        std::function<bool(std::vector<message_t> &, send_flags_t)> _send_fn;
+        void *_send_context_handle = nullptr;
+        send_context_kind_t _send_context_kind = send_context_kind_t::none;
+    };
+
+    static std::unique_ptr<runtime_state_t> clone_runtime_state (
+      const std::unique_ptr<runtime_state_t> &state_)
+    {
+        if (!state_)
+            return std::unique_ptr<runtime_state_t> ();
+        return std::unique_ptr<runtime_state_t> (new runtime_state_t (*state_));
+    }
+
+    void ensure_runtime_state ()
+    {
+        if (!_runtime)
+            _runtime.reset (new runtime_state_t ());
     }
 
     std::optional<routing_id_t> _routing_id;
     std::optional<routing_id_t> _spot_rid;
     std::optional<uint64_t> _request_seq;
-	    mutable std::optional<message_t> _single_part;
-	    mutable std::vector<message_t> _parts;
-	    std::function<void(std::vector<message_t> &, send_flags_t)> _reply_fn;
-	    std::function<bool(std::vector<message_t> &, send_flags_t)> _send_fn;
-	    void *_send_context_handle = nullptr;
-	    send_context_kind_t _send_context_kind = send_context_kind_t::none;
-	};
+    mutable std::optional<message_t> _single_part;
+    mutable std::vector<message_t> _parts;
+    std::unique_ptr<runtime_state_t> _runtime;
+};
 
 class topic_message_t
 {

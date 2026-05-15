@@ -2,160 +2,23 @@
 #ifndef ZLINK_CPP_RUNTIME_NATIVE_PARTS_HPP_INCLUDED
 #define ZLINK_CPP_RUNTIME_NATIVE_PARTS_HPP_INCLUDED
 
-#include "../../Contracts/Core/types.hpp"
-#include "../../Contracts/Errors/error.hpp"
-#include "../../Contracts/Messaging/message.hpp"
+#include "native_message_parts.hpp"
+#include "native_options.hpp"
 
-#include <cerrno>
 #include <cstring>
-#include <functional>
 #include <iterator>
-#include <string>
-#include <type_traits>
 #include <vector>
 
 extern "C" int zlink_socket_request_progress_internal (void *socket_);
 
 namespace zlink
 {
-
 namespace detail
 {
 
 inline void request_progress_socket (void *socket_) noexcept
 {
     (void) zlink_socket_request_progress_internal (socket_);
-}
-
-inline void close_message_array (zlink_msg_t *parts_, size_t part_count_) noexcept
-{
-    if (!parts_)
-        return;
-    zlink_multipart_close (parts_, part_count_);
-}
-
-inline void close_native_parts (std::vector<zlink_msg_t> &parts_,
-                                size_t start_index_ = 0) noexcept
-{
-    if (start_index_ >= parts_.size ())
-        return;
-
-    for (size_t i = start_index_; i < parts_.size (); ++i)
-        (void) zlink_msg_close (&parts_[i]);
-}
-
-inline bool is_common_string_option (compat::options::socket_option option_) noexcept
-{
-    switch (option_) {
-    case compat::options::socket_option::last_endpoint:
-    case compat::options::socket_option::bindtodevice:
-    case compat::options::socket_option::tls_cert:
-    case compat::options::socket_option::tls_key:
-    case compat::options::socket_option::tls_ca:
-    case compat::options::socket_option::tls_hostname:
-    case compat::options::socket_option::tls_password:
-        return true;
-    default:
-        return false;
-    }
-}
-
-template<typename Getter, typename Option>
-inline int get_string_option (Getter getter_,
-                              void *handle_,
-                              Option option_,
-                              size_t initial_capacity_,
-                              std::string &value_)
-{
-    size_t cap = initial_capacity_;
-    const size_t max_cap = 64u * 1024u;
-
-    while (cap <= max_cap) {
-        std::vector<char> buffer (cap);
-        size_t size = cap;
-        const int rc = getter_ (handle_, option_, buffer.data (), &size);
-        if (rc == 0) {
-            const size_t bounded = size <= buffer.size () ? size : buffer.size ();
-            size_t out_size = bounded;
-            if (out_size > 0 && buffer[out_size - 1] == '\0')
-                --out_size;
-            value_.assign (buffer.data (), out_size);
-            return 0;
-        }
-
-        if (errno != EINVAL || cap == max_cap)
-            return -1;
-
-        cap *= 2u;
-        if (cap > max_cap)
-            cap = max_cap;
-    }
-
-    errno = EINVAL;
-    return -1;
-}
-
-inline int move_parts_to_native (std::vector<message_t> &parts_,
-                                 std::vector<zlink_msg_t> &native_)
-{
-    native_.clear ();
-    native_.resize (parts_.size ());
-
-    size_t moved = 0;
-    for (; moved < parts_.size (); ++moved) {
-        if (!parts_[moved].valid ()) {
-            errno = EINVAL;
-            break;
-        }
-        detail::move_to_native(parts_[moved], &native_[moved]);
-        if (parts_[moved].valid ())
-            break;
-    }
-
-    if (moved == parts_.size ())
-        return 0;
-
-    for (size_t i = 0; i < moved; ++i) {
-        parts_[i].init ();
-        if (parts_[i].valid ())
-            (void) zlink_msg_move (detail::native_handle(parts_[i]), &native_[i]);
-        (void) zlink_msg_close (&native_[i]);
-    }
-
-    native_.clear ();
-    return -1;
-}
-
-inline void restore_parts_from_native (std::vector<message_t> &parts_,
-                                       std::vector<zlink_msg_t> &native_,
-                                       size_t start_index_ = 0) noexcept
-{
-    const size_t count =
-      native_.size () < parts_.size () ? native_.size () : parts_.size ();
-    for (size_t i = start_index_; i < count; ++i) {
-        parts_[i].init ();
-        if (parts_[i].valid ())
-            (void) zlink_msg_move (detail::native_handle(parts_[i]), &native_[i]);
-        (void) zlink_msg_close (&native_[i]);
-    }
-    native_.clear ();
-}
-
-inline int assign_parts_from_native (zlink_msg_t *parts_native_,
-                                     size_t part_count_,
-                                     std::vector<message_t> &parts_)
-{
-    parts_.clear ();
-    parts_.resize (part_count_);
-    for (size_t i = 0; i < part_count_; ++i) {
-        if (zlink_msg_move (detail::native_handle(parts_[i]), &parts_native_[i]) != 0) {
-            parts_.clear ();
-            close_message_array (parts_native_, part_count_);
-            return -1;
-        }
-    }
-    close_message_array (parts_native_, part_count_);
-    return 0;
 }
 
 inline int recv_result_from_errno (int err_) noexcept
@@ -180,34 +43,6 @@ inline int recv_result_from_errno (int err_) noexcept
 inline int recv_result_from_rc (int rc_) noexcept
 {
     return rc_ == 0 ? ZLINK_RECV_OK : recv_result_from_errno (errno);
-}
-
-inline int assign_parts_from_native (std::vector<zlink_msg_t> &parts_native_,
-                                     std::vector<message_t> &parts_)
-{
-    parts_.clear ();
-    parts_.resize (parts_native_.size ());
-    for (size_t i = 0; i < parts_native_.size (); ++i) {
-        if (zlink_msg_move (detail::native_handle(parts_[i]), &parts_native_[i]) != 0) {
-            parts_.clear ();
-            close_native_parts (parts_native_, i);
-            parts_native_.clear ();
-            return -1;
-        }
-    }
-    parts_native_.clear ();
-    return 0;
-}
-
-inline std::vector<message_t>
-take_parts_from_native (zlink_msg_t *parts_, size_t part_count_)
-{
-    std::vector<message_t> parts;
-    parts.resize (part_count_);
-    for (size_t i = 0; i < part_count_; ++i)
-        (void) zlink_msg_move (detail::native_handle (parts[i]), &parts_[i]);
-    close_message_array (parts_, part_count_);
-    return parts;
 }
 
 inline int recv_router_parts (void *router_,
@@ -253,30 +88,6 @@ inline int recv_router_parts (void *router_,
         if (has_more == ZLINK_PART_FINAL)
             return ZLINK_RECV_OK;
     }
-}
-
-template<typename SubmitFn>
-inline int submit_native_parts (std::vector<zlink_msg_t> &parts_native_,
-                                size_t &failed_index_out_,
-                                SubmitFn submit_)
-{
-    failed_index_out_ = 0;
-    if (parts_native_.empty ()) {
-        errno = EFAULT;
-        return ZLINK_SUBMIT_INVALID_HANDLE;
-    }
-
-    for (size_t i = 0; i < parts_native_.size (); ++i) {
-        const zlink_part_flag_t part_flag =
-          i + 1 < parts_native_.size () ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        const int rc = submit_ (&parts_native_[i], part_flag, i + 1 == parts_native_.size ());
-        if (rc != ZLINK_SUBMIT_OK) {
-            failed_index_out_ = i;
-            return rc;
-        }
-    }
-
-    return ZLINK_SUBMIT_OK;
 }
 
 template<typename RecvFn>
@@ -524,38 +335,7 @@ inline int recv_single_part (void *socket_,
     return 0;
 }
 
-inline send_result_t to_send_result (int result_) noexcept
-{
-    switch (result_) {
-    case ZLINK_SUBMIT_OK:
-        return send_result_t::sent;
-    case ZLINK_SUBMIT_BACKPRESSURED:
-        return send_result_t::backpressured;
-    case ZLINK_SUBMIT_NOT_CONNECTED:
-        return send_result_t::not_ready;
-    default:
-        return send_result_t::sent;
-    }
-}
-
-inline bool classify_nonblocking_send_errno (int err_,
-                                             send_result_t &result_) noexcept
-{
-    switch (err_) {
-    case EAGAIN:
-        result_ = send_result_t::backpressured;
-        return true;
-    case ENOTCONN:
-    case EHOSTUNREACH:
-        result_ = send_result_t::not_ready;
-        return true;
-    default:
-        return false;
-    }
-}
-
 } // namespace detail
-
 } // namespace zlink
 
 #endif

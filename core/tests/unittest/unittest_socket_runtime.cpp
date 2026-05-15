@@ -3,7 +3,7 @@
 #include "../testutil_unity.hpp"
 
 #include "core/mailbox.hpp"
-#include "sockets/socket_runtime.hpp"
+#include "sockets/common/socket_runtime.hpp"
 #include "utils/config.hpp"
 
 namespace

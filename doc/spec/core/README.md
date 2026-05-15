@@ -4,10 +4,39 @@
 
 # zlink Core Specification
 
-This specification defines the public C interface of the zlink library.
+This specification defines the public core C ABI of the zlink library.
 A conforming implementation MUST provide every function, type, and constant
-described in this section with the specified semantics. The public surface
-is defined in `core/include/zlink.h`.
+described in this section with the specified semantics. The public ABI surface
+is defined by `core/include/zlink.h` and the domain headers under
+`core/include/zlink/`.
+
+`core/include/zlink.h` remains the aggregate compatibility header. New code may
+include domain headers directly when it wants to inspect or depend on one API
+area. The domain headers are still public ABI headers, not internal helper
+headers.
+
+## Public ABI Header Layout
+
+| Header | Public ABI Area |
+|--------|-----------------|
+| `core/include/zlink.h` | Aggregate public header; includes every domain header |
+| `core/include/zlink/common.h` | Version macros, shared includes, export macro, enum/error includes |
+| `core/include/zlink/core.h` | Errno/string/version helpers, context lifecycle, proxy, capability, atomics, stopwatch, sleep, and thread utilities |
+| `core/include/zlink/message.h` | Message storage, routing id, zero-copy free callback, message lifecycle, and multipart close |
+| `core/include/zlink/actor.h` | Actor value types and actor result structures |
+| `core/include/zlink/socket.h` | Socket creation, options, TLS, bind/connect, send/recv part substrate, request/reply, pub/sub, stream, and socket callback types |
+| `core/include/zlink/monitoring.h` | Socket monitors, monitor snapshots, poll/poller, and timers |
+| `core/include/zlink/spot.h` | SPOT handle, SPOT node, actor operations, dispatch, and SPOT node attachment APIs |
+| `core/include/zlink/service_common.h` | Shared service-layer query types |
+| `core/include/zlink/registry.h` | Registry creation, configuration, topology, query client, and registry snapshots |
+| `core/include/zlink/discovery.h` | Discovery creation, registry connection, SPOT/Actor resolve, and discovery peer snapshots |
+| `core/include/zlink/service.h` | Compatibility aggregate header for the service layer |
+| `core/include/zlink_enum.h` | Public enum domains |
+| `core/include/zlink_errno.h` | Public errno domain |
+
+`core/src/` is the runtime implementation. Headers under `core/src/` are
+internal implementation contracts and are not public ABI, even when they are
+included by several core translation units.
 
 ## Spec Documents
 
@@ -55,27 +84,70 @@ is defined in `core/include/zlink.h`.
 
 ## Internal Architecture
 
-The public C API is defined in `core/include/zlink.h` and serves as the
-external contract including bindings. The internal implementation follows
-POSD (Philosophy of Software Design) principles and is organized into
-the following layers:
+The public C ABI is defined in `core/include/` and serves as the external core
+contract used by bindings. The internal implementation follows POSD
+(Philosophy of Software Design) principles and is organized into the following
+layers:
 
-```
-Public API Facade  →  Service Access Layer  →  Service/Socket Runtime
-     (api/)            (*_access.hpp)            (services/ · sockets/)
-                                                      ↓
-                                              Runtime Core (core/)
-                                              Engine (engine/asio/)
-                                              Transport/Protocol
+```text
+Public Contract  ->  API Facade  ->  Runtime Implementation
+ (include/)             (api/)            (runtime/)
 ```
 
 | Layer | Source Location | Role |
 |-------|-----------------|------|
-| API Facade | `core/src/api/` | C API entry point. Validate + delegate. 37 files split by concern |
-| Service Access | `core/src/services/*/` | Service-local access seam (`*_access.hpp`). Contract between API and concrete implementation |
-| Socket Runtime | `core/src/sockets/` | Socket semantic (per-family) + runtime components (dispatch/monitor/endpoint/lifecycle) separation |
-| Runtime Core | `core/src/core/` | ctx, options dispatch (core_socket/transport/protocol), multipart_send_txn, close/drain |
-| Engine | `core/src/engine/` | Boost.Asio-based poller, io_context, mailbox execution backbone |
+| Public Contract | `core/include/` | Public C ABI contract seen by bindings and users |
+| API Facade | `core/src/api/` | Implementation of exported C ABI functions. Validate inputs, convert public results, call runtime |
+| Runtime Implementation | `core/src/runtime/` | Internal socket, service, engine, transport, protocol, and utility implementation |
+
+`core/src/api/` is the implementation facade for the public C ABI functions
+declared under `core/include/`. It validates external inputs, converts results
+to public result types, and delegates the actual behavior to
+`core/src/runtime/`. `core/src/api/` is not a public header location and is not
+installed.
+
+The `core/src/api/` structure is fixed by category so it matches the public
+contract header domains:
+
+```text
+core/src/api/
+|-- actor/
+|-- core/
+|-- discovery/
+|-- message/
+|-- monitoring/
+|-- registry/
+|-- service/
+|-- socket/
+`-- spot/
+```
+
+The `core/src/runtime/` structure is fixed by category:
+
+```text
+core/src/runtime/
+|-- core/
+|-- engine/
+|-- protocol/
+|-- services/
+|   |-- actor/
+|   |-- common/
+|   |-- control/
+|   |-- discovery/
+|   |-- registry/
+|   `-- spot/
+|-- sockets/
+|   |-- common/
+|   |-- dealer/
+|   |-- internal/
+|   |-- pair/
+|   |-- proxy/
+|   |-- pubsub/
+|   |-- router/
+|   `-- stream/
+|-- transports/
+`-- utils/
+```
 
 Option dispatch is split into three categories, each handled by its own
 domain owner for validation/apply: core_socket, transport_network,

@@ -22,7 +22,7 @@
 #include <vector>
 
 #define private public
-#include "services/discovery/registry.hpp"
+#include "services/registry/registry.hpp"
 #undef private
 
 void setUp ()

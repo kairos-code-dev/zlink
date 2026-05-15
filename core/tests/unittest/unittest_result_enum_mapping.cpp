@@ -2,14 +2,14 @@
 
 #include "../testutil_unity.hpp"
 
-#include "../../src/api/bind_result_internal.hpp"
-#include "../../src/api/close_result_internal.hpp"
-#include "../../src/api/config_result_internal.hpp"
-#include "../../src/api/connect_result_internal.hpp"
-#include "../../src/api/handler_result_internal.hpp"
-#include "../../src/api/recv_result_internal.hpp"
-#include "../../src/api/request_result_internal.hpp"
-#include "../../src/api/submit_result_internal.hpp"
+#include "../../src/api/message/bind_result_internal.hpp"
+#include "../../src/api/core/close_result_internal.hpp"
+#include "../../src/api/core/config_result_internal.hpp"
+#include "../../src/api/message/connect_result_internal.hpp"
+#include "../../src/api/message/handler_result_internal.hpp"
+#include "../../src/api/message/recv_result_internal.hpp"
+#include "../../src/api/message/request_result_internal.hpp"
+#include "../../src/api/message/submit_result_internal.hpp"
 
 #include <unity.h>
 

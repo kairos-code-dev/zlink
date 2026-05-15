@@ -4,9 +4,36 @@
 
 # zlink 코어 스펙
 
-이 스펙은 zlink 라이브러리의 공개 C 인터페이스를 정의한다.
+이 스펙은 zlink 라이브러리의 공개 core C ABI를 정의한다.
 이 섹션의 모든 요구사항을 충족하는 구현체는 적합한 zlink C 라이브러리를 구성한다.
-공개 인터페이스는 `core/include/zlink.h`에 정의된다.
+공개 ABI 표면은 `core/include/zlink.h`와 `core/include/zlink/` 아래 도메인별
+헤더에 정의된다.
+
+`core/include/zlink.h`는 기존 호환성을 위한 aggregate header로 유지한다. 새 코드는
+특정 API 영역만 확인하거나 의존하고 싶을 때 도메인별 헤더를 직접 include할 수
+있다. 도메인별 헤더도 내부 helper가 아니라 public ABI header다.
+
+## 공개 ABI 헤더 구조
+
+| 헤더 | 공개 ABI 영역 |
+|------|---------------|
+| `core/include/zlink.h` | 모든 도메인 헤더를 포함하는 aggregate public header |
+| `core/include/zlink/common.h` | 버전 매크로, 공통 include, export 매크로, enum/error include |
+| `core/include/zlink/core.h` | errno/string/version helper, context lifecycle, proxy, capability, atomic, stopwatch, sleep, thread utility |
+| `core/include/zlink/message.h` | 메시지 저장소, routing id, zero-copy free callback, message lifecycle, multipart close |
+| `core/include/zlink/actor.h` | Actor 값 타입과 Actor result 구조체 |
+| `core/include/zlink/socket.h` | socket 생성, option, TLS, bind/connect, send/recv part substrate, request/reply, pub/sub, stream, socket callback type |
+| `core/include/zlink/monitoring.h` | socket monitor, monitor snapshot, poll/poller, timer |
+| `core/include/zlink/spot.h` | SPOT handle, SPOT node, Actor operation, dispatch, SPOT node attachment API |
+| `core/include/zlink/service_common.h` | service 계층 공통 조회 타입 |
+| `core/include/zlink/registry.h` | registry 생성, 구성, topology, query client, registry snapshot |
+| `core/include/zlink/discovery.h` | discovery 생성, registry 연결, SPOT/Actor resolve, discovery peer snapshot |
+| `core/include/zlink/service.h` | service 계층 호환 aggregate header |
+| `core/include/zlink_enum.h` | 공개 enum domain |
+| `core/include/zlink_errno.h` | 공개 errno domain |
+
+`core/src/`는 runtime implementation이다. `core/src/` 아래 헤더는 여러 core
+translation unit이 함께 include하더라도 내부 구현 계약이며 public ABI가 아니다.
 
 ## 스펙 문서
 
@@ -54,26 +81,68 @@
 
 ## 내부 아키텍처
 
-공개 C API는 `core/include/zlink.h`에 정의되며, bindings를 포함한 외부 계약이다.
-내부 구현은 POSD(Philosophy of Software Design) 원칙에 따라 다음 계층으로
-구성되어 있다.
+공개 C ABI는 `core/include/`에 정의되며, bindings가 사용하는 외부 core 계약이다.
+내부 구현은 POSD(Philosophy of Software Design) 원칙에 따라 다음 계층으로 구성되어
+있다.
 
-```
-Public API Facade  →  Service Access Layer  →  Service/Socket Runtime
-     (api/)            (*_access.hpp)            (services/, sockets/)
-                                                      ↓
-                                              Runtime Core (core/)
-                                              Engine (engine/asio/)
-                                              Transport/Protocol
+```text
+Public Contract  ->  API Facade  ->  Runtime Implementation
+ (include/)             (api/)            (runtime/)
 ```
 
 | 계층 | 소스 위치 | 역할 |
 |------|-----------|------|
-| API Facade | `core/src/api/` | C API entrypoint; validate + delegate |
-| Service Access | `core/src/services/*/` | service-local access seam (`*_access.hpp`) |
-| Socket Runtime | `core/src/sockets/` | socket semantic + runtime component 분리 |
-| Runtime Core | `core/src/core/` | ctx, options dispatch, multipart send, close/drain |
-| Engine | `core/src/engine/` | Boost.Asio 기반 poller, io_context |
+| Public Contract | `core/include/` | bindings와 사용자가 보는 공개 C ABI 계약 |
+| API Facade | `core/src/api/` | 공개 C ABI 함수 구현체. 입력 검증, 결과 변환, runtime 호출 |
+| Runtime Implementation | `core/src/runtime/` | socket, service, engine, transport, protocol 등 내부 구현 |
+
+`core/src/api/`는 `core/include/`에 선언된 공개 C ABI 함수에 대응하는 구현체
+계층이다. 이 계층은 외부 입력을 검증하고 공개 result 타입으로 결과를 변환한 뒤,
+실제 동작은 `core/src/runtime/` 아래 내부 구현으로 위임한다. `core/src/api/` 자체도
+public header가 아니며 설치 대상이 아니다.
+
+`core/src/api/` 아래 구조는 공개 contract 헤더의 도메인과 대응되도록 다음
+카테고리로 고정한다.
+
+```text
+core/src/api/
+|-- actor/
+|-- core/
+|-- discovery/
+|-- message/
+|-- monitoring/
+|-- registry/
+|-- service/
+|-- socket/
+`-- spot/
+```
+
+`core/src/runtime/` 아래 구조는 다음 카테고리로 고정한다.
+
+```text
+core/src/runtime/
+|-- core/
+|-- engine/
+|-- protocol/
+|-- services/
+|   |-- actor/
+|   |-- common/
+|   |-- control/
+|   |-- discovery/
+|   |-- registry/
+|   `-- spot/
+|-- sockets/
+|   |-- common/
+|   |-- dealer/
+|   |-- internal/
+|   |-- pair/
+|   |-- proxy/
+|   |-- pubsub/
+|   |-- router/
+|   `-- stream/
+|-- transports/
+`-- utils/
+```
 
 Option dispatch는 세 카테고리로 분리되어 각 도메인 소유자가 validation/apply를
 담당한다: core_socket, transport_network, protocol_metadata.

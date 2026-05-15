@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include "testutil.hpp"
-#include "../src/core/recv_internal.hpp"
+#include "../src/runtime/core/recv_internal.hpp"
 #include "testutil_unity.hpp"
 #include "certs/test_certs.hpp"
 

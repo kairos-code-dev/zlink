@@ -2,7 +2,7 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
-#include "../src/api/socket_request_reply_internal.hpp"
+#include "../src/api/socket/socket_request_reply_internal.hpp"
 
 #include <chrono>
 #include <condition_variable>

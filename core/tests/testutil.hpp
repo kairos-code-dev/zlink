@@ -6,11 +6,11 @@
 #if defined ZLINK_CUSTOM_PLATFORM_HPP
 #include "platform.hpp"
 #else
-#include "../src/platform.hpp"
+#include "../src/runtime/platform.hpp"
 #endif
 #include "../include/zlink.h"
-#include "../src/core/internal_defs.hpp"
-#include "../src/utils/fd.hpp"
+#include "../src/runtime/core/internal_defs.hpp"
+#include "../src/runtime/utils/fd.hpp"
 #include "utils/stdint.hpp"
 #include <stdio.h>
 #include <stdlib.h>

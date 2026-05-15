@@ -2,7 +2,7 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
-#include "../../src/sockets/socket_base.hpp"
+#include "../../src/runtime/sockets/common/socket_base.hpp"
 
 #include <atomic>
 #include <condition_variable>

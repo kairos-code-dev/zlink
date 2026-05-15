@@ -8,7 +8,7 @@
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_mesh_pub_hwm.hpp"
 #include "services/spot/spot_runtime.hpp"
-#include "sockets/socket_base.hpp"
+#include "sockets/common/socket_base.hpp"
 
 #include <chrono>
 #include <future>

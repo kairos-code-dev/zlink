@@ -3,19 +3,66 @@
 #include "../testutil.hpp"
 #include "../testutil_unity.hpp"
 
-#include "../../src/api/service_api_internal.hpp"
+#include "../../src/api/service/service_api_internal.hpp"
 #include "../zlink_testing.hpp"
 #include "core/internal_defs.hpp"
 #include "core/options_owner.hpp"
-#include "../../src/services/spot/spot_handle.hpp"
-#include "../../src/services/spot/spot_node.hpp"
-#include "../../src/services/spot/spot_node_access.hpp"
+#include "../../src/runtime/services/spot/spot_handle.hpp"
+#include "../../src/runtime/services/spot/spot_node.hpp"
+#include "../../src/runtime/services/spot/spot_node_access.hpp"
 
 #include <string.h>
 #include <unity.h>
 
 namespace
 {
+bool allocate_loopback_tcp_endpoint (char *endpoint_out_, size_t endpoint_size_)
+{
+    if (!endpoint_out_ || endpoint_size_ == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    for (int attempt = 0; attempt < 256; ++attempt) {
+        fd_t fd = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (fd == retired_fd)
+            continue;
+
+        int reuse = 1;
+        setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, as_setsockopt_opt_t (&reuse),
+                    sizeof (reuse));
+
+        struct sockaddr_in addr;
+        memset (&addr, 0, sizeof (addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+        addr.sin_port = 0;
+
+        if (bind (fd, reinterpret_cast<struct sockaddr *> (&addr),
+                  sizeof (addr))
+            == 0) {
+#if defined ZLINK_HAVE_WINDOWS
+            int addr_len = sizeof (addr);
+#else
+            socklen_t addr_len = sizeof (addr);
+#endif
+            if (getsockname (fd, reinterpret_cast<struct sockaddr *> (&addr),
+                             &addr_len)
+                == 0) {
+                close (fd);
+                snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%u",
+                          static_cast<unsigned> (ntohs (addr.sin_port)));
+                return true;
+            }
+        }
+
+        close (fd);
+    }
+
+    errno = EADDRINUSE;
+    return false;
+}
+
 void *make_test_spot_handle (void *node_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
@@ -405,10 +452,17 @@ void test_discovery_routing_id_locks_after_registry_connect ()
     TEST_ASSERT_NOT_NULL (registry);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (discovery, "disc", 4));
+    char pub_endpoint[MAX_SOCKET_STRING];
+    char router_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (
+      allocate_loopback_tcp_endpoint (pub_endpoint, sizeof (pub_endpoint)));
+    TEST_ASSERT_TRUE (allocate_loopback_tcp_endpoint (
+      router_endpoint, sizeof (router_endpoint)));
+
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_bind (registry, ENDPOINT_0, ENDPOINT_1));
+      zlink_registry_bind (registry, pub_endpoint, router_endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, ENDPOINT_1));
+      zlink_discovery_connect_registry (discovery, router_endpoint));
 
     errno = 0;
     TEST_ASSERT_NOT_EQUAL (

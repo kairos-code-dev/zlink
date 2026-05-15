@@ -820,308 +820,386 @@ endif()
 # -----------------------------------------------------------------------------
 # source files
 
+set(api-core-sources
+    src/api/core/context_api.cpp
+    src/api/core/zlink.cpp
+    src/api/core/zlink_option.cpp
+    src/api/core/zlink_option_specialized_api.cpp
+    src/api/core/zlink_option_subscription_api.cpp
+    src/api/core/zlink_utils.cpp)
+
+set(api-message-sources
+    src/api/message/message_api.cpp)
+
+set(api-monitoring-sources
+    src/api/monitoring/monitor_api.cpp
+    src/api/monitoring/monitor_dispatch_context.cpp
+    src/api/monitoring/monitor_query_api.cpp
+    src/api/monitoring/monitor_socket_api.cpp
+    src/api/monitoring/poller_api.cpp
+    src/api/monitoring/timer_api.cpp
+    src/api/monitoring/timer_scheduler_backend.cpp)
+
+set(api-socket-sources
+    src/api/socket/internal_pair_queue_internal.cpp
+    src/api/socket/part_helper_api.cpp
+    src/api/socket/request_completion_queue_internal.cpp
+    src/api/socket/request_timeout_scheduler_internal.cpp
+    src/api/socket/socket_message_api.cpp
+    src/api/socket/socket_message_recv_api.cpp
+    src/api/socket/socket_message_handler_api.cpp
+    src/api/socket/socket_message_send_api.cpp
+    src/api/socket/socket_request_reply_dispatch.cpp
+    src/api/socket/socket_request_reply_runtime_io.cpp
+    src/api/socket/socket_request_reply_internal.cpp
+    src/api/socket/socket_request_reply_router_api.cpp
+    src/api/socket/socket_request_reply_api.cpp
+    src/api/socket/socket_request_reply_pending_api.cpp
+    src/api/socket/socket_request_reply_submit_api.cpp
+    src/api/socket/socket_api.cpp)
+
+set(api-service-sources
+    src/api/service/service_api.cpp
+    src/api/service/service_handler_api.cpp
+    src/api/service/service_mode_api.cpp
+    src/api/service/service_option_api.cpp
+    src/api/service/service_poller_api.cpp)
+
+set(api-discovery-sources
+    src/api/discovery/service_discovery_api.cpp)
+
+set(api-registry-sources
+    src/api/registry/service_registry_api.cpp)
+
+set(api-spot-sources
+    src/api/spot/service_spot_node_api.cpp
+    src/api/spot/service_spot_api.cpp
+    src/api/spot/service_spot_dispatch_context.cpp
+    src/api/spot/service_spot_request_reply_internal.cpp
+    src/api/spot/service_spot_routed_codec.cpp
+    src/api/spot/service_spot_request_reply_utils.cpp
+    src/api/spot/service_spot_request_reply_registry.cpp
+    src/api/spot/service_spot_request_reply_lifecycle.cpp
+    src/api/spot/service_spot_request_reply_identity_registry.cpp
+    src/api/spot/service_spot_request_reply_pending.cpp
+    src/api/spot/service_spot_request_reply_timeout.cpp
+    src/api/spot/service_spot_request_reply_queue.cpp
+    src/api/spot/service_spot_request_reply_local_dispatch.cpp
+    src/api/spot/service_spot_request_reply_local_reply.cpp
+    src/api/spot/service_spot_request_reply_local_request.cpp
+    src/api/spot/service_spot_request_reply_local_direct.cpp
+    src/api/spot/service_spot_request_reply_channel_bridge.cpp
+    src/api/spot/service_spot_request_reply_completion.cpp
+    src/api/spot/service_spot_request_reply_callback_api.cpp
+    src/api/spot/service_spot_request_reply_ingress_api.cpp
+    src/api/spot/service_spot_request_reply_part_submit.cpp
+    src/api/spot/service_spot_request_reply_routed_delivery.cpp
+    src/api/spot/service_spot_request_reply_progress.cpp
+    src/api/spot/service_spot_request_reply_api.cpp
+    src/api/spot/service_spot_request_reply_submit_api.cpp
+    src/api/spot/service_spot_subject_option_api.cpp
+    src/api/spot/service_spot_subject_subscription_api.cpp
+    src/api/spot/service_spot_subject_api.cpp
+    src/api/spot/service_option_spot_api.cpp)
+
+set(api-actor-sources
+    src/api/actor/service_spot_actor_api.cpp)
+
 set(api-sources
-    src/api/context_api.cpp
-    src/api/message_api.cpp
-    src/api/monitor_api.cpp
-    src/api/monitor_dispatch_context.cpp
-    src/api/monitor_query_api.cpp
-    src/api/monitor_socket_api.cpp
-    src/api/internal_pair_queue_internal.cpp
-    src/api/part_helper_api.cpp
-    src/api/poller_api.cpp
-    src/api/request_completion_queue_internal.cpp
-  src/api/service_api.cpp
-    src/api/service_discovery_api.cpp
-    src/api/service_handler_api.cpp
-    src/api/service_mode_api.cpp
-  src/api/service_poller_api.cpp
-    src/api/service_registry_api.cpp
-    src/api/service_spot_node_api.cpp
-    src/api/service_spot_actor_async_internal.cpp
-    src/api/service_spot_actor_api.cpp
-    src/api/service_spot_api.cpp
-    src/api/service_spot_dispatch_context.cpp
-    src/api/request_timeout_scheduler_internal.cpp
-    src/api/service_spot_request_reply_internal.cpp
-    src/api/service_spot_routed_codec.cpp
-    src/api/service_spot_request_reply_utils.cpp
-    src/api/service_spot_request_reply_registry.cpp
-    src/api/service_spot_request_reply_lifecycle.cpp
-    src/api/service_spot_request_reply_identity_registry.cpp
-    src/api/service_spot_request_reply_pending.cpp
-    src/api/service_spot_request_reply_timeout.cpp
-    src/api/service_spot_request_reply_queue.cpp
-    src/api/service_spot_request_reply_local_dispatch.cpp
-    src/api/service_spot_request_reply_local_reply.cpp
-    src/api/service_spot_request_reply_local_request.cpp
-    src/api/service_spot_request_reply_local_direct.cpp
-    src/api/service_spot_request_reply_channel_bridge.cpp
-    src/api/service_spot_request_reply_completion.cpp
-    src/api/service_spot_request_reply_callback_api.cpp
-    src/api/service_spot_request_reply_ingress_api.cpp
-    src/api/service_spot_request_reply_part_submit.cpp
-    src/api/service_spot_request_reply_routed_delivery.cpp
-    src/api/service_spot_request_reply_progress.cpp
-    src/api/service_spot_request_reply_api.cpp
-    src/api/service_spot_request_reply_submit_api.cpp
-    src/api/service_spot_subject_option_api.cpp
-    src/api/service_spot_subject_subscription_api.cpp
-    src/api/service_spot_subject_api.cpp
-    src/api/service_option_api.cpp
-    src/api/service_option_spot_api.cpp
-    src/api/socket_message_api.cpp
-    src/api/socket_message_recv_api.cpp
-    src/api/socket_message_handler_api.cpp
-    src/api/socket_message_send_api.cpp
-    src/api/socket_request_reply_dispatch.cpp
-    src/api/socket_request_reply_runtime_io.cpp
-    src/api/socket_request_reply_internal.cpp
-    src/api/socket_request_reply_router_api.cpp
-    src/api/socket_request_reply_api.cpp
-    src/api/socket_request_reply_pending_api.cpp
-    src/api/socket_request_reply_submit_api.cpp
-    src/api/socket_api.cpp
-    src/api/timer_api.cpp
-    src/api/timer_scheduler_backend.cpp
-    src/api/zlink.cpp
-    src/api/zlink_option.cpp
-    src/api/zlink_option_specialized_api.cpp
-    src/api/zlink_option_subscription_api.cpp
-    src/api/zlink_utils.cpp)
+    ${api-core-sources}
+    ${api-message-sources}
+    ${api-monitoring-sources}
+    ${api-socket-sources}
+    ${api-service-sources}
+    ${api-discovery-sources}
+    ${api-registry-sources}
+    ${api-spot-sources}
+    ${api-actor-sources})
 
 set(core-sources
-    src/core/msg.cpp
-    src/core/multipart_send_txn.cpp
-    src/core/recv_internal.cpp
-    src/core/send_internal.cpp
-    src/core/ctx.cpp
-    src/core/ctx_bootstrap.cpp
-    src/core/ctx_inproc_registry.cpp
-    src/core/ctx_io_thread_registry.cpp
-    src/core/ctx_runtime_resources.cpp
-    src/core/ctx_socket_registry.cpp
-    src/core/ctx_termination.cpp
-    src/core/auto_hwm_policy.cpp
-    src/core/pipe.cpp
-    src/core/mailbox.cpp
-    src/core/object.cpp
-    src/core/own.cpp
-    src/core/io_object.cpp
-    src/core/io_thread.cpp
-    src/core/reaper.cpp
-    src/core/signaler.cpp
-    src/core/thread.cpp
-    src/core/options.cpp
-    src/core/options_dispatch.cpp
-    src/core/options_core_socket.cpp
-    src/core/options_transport_network.cpp
-    src/core/options_protocol_metadata.cpp
-    src/core/options_owner.cpp
-    src/core/poller_base.cpp
-    src/core/socket_poller.cpp
-    src/core/session_base.cpp
-    src/core/session_base_pipe_io.cpp
-    src/core/address.cpp
-    src/core/endpoint.cpp
-    src/core/platform_thread.cpp)
+    src/runtime/core/msg.cpp
+    src/runtime/core/multipart_send_txn.cpp
+    src/runtime/core/recv_internal.cpp
+    src/runtime/core/send_internal.cpp
+    src/runtime/core/ctx.cpp
+    src/runtime/core/ctx_bootstrap.cpp
+    src/runtime/core/ctx_inproc_registry.cpp
+    src/runtime/core/ctx_io_thread_registry.cpp
+    src/runtime/core/ctx_runtime_resources.cpp
+    src/runtime/core/ctx_socket_registry.cpp
+    src/runtime/core/ctx_termination.cpp
+    src/runtime/core/auto_hwm_policy.cpp
+    src/runtime/core/pipe.cpp
+    src/runtime/core/mailbox.cpp
+    src/runtime/core/object.cpp
+    src/runtime/core/own.cpp
+    src/runtime/core/io_object.cpp
+    src/runtime/core/io_thread.cpp
+    src/runtime/core/reaper.cpp
+    src/runtime/core/signaler.cpp
+    src/runtime/core/thread.cpp
+    src/runtime/core/options.cpp
+    src/runtime/core/options_dispatch.cpp
+    src/runtime/core/options_core_socket.cpp
+    src/runtime/core/options_transport_network.cpp
+    src/runtime/core/options_protocol_metadata.cpp
+    src/runtime/core/options_owner.cpp
+    src/runtime/core/poller_base.cpp
+    src/runtime/core/socket_poller.cpp
+    src/runtime/core/session_base.cpp
+    src/runtime/core/session_base_pipe_io.cpp
+    src/runtime/core/address.cpp
+    src/runtime/core/endpoint.cpp
+    src/runtime/core/platform_thread.cpp)
 
 set(protocol-sources
-    src/protocol/zmp_decoder.cpp
-    src/protocol/zmp_encoder.cpp
-    src/protocol/raw_decoder.cpp
-    src/protocol/raw_encoder.cpp
-    src/protocol/metadata.cpp
-    src/protocol/decoder_allocators.cpp)
+    src/runtime/protocol/zmp_decoder.cpp
+    src/runtime/protocol/zmp_encoder.cpp
+    src/runtime/protocol/raw_decoder.cpp
+    src/runtime/protocol/raw_encoder.cpp
+    src/runtime/protocol/metadata.cpp
+    src/runtime/protocol/decoder_allocators.cpp)
 
-set(discovery-sources
-    src/services/control/service_control_runtime.cpp
-    src/services/common/service_runtime_base.cpp
-    src/services/discovery/discovery_access.cpp
-    src/services/discovery/registry_access.cpp
-    src/services/discovery/registry_query_access.cpp
-    src/services/discovery/registry.cpp
-    src/services/discovery/registry_config.cpp
-    src/services/discovery/registry_control.cpp
-    src/services/discovery/registry_query.cpp
-    src/services/discovery/registry_projection.cpp
-    src/services/discovery/registry_runtime.cpp
-    src/services/discovery/registry_socket_owner.cpp
-    src/services/discovery/registry_state.cpp
-    src/services/discovery/discovery.cpp
-    src/services/discovery/discovery_bootstrap.cpp
-    src/services/discovery/discovery_registry_rpc.cpp
-    src/services/discovery/discovery_registry_client.cpp
-    src/services/discovery/discovery_service_state.cpp
-    src/services/discovery/socket_discovery_attachment.cpp
-    src/services/discovery/socket_discovery_attachment_lifecycle.cpp
-    src/services/discovery/socket_discovery_attachment_registration.cpp
-    src/services/discovery/discovery_registration_propagation.cpp
-    src/services/discovery/discovery_state.cpp
-    src/services/discovery/discovery_uplink.cpp
-    src/services/discovery/discovery_uplink_socket_owner.cpp
-    src/services/discovery/discovery_update.cpp
-    src/services/discovery/socket_discovery_attachment_peer.cpp)
+set(runtime-service-control-sources
+    src/runtime/services/control/service_control_runtime.cpp
+)
 
-set(spot-sources
-    src/services/spot/spot_data_plane.cpp
-    src/services/spot/spot_data_plane_forwarding.cpp
-    src/services/spot/spot_data_plane_loop.cpp
-    src/services/spot/spot_data_plane_control.cpp
-    src/services/spot/spot_data_plane_mesh.cpp
-    src/services/spot/spot_data_plane_message_io.cpp
-    src/services/spot/spot_data_plane_runtime.cpp
-    src/services/spot/spot_data_plane_pending.cpp
-    src/services/spot/spot_data_plane_protocol.cpp
-    src/services/spot/spot_mesh_pub_hwm.cpp
-    src/services/spot/spot_subject_access.cpp
-    src/services/spot/spot_subject_handler.cpp
-    src/services/spot/spot_subject_option.cpp
-    src/services/spot/spot_subject_poller.cpp
-    src/services/spot/spot_subject_publish.cpp
-    src/services/spot/spot_subject_query.cpp
-    src/services/spot/spot_node_access.cpp
-    src/services/spot/spot_node.cpp
-    src/services/spot/spot_node_control.cpp
-    src/services/spot/spot_node_control_peer.cpp
-    src/services/spot/spot_node_control_ready.cpp
-    src/services/spot/spot_node_control_task.cpp
-    src/services/spot/spot_node_control_policy.cpp
-    src/services/spot/spot_node_defaults.cpp
-    src/services/spot/spot_node_handles.cpp
-    src/services/spot/spot_node_lifecycle.cpp
-    src/services/spot/spot_node_shutdown.cpp
-    src/services/spot/spot_node_service_attachment.cpp
-    src/services/spot/spot_node_service_attachment_cache.cpp
-    src/services/spot/spot_node_service_attachment_recv.cpp
-    src/services/spot/spot_node_summary.cpp
-    src/services/spot/spot_pub.cpp
-    src/services/spot/spot_dispatch_context.cpp
-    src/services/spot/spot_dispatch_worker_pool.cpp
-    src/services/spot/spot_runtime.cpp
-    src/services/spot/spot_runtime_attachment.cpp
-    src/services/spot/spot_runtime_execution.cpp
-    src/services/spot/spot_runtime_shutdown.cpp
-    src/services/spot/spot_sub_lifecycle.cpp
-    src/services/spot/spot_sub_option.cpp
-    src/services/spot/spot_sub_recv.cpp
-    src/services/spot/spot_sub_subject_state.cpp
-    src/services/spot/spot_sub.cpp)
+set(runtime-service-common-sources
+    src/runtime/services/common/service_runtime_base.cpp)
+
+set(runtime-service-discovery-sources
+    src/runtime/services/discovery/discovery_access.cpp
+    src/runtime/services/discovery/discovery.cpp
+    src/runtime/services/discovery/discovery_bootstrap.cpp
+    src/runtime/services/discovery/discovery_registry_rpc.cpp
+    src/runtime/services/discovery/discovery_registry_client.cpp
+    src/runtime/services/discovery/discovery_service_state.cpp
+    src/runtime/services/discovery/socket_discovery_attachment.cpp
+    src/runtime/services/discovery/socket_discovery_attachment_lifecycle.cpp
+    src/runtime/services/discovery/socket_discovery_attachment_registration.cpp
+    src/runtime/services/discovery/discovery_registration_propagation.cpp
+    src/runtime/services/discovery/discovery_state.cpp
+    src/runtime/services/discovery/discovery_uplink.cpp
+    src/runtime/services/discovery/discovery_uplink_socket_owner.cpp
+    src/runtime/services/discovery/discovery_update.cpp
+    src/runtime/services/discovery/socket_discovery_attachment_peer.cpp)
+
+set(runtime-service-registry-sources
+    src/runtime/services/registry/registry_access.cpp
+    src/runtime/services/registry/registry_query_access.cpp
+    src/runtime/services/registry/registry.cpp
+    src/runtime/services/registry/registry_config.cpp
+    src/runtime/services/registry/registry_control.cpp
+    src/runtime/services/registry/registry_query.cpp
+    src/runtime/services/registry/registry_projection.cpp
+    src/runtime/services/registry/registry_runtime.cpp
+    src/runtime/services/registry/registry_socket_owner.cpp
+    src/runtime/services/registry/registry_state.cpp)
+
+set(runtime-service-actor-sources
+    src/runtime/services/actor/service_spot_actor_async_internal.cpp
+    src/runtime/services/actor/service_spot_actor_multipart_internal.cpp
+    src/runtime/services/actor/service_spot_actor_result_internal.cpp
+    src/runtime/services/actor/service_spot_actor_validation_internal.cpp)
+
+set(runtime-service-spot-sources
+    src/runtime/services/spot/spot_data_plane.cpp
+    src/runtime/services/spot/spot_data_plane_forwarding.cpp
+    src/runtime/services/spot/spot_data_plane_loop.cpp
+    src/runtime/services/spot/spot_data_plane_control.cpp
+    src/runtime/services/spot/spot_data_plane_mesh.cpp
+    src/runtime/services/spot/spot_data_plane_message_io.cpp
+    src/runtime/services/spot/spot_data_plane_runtime.cpp
+    src/runtime/services/spot/spot_data_plane_pending.cpp
+    src/runtime/services/spot/spot_data_plane_protocol.cpp
+    src/runtime/services/spot/spot_mesh_pub_hwm.cpp
+    src/runtime/services/spot/spot_subject_access.cpp
+    src/runtime/services/spot/spot_subject_handler.cpp
+    src/runtime/services/spot/spot_subject_option.cpp
+    src/runtime/services/spot/spot_subject_poller.cpp
+    src/runtime/services/spot/spot_subject_publish.cpp
+    src/runtime/services/spot/spot_subject_query.cpp
+    src/runtime/services/spot/spot_node_access.cpp
+    src/runtime/services/spot/spot_node.cpp
+    src/runtime/services/spot/spot_node_control.cpp
+    src/runtime/services/spot/spot_node_control_peer.cpp
+    src/runtime/services/spot/spot_node_control_ready.cpp
+    src/runtime/services/spot/spot_node_control_task.cpp
+    src/runtime/services/spot/spot_node_control_policy.cpp
+    src/runtime/services/spot/spot_node_defaults.cpp
+    src/runtime/services/spot/spot_node_handles.cpp
+    src/runtime/services/spot/spot_node_lifecycle.cpp
+    src/runtime/services/spot/spot_node_shutdown.cpp
+    src/runtime/services/spot/spot_node_service_attachment.cpp
+    src/runtime/services/spot/spot_node_service_attachment_cache.cpp
+    src/runtime/services/spot/spot_node_service_attachment_recv.cpp
+    src/runtime/services/spot/spot_node_summary.cpp
+    src/runtime/services/spot/spot_pub.cpp
+    src/runtime/services/spot/spot_dispatch_context.cpp
+    src/runtime/services/spot/spot_dispatch_worker_pool.cpp
+    src/runtime/services/spot/spot_runtime.cpp
+    src/runtime/services/spot/spot_runtime_attachment.cpp
+    src/runtime/services/spot/spot_runtime_execution.cpp
+    src/runtime/services/spot/spot_runtime_shutdown.cpp
+    src/runtime/services/spot/spot_sub_lifecycle.cpp
+    src/runtime/services/spot/spot_sub_option.cpp
+    src/runtime/services/spot/spot_sub_recv.cpp
+    src/runtime/services/spot/spot_sub_subject_state.cpp
+    src/runtime/services/spot/spot_sub.cpp)
+
+set(service-sources
+    ${runtime-service-control-sources}
+    ${runtime-service-common-sources}
+    ${runtime-service-discovery-sources}
+    ${runtime-service-registry-sources}
+    ${runtime-service-actor-sources}
+    ${runtime-service-spot-sources})
+
+set(socket-common-sources
+    src/runtime/sockets/common/socket_close_ops.cpp
+    src/runtime/sockets/common/socket_base.cpp
+    src/runtime/sockets/common/socket_base_api.cpp
+    src/runtime/sockets/common/socket_base_request_reply_bridge.cpp
+    src/runtime/sockets/common/socket_base_service_attachment.cpp
+    src/runtime/sockets/common/socket_base_dispatch.cpp
+    src/runtime/sockets/common/socket_dispatch_context.cpp
+    src/runtime/sockets/common/socket_base_endpoint.cpp
+    src/runtime/sockets/common/socket_base_endpoint_factory.cpp
+    src/runtime/sockets/common/socket_base_lifecycle.cpp
+    src/runtime/sockets/common/socket_base_msg.cpp
+    src/runtime/sockets/common/socket_base_monitor.cpp
+    src/runtime/sockets/common/socket_base_routing.cpp
+    src/runtime/sockets/common/socket_runtime.cpp)
+
+set(socket-dealer-sources
+    src/runtime/sockets/dealer/dealer.cpp)
+
+set(socket-router-sources
+    src/runtime/sockets/router/router_admission.cpp
+    src/runtime/sockets/router/router.cpp
+    src/runtime/sockets/router/router_recv_path.cpp
+    src/runtime/sockets/router/router_send_path.cpp)
+
+set(socket-stream-sources
+    src/runtime/sockets/stream/stream.cpp
+    src/runtime/sockets/stream/stream_dispatch_send.cpp
+    src/runtime/sockets/stream/stream_dispatch_context.cpp)
+
+set(socket-pubsub-sources
+    src/runtime/sockets/pubsub/pub.cpp
+    src/runtime/sockets/pubsub/sub.cpp
+    src/runtime/sockets/pubsub/xpub.cpp
+    src/runtime/sockets/pubsub/xsub.cpp
+    src/runtime/sockets/pubsub/xsub_dispatch_context.cpp)
+
+set(socket-pair-sources
+    src/runtime/sockets/pair/pair.cpp)
+
+set(socket-internal-sources
+    src/runtime/sockets/internal/lb.cpp
+    src/runtime/sockets/internal/fq.cpp
+    src/runtime/sockets/internal/dist.cpp)
+
+set(socket-proxy-sources
+    src/runtime/sockets/proxy/proxy.cpp)
 
 set(socket-sources
-    src/sockets/socket_close_ops.cpp
-    src/sockets/socket_base.cpp
-    src/sockets/socket_base_api.cpp
-    src/sockets/socket_base_request_reply_bridge.cpp
-    src/sockets/socket_base_service_attachment.cpp
-    src/sockets/socket_base_dispatch.cpp
-    src/sockets/socket_dispatch_context.cpp
-    src/sockets/socket_base_endpoint.cpp
-    src/sockets/socket_base_endpoint_factory.cpp
-    src/sockets/socket_base_lifecycle.cpp
-    src/sockets/socket_base_msg.cpp
-    src/sockets/socket_base_monitor.cpp
-    src/sockets/socket_base_routing.cpp
-    src/sockets/socket_runtime.cpp
-    src/sockets/dealer.cpp
-    src/sockets/router_admission.cpp
-    src/sockets/router.cpp
-    src/sockets/router_recv_path.cpp
-    src/sockets/router_send_path.cpp
-    src/sockets/stream.cpp
-    src/sockets/stream_dispatch_send.cpp
-    src/sockets/stream_dispatch_context.cpp
-    src/sockets/pub.cpp
-    src/sockets/sub.cpp
-    src/sockets/xpub.cpp
-    src/sockets/xsub.cpp
-    src/sockets/xsub_dispatch_context.cpp
-    src/sockets/pair.cpp
-    src/sockets/lb.cpp
-    src/sockets/fq.cpp
-    src/sockets/dist.cpp
-    src/sockets/proxy.cpp)
+    ${socket-common-sources}
+    ${socket-dealer-sources}
+    ${socket-router-sources}
+    ${socket-stream-sources}
+    ${socket-pubsub-sources}
+    ${socket-pair-sources}
+    ${socket-internal-sources}
+    ${socket-proxy-sources})
 
 set(engine-sources
-    src/engine/asio/asio_engine.cpp
-    src/engine/asio/asio_poller.cpp
-    src/engine/asio/asio_zmp_engine.cpp
-    src/engine/asio/asio_raw_engine.cpp)
+    src/runtime/engine/asio/asio_engine.cpp
+    src/runtime/engine/asio/asio_poller.cpp
+    src/runtime/engine/asio/asio_zmp_engine.cpp
+    src/runtime/engine/asio/asio_raw_engine.cpp)
+
+set(transport-tcp-sources
+    src/runtime/transports/tcp/tcp.cpp
+    src/runtime/transports/tcp/tcp_address.cpp
+    src/runtime/transports/tcp/asio_tcp_listener.cpp
+    src/runtime/transports/tcp/asio_tcp_connecter.cpp
+    src/runtime/transports/tcp/tcp_transport.cpp)
+
+set(transport-ipc-sources
+    src/runtime/transports/ipc/ipc_address.cpp
+    src/runtime/transports/ipc/ipc_transport.cpp
+    src/runtime/transports/ipc/asio_ipc_listener.cpp
+    src/runtime/transports/ipc/asio_ipc_connecter.cpp)
+
+set(transport-ws-sources
+    src/runtime/transports/ws/ws_address.cpp
+    src/runtime/transports/ws/ws_transport.cpp
+    src/runtime/transports/ws/asio_ws_listener.cpp
+    src/runtime/transports/ws/asio_ws_connecter.cpp
+    src/runtime/transports/ws/asio_ws_engine.cpp)
+
+set(transport-tls-sources
+    src/runtime/transports/tls/wss_address.cpp
+    src/runtime/transports/tls/wss_transport.cpp
+    src/runtime/transports/tls/ssl_context_helper.cpp
+    src/runtime/transports/tls/ssl_transport.cpp
+    src/runtime/transports/tls/asio_tls_listener.cpp
+    src/runtime/transports/tls/asio_tls_connecter.cpp)
+
+set(transport-pgm-sources
+    src/runtime/transports/pgm/pgm_socket.cpp
+    src/runtime/transports/pgm/pgm_sender.cpp
+    src/runtime/transports/pgm/pgm_receiver.cpp)
 
 set(transport-sources
-    src/transports/tcp/tcp.cpp
-    src/transports/tcp/tcp_address.cpp
-    src/transports/tcp/asio_tcp_listener.cpp
-    src/transports/tcp/asio_tcp_connecter.cpp
-    src/transports/tcp/tcp_transport.cpp
-    src/transports/ipc/ipc_address.cpp
-    src/transports/ipc/ipc_transport.cpp
-    src/transports/ipc/asio_ipc_listener.cpp
-    src/transports/ipc/asio_ipc_connecter.cpp
-    src/transports/ws/ws_address.cpp
-    src/transports/ws/ws_transport.cpp
-    src/transports/ws/asio_ws_listener.cpp
-    src/transports/ws/asio_ws_connecter.cpp
-    src/transports/ws/asio_ws_engine.cpp
-    src/transports/tls/wss_address.cpp
-    src/transports/tls/wss_transport.cpp
-    src/transports/tls/ssl_context_helper.cpp
-    src/transports/tls/ssl_transport.cpp
-    src/transports/tls/asio_tls_listener.cpp
-    src/transports/tls/asio_tls_connecter.cpp)
-
-set(pgm-sources
-    src/transports/pgm/pgm_socket.cpp
-    src/transports/pgm/pgm_sender.cpp
-    src/transports/pgm/pgm_receiver.cpp)
+    ${transport-tcp-sources}
+    ${transport-ipc-sources}
+    ${transport-ws-sources}
+    ${transport-tls-sources})
 
 set(utils-sources
-    src/utils/allocator.cpp
-    src/utils/clock.cpp
-    src/utils/err.cpp
-    src/utils/ip.cpp
-    src/utils/ip_resolver.cpp
-    src/utils/mtrie.cpp
-    src/utils/polling_util.cpp
-    src/utils/precompiled.cpp
-    src/utils/random.cpp
-    src/utils/trie.cpp
-    src/utils/radix_tree.cpp)
+    src/runtime/utils/allocator.cpp
+    src/runtime/utils/clock.cpp
+    src/runtime/utils/err.cpp
+    src/runtime/utils/ip.cpp
+    src/runtime/utils/ip_resolver.cpp
+    src/runtime/utils/mtrie.cpp
+    src/runtime/utils/polling_util.cpp
+    src/runtime/utils/precompiled.cpp
+    src/runtime/utils/random.cpp
+    src/runtime/utils/trie.cpp
+    src/runtime/utils/radix_tree.cpp)
 
 set(sources
     ${api-sources}
     ${core-sources}
     ${protocol-sources}
-    ${discovery-sources}
-    ${spot-sources}
+    ${service-sources}
     ${socket-sources}
     ${engine-sources}
     ${transport-sources}
     ${utils-sources})
 
 if(ZLINK_HAVE_OPENPGM)
-  list(APPEND sources ${pgm-sources})
+  list(APPEND sources ${transport-pgm-sources})
 endif()
 
-# Add all subdirectories to include path to maintain compatibility with existing flat includes
+# Keep include roots explicit. Category includes use api/, services/, sockets/
+# prefixes; src/runtime/utils remains for legacy "precompiled.hpp" includes.
 include_directories(
     src
-    src/api
-    src/services
-    src/services/common
-    src/services/discovery
-    src/services/spot
-    src/core
-    src/protocol
-    src/engine
-    src/engine/asio
-    src/transports/tcp
-    src/transports/ipc
-    src/transports/ws
-    src/transports/tls
-    src/transports/pgm
-    src/sockets
-    src/utils
+    src/runtime
+    src/runtime/core
+    src/runtime/protocol
+    src/runtime/engine
+    src/runtime/engine/asio
+    src/runtime/transports/tcp
+    src/runtime/transports/ipc
+    src/runtime/transports/ws
+    src/runtime/transports/tls
+    src/runtime/transports/pgm
+    src/runtime/utils
 )
 
 if(MINGW)
@@ -1155,6 +1233,18 @@ if(MINGW)
 endif()
 
 set(public_headers include/zlink.h include/zlink_enum.h include/zlink_errno.h)
+set(public_contract_subheaders
+    include/zlink/common.h
+    include/zlink/core.h
+    include/zlink/message.h
+    include/zlink/actor.h
+    include/zlink/socket.h
+    include/zlink/monitoring.h
+    include/zlink/spot.h
+    include/zlink/service_common.h
+    include/zlink/registry.h
+    include/zlink/discovery.h
+    include/zlink/service.h)
 
 set(readme-docs
     ${ZLINK_REPO_ROOT}/LICENSE)
@@ -1246,7 +1336,7 @@ if(MSVC AND ENABLE_PRECOMPILED)
 
     # C and C++ can not use the same precompiled header
 
-    if(${source} MATCHES ".cpp$" AND NOT ${source} STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/precompiled.cpp")
+    if(${source} MATCHES ".cpp$" AND NOT ${source} STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/utils/precompiled.cpp")
 
       set_source_files_properties(${source} PROPERTIES COMPILE_FLAGS "/Yuprecompiled.hpp" OBJECT_DEPENDS
 
@@ -1258,7 +1348,7 @@ if(MSVC AND ENABLE_PRECOMPILED)
 
   # create precompiled header
 
-  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/utils/precompiled.cpp
+  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/utils/precompiled.cpp
 
                               PROPERTIES COMPILE_FLAGS "/Ycprecompiled.hpp" OBJECT_OUTPUTS precompiled.hpp)
 
@@ -1593,6 +1683,10 @@ foreach(readme ${readme-docs})
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${readme_name}.txt DESTINATION share/zlink)
   endif()
 endforeach()
+
+install(
+  FILES ${public_contract_subheaders}
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zlink)
 
 if(WITH_DOC)
   if(NOT ZLINK_BUILD_FRAMEWORK)

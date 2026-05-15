@@ -3,16 +3,16 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "../include/zlink.h"
-#include "../src/core/internal_defs.hpp"
-#include "../src/utils/precompiled.hpp"
-#include "../src/core/recv_internal.hpp"
-#include "../src/core/send_internal.hpp"
-#include "../src/sockets/stream.hpp"
-#include "../src/api/recv_result_internal.hpp"
-#include "../src/api/service_handle_internal.hpp"
-#include "../src/api/service_api_c_internal.h"
-#include "../src/api/submit_result_internal.hpp"
-#include "../src/api/socket_message_api_internal.hpp"
+#include "../src/runtime/core/internal_defs.hpp"
+#include "../src/runtime/utils/precompiled.hpp"
+#include "../src/runtime/core/recv_internal.hpp"
+#include "../src/runtime/core/send_internal.hpp"
+#include "../src/runtime/sockets/stream/stream.hpp"
+#include "../src/api/message/recv_result_internal.hpp"
+#include "../src/api/service/service_handle_internal.hpp"
+#include "../src/api/service/service_api_c_internal.h"
+#include "../src/api/message/submit_result_internal.hpp"
+#include "../src/api/socket/socket_message_api_internal.hpp"
 
 #include "testutil.hpp"
 

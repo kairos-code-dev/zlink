@@ -4,8 +4,8 @@
 #include "../testutil_unity.hpp"
 #include "spot_multi_service_fixture.hpp"
 
-#include "../../src/services/discovery/discovery_owned_service.hpp"
-#include "../../src/services/discovery/discovery_protocol.hpp"
+#include "../../src/runtime/services/discovery/discovery_owned_service.hpp"
+#include "../../src/runtime/services/discovery/discovery_protocol.hpp"
 
 #include <stdio.h>
 

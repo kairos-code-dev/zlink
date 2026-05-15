@@ -634,6 +634,26 @@ static void drain_subscription_receiver (void *sub_,
     finish_drain (gate_, received, error_code);
 }
 
+static void drain_available_subscription_messages (void *sub_)
+{
+    if (!sub_)
+        return;
+
+    while (true) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        char topic[256];
+        size_t topic_len = sizeof (topic);
+        memset (topic, 0, sizeof (topic));
+
+        const int rc = zlink_subscribe (
+          sub_, NULL, &parts, &part_count, topic, &topic_len, ZLINK_DONTWAIT);
+        if (rc != ZLINK_RECV_OK)
+            break;
+        zlink_multipart_close (parts, part_count);
+    }
+}
+
 static void close_raw_case (raw_case_t *raw_)
 {
     close_ready_monitor (&raw_->sender_monitor);
@@ -1152,6 +1172,8 @@ static void verify_spot_forwarding_matrix ()
             setup_spot_case (transport, kHwmBuckets[i], kLargeHwm, &spot);
             counts.push_back (measure_send_window_pubsub (
               spot.pub, static_cast<size_t> (kHwmBuckets[i]) + 1, NULL));
+            drain_available_subscription_messages (spot.sub);
+            std::this_thread::sleep_for (std::chrono::milliseconds (20));
             close_spot_case (&spot);
         }
 

@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "spot_pubsub_scenario_shared.hpp"
-#include "../../../src/api/service_api_internal.hpp"
+#include "../../../src/api/service/service_api_internal.hpp"
 #include "../../zlink_testing.hpp"
-#include "../../../src/services/spot/spot_handle.hpp"
-#include "../../../src/services/spot/spot_node.hpp"
-#include "../../../src/services/spot/spot_node_access.hpp"
-#include "../../../src/services/spot/spot_subject_access.hpp"
+#include "../../../src/runtime/services/spot/spot_handle.hpp"
+#include "../../../src/runtime/services/spot/spot_node.hpp"
+#include "../../../src/runtime/services/spot/spot_node_access.hpp"
+#include "../../../src/runtime/services/spot/spot_subject_access.hpp"
 
 #include <chrono>
 #include <limits.h>

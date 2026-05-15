@@ -2,7 +2,7 @@
 
 #include "../testutil.hpp"
 
-#include "api/request_timeout_scheduler_internal.hpp"
+#include "api/socket/request_timeout_scheduler_internal.hpp"
 
 #include <atomic>
 #include <chrono>

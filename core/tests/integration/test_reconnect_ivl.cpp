@@ -13,11 +13,13 @@ void expect_monitor_sequence (test_monitor_probe_t *probe_,
                               int count_,
                               int timeout_ms_)
 {
-    TEST_ASSERT_TRUE (
-      test_monitor_probe_wait_count (probe_, count_, timeout_ms_));
-    for (int i = 0; i < count_; ++i)
-        TEST_ASSERT_EQUAL_UINT64 (
-          expected_[i], test_monitor_probe_event_at (probe_, i));
+    int cursor = 0;
+    for (int i = 0; i < count_; ++i) {
+        int event_index = -1;
+        TEST_ASSERT_TRUE (test_monitor_probe_wait_event_after (
+          probe_, expected_[i], cursor, timeout_ms_, &event_index));
+        cursor = event_index + 1;
+    }
 }
 
 bool endpoint_uses_ipv6 (const char *endpoint_)

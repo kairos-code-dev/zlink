@@ -2,8 +2,8 @@
 
 #include "utils/precompiled.hpp"
 
-#include "api/service_api_internal.hpp"
-#include "api/service_spot_actor_internal.hpp"
+#include "api/service/service_api_internal.hpp"
+#include "services/actor/service_spot_actor_internal.hpp"
 #include "zlink_testing.hpp"
 #include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_node.hpp"

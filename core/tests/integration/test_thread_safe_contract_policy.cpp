@@ -55,7 +55,9 @@ std::string dirname_of (const std::string &path_)
     return path_.substr (0, slash);
 }
 
-std::string resolve_public_header_text (const std::string &path_, int depth_)
+std::string resolve_public_header_text (const std::string &path_,
+                                        const std::string &include_root_,
+                                        int depth_)
 {
     TEST_ASSERT_TRUE_MESSAGE (depth_ >= 0,
                               "public header include depth exceeded");
@@ -66,19 +68,39 @@ std::string resolve_public_header_text (const std::string &path_, int depth_)
 
     std::string::size_type pos = 0;
     while (true) {
-        pos = content.find ("#include \"", pos);
+        pos = content.find ("#include ", pos);
         if (pos == std::string::npos)
             break;
 
-        const std::string::size_type start = pos + 10;
-        const std::string::size_type end = content.find ('"', start);
+        const std::string::size_type delimiter = pos + 9;
+        if (delimiter >= content.size ())
+            break;
+
+        const char open = content[delimiter];
+        const char close = open == '"' ? '"' : open == '<' ? '>' : '\0';
+        if (close == '\0') {
+            ++pos;
+            continue;
+        }
+
+        const std::string::size_type start = delimiter + 1;
+        const std::string::size_type end = content.find (close, start);
         if (end == std::string::npos)
             break;
 
+        const std::string include_name = content.substr (start, end - start);
+        if (open == '<' && include_name.find ("zlink/") != 0) {
+            pos = end + 1;
+            continue;
+        }
+
         const std::string include_path =
-          base_dir + "/" + content.substr (start, end - start);
+          open == '<' && include_name.find ("zlink/") == 0
+            ? include_root_ + "/" + include_name
+            : base_dir + "/" + include_name;
         resolved.append ("\n");
-        resolved.append (resolve_public_header_text (include_path, depth_ - 1));
+        resolved.append (
+          resolve_public_header_text (include_path, include_root_, depth_ - 1));
         pos = end + 1;
     }
 
@@ -87,7 +109,8 @@ std::string resolve_public_header_text (const std::string &path_, int depth_)
 
 std::string read_public_header_contract_text ()
 {
-    return resolve_public_header_text (TEST_ZLINK_HEADER_PATH, 8);
+    const std::string include_root = dirname_of (TEST_ZLINK_HEADER_PATH);
+    return resolve_public_header_text (TEST_ZLINK_HEADER_PATH, include_root, 8);
 }
 
 void assert_text_absent (const std::string &text_, const char *needle_)

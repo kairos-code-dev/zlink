@@ -3,14 +3,14 @@
 #include "../../testutil.hpp"
 #include "../../testutil_unity.hpp"
 #include "../../testutil_monitoring.hpp"
-#include "../../../src/api/service_api_internal.hpp"
+#include "../../../src/api/service/service_api_internal.hpp"
 #include "../../zlink_testing.hpp"
-#include "../../../src/services/spot/spot_handle.hpp"
-#include "../../../src/services/spot/spot_node.hpp"
-#include "../../../src/services/spot/spot_node_access.hpp"
-#include "../../../src/services/spot/spot_pub.hpp"
-#include "../../../src/services/spot/spot_subject_access.hpp"
-#include "../../../src/core/msg.hpp"
+#include "../../../src/runtime/services/spot/spot_handle.hpp"
+#include "../../../src/runtime/services/spot/spot_node.hpp"
+#include "../../../src/runtime/services/spot/spot_node_access.hpp"
+#include "../../../src/runtime/services/spot/spot_pub.hpp"
+#include "../../../src/runtime/services/spot/spot_subject_access.hpp"
+#include "../../../src/runtime/core/msg.hpp"
 
 #include <unity.h>
 

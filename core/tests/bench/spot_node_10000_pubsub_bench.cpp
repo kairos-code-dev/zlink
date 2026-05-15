@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "../testutil.hpp"
-#include "../../src/services/spot/spot_subject_access.hpp"
+#include "../../src/runtime/services/spot/spot_subject_access.hpp"
 
 #include <cerrno>
 #include <climits>

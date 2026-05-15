@@ -4,7 +4,7 @@
 
 #include "core/ctx.hpp"
 #include "services/control/service_control_runtime.hpp"
-#include "sockets/socket_base.hpp"
+#include "sockets/common/socket_base.hpp"
 
 namespace
 {

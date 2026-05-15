@@ -945,12 +945,12 @@ func (s *Spot) RequestChannel(channelName string) RequestOp {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
-		resultCh, err := s.startChannelRequest(channelName, flags, timeout, parts...)
+		state, err := s.startChannelRequest(channelName, flags, timeout, parts...)
 		if err != nil {
 			return err
 		}
 		go func() {
-			result := <-resultCh
+			result := state.wait()
 			callback(result.result, result.parts)
 		}()
 		return nil
@@ -974,10 +974,7 @@ func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
 			closeMessageSlice(cloned)
 			return err
 		}
-		state := &replyCallbackState{
-			result: make(chan requestResult, 1),
-			done:   make(chan struct{}),
-		}
+		state := newReplyCallbackState()
 		handle := cgo.NewHandle(state)
 		node := destNodeRid.toC()
 		spot := destSpotRid.toC()
@@ -1000,7 +997,7 @@ func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
 		prepared.commit()
 		startSpotRequestProgress(s.raw(), state)
 		go func() {
-			result := <-state.result
+			result := state.wait()
 			callback(result.result, result.parts)
 		}()
 		return nil
@@ -1024,10 +1021,7 @@ func (s *Spot) RequestToRouter(peerRid RoutingID) RequestOp {
 			closeMessageSlice(cloned)
 			return err
 		}
-		state := &replyCallbackState{
-			result: make(chan requestResult, 1),
-			done:   make(chan struct{}),
-		}
+		state := newReplyCallbackState()
 		handle := cgo.NewHandle(state)
 		peer := peerRid.toC()
 		if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
@@ -1048,7 +1042,7 @@ func (s *Spot) RequestToRouter(peerRid RoutingID) RequestOp {
 		prepared.commit()
 		startSpotRequestProgress(s.raw(), state)
 		go func() {
-			result := <-state.result
+			result := state.wait()
 			callback(result.result, result.parts)
 		}()
 		return nil
@@ -1207,7 +1201,7 @@ func (s *Spot) OnDispatchEvent(handler func(*Spot, SpotDispatchInfo)) error {
 	return nil
 }
 
-func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
+func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout time.Duration, parts ...*Message) (*replyCallbackState, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
 	}
@@ -1220,10 +1214,7 @@ func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout 
 		closeMessageSlice(cloned)
 		return nil, err
 	}
-	state := &replyCallbackState{
-		result: make(chan requestResult, 1),
-		done:   make(chan struct{}),
-	}
+	state := newReplyCallbackState()
 	handle := cgo.NewHandle(state)
 	if err := s.core.withCString(channelName, func(cstr *C.char) error {
 		return submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
@@ -1244,5 +1235,5 @@ func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout 
 	}
 	prepared.commit()
 	startSpotRequestProgress(s.raw(), state)
-	return state.result, nil
+	return state, nil
 }

@@ -44,8 +44,20 @@ type requestResult struct {
 	parts  []*Message
 }
 
+// replyCallbackState carries an async request's reply state across the cgo
+// callback boundary. The previous design allocated a buffered `chan requestResult`
+// per request just to hand a single value back to the waiter; that channel's
+// backing storage is pure GC pressure on a hot path.
+//
+// Current design: store the result via atomic.Pointer; use a single
+// `chan struct{}` whose close-broadcast both wakes synchronous waiters and
+// signals the per-handle progress pump that the operation completed.
+//
+// `metadata` carries operation-specific context (e.g. *actorJoinMetadata for
+// join completions) that the trampoline needs when shaping the user-visible
+// result. It is set at submit time and read once at completion.
 type replyCallbackState struct {
-	result   chan requestResult
+	result   atomic.Pointer[requestResult]
 	done     chan struct{}
 	once     sync.Once
 	metadata any
@@ -66,11 +78,11 @@ func newDealerRequestSupport(socket *DealerSocket) *dealerRequestSupport {
 func (r *dealerRequestSupport) Socket() *DealerSocket { return r.socket }
 
 func (r *dealerRequestSupport) Request(timeout time.Duration, parts ...*Message) ([]*Message, error) {
-	resultCh, err := startDealerRequest(r.socket, SendFlagsNone, timeout, parts...)
+	state, err := startDealerRequest(r.socket, SendFlagsNone, timeout, parts...)
 	if err != nil {
 		return nil, err
 	}
-	result := <-resultCh
+	result := state.wait()
 	if result.result != RequestOK {
 		return nil, requestErrorFromResult(result.result)
 	}
@@ -81,7 +93,7 @@ func (r *dealerRequestSupport) requestCallback(callback RequestReplyCallback, fl
 	if callback == nil {
 		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	resultCh, err := startDealerRequest(r.socket, flags, timeout, parts...)
+	state, err := startDealerRequest(r.socket, flags, timeout, parts...)
 	ok, err := submitBackpressureResult(err)
 	if err != nil {
 		return false, err
@@ -89,7 +101,7 @@ func (r *dealerRequestSupport) requestCallback(callback RequestReplyCallback, fl
 	if !ok {
 		return false, nil
 	}
-	dispatchRequestCallback(resultCh, callback)
+	dispatchRequestCallback(state, callback)
 	return true, nil
 }
 
@@ -101,11 +113,11 @@ func (r *dealerRequestSupport) onReceive(handler func(*Received)) error {
 	return r.socket.onReceive(handler)
 }
 
-func (r *dealerRequestSupport) startRequest(flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
+func (r *dealerRequestSupport) startRequest(flags SendFlags, timeout time.Duration, parts ...*Message) (*replyCallbackState, error) {
 	return startDealerRequest(r.socket, flags, timeout, parts...)
 }
 
-func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
+func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Duration, parts ...*Message) (*replyCallbackState, error) {
 	cloned, err := cloneParts(parts)
 	if err != nil {
 		return nil, err
@@ -115,10 +127,7 @@ func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Dura
 		closeMessageSlice(cloned)
 		return nil, err
 	}
-	state := &replyCallbackState{
-		result: make(chan requestResult, 1),
-		done:   make(chan struct{}),
-	}
+	state := newReplyCallbackState()
 	handle := cgo.NewHandle(state)
 	if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 		return submitErrorFromResult(C.zlink_dealer_request_part_go_local(
@@ -136,7 +145,7 @@ func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Dura
 	}
 	prepared.commit()
 	startSocketRequestProgress(socket.raw(), state)
-	return state.result, nil
+	return state, nil
 }
 
 func newRouterRequestSupport(socket *RouterSocket) *routerRequestSupport {
@@ -146,11 +155,11 @@ func newRouterRequestSupport(socket *RouterSocket) *routerRequestSupport {
 func (r *routerRequestSupport) Socket() *RouterSocket { return r.socket }
 
 func (r *routerRequestSupport) Request(routingID RoutingID, timeout time.Duration, parts ...*Message) ([]*Message, error) {
-	resultCh, err := startRouterRequest(r.socket, routingID, SendFlagsNone, timeout, parts...)
+	state, err := startRouterRequest(r.socket, routingID, SendFlagsNone, timeout, parts...)
 	if err != nil {
 		return nil, err
 	}
-	result := <-resultCh
+	result := state.wait()
 	if result.result != RequestOK {
 		return nil, requestErrorFromResult(result.result)
 	}
@@ -161,7 +170,7 @@ func (r *routerRequestSupport) requestCallback(routingID RoutingID, callback Req
 	if callback == nil {
 		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	resultCh, err := startRouterRequest(r.socket, routingID, flags, timeout, parts...)
+	state, err := startRouterRequest(r.socket, routingID, flags, timeout, parts...)
 	ok, err := submitBackpressureResult(err)
 	if err != nil {
 		return false, err
@@ -169,7 +178,7 @@ func (r *routerRequestSupport) requestCallback(routingID RoutingID, callback Req
 	if !ok {
 		return false, nil
 	}
-	dispatchRequestCallback(resultCh, callback)
+	dispatchRequestCallback(state, callback)
 	return true, nil
 }
 
@@ -184,11 +193,11 @@ func (r *routerRequestSupport) Reply(routingID RoutingID, requestSeq uint64, fla
 	return submitBackpressureResult(err)
 }
 
-func (r *routerRequestSupport) startRequest(routingID RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
+func (r *routerRequestSupport) startRequest(routingID RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (*replyCallbackState, error) {
 	return startRouterRequest(r.socket, routingID, flags, timeout, parts...)
 }
 
-func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
+func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (*replyCallbackState, error) {
 	cloned, err := cloneParts(parts)
 	if err != nil {
 		return nil, err
@@ -198,10 +207,7 @@ func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFla
 		closeMessageSlice(cloned)
 		return nil, err
 	}
-	state := &replyCallbackState{
-		result: make(chan requestResult, 1),
-		done:   make(chan struct{}),
-	}
+	state := newReplyCallbackState()
 	handle := cgo.NewHandle(state)
 	rid := routingID.toC()
 	if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
@@ -221,14 +227,25 @@ func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFla
 	}
 	prepared.commit()
 	startSocketRequestProgress(socket.raw(), state)
-	return state.result, nil
+	return state, nil
 }
 
 func (s *replyCallbackState) complete(result requestResult) {
-	s.result <- result
 	s.once.Do(func() {
+		stored := result
+		s.result.Store(&stored)
 		close(s.done)
 	})
+}
+
+// wait blocks until the reply completes and returns the stored result.
+func (s *replyCallbackState) wait() requestResult {
+	<-s.done
+	return *s.result.Load()
+}
+
+func newReplyCallbackState() *replyCallbackState {
+	return &replyCallbackState{done: make(chan struct{})}
 }
 
 // Per-handle progress pump: a single goroutine drives request progress for
@@ -328,9 +345,9 @@ func submitBackpressureResult(err error) (bool, error) {
 	return false, err
 }
 
-func dispatchRequestCallback(resultCh <-chan requestResult, callback RequestReplyCallback) {
+func dispatchRequestCallback(state *replyCallbackState, callback RequestReplyCallback) {
 	go func() {
-		result := <-resultCh
+		result := state.wait()
 		callback(result.result, result.parts)
 	}()
 }

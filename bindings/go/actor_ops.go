@@ -498,12 +498,9 @@ func submitActorJoinNative(parts []*Message, progressSpot unsafe.Pointer, native
 		closeMessageSlice(cloned)
 		return err
 	}
-	state := &replyCallbackState{
-		result: make(chan requestResult, 1),
-		done:   make(chan struct{}),
-	}
-	handle := cgo.NewHandle(state)
+	state := newReplyCallbackState()
 	state.metadata = &actorJoinMetadata{callback: callback}
+	handle := cgo.NewHandle(state)
 	if err := native(prepared.ptr(), prepared.count(), handle); err != nil {
 		handle.Delete()
 		_ = prepared.restore()
@@ -515,7 +512,7 @@ func submitActorJoinNative(parts []*Message, progressSpot unsafe.Pointer, native
 		startSpotRequestProgress(progressSpot, state)
 	}
 	go func() {
-		result := <-state.result
+		result := state.wait()
 		meta, _ := state.metadata.(*actorJoinMetadata)
 		joinResult := meta.joinResult
 		joinResult.Result = result.result
@@ -536,10 +533,7 @@ type actorJoinMetadata struct {
 // (destroy, leave, bind, unbind). It wires the user callback to the standard
 // reply trampoline.
 func submitActorRequestNative(progressSpot unsafe.Pointer, native func(cb cgo.Handle) error, callback requestPartsCallback) error {
-	state := &replyCallbackState{
-		result: make(chan requestResult, 1),
-		done:   make(chan struct{}),
-	}
+	state := newReplyCallbackState()
 	handle := cgo.NewHandle(state)
 	if err := native(handle); err != nil {
 		handle.Delete()
@@ -549,7 +543,7 @@ func submitActorRequestNative(progressSpot unsafe.Pointer, native func(cb cgo.Ha
 		startSpotRequestProgress(progressSpot, state)
 	}
 	go func() {
-		result := <-state.result
+		result := state.wait()
 		callback(result.result, result.parts)
 	}()
 	return nil

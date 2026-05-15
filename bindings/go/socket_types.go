@@ -1111,7 +1111,7 @@ func (s *routedSocket) requestToSpot(destNodeRid, destSpotRid RoutingID, callbac
 	if callback == nil {
 		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	resultCh, err := s.startSpotRequest(destNodeRid, destSpotRid, flags, timeout, parts...)
+	state, err := s.startSpotRequest(destNodeRid, destSpotRid, flags, timeout, parts...)
 	ok, err := submitBackpressureResult(err)
 	if err != nil {
 		return false, err
@@ -1119,7 +1119,7 @@ func (s *routedSocket) requestToSpot(destNodeRid, destSpotRid RoutingID, callbac
 	if !ok {
 		return false, nil
 	}
-	dispatchRequestCallback(resultCh, callback)
+	dispatchRequestCallback(state, callback)
 	return true, nil
 }
 
@@ -1246,7 +1246,7 @@ func (s *routedSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	return true, nil
 }
 
-func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
+func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (*replyCallbackState, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
 	}
@@ -1259,10 +1259,7 @@ func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flag
 		closeMessageSlice(cloned)
 		return nil, err
 	}
-	state := &replyCallbackState{
-		result: make(chan requestResult, 1),
-		done:   make(chan struct{}),
-	}
+	state := newReplyCallbackState()
 	handle := cgo.NewHandle(state)
 	node := destNodeRid.toC()
 	spot := destSpotRid.toC()
@@ -1284,7 +1281,7 @@ func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flag
 	}
 	prepared.commit()
 	startSocketRequestProgress(s.raw(), state)
-	return state.result, nil
+	return state, nil
 }
 
 type subscribeSocket struct {
@@ -1762,11 +1759,11 @@ func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID) Request
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
-		resultCh, err := s.routedSocket.startSpotRequest(destNodeRid, destSpotRid, flags, timeout, parts...)
+		state, err := s.routedSocket.startSpotRequest(destNodeRid, destSpotRid, flags, timeout, parts...)
 		if err != nil {
 			return err
 		}
-		dispatchRequestCallback(resultCh, callback)
+		dispatchRequestCallback(state, callback)
 		return nil
 	})
 }

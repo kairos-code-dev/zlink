@@ -686,16 +686,13 @@ func (s *StreamSocket) BoundActors(sessionRID RoutingID) ([]ActorRef, error) {
 // --- internal helpers ---
 
 func waitActorReply(submit func(cgo.Handle) error) error {
-	state := &replyCallbackState{
-		result: make(chan requestResult, 1),
-		done:   make(chan struct{}),
-	}
+	state := newReplyCallbackState()
 	handle := cgo.NewHandle(state)
 	if err := submit(handle); err != nil {
 		handle.Delete()
 		return err
 	}
-	result := <-state.result
+	result := state.wait()
 	if result.result != RequestOK {
 		return requestErrorFromResult(C.zlink_request_result_t(result.result))
 	}

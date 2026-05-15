@@ -3,7 +3,8 @@ using Systems.Zlink;
 
 internal static partial class PerfRunner
 {
-    internal static int SendBlocking(SocketBase socket, ReadOnlySpan<byte> buffer,
+    internal static int SendBlocking(IMessageSocket socket,
+        ReadOnlySpan<byte> buffer,
         SendFlags flags = SendFlags.None)
     {
         return PerfSocketIo.Send(socket, buffer, flags);

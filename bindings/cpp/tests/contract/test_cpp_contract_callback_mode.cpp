@@ -72,7 +72,7 @@ int main ()
     assert (wait_for_spot_ready (node, false, 0u, 10000));
 
     zlink::topic_message_t inbound;
-    bool received = false;
+    bool got_message = false;
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < deadline) {
@@ -83,16 +83,16 @@ int main ()
           .submit ();
         const int rc = spot.subscribe (inbound, ZLINK_DONTWAIT);
         if (rc == static_cast<int> (zlink::recv_result_t::ok)) {
-            received = true;
+            got_message = true;
             break;
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
-    assert (received);
+    assert (got_message);
     assert (inbound.topic () == "topic:alpha");
     assert (inbound.parts ().size () == 1);
-    const std::string received = inbound->parts ()[0].to_string ();
-    assert (received == "spot-callback");
+    const std::string payload = inbound.parts ()[0].to_string ();
+    assert (payload == "spot-callback");
     spot.close ();
     node.close ();
     return 0;

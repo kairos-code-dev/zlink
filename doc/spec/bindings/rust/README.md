@@ -4,23 +4,26 @@
 
 This document defines the expected Rust crate shape. It is not an exhaustive
 list of every public item. The concrete public contract is
-`bindings/rust/src/zlink/Contracts/`.
+`bindings/rust/src/lib.rs` and the documented public crate modules under
+`bindings/rust/src/`.
 
-A Rust implementation is aligned when `Contracts/`, crate export projections,
-rustdoc, tests, samples, perf runners, and runtime behavior follow this
-blueprint and map stable `core/include/zlink.h` capabilities into
+A Rust implementation is aligned when the crate layout, public export
+projection, rustdoc, tests, samples, perf runners, and runtime behavior follow
+this blueprint and map stable `core/include/zlink.h` capabilities into
 Rust-idiomatic APIs.
 
 ## Public Contract Source
 
-- Public contract: `bindings/rust/src/zlink/Contracts/`.
-- Crate projection: items exported from `lib.rs` and documented public modules.
+- Public contract: items exported from `bindings/rust/src/lib.rs` and
+  documented lower-case public modules under `bindings/rust/src/`.
+- Crate projection: public re-exports from `lib.rs` and rustdoc for public
+  modules.
 - Internal implementation: private modules, `pub(crate)` helpers, FFI bindings,
   raw handles, callback trampolines, request progress helpers, and part-loop
   helpers.
 - Documentation role: this README defines shape and semantic coverage.
-  `Contracts/` owns the exact member list; rustdoc for the public crate must
-  project it intentionally.
+  public crate exports own the exact member list. Each public item must still
+  map to one of the shared contract categories.
 
 Applications, perf, and samples must not depend on private modules or raw FFI
 bindings.
@@ -29,9 +32,13 @@ bindings.
 
 Use these paths consistently when changing the Rust binding.
 
-- Public contract: `bindings/rust/src/zlink/Contracts/`.
-- Runtime implementation: `bindings/rust/src/zlink/Runtime/`.
-- Native bridge/artifacts: `bindings/rust/src/zlink/Runtime/Native/`,
+- Public contract: `bindings/rust/src/lib.rs` and documented lower-case public
+  modules under `bindings/rust/src/`, such as `socket`, `message`, `monitor`,
+  and `service`.
+- Runtime implementation: private modules and `pub(crate)` modules under
+  `bindings/rust/src/`, such as `runtime.rs`, `request_progress.rs`, and other
+  non-exported implementation owners.
+- Native bridge/artifacts: private FFI modules such as `bindings/rust/src/ffi.rs`,
   `bindings/rust/native/`, and `bindings/rust/include/`.
 - Codec extensions: `bindings/rust/crates/`.
 - Tests: `bindings/rust/tests/`.
@@ -40,33 +47,34 @@ Use these paths consistently when changing the Rust binding.
 
 Public re-exports in `lib.rs` must be intentional. A module can be used by
 implementation code without becoming public.
-`Contracts/` and `Runtime/` are fixed repository folders. `lib.rs` re-exports
-and public rustdoc modules are the Rust crate projection of that contract.
-Do not expose `Contracts` or `Runtime` as public crate modules. Use idiomatic
-lowercase modules at the crate boundary.
+Rust module paths are part of the public API when they are exported. Do not
+create public `zlink::Contracts`, `zlink::Runtime`, `contracts`, or `runtime`
+modules for the binding contract. The shared `Contracts` and `Runtime` names
+are review categories here, not crate module names.
+
+The following tree is normative for implementation work. Public structs,
+enums, traits, errors, free functions, and builder contracts belong in
+`lib.rs` exports or documented lower-case domain modules. FFI bindings, raw
+pointers, native struct mirrors, handle owners, callback trampolines, request
+progress helpers, marshalling, and unsafe part loops stay private or
+`pub(crate)`.
 
 ```text
 bindings/rust/
 +-- src/
 |   +-- lib.rs
-|   +-- zlink/
-|   |   +-- Contracts/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   |   +-- Enums/
-|   |   +-- Runtime/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   |   +-- Enums/
-|   |   |   +-- Native/
+|   +-- ctx.rs
+|   +-- message.rs
+|   +-- socket/
+|   +-- monitor.rs
+|   +-- poller.rs
+|   +-- service.rs
+|   +-- error.rs
+|   +-- flags.rs
+|   +-- options.rs
+|   +-- runtime.rs
+|   +-- request_progress.rs
+|   +-- ffi.rs
 +-- crates/
 +-- tests/
 +-- samples/
@@ -75,18 +83,27 @@ bindings/rust/
 +-- include/
 ```
 
+The public consumer projection is `lib.rs` and documented public crate modules,
+not modules named `Contracts` or `Runtime`. Tests, samples, and perf must use
+the public crate projection. If an item is re-exported publicly, reviewers must
+be able to point to its shared contract category. If a module exists only to
+make native calls or preserve unsafe invariants, it must remain private or
+`pub(crate)`.
+
 ## API Change Workflow
 
 When mapping a new core capability:
 
-1. Add the public type or method to the correct `Contracts/` category.
-2. Update the safe public owner module and `lib.rs` re-export projection.
+1. Choose the shared contract category that owns the public behavior.
+2. Add the public type, method, or function to the safe owner module and update
+   the `lib.rs` re-export projection when it should be visible at the crate
+   root.
 3. Add concrete public types or methods first; add traits only for real
    substitutable behavior.
 4. Keep `unsafe`, raw handles, callback userdata, and part loops inside private
    modules.
 5. Return `Result` with typed error information for fallible operations.
-6. Add tests that use the public crate projection of `Contracts/`.
+6. Add tests that use the public crate projection.
 7. Update samples and perf only through public APIs.
 8. Run formatting and clippy-style checks where available.
 
@@ -109,22 +126,23 @@ The binding should feel like a safe Rust crate over a native runtime.
 ## Contract / Runtime Placement Rules
 
 - Public structs, enums, traits, errors, and builder contracts belong in
-  `Contracts/`.
+  `lib.rs` exports or documented lower-case public modules.
 - Public free functions, associated helper functions, convenience methods, and
-  builder helper methods belong in `Contracts/` when callers can use them
+  builder helper methods belong in public modules when callers can use them
   directly.
 - Runtime handle owners, request pumps, callback adapters, and part-loop
-  helpers belong in `Runtime/`.
+  helpers stay private or `pub(crate)`.
 - FFI bindings, raw pointers, native struct mirrors, marshalling helpers, and
-  platform loading code belong in `Runtime/Native/`.
-- `lib.rs` and public rustdoc modules must project `Contracts/`, not expose
-  `Runtime/` modules.
+  platform loading code stay in private FFI/runtime owners.
+- `lib.rs` and public rustdoc modules must project the contract categories, not
+  expose runtime modules.
 - If a runtime concrete type is re-exported for construction, its public
-  behavior must still be described by `Contracts/`.
+  behavior must still be described by the shared contract category.
 
-## Contract Folder Layout
+## Contract Category Map
 
-`Contracts/` is the source ownership map for public crate items and re-exports.
+These categories are the review ownership map for public crate items and
+re-exports. They are not Rust module names.
 
 - `Core/`: context, context options, routing id, version/capability helpers, and
   utility contracts.
@@ -151,7 +169,7 @@ The binding should feel like a safe Rust crate over a native runtime.
   choices are builder states or steps.
 - Multipart payload is accumulated by repeated `message(...)` calls.
   `messages(...)` convenience is allowed when it delegates to the same builder
-  contract and is declared in `Contracts/`.
+  contract and is declared in the public crate surface.
 - Do not add operation-start method families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
   the builder absorb the variation. Terminal builder methods may use idiomatic
@@ -229,8 +247,8 @@ core capability meaning.
 - Raw FFI and unsafe state do not leak through public APIs.
 - Resource ownership is enforced by Rust types and `Drop`.
 - Traits are used only for real abstraction points.
-- Public free functions and builder convenience methods are declared in
-  `Contracts/`, not only in runtime helpers.
+- Public free functions and builder convenience methods are declared in public
+  crate modules, not only in runtime helpers.
 - Receive/subscription semantics match the shared binding policy.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.

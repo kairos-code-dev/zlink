@@ -167,8 +167,11 @@ internal static partial class PerfRunner
         {
             try
             {
-                _ = SendBlocking(activeClients[i], MultiStopToken.AsSpan(),
-                    SendFlags.None);
+                if (activeClients[i] is IMessageSocket messageSocket)
+                {
+                    _ = SendBlocking(messageSocket, MultiStopToken.AsSpan(),
+                        SendFlags.None);
+                }
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno))

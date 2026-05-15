@@ -1,0 +1,260 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#ifndef ZLINK_CPP_SERVICES_DISCOVERY_HPP_INCLUDED
+#define ZLINK_CPP_SERVICES_DISCOVERY_HPP_INCLUDED
+
+#include "../Core/context.hpp"
+#include "../Messaging/message.hpp"
+#include "../Core/types.hpp"
+
+#include <cerrno>
+#include <cstring>
+
+namespace zlink
+{
+namespace service
+{
+class discovery_t;
+} // namespace service
+namespace detail
+{
+inline void *native_handle (service::discovery_t &discovery_) noexcept;
+inline const void *
+native_handle (const service::discovery_t &discovery_) noexcept;
+} // namespace detail
+namespace service
+{
+
+class discovery_t
+{
+  public:
+    discovery_t (context_t &ctx_,
+                 auto_connect_type auto_connect_type_,
+                 const std::string &channel_name_)
+        : _discovery (NULL),
+          _last_error (0)
+    {
+        zlink::detail::validate_bounded_c_string (channel_name_, 255u, "channel_name");
+        _discovery = zlink_discovery_new (
+          detail::native_handle (ctx_),
+          static_cast<zlink_auto_connect_type_t> (auto_connect_type_),
+          channel_name_.c_str ());
+        if (!_discovery)
+            _last_error = errno != 0 ? errno : EFAULT;
+    }
+
+    discovery_t (context_t &ctx_,
+                 const std::string &channel_name_,
+                 auto_connect_type_t auto_connect_type_,
+                 service_role_t)
+        : discovery_t (ctx_, auto_connect_type_, channel_name_)
+    {
+    }
+
+    ~discovery_t ()
+    {
+        try {
+            close ();
+        } catch (...) {
+        }
+    }
+
+    discovery_t (discovery_t &&other) noexcept
+        : _discovery (other._discovery), _last_error (other._last_error)
+    {
+        other._discovery = NULL;
+        other._last_error = 0;
+    }
+
+    discovery_t &operator= (discovery_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        try {
+            close ();
+        } catch (...) {
+        }
+        _discovery = other._discovery;
+        _last_error = other._last_error;
+        other._discovery = NULL;
+        other._last_error = 0;
+        return *this;
+    }
+
+    discovery_t (const discovery_t &) = delete;
+    discovery_t &operator= (const discovery_t &) = delete;
+
+    bool valid () const noexcept { return _discovery != NULL; }
+
+    void connect_registry (const std::string &endpoint_)
+    {
+        zlink::detail::validate_bounded_c_string (endpoint_, 255u, "endpoint");
+        detail::throw_if_failed<connect_error_t> (
+          static_cast<connect_result_t> (
+            zlink_discovery_connect_registry (_discovery, endpoint_.c_str ())));
+    }
+
+    void set_tls_client (const std::string &ca_cert_,
+                         const std::string &hostname_ = std::string (),
+                         bool trust_system_ = false)
+    {
+        const char *ca = ca_cert_.empty () ? NULL : ca_cert_.c_str ();
+        const char *hostname =
+          hostname_.empty () ? NULL : hostname_.c_str ();
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_set_tls_client (
+              _discovery, ca, hostname, trust_system_ ? 1 : 0)));
+    }
+
+    void set_value (int64_t value_)
+    {
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_set_value (_discovery, value_)));
+    }
+
+    void get_value (int64_t *value_out_) const
+    {
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_get_value (_discovery, value_out_)));
+    }
+
+    int64_t value () const
+    {
+        int64_t result = 0;
+        get_value (&result);
+        return result;
+    }
+
+    void set_spot_owner_sync_enabled (bool enabled_)
+    {
+        int value = enabled_ ? 1 : 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_set_option (_discovery,
+                              ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC, &value,
+                              sizeof (value))));
+    }
+
+    bool spot_owner_sync_enabled () const
+    {
+        int value = 0;
+        size_t size = sizeof (value);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_get_option (_discovery,
+                              ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC, &value,
+                              &size)));
+        return value != 0;
+    }
+
+    void set_actor_route_sync_enabled (bool enabled_)
+    {
+        int value = enabled_ ? 1 : 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_set_option (_discovery,
+                              ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC, &value,
+                              sizeof (value))));
+    }
+
+    bool actor_route_sync_enabled () const
+    {
+        int value = 0;
+        size_t size = sizeof (value);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_get_option (_discovery,
+                              ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC, &value,
+                              &size)));
+        return value != 0;
+    }
+
+    std::vector<member_peer_entry_t> member_peers () const
+    {
+        size_t count = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_member_peers (_discovery, NULL, &count)));
+        std::vector<zlink_member_peer_entry_t> native (count);
+        if (count > 0) {
+            detail::throw_if_failed<config_error_t> (
+              static_cast<config_result_t> (
+                zlink_discovery_member_peers (
+                  _discovery, native.data (), &count)));
+            native.resize (count);
+        }
+
+        std::vector<member_peer_entry_t> entries;
+        entries.reserve (native.size ());
+        for (size_t i = 0; i < native.size (); ++i)
+            entries.push_back (member_peer_entry_t (native[i]));
+        return entries;
+    }
+
+    routing_id_t resolve_spot (const routing_id_t &spot_rid_)
+    {
+        routing_id_t owner_node_rid =
+          zlink::detail::unchecked_empty_routing_id ();
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_resolve_spot (
+              _discovery, zlink::detail::routing_id_native (spot_rid_),
+              zlink::detail::routing_id_native (owner_node_rid))));
+        return owner_node_rid;
+    }
+
+    actor_route_t resolve_actor (const std::string &actor_id_)
+    {
+        zlink::detail::validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
+                                   "actor_id");
+        zlink_actor_route_t native;
+        std::memset (&native, 0, sizeof (native));
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_resolve_actor (
+              _discovery, actor_id_.c_str (), &native)));
+        return actor_route_t (native);
+    }
+
+    void close ()
+    {
+        if (!_discovery)
+            return;
+
+        void *tmp = _discovery;
+        detail::throw_if_failed<close_error_t> (
+          static_cast<close_result_t> (zlink_discovery_destroy (&tmp)));
+        _discovery = NULL;
+    }
+
+  private:
+    friend void *
+    zlink::detail::native_handle (discovery_t &discovery_) noexcept;
+    friend const void *
+    zlink::detail::native_handle (const discovery_t &discovery_) noexcept;
+
+    void *_discovery;
+    int _last_error;
+};
+
+} // namespace service
+
+namespace detail
+{
+inline void *native_handle (service::discovery_t &discovery_) noexcept
+{
+    return discovery_._discovery;
+}
+
+inline const void *
+native_handle (const service::discovery_t &discovery_) noexcept
+{
+    return discovery_._discovery;
+}
+} // namespace detail
+} // namespace zlink
+
+#endif

@@ -17,7 +17,10 @@ def main():
                         wait_connected(srv_mon, cli_mon)
 
                 client.send().message(b"hello-pair").submit()
-                with server.recv() as received:
+                received = zlink.Received()
+                if not server.recv_into(received):
+                    raise RuntimeError("expected pair payload")
+                with received:
                     data = received.to_bytes_list()[0].decode("utf-8")
                     print(f'[pair/recv] send: "hello-pair" \u2192 recv: "{data}"')
 

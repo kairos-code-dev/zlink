@@ -4,23 +4,23 @@
 
 This document defines the expected Python library shape. It is not an
 exhaustive list of every class or method. The concrete public contract is
-`bindings/python/src/zlink/Contracts/`.
+the `zlink` package exported from `bindings/python/src/zlink/__init__.py` and
+documented lower-case public subpackages.
 
-A Python implementation is aligned when `Contracts/`, `zlink` export
-projections, type hints, tests, samples, perf runners, and runtime behavior
-follow this blueprint and map stable `core/include/zlink.h` capabilities into
-Python-idiomatic APIs.
+A Python implementation is aligned when the `zlink` package tree, type hints,
+tests, samples, perf runners, and runtime behavior follow this blueprint and
+map stable `core/include/zlink.h` capabilities into Python-idiomatic APIs.
 
 ## Public Contract Source
 
-- Public contract: `bindings/python/src/zlink/Contracts/`.
+- Public contract: `bindings/python/src/zlink/__init__.py` exports and
+  documented lower-case modules under `bindings/python/src/zlink/`.
 - Package projection: names exported from `zlink`.
-- Internal implementation: underscore-prefixed modules such as `_native`,
-  `_ffi`, `_core`, private extension modules, callback bridge code, request
-  progress helpers, and raw part-loop helpers.
+- Internal implementation: underscore-prefixed packages such as `_runtime` and
+  `_native`, private extension modules, callback bridge code, request progress
+  helpers, and raw part-loop helpers.
 - Documentation role: this README defines shape and semantic coverage.
-  `Contracts/` owns the exact member list; public exports and generated API
-  reference must project it intentionally.
+  `zlink.__init__` and documented modules own the exact public member list.
 
 Perf, samples, and tests must import from `zlink`, not from underscore modules.
 
@@ -28,9 +28,10 @@ Perf, samples, and tests must import from `zlink`, not from underscore modules.
 
 Use these paths consistently when changing the Python binding.
 
-- Public contract: `bindings/python/src/zlink/Contracts/`.
-- Runtime implementation: `bindings/python/src/zlink/Runtime/`.
-- Native bridge/artifacts: `bindings/python/src/zlink/Runtime/Native/`.
+- Public contract: `bindings/python/src/zlink/__init__.py` and documented
+  lower-case modules under `bindings/python/src/zlink/`.
+- Runtime implementation: `bindings/python/src/zlink/_runtime/`.
+- Native bridge/artifacts: `bindings/python/src/zlink/_native/`.
 - Codec extensions: `bindings/python/codecs/`.
 - Tests: `bindings/python/tests/`.
 - Samples: `bindings/python/samples/` and `bindings/python/examples/`.
@@ -38,33 +39,37 @@ Use these paths consistently when changing the Python binding.
 
 Underscore-prefixed modules are implementation detail. If a user needs a name,
 re-export it from `zlink` intentionally and document the public behavior.
-`Contracts/` and `Runtime/` are fixed repository folders. `__init__.py`, type
-hints, and generated API reference are the Python package projection of that
-contract.
-Do not expose `zlink.Contracts` or `zlink.Runtime` as public import paths.
+`__init__.py`, type hints, and generated API reference are the Python package
+projection of the contract. Do not expose `zlink.Contracts` or `zlink.Runtime`
+as public import paths. Do not create `src/zlink/Contracts` or
+`src/zlink/Runtime`; those names become importable Python packages and blur the
+public boundary. The following tree is the target implementation structure.
+Public classes, functions, exceptions, enums, type aliases, and builder
+contracts belong in `zlink` or lower-case public modules. Native extension
+calls, `ctypes`/CFFI declarations, handle owners, callback trampolines,
+marshalling, and request progress helpers belong under `_runtime` or `_native`.
 
 ```text
 bindings/python/
 +-- src/
 |   +-- zlink/
 |   |   +-- __init__.py
-|   |   +-- Contracts/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   |   +-- Enums/
-|   |   +-- Runtime/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   |   +-- Enums/
-|   |   |   +-- Native/
+|   |   +-- core/
+|   |   +-- messaging/
+|   |   +-- sockets/
+|   |   +-- monitoring/
+|   |   +-- service/
+|   |   +-- errors/
+|   |   +-- enums/
+|   |   +-- _runtime/
+|   |   |   +-- core/
+|   |   |   +-- messaging/
+|   |   |   +-- sockets/
+|   |   |   +-- monitoring/
+|   |   |   +-- service/
+|   |   |   +-- errors/
+|   |   |   +-- enums/
+|   |   +-- _native/
 +-- codecs/
 +-- tests/
 +-- samples/
@@ -72,12 +77,18 @@ bindings/python/
 +-- perf/
 ```
 
+The public import surface is the `zlink` package and documented lower-case
+subpackages. Tests, samples, examples, and perf must import from `zlink` unless
+a separate extension package is being tested. If a private underscore module
+becomes necessary for user code, add a public contract and export it
+intentionally instead of documenting the private module.
+
 ## API Change Workflow
 
 When mapping a new core capability:
 
 1. Add the public class, function, enum, exception, or type alias to the
-   correct `Contracts/` category.
+   correct public package category.
 2. Update the `zlink` package export, type hints, and API reference projection.
 3. Keep native extension/FFI calls and request progress helpers in private
    modules.
@@ -106,21 +117,23 @@ Do not expose private extension objects for convenience in perf or samples.
 ## Contract / Runtime Placement Rules
 
 - Public classes, type aliases, exceptions, enums, and builder contracts belong
-  in `Contracts/`.
+  in `zlink` or a documented lower-case public module.
 - Public module functions, class/static helpers, convenience methods, and builder
-  helper functions belong in `Contracts/` when callers can use them directly.
+  helper functions belong in public package modules when callers can use them
+  directly.
 - Python runtime implementations, handle owners, request pumps, callback
-  adapters, and part-loop helpers belong in `Runtime/`.
+  adapters, and part-loop helpers belong in `_runtime`.
 - Native extension bindings, FFI declarations, native struct mirrors,
-  marshalling helpers, and platform loading code belong in `Runtime/Native/`.
-- `zlink.__init__`, type hints, and generated API reference must project
-  `Contracts/`, not expose `Runtime/` modules.
+  marshalling helpers, and platform loading code belong in `_native`.
+- `zlink.__init__`, type hints, and generated API reference must project the
+  public package categories, not expose private runtime modules.
 - If a runtime concrete class is exported for construction, its public behavior
-  must still be described by `Contracts/`.
+  must still be described by the public contract.
 
-## Contract Folder Layout
+## Contract Category Map
 
-`Contracts/` is the source ownership map for names exported from `zlink`.
+The public `zlink` package and documented lower-case modules are the source
+ownership map for names exported from `zlink`.
 
 - `Core/`: context, context options, routing id, version/capability helpers, and
   utility contracts.
@@ -147,7 +160,8 @@ Do not expose private extension objects for convenience in perf or samples.
   choices are builder steps.
 - Multipart payload is accumulated by repeated `message(...)` calls. A
   Python-style `messages(*parts)` convenience may delegate to the same builder.
-  That convenience is public contract when exported and belongs in `Contracts/`.
+  That convenience is public contract when exported and belongs in the public
+  package category.
 - Do not add operation-start method families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
   the builder absorb the variation. Terminal builder methods may use idiomatic
@@ -225,7 +239,7 @@ capability meaning.
 - Underscore modules do not leak through public signatures.
 - Resource classes have explicit close semantics.
 - Exported module functions and builder convenience methods are declared in
-  `Contracts/`, not only in runtime helpers.
+  public package modules, not only in runtime helpers.
 - Receive/subscription semantics match the shared binding policy.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.

@@ -14,7 +14,10 @@ def main():
                 with socket.create_connection(("127.0.0.1", port), timeout=3.0) as client:
                     wait_socket_monitor_event(server_monitor, zlink.MonitorEventMask.ACCEPTED)
                     client.sendall(b"hello-stream")
-                    with server.recv() as received:
+                    received = zlink.Received()
+                    if not server.recv_into(received):
+                        raise AssertionError("expected stream payload")
+                    with received:
                         if received.to_bytes_list() != [b"hello-stream"]:
                             raise AssertionError("unexpected stream payload")
                         if not received.routing_id:

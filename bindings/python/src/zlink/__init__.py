@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
-from ._core import (
+from ._runtime.core.core import (
     BindError,
     Context,
     ContextOptions,
@@ -19,13 +19,13 @@ from ._core import (
     SubscriptionEvent,
     ZlinkError,
 )
-from ._socket_base import (
+from ._runtime.sockets.socket_base import (
     CommonSocketOptions,
     DealerSocketOptions,
     StreamSocketOptions,
     SubSocketOptions,
 )
-from ._socket_types import (
+from ._runtime.sockets.socket_types import (
     DealerSocket,
     PairSocket,
     PubSocketOptions,
@@ -37,14 +37,14 @@ from ._socket_types import (
     XPubSocket,
     XSubSocket,
 )
-from ._poller import Poller
-from ._monitor import (
+from ._runtime.monitoring.poller import Poller
+from ._runtime.monitoring.monitor import (
     MonitorEvent,
     MonitorSnapshot,
     MonitorSocket,
     SocketMonitorEvent,
 )
-from ._discovery import (
+from ._runtime.service.discovery import (
     Discovery,
     MemberPeerEntry,
     Registry,
@@ -55,7 +55,7 @@ from ._discovery import (
     RegistryTopologyEntry,
     RegistryTopologyFilter,
 )
-from ._spot import (
+from ._runtime.service.spot import (
     Actor,
     ActorJoinRequest,
     ActorJoinInfo,
@@ -81,7 +81,7 @@ from ._spot import (
     SpotNodeSocketSnapshotFilter,
     remote_actor_ref,
 )
-from ._utils import (
+from ._runtime.core.utils import (
     AtomicCounter,
     Stopwatch,
     Thread,
@@ -94,7 +94,7 @@ from ._utils import (
     strerror,
     version,
 )
-from ._enums import (
+from ._runtime.enums.enums import (
     SocketType,
     ContextOption,
     AutoHwmProfile,
@@ -140,7 +140,7 @@ from ._enums import (
     SpotRole,
     PollSourceKind,
 )
-from ._poller import PollerEvent
+from ._runtime.monitoring.poller import PollerEvent
 
 AUTO_CONNECT_ROUTE_MESH = AutoConnectType.ROUTE_MESH
 AUTO_CONNECT_CLIENT_SERVER = AutoConnectType.CLIENT_SERVER

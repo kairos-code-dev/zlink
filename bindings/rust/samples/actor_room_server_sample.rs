@@ -75,11 +75,11 @@ fn main() {
         if !matches!(info.subject, SpotDispatchSubject::Actor(_)) {
             return;
         }
-        if let Some((_info, part, _more)) = info
+        if let Some(part) = info
             .recv_actor_part_with_flags(RecvFlags::DONT_WAIT)
             .expect("actor dispatch recv failed")
         {
-            *payload_cb.lock().unwrap() = Some(part.as_str().unwrap().to_owned());
+            *payload_cb.lock().unwrap() = Some(part.message.as_str().unwrap().to_owned());
         }
     })
     .expect("dispatch handler failed");

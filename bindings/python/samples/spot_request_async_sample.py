@@ -26,8 +26,10 @@ async def main():
                         )
 
                         async def respond():
-                            received = responder_router.recv()
-                            try:
+                            received = zlink.Received()
+                            if not responder_router.recv_into(received):
+                                raise AssertionError("expected spot request")
+                            with received:
                                 if received.to_bytes_list() != [REQUEST_PAYLOAD]:
                                     raise AssertionError(
                                         "unexpected spot request payload"
@@ -36,8 +38,6 @@ async def main():
                                     received.routing_id,
                                     received.request_seq,
                                 ).message(REPLY_PAYLOAD).submit()
-                            finally:
-                                received.close()
 
                         responder_task = asyncio.create_task(respond())
                         reply = await (

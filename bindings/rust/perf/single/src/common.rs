@@ -651,6 +651,21 @@ pub fn resolve_single_ready_timeout() -> Duration {
     Duration::from_millis(env_or_u64("PERF_CONNECT_READY_TIMEOUT_MS", 5000))
 }
 
+pub fn wait_spot_peer_connected(node: &zlink::SpotNode, timeout: Duration, label: &str) {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if node
+            .status_snapshot()
+            .map(|status| status.connected_peer_count > 0)
+            .unwrap_or(false)
+        {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("{label} spot peer connection timed out");
+}
+
 pub fn resolve_single_latency_sample_cap() -> usize {
     env_or_u64("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200_000) as usize
 }

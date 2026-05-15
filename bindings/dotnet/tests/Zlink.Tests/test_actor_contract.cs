@@ -114,7 +114,7 @@ public sealed class test_actor_contract
     public void remote_actor_ref_generation_zero_is_not_invalid()
     {
         RoutingId nodeRid = CoreTestSupport.RoutingIdUtf8("remote-node");
-        ActorRef actor = ActorRef.Remote(nodeRid, "remote-actor");
+        ActorRef actor = new(nodeRid, "remote-actor", generation: 0);
 
         Assert.True(actor.IsUnchecked);
         Assert.Equal(0UL, actor.Generation);

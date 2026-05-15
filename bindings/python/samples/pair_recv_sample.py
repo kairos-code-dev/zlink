@@ -15,7 +15,10 @@ def main():
                         wait_connected(server_monitor, client_monitor)
 
                 client.send().message(b"hello-pair").submit()
-                with server.recv() as received:
+                received = zlink.Received()
+                if not server.recv_into(received):
+                    raise AssertionError("expected pair payload")
+                with received:
                     payload = received.to_bytes_list()
                     if payload != [b"hello-pair"]:
                         raise AssertionError(f"unexpected pair payload: {payload!r}")

@@ -73,7 +73,7 @@ public sealed class test_callback_contract
             observedSignal.Set();
         }
 
-        Runtime.UnhandledCallbackException += OnUnhandled;
+        Zlink.UnhandledCallbackException += OnUnhandled;
         try
         {
             stream.OnPacket((StreamPacketHandler)((_, header, payload) =>
@@ -93,7 +93,7 @@ public sealed class test_callback_contract
         }
         finally
         {
-            Runtime.UnhandledCallbackException -= OnUnhandled;
+            Zlink.UnhandledCallbackException -= OnUnhandled;
             try
             {
                 stream.DetachStream();

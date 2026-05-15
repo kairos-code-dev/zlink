@@ -13,12 +13,12 @@
   "engines": {
     "node": ">=22"
   },
-  "main": "dist/canonical.js",
-  "types": "dist/canonical.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/canonical.d.ts",
-      "require": "./dist/canonical.js"
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js"
     }
   },
   "files": [

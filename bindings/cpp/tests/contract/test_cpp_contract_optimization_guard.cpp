@@ -52,11 +52,11 @@ bool contains_aggregate_call(const std::string& body, const std::string& symbol)
 int main()
 {
     const std::filesystem::path this_file = __FILE__;
-    const std::filesystem::path include_root =
-      this_file.parent_path().parent_path().parent_path() / "include" / "zlink";
+    const std::filesystem::path cpp_root =
+      this_file.parent_path().parent_path().parent_path();
 
     std::vector<std::filesystem::path> files;
-    collect_files(include_root, files);
+    collect_files(cpp_root / "include" / "zlink", files);
 
     std::string all;
     for (const auto& file : files)

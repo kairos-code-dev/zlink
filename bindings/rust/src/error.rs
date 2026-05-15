@@ -253,7 +253,7 @@ fn submit_result_from_errno(err: i32) -> SubmitResult {
     match err {
         0 => SubmitResult::Ok,
         libc::EAGAIN => SubmitResult::Backpressured,
-        libc::ENOTCONN => SubmitResult::NotConnected,
+        libc::ENOTCONN | libc::EHOSTUNREACH => SubmitResult::NotConnected,
         libc::ENOENT => SubmitResult::NotFound,
         x if x == eterm() => SubmitResult::Terminated,
         libc::EFAULT => SubmitResult::InvalidHandle,

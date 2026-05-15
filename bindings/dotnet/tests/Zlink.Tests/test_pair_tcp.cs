@@ -200,36 +200,6 @@ public sealed class test_pair_tcp
     }
 
     [Fact]
-    public void poller_fd_events_expose_registered_fd()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
-        using var poller = new Poller();
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "pair-poller-fd");
-        sender.Bind(endpoint);
-        receiver.Connect(endpoint);
-        Thread.Sleep(50);
-
-        int fd = receiver.GetOption(SocketOptions.Fd);
-        poller.AddFd(fd, PollEventFlags.PollIn);
-
-        CoreTestSupport.SendWithRetry(sender, "fd"u8, 2000);
-
-        var events = new PollEvent[1];
-        int written = poller.Wait(events, TimeSpan.FromMilliseconds(2000), out _);
-        Assert.Equal(1, written);
-        Assert.Equal(fd, events[0].Fd);
-        Assert.Null(events[0].Socket);
-        Assert.NotEqual(PollEventFlags.None, events[0].Revents & PollEventFlags.PollIn);
-
-        Assert.Equal("fd", CoreTestSupport.ReceiveUtf8WithTimeout(receiver, 2000));
-    }
-
-    [Fact]
     public void receive_dontwait_returns_null_on_empty_queue()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -312,26 +282,24 @@ public sealed class test_pair_tcp
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-try-send-backpressured");
 
-        sender.SetOption(SocketOptions.SndHwm, 1);
-        receiver.SetOption(SocketOptions.RcvHwm, 1);
+        sender.Options.SendHighWaterMark = 1;
+        receiver.Options.ReceiveHighWaterMark = 1;
         sender.Bind(endpoint);
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        SendResult result = SendResult.Sent;
+        bool sent = true;
         byte[] payloadBytes = new byte[64 * 1024];
         for (int i = 0; i < 16 * 1024; i++)
         {
             using Message payload = Message.FromBytes(payloadBytes);
-            result = sender.Send().Message(payload).Flags(SendFlags.DontWait)
-                .Submit()
-                ? SendResult.Sent
-                : SendResult.Backpressured;
-            if (result != SendResult.Sent)
+            sent = sender.Send().Message(payload).Flags(SendFlags.DontWait)
+                .Submit();
+            if (!sent)
                 break;
         }
 
-        Assert.Equal(SendResult.Backpressured, result);
+        Assert.False(sent);
     }
 
     [Fact]
@@ -346,8 +314,8 @@ public sealed class test_pair_tcp
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-public-try-send-backpressured");
 
-        sender.SetOption(SocketOptions.SndHwm, 1);
-        receiver.SetOption(SocketOptions.RcvHwm, 1);
+        sender.Options.SendHighWaterMark = 1;
+        receiver.Options.ReceiveHighWaterMark = 1;
         sender.Bind(endpoint);
         receiver.Connect(endpoint);
         Thread.Sleep(50);

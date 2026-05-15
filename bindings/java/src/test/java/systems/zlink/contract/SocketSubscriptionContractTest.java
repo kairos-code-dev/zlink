@@ -12,7 +12,6 @@ import systems.zlink.TestSupport;
 import systems.zlink.TopicMessage;
 import systems.zlink.XSubSocket;
 import systems.zlink.XPubSocket;
-import java.lang.reflect.RecordComponent;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -22,7 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SocketSubscriptionContractTest {
@@ -136,11 +135,19 @@ public class SocketSubscriptionContractTest {
 
     @Test
     public void subscriptionEventRecordShapeMatchesSpec() {
-        RecordComponent[] components = SubscriptionEvent.class.getRecordComponents();
-        assertNotNull(components);
-        assertEquals(3, components.length);
-        assertEquals("routingId", components[0].getName());
-        assertEquals("topic", components[1].getName());
-        assertEquals("subscribed", components[2].getName());
+        assertNull(SubscriptionEvent.class.getRecordComponents());
+        assertTrue(hasPublicMethod(SubscriptionEvent.class, "routingId"));
+        assertTrue(hasPublicMethod(SubscriptionEvent.class, "topic"));
+        assertTrue(hasPublicMethod(SubscriptionEvent.class, "subscribed"));
+    }
+
+    private static boolean hasPublicMethod(Class<?> type, String name,
+                                           Class<?>... parameterTypes) {
+        try {
+            type.getMethod(name, parameterTypes);
+            return true;
+        } catch (NoSuchMethodException ex) {
+            return false;
+        }
     }
 }

@@ -126,6 +126,8 @@ public interface IStreamSocket : IRoutedMessageSocket
 
     void OnPacket(StreamPacketHandler handler);
 
+    void DetachStream();
+
     void DisconnectRid(RoutingId peerRid);
 
     ActorBindOperation BindActor(RoutingId sessionRid, ActorRef actor);

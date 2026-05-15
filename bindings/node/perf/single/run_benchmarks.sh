@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+CORE_RUNTIME="$REPO_ROOT/core/build/lib/libzlink.so.6"
 cd "$ROOT_DIR"
 
 REUSE_BUILD=0
@@ -28,5 +30,20 @@ elif [ ! -f "$ROOT_DIR/dist-tools/perf/single/run_benchmarks.js" ]; then
   echo "Error: --reuse-build requested but dist-tools output is missing." >&2
   exit 1
 fi
+
+if [ ! -f "$CORE_RUNTIME" ]; then
+  echo "Error: core runtime is missing: $CORE_RUNTIME" >&2
+  echo "Build it first with: cmake --build core/build" >&2
+  exit 1
+fi
+
+if find "$REPO_ROOT/core/include" "$REPO_ROOT/core/src" -type f -newer "$CORE_RUNTIME" | grep -q .; then
+  echo "Error: core runtime is older than core/include or core/src." >&2
+  echo "Rebuild it first with: cmake --build core/build" >&2
+  echo "Runtime checked: $CORE_RUNTIME" >&2
+  exit 1
+fi
+
+echo "Perf runtime libzlink: $(realpath "$CORE_RUNTIME")"
 
 node dist-tools/perf/single/run_benchmarks.js "$@"

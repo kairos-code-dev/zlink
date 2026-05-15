@@ -15,7 +15,7 @@
 #include <string>
 #include <thread>
 
-#include <zlink/poller.hpp>
+#include <zlink.hpp>
 
 #if defined(_WIN32)
 #include <process.h>

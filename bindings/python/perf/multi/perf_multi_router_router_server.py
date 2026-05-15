@@ -55,9 +55,14 @@ def main(argv=None):
                         with received:
                             payload = received.to_bytes_list()[0]
                             routing_id = bytes(received.routing_id)
-                            sent = False if pending else received.send(
-                                payload, flags=zlink.SendFlags.DONT_WAIT
-                            )
+                            sent = False
+                            if not pending:
+                                sent = (
+                                    received.send()
+                                    .message(payload)
+                                    .flags(zlink.SendFlags.DONT_WAIT)
+                                    .submit()
+                                )
                         if not sent:
                             pending.append((routing_id, payload))
                     safe_poll(poller, -1)

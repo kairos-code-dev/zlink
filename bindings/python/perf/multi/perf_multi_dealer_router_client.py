@@ -65,10 +65,47 @@ def main(argv=None):
                         )
                     # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait.
                     # Each socket exits its loop after the echoed stop token
-                    # comes back, so we never poll on a short timer.
+                    # comes back. The wait is bounded by the active duration
+                    # so the phase transition can submit the stop token even
+                    # when no new readiness edge arrives exactly at timeout.
                     while not all(stopped):
-                        events = safe_poll(poller, -1)
+                        now = time.perf_counter()
+                        for index, current_sock in enumerate(sockets):
+                            if stopped[index] or waiting_reply[index] or not send_pending[index]:
+                                continue
+                            if now < active_deadline:
+                                seq += 1
+                                payload = stamp_payload(
+                                    payloads[index],
+                                    phase=1,
+                                    run_id=run_id,
+                                    seq=seq,
+                                )
+                                if send_nonblocking(current_sock, payload):
+                                    waiting_reply[index] = True
+                                    send_pending[index] = False
+                            elif not stop_sent[index] and send_nonblocking(current_sock, STOP_TOKEN):
+                                waiting_reply[index] = True
+                                send_pending[index] = False
+                                stop_sent[index] = True
+                        wait_ms = max(
+                            1,
+                            min(100, int(max(active_deadline - time.perf_counter(), 0) * 1000)),
+                        )
+                        events = safe_poll(poller, wait_ms)
                         if not events:
+                            if time.perf_counter() >= active_deadline:
+                                for index, current_sock in enumerate(sockets):
+                                    if (
+                                        not stopped[index]
+                                        and not waiting_reply[index]
+                                        and send_pending[index]
+                                        and not stop_sent[index]
+                                        and send_nonblocking(current_sock, STOP_TOKEN)
+                                    ):
+                                        waiting_reply[index] = True
+                                        send_pending[index] = False
+                                        stop_sent[index] = True
                             continue
                         now = time.perf_counter()
                         for event in events:
@@ -116,6 +153,15 @@ def main(argv=None):
                                     stopped[index] = True
                                     send_pending[index] = False
                                     break
+                                if (
+                                    time.perf_counter() >= active_deadline
+                                    and not stop_sent[index]
+                                    and send_nonblocking(current_sock, STOP_TOKEN)
+                                ):
+                                    waiting_reply[index] = True
+                                    send_pending[index] = False
+                                    stop_sent[index] = True
+                                    continue
                                 if not parts:
                                     continue
                                 data = parts[0]

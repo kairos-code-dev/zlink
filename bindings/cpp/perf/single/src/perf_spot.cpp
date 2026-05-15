@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-#include <zlink/poller.hpp>
+#include <zlink.hpp>
 
 #if defined(_WIN32)
 #include <process.h>
@@ -430,24 +430,26 @@ bool run_pattern_spot (const std::string &transport,
                 return;
             }
 
-            perf_single_metric::header_t header = {};
-            bool header_ok = false;
-            bool stop = false;
-            const int recv_rc = recv_spot_header_flags (
-              sub_spot, payload_size, ZLINK_DONTWAIT, &header,
-              &header_ok, &stop);
-            if (recv_rc > 0) {
-                if (stop)
-                    return;
-                collect_header (header, header_ok);
-                continue;
+            while (true) {
+                perf_single_metric::header_t header = {};
+                bool header_ok = false;
+                bool stop = false;
+                const int recv_rc = recv_spot_header_flags (
+                  sub_spot, payload_size, ZLINK_DONTWAIT, &header,
+                  &header_ok, &stop);
+                if (recv_rc > 0) {
+                    if (stop)
+                        return;
+                    collect_header (header, header_ok);
+                    continue;
+                }
+
+                if (recv_rc == 0)
+                    break;
+
+                sender_ok.store (false, std::memory_order_release);
+                return;
             }
-
-            if (recv_rc == 0)
-                continue;
-
-            sender_ok.store (false, std::memory_order_release);
-            return;
         }
     });
 

@@ -69,24 +69,14 @@ public sealed class test_ctx_options
         using var ctx = new Context();
         using (var preRouter = new RouterSocket(ctx))
         {
-            Assert.Equal(-1, preRouter.GetOption(SocketOptions.Linger));
+            Assert.Null(preRouter.Options.Linger);
         }
 
         ctx.Options.Blocky = false;
         Assert.False(ctx.Options.Blocky);
 
         using var router = new RouterSocket(ctx);
-        Assert.Equal(0, router.GetOption(SocketOptions.Linger));
-    }
-
-    [Fact]
-    public void context_invalid_option_throws()
-    {
-        using var ctx = new Context();
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            ctx.SetOption((ContextOption)(-1), 0));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            ctx.GetOption((ContextOption)(-1)));
+        Assert.Equal(TimeSpan.Zero, router.Options.Linger);
     }
 
     [Fact]

@@ -151,7 +151,7 @@ internal static class CoreTestSupport
         return false;
     }
 
-    internal static void SendWithRetry(MessageSocketBase socket,
+    internal static void SendWithRetry(IMessageSocket socket,
         ReadOnlySpan<byte> payload, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -171,7 +171,7 @@ internal static class CoreTestSupport
         throw new TimeoutException("send timeout");
     }
 
-    internal static void PublishWithRetry(PublisherSocketBase socket, string topic,
+    internal static void PublishWithRetry(IPublisherSocket socket, string topic,
         ReadOnlySpan<byte> payload, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -191,7 +191,7 @@ internal static class CoreTestSupport
         throw new TimeoutException("publish timeout");
     }
 
-    internal static Received ReceiveMessageWithTimeout(MessageSocketBase socket,
+    internal static Received ReceiveMessageWithTimeout(IMessageSocket socket,
         int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -205,7 +205,7 @@ internal static class CoreTestSupport
         throw new TimeoutException("receive timeout");
     }
 
-    internal static byte[] ReceiveBytesWithTimeout(MessageSocketBase socket,
+    internal static byte[] ReceiveBytesWithTimeout(IMessageSocket socket,
         int maxSize, int timeoutMs)
     {
         _ = maxSize;
@@ -222,7 +222,7 @@ internal static class CoreTestSupport
         }
     }
 
-    internal static string ReceiveUtf8WithTimeout(MessageSocketBase socket,
+    internal static string ReceiveUtf8WithTimeout(IMessageSocket socket,
         int timeoutMs)
     {
         Received received = ReceiveMessageWithTimeout(socket, timeoutMs);
@@ -239,7 +239,7 @@ internal static class CoreTestSupport
         }
     }
 
-    internal static string SubscribeUtf8WithTimeout(SubscriberSocketBase socket,
+    internal static string SubscribeUtf8WithTimeout(ISubscriberSocket socket,
         out string topic, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -261,7 +261,7 @@ internal static class CoreTestSupport
         throw new TimeoutException("subscribe timeout");
     }
 
-    internal static byte[] ReceiveSubscriptionEventWithTimeout(XPubSocket socket,
+    internal static byte[] ReceiveSubscriptionEventWithTimeout(IXPubSocket socket,
         out bool subscribed, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -287,7 +287,7 @@ internal static class CoreTestSupport
         throw new TimeoutException("subscription event timeout");
     }
 
-    internal static bool ExpectNoSubscriptionEvent(XPubSocket socket, int probeMs)
+    internal static bool ExpectNoSubscriptionEvent(IXPubSocket socket, int probeMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         var ev = new SubscriptionEvent();
@@ -318,7 +318,7 @@ internal static class CoreTestSupport
         return Encoding.UTF8.GetString(payload).Trim('\0');
     }
 
-    internal static bool TryReceiveMultipartLastPart(MessageSocketBase socket,
+    internal static bool TryReceiveMultipartLastPart(IMessageSocket socket,
         int maxSize, out byte[] lastPart)
     {
         _ = maxSize;
@@ -347,14 +347,15 @@ internal static class CoreTestSupport
                 DisposeAll(parts);
             }
         }
-        catch (ZlinkException ex) when (IsRetryable(ex))
+        catch (ZlinkRecvException ex)
+            when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
         {
             lastPart = Array.Empty<byte>();
             return false;
         }
     }
 
-    internal static bool TryReceiveMultipartLastPart(RoutedMessageSocketBase socket,
+    internal static bool TryReceiveMultipartLastPart(IRoutedMessageSocket socket,
         int maxSize, out byte[] lastPart)
     {
         _ = maxSize;
@@ -383,14 +384,15 @@ internal static class CoreTestSupport
                 DisposeAll(parts);
             }
         }
-        catch (ZlinkException ex) when (IsRetryable(ex))
+        catch (ZlinkRecvException ex)
+            when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
         {
             lastPart = Array.Empty<byte>();
             return false;
         }
     }
 
-    internal static bool ExpectNoMessage(MessageSocketBase socket, int probeMs)
+    internal static bool ExpectNoMessage(IMessageSocket socket, int probeMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         var received = new Received();
@@ -406,7 +408,7 @@ internal static class CoreTestSupport
         return true;
     }
 
-    internal static bool ExpectNoSubscribedMessage(SubscriberSocketBase socket,
+    internal static bool ExpectNoSubscribedMessage(ISubscriberSocket socket,
         int probeMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
@@ -423,7 +425,7 @@ internal static class CoreTestSupport
     }
 
     internal static (string routingId, string payload) ReceiveRoutedUtf8WithTimeout(
-        RoutedMessageSocketBase socket, int timeoutMs)
+        IRoutedMessageSocket socket, int timeoutMs)
     {
         TimeSpan? oldTimeout = socket.Options.ReceiveTimeout;
         socket.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(timeoutMs);
@@ -474,12 +476,6 @@ internal static class CoreTestSupport
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
-    }
-
-    private static bool IsRetryable(ZlinkException ex)
-    {
-        ErrorCode code = ZlinkException.MapErrorCode(ex.InternalErrno);
-        return code == ErrorCode.EAgain || code == ErrorCode.EIntr;
     }
 
     private static string? FindCoreHeader()

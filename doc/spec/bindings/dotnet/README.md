@@ -50,6 +50,11 @@ declarations and marshalling-only mirrors still belong in `Runtime/Native/`.
 that contract.
 Do not expose namespace segments named `Contracts` or `Runtime` as the primary
 user-facing namespace.
+The following tree is normative for implementation work. Files that define
+public behavior must be placed under `Contracts/`; files that exist to call
+native code, own handles, marshal structs, or run callback/request progress
+logic must be placed under `Runtime/`, with native bridge code under
+`Runtime/Native/`.
 
 ```text
 bindings/dotnet/
@@ -82,6 +87,13 @@ bindings/dotnet/
 +-- native/
 +-- runtimes/
 ```
+
+The `Contracts` and `Runtime` folder names are repository ownership boundaries.
+They are not a license to expose `Systems.Zlink.Contracts` or
+`Systems.Zlink.Runtime` as user-facing namespaces. Public construction can
+return default concrete runtime classes such as `Context`, socket classes,
+`SpotNode`, `Poller`, or `Timer`, but their observable behavior must be
+specified by contracts in the matching category.
 
 ## API Change Workflow
 

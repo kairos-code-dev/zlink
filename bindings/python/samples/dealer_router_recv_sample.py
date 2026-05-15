@@ -16,14 +16,20 @@ def main():
                         wait_connected(router_monitor, dealer_monitor)
 
                 dealer.send().message(b"ping").submit()
-                with router.recv() as request:
+                request = zlink.Received()
+                if not router.recv_into(request):
+                    raise AssertionError("expected dealer-router request")
+                with request:
                     if request.routing_id != zlink.RoutingId(b"CLIENT"):
                         raise AssertionError(f"unexpected routing id: {request.routing_id!r}")
                     if request.to_bytes_list() != [b"ping"]:
                         raise AssertionError("unexpected dealer-router request payload")
                     request.send().message(b"pong").submit()
 
-                with dealer.recv() as reply:
+                reply = zlink.Received()
+                if not dealer.recv_into(reply):
+                    raise AssertionError("expected dealer-router reply")
+                with reply:
                     if reply.to_bytes_list() != [b"pong"]:
                         raise AssertionError("unexpected dealer-router reply payload")
                 print('[dealer-router/recv] send: "ping" → recv: "pong"')

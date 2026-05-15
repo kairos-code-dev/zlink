@@ -8,6 +8,7 @@ import systems.zlink.MonitorEventType;
 import systems.zlink.PollEventFlag;
 import systems.zlink.PubSocket;
 import systems.zlink.RecvFlags;
+import systems.zlink.SendFlags;
 import systems.zlink.SocketType;
 import systems.zlink.SubSocket;
 import systems.zlink.TopicMessage;
@@ -112,16 +113,25 @@ final class PerfPubSub {
             }, "single-pubsub-recv");
             recvThread.start();
             try (Message active = PerfUtil.payloadTemplate(config.size())) {
-                while (System.nanoTime() < activeEnd) {
-                    PerfUtil.resetAndWritePayload(active, config.size(),
-                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                    pub.publish(TOPIC).message(active).submit();
+                try (PerfSocketPollSet writable = PerfSocketPollSet.fromSockets(
+                    List.of(pub), PollEventFlag.POLLOUT)) {
+                    while (System.nanoTime() < activeEnd) {
+                        PerfUtil.resetAndWritePayload(active, config.size(),
+                            (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+                        if (!publishWhenWritable(pub, writable, active, activeEnd)) {
+                            break;
+                        }
+                    }
                 }
             }
             // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with stop token
             // published on the same topic so the subscriber's filter delivers it.
             try (Message stop = PerfStopToken.newMessage()) {
-                pub.publish(TOPIC).message(stop).submit();
+                long stopDeadline = System.nanoTime() + 2_000_000_000L;
+                try (PerfSocketPollSet writable = PerfSocketPollSet.fromSockets(
+                    List.of(pub), PollEventFlag.POLLOUT)) {
+                    publishWhenWritable(pub, writable, stop, stopDeadline);
+                }
             }
             PerfUtil.join(recvThread, "pubsub receiver",
                 Duration.ofSeconds(config.durationSeconds() + 10L));
@@ -152,5 +162,27 @@ final class PerfPubSub {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("pubsub settle interrupted", ex);
         }
+    }
+
+    private static boolean publishWhenWritable(PubSocket pub,
+                                               PerfSocketPollSet writable,
+                                               Message message,
+                                               long deadlineNs) {
+        while (System.nanoTime() < deadlineNs) {
+            if (pub.publish(TOPIC)
+                    .message(message)
+                    .flags(SendFlags.DONT_WAIT)
+                    .submit()) {
+                return true;
+            }
+            long remainingNs = deadlineNs - System.nanoTime();
+            if (remainingNs <= 0) {
+                return false;
+            }
+            int waitMs = (int) Math.max(1L,
+                Math.min(Integer.MAX_VALUE, remainingNs / 1_000_000L));
+            writable.poll(waitMs);
+        }
+        return false;
     }
 }

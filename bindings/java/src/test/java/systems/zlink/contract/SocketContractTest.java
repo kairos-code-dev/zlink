@@ -647,11 +647,13 @@ public class SocketContractTest {
             assertTrue(hasPublicMethod(MonitorSocket.class, "recv",
                 RecvFlags.class));
             assertTrue(hasPublicMethod(PairSocket.class, "send"));
-            assertTrue(hasPublicMethod(PairSocket.class, "recv",
+            assertFalse(hasPublicMethod(PairSocket.class, "recv",
                 RecvFlags.class));
+            assertTrue(hasPublicMethod(PairSocket.class, "recv",
+                Received.class, RecvFlags.class));
             assertTrue(hasPublicMethod(PubSocket.class, "publish", String.class));
             assertTrue(hasPublicMethod(SubSocket.class, "subscribe",
-                RecvFlags.class));
+                TopicMessage.class, RecvFlags.class));
             assertFalse(hasPublicMethod(Message.class, "dataSegment"));
             assertFalse(hasPublicMethod(Message.class, "dataSegment", int.class));
             assertFalse(hasPublicMethod(Message.class, "copyTo",

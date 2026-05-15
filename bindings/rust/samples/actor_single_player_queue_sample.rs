@@ -98,10 +98,10 @@ fn main() {
             }
             loop {
                 match info.recv_actor_part_with_flags(RecvFlags::DONT_WAIT) {
-                    Ok(Some((_info, part, _more))) => payloads_cb
+                    Ok(Some(part)) => payloads_cb
                         .lock()
                         .unwrap()
-                        .push(part.as_str().unwrap().to_owned()),
+                        .push(part.message.as_str().unwrap().to_owned()),
                     Ok(None) => break,
                     Err(_) => break,
                 }

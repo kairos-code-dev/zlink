@@ -4,7 +4,7 @@
 
 This document defines the expected C++ library shape. It is not an exhaustive
 list of every method. The concrete public contract is
-`bindings/cpp/src/zlink/Contracts/`.
+`bindings/cpp/include/zlink/Contracts/`.
 
 A C++ implementation is aligned when `Contracts/`, installed header
 projections, tests, samples, perf runners, and runtime behavior follow this
@@ -13,46 +13,57 @@ C++-idiomatic types.
 
 ## Public Contract Source
 
-- Public contract: `bindings/cpp/src/zlink/Contracts/`.
-- Installed projection: `bindings/cpp/include/zlink/*.hpp` and
-  `bindings/cpp/include/zlink/service/*.hpp`.
+- Public contract: `bindings/cpp/include/zlink/Contracts/`.
+- Runtime implementation: `bindings/cpp/include/zlink/Runtime/`.
+- Public entrypoint projection: `bindings/cpp/include/zlink.hpp`.
+- Installed projection: `bindings/cpp/include/zlink/Contracts/...` and
+  deliberate installed helper headers under `bindings/cpp/include/zlink/...`.
 - Namespace: all public types live under `zlink`; service types live under
   `zlink::service`.
-- Internal implementation: `.cpp` files, native bridge helpers, callback
-  trampolines, request progress helpers, non-installed headers, and
-  `detail`-style helpers.
+- Internal implementation: native bridge helpers, callback trampolines, request
+  progress helpers, non-public `detail` helpers, and runtime headers under
+  `bindings/cpp/include/zlink/Runtime/`.
 - Documentation role: this README defines the shape, boundaries, and required
   semantic coverage. `Contracts/` owns the exact member list; installed headers
   must project it intentionally.
 
-Do not copy the .NET contract-interface layout into C++. C++ uses installed
-headers, RAII classes, concrete values, and optional private detail helpers as
-its natural boundary.
+C++ is a header-only binding in this repository. Do not create a second
+`bindings/cpp/src/zlink/Contracts/` tree. The installed include tree is both
+the build input and the public projection. Do not copy a Java or .NET
+interface-heavy layout into C++; C++ uses installed headers, RAII classes,
+concrete values, and private/detail helper placement as its natural boundary.
 
 ## Repository Layout
 
 Use these paths consistently when changing the C++ binding.
 
-- Public contract: `bindings/cpp/src/zlink/Contracts/`.
-- Runtime implementation: `bindings/cpp/src/zlink/Runtime/`.
-- Native bridge/artifacts: `bindings/cpp/src/zlink/Runtime/Native/` and
-  `bindings/cpp/native/`.
-- Installed header projection: `bindings/cpp/include/zlink/`.
+- Public contract: `bindings/cpp/include/zlink/Contracts/`.
+- Runtime implementation: `bindings/cpp/include/zlink/Runtime/`.
+- Native bridge/artifacts: `bindings/cpp/include/zlink/Runtime/Native/` when
+  C++ native bridge declarations are needed, and `bindings/cpp/native/` for
+  packaged native binaries.
+- Public entrypoint: `bindings/cpp/include/zlink.hpp`.
 - Codec extensions: `bindings/cpp/codecs/`.
 - Tests: `bindings/cpp/tests/`.
 - Samples: `bindings/cpp/samples/`.
 - Perf: `bindings/cpp/perf/`.
 
-`Contracts/` and `Runtime/` are fixed repository folders. Installed headers and
-the `zlink` namespace are the C++ projection of that contract.
-Do not expose `Contracts` or `Runtime` as public namespace segments.
+`Contracts/` and `Runtime/` are fixed repository folders under
+`bindings/cpp/include/zlink/`. The `zlink` namespace and `zlink.hpp` are the
+C++ projection of that contract. Do not expose `Contracts` or `Runtime` as
+namespace segments.
 
-Non-installed helper headers are implementation detail. If a helper must be
-included by users, promote it into the installed include tree deliberately.
+Because the binding is header-only, runtime helper headers are physically
+installed, but they are not public API. Public samples, perf, and tests must
+include `<zlink.hpp>` and use the projected `zlink` API, not runtime helper
+paths. Legacy wrapper headers such as `include/zlink/message.hpp`,
+`include/zlink/services/spot.hpp`, or `include/zlink/sockets/dealer.hpp` are
+not part of the target layout.
 
 ```text
 bindings/cpp/
-+-- src/
++-- include/
+|   +-- zlink.hpp
 |   +-- zlink/
 |   |   +-- Contracts/
 |   |   |   +-- Core/
@@ -71,8 +82,6 @@ bindings/cpp/
 |   |   |   +-- Errors/
 |   |   |   +-- Enums/
 |   |   |   +-- Native/
-+-- include/
-|   +-- zlink/
 +-- native/
 +-- codecs/
 +-- tests/
@@ -84,12 +93,14 @@ bindings/cpp/
 
 When mapping a new core capability:
 
-1. Add the public type or method to the correct `Contracts/` category.
-2. Update the installed header projection under `bindings/cpp/include/zlink/`.
+1. Add the public type or method to the correct
+   `bindings/cpp/include/zlink/Contracts/` category.
+2. Update `bindings/cpp/include/zlink.hpp` and any deliberate installed
+   projection header.
 3. Decide the C++ domain owner: context, message, socket, monitor, timer,
    service, SPOT, actor, error, or option.
-4. Keep raw C handle access, `*_part` loops, and callback userdata inside
-   implementation files or non-installed helpers.
+4. Keep raw C handle access, `*_part` loops, callback userdata, trampoline
+   state, and native marshalling helpers in `Runtime/` headers.
 5. Add public-header tests and at least one sample/perf update when the new
    capability affects user workflows or measurement.
 6. Check that the new public API is not just a shallow C wrapper. If it only
@@ -122,23 +133,26 @@ contract.
 - Public declarations and user-visible behavior belong in `Contracts/`.
 - Public free functions, static helpers, extension-style helpers, and builder
   convenience helpers belong in `Contracts/` when users can call them directly.
-- Runtime RAII classes, socket kernels, request pumps, callback trampolines,
+- Runtime handle owners, socket kernels, request pumps, callback trampolines,
   and part-loop helpers belong in `Runtime/`.
 - FFI declarations, raw C handles, native struct mirrors, marshalling helpers,
   and platform loading code belong in `Runtime/Native/`.
-- Installed headers must project `Contracts/`, not `Runtime/` internals.
+- `zlink.hpp` must project `Contracts/`, not make `Runtime/` helper paths the
+  public include style.
 - If a runtime concrete class is directly constructible, its public behavior
   must still be described by `Contracts/`.
 
 ## Contract Folder Layout
 
-`Contracts/` is the source ownership map for public C++ declarations. Installed
-headers project these categories into the `zlink` namespace.
+`Contracts/` is the source ownership map for public C++ declarations.
+`zlink.hpp` projects these categories into the `zlink` namespace.
 
 - `Core/`: context, context options, routing id, utility resources, and public
   free functions such as version or capability helpers.
 - `Messaging/`: message, received metadata, topic messages, subscription
-  events, stream packet callbacks, and builder payload helpers.
+  events, stream packet callbacks, and builder payload helpers. Codec helpers
+  are separate extension packages under `bindings/cpp/codecs/`, not undeclared
+  placeholders in the core binding.
 - `Sockets/`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
 - `Monitoring/`: monitor, monitor snapshot/event, poller, poll event, timer, and
@@ -146,7 +160,9 @@ headers project these categories into the `zlink` namespace.
 - `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `Errors/`: exception or typed error-result domains.
-- `Enums/`: public enum domains shared across the binding.
+- `Enums/`: public enum domains shared across the binding. Do not create
+  aggregator-only headers in this category; enum definitions or conversion
+  contracts must live here.
 
 ## Canonical Interface Rules
 
@@ -172,7 +188,7 @@ The public headers must cover these groups.
 
 - Core runtime: context, version/capability helpers, context options, shutdown,
   and auto-HWM recalculation.
-- Messaging: message ownership, multipart input, received metadata, topic
+- Messaging: message ownership, builder multipart input, received metadata, topic
   messages, subscription events, routing ids, and callback types.
 - Socket families: pair, dealer, router, pub, sub, xpub, xsub, stream, common
   options, typed socket options, bind/connect/disconnect, TLS, callbacks, and

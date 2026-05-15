@@ -438,7 +438,10 @@ async function publishControlUntilSent(socket, waiter, topic, payload) {
     if (trySocketPublish(socket, topic, body)) {
       return;
     }
-    await waiter.wait(POLLOUT);
+    await Promise.race([
+      waiter.wait(POLLOUT),
+      new Promise((resolve) => setTimeout(resolve, 10))
+    ]);
   }
 }
 

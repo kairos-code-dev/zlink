@@ -4,16 +4,19 @@
 
 This document defines the expected Node/TypeScript library shape. It is not an
 exhaustive list of every class or type member. The concrete public contract is
-`bindings/node/src/zlink/Contracts/`.
+the package root export declared by `bindings/node/src/index.ts`,
+`package.json` exports, and the generated `.d.ts` surface.
 
-A Node/TypeScript implementation is aligned when `Contracts/`, package export
-projections, `.d.ts` types, tests, samples, perf runners, and runtime behavior
-follow this blueprint and map stable `core/include/zlink.h` capabilities into
-TypeScript-idiomatic APIs.
+A Node/TypeScript implementation is aligned when the source package tree,
+package exports, `.d.ts` types, tests, samples, perf runners, and runtime
+behavior follow this blueprint and map stable `core/include/zlink.h`
+capabilities into TypeScript-idiomatic APIs.
 
 ## Public Contract Source
 
-- Public contract: `bindings/node/src/zlink/Contracts/`.
+- Public contract projection: `bindings/node/src/index.ts`, generated `.d.ts`,
+  and `package.json` exports.
+- Contract source: `bindings/node/src/zlink/contracts/`.
 - Package projection: symbols exported from the package entrypoint and
   declared in the published TypeScript definitions.
 - Internal implementation: native addon modules, private source modules,
@@ -22,8 +25,7 @@ TypeScript-idiomatic APIs.
 - Package boundary: `package.json` exports should expose only documented
   public entrypoints.
 - Documentation role: this README defines shape and semantic coverage.
-  `Contracts/` owns the exact member list; package entrypoint and declarations
-  must project it intentionally.
+  package entrypoint and declarations own the exact public member list.
 
 Deep imports into source files or native bridge modules are not public API.
 
@@ -31,9 +33,10 @@ Deep imports into source files or native bridge modules are not public API.
 
 Use these paths consistently when changing the Node/TypeScript binding.
 
-- Public contract: `bindings/node/src/zlink/Contracts/`.
-- Runtime implementation: `bindings/node/src/zlink/Runtime/`.
-- Native bridge/artifacts: `bindings/node/src/zlink/Runtime/Native/`,
+- Public entrypoint: `bindings/node/src/index.ts`.
+- Contract source: `bindings/node/src/zlink/contracts/`.
+- Runtime implementation: `bindings/node/src/zlink/runtime/`.
+- Native bridge/artifacts: `bindings/node/src/zlink/runtime/native/`,
   `bindings/node/native/`, `bindings/node/prebuilds/`, and generated runtime
   loading code.
 - Generated output: `bindings/node/dist/`, not source contract.
@@ -44,34 +47,39 @@ Use these paths consistently when changing the Node/TypeScript binding.
 
 `package.json` exports and generated `.d.ts` files must agree with the public
 entrypoint. Do not document or test deep source imports as public API.
-`Contracts/` and `Runtime/` are fixed repository folders. `index.ts`,
-published `.d.ts` files, and `package.json` exports are the TypeScript package
-projection of that contract.
-Do not expose `src/zlink/Contracts` or `src/zlink/Runtime` as documented deep
-imports.
+`index.ts`, published `.d.ts` files, and `package.json` exports are the
+TypeScript package projection of the contract. Do not expose deep source paths
+as public API unless they are deliberately listed in `package.json` exports.
+The following tree is the target implementation structure. Use lower-case
+source directory names. Do not create `src/zlink/Contracts` or
+`src/zlink/Runtime`; those names can be mistaken for public deep-import
+surfaces. `src/zlink/contracts` owns public TypeScript types, classes,
+builders, enums, and errors. `src/zlink/runtime` owns native addon calls,
+handle owners, callback trampolines, request progress helpers, marshalling,
+and platform loading.
 
 ```text
 bindings/node/
 +-- src/
-|   +-- zlink/
-|   |   +-- Contracts/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   |   +-- Enums/
-|   |   +-- Runtime/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   |   +-- Enums/
-|   |   |   +-- Native/
 |   +-- index.ts
+|   +-- zlink/
+|   |   +-- contracts/
+|   |   |   +-- core/
+|   |   |   +-- messaging/
+|   |   |   +-- sockets/
+|   |   |   +-- monitoring/
+|   |   |   +-- service/
+|   |   |   +-- errors/
+|   |   |   +-- enums/
+|   |   +-- runtime/
+|   |   |   +-- core/
+|   |   |   +-- messaging/
+|   |   |   +-- sockets/
+|   |   |   +-- monitoring/
+|   |   |   +-- service/
+|   |   |   +-- errors/
+|   |   |   +-- enums/
+|   |   |   +-- native/
 +-- native/
 +-- packages/
 +-- tests/
@@ -81,11 +89,18 @@ bindings/node/
 +-- dist/
 ```
 
+The package root export must be the consumer entrypoint. Tests, samples, and
+perf must import from that entrypoint or another documented package export,
+not from `src/zlink/runtime`, native addon modules, or generated private files.
+If a symbol appears in the package root or generated `.d.ts`, reviewers must
+be able to point to its contract owner under `src/zlink/contracts` or the
+package root entrypoint.
+
 ## API Change Workflow
 
 When mapping a new core capability:
 
-1. Add the public symbol to the correct `Contracts/` category.
+1. Add the public symbol to the correct contract source category.
 2. Update the package entrypoint, declaration surface, and `package.json`
    projection.
 3. Keep native addon calls, N-API handles, and request progress helpers behind
@@ -119,22 +134,23 @@ access to native objects.
 ## Contract / Runtime Placement Rules
 
 - Exported TypeScript classes, interfaces, type aliases, error types, and
-  builder contracts belong in `Contracts/`.
+  builder contracts belong in `src/zlink/contracts` or the package entrypoint.
 - Exported package functions, static helpers, convenience methods, and builder
-  helper functions belong in `Contracts/` when callers can use them directly.
+  helper functions belong in the contract source when callers can use them
+  directly.
 - JavaScript runtime implementations, native handle owners, request pumps,
-  callback adapters, and part-loop helpers belong in `Runtime/`.
+  callback adapters, and part-loop helpers belong in `src/zlink/runtime`.
 - N-API bindings, native addon handles, marshalling helpers, and platform
-  loading code belong in `Runtime/Native/`.
-- Package exports and published `.d.ts` files must project `Contracts/`, not
-  expose `Runtime/` modules.
+  loading code belong in `src/zlink/runtime/native`.
+- Package exports and published `.d.ts` files must project the contract source,
+  not expose runtime modules.
 - If a runtime concrete class is exported for construction, its public behavior
-  must still be described by `Contracts/`.
+  must still be described by the public contract.
 
-## Contract Folder Layout
+## Contract Category Map
 
-`Contracts/` is the source ownership map for the package entrypoint and
-published TypeScript declarations.
+`src/zlink/contracts` is the source ownership map for the package entrypoint
+and published TypeScript declarations when category separation is needed.
 
 - `Core/`: context, context options, routing id, version/capability helpers, and
   utility contracts.
@@ -161,7 +177,7 @@ published TypeScript declarations.
   choices are builder steps.
 - Multipart payload is accumulated by repeated `message(...)` calls.
   `messages(...)` convenience is allowed when it delegates to the same builder
-  contract and is declared in `Contracts/`.
+  contract and is declared in the contract source.
 - Do not add operation-start method families such as `sendNoWait`,
   `publishWithFlags`, or `requestAsync`; keep one operation name and let the
   builder absorb the variation. Terminal builder methods may use idiomatic
@@ -239,7 +255,7 @@ but it must not change the meaning of core operations.
 - Published `.d.ts` files describe the public contract.
 - Native addon details do not leak through public types.
 - Exported helper functions and builder convenience methods are declared in
-  `Contracts/`, not only in runtime helpers.
+  the contract source, not only in runtime helpers.
 - Receive/subscription semantics match the shared binding policy.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.

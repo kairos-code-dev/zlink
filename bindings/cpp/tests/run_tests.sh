@@ -10,6 +10,7 @@ BUILD_DIR="${CPP_DIR}/build"
 CONFIGURE_ARGS=(
   -DZLINK_CORE_DIR=${ROOT_DIR}/core
   -DZLINK_CPP_CORE_BUILD_DIR=${CORE_BUILD_DIR}
+  -DZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON
   -DZLINK_CPP_BUILD_TESTS=ON
   -DZLINK_CPP_BUILD_SAMPLES=OFF
   -DZLINK_CPP_BUILD_BENCHMARKS=OFF
@@ -23,6 +24,8 @@ TEST_TARGETS=(
   test_cpp_contract_options
   test_cpp_contract_monitor
   test_cpp_contract_service
+  test_cpp_contract_actor_header
+  test_cpp_contract_layout_headers
   test_cpp_contract_behavior
   test_cpp_contract_optimization_guard
 )

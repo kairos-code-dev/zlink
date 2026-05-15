@@ -28,12 +28,12 @@ fn main() {
         .on_dispatch_event(move |info| {
             if info.event == SpotDispatchEvent::ActorReadable {
                 if let SpotDispatchSubject::Actor(_) = &info.subject {
-                    if let Some((_recv_info, part, _more)) = info
+                    if let Some(part) = info
                         .recv_actor_part_with_flags(RecvFlags::DONT_WAIT)
                         .expect("actor event recv failed")
                     {
                         *received_payload_cb.lock().unwrap() =
-                            Some(part.as_str().unwrap().to_owned());
+                            Some(part.message.as_str().unwrap().to_owned());
                     }
                 }
             }

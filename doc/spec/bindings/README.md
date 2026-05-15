@@ -20,9 +20,10 @@
 각 바인딩 구현이 실제로 외부에 제공해야 하는 public API contract를 정의한다.
 이 문서들이 규정하는 것은 공개 타입, 메서드, 시그니처, 반환값, 오류 의미이며,
 바인딩 구현이 노출하는 public 인터페이스는 이 계약과 달라지면 안 된다.
-또한 C를 제외한 wrapper binding은 `Contracts/`와 `Runtime/` 물리 구조를
-따른다. 이 고정 구조 안에서 각 바인딩은 같은 공개 계약을 유지하는 범위에서
-타입 설계, export 방식, package/module 선언을 언어 관례에 맞게 선택할 수 있다.
+또한 C를 제외한 wrapper binding은 public contract와 runtime implementation을
+분리한다. 이 분리는 역할 기준으로 고정되지만, 물리 디렉터리와 package/module
+path는 언어 관례에 맞게 정한다. 언어별 README가 지정한 실제 경로가 각 바인딩의
+구현 기준이다.
 
 이 문서는 단순 스타일 가이드가 아니다. 다음을 위한 설계 기준 문서다.
 - public API 설계 기준
@@ -180,11 +181,12 @@ core가 aggregate 함수와 `*_part` substrate를 모두 제공하던 시기에�
 
 각 binding은 public contract와 internal implementation surface를 분리해야 한다.
 이 문서와 각 언어별 README는 public API의 경계와 라이브러리 모양을 정의한다.
-정확한 함수, 메서드, 타입 목록은 C를 제외한 wrapper binding의
-`bindings/<lang>/src/<library-root>/Contracts/`가 소유한다. 설치 헤더,
-package entrypoint, `.d.ts`, `__init__.py`, `lib.rs` re-export는 이 계약을
-사용자에게 노출하는 projection이다. C는 예외로, `core/include/zlink.h`가
-public C ABI의 단일 기준이다.
+정확한 함수, 메서드, 타입 목록은 C를 제외한 wrapper binding의 언어별 README가
+지정한 public contract source가 소유한다. C++와 .NET은 이 위치가 실제
+`Contracts/` 폴더이고, Java, Node, Python, Go, Rust는 각 언어 README가 지정한
+package, module, export surface가 그 역할을 한다. 설치 헤더, package entrypoint,
+`.d.ts`, `__init__.py`, `lib.rs` re-export는 이 계약을 사용자에게 노출하는
+projection이다. C는 예외로, `core/include/zlink.h`가 public C ABI의 단일 기준이다.
 
 아래 원칙은 모든 binding에 공통으로 적용한다.
 
@@ -203,9 +205,11 @@ public C ABI의 단일 기준이다.
 - public contract 검증은 배포된 binding consumer가 보게 되는 entrypoint를
   기준으로 한다. 소스 트리 내부에 internal symbol이 존재한다는 이유로 public으로
   간주하지 않는다.
-- C++처럼 header-only 또는 header 중심으로 배포되는 바인딩은 primary public
-  class별 설치 헤더를 제공해야 한다. aggregate 호환 헤더는 유지할 수 있지만,
-  public class를 찾는 유일한 진입점이 되어서는 안 된다.
+- C++처럼 header-only 또는 header 중심으로 배포되는 바인딩은 설치되는
+  `include/` tree 안에서 `Contracts/`와 `Runtime/`을 직접 분리한다.
+  C++에서는 `bindings/cpp/src/`를 별도 계약 소유 위치로 만들지 않는다.
+  aggregate 호환 헤더는 유지할 수 있지만, public class를 찾는 유일한 진입점이
+  되어서는 안 된다.
 - internal 구조를 리팩터링할 자유는 보장하되, 그 자유는 public contract를
   유지하는 범위 안에서만 허용된다.
 
@@ -214,27 +218,35 @@ public이 아닌 API를 public처럼 사용하지 못하게 경계를 강제하�
 
 ### Language-Specific Contract / Runtime Separation
 
-C를 제외한 wrapper binding은 public contract와 runtime implementation을 물리
-폴더로 분리해야 한다. 이 폴더 구조는 바인딩마다 다르게 만들지 않는다. 각
-wrapper binding은 source root 아래에 `Contracts/`와 `Runtime/`을 두고, 그 안의
-카테고리 이름도 같은 이름으로 유지한다. 언어별 차이는 파일 확장자, 타입 설계,
-export 방식, package/module 선언에서만 허용한다.
+C를 제외한 wrapper binding은 public contract와 runtime implementation을 분리해야
+한다. 단, 분리 방식은 그 언어의 package, module, import path 규칙을 따라야 한다.
+언어별 README는 실제 repository path와 실제 package/module path를 함께 지정해야
+한다. `Contracts`와 `Runtime`은 공통 logical category 이름이며, 모든 언어에서
+그 단어를 그대로 public package 또는 import path로 만들라는 뜻이 아니다.
+C++는 header-only binding이므로 library root가 `bindings/cpp/include/zlink/`다.
+Java, Go, Rust, Python처럼 folder path가 package/module/import path와 직접 연결되는
+언어는 별도 ownership tree를 만들지 않고 실제 package/module tree 안에서 public
+계약과 runtime 구현을 분리한다. Node/TypeScript는 `package.json` exports가 public
+경계를 정하지만, source folder 이름도 deep import 오해를 만들 수 있으므로 언어별
+README의 실제 source path와 package export 규칙을 함께 따른다.
 
 C는 native C ABI baseline이다. C public contract는 `core/include/zlink.h`이고,
 `bindings/c`는 그 C API를 기준으로 sample, test, perf, packaging과 필요한 mapping
 정책을 정렬한다. C에는 별도 `Contracts/`와 `Runtime/` 계층을 강제하지 않는다.
 
-`Contracts/`는 사용자가 확인해야 하는 public contract source다. `Runtime/`은
+`Contracts`는 사용자가 확인해야 하는 public contract source 역할이다. `Runtime`은
 native handle, callback bridge, request progress pump, helper substrate 호출,
-object lifetime 보정 같은 구현 세부사항을 담는다. `Runtime/Native/`는 FFI,
-P/Invoke, JNI/Panama, N-API, cgo 같은 native bridge 전용 위치다.
+object lifetime 보정 같은 구현 세부사항 역할이다. `Native`는 FFI, P/Invoke,
+JNI/Panama, N-API, cgo 같은 native bridge 전용 역할이다. C++와 .NET처럼 문서가
+명시한 언어에서는 이 역할 이름을 실제 폴더명으로 사용하고, 다른 언어에서는
+언어별 README가 지정한 package/module/export 구조로 같은 역할을 표현한다.
 
-`Contracts/`와 `Runtime/`은 repository ownership folder다. 이것이 곧 public
-package, namespace, module, import path 이름이라는 뜻은 아니다. Java, Go, Rust,
-Python처럼 디렉터리 구조가 언어의 package/module 경로에 직접 영향을 주는
-언어는 `Contracts`나 `Runtime`을 public import path로 노출하지 않는다. 대신
-고정 폴더의 계약과 구현을 언어 관례에 맞는 public package/module로 projection
-한다.
+`Contracts`와 `Runtime`은 공통 역할 이름이다. 이것이 곧 public package,
+namespace, module, import path 이름이라는 뜻은 아니다. 디렉터리 구조가 언어의
+package/module 경로에 직접 영향을 주는 언어는 `Contracts`나 `Runtime`을 public
+import path로 노출하지 않는다. 대신 public package/module tree 안의 실제 경로로
+계약을 배치하고, runtime 구현은 `internal`, private module, unexported module,
+`pub(crate)` module 같은 언어별 비공개 경계 안에 둔다.
 
 #### Contract / Runtime Placement Rules
 
@@ -243,36 +255,37 @@ Python처럼 디렉터리 구조가 언어의 package/module 경로에 직접 �
 
 | 항목 | 위치 |
 |---|---|
-| 사용자가 호출하거나 타입으로 참조하는 공개 동작 계약 | `Contracts/<Category>/` |
-| public constructor, factory, builder 시작점의 계약 | `Contracts/<Category>/` |
-| public free function, static facade, extension helper, module function | `Contracts/<Category>/` |
-| public builder convenience method or helper | `Contracts/<Category>/` |
-| DTO, value object, enum, public error/result type | `Contracts/<Category>/` |
-| runtime concrete class, socket kernel, handle owner | `Runtime/<Category>/` |
-| request progress pump, callback trampoline, part-loop helper | `Runtime/<Category>/` |
-| native handle wrapper, FFI declaration, struct mirror, marshalling helper | `Runtime/Native/` |
-| generated native loading code, platform artifact lookup | `Runtime/Native/` |
+| 사용자가 호출하거나 타입으로 참조하는 공개 동작 계약 | public contract source의 해당 category |
+| public constructor, factory, builder 시작점의 계약 | public contract source의 해당 category |
+| public free function, static facade, extension helper, module function | public contract source의 해당 category |
+| public builder convenience method or helper | public contract source의 해당 category |
+| DTO, value object, enum, public error/result type | public contract source의 해당 category |
+| runtime concrete class, socket kernel, handle owner | runtime/internal source의 해당 category |
+| request progress pump, callback trampoline, part-loop helper | runtime/internal source의 해당 category |
+| native handle wrapper, FFI declaration, struct mirror, marshalling helper | native bridge source |
+| generated native loading code, platform artifact lookup | native bridge source |
 
 판정 규칙은 아래와 같다.
 
-- `Contracts/` 타입의 public signature는 `Runtime/Native/` 타입을 참조하지
+- public contract 타입의 public signature는 native bridge 타입을 참조하지
   않는다.
-- `Runtime/`에 user-facing method가 필요해지면 먼저 `Contracts/`에 계약을
-  추가한다. runtime 구현은 그 계약을 구현하거나 projection한다.
+- runtime/internal source에 user-facing method가 필요해지면 먼저 public contract
+  source에 계약을 추가한다. runtime 구현은 그 계약을 구현하거나 projection한다.
 - 사용자가 직접 호출하는 helper가 class method, static method, free function,
-  extension method, module function 중 어떤 모양이든 public 이면 `Contracts/`에
-  계약을 둔다. 단순 편의 함수라는 이유로 runtime 전용 위치에 남기지 않는다.
-- public factory가 `Runtime/` concrete type을 반환할 수는 있다. 단 그 생성
-  동작과 반환 타입의 사용자 관찰 가능 동작은 `Contracts/`에서 설명 가능해야
+  extension method, module function 중 어떤 모양이든 public 이면 public contract
+  source에 계약을 둔다. 단순 편의 함수라는 이유로 runtime 전용 위치에 남기지
+  않는다.
+- public factory가 runtime concrete type을 반환할 수는 있다. 단 그 생성 동작과
+  반환 타입의 사용자 관찰 가능 동작은 public contract source에서 설명 가능해야
   한다.
-- `Runtime/` 폴더명, module path, package path 자체를 public API로 노출하지
+- runtime/internal 폴더명, module path, package path 자체를 public API로 노출하지
   않는다. 다만 `Context`, socket, `SpotNode`, `Poller`, `Timer` 같은 기본 구현
   클래스나 타입은 언어별 public projection으로 노출할 수 있다. 이 경우 사용자가
-  관찰하는 public behavior는 `Contracts/`에서 설명 가능해야 한다.
-- `Contracts/` 타입의 public signature는 native bridge 타입을 참조하지 않는다.
+  관찰하는 public behavior는 public contract source에서 설명 가능해야 한다.
+- public contract 타입의 public signature는 native bridge 타입을 참조하지 않는다.
   concrete value object 내부가 native-backed storage를 써야 하는 경우에도
   P/Invoke/JNI/N-API/cgo 선언과 marshalling 전용 struct mirror는
-  `Runtime/Native/`에 둔다.
+  native bridge source에 둔다.
 - 값만 담는 DTO/value/enum/error/result 타입은 구체 타입으로 둔다. symmetry를
   이유로 의미 없는 interface, trait, protocol로 감싸지 않는다.
 
@@ -285,38 +298,38 @@ Python처럼 디렉터리 구조가 언어의 package/module 경로에 직접 �
 - `Service/`: registry, discovery, SPOT, actor, topology.
 - `Errors/`: public error/result/exception domains and runtime mapping.
 - `Enums/`: public enum domains and runtime enum conversion.
-- `Native/`: `Runtime/` 아래에만 두는 native bridge category.
+- `Native/`: runtime/internal source 아래에만 두는 native bridge category.
 
-이 카테고리 이름은 대소문자까지 고정한다. 바인딩별로 번역하거나 줄여 쓰지
-않는다. 특정 언어에서 당장 파일이 없더라도 이 구조를 유지한다. 새 카테고리가
-필요하면 이 공통 정책과 C를 제외한 언어별 README의 구조를 함께 바꾼 뒤 사용한다.
-`Contracts/Native/`는 만들지 않는다. native bridge는 항상 `Runtime/Native/`에
-둔다.
+이 카테고리 이름은 문서와 리뷰 기준에서 고정한다. 실제 파일명과 폴더명은 언어별
+README가 지정한 관례를 따른다. 새 카테고리가 필요하면 이 공통 정책과 C를 제외한
+언어별 README의 구조를 함께 바꾼 뒤 사용한다. public contract source에는
+`Native` category를 만들지 않는다. native bridge는 항상 runtime/internal source
+아래에 둔다.
 
-wrapper binding 공통 구조는 아래 모양으로 고정한다. C를 제외한 각 언어 README는
-같은 구조를 그대로 보여야 하며, 실제 구현도 이 구조를 목표로 정리한다.
+wrapper binding 공통 구조는 아래 역할 구조로 고정한다. C를 제외한 각 언어 README는
+자기 언어의 실제 repository path와 package/module/import path로 이 구조를 다시
+보여야 하며, 구현도 그 구조와 일치해야 한다.
 
 ```text
 bindings/<lang>/
-+-- src/
-|   +-- <library-root>/
-|   |   +-- Contracts/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   |   +-- Enums/
-|   |   +-- Runtime/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   |   +-- Enums/
-|   |   |   +-- Native/
++-- <public-package-or-module-root>/
+|   +-- <public contract categories>
+|   |   +-- Core
+|   |   +-- Messaging
+|   |   +-- Sockets
+|   |   +-- Monitoring
+|   |   +-- Service
+|   |   +-- Errors
+|   |   +-- Enums
+|   +-- <private runtime/internal area>
+|   |   +-- Core
+|   |   +-- Messaging
+|   |   +-- Sockets
+|   |   +-- Monitoring
+|   |   +-- Service
+|   |   +-- Errors
+|   |   +-- Enums
+|   |   +-- Native
 +-- codecs/
 +-- tests/
 +-- samples/
@@ -343,13 +356,13 @@ bindings/<lang>/
 | Binding | 적용 기준 |
 |---|---|
 | C | `core/include/zlink.h`가 public C ABI의 단일 기준이다. `bindings/c`는 별도 contract/runtime 계층을 추가하지 않고, C API 기준의 mapping, sample, test, perf, packaging 정책만 정렬한다. |
-| C++ | `src/zlink/Contracts/`가 공개 C++ 계약 위치다. 설치되는 `include/zlink/...` 헤더는 이 계약의 projection이다. RAII class와 concrete value를 우선하고, public class를 virtual interface로 과도하게 감싸지 않는다. |
-| .NET | `src/Zlink/Contracts/` 아래에 public contract interface와 value/DTO 타입을 모으고, native handle 구현과 callback bridge는 같은 카테고리의 `Runtime/` 아래에 둔다. DTO와 value object는 concrete로 유지한다. |
-| Java | `src/zlink/Contracts/`가 공개 계약 위치다. Java package와 JPMS module export는 이 계약을 `systems.zlink` 아래의 소문자 package로 projection한다. `systems.zlink.Contracts` 같은 public package를 만들지 않는다. |
-| Node | `src/zlink/Contracts/`가 공개 계약 위치다. TypeScript `type`/`interface`, `index.ts`, `.d.ts`, package export는 이 계약을 노출하는 projection이다. runtime class 구현과 native addon은 `Runtime/` 아래에 숨긴다. |
-| Python | `src/zlink/Contracts/`가 공개 계약 위치다. `__init__.py` export와 type hint는 이 계약을 `zlink` package로 projection한다. `Protocol`은 type checking 목적일 때만 사용하고, native/FFI 구현은 `Runtime/Native/`에 둔다. |
-| Go | `src/zlink/Contracts/`가 공개 계약 위치다. Go package export는 이 계약을 flat `zlink` package로 projection한다. 제공자 package가 큰 interface를 미리 만들지 않고, concrete exported type과 작은 method set을 유지한다. |
-| Rust | `src/zlink/Contracts/`가 공개 계약 위치다. `lib.rs` re-export와 rustdoc public module은 이 계약을 idiomatic Rust module로 projection한다. resource 동작 추상화가 필요한 경우에만 trait를 쓴다. |
+| C++ | `bindings/cpp/include/zlink/Contracts/`가 공개 C++ 계약 위치다. `bindings/cpp/include/zlink/Runtime/`은 header-only 구현 세부 위치다. `bindings/cpp/src/`를 계약/런타임 소유 위치로 쓰지 않는다. RAII class와 concrete value를 우선하고, public class를 virtual interface로 과도하게 감싸지 않는다. |
+| .NET | `bindings/dotnet/src/Zlink/Contracts/` 아래에 public contract interface와 value/DTO 타입을 모으고, native handle 구현과 callback bridge는 같은 카테고리의 `Runtime/` 아래에 둔다. DTO와 value object는 concrete로 유지한다. |
+| Java | `bindings/java/src/main/java/systems/zlink/` 아래의 public package가 공개 계약 위치다. Java는 URL 기반 package layout을 따른다. 별도 `bindings/java/src/zlink/Contracts/` tree를 만들지 않는다. runtime/native bridge는 `systems.zlink.internal` 아래에 둔다. |
+| Node | `bindings/node/src/index.ts`와 `package.json` exports가 public contract projection이다. contract source는 `bindings/node/src/zlink/contracts/` 같은 lower-case source path에 두고, runtime/native addon 구현은 `bindings/node/src/zlink/runtime/` 아래에 숨긴다. |
+| Python | `bindings/python/src/zlink/`가 public package root다. public contract는 `zlink` package와 lower-case public subpackages에 배치하고, native/FFI 구현은 `_runtime` 또는 `_native` 같은 private package 아래에 둔다. `zlink.Contracts`나 `zlink.Runtime` public import path를 만들지 않는다. |
+| Go | `bindings/go/`가 module/package root다. exported public API는 root package `zlink`와 필요한 실제 subpackage에 배치하고, cgo/runtime 구현은 `internal/` 아래에 둔다. `src/zlink/Contracts` 같은 별도 tree를 만들지 않는다. |
+| Rust | `bindings/rust/src/lib.rs`와 lower-case public modules가 public contract projection이다. public modules는 `contracts` 같은 관리용 이름보다 domain module 이름을 쓰고, FFI/runtime 구현은 private or `pub(crate)` `runtime`/`ffi` modules에 둔다. |
 
 리뷰에서는 단순히 "interface가 있는가"가 아니라 아래 질문으로 판단한다.
 
@@ -359,6 +372,27 @@ bindings/<lang>/
 - 값 타입을 추상화하느라 오히려 equality, ownership, 비용 모델이 흐려지지
   않았는가?
 - 언어 생태계의 자연스러운 캡슐화 수단을 사용했는가?
+
+#### Required Physical Layout By Binding
+
+각 언어별 README는 아래 경로를 그대로 기준으로 삼아야 한다. 구현 작업자는 먼저
+이 구조와 실제 소스 위치를 맞춘 뒤 API, sample, perf를 수정한다. public package,
+namespace, module, import path가 아래 `Contracts`나 `Runtime` 이름을 직접
+노출한다는 뜻은 아니다.
+
+| Binding | Contract root | Runtime root | Public projection |
+|---|---|---|---|
+| C++ | `bindings/cpp/include/zlink/Contracts/` | `bindings/cpp/include/zlink/Runtime/` | `#include <zlink.hpp>` and installed `include/zlink/...` headers |
+| .NET | `bindings/dotnet/src/Zlink/Contracts/` | `bindings/dotnet/src/Zlink/Runtime/` | `Systems.Zlink` namespace and package entrypoints |
+| Java | `bindings/java/src/main/java/systems/zlink/` and public `systems.zlink.service.*` packages | `bindings/java/src/main/java/systems/zlink/internal/` | exported `systems.zlink` JPMS packages and Maven artifact |
+| Node | `bindings/node/src/index.ts` and `bindings/node/src/zlink/contracts/` | `bindings/node/src/zlink/runtime/` | package root export, generated `.d.ts`, and `package.json` exports |
+| Python | `bindings/python/src/zlink/` public package and documented lower-case subpackages | `bindings/python/src/zlink/_runtime/` and `bindings/python/src/zlink/_native/` | `zlink` package exports from `__init__.py` |
+| Go | `bindings/go/` root package and real exported subpackages | `bindings/go/internal/` | exported identifiers in package `zlink` |
+| Rust | `bindings/rust/src/lib.rs` and lower-case public modules | private or `pub(crate)` modules such as `runtime` and `ffi` | `lib.rs` re-exports and public rustdoc modules |
+
+각 언어별 README는 `Core`, `Messaging`, `Sockets`, `Monitoring`, `Service`,
+`Errors`, `Enums` 역할이 실제 소스의 어디에 배치되는지 보여야 한다. `Native`는
+runtime/native bridge 역할에만 존재하며 public contract 역할로 만들지 않는다.
 
 ### Package / Namespace Identity Policy
 

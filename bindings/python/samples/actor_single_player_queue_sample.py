@@ -48,7 +48,10 @@ def main():
                                 monitor, zlink.MonitorEventMask.ACCEPTED
                             )
                             client.sendall(b"seed")
-                            with stream.recv() as stream_msg:
+                            stream_msg = zlink.Received()
+                            if not stream.recv_into(stream_msg):
+                                raise AssertionError("expected stream payload")
+                            with stream_msg:
                                 session_rid = stream_msg.routing_id
                             submit_request_op(
                                 stream.bind_actor(session_rid, actor_ref),

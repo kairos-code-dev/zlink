@@ -142,17 +142,15 @@ endfunction()
 
 zlink_cpp_ensure_core_target(ZLINK_CPP_CORE_TARGET ZLINK_CPP_RUNTIME_DIR)
 
-add_library(zlink-cpp STATIC
-  src/request_progress.cpp
-)
-target_include_directories(zlink-cpp PUBLIC
+add_library(zlink-cpp INTERFACE)
+target_include_directories(zlink-cpp INTERFACE
   ${ZLINK_CORE_DIR}/include
   ${ZLINK_CORE_DIR}/external/boost
   ${CMAKE_CURRENT_LIST_DIR}/include
 )
-target_link_libraries(zlink-cpp PUBLIC ${ZLINK_CPP_CORE_TARGET})
+target_link_libraries(zlink-cpp INTERFACE ${ZLINK_CPP_CORE_TARGET})
 
-target_compile_features(zlink-cpp PUBLIC cxx_std_20)
+target_compile_features(zlink-cpp INTERFACE cxx_std_20)
 
 find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)
@@ -346,6 +344,10 @@ if(ZLINK_CPP_BUILD_TESTS)
   add_cpp_contract_test(
     test_cpp_contract_actor_header
     tests/contract/test_cpp_contract_actor_header.cpp
+  )
+  add_cpp_contract_test(
+    test_cpp_contract_layout_headers
+    tests/contract/test_cpp_contract_layout_headers.cpp
   )
   add_cpp_contract_test(
     test_cpp_contract_behavior

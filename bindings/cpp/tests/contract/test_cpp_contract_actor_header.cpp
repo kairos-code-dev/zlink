@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include <zlink/services/actor.hpp>
+#include <zlink.hpp>
 
 #include <optional>
 #include <type_traits>

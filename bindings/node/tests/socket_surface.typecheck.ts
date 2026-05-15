@@ -100,8 +100,8 @@ router.options.setConnectRoutingId(peerRoutingId);
 
 const stream = new zlink.StreamSocket(ctx);
 stream.send(routingId).message('ok').submit();
-const streamAllocReceived = stream.recv();
-streamAllocReceived?.close();
+const streamReceived = new zlink.Received();
+stream.recv(streamReceived);
 stream.onPacket((sourceRid, header, body) => {
   sourceRid.toString();
   header.data();
@@ -215,6 +215,8 @@ diagnosticMessage.close();
 constructedMessage.data();
 constructedMessage.close();
 
+// @ts-expect-error stream recv requires caller-provided output storage.
+stream.recv();
 // @ts-expect-error send payloads must go through operation builders.
 dealer.send('direct-payload');
 // @ts-expect-error publish payloads must go through operation builders.

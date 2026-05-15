@@ -77,7 +77,7 @@ public readonly struct RoutingId : IEquatable<RoutingId>
 
     public int Size => _bytes?.Length ?? 0;
 
-    internal bool IsEmpty => Size == 0;
+    public bool IsEmpty => Size == 0;
 
     public ReadOnlySpan<byte> ToBytes()
     {

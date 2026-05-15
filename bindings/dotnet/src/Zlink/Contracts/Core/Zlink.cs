@@ -7,6 +7,12 @@ namespace Systems.Zlink;
 
 public static class Zlink
 {
+    public static event Action<Exception>? UnhandledCallbackException
+    {
+        add => Runtime.UnhandledCallbackException += value;
+        remove => Runtime.UnhandledCallbackException -= value;
+    }
+
     internal static int Errno()
     {
         return ZlinkRuntime.Errno();

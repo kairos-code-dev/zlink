@@ -121,13 +121,14 @@ internal static partial class PerfRunner
         return ResolveSingleConnectReadyTimeoutMs();
     }
 
-    internal static int SendBlocking(SocketBase socket, ReadOnlySpan<byte> buffer,
+    internal static int SendBlocking(IMessageSocket socket,
+        ReadOnlySpan<byte> buffer,
         SendFlags flags = SendFlags.None)
     {
         return PerfSocketIo.Send(socket, buffer, flags);
     }
 
-    internal static int SendBlocking(SocketBase socket, byte[] buffer,
+    internal static int SendBlocking(IMessageSocket socket, byte[] buffer,
         SendFlags flags = SendFlags.None)
     {
         if (buffer == null)
@@ -153,7 +154,7 @@ internal static partial class PerfRunner
 
     // PERF_SINGLE_TEST_POLICY § 1.4: send the wire-level stop token once
     // with a blocking send; the receiver exits when it observes the token.
-    internal static void SendStopTokenBlocking(SocketBase sender, string tag)
+    internal static void SendStopTokenBlocking(IMessageSocket sender, string tag)
     {
         try
         {
@@ -167,8 +168,8 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void SendRoutedStopTokenBlocking(
-        RoutedMessageSocketBase sender, RoutingId routingId, string tag)
+    internal static void SendRoutedStopTokenBlocking(IRoutedMessageSocket sender,
+        RoutingId routingId, string tag)
     {
         try
         {
@@ -183,8 +184,8 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void PublishStopTokenBlocking(
-        PublisherSocketBase sender, string topic, string tag)
+    internal static void PublishStopTokenBlocking(IPublisherSocket sender,
+        string topic, string tag)
     {
         try
         {
@@ -199,7 +200,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void PublishSpotStopTokenBlocking(Spot spot, string topic,
+    internal static void PublishSpotStopTokenBlocking(ISpot spot, string topic,
         string tag)
     {
         try

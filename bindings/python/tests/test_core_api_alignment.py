@@ -56,7 +56,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertFalse(hasattr(zlink.DealerSocket, "request_callback"))
         self.assertFalse(hasattr(zlink.RouterSocket, "request_callback"))
         self.assertFalse(hasattr(zlink.RouterSocket, "request_to_spot_callback"))
-        self.assertTrue(hasattr(zlink.Spot, "receive_subscription_event"))
+        self.assertFalse(hasattr(zlink.Spot, "receive_subscription_event"))
+        self.assertTrue(hasattr(zlink.Spot, "receive_subscription_event_into"))
         self.assertTrue(hasattr(zlink.SpotNode, "attach_channel_dealer"))
         self.assertTrue(hasattr(zlink.SpotNode, "attach_channel_dealer_manual"))
         self.assertTrue(hasattr(zlink.SpotNode, "attach_pub_ingress"))
@@ -154,9 +155,15 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     endpoint = "inproc://py-canonical-pair"
                     sender.bind(endpoint)
                     receiver.connect(endpoint)
-                    self.assertIsNone(receiver.recv(flags=zlink.RecvFlags.DONT_WAIT))
+                    received = zlink.Received()
+                    self.assertFalse(
+                        receiver.recv_into(received, flags=zlink.RecvFlags.DONT_WAIT)
+                    )
                     sender.send().message(b"payload").flags(zlink.SendFlags.NONE).submit()
-                    with receiver.recv(flags=zlink.RecvFlags.NONE) as received:
+                    self.assertTrue(
+                        receiver.recv_into(received, flags=zlink.RecvFlags.NONE)
+                    )
+                    with received:
                         self.assertTrue(received.is_single_part())
                         self.assertEqual(received.first_part().to_bytes(), b"payload")
                         self.assertEqual(received.single_part_or_throw().to_bytes(), b"payload")
@@ -234,7 +241,9 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     dealer_socket.connect(endpoint)
 
                     def responder():
-                        with router_socket.recv() as received:
+                        received = zlink.Received()
+                        self.assertTrue(router_socket.recv_into(received))
+                        with received:
                             received.reply().message(b"pong").submit()
 
                     threading.Thread(target=responder, daemon=True).start()
@@ -272,7 +281,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertTrue(hasattr(spot, "on_dispatch_event"))
                     self.assertTrue(hasattr(spot, "send_channel"))
                     self.assertTrue(hasattr(spot, "request_channel"))
-                    self.assertTrue(hasattr(spot, "receive_subscription_event"))
+                    self.assertFalse(hasattr(spot, "receive_subscription_event"))
                     self.assertTrue(hasattr(spot, "receive_subscription_event_into"))
                     self.assertFalse(hasattr(spot, "on_subscribe"))
 

@@ -102,14 +102,10 @@ public sealed class test_socket_surface
             nameof(DealerSocket.AttachDiscovery)));
         Assert.False(HasPublicInstanceMethod(typeof(XSubSocket),
             nameof(DealerSocket.AttachDiscovery)));
-        Assert.False(HasPublicInstanceMethod(typeof(PairSocket),
-            nameof(MessageSocketBase.OnReceive)));
-        Assert.False(HasPublicInstanceMethod(typeof(DealerSocket),
-            nameof(MessageSocketBase.OnReceive)));
-        Assert.False(HasPublicInstanceMethod(typeof(RouterSocket),
-            nameof(RoutedMessageSocketBase.OnReceive)));
-        Assert.False(HasPublicInstanceMethod(typeof(StreamSocket),
-            nameof(RoutedMessageSocketBase.OnReceive)));
+        Assert.False(HasPublicInstanceMethod(typeof(PairSocket), "OnReceive"));
+        Assert.False(HasPublicInstanceMethod(typeof(DealerSocket), "OnReceive"));
+        Assert.False(HasPublicInstanceMethod(typeof(RouterSocket), "OnReceive"));
+        Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "OnReceive"));
         Assert.True(HasPublicInstanceMethod(typeof(XPubSocket),
             nameof(XPubSocket.ReceiveSubscriptionEvent)));
         Assert.False(HasPublicInstanceMethod(typeof(XPubSocket),
@@ -388,7 +384,7 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
             nameof(DealerSocket.Request)));
         Assert.False(HasPublicInstanceMethod(typeof(DealerSocket),
-            nameof(DealerSocket.OnReceive), typeof(SocketRecvHandler)));
+            "OnReceive"));
         Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
             nameof(RouterSocket.Request), typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
@@ -415,11 +411,10 @@ public sealed class test_socket_surface
         Type[] exported = typeof(SocketBase).Assembly.GetExportedTypes();
 
         Assert.DoesNotContain(exported, type => type.Name == "Socket");
-        Assert.DoesNotContain(exported, type => type.Name == nameof(SocketOptions));
-        Assert.DoesNotContain(exported,
-            type => type.Name == typeof(SocketOptionKey<int>).Name);
-        Assert.DoesNotContain(exported, type => type.Name == nameof(SocketOption));
-        Assert.DoesNotContain(exported, type => type.Name == nameof(ContextOption));
+        Assert.DoesNotContain(exported, type => type.Name == "SocketOptions");
+        Assert.DoesNotContain(exported, type => type.Name == "SocketOptionKey`1");
+        Assert.DoesNotContain(exported, type => type.Name == "SocketOption");
+        Assert.DoesNotContain(exported, type => type.Name == "ContextOption");
     }
 
     [Fact]
@@ -762,7 +757,7 @@ public sealed class test_socket_surface
         Assert.True(typeof(AutoConnectType).IsEnum);
         Assert.Equal(typeof(int), Enum.GetUnderlyingType(typeof(SubjectKind)));
 
-        Assert.Null(typeof(RoutingId).GetProperty("IsEmpty",
+        Assert.NotNull(typeof(RoutingId).GetProperty("IsEmpty",
             BindingFlags.Instance | BindingFlags.Public));
         Assert.True(HasPublicInstanceMethod(typeof(Message), "GetProperty",
             typeof(string)));

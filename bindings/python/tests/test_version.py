@@ -34,7 +34,9 @@ class VersionTests(unittest.TestCase):
                     s2.connect(endpoint)
                     payload = b"ping"
                     s1.send().message(payload).submit()
-                    with s2.recv() as received:
+                    received = zlink.Received()
+                    self.assertTrue(s2.recv_into(received))
+                    with received:
                         self.assertEqual(received.to_bytes_list(), [payload])
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ public final class PairSocket extends Socket {
     }
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
     SendResult sendNoWaitResult(List<Message> parts) { return super.sendNoWaitResult(parts); }
-    public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
+    Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
     /** Canonical caller-provided storage recv. See doc/spec/bindings/README.md. */
     public boolean recv(Received result, RecvFlags flags) {
         java.util.Objects.requireNonNull(result, "result");

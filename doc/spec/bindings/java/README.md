@@ -4,24 +4,31 @@
 
 This document defines the expected Java library shape. It is not an exhaustive
 list of every class or method. The concrete public contract is
-`bindings/java/src/zlink/Contracts/`.
+`bindings/java/src/main/java/systems/zlink/` and its documented public
+subpackages.
 
-A Java implementation is aligned when `Contracts/`, exported package
-projections, tests, samples, perf runners, and runtime behavior follow this
-blueprint and map the stable capabilities of `core/include/zlink.h` into
-Java-idiomatic APIs.
+A Java implementation is aligned when the `systems.zlink` package tree, tests,
+samples, perf runners, and runtime behavior follow this blueprint and map the
+stable capabilities of `core/include/zlink.h` into Java-idiomatic APIs.
 
 ## Public Contract Source
 
-- Public contract: `bindings/java/src/zlink/Contracts/`.
-- Public package projection: `systems.zlink` and documented
-  `systems.zlink.service.*` packages.
+- Public contract source:
+  `bindings/java/src/main/java/systems/zlink/` and documented
+  `bindings/java/src/main/java/systems/zlink/service/*/` packages.
+- Runtime implementation:
+  `bindings/java/src/main/java/systems/zlink/internal/`.
+- Native bridge:
+  `bindings/java/src/main/java/systems/zlink/internal/Native*.java`,
+  `bindings/java/src/main/resources/native/`, and `bindings/java/native/`.
+- Public package projection: `systems.zlink` and documented service packages
+  under `systems.zlink.service`.
 - Internal packages: `systems.zlink.internal` and any non-exported native
-  bridge packages.
+  bridge package.
 - Module boundary: if JPMS is used, only public packages are exported.
 - Documentation role: this README defines the library shape and required
-  semantic coverage. `Contracts/` owns the exact member list; Java source and
-  generated API docs must project it intentionally.
+  semantic coverage. The Java package tree owns the exact public member list.
+  Java source and generated API docs must project it intentionally.
 
 Applications, perf, and samples must not import internal packages or native
 bridge classes.
@@ -31,48 +38,86 @@ bridge classes.
 Use these paths consistently when changing the Java binding.
 
 - Public contract:
-  `bindings/java/src/zlink/Contracts/`.
+  `bindings/java/src/main/java/systems/zlink/`.
+- Public service contract:
+  `bindings/java/src/main/java/systems/zlink/service/registry/`,
+  `bindings/java/src/main/java/systems/zlink/service/discovery/`, and
+  `bindings/java/src/main/java/systems/zlink/service/spot/`.
 - Runtime implementation:
-  `bindings/java/src/zlink/Runtime/`.
+  `bindings/java/src/main/java/systems/zlink/internal/`.
 - Native bridge/artifacts:
-  `bindings/java/src/zlink/Runtime/Native/` and `bindings/java/native/`.
-- Java package projection: `bindings/java/src/main/java/systems/zlink/`.
+  `bindings/java/src/main/java/systems/zlink/internal/`,
+  `bindings/java/src/main/resources/native/`, and `bindings/java/native/`.
 - Codec extensions: `bindings/java/codec/`.
 - Tests: `bindings/java/src/test/` and `bindings/java/tests/`.
 - Samples: `bindings/java/samples/`.
 - Perf: `bindings/java/perf/`.
 
 If the project uses JPMS, package exports must match the public package list.
-`Contracts/` and `Runtime/` are fixed repository folders. Java packages and
-JPMS exports are the Java projection of that contract.
-Do not expose `systems.zlink.Contracts` or `systems.zlink.Runtime` packages.
+Java uses URL-style package naming in its source tree. Do not create
+`bindings/java/src/zlink/Contracts/` or `bindings/java/src/zlink/Runtime/`.
+Do not create `systems.zlink.Contracts` or `systems.zlink.Runtime` packages.
+The package tree below is the implementation and review structure.
 
 ```text
 bindings/java/
 +-- src/
-|   +-- zlink/
-|   |   +-- Contracts/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   |   +-- Enums/
-|   |   +-- Runtime/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   |   +-- Enums/
-|   |   |   +-- Native/
 |   +-- main/
 |   |   +-- java/
 |   |   |   +-- systems/
 |   |   |   |   +-- zlink/
+|   |   |   |   |   +-- AtomicCounter.java
+|   |   |   |   |   +-- Context.java
+|   |   |   |   |   +-- Message.java
+|   |   |   |   |   +-- PairSocket.java
+|   |   |   |   |   +-- DealerSocket.java
+|   |   |   |   |   +-- RouterSocket.java
+|   |   |   |   |   +-- PubSocket.java
+|   |   |   |   |   +-- SubSocket.java
+|   |   |   |   |   +-- XPubSocket.java
+|   |   |   |   |   +-- XSubSocket.java
+|   |   |   |   |   +-- StreamSocket.java
+|   |   |   |   |   +-- Received.java
+|   |   |   |   |   +-- TopicMessage.java
+|   |   |   |   |   +-- SubscriptionEvent.java
+|   |   |   |   |   +-- Poller.java
+|   |   |   |   |   +-- Timer.java
+|   |   |   |   |   +-- ZlinkException.java
+|   |   |   |   |   +-- service/
+|   |   |   |   |   |   +-- registry/
+|   |   |   |   |   |   |   +-- Registry.java
+|   |   |   |   |   |   |   +-- RegistryQueryClient.java
+|   |   |   |   |   |   +-- discovery/
+|   |   |   |   |   |   |   +-- Discovery.java
+|   |   |   |   |   |   +-- spot/
+|   |   |   |   |   |   |   +-- SpotNode.java
+|   |   |   |   |   |   |   +-- Spot.java
+|   |   |   |   |   |   |   +-- Actor.java
+|   |   |   |   |   |   |   +-- SendOp.java
+|   |   |   |   |   |   |   +-- RequestOp.java
+|   |   |   |   |   |   |   +-- ReplyOp.java
+|   |   |   |   |   |   |   +-- ActorJoinOp.java
+|   |   |   |   |   +-- internal/
+|   |   |   |   |   |   +-- Native.java
+|   |   |   |   |   |   +-- NativeLayouts.java
+|   |   |   |   |   |   +-- NativeHelpers.java
+|   |   |   |   |   |   +-- LibraryLoader.java
+|   |   |   |   |   |   +-- MessagePartsBuffer.java
+|   |   |   |   |   |   +-- RequestProgressPump.java
+|   |   |   |   |   |   +-- RequestReplySupport.java
+|   |   |   |   |   |   +-- SocketOperations.java
+|   |   +-- resources/
+|   |   |   +-- native/
+|   |   |   |   +-- linux-x86_64/
+|   |   |   |   +-- linux-aarch64/
+|   |   |   |   +-- darwin-x86_64/
+|   |   |   |   +-- darwin-aarch64/
+|   |   |   |   +-- windows-x86_64/
+|   |   |   |   +-- windows-aarch64/
 |   +-- test/
+|   |   +-- java/
+|   |   |   +-- systems/
+|   |   |   |   +-- zlink/
 +-- native/
 +-- codec/
 +-- tests/
@@ -80,11 +125,32 @@ bindings/java/
 +-- perf/
 ```
 
+The package tree itself is the review and ownership layout. Public contract
+categories map to Java packages as follows:
+
+| Contract category | Java package path |
+|---|---|
+| Core | `systems/zlink/*.java` for context, runtime helpers, ids, and utility resources |
+| Messaging | `systems/zlink/Message.java`, `Received.java`, `TopicMessage.java`, subscription and callback types |
+| Sockets | `systems/zlink/*Socket.java` and socket option/value types |
+| Monitoring | `systems/zlink/Monitor*.java`, `Poller.java`, `PollEvent.java`, `Timer.java` |
+| Service | `systems/zlink/service/registry`, `systems/zlink/service/discovery`, and `systems/zlink/service/spot` |
+| Errors | `systems/zlink/*Exception.java` and result-domain enums |
+| Enums | public enum classes under `systems/zlink` or the matching service package |
+| Runtime/Native | `systems/zlink/internal` only |
+
+If a public class appears in `systems.zlink` or `systems.zlink.service.*`,
+reviewers must be able to explain which contract category it belongs to from
+this table. If a class exists only to hold JNI/Panama calls, raw handles,
+native struct mirrors, marshalling, request progress, part loops, or callback
+trampolines, it must stay under `systems.zlink.internal`, and JPMS must not
+export that package.
+
 ## API Change Workflow
 
 When mapping a new core capability:
 
-1. Choose the fixed `Contracts/` category that owns the domain.
+1. Choose the shared contract category that owns the domain.
 2. Add a Java class, record, interface, builder, or exception using Java
    conventions.
 3. Update the public package and JPMS projection when the new API is public.
@@ -118,22 +184,25 @@ options should remain concrete unless Java callers gain a real abstraction.
 ## Contract / Runtime Placement Rules
 
 - Public interfaces, records/classes, enums, exceptions, and builder contracts
-  belong in `Contracts/`.
+  belong in `systems.zlink` or a documented public `systems.zlink.service.*`
+  package.
 - Public static helpers, factory facades, package-level utility classes, and
-  builder convenience helpers belong in `Contracts/` when callers can use them
-  directly.
+  builder convenience helpers belong in public packages when callers can use
+  them directly.
 - Runtime implementation classes, handle owners, request pumps, callback
-  adapters, and part-loop helpers belong in `Runtime/`.
+  adapters, and part-loop helpers belong in `systems.zlink.internal`.
 - JNI/Panama downcalls, native struct mirrors, marshalling helpers, and
-  platform loading code belong in `Runtime/Native/`.
-- Public `systems.zlink` packages must project `Contracts/`, not expose
-  `Runtime/` packages.
+  platform loading code belong in `systems.zlink.internal` or the native
+  artifact/resource area.
+- Public `systems.zlink` packages must project the contract categories, not
+  expose runtime packages.
 - If a runtime concrete class is public for construction, its public behavior
-  must still be described by `Contracts/`.
+  must still be described by the public contract.
 
-## Contract Folder Layout
+## Contract Category Map
 
-`Contracts/` is the source ownership map for public Java packages.
+The public `systems.zlink` packages are the source ownership map for public
+Java APIs.
 
 - `Core/`: context, context options, routing id, version/capability helpers, and
   utility contracts.
@@ -160,7 +229,7 @@ options should remain concrete unless Java callers gain a real abstraction.
   choices are builder steps.
 - Multipart payload is accumulated by repeated `message(...)` calls.
   `messages(...)` convenience is allowed when it delegates to the same builder
-  contract and is declared in `Contracts/`.
+  contract and is declared in the public package category.
 - Do not add operation-start method families such as `sendNoWait`,
   `publishWithFlags`, or `requestAsync`; keep one operation name and let the
   builder absorb the variation. Terminal builder methods may use idiomatic
@@ -245,8 +314,8 @@ Java receive APIs should avoid unnecessary allocation while staying idiomatic.
 - Internal packages do not leak through public signatures.
 - Resource classes close deterministically.
 - DTOs and records remain concrete.
-- Public static helpers and builder convenience methods are declared in
-  `Contracts/`, not only in runtime helpers.
+- Public static helpers and builder convenience methods are declared in public
+  packages, not only in runtime helpers.
 - Receive/subscription semantics match the shared binding policy.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.

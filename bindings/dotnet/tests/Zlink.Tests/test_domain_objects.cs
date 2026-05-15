@@ -28,40 +28,10 @@ public sealed class test_domain_objects
     }
 
     [Fact]
-    public void received_single_part_or_throw_enforces_shape()
-    {
-        using var part = Message.FromString("one");
-        var received = new Received(CoreTestSupport.RoutingIdUtf8("route-a"),
-            new[] { part.Move() });
-
-        Assert.True(received.IsSinglePart);
-        Assert.Equal(CoreTestSupport.RoutingIdUtf8("route-a").ToHex(),
-            received.RoutingId?.ToString());
-        using Message single = received.SinglePartOrThrow();
-        Assert.Equal("one", single.GetString());
-    }
-
-    [Fact]
-    public void topic_message_single_part_or_throw_enforces_shape()
-    {
-        using var first = Message.FromString("a");
-        using var second = Message.FromString("b");
-        var topicMessage = new TopicMessage(CoreTestSupport.RoutingIdUtf8("route-b"),
-            "prices", new[] { first.Move(), second.Move() });
-
-        Assert.False(topicMessage.IsSinglePart);
-        Assert.Equal("prices", topicMessage.Topic);
-        Assert.Equal(CoreTestSupport.RoutingIdUtf8("route-b").ToHex(),
-            topicMessage.RoutingId?.ToString());
-        Assert.Throws<ZlinkRecvException>(() =>
-            topicMessage.SinglePartOrThrow());
-    }
-
-    [Fact]
     public void actor_ref_keeps_generation_zero_as_unchecked_ref()
     {
-        ActorRef actor = ActorRef.Unchecked(
-            CoreTestSupport.RoutingIdUtf8("node-a"), "actor-a");
+        ActorRef actor = new(CoreTestSupport.RoutingIdUtf8("node-a"),
+            "actor-a", generation: 0);
 
         Assert.True(actor.IsUnchecked);
         Assert.Equal(0UL, actor.Generation);

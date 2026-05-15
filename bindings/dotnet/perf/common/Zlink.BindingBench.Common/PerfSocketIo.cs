@@ -3,21 +3,13 @@ using Systems.Zlink;
 
 public static class PerfSocketIo
 {
-    public static int Send(SocketBase socket, ReadOnlySpan<byte> payload,
+    public static int Send(IMessageSocket socket, ReadOnlySpan<byte> payload,
         SendFlags flags = SendFlags.None)
     {
         Message message = new Message(payload);
         try
         {
-            bool sent = socket switch
-            {
-                MessageSocketBase messageSocket => messageSocket.Send()
-                    .Message(message).Flags(flags).Submit(),
-                _ => throw new NotSupportedException(
-                    $"Unsupported socket type for perf send: {socket.GetType().Name}")
-            };
-
-            if (sent)
+            if (socket.Send().Message(message).Flags(flags).Submit())
                 return payload.Length;
             message.Dispose();
             return 0;
@@ -29,14 +21,14 @@ public static class PerfSocketIo
         }
     }
 
-    public static int Send(RoutedMessageSocketBase socket, string routingId,
+    public static int Send(IRoutedMessageSocket socket, string routingId,
         ReadOnlySpan<byte> payload, SendFlags flags = SendFlags.None)
     {
         return Send(socket, RoutingId.FromBytes(System.Text.Encoding.UTF8.GetBytes(routingId)),
             payload, flags);
     }
 
-    public static int Send(RoutedMessageSocketBase socket, RoutingId routingId,
+    public static int Send(IRoutedMessageSocket socket, RoutingId routingId,
         ReadOnlySpan<byte> payload, SendFlags flags = SendFlags.None)
     {
         Message message = new Message(payload);
@@ -54,7 +46,7 @@ public static class PerfSocketIo
         }
     }
 
-    public static int Publish(PublisherSocketBase socket, string topic,
+    public static int Publish(IPublisherSocket socket, string topic,
         ReadOnlySpan<byte> payload, SendFlags flags = SendFlags.None)
     {
         Message message = new Message(payload);
@@ -72,7 +64,7 @@ public static class PerfSocketIo
         }
     }
 
-    public static int Publish(Spot spot, string topic, ReadOnlySpan<byte> payload,
+    public static int Publish(ISpot spot, string topic, ReadOnlySpan<byte> payload,
         SendFlags flags = SendFlags.None)
     {
         Message message = new Message(payload);

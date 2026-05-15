@@ -102,7 +102,7 @@ public static class SampleSupport
             "spot peer connection");
     }
 
-    public static string ReceiveUtf8(MessageSocketBase socket, int timeoutMs)
+    public static string ReceiveUtf8(IMessageSocket socket, int timeoutMs)
     {
         _ = timeoutMs;
         using var received = new Received();
@@ -114,7 +114,7 @@ public static class SampleSupport
         return Encoding.UTF8.GetString(received.Parts[0].AsReadOnlySpan());
     }
 
-    public static string SubscribeUtf8(SubscriberSocketBase socket, out string topic,
+    public static string SubscribeUtf8(ISubscriberSocket socket, out string topic,
         int timeoutMs)
     {
         _ = timeoutMs;

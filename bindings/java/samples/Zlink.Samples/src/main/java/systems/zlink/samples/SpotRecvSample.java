@@ -3,9 +3,6 @@ package systems.zlink.samples;
 import systems.zlink.Context;
 import systems.zlink.Message;
 import systems.zlink.RoutingId;
-import systems.zlink.service.discovery.Discovery;
-import systems.zlink.service.registry.Registry;
-import systems.zlink.service.registry.AutoConnectType;
 import systems.zlink.RecvFlags;
 import systems.zlink.TopicMessage;
 import systems.zlink.service.spot.Spot;
@@ -19,17 +16,10 @@ public final class SpotRecvSample {
         String channelName = "sample";
         String topic = SampleSupport.SPOT_TOPIC;
         String published = topic + "/" + SampleSupport.SPOT_PAYLOAD;
-        String registryPub = SampleSupport.tcpEndpoint();
-        String registryRouter = SampleSupport.tcpEndpoint();
         String publisherEndpoint = SampleSupport.tcpEndpoint();
         String subscriberEndpoint = SampleSupport.tcpEndpoint();
 
         try (Context ctx = new Context();
-             Registry registry = new Registry(ctx);
-             Discovery publisherDiscovery = new Discovery(ctx,
-                 AutoConnectType.SPOT_MESH, channelName);
-             Discovery subscriberDiscovery = new Discovery(ctx,
-                 AutoConnectType.SPOT_MESH, channelName);
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
@@ -42,14 +32,10 @@ public final class SpotRecvSample {
                 "z-java-spot-recv-publisher-spot".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             subscriber.setRoutingId(RoutingId.fromBytes(
                 "a-java-spot-recv-subscriber-spot".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            registry.bind(registryPub, registryRouter);
-            registry.setBroadcastInterval(Duration.ofMillis(50));
-            publisherDiscovery.connectRegistry(registryRouter);
-            subscriberDiscovery.connectRegistry(registryRouter);
             publisherNode.bind(publisherEndpoint);
             subscriberNode.bind(subscriberEndpoint);
-            publisherNode.attachDiscovery(publisherDiscovery);
-            subscriberNode.attachDiscovery(subscriberDiscovery);
+            publisherNode.connectPeer(subscriberEndpoint);
+            subscriberNode.connectPeer(publisherEndpoint);
             subscriber.setSubscription(topic);
             SampleSupport.waitSpotPeerConnected(publisherNode);
             SampleSupport.waitSpotPeerConnected(subscriberNode);

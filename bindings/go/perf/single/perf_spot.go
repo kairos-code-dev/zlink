@@ -2,74 +2,59 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"zlink.systems/zlink"
 	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
-const singleSpotChannelName = "perf-spot-svc"
-const singleSpotTopic = "bench.topic"
+const singleSpotTopic = "bench"
 
 func runSpot(cfg benchmarkConfig) perfcommon.Result {
-	channelName := fmt.Sprintf("%s-%d-%d", singleSpotChannelName, os.Getpid(), time.Now().UnixNano())
 	ctx, err := perfcommon.NewSingleContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
 
-	registry, err := ctx.Registry()
-	perfcommon.Must(err)
-	defer registry.Close()
-	query, err := ctx.RegistryQueryClient()
-	perfcommon.Must(err)
-	defer query.Close()
 	publisherNode, err := ctx.SpotNode()
 	perfcommon.Must(err)
 	defer publisherNode.Close()
 	subscriberNode, err := ctx.SpotNode()
 	perfcommon.Must(err)
 	defer subscriberNode.Close()
-	publisherDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, channelName)
-	perfcommon.Must(err)
-	defer publisherDiscovery.Close()
-	subscriberDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, channelName)
-	perfcommon.Must(err)
-	defer subscriberDiscovery.Close()
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(publisherNode, cfg.transport))
 	perfcommon.Must(perfcommon.ConfigureTLSClient(subscriberNode, cfg.transport))
 	perfcommon.ApplySingleSpotNodeAdmission(publisherNode)
 	perfcommon.ApplySingleSpotNodeAdmission(subscriberNode)
+	perfcommon.Must(publisherNode.SetRoutingID(zlink.NewRoutingID([]byte("z-go-perf-spot-publisher"))))
+	perfcommon.Must(subscriberNode.SetRoutingID(zlink.NewRoutingID([]byte("a-go-perf-spot-subscriber"))))
 	publisher, err := publisherNode.Spot()
 	perfcommon.Must(err)
 	defer publisher.Close()
+	stopPublisher, err := subscriberNode.Spot()
+	perfcommon.Must(err)
+	defer stopPublisher.Close()
 	subscriber, err := subscriberNode.Spot()
 	perfcommon.Must(err)
 	defer subscriber.Close()
-	registryPubEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot-registry-pub")
-	registryRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot-registry-router")
+	perfcommon.Must(publisher.SetRoutingID(zlink.NewRoutingID([]byte("z-go-perf-spot-publisher-spot"))))
+	perfcommon.Must(stopPublisher.SetRoutingID(zlink.NewRoutingID([]byte("m-go-perf-spot-stop-spot"))))
+	perfcommon.Must(subscriber.SetRoutingID(zlink.NewRoutingID([]byte("a-go-perf-spot-subscriber-spot"))))
 	publisherEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot-pub")
-	subscriberEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot-sub")
-	perfcommon.Must(registry.Bind(registryPubEndpoint, registryRouterEndpoint))
-	perfcommon.Must(query.Connect(registryRouterEndpoint))
-	perfcommon.Must(publisherDiscovery.ConnectRegistry(registryRouterEndpoint))
-	perfcommon.Must(subscriberDiscovery.ConnectRegistry(registryRouterEndpoint))
-	perfcommon.Must(publisherNode.AttachDiscovery(publisherDiscovery))
-	perfcommon.Must(subscriberNode.AttachDiscovery(subscriberDiscovery))
 	perfcommon.Must(publisherNode.Bind(publisherEndpoint))
-	perfcommon.Must(subscriberNode.Bind(subscriberEndpoint))
+	perfcommon.Must(subscriberNode.ConnectPeer(publisherEndpoint))
 	perfcommon.Must(publisher.SetNoDrop(true))
-	perfcommon.Must(subscriber.SetSubscription("bench."))
+	perfcommon.Must(subscriber.SetSubscription(singleSpotTopic))
 	perfcommon.ApplySingleBenchmarkSocketOptions(publisher, cfg.transport)
+	perfcommon.ApplySingleBenchmarkSocketOptions(stopPublisher, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(subscriber, cfg.transport)
 	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.SingleRecvTimeout()))
 	poller := perfcommon.NewSocketPoller(subscriber, perfcommon.ZLinkPollIn)
 	defer poller.Close()
 
 	stats := perfcommon.NewStats()
-	waitForSpotRegistryEntries(query, channelName)
-	waitForSpotReady(publisher, subscriber, poller, cfg.msgSize, channelName)
+	waitForSpotPeerConnected(subscriberNode)
+	waitForSpotReady(publisher, subscriber, poller, cfg.msgSize)
 	perfcommon.PostReadySettle(cfg.pattern)
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	go func() {
@@ -87,7 +72,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 		// PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
 		// stop token. Bounded attempts through transient backpressure so
 		// the subscriber always observes the terminator.
-		sendSpotStopToken(publisher)
+		sendSpotStopToken(stopPublisher)
 	}()
 
 	// PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait (-1 ms). Loop
@@ -187,24 +172,16 @@ func sendSpotStopToken(publisher *zlink.Spot) {
 	}
 }
 
-func waitForSpotRegistryEntries(query *zlink.RegistryQueryClient, channelName string) {
+func waitForSpotPeerConnected(node *zlink.SpotNode) {
 	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
 	for time.Now().Before(deadline) {
-		entries, err := query.Snapshot(nil)
-		if err == nil {
-			count := 0
-			for _, entry := range entries {
-				if entry.ChannelName == channelName {
-					count++
-				}
-			}
-			if count >= 2 {
-				return
-			}
+		status, err := node.StatusSnapshot()
+		if err == nil && status.ConnectedPeerCount > 0 {
+			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	perfcommon.Must(fmt.Errorf("spot perf registry entries timed out"))
+	perfcommon.Must(fmt.Errorf("spot perf peer connection timed out"))
 }
 
 func waitForSpotReady(
@@ -212,7 +189,6 @@ func waitForSpotReady(
 	subscriber *zlink.Spot,
 	poller *zlink.Poller,
 	msgSize int,
-	channelName string,
 ) {
 	payload := perfcommon.PreparePayload(perfcommon.MetricHeaderSize)
 	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())

@@ -1,5 +1,5 @@
 #include "test_helpers.hpp"
-#include <zlink/runtime.hpp>
+#include <zlink.hpp>
 
 #if !defined(ZLINK_HAVE_WINDOWS)
 #include <signal.h>

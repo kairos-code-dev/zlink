@@ -6,7 +6,7 @@
     "baseUrl": ".",
     "paths": {
       "@zlink-systems/zlink": [
-        "dist/canonical.d.ts"
+        "dist/index.d.ts"
       ]
     }
   },

@@ -18,10 +18,16 @@ def main():
                         wait_connected(rtr_mon, dlr_mon)
 
                 dealer.send().message(b"ping").submit()
-                with router.recv() as request:
+                request = zlink.Received()
+                if not router.recv_into(request):
+                    raise RuntimeError("expected dealer-router request")
+                with request:
                     router.send(request.routing_id).message(b"pong").submit()
 
-                with dealer.recv() as response:
+                response = zlink.Received()
+                if not dealer.recv_into(response):
+                    raise RuntimeError("expected dealer-router response")
+                with response:
                     data = response.to_bytes_list()[0].decode("utf-8")
                     print(f'[dealer-router/recv] send: "ping" \u2192 recv: "{data}"')
 

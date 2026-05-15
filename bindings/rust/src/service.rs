@@ -1077,6 +1077,22 @@ impl ActorRecvInfo {
     }
 }
 
+pub struct ActorPart {
+    pub info: ActorRecvInfo,
+    pub message: Message,
+    pub more: bool,
+}
+
+impl ActorPart {
+    fn new(info: ActorRecvInfo, message: Message, more: bool) -> Self {
+        Self {
+            info,
+            message,
+            more,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ActorJoinInfo {
     pub actor: ActorRef,
@@ -1843,15 +1859,12 @@ impl Actor {
         }
     }
 
-    pub fn recv_part_with_flags(
-        &self,
-        flags: RecvFlags,
-    ) -> Result<Option<(ActorRecvInfo, Message, bool)>, RecvError> {
+    pub fn recv_part_with_flags(&self, flags: RecvFlags) -> Result<Option<ActorPart>, RecvError> {
         let actor_ref = self.actor_ref().map_err(recv_error_from_config)?;
         recv_actor_part_from_ref(self.node_handle, &actor_ref, flags)
     }
 
-    pub fn recv_part(&self) -> Result<(ActorRecvInfo, Message, bool), RecvError> {
+    pub fn recv_part(&self) -> Result<ActorPart, RecvError> {
         self.recv_part_with_flags(RecvFlags::NONE)?
             .ok_or_else(|| RecvError::new(RecvResult::NoData, libc::EAGAIN))
     }
@@ -3735,7 +3748,7 @@ impl<'a> SpotDispatchInfo<'a> {
     pub fn recv_actor_part_with_flags(
         &self,
         flags: RecvFlags,
-    ) -> Result<Option<(ActorRecvInfo, Message, bool)>, RecvError> {
+    ) -> Result<Option<ActorPart>, RecvError> {
         if self.event != SpotDispatchEvent::ActorReadable {
             return Err(RecvError::new(RecvResult::NotSupported, libc::ENOTSUP));
         }
@@ -3887,7 +3900,7 @@ fn recv_actor_part_from_ref(
     node: *mut c_void,
     actor: &ActorRef,
     flags: RecvFlags,
-) -> Result<Option<(ActorRecvInfo, Message, bool)>, RecvError> {
+) -> Result<Option<ActorPart>, RecvError> {
     let raw_actor = actor.to_raw().map_err(recv_error_from_config)?;
     let mut raw_info = MaybeUninit::<ffi::zlink_actor_recv_info_t>::zeroed();
     let mut raw_part = MaybeUninit::<ffi::zlink_msg_t>::uninit();
@@ -3910,7 +3923,7 @@ fn recv_actor_part_from_ref(
     }
     let info = ActorRecvInfo::from_raw(&unsafe { raw_info.assume_init() });
     let message = unsafe { Message::from_raw(raw_part.assume_init()) };
-    Ok(Some((
+    Ok(Some(ActorPart::new(
         info,
         message,
         has_more == ffi::zlink_part_flag_t::ZLINK_PART_MORE,

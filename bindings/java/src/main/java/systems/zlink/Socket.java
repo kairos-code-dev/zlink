@@ -815,7 +815,16 @@ public abstract class Socket implements AutoCloseable {
     boolean receiveSubscriptionEvent(SubscriptionEvent result,
                                      ReceiveFlag flags) {
         Objects.requireNonNull(result, "result");
-        SubscriptionEvent fresh = receiveSubscriptionEvent(flags);
+        SubscriptionEvent fresh;
+        try {
+            fresh = receiveSubscriptionEvent(flags);
+        } catch (RecvException ex) {
+            if (flags == ReceiveFlag.DONTWAIT
+                && ex.getResult() == RecvResult.NO_DATA) {
+                return false;
+            }
+            throw ex;
+        }
         if (fresh == null)
             return false;
         result.adoptFrom(fresh);

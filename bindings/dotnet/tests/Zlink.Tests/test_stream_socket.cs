@@ -140,7 +140,7 @@ public sealed class test_stream_socket
             observed = ex;
         }
 
-        Runtime.UnhandledCallbackException += OnUnhandled;
+        Zlink.UnhandledCallbackException += OnUnhandled;
         try
         {
             stream.OnPacket((StreamPacketHandler)((_, header, payload) =>
@@ -159,7 +159,7 @@ public sealed class test_stream_socket
         }
         finally
         {
-            Runtime.UnhandledCallbackException -= OnUnhandled;
+            Zlink.UnhandledCallbackException -= OnUnhandled;
             try
             {
                 stream.DetachStream();
@@ -497,7 +497,7 @@ public sealed class test_stream_socket
 
         using var ctx = new Context();
         using var stream = new StreamSocket(ctx);
-        stream.SetOption(SocketOptions.MaxMsgSize, 4L);
+        stream.Options.MaxMessageSize = 4L;
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-maxmsg");
         int port = CoreTestSupport.ExtractPort(endpoint);

@@ -7,6 +7,9 @@ REPO_DIR="$(cd "${ROOT_DIR}/../../.." && pwd)"
 JAVA_BINDINGS_DIR="$(cd "${ROOT_DIR}/.." && pwd)"
 STREAM_CLIENT="${REPO_DIR}/bindings/c/build/perf/perf_stream_client"
 CORE_BUILD_DIR="${REPO_DIR}/bindings/c/build"
+VERSION_FILE="${REPO_DIR}/VERSION"
+CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
+CORE_RUNTIME="${REPO_DIR}/core/build/lib/libzlink.so.${CORE_VERSION}"
 RESULTS_ROOT="${PERF_RESULTS_DIR:-${ROOT_DIR}/results}"
 PATTERN="ALL"
 if [[ -n "${PERF_TRANSPORTS:-}" ]]; then
@@ -677,6 +680,20 @@ if [[ "${REUSE_BUILD}" -eq 0 ]]; then
     -PzlinkPerfBuildDir="${PROJECT_BUILD_DIR}" :perf-multi:installDist >/dev/null
 fi
 ensure_multi_runner "${PROJECT_BUILD_DIR}" "${RUNNER}"
+if [[ ! -f "${CORE_RUNTIME}" ]]; then
+  echo "core runtime not found: ${CORE_RUNTIME}" >&2
+  echo "Build core/build before running Java perf." >&2
+  exit 1
+fi
+if find "${REPO_DIR}/core/include" "${REPO_DIR}/core/src" \
+    -type f \( -name '*.h' -o -name '*.hpp' -o -name '*.c' -o -name '*.cc' -o -name '*.cpp' \) \
+    -newer "${CORE_RUNTIME}" -print -quit | grep -q .; then
+  echo "core runtime is older than core source: ${CORE_RUNTIME}" >&2
+  echo "Run: cmake --build core/build" >&2
+  exit 1
+fi
+export ZLINK_LIBRARY_PATH="${CORE_RUNTIME}"
+echo "Perf runtime libzlink: ${CORE_RUNTIME}"
 if [[ ! -x "${RUNNER}" || ! -s "${RUNNER}" ]]; then
   if [[ "${REUSE_BUILD}" -eq 1 ]]; then
     echo "runner not found for --reuse-build: ${RUNNER}" >&2

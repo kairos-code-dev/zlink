@@ -1,10 +1,8 @@
-use std::ffi::c_void;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
 
 use crate::ctx::Context;
 use crate::domain::Received;
-use crate::error::{ConfigError, HandlerError, RecvError, check_config_rc};
+use crate::error::{ConfigError, HandlerError, RecvError};
 use crate::ffi;
 use crate::flags::RecvFlags;
 use crate::message::RoutingId;
@@ -76,70 +74,16 @@ impl DealerSocket {
         DealerSocketOptions::new(self)
     }
 
-    pub(crate) fn set_probe(&self, enabled: bool) -> Result<(), ConfigError> {
-        set_dealer_bool_option(
-            self.inner.handle,
-            ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_PROBE,
-            enabled,
-        )
+    pub(crate) fn cached_weight(&self) -> u32 {
+        self.weight.load(Ordering::Relaxed)
     }
 
-    pub(crate) fn weight(&self) -> Result<u32, ConfigError> {
-        Ok(self.weight.load(Ordering::Relaxed))
-    }
-
-    pub(crate) fn set_weight(&self, value: u32) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_set_dealer_option(
-                self.inner.handle,
-                ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_WEIGHT,
-                &value as *const u32 as *const c_void,
-                std::mem::size_of::<u32>(),
-            )
-        })?;
+    pub(crate) fn store_cached_weight(&self, value: u32) {
         self.weight.store(value, Ordering::Relaxed);
-        Ok(())
     }
-
-    pub(crate) fn set_request_timeout(&self, value: Duration) -> Result<(), ConfigError> {
-        let millis = timeout_to_ms(value).min(i32::MAX as u32) as i32;
-        check_config_rc(unsafe {
-            ffi::zlink_set_dealer_option(
-                self.inner.handle,
-                ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
-                &millis as *const i32 as *const c_void,
-                std::mem::size_of::<i32>(),
-            )
-        })
-    }
-}
-
-fn set_dealer_bool_option(
-    handle: *mut c_void,
-    option: ffi::zlink_dealer_option_t,
-    enabled: bool,
-) -> Result<(), ConfigError> {
-    let value: i32 = if enabled { 1 } else { 0 };
-    check_config_rc(unsafe {
-        ffi::zlink_set_dealer_option(
-            handle,
-            option,
-            &value as *const i32 as *const c_void,
-            std::mem::size_of::<i32>(),
-        )
-    })
 }
 
 impl_base_socket!(DealerSocket);
 impl_attach_discovery!(DealerSocket);
 impl_connect!(DealerSocket);
 impl_routing_id_options!(DealerSocket);
-
-fn timeout_to_ms(timeout: Duration) -> u32 {
-    let millis = timeout.as_millis();
-    if millis == 0 {
-        0
-    } else {
-        millis.min(u32::MAX as u128) as u32
-    }
-}

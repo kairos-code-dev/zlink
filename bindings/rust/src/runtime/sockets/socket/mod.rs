@@ -247,7 +247,7 @@ impl SocketInner {
             return Err(RecvError::new(crate::error::RecvResult::Terminated, errno));
         }
 
-        let topic = cstr_buf_to_string(&topic_buf, topic_len);
+        let topic = cstr_buf_to_smolstr(&topic_buf, topic_len);
         out.adopt_from(SubscriptionEvent::new(
             routing_id_from_ptr(source_rid_ptr),
             subscribed != 0,
@@ -755,6 +755,188 @@ impl SocketInner {
         })?;
         Ok(value)
     }
+
+    // -- ROUTER-option helpers --------------------------------------------
+    //
+    // Same shape as the PUB/SUB helpers above: RouterSocketOptions holds a
+    // `&SocketInner` and dispatches here directly, eliminating the previous
+    // wrapper -> trait -> per-type forward indirection.
+
+    pub(crate) fn set_router_bool_opt(
+        &self,
+        opt: ffi::zlink_router_option_t,
+        value: bool,
+    ) -> Result<(), ConfigError> {
+        let v: i32 = if value { 1 } else { 0 };
+        check_config_rc(unsafe {
+            ffi::zlink_set_router_option(
+                self.handle,
+                opt,
+                &v as *const i32 as *const c_void,
+                std::mem::size_of::<i32>(),
+            )
+        })
+    }
+
+    pub(crate) fn set_router_i32_opt(
+        &self,
+        opt: ffi::zlink_router_option_t,
+        value: i32,
+    ) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_set_router_option(
+                self.handle,
+                opt,
+                &value as *const i32 as *const c_void,
+                std::mem::size_of::<i32>(),
+            )
+        })
+    }
+
+    pub(crate) fn set_router_u32_opt(
+        &self,
+        opt: ffi::zlink_router_option_t,
+        value: u32,
+    ) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_set_router_option(
+                self.handle,
+                opt,
+                &value as *const u32 as *const c_void,
+                std::mem::size_of::<u32>(),
+            )
+        })
+    }
+
+    pub(crate) fn set_router_bytes_opt(
+        &self,
+        opt: ffi::zlink_router_option_t,
+        value: &[u8],
+    ) -> Result<(), ConfigError> {
+        let ptr = if value.is_empty() {
+            std::ptr::null()
+        } else {
+            value.as_ptr() as *const c_void
+        };
+        check_config_rc(unsafe { ffi::zlink_set_router_option(self.handle, opt, ptr, value.len()) })
+    }
+
+    pub(crate) fn get_router_i32_opt(
+        &self,
+        opt: ffi::zlink_router_option_t,
+    ) -> Result<i32, ConfigError> {
+        let mut value: i32 = 0;
+        let mut len = std::mem::size_of::<i32>();
+        check_config_rc(unsafe {
+            ffi::zlink_get_router_option(
+                self.handle,
+                opt,
+                &mut value as *mut i32 as *mut c_void,
+                &mut len,
+            )
+        })?;
+        Ok(value)
+    }
+
+    pub(crate) fn get_router_u32_opt(
+        &self,
+        opt: ffi::zlink_router_option_t,
+    ) -> Result<u32, ConfigError> {
+        let mut value: u32 = 0;
+        let mut len = std::mem::size_of::<u32>();
+        check_config_rc(unsafe {
+            ffi::zlink_get_router_option(
+                self.handle,
+                opt,
+                &mut value as *mut u32 as *mut c_void,
+                &mut len,
+            )
+        })?;
+        Ok(value)
+    }
+
+    // -- DEALER-option helpers --------------------------------------------
+
+    pub(crate) fn set_dealer_bool_opt(
+        &self,
+        opt: ffi::zlink_dealer_option_t,
+        value: bool,
+    ) -> Result<(), ConfigError> {
+        let v: i32 = if value { 1 } else { 0 };
+        check_config_rc(unsafe {
+            ffi::zlink_set_dealer_option(
+                self.handle,
+                opt,
+                &v as *const i32 as *const c_void,
+                std::mem::size_of::<i32>(),
+            )
+        })
+    }
+
+    pub(crate) fn set_dealer_u32_opt(
+        &self,
+        opt: ffi::zlink_dealer_option_t,
+        value: u32,
+    ) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_set_dealer_option(
+                self.handle,
+                opt,
+                &value as *const u32 as *const c_void,
+                std::mem::size_of::<u32>(),
+            )
+        })
+    }
+
+    pub(crate) fn set_dealer_i32_opt(
+        &self,
+        opt: ffi::zlink_dealer_option_t,
+        value: i32,
+    ) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_set_dealer_option(
+                self.handle,
+                opt,
+                &value as *const i32 as *const c_void,
+                std::mem::size_of::<i32>(),
+            )
+        })
+    }
+
+    // -- STREAM-option helpers --------------------------------------------
+
+    pub(crate) fn set_stream_bool_opt(
+        &self,
+        opt: ffi::zlink_stream_option_t,
+        value: bool,
+    ) -> Result<(), ConfigError> {
+        let v: i32 = if value { 1 } else { 0 };
+        check_config_rc(unsafe {
+            ffi::zlink_set_stream_option(
+                self.handle,
+                opt,
+                &v as *const i32 as *const c_void,
+                std::mem::size_of::<i32>(),
+            )
+        })
+    }
+
+    pub(crate) fn get_stream_bool_opt(
+        &self,
+        opt: ffi::zlink_stream_option_t,
+    ) -> Result<bool, ConfigError> {
+        let mut value: i32 = 0;
+        let mut len = std::mem::size_of::<i32>();
+        check_config_rc(unsafe {
+            ffi::zlink_get_stream_option(
+                self.handle,
+                opt,
+                &mut value as *mut i32 as *mut c_void,
+                &mut len,
+            )
+        })?;
+        Ok(value != 0)
+    }
 }
 
 impl Drop for SocketInner {
@@ -862,14 +1044,19 @@ pub(crate) fn take_parts(parts_ptr: *mut ffi::zlink_msg_t, part_count: usize) ->
 
 pub(crate) fn cstr_buf_to_string(buf: &[i8], len: usize) -> String {
     let bytes: &[u8] = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) };
-    // Skip the lossy validation in the common valid-UTF-8 case (most
-    // subscribe topics are short ASCII strings). `str::from_utf8` only
-    // walks the bytes once and lets us go straight to `to_owned`, whereas
-    // `from_utf8_lossy(...).into_owned()` always validates and may build
-    // a Cow before cloning.
     match std::str::from_utf8(bytes) {
         Ok(s) => s.to_owned(),
         Err(_) => String::from_utf8_lossy(bytes).into_owned(),
+    }
+}
+
+// Same shape as cstr_buf_to_string but produces a SmolStr: short subscribe
+// topics now bypass heap allocation entirely (<=22 bytes live inline).
+pub(crate) fn cstr_buf_to_smolstr(buf: &[i8], len: usize) -> smol_str::SmolStr {
+    let bytes: &[u8] = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) };
+    match std::str::from_utf8(bytes) {
+        Ok(s) => smol_str::SmolStr::new(s),
+        Err(_) => smol_str::SmolStr::new(String::from_utf8_lossy(bytes)),
     }
 }
 
@@ -882,7 +1069,8 @@ pub(crate) fn routing_id_from_ptr(raw: *const ffi::zlink_routing_id_t) -> Option
 }
 
 type RecvBasicParts = Result<Option<(Option<RoutingId>, Vec<Message>)>, RecvError>;
-type RecvSubscribedParts = Result<Option<(Option<RoutingId>, String, Vec<Message>)>, RecvError>;
+type RecvSubscribedParts =
+    Result<Option<(Option<RoutingId>, smol_str::SmolStr, Vec<Message>)>, RecvError>;
 
 pub(crate) fn recv_basic_parts(
     handle: *mut c_void,
@@ -942,7 +1130,7 @@ pub(crate) fn recv_subscribed_parts(
     flags: ffi::zlink_recv_flags_t,
 ) -> RecvSubscribedParts {
     let mut routing_id = None;
-    let mut topic = String::new();
+    let mut topic = smol_str::SmolStr::default();
     let mut parts = Vec::new();
     let mut recv_flags = flags;
 
@@ -981,7 +1169,7 @@ pub(crate) fn recv_subscribed_parts(
                 return Err(check_recv_rc(rc).unwrap_err());
             }
             routing_id = routing_id_from_ptr(source_rid_ptr);
-            topic = cstr_buf_to_string(topic_buf, topic_len);
+            topic = cstr_buf_to_smolstr(topic_buf, topic_len);
         } else if rc != 0 {
             close_unreceived_part(&mut part);
             return Err(check_recv_rc(rc).unwrap_err());

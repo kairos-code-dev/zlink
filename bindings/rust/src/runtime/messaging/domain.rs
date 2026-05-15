@@ -362,7 +362,11 @@ impl Received {
 
 pub struct TopicMessage {
     pub routing_id: Option<RoutingId>,
-    pub topic: String,
+    // SmolStr stores up to 22 bytes inline (no heap). Typical pubsub
+    // topics are 5-15 ASCII bytes ("events", "user.login", "logs.warn"),
+    // so the common path now skips the per-recv String allocation
+    // entirely; longer topics fall back to heap automatically.
+    pub topic: smol_str::SmolStr,
     pub parts: Vec<Message>,
 }
 
@@ -370,12 +374,16 @@ impl TopicMessage {
     pub fn empty() -> Self {
         Self {
             routing_id: None,
-            topic: String::new(),
+            topic: smol_str::SmolStr::default(),
             parts: Vec::new(),
         }
     }
 
-    pub(crate) fn new(routing_id: Option<RoutingId>, topic: String, parts: Vec<Message>) -> Self {
+    pub(crate) fn new(
+        routing_id: Option<RoutingId>,
+        topic: smol_str::SmolStr,
+        parts: Vec<Message>,
+    ) -> Self {
         Self {
             routing_id,
             topic,
@@ -397,7 +405,7 @@ impl TopicMessage {
     }
 
     pub fn topic(&self) -> &str {
-        &self.topic
+        self.topic.as_str()
     }
 
     pub fn parts(&self) -> &[Message] {
@@ -433,7 +441,7 @@ impl TopicMessage {
 
 pub struct SubscriptionEvent {
     pub routing_id: Option<RoutingId>,
-    pub topic: String,
+    pub topic: smol_str::SmolStr,
     pub subscribed: bool,
 }
 
@@ -441,12 +449,16 @@ impl SubscriptionEvent {
     pub fn empty() -> Self {
         Self {
             routing_id: None,
-            topic: String::new(),
+            topic: smol_str::SmolStr::default(),
             subscribed: false,
         }
     }
 
-    pub(crate) fn new(routing_id: Option<RoutingId>, subscribed: bool, topic: String) -> Self {
+    pub(crate) fn new(
+        routing_id: Option<RoutingId>,
+        subscribed: bool,
+        topic: smol_str::SmolStr,
+    ) -> Self {
         Self {
             routing_id,
             topic,

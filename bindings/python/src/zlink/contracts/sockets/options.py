@@ -6,37 +6,13 @@ from ..core.routing_id import RoutingId
 from ..enums.enums import RidDuplicatePolicy, RouterOption, SocketOption
 from ..messaging.messages import Message
 from ..._native.ffi import lib
-from ..._runtime.core.core import _validated_int32, _validated_int64
-
-
-# --- Low-level byte conversion helpers used by typed option facades. ---
-# These also support _runtime/sockets/socket_base.py mixins.
-
-
-def _int32_bytes(value):
-    native = ctypes.c_int32(_validated_int32(value))
-    return ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native))
-
-
-def _int64_bytes(value):
-    native = ctypes.c_int64(_validated_int64(value))
-    return ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native))
-
-
-def _bool_bytes(value):
-    return _int32_bytes(1 if value else 0)
-
-
-def _read_int32(raw):
-    if len(raw) != ctypes.sizeof(ctypes.c_int32):
-        raise ValueError("native option payload size mismatch")
-    return ctypes.c_int32.from_buffer_copy(raw).value
-
-
-def _read_int64(raw):
-    if len(raw) != ctypes.sizeof(ctypes.c_int64):
-        raise ValueError("native option payload size mismatch")
-    return ctypes.c_int64.from_buffer_copy(raw).value
+from ..._runtime.core.byte_helpers import (
+    _bool_bytes,
+    _int32_bytes,
+    _int64_bytes,
+    _read_int32,
+    _read_int64,
+)
 
 
 class CommonSocketOptions:

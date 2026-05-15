@@ -1,6 +1,5 @@
 use std::ffi::c_void;
 use std::ptr;
-use std::time::Duration;
 
 use super::{
     SendHandle, SocketInner, close_unreceived_part, impl_attach_discovery, impl_base_socket,
@@ -8,7 +7,7 @@ use super::{
 };
 use crate::ctx::Context;
 use crate::domain::Received;
-use crate::error::{ConfigError, HandlerError, RecvError, check_config_rc, check_recv_rc};
+use crate::error::{ConfigError, HandlerError, RecvError, check_recv_rc};
 use crate::ffi;
 use crate::flags::RecvFlags;
 use crate::message::{Message, RoutingId};
@@ -111,87 +110,7 @@ impl RouterSocket {
     }
 
     pub fn router_options(&self) -> RouterSocketOptions<'_> {
-        RouterSocketOptions::new(self)
-    }
-
-    // -- ROUTER-specific typed options -------------------------------------
-
-    pub(crate) fn set_mandatory(&self, enabled: bool) -> Result<(), ConfigError> {
-        set_router_bool(
-            self.inner.handle,
-            ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_MANDATORY,
-            enabled,
-        )
-    }
-
-    pub(crate) fn set_probe(&self, enabled: bool) -> Result<(), ConfigError> {
-        set_router_bool(
-            self.inner.handle,
-            ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_PROBE,
-            enabled,
-        )
-    }
-
-    pub(crate) fn set_connect_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_set_router_option(
-                self.inner.handle,
-                ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
-                id.data().as_ptr() as *const c_void,
-                id.len(),
-            )
-        })
-    }
-
-    pub(crate) fn weight(&self) -> Result<u32, ConfigError> {
-        let mut value: u32 = 0;
-        let mut len = std::mem::size_of::<u32>();
-        check_config_rc(unsafe {
-            ffi::zlink_get_router_option(
-                self.inner.handle,
-                ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_WEIGHT,
-                &mut value as *mut u32 as *mut c_void,
-                &mut len,
-            )
-        })?;
-        Ok(value)
-    }
-
-    pub(crate) fn set_weight(&self, value: u32) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_set_router_option(
-                self.inner.handle,
-                ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_WEIGHT,
-                &value as *const u32 as *const c_void,
-                std::mem::size_of::<u32>(),
-            )
-        })
-    }
-
-    pub(crate) fn request_timeout(&self) -> Result<Duration, ConfigError> {
-        let mut value: i32 = 0;
-        let mut len = std::mem::size_of::<i32>();
-        check_config_rc(unsafe {
-            ffi::zlink_get_router_option(
-                self.inner.handle,
-                ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
-                &mut value as *mut i32 as *mut c_void,
-                &mut len,
-            )
-        })?;
-        Ok(Duration::from_millis(value as u64))
-    }
-
-    pub(crate) fn set_request_timeout(&self, value: Duration) -> Result<(), ConfigError> {
-        let millis = timeout_to_ms(value).min(i32::MAX as u32) as i32;
-        check_config_rc(unsafe {
-            ffi::zlink_set_router_option(
-                self.inner.handle,
-                ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
-                &millis as *const i32 as *const c_void,
-                std::mem::size_of::<i32>(),
-            )
-        })
+        RouterSocketOptions::new(&self.inner)
     }
 }
 
@@ -296,27 +215,3 @@ fn recv_router_once(handle: *mut c_void, flags: u32) -> Result<Option<Received>,
     }
 }
 
-fn timeout_to_ms(timeout: Duration) -> u32 {
-    let millis = timeout.as_millis();
-    if millis == 0 {
-        0
-    } else {
-        millis.min(u32::MAX as u128) as u32
-    }
-}
-
-fn set_router_bool(
-    handle: *mut c_void,
-    opt: ffi::zlink_router_option_t,
-    value: bool,
-) -> Result<(), ConfigError> {
-    let v: i32 = if value { 1 } else { 0 };
-    check_config_rc(unsafe {
-        ffi::zlink_set_router_option(
-            handle,
-            opt,
-            &v as *const i32 as *const c_void,
-            std::mem::size_of::<i32>(),
-        )
-    })
-}

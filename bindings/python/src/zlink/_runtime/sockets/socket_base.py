@@ -18,16 +18,18 @@ from ..enums.enums import (
     SubmitResult,
 )
 from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
-from ...contracts.sockets.options import (
-    CommonSocketOptions,
-    DealerSocketOptions,
-    StreamSocketOptions,
-    SubSocketOptions,
+from ..core.byte_helpers import (
     _bool_bytes,
     _int32_bytes,
     _int64_bytes,
     _read_int32,
     _read_int64,
+)
+from ...contracts.sockets.options import (
+    CommonSocketOptions,
+    DealerSocketOptions,
+    StreamSocketOptions,
+    SubSocketOptions,
 )
 from ..core.core import (
     BindError,

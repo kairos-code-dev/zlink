@@ -147,58 +147,8 @@ impl StreamSocket {
     }
 
     pub fn stream_options(&self) -> StreamSocketOptions<'_> {
-        StreamSocketOptions::new(self)
+        StreamSocketOptions::new(&self.inner)
     }
-
-    // -- STREAM-specific typed options -------------------------------------
-
-    pub(crate) fn set_notify(&self, enabled: bool) -> Result<(), ConfigError> {
-        set_stream_bool_option(
-            self.inner.handle,
-            ffi::zlink_stream_option_t::ZLINK_STREAM_OPT_NOTIFY,
-            enabled,
-        )
-    }
-
-    pub(crate) fn notify(&self) -> Result<bool, ConfigError> {
-        get_stream_bool_option(
-            self.inner.handle,
-            ffi::zlink_stream_option_t::ZLINK_STREAM_OPT_NOTIFY,
-        )
-    }
-}
-
-fn set_stream_bool_option(
-    handle: *mut c_void,
-    option: ffi::zlink_stream_option_t,
-    enabled: bool,
-) -> Result<(), ConfigError> {
-    let value: i32 = if enabled { 1 } else { 0 };
-    check_config_rc(unsafe {
-        ffi::zlink_set_stream_option(
-            handle,
-            option,
-            &value as *const i32 as *const c_void,
-            std::mem::size_of::<i32>(),
-        )
-    })
-}
-
-fn get_stream_bool_option(
-    handle: *mut c_void,
-    option: ffi::zlink_stream_option_t,
-) -> Result<bool, ConfigError> {
-    let mut value: i32 = 0;
-    let mut len = std::mem::size_of::<i32>();
-    check_config_rc(unsafe {
-        ffi::zlink_get_stream_option(
-            handle,
-            option,
-            &mut value as *mut i32 as *mut c_void,
-            &mut len,
-        )
-    })?;
-    Ok(value != 0)
 }
 
 impl_base_socket!(StreamSocket);

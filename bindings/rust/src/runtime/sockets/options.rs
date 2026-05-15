@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crate::error::ConfigError;
+use crate::ffi;
 use crate::message::{Message, RoutingId};
-use crate::socket::{DealerSocket, RouterSocket, StreamSocket};
 
 use super::socket::SocketInner;
 
@@ -150,71 +150,102 @@ impl<'a> CommonSocketOptions<'a> {
 }
 
 pub struct RouterSocketOptions<'a> {
-    socket: &'a RouterSocket,
+    inner: &'a SocketInner,
 }
 
 impl<'a> RouterSocketOptions<'a> {
-    pub(crate) fn new(socket: &'a RouterSocket) -> Self {
-        Self { socket }
+    pub(crate) fn new(inner: &'a SocketInner) -> Self {
+        Self { inner }
     }
     pub fn set_mandatory(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_mandatory(enabled)
+        self.inner
+            .set_router_bool_opt(ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_MANDATORY, enabled)
     }
     pub fn set_probe(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_probe(enabled)
+        self.inner
+            .set_router_bool_opt(ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_PROBE, enabled)
     }
     pub fn set_connect_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError> {
-        self.socket.set_connect_routing_id(id)
+        self.inner.set_router_bytes_opt(
+            ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
+            id.data(),
+        )
     }
     pub fn weight(&self) -> Result<u32, ConfigError> {
-        self.socket.weight()
+        self.inner
+            .get_router_u32_opt(ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_WEIGHT)
     }
     pub fn set_weight(&self, value: u32) -> Result<(), ConfigError> {
-        self.socket.set_weight(value)
+        self.inner
+            .set_router_u32_opt(ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_WEIGHT, value)
     }
     pub fn request_timeout(&self) -> Result<Duration, ConfigError> {
-        self.socket.request_timeout()
+        let ms = self
+            .inner
+            .get_router_i32_opt(ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS)?;
+        Ok(Duration::from_millis(ms as u64))
     }
     pub fn set_request_timeout(&self, value: Duration) -> Result<(), ConfigError> {
-        self.socket.set_request_timeout(value)
+        let millis = value.as_millis().min(i32::MAX as u128) as i32;
+        self.inner.set_router_i32_opt(
+            ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
+            millis,
+        )
     }
 }
 
+/// DealerSocketOptions keeps a `&DealerSocket` borrow rather than the bare
+/// `SocketInner` used by the other typed-option facades. The dealer caches
+/// its weight in an atomic on the socket itself (avoids an FFI round-trip
+/// per read), so the wrapper still needs access to that field; FFI-touching
+/// methods dispatch through `dealer.inner.*_dealer_*_opt(...)` directly.
 pub struct DealerSocketOptions<'a> {
-    socket: &'a DealerSocket,
+    socket: &'a crate::socket::DealerSocket,
 }
 
 impl<'a> DealerSocketOptions<'a> {
-    pub(crate) fn new(socket: &'a DealerSocket) -> Self {
+    pub(crate) fn new(socket: &'a crate::socket::DealerSocket) -> Self {
         Self { socket }
     }
     pub fn set_probe(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_probe(enabled)
+        self.socket
+            .inner
+            .set_dealer_bool_opt(ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_PROBE, enabled)
     }
     pub fn weight(&self) -> Result<u32, ConfigError> {
-        self.socket.weight()
+        Ok(self.socket.cached_weight())
     }
     pub fn set_weight(&self, value: u32) -> Result<(), ConfigError> {
-        self.socket.set_weight(value)
+        self.socket
+            .inner
+            .set_dealer_u32_opt(ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_WEIGHT, value)?;
+        self.socket.store_cached_weight(value);
+        Ok(())
     }
     pub fn set_request_timeout(&self, value: Duration) -> Result<(), ConfigError> {
-        self.socket.set_request_timeout(value)
+        let millis = value.as_millis().min(i32::MAX as u128) as i32;
+        self.socket.inner.set_dealer_i32_opt(
+            ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
+            millis,
+        )
     }
 }
 
 pub struct StreamSocketOptions<'a> {
-    socket: &'a StreamSocket,
+    inner: &'a SocketInner,
 }
 
 impl<'a> StreamSocketOptions<'a> {
-    pub(crate) fn new(socket: &'a StreamSocket) -> Self {
-        Self { socket }
+    pub(crate) fn new(inner: &'a SocketInner) -> Self {
+        Self { inner }
     }
     pub fn set_notify(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_notify(enabled)
+        self.inner
+            .set_stream_bool_opt(ffi::zlink_stream_option_t::ZLINK_STREAM_OPT_NOTIFY, enabled)
     }
     pub fn notify(&self) -> Result<bool, ConfigError> {
-        self.socket.notify()
+        self.inner
+            .get_stream_bool_opt(ffi::zlink_stream_option_t::ZLINK_STREAM_OPT_NOTIFY)
     }
 }
 

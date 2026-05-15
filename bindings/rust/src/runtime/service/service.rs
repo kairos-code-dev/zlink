@@ -19,7 +19,7 @@ use crate::message::{Message, RoutingId};
 use crate::monitor::MonitorSnapshot;
 use crate::request_progress::RequestProgressGuard;
 use crate::socket::{
-    CallbackBox, close_unreceived_part, cstr_buf_to_string, prepare_send_parts,
+    CallbackBox, close_unreceived_part, prepare_send_parts,
     routing_id_from_ptr, send_ready_trampoline, submit_part_sequence, take_parts,
 };
 
@@ -3699,7 +3699,8 @@ impl Spot {
 }
 
 type SpotReplyCallback = Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>;
-type SpotSubscribedParts = Result<Option<(Option<RoutingId>, String, Vec<Message>)>, RecvError>;
+type SpotSubscribedParts =
+    Result<Option<(Option<RoutingId>, smol_str::SmolStr, Vec<Message>)>, RecvError>;
 
 struct SpotReplyCallbackState {
     callback: Option<SpotReplyCallback>,
@@ -4015,7 +4016,7 @@ fn recv_spot_subscribed_parts(
     flags: ffi::zlink_recv_flags_t,
 ) -> SpotSubscribedParts {
     let mut routing_id = None;
-    let mut topic = String::new();
+    let mut topic = smol_str::SmolStr::default();
     let mut parts = Vec::new();
     let mut recv_flags = flags;
 
@@ -4054,7 +4055,7 @@ fn recv_spot_subscribed_parts(
                 return Err(check_recv_rc(rc).unwrap_err());
             }
             routing_id = routing_id_from_ptr(source_rid_ptr);
-            topic = cstr_buf_to_string(topic_buf, topic_len);
+            topic = crate::socket::cstr_buf_to_smolstr(topic_buf, topic_len);
         } else if rc != 0 {
             close_unreceived_part(&mut part);
             return Err(check_recv_rc(rc).unwrap_err());

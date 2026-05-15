@@ -95,21 +95,29 @@ type ActorJoinReplyOp interface {
 	Submit(ctx context.Context) error
 }
 
-// ActorLeaveOp is returned by SpotNode.LeaveActor / Actor.Leave.
-type ActorLeaveOp interface {
-	Timeout(timeout time.Duration) ActorLeaveOp
+// requestPartsAsyncOp is the canonical shape for actor async operations that
+// return RequestReplyCompletion. Aliased to the per-operation public names so
+// callers keep their familiar entrypoints (SpotNode.LeaveActor, StreamSocket.
+// BindActor, ...) without the binding having to repeat identical builder
+// hierarchies for each one.
+type requestPartsAsyncOp interface {
+	Timeout(timeout time.Duration) requestPartsAsyncOp
 	SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
 	Submit(ctx context.Context,
 		callback func(result RequestResult, parts []*Message)) (bool, error)
 }
 
+// ActorLeaveOp is returned by SpotNode.LeaveActor / Actor.Leave.
+type ActorLeaveOp = requestPartsAsyncOp
+
 // ActorDestroyOp is returned by SpotNode.DestroyActor.
-type ActorDestroyOp interface {
-	Timeout(timeout time.Duration) ActorDestroyOp
-	SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
-	Submit(ctx context.Context,
-		callback func(result RequestResult, parts []*Message)) (bool, error)
-}
+type ActorDestroyOp = requestPartsAsyncOp
+
+// ActorBindOp is returned by StreamSocket.BindActor.
+type ActorBindOp = requestPartsAsyncOp
+
+// ActorUnbindOp is returned by StreamSocket.UnbindActor.
+type ActorUnbindOp = requestPartsAsyncOp
 
 // ActorLookupOp is returned by SpotNode.RemoteActorGetRef.
 type ActorLookupOp interface {
@@ -117,22 +125,6 @@ type ActorLookupOp interface {
 	SubmitAsync(ctx context.Context) (<-chan ActorLookupCompletion, error)
 	Submit(ctx context.Context,
 		callback func(result ActorLookupResult)) (bool, error)
-}
-
-// ActorBindOp is returned by StreamSocket.BindActor.
-type ActorBindOp interface {
-	Timeout(timeout time.Duration) ActorBindOp
-	SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
-	Submit(ctx context.Context,
-		callback func(result RequestResult, parts []*Message)) (bool, error)
-}
-
-// ActorUnbindOp is returned by StreamSocket.UnbindActor.
-type ActorUnbindOp interface {
-	Timeout(timeout time.Duration) ActorUnbindOp
-	SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
-	Submit(ctx context.Context,
-		callback func(result RequestResult, parts []*Message)) (bool, error)
 }
 
 // --- common state ---
@@ -350,27 +342,29 @@ func (s *requestPartsBuilderState) doSubmitCallback(callback requestPartsCallbac
 	return true, nil
 }
 
-// actorLeaveBuilder
-
-type actorLeaveBuilder struct {
+// requestPartsBuilder is the canonical implementation that backs
+// ActorLeaveOp, ActorBindOp, and ActorUnbindOp. They all share the same
+// timeout+submit shape, so they share one concrete builder; the public
+// type aliases above keep the per-operation names on the user API.
+type requestPartsBuilder struct {
 	state *requestPartsBuilderState
 }
 
-func newActorLeaveOp(submit func(timeout time.Duration, cb requestPartsCallback) error) ActorLeaveOp {
-	return &actorLeaveBuilder{state: &requestPartsBuilderState{submit: submit}}
-}
-
-func (b *actorLeaveBuilder) Timeout(timeout time.Duration) ActorLeaveOp {
+func (b *requestPartsBuilder) Timeout(timeout time.Duration) requestPartsAsyncOp {
 	b.state.timeout = timeout
 	return b
 }
 
-func (b *actorLeaveBuilder) SubmitAsync(_ context.Context) (<-chan RequestReplyCompletion, error) {
+func (b *requestPartsBuilder) SubmitAsync(_ context.Context) (<-chan RequestReplyCompletion, error) {
 	return b.state.doSubmitAsync()
 }
 
-func (b *actorLeaveBuilder) Submit(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
+func (b *requestPartsBuilder) Submit(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
 	return b.state.doSubmitCallback(cb)
+}
+
+func newActorLeaveOp(submit func(timeout time.Duration, cb requestPartsCallback) error) ActorLeaveOp {
+	return &requestPartsBuilder{state: &requestPartsBuilderState{submit: submit}}
 }
 
 // actorDestroyBuilder
@@ -421,50 +415,12 @@ func (b *actorDestroyBuilder) Submit(_ context.Context, cb func(RequestResult, [
 	return b.state.doSubmitCallback(wrapped)
 }
 
-// actorBindBuilder
-
-type actorBindBuilder struct {
-	state *requestPartsBuilderState
-}
-
 func newActorBindOp(submit func(timeout time.Duration, cb requestPartsCallback) error) ActorBindOp {
-	return &actorBindBuilder{state: &requestPartsBuilderState{submit: submit}}
-}
-
-func (b *actorBindBuilder) Timeout(timeout time.Duration) ActorBindOp {
-	b.state.timeout = timeout
-	return b
-}
-
-func (b *actorBindBuilder) SubmitAsync(_ context.Context) (<-chan RequestReplyCompletion, error) {
-	return b.state.doSubmitAsync()
-}
-
-func (b *actorBindBuilder) Submit(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
-	return b.state.doSubmitCallback(cb)
-}
-
-// actorUnbindBuilder
-
-type actorUnbindBuilder struct {
-	state *requestPartsBuilderState
+	return &requestPartsBuilder{state: &requestPartsBuilderState{submit: submit}}
 }
 
 func newActorUnbindOp(submit func(timeout time.Duration, cb requestPartsCallback) error) ActorUnbindOp {
-	return &actorUnbindBuilder{state: &requestPartsBuilderState{submit: submit}}
-}
-
-func (b *actorUnbindBuilder) Timeout(timeout time.Duration) ActorUnbindOp {
-	b.state.timeout = timeout
-	return b
-}
-
-func (b *actorUnbindBuilder) SubmitAsync(_ context.Context) (<-chan RequestReplyCompletion, error) {
-	return b.state.doSubmitAsync()
-}
-
-func (b *actorUnbindBuilder) Submit(_ context.Context, cb func(RequestResult, []*Message)) (bool, error) {
-	return b.state.doSubmitCallback(cb)
+	return &requestPartsBuilder{state: &requestPartsBuilderState{submit: submit}}
 }
 
 // --- lookup builder ---

@@ -23,8 +23,10 @@ import "C"
 
 import (
 	"errors"
+	"runtime"
 	"runtime/cgo"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 )
@@ -231,36 +233,79 @@ func (s *replyCallbackState) complete(result requestResult) {
 	})
 }
 
+// Per-handle progress pump: a single goroutine drives request progress for
+// all in-flight requests on the same native handle, using spin-then-exponential
+// backoff (matches doc/spec/bindings/go/README.md §Performance Policy: do not
+// start one polling thread per request when progress can be shared per handle).
+const (
+	progressSpinIterations = 32
+	progressMaxBackoff     = 8 * time.Millisecond
+)
+
+type progressPump struct {
+	handle      unsafe.Pointer
+	progressFn  func(unsafe.Pointer)
+	activeCount int64
+	workerOn    int32
+}
+
+var (
+	socketProgressPumps sync.Map // unsafe.Pointer -> *progressPump
+	spotProgressPumps   sync.Map
+)
+
 func startSocketRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
-	startRequestProgress(state, func() {
-		C.zlink_socket_request_progress_internal(handle)
-	})
+	getOrCreateProgressPump(&socketProgressPumps, handle, socketProgressStep).attach(state)
 }
 
 func startSpotRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
-	startRequestProgress(state, func() {
-		C.zlink_spot_request_progress_internal(handle)
-	})
+	getOrCreateProgressPump(&spotProgressPumps, handle, spotProgressStep).attach(state)
 }
 
-func startRequestProgress(state *replyCallbackState, step func()) {
+func socketProgressStep(h unsafe.Pointer) { C.zlink_socket_request_progress_internal(h) }
+func spotProgressStep(h unsafe.Pointer)   { C.zlink_spot_request_progress_internal(h) }
+
+func getOrCreateProgressPump(m *sync.Map, handle unsafe.Pointer, fn func(unsafe.Pointer)) *progressPump {
+	if v, ok := m.Load(handle); ok {
+		return v.(*progressPump)
+	}
+	p := &progressPump{handle: handle, progressFn: fn}
+	actual, _ := m.LoadOrStore(handle, p)
+	return actual.(*progressPump)
+}
+
+func (p *progressPump) attach(state *replyCallbackState) {
+	atomic.AddInt64(&p.activeCount, 1)
 	go func() {
-		ticker := time.NewTicker(time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-state.done:
-				return
-			default:
-			}
-			step()
-			select {
-			case <-state.done:
-				return
-			case <-ticker.C:
-			}
-		}
+		<-state.done
+		atomic.AddInt64(&p.activeCount, -1)
 	}()
+	if atomic.CompareAndSwapInt32(&p.workerOn, 0, 1) {
+		go p.run()
+	}
+}
+
+func (p *progressPump) run() {
+	defer atomic.StoreInt32(&p.workerOn, 0)
+	iterations := 0
+	for atomic.LoadInt64(&p.activeCount) > 0 {
+		p.progressFn(p.handle)
+		iterations++
+		if iterations <= progressSpinIterations {
+			runtime.Gosched()
+			continue
+		}
+		shift := iterations - progressSpinIterations - 1
+		if shift > 3 {
+			shift = 3
+		}
+		delay := time.Duration(1<<shift) * time.Millisecond
+		if delay > progressMaxBackoff {
+			delay = progressMaxBackoff
+		}
+		timer := time.NewTimer(delay)
+		<-timer.C
+	}
 }
 
 func requestTimeoutMillis(timeout time.Duration) uint32 {

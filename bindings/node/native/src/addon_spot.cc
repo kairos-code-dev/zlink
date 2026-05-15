@@ -4491,52 +4491,6 @@ napi_value spot_request_router(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_request_progress(napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    if (argc < 1) {
-        napi_throw_type_error(env, NULL, "spotRequestProgress requires (spot)");
-        return NULL;
-    }
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    (void) zlink_spot_request_progress_internal(spot);
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
-napi_value spot_channel_reply_progress(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    if (argc < 2) {
-        napi_throw_type_error(env, NULL,
-                              "spotChannelReplyProgress requires (spot, subjectHandle)");
-        return NULL;
-    }
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    uint64_t subject_handle = 0;
-    bool lossless = false;
-    if (napi_get_value_bigint_uint64(env, argv[1], &subject_handle, &lossless)
-        != napi_ok || !lossless) {
-        napi_throw_type_error(env, NULL,
-                              "subjectHandle must be a BigInt pointer value");
-        return NULL;
-    }
-    int rc = zlink_spot_channel_reply_progress_from(
-      spot, reinterpret_cast<void *>(static_cast<uintptr_t>(subject_handle)));
-    if (rc != 0)
-        return throw_last_error(env, "spotChannelReplyProgress failed");
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
 napi_value spot_send_ready_handler(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];

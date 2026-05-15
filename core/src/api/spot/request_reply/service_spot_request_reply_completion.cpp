@@ -99,6 +99,16 @@ int zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
       &state_->completion_state.direct, ctx, "zlink.spot.reqrep.completion");
 }
 
+int zlink::spot_reqrep_internal::signal_spot_completion_queue (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    zlink::ctx_t *ctx = resolve_spot_state_ctx (state_);
+    if (!ctx)
+        return -1;
+    return zlink::request_completion::signal (
+      &state_->completion_state.direct, ctx, "zlink.spot.reqrep.completion");
+}
+
 int zlink::spot_reqrep_internal::ensure_spot_recv_ready (
   const std::shared_ptr<spot_request_reply_state_t> &state_)
 {
@@ -200,11 +210,19 @@ int zlink::spot_reqrep_internal::queue_spot_channel_reply_completion (
         return -1;
     }
 
-    if (!in_spot_dispatch_event_callback (state_->owner)) {
+    if (zlink::request_completion::signal (
+          &state_->completion_state.direct, ctx,
+          "zlink.spot.reqrep.completion")
+        != 0) {
+        return -1;
+    }
+
+    if (errnum_ != ETERM) {
         zlink_spot_notify_dispatch_info (
           state_->owner, ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE,
           ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER, dealer_);
     }
+
     return 0;
 }
 

@@ -7,8 +7,6 @@ package zlink
 #include "zlink.h"
 
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
-extern int zlink_socket_request_progress_internal(void *socket_);
-extern int zlink_spot_request_progress_internal(void *spot_);
 
 static inline int zlink_dealer_request_part_go_local(void *dealer, zlink_msg_t *part, zlink_send_flags_t flags, zlink_part_flag_t part_flag, uint32_t timeout_ms, uintptr_t userdata) {
 	return zlink_dealer_request_part(dealer, part, flags, part_flag, timeout_ms, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata);
@@ -238,13 +236,11 @@ func (s *replyCallbackState) complete(result requestResult) {
 // backoff (matches doc/spec/bindings/go/README.md §Performance Policy: do not
 // start one polling thread per request when progress can be shared per handle).
 const (
-	progressSpinIterations = 32
-	progressMaxBackoff     = 8 * time.Millisecond
+    pollCompletionEvent = C.short(32)
 )
 
 type progressPump struct {
 	handle      unsafe.Pointer
-	progressFn  func(unsafe.Pointer)
 	activeCount int64
 	workerOn    int32
 }
@@ -255,21 +251,18 @@ var (
 )
 
 func startSocketRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
-	getOrCreateProgressPump(&socketProgressPumps, handle, socketProgressStep).attach(state)
+	getOrCreateProgressPump(&socketProgressPumps, handle).attach(state)
 }
 
 func startSpotRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
-	getOrCreateProgressPump(&spotProgressPumps, handle, spotProgressStep).attach(state)
+	getOrCreateProgressPump(&spotProgressPumps, handle).attach(state)
 }
 
-func socketProgressStep(h unsafe.Pointer) { C.zlink_socket_request_progress_internal(h) }
-func spotProgressStep(h unsafe.Pointer)   { C.zlink_spot_request_progress_internal(h) }
-
-func getOrCreateProgressPump(m *sync.Map, handle unsafe.Pointer, fn func(unsafe.Pointer)) *progressPump {
+func getOrCreateProgressPump(m *sync.Map, handle unsafe.Pointer) *progressPump {
 	if v, ok := m.Load(handle); ok {
 		return v.(*progressPump)
 	}
-	p := &progressPump{handle: handle, progressFn: fn}
+	p := &progressPump{handle: handle}
 	actual, _ := m.LoadOrStore(handle, p)
 	return actual.(*progressPump)
 }
@@ -287,24 +280,19 @@ func (p *progressPump) attach(state *replyCallbackState) {
 
 func (p *progressPump) run() {
 	defer atomic.StoreInt32(&p.workerOn, 0)
-	iterations := 0
+	poller := C.zlink_poller_new()
+	if poller == nil {
+		return
+	}
+	defer C.zlink_poller_destroy(&poller)
+	if C.zlink_poller_add(poller, p.handle, nil, pollCompletionEvent) != C.ZLINK_CONFIG_OK {
+		return
+	}
+	defer C.zlink_poller_remove(poller, p.handle)
+	var event C.zlink_poller_event_t
 	for atomic.LoadInt64(&p.activeCount) > 0 {
-		p.progressFn(p.handle)
-		iterations++
-		if iterations <= progressSpinIterations {
-			runtime.Gosched()
-			continue
-		}
-		shift := iterations - progressSpinIterations - 1
-		if shift > 3 {
-			shift = 3
-		}
-		delay := time.Duration(1<<shift) * time.Millisecond
-		if delay > progressMaxBackoff {
-			delay = progressMaxBackoff
-		}
-		timer := time.NewTimer(delay)
-		<-timer.C
+		C.zlink_poller_wait(poller, &event, 1, -1, nil)
+		runtime.Gosched()
 	}
 }
 

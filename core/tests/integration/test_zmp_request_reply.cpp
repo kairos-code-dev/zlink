@@ -20,8 +20,6 @@
 #endif
 
 extern "C" int zlink_router_enable_spot_receive (void *router_);
-extern "C" int zlink_socket_request_progress_internal (void *socket_);
-extern "C" int zlink_spot_request_progress_internal (void *spot_);
 
 SETUP_TEARDOWN_TESTCONTEXT
 
@@ -164,6 +162,22 @@ std::string msg_to_string (const zlink_msg_t *part_)
                         zlink_msg_size (part_));
 }
 
+int drain_completion_via_poller (void *subject_)
+{
+    void *poller = zlink_poller_new ();
+    if (!poller)
+        return -1;
+    int rc = -1;
+    if (zlink_poller_add (poller, subject_, NULL, ZLINK_POLLCOMPLETION)
+        == ZLINK_CONFIG_OK) {
+        zlink_poller_event_t event;
+        rc = zlink_poller_wait (poller, &event, 1, 0, NULL);
+        (void) zlink_poller_remove (poller, subject_);
+    }
+    (void) zlink_poller_destroy (&poller);
+    return rc;
+}
+
 bool wait_for_reply (reply_probe_t *probe_)
 {
     const auto deadline =
@@ -177,12 +191,8 @@ bool wait_for_reply (reply_probe_t *probe_)
                   [probe_]() { return probe_->done; }))
                 return true;
         }
-        if (probe_->progress_handle) {
-            if (zlink_socket_request_progress_internal (probe_->progress_handle)
-                < 0)
-                (void) zlink_spot_request_progress_internal (
-                  probe_->progress_handle);
-        }
+        if (probe_->progress_handle)
+            (void) drain_completion_via_poller (probe_->progress_handle);
     }
 
     return false;
@@ -203,12 +213,8 @@ bool wait_for_reply_count (reply_probe_t *probe_, size_t expected_count_)
                   }))
                 return true;
         }
-        if (probe_->progress_handle) {
-            if (zlink_socket_request_progress_internal (probe_->progress_handle)
-                < 0)
-                (void) zlink_spot_request_progress_internal (
-                  probe_->progress_handle);
-        }
+        if (probe_->progress_handle)
+            (void) drain_completion_via_poller (probe_->progress_handle);
     }
 
     return false;
@@ -1378,7 +1384,7 @@ void test_spot_to_spot_request_preserves_source_identity ()
       ZLINK_PART_FINAL));
 
     for (int i = 0; i < 10; ++i) {
-        (void) zlink_spot_request_progress_internal (spot_a);
+        (void) drain_completion_via_poller (spot_a);
         {
             std::lock_guard<std::mutex> lock (reply_probe.mutex);
             if (reply_probe.done)

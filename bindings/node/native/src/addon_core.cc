@@ -3990,23 +3990,6 @@ napi_value dealer_request(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value socket_request_progress(napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    if (argc < 1) {
-        napi_throw_type_error(env, NULL, "socketRequestProgress requires (socket)");
-        return NULL;
-    }
-    void *socket = NULL;
-    napi_get_value_external(env, argv[0], &socket);
-    (void) zlink_socket_request_progress_internal(socket);
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
 napi_value router_request(napi_env env, napi_callback_info info)
 {
     napi_value argv[6];

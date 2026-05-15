@@ -1802,7 +1802,8 @@ enum class poll_event_flag_t : short
     none = 0,
     pollin = ZLINK_POLLIN,
     pollout = ZLINK_POLLOUT,
-    pollerr = ZLINK_POLLERR
+    pollerr = ZLINK_POLLERR,
+    pollcompletion = ZLINK_POLLCOMPLETION
 };
 
 inline poll_event_flag_t operator| (poll_event_flag_t a, poll_event_flag_t b)

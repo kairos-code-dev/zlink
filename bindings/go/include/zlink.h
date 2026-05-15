@@ -860,9 +860,6 @@ ZLINK_EXPORT zlink_handler_result_t zlink_spot_dispatch_event_handler (
   zlink_spot_dispatch_event_handler_fn handler_,
   void *userdata_);
 
-ZLINK_EXPORT int zlink_spot_channel_reply_progress_from (void *spot_,
-                                                         void *dealer_);
-
 ZLINK_EXPORT zlink_config_result_t zlink_socket_set_channel_name (
   void *socket_,
   const char *channel_name_);

@@ -33,8 +33,9 @@ import (
 type PollerEventFlag int16
 
 const (
-	PollIn  PollerEventFlag = 1
-	PollOut PollerEventFlag = 2
+    PollIn         PollerEventFlag = 1
+    PollOut        PollerEventFlag = 2
+    PollCompletion PollerEventFlag = 32
 )
 
 // PollerSourceKind identifies the kind of source in a PollerEvent.

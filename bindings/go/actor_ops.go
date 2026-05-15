@@ -9,7 +9,6 @@ package zlink
 #include <errno.h>
 #include "zlink.h"
 
-extern int zlink_spot_request_progress_internal(void *spot_);
 */
 import "C"
 
@@ -614,20 +613,23 @@ func submitActorLookupNative(progressSpot unsafe.Pointer, native func(cb cgo.Han
 	}
 	if progressSpot != nil {
 		go func() {
-			ticker := time.NewTicker(time.Millisecond)
-			defer ticker.Stop()
+			poller := C.zlink_poller_new()
+			if poller == nil {
+				return
+			}
+			defer C.zlink_poller_destroy(&poller)
+			if C.zlink_poller_add(poller, progressSpot, nil, C.short(32)) != C.ZLINK_CONFIG_OK {
+				return
+			}
+			defer C.zlink_poller_remove(poller, progressSpot)
+			var event C.zlink_poller_event_t
 			for {
 				select {
 				case <-state.done:
 					return
 				default:
 				}
-				C.zlink_spot_request_progress_internal(progressSpot)
-				select {
-				case <-state.done:
-					return
-				case <-ticker.C:
-				}
+				C.zlink_poller_wait(poller, &event, 1, -1, nil)
 			}
 		}()
 	}

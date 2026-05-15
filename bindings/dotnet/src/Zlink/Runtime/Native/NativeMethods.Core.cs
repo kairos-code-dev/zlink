@@ -40,7 +40,6 @@ internal static partial class NativeMethods
         "zlink_multipart_close",
         "zlink_dealer_request_part",
         "zlink_router_request_part",
-        "zlink_socket_request_progress_internal",
         "zlink_socket_set_channel_name",
         "zlink_socket_get_channel_name",
         "zlink_router_reply_part",
@@ -62,8 +61,6 @@ internal static partial class NativeMethods
         "zlink_spot_node_actor_close_bound_session",
         "zlink_spot_send_channel_part",
         "zlink_spot_request_channel_part",
-        "zlink_spot_request_progress_internal",
-        "zlink_spot_channel_reply_progress_from",
         "zlink_spot_publish_part",
         "zlink_spot_subscribe_part",
         "zlink_spot_subscription_event_recv",
@@ -239,9 +236,6 @@ internal static partial class NativeMethods
         IntPtr handler, IntPtr userData);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_socket_request_progress_internal(IntPtr socket);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_socket_set_channel_name(IntPtr socket,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName);
 
@@ -316,10 +310,6 @@ internal static partial class NativeMethods
         out IntPtr sourceRoutingId, out IntPtr spotRoutingId,
         out ulong requestSeq, ref ZlinkMsg part, out int hasMore,
         int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_channel_reply_progress_from(IntPtr spot,
-        IntPtr dealer);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_atomic_counter_new();

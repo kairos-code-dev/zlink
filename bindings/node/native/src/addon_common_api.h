@@ -11,9 +11,6 @@
 
 #include "zlink.h"
 
-extern "C" int zlink_socket_request_progress_internal(void *socket_);
-extern "C" int zlink_spot_request_progress_internal(void *spot_);
-
 napi_value throw_last_error(napi_env env, const char *prefix);
 std::string get_string(napi_env env, napi_value val);
 bool build_msg_vector(napi_env env, napi_value arr, std::vector<zlink_msg_t> *out);

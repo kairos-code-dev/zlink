@@ -151,6 +151,7 @@ public final class EnumCodecs {
             case POLLOUT -> 2;
             case POLLERR -> 4;
             case POLLPRI -> 8;
+            case POLLCOMPLETION -> 32;
         };
     }
 

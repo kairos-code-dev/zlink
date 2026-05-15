@@ -638,10 +638,12 @@ int zlink_poller_wait (void *poller_,
 
         int public_count = 0;
         bool drained_any = false;
+        bool observed_hidden = false;
         for (int i = 0; i < rc; ++i) {
             const poller_registration_t *registration =
               find_registration_for_native (poller, poller->native_events[i]);
             if (poller_completion_is_hidden (registration)) {
+                observed_hidden = true;
                 const int drain_rc =
                   poller_completion_drain_hidden (registration);
                 if (drain_rc < 0) {
@@ -652,17 +654,6 @@ int zlink_poller_wait (void *poller_,
                 }
                 if (drain_rc > 0)
                     drained_any = true;
-                if (drain_rc > 0 && registration && registration->user_data) {
-                    if (poller_completion_fill_event (registration,
-                                                      &events_[public_count])
-                        != 0) {
-                        if (error_out_)
-                            *error_out_ = zlink::config_result_internal::from_errno (
-                              errno);
-                        return -1;
-                    }
-                    ++public_count;
-                }
                 continue;
             }
             if (fill_public_poller_event_from_registration (
@@ -688,7 +679,7 @@ int zlink_poller_wait (void *poller_,
         // produced, the caller must be allowed to inspect that state and
         // submit follow-up work. Looping back into wait() here would block
         // until the next timeout, capping throughput at 1/timeout per slot.
-        if (drained_any) {
+        if (drained_any || observed_hidden) {
             if (error_out_)
                 *error_out_ = ZLINK_CONFIG_OK;
             return 0;

@@ -110,6 +110,82 @@ std::string msg_to_string (const zlink_msg_t *part_)
                         zlink_msg_size (part_));
 }
 
+int drain_completion_via_poller (void *subject_)
+{
+    void *poller = zlink_poller_new ();
+    if (!poller)
+        return -1;
+    int rc = -1;
+    if (zlink_poller_add (poller, subject_, NULL, ZLINK_POLLCOMPLETION)
+        == ZLINK_CONFIG_OK) {
+        zlink_poller_event_t event;
+        rc = zlink_poller_wait (poller, &event, 1, 0, NULL);
+        (void) zlink_poller_remove (poller, subject_);
+    }
+    (void) zlink_poller_destroy (&poller);
+    return rc;
+}
+
+bool wait_for_channel_reply_callbacks (spot_dispatch_recv_probe_t *probe_,
+                                       void *spot_,
+                                       size_t expected_count_,
+                                       int timeout_ms_,
+                                       size_t expected_subject_count_ =
+                                         static_cast<size_t> (-1))
+{
+    if (expected_subject_count_ == static_cast<size_t> (-1))
+        expected_subject_count_ = expected_count_;
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        (void) drain_completion_via_poller (spot_);
+        {
+            std::unique_lock<std::mutex> lock (probe_->mutex);
+            if (probe_->cv.wait_for (
+                  lock,
+                  std::chrono::milliseconds (10),
+                  [probe_, expected_count_, expected_subject_count_]() {
+                      return probe_->failed
+                             || probe_->channel_reply_callback_count
+                                  >= expected_count_
+                                   && probe_->channel_reply_subjects.size ()
+                                        >= expected_subject_count_;
+                  }))
+                return true;
+        }
+    }
+    (void) drain_completion_via_poller (spot_);
+    std::lock_guard<std::mutex> lock (probe_->mutex);
+    return probe_->failed
+           || (probe_->channel_reply_callback_count >= expected_count_
+               && probe_->channel_reply_subjects.size ()
+                    >= expected_subject_count_);
+}
+
+bool wait_for_channel_reply_callbacks_on_poller (
+  spot_dispatch_recv_probe_t *probe_,
+  void *poller_,
+  size_t expected_count_,
+  int timeout_ms_,
+  size_t expected_subject_count_ = static_cast<size_t> (-1))
+{
+    if (expected_subject_count_ == static_cast<size_t> (-1))
+        expected_subject_count_ = expected_count_;
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_poller_event_t event;
+        (void) zlink_poller_wait (poller_, &event, 1, 10, NULL);
+        std::lock_guard<std::mutex> lock (probe_->mutex);
+        if (probe_->failed
+            || (probe_->channel_reply_callback_count >= expected_count_
+                && probe_->channel_reply_subjects.size ()
+                     >= expected_subject_count_))
+            return true;
+    }
+    return false;
+}
+
 void on_spot_dispatch_event (void *,
                              const zlink_spot_dispatch_info_t *info_,
                              void *userdata_)
@@ -264,12 +340,6 @@ void on_spot_dispatch_recv_event (void *spot_,
                                            sizeof (channel_name_buf),
                                            &channel_name_len)
             != ZLINK_CONFIG_OK) {
-            std::lock_guard<std::mutex> lock (probe->mutex);
-            probe->failed = true;
-            probe->last_errno = zlink_errno ();
-        } else if (zlink_spot_channel_reply_progress_from (spot_,
-                                                           info_->subject)
-                   < 0) {
             std::lock_guard<std::mutex> lock (probe->mutex);
             probe->failed = true;
             probe->last_errno = zlink_errno ();
@@ -826,12 +896,9 @@ void test_spot_dispatch_channel_reply_inside_callback ()
     zlink_multipart_close (parts, part_count);
 
     {
-        std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool completed = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (500), [&probe]() {
-              return probe.failed || !probe.channel_reply_payloads.empty ();
-          });
-        TEST_ASSERT_TRUE (completed);
+        TEST_ASSERT_TRUE (
+          wait_for_channel_reply_callbacks (&probe, spot, 1, 500));
+        std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe.channel_reply_payloads.size ());
         TEST_ASSERT_EQUAL_STRING ("channel-reply",
@@ -969,6 +1036,10 @@ void test_spot_dispatch_channel_reply_multiple_dealers_exactly_once ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
       spot, "svc-b", &request_b, 1, &on_channel_reply, &probe,
       static_cast<zlink_send_flags_t> (0), 1000));
+    void *completion_poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (completion_poller);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (completion_poller, spot, NULL, ZLINK_POLLCOMPLETION));
 
     zlink_routing_id_t source_a;
     zlink_routing_id_t source_b;
@@ -994,12 +1065,9 @@ void test_spot_dispatch_channel_reply_multiple_dealers_exactly_once ()
       zlink_router_reply (router_b, &source_b, request_seq_b, &reply_b, 1));
 
     {
-        std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool completed = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (1000), [&probe]() {
-              return probe.failed || probe.channel_reply_payloads.size () >= 2;
-          });
-        TEST_ASSERT_TRUE (completed);
+        TEST_ASSERT_TRUE (wait_for_channel_reply_callbacks_on_poller (
+          &probe, completion_poller, 2, 1000));
+        std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (2, probe.channel_reply_payloads.size ());
         TEST_ASSERT_EQUAL_UINT (2, probe.channel_reply_callback_count);
@@ -1019,6 +1087,8 @@ void test_spot_dispatch_channel_reply_multiple_dealers_exactly_once ()
                           != probe.channel_reply_subjects[1]);
     }
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (completion_poller, spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&completion_poller));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (dealer_a));
@@ -1068,6 +1138,14 @@ void test_spot_dispatch_channel_reply_shared_dealer_per_request_spot ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
       spot_b, "svc-shared", &request_b, 1, &on_channel_reply, &probe_b,
       static_cast<zlink_send_flags_t> (0), 1000));
+    void *completion_poller_a = zlink_poller_new ();
+    void *completion_poller_b = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (completion_poller_a);
+    TEST_ASSERT_NOT_NULL (completion_poller_b);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (
+      completion_poller_a, spot_a, NULL, ZLINK_POLLCOMPLETION));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (
+      completion_poller_b, spot_b, NULL, ZLINK_POLLCOMPLETION));
 
     zlink_routing_id_t source_a;
     zlink_routing_id_t source_b;
@@ -1101,13 +1179,9 @@ void test_spot_dispatch_channel_reply_shared_dealer_per_request_spot ()
       zlink_router_reply (router, &source_b, request_seq_b, &reply_b, 1));
 
     {
-        std::unique_lock<std::mutex> lock (probe_a.mutex);
-        const bool completed = probe_a.cv.wait_for (
-          lock, std::chrono::milliseconds (1000), [&probe_a]() {
-              return probe_a.failed
-                     || probe_a.channel_reply_payloads.size () >= 1;
-          });
-        TEST_ASSERT_TRUE (completed);
+        TEST_ASSERT_TRUE (wait_for_channel_reply_callbacks_on_poller (
+          &probe_a, completion_poller_a, 1, 1000));
+        std::lock_guard<std::mutex> lock (probe_a.mutex);
         TEST_ASSERT_FALSE (probe_a.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe_a.channel_reply_payloads.size ());
         TEST_ASSERT_EQUAL_STRING ("reply-shared-a",
@@ -1116,13 +1190,9 @@ void test_spot_dispatch_channel_reply_shared_dealer_per_request_spot ()
     }
 
     {
-        std::unique_lock<std::mutex> lock (probe_b.mutex);
-        const bool completed = probe_b.cv.wait_for (
-          lock, std::chrono::milliseconds (1000), [&probe_b]() {
-              return probe_b.failed
-                     || probe_b.channel_reply_payloads.size () >= 1;
-          });
-        TEST_ASSERT_TRUE (completed);
+        TEST_ASSERT_TRUE (wait_for_channel_reply_callbacks_on_poller (
+          &probe_b, completion_poller_b, 1, 1000));
+        std::lock_guard<std::mutex> lock (probe_b.mutex);
         TEST_ASSERT_FALSE (probe_b.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe_b.channel_reply_payloads.size ());
         TEST_ASSERT_EQUAL_STRING ("reply-shared-b",
@@ -1130,6 +1200,12 @@ void test_spot_dispatch_channel_reply_shared_dealer_per_request_spot ()
         TEST_ASSERT_EQUAL_PTR (dealer, probe_b.channel_reply_subject);
     }
 
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_remove (completion_poller_b, spot_b));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_remove (completion_poller_a, spot_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&completion_poller_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&completion_poller_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -1178,12 +1254,9 @@ void test_spot_dispatch_channel_reply_timeout_late_reply_no_double_completion ()
     TEST_ASSERT_EQUAL_STRING ("timeout-request", payload.c_str ());
 
     {
-        std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool completed = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (1000), [&probe]() {
-              return probe.failed || probe.channel_reply_callback_count >= 1;
-          });
-        TEST_ASSERT_TRUE (completed);
+        TEST_ASSERT_TRUE (
+          wait_for_channel_reply_callbacks (&probe, spot, 1, 1000, 0));
+        std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe.channel_reply_callback_count);
         TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TIMED_OUT, probe.channel_reply_result);
@@ -1250,12 +1323,9 @@ void test_spot_dispatch_channel_reply_close_late_reply_no_double_completion ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
 
     {
-        std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool completed = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (1000), [&probe]() {
-              return probe.failed || probe.channel_reply_callback_count >= 1;
-          });
-        TEST_ASSERT_TRUE (completed);
+        TEST_ASSERT_TRUE (
+          wait_for_channel_reply_callbacks (&probe, spot, 1, 1000, 0));
+        std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe.channel_reply_callback_count);
         TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TERMINATED,
@@ -1312,6 +1382,10 @@ void test_spot_dispatch_channel_reply_malformed_reply_protocol_error_once ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
       spot, "svc-malformed", &request, 1, &on_channel_reply, &probe,
       static_cast<zlink_send_flags_t> (0), 1000));
+    void *completion_poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (completion_poller);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (completion_poller, spot, NULL, ZLINK_POLLCOMPLETION));
 
     zlink_routing_id_t source_rid;
     memset (&source_rid, 0, sizeof (source_rid));
@@ -1323,12 +1397,9 @@ void test_spot_dispatch_channel_reply_malformed_reply_protocol_error_once ()
     send_malformed_router_reply (router, &source_rid, request_seq);
 
     {
-        std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool completed = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (1000), [&probe]() {
-              return probe.failed || probe.channel_reply_callback_count >= 1;
-          });
-        TEST_ASSERT_TRUE (completed);
+        TEST_ASSERT_TRUE (wait_for_channel_reply_callbacks_on_poller (
+          &probe, completion_poller, 1, 1000));
+        std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe.channel_reply_callback_count);
         TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_PROTOCOL_ERROR,
@@ -1343,6 +1414,8 @@ void test_spot_dispatch_channel_reply_malformed_reply_protocol_error_once ()
                                probe.channel_reply_result);
     }
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (completion_poller, spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&completion_poller));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (dealer));

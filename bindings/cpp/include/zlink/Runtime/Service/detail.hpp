@@ -15,11 +15,6 @@
 #include <utility>
 #include <vector>
 
-extern "C" int zlink_spot_request_progress_internal (void *spot_);
-extern "C" int zlink_spot_request_channel_progress_internal (
-  void *spot_,
-  const char *channel_name_);
-
 namespace zlink
 {
 namespace service
@@ -42,15 +37,24 @@ using zlink::detail::throw_if_failed;
 
 inline void request_progress_spot (void *spot_) noexcept
 {
-    (void) zlink_spot_request_progress_internal (spot_);
+    void *poller = zlink_poller_new ();
+    if (!poller)
+        return;
+    if (zlink_poller_add (poller, spot_, NULL, ZLINK_POLLCOMPLETION)
+        == ZLINK_CONFIG_OK) {
+        zlink_poller_event_t event;
+        (void) zlink_poller_wait (poller, &event, 1, 0, NULL);
+        (void) zlink_poller_remove (poller, spot_);
+    }
+    (void) zlink_poller_destroy (&poller);
 }
 
 inline void request_progress_spot_channel (
   void *spot_,
   const std::string &channel_name_) noexcept
 {
-    (void) zlink_spot_request_channel_progress_internal (
-      spot_, channel_name_.c_str ());
+    (void) channel_name_;
+    request_progress_spot (spot_);
 }
 
 inline std::function<void()> make_spot_request_progress (void *spot_)

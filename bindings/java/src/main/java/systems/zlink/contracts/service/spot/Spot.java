@@ -616,11 +616,6 @@ public final class Spot implements AutoCloseable {
     private void drainChannelReplyFrom(MemorySegment dealerSubject) {
         Objects.requireNonNull(dealerSubject, "dealerSubject");
         ensureOpen();
-        int rc = Native.spotChannelReplyProgressFrom(handle, dealerSubject);
-        if (rc != 0) {
-            throw InternalAccess.zlinkExceptionFromLastError(
-              "zlink_spot_channel_reply_progress_from");
-        }
     }
 
     void drainChannelReply(SpotDispatchInfo info) {

@@ -874,6 +874,7 @@ pub struct zlink_poller_event_t {
 pub const ZLINK_POLLIN: i16 = 1;
 pub const ZLINK_POLLOUT: i16 = 2;
 pub const ZLINK_POLLERR: i16 = 4;
+pub const ZLINK_POLLCOMPLETION: i16 = 32;
 
 // ---------------------------------------------------------------------------
 // Extern "C" functions
@@ -1108,7 +1109,6 @@ unsafe extern "C" {
         handler: Option<zlink_reply_handler_fn>,
         userdata: *mut c_void,
     ) -> c_int;
-    pub fn zlink_socket_request_progress_internal(socket: *mut c_void) -> c_int;
     pub fn zlink_router_reply_part(
         router: *mut c_void,
         peer_rid: *const zlink_routing_id_t,
@@ -1454,9 +1454,6 @@ unsafe extern "C" {
         part_flag: zlink_part_flag_t,
         timeout_ms: u32,
     ) -> c_int;
-    pub fn zlink_spot_request_progress_internal(spot: *mut c_void) -> c_int;
-    pub fn zlink_spot_channel_reply_progress_from(spot: *mut c_void, subject: *mut c_void)
-    -> c_int;
     pub fn zlink_spot_publish_part(
         spot: *mut c_void,
         topic_id: *const c_char,

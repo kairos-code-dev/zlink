@@ -734,7 +734,7 @@ function invokeActorJoin(
   timeoutMs: number,
 ): boolean {
   const releaseProgress = spotHandle
-    ? startRequestProgress(spotHandle, (handle) => requireNative().spotRequestProgress(handle))
+    ? startRequestProgress(spotHandle, (handle) => { void handle; })
     : null;
   try {
     requireNative().spotNodeActorJoinSpot(
@@ -1854,7 +1854,7 @@ export class DealerSocket extends MessageSocket {
       maybeTimeout,
       startProgress: () => startRequestProgress(
         nativeHandle,
-        (handle) => requireNative().socketRequestProgress(handle)
+        (handle) => { void handle; }
       ),
       invoke: (callback, flags, timeoutMs) => {
         requireNative().dealerRequest(
@@ -1917,7 +1917,7 @@ export class RouterSocket extends RoutedMessageSocket {
       maybeTimeout,
       startProgress: () => startRequestProgress(
         nativeHandle,
-        (handle) => requireNative().socketRequestProgress(handle)
+        (handle) => { void handle; }
       ),
       invoke: (callback, flags, timeoutMs) => {
         requireNative().routerRequest(
@@ -1972,7 +1972,7 @@ export class RouterSocket extends RoutedMessageSocket {
       promiseTimeoutMayUseFlagsOrTimeout: true,
       startProgress: () => startRequestProgress(
         nativeHandle,
-        (handle) => requireNative().socketRequestProgress(handle)
+        (handle) => { void handle; }
       ),
       invoke: (callback, flags, timeoutMs) => {
         requireNative().routerSpotRequest(
@@ -3250,7 +3250,7 @@ export class Spot extends NativeHandle {
     const parts = toMessageParts(partsInput);
     const normalizedChannelName = validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER);
     const progressHandle = this._native;
-    const progressPump = (handle: unknown) => requireNative().spotRequestProgress(handle);
+    const progressPump = (handle: unknown) => { void handle; };
     return executeNativeRequest({
       callbackOrTimeout,
       flagsOrTimeout,
@@ -3291,7 +3291,7 @@ export class Spot extends NativeHandle {
       flagsOrTimeout,
       maybeTimeout,
       promiseTimeoutMayUseFlagsOrTimeout: true,
-      startProgress: () => startRequestProgress(spotHandle, (handle) => requireNative().spotRequestProgress(handle)),
+      startProgress: () => startRequestProgress(spotHandle, (handle) => { void handle; }),
       invoke: (callback, flags, timeoutMs) => {
         requireNative().spotRequestSpot(
           spotHandle,
@@ -3316,7 +3316,7 @@ export class Spot extends NativeHandle {
       flagsOrTimeout,
       maybeTimeout,
       promiseTimeoutMayUseFlagsOrTimeout: true,
-      startProgress: () => startRequestProgress(spotHandle, (handle) => requireNative().spotRequestProgress(handle)),
+      startProgress: () => startRequestProgress(spotHandle, (handle) => { void handle; }),
       invoke: (callback, flags, timeoutMs) => {
         requireNative().spotRequestRouter(
           spotHandle,

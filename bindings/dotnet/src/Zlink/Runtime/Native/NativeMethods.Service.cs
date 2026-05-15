@@ -330,9 +330,6 @@ internal static partial class NativeMethods
         int flags, ZlinkPartFlag partFlag, uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_request_progress_internal(IntPtr spot);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_set_spot_option(IntPtr spot,
         SpotOption option, IntPtr value, nuint valueSize);
 

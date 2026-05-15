@@ -2006,10 +2006,6 @@ public sealed partial class Spot : ISpot
         if (dealerSubject == IntPtr.Zero)
             throw new ArgumentException("dealerSubject must not be null.",
                 nameof(dealerSubject));
-        int rc = NativeMethods.zlink_spot_channel_reply_progress_from(_handle,
-            dealerSubject);
-        if (rc < 0)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     public void Close()

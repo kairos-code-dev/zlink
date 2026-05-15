@@ -7,6 +7,7 @@
 
 #include <unordered_map>
 #include <vector>
+#include <memory>
 
 #include "api/socket/socket_api_internal.hpp"
 #include "core/socket_poller.hpp"
@@ -34,7 +35,8 @@ struct poller_registration_t
         subject (NULL),
         subject_kind (poller_subject_none),
         user_data (NULL),
-        events (0)
+        events (0),
+        state_ref ()
     {
     }
 
@@ -44,6 +46,7 @@ struct poller_registration_t
     poller_subject_kind_t subject_kind;
     void *user_data;
     short events;
+    std::shared_ptr<void> state_ref;
 };
 
 struct poller_handle_t

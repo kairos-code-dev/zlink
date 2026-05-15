@@ -10,6 +10,7 @@ use crate::ffi;
 /// Poll event flags.
 pub const POLLIN: i16 = ffi::ZLINK_POLLIN;
 pub const POLLOUT: i16 = ffi::ZLINK_POLLOUT;
+pub const POLLCOMPLETION: i16 = ffi::ZLINK_POLLCOMPLETION;
 
 /// A single poll result event.
 #[derive(Debug, Clone)]

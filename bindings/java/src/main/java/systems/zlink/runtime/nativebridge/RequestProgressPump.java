@@ -2,6 +2,7 @@
 
 package systems.zlink.runtime.nativebridge;
 
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -9,7 +10,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.LockSupport;
 
 /**
  * Shared request-progress pumps keyed by socket handle.
@@ -18,9 +18,8 @@ import java.util.concurrent.locks.LockSupport;
  * public async request contract.
  */
 public final class RequestProgressPump {
-    private static final long MIN_POLL_NANOS = 100_000L;
-    private static final long DEFAULT_POLL_NANOS = 1_000_000L;
-    private static final long MAX_POLL_NANOS = 2_000_000L;
+    private static final int ZLINK_POLLCOMPLETION = 32;
+    private static final long POLLER_EVENT_SIZE = 48;
     private static final ConcurrentMap<Key, Pump> PUMPS = new ConcurrentHashMap<>();
 
     private RequestProgressPump() {
@@ -93,38 +92,45 @@ public final class RequestProgressPump {
         }
 
         private void runLoop() {
+            MemorySegment poller = MemorySegment.NULL;
             try {
-                long delayNanos = DEFAULT_POLL_NANOS;
-                while (pending.get() > 0) {
-                    int before = pending.get();
-                    progress();
-                    int after = pending.get();
-                    if (after <= 0) {
-                        break;
+                poller = Native.pollerNew();
+                if (poller.address() == 0)
+                    return;
+                if (Native.pollerAdd(poller, socketHandle, MemorySegment.NULL,
+                    ZLINK_POLLCOMPLETION) != 0) {
+                    return;
+                }
+                try (Arena arena = Arena.ofConfined()) {
+                    MemorySegment event = arena.allocate(POLLER_EVENT_SIZE,
+                        Long.BYTES);
+                    while (pending.get() > 0) {
+                        try {
+                            Native.pollerWait(poller, event, 1, -1);
+                        } catch (Throwable ignored) {
+                            break;
+                        }
+                        if (pending.get() <= 0)
+                            break;
                     }
-                    delayNanos = nextPollDelay(before, after, delayNanos);
-                    LockSupport.parkNanos(delayNanos);
                 }
             } finally {
+                if (poller.address() != 0) {
+                    try {
+                        Native.pollerRemove(poller, socketHandle);
+                    } catch (Throwable ignored) {
+                    }
+                    try {
+                        Native.pollerDestroy(poller);
+                    } catch (Throwable ignored) {
+                    }
+                }
                 running.set(false);
                 if (pending.get() > 0) {
                     ensureRunning();
                     return;
                 }
                 PUMPS.remove(key, this);
-            }
-        }
-
-        private long nextPollDelay(int before, int after, long current) {
-            if (after > 1 || after != before)
-                return MIN_POLL_NANOS;
-            return Math.min(MAX_POLL_NANOS, current * 2);
-        }
-
-        private void progress() {
-            switch (key.kind()) {
-                case SOCKET -> Native.socketRequestProgressInternal(socketHandle);
-                case SPOT -> Native.spotRequestProgressInternal(socketHandle);
             }
         }
     }

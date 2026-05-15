@@ -448,37 +448,3 @@ extern "C" int zlink_socket_request_reply_get_default_timeout (
     *optvallen_ = sizeof (timeout_ms);
     return 0;
 }
-
-extern "C" int zlink_socket_request_progress_internal (void *socket_)
-{
-    const socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    int drained = 0;
-
-    const std::shared_ptr<reqrep::socket_request_reply_state_t> socket_state =
-      reqrep::find_request_reply_state (handle);
-    if (socket_state) {
-        const int rc = reqrep::drain_reply_completions (socket_state, socket_);
-        if (rc < 0)
-            return -1;
-        drained += rc;
-    }
-
-    const std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-      router_spot_state = handle.socket->router_spot_request_reply_state ();
-    if (router_spot_state) {
-        const int rc =
-          zlink::spot_reqrep_internal::drain_router_reply_completions (
-            router_spot_state, socket_);
-        if (rc < 0)
-            return -1;
-        drained += rc;
-    }
-
-    errno = 0;
-    return drained;
-}

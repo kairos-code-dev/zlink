@@ -30,7 +30,12 @@ int poller_completion_drain_hidden (
             socket_handle_t handle = as_socket_handle (registration_->subject);
             std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
               state =
-                zlink::socket_reqrep_internal::find_request_reply_state (handle);
+                registration_->state_ref
+                  ? std::static_pointer_cast<
+                      zlink::socket_reqrep_internal::socket_request_reply_state_t> (
+                      registration_->state_ref)
+                  : zlink::socket_reqrep_internal::find_request_reply_state (
+                      handle);
             return state
                      ? zlink::socket_reqrep_internal::drain_reply_completions (
                          state, registration_->subject)
@@ -38,10 +43,15 @@ int poller_completion_drain_hidden (
         }
         case poller_subject_router_spot_request_completion: {
             socket_handle_t handle = as_socket_handle (registration_->subject);
-            if (!handle.socket)
+            if (!handle.socket && !registration_->state_ref)
                 return -1;
             std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-              state = handle.socket->router_spot_request_reply_state ();
+              state =
+                registration_->state_ref
+                  ? std::static_pointer_cast<
+                      zlink::spot_reqrep_internal::router_spot_request_reply_state_t> (
+                      registration_->state_ref)
+                  : handle.socket->router_spot_request_reply_state ();
             return state
                      ? zlink::spot_reqrep_internal::drain_router_reply_completions (
                          state, registration_->subject)
@@ -50,33 +60,43 @@ int poller_completion_drain_hidden (
         case poller_subject_spot_request_completion: {
             std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
               state =
-                zlink::spot_reqrep_internal::try_find_spot_state (
-                  registration_->subject);
-            return state
-                     ? zlink::spot_reqrep_internal::drain_spot_reply_completions (
-                         state, registration_->subject)
-                     : 0;
+                registration_->state_ref
+                  ? std::static_pointer_cast<
+                      zlink::spot_reqrep_internal::spot_request_reply_state_t> (
+                      registration_->state_ref)
+                  : zlink::spot_reqrep_internal::try_find_spot_state (
+                      registration_->subject);
+            if (!state)
+                return 0;
+            int drained =
+              zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
+                state);
+            if (drained < 0)
+                return -1;
+            const int direct_rc =
+              zlink::spot_reqrep_internal::drain_spot_reply_completions (
+                state, registration_->subject);
+            if (direct_rc < 0)
+                return -1;
+            drained += direct_rc;
+            std::vector<void *> dealers;
+            zlink::spot_reqrep_internal::snapshot_spot_channel_reply_dealers (
+              state, &dealers);
+            for (size_t i = 0; i < dealers.size (); ++i) {
+                const int rc =
+                  zlink::spot_reqrep_internal::drain_spot_channel_reply_completions_from (
+                    state, registration_->subject, dealers[i]);
+                if (rc < 0 && errno != ENOENT)
+                    return -1;
+                if (rc > 0)
+                    drained += rc;
+            }
+            zlink::spot_reqrep_internal::run_spot_dispatch_worker_once (
+              registration_->subject);
+            errno = 0;
+            return drained;
         }
         default:
             return 0;
     }
-}
-
-int poller_completion_fill_event (
-  const poller_registration_t *registration_,
-  zlink_poller_event_t *event_out_)
-{
-    if (!registration_ || !event_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    memset (event_out_, 0, sizeof (*event_out_));
-    event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
-    event_out_->socket = registration_->subject;
-    event_out_->fd = 0;
-    event_out_->timer = NULL;
-    event_out_->user_data = registration_->user_data;
-    event_out_->events = ZLINK_POLLIN;
-    return 0;
 }

@@ -1214,9 +1214,6 @@ func (s *Spot) DrainChannelReplyFrom(dealer *DealerSocket) error {
 	if dealer == nil || dealer.raw() == nil {
 		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	if rc := C.zlink_spot_channel_reply_progress_from(s.raw(), dealer.raw()); rc != 0 {
-		return configErrorFromErrno(currentErrno())
-	}
 	return nil
 }
 

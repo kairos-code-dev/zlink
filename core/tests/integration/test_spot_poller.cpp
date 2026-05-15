@@ -10,8 +10,6 @@
 #include <string>
 #include <atomic>
 
-extern "C" int zlink_socket_request_progress_internal (void *socket_);
-
 namespace
 {
 struct spot_reply_probe_t
@@ -145,6 +143,22 @@ bool wait_for_spot_reply_via_poller (void *poller_,
     return probe_ && probe_->invoked;
 }
 
+int drain_completion_via_poller (void *subject_)
+{
+    void *poller = zlink_poller_new ();
+    if (!poller)
+        return -1;
+    int rc = -1;
+    if (zlink_poller_add (poller, subject_, NULL, ZLINK_POLLCOMPLETION)
+        == ZLINK_CONFIG_OK) {
+        zlink_poller_event_t event;
+        rc = zlink_poller_wait (poller, &event, 1, 0, NULL);
+        (void) zlink_poller_remove (poller, subject_);
+    }
+    (void) zlink_poller_destroy (&poller);
+    return rc;
+}
+
 void test_spot_poller_wait_reports_original_spot_for_subscribe ()
 {
     void *ctx = zlink_ctx_new ();
@@ -256,7 +270,7 @@ void test_spot_poller_wait_reports_original_spot_for_routed_recv ()
       zlink_spot_reply_router (recv_spot, source_node_rid, request_seq,
                                &reply_part, 1));
     std::this_thread::sleep_for (std::chrono::milliseconds (10));
-    TEST_ASSERT_TRUE (zlink_socket_request_progress_internal (router) >= 0);
+    TEST_ASSERT_TRUE (drain_completion_via_poller (router) >= 0);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, recv_spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
@@ -720,6 +734,115 @@ void test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
+
+void test_completion_only_spot_registration_has_no_public_recv_event ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *sub_spot = zlink_spot_new (node);
+    void *pub_spot = zlink_spot_new (node);
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (sub_spot);
+    TEST_ASSERT_NOT_NULL (pub_spot);
+    TEST_ASSERT_NOT_NULL (poller);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub_spot, "completion-only.topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, sub_spot, NULL, ZLINK_POLLCOMPLETION));
+
+    zlink_msg_t part;
+    init_string_part (&part, "not-a-completion");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_publish (pub_spot, "completion-only.topic", &part, 1, 0));
+
+    zlink_poller_event_t event;
+    TEST_ASSERT_EQUAL_INT (0, zlink_poller_wait (poller, &event, 1, 50, NULL));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, sub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_completion_only_rejects_combined_pollin ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (dealer);
+    TEST_ASSERT_NOT_NULL (poller);
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_poller_add (poller, dealer, NULL,
+                        static_cast<short> (ZLINK_POLLIN
+                                            | ZLINK_POLLCOMPLETION)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (dealer));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_completion_only_spot_request_returns_zero_after_callback ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *client_spot = zlink_spot_new (node);
+    void *server_spot = zlink_spot_new (node);
+    void *poller = zlink_poller_new ();
+    spot_reply_probe_t reply_probe;
+    spot_request_probe_t request_probe;
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (client_spot);
+    TEST_ASSERT_NOT_NULL (server_spot);
+    TEST_ASSERT_NOT_NULL (poller);
+
+    set_routing_id_text (node, "completion-spot-node");
+    set_routing_id_text (client_spot, "completion-spot-client");
+    set_routing_id_text (server_spot, "completion-spot-server");
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, client_spot, NULL, ZLINK_POLLCOMPLETION));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_handler (
+      server_spot, &capture_spot_request_for_reply, &request_probe));
+
+    const zlink_routing_id_t node_rid = get_routing_id_value (node);
+    const zlink_routing_id_t server_spot_rid =
+      get_routing_id_value (server_spot);
+    zlink_msg_t request_part;
+    init_string_part (&request_part, "completion-request");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot_part (
+      client_spot, &node_rid, &server_spot_rid, &request_part,
+      &capture_spot_reply, &reply_probe, ZLINK_SEND_FLAGS_NONE,
+      ZLINK_PART_FINAL, 5000));
+
+    TEST_ASSERT_TRUE (wait_for_spot_request (&request_probe, 1000));
+    zlink_msg_t reply_part;
+    init_string_part (&reply_part, "completion-reply");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_reply_spot_part (
+      server_spot, &request_probe.source_node_rid,
+      &request_probe.source_spot_rid, request_probe.request_seq, &reply_part,
+      ZLINK_PART_FINAL));
+
+    zlink_poller_event_t event;
+    TEST_ASSERT_EQUAL_INT (0, zlink_poller_wait (poller, &event, 1, 5000, NULL));
+    TEST_ASSERT_TRUE (reply_probe.invoked);
+    TEST_ASSERT_EQUAL_STRING ("completion-reply", reply_probe.payload.c_str ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, client_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&server_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&client_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
 }
 
 SETUP_TEARDOWN_TESTCONTEXT
@@ -737,5 +860,8 @@ int main (void)
     RUN_TEST (test_spot_poller_accepts_pollin_or_pollout_combined);
     RUN_TEST (
       test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop);
+    RUN_TEST (test_completion_only_spot_registration_has_no_public_recv_event);
+    RUN_TEST (test_completion_only_rejects_combined_pollin);
+    RUN_TEST (test_completion_only_spot_request_returns_zero_after_callback);
     return UNITY_END ();
 }

@@ -9,6 +9,7 @@
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/service/service_api_internal.hpp"
 #include "api/spot/dispatch/service_spot_dispatch_surface_internal.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 
 namespace zlink
@@ -92,9 +93,12 @@ int queue_reply_completion (
         return rc;
 
     for (size_t i = 0; i < observers.size (); ++i) {
-        zlink_spot_notify_dispatch_info (
-          observers[i], ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE,
-          ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER, state_->socket);
+        std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
+          spot_state =
+            zlink::spot_reqrep_internal::try_find_spot_state (observers[i]);
+        if (spot_state)
+            (void) zlink::spot_reqrep_internal::signal_spot_completion_queue (
+              spot_state);
     }
     return 0;
 }

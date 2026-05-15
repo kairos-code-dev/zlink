@@ -417,6 +417,8 @@ zlink::spot_runtime_t *resolve_runtime_for_spot_destination (
   const std::string &spot_rid_);
 int ensure_spot_completion_queue_ready (
   const std::shared_ptr<spot_request_reply_state_t> &state_);
+int signal_spot_completion_queue (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
 int ensure_router_completion_queue_ready (
   const std::shared_ptr<router_spot_request_reply_state_t> &state_);
 int ensure_spot_recv_ready (

@@ -7,6 +7,8 @@ use std::time::Duration;
 
 use crate::ffi;
 
+const POLL_COMPLETION: i16 = 32;
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum ProgressKind {
     Socket,
@@ -14,7 +16,6 @@ enum ProgressKind {
 }
 
 struct ProgressWorker {
-    kind: ProgressKind,
     handle: usize,
     pending: AtomicUsize,
     gate: Mutex<()>,
@@ -60,7 +61,6 @@ fn acquire_worker(kind: ProgressKind, handle: usize) -> Arc<ProgressWorker> {
         return worker;
     }
     let worker = Arc::new(ProgressWorker {
-        kind,
         handle,
         pending: AtomicUsize::new(0),
         gate: Mutex::new(()),
@@ -105,18 +105,35 @@ fn run_worker(worker: Weak<ProgressWorker>) {
                 break;
             }
             unsafe {
-                match active_worker.kind {
-                    ProgressKind::Socket => {
-                        let _ = ffi::zlink_socket_request_progress_internal(
-                            active_worker.handle as *mut c_void,
-                        );
-                    }
-                    ProgressKind::Spot => {
-                        let _ = ffi::zlink_spot_request_progress_internal(
-                            active_worker.handle as *mut c_void,
-                        );
-                    }
+                let poller = ffi::zlink_poller_new();
+                if poller.is_null() {
+                    thread::yield_now();
+                    continue;
                 }
+                if ffi::zlink_poller_add(
+                    poller,
+                    active_worker.handle as *mut c_void,
+                    std::ptr::null_mut(),
+                    POLL_COMPLETION,
+                ) == 0
+                {
+                    let mut event = std::mem::zeroed::<ffi::zlink_poller_event_t>();
+                    while active_worker.pending.load(Ordering::Acquire) > 0 {
+                        let _ = ffi::zlink_poller_wait(
+                            poller,
+                            &mut event,
+                            1,
+                            -1,
+                            std::ptr::null_mut(),
+                        );
+                    }
+                    let _ = ffi::zlink_poller_remove(
+                        poller,
+                        active_worker.handle as *mut c_void,
+                    );
+                }
+                let mut poller_to_destroy = poller;
+                let _ = ffi::zlink_poller_destroy(&mut poller_to_destroy);
             }
             thread::yield_now();
         }

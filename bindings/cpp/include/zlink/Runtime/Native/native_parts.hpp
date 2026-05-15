@@ -9,8 +9,6 @@
 #include <iterator>
 #include <vector>
 
-extern "C" int zlink_socket_request_progress_internal (void *socket_);
-
 namespace zlink
 {
 namespace detail
@@ -18,7 +16,16 @@ namespace detail
 
 inline void request_progress_socket (void *socket_) noexcept
 {
-    (void) zlink_socket_request_progress_internal (socket_);
+    void *poller = zlink_poller_new ();
+    if (!poller)
+        return;
+    if (zlink_poller_add (poller, socket_, NULL, ZLINK_POLLCOMPLETION)
+        == ZLINK_CONFIG_OK) {
+        zlink_poller_event_t event;
+        (void) zlink_poller_wait (poller, &event, 1, 0, NULL);
+        (void) zlink_poller_remove (poller, socket_);
+    }
+    (void) zlink_poller_destroy (&poller);
 }
 
 inline int recv_result_from_errno (int err_) noexcept

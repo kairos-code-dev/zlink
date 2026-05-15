@@ -11,8 +11,6 @@
 #include <string>
 #include <string.h>
 
-extern "C" int zlink_socket_request_progress_internal (void *socket_);
-
 SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
@@ -76,7 +74,16 @@ bool wait_for_reply_with_router_progress (void *router_,
     while (std::chrono::steady_clock::now () < deadline) {
         if (wait_for_reply (probe_, 10))
             return true;
-        (void) zlink_socket_request_progress_internal (router_);
+        void *poller = zlink_poller_new ();
+        if (poller) {
+            if (zlink_poller_add (poller, router_, NULL, ZLINK_POLLCOMPLETION)
+                == ZLINK_CONFIG_OK) {
+                zlink_poller_event_t event;
+                (void) zlink_poller_wait (poller, &event, 1, 0, NULL);
+                (void) zlink_poller_remove (poller, router_);
+            }
+            (void) zlink_poller_destroy (&poller);
+        }
     }
 
     return false;

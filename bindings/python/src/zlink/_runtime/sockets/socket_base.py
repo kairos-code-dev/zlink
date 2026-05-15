@@ -18,6 +18,17 @@ from ..enums.enums import (
     SubmitResult,
 )
 from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
+from ...contracts.sockets.options import (
+    CommonSocketOptions,
+    DealerSocketOptions,
+    StreamSocketOptions,
+    SubSocketOptions,
+    _bool_bytes,
+    _int32_bytes,
+    _int64_bytes,
+    _read_int32,
+    _read_int64,
+)
 from ..core.core import (
     BindError,
     CloseError,
@@ -109,20 +120,6 @@ def _payload_parts(payload):
     return parts
 
 
-def _int32_bytes(value):
-    native = ctypes.c_int32(_validated_int32(value))
-    return ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native))
-
-
-def _int64_bytes(value):
-    native = ctypes.c_int64(_validated_int64(value))
-    return ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native))
-
-
-def _bool_bytes(value):
-    return _int32_bytes(1 if value else 0)
-
-
 def _close_send_parts(parts_array, part_count, start=0):
     for index in range(start, part_count):
         lib().zlink_msg_close(ctypes.byref(parts_array[index]))
@@ -191,257 +188,6 @@ def _publish_via_native_no_wait_result(handle, topic_bytes, parts_array, part_co
             _close_send_parts(parts_array, part_count, index)
             return result
     return SubmitResult.OK
-
-
-def _read_int32(raw):
-    if len(raw) != ctypes.sizeof(ctypes.c_int32):
-        raise ValueError("native option payload size mismatch")
-    return ctypes.c_int32.from_buffer_copy(raw).value
-
-
-def _read_int64(raw):
-    if len(raw) != ctypes.sizeof(ctypes.c_int64):
-        raise ValueError("native option payload size mismatch")
-    return ctypes.c_int64.from_buffer_copy(raw).value
-
-
-class CommonSocketOptions:
-    def __init__(self, socket):
-        self._socket = socket
-
-    @property
-    def linger_ms(self):
-        return self._socket._get_common_int_option(SocketOption.LINGER)
-
-    @linger_ms.setter
-    def linger_ms(self, value):
-        self._socket._set_common_int_option(SocketOption.LINGER, value)
-
-    @property
-    def send_high_water_mark(self):
-        return self._socket._get_common_int_option(SocketOption.SNDHWM)
-
-    @send_high_water_mark.setter
-    def send_high_water_mark(self, value):
-        self._socket._set_common_int_option(SocketOption.SNDHWM, value)
-
-    @property
-    def receive_high_water_mark(self):
-        return self._socket._get_common_int_option(SocketOption.RCVHWM)
-
-    @receive_high_water_mark.setter
-    def receive_high_water_mark(self, value):
-        self._socket._set_common_int_option(SocketOption.RCVHWM, value)
-
-    @property
-    def send_timeout_ms(self):
-        return self._socket._get_common_int_option(SocketOption.SNDTIMEO)
-
-    @send_timeout_ms.setter
-    def send_timeout_ms(self, value):
-        self._socket._set_common_int_option(SocketOption.SNDTIMEO, value)
-
-    @property
-    def receive_timeout_ms(self):
-        return self._socket._get_common_int_option(SocketOption.RCVTIMEO)
-
-    @receive_timeout_ms.setter
-    def receive_timeout_ms(self, value):
-        self._socket._set_common_int_option(SocketOption.RCVTIMEO, value)
-
-    @property
-    def immediate(self):
-        return self._socket._get_common_bool_option(SocketOption.IMMEDIATE)
-
-    @immediate.setter
-    def immediate(self, value):
-        self._socket._set_common_bool_option(SocketOption.IMMEDIATE, value)
-
-    @property
-    def rid_duplicate_policy(self):
-        value = self._socket._get_common_int_option(
-            SocketOption.RID_DUPLICATE_POLICY
-        )
-        return RidDuplicatePolicy(value)
-
-    @rid_duplicate_policy.setter
-    def rid_duplicate_policy(self, value):
-        policy = RidDuplicatePolicy(value)
-        self._socket._set_common_int_option(
-            SocketOption.RID_DUPLICATE_POLICY, int(policy)
-        )
-
-    @property
-    def connect_timeout_ms(self):
-        return self._socket._get_common_int_option(SocketOption.CONNECT_TIMEOUT)
-
-    @connect_timeout_ms.setter
-    def connect_timeout_ms(self, value):
-        self._socket._set_common_int_option(SocketOption.CONNECT_TIMEOUT, value)
-
-    @property
-    def ipv6(self):
-        return self._socket._get_common_bool_option(SocketOption.IPV6)
-
-    @ipv6.setter
-    def ipv6(self, value):
-        self._socket._set_common_bool_option(SocketOption.IPV6, value)
-
-    @property
-    def tcp_no_delay(self):
-        return self._socket._get_common_bool_option(SocketOption.TCP_NODELAY)
-
-    @tcp_no_delay.setter
-    def tcp_no_delay(self, value):
-        self._socket._set_common_bool_option(SocketOption.TCP_NODELAY, value)
-
-    @property
-    def tcp_keepalive(self):
-        return self._socket._get_common_int_option(SocketOption.TCP_KEEPALIVE)
-
-    @tcp_keepalive.setter
-    def tcp_keepalive(self, value):
-        self._socket._set_common_int_option(SocketOption.TCP_KEEPALIVE, value)
-
-    @property
-    def heartbeat_interval_ms(self):
-        return self._socket._get_common_int_option(SocketOption.HEARTBEAT_IVL)
-
-    @heartbeat_interval_ms.setter
-    def heartbeat_interval_ms(self, value):
-        self._socket._set_common_int_option(SocketOption.HEARTBEAT_IVL, value)
-
-    @property
-    def heartbeat_ttl_ms(self):
-        return self._socket._get_common_int_option(SocketOption.HEARTBEAT_TTL)
-
-    @heartbeat_ttl_ms.setter
-    def heartbeat_ttl_ms(self, value):
-        self._socket._set_common_int_option(SocketOption.HEARTBEAT_TTL, value)
-
-    @property
-    def heartbeat_timeout_ms(self):
-        return self._socket._get_common_int_option(SocketOption.HEARTBEAT_TIMEOUT)
-
-    @heartbeat_timeout_ms.setter
-    def heartbeat_timeout_ms(self, value):
-        self._socket._set_common_int_option(SocketOption.HEARTBEAT_TIMEOUT, value)
-
-    @property
-    def max_msg_size(self):
-        return _read_int64(self._socket._get_raw_option(
-            lib().zlink_get_option,
-            SocketOption.MAXMSGSIZE,
-            ctypes.sizeof(ctypes.c_int64),
-        ))
-
-    @max_msg_size.setter
-    def max_msg_size(self, value):
-        self._socket._set_raw_option(
-            lib().zlink_set_option,
-            SocketOption.MAXMSGSIZE,
-            _int64_bytes(value),
-        )
-
-    @property
-    def auto_hwm_msg_unit_bytes(self):
-        return self._socket._get_common_int_option(
-            SocketOption.AUTO_HWM_MSG_UNIT_BYTES
-        )
-
-    @auto_hwm_msg_unit_bytes.setter
-    def auto_hwm_msg_unit_bytes(self, value):
-        self._socket._set_common_int_option(
-            SocketOption.AUTO_HWM_MSG_UNIT_BYTES, value
-        )
-
-    @property
-    def backlog(self):
-        return self._socket._get_common_int_option(SocketOption.BACKLOG)
-
-    @backlog.setter
-    def backlog(self, value):
-        self._socket._set_common_int_option(SocketOption.BACKLOG, value)
-
-    @property
-    def reconnect_interval_ms(self):
-        return self._socket._get_common_int_option(SocketOption.RECONNECT_IVL)
-
-    @reconnect_interval_ms.setter
-    def reconnect_interval_ms(self, value):
-        self._socket._set_common_int_option(SocketOption.RECONNECT_IVL, value)
-
-    @property
-    def reconnect_interval_max_ms(self):
-        return self._socket._get_common_int_option(SocketOption.RECONNECT_IVL_MAX)
-
-    @reconnect_interval_max_ms.setter
-    def reconnect_interval_max_ms(self, value):
-        self._socket._set_common_int_option(SocketOption.RECONNECT_IVL_MAX, value)
-
-
-class DealerSocketOptions:
-    _PROBE = 0x3201
-    _REQUEST_TIMEOUT_MS = 0x3202
-    _WEIGHT = 0x3203
-    _DEFAULT_WEIGHT = 100
-
-    def __init__(self, socket):
-        self._socket = socket
-
-    @property
-    def probe(self):
-        return bool(getattr(self._socket, "_dealer_probe_option", False))
-
-    @probe.setter
-    def probe(self, value):
-        self._socket._set_dealer_option(self._PROBE, _bool_bytes(value))
-        self._socket._dealer_probe_option = bool(value)
-
-    @property
-    def weight(self):
-        # zlink_get_dealer_option is not available; return cached value or default 100.
-        return int(getattr(self._socket, "_dealer_weight_option", self._DEFAULT_WEIGHT))
-
-    @weight.setter
-    def weight(self, value):
-        self._socket._set_dealer_option(self._WEIGHT, _int32_bytes(value))
-        self._socket._dealer_weight_option = int(value)
-
-    @property
-    def request_timeout_ms(self):
-        return int(getattr(self._socket, "_dealer_request_timeout_ms", 5000))
-
-    @request_timeout_ms.setter
-    def request_timeout_ms(self, value):
-        self._socket._set_dealer_option(self._REQUEST_TIMEOUT_MS, _int32_bytes(value))
-        self._socket._dealer_request_timeout_ms = int(value)
-
-
-class StreamSocketOptions:
-    _NOTIFY = 0x3501
-
-    def __init__(self, socket):
-        self._socket = socket
-
-    @property
-    def notify(self):
-        return bool(_read_int32(self._socket._get_stream_option(self._NOTIFY, 4)))
-
-    @notify.setter
-    def notify(self, value):
-        self._socket._set_stream_option(self._NOTIFY, _bool_bytes(value))
-
-
-class SubSocketOptions:
-    _TOPICS_COUNT = 0x3400
-
-    def __init__(self, socket):
-        self._socket = socket
-
-    @property
-    def topics_count(self):
-        return _read_int32(self._socket._get_sub_option(self._TOPICS_COUNT, 4))
 
 
 class _SocketHandle:

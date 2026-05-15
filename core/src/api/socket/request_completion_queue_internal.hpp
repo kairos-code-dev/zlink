@@ -45,6 +45,8 @@ struct queue_state_t
     std::thread::id owner_thread;
     bool owner_thread_valid;
     bool signal_pending;
+    bool close_requested;
+    int poller_refs;
 };
 
 int ensure_signal_ready (queue_state_t *state_,
@@ -58,8 +60,11 @@ int enqueue (queue_state_t *state_,
              int errnum_,
              zlink_msg_t *parts_,
              size_t part_count_);
+int signal (queue_state_t *state_, zlink::ctx_t *ctx_, const char *prefix_);
 int drain (queue_state_t *state_, void *owner_handle_);
 void close (queue_state_t *state_);
+int acquire_signal_poller_ref (queue_state_t *state_);
+void release_signal_poller_ref (queue_state_t *state_);
 void claim_owner_thread (queue_state_t *state_);
 bool current_thread_is_owner (queue_state_t *state_);
 bool has_pending (queue_state_t *state_);

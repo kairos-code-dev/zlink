@@ -126,7 +126,9 @@ zlink::request_completion::queued_completion_t::operator= (
 
 zlink::request_completion::queue_state_t::queue_state_t () :
     owner_thread_valid (false),
-    signal_pending (false)
+    signal_pending (false),
+    close_requested (false),
+    poller_refs (0)
 {
 }
 
@@ -181,6 +183,62 @@ int zlink::request_completion::enqueue (queue_state_t *state_,
         }
     }
 
+    errno = 0;
+    return 0;
+}
+
+int zlink::request_completion::signal (queue_state_t *state_,
+                                       zlink::ctx_t *ctx_,
+                                       const char *prefix_)
+{
+    if (!state_ || !ctx_ || !prefix_) {
+        errno = EFAULT;
+        return -1;
+    }
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        if (state_->close_requested) {
+            errno = ETERM;
+            return -1;
+        }
+    }
+    if (ensure_signal_ready (state_, ctx_, prefix_) != 0)
+        return -1;
+
+    bool close_now = false;
+    bool close_seen = false;
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        if (state_->close_requested) {
+            errno = ETERM;
+            close_seen = true;
+            close_now = state_->poller_refs == 0;
+        }
+    }
+    if (close_now)
+        zlink::internal_pair_queue::close (&state_->signal);
+    if (close_seen)
+        return -1;
+
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        if (state_->close_requested) {
+            errno = ETERM;
+            return -1;
+        }
+        if (state_->signal_pending) {
+            errno = 0;
+            return 0;
+        }
+        state_->signal_pending = true;
+        static const unsigned char signal_byte = 0x7a;
+        const int signal_rc = zlink::internal_pair_queue::send_buffer_frame (
+          state_->signal.tx, &signal_byte, sizeof (signal_byte), 0);
+        if (signal_rc != 0) {
+            state_->signal_pending = false;
+            return -1;
+        }
+    }
     errno = 0;
     return 0;
 }
@@ -240,13 +298,63 @@ void zlink::request_completion::close (queue_state_t *state_)
     if (!state_)
         return;
 
+    bool close_now = false;
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
         state_->pending.clear ();
         state_->owner_thread_valid = false;
-        state_->signal_pending = false;
+        state_->close_requested = true;
+        if (state_->poller_refs > 0 && state_->signal.tx && !state_->signal_pending) {
+            state_->signal_pending = true;
+            static const unsigned char signal_byte = 0x7a;
+            if (zlink::internal_pair_queue::send_buffer_frame (
+                  state_->signal.tx, &signal_byte, sizeof (signal_byte),
+                  ZLINK_DONTWAIT)
+                != 0) {
+                state_->signal_pending = false;
+            }
+        } else if (state_->poller_refs == 0) {
+            state_->signal_pending = false;
+            close_now = true;
+        }
     }
-    zlink::internal_pair_queue::close (&state_->signal);
+    if (close_now)
+        zlink::internal_pair_queue::close (&state_->signal);
+}
+
+int zlink::request_completion::acquire_signal_poller_ref (queue_state_t *state_)
+{
+    if (!state_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    if (state_->close_requested || !state_->signal.rx) {
+        errno = ETERM;
+        return -1;
+    }
+    ++state_->poller_refs;
+    errno = 0;
+    return 0;
+}
+
+void zlink::request_completion::release_signal_poller_ref (queue_state_t *state_)
+{
+    if (!state_)
+        return;
+
+    bool close_now = false;
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        if (state_->poller_refs > 0)
+            --state_->poller_refs;
+        close_now = state_->close_requested && state_->poller_refs == 0;
+        if (close_now)
+            state_->signal_pending = false;
+    }
+    if (close_now)
+        zlink::internal_pair_queue::close (&state_->signal);
 }
 
 void zlink::request_completion::claim_owner_thread (queue_state_t *state_)

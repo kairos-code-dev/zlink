@@ -9,7 +9,8 @@ public enum PollEventFlag {
     POLLIN,
     POLLOUT,
     POLLERR,
-    POLLPRI;
+    POLLPRI,
+    POLLCOMPLETION;
 
     int value() {
         return EnumCodecs.pollEventFlagValue(this);

@@ -243,6 +243,11 @@ zlink_config_result_t zlink_poller_add (void *poller_,
     poller_handle_t *poller = as_poller_handle (poller_);
     if (!poller)
         return ZLINK_CONFIG_INVALID_HANDLE;
+    if ((events_ & ZLINK_POLLCOMPLETION) != 0
+        && events_ != ZLINK_POLLCOMPLETION) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
     const int service_rc =
       zlink_service_poller_add_internal (poller, socket_, user_data_, events_);
     if (service_rc == 0)
@@ -252,6 +257,91 @@ zlink_config_result_t zlink_poller_add (void *poller_,
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)
         return ZLINK_CONFIG_INVALID_HANDLE;
+    const int type = socket_type (handle);
+    if (events_ == ZLINK_POLLCOMPLETION) {
+        if (type != ZLINK_CORE_SOCKET_DEALER && type != ZLINK_CORE_SOCKET_ROUTER) {
+            errno = EINVAL;
+            return ZLINK_CONFIG_INVALID_ARGUMENT;
+        }
+
+        std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
+          socket_state =
+            zlink::socket_reqrep_internal::find_or_create_request_reply_state (
+              handle);
+        if (!socket_state
+            || zlink::socket_reqrep_internal::ensure_completion_queue_ready (
+                 socket_state)
+                 != 0) {
+            const int err = errno ? errno : EFAULT;
+            errno = err;
+            return zlink::config_result_internal::from_errno (err);
+        }
+        if (zlink::request_completion::acquire_signal_poller_ref (
+              &socket_state->completion)
+            != 0) {
+            const int err = errno ? errno : EFAULT;
+            errno = err;
+            return zlink::config_result_internal::from_errno (err);
+        }
+        if (poller_add_registration (
+              poller,
+              zlink::socket_reqrep_internal::completion_signal_socket (
+                socket_state),
+              NULL, ZLINK_POLLIN, socket_,
+              poller_subject_socket_request_completion)
+            != 0) {
+            const int err = errno ? errno : EFAULT;
+            zlink::request_completion::release_signal_poller_ref (
+              &socket_state->completion);
+            errno = err;
+            return zlink::config_result_internal::from_errno (err);
+        }
+        poller->registrations.back ().state_ref = socket_state;
+
+        if (type == ZLINK_CORE_SOCKET_ROUTER) {
+            std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
+              router_state =
+                zlink::spot_reqrep_internal::find_or_create_router_state (
+                  socket_);
+            if (!router_state
+                || zlink::spot_reqrep_internal::ensure_router_completion_queue_ready (
+                     router_state)
+                     != 0) {
+                const int err = errno ? errno : EFAULT;
+                (void) poller_remove_all_registrations_for_subject (poller,
+                                                                    socket_);
+                errno = err;
+                return zlink::config_result_internal::from_errno (err);
+            }
+            if (zlink::request_completion::acquire_signal_poller_ref (
+                  &router_state->completion)
+                != 0) {
+                const int err = errno ? errno : EFAULT;
+                (void) poller_remove_all_registrations_for_subject (poller,
+                                                                    socket_);
+                errno = err;
+                return zlink::config_result_internal::from_errno (err);
+            }
+            if (poller_add_registration (
+                  poller,
+                  zlink::spot_reqrep_internal::router_completion_signal_socket (
+                    router_state),
+                  NULL, ZLINK_POLLIN, socket_,
+                  poller_subject_router_spot_request_completion)
+                != 0) {
+                const int err = errno ? errno : EFAULT;
+                zlink::request_completion::release_signal_poller_ref (
+                  &router_state->completion);
+                (void) poller_remove_all_registrations_for_subject (poller,
+                                                                    socket_);
+                errno = err;
+                return zlink::config_result_internal::from_errno (err);
+            }
+            poller->registrations.back ().state_ref = router_state;
+        }
+
+        return ZLINK_CONFIG_OK;
+    }
     if (validate_socket_callback_poller_events (handle, events_) != 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     if (poller_add_registration (poller, handle.socket, user_data_, events_,
@@ -260,7 +350,6 @@ zlink_config_result_t zlink_poller_add (void *poller_,
         return zlink::config_result_internal::from_errno (errno);
     }
 
-    const int type = socket_type (handle);
     if (type == ZLINK_CORE_SOCKET_DEALER || type == ZLINK_CORE_SOCKET_ROUTER) {
         std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
           state =
@@ -269,18 +358,34 @@ zlink_config_result_t zlink_poller_add (void *poller_,
         if (!state
             || zlink::socket_reqrep_internal::ensure_completion_queue_ready (
                  state)
-                 != 0
-            || poller_add_registration (
-                 poller,
-                 zlink::socket_reqrep_internal::completion_signal_socket (state),
-                 NULL, ZLINK_POLLIN, socket_,
-                 poller_subject_socket_request_completion)
                  != 0) {
             const int err = errno;
             (void) poller_remove_all_registrations_for_subject (poller, socket_);
             errno = err;
             return zlink::config_result_internal::from_errno (err);
         }
+        if (zlink::request_completion::acquire_signal_poller_ref (
+              &state->completion)
+            != 0) {
+            const int err = errno;
+            (void) poller_remove_all_registrations_for_subject (poller, socket_);
+            errno = err;
+            return zlink::config_result_internal::from_errno (err);
+        }
+        if (poller_add_registration (
+              poller,
+              zlink::socket_reqrep_internal::completion_signal_socket (state),
+              NULL, ZLINK_POLLIN, socket_,
+              poller_subject_socket_request_completion)
+            != 0) {
+            const int err = errno;
+            zlink::request_completion::release_signal_poller_ref (
+              &state->completion);
+            (void) poller_remove_all_registrations_for_subject (poller, socket_);
+            errno = err;
+            return zlink::config_result_internal::from_errno (err);
+        }
+        poller->registrations.back ().state_ref = state;
     }
 
     if (type == ZLINK_CORE_SOCKET_ROUTER) {
@@ -290,19 +395,35 @@ zlink_config_result_t zlink_poller_add (void *poller_,
         if (!state
             || zlink::spot_reqrep_internal::ensure_router_completion_queue_ready (
                  state)
-                 != 0
-            || poller_add_registration (
-                 poller,
-                 zlink::spot_reqrep_internal::router_completion_signal_socket (
-                   state),
-                 NULL, ZLINK_POLLIN, socket_,
-                 poller_subject_router_spot_request_completion)
                  != 0) {
             const int err = errno;
             (void) poller_remove_all_registrations_for_subject (poller, socket_);
             errno = err;
             return zlink::config_result_internal::from_errno (err);
         }
+        if (zlink::request_completion::acquire_signal_poller_ref (
+              &state->completion)
+            != 0) {
+            const int err = errno;
+            (void) poller_remove_all_registrations_for_subject (poller, socket_);
+            errno = err;
+            return zlink::config_result_internal::from_errno (err);
+        }
+        if (poller_add_registration (
+              poller,
+              zlink::spot_reqrep_internal::router_completion_signal_socket (
+                state),
+              NULL, ZLINK_POLLIN, socket_,
+              poller_subject_router_spot_request_completion)
+            != 0) {
+            const int err = errno;
+            zlink::request_completion::release_signal_poller_ref (
+              &state->completion);
+            (void) poller_remove_all_registrations_for_subject (poller, socket_);
+            errno = err;
+            return zlink::config_result_internal::from_errno (err);
+        }
+        poller->registrations.back ().state_ref = state;
     }
 
     return ZLINK_CONFIG_OK;
@@ -315,6 +436,10 @@ zlink_config_result_t zlink_poller_modify (void *poller_,
     poller_handle_t *poller = as_poller_handle (poller_);
     if (!poller)
         return ZLINK_CONFIG_INVALID_HANDLE;
+    if ((events_ & ZLINK_POLLCOMPLETION) != 0) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
     const int service_rc =
       zlink_service_poller_modify_internal (poller, socket_, events_);
     if (service_rc == 0)

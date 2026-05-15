@@ -150,6 +150,9 @@ struct socket_monitor_runtime_t
       const unsigned char *routing_id_,
       size_t routing_id_size_,
       uint32_t *ready_count_out_);
+    bool erase_ready_connection_for_endpoint (
+      const endpoint_uri_pair_t &endpoint_uri_pair_,
+      uint32_t *ready_count_out_);
     void reset_worker_state ();
     void start_task (uint64_t task_id_);
     bool dequeue_worker_event_nowait (socket_monitor_event_record_t *out_);

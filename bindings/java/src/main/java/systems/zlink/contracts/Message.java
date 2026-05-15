@@ -2,10 +2,6 @@
 
 package systems.zlink.contracts;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
 
 import systems.zlink.runtime.nativebridge.Native;
 import systems.zlink.runtime.nativebridge.NativeLayouts;

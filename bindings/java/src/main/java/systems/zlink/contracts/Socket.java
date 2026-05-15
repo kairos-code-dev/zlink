@@ -2,15 +2,12 @@
 
 package systems.zlink.contracts;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
 import systems.zlink.runtime.nativebridge.InternalAccess;
 import systems.zlink.runtime.nativebridge.Native;
 import systems.zlink.runtime.nativebridge.NativeHelpers;
 import systems.zlink.runtime.nativebridge.NativeLayouts;
 import systems.zlink.runtime.nativebridge.NativeMsg;
+import systems.zlink.runtime.nativebridge.NativeSubmitErrors;
 import systems.zlink.runtime.nativebridge.ReceivedPartCursor;
 import systems.zlink.contracts.SocketOptionKey;
 import systems.zlink.contracts.SocketOptions;
@@ -70,6 +67,8 @@ public abstract class Socket implements AutoCloseable {
       ThreadLocal.withInitial(LegacyReceiveState::new);
     private final ThreadLocal<Received> activeLazyReceive =
       new ThreadLocal<>();
+    private final ThreadLocal<byte[]> nettySendScratch =
+      ThreadLocal.withInitial(() -> new byte[DEFAULT_IO_BUFFER_SIZE]);
 
     private enum OptionFamily {
         COMMON, ROUTER, PUB, SUB, STREAM
@@ -92,67 +91,6 @@ public abstract class Socket implements AutoCloseable {
     }
 
     private record OptionRoute(OptionFamily family, int optionId) {
-    }
-
-    private static final class LegacyReceiveState {
-        private Message[] frames = new Message[0];
-        private int index;
-
-        boolean hasPending() {
-            return index < frames.length;
-        }
-
-        int pendingCount() {
-            return frames.length - index;
-        }
-
-        Message poll() {
-            Message frame = frames[index++];
-            frame.setMore(index < frames.length);
-            if (!hasPending()) {
-                frames = new Message[0];
-                index = 0;
-            }
-            return frame;
-        }
-
-        void replace(Message[] nextFrames) {
-            closeRemaining();
-            frames = nextFrames;
-            index = 0;
-        }
-
-        void closeRemaining() {
-            for (int i = index; i < frames.length; i++) {
-                if (frames[i] != null) {
-                    try {
-                        frames[i].close();
-                    } catch (RuntimeException ignored) {
-                    }
-                }
-            }
-            frames = new Message[0];
-            index = 0;
-        }
-    }
-
-    private static final class RecvScratch {
-        final Arena arena = Arena.ofAuto();
-        final MemorySegment sourceRidOut = arena.allocate(ValueLayout.ADDRESS);
-        final MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
-    }
-
-    private static final class SendScratch {
-        private static final int ROUTING_ID_CACHE_CAPACITY = 256;
-        private final Arena arena = Arena.ofConfined();
-        private final MemorySegment nativeMsg = arena.allocate(
-            NativeLayouts.MSG_LAYOUT);
-        private final MemorySegment nativeRoutingId = arena.allocate(
-            NativeLayouts.ROUTING_ID_LAYOUT);
-        private byte[] cachedRoutingIdBytes;
-        private byte[][] cachedRoutingIdKeys;
-        private MemorySegment[] cachedRoutingIdSegments;
-        private MemorySegment cachedRoutingIdSegment;
     }
 
     Socket(Context ctx, SocketType type) {
@@ -1454,7 +1392,7 @@ public abstract class Socket implements AutoCloseable {
     private int sendPartOnce(Message message, RoutingId routingId, int flags,
                              int partFlag) {
         SendScratch scratch = sendScratch.get();
-        MemorySegment messageHandle = InternalAccess.messageNativeHandle(message);
+        MemorySegment messageHandle = message.nativeHandle();
         MemorySegment nativeRoutingId = routingId == null
             ? MemorySegment.NULL
             : nativeRoutingId(scratch, routingId);
@@ -1485,7 +1423,7 @@ public abstract class Socket implements AutoCloseable {
     private int sendPartOnce(Message message, byte[] routingIdBytes, int flags,
                              int partFlag) {
         SendScratch scratch = sendScratch.get();
-        MemorySegment messageHandle = InternalAccess.messageNativeHandle(message);
+        MemorySegment messageHandle = message.nativeHandle();
         MemorySegment nativeRoutingId = nativeRoutingId(scratch,
             routingIdBytes);
         boolean useCritical =
@@ -1506,19 +1444,25 @@ public abstract class Socket implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeTopic = arena.allocateFrom(topicId,
                 StandardCharsets.UTF_8);
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = message.transferTo(nativeMsg);
-            try {
-                int rc = Native.publishPart(handle, nativeTopic, nativeMsg,
-                    flags, partFlag);
-                if (rc != 0) {
-                    message.restoreFromNative(nativeMsg, false, anchor);
-                }
-                return rc;
-            } catch (RuntimeException ex) {
+            return publishPartOnce(nativeTopic, message, flags, partFlag,
+                arena);
+        }
+    }
+
+    private int publishPartOnce(MemorySegment nativeTopic, Message message,
+                                int flags, int partFlag, Arena arena) {
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        Object anchor = message.transferTo(nativeMsg);
+        try {
+            int rc = Native.publishPart(handle, nativeTopic, nativeMsg,
+                flags, partFlag);
+            if (rc != 0) {
                 message.restoreFromNative(nativeMsg, false, anchor);
-                throw ex;
             }
+            return rc;
+        } catch (RuntimeException ex) {
+            message.restoreFromNative(nativeMsg, false, anchor);
+            throw ex;
         }
     }
 
@@ -1659,24 +1603,28 @@ public abstract class Socket implements AutoCloseable {
         ensureBlockingSendAllowed(flags);
         boolean explicitNonBlocking =
             (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = publishPartOnce(topicId, parts.get(i),
-                    flags.getValue(), partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                if ((nonBlocking || explicitNonBlocking)
-                    && (errno == ERRNO_EAGAIN
-                        || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                    throw new SubmitException(SubmitResult.BACKPRESSURED,
-                        errno);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeTopic = arena.allocateFrom(topicId,
+                StandardCharsets.UTF_8);
+            for (int i = 0; i < parts.size(); i++) {
+                int partFlag = i + 1 < parts.size()
+                    ? Native.PART_MORE : Native.PART_FINAL;
+                while (true) {
+                    int rc = publishPartOnce(nativeTopic, parts.get(i),
+                        flags.getValue(), partFlag, arena);
+                    if (rc == 0)
+                        break;
+                    int errno = Native.errno();
+                    if (errno == ERRNO_EINTR)
+                        continue;
+                    if ((nonBlocking || explicitNonBlocking)
+                        && (errno == ERRNO_EAGAIN
+                            || errno == ERRNO_EWOULDBLOCK_WIN)) {
+                        throw new SubmitException(SubmitResult.BACKPRESSURED,
+                            errno);
+                    }
+                    throwPartSubmitFailure("zlink_publish_part");
                 }
-                throwPartSubmitFailure("zlink_publish_part");
             }
         }
     }
@@ -1684,18 +1632,22 @@ public abstract class Socket implements AutoCloseable {
     SendResult publishNoWaitPartsResult(String topicId, List<Message> parts) {
         ensureOpen();
         validateParts(parts);
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = publishPartOnce(topicId, parts.get(i),
-                    SendFlag.DONTWAIT.getValue(), partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                return classifyNonBlockingSendErrno("zlink_publish_part");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeTopic = arena.allocateFrom(topicId,
+                StandardCharsets.UTF_8);
+            for (int i = 0; i < parts.size(); i++) {
+                int partFlag = i + 1 < parts.size()
+                    ? Native.PART_MORE : Native.PART_FINAL;
+                while (true) {
+                    int rc = publishPartOnce(nativeTopic, parts.get(i),
+                        SendFlag.DONTWAIT.getValue(), partFlag, arena);
+                    if (rc == 0)
+                        break;
+                    int errno = Native.errno();
+                    if (errno == ERRNO_EINTR)
+                        continue;
+                    return classifyNonBlockingSendErrno("zlink_publish_part");
+                }
             }
         }
         return SendResult.SENT;
@@ -1703,15 +1655,11 @@ public abstract class Socket implements AutoCloseable {
 
     private SendResult classifyNonBlockingSendErrno(String apiName) {
         int errno = Native.errno();
-        if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)
+        if (NativeSubmitErrors.isBackpressured(errno))
             return SendResult.BACKPRESSURED;
-        if (errno == ERRNO_ENOTCONN || errno == ERRNO_ENOTCONN_WIN) {
+        if (NativeSubmitErrors.isNotConnected(errno))
             return SendResult.NOT_READY;
-        }
-        if (errno == ERRNO_EHOSTUNREACH || errno == ERRNO_EHOSTUNREACH_WIN) {
-            return SendResult.NOT_READY;
-        }
-        if (errno == 111 || errno == 10061) {
+        if (NativeSubmitErrors.isNotAdmitted(errno)) {
             throw new SubmitException(SubmitResult.NOT_ADMITTED, errno);
         }
         throw ZlinkException.fromLastError(apiName);
@@ -1735,16 +1683,9 @@ public abstract class Socket implements AutoCloseable {
 
     private void throwPartSubmitFailure(String apiName) {
         int errno = Native.errno();
-        if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-            throw new SubmitException(SubmitResult.BACKPRESSURED, errno);
-        }
-        if (errno == ERRNO_ENOTCONN || errno == ERRNO_ENOTCONN_WIN
-            || errno == ERRNO_EHOSTUNREACH || errno == ERRNO_EHOSTUNREACH_WIN) {
-            throw new SubmitException(SubmitResult.NOT_CONNECTED, errno);
-        }
-        if (errno == 111 || errno == 10061) {
-            throw new SubmitException(SubmitResult.NOT_ADMITTED, errno);
-        }
+        SubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
+        if (submit != null)
+            throw submit;
         throw ZlinkException.fromLastError(apiName);
     }
 
@@ -2139,8 +2080,8 @@ public abstract class Socket implements AutoCloseable {
             rc = send(buf.array(),
               buf.arrayOffset() + readerIndex, length, sendFlags);
         } else {
-            byte[] tmp = new byte[length];
-            buf.getBytes(readerIndex, tmp);
+            byte[] tmp = nettySendArray(length);
+            buf.getBytes(readerIndex, tmp, 0, length);
             rc = send(tmp, 0, length, sendFlags);
         }
         if (rc > 0)
@@ -2157,13 +2098,19 @@ public abstract class Socket implements AutoCloseable {
             sent = sendNoWaitResult(buf.array(),
               buf.arrayOffset() + readerIndex, length, sendFlags);
         } else {
-            byte[] tmp = new byte[length];
-            buf.getBytes(readerIndex, tmp);
+            byte[] tmp = nettySendArray(length);
+            buf.getBytes(readerIndex, tmp, 0, length);
             sent = sendNoWaitResult(tmp, 0, length, sendFlags);
         }
         if (sent)
             buf.readerIndex(readerIndex + length);
         return sent;
+    }
+
+    private byte[] nettySendArray(int length) {
+        if (length <= DEFAULT_IO_BUFFER_SIZE)
+            return nettySendScratch.get();
+        return new byte[length];
     }
 
     private int recvNettyFallback(ByteBuf buf,

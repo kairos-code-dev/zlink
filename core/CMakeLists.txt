@@ -836,6 +836,7 @@ set(api-monitoring-sources
     src/api/monitoring/monitor_dispatch_context.cpp
     src/api/monitoring/monitor_query_api.cpp
     src/api/monitoring/monitor_socket_api.cpp
+    src/api/monitoring/poller_completion_internal.cpp
     src/api/monitoring/poller_api.cpp
     src/api/monitoring/timer_api.cpp
     src/api/monitoring/timer_scheduler_backend.cpp)
@@ -884,7 +885,6 @@ set(api-spot-sources
     src/api/spot/request_reply/service_spot_request_reply_pending.cpp
     src/api/spot/request_reply/service_spot_request_reply_timeout.cpp
     src/api/spot/request_reply/service_spot_request_reply_queue.cpp
-    src/api/spot/request_reply/service_spot_request_reply_local_dispatch.cpp
     src/api/spot/request_reply/service_spot_request_reply_local_reply.cpp
     src/api/spot/request_reply/service_spot_request_reply_local_request.cpp
     src/api/spot/request_reply/service_spot_request_reply_local_direct.cpp
@@ -1014,6 +1014,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/data_plane/spot_data_plane_pending.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_protocol.cpp
     src/runtime/services/spot/data_plane/spot_mesh_pub_hwm.cpp
+    src/runtime/services/spot/request_reply/spot_request_reply_local_dispatch.cpp
     src/runtime/services/spot/pubsub/spot_subject_access.cpp
     src/runtime/services/spot/pubsub/spot_subject_handler.cpp
     src/runtime/services/spot/pubsub/spot_subject_option.cpp

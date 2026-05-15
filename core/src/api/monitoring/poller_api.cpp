@@ -10,8 +10,7 @@
 #include "api/core/close_result_internal.hpp"
 #include "api/core/config_result_internal.hpp"
 #include "api/monitoring/poller_api_internal.hpp"
-#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
-#include "api/socket/socket_request_reply_internal.hpp"
+#include "api/monitoring/poller_completion_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
 #include "services/spot/pubsub/spot_subject_access.hpp"
 #include "utils/clock.hpp"
@@ -66,16 +65,6 @@ const poller_registration_t *find_registration_for_native (
     return NULL;
 }
 
-bool is_hidden_completion_registration (const poller_registration_t *registration_)
-{
-    if (!registration_)
-        return false;
-    return registration_->subject_kind == poller_subject_socket_request_completion
-           || registration_->subject_kind
-                == poller_subject_router_spot_request_completion
-           || registration_->subject_kind == poller_subject_spot_request_completion;
-}
-
 bool is_spot_recv_fd_registration (poller_subject_kind_t kind_)
 {
     return kind_ == poller_subject_spot_sub
@@ -86,69 +75,6 @@ bool is_spot_send_ready_fd_registration (poller_subject_kind_t kind_)
 {
     return kind_ == poller_subject_spot_pub
            || kind_ == poller_subject_spot_node_pub;
-}
-
-int drain_hidden_completion_registration (
-  const poller_registration_t *registration_)
-{
-    if (!registration_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    switch (registration_->subject_kind) {
-        case poller_subject_socket_request_completion: {
-            socket_handle_t handle = as_socket_handle (registration_->subject);
-            std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
-              state =
-                zlink::socket_reqrep_internal::find_request_reply_state (handle);
-            return state
-                     ? zlink::socket_reqrep_internal::drain_reply_completions (
-                         state, registration_->subject)
-                     : 0;
-        }
-        case poller_subject_router_spot_request_completion: {
-            socket_handle_t handle = as_socket_handle (registration_->subject);
-            if (!handle.socket)
-                return -1;
-            std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-              state = handle.socket->router_spot_request_reply_state ();
-            return state
-                     ? zlink::spot_reqrep_internal::drain_router_reply_completions (
-                         state, registration_->subject)
-                     : 0;
-        }
-        case poller_subject_spot_request_completion: {
-            std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
-              state =
-                zlink::spot_reqrep_internal::try_find_spot_state (
-                  registration_->subject);
-            return state
-                     ? zlink::spot_reqrep_internal::drain_spot_reply_completions (
-                         state, registration_->subject)
-                     : 0;
-        }
-        default:
-            return 0;
-    }
-}
-
-int fill_hidden_completion_event (const poller_registration_t *registration_,
-                                  zlink_poller_event_t *event_out_)
-{
-    if (!registration_ || !event_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    memset (event_out_, 0, sizeof (*event_out_));
-    event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
-    event_out_->socket = registration_->subject;
-    event_out_->fd = 0;
-    event_out_->timer = NULL;
-    event_out_->user_data = registration_->user_data;
-    event_out_->events = ZLINK_POLLIN;
-    return 0;
 }
 
 long remaining_timeout_ms (long timeout_ms_,
@@ -715,9 +641,9 @@ int zlink_poller_wait (void *poller_,
         for (int i = 0; i < rc; ++i) {
             const poller_registration_t *registration =
               find_registration_for_native (poller, poller->native_events[i]);
-            if (is_hidden_completion_registration (registration)) {
+            if (poller_completion_is_hidden (registration)) {
                 const int drain_rc =
-                  drain_hidden_completion_registration (registration);
+                  poller_completion_drain_hidden (registration);
                 if (drain_rc < 0) {
                     if (error_out_)
                         *error_out_ =
@@ -727,7 +653,7 @@ int zlink_poller_wait (void *poller_,
                 if (drain_rc > 0)
                     drained_any = true;
                 if (drain_rc > 0 && registration && registration->user_data) {
-                    if (fill_hidden_completion_event (registration,
+                    if (poller_completion_fill_event (registration,
                                                       &events_[public_count])
                         != 0) {
                         if (error_out_)

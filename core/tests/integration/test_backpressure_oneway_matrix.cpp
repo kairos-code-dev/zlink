@@ -367,6 +367,9 @@ static int try_send_raw_part (void *sender_,
         *result_out_ = ZLINK_SUBMIT_OK;
         return 0;
     }
+    const int saved_errno = errno;
+    zlink_msg_close (&part);
+    errno = saved_errno;
     return classify_nonblocking_send_errno (result_out_);
 }
 
@@ -378,6 +381,9 @@ static int try_publish_part (void *subject_, zlink_submit_result_t *result_out_)
         *result_out_ = ZLINK_SUBMIT_OK;
         return 0;
     }
+    const int saved_errno = errno;
+    zlink_msg_close (&part);
+    errno = saved_errno;
     return classify_nonblocking_send_errno (result_out_);
 }
 
@@ -641,6 +647,26 @@ static void drain_subscription_receiver (void *sub_,
     }
 
     finish_drain (gate_, received, error_code);
+}
+
+static void drain_available_subscription_messages (void *sub_,
+                                                   size_t attempt_limit_)
+{
+    for (size_t i = 0; i < attempt_limit_; ++i) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        char topic[256];
+        size_t topic_len = sizeof (topic);
+        memset (topic, 0, sizeof (topic));
+        if (zlink_subscribe (sub_, NULL, &parts, &part_count, topic, &topic_len,
+                             ZLINK_DONTWAIT)
+            != 0) {
+            if (errno == EAGAIN || errno == EINTR)
+                return;
+            return;
+        }
+        zlink_multipart_close (parts, part_count);
+    }
 }
 
 static void close_raw_case (raw_case_t *raw_)
@@ -1164,8 +1190,10 @@ static void verify_spot_forwarding_matrix ()
              ++i) {
             spot_case_t spot;
             setup_spot_case (transport, kHwmBuckets[i], kLargeHwm, &spot);
-            counts.push_back (measure_send_window_pubsub (
-              spot.pub, static_cast<size_t> (kHwmBuckets[i]) + 1, NULL));
+            const size_t queued = measure_send_window_pubsub (
+              spot.pub, static_cast<size_t> (kHwmBuckets[i]) + 1, NULL);
+            counts.push_back (queued);
+            drain_available_subscription_messages (spot.sub, queued);
             close_spot_case (&spot);
         }
 

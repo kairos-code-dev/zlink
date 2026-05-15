@@ -123,6 +123,7 @@ bool send_spec_equals (const send_sequence_spec_t &lhs_,
 std::shared_ptr<handle_state_t> find_or_create_handle_state (void *handle_);
 std::shared_ptr<handle_state_t> find_handle_state (void *handle_);
 bool recv_sequence_active (const std::shared_ptr<handle_state_t> &state_);
+bool send_sequence_active (void *handle_);
 int stage_recv_sequence (const std::shared_ptr<handle_state_t> &state_,
                          recv_family_t family_,
                          zlink::socket_base_t *source_socket_,

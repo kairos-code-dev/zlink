@@ -3,6 +3,8 @@
 package systems.zlink.runtime.nativebridge;
 
 import systems.zlink.contracts.Message;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -51,5 +53,35 @@ public final class MessagePartsBuffer {
         if (view == null)
             view = singlePart == null ? List.of() : List.of(singlePart);
         return view;
+    }
+
+    public MemorySegment copyToNativeArray(Arena arena) {
+        Objects.requireNonNull(arena, "arena");
+        int count = size();
+        if (count == 0)
+            return MemorySegment.NULL;
+        MemorySegment out = arena.allocate(NativeLayouts.MSG_LAYOUT, count);
+        long stride = NativeLayouts.MSG_LAYOUT.byteSize();
+        int copied = 0;
+        try {
+            for (int i = 0; i < count; i++) {
+                InternalAccess.messageCopyTo(get(i),
+                  out.asSlice(i * stride, stride));
+                copied++;
+            }
+            return out;
+        } catch (RuntimeException | Error e) {
+            closeNativeArray(out, copied);
+            throw e;
+        }
+    }
+
+    public static void closeNativeArray(MemorySegment parts, int count) {
+        if (parts == MemorySegment.NULL || count <= 0)
+            return;
+        long stride = NativeLayouts.MSG_LAYOUT.byteSize();
+        for (int i = 0; i < count; i++) {
+            NativeMsg.msgClose(parts.asSlice(i * stride, stride));
+        }
     }
 }

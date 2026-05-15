@@ -18,7 +18,9 @@ import java.util.concurrent.locks.LockSupport;
  * public async request contract.
  */
 public final class RequestProgressPump {
-    private static final long POLL_NANOS = 1_000_000L;
+    private static final long MIN_POLL_NANOS = 100_000L;
+    private static final long DEFAULT_POLL_NANOS = 1_000_000L;
+    private static final long MAX_POLL_NANOS = 2_000_000L;
     private static final ConcurrentMap<Key, Pump> PUMPS = new ConcurrentHashMap<>();
 
     private RequestProgressPump() {
@@ -92,12 +94,16 @@ public final class RequestProgressPump {
 
         private void runLoop() {
             try {
+                long delayNanos = DEFAULT_POLL_NANOS;
                 while (pending.get() > 0) {
+                    int before = pending.get();
                     progress();
-                    if (pending.get() <= 0) {
+                    int after = pending.get();
+                    if (after <= 0) {
                         break;
                     }
-                    LockSupport.parkNanos(POLL_NANOS);
+                    delayNanos = nextPollDelay(before, after, delayNanos);
+                    LockSupport.parkNanos(delayNanos);
                 }
             } finally {
                 running.set(false);
@@ -107,6 +113,12 @@ public final class RequestProgressPump {
                 }
                 PUMPS.remove(key, this);
             }
+        }
+
+        private long nextPollDelay(int before, int after, long current) {
+            if (after > 1 || after != before)
+                return MIN_POLL_NANOS;
+            return Math.min(MAX_POLL_NANOS, current * 2);
         }
 
         private void progress() {

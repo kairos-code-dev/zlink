@@ -2,10 +2,6 @@
 
 package systems.zlink.contracts;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.spot.ReplyOp;
 import systems.zlink.contracts.service.spot.RequestOp;
@@ -15,6 +11,7 @@ import systems.zlink.runtime.nativebridge.Native;
 import systems.zlink.runtime.nativebridge.NativeHelpers;
 import systems.zlink.runtime.nativebridge.NativeLayouts;
 import systems.zlink.runtime.nativebridge.NativeMsg;
+import systems.zlink.runtime.nativebridge.NativeSubmitErrors;
 import systems.zlink.runtime.nativebridge.ReceivedPartCursor;
 import systems.zlink.runtime.nativebridge.RequestReplySupport;
 import systems.zlink.runtime.nativebridge.RoutedRequestSupport;
@@ -441,16 +438,9 @@ public final class RouterSocket extends Socket {
 
         private SubmitException submitFailure(String apiName) {
             int errno = Native.errno();
-            if (errno == Socket.ERRNO_EAGAIN
-                || errno == Socket.ERRNO_EWOULDBLOCK_WIN) {
-                return new SubmitException(SubmitResult.BACKPRESSURED, errno);
-            }
-            if (errno == Socket.ERRNO_ENOTCONN
-                || errno == Socket.ERRNO_ENOTCONN_WIN
-                || errno == Socket.ERRNO_EHOSTUNREACH
-                || errno == Socket.ERRNO_EHOSTUNREACH_WIN) {
-                return new SubmitException(SubmitResult.NOT_CONNECTED, errno);
-            }
+            SubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
+            if (submit != null)
+                return submit;
             throw ZlinkException.fromLastError(apiName);
         }
 
@@ -948,7 +938,7 @@ public final class RouterSocket extends Socket {
                 while (true) {
                     rc = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
                         requestSeqOut,
-                        InternalAccess.messageNativeHandle(firstPart), hasMoreOut,
+                        firstPart.nativeHandle(), hasMoreOut,
                         flags.value());
                     if (rc == 0) break;
                     int errno = Native.errno();
@@ -961,7 +951,7 @@ public final class RouterSocket extends Socket {
                     throw new RecvException(result, errno);
                 }
                 boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                InternalAccess.messageFinishReceive(firstPart, hasMore);
+                firstPart.finishReceive(hasMore);
                 long requestSequence = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
 
                 if (!hasMore && requestSequence == 0L) {
@@ -1024,7 +1014,7 @@ public final class RouterSocket extends Socket {
                     try {
                         int rc = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
                             requestSeqOut,
-                            InternalAccess.messageNativeHandle(next), hasMoreOut,
+                            next.nativeHandle(), hasMoreOut,
                             flags.value());
                         if (rc != 0) {
                             if (Native.errno() == 4) continue;
@@ -1032,7 +1022,7 @@ public final class RouterSocket extends Socket {
                                 Native.errno());
                         }
                         stillMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                        InternalAccess.messageFinishReceive(next, stillMore);
+                        next.finishReceive(stillMore);
                         parts.add(next);
                         nextOk = true;
                     } finally {
@@ -1101,7 +1091,7 @@ public final class RouterSocket extends Socket {
                 while (true) {
                     rc = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
                         requestSeqOut,
-                        InternalAccess.messageNativeHandle(firstPart), hasMoreOut,
+                        firstPart.nativeHandle(), hasMoreOut,
                         flags.value());
                     if (rc == 0) break;
                     int errno = Native.errno();
@@ -1114,7 +1104,7 @@ public final class RouterSocket extends Socket {
                     throw new RecvException(result, errno);
                 }
                 boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                InternalAccess.messageFinishReceive(firstPart, hasMore);
+                firstPart.finishReceive(hasMore);
                 long requestSequence = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
 
                 if (!hasMore) {
@@ -1147,7 +1137,7 @@ public final class RouterSocket extends Socket {
                     try {
                         int rc2 = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
                             requestSeqOut,
-                            InternalAccess.messageNativeHandle(next), hasMoreOut,
+                            next.nativeHandle(), hasMoreOut,
                             flags.value());
                         if (rc2 != 0) {
                             if (Native.errno() == 4) continue;
@@ -1155,7 +1145,7 @@ public final class RouterSocket extends Socket {
                                 Native.errno());
                         }
                         hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                        InternalAccess.messageFinishReceive(next, hasMore);
+                        next.finishReceive(hasMore);
                         parts.add(next);
                         nextOk = true;
                     } finally {
@@ -1228,16 +1218,9 @@ public final class RouterSocket extends Socket {
 
         private SubmitException submitFailure(String apiName) {
             int errno = Native.errno();
-            if (errno == Socket.ERRNO_EAGAIN
-                || errno == Socket.ERRNO_EWOULDBLOCK_WIN) {
-                return new SubmitException(SubmitResult.BACKPRESSURED, errno);
-            }
-            if (errno == Socket.ERRNO_ENOTCONN
-                || errno == Socket.ERRNO_ENOTCONN_WIN
-                || errno == Socket.ERRNO_EHOSTUNREACH
-                || errno == Socket.ERRNO_EHOSTUNREACH_WIN) {
-                return new SubmitException(SubmitResult.NOT_CONNECTED, errno);
-            }
+            SubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
+            if (submit != null)
+                return submit;
             throw ZlinkException.fromLastError(apiName);
         }
 

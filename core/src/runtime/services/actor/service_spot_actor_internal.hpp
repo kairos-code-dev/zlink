@@ -7,6 +7,7 @@ namespace zlink
 {
 namespace spot_actor_internal
 {
+int node_has_any_actor (void *node_);
 int set_stream_owner (void *stream_, void *node_);
 }
 }

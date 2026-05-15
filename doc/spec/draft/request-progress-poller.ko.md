@@ -1,52 +1,58 @@
-# Request progress poller 초안
+# Poller 기반 request progress 초안
 
 이 문서는 구현 전 초안이며 현재 공개 계약이 아니다.
-아래 내용은 바인딩에서 request/reply callback 완료를 효율적으로 진행하기 위한
-설계안이다. 정식 spec 문서와 공개 헤더에 반영되기 전까지 응용은 이 동작에
-의존하면 안 된다.
+아래 내용은 바인딩 runtime이 request/reply callback 완료를 효율적으로 진행하기
+위한 설계안이다. 정식 spec 문서와 공개 헤더에 반영되기 전까지 응용은 이
+동작에 의존하면 안 된다.
 
 ## 배경
 
 request/reply callback API는 요청을 제출한 뒤, 나중에 reply completion을
-callback으로 전달한다. core 내부에는 completion queue가 있고, 이 queue를
-진행시키기 위해 request progress 함수가 필요하다.
+callback이나 future completion으로 전달한다. core 내부에는 request completion
+queue가 있고, 이 queue를 진행시키려면 completion signal을 기다린 뒤 drain해야
+한다.
 
-현재 여러 바인딩은 이 진행을 언어 런타임 쪽에서 반복 호출한다.
+현재 여러 바인딩은 이 진행을 언어 runtime 쪽에서 반복 호출한다.
 
 | 바인딩 | 현재 방식 |
 |--------|-----------|
-| Node | `setInterval(1ms)` 로 progress 함수 호출 |
-| Go | goroutine + `time.NewTicker(1ms)` 로 progress 함수 호출 |
-| Rust | pending 중 worker thread가 `yield_now()` 하며 progress 함수 호출 |
-| Python/.NET | 별도 progress pump로 progress 함수 호출 |
+| Java | pending request가 있는 동안 background pump가 progress 함수를 반복 호출 |
+| .NET | `Task.Run` worker가 progress 함수를 호출하고 yield/backoff를 수행 |
+| C++ | `async_result_t::wait()` / `wait_for()` / `get()` 중 progress 함수를 호출 |
+| Node | timer 기반으로 progress 함수를 반복 호출 |
+| Go | goroutine과 ticker 기반으로 progress 함수를 반복 호출 |
+| Rust | worker가 yield 또는 짧은 대기를 반복하며 progress 함수를 호출 |
 
-이 방식은 동작하지만, pending request가 있는 동안 불필요한 wakeup을 만든다.
-특히 Node와 Go의 1ms timer 방식은 request가 거의 완료되지 않는 구간에서도
+이 방식은 동작하지만, 바인딩마다 같은 core 내부 지식을 반복해서 구현한다.
+특히 timer나 짧은 sleep 기반 구현은 request completion이 없는 구간에서도
 주기적으로 깨어나므로 CPU 사용량과 tail latency 해석을 흐릴 수 있다.
 
 ## 문제
 
 현재 바인딩이 알아야 하는 구현 지식이 많다.
 
-1. socket request와 spot request의 progress 함수가 다르다.
-2. request completion queue를 진행하려면 내부 progress 함수를 호출해야 한다.
-3. poller에 socket이나 spot을 등록하면 core 내부 completion signal도 함께
-   관찰할 수 있다는 사실을 바인딩이 알아야 한다.
-4. handle close, request 완료, progress worker 종료가 동시에 일어날 수 있어
-   바인딩마다 같은 lifecycle 처리를 반복하게 된다.
+1. socket request와 spot request의 completion queue가 다르다.
+2. router-to-spot request와 spot channel reply에는 별도 progress 경로가 있다.
+3. completion queue를 진행하려면 내부 progress 함수를 호출해야 한다.
+4. completion signal을 어떤 socket이나 fd로 기다릴 수 있는지 바인딩이 알아야 한다.
+5. handle close, request 완료, worker 종료가 동시에 일어날 수 있어 바인딩마다
+   같은 lifecycle 처리를 반복한다.
 
-이 지식은 core request/reply 구현 상세에 가깝다. 바인딩이 이 구조를 직접
-알수록 정보가 누출되고, 바인딩마다 다른 형태의 polling loop가 생긴다.
+이 지식은 core request/reply 구현 상세다. 바인딩이 이 구조를 직접 알수록
+정보가 누출되고, 바인딩별 progress loop가 서로 달라진다.
 
 ## 목표
 
 이 초안의 목표는 다음과 같다.
 
-1. request completion이 있을 때만 worker가 깨어나도록 한다.
-2. 바인딩이 1ms timer를 직접 운용하지 않게 한다.
-3. socket, spot, router-to-spot request completion 차이를 core 쪽에서 숨긴다.
-4. 바인딩은 "request progress 대상 등록, 대기, drain"만 호출하게 한다.
+1. 새 request-progress poller 타입을 만들지 않는다.
+2. 기존 `zlink_poller`를 request completion 대기와 drain의 단일 진입점으로
+   정리한다.
+3. 바인딩이 1ms timer, yield loop, 직접 progress 함수 호출을 운용하지 않게 한다.
+4. socket, spot, router-to-spot, spot channel reply completion 차이를 core가
+   숨긴다.
 5. 기존 request/reply callback API의 의미와 callback 호출 순서를 바꾸지 않는다.
+6. 일반 응용 API 표면 증가는 최소화한다.
 
 ## 비목표
 
@@ -57,238 +63,351 @@ callback으로 전달한다. core 내부에는 completion queue가 있고, 이 q
 3. 모든 바인딩에 같은 worker 구현을 강제하지 않는다.
 4. request timeout 의미를 바꾸지 않는다.
 5. message ownership 규칙을 바꾸지 않는다.
+6. 별도 `zlink_request_progress_poller_*` 함수 묶음을 추가하지 않는다.
 
 ## 설계 원칙
-
-이 API는 일반 응용 개발자용 API가 아니라 바인딩 runtime용 API다.
-따라서 이름과 문서에서 용도를 분명히 제한해야 한다.
 
 POSD 관점의 판단 기준은 다음과 같다.
 
 | 원칙 | 적용 |
 |------|------|
-| 깊은 모듈 | 바인딩은 단순한 wait/drain API만 보고, completion signal socket 구조는 core가 숨긴다 |
-| 정보 은닉 | request completion queue, signal socket, poller subject kind를 바인딩에 노출하지 않는다 |
-| 복잡성을 아래로 | handle 종류별 등록과 drain 차이를 core가 흡수한다 |
-| 오류를 정의로 없애라 | pending이 없는 대상의 drain은 성공한 no-op으로 정의한다 |
+| 깊은 모듈 | 바인딩은 poller add/wait/remove만 사용하고, completion signal 구조는 core가 숨긴다 |
+| 정보 은닉 | request completion queue, signal socket, channel source handle을 바인딩에 노출하지 않는다 |
+| 복잡성을 아래로 | handle 종류별 drain 차이와 hidden subject 등록을 core가 흡수한다 |
+| 오류를 정의로 없애라 | pending completion이 없는 drain은 성공한 no-op으로 정의한다 |
 
-## 선택지
+## 권장안
 
-### 선택지 A: 바인딩별 worker 개선
+기존 `zlink_poller`에 request completion 전용 interest를 추가한다. 바인딩은
+completion 대상 handle을 poller에 등록하고, worker에서 `zlink_poller_wait()`로
+blocking wait한다. wait가 completion signal을 감지하면 core가 내부적으로
+completion queue를 drain한다.
 
-각 바인딩이 기존 C API와 internal progress 함수를 조합해서 blocking wait 기반
-worker를 직접 구현한다.
+이 기능은 이미 poller가 해결하는 문제인 "대상을 등록하고 준비될 때까지
+기다린다"와 같은 형태다. 별도 request progress poller API를 만들면 표면이
+넓어지고 같은 생명주기 처리가 반복된다. 바인딩별 worker 개선만으로 처리하면
+completion signal 지식이 Java, .NET, C++, Node, Go, Rust에 계속 흩어진다.
 
-장점:
-- C API를 추가하지 않는다.
-- Node만 빠르게 고칠 수 있다.
+따라서 이 초안은 기존 poller를 확장하는 한 가지 방향만 다룬다.
 
-단점:
-- 바인딩마다 completion signal 지식을 반복한다.
-- core 내부 구조가 바인딩 코드에 계속 드러난다.
-- Go, Rust, Python, .NET이 서로 다른 구현을 유지한다.
+## API 변경 범위
 
-### 선택지 B: request progress poller API 추가
-
-core가 바인딩 runtime용 progress poller API를 제공한다. 바인딩은 대상 handle을
-등록하고, worker thread에서 wait한 뒤, 깨어난 대상만 drain한다.
-
-장점:
-- 바인딩 인터페이스가 단순해진다.
-- completion signal 구조가 core 안에 숨는다.
-- 여러 바인딩이 같은 의미를 공유할 수 있다.
-- Node의 `setInterval(1ms)`와 Go의 1ms ticker를 같은 방향으로 제거할 수 있다.
-
-단점:
-- C API가 늘어난다.
-- 이 API가 일반 응용 API처럼 오해될 수 있다.
-
-선택: **선택지 B**를 권장한다. 이 기능은 바인딩 runtime이 반복해서 구현해야
-하는 내부 지식이므로, core가 얕은 내부 구조를 숨기는 편이 더 낫다.
-
-## API 범위
-
-이 API는 `zlink_binding_*` 또는 `zlink_request_progress_*` 이름 중 하나를
-사용해야 한다. 일반 응용 API와 구분하려면 `zlink_binding_*` 접두사가 더
-명확하다.
-
-이 초안에서는 의미가 드러나는 이름을 위해 `zlink_request_progress_*`를 사용한다.
-정식 반영 전에는 이름을 다시 검토해야 한다.
-
-## 타입
+새 함수 묶음은 추가하지 않는다. 공개 표면 증가는 event flag 하나로 제한한다.
 
 ```c
-typedef enum zlink_request_progress_subject_type_t {
-    ZLINK_REQUEST_PROGRESS_SUBJECT_SOCKET = 1,
-    ZLINK_REQUEST_PROGRESS_SUBJECT_SPOT = 2
-} zlink_request_progress_subject_type_t;
-
-typedef struct zlink_request_progress_event_t {
-    void *subject;
-    zlink_request_progress_subject_type_t subject_type;
-    void *user_data;
-} zlink_request_progress_event_t;
+typedef enum zlink_poller_event_flag_e {
+    ZLINK_POLLIN = 1,
+    ZLINK_POLLOUT = 2,
+    ZLINK_POLLERR = 4,
+    ZLINK_POLLPRI = 8,
+    ZLINK_POLLITEMS_DFLT = 16,
+    ZLINK_POLLCOMPLETION = 32
+} zlink_poller_event_flag_e;
 ```
 
-`subject`는 등록한 socket 또는 spot handle이다.
-`subject_type`은 바인딩이 어떤 drain 함수를 호출해야 하는지 구분하는 값이다.
-`user_data`는 등록 시 바인딩이 넘긴 값이며, core는 해석하지 않는다.
+`ZLINK_POLLCOMPLETION`은 request/reply completion queue를 진행하기 위한
+binding runtime용 interest다. 일반 응용은 보통 이 flag를 직접 사용할 필요가
+없다.
 
-## 함수
-
-### Poller 생성과 해제
-
-```c
-ZLINK_EXPORT void *zlink_request_progress_poller_new(void);
-
-ZLINK_EXPORT zlink_close_result_t zlink_request_progress_poller_destroy(
-    void *poller_);
-```
-
-`zlink_request_progress_poller_new()`는 request progress 대상을 등록할 수 있는
-poller를 만든다. 실패하면 `NULL`을 반환하고 `zlink_errno()`에 원인을 남긴다.
-
-`zlink_request_progress_poller_destroy()`는 poller를 닫는다. poller에 등록된
-대상이 남아 있어도 모두 제거한다. 등록된 request 자체를 취소하지는 않는다.
-
-### 대상 등록
+기존 함수는 그대로 사용한다. completion-only worker는 subject 등록에는 `add`와
+`remove`를 쓰고, worker 깨움용 control fd에는 `add_fd`와 `remove_fd`를 쓸 수
+있다. `modify`는 기존 readiness poller용 함수로 남기고, completion-only
+interest 변경 경로로 요구하지 않는다.
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_request_progress_poller_add_socket(
+ZLINK_EXPORT zlink_config_result_t zlink_poller_add(
     void *poller_,
-    void *socket_,
-    void *user_data_);
+    void *subject_,
+    void *user_data_,
+    short events_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_request_progress_poller_add_spot(
-    void *poller_,
-    void *spot_,
-    void *user_data_);
-```
-
-등록은 같은 `poller_` 안에서 같은 subject에 대해 idempotent하게 동작한다.
-이미 등록된 subject를 다시 등록하면 `user_data_`를 새 값으로 교체하고 성공한다.
-이 정의는 바인딩이 pending count 변경 중 중복 등록 여부를 별도로 기억하지
-않아도 되게 하기 위함이다.
-
-지원하지 않는 handle이면 `ZLINK_CONFIG_INVALID_HANDLE`을 반환한다.
-request completion signal 준비에 실패하면 errno 기반 config result를 반환한다.
-
-### 대상 제거
-
-```c
-ZLINK_EXPORT zlink_config_result_t zlink_request_progress_poller_remove(
+ZLINK_EXPORT zlink_config_result_t zlink_poller_remove(
     void *poller_,
     void *subject_);
-```
 
-등록되지 않은 subject 제거는 성공한 no-op이다. 바인딩에서는 request 완료와
-handle close가 경합할 수 있으므로, 제거 실패를 정상 종료 경로의 오류로 만들지
-않는다.
-
-### 대기
-
-```c
-ZLINK_EXPORT zlink_recv_result_t zlink_request_progress_poller_wait(
+ZLINK_EXPORT zlink_config_result_t zlink_poller_add_fd(
     void *poller_,
-    zlink_request_progress_event_t *events_,
-    size_t max_events_,
-    int timeout_ms_,
-    size_t *event_count_out_);
+    zlink_fd_t fd_,
+    void *user_data_,
+    short events_);
+
+ZLINK_EXPORT zlink_config_result_t zlink_poller_remove_fd(
+    void *poller_,
+    zlink_fd_t fd_);
+
+ZLINK_EXPORT int zlink_poller_wait(
+    void *poller_,
+    zlink_poller_event_t *events_,
+    int n_events_,
+    long timeout_,
+    zlink_config_result_t *error_out_);
 ```
 
-`zlink_request_progress_poller_wait()`는 등록된 subject 중 request completion
-progress가 필요한 대상이 생길 때까지 기다린다.
+위 시그니처에서 `subject_`는 ABI상 기존 `socket_` 인자와 같은 위치다. 정식
+문서에서는 이름을 바꾸지 않더라도 의미는 socket, spot, spot node처럼 poller가
+지원하는 handle로 설명해야 한다.
 
-반환 규칙:
-- 이벤트가 있으면 `ZLINK_RECV_OK`를 반환하고 `event_count_out_`에 개수를 쓴다.
-- timeout이면 `ZLINK_RECV_NO_DATA`를 반환한다.
-- poller가 닫히거나 interrupt되면 적절한 recv result와 errno를 반환한다.
+## Completion Interest 의미
 
-`max_events_`는 1 이상이어야 한다. `events_`와 `event_count_out_`은 `NULL`이면
-안 된다.
+`ZLINK_POLLCOMPLETION`으로 등록한 subject는 일반 receive readiness를 뜻하지
+않는다. 이 interest는 "해당 subject의 request completion queue를 진행할 수
+있을 때 worker를 깨운다"는 뜻이다.
 
-### Drain
+지원 대상:
+
+| subject | core가 숨기는 drain 대상 |
+|---------|--------------------------|
+| DEALER socket | socket request completion queue |
+| ROUTER socket | socket request completion queue, router-to-spot completion queue |
+| Spot | spot request completion queue, spot channel reply completion queue |
+
+Spot node는 request/reply completion queue를 직접 소유하지 않는다면
+`ZLINK_POLLCOMPLETION` 등록 대상이 아니다. 정식 구현에서 spot node가 completion
+queue를 소유하게 되면 이 표에 추가한다.
+
+completion-only 등록 규칙:
+
+1. `events_`는 `ZLINK_POLLCOMPLETION` 단독 값이어야 한다.
+2. core는 subject의 public receive readiness를 poller에 등록하지 않는다.
+3. core는 subject의 completion signal만 hidden subject로 등록한다.
+4. `user_data_`는 `NULL`을 권장한다. completion worker는 public event가 아니라
+   pending count와 future 상태를 기준으로 종료를 판단한다.
+
+이 규칙이 있어야 completion worker가 응용의 receive poller와 독립적으로 동작한다.
+`ZLINK_POLLIN | ZLINK_POLLCOMPLETION` 같은 조합은 이 초안의 범위에 넣지 않는다.
+
+## Wait와 Drain 규칙
+
+`zlink_poller_wait()`는 completion signal을 감지하면 core 내부에서 해당
+completion queue를 drain한다.
+
+규칙:
+
+1. drain은 가능한 만큼 진행한다.
+2. pending completion이 없으면 성공한 no-op이다.
+3. drain 중 언어 바인딩 callback shim이 호출될 수 있다.
+4. drain은 기존 callback 호출 순서를 바꾸지 않는다.
+5. subject가 닫히는 중이면 termination completion을 가능한 만큼 전달한다.
+6. remove는 등록된 subject에 대해서만 호출한다. 바인딩은 pending count를 사용해
+   0에서 1로 바뀔 때 add하고, 1에서 0으로 바뀔 때 remove한다.
+
+completion-only 등록에서 `zlink_poller_wait()`가 completion을 drain했지만
+public readiness event가 없다면 `0`을 반환할 수 있다. 바인딩 worker는 이 반환을
+timeout과 같은 치명적 상태로 보지 말고 pending count나 future 상태를 다시
+확인해야 한다.
+
+completion worker는 `zlink_poller_wait()`에 최소 1개 이상의 event slot을 넘긴다.
+completion-only 경로는 public event를 기대하지 않지만, 기존 poller 구현은 event
+buffer가 있는 경로를 기준으로 동작하므로 빈 buffer에 의존하지 않는다.
+
+## 일반 Readiness와의 관계
+
+`ZLINK_POLLIN`과 `ZLINK_POLLOUT`은 기존 의미를 유지한다.
+
+`ZLINK_POLLCOMPLETION`은 단독으로만 사용한다. completion worker는
+`ZLINK_POLLCOMPLETION`만 사용하고, 응용 poller는 기존 readiness flag만 사용한다.
+completion worker와 응용 poller를 분리하면
+`zlink_poller_wait()`가 0을 반환하는 hidden drain 경로를 응용 코드가 오해할
+가능성이 줄어든다.
+
+## 바인딩 사용 모델
+
+이 절은 `ZLINK_POLLCOMPLETION`이 각 바인딩에서 충분한지 판단하기 위한 기준을
+정리한다. 공통 조건은 바인딩이 더 이상 `*_request_progress_internal` 계열
+함수를 직접 호출하지 않아도 request completion이 완료되어야 한다는 점이다.
+
+| 바인딩 | 현재 필요한 지식 | `ZLINK_POLLCOMPLETION` 적용 후 필요한 지식 |
+|--------|------------------|--------------------------------------------|
+| Java | socket/spot/channel progress 함수 구분, background pump 생명주기 | subject 등록, pending count, poller wait |
+| .NET | socket/spot/channel progress 함수 구분, Task worker backoff | subject 등록, pending count, poller wait |
+| C++ | async result별 progress 함수 또는 progress 누락, 1ms wait slice | subject 등록, poller wait, future 상태 확인 |
+| Node | timer 기반 progress 호출 | subject 등록, shared worker wait |
+| Go | ticker 기반 progress 호출 | subject 등록, goroutine wait |
+| Rust | yield 기반 progress 호출 | subject 등록, worker wait |
+
+`ZLINK_POLLCOMPLETION`이 충분하려면 core가 다음을 보장해야 한다.
+
+1. DEALER/ROUTER socket을 등록하면 socket request completion이 drain된다.
+2. ROUTER socket을 등록하면 router-to-spot request completion도 함께 drain된다.
+3. Spot을 등록하면 일반 spot request completion과 routed spot request completion이 drain된다.
+4. Spot을 등록하면 spot channel reply completion도 함께 drain된다.
+5. drain 중 completion callback은 기존 callback 전달 경로를 그대로 사용한다.
+6. close 중 발생한 termination completion도 가능한 만큼 drain된다.
+7. completion이 없는 상태에서 wait는 CPU를 주기적으로 깨우지 않는다.
+8. completion-only 등록은 receive readiness를 소비하거나 숨기지 않는다.
+
+4번이 빠지면 Java, .NET, C++는 여전히 channel reply용 progress 함수를 따로
+알아야 한다. 그러면 이 설계는 다른 바인딩에 충분하지 않다.
+
+### Poller 소유권
+
+shared worker를 쓰는 바인딩은 poller handle을 worker thread가 소유한다.
+submit thread가 `zlink_poller_add()`나 `zlink_poller_remove()`를 wait 중인
+poller에 직접 호출하지 않는다. 기존 poller가 add/remove와 wait의 동시 호출을
+보장한다는 공개 계약이 없기 때문이다.
+
+권장 구조:
+
+1. submit thread는 pending count를 갱신하고 worker command queue에 add/remove
+   요청을 넣는다.
+2. worker thread는 command queue를 처리한 뒤 `zlink_poller_wait()`를 호출한다.
+3. worker가 `zlink_poller_wait()` 안에 있을 때도 깨어날 수 있도록 control fd나
+   pipe를 poller에 함께 등록한다.
+4. 새 command가 들어오면 submit thread는 command queue에 요청을 넣고 control
+   fd나 pipe에 신호를 쓴다.
+5. worker가 control event를 받으면 신호를 drain하고 command queue를 처리한다.
+6. poller handle에 대한 add/remove/wait 호출은 worker thread에서 직렬화한다.
+
+이 규칙은 core API 표면을 늘리지 않고도 기존 poller를 안전하게 재사용하기 위한
+조건이다. 정식 구현에서 core가 poller add/remove/wait 동시 호출을 보장한다면
+이 제약은 완화할 수 있지만, 이 초안은 그런 보장을 요구하지 않는다.
+
+등록된 completion subject가 하나도 없을 때는 worker가 runtime 조건 변수로 쉬어도
+된다. 그러나 한 번 `zlink_poller_wait()`에 들어간 뒤에는 조건 변수만으로 깨울 수
+없으므로, control fd나 pipe처럼 poller가 관찰할 수 있는 깨움 수단이 필요하다.
+
+### Java와 .NET
+
+Java와 .NET은 shared worker를 둘 수 있다.
+
+1. request submit 전에 callback state를 준비한다.
+2. request submit이 성공하면 subject별 pending count를 증가시킨다.
+3. count가 0에서 1로 바뀌면 worker command queue에 add 요청을 넣는다.
+4. worker는 add 요청을 처리해 shared poller에 subject를
+   `ZLINK_POLLCOMPLETION`으로 등록한다.
+5. worker는 `zlink_poller_wait()`를 blocking 호출한다.
+6. wait가 깨어나면 core가 completion queue를 drain한다.
+7. callback 또는 future completion에서 pending count를 감소시킨다.
+8. count가 1에서 0으로 바뀌면 worker command queue에 remove 요청을 넣는다.
+9. worker는 remove 요청을 처리해 poller에서 subject를 제거한다.
+
+이 구조에서는 바인딩이 `zlink_socket_request_progress_internal()`이나
+`zlink_spot_request_progress_internal()`을 직접 호출하지 않는다. channel reply도
+Spot subject의 completion drain에 포함되어야 하므로
+`zlink_spot_channel_reply_progress_from()`도 호출하지 않는다.
+
+필요한 바인딩 변경은 다음과 같다.
+
+1. worker 내부 progress 호출을 `zlink_poller_wait()`로 바꾼다.
+2. subject별 pending count가 0에서 1로 바뀔 때만 add command를 보낸다.
+3. completion callback 또는 future 완료에서 pending count를 감소시킨다.
+4. pending count가 0이 되면 remove command를 보낸다.
+5. wait가 0을 반환해도 timeout으로 단정하지 않고 완료 상태를 다시 확인한다.
+
+이 변경으로 Java와 .NET은 backoff 정책을 직접 설계하지 않아도 된다.
+
+### C++
+
+C++의 `async_result_t`는 background worker 없이 `wait()`와 `wait_for()` 안에서
+completion-only poller를 사용할 수 있다.
+
+1. async result가 progress 대상 subject를 가진다.
+2. `wait()`는 subject를 completion-only poller에 등록하고 무기한 wait한다.
+3. `wait_for(timeout)`은 남은 timeout만큼 poller wait를 반복한다.
+4. wait가 반환될 때마다 future 상태를 확인한다.
+5. future가 ready가 되면 subject를 poller에서 제거한다.
+
+이 방식은 기존 `progress_slice()` 1ms loop를 blocking wait로 바꾼다.
+
+C++에서 충분하려면 async result가 "어떤 progress 함수를 호출할지"가 아니라
+"어떤 subject를 completion-only poller에 등록할지"만 들고 있어야 한다. 따라서
+현재 `std::function<void()> progress` 형태는 subject handle과 kind를 담는 작은
+값 객체로 바꾸는 편이 낫다. 이 값 객체는 DEALER/ROUTER socket과 Spot만
+구분하고, channel name이나 channel source는 보관하지 않는다.
+
+또한 C++의 모든 async request 결과가 같은 subject 기반 대기 모델을 써야 한다.
+spot request처럼 progress 함수가 이미 붙은 경로뿐 아니라 actor join, actor
+leave, actor lookup 같은 actor 계열 async 결과도 completion subject를 가져야
+한다. 특정 async result가 future만 들고 completion subject를 갖지 않으면, 그
+경로는 여전히 호출자가 별도 진행 조건을 알아야 하므로 이 설계가 C++에 충분하지
+않다.
+
+### Node, Go, Rust
+
+Node, Go, Rust도 같은 모델을 따른다.
+
+1. pending request가 생기면 worker command queue에 add 요청을 넣는다.
+2. worker는 completion-only poller에 subject를 등록한다.
+3. worker는 timer나 ticker 대신 `zlink_poller_wait()`로 blocking wait한다.
+4. callback 전달은 각 언어 runtime의 기존 안전한 callback 전달 경로를 사용한다.
+
+이 바인딩들에서 충분하려면 worker가 event loop나 scheduler를 1ms 주기로 깨우지
+않아도 된다. poller wait는 native worker thread나 goroutine에서 수행하고,
+callback 전달만 각 runtime의 안전한 queue로 넘긴다.
+
+## Spot Channel Reply 처리
+
+이 초안에서 가장 중요한 설계 조건은 spot channel reply progress를 바인딩에
+노출하지 않는 것이다.
+
+현재 일부 바인딩은 별도 progress 함수나 channel source를 알아야 한다. 정식
+구현에서는 `ZLINK_POLLCOMPLETION`으로 Spot을 등록하면 core가 아래 경로를 모두
+흡수해야 한다.
+
+1. 일반 spot request completion
+2. routed spot request completion
+3. spot channel reply completion
+4. termination completion
+
+바인딩이 dealer subject, channel name, source handle을 별도로 등록해야 한다면
+이 설계는 실패한 것이다. 그런 지식은 core 내부에 남아야 한다.
+
+core에는 이미 Spot progress가 direct completion과 channel reply source들을
+스냅샷으로 모아 drain하는 내부 흐름이 있다. 따라서 Spot subject 하나로 흡수하는
+방향은 가능하다. 다만 poller wait가 channel reply completion에도 깨어나려면
+channel reply source의 completion enqueue가 Spot의 aggregate completion signal도
+깨워야 한다.
+
+정식 구현 기준:
+
+1. Spot의 `ZLINK_POLLCOMPLETION` 등록은 Spot aggregate completion signal 하나를
+   hidden subject로 등록한다.
+2. 일반 spot reply, routed spot reply, spot channel reply enqueue는 모두 이
+   aggregate signal을 깨운다.
+3. wait가 깨어나면 core는 direct completion과 모든 channel reply source
+   completion을 함께 drain한다.
+4. channel reply source별 signal socket이나 dealer handle은 바인딩에 노출하지
+   않는다.
+
+## Core 구현 기준
+
+기존 poller 구현에는 이미 hidden completion registration 개념이 있다. 이 초안은
+그 구조를 별도 API로 빼지 않고 정식 계약으로 다듬는 방향이다.
+
+구현 기준:
+
+1. `ZLINK_POLLCOMPLETION` 등록은 public socket readiness registration을 만들지
+   않는다.
+2. `ZLINK_POLLCOMPLETION` 등록은 completion signal용 hidden registration만 만든다.
+3. 기존 `ZLINK_POLLIN` / `ZLINK_POLLOUT` 등록 동작은 호환성을 위해 유지한다.
+4. completion-only drain은 기존 request completion callback scope와 owner-thread
+   규칙을 그대로 사용한다.
+5. hidden completion event가 여러 개 준비되면 `zlink_poller_wait()` 한 번에서
+   가능한 만큼 drain한다.
+6. hidden drain이 callback을 실행했지만 public event가 없으면 `0`을 반환할 수
+   있다.
+7. `error_out_`은 hidden drain 성공, timeout, public event 반환 모두에서
+   `ZLINK_CONFIG_OK`를 유지한다.
+
+기존 일반 poller에 socket이나 spot을 `ZLINK_POLLIN`으로 등록했을 때 completion
+signal을 함께 drain하는 내부 동작은 유지할 수 있다. 다만 새 바인딩 worker는
+그 부수 효과에 의존하지 않고 `ZLINK_POLLCOMPLETION` 단독 등록을 사용한다.
+
+## 제거할 Internal 함수
+
+이 변경은 브레이킹 체인지로 진행한다. 아래 internal progress 함수는 공개
+헤더와 export 목록에서 제거한다. 바인딩은 이 함수들을 직접 호출하지 않고
+`ZLINK_POLLCOMPLETION` poller 경로로만 request completion을 진행한다.
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_request_progress_drain_socket(
-    void *socket_);
-
-ZLINK_EXPORT zlink_config_result_t zlink_request_progress_drain_spot(
-    void *spot_);
+int zlink_socket_request_progress_internal(void *socket_);
+int zlink_spot_request_progress_internal(void *spot_);
+int zlink_spot_request_channel_progress_internal(void *spot_, const char *channel_name_);
+int zlink_spot_channel_reply_progress_from(void *spot_, void *dealer_);
 ```
 
-drain 함수는 해당 subject의 pending completion queue를 가능한 만큼 진행한다.
-pending completion이 없으면 성공한 no-op이다.
-
-이 함수는 기존 internal 함수의 공개 후보 성격을 가진다. 이름을 공개 API로
-올릴지, 바인딩 전용 namespace로 둘지는 정식 반영 전에 결정해야 한다.
-
-## Node 바인딩 사용 모델
-
-```text
-+-------------------+      +----------------------+
-| JS request submit |----->| native request call  |
-+-------------------+      +----------------------+
-          |                           |
-          v                           v
-+-------------------+      +----------------------+
-| pending count +1  |----->| progress poller add  |
-+-------------------+      +----------------------+
-                                      |
-                                      v
-                           +----------------------+
-                           | worker wait blocking |
-                           +----------------------+
-                                      |
-                                      v
-                           +----------------------+
-                           | drain target handle  |
-                           +----------------------+
-                                      |
-                                      v
-                           +----------------------+
-                           | TSFN delivers reply  |
-                           +----------------------+
-```
-
-위 다이어그램에서 worker는 Node event loop thread가 아니다.
-worker는 blocking wait를 수행하고, reply callback 전달은 기존처럼 Node의
-thread-safe callback 경로를 사용한다.
-
-## Lifecycle 규칙
-
-### Pending count
-
-바인딩은 subject별 pending count를 가진다.
-
-1. request submit 성공 후 count를 증가시킨다.
-2. count가 0에서 1로 바뀌면 progress poller에 subject를 등록한다.
-3. callback 또는 promise 완료 시 count를 감소시킨다.
-4. count가 1에서 0으로 바뀌면 progress poller에서 subject를 제거한다.
-
-submit이 실패하면 count를 증가시키지 않는다. submit 성공 후 callback 등록이
-실패한 경우에는 request 결과가 유실될 수 있으므로, 바인딩 구현에서 submit 전에
-callback state를 먼저 준비해야 한다.
-
-### Close와 경합
-
-handle close는 pending request를 종료시키거나, core가 termination completion을
-queue에 넣을 수 있다. 따라서 바인딩은 close 직후에도 worker가 한 번 더 깨어날
-수 있음을 허용해야 한다.
-
-`zlink_request_progress_poller_remove()`가 등록되지 않은 subject에 대해 성공한
-no-op인 이유도 이 경합을 단순화하기 위함이다.
-
-### Worker 종료
-
-worker는 등록된 subject가 없고 pending count가 모두 0이면 idle 상태가 된다.
-구현은 다음 중 하나를 선택할 수 있다.
-
-1. worker를 유지하고 조건 변수로 대기한다.
-2. 일정 idle timeout 뒤 worker를 종료한다.
-3. process 종료까지 shared worker를 유지한다.
-
-Node 바인딩에서는 shared worker 1개와 idle 대기가 가장 단순하다.
+core 내부에서 같은 동작이 필요하면 C export가 아닌 내부 helper로 남긴다. 새
+바인딩은 이 helper를 볼 수 없어야 한다.
 
 ## 오류 처리
 
@@ -296,90 +415,60 @@ Node 바인딩에서는 shared worker 1개와 idle 대기가 가장 단순하다
 |------|------|
 | `poller_ == NULL` | invalid handle |
 | `subject_ == NULL` | invalid handle |
-| 이미 등록된 subject add | 성공, `user_data` 교체 |
-| 등록되지 않은 subject remove | 성공 no-op |
+| 지원하지 않는 subject에 `ZLINK_POLLCOMPLETION` 등록 | invalid handle 또는 invalid argument |
+| 이미 등록된 subject add | 기존 poller 중복 등록 규칙을 따른다 |
+| 등록되지 않은 subject remove | 기존 poller remove 오류 의미를 따른다 |
 | pending completion 없음 | drain 성공 no-op |
-| wait timeout | `ZLINK_RECV_NO_DATA` |
-| wait 중 poller destroy | interrupted 또는 terminated 계열 recv result |
+| wait timeout | 기존 `zlink_poller_wait()` timeout 의미 유지 |
+| wait 중 poller destroy | 기존 poller 종료 의미 유지 |
 
-정확한 result enum 매핑은 기존 `zlink_config_result_t`,
-`zlink_recv_result_t`, errno map과 맞춰야 한다.
-
-## 공개 범위 주의 사항
-
-이 API는 일반 응용이 직접 호출할 필요가 거의 없다. 일반 응용은 기존
-request/reply API를 사용하고, 바인딩 runtime이 progress 처리를 맡아야 한다.
-
-따라서 정식 반영 시 다음 중 하나를 선택해야 한다.
-
-1. 공개 C API로 추가하되 문서에 "binding runtime support" 용도임을 명시한다.
-2. `core/include/zlink/binding.h` 같은 별도 헤더로 분리한다.
-3. 기존처럼 internal 심볼로 두고, 각 바인딩이 C API 없이 자체 worker를 구현한다.
-
-POSD 기준으로는 2번이 가장 명확하다. 일반 사용자 API와 바인딩 runtime API를
-섞지 않으면서도, 바인딩이 internal 구현에 의존하지 않게 할 수 있기 때문이다.
-
-## 기존 API와의 관계
-
-이 초안은 아래 함수의 의미를 대체하거나 정리한다.
-
-```c
-int zlink_socket_request_progress_internal(void *socket_);
-int zlink_spot_request_progress_internal(void *spot_);
-int zlink_spot_channel_reply_progress_from(void *spot_, void *dealer_);
-```
-
-`zlink_spot_channel_reply_progress_from()`은 channel reply bridge처럼 특정 source를
-drain해야 하는 경로가 있어 별도 검토가 필요하다. 정식 API에서 이 함수를
-흡수하려면 subject type을 더 세분화해야 할 수 있다.
-
-예:
-
-```c
-typedef enum zlink_request_progress_subject_type_t {
-    ZLINK_REQUEST_PROGRESS_SUBJECT_SOCKET = 1,
-    ZLINK_REQUEST_PROGRESS_SUBJECT_SPOT = 2,
-    ZLINK_REQUEST_PROGRESS_SUBJECT_SPOT_CHANNEL = 3
-} zlink_request_progress_subject_type_t;
-```
-
-다만 subject type이 늘어날수록 API가 얕아질 수 있다. 가능하면 core가
-spot channel source까지 내부에서 숨기고, 바인딩은 spot subject 하나만 등록하는
-방향이 낫다.
+같은 subject를 같은 poller에 중복 등록하거나 등록되지 않은 subject를 제거하는
+동작은 새 계약에서 바꾸지 않는다. 바인딩 worker는 pending count로 0에서 1로
+바뀔 때만 add하고, 1에서 0으로 바뀔 때만 remove해서 기존 poller 규칙과
+충돌하지 않게 한다.
 
 ## 성능 기대
 
-주요 성능 개선은 C API 추가 자체가 아니라 timer polling 제거에서 나온다.
+주요 성능 개선은 새 flag 자체가 아니라 timer polling 제거에서 나온다.
 
 기대 효과:
-- pending request 중 1ms 주기 wakeup 제거
-- idle 상태 CPU 사용량 감소
-- request 수가 적은 workload에서 불필요한 event loop 간섭 감소
-- 바인딩별 progress loop 차이 축소
+
+1. pending request 중 주기적 1ms wakeup 제거
+2. idle 상태 CPU 사용량 감소
+3. request 수가 적은 workload에서 불필요한 runtime 간섭 감소
+4. 바인딩별 progress loop 차이 축소
+5. C++ `wait_for()`의 1ms slice 기반 대기 제거
 
 큰 request 처리량에서는 callback 실행, message allocation, transport 비용이 더
-클 수 있으므로, 처리량 개선보다 CPU 사용량과 tail latency 안정성 개선이 더
+클 수 있으므로 처리량 개선보다 CPU 사용량과 tail latency 안정성 개선이 더
 중요한 지표다.
 
 ## 검증 계획
 
 정식 구현 전후로 아래 항목을 확인해야 한다.
 
-1. Node request/reply promise 테스트가 timer 없이 완료되는지 확인한다.
-2. Node callback request 테스트가 timer 없이 완료되는지 확인한다.
-3. request timeout이 기존과 같은 result로 전달되는지 확인한다.
-4. request 중 socket/spot close가 termination completion으로 정리되는지 확인한다.
-5. pending request가 없는 상태에서 worker가 CPU를 쓰지 않는지 확인한다.
-6. Go의 1ms ticker 제거 가능성을 별도 브랜치에서 확인한다.
-7. Rust worker의 yield loop를 blocking wait로 바꿀 수 있는지 확인한다.
+1. Java async request 테스트가 직접 progress 함수 호출 없이 완료되는지 확인한다.
+2. .NET async request 테스트가 `RequestProgressPump`의 backoff loop 없이
+   완료되는지 확인한다.
+3. C++ `async_result_t::wait()`와 `wait_for()`가 1ms progress slice 없이
+   완료되는지 확인한다.
+4. Node promise/callback request 테스트가 timer 없이 완료되는지 확인한다.
+5. Go ticker 제거 후 request timeout이 기존 result로 전달되는지 확인한다.
+6. Rust yield loop 제거 후 callback 순서가 유지되는지 확인한다.
+7. request 중 socket/spot close가 termination completion으로 정리되는지 확인한다.
+8. pending request가 없는 상태에서 worker가 CPU를 쓰지 않는지 확인한다.
+9. spot channel reply completion이 별도 바인딩 progress 함수 없이 완료되는지
+   확인한다.
 
-## 미해결 질문
+## 확정 결정
 
-1. 이 API를 공개 C API로 둘지, 바인딩 전용 헤더로 분리할지 결정해야 한다.
-2. `zlink_spot_channel_reply_progress_from()`을 새 progress poller가 흡수할 수
-   있는지 확인해야 한다.
-3. poller wait의 종료 result를 `interrupted`로 볼지 `terminated`로 볼지 정해야 한다.
-4. subject 중복 등록 시 `user_data` 교체가 충분한지, refCount를 core가 가질지
-   결정해야 한다.
-5. request progress poller가 기존 service poller 구현을 재사용할지, 더 작은
-   전용 구현을 가질지 결정해야 한다.
+1. spot channel reply completion은 Spot subject 하나로 흡수한다. core는 Spot
+   aggregate completion signal을 두고, channel reply source completion도 이
+   signal을 깨우게 한다.
+2. `zlink_poller_add()`의 기존 인자는 정식 spec에서 subject handle로 설명한다.
+   C 헤더의 인자 이름은 ABI가 아니므로 `socket_`에서 `subject_`로 바꿔도 된다.
+   문서에서는 socket, spot처럼 poller가 지원하는 handle을 모두 subject라고 부른다.
+3. event flag 이름은 `ZLINK_POLLCOMPLETION`으로 둔다. 이 이름은 `ZLINK_POLLIN` /
+   `ZLINK_POLLOUT`과 같은 poller interest임을 유지하면서, request/reply
+   completion queue를 기다리는 용도를 드러낸다. 세부 의미는 spec에서
+   "request/reply completion 전용"으로 제한한다.

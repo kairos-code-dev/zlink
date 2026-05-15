@@ -2,10 +2,6 @@
 
 package systems.zlink.contracts;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
 
 public final class HandlerException extends ZlinkException {
     private final HandlerResult result;

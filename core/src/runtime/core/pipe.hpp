@@ -237,6 +237,7 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  Pipepair uses this function to let us know about
     //  the peer pipe object.
     void set_peer (pipe_t *peer_);
+    void detach_peer_backref ();
 
     //  Destructor is private. Pipe objects destroy themselves.
     ~pipe_t () ZLINK_OVERRIDE;

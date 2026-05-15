@@ -2,10 +2,6 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
 import systems.zlink.contracts.Message;
 import systems.zlink.contracts.ConfigException;
 import systems.zlink.contracts.ConfigResult;
@@ -37,6 +33,7 @@ import systems.zlink.runtime.nativebridge.MessagePartsBuffer;
 import systems.zlink.runtime.nativebridge.NativeHelpers;
 import systems.zlink.runtime.nativebridge.NativeLayouts;
 import systems.zlink.runtime.nativebridge.NativeMsg;
+import systems.zlink.runtime.nativebridge.NativeSubmitErrors;
 import systems.zlink.runtime.nativebridge.RequestProgressPump;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -540,19 +537,22 @@ public final class Spot implements AutoCloseable {
             throw new IllegalStateException(
                 "blocking publish is not supported from callback context; use SendFlags.DONT_WAIT");
         }
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = spotPublishPartOnce(topicId,
-                    Objects.requireNonNull(parts.get(i), "parts[" + i + "]"),
-                    nonBlocking ? SEND_DONTWAIT : 0, partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                throw submitFailure("zlink_spot_publish_part");
+        MemorySegment topic = topicCString(topicId);
+        try (Arena arena = Arena.ofConfined()) {
+            for (int i = 0; i < parts.size(); i++) {
+                int partFlag = i + 1 < parts.size()
+                    ? Native.PART_MORE : Native.PART_FINAL;
+                while (true) {
+                    int rc = spotPublishPartOnce(topic,
+                        Objects.requireNonNull(parts.get(i), "parts[" + i + "]"),
+                        nonBlocking ? SEND_DONTWAIT : 0, partFlag, arena);
+                    if (rc == 0)
+                        break;
+                    int errno = Native.errno();
+                    if (errno == ERRNO_EINTR)
+                        continue;
+                    throw submitFailure("zlink_spot_publish_part");
+                }
             }
         }
         return true;
@@ -565,19 +565,23 @@ public final class Spot implements AutoCloseable {
             throw new IllegalStateException(
                 "blocking sendChannel is not supported from callback context; use non-blocking send");
         }
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = spotSendChannelPartOnce(channelName,
-                    Objects.requireNonNull(parts.get(i), "parts[" + i + "]"),
-                    nonBlocking ? SEND_DONTWAIT : 0, partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                throw submitFailure("zlink_spot_send_channel_part");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment service = NativeHelpers.toCString(arena,
+              requireChannelName(channelName));
+            for (int i = 0; i < parts.size(); i++) {
+                int partFlag = i + 1 < parts.size()
+                    ? Native.PART_MORE : Native.PART_FINAL;
+                while (true) {
+                    int rc = spotSendChannelPartOnce(service,
+                        Objects.requireNonNull(parts.get(i), "parts[" + i + "]"),
+                        nonBlocking ? SEND_DONTWAIT : 0, partFlag, arena);
+                    if (rc == 0)
+                        break;
+                    int errno = Native.errno();
+                    if (errno == ERRNO_EINTR)
+                        continue;
+                    throw submitFailure("zlink_spot_send_channel_part");
+                }
             }
         }
         return true;
@@ -634,12 +638,9 @@ public final class Spot implements AutoCloseable {
 
     private SubmitException submitFailure(String apiName) {
         int errno = Native.errno();
-        if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)
-            return new SubmitException(SubmitResult.BACKPRESSURED, errno);
-        if (errno == ERRNO_ENOTCONN || errno == ERRNO_ENOTCONN_WIN
-            || errno == ERRNO_EHOSTUNREACH || errno == ERRNO_EHOSTUNREACH_WIN) {
-            return new SubmitException(SubmitResult.NOT_CONNECTED, errno);
-        }
+        SubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
+        if (submit != null)
+            return submit;
         throw InternalAccess.zlinkExceptionFromLastError(apiName);
     }
 
@@ -954,25 +955,11 @@ public final class Spot implements AutoCloseable {
                 MemorySegment nativeInfo = arena.allocate(
                   NativeLayouts.ACTOR_JOIN_INFO_LAYOUT);
                 writeActorJoinInfo(nativeInfo, request.info());
-                MemorySegment partsArr = MemorySegment.NULL;
-                int allocated = 0;
-                if (!parts.isEmpty()) {
-                    partsArr = arena.allocate(NativeLayouts.MSG_LAYOUT,
-                      parts.size());
-                    long stride = NativeLayouts.MSG_LAYOUT.byteSize();
-                    for (int i = 0; i < parts.size(); i++) {
-                        InternalAccess.messageCopyTo(parts.get(i),
-                          partsArr.asSlice(i * stride, stride));
-                        allocated++;
-                    }
-                }
+                MemorySegment partsArr = parts.copyToNativeArray(arena);
                 int rc = Native.spotActorJoinReply(handle, nativeInfo,
                   accepted ? 1 : 0, partsArr, parts.size());
                 if (rc != 0) {
-                    long stride = NativeLayouts.MSG_LAYOUT.byteSize();
-                    for (int i = 0; i < allocated; i++) {
-                        NativeMsg.msgClose(partsArr.asSlice(i * stride, stride));
-                    }
+                    MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
                     throw new SubmitException(SubmitResult.fromValue(rc));
                 }
             }
@@ -1701,21 +1688,26 @@ public final class Spot implements AutoCloseable {
                                     int partFlag) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment topic = topicCString(topicId);
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
-            try {
-                int rc = Native.spotPublishPart(handle, topic, nativeMsg, flags,
-                  partFlag);
-                if (rc != 0) {
-                    InternalAccess.messageRestoreFromNative(part, nativeMsg,
-                        false, anchor);
-                }
-                return rc;
-            } catch (RuntimeException ex) {
+            return spotPublishPartOnce(topic, part, flags, partFlag, arena);
+        }
+    }
+
+    private int spotPublishPartOnce(MemorySegment topic, Message part,
+                                    int flags, int partFlag, Arena arena) {
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
+        try {
+            int rc = Native.spotPublishPart(handle, topic, nativeMsg, flags,
+              partFlag);
+            if (rc != 0) {
                 InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
                     anchor);
-                throw ex;
             }
+            return rc;
+        } catch (RuntimeException ex) {
+            InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
+                anchor);
+            throw ex;
         }
     }
 
@@ -1724,21 +1716,27 @@ public final class Spot implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment service = NativeHelpers.toCString(arena,
               requireChannelName(channelName));
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
-            try {
-                int rc = Native.spotSendChannelPart(handle, service, nativeMsg,
-                  flags, partFlag);
-                if (rc != 0) {
-                    InternalAccess.messageRestoreFromNative(part, nativeMsg,
-                        false, anchor);
-                }
-                return rc;
-            } catch (RuntimeException ex) {
+            return spotSendChannelPartOnce(service, part, flags, partFlag,
+                arena);
+        }
+    }
+
+    private int spotSendChannelPartOnce(MemorySegment service, Message part,
+                                        int flags, int partFlag, Arena arena) {
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
+        try {
+            int rc = Native.spotSendChannelPart(handle, service, nativeMsg,
+              flags, partFlag);
+            if (rc != 0) {
                 InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
                     anchor);
-                throw ex;
             }
+            return rc;
+        } catch (RuntimeException ex) {
+            InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
+                anchor);
+            throw ex;
         }
     }
 
@@ -1748,20 +1746,24 @@ public final class Spot implements AutoCloseable {
                                           MemorySegment userData,
                                           int flags,
                                           int timeoutMs) {
-        for (int i = 0; i < payload.size(); i++) {
-            int partFlag = i + 1 < payload.size()
-              ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = spotRequestChannelPartOnce(channelName, payload.get(i),
-                  i + 1 < payload.size() ? MemorySegment.NULL : handler,
-                  i + 1 < payload.size() ? MemorySegment.NULL : userData,
-                  flags, partFlag, i + 1 < payload.size() ? 0 : timeoutMs);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                throw submitFailure("zlink_spot_request_channel_part");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment service = NativeHelpers.toCString(arena,
+              requireChannelName(channelName));
+            for (int i = 0; i < payload.size(); i++) {
+                boolean last = i + 1 >= payload.size();
+                int partFlag = last ? Native.PART_FINAL : Native.PART_MORE;
+                while (true) {
+                    int rc = spotRequestChannelPartOnce(service, payload.get(i),
+                      last ? handler : MemorySegment.NULL,
+                      last ? userData : MemorySegment.NULL,
+                      flags, partFlag, last ? timeoutMs : 0, arena);
+                    if (rc == 0)
+                        break;
+                    int errno = Native.errno();
+                    if (errno == ERRNO_EINTR)
+                        continue;
+                    throw submitFailure("zlink_spot_request_channel_part");
+                }
             }
         }
     }
@@ -1775,11 +1777,22 @@ public final class Spot implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment service = NativeHelpers.toCString(arena,
               requireChannelName(channelName));
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            InternalAccess.messageCopyTo(part, nativeMsg);
-            return Native.spotRequestChannelPart(handle, service,
-              nativeMsg, handler, userData, flags, partFlag, timeoutMs);
+            return spotRequestChannelPartOnce(service, part, handler, userData,
+                flags, partFlag, timeoutMs, arena);
         }
+    }
+
+    private int spotRequestChannelPartOnce(MemorySegment service, Message part,
+                                           MemorySegment handler,
+                                           MemorySegment userData,
+                                           int flags,
+                                           int partFlag,
+                                           int timeoutMs,
+                                           Arena arena) {
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        InternalAccess.messageCopyTo(part, nativeMsg);
+        return Native.spotRequestChannelPart(handle, service,
+          nativeMsg, handler, userData, flags, partFlag, timeoutMs);
     }
 
     private static RoutingId readRoutingIdPtr(MemorySegment nativeRidPtr) {

@@ -10,19 +10,13 @@ import systems.zlink.contracts.SubmitResult;
 import systems.zlink.contracts.ZlinkException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
-import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.List;
 
 public final class Native {
-    private static final Linker LINKER = Linker.nativeLinker();
-    private static final SymbolLookup LOOKUP = LibraryLoader.lookup();
     private static final int ERRNO_EINTR = 4;
     public static final int PART_FINAL = 0;
     public static final int PART_MORE = 1;
@@ -68,59 +62,26 @@ public final class Native {
     }
 
     private static MemorySegment requireSymbol(String name) {
-        return LOOKUP.find(name).orElseThrow(
-          () -> new IllegalStateException(
-            "Missing native symbol '" + name
-              + "'. Loaded libzlink is incompatible with this Java binding."));
+        return NativeSymbols.require(name);
     }
 
     private static MethodHandle downcall(String name, FunctionDescriptor fd) {
-        return LOOKUP.find(name)
-          .map(symbol -> LINKER.downcallHandle(symbol, fd))
-          .orElseGet(() -> missingDowncall(name, fd));
+        return NativeSymbols.downcall(name, fd);
     }
 
     private static MethodHandle downcallCritical(String name,
                                                  FunctionDescriptor fd) {
-        return LOOKUP.find(name)
-          .map(symbol -> LINKER.downcallHandle(symbol, fd,
-              Linker.Option.critical(false)))
-          .orElseGet(() -> missingDowncall(name, fd));
-    }
-
-    private static MethodHandle missingDowncall(String name,
-                                                FunctionDescriptor fd) {
-        MethodType methodType = fd.toMethodType();
-        IllegalStateException failure =
-          new IllegalStateException(
-            "Missing native symbol '" + name
-              + "'. Loaded libzlink is incompatible with this Java binding.");
-        MethodHandle throwing = MethodHandles.throwException(
-          methodType.returnType(), IllegalStateException.class);
-        throwing = MethodHandles.insertArguments(throwing, 0, failure);
-        return MethodHandles.dropArguments(throwing, 0,
-          methodType.parameterArray());
+        return NativeSymbols.downcallCritical(name, fd);
     }
 
     private static MethodHandle unsupportedLegacyDowncall(
         String name, FunctionDescriptor fd) {
-        MethodType methodType = fd.toMethodType();
-        UnsupportedOperationException failure =
-          new UnsupportedOperationException(
-            "Legacy native symbol '" + name
-              + "' is not part of the canonical zlink surface.");
-        MethodHandle throwing = MethodHandles.throwException(
-          methodType.returnType(), UnsupportedOperationException.class);
-        throwing = MethodHandles.insertArguments(throwing, 0, failure);
-        return MethodHandles.dropArguments(throwing, 0,
-          methodType.parameterArray());
+        return NativeSymbols.unsupportedLegacyDowncall(name, fd);
     }
 
     private static MethodHandle optionalDowncall(String name,
                                                  FunctionDescriptor fd) {
-        return LOOKUP.find(name)
-          .map(symbol -> LINKER.downcallHandle(symbol, fd))
-          .orElse(null);
+        return NativeSymbols.optionalDowncall(name, fd);
     }
 
     private static final MethodHandle MH_VERSION = downcall("zlink_version",

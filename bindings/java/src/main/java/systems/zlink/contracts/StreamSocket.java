@@ -2,10 +2,6 @@
 
 package systems.zlink.contracts;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
 import systems.zlink.runtime.nativebridge.ActorInterop;
 import systems.zlink.runtime.nativebridge.InternalAccess;
 import systems.zlink.runtime.nativebridge.MessagePartsBuffer;
@@ -233,7 +229,7 @@ public final class StreamSocket extends Socket {
             for (int i = 0; i < parts.size(); i++) {
                 MemorySegment nativeMsg =
                   arena.allocate(NativeLayouts.MSG_LAYOUT);
-                InternalAccess.messageCopyTo(parts.get(i), nativeMsg);
+                parts.get(i).copyTo(nativeMsg);
                 int more = i + 1 < parts.size()
                   ? Native.PART_MORE
                   : Native.PART_FINAL;

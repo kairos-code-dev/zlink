@@ -37,6 +37,12 @@ std::string make_monitor_ready_key (
                     routing_id_size_);
     return key;
 }
+
+std::string make_monitor_ready_endpoint_prefix (
+  const zlink::endpoint_uri_pair_t &endpoint_uri_pair_)
+{
+    return make_monitor_ready_key (endpoint_uri_pair_, NULL, 0);
+}
 }
 
 uint32_t zlink::socket_monitor_runtime_t::ready_count () const
@@ -74,6 +80,26 @@ bool zlink::socket_monitor_runtime_t::erase_ready_connection (
     if (erased && ready_count_out_)
         *ready_count_out_ = ready_count ();
     return erased;
+}
+
+bool zlink::socket_monitor_runtime_t::erase_ready_connection_for_endpoint (
+  const endpoint_uri_pair_t &endpoint_uri_pair_,
+  uint32_t *ready_count_out_)
+{
+    const std::string prefix =
+      make_monitor_ready_endpoint_prefix (endpoint_uri_pair_);
+    for (std::set<std::string>::iterator it = ready_connections.begin ();
+         it != ready_connections.end (); ++it) {
+        if (it->compare (0, prefix.size (), prefix) != 0)
+            continue;
+
+        ready_connections.erase (it);
+        if (ready_count_out_)
+            *ready_count_out_ = ready_count ();
+        return true;
+    }
+
+    return false;
 }
 
 void zlink::socket_monitor_runtime_t::reset_worker_state ()

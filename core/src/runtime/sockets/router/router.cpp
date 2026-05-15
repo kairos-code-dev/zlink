@@ -259,8 +259,15 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
 
     if (msg_->is_routing_id ()) {
         pipe_t *socket_pipe = pipe_;
-        if (socket_pipe && socket_pipe->get_peer ())
+        if (socket_pipe && _anonymous_pipes.count (socket_pipe) == 0
+            && lookup_out_pipe (socket_pipe->get_routing_id ()) == NULL) {
             socket_pipe = socket_pipe->get_peer ();
+            if (!socket_pipe) {
+                store_dispatch_source_rid (&_dispatch_source_rid,
+                                           &_dispatch_source_rid_valid, msg_);
+                return 1;
+            }
+        }
 
         const bool needs_route_registration =
           socket_pipe

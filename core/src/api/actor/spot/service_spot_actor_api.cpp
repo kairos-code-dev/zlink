@@ -2260,7 +2260,11 @@ extern "C" void zlink_actor_replay_readable_for_spot (void *spot_)
     }
 }
 
-extern "C" int zlink_spot_node_has_any_actor (void *node_)
+namespace zlink
+{
+namespace spot_actor_internal
+{
+int node_has_any_actor (void *node_)
 {
     if (!node_)
         return 0;
@@ -2269,6 +2273,13 @@ extern "C" int zlink_spot_node_has_any_actor (void *node_)
                .empty ()
              ? 0
              : 1;
+}
+}
+}
+
+extern "C" int zlink_spot_node_has_any_actor (void *node_)
+{
+    return zlink::spot_actor_internal::node_has_any_actor (node_);
 }
 
 void erase_actor_stream_bindings (void *stream_)

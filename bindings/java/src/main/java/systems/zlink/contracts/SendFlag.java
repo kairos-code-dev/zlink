@@ -2,10 +2,6 @@
 
 package systems.zlink.contracts;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
 
 enum SendFlag {
     NONE(0), DONTWAIT(1), SNDMORE(2), DONTWAIT_SNDMORE(3);

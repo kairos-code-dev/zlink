@@ -2,10 +2,6 @@
 
 package systems.zlink.contracts;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
 
 enum PollEventType {
     POLLIN(1), POLLOUT(2), POLLERR(4), POLLPRI(8);

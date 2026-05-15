@@ -324,16 +324,17 @@ void zlink::socket_base_t::hiccuped (pipe_t *pipe_)
 void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
 {
     endpoint_uri_pair_t endpoint_pair;
-    const unsigned char *routing_id_data = NULL;
-    size_t routing_id_size = 0;
+    std::vector<unsigned char> routing_id_copy;
     if (pipe_) {
         endpoint_pair = pipe_->get_endpoint_pair ();
         const blob_t &routing_id = pipe_->get_routing_id ();
-        if (routing_id.size () > 0) {
-            routing_id_data = routing_id.data ();
-            routing_id_size = routing_id.size ();
-        }
+        if (routing_id.size () > 0)
+            routing_id_copy.assign (routing_id.data (),
+                                    routing_id.data () + routing_id.size ());
     }
+    const unsigned char *routing_id_data =
+      routing_id_copy.empty () ? NULL : &routing_id_copy[0];
+    const size_t routing_id_size = routing_id_copy.size ();
 
     xpipe_terminated (pipe_);
     endpoint_runtime ().inprocs.erase_pipe (pipe_);

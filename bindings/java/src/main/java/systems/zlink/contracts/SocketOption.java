@@ -2,10 +2,6 @@
 
 package systems.zlink.contracts;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
 
 enum SocketOption {
     AFFINITY(4), ROUTING_ID(5), SUBSCRIBE(6), UNSUBSCRIBE(7),

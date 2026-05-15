@@ -2,10 +2,6 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
 import systems.zlink.contracts.Message;
 import systems.zlink.contracts.RecvException;
 import systems.zlink.contracts.RecvFlags;
@@ -233,13 +229,7 @@ public final class Actor implements AutoCloseable {
             ActorRequestCallbacks.JoinPendingToken token =
               ActorRequestCallbacks.registerJoin(callback);
             try (Arena arena = Arena.ofConfined()) {
-                MemorySegment partsArr = arena.allocate(
-                  NativeLayouts.MSG_LAYOUT, parts.size());
-                long stride = NativeLayouts.MSG_LAYOUT.byteSize();
-                for (int i = 0; i < parts.size(); i++) {
-                    InternalAccess.messageCopyTo(parts.get(i),
-                      partsArr.asSlice(i * stride, stride));
-                }
+                MemorySegment partsArr = parts.copyToNativeArray(arena);
                 int rc = Native.spotNodeActorJoinSpot(nodeHandle(),
                   ActorInterop.actorRefToNative(arena, ref),
                   ActorInterop.nativeRoutingId(arena, node.routingId()),
@@ -250,9 +240,7 @@ public final class Actor implements AutoCloseable {
                   timeoutMillis(timeout));
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
-                    for (int i = 0; i < parts.size(); i++) {
-                        NativeMsg.msgClose(partsArr.asSlice(i * stride, stride));
-                    }
+                    MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
                     throw new SubmitException(SubmitResult.fromValue(rc));
                 }
                 RequestProgressPump.trackSpotRequest(token.future(),

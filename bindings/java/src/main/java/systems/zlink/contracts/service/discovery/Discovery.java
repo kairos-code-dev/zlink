@@ -2,10 +2,6 @@
 
 package systems.zlink.contracts.service.discovery;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
 import systems.zlink.contracts.Context;
 import systems.zlink.contracts.RoutingId;
 import systems.zlink.contracts.service.registry.AutoConnectType;

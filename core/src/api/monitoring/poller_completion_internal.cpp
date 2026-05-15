@@ -1,0 +1,82 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "api/monitoring/poller_completion_internal.hpp"
+
+#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
+#include "api/socket/socket_request_reply_internal.hpp"
+
+bool poller_completion_is_hidden (const poller_registration_t *registration_)
+{
+    if (!registration_)
+        return false;
+    return registration_->subject_kind == poller_subject_socket_request_completion
+           || registration_->subject_kind
+                == poller_subject_router_spot_request_completion
+           || registration_->subject_kind == poller_subject_spot_request_completion;
+}
+
+int poller_completion_drain_hidden (
+  const poller_registration_t *registration_)
+{
+    if (!registration_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    switch (registration_->subject_kind) {
+        case poller_subject_socket_request_completion: {
+            socket_handle_t handle = as_socket_handle (registration_->subject);
+            std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
+              state =
+                zlink::socket_reqrep_internal::find_request_reply_state (handle);
+            return state
+                     ? zlink::socket_reqrep_internal::drain_reply_completions (
+                         state, registration_->subject)
+                     : 0;
+        }
+        case poller_subject_router_spot_request_completion: {
+            socket_handle_t handle = as_socket_handle (registration_->subject);
+            if (!handle.socket)
+                return -1;
+            std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
+              state = handle.socket->router_spot_request_reply_state ();
+            return state
+                     ? zlink::spot_reqrep_internal::drain_router_reply_completions (
+                         state, registration_->subject)
+                     : 0;
+        }
+        case poller_subject_spot_request_completion: {
+            std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
+              state =
+                zlink::spot_reqrep_internal::try_find_spot_state (
+                  registration_->subject);
+            return state
+                     ? zlink::spot_reqrep_internal::drain_spot_reply_completions (
+                         state, registration_->subject)
+                     : 0;
+        }
+        default:
+            return 0;
+    }
+}
+
+int poller_completion_fill_event (
+  const poller_registration_t *registration_,
+  zlink_poller_event_t *event_out_)
+{
+    if (!registration_ || !event_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    memset (event_out_, 0, sizeof (*event_out_));
+    event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
+    event_out_->socket = registration_->subject;
+    event_out_->fd = 0;
+    event_out_->timer = NULL;
+    event_out_->user_data = registration_->user_data;
+    event_out_->events = ZLINK_POLLIN;
+    return 0;
+}

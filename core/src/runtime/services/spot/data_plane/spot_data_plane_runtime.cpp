@@ -588,6 +588,10 @@ void spot_data_plane_t::teardown_runtime (
     if (!node_ || !runtime_ || !state_)
         return;
 
+    if (state_->external_router
+        && state_->external_router->socket_msg_dispatch_active ())
+        (void) state_->external_router->socket_msg_dispatch_stop ();
+
     spot_data_plane_protocol_t::clear_snapshot_sources (node_, protocol_state_);
     if (protocol_state_) {
         protocol_state_->outbound_ready_filters.clear ();
@@ -601,10 +605,6 @@ void spot_data_plane_t::teardown_runtime (
         }
         protocol_state_->peer_ctrl_endpoints.clear ();
     }
-
-    if (state_->external_router
-        && state_->external_router->socket_msg_dispatch_active ())
-        (void) state_->external_router->socket_msg_dispatch_stop ();
 
     {
         std::lock_guard<std::mutex> lock (state_->publish_ingress.mutex);

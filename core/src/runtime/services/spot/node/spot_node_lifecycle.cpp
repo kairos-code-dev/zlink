@@ -10,6 +10,7 @@
 #include "services/spot/pubsub/spot_sub.hpp"
 
 #include "services/common/monitor_decode.hpp"
+#include "services/actor/service_spot_actor_internal.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_access.hpp"
@@ -27,8 +28,6 @@ namespace zlink
 {
 namespace
 {
-extern "C" int zlink_spot_node_has_any_actor (void *node_);
-
 static bool valid_spot_rid_local (const zlink_routing_id_t &rid_)
 {
     return rid_.size > 0 && rid_.size <= sizeof (rid_.data);
@@ -51,6 +50,14 @@ static bool valid_attached_socket_type_local (socket_base_t *socket_,
 {
     return socket_ && socket_->check_tag ()
            && socket_->socket_type () == expected_type_;
+}
+
+static void *open_attachment_monitor_local (socket_base_t *socket_)
+{
+    zlink_socket_monitor_open_options_t monitor_options;
+    memset (&monitor_options, 0, sizeof (monitor_options));
+    monitor_options.events = ZLINK_EVENT_ALL;
+    return zlink_socket_monitor_open (socket_, &monitor_options);
 }
 
 }
@@ -598,10 +605,7 @@ int spot_node_t::attach_channel_dealer (discovery_t *discovery_,
     if (discovery_access_t::add_observer (discovery_, this) != 0)
         return -1;
 
-    zlink_socket_monitor_open_options_t monitor_options;
-    memset (&monitor_options, 0, sizeof (monitor_options));
-    monitor_options.events = ZLINK_EVENT_ALL;
-    void *monitor = zlink_socket_monitor_open (dealer_, &monitor_options);
+    void *monitor = open_attachment_monitor_local (dealer_);
     if (!monitor) {
         (void) discovery_access_t::remove_observer (discovery_, this);
         return -1;
@@ -655,10 +659,7 @@ int spot_node_t::attach_channel_dealer_manual (const char *channel_name_,
     if (ensure_healthy () != 0)
         return -1;
 
-    zlink_socket_monitor_open_options_t monitor_options;
-    memset (&monitor_options, 0, sizeof (monitor_options));
-    monitor_options.events = ZLINK_EVENT_ALL;
-    void *monitor = zlink_socket_monitor_open (dealer_, &monitor_options);
+    void *monitor = open_attachment_monitor_local (dealer_);
     if (!monitor)
         return -1;
 
@@ -728,10 +729,7 @@ int spot_node_t::attach_pub_ingress (socket_base_t *pub_)
         ingress_sub = _runtime->pub_ingress_sub;
     }
 
-    zlink_socket_monitor_open_options_t monitor_options;
-    memset (&monitor_options, 0, sizeof (monitor_options));
-    monitor_options.events = ZLINK_EVENT_ALL;
-    void *monitor = zlink_socket_monitor_open (pub_, &monitor_options);
+    void *monitor = open_attachment_monitor_local (pub_);
     if (!monitor)
         return -1;
 
@@ -1016,7 +1014,6 @@ int spot_node_t::fanout_local_publish (const zlink_routing_id_t *source_rid_,
     struct fanout_target_t
     {
         std::shared_ptr<spot_logical_state_t> state;
-        spot_handle_t *facade;
     };
     std::vector<fanout_target_t> targets;
     const std::string topic (topic_id_);
@@ -1025,18 +1022,6 @@ int spot_node_t::fanout_local_publish (const zlink_routing_id_t *source_rid_,
             continue;
         fanout_target_t target;
         target.state = states[i];
-        target.facade = NULL;
-        {
-            scoped_lock_t lock (_sync);
-            for (std::set<spot_handle_t *>::const_iterator it =
-                   _handle_state.facades.begin ();
-                 it != _handle_state.facades.end (); ++it) {
-                if ((*it)->logical_state == states[i]) {
-                    target.facade = *it;
-                    break;
-                }
-            }
-        }
         targets.push_back (target);
     }
     if (targets.empty ())
@@ -1070,12 +1055,21 @@ int spot_node_t::fanout_local_publish (const zlink_routing_id_t *source_rid_,
         }
         if (should_signal && targets[i].state->subscribe_signaler.valid ())
             targets[i].state->subscribe_signaler.send ();
-        if (targets[i].facade)
-            zlink_spot_notify_dispatch_info (
-              targets[i].facade,
-              ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE,
-              ZLINK_SPOT_DISPATCH_SUBJECT_SPOT,
-              targets[i].facade);
+        {
+            scoped_lock_t lock (_sync);
+            for (std::set<spot_handle_t *>::const_iterator it =
+                   _handle_state.facades.begin ();
+                 it != _handle_state.facades.end (); ++it) {
+                if ((*it)->logical_state == targets[i].state) {
+                    zlink_spot_notify_dispatch_info (
+                      *it,
+                      ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE,
+                      ZLINK_SPOT_DISPATCH_SUBJECT_SPOT,
+                      *it);
+                    break;
+                }
+            }
+        }
     }
     return 0;
 }
@@ -1099,7 +1093,7 @@ int spot_node_t::update_spot_routing_id (spot_handle_t *spot_,
     memcpy (next.data, data_, size_);
 
     if (spot_->logical_state->entry
-        && zlink_spot_node_has_any_actor (this) != 0) {
+        && spot_actor_internal::node_has_any_actor (this) != 0) {
         errno = EBUSY;
         return -1;
     }

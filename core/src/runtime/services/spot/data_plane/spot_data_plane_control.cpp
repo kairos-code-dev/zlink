@@ -41,6 +41,22 @@ static void spot_ready_ack_ctrl_debugf (const char *fmt_, ...)
     va_end (args);
 }
 
+static bool endpoint_uses_ephemeral_port (const std::string &endpoint_)
+{
+    const size_t port_sep = endpoint_.rfind (':');
+    if (port_sep == std::string::npos || port_sep + 1 >= endpoint_.size ())
+        return false;
+
+    const char *port_start = endpoint_.c_str () + port_sep + 1;
+    char *end = NULL;
+    errno = 0;
+    const unsigned long port = strtoul (port_start, &end, 10);
+    if (errno != 0 || end == port_start)
+        return false;
+
+    return port == 0 && (*end == '\0' || *end == '/');
+}
+
 static int connect_external_router_peer (spot_node_t *node_,
                                          spot_runtime_t *runtime_,
                                          const std::string &peer_pub_endpoint_)
@@ -274,89 +290,104 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         const int mesh_pub_sndhwm =
           spot_mesh_pub_hwm_t::resolve_initial_bind_sndhwm (runtime_, arg);
 
-        if ((mesh_pub_
-             && (mesh_pub_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
-                                        &mesh_pub_sndhwm,
-                                        sizeof (mesh_pub_sndhwm))
-                   != 0
-                 || spot_node_access_t::apply_tls_server (node_, mesh_pub_,
-                                                          cert, key)
-                      != 0
-                 || mesh_pub_->bind (arg.c_str ()) != 0))
-            || spot_node_access_t::apply_tls_server (node_, peer_ctrl_sub_,
-                                                     cert, key)
-                 != 0) {
-            if (send_errno_reply (ctrl_, errno != 0 ? errno : EIO) != 0)
-                return -1;
-            return 0;
-        }
-
-        std::string resolved_endpoint = arg;
-        {
-            char resolved[256] = {0};
-            size_t resolved_size = sizeof (resolved);
-            if (mesh_pub_
-                && mesh_pub_->getsockopt (ZLINK_INTERNAL_OPT_LAST_ENDPOINT,
-                                       resolved, &resolved_size)
-                == 0) {
-                const size_t len =
-                  resolved_size > 0 ? strnlen (resolved, resolved_size) : 0;
-                if (len > 0)
-                    resolved_endpoint.assign (resolved, len);
+        const bool retry_ephemeral_bind = endpoint_uses_ephemeral_port (arg);
+        int saved_errno = 0;
+        const int max_bind_attempts = retry_ephemeral_bind ? 16 : 1;
+        for (int attempt = 0; attempt < max_bind_attempts; ++attempt) {
+            if ((mesh_pub_
+                 && (mesh_pub_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                            &mesh_pub_sndhwm,
+                                            sizeof (mesh_pub_sndhwm))
+                       != 0
+                     || spot_node_access_t::apply_tls_server (node_, mesh_pub_,
+                                                              cert, key)
+                          != 0
+                     || mesh_pub_->bind (arg.c_str ()) != 0))
+                || spot_node_access_t::apply_tls_server (node_, peer_ctrl_sub_,
+                                                         cert, key)
+                     != 0) {
+                saved_errno = errno != 0 ? errno : EIO;
+                break;
             }
+
+            std::string resolved_endpoint = arg;
+            {
+                char resolved[256] = {0};
+                size_t resolved_size = sizeof (resolved);
+                if (mesh_pub_
+                    && mesh_pub_->getsockopt (ZLINK_INTERNAL_OPT_LAST_ENDPOINT,
+                                              resolved, &resolved_size)
+                         == 0) {
+                    const size_t len =
+                      resolved_size > 0 ? strnlen (resolved, resolved_size) : 0;
+                    if (len > 0)
+                        resolved_endpoint.assign (resolved, len);
+                }
+            }
+
+            std::string ctrl_bind_endpoint;
+            if (!spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+                  resolved_endpoint, runtime_->node_id, &ctrl_bind_endpoint)) {
+                saved_errno = EINVAL;
+                if (mesh_pub_)
+                    (void) mesh_pub_->term_endpoint (resolved_endpoint.c_str ());
+                break;
+            }
+
+            std::string route_bind_endpoint;
+            if (!spot_control_protocol::derive_external_router_bind_endpoint (
+                  resolved_endpoint, runtime_->node_id, &route_bind_endpoint)) {
+                saved_errno = EINVAL;
+                if (mesh_pub_)
+                    (void) mesh_pub_->term_endpoint (resolved_endpoint.c_str ());
+                break;
+            }
+
+            if (peer_ctrl_sub_->bind (ctrl_bind_endpoint.c_str ()) != 0) {
+                saved_errno = errno != 0 ? errno : EIO;
+                if (mesh_pub_)
+                    (void) mesh_pub_->term_endpoint (resolved_endpoint.c_str ());
+                if (retry_ephemeral_bind && saved_errno == EADDRINUSE)
+                    continue;
+                break;
+            }
+
+            if (runtime_->external_router
+                && (spot_node_access_t::apply_tls_server (
+                      node_, runtime_->external_router, cert, key)
+                      != 0
+                    || runtime_->external_router->bind (
+                         route_bind_endpoint.c_str ())
+                         != 0)) {
+                saved_errno = errno != 0 ? errno : EIO;
+                (void) peer_ctrl_sub_->term_endpoint (ctrl_bind_endpoint.c_str ());
+                if (mesh_pub_)
+                    (void) mesh_pub_->term_endpoint (resolved_endpoint.c_str ());
+                if (retry_ephemeral_bind && saved_errno == EADDRINUSE)
+                    continue;
+                break;
+            }
+
+            runtime_->peer_ctrl_endpoint = ctrl_bind_endpoint;
+            runtime_->external_router_bind_endpoint = route_bind_endpoint;
+            runtime_->bound_endpoint = resolved_endpoint;
+            if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
+                std::fprintf (
+                  stderr,
+                  "[spot-direct] bind external router socket=%d endpoint=%s\n",
+                  runtime_->external_router
+                    ? runtime_->external_router->socket_id ()
+                    : -1,
+                  route_bind_endpoint.c_str ());
+            }
+            spot_node_access_t::mark_bound_endpoint_and_server_tls_locked (
+              node_, resolved_endpoint);
+            return send_ok_reply (ctrl_);
         }
 
-        std::string ctrl_bind_endpoint;
-        if (!spot_control_protocol::derive_peer_ctrl_bind_endpoint (
-              resolved_endpoint, runtime_->node_id, &ctrl_bind_endpoint)) {
-            if (send_errno_reply (ctrl_, EINVAL) != 0)
-                return -1;
-            return 0;
-        }
-
-        std::string route_bind_endpoint;
-        if (!spot_control_protocol::derive_external_router_bind_endpoint (
-              resolved_endpoint, runtime_->node_id, &route_bind_endpoint)) {
-            if (send_errno_reply (ctrl_, EINVAL) != 0)
-                return -1;
-            return 0;
-        }
-
-        if (peer_ctrl_sub_->bind (ctrl_bind_endpoint.c_str ()) != 0) {
-            if (send_errno_reply (ctrl_, errno != 0 ? errno : EIO) != 0)
-                return -1;
-            return 0;
-        }
-
-        if (runtime_->external_router
-            && (spot_node_access_t::apply_tls_server (
-                  node_, runtime_->external_router, cert, key)
-                  != 0
-                || runtime_->external_router->bind (
-                     route_bind_endpoint.c_str ())
-                     != 0)) {
-            const int saved_errno = errno != 0 ? errno : EIO;
-            (void) peer_ctrl_sub_->term_endpoint (ctrl_bind_endpoint.c_str ());
-            if (send_errno_reply (ctrl_, saved_errno) != 0)
-                return -1;
-            return 0;
-        }
-
-        runtime_->peer_ctrl_endpoint = ctrl_bind_endpoint;
-        runtime_->external_router_bind_endpoint = route_bind_endpoint;
-        runtime_->bound_endpoint = resolved_endpoint;
-        if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
-            std::fprintf (
-              stderr,
-              "[spot-direct] bind external router socket=%d endpoint=%s\n",
-              runtime_->external_router
-                ? runtime_->external_router->socket_id ()
-                : -1,
-              route_bind_endpoint.c_str ());
-        }
-        spot_node_access_t::mark_bound_endpoint_and_server_tls_locked (
-          node_, resolved_endpoint);
-        return send_ok_reply (ctrl_);
+        if (send_errno_reply (ctrl_, saved_errno != 0 ? saved_errno : EIO) != 0)
+            return -1;
+        return 0;
     }
 
     if (spot_control_protocol::command_is (

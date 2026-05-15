@@ -189,6 +189,12 @@ void zlink::pipe_t::set_peer (pipe_t *peer_)
     _peer = peer_;
 }
 
+void zlink::pipe_t::detach_peer_backref ()
+{
+    if (_peer && _peer->_peer == this)
+        _peer->_peer = NULL;
+}
+
 void zlink::pipe_t::set_event_sink (i_pipe_events *sink_)
 {
     // Sink can be set once only.
@@ -711,6 +717,7 @@ void zlink::pipe_t::process_pipe_term_ack ()
     }
 
     LIBZLINK_DELETE (_in_pipe);
+    detach_peer_backref ();
 
     //  Pipe objects are always heap-allocated and reference-counted by protocol
     //  state transitions, so termination ack is the canonical final release.

@@ -300,6 +300,16 @@ bool zlink::part_helper_internal::recv_sequence_active (
     return state_->recv.active;
 }
 
+bool zlink::part_helper_internal::send_sequence_active (void *handle_)
+{
+    std::shared_ptr<handle_state_t> state = find_handle_state (handle_);
+    if (!state)
+        return false;
+
+    std::lock_guard<std::mutex> lock (state->mutex);
+    return state->send.active;
+}
+
 int zlink::part_helper_internal::stage_recv_sequence (
   const std::shared_ptr<handle_state_t> &state_,
   recv_family_t family_,

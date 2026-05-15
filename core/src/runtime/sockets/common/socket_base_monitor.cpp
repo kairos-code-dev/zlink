@@ -280,21 +280,40 @@ void zlink::socket_base_t::event_disconnected (
   const unsigned char *routing_id_,
   size_t routing_id_size_)
 {
-    uint64_t values[1] = {reason_};
-    event (endpoint_uri_pair_, routing_id_, routing_id_size_, values, 1,
-           ZLINK_EVENT_DISCONNECTED);
+    if (monitor_runtime ().events_atomic.load (std::memory_order_acquire) == 0)
+        return;
 
     uint32_t ready_count = 0;
     bool changed = false;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
+        if (monitor_runtime ().events & ZLINK_EVENT_DISCONNECTED) {
+            uint64_t values[1] = {reason_};
+            monitor_event_record_t record;
+            if (build_monitor_event_record (&record, ZLINK_EVENT_DISCONNECTED,
+                                            values, 1, routing_id_,
+                                            routing_id_size_,
+                                            endpoint_uri_pair_))
+                enqueue_monitor_event (record);
+        }
+
         changed = monitor_runtime ().erase_ready_connection (
           endpoint_uri_pair_, routing_id_, routing_id_size_, &ready_count);
-    }
-    if (changed) {
-        uint64_t ready_values[1] = {0};
-        event (endpoint_uri_pair_, routing_id_, routing_id_size_, ready_values,
-               1, ZLINK_EVENT_CONNECTION_READY);
+        if (!changed)
+            changed = monitor_runtime ().erase_ready_connection_for_endpoint (
+              endpoint_uri_pair_, &ready_count);
+
+        LIBZLINK_UNUSED (changed);
+        if (monitor_runtime ().events & ZLINK_EVENT_CONNECTION_READY) {
+            uint64_t ready_values[1] = {ready_count};
+            monitor_event_record_t record;
+            if (build_monitor_event_record (&record,
+                                            ZLINK_EVENT_CONNECTION_READY,
+                                            ready_values, 1, routing_id_,
+                                            routing_id_size_,
+                                            endpoint_uri_pair_))
+                enqueue_monitor_event (record);
+        }
     }
 }
 

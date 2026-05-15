@@ -40,6 +40,7 @@ from ..._native.ffi import (
     ZlinkActorRecvInfo,
     ZlinkActorRef,
     ZlinkMsg,
+    ZlinkPollerEvent,
     ZlinkRoutingId,
     ZlinkSpotActorLifecycleInfo,
     ZlinkSpotDispatchInfo,
@@ -645,9 +646,20 @@ class _PendingActorLookup:
             _report_unhandled_callback_exception(self.callback)
 
 
+_POLL_COMPLETION = 32  # ZLINK_POLLCOMPLETION
+
+
 class _RequestProgressPump:
-    def __init__(self, step, is_active):
-        self._step = step
+    """Background worker draining request completions for spot/channel handles.
+
+    Uses the canonical poller-based progress model: a dedicated zlink_poller
+    has each in-flight target (spot handle, channel dealer handles) added
+    with the ZLINK_POLLCOMPLETION interest. zlink_poller_wait() blocks until
+    completions are available and the core drains them internally.
+    """
+
+    def __init__(self, target_provider, is_active):
+        self._target_provider = target_provider
         self._is_active = is_active
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -667,35 +679,62 @@ class _RequestProgressPump:
             self._thread.start()
 
     def _run(self):
-        idle_since = None
-        idle_iterations = 0
         try:
-            while not self._stop.is_set():
-                if self._is_active():
+            poller = lib().zlink_poller_new()
+            if not poller:
+                return
+            registered = set()
+            try:
+                idle_since = None
+                events = (ZlinkPollerEvent * 8)()
+                error_out = ctypes.c_int()
+                while not self._stop.is_set():
+                    current = set()
+                    for handle in self._target_provider():
+                        if handle:
+                            current.add(handle)
+                    for handle in current - registered:
+                        rc = lib().zlink_poller_add(
+                            poller,
+                            handle,
+                            None,
+                            ctypes.c_short(_POLL_COMPLETION),
+                        )
+                        if rc == 0:
+                            registered.add(handle)
+                    for handle in registered - current:
+                        lib().zlink_poller_remove(poller, handle)
+                        registered.discard(handle)
+                    if not self._is_active() and not registered:
+                        if idle_since is None:
+                            idle_since = time.monotonic()
+                        elif (
+                            time.monotonic() - idle_since
+                            >= _REQUEST_PROGRESS_IDLE_GRACE_S
+                        ):
+                            break
+                        if self._stop.wait(0.001):
+                            break
+                        continue
                     idle_since = None
-                    idle_iterations = 0
+                    if not registered:
+                        if self._stop.wait(0.001):
+                            break
+                        continue
                     try:
-                        self._step()
+                        lib().zlink_poller_wait(
+                            poller, events, 8, 50, ctypes.byref(error_out)
+                        )
+                    except Exception:
+                        break
+            finally:
+                for handle in list(registered):
+                    try:
+                        lib().zlink_poller_remove(poller, handle)
                     except Exception:
                         pass
-                    continue
-                if idle_since is None:
-                    idle_since = time.monotonic()
-                elif (
-                    time.monotonic() - idle_since
-                    >= _REQUEST_PROGRESS_IDLE_GRACE_S
-                ):
-                    break
-                idle_iterations += 1
-                if idle_iterations <= _PROGRESS_SPIN_ITERATIONS:
-                    if self._stop.wait(0):
-                        break
-                    time.sleep(0)
-                    continue
-                shift = min(3, idle_iterations - _PROGRESS_SPIN_ITERATIONS - 1)
-                delay = min(_PROGRESS_MAX_DELAY_S, (1 << shift) / 1000.0)
-                if self._stop.wait(delay):
-                    break
+                handle_ptr = ctypes.c_void_p(poller)
+                lib().zlink_poller_destroy(ctypes.byref(handle_ptr))
         finally:
             with self._lock:
                 if self._thread is threading.current_thread():
@@ -2304,7 +2343,7 @@ class Spot:
         self._own = True
         self._timers = {}
         self._request_progress = _RequestProgressPump(
-            self._drain_request_progress,
+            self._request_progress_handles,
             lambda: bool(self._request_pending),
         )
 
@@ -2314,16 +2353,16 @@ class Spot:
     def _unregister_timer(self, timer):
         self._timers.pop(timer._handle, None)
 
-    def _drain_request_progress(self):
+    def _request_progress_handles(self):
+        """Yield handles to register on the request-completion poller."""
         seen = set()
-        for kind, handle in list(self._request_progress_targets.values()):
-            if not handle or (kind, handle) in seen:
+        result = []
+        for _kind, handle in list(self._request_progress_targets.values()):
+            if not handle or handle in seen:
                 continue
-            seen.add((kind, handle))
-            if kind == "socket":
-                lib().zlink_socket_request_progress_internal(handle)
-            else:
-                lib().zlink_spot_request_progress_internal(handle)
+            seen.add(handle)
+            result.append(handle)
+        return result
 
     def _request_progress_target(self, channel_bytes=None):
         return ("spot", self._handle)
@@ -3090,18 +3129,16 @@ class Spot:
         self._dispatch_handler_cb = callback
 
     def drain_channel_reply_from(self, subject):
+        # Channel reply progress is now driven by the per-spot poller
+        # (zlink_poller_wait with ZLINK_POLLCOMPLETION). This method is
+        # retained as a no-op for source compatibility; new code should not
+        # rely on an explicit drain.
         if hasattr(subject, "_handle"):
             subject = subject._handle
         if isinstance(subject, ctypes.c_void_p):
             subject = subject.value
         if not subject:
             raise ValueError("subject must not be null")
-        rc = lib().zlink_spot_channel_reply_progress_from(
-            self._handle,
-            ctypes.c_void_p(int(subject)),
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def recv_actor_join(self, *, flags=0):
         info = ZlinkActorJoinInfo()

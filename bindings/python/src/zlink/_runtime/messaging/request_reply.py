@@ -31,7 +31,7 @@ from ..core.core import (
     _routing_id_bytes,
 )
 from ..sockets.socket_base import _enter_callback, _leave_callback
-from ..._native.ffi import lib
+from ..._native.ffi import ZlinkPollerEvent, lib
 
 
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)
@@ -147,13 +147,21 @@ class _PendingRequest:
             _report_unhandled_callback_exception(self.callback)
 
 
-_PROGRESS_SPIN_ITERATIONS = 32
-_PROGRESS_MAX_DELAY_S = 0.008
+_POLL_COMPLETION = 32  # ZLINK_POLLCOMPLETION
 
 
 class _RequestProgressPump:
-    def __init__(self, step, is_active):
-        self._step = step
+    """Per-handle background worker that drains request completions.
+
+    Uses the canonical poller-based progress model:
+    a dedicated zlink_poller is registered with the handle under the
+    ZLINK_POLLCOMPLETION flag. zlink_poller_wait() blocks until reply
+    completions are available and drains them internally; the worker only
+    needs to wake the wait loop when handles complete.
+    """
+
+    def __init__(self, handle_getter, is_active):
+        self._handle_getter = handle_getter
         self._is_active = is_active
         self._lock = threading.Lock()
         self._thread = None
@@ -171,20 +179,34 @@ class _RequestProgressPump:
 
     def _run(self):
         try:
-            idle = 0
-            while self._is_active():
-                try:
-                    self._step()
-                except Exception:
-                    pass
-                if not self._is_active():
-                    break
-                idle += 1
-                if idle <= _PROGRESS_SPIN_ITERATIONS:
-                    time.sleep(0)
-                    continue
-                shift = min(3, idle - _PROGRESS_SPIN_ITERATIONS - 1)
-                time.sleep(min(_PROGRESS_MAX_DELAY_S, (1 << shift) / 1000.0))
+            handle = self._handle_getter()
+            if not handle:
+                return
+            poller = lib().zlink_poller_new()
+            if not poller:
+                return
+            try:
+                rc = lib().zlink_poller_add(
+                    poller,
+                    handle,
+                    None,
+                    ctypes.c_short(_POLL_COMPLETION),
+                )
+                if rc != 0:
+                    return
+                events = (ZlinkPollerEvent * 1)()
+                error_out = ctypes.c_int()
+                while self._is_active():
+                    try:
+                        lib().zlink_poller_wait(
+                            poller, events, 1, -1, ctypes.byref(error_out)
+                        )
+                    except Exception:
+                        break
+            finally:
+                lib().zlink_poller_remove(poller, handle)
+                handle_ptr = ctypes.c_void_p(poller)
+                lib().zlink_poller_destroy(ctypes.byref(handle_ptr))
         finally:
             with self._lock:
                 if self._thread is threading.current_thread():

@@ -549,21 +549,6 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_socket_request_progress_internal",
-            [ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_request_progress_internal",
-            [ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_channel_reply_progress_from",
-            [ctypes.c_void_p, ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_router_reply_part",
             [
                 ctypes.c_void_p,

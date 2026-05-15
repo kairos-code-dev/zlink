@@ -120,7 +120,7 @@ class PairSocket(_SendReadySocket, _EndpointSocket, _MessageSocket):
     _socket_type_value = SocketType.PAIR
 
     def send(self):
-        from ..service.spot import SendOp
+        from ..._runtime.service.spot import SendOp
 
         return SendOp(
             self,
@@ -143,12 +143,12 @@ class DealerSocket(
         self._request_reply_handler = _REPLY_HANDLER(self._on_request_reply)
         self._pending_requests = {}
         self._request_progress = _RequestProgressPump(
-            lambda: lib().zlink_socket_request_progress_internal(self._handle),
+            lambda: self._handle,
             lambda: bool(self._pending_requests),
         )
 
     def send(self):
-        from ..service.spot import SendOp
+        from ..._runtime.service.spot import SendOp
 
         return SendOp(
             self,
@@ -156,7 +156,7 @@ class DealerSocket(
         )
 
     def request(self):
-        from ..service.spot import RequestOp
+        from ..._runtime.service.spot import RequestOp
 
         return RequestOp(
             self,
@@ -261,7 +261,7 @@ class RouterSocket(
         self._spot_request_pending = {}
         self._spot_request_reply_handler = None
         self._request_progress = _RequestProgressPump(
-            lambda: lib().zlink_socket_request_progress_internal(self._handle),
+            lambda: self._handle,
             lambda: bool(self._pending_requests) or bool(self._spot_request_pending),
         )
 
@@ -270,7 +270,7 @@ class RouterSocket(
         return RouterSocketOptions(self)
 
     def send(self, routing_id):
-        from ..service.spot import SendOp
+        from ..._runtime.service.spot import SendOp
 
         return SendOp(
             self,
@@ -280,7 +280,7 @@ class RouterSocket(
         )
 
     def request(self, peer_rid):
-        from ..service.spot import RequestOp
+        from ..._runtime.service.spot import RequestOp
 
         return RequestOp(
             self,
@@ -306,7 +306,7 @@ class RouterSocket(
         return await pending.future
 
     def reply(self, routing_id, request_seq):
-        from ..service.spot import ReplyOp
+        from ..._runtime.service.spot import ReplyOp
 
         return ReplyOp(
             lambda parts, op_flags: self._reply_payload(
@@ -389,7 +389,7 @@ class RouterSocket(
         request_seq_for_reply = request_seq_value
 
         def _make_router_send_op():
-            from ..service.spot import SendOp
+            from ..._runtime.service.spot import SendOp
 
             return SendOp(
                 socket,
@@ -399,7 +399,7 @@ class RouterSocket(
             )
 
         def _make_router_reply_op():
-            from ..service.spot import ReplyOp
+            from ..._runtime.service.spot import ReplyOp
 
             return ReplyOp(
                 lambda parts, flags: socket._reply_from_receive_context(
@@ -420,7 +420,7 @@ class RouterSocket(
         return True
 
     def send_to_spot(self, dest_node_rid, dest_spot_rid):
-        from ..service.spot import SendOp
+        from ..._runtime.service.spot import SendOp
 
         return SendOp(
             self,
@@ -533,7 +533,7 @@ class RouterSocket(
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
     def request_to_spot(self, dest_node_rid, dest_spot_rid):
-        from ..service.spot import RequestOp
+        from ..._runtime.service.spot import RequestOp
 
         return RequestOp(
             self,
@@ -615,7 +615,7 @@ class RouterSocket(
             raise
 
     def reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq):
-        from ..service.spot import ReplyOp
+        from ..._runtime.service.spot import ReplyOp
 
         return ReplyOp(
             lambda parts, op_flags: self._reply_to_spot_payload(
@@ -680,7 +680,7 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
     _socket_type_value = SocketType.STREAM
 
     def send(self, routing_id):
-        from ..service.spot import SendOp
+        from ..._runtime.service.spot import SendOp
 
         return SendOp(
             self,
@@ -698,19 +698,19 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
     def bind_actor(self, session_rid, actor):
         """Async Actor bind. The stream is bound to its session/actor mapping
         here. A bind does not require nor imply a Spot join."""
-        from ..service.spot import ActorBindOp
+        from ..._runtime.service.spot import ActorBindOp
 
         return ActorBindOp(self, session_rid, actor)
 
     def unbind_actor(self, session_rid, actor_id):
         """Async Actor unbind."""
-        from ..service.spot import ActorUnbindOp
+        from ..._runtime.service.spot import ActorUnbindOp
 
         return ActorUnbindOp(self, session_rid, actor_id)
 
     def send_bound_actor(self, session_rid, actor_id):
         """Send a payload to the (session, actor) pair bound on this stream."""
-        from ..service.spot import SendOp
+        from ..._runtime.service.spot import SendOp
 
         return SendOp(
             self,
@@ -740,7 +740,7 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
         return True
 
     def _submit_bind_actor(self, session_rid, actor_ref, pending, timeout):
-        from ..service.spot import _PendingRequest  # local import to avoid cycle
+        from ..._runtime.service.spot import _PendingRequest  # local import to avoid cycle
 
         native_session = _copy_routing_id(session_rid)
         native_actor = _actor_ref_to_native(actor_ref)
@@ -800,7 +800,7 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
     def bound_actors(self, session_rid):
         """Snapshot of Actor refs attached to the given session."""
         from ..._native.ffi import ZlinkActorRef as _Ref
-        from ..service.spot import _actor_ref_from_native
+        from ..._runtime.service.spot import _actor_ref_from_native
 
         native_session = _copy_routing_id(session_rid)
         count = ctypes.c_size_t()
@@ -885,7 +885,7 @@ class PubSocket(_SendReadySocket, _DiscoveryAttachSocket, _EndpointSocket, _Publ
         return PubSocketOptions(self)
 
     def publish(self, topic):
-        from ..service.spot import SendOp
+        from ..._runtime.service.spot import SendOp
 
         return SendOp(
             self,
@@ -907,7 +907,7 @@ class XPubSocket(_SendReadySocket, _EndpointSocket, _PublisherOptionSocket, _Pub
         return PubSocketOptions(self)
 
     def publish(self, topic):
-        from ..service.spot import SendOp
+        from ..._runtime.service.spot import SendOp
 
         return SendOp(
             self,

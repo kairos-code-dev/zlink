@@ -256,16 +256,9 @@ class pubsub_client_bench_t
 
                     ++count;
                     if (lat_out) {
-                        const uint64_t now_ns = perf_metric::now_ns ();
-                        const double latency_ns = header.sent_ts_ns > 0
-                                                    && now_ns >= static_cast<uint64_t> (
-                                                      header.sent_ts_ns)
-                                                    ? static_cast<double> (
-                                                        now_ns
-                                                        - static_cast<uint64_t> (
-                                                          header.sent_ts_ns))
-                                                    : 0.0;
-                        latency.add (latency_ns);
+                        latency.add (
+                          perf_metric::elapsed_latency_ns (
+                            perf_metric::now_ns (), header.sent_ts_ns));
                     }
                 }
             }

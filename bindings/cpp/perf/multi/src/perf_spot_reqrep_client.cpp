@@ -455,19 +455,17 @@ class spot_reqrep_client_bench_t
             return;
         }
 
-        const uint64_t now_ns = perf_metric::now_ns ();
+        const int64_t now_ns = perf_metric::now_ns ();
         const uint64_t deadline_ns =
           bench->_active_deadline_ns.load (std::memory_order_acquire);
-        if (deadline_ns != 0 && now_ns >= deadline_ns)
+        if (deadline_ns != 0 && now_ns >= 0
+            && static_cast<uint64_t> (now_ns) >= deadline_ns)
             return;
-        const uint64_t sent_ts_ns =
-          header.sent_ts_ns >= 0 ? static_cast<uint64_t> (header.sent_ts_ns)
-                                 : 0u;
-        if (sent_ts_ns == 0 || now_ns < sent_ts_ns)
+        if (header.sent_ts_ns <= 0 || now_ns < header.sent_ts_ns)
             return;
 
         const double sample_ns =
-          static_cast<double> (now_ns - sent_ts_ns) * 0.5;
+          perf_metric::elapsed_latency_ns (now_ns, header.sent_ts_ns) * 0.5;
         bench->_active_reply_count.fetch_add (
           1, std::memory_order_acq_rel);
         {

@@ -509,12 +509,10 @@ class router_router_client_bench_t
                                  header, _run_id, phase, _msg_size)) {
                         ++count;
                         if (lat_out && phase == perf_metric::phase_active) {
-                            const uint64_t now_ns = perf_metric::now_ns ();
                             const double latency_ns =
-                              now_ns >= header.sent_ts_ns
-                                ? static_cast<double> (now_ns - header.sent_ts_ns)
-                                    * 0.5
-                                : 0.0;
+                              perf_metric::elapsed_latency_ns (
+                                perf_metric::now_ns (), header.sent_ts_ns)
+                              * 0.5;
                             latency.add (latency_ns);
                         }
                     } else {

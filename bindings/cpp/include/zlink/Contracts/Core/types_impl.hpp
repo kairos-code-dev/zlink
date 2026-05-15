@@ -764,8 +764,9 @@ inline void received_t::materialize_parts () const
 {
     if (!_single_part.has_value ())
         return;
-    _parts.push_back (std::move (*_single_part));
+    message_t part = std::move (*_single_part);
     _single_part.reset ();
+    _parts.push_back (std::move (part));
 }
 
 inline const std::vector<message_t> &received_t::parts () const
@@ -802,8 +803,9 @@ inline void topic_message_t::materialize_parts () const
 {
     if (!_single_part.has_value ())
         return;
-    _parts.push_back (std::move (*_single_part));
+    message_t part = std::move (*_single_part);
     _single_part.reset ();
+    _parts.push_back (std::move (part));
 }
 
 inline const std::vector<message_t> &topic_message_t::parts () const

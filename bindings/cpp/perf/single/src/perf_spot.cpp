@@ -415,9 +415,7 @@ bool run_pattern_spot (const std::string &transport,
                   received.fetch_add (1, std::memory_order_relaxed);
                   const int64_t now_ns = perf_single_metric::now_ns ();
                   latency_builder.add (
-                    header_.sent_ts_ns > 0 && now_ns >= header_.sent_ts_ns
-                      ? static_cast<double> (now_ns - header_.sent_ts_ns)
-                      : 0.0);
+                    perf_single_metric::elapsed_latency_ns (now_ns, header_.sent_ts_ns));
               }
           };
         while (true) {

@@ -40,8 +40,7 @@ bool record_dealer_payload (const zlink::received_t &received,
     received_count.fetch_add (1, std::memory_order_release);
     const uint64_t now = perf_single_metric::now_ns ();
     latency_builder.add (
-      now >= header.sent_ts_ns ? static_cast<double> (now - header.sent_ts_ns)
-                               : 0.0);
+      perf_single_metric::elapsed_latency_ns (now, header.sent_ts_ns));
     return true;
 }
 

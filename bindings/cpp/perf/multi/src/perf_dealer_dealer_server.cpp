@@ -147,12 +147,9 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
             }
 
             ++active_count;
-            const uint64_t now_ns = perf_metric::now_ns ();
-            const double sample_ns =
-              now_ns >= header.sent_ts_ns
-                ? static_cast<double> (now_ns - header.sent_ts_ns)
-                : 0.0;
-            latency.add (sample_ns);
+            latency.add (
+              perf_metric::elapsed_latency_ns (
+                perf_metric::now_ns (), header.sent_ts_ns));
         }
         if (failed)
             break;

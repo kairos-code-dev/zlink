@@ -629,10 +629,9 @@ class spot_client_bench_t
 
             ++metrics->active_received;
             ++metrics->sample_index;
-            const double latency_ns = received_ts_ns >= header.sent_ts_ns
-                                        ? static_cast<double> (
-                                            received_ts_ns - header.sent_ts_ns)
-                                        : 0.0;
+            const double latency_ns =
+              perf_metric::elapsed_latency_ns (
+                received_ts_ns, header.sent_ts_ns);
             {
                 // Uncontended per-thread mutex; only collect_recv_thread_metrics
                 // ever contends it. Without this lock the vector reallocation

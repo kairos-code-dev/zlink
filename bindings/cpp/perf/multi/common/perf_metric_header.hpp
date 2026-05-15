@@ -70,6 +70,14 @@ inline int64_t now_ns ()
         .count ());
 }
 
+inline double elapsed_latency_ns (int64_t now_ns, int64_t sent_ts_ns)
+{
+    if (sent_ts_ns <= 0)
+        return 0.0;
+    return now_ns >= sent_ts_ns ? static_cast<double> (now_ns - sent_ts_ns)
+                                : 0.0;
+}
+
 inline void init_header (header_t *out,
                          uint32_t run_id,
                          phase_t phase,

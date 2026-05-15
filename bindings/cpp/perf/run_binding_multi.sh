@@ -633,7 +633,6 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
       ;;
     --output)

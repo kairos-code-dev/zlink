@@ -288,12 +288,11 @@ bool drain_reply (client_slot_t &slot,
             return true;
         }
 
-        const uint64_t now_ns = perf_metric::now_ns ();
-        if (now_ns < deadline_ns && header.sent_ts_ns > 0
-            && now_ns >= static_cast<uint64_t> (header.sent_ts_ns)) {
+        const int64_t now_ns = perf_metric::now_ns ();
+        if (now_ns >= 0 && static_cast<uint64_t> (now_ns) < deadline_ns
+            && header.sent_ts_ns > 0 && now_ns >= header.sent_ts_ns) {
             latency.add (
-              static_cast<double> (
-                now_ns - static_cast<uint64_t> (header.sent_ts_ns))
+              perf_metric::elapsed_latency_ns (now_ns, header.sent_ts_ns)
               / 2.0);
             ++reply_count;
         }

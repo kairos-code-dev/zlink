@@ -37,11 +37,11 @@ bool record_pair_payload (const zlink::received_t &received,
                           perf::single::latency_stats_builder_t &latency_builder)
 {
     const zlink::message_t *payload = NULL;
-    if (received.parts ().size () == 1) {
-        payload = &received.parts ()[0];
-    } else if (received.parts ().size () == 2
-               && received.parts ()[0].size () == 0) {
-        payload = &received.parts ()[1];
+    const std::vector<zlink::message_t> &parts = received.parts ();
+    if (parts.size () == 1) {
+        payload = &parts[0];
+    } else if (parts.size () == 2 && parts[0].size () == 0) {
+        payload = &parts[1];
     }
     if (!payload || payload->size () != payload_size)
         return true;
@@ -59,8 +59,7 @@ bool record_pair_payload (const zlink::received_t &received,
     received_count.fetch_add (1, std::memory_order_release);
     const uint64_t now = perf_single_metric::now_ns ();
     latency_builder.add (
-      now >= header.sent_ts_ns ? static_cast<double> (now - header.sent_ts_ns)
-                               : 0.0);
+      perf_single_metric::elapsed_latency_ns (now, header.sent_ts_ns));
     return true;
 }
 
@@ -170,9 +169,10 @@ bool run_pattern_pair (const std::string &transport,
                     sender_ok.store (false, std::memory_order_release);
                     return;
                 }
-                if (received.parts ().size () == 1
+                const std::vector<zlink::message_t> &parts = received.parts ();
+                if (parts.size () == 1
                     && perf::single::is_stop_token_message (
-                         received.parts ()[0])) {
+                         parts[0])) {
                     return;
                 }
                 if (std::chrono::steady_clock::now () < active_deadline

@@ -12,7 +12,10 @@ internal static class RoutingIdCodec
 {
     private const string HexPrefix = "hex:";
     private const int ThreadCacheMaxEntries = 256;
-    private static readonly object ByteCacheLock = new();
+    private const int SharedCacheMaxKeys = 4096;
+    private static readonly object PublicCacheLock = new();
+    private static readonly object CanonicalCacheLock = new();
+    private static readonly object RoutingCacheLock = new();
     [ThreadStatic]
     private static Dictionary<RouteCacheKey, List<byte[]>>? t_ownedBytesCache;
     private static readonly Dictionary<RouteCacheKey, List<RouteCacheEntry>>
@@ -30,7 +33,7 @@ internal static class RoutingIdCodec
             return string.Empty;
 
         RouteCacheKey key = RouteCacheKey.Create(routingId);
-        lock (ByteCacheLock)
+        lock (PublicCacheLock)
         {
             if (ByteToPublicCache.TryGetValue(key, out List<RouteCacheEntry>? entries))
             {
@@ -48,8 +51,9 @@ internal static class RoutingIdCodec
             : HexPrefix + Convert.ToHexString(routingId);
         byte[] copy = routingId.ToArray();
 
-        lock (ByteCacheLock)
+        lock (PublicCacheLock)
         {
+            TrimPublicCachesIfNeeded();
             if (!ByteToPublicCache.TryGetValue(key, out List<RouteCacheEntry>? entries))
             {
                 entries = new List<RouteCacheEntry>(1);
@@ -135,6 +139,17 @@ internal static class RoutingIdCodec
         ];
     }
 
+    internal static unsafe ZlinkRoutingId ToNative(uint routingId)
+    {
+        ZlinkRoutingId native = default;
+        native.Size = 4;
+        native.Data[0] = (byte)(routingId >> 24);
+        native.Data[1] = (byte)(routingId >> 16);
+        native.Data[2] = (byte)(routingId >> 8);
+        native.Data[3] = (byte)routingId;
+        return native;
+    }
+
     internal static bool TryToUInt32(ReadOnlySpan<byte> routingId,
         out uint value)
     {
@@ -161,7 +176,7 @@ internal static class RoutingIdCodec
                 "routingId must not be empty.");
         }
 
-        lock (ByteCacheLock)
+        lock (PublicCacheLock)
         {
             if (PublicToByteCache.TryGetValue(routingId, out byte[]? cached))
                 return cached;
@@ -208,8 +223,9 @@ internal static class RoutingIdCodec
             Encoding.UTF8.GetBytes(routingId, bytes.AsSpan());
         }
 
-        lock (ByteCacheLock)
+        lock (PublicCacheLock)
         {
+            TrimPublicCachesIfNeeded();
             if (!PublicToByteCache.TryGetValue(routingId, out byte[]? cached))
                 PublicToByteCache[routingId] = bytes;
         }
@@ -237,8 +253,9 @@ internal static class RoutingIdCodec
     private static byte[] Canonicalize(ReadOnlySpan<byte> routingId)
     {
         RouteCacheKey key = RouteCacheKey.Create(routingId);
-        lock (ByteCacheLock)
+        lock (CanonicalCacheLock)
         {
+            TrimCanonicalCacheIfNeeded();
             if (ByteCanonicalCache.TryGetValue(key,
                 out List<byte[]>? cachedEntries))
             {
@@ -292,8 +309,9 @@ internal static class RoutingIdCodec
     {
         byte[] canonical = Canonicalize(routingId);
         RouteCacheKey key = RouteCacheKey.Create(canonical);
-        lock (ByteCacheLock)
+        lock (RoutingCacheLock)
         {
+            TrimRoutingCacheIfNeeded();
             if (ByteToRoutingCache.TryGetValue(key,
                 out List<RouteRoutingEntry>? cachedEntries))
             {
@@ -318,6 +336,34 @@ internal static class RoutingIdCodec
             cachedEntries.Add(new RouteRoutingEntry(canonical, created));
             return created;
         }
+    }
+
+    private static void TrimPublicCachesIfNeeded()
+    {
+        if (ByteToPublicCache.Count < SharedCacheMaxKeys
+            && PublicToByteCache.Count < SharedCacheMaxKeys)
+        {
+            return;
+        }
+
+        ByteToPublicCache.Clear();
+        PublicToByteCache.Clear();
+    }
+
+    private static void TrimCanonicalCacheIfNeeded()
+    {
+        if (ByteCanonicalCache.Count < SharedCacheMaxKeys)
+            return;
+
+        ByteCanonicalCache.Clear();
+    }
+
+    private static void TrimRoutingCacheIfNeeded()
+    {
+        if (ByteToRoutingCache.Count < SharedCacheMaxKeys)
+            return;
+
+        ByteToRoutingCache.Clear();
     }
 
     private readonly struct RouteCacheKey : IEquatable<RouteCacheKey>

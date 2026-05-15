@@ -101,7 +101,7 @@ public sealed class test_request_reply
     }
 
     [Fact]
-    public void request_callback_transfers_reply_message_ownership_to_application()
+    public async Task request_callback_transfers_reply_message_ownership_to_application()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -156,6 +156,6 @@ public sealed class test_request_reply
         Assert.Equal("pong-owned", owned!.GetString());
         owned.Dispose();
         Assert.Throws<ObjectDisposedException>(() => _ = owned.Size);
-        serverTask.GetAwaiter().GetResult();
+        await serverTask;
     }
 }

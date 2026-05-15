@@ -140,34 +140,16 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     {
         _ = flags;
         EnsureParts(parts, nameof(parts));
-        byte[] ridBytes = RoutingIdCodec.FromRoutingId(peerRid);
-        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(ridBytes);
+        ZlinkRoutingId nativeRoutingId = peerRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         try
         {
-            for (int i = 0; i < cloned.Length; i++)
-            {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
-                try
-                {
-                    int rc = NativeMethods.zlink_router_reply_part(Handle,
+            RequestReplySupport.SubmitClonedParts(cloned,
+                (ref ZlinkMsg nativePart,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_router_reply_part(Handle,
                         ref nativeRoutingId, requestSeq, ref nativePart,
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
-                }
-            }
+                        partFlag));
         }
         catch
         {
@@ -181,42 +163,24 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         SendFlags flags = SendFlags.None)
     {
         EnsureParts(parts, nameof(parts));
-        byte[] nodeRidBytes = RoutingIdCodec.FromRoutingId(destNodeRid);
-        byte[] spotRidBytes = RoutingIdCodec.FromRoutingId(destSpotRid);
-        ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(nodeRidBytes);
-        ZlinkRoutingId spotRid = NativeHelpers.WriteRoutingId(spotRidBytes);
+        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
+        ZlinkRoutingId spotRid = destSpotRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         try
         {
-            for (int i = 0; i < cloned.Length; i++)
-            {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
-                try
-                {
-                    int rc = NativeMethods.zlink_router_send_spot_part(Handle,
+            RequestReplySupport.SubmitClonedParts(cloned,
+                (ref ZlinkMsg nativePart,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_router_send_spot_part(Handle,
                         ref nodeRid, ref spotRid, ref nativePart, (int)flags,
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
-                }
-            }
+                        partFlag));
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
             && RequestReplySupport.MapSendNoWaitResult(error)
                 == SendResult.Backpressured)
         {
+            RequestReplySupport.DisposeParts(cloned);
             return false;
         }
         catch
@@ -274,36 +238,17 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     {
         _ = flags;
         EnsureParts(parts, nameof(parts));
-        byte[] nodeRidBytes = RoutingIdCodec.FromRoutingId(destNodeRid);
-        byte[] spotRidBytes = RoutingIdCodec.FromRoutingId(destSpotRid);
-        ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(nodeRidBytes);
-        ZlinkRoutingId spotRid = NativeHelpers.WriteRoutingId(spotRidBytes);
+        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
+        ZlinkRoutingId spotRid = destSpotRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         try
         {
-            for (int i = 0; i < cloned.Length; i++)
-            {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
-                try
-                {
-                    int rc = NativeMethods.zlink_router_reply_spot_part(Handle,
+            RequestReplySupport.SubmitClonedParts(cloned,
+                (ref ZlinkMsg nativePart,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_router_reply_spot_part(Handle,
                         ref nodeRid, ref spotRid, requestSeq, ref nativePart,
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
-                }
-            }
+                        partFlag));
         }
         catch
         {
@@ -317,10 +262,8 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         TimeSpan timeout, CancellationToken ct, int flags = 0)
     {
         EnsureParts(parts, nameof(parts));
-        byte[] nodeRidBytes = RoutingIdCodec.FromRoutingId(destNodeRid);
-        byte[] spotRidBytes = RoutingIdCodec.FromRoutingId(destSpotRid);
-        ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(nodeRidBytes);
-        ZlinkRoutingId spotRid = NativeHelpers.WriteRoutingId(spotRidBytes);
+        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
+        ZlinkRoutingId spotRid = destSpotRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         uint timeoutMs = NormalizeTimeout(timeout);
         var completion = new TaskCompletionSource<Received>(
@@ -389,8 +332,7 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         int flags = 0)
     {
         EnsureParts(parts, nameof(parts));
-        byte[] ridBytes = RoutingIdCodec.FromRoutingId(peerRid);
-        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(ridBytes);
+        ZlinkRoutingId nativeRoutingId = peerRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         uint timeoutMs = NormalizeRequestTimeout(timeout);
         var completion = new TaskCompletionSource<Received>(
@@ -416,32 +358,12 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
             }, handle, (int)timeoutMs, Timeout.Infinite));
 
             IntPtr userData = GCHandle.ToIntPtr(handle);
-            for (int i = 0; i < cloned.Length; i++)
-            {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
-                try
-                {
-                    int rc = NativeMethods.zlink_router_request_part(Handle,
-                        ref nativeRoutingId, ref nativePart, flags,
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final,
-                        timeoutMs,
-                        RequestReplyHandlerPtr,
-                        userData);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
-                }
-            }
+            RequestReplySupport.SubmitClonedParts(cloned,
+                (ref ZlinkMsg nativePart,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_router_request_part(Handle,
+                        ref nativeRoutingId, ref nativePart, flags, partFlag,
+                        timeoutMs, RequestReplyHandlerPtr, userData));
 
             return RequestProgressPump.AttachSocket(Handle, completion.Task);
         }

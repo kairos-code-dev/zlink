@@ -66,7 +66,7 @@ internal static class ActorInterop
     internal static unsafe ZlinkActorRef ToNative(ActorRef actor)
     {
         ZlinkActorRef native = default;
-        native.NodeRid = NativeHelpers.WriteRoutingId(actor.NodeRid.ToByteArray());
+        native.NodeRid = actor.NodeRid.ToNative();
         byte* actorId = native.ActorId;
         NativeHelpers.WriteFixedString(actor.ActorId, actorId,
             NativeConstants.ActorIdMax);
@@ -481,10 +481,8 @@ internal static class ActorInterop
                 ZlinkConfigException.ErrorCode.InvalidArgument);
         uint timeoutMs = NormalizeTimeout(timeout);
         ZlinkActorRef nativeActor = ToNative(actor);
-        ZlinkRoutingId nativeNodeRid = NativeHelpers.WriteRoutingId(
-            destNodeRid.ToByteArray());
-        ZlinkRoutingId nativeSpotRid = NativeHelpers.WriteRoutingId(
-            destSpotRid.ToByteArray());
+        ZlinkRoutingId nativeNodeRid = destNodeRid.ToNative();
+        ZlinkRoutingId nativeSpotRid = destSpotRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         ZlinkMsg[] nativeParts = new ZlinkMsg[cloned.Length];
         int built = 0;
@@ -621,8 +619,7 @@ internal static class ActorInterop
     {
         uint timeoutMs = NormalizeTimeout(timeout);
         ZlinkActorRef nativeActor = ToNative(actor);
-        ZlinkRoutingId nativeSpotRid = NativeHelpers.WriteRoutingId(
-            currentSpotRid.ToByteArray());
+        ZlinkRoutingId nativeSpotRid = currentSpotRid.ToNative();
         return SubmitReplyAsync(node.Handle, ct, (userData, handler) =>
             NativeMethods.zlink_spot_node_actor_leave_spot(node.Handle,
                 ref nativeActor, ref nativeSpotRid, handler, userData,
@@ -659,8 +656,7 @@ internal static class ActorInterop
         TimeSpan timeout, CancellationToken ct)
     {
         uint timeoutMs = NormalizeTimeout(timeout);
-        ZlinkRoutingId nativeSession = NativeHelpers.WriteRoutingId(
-            sessionRid.ToByteArray());
+        ZlinkRoutingId nativeSession = sessionRid.ToNative();
         ZlinkActorRef nativeActor = ToNative(actor);
         IntPtr handle = stream.Handle;
         return SubmitReplyAsync(handle, ct, (userData, handler) =>
@@ -683,8 +679,7 @@ internal static class ActorInterop
     {
         ValidateActorId(actorId, nameof(actorId));
         uint timeoutMs = NormalizeTimeout(timeout);
-        ZlinkRoutingId nativeSession = NativeHelpers.WriteRoutingId(
-            sessionRid.ToByteArray());
+        ZlinkRoutingId nativeSession = sessionRid.ToNative();
         IntPtr handle = stream.Handle;
         return SubmitReplyAsync(handle, ct, (userData, handler) =>
             NativeMethods.zlink_stream_unbind_actor(handle, ref nativeSession,
@@ -786,8 +781,7 @@ internal static class ActorInterop
     {
         ValidateActorId(actorId, nameof(actorId));
         uint timeoutMs = NormalizeTimeout(timeout);
-        ZlinkRoutingId nativeNodeRid = NativeHelpers.WriteRoutingId(
-            targetNodeRid.ToByteArray());
+        ZlinkRoutingId nativeNodeRid = targetNodeRid.ToNative();
         TaskCompletionSource<ActorLookupResult> completion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         GCHandle handle = default;

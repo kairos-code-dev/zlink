@@ -21,7 +21,8 @@ public sealed class test_monitor_contract
         using ISocketMonitor monitor = server.MonitorOpen();
         client.Connect(endpoint);
 
-        SocketMonitorEvent evt = monitor.Recv();
+        SocketMonitorEvent evt = monitor.Recv()
+            ?? throw new TimeoutException("Timed out waiting for monitor event.");
         Assert.Equal(MonitorEventType.Accepted, evt.Event);
     }
 

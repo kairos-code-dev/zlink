@@ -217,7 +217,7 @@ public sealed class Received : IDisposable
             Message part = _singlePart;
             _singlePart = null;
             _closed = true;
-            return new[] { part };
+            return new SingleMessageList(part);
         }
         return PartsCollection.TakeMessages();
     }
@@ -264,7 +264,7 @@ public sealed class Received : IDisposable
         }
         if (_sendSingleHandler != null)
             return _sendSingleHandler(part, flags);
-        return SendCore(new[] { part }, flags);
+        return SendCore(new SingleMessageList(part), flags);
     }
 
     internal bool SendCore(IReadOnlyList<Message> parts,
@@ -460,6 +460,39 @@ public sealed class Received : IDisposable
             return spotRid.HasValue || requestSeq.HasValue || replyHandler != null
                 ? new ReceivedMetadata(spotRid, requestSeq, replyHandler)
                 : null;
+        }
+    }
+
+    private sealed class SingleMessageList : IReadOnlyList<Message>
+    {
+        private readonly Message _message;
+
+        internal SingleMessageList(Message message)
+        {
+            _message = message;
+        }
+
+        public int Count => 1;
+
+        public Message this[int index]
+        {
+            get
+            {
+                if (index != 0)
+                    throw new ArgumentOutOfRangeException(nameof(index));
+                return _message;
+            }
+        }
+
+        public IEnumerator<Message> GetEnumerator()
+        {
+            yield return _message;
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable
+            .GetEnumerator()
+        {
+            return GetEnumerator();
         }
     }
 }

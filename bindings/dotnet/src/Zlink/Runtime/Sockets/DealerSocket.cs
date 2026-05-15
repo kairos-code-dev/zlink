@@ -133,32 +133,12 @@ public sealed class DealerSocket : MessageSocketBase, IDealerSocket
                 RequestCallState.RequestTimeoutFromUserData(userdata);
             }, handle, (int)timeoutMs, Timeout.Infinite));
 
-            for (int i = 0; i < cloned.Length; i++)
-            {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
-                try
-                {
-                    int rc = NativeMethods.zlink_dealer_request_part(Handle,
-                        ref nativePart, (int)flags,
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final,
-                        timeoutMs,
-                        RequestReplyHandlerPtr,
-                        userData);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
-                }
-            }
+            RequestReplySupport.SubmitClonedParts(cloned,
+                (ref ZlinkMsg nativePart,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_dealer_request_part(Handle,
+                        ref nativePart, (int)flags, partFlag, timeoutMs,
+                        RequestReplyHandlerPtr, userData));
 
             return RequestProgressPump.AttachSocket(Handle, completion.Task);
         }

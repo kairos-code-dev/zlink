@@ -2,6 +2,8 @@
 
 using System;
 using System.Collections.Generic;
+using Systems.Zlink.Native;
+
 namespace Systems.Zlink;
 
 internal static class RequestReplySupport
@@ -33,6 +35,60 @@ internal static class RequestReplySupport
     {
         foreach (Message part in parts)
             part.Dispose();
+    }
+
+    internal unsafe delegate int NativePartSubmitter(
+        ref ZlinkMsg nativePart, NativeMethods.ZlinkPartFlag partFlag);
+
+    internal static unsafe void CloneAndSubmitParts(IReadOnlyList<Message> parts,
+        NativePartSubmitter submit)
+    {
+        if (submit == null)
+            throw new ArgumentNullException(nameof(submit));
+
+        Message[] cloned = CloneParts(parts);
+        try
+        {
+            SubmitClonedParts(cloned, submit);
+        }
+        catch
+        {
+            DisposeParts(cloned);
+            throw;
+        }
+    }
+
+    internal static unsafe void SubmitClonedParts(IReadOnlyList<Message> parts,
+        NativePartSubmitter submit)
+    {
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+        if (parts.Count == 0)
+            throw new ArgumentException("parts must not be empty", nameof(parts));
+        if (submit == null)
+            throw new ArgumentNullException(nameof(submit));
+
+        for (int i = 0; i < parts.Count; i++)
+        {
+            ZlinkMsg nativePart = default;
+            parts[i].MoveTo(ref nativePart);
+            bool submitted = false;
+            try
+            {
+                int rc = submit(ref nativePart, i + 1 < parts.Count
+                    ? NativeMethods.ZlinkPartFlag.More
+                    : NativeMethods.ZlinkPartFlag.Final);
+                submitted = true;
+                if (rc != 0)
+                    throw ZlinkException.CreateSubmitException(
+                        NativeMethods.zlink_errno());
+            }
+            finally
+            {
+                if (!submitted)
+                    NativeMethods.zlink_msg_close(ref nativePart);
+            }
+        }
     }
 
     internal static void AttachResultCallback(Func<Task<Received>> invoke,
@@ -67,49 +123,6 @@ internal static class RequestReplySupport
             CallbackDelivery.Post(context, () => callback(RequestResult.Ok,
                 task.Result));
         }, TaskScheduler.Default);
-    }
-
-    internal static unsafe void MovePartsToNative(IReadOnlyList<Message> parts,
-        out global::Systems.Zlink.Native.ZlinkMsg[] nativeParts)
-    {
-        if (parts == null)
-            throw new ArgumentNullException(nameof(parts));
-        if (parts.Count == 0)
-            throw new ArgumentException("parts must not be empty", nameof(parts));
-
-        nativeParts = new global::Systems.Zlink.Native.ZlinkMsg[parts.Count];
-        int built = 0;
-        try
-        {
-            for (int i = 0; i < parts.Count; i++)
-            {
-                Message part = parts[i]
-                    ?? throw new ArgumentNullException(nameof(parts),
-                        "parts must not contain null");
-                part.MoveTo(ref nativeParts[i]);
-                built++;
-            }
-        }
-        catch
-        {
-            RestoreManagedParts(parts, nativeParts, built);
-            throw;
-        }
-    }
-
-    internal static void RestoreManagedParts(IReadOnlyList<Message> parts,
-        global::Systems.Zlink.Native.ZlinkMsg[] nativeParts, int built)
-    {
-        for (int i = built - 1; i >= 0; i--)
-        {
-            try
-            {
-                parts[i].RestoreFrom(ref nativeParts[i]);
-            }
-            catch
-            {
-            }
-        }
     }
 
     internal static SendResult MapSendNoWaitResult(ZlinkException error)

@@ -28,6 +28,24 @@ public sealed class test_domain_objects
     }
 
     [Fact]
+    public void routing_id_conversion_remains_stable_across_many_values()
+    {
+        for (int i = 0; i < 5000; i++)
+        {
+            byte[] bytes = BitConverter.GetBytes(i);
+            if (BitConverter.IsLittleEndian)
+                Array.Reverse(bytes);
+
+            RoutingId routingId = RoutingId.FromBytes(bytes);
+            Assert.Equal(Convert.ToHexString(bytes).ToLowerInvariant(),
+                routingId.ToHex());
+        }
+
+        RoutingId final = RoutingId.FromBytes(Encoding.UTF8.GetBytes("stable"));
+        Assert.Equal("737461626c65", final.ToHex());
+    }
+
+    [Fact]
     public void actor_ref_keeps_generation_zero_as_unchecked_ref()
     {
         ActorRef actor = new(CoreTestSupport.RoutingIdUtf8("node-a"),

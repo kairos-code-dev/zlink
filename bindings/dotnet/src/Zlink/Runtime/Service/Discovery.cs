@@ -168,25 +168,12 @@ public sealed class Discovery : IDiscovery
     public RoutingId ResolveSpot(RoutingId spotRid)
     {
         EnsureNotDisposed();
-        byte[] spotRidBytes = spotRid.ToByteArray();
-        unsafe
-        {
-            fixed (byte* spotRidPtr = spotRidBytes)
-            {
-                ZlinkRoutingId nativeSpotRid = default;
-                if (spotRidBytes.Length != 0)
-                {
-                    nativeSpotRid = NativeHelpers.WriteRoutingId(
-                        new ReadOnlySpan<byte>(spotRidPtr, spotRidBytes.Length));
-                }
-
-                int rc = NativeMethods.zlink_discovery_resolve_spot(_handle,
-                    ref nativeSpotRid, out ZlinkRoutingId ownerNodeRoutingId);
-                ZlinkException.ThrowConfigIfError(rc);
-                return RoutingId.FromBytes(
-                    NativeHelpers.ReadRoutingId(ref ownerNodeRoutingId));
-            }
-        }
+        ZlinkRoutingId nativeSpotRid = spotRid.ToNative();
+        int rc = NativeMethods.zlink_discovery_resolve_spot(_handle,
+            ref nativeSpotRid, out ZlinkRoutingId ownerNodeRoutingId);
+        ZlinkException.ThrowConfigIfError(rc);
+        return RoutingId.FromBytes(
+            NativeHelpers.ReadRoutingId(ref ownerNodeRoutingId));
     }
 
     public ActorRoute ResolveActor(string actorId)

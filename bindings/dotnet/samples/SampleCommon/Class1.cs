@@ -69,7 +69,8 @@ public static class SampleSupport
         }
 
         _ = timeoutMs;
-        MonitorEvent evt = monitor.Recv();
+        MonitorEvent evt = monitor.Recv()
+            ?? throw new TimeoutException("Timed out waiting for monitor event.");
         for (int i = 0; i < expectedEvents.Length; i++)
         {
             if ((SocketEvent)evt.Event == expectedEvents[i])

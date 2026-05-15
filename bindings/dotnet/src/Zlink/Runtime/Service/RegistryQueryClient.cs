@@ -63,9 +63,8 @@ public sealed class RegistryQueryClient : IRegistryQueryClient
                     }
                     if (value.RoutingId.HasValue)
                     {
-                        nativeFilter.RoutingId = NativeHelpers.WriteRoutingId(
-                            RoutingIdCodec.FromRoutingId(
-                                value.RoutingId.Value));
+                        nativeFilter.RoutingId =
+                            value.RoutingId.Value.ToNative();
                     }
 
                     filterPtr = (IntPtr)(&nativeFilter);

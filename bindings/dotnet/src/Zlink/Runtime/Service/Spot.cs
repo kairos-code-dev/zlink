@@ -190,8 +190,7 @@ public sealed class SpotNode : ISpotNode
     public void DisconnectPeerRid(RoutingId targetNodeRid)
     {
         EnsureNotDisposed();
-        byte[] ridBytes = RoutingIdCodec.FromRoutingId(targetNodeRid);
-        ZlinkRoutingId nativeRid = NativeHelpers.WriteRoutingId(ridBytes);
+        ZlinkRoutingId nativeRid = targetNodeRid.ToNative();
         int rc = NativeMethods.zlink_spot_node_disconnect_peer_rid(_handle,
             ref nativeRid);
         ZlinkException.ThrowConnectIfError(rc);
@@ -308,8 +307,7 @@ public sealed class SpotNode : ISpotNode
     public Spot? SpotLookup(RoutingId spotRid)
     {
         EnsureNotDisposed();
-        ZlinkRoutingId nativeRid = NativeHelpers.WriteRoutingId(
-            spotRid.ToByteArray());
+        ZlinkRoutingId nativeRid = spotRid.ToNative();
         int rc = NativeMethods.zlink_spot_node_spot_lookup(_handle,
             ref nativeRid, out IntPtr spotHandle);
         try
@@ -438,10 +436,8 @@ public sealed class SpotNode : ISpotNode
             throw new ArgumentNullException(nameof(message));
         EnsureNotDisposed();
         ZlinkActorRef nativeActor = ActorInterop.ToNative(actor);
-        ZlinkRoutingId nativeNodeRid = NativeHelpers.WriteRoutingId(
-            destNodeRid.ToByteArray());
-        ZlinkRoutingId nativeSpotRid = NativeHelpers.WriteRoutingId(
-            destSpotRid.ToByteArray());
+        ZlinkRoutingId nativeNodeRid = destNodeRid.ToNative();
+        ZlinkRoutingId nativeSpotRid = destSpotRid.ToNative();
         ZlinkMsg nativeMessage = default;
         message.Copy().MoveTo(ref nativeMessage);
         uint timeoutMs = ActorInterop.NormalizeTimeout(timeout);
@@ -538,8 +534,7 @@ public sealed class SpotNode : ISpotNode
     {
         EnsureNotDisposed();
         ZlinkActorRef nativeActor = ActorInterop.ToNative(actor);
-        ZlinkRoutingId nativeSpotRid = NativeHelpers.WriteRoutingId(
-            destSpotRid.ToByteArray());
+        ZlinkRoutingId nativeSpotRid = destSpotRid.ToNative();
         int rc = NativeMethods.zlink_spot_node_actor_leave_spot(_handle,
             ref nativeActor, ref nativeSpotRid,
             ActorInterop.NoopReplyHandlerPtr, IntPtr.Zero,
@@ -1089,7 +1084,7 @@ public sealed class SpotNode : ISpotNode
 
 }
 
-public sealed class Spot : ISpot
+public sealed partial class Spot : ISpot
 {
     private static readonly NativeMethods.ZlinkReplyHandlerDelegate RoutedReplyHandler =
         OnRoutedReply;
@@ -1121,6 +1116,7 @@ public sealed class Spot : ISpot
     private NativeMethods.ZlinkSpotDispatchEventHandlerDelegate? _dispatchEventHandlerNative;
     private NativeMethods.ZlinkSpotActorLifecycleHandlerDelegate? _actorJoinHandlerNative;
     private NativeMethods.ZlinkSpotActorLifecycleHandlerDelegate? _actorLeaveHandlerNative;
+
     internal IntPtr Handle => _handle;
     internal SpotOptions Options { get; }
 
@@ -1400,8 +1396,8 @@ public sealed class Spot : ISpot
         EnsureNotDisposed();
         try
         {
-            SendChannelCore(channelName, new[] { message }, (int)flags,
-                nameof(message));
+            SubmitSingleChannel(channelName, message, (int)flags,
+                mapNoWaitResult: false);
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
@@ -1678,44 +1674,24 @@ public sealed class Spot : ISpot
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         EnsureParts(parts, nameof(parts));
-        byte[] nodeRidBytes = RoutingIdCodec.FromRoutingId(destNodeRid);
-        byte[] spotRidBytes = RoutingIdCodec.FromRoutingId(destSpotRid);
-        ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(nodeRidBytes);
-        ZlinkRoutingId spotRid = NativeHelpers.WriteRoutingId(spotRidBytes);
-        Message[] cloned = new Message[parts.Count];
-        for (int i = 0; i < parts.Count; i++)
-            cloned[i] = RequestReplySupport.CloneMessage(parts[i]);
+        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
+        ZlinkRoutingId spotRid = destSpotRid.ToNative();
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
         try
         {
-            for (int i = 0; i < cloned.Length; i++)
-            {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
-                try
-                {
-                    int rc = NativeMethods.zlink_spot_send_spot_part(_handle,
+            RequestReplySupport.SubmitClonedParts(cloned,
+                (ref ZlinkMsg nativePart,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_spot_send_spot_part(_handle,
                         ref nodeRid, ref spotRid, ref nativePart, (int)flags,
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
-                }
-            }
+                        partFlag));
             return true;
         }
         catch (ZlinkException ex) when ((flags & SendFlags.DontWait) != 0
             && RequestReplySupport.MapSendNoWaitResult(ex)
                 == SendResult.Backpressured)
         {
+            RequestReplySupport.DisposeParts(cloned);
             return false;
         }
         catch
@@ -1731,36 +1707,17 @@ public sealed class Spot : ISpot
     {
         _ = flags;
         EnsureParts(parts, nameof(parts));
-        byte[] nodeRidBytes = RoutingIdCodec.FromRoutingId(destNodeRid);
-        byte[] spotRidBytes = RoutingIdCodec.FromRoutingId(destSpotRid);
-        ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(nodeRidBytes);
-        ZlinkRoutingId spotRid = NativeHelpers.WriteRoutingId(spotRidBytes);
+        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
+        ZlinkRoutingId spotRid = destSpotRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         try
         {
-            for (int i = 0; i < cloned.Length; i++)
-            {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
-                try
-                {
-                    int rc = NativeMethods.zlink_spot_reply_spot_part(_handle,
+            RequestReplySupport.SubmitClonedParts(cloned,
+                (ref ZlinkMsg nativePart,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_spot_reply_spot_part(_handle,
                         ref nodeRid, ref spotRid, requestSeq, ref nativePart,
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
-                }
-            }
+                        partFlag));
         }
         catch
         {
@@ -1829,34 +1786,15 @@ public sealed class Spot : ISpot
     {
         _ = flags;
         EnsureParts(parts, nameof(parts));
-        byte[] peerRidBytes = RoutingIdCodec.FromRoutingId(peerRid);
-        ZlinkRoutingId routingId = NativeHelpers.WriteRoutingId(peerRidBytes);
+        ZlinkRoutingId routingId = peerRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         try
         {
-            for (int i = 0; i < cloned.Length; i++)
-            {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
-                try
-                {
-                    int rc = NativeMethods.zlink_spot_reply_router_part(_handle,
-                        ref routingId, requestSeq, ref nativePart,
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
-                }
-            }
+            RequestReplySupport.SubmitClonedParts(cloned,
+                (ref ZlinkMsg nativePart,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_spot_reply_router_part(_handle,
+                        ref routingId, requestSeq, ref nativePart, partFlag));
         }
         catch
         {
@@ -2133,60 +2071,6 @@ public sealed class Spot : ISpot
         _node.UnregisterSpot(this);
     }
 
-    private unsafe void PublishCore(string topic, ReadOnlySpan<Message> parts,
-        int flags, string paramName)
-    {
-        ZlinkMsg[]? rented = null;
-        Span<ZlinkMsg> nativeParts = parts.Length <= StackPublishPartLimit
-            ? stackalloc ZlinkMsg[StackPublishPartLimit]
-            : (rented = ArrayPool<ZlinkMsg>.Shared.Rent(parts.Length));
-        nativeParts = nativeParts.Slice(0, parts.Length);
-
-        int built = 0;
-        int submitted = 0;
-        try
-        {
-            for (int i = 0; i < parts.Length; i++)
-            {
-                if (parts[i] == null)
-                {
-                    throw new ArgumentException(
-                        "Parts must not contain null messages.", paramName);
-                }
-            }
-
-            for (int i = 0; i < parts.Length; i++)
-            {
-                parts[i].MoveTo(ref nativeParts[i]);
-                built++;
-            }
-
-            for (int i = 0; i < built; i++)
-            {
-                int rc = NativeMethods.zlink_spot_publish_part(_handle,
-                    topic, ref nativeParts[i], (int)flags,
-                    i + 1 < built
-                        ? NativeMethods.ZlinkPartFlag.More
-                        : NativeMethods.ZlinkPartFlag.Final);
-                submitted = i + 1;
-                if (rc != 0)
-                    throw ZlinkException.CreateSubmitException(
-                        NativeMethods.zlink_errno());
-            }
-        }
-        catch
-        {
-            for (int i = submitted; i < built; i++)
-                parts[i].RestoreFrom(ref nativeParts[i]);
-            throw;
-        }
-        finally
-        {
-            if (rented != null)
-                ArrayPool<ZlinkMsg>.Shared.Return(rented);
-        }
-    }
-
     private unsafe void PublishSingleCore(string topic, Message message,
         int flags)
     {
@@ -2307,10 +2191,8 @@ public sealed class Spot : ISpot
         TimeSpan timeout, CancellationToken ct, int flags = 0)
     {
         EnsureParts(parts, nameof(parts));
-        ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(
-            RoutingIdCodec.FromRoutingId(destNodeRid));
-        ZlinkRoutingId spotRid = NativeHelpers.WriteRoutingId(
-            RoutingIdCodec.FromRoutingId(destSpotRid));
+        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
+        ZlinkRoutingId spotRid = destSpotRid.ToNative();
         return RequestRoutedAsyncInternal(parts, timeout, ct, flags,
             (ref ZlinkMsg nativePart, IntPtr handler, IntPtr userData,
                 NativeMethods.ZlinkPartFlag partFlag, uint timeoutMs) =>
@@ -2324,8 +2206,7 @@ public sealed class Spot : ISpot
         int flags = 0)
     {
         EnsureParts(parts, nameof(parts));
-        ZlinkRoutingId nativePeerRid = NativeHelpers.WriteRoutingId(
-            RoutingIdCodec.FromRoutingId(peerRid));
+        ZlinkRoutingId nativePeerRid = peerRid.ToNative();
         return RequestRoutedAsyncInternal(parts, timeout, ct, flags,
             (ref ZlinkMsg nativePart, IntPtr handler, IntPtr userData,
                 NativeMethods.ZlinkPartFlag partFlag, uint timeoutMs) =>
@@ -2402,171 +2283,6 @@ public sealed class Spot : ISpot
                 handle.Free();
             RequestReplySupport.DisposeParts(cloned);
             throw;
-        }
-    }
-
-    private unsafe void SendChannelCore(string channelName, ReadOnlySpan<Message> parts,
-        int flags, string paramName)
-    {
-        ZlinkMsg[]? rented = null;
-        Span<ZlinkMsg> nativeParts = parts.Length <= StackPublishPartLimit
-            ? stackalloc ZlinkMsg[StackPublishPartLimit]
-            : (rented = ArrayPool<ZlinkMsg>.Shared.Rent(parts.Length));
-        nativeParts = nativeParts.Slice(0, parts.Length);
-
-        int built = 0;
-        int submitted = 0;
-        try
-        {
-            for (int i = 0; i < parts.Length; i++)
-            {
-                if (parts[i] == null)
-                {
-                    throw new ArgumentException(
-                        "Parts must not contain null messages.", paramName);
-                }
-            }
-
-            for (int i = 0; i < parts.Length; i++)
-            {
-                parts[i].MoveTo(ref nativeParts[i]);
-                built++;
-            }
-
-            for (int i = 0; i < built; i++)
-            {
-                int rc = NativeMethods.zlink_spot_send_channel_part(_handle,
-                    channelName, ref nativeParts[i], flags,
-                    i + 1 < built
-                        ? NativeMethods.ZlinkPartFlag.More
-                        : NativeMethods.ZlinkPartFlag.Final);
-                submitted = i + 1;
-                if (rc != 0)
-                    throw ZlinkException.CreateSubmitException(
-                        NativeMethods.zlink_errno());
-            }
-        }
-        catch
-        {
-            for (int i = submitted; i < built; i++)
-                parts[i].RestoreFrom(ref nativeParts[i]);
-            throw;
-        }
-        finally
-        {
-            if (rented != null)
-                ArrayPool<ZlinkMsg>.Shared.Return(rented);
-        }
-    }
-
-    private unsafe void OnNativeRoutedReceive(ZlinkRoutingId* sourceRoutingId,
-        ZlinkRoutingId* spotRoutingId, ulong requestSeq, IntPtr parts,
-        nuint partCount, IntPtr userData)
-    {
-        Action<Received>? handler = _routedReceiveHandler;
-        if (handler == null)
-        {
-            if (parts != IntPtr.Zero)
-                NativeMethods.zlink_multipart_close(parts, partCount);
-            return;
-        }
-
-        Message[] managedParts = Message.FromNativeVector(parts, partCount);
-        parts = IntPtr.Zero;
-        partCount = 0;
-        RoutingId? nodeRid = sourceRoutingId == null ? null :
-            RoutingIdCodec.ToRoutingId(
-                NativeHelpers.ReadRoutingId(ref *sourceRoutingId));
-        RoutingId? spotRid = spotRoutingId == null ? null :
-            RoutingIdCodec.ToRoutingId(
-                NativeHelpers.ReadRoutingId(ref *spotRoutingId));
-        Received received = requestSeq == 0
-            ? Received.Create(nodeRid, managedParts, spotRid: spotRid)
-            : Received.Create(nodeRid, managedParts, requestSeq, spotRid,
-                (replyParts, sendFlags) => ReplyToSpot(
-                    nodeRid ?? throw new ZlinkSubmitException(
-                        SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
-                    spotRid ?? throw new ZlinkSubmitException(
-                        SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
-                    requestSeq, replyParts, sendFlags));
-        received.SetSendHandler(CreateRoutedSendHandler(nodeRid, spotRid));
-        CallbackDelivery.Post(_routedReceiveHandlerContext, () => handler(received));
-    }
-
-    private ReceivedSendHandler? CreateRoutedSendHandler(RoutingId? nodeRid,
-        RoutingId? spotRid)
-    {
-        if (!nodeRid.HasValue || !spotRid.HasValue)
-            return null;
-        RoutingId targetNode = nodeRid.Value;
-        RoutingId targetSpot = spotRid.Value;
-        return (sendParts, sendFlags) => SendToSpot(targetNode, targetSpot,
-            sendParts, sendFlags);
-    }
-
-    private unsafe void OnNativeDispatchEvent(IntPtr spot,
-        ZlinkSpotDispatchInfoNative* info, IntPtr userData)
-    {
-        Action<SpotDispatchInfo>? handler = _dispatchEventHandler;
-        if (handler == null || info == null)
-            return;
-
-        SpotDispatchEvent eventKind = (SpotDispatchEvent)info->Event;
-        SpotDispatchSubjectKind subjectKind =
-            (SpotDispatchSubjectKind)info->SubjectKind;
-        ActorPart[]? actorParts = eventKind == SpotDispatchEvent.ActorReadable
-            && subjectKind == SpotDispatchSubjectKind.Actor
-            && info->Subject != IntPtr.Zero
-                ? ActorInterop.DrainActorParts(_node.Handle, info->Subject)
-                : null;
-        Timer? timer = eventKind == SpotDispatchEvent.TimerReadable
-            && subjectKind == SpotDispatchSubjectKind.Timer
-                ? Timer.FromDispatchSubject(info->Subject)
-                : null;
-        IntPtr channelDealerSubject = eventKind
-            == SpotDispatchEvent.ChannelReplyReadable
-            && subjectKind == SpotDispatchSubjectKind.ChannelDealer
-                ? info->Subject
-                : IntPtr.Zero;
-        SpotDispatchInfo dispatchInfo = new(eventKind, subjectKind,
-            timer, channelDealerSubject, DrainChannelReplyFrom, actorParts);
-        try
-        {
-            handler(dispatchInfo);
-        }
-        catch (Exception ex)
-        {
-            Runtime.ReportUnhandledCallbackException(ex);
-        }
-    }
-
-    private unsafe void OnNativeActorJoin(IntPtr spot,
-        ZlinkSpotActorLifecycleInfo* info, IntPtr userData)
-    {
-        DispatchActorLifecycle(_actorJoinHandler, info);
-    }
-
-    private unsafe void OnNativeActorLeave(IntPtr spot,
-        ZlinkSpotActorLifecycleInfo* info, IntPtr userData)
-    {
-        DispatchActorLifecycle(_actorLeaveHandler, info);
-    }
-
-    private static unsafe void DispatchActorLifecycle(
-        Action<SpotActorLifecycleInfo>? handler,
-        ZlinkSpotActorLifecycleInfo* info)
-    {
-        if (handler == null || info == null)
-            return;
-
-        SpotActorLifecycleInfo managed = ActorInterop.FromNative(ref *info);
-        try
-        {
-            handler(managed);
-        }
-        catch (Exception ex)
-        {
-            Runtime.ReportUnhandledCallbackException(ex);
         }
     }
 
@@ -2660,462 +2376,6 @@ public sealed class Spot : ISpot
         for (int i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
         return PublishNoWaitCore(topic, copied.AsSpan(), paramName);
-    }
-
-    private unsafe TopicMessage SubscribeCore(int flags)
-    {
-        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
-        try
-        {
-            MultipartMessageCollection parts = ReceiveSpotSubscribedParts(flags,
-                topicBuffer, out byte[]? routingIdBytes, out string topic)
-                ?? throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            RoutingId? routingId = routingIdBytes == null
-                ? null
-                : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-            if (parts.Count == 0)
-                throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            return new TopicMessage(routingId, topic, parts);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(topicBuffer);
-        }
-    }
-
-    private unsafe bool SubscribeInto(TopicMessage result, int flags)
-    {
-        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
-        try
-        {
-            MultipartMessageCollection? parts = ReceiveSpotSubscribedParts(flags,
-                topicBuffer, out byte[]? routingIdBytes, out string topic,
-                allowNoData: (flags & 1) != 0);
-            if (parts == null)
-                return false;
-            RoutingId? routingId = routingIdBytes == null
-                ? null
-                : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-            if (parts.Count == 0)
-                throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            result.Populate(routingId, topic, parts);
-            return true;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(topicBuffer);
-        }
-    }
-
-    private unsafe SubscriptionEvent ReceiveSubscriptionEventCore(int flags)
-    {
-        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
-        try
-        {
-            int rc = NativeMethods.zlink_spot_subscription_event_recv(_handle,
-                out IntPtr sourceRoutingId, out int subscribedInt, topicBuffer,
-                (nuint)topicBuffer.Length, out nuint topicLength, flags);
-            if (rc != 0)
-            {
-                throw ZlinkException.CreateRecvException(
-                    NativeMethods.zlink_errno());
-            }
-
-            byte[]? routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
-            RoutingId? routingId = routingIdBytes == null
-                ? null
-                : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-            string topic = DecodeBuffer(topicBuffer, topicLength);
-            return new SubscriptionEvent(routingId, topic, subscribedInt != 0);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(topicBuffer);
-        }
-    }
-
-    private unsafe bool ReceiveSubscriptionEventInto(SubscriptionEvent result,
-        int flags)
-    {
-        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
-        try
-        {
-            int rc = NativeMethods.zlink_spot_subscription_event_recv(_handle,
-                out IntPtr sourceRoutingId, out int subscribedInt, topicBuffer,
-                (nuint)topicBuffer.Length, out nuint topicLength, flags);
-            if (rc != 0)
-            {
-                int errno = NativeMethods.zlink_errno();
-                if ((flags & 1) != 0
-                    && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
-                    return false;
-                throw ZlinkException.CreateRecvException(errno);
-            }
-
-            byte[]? routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
-            RoutingId? routingId = routingIdBytes == null
-                ? null
-                : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-            string topic = DecodeBuffer(topicBuffer, topicLength);
-            result.Populate(routingId, topic, subscribedInt != 0);
-            return true;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(topicBuffer);
-        }
-    }
-
-    private unsafe SendResult PublishNoWaitCore(string topic,
-        ReadOnlySpan<Message> parts, string paramName)
-    {
-        ZlinkMsg[]? rented = null;
-        Span<ZlinkMsg> nativeParts = parts.Length <= StackPublishPartLimit
-            ? stackalloc ZlinkMsg[StackPublishPartLimit]
-            : (rented = ArrayPool<ZlinkMsg>.Shared.Rent(parts.Length));
-        nativeParts = nativeParts.Slice(0, parts.Length);
-
-        int built = 0;
-        int submitted = 0;
-        try
-        {
-            for (int i = 0; i < parts.Length; i++)
-            {
-                if (parts[i] == null)
-                {
-                    throw new ArgumentException(
-                        "Parts must not contain null messages.", paramName);
-                }
-            }
-
-            for (int i = 0; i < parts.Length; i++)
-            {
-                parts[i].MoveTo(ref nativeParts[i]);
-                built++;
-            }
-
-            for (int i = 0; i < built; i++)
-            {
-                int rc = NativeMethods.zlink_spot_publish_part(_handle,
-                    topic, ref nativeParts[i], DontWaitFlag,
-                    i + 1 < built
-                        ? NativeMethods.ZlinkPartFlag.More
-                        : NativeMethods.ZlinkPartFlag.Final);
-                submitted = i + 1;
-                if (rc == 0)
-                    continue;
-
-                for (int j = submitted; j < built; j++)
-                    parts[j].RestoreFrom(ref nativeParts[j]);
-                SendResult? sendResult = TryMapSendResultFromErrno();
-                if (sendResult != null)
-                    return sendResult.Value;
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
-            }
-            return SendResult.Sent;
-        }
-        catch
-        {
-            for (int i = submitted; i < built; i++)
-                parts[i].RestoreFrom(ref nativeParts[i]);
-            throw;
-        }
-        finally
-        {
-            if (rented != null)
-                ArrayPool<ZlinkMsg>.Shared.Return(rented);
-        }
-    }
-
-    private unsafe SendResult PublishNoWaitSingleCore(string topic,
-        Message message)
-    {
-        ZlinkMsg nativePart = default;
-        bool submitted = false;
-        try
-        {
-            message.MoveTo(ref nativePart);
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
-                ref nativePart, DontWaitFlag,
-                NativeMethods.ZlinkPartFlag.Final);
-            submitted = true;
-            if (rc == 0)
-                return SendResult.Sent;
-
-            SendResult? sendResult = TryMapSendResultFromErrno();
-            if (sendResult == null)
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
-            return sendResult.Value;
-        }
-        catch
-        {
-            if (!submitted)
-                message.RestoreFrom(ref nativePart);
-            throw;
-        }
-    }
-
-    private unsafe int ReceiveRawSubscribedFrameCore(Span<byte> destination,
-        int flags, out byte[][] pendingFrames)
-    {
-        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
-        try
-        {
-            List<byte[]> frames = ReceiveSpotSubscribedFrames(flags, topicBuffer);
-            if (frames.Count == 0)
-                throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            return CopyFirstFrameAndCollectPending(frames, destination,
-                out pendingFrames);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(topicBuffer);
-        }
-    }
-
-    private unsafe MultipartMessageCollection? ReceiveSpotRoutedParts(int flags,
-        out byte[]? nodeRidBytes, out byte[]? spotRidBytes,
-        out ulong requestSeq, bool allowNoData = false)
-    {
-        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
-        int nativePartCount = 0;
-        nodeRidBytes = null;
-        spotRidBytes = null;
-        requestSeq = 0;
-        try
-        {
-            while (true)
-            {
-                ZlinkMsg part = default;
-                int initRc = NativeMethods.zlink_msg_init(ref part);
-                if (initRc != 0)
-                    throw ZlinkException.CreateRecvException(
-                        NativeMethods.zlink_errno());
-                bool initialized = true;
-                int rc = NativeMethods.zlink_spot_recv_part(_handle,
-                    out IntPtr sourceNodeRid, out IntPtr sourceSpotRid,
-                    out requestSeq, ref part, out int hasMore, flags);
-                if (rc != 0)
-                {
-                    if (initialized)
-                        NativeMethods.zlink_msg_close(ref part);
-                    int errno = NativeMethods.zlink_errno();
-                    if (allowNoData && nativePartCount == 0
-                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
-                            or ErrorCode.EBusy)
-                    {
-                        return null;
-                    }
-                    throw ZlinkException.CreateRecvException(errno);
-                }
-
-                initialized = false;
-                nodeRidBytes ??= CopyRoutingIdBytes(sourceNodeRid);
-                spotRidBytes ??= CopyRoutingIdBytes(sourceSpotRid);
-                AppendNativePart(ref nativeParts, ref nativePartCount, ref part);
-                if (hasMore == 0)
-                    break;
-            }
-
-            return MultipartMessageCollection.FromNativeParts(nativeParts,
-                nativePartCount);
-        }
-        catch
-        {
-            CloseNativeParts(nativeParts, nativePartCount);
-            throw;
-        }
-    }
-
-    private unsafe MultipartMessageCollection? ReceiveSpotSubscribedParts(
-        int flags, byte[] topicBuffer, out byte[]? routingIdBytes,
-        out string topic, bool allowNoData = false)
-    {
-        ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
-        int nativePartCount = 0;
-        routingIdBytes = null;
-        topic = string.Empty;
-        try
-        {
-            while (true)
-            {
-                ZlinkMsg part = default;
-                int initRc = NativeMethods.zlink_msg_init(ref part);
-                if (initRc != 0)
-                    throw ZlinkException.CreateRecvException(
-                        NativeMethods.zlink_errno());
-                bool initialized = true;
-                int rc = NativeMethods.zlink_spot_subscribe_part(_handle,
-                    out IntPtr sourceRoutingId, topicBuffer,
-                    (nuint)topicBuffer.Length, out nuint topicLength, ref part,
-                    out int hasMore, flags);
-                if (rc != 0)
-                {
-                    if (initialized)
-                        NativeMethods.zlink_msg_close(ref part);
-                    int errno = NativeMethods.zlink_errno();
-                    if (allowNoData && nativePartCount == 0
-                        && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
-                            or ErrorCode.EBusy)
-                    {
-                        return null;
-                    }
-                    throw ZlinkException.CreateRecvException(errno);
-                }
-
-                initialized = false;
-                if (nativePartCount == 0)
-                {
-                    routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
-                    topic = DecodeBuffer(topicBuffer, topicLength);
-                }
-                AppendNativePart(ref nativeParts, ref nativePartCount, ref part);
-                if (hasMore == 0)
-                    break;
-            }
-
-            return MultipartMessageCollection.FromNativeParts(nativeParts,
-                nativePartCount);
-        }
-        catch
-        {
-            CloseNativeParts(nativeParts, nativePartCount);
-            throw;
-        }
-    }
-
-    private unsafe List<byte[]> ReceiveSpotSubscribedFrames(int flags,
-        byte[] topicBuffer)
-    {
-        List<byte[]> frames = new();
-        while (true)
-        {
-            ZlinkMsg part = default;
-            int initRc = NativeMethods.zlink_msg_init(ref part);
-            if (initRc != 0)
-                throw ZlinkException.CreateRecvException(
-                    NativeMethods.zlink_errno());
-            bool initialized = true;
-            int rc = NativeMethods.zlink_spot_subscribe_part(_handle,
-                out _, topicBuffer, (nuint)topicBuffer.Length, out _, ref part,
-                out int hasMore, flags);
-            if (rc != 0)
-            {
-                if (initialized)
-                    NativeMethods.zlink_msg_close(ref part);
-                throw ZlinkException.CreateRecvException(
-                    NativeMethods.zlink_errno());
-            }
-
-            initialized = false;
-            frames.Add(CopyAndClosePart(ref part));
-            if (hasMore == 0)
-                return frames;
-        }
-    }
-
-    private static int CopyFirstFrameAndCollectPending(IReadOnlyList<byte[]> frames,
-        Span<byte> destination, out byte[][] pendingFrames)
-    {
-        if (frames.Count == 0)
-        {
-            pendingFrames = Array.Empty<byte[]>();
-            return 0;
-        }
-
-        byte[] first = frames[0];
-        if (first.Length > destination.Length)
-        {
-            throw new ArgumentException("Destination buffer is too small.",
-                nameof(destination));
-        }
-
-        first.AsSpan().CopyTo(destination);
-        if (frames.Count <= 1)
-        {
-            pendingFrames = Array.Empty<byte[]>();
-            return first.Length;
-        }
-
-        pendingFrames = new byte[frames.Count - 1][];
-        for (int i = 1; i < frames.Count; i++)
-            pendingFrames[i - 1] = frames[i];
-        return first.Length;
-    }
-
-    private static unsafe byte[] CopyAndClosePart(ref ZlinkMsg part)
-    {
-        try
-        {
-            int size = checked((int)NativeMethods.zlink_msg_size(ref part));
-            if (size == 0)
-                return Array.Empty<byte>();
-
-            IntPtr data = NativeMethods.zlink_msg_data(ref part);
-            if (data == IntPtr.Zero)
-                return Array.Empty<byte>();
-
-            byte[] payload = new byte[size];
-            new ReadOnlySpan<byte>((void*)data, size).CopyTo(payload);
-            return payload;
-        }
-        finally
-        {
-            NativeMethods.zlink_msg_close(ref part);
-        }
-    }
-
-    private static ZlinkMsg MoveStoredPart(ref ZlinkMsg source)
-    {
-        ZlinkMsg stored = default;
-        int initRc = NativeMethods.zlink_msg_init(ref stored);
-        if (initRc != 0)
-            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
-        try
-        {
-            int rc = NativeMethods.zlink_msg_move(ref stored, ref source);
-            if (rc != 0)
-                throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-            return stored;
-        }
-        catch
-        {
-            NativeMethods.zlink_msg_close(ref stored);
-            throw;
-        }
-    }
-
-    private static void AppendNativePart(ref ZlinkMsg[] nativeParts,
-        ref int count, ref ZlinkMsg source)
-    {
-        if (count == nativeParts.Length)
-            Array.Resize(ref nativeParts, count == 0 ? 4 : count * 2);
-        nativeParts[count++] = MoveStoredPart(ref source);
-    }
-
-    private static unsafe void CloseNativeParts(ZlinkMsg[] parts, int count)
-    {
-        for (int i = 0; i < count; i++)
-            NativeMethods.zlink_msg_close(ref parts[i]);
-    }
-
-    private static unsafe byte[]? CopyRoutingIdBytes(IntPtr routingIdPtr)
-    {
-        if (routingIdPtr == IntPtr.Zero)
-            return null;
-        return NativeHelpers.ReadRoutingId(ref *(ZlinkRoutingId*)routingIdPtr);
-    }
-
-    private static string DecodeBuffer(byte[] buffer, nuint length)
-    {
-        int boundedLength = length > (nuint)buffer.Length
-            ? buffer.Length
-            : (int)length;
-        return boundedLength == 0
-            ? string.Empty
-            : Encoding.UTF8.GetString(buffer, 0, boundedLength);
     }
 
     private static T? TryReceiveCore<T>(Func<T> operation) where T : class

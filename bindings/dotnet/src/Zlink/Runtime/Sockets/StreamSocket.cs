@@ -78,8 +78,7 @@ public sealed class StreamSocket : RoutedMessageSocketBase, IStreamSocket
     /// </summary>
     public IReadOnlyList<ActorRef> BoundActors(RoutingId sessionRid)
     {
-        ZlinkRoutingId nativeSession = NativeHelpers.WriteRoutingId(
-            sessionRid.ToByteArray());
+        ZlinkRoutingId nativeSession = sessionRid.ToNative();
         nuint count = 0;
         int rc = NativeMethods.zlink_stream_bound_actors(Handle,
             ref nativeSession, IntPtr.Zero, ref count);
@@ -120,35 +119,16 @@ public sealed class StreamSocket : RoutedMessageSocketBase, IStreamSocket
             throw new ArgumentException("Parts must not be empty.",
                 nameof(parts));
 
-        ZlinkRoutingId nativeSession = NativeHelpers.WriteRoutingId(
-            sessionRid.ToByteArray());
+        ZlinkRoutingId nativeSession = sessionRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         try
         {
-            for (int i = 0; i < cloned.Length; i++)
-            {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
-                try
-                {
-                    int rc = NativeMethods.zlink_stream_send_bound_actor_part(
-                        Handle, ref nativeSession, actorId,
-                        ref nativePart, (int)flags,
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
-                }
-            }
+            RequestReplySupport.SubmitClonedParts(cloned,
+                (ref ZlinkMsg nativePart,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_stream_send_bound_actor_part(Handle,
+                        ref nativeSession, actorId, ref nativePart, (int)flags,
+                        partFlag));
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0

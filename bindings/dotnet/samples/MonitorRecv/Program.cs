@@ -17,8 +17,10 @@ if (clientMonitor.Recv(RecvFlags.DontWait) != null)
 server.Bind(endpoint);
 client.Connect(endpoint);
 
-MonitorEvent serverEvent = serverMonitor.Recv();
-MonitorEvent clientEvent = clientMonitor.Recv();
+MonitorEvent serverEvent = serverMonitor.Recv()
+    ?? throw new TimeoutException("Timed out waiting for server monitor event.");
+MonitorEvent clientEvent = clientMonitor.Recv()
+    ?? throw new TimeoutException("Timed out waiting for client monitor event.");
 if (serverEvent.Event != MonitorEventType.ConnectionReady
     || clientEvent.Event != MonitorEventType.ConnectionReady)
 {

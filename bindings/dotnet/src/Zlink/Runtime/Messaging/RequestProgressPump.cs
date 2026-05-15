@@ -10,6 +10,9 @@ namespace Systems.Zlink;
 
 internal static class RequestProgressPump
 {
+    private const int SpinProgressIterations = 32;
+    private const int MaxBackoffDelayMs = 8;
+
     private sealed class ProgressState
     {
         internal int ActiveCount;
@@ -66,6 +69,7 @@ internal static class RequestProgressPump
 
         _ = Task.Run(async () =>
         {
+            int idleIterations = 0;
             try
             {
                 while (Volatile.Read(ref state.ActiveCount) > 0)
@@ -78,7 +82,17 @@ internal static class RequestProgressPump
                     {
                     }
 
-                    await Task.Yield();
+                    idleIterations++;
+                    if (idleIterations <= SpinProgressIterations)
+                    {
+                        await Task.Yield();
+                        continue;
+                    }
+
+                    int delayMs = Math.Min(MaxBackoffDelayMs,
+                        1 << Math.Min(3,
+                            idleIterations - SpinProgressIterations - 1));
+                    await Task.Delay(delayMs).ConfigureAwait(false);
                 }
 
                 try

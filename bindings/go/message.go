@@ -19,16 +19,22 @@ import (
 const maxRoutingIDSize = 255
 const maxFixedCStringFieldSize = 255
 
+// RoutingID is a fixed-size value type. The data lives inline in a
+// [255]byte array (matching zlink_routing_id_t) rather than a heap
+// slice, so construction from a recv path or hex string no longer
+// allocates and copies are register/stack moves.
 type RoutingID struct {
-	data []byte
+	data [maxRoutingIDSize]byte
+	size uint8
 }
 
 func NewRoutingID(data []byte) RoutingID {
 	if len(data) == 0 || len(data) > maxRoutingIDSize {
 		return RoutingID{}
 	}
-	cloned := append([]byte(nil), data...)
-	return RoutingID{data: cloned}
+	var rid RoutingID
+	rid.size = uint8(copy(rid.data[:], data))
+	return rid
 }
 
 // NewRoutingIDFromString parses the hex form returned by RoutingID.String or
@@ -59,11 +65,11 @@ func ParseRoutingIDString(value string) (RoutingID, error) {
 }
 
 func (r RoutingID) Bytes() []byte {
-	return append([]byte(nil), r.data...)
+	return append([]byte(nil), r.data[:r.size]...)
 }
 
 func (r RoutingID) Size() int {
-	return len(r.data)
+	return int(r.size)
 }
 
 func (r RoutingID) Hash() uint64 {
@@ -72,7 +78,7 @@ func (r RoutingID) Hash() uint64 {
 		prime64  = 1099511628211
 	)
 	hash := uint64(offset64)
-	for _, b := range r.data {
+	for _, b := range r.data[:r.size] {
 		hash ^= uint64(b)
 		hash *= prime64
 	}
@@ -84,18 +90,18 @@ func (r RoutingID) String() string {
 }
 
 func (r RoutingID) Hex() string {
-	return hex.EncodeToString(r.data)
+	return hex.EncodeToString(r.data[:r.size])
 }
 
 func (r RoutingID) Equal(other RoutingID) bool {
-	return bytes.Equal(r.data, other.data)
+	return bytes.Equal(r.data[:r.size], other.data[:other.size])
 }
 
 func (r RoutingID) toC() C.zlink_routing_id_t {
 	var out C.zlink_routing_id_t
-	out.size = C.uint8_t(len(r.data))
-	if len(r.data) > 0 {
-		C.memcpy(unsafe.Pointer(&out.data[0]), unsafe.Pointer(&r.data[0]), C.size_t(len(r.data)))
+	out.size = C.uint8_t(r.size)
+	if r.size > 0 {
+		C.memcpy(unsafe.Pointer(&out.data[0]), unsafe.Pointer(&r.data[0]), C.size_t(r.size))
 	}
 	return out
 }
@@ -105,8 +111,9 @@ func routingIDFromC(raw C.zlink_routing_id_t) RoutingID {
 	if size == 0 {
 		return RoutingID{}
 	}
-	data := C.GoBytes(unsafe.Pointer(&raw.data[0]), C.int(size))
-	return RoutingID{data: data}
+	var rid RoutingID
+	rid.size = uint8(copy(rid.data[:], unsafe.Slice((*byte)(unsafe.Pointer(&raw.data[0])), size)))
+	return rid
 }
 
 func routingIDFromCPtr(raw *C.zlink_routing_id_t) RoutingID {

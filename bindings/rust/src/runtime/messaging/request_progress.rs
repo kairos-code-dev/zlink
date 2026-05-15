@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, Weak};
 use std::thread;
@@ -117,11 +118,11 @@ fn run_worker(worker: Weak<ProgressWorker>) {
                     POLL_COMPLETION,
                 ) == 0
                 {
-                    let mut event = std::mem::zeroed::<ffi::zlink_poller_event_t>();
+                    let mut event = MaybeUninit::<ffi::zlink_poller_event_t>::uninit();
                     while active_worker.pending.load(Ordering::Acquire) > 0 {
                         let _ = ffi::zlink_poller_wait(
                             poller,
-                            &mut event,
+                            event.as_mut_ptr(),
                             1,
                             -1,
                             std::ptr::null_mut(),

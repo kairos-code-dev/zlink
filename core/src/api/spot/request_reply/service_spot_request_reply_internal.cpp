@@ -243,7 +243,8 @@ spot_request_reply_recv_state_t::spot_request_reply_recv_state_t () :
 }
 
 spot_request_reply_completion_state_t::spot_request_reply_completion_state_t () :
-    pending_channel_requests (0)
+    pending_channel_requests (0),
+    phase (spot_request_reply_completion_open)
 {
 }
 

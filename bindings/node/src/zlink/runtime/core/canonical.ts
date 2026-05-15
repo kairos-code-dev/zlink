@@ -733,9 +733,7 @@ function invokeActorJoin(
   flags: SendFlags,
   timeoutMs: number,
 ): boolean {
-  const releaseProgress = spotHandle
-    ? startRequestProgress(spotHandle, (handle) => { void handle; })
-    : null;
+  void spotHandle;
   try {
     requireNative().spotNodeActorJoinSpot(
       nodeHandle,
@@ -744,7 +742,6 @@ function invokeActorJoin(
       normalizeRoutingId(destSpotRid, 'destSpotRid'),
       toMessageParts(parts),
       (rawResult: ActorJoinResultRaw | null, replyParts: Buffer[] | null) => {
-        if (releaseProgress) releaseProgress();
         callback(actorJoinResultFromRaw(rawResult), messagesFromNativeBuffers(replyParts));
       },
       flags | 0,
@@ -752,7 +749,6 @@ function invokeActorJoin(
     );
     return true;
   } catch (error) {
-    if (releaseProgress) releaseProgress();
     const submitError = submitNativeError(error, flags, 'actor join failed');
     if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
       return false;

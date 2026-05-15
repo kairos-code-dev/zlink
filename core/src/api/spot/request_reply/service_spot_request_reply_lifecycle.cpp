@@ -308,6 +308,20 @@ void zlink::spot_reqrep_internal::run_spot_dispatch_worker_once (void *spot_)
     zlink_actor_run_lifecycle_for_spot (spot_);
 }
 
+void zlink::spot_reqrep_internal::run_spot_dispatch_events_once (void *spot_)
+{
+    if (!spot_)
+        return;
+
+    std::shared_ptr<spot_request_reply_state_t> state =
+      zlink::spot_reqrep_internal::try_find_spot_state (spot_);
+    if (!state)
+        return;
+
+    run_pending_spot_dispatch_events (state);
+    zlink_actor_run_lifecycle_for_spot (spot_);
+}
+
 void zlink::spot_reqrep_internal::maybe_dispatch_spot_info (
   spot_request_reply_state_t *state_,
   zlink_spot_dispatch_event_t event_,

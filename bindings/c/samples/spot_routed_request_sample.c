@@ -2,8 +2,6 @@
 
 #include "sample_common.h"
 
-extern int zlink_spot_request_progress_internal (void *spot_);
-
 typedef struct
 {
     int completed;
@@ -66,7 +64,16 @@ static void init_routing_id (zlink_routing_id_t *rid_, const char *text_)
 
 static void pump_requester_progress (void *requester_)
 {
-    (void) zlink_spot_request_progress_internal (requester_);
+    void *poller = zlink_poller_new ();
+    if (!poller)
+        return;
+    if (zlink_poller_add (poller, requester_, NULL, ZLINK_POLLCOMPLETION)
+        == ZLINK_CONFIG_OK) {
+        zlink_poller_event_t event;
+        (void) zlink_poller_wait (poller, &event, 1, 0, NULL);
+        (void) zlink_poller_remove (poller, requester_);
+    }
+    (void) zlink_poller_destroy (&poller);
 }
 
 static void handle_spot_request (const zlink_routing_id_t *source_node_rid_,

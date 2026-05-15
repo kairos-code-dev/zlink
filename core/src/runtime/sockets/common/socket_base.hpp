@@ -161,6 +161,7 @@ class socket_base_t : public own_t,
     int socket_set_msg_handler_with_userdata (
       zlink_socket_msg_handler_fn handler_, void *subject_, void *userdata_);
     int socket_msg_dispatch_stop ();
+    void socket_msg_dispatch_drain_pending ();
     int socket_set_spot_handler (zlink_subscribe_handler_fn handler_);
     int socket_set_spot_handler_with_userdata (
       zlink_subscribe_handler_fn handler_,

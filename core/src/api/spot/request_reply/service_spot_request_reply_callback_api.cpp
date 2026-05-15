@@ -439,6 +439,11 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
             (void) dispatch_runtime->remove_task (dispatch_task_id);
         return;
     }
+    if (state) {
+        std::lock_guard<std::mutex> state_lock (state->mutex);
+        state->completion_state.phase =
+          zlink::spot_reqrep_internal::spot_request_reply_completion_closing;
+    }
     if (state)
         (void) zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
           spot_);
@@ -469,13 +474,17 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
     if (dispatch_runtime && dispatch_task_id != 0)
         (void) dispatch_runtime->remove_task (dispatch_task_id);
     if (state) {
+        {
+            std::lock_guard<std::mutex> state_lock (state->mutex);
+            state->completion_state.phase =
+              zlink::spot_reqrep_internal::spot_request_reply_completion_closed;
+        }
         zlink::spot_reqrep_internal::unregister_spot_channel_reply_observers (
           state);
         std::vector<std::shared_ptr<
           zlink::spot_reqrep_internal::spot_channel_reply_source_t> > sources;
         zlink::spot_reqrep_internal::clear_spot_channel_reply_sources (
           state, &sources);
-        std::lock_guard<std::mutex> state_lock (state->mutex);
         close_spot_subscribe_dispatch_queue (&state->recv.subscribe_queue);
         zlink::request_completion::close (&state->completion_state.direct);
         for (size_t i = 0; i < sources.size (); ++i) {

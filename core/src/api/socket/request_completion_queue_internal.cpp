@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "api/socket/request_reply_protocol_internal.hpp"
+#include "core/ctx.hpp"
 #include "core/socket_poller.hpp"
 #include "core/recv_internal.hpp"
 
@@ -61,6 +62,21 @@ void drain_signal_socket_nonblocking (zlink::socket_base_t *socket_)
         }
         msg.close ();
     }
+}
+
+void close_signal_queue_and_wait (zlink::internal_pair_queue::queue_t *queue_,
+                                  zlink::ctx_t *ctx_,
+                                  zlink::socket_base_t *tx_,
+                                  zlink::socket_base_t *rx_)
+{
+    if (!queue_)
+        return;
+
+    zlink::internal_pair_queue::close (queue_);
+    if (ctx_ && tx_)
+        (void) ctx_->wait_for_socket_removal (tx_, 1000);
+    if (ctx_ && rx_)
+        (void) ctx_->wait_for_socket_removal (rx_, 1000);
 }
 
 class request_completion_callback_scope_t
@@ -140,6 +156,12 @@ int zlink::request_completion::ensure_signal_ready (queue_state_t *state_,
         errno = EFAULT;
         return -1;
     }
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    if (state_->close_requested) {
+        errno = ETERM;
+        return -1;
+    }
     return zlink::internal_pair_queue::ensure (ctx_, prefix_, &state_->signal);
 }
 
@@ -168,6 +190,10 @@ int zlink::request_completion::enqueue (queue_state_t *state_,
 
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
+        if (state_->close_requested) {
+            errno = ETERM;
+            return -1;
+        }
         const bool should_signal =
           state_->pending.empty () && !state_->signal_pending;
         state_->pending.push_back (std::move (completion));
@@ -195,29 +221,7 @@ int zlink::request_completion::signal (queue_state_t *state_,
         errno = EFAULT;
         return -1;
     }
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        if (state_->close_requested) {
-            errno = ETERM;
-            return -1;
-        }
-    }
     if (ensure_signal_ready (state_, ctx_, prefix_) != 0)
-        return -1;
-
-    bool close_now = false;
-    bool close_seen = false;
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        if (state_->close_requested) {
-            errno = ETERM;
-            close_seen = true;
-            close_now = state_->poller_refs == 0;
-        }
-    }
-    if (close_now)
-        zlink::internal_pair_queue::close (&state_->signal);
-    if (close_seen)
         return -1;
 
     {
@@ -299,8 +303,14 @@ void zlink::request_completion::close (queue_state_t *state_)
         return;
 
     bool close_now = false;
+    zlink::ctx_t *ctx = NULL;
+    zlink::socket_base_t *rx = NULL;
+    zlink::socket_base_t *tx = NULL;
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
+        rx = state_->signal.rx;
+        tx = state_->signal.tx;
+        ctx = rx ? rx->get_ctx () : tx ? tx->get_ctx () : NULL;
         state_->pending.clear ();
         state_->owner_thread_valid = false;
         state_->close_requested = true;
@@ -319,7 +329,7 @@ void zlink::request_completion::close (queue_state_t *state_)
         }
     }
     if (close_now)
-        zlink::internal_pair_queue::close (&state_->signal);
+        close_signal_queue_and_wait (&state_->signal, ctx, tx, rx);
 }
 
 int zlink::request_completion::acquire_signal_poller_ref (queue_state_t *state_)
@@ -345,8 +355,14 @@ void zlink::request_completion::release_signal_poller_ref (queue_state_t *state_
         return;
 
     bool close_now = false;
+    zlink::ctx_t *ctx = NULL;
+    zlink::socket_base_t *rx = NULL;
+    zlink::socket_base_t *tx = NULL;
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
+        rx = state_->signal.rx;
+        tx = state_->signal.tx;
+        ctx = rx ? rx->get_ctx () : tx ? tx->get_ctx () : NULL;
         if (state_->poller_refs > 0)
             --state_->poller_refs;
         close_now = state_->close_requested && state_->poller_refs == 0;
@@ -354,7 +370,7 @@ void zlink::request_completion::release_signal_poller_ref (queue_state_t *state_
             state_->signal_pending = false;
     }
     if (close_now)
-        zlink::internal_pair_queue::close (&state_->signal);
+        close_signal_queue_and_wait (&state_->signal, ctx, tx, rx);
 }
 
 void zlink::request_completion::claim_owner_thread (queue_state_t *state_)

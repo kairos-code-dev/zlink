@@ -3,25 +3,25 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { once } = require('node:events');
-const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
 
 const REQUEST_PAYLOAD = 'spot-ping';
 const REPLY_PAYLOAD = 'spot-pong';
 const CHANNEL_NAME = 'orders';
 
-async function reservePort() {
-  const server = net.createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const { port } = server.address();
-  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  return port;
+async function recvRouterRequest(router, received, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (router.recv(received, zlink.RecvFlags.DontWait)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error('router request receive timed out');
 }
 
 async function main() {
-  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const endpoint = `inproc://spot-request-async-${process.pid}`;
   const ctx = new zlink.Context();
   const requesterNode = new zlink.SpotNode(ctx);
   const responderRouter = new zlink.RouterSocket(ctx);
@@ -39,7 +39,7 @@ async function main() {
       .timeout(2000)
       .submitAsync();
     const received = new zlink.Received();
-    responderRouter.recv(received);
+    await recvRouterRequest(responderRouter, received, 2000);
     try {
       assert.ok(received.routingId);
       assert.notEqual(received.requestSeq, null);

@@ -894,7 +894,6 @@ set(api-spot-sources
     src/api/spot/request_reply/service_spot_request_reply_ingress_api.cpp
     src/api/spot/request_reply/service_spot_request_reply_part_submit.cpp
     src/api/spot/request_reply/service_spot_request_reply_routed_delivery.cpp
-    src/api/spot/request_reply/service_spot_request_reply_progress.cpp
     src/api/spot/request_reply/service_spot_request_reply_api.cpp
     src/api/spot/request_reply/service_spot_request_reply_submit_api.cpp
     src/api/spot/subject/service_spot_subject_option_api.cpp

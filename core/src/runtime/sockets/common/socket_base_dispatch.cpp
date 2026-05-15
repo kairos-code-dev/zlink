@@ -162,6 +162,17 @@ int zlink::socket_base_t::socket_msg_dispatch_stop ()
     return 0;
 }
 
+void zlink::socket_base_t::socket_msg_dispatch_drain_pending ()
+{
+    if (!socket_msg_dispatch_active ())
+        return;
+
+    std::lock_guard<std::recursive_mutex> dispatch_lock (
+      dispatch_runtime ().socket_msg_dispatch_sync);
+    if (socket_msg_dispatch_active ())
+        xdispatch_io ();
+}
+
 int zlink::socket_base_t::socket_set_spot_handler (
   zlink_subscribe_handler_fn handler_)
 {

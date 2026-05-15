@@ -259,7 +259,15 @@ int zlink::socket_poller_t::rebuild ()
                 size_t fd_size = sizeof (zlink::fd_t);
                 const int rc = it->socket->getsockopt (
                   ZLINK_INTERNAL_OPT_FD, &_pollfds[item_nbr].fd, &fd_size);
-                zlink_assert (rc == 0);
+                if (rc != 0) {
+                    const int saved_errno = errno;
+                    free (_pollfds);
+                    _pollfds = NULL;
+                    _pollset_size = 0;
+                    _need_rebuild = true;
+                    errno = saved_errno ? saved_errno : ETERM;
+                    return -1;
+                }
 
                 _pollfds[item_nbr].events = POLLIN;
                 item_nbr++;
@@ -302,7 +310,12 @@ int zlink::socket_poller_t::rebuild ()
                 size_t fd_size = sizeof (zlink::fd_t);
                 int rc =
                   it->socket->getsockopt (ZLINK_INTERNAL_OPT_FD, &notify_fd, &fd_size);
-                zlink_assert (rc == 0);
+                if (rc != 0) {
+                    _pollset_size = 0;
+                    _need_rebuild = true;
+                    errno = errno ? errno : ETERM;
+                    return -1;
+                }
 
                 FD_SET (notify_fd, _pollset_in.get ());
                 if (_max_fd < notify_fd)

@@ -102,6 +102,13 @@ struct spot_channel_reply_source_t
     zlink::request_completion::queue_state_t completion;
 };
 
+enum spot_request_reply_completion_phase_t
+{
+    spot_request_reply_completion_open,
+    spot_request_reply_completion_closing,
+    spot_request_reply_completion_closed
+};
+
 struct queued_spot_subscribe_message_t
 {
     queued_spot_subscribe_message_t ();
@@ -190,6 +197,7 @@ struct spot_request_reply_completion_state_t
     std::map<void *, std::shared_ptr<spot_channel_reply_source_t> >
       channel_reply_sources;
     size_t pending_channel_requests;
+    spot_request_reply_completion_phase_t phase;
 };
 
 struct spot_request_reply_state_t
@@ -263,6 +271,7 @@ std::shared_ptr<spot_request_reply_state_t> try_find_spot_state (void *spot_);
 void erase_spot_owner_state (void *spot_);
 int install_spot_dispatch_event_task (spot_request_reply_state_t *state_);
 void run_spot_dispatch_worker_once (void *spot_);
+void run_spot_dispatch_events_once (void *spot_);
 void maybe_dispatch_spot_info (
   spot_request_reply_state_t *state_,
   zlink_spot_dispatch_event_t event_,
@@ -462,6 +471,9 @@ int drain_spot_channel_reply_completions_from (
   const std::shared_ptr<spot_request_reply_state_t> &state_,
   void *owner_handle_,
   void *dealer_);
+int drain_spot_completion_progress (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  void *owner_handle_);
 int drain_router_reply_completions (
   const std::shared_ptr<router_spot_request_reply_state_t> &state_,
   void *owner_handle_);

@@ -68,33 +68,8 @@ int poller_completion_drain_hidden (
                       registration_->subject);
             if (!state)
                 return 0;
-            int drained =
-              zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
-                state);
-            if (drained < 0)
-                return -1;
-            const int direct_rc =
-              zlink::spot_reqrep_internal::drain_spot_reply_completions (
-                state, registration_->subject);
-            if (direct_rc < 0)
-                return -1;
-            drained += direct_rc;
-            std::vector<void *> dealers;
-            zlink::spot_reqrep_internal::snapshot_spot_channel_reply_dealers (
-              state, &dealers);
-            for (size_t i = 0; i < dealers.size (); ++i) {
-                const int rc =
-                  zlink::spot_reqrep_internal::drain_spot_channel_reply_completions_from (
-                    state, registration_->subject, dealers[i]);
-                if (rc < 0 && errno != ENOENT)
-                    return -1;
-                if (rc > 0)
-                    drained += rc;
-            }
-            zlink::spot_reqrep_internal::run_spot_dispatch_worker_once (
-              registration_->subject);
-            errno = 0;
-            return drained;
+            return zlink::spot_reqrep_internal::drain_spot_completion_progress (
+              state, registration_->subject);
         }
         default:
             return 0;

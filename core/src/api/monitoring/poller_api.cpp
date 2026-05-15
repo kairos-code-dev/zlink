@@ -91,6 +91,26 @@ long remaining_timeout_ms (long timeout_ms_,
     return static_cast<long> (deadline_ms_ - now_ms);
 }
 
+int drain_hidden_completion_registrations (poller_handle_t *poller_)
+{
+    if (!poller_)
+        return 0;
+
+    int drained = 0;
+    for (std::vector<poller_registration_t>::const_iterator it =
+           poller_->registrations.begin ();
+         it != poller_->registrations.end (); ++it) {
+        if (!poller_completion_is_hidden (&*it))
+            continue;
+        const int drain_rc = poller_completion_drain_hidden (&*it);
+        if (drain_rc < 0)
+            return -1;
+        drained += drain_rc;
+    }
+    errno = 0;
+    return drained;
+}
+
 void *poller_index_user_data (size_t index_)
 {
     return reinterpret_cast<void *> (static_cast<uintptr_t> (index_) + 1u);
@@ -631,6 +651,16 @@ int zlink_poller_wait (void *poller_,
             return rc;
         }
         if (rc == 0) {
+            if (timeout_ == 0) {
+                const int drain_rc =
+                  drain_hidden_completion_registrations (poller);
+                if (drain_rc < 0) {
+                    if (error_out_)
+                        *error_out_ =
+                          zlink::config_result_internal::from_errno (errno);
+                    return -1;
+                }
+            }
             if (error_out_)
                 *error_out_ = ZLINK_CONFIG_OK;
             return 0;

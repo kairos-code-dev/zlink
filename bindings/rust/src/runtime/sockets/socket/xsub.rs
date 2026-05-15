@@ -1,7 +1,6 @@
 use std::ffi::c_void;
-use std::time::Duration;
 
-use super::{SocketInner, impl_base_socket, impl_connect, impl_recv_options, impl_send_options};
+use super::{SocketInner, impl_base_socket, impl_connect};
 use crate::ctx::Context;
 use crate::domain::TopicMessage;
 use crate::error::{ConfigError, RecvError, check_config_rc};
@@ -37,8 +36,8 @@ impl XSubSocket {
         self.inner.unset_subscription(filter)
     }
 
-    pub fn common_options(&self) -> CommonSocketOptions<'_, Self> {
-        CommonSocketOptions::new(self)
+    pub fn common_options(&self) -> CommonSocketOptions<'_> {
+        CommonSocketOptions::new(&self.inner)
     }
 
     pub fn sub_options(&self) -> SubSocketOptions<'_, Self> {
@@ -62,5 +61,3 @@ impl XSubSocket {
 
 impl_base_socket!(XSubSocket);
 impl_connect!(XSubSocket);
-impl_send_options!(XSubSocket);
-impl_recv_options!(XSubSocket);

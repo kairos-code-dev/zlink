@@ -36,7 +36,6 @@ from ..._native.ffi import ZlinkPollerEvent, lib
 
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)
 _ERRNO_ENOTSUP = getattr(errno, "ENOTSUP", getattr(errno, "EOPNOTSUPP", 95))
-_CALLBACK_SENTINEL = object()
 
 
 def _ensure_reply_flags_supported(flags):

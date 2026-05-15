@@ -13,7 +13,7 @@ use crate::service::{Empty, RequestOp, SendOp};
 
 use super::{
     SendHandle, SocketInner, impl_attach_discovery, impl_base_socket, impl_connect,
-    impl_recv_options, impl_routing_id_options, impl_send_options,
+     impl_routing_id_options,
 };
 
 /// DEALER socket – asynchronous request/reply pattern (client side).
@@ -68,8 +68,8 @@ impl DealerSocket {
         SendHandle::new(self.inner.handle)
     }
 
-    pub fn common_options(&self) -> CommonSocketOptions<'_, Self> {
-        CommonSocketOptions::new(self)
+    pub fn common_options(&self) -> CommonSocketOptions<'_> {
+        CommonSocketOptions::new(&self.inner)
     }
 
     pub fn dealer_options(&self) -> DealerSocketOptions<'_> {
@@ -133,8 +133,6 @@ fn set_dealer_bool_option(
 impl_base_socket!(DealerSocket);
 impl_attach_discovery!(DealerSocket);
 impl_connect!(DealerSocket);
-impl_send_options!(DealerSocket);
-impl_recv_options!(DealerSocket);
 impl_routing_id_options!(DealerSocket);
 
 fn timeout_to_ms(timeout: Duration) -> u32 {

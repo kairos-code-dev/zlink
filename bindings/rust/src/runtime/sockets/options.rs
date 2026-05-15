@@ -3,9 +3,10 @@ use std::time::Duration;
 use crate::error::ConfigError;
 use crate::message::{Message, RoutingId};
 use crate::socket::{
-    DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket,
-    XSubSocket,
+    DealerSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket, XSubSocket,
 };
+
+use super::socket::SocketInner;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RidDuplicatePolicy {
@@ -13,161 +14,63 @@ pub enum RidDuplicatePolicy {
     Handover = 1,
 }
 
-pub struct CommonSocketOptions<'a, T> {
-    socket: &'a T,
+/// Public-facing namespace for the option set shared by every socket type.
+///
+/// Holds a borrow of the underlying [`SocketInner`] and forwards directly to
+/// its FFI-backed methods. The previous design routed every call through a
+/// per-socket-type trait + macro trampoline; collapsing the indirection cuts
+/// the path from "wrapper → trait → per-type forward → SocketInner" to a
+/// single hop and removes ~200 lines of mechanical glue.
+pub struct CommonSocketOptions<'a> {
+    inner: &'a SocketInner,
 }
 
-impl<'a, T> CommonSocketOptions<'a, T> {
-    pub(crate) fn new(socket: &'a T) -> Self {
-        Self { socket }
+impl<'a> CommonSocketOptions<'a> {
+    pub(crate) fn new(inner: &'a SocketInner) -> Self {
+        Self { inner }
     }
-}
 
-pub(crate) trait CommonSocketOptionAccess {
-    fn set_linger(&self, d: Duration) -> Result<(), ConfigError>;
-    fn linger(&self) -> Result<Duration, ConfigError>;
-    fn set_send_hwm(&self, value: i32) -> Result<(), ConfigError>;
-    fn send_hwm(&self) -> Result<i32, ConfigError>;
-    fn set_recv_hwm(&self, value: i32) -> Result<(), ConfigError>;
-    fn recv_hwm(&self) -> Result<i32, ConfigError>;
-    fn set_send_timeout(&self, d: Duration) -> Result<(), ConfigError>;
-    fn send_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_recv_timeout(&self, d: Duration) -> Result<(), ConfigError>;
-    fn recv_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_immediate(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn immediate(&self) -> Result<bool, ConfigError>;
-    fn set_rid_duplicate_policy(&self, value: i32) -> Result<(), ConfigError>;
-    fn rid_duplicate_policy(&self) -> Result<i32, ConfigError>;
-    fn set_connect_timeout(&self, d: Duration) -> Result<(), ConfigError>;
-    fn connect_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_ipv6(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn ipv6(&self) -> Result<bool, ConfigError>;
-    fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn tcp_nodelay(&self) -> Result<bool, ConfigError>;
-    fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn tcp_keepalive(&self) -> Result<bool, ConfigError>;
-    fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ConfigError>;
-    fn heartbeat_interval(&self) -> Result<Duration, ConfigError>;
-    fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ConfigError>;
-    fn heartbeat_ttl(&self) -> Result<Duration, ConfigError>;
-    fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError>;
-    fn heartbeat_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_max_msg_size(&self, bytes: i64) -> Result<(), ConfigError>;
-    fn max_msg_size(&self) -> Result<i64, ConfigError>;
-    fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError>;
-    fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError>;
-    fn set_backlog(&self, value: i32) -> Result<(), ConfigError>;
-    fn backlog(&self) -> Result<i32, ConfigError>;
-    fn set_reconnect_interval(&self, d: Duration) -> Result<(), ConfigError>;
-    fn reconnect_interval(&self) -> Result<Duration, ConfigError>;
-    fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ConfigError>;
-    fn reconnect_interval_max(&self) -> Result<Duration, ConfigError>;
-}
-
-macro_rules! impl_common_access {
-    ($($ty:ty),+ $(,)?) => {
-        $(
-            impl CommonSocketOptionAccess for $ty {
-                fn set_linger(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_linger(self, d) }
-                fn linger(&self) -> Result<Duration, ConfigError> { <$ty>::linger(self) }
-                fn set_send_hwm(&self, value: i32) -> Result<(), ConfigError> { <$ty>::set_send_hwm(self, value) }
-                fn send_hwm(&self) -> Result<i32, ConfigError> { <$ty>::send_hwm(self) }
-                fn set_recv_hwm(&self, value: i32) -> Result<(), ConfigError> { <$ty>::set_recv_hwm(self, value) }
-                fn recv_hwm(&self) -> Result<i32, ConfigError> { <$ty>::recv_hwm(self) }
-                fn set_send_timeout(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_send_timeout(self, d) }
-                fn send_timeout(&self) -> Result<Duration, ConfigError> { <$ty>::send_timeout(self) }
-                fn set_recv_timeout(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_recv_timeout(self, d) }
-                fn recv_timeout(&self) -> Result<Duration, ConfigError> { <$ty>::recv_timeout(self) }
-                fn set_immediate(&self, enabled: bool) -> Result<(), ConfigError> { <$ty>::set_immediate(self, enabled) }
-                fn immediate(&self) -> Result<bool, ConfigError> { <$ty>::immediate(self) }
-                fn set_rid_duplicate_policy(&self, value: i32) -> Result<(), ConfigError> { <$ty>::set_rid_duplicate_policy(self, value) }
-                fn rid_duplicate_policy(&self) -> Result<i32, ConfigError> { <$ty>::rid_duplicate_policy(self) }
-                fn set_connect_timeout(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_connect_timeout(self, d) }
-                fn connect_timeout(&self) -> Result<Duration, ConfigError> { <$ty>::connect_timeout(self) }
-                fn set_ipv6(&self, enabled: bool) -> Result<(), ConfigError> { <$ty>::set_ipv6(self, enabled) }
-                fn ipv6(&self) -> Result<bool, ConfigError> { <$ty>::ipv6(self) }
-                fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ConfigError> { <$ty>::set_tcp_nodelay(self, enabled) }
-                fn tcp_nodelay(&self) -> Result<bool, ConfigError> { <$ty>::tcp_nodelay(self) }
-                fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ConfigError> { <$ty>::set_tcp_keepalive(self, enabled) }
-                fn tcp_keepalive(&self) -> Result<bool, ConfigError> { <$ty>::tcp_keepalive(self) }
-                fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_heartbeat_interval(self, d) }
-                fn heartbeat_interval(&self) -> Result<Duration, ConfigError> { <$ty>::heartbeat_interval(self) }
-                fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_heartbeat_ttl(self, d) }
-                fn heartbeat_ttl(&self) -> Result<Duration, ConfigError> { <$ty>::heartbeat_ttl(self) }
-                fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_heartbeat_timeout(self, d) }
-                fn heartbeat_timeout(&self) -> Result<Duration, ConfigError> { <$ty>::heartbeat_timeout(self) }
-                fn set_max_msg_size(&self, bytes: i64) -> Result<(), ConfigError> { <$ty>::set_max_msg_size(self, bytes) }
-                fn max_msg_size(&self) -> Result<i64, ConfigError> { <$ty>::max_msg_size(self) }
-                fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError> { <$ty>::set_auto_hwm_msg_unit_bytes(self, bytes) }
-                fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError> { <$ty>::auto_hwm_msg_unit_bytes(self) }
-                fn set_backlog(&self, value: i32) -> Result<(), ConfigError> { <$ty>::set_backlog(self, value) }
-                fn backlog(&self) -> Result<i32, ConfigError> { <$ty>::backlog(self) }
-                fn set_reconnect_interval(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_reconnect_interval(self, d) }
-                fn reconnect_interval(&self) -> Result<Duration, ConfigError> { <$ty>::reconnect_interval(self) }
-                fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ConfigError> { <$ty>::set_reconnect_interval_max(self, d) }
-                fn reconnect_interval_max(&self) -> Result<Duration, ConfigError> { <$ty>::reconnect_interval_max(self) }
-            }
-        )+
-    };
-}
-
-impl_common_access!(
-    PairSocket,
-    DealerSocket,
-    RouterSocket,
-    PubSocket,
-    SubSocket,
-    XPubSocket,
-    XSubSocket,
-    StreamSocket
-);
-
-#[allow(private_bounds)]
-impl<T> CommonSocketOptions<'_, T>
-where
-    T: CommonSocketOptionAccess,
-{
     pub fn set_linger(&self, d: Duration) -> Result<(), ConfigError> {
-        self.socket.set_linger(d)
+        self.inner.set_linger(d)
     }
     pub fn linger(&self) -> Result<Duration, ConfigError> {
-        self.socket.linger()
+        self.inner.linger()
     }
     pub fn set_send_hwm(&self, value: i32) -> Result<(), ConfigError> {
-        self.socket.set_send_hwm(value)
+        self.inner.set_send_hwm(value)
     }
     pub fn send_hwm(&self) -> Result<i32, ConfigError> {
-        self.socket.send_hwm()
+        self.inner.send_hwm()
     }
     pub fn set_recv_hwm(&self, value: i32) -> Result<(), ConfigError> {
-        self.socket.set_recv_hwm(value)
+        self.inner.set_recv_hwm(value)
     }
     pub fn recv_hwm(&self) -> Result<i32, ConfigError> {
-        self.socket.recv_hwm()
+        self.inner.recv_hwm()
     }
     pub fn set_send_timeout(&self, d: Duration) -> Result<(), ConfigError> {
-        self.socket.set_send_timeout(d)
+        self.inner.set_send_timeout(d)
     }
     pub fn send_timeout(&self) -> Result<Duration, ConfigError> {
-        self.socket.send_timeout()
+        self.inner.send_timeout()
     }
     pub fn set_recv_timeout(&self, d: Duration) -> Result<(), ConfigError> {
-        self.socket.set_recv_timeout(d)
+        self.inner.set_recv_timeout(d)
     }
     pub fn recv_timeout(&self) -> Result<Duration, ConfigError> {
-        self.socket.recv_timeout()
+        self.inner.recv_timeout()
     }
     pub fn set_immediate(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_immediate(enabled)
+        self.inner.set_immediate(enabled)
     }
     pub fn immediate(&self) -> Result<bool, ConfigError> {
-        self.socket.immediate()
+        self.inner.immediate()
     }
     pub fn set_rid_duplicate_policy(&self, value: RidDuplicatePolicy) -> Result<(), ConfigError> {
-        self.socket.set_rid_duplicate_policy(value as i32)
+        self.inner.set_rid_duplicate_policy(value as i32)
     }
     pub fn rid_duplicate_policy(&self) -> Result<RidDuplicatePolicy, ConfigError> {
-        let raw = self.socket.rid_duplicate_policy()?;
+        let raw = self.inner.rid_duplicate_policy()?;
         Ok(if raw == 1 {
             RidDuplicatePolicy::Handover
         } else {
@@ -175,76 +78,76 @@ where
         })
     }
     pub fn set_connect_timeout(&self, d: Duration) -> Result<(), ConfigError> {
-        self.socket.set_connect_timeout(d)
+        self.inner.set_connect_timeout(d)
     }
     pub fn connect_timeout(&self) -> Result<Duration, ConfigError> {
-        self.socket.connect_timeout()
+        self.inner.connect_timeout()
     }
     pub fn set_ipv6(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_ipv6(enabled)
+        self.inner.set_ipv6(enabled)
     }
     pub fn ipv6(&self) -> Result<bool, ConfigError> {
-        self.socket.ipv6()
+        self.inner.ipv6()
     }
     pub fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_tcp_nodelay(enabled)
+        self.inner.set_tcp_nodelay(enabled)
     }
     pub fn tcp_nodelay(&self) -> Result<bool, ConfigError> {
-        self.socket.tcp_nodelay()
+        self.inner.tcp_nodelay()
     }
     pub fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.socket.set_tcp_keepalive(enabled)
+        self.inner.set_tcp_keepalive(enabled)
     }
     pub fn tcp_keepalive(&self) -> Result<bool, ConfigError> {
-        self.socket.tcp_keepalive()
+        self.inner.tcp_keepalive()
     }
     pub fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ConfigError> {
-        self.socket.set_heartbeat_interval(d)
+        self.inner.set_heartbeat_interval(d)
     }
     pub fn heartbeat_interval(&self) -> Result<Duration, ConfigError> {
-        self.socket.heartbeat_interval()
+        self.inner.heartbeat_interval()
     }
     pub fn set_heartbeat_ttl(&self, d: Duration) -> Result<(), ConfigError> {
-        self.socket.set_heartbeat_ttl(d)
+        self.inner.set_heartbeat_ttl(d)
     }
     pub fn heartbeat_ttl(&self) -> Result<Duration, ConfigError> {
-        self.socket.heartbeat_ttl()
+        self.inner.heartbeat_ttl()
     }
     pub fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError> {
-        self.socket.set_heartbeat_timeout(d)
+        self.inner.set_heartbeat_timeout(d)
     }
     pub fn heartbeat_timeout(&self) -> Result<Duration, ConfigError> {
-        self.socket.heartbeat_timeout()
+        self.inner.heartbeat_timeout()
     }
     pub fn set_max_msg_size(&self, bytes: i64) -> Result<(), ConfigError> {
-        self.socket.set_max_msg_size(bytes)
+        self.inner.set_max_msg_size(bytes)
     }
     pub fn max_msg_size(&self) -> Result<i64, ConfigError> {
-        self.socket.max_msg_size()
+        self.inner.max_msg_size()
     }
     pub fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError> {
-        self.socket.set_auto_hwm_msg_unit_bytes(bytes)
+        self.inner.set_auto_hwm_msg_unit_bytes(bytes)
     }
     pub fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError> {
-        self.socket.auto_hwm_msg_unit_bytes()
+        self.inner.auto_hwm_msg_unit_bytes()
     }
     pub fn set_backlog(&self, value: i32) -> Result<(), ConfigError> {
-        self.socket.set_backlog(value)
+        self.inner.set_backlog(value)
     }
     pub fn backlog(&self) -> Result<i32, ConfigError> {
-        self.socket.backlog()
+        self.inner.backlog()
     }
     pub fn set_reconnect_interval(&self, d: Duration) -> Result<(), ConfigError> {
-        self.socket.set_reconnect_interval(d)
+        self.inner.set_reconnect_interval(d)
     }
     pub fn reconnect_interval(&self) -> Result<Duration, ConfigError> {
-        self.socket.reconnect_interval()
+        self.inner.reconnect_interval()
     }
     pub fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ConfigError> {
-        self.socket.set_reconnect_interval_max(d)
+        self.inner.set_reconnect_interval_max(d)
     }
     pub fn reconnect_interval_max(&self) -> Result<Duration, ConfigError> {
-        self.socket.reconnect_interval_max()
+        self.inner.reconnect_interval_max()
     }
 }
 

@@ -3,8 +3,6 @@
 import ctypes
 import asyncio
 import errno
-import queue
-import threading
 
 from ..enums.enums import RouterOption, SocketType
 from .options import (
@@ -65,8 +63,6 @@ from ..._runtime.service.spot import (
     _timeout_to_ms as _spot_timeout_to_ms,
 )
 from ..._runtime.sockets.socket_base import (
-    _enter_callback,
-    _CALLBACK_SENTINEL,
     _BindSocket,
     _DealerOptionSocket,
     _EndpointSocket,
@@ -84,7 +80,6 @@ from ..._runtime.sockets.socket_base import (
     _SubscriberOptionSocket,
     _SubscriberSocket,
     _close_native_parts,
-    _leave_callback,
     _part_flag,
     _submit_parts,
 )
@@ -796,59 +791,45 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
     def on_packet(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
-        if self._recv_handler_thread is not None or self._packet_handler_thread is not None:
+        if self._recv_handler is not None or self._packet_handler is not None:
             raise RuntimeError("handler is already attached")
 
-        stop = threading.Event()
-        events = queue.SimpleQueue()
         self._packet_handler = handler
-        self._packet_handler_stop = stop
-        self._packet_handler_queue = events
+        dispatcher = self._dispatcher
+
+        def _invoke(routing_id, header, body):
+            try:
+                handler(routing_id, header, body)
+            except Exception:
+                _report_unhandled_callback_exception(handler)
+            finally:
+                try:
+                    header.close()
+                finally:
+                    body.close()
 
         def _callback(_stream, source_rid_ptr, header_ptr, body_ptr, _):
-            if stop.is_set():
-                return
             try:
                 routing_id = None
                 if source_rid_ptr:
                     routing_id = RoutingId(_routing_id_bytes(source_rid_ptr.contents))
                 header = Message.from_bytes(_msg_to_bytes(header_ptr.contents))
                 body = Message.from_bytes(_msg_to_bytes(body_ptr.contents))
-                events.put((routing_id, header, body))
             except Exception:
                 _report_unhandled_callback_exception(handler)
+                return
+            dispatcher.submit(
+                lambda routing_id=routing_id, header=header, body=body: _invoke(
+                    routing_id, header, body
+                )
+            )
 
         callback = _STREAM_PACKET_HANDLER(_callback)
         rc = lib().zlink_stream_packet_handler(self._handle, callback, None)
         if rc != 0:
             self._packet_handler = None
-            self._packet_handler_stop = None
-            self._packet_handler_queue = None
             _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
         self._packet_handler_cb = callback
-
-        def _dispatch():
-            while True:
-                item = events.get()
-                if item is _CALLBACK_SENTINEL:
-                    return
-                routing_id, header, body = item
-                _enter_callback()
-                try:
-                    handler(routing_id, header, body)
-                except Exception:
-                    _report_unhandled_callback_exception(handler)
-                finally:
-                    try:
-                        header.close()
-                    finally:
-                        body.close()
-                        _leave_callback()
-
-        thread = threading.Thread(target=_dispatch, name="zlink-stream-packet")
-        thread.daemon = True
-        self._packet_handler_thread = thread
-        thread.start()
 
 
 class PubSocket(_SendReadySocket, _DiscoveryAttachSocket, _EndpointSocket, _PublisherOptionSocket, _PublisherSocket):

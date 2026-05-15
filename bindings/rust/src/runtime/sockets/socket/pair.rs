@@ -1,5 +1,4 @@
 use std::ffi::c_void;
-use std::time::Duration;
 
 use crate::ctx::Context;
 use crate::domain::Received;
@@ -10,7 +9,7 @@ use crate::options::CommonSocketOptions;
 use crate::service::{Empty, SendOp};
 
 use super::{
-    SendHandle, SocketInner, impl_base_socket, impl_connect, impl_recv_options, impl_send_options,
+    SendHandle, SocketInner, impl_base_socket, impl_connect,
 };
 
 /// PAIR socket – bidirectional one-to-one messaging.
@@ -54,12 +53,10 @@ impl PairSocket {
         SendHandle::new(self.inner.handle)
     }
 
-    pub fn common_options(&self) -> CommonSocketOptions<'_, Self> {
-        CommonSocketOptions::new(self)
+    pub fn common_options(&self) -> CommonSocketOptions<'_> {
+        CommonSocketOptions::new(&self.inner)
     }
 }
 
 impl_base_socket!(PairSocket);
 impl_connect!(PairSocket);
-impl_send_options!(PairSocket);
-impl_recv_options!(PairSocket);

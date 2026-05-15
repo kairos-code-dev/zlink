@@ -1,9 +1,8 @@
 use std::ffi::c_void;
-use std::time::Duration;
 
 use super::{
-    SocketInner, impl_attach_discovery, impl_base_socket, impl_connect, impl_recv_options,
-    impl_send_options,
+    SocketInner, impl_attach_discovery, impl_base_socket, impl_connect
+    
 };
 use crate::ctx::Context;
 use crate::domain::TopicMessage;
@@ -40,8 +39,8 @@ impl SubSocket {
         self.inner.unset_subscription(filter)
     }
 
-    pub fn common_options(&self) -> CommonSocketOptions<'_, Self> {
-        CommonSocketOptions::new(self)
+    pub fn common_options(&self) -> CommonSocketOptions<'_> {
+        CommonSocketOptions::new(&self.inner)
     }
 
     pub fn sub_options(&self) -> SubSocketOptions<'_, Self> {
@@ -68,5 +67,3 @@ impl SubSocket {
 impl_base_socket!(SubSocket);
 impl_attach_discovery!(SubSocket);
 impl_connect!(SubSocket);
-impl_send_options!(SubSocket);
-impl_recv_options!(SubSocket);

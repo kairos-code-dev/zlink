@@ -1017,6 +1017,13 @@ type directSocket struct {
 	*connectionSocket
 }
 
+// OnSendReady is promoted to Pair/Dealer via *directSocket embedding,
+// eliminating the per-type duplicates while keeping it hidden from
+// receive-only sockets (Sub/XSub) that don't embed *directSocket.
+func (s *directSocket) OnSendReady(handler func()) error {
+	return s.setSendReady(handler)
+}
+
 func (s *directSocket) submit(flags SendFlags, parts ...*Message) (bool, error) {
 	err := submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 		return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
@@ -1077,6 +1084,81 @@ type publishSocket struct {
 	*connectionSocket
 }
 
+// OnSendReady is promoted to Pub/XPub via the *publishSocket chain.
+func (s *publishSocket) OnSendReady(handler func()) error {
+	return s.setSendReady(handler)
+}
+
+// Pub-style options shared by PubSocket and XPubSocket. Defining them on
+// *publishSocket means both concrete sockets inherit them via embedding,
+// avoiding the previous two-place duplication.
+func (s *publishSocket) SetNoDrop(value bool) error {
+	return s.setPubBoolOption(C.ZLINK_PUB_OPT_NODROP, value)
+}
+
+func (s *publishSocket) NoDrop() (bool, error) {
+	return s.getPubBoolOption(C.ZLINK_PUB_OPT_NODROP)
+}
+
+func (s *publishSocket) SetVerbose(value bool) error {
+	return s.setPubBoolOption(C.ZLINK_PUB_OPT_VERBOSE, value)
+}
+
+func (s *publishSocket) Verbose() (bool, error) {
+	return s.getPubBoolOption(C.ZLINK_PUB_OPT_VERBOSE)
+}
+
+func (s *publishSocket) SetVerboser(value bool) error {
+	return s.setPubBoolOption(C.ZLINK_PUB_OPT_VERBOSER, value)
+}
+
+func (s *publishSocket) Verboser() (bool, error) {
+	return s.getPubBoolOption(C.ZLINK_PUB_OPT_VERBOSER)
+}
+
+func (s *publishSocket) SetManual(value bool) error {
+	return s.setPubBoolOption(C.ZLINK_PUB_OPT_MANUAL, value)
+}
+
+func (s *publishSocket) Manual() (bool, error) {
+	return s.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL)
+}
+
+func (s *publishSocket) SetManualLastValue(value bool) error {
+	return s.setPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE, value)
+}
+
+func (s *publishSocket) ManualLastValue() (bool, error) {
+	return s.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE)
+}
+
+func (s *publishSocket) SetWelcomeMessage(message *Message) error {
+	if message == nil {
+		return s.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, nil)
+	}
+	return s.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, message.Data())
+}
+
+func (s *publishSocket) WelcomeMessage() (*Message, error) {
+	data, err := s.getPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, 256)
+	if err != nil {
+		return nil, err
+	}
+	return NewMessage(data)
+}
+
+func (s *publishSocket) ApproveSubscribe(routingID RoutingID) error {
+	return s.setPubRoutingIDOption(C.ZLINK_PUB_OPT_APPROVE_SUBSCRIBE, routingID)
+}
+
+func (s *publishSocket) RejectSubscribe(routingID RoutingID) error {
+	return s.setPubRoutingIDOption(C.ZLINK_PUB_OPT_REJECT_SUBSCRIBE, routingID)
+}
+
+func (s *publishSocket) PubOptions() *PubSocketOptions {
+	return &PubSocketOptions{socket: s.connectionSocket}
+}
+
 func (s *publishSocket) submitPublish(topic string, flags SendFlags, parts ...*Message) (bool, error) {
 	err := s.withCString(topic, func(cstr *C.char) error {
 		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
@@ -1088,6 +1170,12 @@ func (s *publishSocket) submitPublish(topic string, flags SendFlags, parts ...*M
 
 type routedSocket struct {
 	*connectionSocket
+}
+
+// OnSendReady is promoted to Router via *routedSocket embedding.
+// StreamSocket has its own copy because it doesn't embed *routedSocket.
+func (s *routedSocket) OnSendReady(handler func()) error {
+	return s.setSendReady(handler)
 }
 
 func (s *routedSocket) submitTo(target RoutingID, flags SendFlags, parts ...*Message) (bool, error) {
@@ -1381,10 +1469,6 @@ func newPairSocket(ctx *Context) (*PairSocket, error) {
 	}, nil
 }
 
-func (s *PairSocket) OnSendReady(handler func()) error {
-	return s.connectionSocket.setSendReady(handler)
-}
-
 func (s *PairSocket) Send() SendOp {
 	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
 		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
@@ -1407,71 +1491,11 @@ func newPubSocket(ctx *Context, socketType C.zlink_socket_type_t) (*PubSocket, e
 	}, nil
 }
 
-func (s *PubSocket) SetNoDrop(value bool) error {
-	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_NODROP, value)
-}
-
-func (s *PubSocket) NoDrop() (bool, error) {
-	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_NODROP)
-}
-
-func (s *PubSocket) SetVerbose(value bool) error {
-	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_VERBOSE, value)
-}
-
-func (s *PubSocket) Verbose() (bool, error) {
-	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_VERBOSE)
-}
-
-func (s *PubSocket) SetVerboser(value bool) error {
-	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_VERBOSER, value)
-}
-
-func (s *PubSocket) Verboser() (bool, error) {
-	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_VERBOSER)
-}
-
-func (s *PubSocket) SetManual(value bool) error {
-	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_MANUAL, value)
-}
-
-func (s *PubSocket) Manual() (bool, error) {
-	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL)
-}
-
-func (s *PubSocket) SetManualLastValue(value bool) error {
-	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE, value)
-}
-
-func (s *PubSocket) ManualLastValue() (bool, error) {
-	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE)
-}
-
-func (s *PubSocket) SetWelcomeMessage(message *Message) error {
-	if message == nil {
-		return s.connectionSocket.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, nil)
+func (s *PubSocket) AttachDiscovery(discovery *Discovery) error {
+	if discovery == nil || discovery.closed {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	return s.connectionSocket.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, message.Data())
-}
-
-func (s *PubSocket) WelcomeMessage() (*Message, error) {
-	data, err := s.connectionSocket.getPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, 256)
-	if err != nil {
-		return nil, err
-	}
-	return NewMessage(data)
-}
-
-func (s *PubSocket) ApproveSubscribe(routingID RoutingID) error {
-	return s.connectionSocket.setPubRoutingIDOption(C.ZLINK_PUB_OPT_APPROVE_SUBSCRIBE, routingID)
-}
-
-func (s *PubSocket) RejectSubscribe(routingID RoutingID) error {
-	return s.connectionSocket.setPubRoutingIDOption(C.ZLINK_PUB_OPT_REJECT_SUBSCRIBE, routingID)
-}
-
-func (s *PubSocket) PubOptions() *PubSocketOptions {
-	return &PubSocketOptions{socket: s.connectionSocket}
+	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
 }
 
 func (s *PubSocket) Publish(topic string) SendOp {
@@ -1482,17 +1506,6 @@ func (s *PubSocket) Publish(topic string) SendOp {
 			})
 		})
 	})
-}
-
-func (s *PubSocket) OnSendReady(handler func()) error {
-	return s.connectionSocket.setSendReady(handler)
-}
-
-func (s *PubSocket) AttachDiscovery(discovery *Discovery) error {
-	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
 }
 
 type SubSocket struct {
@@ -1591,10 +1604,6 @@ func (s *DealerSocket) AttachDiscovery(discovery *Discovery) error {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
-}
-
-func (s *DealerSocket) OnSendReady(handler func()) error {
-	return s.connectionSocket.setSendReady(handler)
 }
 
 func (s *DealerSocket) Send() SendOp {
@@ -1710,10 +1719,6 @@ func (s *RouterSocket) AttachDiscovery(discovery *Discovery) error {
 	return configErrorFromResult(C.zlink_socket_attach_discovery(s.raw(), discovery.raw()))
 }
 
-func (s *RouterSocket) OnSendReady(handler func()) error {
-	return s.connectionSocket.setSendReady(handler)
-}
-
 func (s *RouterSocket) SendTo(target RoutingID) SendOp {
 	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
 		rid := target.toC()
@@ -1787,73 +1792,6 @@ func newXPubSocket(ctx *Context) (*XPubSocket, error) {
 	return &XPubSocket{xpubSubscribeSocket: &xpubSubscribeSocket{publishSocket: pub.publishSocket}}, nil
 }
 
-func (s *XPubSocket) SetNoDrop(value bool) error {
-	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_NODROP, value)
-}
-
-func (s *XPubSocket) NoDrop() (bool, error) {
-	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_NODROP)
-}
-
-func (s *XPubSocket) SetVerbose(value bool) error {
-	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_VERBOSE, value)
-}
-
-func (s *XPubSocket) Verbose() (bool, error) {
-	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_VERBOSE)
-}
-
-func (s *XPubSocket) SetVerboser(value bool) error {
-	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_VERBOSER, value)
-}
-
-func (s *XPubSocket) Verboser() (bool, error) {
-	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_VERBOSER)
-}
-
-func (s *XPubSocket) SetManual(value bool) error {
-	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_MANUAL, value)
-}
-
-func (s *XPubSocket) Manual() (bool, error) {
-	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL)
-}
-
-func (s *XPubSocket) SetManualLastValue(value bool) error {
-	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE, value)
-}
-
-func (s *XPubSocket) ManualLastValue() (bool, error) {
-	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE)
-}
-
-func (s *XPubSocket) SetWelcomeMessage(message *Message) error {
-	if message == nil {
-		return s.connectionSocket.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, nil)
-	}
-	return s.connectionSocket.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, message.Data())
-}
-
-func (s *XPubSocket) WelcomeMessage() (*Message, error) {
-	data, err := s.connectionSocket.getPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, 256)
-	if err != nil {
-		return nil, err
-	}
-	return NewMessage(data)
-}
-
-func (s *XPubSocket) ApproveSubscribe(routingID RoutingID) error {
-	return s.connectionSocket.setPubRoutingIDOption(C.ZLINK_PUB_OPT_APPROVE_SUBSCRIBE, routingID)
-}
-
-func (s *XPubSocket) RejectSubscribe(routingID RoutingID) error {
-	return s.connectionSocket.setPubRoutingIDOption(C.ZLINK_PUB_OPT_REJECT_SUBSCRIBE, routingID)
-}
-
-func (s *XPubSocket) PubOptions() *PubSocketOptions {
-	return &PubSocketOptions{socket: s.connectionSocket}
-}
-
 func (s *XPubSocket) Publish(topic string) SendOp {
 	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
 		return s.withCString(topic, func(cstr *C.char) error {
@@ -1862,10 +1800,6 @@ func (s *XPubSocket) Publish(topic string) SendOp {
 			})
 		})
 	})
-}
-
-func (s *XPubSocket) OnSendReady(handler func()) error {
-	return s.connectionSocket.setSendReady(handler)
 }
 
 type XSubSocket struct {

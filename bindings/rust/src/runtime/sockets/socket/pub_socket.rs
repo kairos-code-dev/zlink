@@ -1,5 +1,4 @@
 use std::ffi::c_void;
-use std::time::Duration;
 
 use crate::ctx::Context;
 use crate::error::{ConfigError, HandlerError, check_config_rc};
@@ -9,8 +8,8 @@ use crate::options::{CommonSocketOptions, PubSocketOptions};
 use crate::service::{Empty, SendOp};
 
 use super::{
-    SocketInner, impl_attach_discovery, impl_base_socket, impl_connect, impl_recv_options,
-    impl_send_options,
+    SocketInner, impl_attach_discovery, impl_base_socket, impl_connect
+    
 };
 
 /// PUB socket – publish messages to topic subscribers.
@@ -40,8 +39,8 @@ impl PubSocket {
         self.inner.on_send_ready(handler)
     }
 
-    pub fn common_options(&self) -> CommonSocketOptions<'_, Self> {
-        CommonSocketOptions::new(self)
+    pub fn common_options(&self) -> CommonSocketOptions<'_> {
+        CommonSocketOptions::new(&self.inner)
     }
 
     pub fn pub_options(&self) -> PubSocketOptions<'_, Self> {
@@ -139,8 +138,6 @@ impl PubSocket {
 impl_base_socket!(PubSocket);
 impl_attach_discovery!(PubSocket);
 impl_connect!(PubSocket);
-impl_send_options!(PubSocket);
-impl_recv_options!(PubSocket);
 
 fn set_pub_bool(
     handle: *mut c_void,

@@ -761,7 +761,15 @@ pub(crate) fn take_parts(parts_ptr: *mut ffi::zlink_msg_t, part_count: usize) ->
 
 pub(crate) fn cstr_buf_to_string(buf: &[i8], len: usize) -> String {
     let bytes: &[u8] = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) };
-    String::from_utf8_lossy(bytes).into_owned()
+    // Skip the lossy validation in the common valid-UTF-8 case (most
+    // subscribe topics are short ASCII strings). `str::from_utf8` only
+    // walks the bytes once and lets us go straight to `to_owned`, whereas
+    // `from_utf8_lossy(...).into_owned()` always validates and may build
+    // a Cow before cloning.
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_owned(),
+        Err(_) => String::from_utf8_lossy(bytes).into_owned(),
+    }
 }
 
 pub(crate) fn routing_id_from_ptr(raw: *const ffi::zlink_routing_id_t) -> Option<RoutingId> {
@@ -985,134 +993,6 @@ macro_rules! impl_base_socket {
             pub fn last_endpoint(&self) -> Result<String, crate::error::ConfigError> {
                 self.inner.last_endpoint()
             }
-            pub(crate) fn set_linger(&self, d: Duration) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_linger(d)
-            }
-            pub(crate) fn linger(&self) -> Result<Duration, crate::error::ConfigError> {
-                self.inner.linger()
-            }
-            pub(crate) fn set_max_msg_size(
-                &self,
-                bytes: i64,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_max_msg_size(bytes)
-            }
-            pub(crate) fn max_msg_size(&self) -> Result<i64, crate::error::ConfigError> {
-                self.inner.max_msg_size()
-            }
-            pub(crate) fn set_auto_hwm_msg_unit_bytes(
-                &self,
-                bytes: i32,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_auto_hwm_msg_unit_bytes(bytes)
-            }
-            pub(crate) fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, crate::error::ConfigError> {
-                self.inner.auto_hwm_msg_unit_bytes()
-            }
-            pub(crate) fn set_backlog(&self, value: i32) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_backlog(value)
-            }
-            pub(crate) fn backlog(&self) -> Result<i32, crate::error::ConfigError> {
-                self.inner.backlog()
-            }
-            pub(crate) fn set_tcp_keepalive(
-                &self,
-                enabled: bool,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_tcp_keepalive(enabled)
-            }
-            pub(crate) fn tcp_keepalive(&self) -> Result<bool, crate::error::ConfigError> {
-                self.inner.tcp_keepalive()
-            }
-            pub(crate) fn set_tcp_nodelay(
-                &self,
-                enabled: bool,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_tcp_nodelay(enabled)
-            }
-            pub(crate) fn tcp_nodelay(&self) -> Result<bool, crate::error::ConfigError> {
-                self.inner.tcp_nodelay()
-            }
-            pub(crate) fn set_ipv6(&self, enabled: bool) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_ipv6(enabled)
-            }
-            pub(crate) fn ipv6(&self) -> Result<bool, crate::error::ConfigError> {
-                self.inner.ipv6()
-            }
-            pub(crate) fn set_immediate(
-                &self,
-                enabled: bool,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_immediate(enabled)
-            }
-            pub(crate) fn immediate(&self) -> Result<bool, crate::error::ConfigError> {
-                self.inner.immediate()
-            }
-            pub(crate) fn set_reconnect_interval(
-                &self,
-                d: Duration,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_reconnect_interval(d)
-            }
-            pub(crate) fn reconnect_interval(&self) -> Result<Duration, crate::error::ConfigError> {
-                self.inner.reconnect_interval()
-            }
-            pub(crate) fn set_reconnect_interval_max(
-                &self,
-                d: Duration,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_reconnect_interval_max(d)
-            }
-            pub(crate) fn reconnect_interval_max(
-                &self,
-            ) -> Result<Duration, crate::error::ConfigError> {
-                self.inner.reconnect_interval_max()
-            }
-            pub(crate) fn set_connect_timeout(
-                &self,
-                d: Duration,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_connect_timeout(d)
-            }
-            pub(crate) fn connect_timeout(&self) -> Result<Duration, crate::error::ConfigError> {
-                self.inner.connect_timeout()
-            }
-            pub(crate) fn set_rid_duplicate_policy(
-                &self,
-                value: i32,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_rid_duplicate_policy(value)
-            }
-            pub(crate) fn rid_duplicate_policy(&self) -> Result<i32, crate::error::ConfigError> {
-                self.inner.rid_duplicate_policy()
-            }
-            pub(crate) fn set_heartbeat_interval(
-                &self,
-                d: Duration,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_heartbeat_interval(d)
-            }
-            pub(crate) fn heartbeat_interval(&self) -> Result<Duration, crate::error::ConfigError> {
-                self.inner.heartbeat_interval()
-            }
-            pub(crate) fn set_heartbeat_ttl(
-                &self,
-                d: Duration,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_heartbeat_ttl(d)
-            }
-            pub(crate) fn heartbeat_ttl(&self) -> Result<Duration, crate::error::ConfigError> {
-                self.inner.heartbeat_ttl()
-            }
-            pub(crate) fn set_heartbeat_timeout(
-                &self,
-                d: Duration,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_heartbeat_timeout(d)
-            }
-            pub(crate) fn heartbeat_timeout(&self) -> Result<Duration, crate::error::ConfigError> {
-                self.inner.heartbeat_timeout()
-            }
             pub fn set_tls_cert(&self, cert: &str) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tls_cert(cert)
             }
@@ -1209,68 +1089,7 @@ macro_rules! impl_attach_discovery {
 }
 
 /// Send-side options – for sockets that can send.
-macro_rules! impl_send_options {
-    ($ty:ident) => {
-        #[allow(dead_code)]
-        impl $ty {
-            pub(crate) fn set_send_hwm(&self, value: i32) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_send_hwm(value)
-            }
-            pub(crate) fn send_hwm(&self) -> Result<i32, crate::error::ConfigError> {
-                self.inner.send_hwm()
-            }
-            pub(crate) fn set_send_timeout(
-                &self,
-                d: Duration,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_send_timeout(d)
-            }
-            pub(crate) fn send_timeout(&self) -> Result<Duration, crate::error::ConfigError> {
-                self.inner.send_timeout()
-            }
-            pub(crate) fn set_send_buffer_size(
-                &self,
-                bytes: i32,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_send_buffer_size(bytes)
-            }
-        }
-    };
-}
-
-/// Receive-side options – for sockets that can receive.
-macro_rules! impl_recv_options {
-    ($ty:ident) => {
-        #[allow(dead_code)]
-        impl $ty {
-            pub(crate) fn set_recv_hwm(&self, value: i32) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_recv_hwm(value)
-            }
-            pub(crate) fn recv_hwm(&self) -> Result<i32, crate::error::ConfigError> {
-                self.inner.recv_hwm()
-            }
-            pub(crate) fn set_recv_timeout(
-                &self,
-                d: Duration,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_recv_timeout(d)
-            }
-            pub(crate) fn recv_timeout(&self) -> Result<Duration, crate::error::ConfigError> {
-                self.inner.recv_timeout()
-            }
-            pub(crate) fn set_recv_buffer_size(
-                &self,
-                bytes: i32,
-            ) -> Result<(), crate::error::ConfigError> {
-                self.inner.set_recv_buffer_size(bytes)
-            }
-        }
-    };
-}
-
 pub(crate) use impl_attach_discovery;
 pub(crate) use impl_base_socket;
 pub(crate) use impl_connect;
-pub(crate) use impl_recv_options;
 pub(crate) use impl_routing_id_options;
-pub(crate) use impl_send_options;

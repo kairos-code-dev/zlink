@@ -1,7 +1,6 @@
 use std::ffi::c_void;
 use std::mem::MaybeUninit;
 use std::ptr;
-use std::time::Duration;
 
 use crate::ctx::Context;
 use crate::domain::Received;
@@ -13,8 +12,8 @@ use crate::options::{CommonSocketOptions, StreamSocketOptions};
 use crate::service::{ActorBindOp, ActorRef, ActorUnbindOp, Empty, SendOp};
 
 use super::{
-    SendHandle, SocketInner, impl_base_socket, impl_recv_options, impl_routing_id_options,
-    impl_send_options,
+    SendHandle, SocketInner, impl_base_socket, impl_routing_id_options,
+    
 };
 
 /// STREAM socket – raw TCP/transport-level messaging with routing-id.
@@ -146,8 +145,8 @@ impl StreamSocket {
         Ok(entries.iter().map(ActorRef::from_raw).collect())
     }
 
-    pub fn common_options(&self) -> CommonSocketOptions<'_, Self> {
-        CommonSocketOptions::new(self)
+    pub fn common_options(&self) -> CommonSocketOptions<'_> {
+        CommonSocketOptions::new(&self.inner)
     }
 
     pub fn stream_options(&self) -> StreamSocketOptions<'_> {
@@ -207,8 +206,6 @@ fn get_stream_bool_option(
 
 impl_base_socket!(StreamSocket);
 // No impl_connect – STREAM socket does not use general connect
-impl_send_options!(StreamSocket);
-impl_recv_options!(StreamSocket);
 impl_routing_id_options!(StreamSocket);
 
 fn take_message(raw: *mut ffi::zlink_msg_t) -> Message {

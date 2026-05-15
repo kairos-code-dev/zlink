@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use super::{
     SendHandle, SocketInner, close_unreceived_part, impl_attach_discovery, impl_base_socket,
-    impl_connect, impl_recv_options, impl_routing_id_options, impl_send_options,
+    impl_connect, impl_routing_id_options,
 };
 use crate::ctx::Context;
 use crate::domain::Received;
@@ -112,8 +112,8 @@ impl RouterSocket {
         SendHandle::new(self.inner.handle)
     }
 
-    pub fn common_options(&self) -> CommonSocketOptions<'_, Self> {
-        CommonSocketOptions::new(self)
+    pub fn common_options(&self) -> CommonSocketOptions<'_> {
+        CommonSocketOptions::new(&self.inner)
     }
 
     pub fn router_options(&self) -> RouterSocketOptions<'_> {
@@ -204,8 +204,6 @@ impl RouterSocket {
 impl_base_socket!(RouterSocket);
 impl_attach_discovery!(RouterSocket);
 impl_connect!(RouterSocket);
-impl_send_options!(RouterSocket);
-impl_recv_options!(RouterSocket);
 impl_routing_id_options!(RouterSocket);
 
 fn router_received_from_raw(

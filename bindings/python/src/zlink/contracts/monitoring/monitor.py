@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
-import queue
-import threading
 
+from ..._runtime.core.dispatcher import CallbackDispatcher
 from ..enums.enums import (
     AutoHwmRecalcReason,
     CloseResult,
@@ -131,7 +130,6 @@ def _monitor_snapshot_from_native(snapshot):
     )
 
 
-_CALLBACK_SENTINEL = object()
 _SOCKET_MONITOR_HANDLER = ctypes.CFUNCTYPE(
     None, ctypes.POINTER(ZlinkMonitorEvent), ctypes.c_void_p
 )
@@ -141,61 +139,44 @@ class _BaseMonitor:
     def __init__(self, handle):
         self._handle = handle
         self._handler = None
-        self._handler_thread = None
-        self._handler_stop = None
-        self._handler_queue = None
         self._handler_cb = None
+        self._dispatcher = CallbackDispatcher(
+            "zlink-monitor-dispatch", _enter_callback, _leave_callback
+        )
         if not self._handle:
             _raise_last_error()
 
     def _start_event_dispatch(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
-        if self._handler_thread is not None:
+        if self._handler is not None:
             raise RuntimeError("handler is already attached")
 
-        stop = threading.Event()
-        events = queue.SimpleQueue()
         self._handler = handler
-        self._handler_stop = stop
-
+        dispatcher = self._dispatcher
         decode = MonitorSocket._decode_event
-        native_handler = _SOCKET_MONITOR_HANDLER
         register = lib().zlink_socket_monitor_handler
 
-        def _callback(event_ptr, _):
-            if stop.is_set():
-                return
+        def _invoke(event):
             try:
-                event = decode(event_ptr.contents)
-                events.put(event)
+                handler(event)
             except Exception:
                 _report_unhandled_callback_exception(handler)
 
-        callback = native_handler(_callback)
+        def _callback(event_ptr, _):
+            try:
+                event = decode(event_ptr.contents)
+            except Exception:
+                _report_unhandled_callback_exception(handler)
+                return
+            dispatcher.submit(lambda event=event: _invoke(event))
+
+        callback = _SOCKET_MONITOR_HANDLER(_callback)
         rc = register(self._handle, callback, None)
         if rc != 0:
+            self._handler = None
             _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
         self._handler_cb = callback
-        self._handler_queue = events
-
-        def _loop():
-            while True:
-                event = events.get()
-                if event is _CALLBACK_SENTINEL:
-                    return
-                _enter_callback()
-                try:
-                    handler(event)
-                except Exception:
-                    _report_unhandled_callback_exception(handler)
-                finally:
-                    _leave_callback()
-
-        thread = threading.Thread(target=_loop, name="zlink-monitor-event")
-        thread.daemon = True
-        self._handler_thread = thread
-        thread.start()
 
     def snapshot(self):
         snapshot = ZlinkMonitorSnapshot()
@@ -208,23 +189,8 @@ class _BaseMonitor:
         if not self._handle:
             return
         self._handler = None
-        stop = self._handler_stop
-        thread = self._handler_thread
-        events = self._handler_queue
-        if stop is not None:
-            stop.set()
-        if events is not None:
-            events.put(_CALLBACK_SENTINEL)
-        if (
-            thread is not None
-            and thread.is_alive()
-            and thread is not threading.current_thread()
-        ):
-            thread.join(timeout=1.0)
-        self._handler_stop = None
-        self._handler_thread = None
+        self._dispatcher.close()
         self._handler_cb = None
-        self._handler_queue = None
         handle = ctypes.c_void_p(self._handle)
         rc = lib().zlink_monitor_close(ctypes.byref(handle))
         self._handle = None

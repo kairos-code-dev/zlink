@@ -1,5 +1,4 @@
 use std::ffi::c_void;
-use std::time::Duration;
 
 use crate::ctx::Context;
 use crate::domain::SubscriptionEvent;
@@ -11,7 +10,7 @@ use crate::options::{CommonSocketOptions, PubSocketOptions};
 use crate::service::{Empty, SendOp};
 
 use super::pub_socket::{get_pub_bool, get_pub_int, get_pub_message, set_pub_bytes};
-use super::{SocketInner, impl_base_socket, impl_connect, impl_recv_options, impl_send_options};
+use super::{SocketInner, impl_base_socket, impl_connect};
 
 /// XPUB socket – extended publish with subscription event access.
 ///
@@ -48,8 +47,8 @@ impl XPubSocket {
         self.inner.on_send_ready(handler)
     }
 
-    pub fn common_options(&self) -> CommonSocketOptions<'_, Self> {
-        CommonSocketOptions::new(self)
+    pub fn common_options(&self) -> CommonSocketOptions<'_> {
+        CommonSocketOptions::new(&self.inner)
     }
 
     pub fn pub_options(&self) -> PubSocketOptions<'_, Self> {
@@ -146,8 +145,6 @@ impl XPubSocket {
 
 impl_base_socket!(XPubSocket);
 impl_connect!(XPubSocket);
-impl_send_options!(XPubSocket);
-impl_recv_options!(XPubSocket);
 
 fn set_pub_bool(
     handle: *mut c_void,

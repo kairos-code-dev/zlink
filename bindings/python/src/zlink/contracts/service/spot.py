@@ -3,11 +3,11 @@
 import asyncio
 import ctypes
 import errno
-import queue
 import threading
 import time
 from dataclasses import dataclass, field
 
+from ..._runtime.core.dispatcher import CallbackDispatcher
 from ..._runtime.sockets.socket_base import (
     _classify_nonblocking_send_errno,
     _clone_received_owner,
@@ -103,7 +103,6 @@ from ..._runtime.core.core import (
 from ..monitoring.monitor import MonitorSnapshot, _monitor_snapshot_from_native
 
 
-_SPOT_CALLBACK_SENTINEL = object()
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)
 _ERRNO_ENOTSUP = getattr(errno, "ENOTSUP", getattr(errno, "EOPNOTSUPP", 95))
 _SPOT_INIT_TOKEN = object()
@@ -2326,16 +2325,11 @@ class Spot:
         self._routed_handler_cb = None
         self._dispatch_handler = None
         self._dispatch_handler_cb = None
-        self._handler = None
-        self._handler_cb = None
-        self._handler_queue = None
-        self._subscribe_thread = None
-        self._subscribe_stop = None
-        self._send_ready_handler_thread = None
-        self._send_ready_handler_stop = None
-        self._send_ready_handler_queue = None
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
+        self._dispatcher = CallbackDispatcher(
+            "zlink-spot-dispatch", _enter_callback, _leave_callback
+        )
         self._actor_lifecycle_on_join = None
         self._actor_lifecycle_on_leave = None
         self._actor_lifecycle_on_join_cb = None
@@ -2786,42 +2780,27 @@ class Spot:
     def on_send_ready(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
-        if self._send_ready_handler_thread is not None:
+        if self._send_ready_handler is not None:
             raise RuntimeError("send-ready handler is already attached")
 
-        stop = threading.Event()
-        events = queue.SimpleQueue()
         self._send_ready_handler = handler
-        self._send_ready_handler_stop = stop
-        self._send_ready_handler_queue = events
+        dispatcher = self._dispatcher
+
+        def _invoke():
+            try:
+                handler(self)
+            except Exception:
+                _report_unhandled_callback_exception(handler)
 
         def _callback(_, __):
-            if stop.is_set():
-                return
-            events.put(None)
+            dispatcher.submit(_invoke)
 
         callback = _SOCKET_SEND_READY_HANDLER(_callback)
         rc = lib().zlink_send_ready_handler(self._handle, callback, None)
         if rc != 0:
+            self._send_ready_handler = None
             _raise_last_error()
         self._send_ready_handler_cb = callback
-        def _dispatch():
-            while True:
-                item = events.get()
-                if item is _SPOT_CALLBACK_SENTINEL:
-                    return
-                _enter_callback()
-                try:
-                    handler(self)
-                except Exception:
-                    _report_unhandled_callback_exception(handler)
-                finally:
-                    _leave_callback()
-
-        thread = threading.Thread(target=_dispatch, name="zlink-spot-send-ready")
-        thread.daemon = True
-        self._send_ready_handler_thread = thread
-        thread.start()
 
     def _ensure_request_reply_handler(self):
         if self._request_reply_handler is None:
@@ -3274,44 +3253,11 @@ class Spot:
     def close(self):
         if not self._handle:
             return
-        handler_cb = self._handler_cb
         send_ready_handler_cb = self._send_ready_handler_cb
         routed_handler_cb = self._routed_handler_cb
         dispatch_handler_cb = self._dispatch_handler_cb
-        stop = self._subscribe_stop
-        thread = self._subscribe_thread
-        handler_queue = self._handler_queue
-        if stop is not None:
-            stop.set()
-        if handler_queue is not None:
-            handler_queue.put(_SPOT_CALLBACK_SENTINEL)
-        if (
-            thread is not None
-            and thread.is_alive()
-            and thread is not threading.current_thread()
-        ):
-            thread.join(timeout=1.0)
-        send_ready_stop = self._send_ready_handler_stop
-        send_ready_thread = self._send_ready_handler_thread
-        send_ready_queue = self._send_ready_handler_queue
-        if send_ready_stop is not None:
-            send_ready_stop.set()
-        if send_ready_queue is not None:
-            send_ready_queue.put(_SPOT_CALLBACK_SENTINEL)
-        if (
-            send_ready_thread is not None
-            and send_ready_thread.is_alive()
-            and send_ready_thread is not threading.current_thread()
-        ):
-            send_ready_thread.join(timeout=1.0)
-        self._handler = None
-        self._handler_queue = None
-        self._subscribe_stop = None
-        self._subscribe_thread = None
+        self._dispatcher.close()
         self._send_ready_handler = None
-        self._send_ready_handler_thread = None
-        self._send_ready_handler_stop = None
-        self._send_ready_handler_queue = None
         self._routed_handler = None
         self._routed_handler_cb = None
         self._dispatch_handler = None
@@ -3328,9 +3274,7 @@ class Spot:
         handle = ctypes.c_void_p(self._handle)
         self._handle = None
         rc = lib().zlink_spot_destroy(ctypes.byref(handle))
-        self._handler_cb = None
         self._send_ready_handler_cb = None
-        del handler_cb
         del send_ready_handler_cb
         del routed_handler_cb
         del dispatch_handler_cb
@@ -3340,12 +3284,10 @@ class Spot:
             _raise_last_error()
 
     def _ensure_subscribe_direct_mode(self):
-        if self._subscribe_thread is not None:
-            raise ZlinkError(errno.EBUSY, "spot is in callback subscribe mode")
+        return
 
     def _validate_poller_events(self, events):
-        if self._subscribe_thread is not None and (events & 1):
-            raise ZlinkError(errno.EBUSY, "spot is in callback subscribe mode")
+        return
 
     def __enter__(self):
         return self

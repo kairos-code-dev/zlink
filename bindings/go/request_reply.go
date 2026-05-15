@@ -353,21 +353,27 @@ func dispatchRequestCallback(state *replyCallbackState, callback RequestReplyCal
 }
 
 func cloneParts(parts []*Message) ([]*Message, error) {
-	if len(parts) == 0 {
+	n := len(parts)
+	if n == 0 {
 		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	cloned := make([]*Message, 0, len(parts))
-	for _, part := range parts {
+	// Pre-size the result and assign by index. The previous append-based
+	// loop incurred bounds-check + len-increment work on every iteration;
+	// since we know n up front, neither is needed. Hot path for request,
+	// send-to-spot, and routed reply.
+	cloned := make([]*Message, n)
+	for i := 0; i < n; i++ {
+		part := parts[i]
 		if part == nil {
-			closeMessageSlice(cloned)
+			closeMessageSlice(cloned[:i])
 			return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
 		dup, err := part.clone()
 		if err != nil {
-			closeMessageSlice(cloned)
+			closeMessageSlice(cloned[:i])
 			return nil, err
 		}
-		cloned = append(cloned, dup)
+		cloned[i] = dup
 	}
 	return cloned, nil
 }

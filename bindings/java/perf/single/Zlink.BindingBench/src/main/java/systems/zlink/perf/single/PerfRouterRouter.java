@@ -2,13 +2,17 @@
 
 package systems.zlink.perf.single;
 
-import systems.zlink.Context;
-import systems.zlink.Message;
-import systems.zlink.MonitorEventType;
-import systems.zlink.PollEventFlag;
-import systems.zlink.RouterSocket;
-import systems.zlink.RoutingId;
-import systems.zlink.SocketType;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.MonitorEventType;
+import systems.zlink.contracts.PollEventFlag;
+import systems.zlink.contracts.RouterSocket;
+import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.SocketType;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
@@ -71,7 +75,7 @@ final class PerfRouterRouter {
                         pollSet.poll(-1);
                         boolean stop = false;
                         while (true) {
-                            systems.zlink.Received received =
+                            systems.zlink.contracts.Received received =
                                 PerfUtil.recvNoWait(receiver);
                             if (received == null) {
                                 break;

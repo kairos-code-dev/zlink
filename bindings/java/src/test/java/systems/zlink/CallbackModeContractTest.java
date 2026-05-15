@@ -1,12 +1,16 @@
-package systems.zlink;
+package systems.zlink.contracts;
 
-import systems.zlink.SpotDispatchEvent;
-import systems.zlink.SpotDispatchSubjectKind;
-import systems.zlink.service.discovery.Discovery;
-import systems.zlink.service.registry.Registry;
-import systems.zlink.service.registry.AutoConnectType;
-import systems.zlink.service.spot.Spot;
-import systems.zlink.service.spot.SpotNode;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.SpotDispatchEvent;
+import systems.zlink.contracts.SpotDispatchSubjectKind;
+import systems.zlink.contracts.service.discovery.Discovery;
+import systems.zlink.contracts.service.registry.Registry;
+import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -36,10 +40,10 @@ public class CallbackModeContractTest {
                 right.send().message(outbound).submit();
             }
 
-            try (systems.zlink.Received received = new systems.zlink.Received()) {
+            try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
 
 
-                left.recv(received, systems.zlink.RecvFlags.NONE);
+                left.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                 assertArrayEquals("callback-body".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
                 assertTrue(received.isSinglePart());

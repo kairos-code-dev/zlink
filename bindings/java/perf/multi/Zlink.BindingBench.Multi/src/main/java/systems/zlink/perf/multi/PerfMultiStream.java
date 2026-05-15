@@ -2,14 +2,18 @@
 
 package systems.zlink.perf.multi;
 
-import systems.zlink.Context;
-import systems.zlink.Message;
-import systems.zlink.RoutingId;
-import systems.zlink.SendFlags;
-import systems.zlink.SocketType;
-import systems.zlink.StreamSocket;
-import systems.zlink.SubmitException;
-import systems.zlink.SubmitResult;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.SendFlags;
+import systems.zlink.contracts.SocketType;
+import systems.zlink.contracts.StreamSocket;
+import systems.zlink.contracts.SubmitException;
+import systems.zlink.contracts.SubmitResult;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"zlink.systems/zlink"
+	zlink "zlink.systems/zlink/contracts"
 	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 

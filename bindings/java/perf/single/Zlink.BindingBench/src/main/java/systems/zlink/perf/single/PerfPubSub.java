@@ -2,16 +2,20 @@
 
 package systems.zlink.perf.single;
 
-import systems.zlink.Context;
-import systems.zlink.Message;
-import systems.zlink.MonitorEventType;
-import systems.zlink.PollEventFlag;
-import systems.zlink.PubSocket;
-import systems.zlink.RecvFlags;
-import systems.zlink.SendFlags;
-import systems.zlink.SocketType;
-import systems.zlink.SubSocket;
-import systems.zlink.TopicMessage;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.MonitorEventType;
+import systems.zlink.contracts.PollEventFlag;
+import systems.zlink.contracts.PubSocket;
+import systems.zlink.contracts.RecvFlags;
+import systems.zlink.contracts.SendFlags;
+import systems.zlink.contracts.SocketType;
+import systems.zlink.contracts.SubSocket;
+import systems.zlink.contracts.TopicMessage;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;

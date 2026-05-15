@@ -1,12 +1,16 @@
 package systems.zlink.contract;
 
-import systems.zlink.Context;
-import systems.zlink.Message;
-import systems.zlink.MonitorEvent;
-import systems.zlink.MonitorEventType;
-import systems.zlink.MonitorSocket;
-import systems.zlink.PairSocket;
-import systems.zlink.TestSupport;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.MonitorEvent;
+import systems.zlink.contracts.MonitorEventType;
+import systems.zlink.contracts.MonitorSocket;
+import systems.zlink.contracts.PairSocket;
+import systems.zlink.contracts.TestSupport;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Method;
 import java.util.concurrent.CompletableFuture;
@@ -48,9 +52,9 @@ public class MonitorBehaviorContractTest {
 
     @Test
     public void monitorSocketExposesDocumentedRecvSurface() {
-        assertTrue(hasPublicMethod(systems.zlink.MonitorSocket.class, "recv"));
-        assertTrue(hasPublicMethod(systems.zlink.MonitorSocket.class, "recv",
-            systems.zlink.RecvFlags.class));
+        assertTrue(hasPublicMethod(systems.zlink.contracts.MonitorSocket.class, "recv"));
+        assertTrue(hasPublicMethod(systems.zlink.contracts.MonitorSocket.class, "recv",
+            systems.zlink.contracts.RecvFlags.class));
         assertTrue(Modifier.isPublic(MonitorSocket.class.getModifiers()));
         assertNotNull(MonitorSocket.IGNORE_HANDLER);
     }

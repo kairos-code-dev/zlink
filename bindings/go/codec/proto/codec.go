@@ -6,7 +6,7 @@ import (
 
 	pbproto "google.golang.org/protobuf/proto"
 
-	"zlink.systems/zlink"
+	zlink "zlink.systems/zlink/contracts"
 )
 
 var (

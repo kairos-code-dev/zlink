@@ -1,11 +1,15 @@
 package systems.zlink.samples;
 
-import systems.zlink.Context;
-import systems.zlink.PubSocket;
-import systems.zlink.service.discovery.Discovery;
-import systems.zlink.service.registry.Registry;
-import systems.zlink.service.registry.RegistryQueryClient;
-import systems.zlink.service.registry.AutoConnectType;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.PubSocket;
+import systems.zlink.contracts.service.discovery.Discovery;
+import systems.zlink.contracts.service.registry.Registry;
+import systems.zlink.contracts.service.registry.RegistryQueryClient;
+import systems.zlink.contracts.service.registry.AutoConnectType;
 
 public final class RegistryQuerySample {
     public static void main(String[] args) {

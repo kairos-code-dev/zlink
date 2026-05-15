@@ -1,13 +1,17 @@
 package systems.zlink.contract;
 
-import systems.zlink.Context;
-import systems.zlink.Message;
-import systems.zlink.PubSocket;
-import systems.zlink.RouterSocket;
-import systems.zlink.RouterSocketOptions;
-import systems.zlink.RoutingId;
-import systems.zlink.SubSocket;
-import systems.zlink.TestSupport;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.PubSocket;
+import systems.zlink.contracts.RouterSocket;
+import systems.zlink.contracts.RouterSocketOptions;
+import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.SubSocket;
+import systems.zlink.contracts.TestSupport;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;

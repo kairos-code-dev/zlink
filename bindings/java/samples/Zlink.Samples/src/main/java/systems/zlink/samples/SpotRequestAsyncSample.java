@@ -1,12 +1,16 @@
 package systems.zlink.samples;
 
-import systems.zlink.Context;
-import systems.zlink.DealerSocket;
-import systems.zlink.Message;
-import systems.zlink.RequestResult;
-import systems.zlink.RouterSocket;
-import systems.zlink.SendFlags;
-import systems.zlink.service.spot.SpotNode;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.DealerSocket;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.RequestResult;
+import systems.zlink.contracts.RouterSocket;
+import systems.zlink.contracts.SendFlags;
+import systems.zlink.contracts.service.spot.SpotNode;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -28,8 +32,8 @@ public final class SpotRequestAsyncSample {
             requesterNode.attachChannelDealerManual(channelName, requesterDealer);
 
             Thread responder = new Thread(() -> {
-                try (systems.zlink.Received received = new systems.zlink.Received()) {
-                    requesterRouter.recv(received, systems.zlink.RecvFlags.NONE);
+                try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+                    requesterRouter.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                     if (!"spot-ping".equals(SampleSupport.singleUtf8(received))) {
                         throw new IllegalStateException("unexpected spot request");
                     }

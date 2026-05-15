@@ -1,7 +1,12 @@
 package systems.zlink.codec.protobuf;
 
-interface MessageCodec<T extends com.google.protobuf.Message> {
-    systems.zlink.Message toMessage(T value);
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
 
-    T fromMessage(systems.zlink.Message message);
+
+interface MessageCodec<T extends com.google.protobuf.Message> {
+    systems.zlink.contracts.Message toMessage(T value);
+
+    T fromMessage(systems.zlink.contracts.Message message);
 }

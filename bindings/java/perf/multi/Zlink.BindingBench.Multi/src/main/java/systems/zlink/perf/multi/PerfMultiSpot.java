@@ -2,22 +2,26 @@
 
 package systems.zlink.perf.multi;
 
-import systems.zlink.Context;
-import systems.zlink.Message;
-import systems.zlink.PollEvent;
-import systems.zlink.PollEventFlag;
-import systems.zlink.Poller;
-import systems.zlink.RecvException;
-import systems.zlink.RecvFlags;
-import systems.zlink.RecvResult;
-import systems.zlink.RoutingId;
-import systems.zlink.SendFlags;
-import systems.zlink.TopicMessage;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.PollEvent;
+import systems.zlink.contracts.PollEventFlag;
+import systems.zlink.contracts.Poller;
+import systems.zlink.contracts.RecvException;
+import systems.zlink.contracts.RecvFlags;
+import systems.zlink.contracts.RecvResult;
+import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.SendFlags;
+import systems.zlink.contracts.TopicMessage;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
-import systems.zlink.service.spot.Spot;
-import systems.zlink.service.spot.SpotNode;
+import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -197,7 +201,7 @@ final class PerfMultiSpot {
                 subscriber.onDispatchEvent(info -> {
                     if (info != null
                         && info.event()
-                        == systems.zlink.SpotDispatchEvent.SUBSCRIBE_READABLE) {
+                        == systems.zlink.contracts.SpotDispatchEvent.SUBSCRIBE_READABLE) {
                         long activeEnd = activeEndRef.get();
                         if (activeEnd == 0L) {
                             return;

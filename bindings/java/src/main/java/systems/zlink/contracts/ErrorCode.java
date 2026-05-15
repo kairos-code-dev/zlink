@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+package systems.zlink.contracts;
+
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+
+enum ErrorCode {
+    EFSM(156384763),
+    ENOCOMPATPROTO(156384764),
+    ETERM(156384765),
+    EMTHREAD(156384766);
+
+    private final int value;
+    ErrorCode(int v) { this.value = v; }
+    public int getValue() { return value; }
+}

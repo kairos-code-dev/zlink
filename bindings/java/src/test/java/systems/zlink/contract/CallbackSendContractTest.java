@@ -2,17 +2,21 @@
 
 package systems.zlink.contract;
 
-import systems.zlink.Context;
-import systems.zlink.DealerSocket;
-import systems.zlink.Message;
-import systems.zlink.MonitorEventType;
-import systems.zlink.PairSocket;
-import systems.zlink.RequestResult;
-import systems.zlink.RouterSocket;
-import systems.zlink.RoutingId;
-import systems.zlink.SendFlags;
-import systems.zlink.StreamSocket;
-import systems.zlink.TestSupport;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.DealerSocket;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.MonitorEventType;
+import systems.zlink.contracts.PairSocket;
+import systems.zlink.contracts.RequestResult;
+import systems.zlink.contracts.RouterSocket;
+import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.SendFlags;
+import systems.zlink.contracts.StreamSocket;
+import systems.zlink.contracts.TestSupport;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
@@ -62,9 +66,9 @@ public class CallbackSendContractTest {
             TestSupport.allowTcpRequestReplyCallbackHandshakeToSettle();
 
             Thread routerThread = new Thread(() -> {
-                try (systems.zlink.Received received = new systems.zlink.Received()) {
+                try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
 
-                    router.recv(received, systems.zlink.RecvFlags.NONE);
+                    router.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                     RoutingId rid = received.routingId().orElseThrow();
                     assertNotNull(rid,
                         "router must receive routing id from dealer");
@@ -128,9 +132,9 @@ public class CallbackSendContractTest {
             }
 
             Thread rightThread = new Thread(() -> {
-                try (systems.zlink.Received received = new systems.zlink.Received()) {
+                try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
 
-                    right.recv(received, systems.zlink.RecvFlags.NONE);
+                    right.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                     byte[] data = received.singlePartOrThrow().toByteArray();
                     assertEquals("ping",
                         new String(data, StandardCharsets.UTF_8));
@@ -144,9 +148,9 @@ public class CallbackSendContractTest {
             rightThread.start();
 
             Thread leftThread = new Thread(() -> {
-                try (systems.zlink.Received received = new systems.zlink.Received()) {
+                try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
 
-                    left.recv(received, systems.zlink.RecvFlags.NONE);
+                    left.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                     replyPayload.set(received.singlePartOrThrow().toByteArray());
                 } catch (Throwable t) {
                     callbackError.set(t);
@@ -201,9 +205,9 @@ public class CallbackSendContractTest {
                     TestSupport.allowTcpRequestReplyCallbackHandshakeToSettle();
 
                     Thread routerThread = new Thread(() -> {
-                        try (systems.zlink.Received received = new systems.zlink.Received()) {
+                        try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
 
-                            router.recv(received, systems.zlink.RecvFlags.NONE);
+                            router.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                             RoutingId rid = received.routingId().orElseThrow();
                             byte[] data = received.singlePartOrThrow()
                                 .toByteArray();

@@ -3,24 +3,26 @@
 # Python Binding Implementation Blueprint
 
 This document defines the expected Python library shape. It is not an
-exhaustive list of every class or method. The concrete public contract is
-the `zlink` package exported from `bindings/python/src/zlink/__init__.py` and
-documented lower-case public subpackages.
+exhaustive list of every class or method. The concrete public contract source
+is `bindings/python/src/zlink/contracts/`. The `zlink` package exported from
+`bindings/python/src/zlink/__init__.py` is the public projection that users
+import.
 
-A Python implementation is aligned when the `zlink` package tree, type hints,
-tests, samples, perf runners, and runtime behavior follow this blueprint and
-map stable `core/include/zlink.h` capabilities into Python-idiomatic APIs.
+A Python implementation is aligned when the `zlink.contracts`, private runtime
+packages, type hints, tests, samples, perf runners, and runtime behavior follow
+this blueprint and map stable `core/include/zlink.h` capabilities into
+Python-idiomatic APIs.
 
 ## Public Contract Source
 
-- Public contract: `bindings/python/src/zlink/__init__.py` exports and
-  documented lower-case modules under `bindings/python/src/zlink/`.
+- Public contract source: `bindings/python/src/zlink/contracts/`.
 - Package projection: names exported from `zlink`.
 - Internal implementation: underscore-prefixed packages such as `_runtime` and
   `_native`, private extension modules, callback bridge code, request progress
   helpers, and raw part-loop helpers.
 - Documentation role: this README defines shape and semantic coverage.
-  `zlink.__init__` and documented modules own the exact public member list.
+  `zlink/contracts/`, `zlink.__init__`, and type hints own the exact public
+  member list.
 
 Perf, samples, and tests must import from `zlink`, not from underscore modules.
 
@@ -28,8 +30,7 @@ Perf, samples, and tests must import from `zlink`, not from underscore modules.
 
 Use these paths consistently when changing the Python binding.
 
-- Public contract: `bindings/python/src/zlink/__init__.py` and documented
-  lower-case modules under `bindings/python/src/zlink/`.
+- Public contract: `bindings/python/src/zlink/contracts/`.
 - Runtime implementation: `bindings/python/src/zlink/_runtime/`.
 - Native bridge/artifacts: `bindings/python/src/zlink/_native/`.
 - Codec extensions: `bindings/python/codecs/`.
@@ -41,26 +42,27 @@ Underscore-prefixed modules are implementation detail. If a user needs a name,
 re-export it from `zlink` intentionally and document the public behavior.
 `__init__.py`, type hints, and generated API reference are the Python package
 projection of the contract. Do not expose `zlink.Contracts` or `zlink.Runtime`
-as public import paths. Do not create `src/zlink/Contracts` or
-`src/zlink/Runtime`; those names become importable Python packages and blur the
-public boundary. The following tree is the target implementation structure.
-Public classes, functions, exceptions, enums, type aliases, and builder
-contracts belong in `zlink` or lower-case public modules. Native extension
-calls, `ctypes`/CFFI declarations, handle owners, callback trampolines,
-marshalling, and request progress helpers belong under `_runtime` or `_native`.
+as public import paths. Do not create capitalized `src/zlink/Contracts` or
+`src/zlink/Runtime`; Python package names stay lower-case. The following tree
+is the target implementation structure. Public classes, functions, exceptions,
+enums, type aliases, and builder contracts belong in `contracts/` and are
+re-exported intentionally from `zlink`. Native extension calls, `ctypes`/CFFI
+declarations, handle owners, callback trampolines, marshalling, and request
+progress helpers belong under `_runtime` or `_native`.
 
 ```text
 bindings/python/
 +-- src/
 |   +-- zlink/
 |   |   +-- __init__.py
-|   |   +-- core/
-|   |   +-- messaging/
-|   |   +-- sockets/
-|   |   +-- monitoring/
-|   |   +-- service/
-|   |   +-- errors/
-|   |   +-- enums/
+|   |   +-- contracts/
+|   |   |   +-- core/
+|   |   |   +-- messaging/
+|   |   |   +-- sockets/
+|   |   |   +-- monitoring/
+|   |   |   +-- service/
+|   |   |   +-- errors/
+|   |   |   +-- enums/
 |   |   +-- _runtime/
 |   |   |   +-- core/
 |   |   |   +-- messaging/
@@ -77,11 +79,11 @@ bindings/python/
 +-- perf/
 ```
 
-The public import surface is the `zlink` package and documented lower-case
-subpackages. Tests, samples, examples, and perf must import from `zlink` unless
-a separate extension package is being tested. If a private underscore module
-becomes necessary for user code, add a public contract and export it
-intentionally instead of documenting the private module.
+The public import surface is the `zlink` package projection. The source of that
+projection is `zlink/contracts/`. Tests, samples, examples, and perf must import
+from `zlink` unless a separate extension package is being tested. If a private
+underscore module becomes necessary for user code, add a public contract and
+export it intentionally instead of documenting the private module.
 
 ## API Change Workflow
 
@@ -117,7 +119,8 @@ Do not expose private extension objects for convenience in perf or samples.
 ## Contract / Runtime Placement Rules
 
 - Public classes, type aliases, exceptions, enums, and builder contracts belong
-  in `zlink` or a documented lower-case public module.
+  in the matching `zlink/contracts/` category and are re-exported by `zlink`
+  when users should import them directly.
 - Public module functions, class/static helpers, convenience methods, and builder
   helper functions belong in public package modules when callers can use them
   directly.
@@ -132,8 +135,8 @@ Do not expose private extension objects for convenience in perf or samples.
 
 ## Contract Category Map
 
-The public `zlink` package and documented lower-case modules are the source
-ownership map for names exported from `zlink`.
+The `zlink/contracts/` package is the source ownership map for names exported
+from `zlink`.
 
 - `Core/`: context, context options, routing id, version/capability helpers, and
   utility contracts.

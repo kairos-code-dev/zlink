@@ -2,15 +2,19 @@
 
 package systems.zlink.perf.multi;
 
-import systems.zlink.Context;
-import systems.zlink.Message;
-import systems.zlink.RecvFlags;
-import systems.zlink.RoutingId;
-import systems.zlink.SendFlags;
-import systems.zlink.TopicMessage;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.RecvFlags;
+import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.SendFlags;
+import systems.zlink.contracts.TopicMessage;
 import systems.zlink.perf.PerfUtil;
-import systems.zlink.service.spot.Spot;
-import systems.zlink.service.spot.SpotNode;
+import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;

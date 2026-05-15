@@ -1,6 +1,10 @@
 package systems.zlink.netty;
 
-import systems.zlink.Message;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Message;
 import io.netty.buffer.ByteBuf;
 import java.nio.ByteBuffer;
 import java.util.Objects;

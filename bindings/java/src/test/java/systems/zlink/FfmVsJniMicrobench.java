@@ -1,6 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink;
+package systems.zlink.contracts;
+
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;

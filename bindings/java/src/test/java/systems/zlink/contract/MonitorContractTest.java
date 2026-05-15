@@ -1,9 +1,13 @@
 package systems.zlink.contract;
 
-import systems.zlink.Context;
-import systems.zlink.MonitorEventType;
-import systems.zlink.PairSocket;
-import systems.zlink.TestSupport;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.MonitorEventType;
+import systems.zlink.contracts.PairSocket;
+import systems.zlink.contracts.TestSupport;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;

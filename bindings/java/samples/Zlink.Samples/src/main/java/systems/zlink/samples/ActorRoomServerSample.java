@@ -1,18 +1,22 @@
 package systems.zlink.samples;
 
-import systems.zlink.Context;
-import systems.zlink.Message;
-import systems.zlink.MonitorEventType;
-import systems.zlink.RecvFlags;
-import systems.zlink.RequestResult;
-import systems.zlink.RoutingId;
-import systems.zlink.SpotDispatchEvent;
-import systems.zlink.StreamSocket;
-import systems.zlink.service.spot.Actor;
-import systems.zlink.service.spot.ActorJoinRequest;
-import systems.zlink.service.spot.ActorRef;
-import systems.zlink.service.spot.Spot;
-import systems.zlink.service.spot.SpotNode;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.MonitorEventType;
+import systems.zlink.contracts.RecvFlags;
+import systems.zlink.contracts.RequestResult;
+import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.SpotDispatchEvent;
+import systems.zlink.contracts.StreamSocket;
+import systems.zlink.contracts.service.spot.Actor;
+import systems.zlink.contracts.service.spot.ActorJoinRequest;
+import systems.zlink.contracts.service.spot.ActorRef;
+import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.service.spot.SpotNode;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,8 +59,8 @@ public final class ActorRoomServerSample {
                 SampleSupport.waitStreamConnected(monitor);
                 SampleSupport.sendRawTcp(client, "seed".getBytes());
                 RoutingId sessionRid;
-                try (systems.zlink.Received received = new systems.zlink.Received()) {
-                    stream.recv(received, systems.zlink.RecvFlags.NONE);
+                try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+                    stream.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                     sessionRid = received.routingId().orElseThrow();
                 }
                 stream.bindActor(sessionRid, actorRef)

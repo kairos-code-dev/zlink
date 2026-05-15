@@ -2,6 +2,11 @@
 
 package systems.zlink.perf;
 
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+
 import java.util.Locale;
 
 final class PerfPolicy {

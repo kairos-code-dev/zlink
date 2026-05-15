@@ -2,13 +2,17 @@
 
 package systems.zlink.perf;
 
-import systems.zlink.MonitorSnapshot;
-import systems.zlink.MonitorSocket;
-import systems.zlink.Socket;
-import systems.zlink.SocketType;
-import systems.zlink.service.spot.SpotNode;
-import systems.zlink.service.spot.SpotNodeSocketOwner;
-import systems.zlink.service.spot.SpotNodeSocketSnapshotEntry;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.MonitorSnapshot;
+import systems.zlink.contracts.MonitorSocket;
+import systems.zlink.contracts.Socket;
+import systems.zlink.contracts.SocketType;
+import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.service.spot.SpotNodeSocketOwner;
+import systems.zlink.contracts.service.spot.SpotNodeSocketSnapshotEntry;
 import java.util.Locale;
 
 final class PerfAutoHwm {
@@ -203,7 +207,7 @@ final class PerfAutoHwm {
         };
     }
 
-    private static String profileName(systems.zlink.AutoHwmProfile profile) {
+    private static String profileName(systems.zlink.contracts.AutoHwmProfile profile) {
         return switch (profile) {
             case COMPACT -> "compact";
             case LOW_LATENCY -> "low_latency";
@@ -212,7 +216,7 @@ final class PerfAutoHwm {
         };
     }
 
-    private static int profileId(systems.zlink.AutoHwmProfile profile) {
+    private static int profileId(systems.zlink.contracts.AutoHwmProfile profile) {
         return switch (profile) {
             case COMPACT -> 0;
             case LOW_LATENCY -> 1;
@@ -222,7 +226,7 @@ final class PerfAutoHwm {
     }
 
     private static String recalcReasonName(
-      systems.zlink.AutoHwmRecalcReason reason) {
+      systems.zlink.contracts.AutoHwmRecalcReason reason) {
         return switch (reason) {
             case INITIAL -> "initial";
             case ROLE_CHANGE -> "role_change";

@@ -1,5 +1,10 @@
 package systems.zlink.codec.json;
 
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
@@ -10,18 +15,18 @@ public final class JsonCodec {
 
     private JsonCodec() {}
 
-    public static systems.zlink.Message toMessage(Object value) {
+    public static systems.zlink.contracts.Message toMessage(Object value) {
         Objects.requireNonNull(value, "value");
         try {
             byte[] payload = DEFAULT_OBJECT_MAPPER.writeValueAsBytes(value);
-            return systems.zlink.Message.copyOf(payload);
+            return systems.zlink.contracts.Message.copyOf(payload);
         } catch (JsonProcessingException ex) {
             throw new IllegalArgumentException(
                 "failed to encode JSON payload", ex);
         }
     }
 
-    public static <T> T parseJson(systems.zlink.Message message,
+    public static <T> T parseJson(systems.zlink.contracts.Message message,
                                   Class<T> type) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(type, "type");

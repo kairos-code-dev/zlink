@@ -187,7 +187,7 @@ fn discovery_resolve_spot_surface_exists() {
 #[test]
 fn actor_surfaces_exist() {
     let ctx = Context::new().unwrap();
-    let mut node = SpotNode::new(&ctx).unwrap();
+    let node = SpotNode::new(&ctx).unwrap();
     node.set_routing_id(&RoutingId::from_bytes(b"actor-node"))
         .unwrap();
     let spot = node.create_spot().unwrap();

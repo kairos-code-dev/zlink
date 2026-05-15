@@ -1,9 +1,13 @@
 package systems.zlink.samples;
 
-import systems.zlink.Context;
-import systems.zlink.DealerSocket;
-import systems.zlink.Message;
-import systems.zlink.RouterSocket;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.DealerSocket;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.RouterSocket;
 
 public final class DealerRouterRecvSample {
     public static void main(String[] args) {
@@ -14,9 +18,9 @@ public final class DealerRouterRecvSample {
              RouterSocket router = new RouterSocket(ctx);
              DealerSocket dealer = new DealerSocket(ctx);
              var routerMonitor = router.monitorOpen(
-                 systems.zlink.MonitorEventType.CONNECTION_READY);
+                 systems.zlink.contracts.MonitorEventType.CONNECTION_READY);
              var dealerMonitor = dealer.monitorOpen(
-                 systems.zlink.MonitorEventType.CONNECTION_READY)) {
+                 systems.zlink.contracts.MonitorEventType.CONNECTION_READY)) {
             router.bind(endpoint);
             dealer.connect(endpoint);
             SampleSupport.waitConnected(routerMonitor, dealerMonitor);
@@ -25,8 +29,8 @@ public final class DealerRouterRecvSample {
                 dealer.send().message(request).submit();
             }
 
-            try (systems.zlink.Received received = new systems.zlink.Received()) {
-                router.recv(received, systems.zlink.RecvFlags.NONE);
+            try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+                router.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                 String value = SampleSupport.singleUtf8(received);
                 if (!SampleSupport.DEALER_REQUEST.equals(value)) {
                     throw new IllegalStateException("unexpected request: " + value);
@@ -36,8 +40,8 @@ public final class DealerRouterRecvSample {
                 }
             }
 
-            try (systems.zlink.Received received = new systems.zlink.Received()) {
-                dealer.recv(received, systems.zlink.RecvFlags.NONE);
+            try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+                dealer.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                 String value = SampleSupport.singleUtf8(received);
                 if (!SampleSupport.DEALER_REPLY.equals(value)) {
                     throw new IllegalStateException("unexpected reply: " + value);

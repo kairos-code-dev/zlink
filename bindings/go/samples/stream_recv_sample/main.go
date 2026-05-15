@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"zlink.systems/zlink"
+	zlink "zlink.systems/zlink/contracts"
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 

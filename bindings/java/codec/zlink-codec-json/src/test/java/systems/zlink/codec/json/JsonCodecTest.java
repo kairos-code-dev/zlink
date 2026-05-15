@@ -1,10 +1,14 @@
 package systems.zlink.codec.json;
 
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import systems.zlink.Message;
+import systems.zlink.contracts.Message;
 import org.junit.jupiter.api.Test;
 
 class JsonCodecTest {

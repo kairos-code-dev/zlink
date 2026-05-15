@@ -9,7 +9,7 @@ import (
 	"bytes"
 	"time"
 
-	"zlink.systems/zlink"
+	zlink "zlink.systems/zlink/contracts"
 )
 
 // StopToken is the literal payload a sender writes once at phase end. The

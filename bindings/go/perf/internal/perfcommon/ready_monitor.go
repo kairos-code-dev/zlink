@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"zlink.systems/zlink"
+	zlink "zlink.systems/zlink/contracts"
 )
 
 func waitMonitorReady(

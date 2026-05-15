@@ -1,13 +1,17 @@
 package systems.zlink.contract;
 
-import systems.zlink.Context;
-import systems.zlink.Message;
-import systems.zlink.PollEvent;
-import systems.zlink.PairSocket;
-import systems.zlink.PollEventFlag;
-import systems.zlink.Poller;
-import systems.zlink.TestSupport;
-import systems.zlink.Timer;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.PollEvent;
+import systems.zlink.contracts.PairSocket;
+import systems.zlink.contracts.PollEventFlag;
+import systems.zlink.contracts.Poller;
+import systems.zlink.contracts.TestSupport;
+import systems.zlink.contracts.Timer;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
@@ -69,6 +73,6 @@ public class SocketPollingContractTest {
     public void legacySocketPollSetTypeIsNotPartOfTheRootPackage() {
         assertThrows(
             ClassNotFoundException.class,
-            () -> Class.forName("systems.zlink.SocketPollSet"));
+            () -> Class.forName("systems.zlink.contracts.SocketPollSet"));
     }
 }

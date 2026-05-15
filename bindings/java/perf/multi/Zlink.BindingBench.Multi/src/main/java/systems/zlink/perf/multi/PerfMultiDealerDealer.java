@@ -2,17 +2,21 @@
 
 package systems.zlink.perf.multi;
 
-import systems.zlink.Context;
-import systems.zlink.DealerSocket;
-import systems.zlink.Message;
-import systems.zlink.MonitorEventType;
-import systems.zlink.MonitorSocket;
-import systems.zlink.PollEventFlag;
-import systems.zlink.SendFlags;
-import systems.zlink.SocketType;
-import systems.zlink.SubmitException;
-import systems.zlink.SubmitResult;
-import systems.zlink.ZlinkException;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.DealerSocket;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.MonitorEventType;
+import systems.zlink.contracts.MonitorSocket;
+import systems.zlink.contracts.PollEventFlag;
+import systems.zlink.contracts.SendFlags;
+import systems.zlink.contracts.SocketType;
+import systems.zlink.contracts.SubmitException;
+import systems.zlink.contracts.SubmitResult;
+import systems.zlink.contracts.ZlinkException;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
@@ -53,7 +57,7 @@ final class PerfMultiDealerDealer {
                 }
                 boolean stop = false;
                 while (true) {
-                    systems.zlink.Received received = PerfUtil.recvNoWait(server);
+                    systems.zlink.contracts.Received received = PerfUtil.recvNoWait(server);
                     if (received == null) {
                         break;
                     }
@@ -109,7 +113,7 @@ final class PerfMultiDealerDealer {
             }
             PerfControl.emitClientReady(config.size());
             PerfControl.awaitStart(config.size(), "dealer/dealer client");
-            List<systems.zlink.Socket> pollSockets = new ArrayList<>(clients.size());
+            List<systems.zlink.contracts.Socket> pollSockets = new ArrayList<>(clients.size());
             pollSockets.addAll(clients);
             Message[] payloads = new Message[clients.size()];
             for (int i = 0; i < payloads.length; i++) {
@@ -159,7 +163,7 @@ final class PerfMultiDealerDealer {
             // waits for POLLOUT readiness via the poller (-1).
             DealerSocket cooldownClient = clients.get(0);
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                     List.of((systems.zlink.Socket) cooldownClient),
+                     List.of((systems.zlink.contracts.Socket) cooldownClient),
                      PollEventFlag.POLLOUT)) {
                 pollSet.setEvents(0);
                 while (true) {

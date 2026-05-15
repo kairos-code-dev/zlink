@@ -110,7 +110,7 @@ fn xpub_socket_has_subscription_event() {
 #[test]
 fn xsub_socket_has_subscribe_no_send() {
     let ctx = Context::new().unwrap();
-    let mut sock = ctx.xsub_socket().unwrap();
+    let sock = ctx.xsub_socket().unwrap();
     sock.connect("inproc://surface-xsub-target").unwrap();
     sock.set_subscription("").unwrap();
 

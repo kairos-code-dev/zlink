@@ -1,8 +1,12 @@
-package systems.zlink;
+package systems.zlink.contracts;
 
-import systems.zlink.SocketOptions;
-import systems.zlink.service.spot.Spot;
-import systems.zlink.service.spot.SpotNode;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.SocketOptions;
+import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 

@@ -78,12 +78,10 @@
 
 #### 테스트 계층 불일치
 
-- [`tests/test_cpp_core_service_discovery.cpp`](/home/hep7/project/kairos/zlink/bindings/cpp/tests/test_cpp_core_service_discovery.cpp)
-  는 `zlink::service::receiver_t`를 사용하지만, 현재 C++ 바인딩 include에는
-  해당 타입이 없다.
-- 여러 테스트가 구형 send/recv convenience와 구형 서비스 모델을 전제로 한다.
-- 따라서 테스트는 단순 보정이 아니라 "최신 C API를 감싼 C++ 계약" 기준으로
-  다시 정리해야 한다.
+- 예전 `tests/test_cpp_core_*.cpp` 계열은 core 포팅형 테스트였고 C++ binding
+  계약 검증과 맞지 않았다.
+- 테스트는 "최신 C API를 감싼 C++ 계약" 기준의 `tests/contract/` 파일들로
+  다시 정리한다.
 
 ### 2.3 문서 간 충돌
 
@@ -383,8 +381,6 @@ bindings/cpp/
       test_cpp_contract_options.cpp
       test_cpp_contract_monitor.cpp
       test_cpp_contract_service.cpp
-    common/
-      test_helpers.hpp
 ```
 
 구조 원칙:
@@ -818,8 +814,7 @@ CTest 등록 방식:
 대상 파일:
 
 - `bindings/cpp/samples/**`
-- `bindings/cpp/tests/*.cpp`
-- `bindings/cpp/tests/test_helpers.hpp`
+- `bindings/cpp/tests/contract/*.cpp`
 - `bindings/cpp/CMakeLists.txt`
 
 원칙:

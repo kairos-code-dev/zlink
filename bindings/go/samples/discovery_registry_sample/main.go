@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"zlink.systems/zlink"
+	zlink "zlink.systems/zlink/contracts"
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 

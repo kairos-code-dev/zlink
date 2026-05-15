@@ -1,4 +1,9 @@
-package systems.zlink;
+package systems.zlink.contracts;
+
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
 
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
@@ -27,10 +32,10 @@ public class NativeContractTest {
                     .submit());
             }
 
-            try (systems.zlink.Received inbound = new systems.zlink.Received()) {
+            try (systems.zlink.contracts.Received inbound = new systems.zlink.contracts.Received()) {
 
 
-                left.recv(inbound, systems.zlink.RecvFlags.NONE);
+                left.recv(inbound, systems.zlink.contracts.RecvFlags.NONE);
                 assertArrayEquals(payload,
                     inbound.singlePartOrThrow().toByteArray());
             }

@@ -189,7 +189,7 @@ fn dealer_router_send_from_callback() {
     let ctx = Context::new().unwrap();
     let endpoint = tcp_endpoint();
 
-    let mut router = ctx.router_socket().unwrap();
+    let router = ctx.router_socket().unwrap();
     let dealer = ctx.dealer_socket().unwrap();
     let rid = RoutingId::from_bytes(b"dealer-cb-test");
     dealer.set_routing_id(&rid).unwrap();
@@ -240,7 +240,7 @@ fn pair_send_from_callback() {
     let ctx = Context::new().unwrap();
     let endpoint = tcp_endpoint();
 
-    let mut server = ctx.pair_socket().unwrap();
+    let server = ctx.pair_socket().unwrap();
     let client = ctx.pair_socket().unwrap();
 
     let server_mon = SocketMonitor::open(&server).unwrap();

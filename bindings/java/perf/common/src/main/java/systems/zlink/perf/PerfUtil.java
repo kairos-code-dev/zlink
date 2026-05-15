@@ -2,23 +2,27 @@
 
 package systems.zlink.perf;
 
-import systems.zlink.Message;
-import systems.zlink.MonitorSocket;
-import systems.zlink.PairSocket;
-import systems.zlink.DealerSocket;
-import systems.zlink.RouterSocket;
-import systems.zlink.RecvException;
-import systems.zlink.RecvFlags;
-import systems.zlink.RecvResult;
-import systems.zlink.Socket;
-import systems.zlink.SocketType;
-import systems.zlink.SubSocket;
-import systems.zlink.TopicMessage;
-import systems.zlink.Context;
-import systems.zlink.service.discovery.Discovery;
-import systems.zlink.service.registry.Registry;
-import systems.zlink.service.spot.SpotNode;
-import systems.zlink.service.spot.Spot;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.MonitorSocket;
+import systems.zlink.contracts.PairSocket;
+import systems.zlink.contracts.DealerSocket;
+import systems.zlink.contracts.RouterSocket;
+import systems.zlink.contracts.RecvException;
+import systems.zlink.contracts.RecvFlags;
+import systems.zlink.contracts.RecvResult;
+import systems.zlink.contracts.Socket;
+import systems.zlink.contracts.SocketType;
+import systems.zlink.contracts.SubSocket;
+import systems.zlink.contracts.TopicMessage;
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.service.discovery.Discovery;
+import systems.zlink.contracts.service.registry.Registry;
+import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.service.spot.Spot;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -263,41 +267,41 @@ public final class PerfUtil {
     }
 
     public static void waitForMonitorEvent(MonitorSocket monitor,
-                                           systems.zlink.MonitorEventType expectedEvent,
+                                           systems.zlink.contracts.MonitorEventType expectedEvent,
                                            int expectedCount, Duration timeout,
                                            String label) {
         PerfTransport.waitForMonitorEvent(monitor, expectedEvent, expectedCount,
             timeout, label);
     }
 
-    public static systems.zlink.Received recvNoWait(PairSocket socket) {
+    public static systems.zlink.contracts.Received recvNoWait(PairSocket socket) {
         try {
-            systems.zlink.Received received = new systems.zlink.Received();
+            systems.zlink.contracts.Received received = new systems.zlink.contracts.Received();
             return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
         } catch (RecvException ex) {
             return recvExceptionToNull(ex);
         }
     }
 
-    public static systems.zlink.Received recvNoWait(DealerSocket socket) {
+    public static systems.zlink.contracts.Received recvNoWait(DealerSocket socket) {
         try {
-            systems.zlink.Received received = new systems.zlink.Received();
+            systems.zlink.contracts.Received received = new systems.zlink.contracts.Received();
             return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
         } catch (RecvException ex) {
             return recvExceptionToNull(ex);
         }
     }
 
-    public static systems.zlink.Received recvNoWait(RouterSocket socket) {
+    public static systems.zlink.contracts.Received recvNoWait(RouterSocket socket) {
         try {
-            systems.zlink.Received received = new systems.zlink.Received();
+            systems.zlink.contracts.Received received = new systems.zlink.contracts.Received();
             return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
         } catch (RecvException ex) {
             return recvExceptionToNull(ex);
         }
     }
 
-    private static systems.zlink.Received recvExceptionToNull(RecvException ex) {
+    private static systems.zlink.contracts.Received recvExceptionToNull(RecvException ex) {
         if (ex.getResult() == RecvResult.NO_DATA
             || ex.getResult() == RecvResult.BUSY) {
             return null;

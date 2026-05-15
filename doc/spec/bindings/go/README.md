@@ -3,72 +3,66 @@
 # Go Binding Implementation Blueprint
 
 This document defines the expected Go library shape. It is not an exhaustive
-list of every exported identifier. The concrete public contract is
-the root Go package in `bindings/go/` and any documented exported
-subpackages.
+list of every exported identifier. The concrete public contract source is
+`bindings/go/contracts/`.
 
-A Go implementation is aligned when the module layout, exported package
-projection, tests, samples, perf runners, and runtime behavior follow this
+A Go implementation is aligned when the `contracts` projection, implementation
+owner files, tests, samples, perf runners, and runtime behavior follow this
 blueprint and map the stable capabilities of `core/include/zlink.h` into
 Go-idiomatic APIs.
 
 ## Public Contract Source
 
-- Public contract: exported identifiers in package `zlink` under
-  `bindings/go/` and any documented exported subpackage.
-- Module projection: `bindings/go/go.mod`, package `zlink`, and GoDoc for
-  exported identifiers.
-- Internal implementation: unexported identifiers, cgo bridge code, callback
-  trampolines, request progress helpers, and any `internal/` packages.
+- Public contract source: the public package under `bindings/go/contracts/`.
+- Module projection: `bindings/go/go.mod`, the public
+  `zlink.systems/zlink/contracts` package, and GoDoc for exported identifiers.
+- Runtime implementation: root implementation files in `bindings/go/`, plus
+  unexported helpers where a separate package would add more complexity than it
+  removes.
+- Native bridge: cgo bridge code, callback trampolines, request progress
+  helpers, `bindings/go/include/`, and platform native artifacts under
+  `bindings/go/native/`.
 - Documentation role: this README defines shape and semantic coverage.
-  exported Go identifiers own the exact public member list. Each public
+  Exported Go identifiers own the exact public member list. Each public
   identifier must still map to one of the shared contract categories.
 
-Perf, samples, and tests must import the public package only and must not rely
-on internal packages.
+Perf, samples, and tests must import the public `contracts` package and must not
+reach into implementation-only helpers or native bridge details.
 
 ## Repository Layout
 
 Use these paths consistently when changing the Go binding.
 
-- Public contract: root package files in `bindings/go/` plus documented
-  exported subpackages such as codec extensions.
-- Runtime implementation: unexported files in package `zlink` and
-  `bindings/go/internal/` when implementation needs a separate package.
-- Native bridge/artifacts: cgo implementation files in `bindings/go/`,
-  private native helper packages under `bindings/go/internal/`,
-  `bindings/go/native/`, and `bindings/go/include/`.
+- Public contract: `bindings/go/contracts/`.
+- Runtime implementation: root implementation files in `bindings/go/`.
+- Native bridge/artifacts: root cgo bridge files, `bindings/go/native/`, and
+  `bindings/go/include/`.
 - Codec extensions: `bindings/go/codec/`.
 - Tests: `bindings/go/tests/` and `bindings/go/*_test.go`.
 - Samples: `bindings/go/samples/`.
 - Perf: `bindings/go/perf/`.
 
-Go import paths are part of the public API. Do not create
-`bindings/go/src/zlink/Contracts/`, `bindings/go/src/zlink/Runtime/`,
-`zlink/contracts`, or `zlink/runtime` import paths for the binding contract.
-The shared `Contracts` and `Runtime` names are review categories here, not Go
-package names.
+Go import paths are part of the public API. The current public consumer
+projection is the aggregate `zlink.systems/zlink/contracts` package. Do not
+create a top-level `runtime/` package, because that would expose runtime
+implementation as `zlink.systems/zlink/runtime`. If the root implementation is
+later moved into `internal/`, update the `contracts` projection, samples, perf,
+tests, and this README in the same change.
 
 The following tree is normative for implementation work. Exported types,
-functions, errors, enums, and builder contracts belong in package `zlink` or a
-documented exported subpackage. cgo declarations, raw pointers, native struct
-mirrors, callback trampolines, request progress helpers, and marshalling stay
-unexported or under `internal/`.
+functions, errors, enums, and builder contracts belong in the public
+`contracts` package. Root implementation files own the current cgo bridge and
+runtime details. cgo declarations, raw pointers, native struct mirrors,
+callback trampolines, request progress helpers, and marshalling must not become
+the consumer-facing entrypoint.
 
 ```text
 bindings/go/
 +-- go.mod
 +-- doc.go
-+-- context.go
-+-- message.go
-+-- socket_types.go
-+-- spot.go
-+-- actor.go
-+-- error.go
-+-- ffi.go
-+-- internal/
-|   +-- native/
-|   +-- runtime/
++-- *.go
++-- contracts/
+|   +-- contracts.go
 +-- include/
 +-- native/
 +-- codec/
@@ -77,20 +71,21 @@ bindings/go/
 +-- perf/
 ```
 
-The public consumer projection is package `zlink`, not an import path ending
-in `Contracts` or `Runtime`. Tests, samples, and perf must import the public
-package only. If an exported symbol is added to package `zlink`, reviewers must
-be able to point to its shared contract category. If code only exists to call
-cgo or manage native lifetime, it must stay unexported or under `internal/`.
+The public consumer projection is the `contracts` package. Tests, samples, and
+perf must import that public package only. If an exported symbol is added,
+reviewers must be able to point to its contract category owner. If code only
+exists to call cgo or manage native lifetime, keep it unexported in the
+implementation owner files. If that code is split into another package later,
+place it under `internal/`.
 
 ## API Change Workflow
 
 When mapping a new core capability:
 
 1. Choose the shared contract category that owns the public behavior.
-2. Add the exported type, method, or function to package `zlink` or a
-   documented exported subpackage.
-3. Keep cgo calls and native state in unexported code.
+2. Add the exported type, method, or function to the public `contracts`
+   package and keep its category ownership clear in source review.
+3. Keep cgo calls and native state out of public signatures and consumer code.
 4. Return `error` or typed errors in the normal Go style.
 5. Avoid defining a provider-owned interface unless it removes real caller
    complexity.
@@ -120,22 +115,22 @@ result values, snapshots, and option structs stay concrete.
 ## Contract / Runtime Placement Rules
 
 - Exported public types, method contracts, enums, errors, and builder contracts
-  belong in package `zlink` or a documented exported subpackage.
+  belong in the public `contracts` package.
 - Exported package functions, helper methods, and builder convenience helpers
   belong in the public package when callers can use them directly.
 - cgo handle owners, request pumps, callback adapters, and part-loop helpers
-  stay unexported or under `internal/`.
+  stay unexported in implementation files or under `internal/` if split later.
 - cgo declarations, raw pointers, C struct mirrors, marshalling helpers, and
   platform loading code stay in unexported files or private native helpers.
-- The exported `zlink` package must project the contract categories, not expose
+- The exported contract package must project the contract categories, not expose
   runtime packages as import paths.
 - If a runtime concrete type is exported for construction, its public behavior
   must still be described by the shared contract category.
 
 ## Contract Category Map
 
-These categories are the review ownership map for exported Go identifiers.
-They are not Go package names.
+These categories map to exported identifiers in `bindings/go/contracts/` and are
+the review ownership map for the aggregate public package.
 
 - `Core/`: context, context options, routing id, version/capability helpers, and
   runtime utility contracts.
@@ -170,18 +165,20 @@ They are not Go package names.
 
 ## Package Shape
 
-Keep package `zlink` easy to scan.
+Keep the public `contracts` package tree easy to scan.
 
-- Core: context, version/capability helpers, options, and runtime utilities.
-- Messaging: message, routing id, received metadata, topic message, and
-  subscription event types.
-- Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, options,
-  callbacks, request/reply, publish/subscribe, and stream packet APIs.
-- Monitoring: monitor, monitor snapshot/event, poller, poll event, and timer.
-- Service: registry, discovery, SPOT node, SPOT handle, topology snapshots,
-  actor refs, actor lifecycle, and operation builders.
-- Errors: exported error values or typed errors that preserve core result
-  domains.
+- Core identifiers cover context, version/capability helpers, options, and
+  runtime utilities.
+- Messaging identifiers cover message, routing id, received metadata, topic
+  message, and subscription event types.
+- Socket identifiers cover pair, dealer, router, pub, sub, xpub, xsub, stream,
+  options, callbacks, request/reply, publish/subscribe, and stream packet APIs.
+- Monitoring identifiers cover monitor, monitor snapshot/event, poller, poll
+  event, and timer.
+- Service identifiers cover registry, discovery, SPOT node, SPOT handle,
+  topology snapshots, actor refs, actor lifecycle, and operation builders.
+- Error identifiers preserve core result domains.
+- Enum identifiers cover public enum domains shared across packages.
 
 If a helper exists only to call cgo, manage native memory, or advance request
 progress, it is not exported.
@@ -237,12 +234,12 @@ change the meaning of core operations.
 
 ## Implementation Checklist
 
-- Public APIs are exported from package `zlink`.
+- Public APIs are exported from the `contracts` package.
 - cgo details do not leak into public signatures.
 - Resource lifecycle is explicit through `Close`.
 - Provider-owned interfaces are used sparingly.
 - Exported helper functions and builder convenience methods are declared in the
-  public package, not only in runtime helpers.
+  matching public contract package, not only in runtime helpers.
 - Receive/subscription semantics match the shared binding policy.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.

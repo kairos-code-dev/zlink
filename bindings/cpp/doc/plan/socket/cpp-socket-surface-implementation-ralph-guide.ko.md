@@ -219,8 +219,7 @@ ctest --test-dir core/build --output-on-failure -L sample-smoke -j1
 
 진행 메모:
 
-- `bindings/cpp/tests/test_cpp_core_spec_router.cpp` 와 `API_DRAFT.md`에는 generic
-  `socket_t(context_t&, socket_type)` 언급이 남아 있다.
+- 예전 core 포팅형 `bindings/cpp/tests/test_cpp_core_*.cpp` 파일들은 제거됐다.
 - 현재 실행 범위의 필수 이행 대상인 `samples/**`, `tests/contract/**`, public facade
   헤더는 concrete facade 기준으로 전환됐다.
 - 설계 입력 문서와 현재 public facade 구조 사이에 이번 루프 범위의 불일치는 없다.

@@ -17,19 +17,32 @@
 //! - **Socket capability isolation**: each socket type exposes only its own
 //!   capabilities (e.g. `PubSocket` has no `recv`).
 
+#[path = "runtime/native/ffi.rs"]
 mod ffi;
-
-mod ctx;
-mod domain;
-mod error;
-mod flags;
-mod message;
-pub mod monitor;
-mod options;
-pub mod poller;
+#[path = "runtime/messaging/request_progress.rs"]
 mod request_progress;
+
+#[path = "contracts/core/ctx.rs"]
+mod ctx;
+#[path = "contracts/messaging/domain.rs"]
+mod domain;
+#[path = "contracts/errors/error.rs"]
+mod error;
+#[path = "contracts/enums/flags.rs"]
+mod flags;
+#[path = "contracts/messaging/message.rs"]
+mod message;
+#[path = "contracts/monitoring/monitor.rs"]
+pub mod monitor;
+#[path = "contracts/sockets/options.rs"]
+mod options;
+#[path = "contracts/monitoring/poller.rs"]
+pub mod poller;
+#[path = "contracts/core/runtime.rs"]
 mod runtime;
+#[path = "contracts/service/service.rs"]
 pub mod service;
+#[path = "contracts/sockets/socket/mod.rs"]
 pub mod socket;
 
 // -- Public re-exports -------------------------------------------------------

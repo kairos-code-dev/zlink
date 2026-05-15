@@ -2,12 +2,16 @@
 
 package systems.zlink.contract;
 
-import systems.zlink.Context;
-import systems.zlink.DealerSocket;
-import systems.zlink.Message;
-import systems.zlink.Received;
-import systems.zlink.RouterSocket;
-import systems.zlink.TestSupport;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.DealerSocket;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.Received;
+import systems.zlink.contracts.RouterSocket;
+import systems.zlink.contracts.TestSupport;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -50,9 +54,9 @@ public final class RequestReplyTerminationProbe {
                 server = CompletableFuture.runAsync(() -> {
                     try {
                         log("server recv wait");
-                        try (systems.zlink.Received received = new systems.zlink.Received()) {
+                        try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
 
-                            routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
+                            routerSocket.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                             log("server recv got");
                             if (!received.requestSeq().isPresent()) {
                                 throw new IllegalStateException("missing request seq");
@@ -69,9 +73,9 @@ public final class RequestReplyTerminationProbe {
             } else {
                 server = CompletableFuture.runAsync(() -> {
                     log("server recv wait");
-                    try (systems.zlink.Received received = new systems.zlink.Received()) {
+                    try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
 
-                        routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
+                        routerSocket.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                         log("server recv got");
                         if (!received.requestSeq().isPresent()) {
                             throw new IllegalStateException("missing request seq");

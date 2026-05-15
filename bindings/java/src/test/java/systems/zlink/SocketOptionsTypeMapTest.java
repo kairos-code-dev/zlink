@@ -1,7 +1,11 @@
-package systems.zlink;
+package systems.zlink.contracts;
 
-import systems.zlink.SocketOptionKey;
-import systems.zlink.SocketOptions;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.SocketOptionKey;
+import systems.zlink.contracts.SocketOptions;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;

@@ -1,5 +1,10 @@
 package systems.zlink.codec.messagepack;
 
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
@@ -11,18 +16,18 @@ public final class MessagePackCodec {
 
     private MessagePackCodec() {}
 
-    public static systems.zlink.Message toMessage(Object value) {
+    public static systems.zlink.contracts.Message toMessage(Object value) {
         Objects.requireNonNull(value, "value");
         try {
             byte[] payload = DEFAULT_OBJECT_MAPPER.writeValueAsBytes(value);
-            return systems.zlink.Message.copyOf(payload);
+            return systems.zlink.contracts.Message.copyOf(payload);
         } catch (JsonProcessingException ex) {
             throw new IllegalArgumentException(
                 "failed to encode MessagePack payload", ex);
         }
     }
 
-    public static <T> T parseMessagePack(systems.zlink.Message message,
+    public static <T> T parseMessagePack(systems.zlink.contracts.Message message,
                                          Class<T> type) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(type, "type");

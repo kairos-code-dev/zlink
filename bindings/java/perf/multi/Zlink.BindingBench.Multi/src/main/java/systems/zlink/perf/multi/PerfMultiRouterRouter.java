@@ -2,17 +2,21 @@
 
 package systems.zlink.perf.multi;
 
-import systems.zlink.Context;
-import systems.zlink.Message;
-import systems.zlink.MonitorEventType;
-import systems.zlink.PollEventFlag;
-import systems.zlink.RecvException;
-import systems.zlink.RecvFlags;
-import systems.zlink.RecvResult;
-import systems.zlink.RouterSocket;
-import systems.zlink.RoutingId;
-import systems.zlink.SendFlags;
-import systems.zlink.SocketType;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.MonitorEventType;
+import systems.zlink.contracts.PollEventFlag;
+import systems.zlink.contracts.RecvException;
+import systems.zlink.contracts.RecvFlags;
+import systems.zlink.contracts.RecvResult;
+import systems.zlink.contracts.RouterSocket;
+import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.SendFlags;
+import systems.zlink.contracts.SocketType;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
@@ -57,7 +61,7 @@ final class PerfMultiRouterRouter {
             // place via adoptFrom, avoiding the per-recv Received allocation
             // that the legacy `recv() -> Received` path forced. Matches the
             // C++/.NET canonical caller-provided storage pattern.
-            systems.zlink.Received receivedBuffer = new systems.zlink.Received();
+            systems.zlink.contracts.Received receivedBuffer = new systems.zlink.contracts.Received();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 List.of(server), PollEventFlag.POLLIN)) {
                 // PERF_MULTI_TEST_POLICY § 1.2 echo server: DONT_WAIT + per-socket
@@ -145,7 +149,7 @@ final class PerfMultiRouterRouter {
 
         try (Context ctx = PerfUtil.newContext(config)) {
             List<RouterSocket> clients = new ArrayList<>(clientCount);
-            List<systems.zlink.MonitorSocket> monitors =
+            List<systems.zlink.contracts.MonitorSocket> monitors =
                 new ArrayList<>(clientCount);
             try {
                 for (int i = 0; i < clientCount; i++) {
@@ -214,7 +218,7 @@ final class PerfMultiRouterRouter {
         for (int i = 0; i < n; i++) {
             payloads[i] = PerfUtil.payloadTemplate(msgSize);
         }
-        List<systems.zlink.Socket> socketsAsBase = new ArrayList<>(n);
+        List<systems.zlink.contracts.Socket> socketsAsBase = new ArrayList<>(n);
         for (RouterSocket c : clients) {
             socketsAsBase.add(c);
         }
@@ -222,7 +226,7 @@ final class PerfMultiRouterRouter {
         // Long-lived Received reused across recv on every client socket. The
         // canonical ref-out recv refills it in place via populateRoutedSinglePart,
         // avoiding the per-recv Received + ArrayList allocation.
-        systems.zlink.Received replyBuffer = new systems.zlink.Received();
+        systems.zlink.contracts.Received replyBuffer = new systems.zlink.contracts.Received();
         try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 socketsAsBase, PollEventFlag.POLLIN)) {
             long activeEnd = System.nanoTime()
@@ -286,7 +290,7 @@ final class PerfMultiRouterRouter {
                                      boolean[] waitingWritable,
                                      int msgSize, PerfUtil.Metrics metrics,
                                      PerfSocketPollSet pollSet,
-                                     systems.zlink.Received replyBuffer) {
+                                     systems.zlink.contracts.Received replyBuffer) {
         while (true) {
             boolean ok;
             try {

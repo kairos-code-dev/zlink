@@ -1,5 +1,10 @@
 package systems.zlink.codec.protobuf;
 
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
 import com.google.protobuf.Parser;
@@ -9,7 +14,7 @@ public final class ProtobufCodec {
     private ProtobufCodec() {}
 
     public static <T extends MessageLite> T parseProto(
-        systems.zlink.Message message,
+        systems.zlink.contracts.Message message,
         Parser<T> parser) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(parser, "parser");
@@ -21,8 +26,8 @@ public final class ProtobufCodec {
         }
     }
 
-    public static systems.zlink.Message toMessage(MessageLite value) {
+    public static systems.zlink.contracts.Message toMessage(MessageLite value) {
         Objects.requireNonNull(value, "value");
-        return systems.zlink.Message.copyOf(value.toByteArray());
+        return systems.zlink.contracts.Message.copyOf(value.toByteArray());
     }
 }

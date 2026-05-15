@@ -4,7 +4,7 @@ import (
 	stdjson "encoding/json"
 	"errors"
 
-	"zlink.systems/zlink"
+	zlink "zlink.systems/zlink/contracts"
 )
 
 var errNilMessage = errors.New("zlink.systems/zlink/codec/json: nil message")

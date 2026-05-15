@@ -2,12 +2,16 @@
 
 package systems.zlink.samples;
 
-import systems.zlink.MonitorEventType;
-import systems.zlink.MonitorSocket;
-import systems.zlink.Received;
-import systems.zlink.Zlink;
-import systems.zlink.service.spot.SpotNode;
-import systems.zlink.service.spot.SpotNodeState;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.MonitorEventType;
+import systems.zlink.contracts.MonitorSocket;
+import systems.zlink.contracts.Received;
+import systems.zlink.contracts.Zlink;
+import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.service.spot.SpotNodeState;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;

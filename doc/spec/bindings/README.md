@@ -224,11 +224,13 @@ C를 제외한 wrapper binding은 public contract와 runtime implementation을 �
 한다. `Contracts`와 `Runtime`은 공통 logical category 이름이며, 모든 언어에서
 그 단어를 그대로 public package 또는 import path로 만들라는 뜻이 아니다.
 C++는 header-only binding이므로 library root가 `bindings/cpp/include/zlink/`다.
-Java, Go, Rust, Python처럼 folder path가 package/module/import path와 직접 연결되는
-언어는 별도 ownership tree를 만들지 않고 실제 package/module tree 안에서 public
-계약과 runtime 구현을 분리한다. Node/TypeScript는 `package.json` exports가 public
-경계를 정하지만, source folder 이름도 deep import 오해를 만들 수 있으므로 언어별
-README의 실제 source path와 package export 규칙을 함께 따른다.
+Java는 package path가 곧 source folder이므로 `systems.zlink.contracts.*`와
+`systems.zlink.runtime.*` 같은 lower-case Java package로 역할 구조를 드러낸다.
+Go, Rust, Python처럼 folder path가 package/module/import path와 직접 연결되는
+언어도 실제 package/module tree 안에서 public 계약과 runtime 구현을 분리한다.
+Node/TypeScript는 `package.json` exports가 public 경계를 정하지만, source folder
+이름도 deep import 오해를 만들 수 있으므로 언어별 README의 실제 source path와
+package export 규칙을 함께 따른다.
 
 C는 native C ABI baseline이다. C public contract는 `core/include/zlink.h`이고,
 `bindings/c`는 그 C API를 기준으로 sample, test, perf, packaging과 필요한 mapping
@@ -358,11 +360,11 @@ bindings/<lang>/
 | C | `core/include/zlink.h`가 public C ABI의 단일 기준이다. `bindings/c`는 별도 contract/runtime 계층을 추가하지 않고, C API 기준의 mapping, sample, test, perf, packaging 정책만 정렬한다. |
 | C++ | `bindings/cpp/include/zlink/Contracts/`가 공개 C++ 계약 위치다. `bindings/cpp/include/zlink/Runtime/`은 header-only 구현 세부 위치다. `bindings/cpp/src/`를 계약/런타임 소유 위치로 쓰지 않는다. RAII class와 concrete value를 우선하고, public class를 virtual interface로 과도하게 감싸지 않는다. |
 | .NET | `bindings/dotnet/src/Zlink/Contracts/` 아래에 public contract interface와 value/DTO 타입을 모으고, native handle 구현과 callback bridge는 같은 카테고리의 `Runtime/` 아래에 둔다. DTO와 value object는 concrete로 유지한다. |
-| Java | `bindings/java/src/main/java/systems/zlink/` 아래의 public package가 공개 계약 위치다. Java는 URL 기반 package layout을 따른다. 별도 `bindings/java/src/zlink/Contracts/` tree를 만들지 않는다. runtime/native bridge는 `systems.zlink.internal` 아래에 둔다. |
+| Java | `bindings/java/src/main/java/systems/zlink/contracts/` 아래의 public contract package가 공개 계약 위치다. Java는 URL 기반 package layout을 따르므로 lower-case `contracts`와 `runtime` package를 실제 폴더에 반영한다. native bridge는 non-exported `systems.zlink.runtime.nativebridge` 아래에 둔다. |
 | Node | `bindings/node/src/index.ts`와 `package.json` exports가 public contract projection이다. contract source는 `bindings/node/src/zlink/contracts/` 같은 lower-case source path에 두고, runtime/native addon 구현은 `bindings/node/src/zlink/runtime/` 아래에 숨긴다. |
-| Python | `bindings/python/src/zlink/`가 public package root다. public contract는 `zlink` package와 lower-case public subpackages에 배치하고, native/FFI 구현은 `_runtime` 또는 `_native` 같은 private package 아래에 둔다. `zlink.Contracts`나 `zlink.Runtime` public import path를 만들지 않는다. |
-| Go | `bindings/go/`가 module/package root다. exported public API는 root package `zlink`와 필요한 실제 subpackage에 배치하고, cgo/runtime 구현은 `internal/` 아래에 둔다. `src/zlink/Contracts` 같은 별도 tree를 만들지 않는다. |
-| Rust | `bindings/rust/src/lib.rs`와 lower-case public modules가 public contract projection이다. public modules는 `contracts` 같은 관리용 이름보다 domain module 이름을 쓰고, FFI/runtime 구현은 private or `pub(crate)` `runtime`/`ffi` modules에 둔다. |
+| Python | `bindings/python/src/zlink/contracts/`가 public contract source다. `zlink` root package는 이 계약을 re-export하는 projection이고, native/FFI 구현은 `_runtime/`과 `_native/` 같은 private package 아래에 둔다. |
+| Go | `bindings/go/contracts/` 아래의 public subpackage들이 Go public contract source다. `bindings/go/internal/runtime/`과 `bindings/go/internal/native/`는 Go `internal` 규칙으로 숨긴 runtime/native 구현 위치다. |
+| Rust | `bindings/rust/src/contracts/`가 public contract source 역할을 한다. `lib.rs`는 필요한 타입을 crate root/domain projection으로 re-export하고, `bindings/rust/src/runtime/`과 `bindings/rust/src/runtime/native/`는 private module로 둔다. |
 
 리뷰에서는 단순히 "interface가 있는가"가 아니라 아래 질문으로 판단한다.
 
@@ -384,11 +386,11 @@ namespace, module, import path가 아래 `Contracts`나 `Runtime` 이름을 직�
 |---|---|---|---|
 | C++ | `bindings/cpp/include/zlink/Contracts/` | `bindings/cpp/include/zlink/Runtime/` | `#include <zlink.hpp>` and installed `include/zlink/...` headers |
 | .NET | `bindings/dotnet/src/Zlink/Contracts/` | `bindings/dotnet/src/Zlink/Runtime/` | `Systems.Zlink` namespace and package entrypoints |
-| Java | `bindings/java/src/main/java/systems/zlink/` and public `systems.zlink.service.*` packages | `bindings/java/src/main/java/systems/zlink/internal/` | exported `systems.zlink` JPMS packages and Maven artifact |
+| Java | `bindings/java/src/main/java/systems/zlink/contracts/` | `bindings/java/src/main/java/systems/zlink/runtime/` | exported `systems.zlink.contracts.*` JPMS packages and Maven artifact |
 | Node | `bindings/node/src/index.ts` and `bindings/node/src/zlink/contracts/` | `bindings/node/src/zlink/runtime/` | package root export, generated `.d.ts`, and `package.json` exports |
-| Python | `bindings/python/src/zlink/` public package and documented lower-case subpackages | `bindings/python/src/zlink/_runtime/` and `bindings/python/src/zlink/_native/` | `zlink` package exports from `__init__.py` |
-| Go | `bindings/go/` root package and real exported subpackages | `bindings/go/internal/` | exported identifiers in package `zlink` |
-| Rust | `bindings/rust/src/lib.rs` and lower-case public modules | private or `pub(crate)` modules such as `runtime` and `ffi` | `lib.rs` re-exports and public rustdoc modules |
+| Python | `bindings/python/src/zlink/contracts/` | `bindings/python/src/zlink/_runtime/` and `bindings/python/src/zlink/_native/` | `zlink` package exports from `__init__.py` |
+| Go | `bindings/go/contracts/` public subpackages | `bindings/go/internal/runtime/` and `bindings/go/internal/native/` | exported identifiers in `zlink.systems/zlink/contracts/...` packages |
+| Rust | `bindings/rust/src/contracts/` | private `bindings/rust/src/runtime/` and `bindings/rust/src/runtime/native/` modules | `lib.rs` re-exports and public rustdoc projection |
 
 각 언어별 README는 `Core`, `Messaging`, `Sockets`, `Monitoring`, `Service`,
 `Errors`, `Enums` 역할이 실제 소스의 어디에 배치되는지 보여야 한다. `Native`는

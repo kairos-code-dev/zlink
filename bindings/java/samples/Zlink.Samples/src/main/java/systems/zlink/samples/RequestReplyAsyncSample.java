@@ -1,10 +1,14 @@
 package systems.zlink.samples;
 
-import systems.zlink.Context;
-import systems.zlink.DealerSocket;
-import systems.zlink.Message;
-import systems.zlink.RouterSocket;
-import systems.zlink.RoutingId;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.DealerSocket;
+import systems.zlink.contracts.Message;
+import systems.zlink.contracts.RouterSocket;
+import systems.zlink.contracts.RoutingId;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -21,9 +25,9 @@ public final class RequestReplyAsyncSample {
              RouterSocket routerSocket = new RouterSocket(ctx);
              DealerSocket dealerSocket = new DealerSocket(ctx);
              var routerMonitor = routerSocket.monitorOpen(
-                 systems.zlink.MonitorEventType.CONNECTION_READY);
+                 systems.zlink.contracts.MonitorEventType.CONNECTION_READY);
              var dealerMonitor = dealerSocket.monitorOpen(
-                 systems.zlink.MonitorEventType.CONNECTION_READY)) {
+                 systems.zlink.contracts.MonitorEventType.CONNECTION_READY)) {
             dealerSocket.setRoutingId(RoutingId.fromBytes("request-reply-client".getBytes()));
             routerSocket.bind(endpoint);
             dealerSocket.connect(endpoint);
@@ -32,8 +36,8 @@ public final class RequestReplyAsyncSample {
             CompletableFuture<Void> replyHandled = new CompletableFuture<>();
 
             Thread routerThread = new Thread(() -> {
-                try (systems.zlink.Received received = new systems.zlink.Received()) {
-                    routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
+                try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+                    routerSocket.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                     String request = SampleSupport.singleUtf8(received);
                     if (!SampleSupport.DEALER_REQUEST.equals(request)) {
                         throw new IllegalStateException("unexpected request: " + request);

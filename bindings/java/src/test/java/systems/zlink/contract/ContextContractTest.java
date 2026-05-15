@@ -1,9 +1,13 @@
 package systems.zlink.contract;
 
-import systems.zlink.Context;
-import systems.zlink.ContextOptions;
-import systems.zlink.AutoHwmProfile;
-import systems.zlink.TestSupport;
+import systems.zlink.contracts.service.discovery.*;
+import systems.zlink.contracts.service.registry.*;
+import systems.zlink.contracts.service.spot.*;
+
+import systems.zlink.contracts.Context;
+import systems.zlink.contracts.ContextOptions;
+import systems.zlink.contracts.AutoHwmProfile;
+import systems.zlink.contracts.TestSupport;
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.Test;
 

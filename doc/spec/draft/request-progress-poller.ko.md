@@ -12,6 +12,26 @@ callback이나 future completion으로 전달한다. core 내부에는 request c
 queue가 있고, 이 queue를 진행시키려면 completion signal을 기다린 뒤 drain해야
 한다.
 
+여기서 callback은 reply가 도착한 IO thread에서 바로 실행되는 함수가 아니다.
+core는 reply 도착 시 callback 작업을 completion queue에 넣고 signal을 켠다.
+그 뒤 바인딩 runtime이나 C API 사용자가 안전한 thread에서 queue를 drain할 때
+callback shim이 실행된다. 이 구조는 Node, Java, .NET 같은 언어 runtime이 임의의
+core thread에서 사용자 callback을 직접 실행하지 않게 하기 위한 것이다.
+
+```mermaid
+flowchart TD
+    Submit[Request submit with callback]
+    Reply[Reply arrives in core]
+    Queue[Completion queue and signal]
+    Drain[Poller wait drains queue]
+    Callback[Callback shim runs]
+
+    Submit --> Reply
+    Reply --> Queue
+    Queue --> Drain
+    Drain --> Callback
+```
+
 현재 여러 바인딩은 이 진행을 언어 runtime 쪽에서 반복 호출한다.
 
 | 바인딩 | 현재 방식 |
@@ -110,8 +130,9 @@ binding runtime용 interest다. 일반 응용은 보통 이 flag를 직접 사�
 없다.
 
 기존 함수는 그대로 사용한다. completion-only worker는 subject 등록에는 `add`와
-`remove`를 쓰고, worker 깨움용 control fd에는 `add_fd`와 `remove_fd`를 쓸 수
-있다. `modify`는 기존 readiness poller용 함수로 남기고, completion-only
+`remove`를 쓴다. worker 깨움용 control handle은 `add_fd` / `remove_fd`가
+지원하는 platform handle로 등록하거나, poller가 기다릴 수 있는 wake subject로
+등록한다. `modify`는 기존 readiness poller용 함수로 남기고, completion-only
 interest 변경 경로로 요구하지 않는다.
 
 ```c
@@ -196,6 +217,10 @@ public readiness event가 없다면 `0`을 반환할 수 있다. 바인딩 worke
 timeout과 같은 치명적 상태로 보지 말고 pending count나 future 상태를 다시
 확인해야 한다.
 
+drain은 callback을 0개 실행하더라도 관찰한 completion signal을 반드시
+consume/clear해야 한다. signal만 남기면 worker가 같은 readiness에 즉시 다시
+깨어나며 spin할 수 있기 때문이다.
+
 completion worker는 `zlink_poller_wait()`에 최소 1개 이상의 event slot을 넘긴다.
 completion-only 경로는 public event를 기대하지 않지만, 기존 poller 구현은 event
 buffer가 있는 경로를 기준으로 동작하므로 빈 buffer에 의존하지 않는다.
@@ -207,18 +232,14 @@ completion-only poller registration은 subject lifetime을 안전하게 붙잡�
 close를 호출할 수 있으므로, close와 poller wait가 경합해도 use-after-free가
 나면 안 된다.
 
-core 구현은 아래 둘 중 하나를 보장해야 한다.
+기본 구현 기준은 poller registration이 subject의 core handle 또는 completion
+state에 안전한 reference를 잡고, remove 또는 poller destroy 시 release하는
+방식이다. tombstone 방식은 실수 여지가 크므로 기본안으로 삼지 않는다.
 
-1. poller registration이 subject의 core handle 또는 completion state에 안전한
-   reference를 잡고, remove 또는 poller destroy 시 release한다.
-2. subject close가 poller registration을 먼저 무효화하고, 이미 wait 중인 poller가
-   무효화된 registration을 관찰해도 freed memory를 접근하지 않도록 tombstone이나
-   shared state를 사용한다.
-
-이 초안은 1번을 권장한다. request completion queue와 signal socket의 수명은
-subject public handle보다 길거나 같아야 하고, pending termination completion을
-drain할 수 있을 때까지 살아 있어야 한다. 바인딩은 pending count로 remove를
-보내지만, 바인딩의 remove가 close보다 항상 먼저 도착한다고 가정하면 안 된다.
+request completion queue와 signal socket의 수명은 subject public handle보다
+길거나 같아야 하고, pending termination completion을 drain할 수 있을 때까지
+살아 있어야 한다. 바인딩은 pending count로 remove를 보내지만, 바인딩의 remove가
+close보다 항상 먼저 도착한다고 가정하면 안 된다.
 
 close 경합 규칙:
 
@@ -279,10 +300,11 @@ poller에 직접 호출하지 않는다. 기존 poller가 add/remove와 wait의 
 1. submit thread는 pending count를 갱신하고 worker command queue에 add/remove
    요청을 넣는다.
 2. worker thread는 command queue를 처리한 뒤 `zlink_poller_wait()`를 호출한다.
-3. worker가 `zlink_poller_wait()` 안에 있을 때도 깨어날 수 있도록 control fd나
-   pipe를 poller에 함께 등록한다.
+3. worker가 `zlink_poller_wait()` 안에 있을 때도 깨어날 수 있도록
+   `zlink_poller_add_fd()`가 지원하는 platform handle이나, poller가 기다릴 수
+   있는 wake subject를 함께 등록한다.
 4. 새 command가 들어오면 submit thread는 command queue에 요청을 넣고 control
-   fd나 pipe에 신호를 쓴다.
+   handle에 신호를 쓴다.
 5. worker가 control event를 받으면 신호를 drain하고 command queue를 처리한다.
 6. poller handle에 대한 add/remove/wait 호출은 worker thread에서 직렬화한다.
 
@@ -292,7 +314,7 @@ poller에 직접 호출하지 않는다. 기존 poller가 add/remove와 wait의 
 
 등록된 completion subject가 하나도 없을 때는 worker가 runtime 조건 변수로 쉬어도
 된다. 그러나 한 번 `zlink_poller_wait()`에 들어간 뒤에는 조건 변수만으로 깨울 수
-없으므로, control fd나 pipe처럼 poller가 관찰할 수 있는 깨움 수단이 필요하다.
+없으므로, poller가 관찰할 수 있는 platform handle이나 wake subject가 필요하다.
 
 ### Java와 .NET
 
@@ -414,7 +436,9 @@ channel reply source의 completion enqueue가 Spot의 aggregate completion signa
    가능한 만큼 drain한다.
 6. hidden drain이 callback을 실행했지만 public event가 없으면 `0`을 반환할 수
    있다.
-7. `error_out_`은 hidden drain 성공, timeout, public event 반환 모두에서
+7. hidden drain은 callback 실행 개수가 0이어도 관찰한 completion signal을
+   consume/clear한다.
+8. `error_out_`은 hidden drain 성공, timeout, public event 반환 모두에서
    `ZLINK_CONFIG_OK`를 유지한다.
 
 기존 일반 poller에 socket이나 spot을 `ZLINK_POLLIN`으로 등록했을 때 completion
@@ -492,6 +516,36 @@ C++ 바인딩이 동시에 깨질 수 있다. 따라서 core export 제거, 바�
 8. pending request가 없는 상태에서 worker가 CPU를 쓰지 않는지 확인한다.
 9. spot channel reply completion이 별도 바인딩 progress 함수 없이 완료되는지
    확인한다.
+
+## 회귀테스트 항목
+
+구현 시 아래 회귀테스트를 추가한다. 이 항목들은 `ZLINK_POLLCOMPLETION`이 기존
+`ZLINK_POLLIN` 부수 효과가 아니라 명시적인 completion-only registration으로
+동작하는지 확인하기 위한 것이다.
+
+1. `ZLINK_POLLCOMPLETION` 단독 등록은 public receive readiness event를 만들지
+   않는다.
+2. `ZLINK_POLLIN | ZLINK_POLLCOMPLETION` 조합 등록은 invalid argument로 실패한다.
+3. completion-only wait가 callback을 0개 실행하더라도 관찰한 completion signal을
+   consume/clear해서 즉시 재 wakeup spin이 생기지 않는다.
+4. completion-only wait가 callback을 1개 이상 실행하고 public event가 없으면
+   `0`과 `ZLINK_CONFIG_OK`를 반환할 수 있다.
+5. DEALER/ROUTER socket request callback은 internal progress export 없이
+   completion-only poller wait만으로 완료된다.
+6. ROUTER의 router-to-spot request callback은 ROUTER subject의
+   `ZLINK_POLLCOMPLETION` 등록만으로 완료된다.
+7. Spot request callback은 Spot subject의 `ZLINK_POLLCOMPLETION` 등록만으로
+   완료된다.
+8. Spot channel request reply callback은 channel source나 dealer handle 등록 없이
+   Spot subject의 `ZLINK_POLLCOMPLETION` 등록만으로 완료된다.
+9. request pending 중 subject close와 poller wait가 경합해도 termination
+   completion이 전달되고 use-after-free나 double release가 발생하지 않는다.
+10. request pending 중 close와 remove command가 경합해도 poller registration
+    reference가 정확히 release된다.
+11. worker control handle 또는 wake subject가 poller wait를 깨우고, worker가
+    control signal을 drain한 뒤 command queue를 처리한다.
+12. Java, .NET, C++, Node, Go, Rust 바인딩 빌드에서 제거된 internal progress
+    export를 참조하는 코드가 남아 있지 않다.
 
 ## 확정 결정
 

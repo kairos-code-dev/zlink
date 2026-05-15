@@ -109,6 +109,7 @@ static void close_runtime_sockets (spot_node_t *node_,
     spot_data_plane_t::close_socket_ptr (node_, state_->external_router);
     spot_data_plane_t::close_socket_ptr (node_, state_->peer_ctrl_sub);
     spot_data_plane_t::close_socket_ptr (node_, state_->peer_ctrl_pub);
+    spot_data_plane_t::close_socket_ptr (node_, state_->mesh_pub_monitor);
     spot_data_plane_t::close_socket_ptr (node_, state_->mesh_xsub_monitor);
     spot_data_plane_t::close_socket_ptr (node_, state_->pub_ingress_sub);
     spot_data_plane_t::close_socket_ptr (node_, state_->mesh_xsub);
@@ -302,6 +303,7 @@ spot_data_plane_runtime_state_t::spot_data_plane_runtime_state_t () :
     mesh_pub (NULL),
     mesh_xsub (NULL),
     pub_ingress_sub (NULL),
+    mesh_pub_monitor (NULL),
     mesh_xsub_monitor (NULL),
     peer_ctrl_pub (NULL),
     peer_ctrl_sub (NULL),
@@ -395,8 +397,7 @@ int spot_data_plane_t::initialize_runtime (
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
-        spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
-          runtime_);
+        spot_data_plane_protocol_t::clear_mesh_connected_endpoints (runtime_);
         errno = err;
         return -1;
     }
@@ -452,8 +453,27 @@ int spot_data_plane_t::initialize_runtime (
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
-        spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
-          runtime_);
+        spot_data_plane_protocol_t::clear_mesh_connected_endpoints (runtime_);
+        errno = err;
+        return -1;
+    }
+
+    if (state_out_->mesh_pub)
+        state_out_->mesh_pub_monitor =
+          static_cast<socket_base_t *> (open_socket_monitor_bridge (
+            state_out_->mesh_pub,
+            ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED));
+    if (state_out_->mesh_pub && !state_out_->mesh_pub_monitor) {
+        const int err = errno != 0 ? errno : EIO;
+        (void) spot_data_plane_protocol_t::send_errno_reply (state_out_->ctrl,
+                                                             err);
+        close_runtime_sockets (node_, state_out_);
+        {
+            scoped_lock_t lock (spot_node_access_t::sync (node_));
+            clear_runtime_socket_refs (runtime_);
+            runtime_->mark_fault (err);
+        }
+        spot_data_plane_protocol_t::clear_mesh_connected_endpoints (runtime_);
         errno = err;
         return -1;
     }
@@ -473,8 +493,7 @@ int spot_data_plane_t::initialize_runtime (
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
-        spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
-          runtime_);
+        spot_data_plane_protocol_t::clear_mesh_connected_endpoints (runtime_);
         errno = err;
         return -1;
     }
@@ -500,6 +519,10 @@ int spot_data_plane_t::initialize_runtime (
             && state_out_->poller->add (state_out_->mesh_xsub_monitor, NULL,
                                         ZLINK_POLLIN)
                  != 0)
+        || (state_out_->mesh_pub_monitor
+            && state_out_->poller->add (state_out_->mesh_pub_monitor, NULL,
+                                        ZLINK_POLLIN)
+                 != 0)
         || (state_out_->publish_ingress.signaler.valid ()
             && state_out_->poller->add_fd (
                  state_out_->publish_ingress.signaler.get_fd (), NULL,
@@ -517,6 +540,9 @@ int spot_data_plane_t::initialize_runtime (
         const int err = errno != 0 ? errno : ENOMEM;
         (void) spot_data_plane_protocol_t::send_errno_reply (state_out_->ctrl,
                                                              err);
+        if (state_out_->mesh_pub)
+            (void) state_out_->mesh_pub->monitor (NULL, 0, 3,
+                                                  ZLINK_CORE_SOCKET_PAIR);
         if (state_out_->mesh_xsub)
             (void) state_out_->mesh_xsub->monitor (NULL, 0, 3,
                                                    ZLINK_CORE_SOCKET_PAIR);
@@ -526,8 +552,7 @@ int spot_data_plane_t::initialize_runtime (
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
-        spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
-          runtime_);
+        spot_data_plane_protocol_t::clear_mesh_connected_endpoints (runtime_);
         errno = err;
         return -1;
     }
@@ -544,6 +569,9 @@ int spot_data_plane_t::initialize_runtime (
         const int err = errno != 0 ? errno : EIO;
         (void) spot_data_plane_protocol_t::send_errno_reply (state_out_->ctrl,
                                                              err);
+        if (state_out_->mesh_pub)
+            (void) state_out_->mesh_pub->monitor (NULL, 0, 3,
+                                                  ZLINK_CORE_SOCKET_PAIR);
         if (state_out_->mesh_xsub)
             (void) state_out_->mesh_xsub->monitor (NULL, 0, 3,
                                                    ZLINK_CORE_SOCKET_PAIR);
@@ -553,14 +581,16 @@ int spot_data_plane_t::initialize_runtime (
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
-        spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
-          runtime_);
+        spot_data_plane_protocol_t::clear_mesh_connected_endpoints (runtime_);
         errno = err;
         return -1;
     }
 
     if (spot_data_plane_protocol_t::send_ok_reply (state_out_->ctrl) != 0) {
         const int err = errno != 0 ? errno : EIO;
+        if (state_out_->mesh_pub)
+            (void) state_out_->mesh_pub->monitor (NULL, 0, 3,
+                                                  ZLINK_CORE_SOCKET_PAIR);
         if (state_out_->mesh_xsub)
             (void) state_out_->mesh_xsub->monitor (NULL, 0, 3,
                                                    ZLINK_CORE_SOCKET_PAIR);
@@ -570,8 +600,7 @@ int spot_data_plane_t::initialize_runtime (
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
-        spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
-          runtime_);
+        spot_data_plane_protocol_t::clear_mesh_connected_endpoints (runtime_);
         errno = err;
         return -1;
     }
@@ -662,8 +691,11 @@ void spot_data_plane_t::teardown_runtime (
     LIBZLINK_DELETE (state_->poller);
     state_->poller = NULL;
 
+    if (state_->mesh_pub)
+        (void) state_->mesh_pub->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
     if (state_->mesh_xsub)
         (void) state_->mesh_xsub->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
+    spot_data_plane_t::close_socket_ptr (node_, state_->mesh_pub_monitor);
     spot_data_plane_t::close_socket_ptr (node_, state_->mesh_xsub_monitor);
 
     {
@@ -673,6 +705,6 @@ void spot_data_plane_t::teardown_runtime (
     }
     (void) runtime_->clear_external_route_ids ();
     spot_mesh_pub_hwm_t::reset_runtime_state (runtime_);
-    spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (runtime_);
+    spot_data_plane_protocol_t::clear_mesh_connected_endpoints (runtime_);
 }
 }

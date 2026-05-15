@@ -459,6 +459,27 @@ bool wait_for_spot_node_ready_state (
                                       min_ready_peer_count_, timeout_ms_);
 }
 
+bool wait_for_spot_node_connected_peers (void *node_,
+                                         uint32_t min_connected_peer_count_,
+                                         int timeout_ms_)
+{
+    if (!node_)
+        return false;
+
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_spot_node_status_t snapshot;
+        if (zlink_spot_node_status_snapshot (node_, &snapshot) == 0
+            && snapshot.connected_peer_count >= min_connected_peer_count_) {
+            return true;
+        }
+        std::this_thread::yield ();
+    }
+    return false;
+}
+
 void make_registry_endpoint (char *endpoint_out_,
                              size_t endpoint_size_,
                              int port_seed_)

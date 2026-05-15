@@ -98,6 +98,22 @@ void zlink::internal_pair_queue::close (queue_t *queue_)
     queue_->endpoint.clear ();
 }
 
+void zlink::internal_pair_queue::close_and_wait (queue_t *queue_)
+{
+    if (!queue_)
+        return;
+
+    zlink::socket_base_t *tx = queue_->tx;
+    zlink::socket_base_t *rx = queue_->rx;
+    zlink::ctx_t *ctx = rx ? rx->get_ctx () : tx ? tx->get_ctx () : NULL;
+
+    close (queue_);
+    if (ctx && tx)
+        (void) ctx->wait_for_socket_removal (tx, 1000);
+    if (ctx && rx)
+        (void) ctx->wait_for_socket_removal (rx, 1000);
+}
+
 int zlink::internal_pair_queue::ensure (zlink::ctx_t *ctx_,
                                         const char *prefix_,
                                         queue_t *queue_)

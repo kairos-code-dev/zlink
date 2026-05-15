@@ -158,6 +158,230 @@ poller_subject_kind_t poller_spot_routed_kind_for_subject (void *spot_or_node_)
     return poller_subject_none;
 }
 
+struct spot_subject_ref_guard_t
+{
+    explicit spot_subject_ref_guard_t (void *subject_) :
+        subject (subject_),
+        pub (false),
+        sub (false)
+    {
+    }
+
+    ~spot_subject_ref_guard_t ()
+    {
+        release ();
+    }
+
+    int acquire_pub ()
+    {
+        if (increment_spot_subject_poller_ref (subject, ZLINK_POLLOUT) != 0)
+            return -1;
+        pub = true;
+        return 0;
+    }
+
+    int acquire_sub ()
+    {
+        if (increment_spot_subject_poller_ref (subject, ZLINK_POLLIN) != 0)
+            return -1;
+        sub = true;
+        return 0;
+    }
+
+    void commit_pub () { pub = false; }
+    void commit_sub () { sub = false; }
+
+    void release ()
+    {
+        if (pub) {
+            poller_registration_t registration;
+            registration.subject = subject;
+            registration.subject_kind = poller_spot_pub_kind_for_subject (subject);
+            registration.events = ZLINK_POLLOUT;
+            release_poller_registration (registration);
+            pub = false;
+        }
+        if (sub) {
+            poller_registration_t registration;
+            registration.subject = subject;
+            registration.subject_kind = poller_spot_sub_kind_for_subject (subject);
+            registration.events = ZLINK_POLLIN;
+            release_poller_registration (registration);
+            sub = false;
+        }
+    }
+
+    void *subject;
+    bool pub;
+    bool sub;
+};
+
+int add_spot_completion_registration (
+  poller_handle_t *poller_,
+  void *spot_,
+  const std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
+    &state_)
+{
+    if (!poller_ || !spot_ || !state_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (zlink::request_completion::acquire_signal_poller_ref (
+          &state_->completion_state.direct)
+        != 0) {
+        return -1;
+    }
+
+    zlink::socket_base_t *completion_socket =
+      zlink::spot_reqrep_internal::spot_completion_signal_socket (state_);
+    if (!completion_socket
+        || poller_add_registration (
+             poller_, completion_socket, NULL, ZLINK_POLLIN, spot_,
+             poller_subject_spot_request_completion)
+             != 0) {
+        const int err = errno ? errno : EFAULT;
+        zlink::request_completion::release_signal_poller_ref (
+          &state_->completion_state.direct);
+        errno = err;
+        return -1;
+    }
+
+    poller_->registrations.back ().state_ref = state_;
+    return 0;
+}
+
+int add_spot_completion_only_registration (poller_handle_t *poller_,
+                                           void *spot_)
+{
+    std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
+      state = zlink::spot_reqrep_internal::find_or_create_spot_state (spot_);
+    if (!state
+        || zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
+             state)
+             != 0) {
+        return -1;
+    }
+    return add_spot_completion_registration (poller_, spot_, state);
+}
+
+int add_spot_pub_ready_registration (poller_handle_t *poller_,
+                                     void *spot_or_node_,
+                                     void *user_data_,
+                                     poller_subject_kind_t kind_)
+{
+    zlink_fd_t poll_fd = zlink::retired_fd;
+    if (resolve_spot_pub_subject_poller_fd (spot_or_node_, &poll_fd) != 0)
+        return -1;
+    return poller_add_fd_registration (poller_, poll_fd, user_data_,
+                                       ZLINK_POLLOUT, spot_or_node_, kind_);
+}
+
+int add_spot_sub_ready_registration (
+  poller_handle_t *poller_,
+  void *spot_or_node_,
+  void *user_data_,
+  poller_subject_kind_t kind_,
+  zlink::service_handle_kind_t resolved_kind_)
+{
+    if (resolved_kind_ == zlink::service_handle_spot) {
+        zlink_fd_t poll_fd = zlink::retired_fd;
+        if (resolve_spot_sub_subject_poller_fd (spot_or_node_, &poll_fd) != 0)
+            return -1;
+        return poller_add_fd_registration (poller_, poll_fd, user_data_,
+                                           ZLINK_POLLIN, spot_or_node_, kind_);
+    }
+
+    zlink::socket_base_t *poll_socket =
+      resolve_spot_sub_subject_poller_socket (spot_or_node_);
+    if (!poll_socket) {
+        errno = EFAULT;
+        return -1;
+    }
+    return poller_add_registration (poller_, poll_socket, user_data_,
+                                    ZLINK_POLLIN, spot_or_node_, kind_);
+}
+
+int add_spot_routed_recv_registration (
+  poller_handle_t *poller_,
+  void *spot_,
+  void *user_data_,
+  const std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
+    &state_)
+{
+    if (zlink::spot_reqrep_internal::ensure_spot_recv_ready (state_) != 0)
+        return -1;
+
+    zlink_fd_t routed_fd = zlink::retired_fd;
+    if (zlink::spot_reqrep_internal::spot_routed_recv_fd (state_, &routed_fd)
+        != 0) {
+        errno = 0;
+        return 0;
+    }
+
+    return poller_add_fd_registration (
+      poller_, routed_fd, user_data_, ZLINK_POLLIN, spot_,
+      poller_spot_routed_kind_for_subject (spot_));
+}
+
+int add_spot_request_reply_registrations (poller_handle_t *poller_,
+                                          void *spot_,
+                                          void *user_data_)
+{
+    std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
+      state = zlink::spot_reqrep_internal::find_or_create_spot_state (spot_);
+    if (!state)
+        return -1;
+    if (add_spot_routed_recv_registration (poller_, spot_, user_data_, state)
+        != 0)
+        return -1;
+    return add_spot_completion_registration (poller_, spot_, state);
+}
+
+int add_spot_combined_readiness_registration (
+  poller_handle_t *poller_,
+  void *spot_or_node_,
+  void *user_data_,
+  const zlink::service_handle_resolution_t &resolved_,
+  bool want_pub_,
+  bool want_sub_)
+{
+    spot_subject_ref_guard_t refs (spot_or_node_);
+    if (want_pub_ && refs.acquire_pub () != 0)
+        return -1;
+    if (want_sub_ && refs.acquire_sub () != 0)
+        return -1;
+
+    if (want_pub_) {
+        const poller_subject_kind_t pub_kind =
+          poller_spot_pub_kind_for_subject (spot_or_node_);
+        if (add_spot_pub_ready_registration (
+              poller_, spot_or_node_, user_data_, pub_kind)
+            != 0)
+            return -1;
+        refs.commit_pub ();
+    }
+
+    if (want_sub_) {
+        const poller_subject_kind_t sub_kind =
+          poller_spot_sub_kind_for_subject (spot_or_node_);
+        if (add_spot_sub_ready_registration (
+              poller_, spot_or_node_, user_data_, sub_kind, resolved_.kind)
+            != 0)
+            return -1;
+        refs.commit_sub ();
+    }
+
+    if (want_sub_ && resolved_.kind == zlink::service_handle_spot
+        && add_spot_request_reply_registrations (
+             poller_, spot_or_node_, user_data_)
+             != 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
 int zlink_service_poller_add_internal (poller_handle_t *poller_,
                                        void *socket_,
                                        void *user_data_,
@@ -208,37 +432,7 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
                 errno = EINVAL;
                 return -1;
             }
-            std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
-              state =
-                zlink::spot_reqrep_internal::find_or_create_spot_state (socket_);
-            if (!state
-                || zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
-                     state)
-                     != 0) {
-                return -1;
-            }
-            if (zlink::request_completion::acquire_signal_poller_ref (
-                  &state->completion_state.direct)
-                != 0) {
-                return -1;
-            }
-            zlink::socket_base_t *completion_socket =
-              zlink::spot_reqrep_internal::spot_completion_signal_socket (state);
-            if (!completion_socket
-                || poller_add_registration (
-                     poller_, completion_socket, NULL, ZLINK_POLLIN, socket_,
-                     poller_subject_spot_request_completion)
-                     != 0) {
-                const int err = errno ? errno : EFAULT;
-                zlink::request_completion::release_signal_poller_ref (
-                  &state->completion_state.direct);
-                (void) poller_remove_all_registrations_for_subject (
-                  poller_, socket_);
-                errno = err;
-                return -1;
-            }
-            poller_->registrations.back ().state_ref = state;
-            return 0;
+            return add_spot_completion_only_registration (poller_, socket_);
         }
         if ((events_ & ZLINK_POLLCOMPLETION) != 0) {
             errno = EINVAL;
@@ -249,149 +443,15 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
         if (parse_spot_combined_poller_events (events_, &want_pub, &want_sub)
             != 0)
             return -1;
-
-        // Track the side(s) we successfully reffed so we can roll back on
-        // a partial failure. increment_spot_subject_poller_ref is called
-        // separately for each direction since the underlying ref counters
-        // are kept per-side.
-        bool reffed_pub = false;
-        bool reffed_sub = false;
-        if (want_pub) {
-            if (increment_spot_subject_poller_ref (socket_, ZLINK_POLLOUT) != 0)
-                return -1;
-            reffed_pub = true;
+        const int rc = add_spot_combined_readiness_registration (
+          poller_, socket_, user_data_, resolved, want_pub, want_sub);
+        if (rc != 0) {
+            const int err = errno ? errno : EFAULT;
+            (void) poller_remove_all_registrations_for_subject (poller_,
+                                                                socket_);
+            errno = err;
         }
-        if (want_sub) {
-            if (increment_spot_subject_poller_ref (socket_, ZLINK_POLLIN) != 0) {
-                if (reffed_pub) {
-                    poller_registration_t rollback;
-                    rollback.socket = socket_;
-                    rollback.fd = zlink::retired_fd;
-                    rollback.subject = socket_;
-                    rollback.subject_kind =
-                      poller_spot_pub_kind_for_subject (socket_);
-                    rollback.user_data = NULL;
-                    rollback.events = ZLINK_POLLOUT;
-                    release_poller_registration (rollback);
-                }
-                return -1;
-            }
-            reffed_sub = true;
-        }
-        (void) reffed_pub;
-        (void) reffed_sub;
-
-        const poller_subject_kind_t pub_kind =
-          want_pub ? poller_spot_pub_kind_for_subject (socket_)
-                   : poller_subject_none;
-        const poller_subject_kind_t sub_kind =
-          want_sub ? poller_spot_sub_kind_for_subject (socket_)
-                   : poller_subject_none;
-
-        if (want_pub) {
-            zlink_fd_t poll_fd = zlink::retired_fd;
-            if (resolve_spot_pub_subject_poller_fd (socket_, &poll_fd) != 0
-                || poller_add_fd_registration (
-                     poller_, poll_fd, user_data_, ZLINK_POLLOUT, socket_,
-                     pub_kind)
-                     != 0) {
-                const int err = errno ? errno : EFAULT;
-                (void) poller_remove_all_registrations_for_subject (
-                  poller_, socket_);
-                errno = err;
-                return -1;
-            }
-        }
-
-        if (want_sub) {
-            int sub_add_rc = -1;
-            if (resolved.kind == zlink::service_handle_spot) {
-                zlink_fd_t poll_fd = zlink::retired_fd;
-                if (resolve_spot_sub_subject_poller_fd (socket_, &poll_fd)
-                    == 0) {
-                    sub_add_rc = poller_add_fd_registration (
-                      poller_, poll_fd, user_data_, ZLINK_POLLIN, socket_,
-                      sub_kind);
-                }
-            } else {
-                zlink::socket_base_t *poll_socket =
-                  resolve_spot_sub_subject_poller_socket (socket_);
-                if (poll_socket) {
-                    sub_add_rc = poller_add_registration (
-                      poller_, poll_socket, user_data_, ZLINK_POLLIN, socket_,
-                      sub_kind);
-                }
-            }
-            if (sub_add_rc != 0) {
-                const int err = errno ? errno : EFAULT;
-                (void) poller_remove_all_registrations_for_subject (
-                  poller_, socket_);
-                errno = err;
-                return -1;
-            }
-        }
-
-        const bool wire_request_reply_state =
-          want_sub && resolved.kind == zlink::service_handle_spot;
-        if (wire_request_reply_state) {
-            std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
-              state =
-                zlink::spot_reqrep_internal::find_or_create_spot_state (socket_);
-            if (state) {
-                if (zlink::spot_reqrep_internal::ensure_spot_recv_ready (state)
-                    != 0) {
-                    const int err = errno;
-                    (void) poller_remove_all_registrations_for_subject (
-                      poller_, socket_);
-                    errno = err;
-                    return -1;
-                }
-                zlink_fd_t routed_fd = zlink::retired_fd;
-                if (zlink::spot_reqrep_internal::spot_routed_recv_fd (
-                      state, &routed_fd)
-                    == 0
-                    && poller_add_fd_registration (
-                         poller_, routed_fd, user_data_, ZLINK_POLLIN,
-                         socket_, poller_spot_routed_kind_for_subject (socket_))
-                         != 0) {
-                    const int err = errno;
-                    (void) poller_remove_all_registrations_for_subject (
-                      poller_, socket_);
-                    errno = err;
-                    return -1;
-                }
-                zlink::socket_base_t *completion_socket =
-                  zlink::spot_reqrep_internal::spot_completion_signal_socket (
-                    state);
-                if (completion_socket
-                    && zlink::request_completion::acquire_signal_poller_ref (
-                         &state->completion_state.direct)
-                         != 0) {
-                    const int err = errno ? errno : EFAULT;
-                    (void) poller_remove_all_registrations_for_subject (
-                      poller_, socket_);
-                    errno = err;
-                    return -1;
-                }
-                if (!completion_socket
-                    || poller_add_registration (
-                         poller_, completion_socket, NULL, ZLINK_POLLIN,
-                         socket_, poller_subject_spot_request_completion)
-                         != 0) {
-                    const int err = errno ? errno : EFAULT;
-                    if (completion_socket) {
-                        zlink::request_completion::release_signal_poller_ref (
-                          &state->completion_state.direct);
-                    }
-                    (void) poller_remove_all_registrations_for_subject (
-                      poller_, socket_);
-                    errno = err;
-                    return -1;
-                }
-                poller_->registrations.back ().state_ref = state;
-            }
-        }
-        return 0;
+        return rc;
     }
 
     errno = EFAULT;

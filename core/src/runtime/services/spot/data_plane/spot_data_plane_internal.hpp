@@ -456,6 +456,7 @@ struct spot_data_plane_runtime_state_t
     socket_base_t *mesh_pub;
     socket_base_t *mesh_xsub;
     socket_base_t *pub_ingress_sub;
+    socket_base_t *mesh_pub_monitor;
     socket_base_t *mesh_xsub_monitor;
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
@@ -562,9 +563,9 @@ struct spot_data_plane_protocol_t
     static uint64_t resolve_bootstrap_broadcast_interval_ms (
       const spot_runtime_t *runtime_,
       bool bootstrap_ready_);
-    static void sync_mesh_xsub_connected_endpoint (
+    static void sync_mesh_connected_endpoint (
       spot_runtime_t *runtime_, const zlink_monitor_event_t &raw_);
-    static void clear_mesh_xsub_connected_endpoints (spot_runtime_t *runtime_);
+    static void clear_mesh_connected_endpoints (spot_runtime_t *runtime_);
     static void clear_snapshot_sources (
       spot_node_t *node_, spot_data_plane_protocol_state_t *state_);
 };

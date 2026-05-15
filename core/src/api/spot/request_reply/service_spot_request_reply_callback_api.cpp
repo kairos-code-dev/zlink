@@ -439,11 +439,9 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
             (void) dispatch_runtime->remove_task (dispatch_task_id);
         return;
     }
-    if (state) {
-        std::lock_guard<std::mutex> state_lock (state->mutex);
-        state->completion_state.phase =
-          zlink::spot_reqrep_internal::spot_request_reply_completion_closing;
-    }
+    zlink::spot_reqrep_internal::set_spot_completion_phase (
+      state,
+      zlink::spot_reqrep_internal::spot_request_reply_completion_closing);
     if (state)
         (void) zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
           spot_);
@@ -474,11 +472,9 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
     if (dispatch_runtime && dispatch_task_id != 0)
         (void) dispatch_runtime->remove_task (dispatch_task_id);
     if (state) {
-        {
-            std::lock_guard<std::mutex> state_lock (state->mutex);
-            state->completion_state.phase =
-              zlink::spot_reqrep_internal::spot_request_reply_completion_closed;
-        }
+        zlink::spot_reqrep_internal::set_spot_completion_phase (
+          state,
+          zlink::spot_reqrep_internal::spot_request_reply_completion_closed);
         zlink::spot_reqrep_internal::unregister_spot_channel_reply_observers (
           state);
         std::vector<std::shared_ptr<

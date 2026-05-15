@@ -89,6 +89,9 @@ bool wait_for_spot_node_ready_state (
   zlink_monitor_state_mask_t required_flags_,
   uint32_t min_ready_peer_count_,
   int timeout_ms_);
+bool wait_for_spot_node_connected_peers (void *node_,
+                                         uint32_t min_connected_peer_count_,
+                                         int timeout_ms_);
 
 int bind_spot_node_with_port_seed (void *node_,
                                    const char *prefix_,

@@ -73,7 +73,7 @@ void close_socket (zlink::ctx_t *ctx_, zlink::socket_base_t *&socket_)
     socket_ = NULL;
 }
 
-void test_mesh_xsub_monitor_ready_zero_clears_connected_peer ()
+void test_mesh_socket_monitor_ready_zero_clears_connected_peer ()
 {
     zlink::spot_runtime_t runtime (NULL);
     runtime.execution.mesh_peer_state.connected_endpoints.insert (
@@ -85,7 +85,7 @@ void test_mesh_xsub_monitor_ready_zero_clears_connected_peer ()
     raw.value = 0;
     strncpy (raw.remote_addr, "wss://127.0.0.1:9000", sizeof (raw.remote_addr) - 1);
 
-    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+    zlink::spot_data_plane_protocol_t::sync_mesh_connected_endpoint (
       &runtime, raw);
     TEST_ASSERT_EQUAL_UINT (
       1, runtime.execution.mesh_peer_state.connected_endpoints.size ());
@@ -95,7 +95,7 @@ void test_mesh_xsub_monitor_ready_zero_clears_connected_peer ()
       0, runtime.execution.mesh_peer_state.version.load ());
 }
 
-void test_mesh_xsub_monitor_ready_count_growth_marks_connected ()
+void test_mesh_socket_monitor_ready_count_growth_marks_connected ()
 {
     zlink::spot_runtime_t runtime (NULL);
     zlink_monitor_event_t raw;
@@ -104,7 +104,7 @@ void test_mesh_xsub_monitor_ready_count_growth_marks_connected ()
     raw.value = 1;
     strncpy (raw.remote_addr, "wss://127.0.0.1:9000", sizeof (raw.remote_addr) - 1);
 
-    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+    zlink::spot_data_plane_protocol_t::sync_mesh_connected_endpoint (
       &runtime, raw);
     TEST_ASSERT_EQUAL_UINT (
       1, runtime.execution.mesh_peer_state.connected_endpoints.size ());
@@ -114,7 +114,7 @@ void test_mesh_xsub_monitor_ready_count_growth_marks_connected ()
       1, runtime.execution.mesh_peer_state.version.load ());
 }
 
-void test_mesh_xsub_monitor_disconnect_clears_connected_peer ()
+void test_mesh_socket_monitor_disconnect_clears_connected_peer ()
 {
     zlink::spot_runtime_t runtime (NULL);
     zlink_monitor_event_t raw;
@@ -123,12 +123,12 @@ void test_mesh_xsub_monitor_disconnect_clears_connected_peer ()
 
     raw.event = ZLINK_EVENT_CONNECTION_READY;
     raw.value = 1;
-    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+    zlink::spot_data_plane_protocol_t::sync_mesh_connected_endpoint (
       &runtime, raw);
 
     raw.event = ZLINK_EVENT_DISCONNECTED;
     raw.value = 0;
-    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+    zlink::spot_data_plane_protocol_t::sync_mesh_connected_endpoint (
       &runtime, raw);
     TEST_ASSERT_TRUE (
       runtime.execution.mesh_peer_state.connected_endpoints.empty ());
@@ -138,7 +138,7 @@ void test_mesh_xsub_monitor_disconnect_clears_connected_peer ()
       2, runtime.execution.mesh_peer_state.version.load ());
 }
 
-void test_mesh_xsub_monitor_ready_count_changes_without_rewriting_membership ()
+void test_mesh_socket_monitor_ready_count_changes_without_rewriting_membership ()
 {
     zlink::spot_runtime_t runtime (NULL);
     runtime.execution.mesh_peer_state.connected_endpoints.insert (
@@ -165,7 +165,7 @@ void test_mesh_xsub_monitor_ready_count_changes_without_rewriting_membership ()
       0, runtime.execution.mesh_peer_state.version.load ());
 }
 
-void test_mesh_xsub_monitor_ready_growth_reports_endpoint_membership_change ()
+void test_mesh_socket_monitor_ready_growth_reports_endpoint_membership_change ()
 {
     zlink::spot_mesh_peer_state_t state;
 
@@ -186,7 +186,7 @@ void test_mesh_xsub_monitor_ready_growth_reports_endpoint_membership_change ()
     TEST_ASSERT_EQUAL_UINT64 (1, state.version.load ());
 }
 
-void test_mesh_xsub_monitor_ready_positive_keeps_endpoint_present ()
+void test_mesh_socket_monitor_ready_positive_keeps_endpoint_present ()
 {
     zlink::spot_runtime_t runtime (NULL);
     runtime.execution.mesh_peer_state.connected_endpoints.insert (
@@ -199,7 +199,7 @@ void test_mesh_xsub_monitor_ready_positive_keeps_endpoint_present ()
     strncpy (raw.remote_addr, "wss://127.0.0.1:9001",
              sizeof (raw.remote_addr) - 1);
 
-    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+    zlink::spot_data_plane_protocol_t::sync_mesh_connected_endpoint (
       &runtime, raw);
     TEST_ASSERT_EQUAL_UINT (
       2, runtime.execution.mesh_peer_state.connected_endpoints.size ());
@@ -212,7 +212,7 @@ void test_mesh_xsub_monitor_ready_positive_keeps_endpoint_present ()
       1, runtime.execution.mesh_peer_state.version.load ());
 }
 
-void test_mesh_xsub_monitor_same_ready_count_does_not_bump_version ()
+void test_mesh_socket_monitor_same_ready_count_does_not_bump_version ()
 {
     zlink::spot_runtime_t runtime (NULL);
     runtime.execution.mesh_peer_state.connected_endpoints.insert (
@@ -227,7 +227,7 @@ void test_mesh_xsub_monitor_same_ready_count_does_not_bump_version ()
     strncpy (raw.remote_addr, "wss://127.0.0.1:9002",
              sizeof (raw.remote_addr) - 1);
 
-    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+    zlink::spot_data_plane_protocol_t::sync_mesh_connected_endpoint (
       &runtime, raw);
     TEST_ASSERT_EQUAL_UINT (
       3, runtime.execution.mesh_peer_state.connected_endpoints.size ());
@@ -354,15 +354,15 @@ void test_ws_route_endpoint_derivation_preserves_path_suffix ()
 int main (int argc, char **argv)
 {
     UNITY_BEGIN ();
-    RUN_TEST (test_mesh_xsub_monitor_ready_zero_clears_connected_peer);
-    RUN_TEST (test_mesh_xsub_monitor_ready_count_growth_marks_connected);
-    RUN_TEST (test_mesh_xsub_monitor_disconnect_clears_connected_peer);
+    RUN_TEST (test_mesh_socket_monitor_ready_zero_clears_connected_peer);
+    RUN_TEST (test_mesh_socket_monitor_ready_count_growth_marks_connected);
+    RUN_TEST (test_mesh_socket_monitor_disconnect_clears_connected_peer);
     RUN_TEST (
-      test_mesh_xsub_monitor_ready_count_changes_without_rewriting_membership);
+      test_mesh_socket_monitor_ready_count_changes_without_rewriting_membership);
     RUN_TEST (
-      test_mesh_xsub_monitor_ready_growth_reports_endpoint_membership_change);
-    RUN_TEST (test_mesh_xsub_monitor_ready_positive_keeps_endpoint_present);
-    RUN_TEST (test_mesh_xsub_monitor_same_ready_count_does_not_bump_version);
+      test_mesh_socket_monitor_ready_growth_reports_endpoint_membership_change);
+    RUN_TEST (test_mesh_socket_monitor_ready_positive_keeps_endpoint_present);
+    RUN_TEST (test_mesh_socket_monitor_same_ready_count_does_not_bump_version);
     RUN_TEST (test_explicit_disconnect_updates_private_mesh_peer_state);
     RUN_TEST (test_ready_endpoint_helper_tracks_endpoint_local_readiness);
     RUN_TEST (

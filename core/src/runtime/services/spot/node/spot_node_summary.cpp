@@ -582,17 +582,70 @@ void spot_node_t::snapshot_subscription_subjects (
     }
 }
 
-int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
+void spot_node_t::snapshot_status_subject_counts (
+  uint32_t *subject_count_out_, uint32_t *ready_subject_count_out_) const
+{
+    if (subject_count_out_)
+        *subject_count_out_ = 0;
+    if (ready_subject_count_out_)
+        *ready_subject_count_out_ = 0;
+    if (!subject_count_out_ && !ready_subject_count_out_)
+        return;
+
+    std::vector<spot_sub_t *> subs;
+    {
+        scoped_lock_t lock (_sync);
+        subs.reserve (_handle_state.subs.size ());
+        subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
+    }
+
+    std::unordered_map<subject_snapshot_key_t, bool,
+                       subject_snapshot_key_hash_t>
+      grouped;
+    grouped.reserve (subs.size () * 2);
+    for (size_t i = 0; i < subs.size (); ++i) {
+        if (!subs[i])
+            continue;
+        std::vector<spot_sub_t::subject_snapshot_t> subjects;
+        subs[i]->append_subject_snapshots (&subjects);
+        for (size_t j = 0; j < subjects.size (); ++j) {
+            subject_snapshot_key_t key;
+            key.subject_kind = subjects[j].subject_kind;
+            key.subject = subjects[j].subject;
+            grouped[key] = grouped[key] || subjects[j].ready;
+        }
+    }
+
+    uint32_t ready_count = 0;
+    for (std::unordered_map<subject_snapshot_key_t, bool,
+                            subject_snapshot_key_hash_t>::const_iterator it =
+           grouped.begin ();
+         it != grouped.end (); ++it) {
+        if (it->second)
+            ++ready_count;
+    }
+    if (subject_count_out_)
+        *subject_count_out_ = static_cast<uint32_t> (grouped.size ());
+    if (ready_subject_count_out_)
+        *ready_subject_count_out_ = ready_count;
+}
+
+int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_)
 {
     if (!out_) {
         errno = EINVAL;
         return -1;
     }
 
+    refresh_discovery_peers ();
+    refresh_connected_peer_endpoints ();
+
     memset (out_, 0, sizeof (*out_));
 
     std::string channel_name;
     std::string local_endpoint;
+    zlink_routing_id_t node_rid;
+    memset (&node_rid, 0, sizeof (node_rid));
     {
         scoped_lock_t lock (_sync);
         channel_name = _discovery_state.discovery_service;
@@ -610,6 +663,7 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
         out_->disconnected_sub_target_count = 0;
         out_->disconnected_routed_target_count = 0;
         out_->last_changed_ms = _summary_state.summary_last_changed_ms;
+        node_rid = _node_routing_id;
     }
 
     copy_fixed_c_string_from_bytes (out_->channel_name,
@@ -620,16 +674,9 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
                                     local_endpoint.data (),
                                     local_endpoint.size ());
 
-    (void) node_routing_id (&out_->node_routing_id);
-
-    std::vector<zlink_spot_node_subject_entry_t> subject_rows;
-    if (snapshot_subjects (NULL, &subject_rows) == 0) {
-        out_->subject_count = static_cast<uint32_t> (subject_rows.size ());
-        for (size_t i = 0; i < subject_rows.size (); ++i) {
-            if (subject_rows[i].ready_peer_count > 0)
-                out_->ready_subject_count++;
-        }
-    }
+    out_->node_routing_id = node_rid;
+    snapshot_status_subject_counts (&out_->subject_count,
+                                    &out_->ready_subject_count);
 
     if (out_->last_error != 0)
         out_->state = ZLINK_SPOT_NODE_STATE_ERROR;

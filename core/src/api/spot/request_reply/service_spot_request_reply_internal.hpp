@@ -430,6 +430,9 @@ int signal_spot_completion_queue (
   const std::shared_ptr<spot_request_reply_state_t> &state_);
 int ensure_router_completion_queue_ready (
   const std::shared_ptr<router_spot_request_reply_state_t> &state_);
+void set_spot_completion_phase (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  spot_request_reply_completion_phase_t phase_);
 int ensure_spot_recv_ready (
   const std::shared_ptr<spot_request_reply_state_t> &state_);
 int spot_routed_recv_fd (

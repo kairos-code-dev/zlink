@@ -148,6 +148,8 @@ int start_request (socket_handle_t handle_,
                    void *userdata_);
 bool has_pending_request_work (
   const std::shared_ptr<socket_request_reply_state_t> &state_);
+int drain_spot_channel_bridge_reply_progress (socket_handle_t handle_,
+                                              void *owner_handle_);
 int drain_close_request_reply_socket (socket_handle_t handle_);
 void cleanup_request_reply_socket (socket_handle_t handle_);
 }

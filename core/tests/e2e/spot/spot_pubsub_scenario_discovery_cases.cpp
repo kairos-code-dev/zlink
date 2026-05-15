@@ -66,6 +66,10 @@ void test_spot_node_discovery_direct_and_child_interop ()
 
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
       pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_READY, 1, 10000));
+    TEST_ASSERT_TRUE (
+      wait_for_spot_node_connected_peers (pub_node, 1, 10000));
+    TEST_ASSERT_TRUE (
+      wait_for_spot_node_connected_peers (sub_node, 1, 10000));
 
     bool received = false;
     for (int attempt = 0; attempt < 40 && !received; ++attempt) {

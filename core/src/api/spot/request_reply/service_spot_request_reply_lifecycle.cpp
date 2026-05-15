@@ -196,6 +196,25 @@ void run_pending_spot_dispatch_events (
     }
 }
 
+void run_spot_dispatch_cycle (void *spot_, bool drain_channel_bridge_)
+{
+    if (!spot_)
+        return;
+
+    std::shared_ptr<spot_request_reply_state_t> state =
+      zlink::spot_reqrep_internal::try_find_spot_state (spot_);
+    if (!state)
+        return;
+
+    if (drain_channel_bridge_) {
+        (void)
+          zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
+            state);
+    }
+    run_pending_spot_dispatch_events (state);
+    zlink_actor_run_lifecycle_for_spot (spot_);
+}
+
 void refresh_spot_identity_index (
   spot_handle_t *spot_,
   const std::shared_ptr<spot_request_reply_state_t> &state_)
@@ -293,33 +312,12 @@ int zlink::spot_reqrep_internal::install_spot_dispatch_event_task (
 
 void zlink::spot_reqrep_internal::run_spot_dispatch_worker_once (void *spot_)
 {
-    if (!spot_)
-        return;
-
-    std::shared_ptr<spot_request_reply_state_t> state =
-      zlink::spot_reqrep_internal::try_find_spot_state (spot_);
-    if (!state)
-        return;
-
-    (void)
-      zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
-        state);
-    run_pending_spot_dispatch_events (state);
-    zlink_actor_run_lifecycle_for_spot (spot_);
+    run_spot_dispatch_cycle (spot_, true);
 }
 
 void zlink::spot_reqrep_internal::run_spot_dispatch_events_once (void *spot_)
 {
-    if (!spot_)
-        return;
-
-    std::shared_ptr<spot_request_reply_state_t> state =
-      zlink::spot_reqrep_internal::try_find_spot_state (spot_);
-    if (!state)
-        return;
-
-    run_pending_spot_dispatch_events (state);
-    zlink_actor_run_lifecycle_for_spot (spot_);
+    run_spot_dispatch_cycle (spot_, false);
 }
 
 void zlink::spot_reqrep_internal::maybe_dispatch_spot_info (

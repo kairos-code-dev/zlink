@@ -24,6 +24,7 @@ struct queue_t
 };
 
 void close (queue_t *queue_);
+void close_and_wait (queue_t *queue_);
 
 int ensure (zlink::ctx_t *ctx_, const char *prefix_, queue_t *queue_);
 

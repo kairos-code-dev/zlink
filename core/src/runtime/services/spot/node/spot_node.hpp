@@ -148,7 +148,10 @@ class spot_node_t : public discovery_observer_t
                                           bool subscribe_);
     void snapshot_subscription_subjects (
       std::vector<spot_sub_t::subject_descriptor_t> *out_) const;
-    int snapshot_status (zlink_spot_node_status_t *out_) const;
+    void snapshot_status_subject_counts (uint32_t *subject_count_out_,
+                                         uint32_t *ready_subject_count_out_)
+      const;
+    int snapshot_status (zlink_spot_node_status_t *out_);
     int snapshot_peers (const zlink_spot_node_peer_filter_t *filter_,
                         std::vector<zlink_spot_node_peer_entry_t> *out_) const;
     int snapshot_subjects (

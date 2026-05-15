@@ -42,6 +42,8 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_xsub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->pub_ingress_sub);
     spot_data_plane_forwarder_t::pump_socket_commands (
+      state_->mesh_pub_monitor);
+    spot_data_plane_forwarder_t::pump_socket_commands (
       state_->mesh_xsub_monitor);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_pub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_sub);
@@ -119,6 +121,7 @@ bool is_ctrl_event (socket_base_t *socket_,
 {
     return socket_ == state_.ctrl || socket_ == state_.peer_ctrl_sub
            || socket_ == state_.external_router
+           || socket_ == state_.mesh_pub_monitor
            || socket_ == state_.mesh_xsub_monitor;
 }
 
@@ -163,13 +166,14 @@ bool handle_ctrl_event (socket_base_t *socket_,
         return true;
     }
 
-    if (socket_ != state_->mesh_xsub_monitor)
+    if (socket_ != state_->mesh_pub_monitor
+        && socket_ != state_->mesh_xsub_monitor)
         return false;
 
+    socket_base_t *monitor = socket_;
     while (*running_out_) {
         zlink_monitor_event_t raw;
-        if (recv_socket_monitor_event (state_->mesh_xsub_monitor, &raw,
-                                       ZLINK_DONTWAIT)
+        if (recv_socket_monitor_event (monitor, &raw, ZLINK_DONTWAIT)
             != 0) {
             if (errno == EAGAIN || errno == EINTR)
                 break;
@@ -178,8 +182,7 @@ bool handle_ctrl_event (socket_base_t *socket_,
             break;
         }
 
-        spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
-          runtime_, raw);
+        spot_data_plane_protocol_t::sync_mesh_connected_endpoint (runtime_, raw);
     }
     return true;
 }

@@ -111,6 +111,23 @@ int drain_hidden_completion_registrations (poller_handle_t *poller_)
     return drained;
 }
 
+int drain_hidden_completion_event (const poller_registration_t *registration_,
+                                   bool *observed_hidden_out_,
+                                   bool *drained_any_out_)
+{
+    if (!poller_completion_is_hidden (registration_))
+        return 0;
+
+    if (observed_hidden_out_)
+        *observed_hidden_out_ = true;
+    const int drain_rc = poller_completion_drain_hidden (registration_);
+    if (drain_rc < 0)
+        return -1;
+    if (drain_rc > 0 && drained_any_out_)
+        *drained_any_out_ = true;
+    return 1;
+}
+
 void *poller_index_user_data (size_t index_)
 {
     return reinterpret_cast<void *> (static_cast<uintptr_t> (index_) + 1u);
@@ -672,20 +689,17 @@ int zlink_poller_wait (void *poller_,
         for (int i = 0; i < rc; ++i) {
             const poller_registration_t *registration =
               find_registration_for_native (poller, poller->native_events[i]);
-            if (poller_completion_is_hidden (registration)) {
-                observed_hidden = true;
-                const int drain_rc =
-                  poller_completion_drain_hidden (registration);
-                if (drain_rc < 0) {
-                    if (error_out_)
-                        *error_out_ =
-                          zlink::config_result_internal::from_errno (errno);
-                    return -1;
-                }
-                if (drain_rc > 0)
-                    drained_any = true;
-                continue;
+            const int hidden_rc = drain_hidden_completion_event (
+              registration, &observed_hidden, &drained_any);
+            if (hidden_rc < 0) {
+                if (error_out_)
+                    *error_out_ =
+                      zlink::config_result_internal::from_errno (errno);
+                return -1;
             }
+            if (hidden_rc > 0)
+                continue;
+
             if (fill_public_poller_event_from_registration (
                   registration,
                   poller->native_events[i],

@@ -24,6 +24,8 @@ using zlink::spot_reqrep_internal::spot_request_reply_completion_closed;
 using zlink::spot_reqrep_internal::spot_request_reply_completion_open;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 
+const int spot_completion_drain_pass_limit = 8;
+
 zlink::ctx_t *resolve_spot_state_ctx (
   const std::shared_ptr<spot_request_reply_state_t> &state_)
 {
@@ -77,23 +79,72 @@ bool spot_completion_accepts_locked (
            || errnum_ == ETERM;
 }
 
-}
-
-int zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
+int ensure_spot_completion_open (
   const std::shared_ptr<spot_request_reply_state_t> &state_)
 {
     if (!state_) {
         errno = EFAULT;
         return -1;
     }
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        if (state_->completion_state.phase
-            != spot_request_reply_completion_open) {
-            errno = ETERM;
-            return -1;
-        }
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    if (state_->completion_state.phase != spot_request_reply_completion_open) {
+        errno = ETERM;
+        return -1;
     }
+    return 0;
+}
+
+int ensure_spot_completion_accepts (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  int errnum_)
+{
+    if (!state_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    if (!spot_completion_accepts_locked (state_, errnum_)) {
+        errno = ETERM;
+        return -1;
+    }
+    return 0;
+}
+
+std::shared_ptr<spot_channel_reply_source_t> find_or_create_channel_reply_source (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  void *dealer_)
+{
+    std::shared_ptr<spot_channel_reply_source_t> source =
+      find_channel_reply_source_locked (state_, dealer_);
+    if (source)
+        return source;
+
+    source.reset (new (std::nothrow) spot_channel_reply_source_t (dealer_));
+    if (!source) {
+        errno = ENOMEM;
+        return std::shared_ptr<spot_channel_reply_source_t> ();
+    }
+    state_->completion_state.channel_reply_sources[dealer_] = source;
+    return source;
+}
+
+bool spot_completion_has_pending (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    return zlink::spot_reqrep_internal::has_spot_reply_completions (state_)
+           || zlink::spot_reqrep_internal::has_spot_channel_reply_completions (
+             state_);
+}
+
+}
+
+int zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    if (ensure_spot_completion_open (state_) != 0)
+        return -1;
 
     zlink::ctx_t *ctx = resolve_spot_state_ctx (state_);
     if (!ctx)
@@ -105,24 +156,24 @@ int zlink::spot_reqrep_internal::ensure_spot_completion_queue_ready (
 int zlink::spot_reqrep_internal::signal_spot_completion_queue (
   const std::shared_ptr<spot_request_reply_state_t> &state_)
 {
-    if (!state_) {
-        errno = EFAULT;
+    if (ensure_spot_completion_open (state_) != 0)
         return -1;
-    }
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        if (state_->completion_state.phase
-            != spot_request_reply_completion_open) {
-            errno = ETERM;
-            return -1;
-        }
-    }
 
     zlink::ctx_t *ctx = resolve_spot_state_ctx (state_);
     if (!ctx)
         return -1;
     return zlink::request_completion::signal (
       &state_->completion_state.direct, ctx, "zlink.spot.reqrep.completion");
+}
+
+void zlink::spot_reqrep_internal::set_spot_completion_phase (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  spot_request_reply_completion_phase_t phase_)
+{
+    if (!state_)
+        return;
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    state_->completion_state.phase = phase_;
 }
 
 int zlink::spot_reqrep_internal::ensure_spot_recv_ready (
@@ -174,17 +225,8 @@ int zlink::spot_reqrep_internal::queue_spot_reply_completion (
   zlink_msg_t *parts_,
   size_t part_count_)
 {
-    if (!state_) {
-        errno = EFAULT;
+    if (ensure_spot_completion_accepts (state_, errnum_) != 0)
         return -1;
-    }
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        if (!spot_completion_accepts_locked (state_, errnum_)) {
-            errno = ETERM;
-            return -1;
-        }
-    }
 
     zlink::ctx_t *ctx = resolve_spot_state_ctx (state_);
     if (!ctx)
@@ -238,16 +280,9 @@ int zlink::spot_reqrep_internal::queue_spot_channel_reply_completion (
             errno = ETERM;
             return -1;
         }
-        source = find_channel_reply_source_locked (state_, dealer_);
-        if (!source) {
-            source.reset (new (std::nothrow) spot_channel_reply_source_t (
-              dealer_));
-            if (!source) {
-                errno = ENOMEM;
-                return -1;
-            }
-            state_->completion_state.channel_reply_sources[dealer_] = source;
-        }
+        source = find_or_create_channel_reply_source (state_, dealer_);
+        if (!source)
+            return -1;
     }
 
     if (zlink::request_completion::enqueue (
@@ -257,13 +292,8 @@ int zlink::spot_reqrep_internal::queue_spot_channel_reply_completion (
         return -1;
     }
 
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        if (!spot_completion_accepts_locked (state_, errnum_)) {
-            errno = ETERM;
-            return -1;
-        }
-    }
+    if (ensure_spot_completion_accepts (state_, errnum_) != 0)
+        return -1;
     if (zlink::request_completion::signal (
           &state_->completion_state.direct, ctx,
           "zlink.spot.reqrep.completion")
@@ -403,7 +433,7 @@ int zlink::spot_reqrep_internal::drain_spot_completion_progress (
     }
 
     int drained = 0;
-    for (int pass = 0; pass < 8; ++pass) {
+    for (int pass = 0; pass < spot_completion_drain_pass_limit; ++pass) {
         int pass_drained = drain_attached_channel_reply_bridge_progress (state_);
         if (pass_drained < 0)
             return -1;
@@ -428,7 +458,7 @@ int zlink::spot_reqrep_internal::drain_spot_completion_progress (
 
         run_spot_dispatch_events_once (owner_handle_);
         drained += pass_drained;
-        if (pass_drained == 0)
+        if (pass_drained == 0 && !spot_completion_has_pending (state_))
             break;
     }
 
@@ -591,15 +621,9 @@ int zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
         socket_handle_t handle = as_socket_handle (dealers[i]);
         if (!handle.socket)
             continue;
-        handle.socket->socket_msg_dispatch_drain_pending ();
-        const std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
-          socket_state =
-            zlink::socket_reqrep_internal::find_request_reply_state (handle);
-        if (!socket_state)
-            continue;
         const int rc =
-          zlink::socket_reqrep_internal::drain_reply_completions (socket_state,
-                                                                  dealers[i]);
+          zlink::socket_reqrep_internal::drain_spot_channel_bridge_reply_progress (
+            handle, dealers[i]);
         if (rc < 0)
             return -1;
         drained += rc;

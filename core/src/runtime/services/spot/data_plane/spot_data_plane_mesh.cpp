@@ -106,7 +106,7 @@ bool spot_data_plane_protocol_t::should_publish_bootstrap_descriptor (
            != last_published_peer_version_;
 }
 
-void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+void spot_data_plane_protocol_t::sync_mesh_connected_endpoint (
   spot_runtime_t *runtime_, const zlink_monitor_event_t &raw_)
 {
     if (!runtime_ || raw_.remote_addr[0] == '\0')
@@ -144,7 +144,7 @@ void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
         spot_node_access_t::wake_control_task (runtime_->owner);
 }
 
-void spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
+void spot_data_plane_protocol_t::clear_mesh_connected_endpoints (
   spot_runtime_t *runtime_)
 {
     if (!runtime_)

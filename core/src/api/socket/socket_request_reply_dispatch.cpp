@@ -182,6 +182,25 @@ bool has_pending_request_work (
     return !state_->pending_requests.empty ();
 }
 
+int drain_spot_channel_bridge_reply_progress (socket_handle_t handle_,
+                                              void *owner_handle_)
+{
+    if (!handle_.socket) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    handle_.socket->socket_msg_dispatch_drain_pending ();
+    const std::shared_ptr<socket_request_reply_state_t> state =
+      find_request_reply_state (handle_);
+    if (!state) {
+        errno = 0;
+        return 0;
+    }
+
+    return drain_reply_completions (state, owner_handle_);
+}
+
 int drain_close_request_reply_socket (socket_handle_t handle_)
 {
     if (!handle_.socket) {
@@ -226,9 +245,8 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
     if (!handle_.socket)
         return;
 
-    zlink::socket_base_t *queue_rx = NULL;
-    zlink::socket_base_t *queue_tx = NULL;
     std::vector<std::shared_ptr<zlink::request_timeout::task_t> > timeout_tasks;
+    bool close_recv_queue = false;
     std::shared_ptr<socket_request_reply_state_t> state =
       handle_.socket->request_reply_state ();
     if (state && state->internal_dispatch_installed
@@ -238,8 +256,6 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
     if (state) {
         std::lock_guard<std::mutex> state_lock (state->mutex);
         state->internal_dispatch_installed = false;
-        queue_rx = state->recv_queue.rx;
-        queue_tx = state->recv_queue.tx;
         for (std::unordered_map<pending_key_t,
                                 pending_request_t,
                                 pending_key_hash_t>::iterator it =
@@ -250,16 +266,13 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
         state->pending_requests.clear ();
         state->pending_request_keys_by_seq.clear ();
         state->pending_sequences.clear ();
-        zlink::internal_pair_queue::close (&state->recv_queue);
+        close_recv_queue = true;
         zlink::request_completion::close (&state->completion);
     }
+    if (state && close_recv_queue)
+        zlink::internal_pair_queue::close_and_wait (&state->recv_queue);
     for (size_t i = 0; i < timeout_tasks.size (); ++i)
         zlink::request_timeout::cancel (timeout_tasks[i]);
-    zlink::ctx_t *ctx = handle_.socket->get_ctx ();
-    if (ctx && queue_tx)
-        (void) ctx->wait_for_socket_removal (queue_tx, 1000);
-    if (ctx && queue_rx)
-        (void) ctx->wait_for_socket_removal (queue_rx, 1000);
     handle_.socket->clear_request_reply_state ();
 }
 }

@@ -24,8 +24,6 @@ using zlink::spot_reqrep_internal::spot_request_reply_completion_closed;
 using zlink::spot_reqrep_internal::spot_request_reply_completion_open;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 
-const int spot_completion_drain_pass_limit = 8;
-
 zlink::ctx_t *resolve_spot_state_ctx (
   const std::shared_ptr<spot_request_reply_state_t> &state_)
 {
@@ -433,7 +431,7 @@ int zlink::spot_reqrep_internal::drain_spot_completion_progress (
     }
 
     int drained = 0;
-    for (int pass = 0; pass < spot_completion_drain_pass_limit; ++pass) {
+    while (true) {
         int pass_drained = drain_attached_channel_reply_bridge_progress (state_);
         if (pass_drained < 0)
             return -1;

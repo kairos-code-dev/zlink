@@ -11,6 +11,8 @@ namespace zlink
 {
 namespace
 {
+typedef spot_node_service_attachment_state_t service_attachment_state_t;
+
 static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
 {
     if (!always_ && !spot_debug::shutdown_enabled ())
@@ -22,19 +24,30 @@ static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
                     "[spot-shutdown] ", fmt_, args);
     va_end (args);
 }
+
+static void add_service_sub_recv_cache_entry_local (
+  service_attachment_state_t::service_sub_recv_cache_t &cache_,
+  const std::string &channel_name_,
+  socket_base_t *socket_)
+{
+    if (!socket_)
+        return;
+
+    service_attachment_state_t::service_sub_cache_entry_t entry;
+    entry.channel_name = channel_name_;
+    entry.socket = socket_;
+    cache_.entries.push_back (entry);
+}
 }
 
 void spot_node_t::rebuild_service_attachment_caches_locked ()
 {
-    std::shared_ptr<service_attachment_state_t::service_sub_cache_t> sub_cache (
-      new service_attachment_state_t::service_sub_cache_t ());
-    std::shared_ptr<service_attachment_state_t::readable_sub_cache_t>
-      readable_sub_cache (new service_attachment_state_t::readable_sub_cache_t ());
-    std::shared_ptr<socket_poller_t> readable_sub_poller (
-      new socket_poller_t ());
+    std::shared_ptr<service_attachment_state_t::service_sub_recv_cache_t>
+      sub_recv_cache (
+        new service_attachment_state_t::service_sub_recv_cache_t ());
 
-    sub_cache->reserve (_service_attachment_state.attachments.size () * 2);
-    readable_sub_cache->reserve (_service_attachment_state.attachments.size () * 2);
+    sub_recv_cache->entries.reserve (
+      _service_attachment_state.attachments.size () * 2);
     for (std::map<std::string, service_attachment_t>::iterator it =
            _service_attachment_state.attachments.begin ();
          it != _service_attachment_state.attachments.end (); ++it) {
@@ -52,28 +65,16 @@ void spot_node_t::rebuild_service_attachment_caches_locked ()
         }
 
         if (it->second.has_manual_pubsub ()) {
-            service_attachment_state_t::service_sub_cache_entry_t entry;
-            entry.channel_name = it->first;
-            entry.socket = it->second.manual.sub;
-            sub_cache->push_back (entry);
-            readable_sub_cache->push_back (it->second.manual.sub);
-            (void) readable_sub_poller->add (it->second.manual.sub, NULL,
-                                             ZLINK_POLLIN);
+            add_service_sub_recv_cache_entry_local (
+              *sub_recv_cache, it->first, it->second.manual.sub);
         }
         if (it->second.has_auto_pubsub ()) {
-            service_attachment_state_t::service_sub_cache_entry_t entry;
-            entry.channel_name = it->first;
-            entry.socket = it->second.discovered.sub;
-            sub_cache->push_back (entry);
-            readable_sub_cache->push_back (it->second.discovered.sub);
-            (void) readable_sub_poller->add (it->second.discovered.sub, NULL,
-                                             ZLINK_POLLIN);
+            add_service_sub_recv_cache_entry_local (
+              *sub_recv_cache, it->first, it->second.discovered.sub);
         }
     }
 
-    _service_attachment_state.sub_cache = sub_cache;
-    _service_attachment_state.readable_sub_cache = readable_sub_cache;
-    _service_attachment_state.readable_sub_poller = readable_sub_poller;
+    _service_attachment_state.sub_recv_cache = sub_recv_cache;
 }
 
 void spot_node_t::remove_attachment_monitors_by_owner_locked (

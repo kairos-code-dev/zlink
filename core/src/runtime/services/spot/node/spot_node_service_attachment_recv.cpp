@@ -14,28 +14,27 @@ namespace zlink
 {
 namespace
 {
-template <typename T, typename SocketSelector>
-static bool wait_for_service_socket_event_local (const T &items_,
-                                                 short events_,
-                                                 zlink_recv_flags_t flags_,
-                                                 size_t *ready_index_out_,
-                                                 SocketSelector socket_selector_)
+typedef spot_node_service_attachment_state_t service_attachment_state_t;
+
+static bool wait_for_service_sub_event_local (
+  const service_attachment_state_t::service_sub_recv_cache_t &cache_,
+  zlink_recv_flags_t flags_,
+  size_t *ready_index_out_)
 {
     if (ready_index_out_)
         *ready_index_out_ = 0;
-    if (items_.empty ()) {
+    if (cache_.entries.empty ()) {
         errno = (flags_ & ZLINK_DONTWAIT) != 0 ? EAGAIN : ENOTCONN;
         return false;
     }
 
     const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0;
     zlink::socket_poller_t poller;
-    for (size_t i = 0; i < items_.size (); ++i) {
-        zlink::socket_base_t *socket = socket_selector_ (items_[i]);
-        if (!socket)
-            continue;
-        if (poller.add (socket, NULL, events_) != 0)
+    for (size_t i = 0; i < cache_.entries.size (); ++i) {
+        if (cache_.entries[i].socket
+            && poller.add (cache_.entries[i].socket, NULL, ZLINK_POLLIN) != 0) {
             return false;
+        }
     }
     if (poller.size () == 0) {
         errno = EAGAIN;
@@ -50,8 +49,8 @@ static bool wait_for_service_socket_event_local (const T &items_,
         return false;
     }
 
-    for (size_t i = 0; i < items_.size (); ++i) {
-        if (event.socket == socket_selector_ (items_[i])) {
+    for (size_t i = 0; i < cache_.entries.size (); ++i) {
+        if (event.socket == cache_.entries[i].socket) {
             if (ready_index_out_)
                 *ready_index_out_ = i;
             return true;
@@ -76,17 +75,16 @@ int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
     }
 
     while (true) {
-        std::shared_ptr<const service_attachment_state_t::service_sub_cache_t>
-          subs;
+        std::shared_ptr<service_attachment_state_t::service_sub_recv_cache_t>
+          sub_recv_cache;
         {
             scoped_lock_t lock (_sync);
-            subs = _service_attachment_state.sub_cache;
+            sub_recv_cache = _service_attachment_state.sub_recv_cache;
         }
         size_t ready_index = 0;
-        if (!wait_for_service_socket_event_local (
-              *subs, ZLINK_POLLIN, flags_, &ready_index,
-              [] (const service_attachment_state_t::service_sub_cache_entry_t
-                    &entry_) -> socket_base_t * { return entry_.socket; })) {
+        if (!sub_recv_cache
+            || !wait_for_service_sub_event_local (
+              *sub_recv_cache, flags_, &ready_index)) {
             if ((flags_ & ZLINK_DONTWAIT) != 0)
                 return -1;
             continue;
@@ -94,8 +92,8 @@ int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
 
         zlink_recv_result_t rc =
           recv_result_internal::from_rc (zlink_socket_subscribe_recv_internal (
-            (*subs)[ready_index].socket, source_rid_out_, parts_out_,
-            part_count_out_, topic_id_out_, topic_id_len_out_,
+            sub_recv_cache->entries[ready_index].socket, source_rid_out_,
+            parts_out_, part_count_out_, topic_id_out_, topic_id_len_out_,
             static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT)));
         if (rc == ZLINK_RECV_NO_DATA) {
             if ((flags_ & ZLINK_DONTWAIT) != 0) {
@@ -123,17 +121,16 @@ int spot_node_t::service_subscription_event_recv (
     }
 
     while (true) {
-        std::shared_ptr<const service_attachment_state_t::service_sub_cache_t>
-          subs;
+        std::shared_ptr<service_attachment_state_t::service_sub_recv_cache_t>
+          sub_recv_cache;
         {
             scoped_lock_t lock (_sync);
-            subs = _service_attachment_state.sub_cache;
+            sub_recv_cache = _service_attachment_state.sub_recv_cache;
         }
         size_t ready_index = 0;
-        if (!wait_for_service_socket_event_local (
-              *subs, ZLINK_POLLIN, flags_, &ready_index,
-              [] (const service_attachment_state_t::service_sub_cache_entry_t
-                    &entry_) -> socket_base_t * { return entry_.socket; })) {
+        if (!sub_recv_cache
+            || !wait_for_service_sub_event_local (
+              *sub_recv_cache, flags_, &ready_index)) {
             if ((flags_ & ZLINK_DONTWAIT) != 0)
                 return -1;
             continue;
@@ -141,8 +138,8 @@ int spot_node_t::service_subscription_event_recv (
 
         zlink_recv_result_t rc =
           recv_result_internal::from_rc (zlink_socket_xpub_recv_internal (
-            (*subs)[ready_index].socket, source_rid_out_, subscribed_out_,
-            topic_id_out_, topic_id_len_out_,
+            sub_recv_cache->entries[ready_index].socket, source_rid_out_,
+            subscribed_out_, topic_id_out_, topic_id_len_out_,
             static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT)));
         if (rc == ZLINK_RECV_NO_DATA) {
             if ((flags_ & ZLINK_DONTWAIT) != 0) {

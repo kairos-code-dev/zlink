@@ -3,7 +3,6 @@
 #ifndef __ZLINK_SPOT_NODE_STATE_HPP_INCLUDED__
 #define __ZLINK_SPOT_NODE_STATE_HPP_INCLUDED__
 
-#include "core/socket_poller.hpp"
 #include "services/spot/dispatch/spot_internal_receiver.hpp"
 
 #include <atomic>
@@ -288,7 +287,11 @@ struct spot_node_service_attachment_state_t
     };
 
     typedef std::vector<service_sub_cache_entry_t> service_sub_cache_t;
-    typedef std::vector<socket_base_t *> readable_sub_cache_t;
+
+    struct service_sub_recv_cache_t
+    {
+        service_sub_cache_t entries;
+    };
 
     std::map<std::string, spot_node_service_attachment_t> attachments;
     std::map<const socket_base_t *, std::string> socket_index;
@@ -297,15 +300,11 @@ struct spot_node_service_attachment_state_t
     std::map<std::string, discovery_t *> channel_dealer_discoveries;
     socket_base_t *pub_ingress;
     std::set<std::string> pending_refresh_services;
-    std::shared_ptr<service_sub_cache_t> sub_cache;
-    std::shared_ptr<readable_sub_cache_t> readable_sub_cache;
-    std::shared_ptr<socket_poller_t> readable_sub_poller;
+    std::shared_ptr<service_sub_recv_cache_t> sub_recv_cache;
 
     spot_node_service_attachment_state_t () :
         pub_ingress (NULL),
-        sub_cache (new service_sub_cache_t ()),
-        readable_sub_cache (new readable_sub_cache_t ()),
-        readable_sub_poller (new socket_poller_t ())
+        sub_recv_cache (new service_sub_recv_cache_t ())
     {
     }
 };

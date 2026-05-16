@@ -122,18 +122,22 @@ echo ""
 echo "Step 4: Installing to output directory..."
 make install
 
-# Copy .so to output
-SO_FILE=$(find install/lib* -name "libzlink.so.5*" 2>/dev/null | head -n 1)
+# Copy .so to output (version-agnostic: matches any major, e.g. libzlink.so.6.0.1)
+SO_FILE=$(find install/lib* -name "libzlink.so.[0-9]*" 2>/dev/null | head -n 1)
 if [ -z "$SO_FILE" ]; then
-    SO_FILE=$(find lib -name "libzlink.so.5*" 2>/dev/null | head -n 1)
+    SO_FILE=$(find lib -name "libzlink.so.[0-9]*" 2>/dev/null | head -n 1)
 fi
 
 if [ -n "$SO_FILE" ]; then
     TARGET_SO="$REPO_ROOT/$OUTPUT_DIR/libzlink.so"
     cp "$SO_FILE" "$TARGET_SO"
     echo "Copied: $SO_FILE -> $TARGET_SO"
-    ln -sfn "libzlink.so" "$REPO_ROOT/$OUTPUT_DIR/libzlink.so.5"
-    echo "Linked: $REPO_ROOT/$OUTPUT_DIR/libzlink.so.5 -> libzlink.so"
+    # Derive SOVERSION (major) from the built file name, e.g. libzlink.so.6.0.1 -> 6
+    SO_VERSION="$(basename "$SO_FILE")"
+    SO_VERSION="${SO_VERSION#libzlink.so.}"
+    SO_MAJOR="${SO_VERSION%%.*}"
+    ln -sfn "libzlink.so" "$REPO_ROOT/$OUTPUT_DIR/libzlink.so.${SO_MAJOR}"
+    echo "Linked: $REPO_ROOT/$OUTPUT_DIR/libzlink.so.${SO_MAJOR} -> libzlink.so"
 else
     echo "Error: libzlink.so not found!"
     exit 1

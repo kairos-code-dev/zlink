@@ -109,9 +109,9 @@ echo "Step 4: Installing to output directory..."
 make install
 
 # Copy .dylib to output
-DYLIB_FILE=$(find install/lib -name "libzlink.5.dylib" 2>/dev/null | head -n 1)
+DYLIB_FILE=$(find install/lib -name "libzlink.[0-9]*.dylib" 2>/dev/null | head -n 1)
 if [ -z "$DYLIB_FILE" ]; then
-    DYLIB_FILE=$(find lib -name "libzlink.5.dylib" 2>/dev/null | head -n 1)
+    DYLIB_FILE=$(find lib -name "libzlink.[0-9]*.dylib" 2>/dev/null | head -n 1)
 fi
 
 if [ -n "$DYLIB_FILE" ]; then

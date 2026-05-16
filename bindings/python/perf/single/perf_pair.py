@@ -6,6 +6,7 @@ import zlink
 
 from perf_common import (
     STOP_TOKEN,
+    apply_single_auto_hwm_msg_unit,
     apply_single_socket_options,
     benchmark_run_id,
     configure_single_tls_client,
@@ -46,6 +47,7 @@ def main(argv=None):
     payload = new_payload(args.msg_size)
     run_id = benchmark_run_id()
     latencies = []
+    received = 0
     sender_errors = []
 
     def send_loop(client, active_end):
@@ -62,6 +64,11 @@ def main(argv=None):
         with zlink.PairSocket(ctx) as server:
             with zlink.PairSocket(ctx) as client:
                 endpoint = resolve_single_endpoint(args.transport, "pair")
+                # C perf_pair.cpp: apply_single_auto_hwm_msg_unit on both raw
+                # sockets before setup, then apply_single_hwm/options.
+                apply_single_auto_hwm_msg_unit(
+                    server, client, msg_size=args.msg_size
+                )
                 apply_single_socket_options(server, client)
                 configure_single_tls_server(server, args.transport)
                 configure_single_tls_client(client, args.transport)
@@ -104,19 +111,26 @@ def main(argv=None):
                                     continue
                                 if time.perf_counter() >= active_end:
                                     continue
+                                # C perf_single_one_way.hpp run_active_phase:
+                                # every matched header increments received and
+                                # adds a latency sample (single_latency_ns
+                                # clamps clock-skew to 0.0; the message still
+                                # counts toward throughput).
+                                received += 1
                                 latency = latency_ns_from_message(data)
-                                if latency is not None:
-                                    latencies.append(latency)
+                                latencies.append(
+                                    latency if latency is not None else 0.0
+                                )
                             if stop_received:
                                 break
 
                 sender.join()
                 if sender_errors:
                     raise sender_errors[0]
-                if not latencies:
+                if received == 0:
                     raise RuntimeError("pair benchmark did not receive any active message")
                 metrics = result_metrics(
-                    count=len(latencies),
+                    count=received,
                     msg_size=args.msg_size,
                     elapsed_s=args.duration,
                     latencies_ns=latencies,

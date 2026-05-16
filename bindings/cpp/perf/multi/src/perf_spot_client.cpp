@@ -465,11 +465,28 @@ class spot_client_bench_t
 
     bool wait_for_control_start (int timeout_ms_)
     {
-        const bool ok = perf::multi::wait_for_control_start (
-          *_control_sub, k_control_topic, _msg_size, timeout_ms_);
-        if (!ok)
-            debug_log ("control start timed out");
-        return ok;
+        const auto deadline = std::chrono::steady_clock::now ()
+                              + std::chrono::milliseconds (
+                                std::max (1, timeout_ms_));
+        while (std::chrono::steady_clock::now () < deadline) {
+            if (_active_start_ns.load (std::memory_order_acquire) != 0)
+                return true;
+            const long remaining_ms =
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - std::chrono::steady_clock::now ())
+                .count ();
+            const int slice_ms =
+              static_cast<int> (std::max<long> (1, std::min<long> (50, remaining_ms)));
+            if (perf::multi::wait_for_control_start (
+                  *_control_sub, k_control_topic, _msg_size, slice_ms)) {
+                return true;
+            }
+        }
+        if (_active_start_ns.load (std::memory_order_acquire) != 0)
+            return true;
+        debug_log ("control start timed out");
+        errno = ETIMEDOUT;
+        return false;
     }
 
     bool run_active ()

@@ -2,8 +2,6 @@
 
 package systems.zlink.perf.single;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
 import systems.zlink.contracts.service.spot.*;
 
 import systems.zlink.contracts.Message;
@@ -16,9 +14,6 @@ import systems.zlink.contracts.SendFlags;
 import systems.zlink.contracts.TopicMessage;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
-import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.service.registry.Registry;
-import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
@@ -26,39 +21,25 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfSpot {
-    private static final String CHANNEL_NAME = "perf.spot.service";
-
     private PerfSpot() {
     }
 
     static PerfUtil.Result run(PerfUtil.Config config) {
         String topic = "perf.topic." + System.nanoTime();
-        String registryPub = PerfUtil.endpoint(config.transport(),
-            "single-spot-registry-pub");
-        String registryRouter = PerfUtil.endpoint(config.transport(),
-            "single-spot-registry-router");
         String publisherEndpoint = normalizeSpotEndpoint(
             PerfUtil.endpoint(config.transport(), "single-spot-pub"),
             config.transport());
-        String subscriberEndpoint = normalizeSpotEndpoint(
-            PerfUtil.endpoint(config.transport(), "single-spot-sub"),
-            config.transport());
 
         try (var ctx = PerfUtil.newContext(config);
-             Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH,
-                 CHANNEL_NAME);
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
-             Spot stopPublisher = subscriberNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
             PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-            PerfUtil.configureServerTls(registry, config.transport());
-            PerfUtil.configureClientTls(discovery, config.transport());
             PerfUtil.applySpotOptions(publisherNode, config);
             PerfUtil.applySpotOptions(subscriberNode, config);
             PerfUtil.configureServerTls(publisherNode, config.transport());
@@ -68,16 +49,17 @@ final class PerfSpot {
             publisherNode.setRoutingId(routingId("z-java-perf-spot-publisher"));
             subscriberNode.setRoutingId(routingId("a-java-perf-spot-subscriber"));
             publisher.setRoutingId(routingId("z-java-perf-spot-publisher-spot"));
-            stopPublisher.setRoutingId(routingId(
-                "a-java-perf-spot-stop-publisher-spot"));
             subscriber.setRoutingId(routingId("a-java-perf-spot-subscriber-spot"));
-            registry.bind(registryPub, registryRouter);
-            registry.setBroadcastInterval(Duration.ofMillis(50));
-            discovery.connectRegistry(registryRouter);
+            // C parity: perf_spot.cpp run_case (~669-690) and
+            // bindings/cpp/perf/single/src/perf_spot.cpp (~387-397):
+            // publisher bind -> subscriber direct connect_peer ->
+            // set_subscription -> local pub/sub probe ready barrier. No
+            // Registry/Discovery and no peer-connected status wait: the
+            // local probe barrier below is the connection-ready gate
+            // (PERF_SINGLE §6.1 / PERF_POLICY §1.1.2: single SPOT must not
+            // measure registry/discovery or extra bootstrap waits).
             publisherNode.bind(publisherEndpoint);
-            subscriberNode.bind(subscriberEndpoint);
-            publisherNode.attachDiscovery(discovery);
-            subscriberNode.attachDiscovery(discovery);
+            subscriberNode.connectPeer(publisherEndpoint);
             subscriber.setSubscription(topic);
 
             waitForReadyProbe(publisher, subscriber, config, topic, metrics);
@@ -87,17 +69,20 @@ final class PerfSpot {
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
             CountDownLatch stopped = new CountDownLatch(1);
+            AtomicLong activeReceived = new AtomicLong();
             AtomicReference<Throwable> failure = new AtomicReference<>();
             Thread receiverThread = new Thread(() -> drainUntilStopToken(
-                subscriber, config, metrics, activeEnd, stopped, failure),
-                "single-spot-receiver");
+                subscriber, config, metrics, activeEnd, activeReceived, stopped,
+                failure), "single-spot-receiver");
             Thread senderThread = new Thread(() -> publishActiveAndStop(
-                publisher, stopPublisher, config, topic, activeEnd, stopped,
-                failure), "single-spot-sender");
+                publisher, config, topic, activeEnd, activeReceived, stopped,
+                failure),
+                "single-spot-sender");
             receiverThread.start();
             senderThread.start();
             PerfUtil.await(stopped, "spot receiver",
-                Duration.ofSeconds(config.durationSeconds() + 10L));
+                Duration.ofSeconds(config.durationSeconds()
+                    + PerfUtil.intEnv("PERF_SINGLE_SPOT_STOP_GRACE_SECONDS", 120)));
             PerfUtil.join(senderThread, "spot sender", Duration.ofSeconds(10));
             PerfUtil.join(receiverThread, "spot receiver thread",
                 Duration.ofSeconds(10));
@@ -110,7 +95,6 @@ final class PerfSpot {
             PerfUtil.printSingleSpotNodeAutoHwm(config, subscriberNode,
                 "subscriber");
 
-            ctx.shutdown();
             return metrics.finishSingle(config);
         }
     }
@@ -182,6 +166,7 @@ final class PerfSpot {
                                             PerfUtil.Config config,
                                             PerfUtil.Metrics metrics,
                                             long activeEnd,
+                                            AtomicLong activeReceived,
                                             CountDownLatch stopped,
                                             AtomicReference<Throwable> failure) {
         try (Poller poller = new Poller()) {
@@ -203,9 +188,11 @@ final class PerfSpot {
                         if (header == null) {
                             continue;
                         }
-                        if (header.phase() == PerfUtil.PHASE_ACTIVE
-                            && System.nanoTime() <= activeEnd) {
-                            metrics.recordNanos(header.latencyNanos());
+                        if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                            activeReceived.incrementAndGet();
+                            if (System.nanoTime() <= activeEnd) {
+                                metrics.recordNanos(header.latencyNanos());
+                            }
                         }
                     }
                 }
@@ -217,22 +204,35 @@ final class PerfSpot {
     }
 
     private static void publishActiveAndStop(Spot publisher,
-                                             Spot stopPublisher,
                                              PerfUtil.Config config,
                                              String topic,
                                              long activeEnd,
+                                             AtomicLong activeReceived,
                                              CountDownLatch stopped,
                                              AtomicReference<Throwable> failure) {
-        try (Message active = PerfUtil.payloadTemplate(config.size());
-             Poller poller = new Poller()) {
-            poller.add(publisher, PollEventFlag.POLLOUT);
+        int defaultMaxInflight = config.size() >= 65536 ? 16 : 256;
+        int maxInflight = PerfUtil.intEnv("PERF_SINGLE_SPOT_MAX_INFLIGHT",
+            defaultMaxInflight);
+        if (maxInflight <= 0) {
+            maxInflight = defaultMaxInflight;
+        }
+        long sent = 0L;
+        try (Message active = PerfUtil.payloadTemplate(config.size())) {
             while (System.nanoTime() < activeEnd) {
+                while (sent - activeReceived.get() >= maxInflight
+                    && System.nanoTime() < activeEnd) {
+                    sleepQuietly(Duration.ofMillis(1),
+                        "spot publish inflight throttle");
+                }
                 PerfUtil.resetAndWritePayload(active, config.size(),
                     (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                publishWhenWritable(publisher, poller, topic, active);
+                if (!publishWhenWritableUntil(publisher, topic, active, activeEnd)) {
+                    break;
+                }
+                sent++;
             }
             try (Message stop = PerfStopToken.newMessage()) {
-                stopPublisher.publish(topic)
+                publisher.publish(topic)
                     .message(stop)
                     .flags(SendFlags.NONE)
                     .submit();
@@ -244,14 +244,37 @@ final class PerfSpot {
     }
 
     private static void publishWhenWritable(Spot publisher,
-                                            Poller poller,
                                             String topic,
                                             Message message) {
-        while (!publisher.publish(topic)
-            .message(message)
-            .flags(SendFlags.DONT_WAIT)
-            .submit()) {
-            waitFor(poller, PollEventFlag.POLLOUT);
+        while (!tryPublishWhenWritable(publisher, topic, message)) {
+            sleepQuietly(Duration.ofMillis(1), "spot publish backpressure");
+        }
+    }
+
+    private static boolean publishWhenWritableUntil(Spot publisher,
+                                                    String topic,
+                                                    Message message,
+                                                    long deadlineNanos) {
+        // C parity (perf_spot.cpp send_spot_samples): nonblocking publish; on
+        // backpressure do a fixed 1ms poll-sleep (perf_socket_poll(NULL,0,1))
+        // then retry, rather than a socket POLLOUT wait.
+        while (System.nanoTime() < deadlineNanos) {
+            if (tryPublishWhenWritable(publisher, topic, message)) {
+                return true;
+            }
+            sleepQuietly(Duration.ofMillis(1), "spot publish backpressure");
+        }
+        return false;
+    }
+
+    private static boolean tryPublishWhenWritable(Spot publisher,
+                                                 String topic,
+                                                 Message message) {
+        try (Message outbound = Message.copyOf(message)) {
+            return publisher.publish(topic)
+                .message(outbound)
+                .flags(SendFlags.DONT_WAIT)
+                .submit();
         }
     }
 

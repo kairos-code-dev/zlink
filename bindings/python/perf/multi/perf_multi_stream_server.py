@@ -9,6 +9,7 @@ from perf_multi_common import (
     benchmark_endpoint,
     parse_server_args,
     perf_server_context,
+    safe_poll,
     send_nonblocking,
 )
 
@@ -36,27 +37,53 @@ def main(argv=None):
             print(f"READY,{endpoint}", flush=True)
 
             def packet_handler(routing_id, header, body):
+                # C perf_multi_stream_session.hpp stream_packet_handler_
+                # callback: the installed packet handler is the measured
+                # POLLIN drain surface; queue the framed echo for POLLOUT
+                # backpressure draining.
                 frame = build_packet_frame(header, body)
                 with pending_lock:
                     pending.append((bytes(routing_id), frame))
 
             server.on_packet(packet_handler)
-            while not stop.is_set():
-                progressed = False
+
+            def drain_pending():
                 while True:
                     with pending_lock:
                         item = pending[0] if pending else None
                     if item is None:
-                        break
+                        return
                     routing_id, frame = item
                     if not send_nonblocking(server, frame, routing_id=routing_id):
-                        break
+                        return
                     with pending_lock:
                         if pending and pending[0] == item:
                             pending.popleft()
-                    progressed = True
-                if not progressed:
-                    stop.wait(0.001)
+
+            # C run_server_event_loop: POLLOUT-driven backpressure drain of
+            # the pending deque with the bounded aux poll wait
+            # (perf_aux_poll_wait_ms == 100ms); idle poll when empty. The
+            # POLLIN data path is the installed packet handler above.
+            aux_wait_ms = 100
+            with zlink.Poller() as poller:
+                poller.add_socket(server, zlink.PollEventFlag.POLLOUT)
+                while not stop.is_set():
+                    with pending_lock:
+                        has_pending = bool(pending)
+                    if has_pending:
+                        drain_pending()
+                    with pending_lock:
+                        has_pending = bool(pending)
+                    if not has_pending:
+                        stop.wait(aux_wait_ms / 1000.0)
+                        continue
+                    events = safe_poll(poller, aux_wait_ms)
+                    if events:
+                        for event in events:
+                            if int(event.events) & int(
+                                zlink.PollEventFlag.POLLOUT
+                            ):
+                                drain_pending()
 
 
 def build_packet_frame(header, body):

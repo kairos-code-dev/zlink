@@ -10,170 +10,7 @@ import (
 	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
-type multiSpotSubscriber struct {
-	spot *zlink.Spot
-}
-
 const multiSpotTopic = "bench"
-
-func runMultiSpot(cfg multiConfig) perfcommon.Result {
-	ctx, err := perfcommon.NewMultiContext()
-	perfcommon.Must(err)
-	defer ctx.Close()
-
-	dataNode, err := ctx.SpotNode()
-	perfcommon.Must(err)
-	defer dataNode.Close()
-	controlNode, err := ctx.SpotNode()
-	perfcommon.Must(err)
-	defer controlNode.Close()
-	clientDataNode, err := ctx.SpotNode()
-	perfcommon.Must(err)
-	defer clientDataNode.Close()
-	clientControlNode, err := ctx.SpotNode()
-	perfcommon.Must(err)
-	defer clientControlNode.Close()
-
-	perfcommon.ApplyMultiSpotNodeAdmission(dataNode, cfg.pattern)
-	perfcommon.ApplyMultiSpotNodeAdmission(controlNode, cfg.pattern)
-	perfcommon.ApplyMultiSpotNodeAdmission(clientDataNode, cfg.pattern)
-	perfcommon.ApplyMultiSpotNodeAdmission(clientControlNode, cfg.pattern)
-	perfcommon.Must(perfcommon.ConfigureTLSServer(dataNode, cfg.transport))
-	perfcommon.Must(perfcommon.ConfigureTLSServer(controlNode, cfg.transport))
-	perfcommon.Must(perfcommon.ConfigureTLSClient(controlNode, cfg.transport))
-	perfcommon.Must(perfcommon.ConfigureTLSServer(clientDataNode, cfg.transport))
-	perfcommon.Must(perfcommon.ConfigureTLSClient(clientDataNode, cfg.transport))
-	perfcommon.Must(perfcommon.ConfigureTLSServer(clientControlNode, cfg.transport))
-	perfcommon.Must(perfcommon.ConfigureTLSClient(clientControlNode, cfg.transport))
-	perfcommon.Must(dataNode.SetRoutingID(zlink.NewRoutingID([]byte("z-go-multi-spot-server"))))
-	perfcommon.Must(controlNode.SetRoutingID(zlink.NewRoutingID([]byte("z-go-multi-spot-control-server"))))
-	perfcommon.Must(clientControlNode.SetRoutingID(zlink.NewRoutingID([]byte("z-go-multi-spot-control-client"))))
-
-	publisher, err := dataNode.Spot()
-	perfcommon.Must(err)
-	defer publisher.Close()
-	perfcommon.Must(publisher.SetNoDrop(true))
-	perfcommon.ApplyMultiBenchmarkSocketOptions(publisher, cfg.transport)
-	controlPub, err := controlNode.Spot()
-	perfcommon.Must(err)
-	defer controlPub.Close()
-	controlSub, err := controlNode.Spot()
-	perfcommon.Must(err)
-	defer controlSub.Close()
-	perfcommon.Must(controlSub.SetSubscription(multiSpotTopic))
-	clientControlPub, err := clientControlNode.Spot()
-	perfcommon.Must(err)
-	defer clientControlPub.Close()
-	clientControlSub, err := clientControlNode.Spot()
-	perfcommon.Must(err)
-	defer clientControlSub.Close()
-	perfcommon.Must(clientControlSub.SetSubscription(multiSpotTopic))
-
-	dataEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-data")
-	controlEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-control-server")
-	clientControlEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-control-client")
-	perfcommon.Must(dataNode.Bind(dataEndpoint))
-	perfcommon.Must(controlNode.Bind(controlEndpoint))
-	perfcommon.Must(clientControlNode.Bind(clientControlEndpoint))
-	dataEndpoint = spotNodeLastEndpoint(dataNode, dataEndpoint)
-	controlEndpoint = spotNodeLastEndpoint(controlNode, controlEndpoint)
-	clientControlEndpoint = spotNodeLastEndpoint(clientControlNode, clientControlEndpoint)
-	perfcommon.Must(clientControlNode.ConnectPeer(controlEndpoint))
-	perfcommon.Must(controlNode.ConnectPeer(clientControlEndpoint))
-	perfcommon.Must(clientDataNode.ConnectPeer(dataEndpoint))
-	time.Sleep(perfcommon.MultiSpotReadySettleDuration())
-	time.Sleep(perfcommon.MultiSpotControlSettleDuration())
-
-	subs := make([]multiSpotSubscriber, 0, cfg.clients)
-	for i := 0; i < cfg.clients; i++ {
-		spot, err := clientDataNode.Spot()
-		perfcommon.Must(wrapMultiSpotError("subscriber spot create", i, err))
-		subs = append(subs, multiSpotSubscriber{spot: spot})
-	}
-	for i, sub := range subs {
-		perfcommon.Must(wrapMultiSpotError("subscriber spot options", i,
-			applyMultiSpotOptions(sub.spot, cfg.transport)))
-		perfcommon.Must(wrapMultiSpotError("subscriber spot subscribe", i,
-			sub.spot.SetSubscription(multiSpotTopic)))
-	}
-	defer func() {
-		for _, sub := range subs {
-			_ = sub.spot.Close()
-		}
-	}()
-
-	waitForMultiSpotReady(subs)
-	if !publishSpotControlPayload(clientControlPub, fmt.Sprintf("READY_COUNT,%d,%d", cfg.msgSize, cfg.clients), perfcommon.MultiReadyTimeout()) {
-		perfcommon.Must(fmt.Errorf("multi spot client ready publish timeout"))
-	}
-	readyCount := 0
-	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
-	for time.Now().Before(deadline) {
-		payload := receiveSpotControlPayload(controlSub)
-		if strings.HasPrefix(payload, "READY_COUNT,") {
-			fields := strings.Split(payload, ",")
-			if len(fields) == 3 && fields[1] == fmt.Sprintf("%d", cfg.msgSize) {
-				var count int
-				_, _ = fmt.Sscanf(fields[2], "%d", &count)
-				readyCount += count
-			}
-		}
-		if readyCount >= cfg.clients {
-			break
-		}
-		time.Sleep(time.Millisecond)
-	}
-	if readyCount < cfg.clients {
-		perfcommon.Must(fmt.Errorf("multi spot ready control timeout"))
-	}
-	if !publishSpotControlPayload(controlPub, fmt.Sprintf("START,%d", cfg.msgSize), perfcommon.MultiReadyTimeout()) {
-		perfcommon.Must(fmt.Errorf("multi spot control start publish timeout"))
-	}
-	waitForSpotControlStart(clientControlSub, cfg.msgSize)
-
-	stats := perfcommon.NewStats()
-	window := perfcommon.NewBenchmarkWindow(cfg.duration)
-	serverDone := make(chan struct{})
-	go func() {
-		defer close(serverDone)
-		payload := perfcommon.PreparePayload(cfg.msgSize)
-		for time.Now().Before(window.StopAt) {
-			perfcommon.StampWindowPayload(payload, window.ActiveAt)
-			_, err := publisher.Publish(multiSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					continue
-				}
-				perfcommon.Must(err)
-			}
-		}
-	}()
-	for time.Now().Before(window.StopAt) {
-		for _, sub := range subs {
-			var message zlink.TopicMessage
-			ok, err := sub.spot.Subscribe(&message, zlink.RecvFlagsDontWait)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					continue
-				}
-				perfcommon.Must(err)
-			}
-			if !ok {
-				continue
-			}
-			part, err := message.SinglePartOrError()
-			if err == nil && part != nil {
-				if sentAt, ok := perfcommon.SentAtFromBytes(part.Data(), cfg.msgSize); ok && time.Now().Before(window.StopAt) {
-					stats.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()))
-				}
-			}
-			_ = message.Close()
-		}
-	}
-	<-serverDone
-
-	return stats.Snapshot(cfg.duration, cfg.msgSize)
-}
 
 func runMultiSpotServer(cfg multiConfig) {
 	ctx, err := perfcommon.NewMultiServerContext()
@@ -269,6 +106,26 @@ func runMultiSpotServer(cfg multiConfig) {
 			perfcommon.Must(err)
 		}
 	}
+	// perf_multi_spot_server.cpp end-of-active: signal phase end on the
+	// data topic (the C server uses a cooldown-phase header; Go uses the
+	// shared wire-level stop token) so the client recv-drain exits
+	// deterministically instead of relying purely on its own clock.
+	sendMultiSpotStopToken(dataSpot)
+}
+
+// sendMultiSpotStopToken publishes the wire-level stop token on the
+// data topic with bounded retry through transient backpressure.
+func sendMultiSpotStopToken(spot *zlink.Spot) {
+	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
+		sent, err := spot.Publish(multiSpotTopic).Message(perfcommon.NewMessage(perfcommon.StopToken)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		if err == nil && sent {
+			return
+		}
+		if err != nil && !perfcommon.IsTransient(err) {
+			return
+		}
+		time.Sleep(perfcommon.StopTokenSendBackoff)
+	}
 }
 
 func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
@@ -337,26 +194,51 @@ func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
 	}
 	stats := perfcommon.NewStats()
 	stopAt := time.Now().Add(cfg.duration)
-	for time.Now().Before(stopAt) {
-		for _, spot := range spots {
-			var message zlink.TopicMessage
-			ok, err := spot.Subscribe(&message, zlink.RecvFlagsDontWait)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					continue
-				}
-				perfcommon.Must(err)
-			}
-			if !ok {
+	// perf_multi_spot_client.cpp spot_client_recv_worker_loop /
+	// drain_spot_client_slot: the SPOT handle has no poll fd (same as
+	// single SPOT), so the C reference uses a per-slot DONTWAIT drain to
+	// empty, a 1ms idle yield when no slot progressed (not a busy spin),
+	// and ends the phase on the wire-level stop token. Counting is
+	// bounded by the active deadline.
+	stopSeen := make([]bool, len(spots))
+	stopsRemaining := len(spots)
+	for stopsRemaining > 0 && time.Now().Before(stopAt) {
+		progressed := false
+		for idx, spot := range spots {
+			if stopSeen[idx] {
 				continue
 			}
-			part, err := message.SinglePartOrError()
-			if err == nil && part != nil {
-				if sentAt, ok := perfcommon.SentAtFromBytes(part.Data(), cfg.msgSize); ok {
-					stats.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()))
+			for {
+				var message zlink.TopicMessage
+				ok, err := spot.Subscribe(&message, zlink.RecvFlagsDontWait)
+				if err != nil {
+					if perfcommon.IsTransient(err) {
+						break
+					}
+					perfcommon.Must(err)
 				}
+				if !ok {
+					break
+				}
+				progressed = true
+				part, partErr := message.SinglePartOrError()
+				if partErr == nil && part != nil {
+					if perfcommon.IsStopTokenMessage(part) {
+						stopSeen[idx] = true
+						stopsRemaining--
+						_ = message.Close()
+						break
+					}
+					if sentAt, ok := perfcommon.SentAtFromBytes(part.Data(), cfg.msgSize); ok && time.Now().Before(stopAt) {
+						stats.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()))
+					}
+				}
+				_ = message.Close()
 			}
-			_ = message.Close()
+		}
+		if !progressed {
+			// drain_spot_client_slot idle path: 1ms yield, no busy spin.
+			time.Sleep(time.Millisecond)
 		}
 	}
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
@@ -439,27 +321,4 @@ func receiveSpotControlPayload(spot *zlink.Spot) string {
 		return ""
 	}
 	return string(part.Data())
-}
-
-func applyMultiSpotOptions(spot *zlink.Spot, transport string) error {
-	if transport == "pgm" || transport == "epgm" {
-		return nil
-	}
-	if err := spot.SetLinger(0); err != nil {
-		return err
-	}
-	if err := spot.SetSendTimeout(perfcommon.MultiSendTimeout()); err != nil {
-		return err
-	}
-	if err := spot.SetRecvTimeout(perfcommon.MultiRecvTimeout()); err != nil {
-		return err
-	}
-	return nil
-}
-
-func wrapMultiSpotError(step string, index int, err error) error {
-	if err == nil {
-		return nil
-	}
-	return fmt.Errorf("multi spot setup %s[%d]: %w", step, index, err)
 }

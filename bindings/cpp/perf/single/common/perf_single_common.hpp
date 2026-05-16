@@ -17,6 +17,7 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace perf {
@@ -356,6 +357,57 @@ inline bool send_payload_blocking (perf_socket_t &socket_,
     }
 }
 
+inline bool is_transient_send_errno (int err_)
+{
+    return err_ == EINTR || err_ == EAGAIN || err_ == EWOULDBLOCK
+           || err_ == ETIMEDOUT;
+}
+
+inline bool is_transient_spot_publish_errno (int err_)
+{
+    return is_transient_send_errno (err_) || err_ == ENOTCONN
+           || err_ == EHOSTUNREACH || err_ == ENETUNREACH;
+}
+
+inline bool is_transient_routed_send_errno (int err_)
+{
+    return is_transient_send_errno (err_) || err_ == ENOTCONN
+           || err_ == EHOSTUNREACH || err_ == ENETUNREACH;
+}
+
+inline bool send_payload_blocking_retry (perf_socket_t &socket_,
+                                         const void *data_,
+                                         size_t size_,
+                                         int max_retries_ = 100)
+{
+    for (int retry = 0; retry < max_retries_; ++retry) {
+        if (send_payload_blocking (socket_, data_, size_))
+            return true;
+        if (!is_transient_send_errno (errno))
+            return false;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    errno = EAGAIN;
+    return false;
+}
+
+inline bool send_payload_blocking_retry (perf_socket_t &socket_,
+                                         const zlink::routing_id_t &routing_id_,
+                                         const void *data_,
+                                         size_t size_,
+                                         int max_retries_ = 100)
+{
+    for (int retry = 0; retry < max_retries_; ++retry) {
+        if (send_payload_blocking (socket_, routing_id_, data_, size_))
+            return true;
+        if (!is_transient_send_errno (errno))
+            return false;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    errno = EAGAIN;
+    return false;
+}
+
 inline bool send_payload_blocking (zlink::pair_socket_t &socket_,
                                    const void *data_,
                                    size_t size_)
@@ -389,6 +441,23 @@ inline bool publish_payload_blocking (zlink::pub_socket_t &publisher_,
     }
 }
 
+inline bool publish_payload_blocking_retry (zlink::pub_socket_t &publisher_,
+                                            const std::string &topic_,
+                                            const void *data_,
+                                            size_t size_,
+                                            int max_retries_ = 100)
+{
+    for (int retry = 0; retry < max_retries_; ++retry) {
+        if (publish_payload_blocking (publisher_, topic_, data_, size_))
+            return true;
+        if (!is_transient_send_errno (errno))
+            return false;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    errno = EAGAIN;
+    return false;
+}
+
 inline bool publish_payload_blocking (zlink::service::spot_t &spot_,
                                       const std::string &topic_,
                                       const void *data_,
@@ -406,16 +475,33 @@ inline bool publish_payload_blocking (zlink::service::spot_t &spot_,
     }
 }
 
+inline bool publish_payload_blocking_retry (zlink::service::spot_t &spot_,
+                                            const std::string &topic_,
+                                            const void *data_,
+                                            size_t size_,
+                                            int max_retries_ = 100)
+{
+    for (int retry = 0; retry < max_retries_; ++retry) {
+        if (publish_payload_blocking (spot_, topic_, data_, size_))
+            return true;
+        if (!is_transient_spot_publish_errno (errno))
+            return false;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    errno = EAGAIN;
+    return false;
+}
+
 inline bool send_stop_token_blocking (perf_socket_t &socket_)
 {
-    return send_payload_blocking (
+    return send_payload_blocking_retry (
       socket_, k_stop_token, std::strlen (k_stop_token));
 }
 
 inline bool send_stop_token_blocking (perf_socket_t &socket_,
                                       const zlink::routing_id_t &routing_id_)
 {
-    return send_payload_blocking (
+    return send_payload_blocking_retry (
       socket_, routing_id_, k_stop_token, std::strlen (k_stop_token));
 }
 
@@ -428,14 +514,14 @@ inline bool send_stop_token_blocking (zlink::pair_socket_t &socket_)
 inline bool publish_stop_token_blocking (zlink::pub_socket_t &publisher_,
                                          const std::string &topic_)
 {
-    return publish_payload_blocking (
+    return publish_payload_blocking_retry (
       publisher_, topic_, k_stop_token, std::strlen (k_stop_token));
 }
 
 inline bool publish_stop_token_blocking (zlink::service::spot_t &spot_,
                                          const std::string &topic_)
 {
-    return publish_payload_blocking (
+    return publish_payload_blocking_retry (
       spot_, topic_, k_stop_token, std::strlen (k_stop_token));
 }
 

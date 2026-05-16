@@ -63,7 +63,13 @@ internal static class PerfMultiRouterRouterClient
                 size, latencySampleCap, pollTimeoutMs, durationSeconds,
                 readyTimeoutMs);
 
-            TrySendRouterStopToken(activeClients, serverRoutingId);
+            // PERF_MULTI: echo (relay) clients send NO wire stop token. C
+            // perf_multi_router_router_client.cpp drives run_echo_duration
+            // (common perf_multi_client_helpers.hpp) which never emits a stop
+            // token; the relay/echo server blindly echoes and shuts down via
+            // the runner terminating it after the client is done. Sending a
+            // stop token here is a .NET-only divergence and is removed for
+            // parity with C.
 
             if (result.measureCount <= 0)
                 return 2;
@@ -140,12 +146,13 @@ internal static class PerfMultiRouterRouterClient
             / (double)Stopwatch.Frequency;
         double configuredSeconds = Math.Max(1.0, durationSeconds);
         double throughput = metrics.MeasureCount / configuredSeconds;
-        double fallbackLatencyNs = (configuredSeconds * 1_000_000_000.0)
-            / Math.Max(1.0, metrics.MeasureCount * 2.0);
+        // PERF_POLICY: report measured latency only. C
+        // normalize_latency_stats reports zeros when no samples and never
+        // fabricates a duration-derived latency.
         var latency = ComputeLatencyStats(latSamples);
-        double latencyNs = latency.mean > 0.0 ? latency.mean : fallbackLatencyNs;
-        double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
-        double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
+        double latencyNs = latency.mean;
+        double latencyP95Ns = Math.Max(latency.p95, latencyNs);
+        double latencyP99Ns = Math.Max(latency.p99, latencyP95Ns);
 
         return (throughput, latencyNs, latencyP95Ns, latencyP99Ns,
             metrics.MeasureCount);
@@ -310,33 +317,6 @@ internal static class PerfMultiRouterRouterClient
         if (remainingMs >= int.MaxValue)
             return int.MaxValue;
         return (int)Math.Ceiling(remainingMs);
-    }
-
-    private static void TrySendRouterStopToken(
-        IReadOnlyList<SocketBase> activeClients,
-        ReadOnlySpan<byte> serverRoutingId)
-    {
-        if (activeClients == null || activeClients.Count == 0)
-            return;
-
-        for (int i = 0; i < activeClients.Count; i++)
-        {
-            try
-            {
-                using Message message = new(MultiStopToken.AsSpan());
-                ((RouterSocket)activeClients[i]).Send(
-                    RoutingId.FromBytes(serverRoutingId)).Message(message)
-                    .Flags(SendFlags.DontWait).Submit();
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno)
-                                            || PerfRunner.IsTransientNetworkError(ex.InternalErrno))
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-        }
     }
 
     private sealed class RouterRouterClientSlot

@@ -116,6 +116,15 @@ class dealer_dealer_client_bench_t
                         NULL))
             return false;
 
+        // Signal active-phase end to the measuring server with a wire-level
+        // stop token on every client socket (blocking send, deadline
+        // ignored), matching the C reference per-socket send_stop_token loop
+        // (bindings/c/perf/multi/src/perf_multi_dealer_dealer_client.cpp:290-293).
+        for (size_t i = 0; i < _socket_states.size (); ++i) {
+            if (!send_stop_token (_socket_states[i]))
+                return false;
+        }
+
         std::cout << "CLIENT_DONE," << _msg_size << std::endl;
         return _result.active_count > 0;
     }
@@ -241,11 +250,8 @@ class dealer_dealer_client_bench_t
             debug_log ("stamp payload failed");
             return false;
         }
-        state.message = zlink::advanced::external_message_t::adopt (
-          state.payload.data (),
-          state.payload.size (),
-          NULL,
-          NULL);
+        state.message =
+          zlink::message_t::from_bytes (state.payload.data (), state.payload.size ());
         if (!state.message.valid ()) {
             debug_log ("message adopt failed");
             return false;
@@ -285,6 +291,43 @@ class dealer_dealer_client_bench_t
         return false;
     }
 
+    // Blocking send of the wire-level stop token on one socket. Matches the
+    // C reference send_stop_token()
+    // (bindings/c/perf/multi/src/perf_multi_dealer_dealer_client.cpp:114-140).
+    bool send_stop_token (socket_state_t &state)
+    {
+        if (!state.sock)
+            return false;
+        const size_t token_size = std::strlen (perf::multi::k_stop_token);
+        for (;;) {
+            zlink::message_t part =
+              zlink::message_t::from_bytes (
+                perf::multi::k_stop_token, token_size);
+            if (!part.valid ())
+                return false;
+            bool sent = false;
+            try {
+                sent = std::move (state.sock->send ())
+                         .message (part)
+                         .submit ();
+            }
+            catch (const zlink::submit_error_t &) {
+                const int err = errno;
+                if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
+                    || err == ETIMEDOUT)
+                    continue;
+                return false;
+            }
+            if (sent)
+                return true;
+            const int err = errno;
+            if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
+                || err == ETIMEDOUT)
+                continue;
+            return false;
+        }
+    }
+
     bool run_phase (perf_metric::phase_t phase,
                     std::chrono::steady_clock::duration duration,
                     unsigned long long *count_out,
@@ -305,6 +348,10 @@ class dealer_dealer_client_bench_t
         perf::multi::bench_latency_sampler_t latency;
         unsigned long long count = 0;
         size_t index = 0;
+        // PERF_MULTI_TEST_POLICY § 1.3.1: the active send window is bounded
+        // purely by an application clock (steady_clock deadline); no poller
+        // timer object is used. Matches the C reference run_send_window
+        // (bindings/c/perf/multi/src/perf_multi_dealer_dealer_client.cpp:154-243).
         const auto deadline = std::chrono::steady_clock::now () + duration;
         while (std::chrono::steady_clock::now () < deadline) {
             bool progress = false;
@@ -338,10 +385,12 @@ class dealer_dealer_client_bench_t
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no
             // timer cap. Outer loop bounds total wall-time via the
             // steady_clock deadline check above.
-            _poll_events =
-                  _poller.wait (0, std::chrono::milliseconds (-1));
-            if (_poll_events.empty ())
+            const std::optional<zlink::poll_event_t> poll_event =
+              _poller.wait (std::chrono::milliseconds (-1));
+            if (!poll_event.has_value ())
                 continue;
+            _poll_events.clear ();
+            _poll_events.push_back (*poll_event);
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state =

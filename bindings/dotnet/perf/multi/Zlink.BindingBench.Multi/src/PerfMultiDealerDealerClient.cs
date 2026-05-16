@@ -137,6 +137,53 @@ internal static class PerfMultiDealerDealerClient
             }
         }
 
+        // PERF_MULTI_TEST_POLICY § 1.3.1 / C
+        // perf_multi_dealer_dealer_client.cpp run_send_phase (~290-293): the
+        // one-way sender blocking-sends a wire-level stop token on EVERY
+        // client socket after the send window so the dealer-dealer server's
+        // signal-driven receiver loop terminates. Send failure is fatal.
+        for (int i = 0; i < activeClients.Count; i++)
+        {
+            if (!SendStopTokenBlocking((DealerSocket)activeClients[i],
+                    controlState))
+                return false;
+        }
+
+        return true;
+    }
+
+    // Mirrors C send_stop_token(): blocking send with retry through
+    // transient backpressure (EINTR/EAGAIN/EWOULDBLOCK/ETIMEDOUT), aborting
+    // the retry loop early only when shutdown is requested
+    // (C g_stop_requested). Any non-transient failure is fatal.
+    private static bool SendStopTokenBlocking(DealerSocket socket,
+        RunnerControlState controlState)
+    {
+        while (!controlState.StopRequested)
+        {
+            try
+            {
+                using Message message = new(MultiStopToken.AsSpan());
+                if (socket.Send().Message(message).Flags(SendFlags.None)
+                        .Submit())
+                    return true;
+            }
+            catch (ZlinkException ex)
+                when (IsWouldBlock(ex.InternalErrno)
+                      || IsInterrupted(ex.InternalErrno)
+                      || PerfShared.IsTransientBackpressure(ex.InternalErrno)
+                      || PerfShared.IsTransientNetworkError(ex.InternalErrno))
+            {
+                continue;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"[multi-dealer-dealer-client] stop-token send failed: {ex.Message}");
+                return false;
+            }
+        }
+
         return true;
     }
 

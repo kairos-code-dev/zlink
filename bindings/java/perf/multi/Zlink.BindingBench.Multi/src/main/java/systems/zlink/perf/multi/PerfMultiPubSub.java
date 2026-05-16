@@ -17,9 +17,12 @@ import systems.zlink.contracts.SendFlags;
 import systems.zlink.contracts.Socket;
 import systems.zlink.contracts.SocketType;
 import systems.zlink.contracts.SubSocket;
+import systems.zlink.contracts.SubmitException;
+import systems.zlink.contracts.SubmitResult;
 import systems.zlink.contracts.TopicMessage;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -59,6 +62,10 @@ final class PerfMultiPubSub {
                     }
                 }
             }
+            // C parity (perf_multi_pubsub_server.cpp publish_stop_token): after
+            // the active window publish a wire-level stop token on the topic so
+            // the subscriber wakes from its signal-driven (-1) poll and exits.
+            publishStopToken(pub);
             return PerfUtil.Result.silent(config);
         }
     }
@@ -102,18 +109,22 @@ final class PerfMultiPubSub {
                 pollSockets, PollEventFlag.POLLIN)) {
                 long activeEnd = System.nanoTime()
                     + config.durationSeconds() * 1_000_000_000L;
-                while (System.nanoTime() < activeEnd) {
-                    long remainingNs = activeEnd - System.nanoTime();
-                    int waitMs = (int) Math.max(0L,
-                        Math.min(Integer.MAX_VALUE, remainingNs / 1_000_000L));
-                    int readyCount = pollSet.poll(waitMs);
+                // C parity (perf_multi_pubsub_client.cpp run_recv_duration):
+                // signal-driven (-1) poll; the loop ends only on the wire-level
+                // stop token (or cooldown). The active deadline gates which
+                // messages are counted, not the poll timeout.
+                boolean phaseDone = false;
+                while (!phaseDone) {
+                    int readyCount = pollSet.poll(-1);
                     for (int readyOffset = 0; readyOffset < readyCount; readyOffset++) {
                         int index = pollSet.readyIndexAt(readyOffset);
                         if (!pollSet.isReady(index, PollEventFlag.POLLIN)) {
                             continue;
                         }
-                        drainSubscriber(subscribers.get(index), config, metrics,
-                            activeEnd);
+                        if (drainSubscriber(subscribers.get(index), config,
+                            metrics, activeEnd)) {
+                            phaseDone = true;
+                        }
                     }
                 }
             }
@@ -146,11 +157,17 @@ final class PerfMultiPubSub {
                                                Message message,
                                                long deadlineNs) {
         while (System.nanoTime() < deadlineNs) {
-            if (pub.publish(TOPIC)
-                    .message(message)
-                    .flags(SendFlags.DONT_WAIT)
-                    .submit()) {
-                return true;
+            try (Message outbound = Message.copyOf(message)) {
+                if (pub.publish(TOPIC)
+                        .message(outbound)
+                        .flags(SendFlags.DONT_WAIT)
+                        .submit()) {
+                    return true;
+                }
+            } catch (SubmitException ex) {
+                if (!isTransientSubmit(ex)) {
+                    throw ex;
+                }
             }
             long remainingNs = deadlineNs - System.nanoTime();
             if (remainingNs <= 0) {
@@ -163,22 +180,57 @@ final class PerfMultiPubSub {
         return false;
     }
 
-    private static void drainSubscriber(SubSocket sub, PerfUtil.Config config,
-                                        PerfUtil.Metrics metrics,
-                                        long activeEnd) {
-        while (System.nanoTime() < activeEnd) {
+    private static boolean isTransientSubmit(SubmitException ex) {
+        return ex.getResult() == SubmitResult.BACKPRESSURED
+            || ex.getResult() == SubmitResult.NOT_CONNECTED;
+    }
+
+    // Returns true when the wire-level stop token (or cooldown phase) is seen,
+    // mirroring C perf_multi_pubsub_client.cpp recv_one_pubsub_message: the
+    // stop token is checked before header decode and ends the phase; counting
+    // remains bounded by the active deadline.
+    private static boolean drainSubscriber(SubSocket sub, PerfUtil.Config config,
+                                           PerfUtil.Metrics metrics,
+                                           long activeEnd) {
+        while (true) {
             try (TopicMessage received = new TopicMessage()) {
                 if (!sub.subscribe(received, RecvFlags.DONT_WAIT)) {
-                    break;
+                    return false;
+                }
+                if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
+                    return true;
                 }
                 PerfUtil.Header header = PerfUtil.decodeHeader(
                     received.firstPart(), config.size());
                 if (header == null) {
                     continue;
                 }
+                if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
+                    return true;
+                }
                 if (header.phase() == PerfUtil.PHASE_ACTIVE
                     && System.nanoTime() < activeEnd) {
                     metrics.recordNanos(header.latencyNanos());
+                }
+            }
+        }
+    }
+
+    // C parity (perf_multi_pubsub_server.cpp publish_stop_token): publish the
+    // stop token on the topic with blocking semantics, retrying through
+    // transient backpressure so the subscriber always observes the terminator.
+    private static void publishStopToken(PubSocket pub) {
+        while (true) {
+            try (Message stop = PerfStopToken.newMessage()) {
+                if (pub.publish(TOPIC)
+                        .message(stop)
+                        .flags(SendFlags.NONE)
+                        .submit()) {
+                    return;
+                }
+            } catch (SubmitException ex) {
+                if (!isTransientSubmit(ex)) {
+                    throw ex;
                 }
             }
         }

@@ -1,6 +1,8 @@
 #[path = "perf_common.rs"]
 mod common;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use zlink::*;
 
@@ -18,20 +20,10 @@ fn main() {
     let settings = common::MultiSettings::from_env();
     let ctx = common::perf_server_context();
     let mut stream = ctx.stream_socket().expect("stream");
-    stream
-        .common_options()
-        .set_send_hwm(settings.send_hwm)
-        .expect("sndhwm");
-    stream
-        .common_options()
-        .set_recv_hwm(settings.recv_hwm)
-        .expect("rcvhwm");
-    if settings.msg_unit_bytes > 0 {
-        stream
-            .common_options()
-            .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
-            .expect("auto hwm msg unit");
-    }
+    // C perf_multi_stream_server.cpp: gated numeric HWM + unconditional
+    // AUTO_HWM_MSG_UNIT_BYTES = msg_size.
+    common::apply_multi_hwm(&stream, &settings);
+    common::apply_multi_auto_hwm_msg_unit(&stream, args.msg_size);
     stream
         .common_options()
         .set_send_timeout(std::time::Duration::from_millis(settings.send_timeout_ms))
@@ -45,11 +37,33 @@ fn main() {
         .set_tcp_nodelay(true)
         .expect("tcp_nodelay");
     let send_handle = stream.send_handle();
+    // C perf_multi_stream_session.hpp handle_packet_message(): the wire stop
+    // token in the body ends the run; the echo send result is NOT discarded —
+    // a real send failure stops the server (it is not silently swallowed).
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    let cb_stop = stop_flag.clone();
     stream
         .on_packet(move |routing_id, header, body| {
-            let packet = build_packet_frame(header.as_bytes(), body.as_bytes());
+            let body_bytes = body.as_bytes();
+            if common::is_stop_token(body_bytes) {
+                cb_stop.store(true, Ordering::Release);
+                return;
+            }
+            let packet = build_packet_frame(header.as_bytes(), body_bytes);
             let msg = Message::copy_from(&packet).expect("packet");
-            let _ = send_handle.send_to(&routing_id).message(msg).submit();
+            match send_handle.send_to(&routing_id).message(msg).submit() {
+                Ok(_) => {}
+                Err(err) if err.code() == SubmitResult::Backpressured => {
+                    // Binding's send handle queues under backpressure; nothing
+                    // more to do here (mirrors C enqueue-on-pending).
+                }
+                Err(err) => {
+                    if std::env::var("PERF_DEBUG").is_ok() {
+                        eprintln!("[multi-stream-server] echo send failed: {err}");
+                    }
+                    cb_stop.store(true, Ordering::Release);
+                }
+            }
         })
         .expect("on_packet");
     let Some(bind_endpoint) = common::resolve_server_bind_endpoint("MULTI_STREAM", &args.transport)
@@ -73,5 +87,16 @@ fn main() {
         common::wait_for_stop_stdin();
         let _ = stop_tx.send(());
     });
-    let _ = stop_rx.recv();
+    // Wake on either the stdin STOP/QUIT or the wire stop token observed in the
+    // packet handler (C run_server_event_loop polls perf_stop_requested()).
+    loop {
+        if stop_flag.load(Ordering::Acquire) {
+            break;
+        }
+        match stop_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+            Ok(()) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
 }

@@ -18,6 +18,11 @@ internal static class PerfMultiSpotReqRep
     private const int ActiveDeadlineTag = -2;
     private const int ReadyRepeatTag = -3;
     private const int ActiveWakeTag = -4;
+    private static int s_debugClientSendLogs;
+    private static int s_debugClientReplyLogs;
+    private static int s_debugClientPhaseLogs;
+    private static int s_debugServerRecvLogs;
+    private static int s_debugServerReplyLogs;
 
     private enum SpotEchoMode
     {
@@ -55,7 +60,7 @@ internal static class PerfMultiSpotReqRep
     }
 
     private static readonly SpotEchoConfig ReqRepConfig = new(
-        SpotEchoMode.RequestReply,
+        SpotEchoMode.SendSend,
         ReqRepPattern,
         "SPOT-REQREP-SERVER-NODE",
         "SPOT-REQREP-SERVER-SPOT",
@@ -611,11 +616,15 @@ internal static class PerfMultiSpotReqRep
                 if (!replier.RecvRouted(received, RecvFlags.DontWait))
                     return;
 
+                DebugLogLimited(ref s_debugServerRecvLogs,
+                    $"spot_reqrep_server: recv request parts={received.Parts.Count} request_seq={received.RequestSeq ?? 0}");
                 Message reply = received.FirstPart();
                 if (mode == SpotEchoMode.RequestReply)
                 {
                     received.Reply().Message(reply)
                         .Flags(SendFlags.DontWait).Submit();
+                    DebugLogLimited(ref s_debugServerReplyLogs,
+                        "spot_reqrep_server: reply ok");
                 }
                 else
                 {
@@ -635,6 +644,8 @@ internal static class PerfMultiSpotReqRep
                                             || IsInterrupted(ex.InternalErrno)
                                             || IsTransientSubmitErrno(ex.InternalErrno))
             {
+                DebugLogLimited(ref s_debugServerReplyLogs,
+                    $"spot_reqrep_server: transient errno={ex.InternalErrno}");
                 return;
             }
         }
@@ -668,6 +679,9 @@ internal static class PerfMultiSpotReqRep
             else
             {
                 slots[i].Wake = wake;
+                sendPoller.Add(slots[i].Requester,
+                    PollEventFlags.PollIn, i);
+                slots[i].PollRegistered = true;
             }
         }
         sendPoller.Add(activeTimer, ActiveDeadlineTag);
@@ -716,6 +730,10 @@ internal static class PerfMultiSpotReqRep
                 }
             }
 
+            if (config.Mode == SpotEchoMode.RequestReply)
+                DrainRequestReplyFallback(slots, activeSlots, size,
+                    activeDeadlineTicks);
+
             if (sendProgress)
                 continue;
 
@@ -733,8 +751,12 @@ internal static class PerfMultiSpotReqRep
             }
         }
 
+        DebugLogLimited(ref s_debugClientPhaseLogs,
+            $"spot_reqrep_client: active loop end count={TotalMeasureCount(slots)}");
         if (config.Mode == SpotEchoMode.RequestReply)
             WaitForPendingReplies(slots, activeSlots, 1000);
+        DebugLogLimited(ref s_debugClientPhaseLogs,
+            $"spot_reqrep_client: pending wait end count={TotalMeasureCount(slots)}");
 
         for (int i = 0; i < slots.Count; i++)
         {
@@ -748,6 +770,14 @@ internal static class PerfMultiSpotReqRep
         Console.Error.WriteLine(
             $"multi_client_error:{failure.GetType().Name}:{failure.Message}");
         return false;
+    }
+
+    private static long TotalMeasureCount(List<ClientSlot> slots)
+    {
+        long count = 0;
+        foreach (ClientSlot slot in slots)
+            count += Volatile.Read(ref slot.MeasureCount);
+        return count;
     }
 
     private enum SendResult
@@ -773,7 +803,11 @@ internal static class PerfMultiSpotReqRep
             .Submit((result, parts) =>
                 OnRequestReply(slot, result, parts, size));
         if (submitted)
+        {
+            DebugLogLimited(ref s_debugClientSendLogs,
+                $"spot_reqrep_client: send ok seq={seq}");
             return SendResult.Sent;
+        }
 
         Volatile.Write(ref slot.WaitingReply, 0);
         Volatile.Write(ref slot.SendPending, 0);
@@ -809,10 +843,20 @@ internal static class PerfMultiSpotReqRep
     {
         while (true)
         {
+            long nowTicks = Stopwatch.GetTimestamp();
+            if (nowTicks >= activeDeadlineTicks)
+                return false;
+
             try
             {
-                int written = poller.Wait(events,
-                    TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs),
+                // PERF_MULTI_TEST_POLICY § 1.3.1 / PERF_POLICY § 1.1.2-1.1.3:
+                // signal-driven (-1) poller wait, no timer fallback and no
+                // sleep in the wait path. Matches C
+                // perf_multi_spot_reqrep_client.cpp run_active_phase's
+                // zlink_poller_wait(..., -1, NULL). The active deadline is a
+                // poller-registered timer (ActiveDeadlineTag), so the wait is
+                // still woken when the duration elapses.
+                int written = poller.Wait(events, Timeout.InfiniteTimeSpan,
                     out _);
                 bool progressed = false;
                 for (int i = 0; i < written; i++)
@@ -844,6 +888,11 @@ internal static class PerfMultiSpotReqRep
                     {
                         DrainSendSendReplies(slots[slotIndex], size,
                             activeDeadlineTicks);
+                        progressed = true;
+                    }
+                    if (config.Mode == SpotEchoMode.RequestReply
+                        && (revents & PollEventFlags.PollIn) != 0)
+                    {
                         progressed = true;
                     }
                     if ((events[i].Revents
@@ -893,8 +942,8 @@ internal static class PerfMultiSpotReqRep
     {
         try
         {
-            Volatile.Write(ref slot.WaitingReply, 0);
-            Volatile.Write(ref slot.SendPending, 0);
+            DebugLogLimited(ref s_debugClientReplyLogs,
+                $"spot_reqrep_client: reply result={result} parts={replyParts.Count}");
             if (result != RequestResult.Ok || replyParts.Count == 0)
                 return;
 
@@ -907,6 +956,9 @@ internal static class PerfMultiSpotReqRep
         }
         finally
         {
+            Volatile.Write(ref slot.WaitingReply, 0);
+            Volatile.Write(ref slot.SendPending, 0);
+            slot.Wake?.Signal();
             for (int i = 0; i < replyParts.Count; i++)
                 replyParts[i].Dispose();
         }
@@ -940,6 +992,14 @@ internal static class PerfMultiSpotReqRep
                 return;
             }
         }
+    }
+
+    private static void DrainRequestReplyFallback(List<ClientSlot> slots,
+        int activeSlots, int size, long activeDeadlineTicks)
+    {
+        int count = Math.Min(activeSlots, slots.Count);
+        for (int i = 0; i < count; i++)
+            DrainSendSendReplies(slots[i], size, activeDeadlineTicks);
     }
 
     private static void RecordReply(ClientSlot slot, PerfMetricHeader header,
@@ -980,10 +1040,8 @@ internal static class PerfMultiSpotReqRep
             return;
         }
 
-        if (slot.PollRegistered)
-            return;
-        poller.Add(slot.Requester, PollEventFlags.PollOut, slotIndex);
-        slot.PollRegistered = true;
+        poller.Modify(slot.Requester,
+            PollEventFlags.PollIn | PollEventFlags.PollOut);
     }
 
     private static void DisablePollOut(Poller poller, ClientSlot slot,
@@ -995,8 +1053,7 @@ internal static class PerfMultiSpotReqRep
             return;
         }
 
-        if (slot.PollRegistered && poller.Remove(slot.Requester))
-            slot.PollRegistered = false;
+        poller.Modify(slot.Requester, PollEventFlags.PollIn);
     }
 
     private static void WaitForPendingReplies(List<ClientSlot> slots,
@@ -1043,12 +1100,13 @@ internal static class PerfMultiSpotReqRep
 
         double activeSeconds = Math.Max(1.0, durationSeconds);
         double throughput = measureCount / activeSeconds;
-        double fallbackLatencyNs = (activeSeconds * 1_000_000_000.0)
-            / Math.Max(1.0, measureCount * 2.0);
+        // PERF_POLICY: report measured latency only. C
+        // normalize_latency_stats reports zeros when no samples and never
+        // fabricates a duration-derived latency.
         var latency = ComputeLatencyStats(samples);
-        double latencyNs = latency.mean > 0.0 ? latency.mean : fallbackLatencyNs;
-        double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
-        double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
+        double latencyNs = latency.mean;
+        double latencyP95Ns = Math.Max(latency.p95, latencyNs);
+        double latencyP99Ns = Math.Max(latency.p99, latencyP95Ns);
         PrintResult(pattern, transport, size, throughput, latencyNs,
             latencyP95Ns, latencyP99Ns);
         return 0;
@@ -1057,6 +1115,15 @@ internal static class PerfMultiSpotReqRep
     private static bool IsTransientSubmitErrno(int errno)
     {
         return errno == 11 || errno == 110 || errno == 107 || errno == 113;
+    }
+
+    private static void DebugLogLimited(ref int counter, string message)
+    {
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PERF_DEBUG")))
+            return;
+        if (Interlocked.Increment(ref counter) > 8)
+            return;
+        Console.Error.WriteLine(message);
     }
 
     private static bool ShouldIgnoreSpotOptionError(int errno)

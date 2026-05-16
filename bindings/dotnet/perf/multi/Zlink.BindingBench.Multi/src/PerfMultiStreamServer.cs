@@ -43,6 +43,7 @@ internal static class PerfMultiStreamServer
         server.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(ioTimeoutMs);
         server.Options.TcpNoDelay = true;
         server.Bind(endpoint);
+        endpoint = server.Options.LastEndpoint;
         RecalculateAutoHwm(ctx);
         WriteStdoutLine($"READY,{endpoint}");
 

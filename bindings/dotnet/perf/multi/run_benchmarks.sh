@@ -384,6 +384,33 @@ default_msg_sizes_for_pattern() {
   fi
 }
 
+msg_sizes_for_pattern() {
+  local pattern="${1:-}"
+  local configured_sizes="${2:-}"
+  if [[ -z "${configured_sizes}" ]]; then
+    default_msg_sizes_for_pattern "${pattern}"
+    return
+  fi
+  if [[ "${pattern}" != "MULTI_STREAM" ]]; then
+    printf '%s' "${configured_sizes}"
+    return
+  fi
+
+  python3 - "${configured_sizes}" <<'PY'
+import sys
+
+allowed = {"64", "256", "1024", "65536"}
+items = []
+for raw in sys.argv[1].split(","):
+    value = raw.strip()
+    if value in allowed and value not in items:
+        items.append(value)
+if not items:
+    items = ["64", "256", "1024", "65536"]
+print(",".join(items))
+PY
+}
+
 default_clients_for_pattern() {
   local pattern="${1:-}"
   if [[ "${pattern}" == "MULTI_STREAM" ]]; then
@@ -1503,10 +1530,17 @@ run_multi_process() {
 run_external_stream_client() {
   local endpoint="$1"
   ensure_stream_client
+  local stream_clients="${pattern_clients}"
+  local non_tcp_max="${PERF_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
+  if [[ "${transport}" != "tcp" && "${stream_clients}" =~ ^[0-9]+$ \
+        && "${non_tcp_max}" =~ ^[0-9]+$ \
+        && "${stream_clients}" -gt "${non_tcp_max}" ]]; then
+    stream_clients="${non_tcp_max}"
+  fi
   local cmd=(
     "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM
     --sizes "${size}" --runs 1 --duration "${DURATION}"
-    --ccu "${pattern_clients}" --send-stop-token 1 --endpoint "${endpoint}"
+    --ccu "${stream_clients}" --send-stop-token 1 --endpoint "${endpoint}"
   )
   if [[ "${PIN_CPU}" -eq 1 && "$(uname -s)" == Linux* ]] \
     && command -v taskset >/dev/null 2>&1; then
@@ -1584,10 +1618,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
     pattern="${pattern//[[:space:]]/}"
     [[ -n "${pattern}" ]] || continue
 
-    pattern_msg_sizes="${MSG_SIZES}"
-    if [[ -z "${pattern_msg_sizes}" ]]; then
-      pattern_msg_sizes="$(default_msg_sizes_for_pattern "${pattern}")"
-    fi
+    pattern_msg_sizes="$(msg_sizes_for_pattern "${pattern}" "${MSG_SIZES}")"
     pattern_clients="${CLIENTS}"
     if [[ -z "${pattern_clients}" ]]; then
       pattern_clients="$(default_clients_for_pattern "${pattern}")"

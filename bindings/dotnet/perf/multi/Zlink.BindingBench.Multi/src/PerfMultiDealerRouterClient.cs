@@ -62,7 +62,14 @@ internal static class PerfMultiDealerRouterClient
                 size, latencySampleCap, pollTimeoutMs, durationSeconds,
                 readyTimeoutMs);
 
-            TrySendStopToken(activeClients);
+            // PERF_MULTI: echo (relay) clients send NO wire stop token. C
+            // perf_multi_dealer_router_client.cpp drives run_echo_duration
+            // (common perf_multi_client_helpers.hpp) which never emits a stop
+            // token; the relay/echo server (perf_multi_relay_server.hpp,
+            // included by perf_multi_dealer_router_server.cpp) blindly echoes
+            // and shuts down via the runner terminating it after the client
+            // is done. Sending a stop token here is a .NET-only divergence
+            // and is removed for parity with C.
 
             if (result.measureCount <= 0)
                 return 2;
@@ -141,12 +148,13 @@ internal static class PerfMultiDealerRouterClient
             / (double)Stopwatch.Frequency;
         double configuredSeconds = Math.Max(1.0, durationSeconds);
         double throughput = metrics.MeasureCount / configuredSeconds;
-        double fallbackLatencyNs = (configuredSeconds * 1_000_000_000.0)
-            / Math.Max(1.0, metrics.MeasureCount * 2.0);
+        // PERF_POLICY: report measured latency only. C
+        // normalize_latency_stats reports zeros when no samples and never
+        // fabricates a duration-derived latency.
         var latency = ComputeLatencyStats(latSamples);
-        double latencyNs = latency.mean > 0.0 ? latency.mean : fallbackLatencyNs;
-        double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
-        double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
+        double latencyNs = latency.mean;
+        double latencyP95Ns = Math.Max(latency.p95, latencyNs);
+        double latencyP99Ns = Math.Max(latency.p99, latencyP95Ns);
 
         return (throughput, latencyNs, latencyP95Ns, latencyP99Ns,
             metrics.MeasureCount);

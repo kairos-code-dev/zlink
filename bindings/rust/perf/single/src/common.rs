@@ -319,18 +319,18 @@ pub struct LatencyStats {
 impl LatencyStats {
     pub fn new() -> Self {
         Self {
-            samples: Vec::with_capacity(resolve_single_latency_sample_cap().min(1 << 16)),
+            samples: Vec::new(),
             count: 0,
             sum: 0,
         }
     }
 
+    // C perf_single_latency.hpp latency_stats_builder_t::add(): every sample is
+    // push_back'd into an unbounded growing vector; percentiles are exact.
     pub fn record_ns(&mut self, latency_ns: u64) {
         self.count += 1;
         self.sum += latency_ns;
-        if self.samples.len() < resolve_single_latency_sample_cap() {
-            self.samples.push(latency_ns);
-        }
+        self.samples.push(latency_ns);
     }
 
     pub fn finish(&mut self) -> StatsResult {
@@ -350,12 +350,23 @@ impl LatencyStats {
     }
 }
 
-fn percentile(sorted: &[u64], p: f64) -> f64 {
+// C perf_single_latency.hpp percentile_from_sorted(): linear interpolation
+// between adjacent sorted samples (exact percentile, not nearest-rank).
+fn percentile(sorted: &[u64], q: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
     }
-    let idx = ((sorted.len() as f64 * p) as usize).min(sorted.len() - 1);
-    sorted[idx] as f64
+    if q <= 0.0 {
+        return sorted[0] as f64;
+    }
+    if q >= 1.0 {
+        return sorted[sorted.len() - 1] as f64;
+    }
+    let pos = (sorted.len() - 1) as f64 * q;
+    let lo = pos as usize;
+    let hi = if lo + 1 < sorted.len() { lo + 1 } else { lo };
+    let frac = pos - lo as f64;
+    sorted[lo] as f64 + (sorted[hi] as f64 - sorted[lo] as f64) * frac
 }
 
 #[derive(Default)]
@@ -609,19 +620,95 @@ fn try_reserve_tcp_port() -> io::Result<std::net::TcpListener> {
     std::net::TcpListener::bind("127.0.0.1:0")
 }
 
+// C bench_common_runtime.hpp bench_single_manual_socket_overrides_allowed():
+// numeric SNDHWM/RCVHWM are only applied when the operator opts in via
+// PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES / PERF_ALLOW_MANUAL_SOCKET_OVERRIDES.
+// The default path applies NO numeric HWM (context auto-HWM governs).
+fn manual_socket_overrides_allowed() -> bool {
+    std::env::var("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES")
+        .ok()
+        .or_else(|| std::env::var("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES").ok())
+        .map(|v| v == "1")
+        .unwrap_or(false)
+}
+
 pub fn resolve_single_send_hwm() -> i32 {
-    env_or_i32("PERF_SINGLE_SNDHWM", env_or_i32("PERF_SINGLE_HWM", 1000))
+    env_or_i32("PERF_SINGLE_SNDHWM", env_or_i32("PERF_SINGLE_HWM", 0))
 }
 
 pub fn resolve_single_recv_hwm() -> i32 {
-    env_or_i32("PERF_SINGLE_RCVHWM", env_or_i32("PERF_SINGLE_HWM", 1000))
+    env_or_i32("PERF_SINGLE_RCVHWM", env_or_i32("PERF_SINGLE_HWM", 0))
 }
 
+// C bench_common_runtime.hpp apply_single_hwm(): gated behind the manual
+// override flag; only applies positive HWM values.
+pub fn apply_single_hwm<O: SingleSocketHwmOptions>(opts: &O) {
+    if !manual_socket_overrides_allowed() {
+        return;
+    }
+    let sndhwm = resolve_single_send_hwm();
+    let rcvhwm = resolve_single_recv_hwm();
+    if sndhwm > 0 {
+        opts.set_send_hwm(sndhwm).expect("sndhwm");
+    }
+    if rcvhwm > 0 {
+        opts.set_recv_hwm(rcvhwm).expect("rcvhwm");
+    }
+}
+
+pub trait SingleSocketHwmOptions {
+    fn set_send_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
+    fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
+    fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ZlinkError>;
+}
+
+macro_rules! impl_single_socket_hwm_options {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl SingleSocketHwmOptions for $ty {
+                fn set_send_hwm(&self, hwm: i32) -> Result<(), ZlinkError> {
+                    Ok(self.common_options().set_send_hwm(hwm)?)
+                }
+                fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError> {
+                    Ok(self.common_options().set_recv_hwm(hwm)?)
+                }
+                fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ZlinkError> {
+                    Ok(self.common_options().set_auto_hwm_msg_unit_bytes(bytes)?)
+                }
+            }
+        )+
+    };
+}
+
+impl_single_socket_hwm_options!(PairSocket, PubSocket, DealerSocket, RouterSocket, SubSocket);
+
+// C bench_common_runtime.hpp apply_single_auto_hwm_msg_unit(): raw single
+// sockets (PAIR/DEALER/ROUTER/PUB/SUB) always get
+// ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = msg_size. SPOT node/handle excluded.
+pub fn apply_single_auto_hwm_msg_unit<O: SingleSocketHwmOptions>(opts: &O, msg_size: usize) {
+    if msg_size == 0 {
+        return;
+    }
+    let unit = msg_size.min(i32::MAX as usize) as i32;
+    opts.set_auto_hwm_msg_unit_bytes(unit)
+        .expect("auto hwm msg unit");
+}
+
+// SPOT is excluded from apply_single_auto_hwm_msg_unit in C; the C SPOT runner
+// only applies the gated apply_single_hwm to the spot handles and never sets a
+// node pubsub/router HWM. Match that: default path applies no numeric HWM.
 pub fn apply_single_spot_node_admission(node: &zlink::SpotNode) {
-    node.set_pubsub_hwm(resolve_single_send_hwm())
-        .expect("spot node pubsub hwm");
-    node.set_router_hwm(resolve_single_recv_hwm())
-        .expect("spot node router hwm");
+    if !manual_socket_overrides_allowed() {
+        return;
+    }
+    let sndhwm = resolve_single_send_hwm();
+    let rcvhwm = resolve_single_recv_hwm();
+    if sndhwm > 0 {
+        node.set_pubsub_hwm(sndhwm).expect("spot node pubsub hwm");
+    }
+    if rcvhwm > 0 {
+        node.set_router_hwm(rcvhwm).expect("spot node router hwm");
+    }
 }
 
 pub fn resolve_single_idle_drain_ms() -> u64 {
@@ -649,25 +736,6 @@ pub fn resolve_single_spot_ready_settle() -> Duration {
 
 pub fn resolve_single_ready_timeout() -> Duration {
     Duration::from_millis(env_or_u64("PERF_CONNECT_READY_TIMEOUT_MS", 5000))
-}
-
-pub fn wait_spot_peer_connected(node: &zlink::SpotNode, timeout: Duration, label: &str) {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if node
-            .status_snapshot()
-            .map(|status| status.connected_peer_count > 0)
-            .unwrap_or(false)
-        {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    panic!("{label} spot peer connection timed out");
-}
-
-pub fn resolve_single_latency_sample_cap() -> usize {
-    env_or_u64("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200_000) as usize
 }
 
 pub fn resolve_endpoint_or_emit_unsupported(

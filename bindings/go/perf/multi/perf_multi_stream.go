@@ -1,65 +1,16 @@
 package main
 
 import (
-	"io"
-	"sync"
-	"time"
-
 	zlink "zlink.systems/zlink/contracts"
 	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
-func runMultiStream(cfg multiConfig) perfcommon.Result {
-	ctx, err := perfcommon.NewMultiContext()
-	perfcommon.Must(err)
-	defer ctx.Close()
-
-	server, err := ctx.StreamSocket()
-	perfcommon.Must(err)
-	defer server.Close()
-
-	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
-	perfcommon.ApplyMultiHWM(server, cfg.pattern)
-	perfcommon.ApplyMultiBenchmarkSocketOptions(server, cfg.transport)
-	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-multi-stream")
-	startMultiStreamEchoServer(server)
-
-	stats := perfcommon.NewStats()
-	conns := make([]perfcommon.PacketConn, 0, cfg.clients)
-	for i := 0; i < cfg.clients; i++ {
-		conns = append(conns, perfcommon.DialPacketEndpoint(endpoint))
-	}
-	window := perfcommon.NewBenchmarkWindow(cfg.duration)
-
-	var wg sync.WaitGroup
-	for _, conn := range conns {
-		perfcommon.Must(conn.SetDeadline(time.Now().Add(cfg.duration + 5*time.Second)))
-		wg.Add(1)
-		go func(c io.ReadWriteCloser) {
-			defer wg.Done()
-			defer c.Close()
-
-			payload := perfcommon.PreparePayload(cfg.msgSize)
-			reply := make([]byte, cfg.msgSize)
-			for time.Now().Before(window.StopAt) {
-				perfcommon.StampWindowPayload(payload, window.ActiveAt)
-				_, err := c.Write(payload)
-				if err != nil {
-					return
-				}
-				_, err = io.ReadFull(c, reply)
-				if err != nil {
-					return
-				}
-				perfcommon.RecordBytesRTTLatency(stats, window.ActiveAt, window.StopAt, cfg.msgSize, reply)
-			}
-		}(conn)
-	}
-
-	wg.Wait()
-	return stats.Snapshot(cfg.duration, cfg.msgSize)
-}
-
+// PERF_MULTI_TEST_POLICY / perf_multi_stream_server.cpp: the measured
+// surface for MULTI_STREAM is the Go STREAM *server* / packet handler.
+// The client role is the shared C reference binary
+// bindings/c/perf/common/streamclient/perf_stream_client, spawned by
+// run_benchmarks_multi.sh (mirroring the dotnet runner). There is no
+// Go STREAM client reimplementation.
 func runMultiStreamServer(cfg multiConfig) {
 	ctx, err := perfcommon.NewMultiServerContext()
 	perfcommon.Must(err)
@@ -76,39 +27,6 @@ func runMultiStreamServer(cfg multiConfig) {
 	startMultiStreamEchoServer(server)
 	flushControlLine("READY,%s", endpoint)
 	waitForStopToken()
-}
-
-func runMultiStreamClient(cfg multiConfig, endpoint string) perfcommon.Result {
-	stats := perfcommon.NewStats()
-	conns := make([]perfcommon.PacketConn, 0, cfg.clients)
-	for i := 0; i < cfg.clients; i++ {
-		conns = append(conns, perfcommon.DialPacketEndpoint(endpoint))
-	}
-	window := activeDeadline(cfg.duration)
-
-	var wg sync.WaitGroup
-	for _, conn := range conns {
-		perfcommon.Must(conn.SetDeadline(time.Now().Add(cfg.duration + 5*time.Second)))
-		wg.Add(1)
-		go func(c io.ReadWriteCloser) {
-			defer wg.Done()
-			defer c.Close()
-			payload := perfcommon.PreparePayload(cfg.msgSize)
-			reply := make([]byte, cfg.msgSize)
-			for time.Now().Before(window.StopAt) {
-				perfcommon.StampWindowPayload(payload, window.ActiveAt)
-				if _, err := c.Write(payload); err != nil {
-					return
-				}
-				if _, err := io.ReadFull(c, reply); err != nil {
-					return
-				}
-				perfcommon.RecordBytesRTTLatency(stats, window.ActiveAt, window.StopAt, cfg.msgSize, reply)
-			}
-		}(conn)
-	}
-	wg.Wait()
-	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
 func startMultiStreamEchoServer(server *zlink.StreamSocket) {

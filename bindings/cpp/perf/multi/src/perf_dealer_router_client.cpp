@@ -204,16 +204,13 @@ class dealer_router_client_bench_t
                                          _run_id,
                                          phase,
                                          _msg_size,
-                                         _seq++,
+                                         _seq,
                                          sent_ts_ns)) {
             return false;
         }
 
-        state.request = zlink::advanced::external_message_t::adopt (
-          state.request_buffer.data (),
-          state.payload_size,
-          NULL,
-          NULL);
+        state.request = zlink::message_t::from_bytes (
+          state.request_buffer.data (), state.payload_size);
         if (!state.request.valid ()) {
             return false;
         }
@@ -223,6 +220,7 @@ class dealer_router_client_bench_t
                   .message (state.request)
                   .flags (zlink::send_flags_t::dontwait)
                   .submit ()) {
+                ++_seq;
                 state.awaiting_reply = true;
                 state.send_pending = false;
                 return set_pollout (state, false);
@@ -286,6 +284,11 @@ class dealer_router_client_bench_t
         try {
         perf::multi::bench_latency_sampler_t latency;
         unsigned long long count = 0;
+        // PERF_MULTI_TEST_POLICY § 1.3.1: round-trip echo window is bounded
+        // purely by an application clock (steady_clock deadline) plus a -1
+        // (signal-driven) poll wait; no poller timer object is used. Matches
+        // the C reference run_echo_window_round_robin
+        // (bindings/c/perf/multi/common/perf_multi_client_helpers.hpp:901-1075).
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::seconds (seconds);
 
@@ -306,7 +309,7 @@ class dealer_router_client_bench_t
                     return false;
             }
 
-            _poller.wait (_poll_events, 0,
+            _poller.wait (_poll_events, _socket_states.size () + 1,
                                    std::chrono::milliseconds (-1));
             if (_poll_events.empty ())
                 continue;

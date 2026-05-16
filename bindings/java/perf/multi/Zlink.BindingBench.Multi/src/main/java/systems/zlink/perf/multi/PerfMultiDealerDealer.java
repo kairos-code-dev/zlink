@@ -46,40 +46,81 @@ final class PerfMultiDealerDealer {
             PerfUtil.printMultiSocketAutoHwm(config, server, "server",
                 "server", SocketType.DEALER);
             PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (-1); server
-            // exits on the first wire-level stop token (any later in-flight
-            // messages are drained inline before the exit).
-            while (true) {
+            // C parity (perf_multi_dealer_dealer_server.cpp run_receive_window):
+            // the counted throughput window is closed by a server-side
+            // measure-seconds deadline, not by the stop token. The signal-driven
+            // (-1) poll only wakes the loop; the stop token wakes the poll too
+            // but does not anchor the aggregation end.
+            long measureDeadline = System.nanoTime()
+                + config.durationSeconds() * 1_000_000_000L;
+            while (System.nanoTime() < measureDeadline) {
                 pollSet.setEvents(0, PollEventFlag.POLLIN);
                 pollSet.poll(-1);
                 if (!pollSet.isReady(0, PollEventFlag.POLLIN)) {
                     continue;
                 }
-                boolean stop = false;
-                while (true) {
-                    systems.zlink.contracts.Received received = PerfUtil.recvNoWait(server);
-                    if (received == null) {
-                        break;
-                    }
-                    try (received) {
-                        if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
-                            stop = true;
-                            continue;
-                        }
-                        PerfUtil.Header header = PerfUtil.decodeHeader(
-                            received.firstPart(), config.size());
-                        if (header == null) {
-                            continue;
-                        }
-                        if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                            metrics.recordNanos(header.latencyNanos());
-                        }
-                    }
+                drainCounted(server, config, metrics);
+            }
+            // Tail drain after the measure deadline: receive any remaining
+            // in-flight messages WITHOUT counting them so stale traffic does
+            // not spill into the next size case (C drain_phase_until_idle,
+            // count_message=false / collect_latency=false).
+            drainTailUncounted(server, config, pollSet);
+            return metrics.finishMulti(config);
+        }
+    }
+
+    private static void drainCounted(DealerSocket server, PerfUtil.Config config,
+                                      PerfUtil.Metrics metrics) {
+        while (true) {
+            systems.zlink.contracts.Received received = PerfUtil.recvNoWait(server);
+            if (received == null) {
+                return;
+            }
+            try (received) {
+                if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
+                    // Stop token only wakes the poll; it never ends the
+                    // counted window (matches C, which ignores stop_count).
+                    continue;
                 }
-                if (stop) {
-                    return metrics.finishMulti(config);
+                PerfUtil.Header header = PerfUtil.decodeHeader(
+                    received.firstPart(), config.size());
+                if (header == null) {
+                    continue;
+                }
+                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                    metrics.recordNanos(header.latencyNanos());
                 }
             }
+        }
+    }
+
+    private static void drainTailUncounted(DealerSocket server,
+                                            PerfUtil.Config config,
+                                            PerfSocketPollSet pollSet) {
+        // Bounded idle-based tail drain (C drain_phase_until_idle: 2s max,
+        // 50ms idle window) so a quiet socket does not block teardown.
+        long maxDeadline = System.nanoTime() + 2_000_000_000L;
+        long idleDeadline = System.nanoTime() + 50_000_000L;
+        while (System.nanoTime() < maxDeadline
+            && System.nanoTime() < idleDeadline) {
+            boolean progressed = false;
+            while (true) {
+                systems.zlink.contracts.Received received =
+                    PerfUtil.recvNoWait(server);
+                if (received == null) {
+                    break;
+                }
+                try (received) {
+                    progressed = true;
+                }
+            }
+            if (progressed) {
+                idleDeadline = System.nanoTime() + 50_000_000L;
+                continue;
+            }
+            pollSet.setEvents(0, PollEventFlag.POLLIN);
+            pollSet.poll(50);
         }
     }
 
@@ -158,33 +199,13 @@ final class PerfMultiDealerDealer {
             } finally {
                 Message.closeAll(List.of(payloads));
             }
-            // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
-            // wire-level stop token from a single client. The blocking send
-            // waits for POLLOUT readiness via the poller (-1).
-            DealerSocket cooldownClient = clients.get(0);
-            try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                     List.of((systems.zlink.contracts.Socket) cooldownClient),
-                     PollEventFlag.POLLOUT)) {
-                pollSet.setEvents(0);
-                while (true) {
-                    try (Message stop = PerfStopToken.newMessage()) {
-                        if (cooldownClient.send().message(stop).flags(SendFlags.DONT_WAIT).submit()) {
-                            PerfControl.emitClientDone(config.size());
-                            return PerfUtil.Result.silent(config);
-                        }
-                    } catch (SubmitException ex) {
-                        if (!isTransient(ex)) {
-                            throw ex;
-                        }
-                    } catch (ZlinkException ex) {
-                        if (!isTransient(ex)) {
-                            throw ex;
-                        }
-                    }
-                    pollSet.setEvents(0, PollEventFlag.POLLOUT);
-                    pollSet.poll(-1);
-                }
+            // C parity: send one wire-level stop token on every client socket
+            // so the server's signal-driven receive loop is guaranteed to wake.
+            for (DealerSocket client : clients) {
+                sendStopTokenBlocking(client);
             }
+            PerfControl.emitClientDone(config.size());
+            return PerfUtil.Result.silent(config);
         } finally {
             for (MonitorSocket monitor : monitors) {
                 try {
@@ -218,10 +239,12 @@ final class PerfMultiDealerDealer {
                                    int size, byte phase) {
         PerfUtil.resetAndWritePayload(payload, size, phase, System.nanoTime());
         try {
-            if (socket.send().message(payload).flags(SendFlags.DONT_WAIT).submit()) {
-                pending[index] = false;
-                pollSet.setEvents(index);
-                return true;
+            try (Message outbound = Message.copyOf(payload)) {
+                if (socket.send().message(outbound).flags(SendFlags.DONT_WAIT).submit()) {
+                    pending[index] = false;
+                    pollSet.setEvents(index);
+                    return true;
+                }
             }
         } catch (SubmitException ex) {
             if (!isTransient(ex)) {
@@ -241,6 +264,31 @@ final class PerfMultiDealerDealer {
         pending[index] = true;
         pollSet.setEvents(index, PollEventFlag.POLLOUT);
         return true;
+    }
+
+    private static void sendStopTokenBlocking(DealerSocket socket) {
+        try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
+                 List.of((systems.zlink.contracts.Socket) socket),
+                 PollEventFlag.POLLOUT)) {
+            pollSet.setEvents(0);
+            while (true) {
+                try (Message stop = PerfStopToken.newMessage()) {
+                    if (socket.send().message(stop).flags(SendFlags.DONT_WAIT).submit()) {
+                        return;
+                    }
+                } catch (SubmitException ex) {
+                    if (!isTransient(ex)) {
+                        throw ex;
+                    }
+                } catch (ZlinkException ex) {
+                    if (!isTransient(ex)) {
+                        throw ex;
+                    }
+                }
+                pollSet.setEvents(0, PollEventFlag.POLLOUT);
+                pollSet.poll(-1);
+            }
+        }
     }
 
     private static void pollWritable(PerfSocketPollSet pollSet, boolean[] pending,

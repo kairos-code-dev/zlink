@@ -20,84 +20,6 @@ type pendingRouterReply struct {
 	payload   []byte
 }
 
-func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
-	serverCtx, err := perfcommon.NewMultiServerContext()
-	perfcommon.Must(err)
-	defer serverCtx.Close()
-
-	server, err := serverCtx.RouterSocket()
-	perfcommon.Must(err)
-	defer server.Close()
-	serverMon := perfcommon.OpenMonitor(server)
-	defer serverMon.Close()
-
-	serverID := zlink.NewRoutingID([]byte("SERVER"))
-	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
-	perfcommon.ApplyMultiHWM(server, cfg.pattern)
-	perfcommon.ApplyMultiBenchmarkSocketOptions(server, cfg.transport)
-	perfcommon.Must(server.SetRoutingID(serverID))
-	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-multi-router-router")
-
-	stats := perfcommon.NewStats()
-	clients := make([]multiRouterClient, 0, cfg.clients)
-	for i := 0; i < cfg.clients; i++ {
-		clientCtx, createErr := perfcommon.NewMultiClientContext()
-		perfcommon.Must(createErr)
-		client, socketErr := clientCtx.RouterSocket()
-		perfcommon.Must(socketErr)
-		clientMon := perfcommon.OpenMonitor(client)
-		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
-		perfcommon.ApplyMultiHWM(client, cfg.pattern)
-		perfcommon.ApplyMultiBenchmarkSocketOptions(client, cfg.transport)
-
-		clientID := zlink.NewRoutingID([]byte(fmt.Sprintf("router-%06d", i)))
-		perfcommon.Must(client.SetRoutingID(clientID))
-		perfcommon.Must(client.SetConnectRoutingID(serverID))
-		if err := client.Connect(endpoint); err != nil {
-			perfcommon.Must(fmt.Errorf("multi router/router connect client[%d]: %w", i, err))
-		}
-		perfcommon.WaitConnectedWithTimeout(perfcommon.MultiReadyTimeout(), serverMon, clientMon)
-
-		clients = append(clients, multiRouterClient{
-			ctx:     clientCtx,
-			socket:  client,
-			monitor: clientMon,
-		})
-	}
-	defer func() {
-		for _, client := range clients {
-			_ = client.monitor.Close()
-			_ = client.socket.Close()
-			_ = client.ctx.Close()
-		}
-	}()
-
-	serverDone := make(chan struct{})
-	go startMultiRouterRouterEchoServer(server, serverDone)
-	validateMultiRouterRoutes(serverID, clients, cfg.msgSize)
-	window := perfcommon.NewBenchmarkWindow(cfg.duration)
-
-	var wg sync.WaitGroup
-	for _, client := range clients {
-		wg.Add(1)
-		go func(socket *zlink.RouterSocket) {
-			defer wg.Done()
-			runMultiRouterClient(socket, serverID, cfg, window, stats)
-		}(client.socket)
-	}
-
-	wg.Wait()
-	// PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via the
-	// wire-level stop token. The first stop token received by the
-	// server triggers shutdown; subsequent ones are ignored on the
-	// reply path.
-	if len(clients) > 0 {
-		sendMultiRouterStopToken(clients[0].socket, serverID)
-	}
-	<-serverDone
-	return stats.Snapshot(cfg.duration, cfg.msgSize)
-}
-
 func runMultiRouterRouterServer(cfg multiConfig) {
 	serverCtx, err := perfcommon.NewMultiServerContext()
 	perfcommon.Must(err)
@@ -109,6 +31,7 @@ func runMultiRouterRouterServer(cfg multiConfig) {
 
 	serverID := zlink.NewRoutingID([]byte("SERVER"))
 	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
+	perfcommon.ApplyMultiAutoHWMMsgUnit(server, cfg.msgSize)
 	perfcommon.ApplyMultiHWM(server, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(server, cfg.transport)
 	perfcommon.Must(server.SetRoutingID(serverID))
@@ -134,6 +57,7 @@ func runMultiRouterRouterClientRole(cfg multiConfig, endpoint string) perfcommon
 		perfcommon.Must(socketErr)
 		clientMon := perfcommon.OpenMonitor(client)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
+		perfcommon.ApplyMultiAutoHWMMsgUnit(client, cfg.msgSize)
 		perfcommon.ApplyMultiHWM(client, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(client, cfg.transport)
 		clientID := zlink.NewRoutingID([]byte(fmt.Sprintf("router-%06d", i)))

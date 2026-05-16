@@ -48,17 +48,9 @@ fn main() {
 
     for index in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
-        sock.common_options()
-            .set_send_hwm(settings.send_hwm)
-            .expect("sndhwm");
-        sock.common_options()
-            .set_recv_hwm(settings.recv_hwm)
-            .expect("rcvhwm");
-        if settings.msg_unit_bytes > 0 {
-            sock.common_options()
-                .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
-                .expect("auto hwm msg unit");
-        }
+        // C: gated numeric HWM + unconditional AUTO_HWM_MSG_UNIT_BYTES.
+        common::apply_multi_hwm(&sock, &settings);
+        common::apply_multi_auto_hwm_msg_unit(&sock, args.msg_size);
         sock.common_options()
             .set_send_timeout(Duration::from_millis(settings.send_timeout_ms))
             .expect("send timeout");
@@ -81,6 +73,16 @@ fn main() {
     let ready_timeout = common::resolve_multi_connect_ready_timeout();
     for mon in &mut monitors {
         common::wait_monitor_ready(mon, ready_timeout, "multi dealer-router client");
+    }
+
+    // C perf_multi_client_helpers.hpp run_echo loop: unified poller, signal-
+    // driven perf_socket_poll(...,-1) when no socket made progress; inflight==1
+    // per socket via waiting_reply/send_pending. No hot-loop sleep(1ms).
+    let poller = Poller::new().expect("poller");
+    for sock in &sockets {
+        poller
+            .add_socket(sock, POLLIN | POLLOUT)
+            .expect("poller add");
     }
 
     let mut latency = common::LatencyStats::new();
@@ -127,7 +129,14 @@ fn main() {
         if progressed {
             continue;
         }
-        std::thread::sleep(Duration::from_millis(1));
+        let remaining_ms = deadline
+            .saturating_duration_since(Instant::now())
+            .as_millis()
+            .max(1) as i64;
+        match poller.wait(remaining_ms) {
+            Ok(_) => {}
+            Err(err) => panic!("poller wait failed: {err}"),
+        }
     }
 
     common::print_result(

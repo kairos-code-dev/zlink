@@ -411,7 +411,9 @@ function resolveClientReadyTimeoutMs(args) {
 
 async function spawnMultiPair(serverScript, clientScript, args) {
   const serverPath = path.join(__dirname, serverScript);
-  const clientPath = path.join(__dirname, clientScript);
+  // MULTI_STREAM has no Node client script: buildClientSpawn spawns the
+  // shared C `perf_stream_client` binary instead (parity with cpp/dotnet).
+  const clientPath = clientScript ? path.join(__dirname, clientScript) : null;
   const resultLines = [];
   const endpoint = await benchmarkEndpoint(
     args.transport,
@@ -553,6 +555,31 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     throw error;
   }
   await flushProcessOutput();
+
+  // C parity: for patterns where the SERVER is the measurer (e.g.
+  // MULTI_DEALER_DEALER after the C-correct role re-alignment — C's
+  // perf_multi_dealer_dealer_server.cpp prints RESULT), the sender client
+  // exits first while the server is still finishing its measure window +
+  // tail drain. The C engine (run_comparison.py) waits for the measuring
+  // process to finish; stopping the server on the default short grace
+  // would kill it before it emits RESULT. So if no RESULT has been
+  // captured yet, wait for the server to emit one (or exit) before
+  // shutdown. For client-measurer patterns resultLines already holds the
+  // RESULT and this resolves immediately.
+  if (!resultLines.some((line) => line.startsWith('RESULT,'))
+      && server.exitCode === null && server.signalCode === null) {
+    // Poll resultLines (do NOT register a __waiters consumer — that would
+    // intercept the RESULT line before attachProcessCapture pushes it).
+    const resultDeadline = Date.now() + clientTimeoutMs;
+    while (
+      Date.now() < resultDeadline
+      && !resultLines.some((line) => line.startsWith('RESULT,'))
+      && server.exitCode === null && server.signalCode === null
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    await flushProcessOutput();
+  }
 
   try {
     await stopServer(

@@ -6,6 +6,7 @@ import zlink
 
 from perf_common import (
     STOP_TOKEN,
+    apply_single_auto_hwm_msg_unit,
     apply_single_socket_options,
     benchmark_run_id,
     configure_single_tls_client,
@@ -50,6 +51,7 @@ def main(argv=None):
     payload = new_payload(args.msg_size)
     run_id = benchmark_run_id()
     latencies = []
+    received = 0
 
     def send_loop(publisher, active_end):
         while time.perf_counter() < active_end:
@@ -59,6 +61,11 @@ def main(argv=None):
         with zlink.PubSocket(ctx) as publisher:
             with zlink.SubSocket(ctx) as subscriber:
                 endpoint = resolve_single_endpoint(args.transport, "pubsub")
+                # C perf_pubsub.cpp: apply_single_auto_hwm_msg_unit on both
+                # raw sockets before setup.
+                apply_single_auto_hwm_msg_unit(
+                    publisher, subscriber, msg_size=args.msg_size
+                )
                 apply_single_socket_options(
                     publisher,
                     subscriber,
@@ -114,17 +121,22 @@ def main(argv=None):
                                     continue
                                 if time.perf_counter() >= active_end:
                                     continue
+                                # C perf_pubsub.cpp run_active_phase: every
+                                # matched header counts (++received); latency
+                                # clamps clock-skew to 0.0.
+                                received += 1
                                 latency = latency_ns_from_message(data)
-                                if latency is not None:
-                                    latencies.append(latency)
+                                latencies.append(
+                                    latency if latency is not None else 0.0
+                                )
                             if stop_received:
                                 break
 
                 sender.join()
-                if not latencies:
+                if received == 0:
                     raise RuntimeError("pubsub benchmark did not receive any active message")
                 metrics = result_metrics(
-                    count=len(latencies),
+                    count=received,
                     msg_size=args.msg_size,
                     elapsed_s=args.duration,
                     latencies_ns=latencies,

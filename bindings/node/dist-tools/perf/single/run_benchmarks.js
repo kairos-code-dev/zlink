@@ -317,8 +317,23 @@ async function main() {
     const failures = [];
     const skips = [];
     const autoHwmDetails = [];
-    let unsupportedCombos = 0;
-    let skippedCombos = 0;
+    // C parity: bindings/c/perf/single/run_comparison.py keeps a
+    // combo_results dict keyed (pattern, transport, size) (~1330-1366) and
+    // derives complete/partial from it. Each combo gets exactly ONE status
+    // — when a transport is unsupported/skip, EVERY size for that transport
+    // is that status (C lines 1330-1335, whole-transport semantics) — so
+    // there is no double counting and earlier successes on an unsupported
+    // transport do not leak into the expected/complete math.
+    const comboStatus = new Map();
+    const comboKey = (pattern, transport, size) => `${pattern}|${transport}|${size}`;
+    const markTransport = (pattern, transport, status) => {
+        for (const size of options.msgSizes) {
+            comboStatus.set(comboKey(pattern, transport, size), status);
+        }
+    };
+    const markCombo = (pattern, transport, size, status) => {
+        comboStatus.set(comboKey(pattern, transport, size), status);
+    };
     const emit = (line = '') => {
         console.log(line);
         reportLines.push(line);
@@ -348,14 +363,14 @@ async function main() {
         emit(`  > Benchmarking current for ${name}...`);
         for (const transport of options.transports) {
             if (isPlatformSkip(name, transport)) {
-                skippedCombos += options.msgSizes.length;
+                markTransport(name, transport, 'skip');
                 skips.push(`${name} current ${transport}: platform constraint`);
                 emit(`    Testing ${transport}: skip Done`);
                 continue;
             }
             const allowed = policyTransports(name);
             if (!allowed.includes(transport)) {
-                unsupportedCombos += options.msgSizes.length;
+                markTransport(name, transport, 'unsupported');
                 emit(`    Testing ${transport}: unsupported Done`);
                 continue;
             }
@@ -375,7 +390,10 @@ async function main() {
                             }
                         }
                         if (!hasPrimaryMetricsFromResultLines(name, msgSize, lines) && isUnsupportedLines(lines)) {
-                            unsupportedCombos += options.msgSizes.length;
+                            // C run_comparison.py ~1286-1295 / 1330-1332: a binary
+                            // UNSUPPORTED marks the WHOLE transport unsupported (all
+                            // sizes), overriding any earlier success on this transport.
+                            markTransport(name, transport, 'unsupported');
                             transportUnsupported = true;
                             break;
                         }
@@ -383,10 +401,12 @@ async function main() {
                         const row = { pattern: name, msgSize, metrics };
                         emit(`      ${formatTableRow(row)}`);
                         perSizeMetrics.set(msgSize, metrics);
+                        markCombo(name, transport, msgSize, 'success');
                     }
                     catch (error) {
                         failures.push(`${name} current ${transport} ${msgSize}B: ${errorText(error)}`);
                         emit(`      ${formatFailureRow(msgSize)}`);
+                        markCombo(name, transport, msgSize, 'fail');
                         if (failFast) {
                             throw error;
                         }
@@ -420,7 +440,7 @@ async function main() {
                                 }
                             }
                             if (!hasPrimaryMetricsFromResultLines(name, msgSize, lines) && isUnsupportedLines(lines)) {
-                                unsupportedCombos += options.msgSizes.length;
+                                markTransport(name, transport, 'unsupported');
                                 transportUnsupported = true;
                                 break;
                             }
@@ -431,6 +451,7 @@ async function main() {
                         catch (error) {
                             failures.push(`${name} current ${transport} ${msgSize}B: ${errorText(error)}`);
                             emit(`        ${formatFailureRow(msgSize)}`);
+                            markCombo(name, transport, msgSize, 'fail');
                             if (failFast) {
                                 throw error;
                             }
@@ -450,11 +471,13 @@ async function main() {
                     const metricsList = runResults.get(msgSize);
                     if (!metricsList || metricsList.length !== options.runs) {
                         emit(`        ${formatFailureRow(msgSize)}`);
+                        markCombo(name, transport, msgSize, 'fail');
                         continue;
                     }
                     const metrics = medianMetrics(metricsList);
                     emit(`        ${formatTableRow({ pattern: name, msgSize, metrics })}`);
                     resultLines.push(...metricLines(name, transport, msgSize, metrics));
+                    markCombo(name, transport, msgSize, 'success');
                 }
             }
             const transportFailures = failures.length - transportFailuresBefore;
@@ -480,12 +503,35 @@ async function main() {
             emit(line);
         }
     }
-    const expectedCombos = (names.length * options.transports.length * options.msgSizes.length)
-        - unsupportedCombos
-        - skippedCombos;
+    // C parity: bindings/c/perf/single/run_comparison.py derives the run
+    // status from per-combo records. unsupported/skip combos are excluded
+    // from the expected set (they produce no RESULT lines); every remaining
+    // expected combo must be success. A combo with no recorded status was
+    // expected but yielded nothing → partial.
+    const totalCombos = names.length * options.transports.length * options.msgSizes.length;
+    let unsupportedCombos = 0;
+    let skippedCombos = 0;
+    let successCombos = 0;
+    let recordedCombos = 0;
+    for (const value of comboStatus.values()) {
+        recordedCombos += 1;
+        if (value === 'unsupported') {
+            unsupportedCombos += 1;
+        }
+        else if (value === 'skip') {
+            skippedCombos += 1;
+        }
+        else if (value === 'success') {
+            successCombos += 1;
+        }
+    }
+    const expectedCombos = totalCombos - unsupportedCombos - skippedCombos;
     const expectedResultLines = expectedCombos * 5;
     const actualResultLines = resultLines.length;
-    const status = expectedResultLines === actualResultLines ? 'complete' : 'partial';
+    const allCombosRecorded = recordedCombos === totalCombos;
+    const status = (allCombosRecorded
+        && successCombos === expectedCombos
+        && expectedResultLines === actualResultLines) ? 'complete' : 'partial';
     console.log('');
     console.log('## Effective Options (result)');
     for (const line of buildEffectiveOptions({ ...options, lang: 'node', suite: 'single', patterns: names.join(',') })) {

@@ -233,9 +233,7 @@ final class PerfMultiSpotSendSend {
                             }
                         }
                     }
-                    try (Message stop = PerfStopToken.newMessage()) {
-                        sendToServer(spot, stop, SendFlags.NONE);
-                    }
+                    sendStopToServer(spot);
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     throw new IllegalStateException(ex);
@@ -264,10 +262,12 @@ final class PerfMultiSpotSendSend {
                 return false;
             }
             try {
-                sendToServer(spot, message, SendFlags.DONT_WAIT);
+                try (Message outbound = Message.copyOf(message)) {
+                    sendToServer(spot, outbound, SendFlags.DONT_WAIT);
+                }
                 return true;
             } catch (SubmitException ex) {
-                if (ex.getResult() != SubmitResult.BACKPRESSURED) {
+                if (!isTransientSubmit(ex)) {
                     throw ex;
                 }
                 if (!waitFor(poller, PollEventFlag.POLLOUT, deadlineNs)) {
@@ -275,6 +275,18 @@ final class PerfMultiSpotSendSend {
                 }
             }
         }
+    }
+
+    private static void sendStopToServer(Spot spot) {
+        try (Message stop = PerfStopToken.newMessage()) {
+            sendToServer(spot, stop, SendFlags.NONE);
+        }
+    }
+
+    private static boolean isTransientSubmit(SubmitException ex) {
+        SubmitResult result = ex.getResult();
+        return result == SubmitResult.BACKPRESSURED
+            || result == SubmitResult.NOT_CONNECTED;
     }
 
     private static void drainClientReplies(Spot spot,
@@ -310,7 +322,7 @@ final class PerfMultiSpotSendSend {
             if (remainingNs <= 0) {
                 return false;
             }
-            poller.wait(events, Duration.ofNanos(remainingNs));
+            poller.wait(events, Duration.ofMillis(-1));
             for (PollEvent event : events) {
                 if (event.revents().contains(expected)) {
                     return true;

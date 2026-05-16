@@ -53,7 +53,9 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	defer poller.Close()
 
 	stats := perfcommon.NewStats()
-	waitForSpotPeerConnected(subscriberNode)
+	// perf_spot.cpp run_case: SPOT readiness is the local probe-publish +
+	// first-valid-recv barrier (wait_for_spot_ready_barrier). There is no
+	// connected-peer-count snapshot precondition.
 	waitForSpotReady(publisher, subscriber, poller, cfg.msgSize)
 	perfcommon.PostReadySettle(cfg.pattern)
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
@@ -172,18 +174,6 @@ func sendSpotStopToken(publisher *zlink.Spot) {
 	}
 }
 
-func waitForSpotPeerConnected(node *zlink.SpotNode) {
-	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
-	for time.Now().Before(deadline) {
-		status, err := node.StatusSnapshot()
-		if err == nil && status.ConnectedPeerCount > 0 {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	perfcommon.Must(fmt.Errorf("spot perf peer connection timed out"))
-}
-
 func waitForSpotReady(
 	publisher *zlink.Spot,
 	subscriber *zlink.Spot,
@@ -194,8 +184,11 @@ func waitForSpotReady(
 	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
 	for time.Now().Before(deadline) {
 		perfcommon.StampProbePayload(payload)
-		_, probeErr := publisher.Publish(singleSpotTopic).Message(perfcommon.NewMessage(payload)).Submit(nil)
-		if probeErr != nil && !perfcommon.IsTransient(probeErr) {
+		// perf_spot.cpp wait_for_spot_ready_barrier: DONTWAIT probe
+		// publish; the ready-probe transient set tolerates
+		// ENOTCONN/EHOSTUNREACH/ENETUNREACH while the peer connects.
+		_, probeErr := publisher.Publish(singleSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		if probeErr != nil && !perfcommon.IsReadyProbeTransient(probeErr) {
 			perfcommon.Must(probeErr)
 		}
 		timeout := time.Until(deadline)

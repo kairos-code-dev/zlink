@@ -81,12 +81,26 @@ def perf_context():
     return ctx
 
 
+def _env_flag(name):
+    value = os.environ.get(name)
+    return value is not None and value != "" and value == "1"
+
+
+def bench_single_manual_socket_overrides_allowed():
+    # C bench_common_runtime.hpp bench_single_manual_socket_overrides_allowed:
+    # numeric HWM/buffers are gated behind these env flags; default path uses
+    # context auto-HWM only.
+    return _env_flag("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES") or _env_flag(
+        "PERF_ALLOW_MANUAL_SOCKET_OVERRIDES"
+    )
+
+
 def resolve_single_send_hwm():
-    return _env_int("PERF_SINGLE_SNDHWM", _env_int("PERF_SINGLE_HWM", 1000))
+    return _env_int("PERF_SINGLE_SNDHWM", _env_int("PERF_SINGLE_HWM", 0))
 
 
 def resolve_single_recv_hwm():
-    return _env_int("PERF_SINGLE_RCVHWM", _env_int("PERF_SINGLE_HWM", 1000))
+    return _env_int("PERF_SINGLE_RCVHWM", _env_int("PERF_SINGLE_HWM", 0))
 
 
 def resolve_single_send_timeout_ms():
@@ -125,6 +139,11 @@ def configure_single_tls_client(target, transport):
 
 
 def apply_single_socket_options(*sockets, receive_timeout_ms=None):
+    # C bench_common_runtime.hpp apply_single_hwm: numeric SNDHWM/RCVHWM only
+    # applied under PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES; the default path
+    # relies on context auto-HWM. apply_single_benchmark_socket_options always
+    # sets linger=0 and the recv/send timeouts.
+    overrides = bench_single_manual_socket_overrides_allowed()
     send_hwm = resolve_single_send_hwm()
     recv_hwm = resolve_single_recv_hwm()
     send_timeout_ms = resolve_single_send_timeout_ms()
@@ -135,19 +154,38 @@ def apply_single_socket_options(*sockets, receive_timeout_ms=None):
     )
     for sock in sockets:
         sock.options.linger_ms = 0
-        sock.options.send_high_water_mark = send_hwm
-        sock.options.receive_high_water_mark = recv_hwm
+        if overrides:
+            if send_hwm > 0:
+                sock.options.send_high_water_mark = send_hwm
+            if recv_hwm > 0:
+                sock.options.receive_high_water_mark = recv_hwm
         if send_timeout_ms >= 0:
             sock.options.send_timeout_ms = send_timeout_ms
         sock.options.receive_timeout_ms = recv_timeout_ms
 
 
+def apply_single_auto_hwm_msg_unit(*sockets, msg_size):
+    # C bench_common_runtime.hpp apply_single_auto_hwm_msg_unit: raw single
+    # sockets get ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = msg_size so context
+    # auto-HWM sizes the per-socket queue. SPOT node/handle excluded.
+    if msg_size <= 0:
+        return
+    for sock in sockets:
+        sock.options.auto_hwm_msg_unit_bytes = msg_size
+
+
 def apply_single_spot_node_admission(*nodes):
+    # C perf_spot.cpp gates admission HWM behind apply_single_hwm; default path
+    # leaves SPOT node admission on context auto-HWM.
+    if not bench_single_manual_socket_overrides_allowed():
+        return
     send_hwm = resolve_single_send_hwm()
     recv_hwm = resolve_single_recv_hwm()
     for node in nodes:
-        node.set_pubsub_hwm(send_hwm)
-        node.set_router_hwm(recv_hwm)
+        if send_hwm > 0:
+            node.set_pubsub_hwm(send_hwm)
+        if recv_hwm > 0:
+            node.set_router_hwm(recv_hwm)
 
 
 def recv_nonblocking(sock, *, method="recv"):
@@ -166,3 +204,55 @@ def recv_nonblocking(sock, *, method="recv"):
         if exc.result == zlink_mod.RecvResult.NO_DATA:
             return None
         raise
+
+
+def send_nonblocking(sock, payload, *, routing_id=None):
+    zlink_mod = _require_zlink()
+    try:
+        if routing_id is None:
+            op = sock.send().flags(zlink_mod.SendFlags.DONT_WAIT)
+        else:
+            op = sock.send(routing_id).flags(zlink_mod.SendFlags.DONT_WAIT)
+        op.message(payload)
+        return bool(op.submit())
+    except zlink_mod.SubmitError as exc:
+        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
+            return False
+        raise
+
+
+def single_routing_probe(sender, receiver, payload, *, run_id, msg_size,
+                         routing_id=None):
+    """C perf_dealer_router.cpp wait_for_dealer_router_ready /
+    perf_router_router.cpp wait_for_router_router_ready: one-shot routing
+    self-check. Bounded by PERF_CONNECT_READY_TIMEOUT_MS; DONTWAIT probe
+    sends (phase=active, seq=0) until the receiver confirms one matching
+    header. No retry/sleep loop beyond C's bounded probe."""
+
+    from perf_metrics import decode_header as _decode_header
+
+    deadline = time.monotonic() + (
+        resolve_single_connect_ready_timeout_ms() / 1000.0
+    )
+    probe = stamp_payload(payload, phase=1, run_id=run_id, seq=0)
+    while time.monotonic() < deadline:
+        send_nonblocking(sender, probe, routing_id=routing_id)
+        probe_deadline = min(deadline, time.monotonic() + 0.05)
+        while time.monotonic() < probe_deadline:
+            received = recv_nonblocking(receiver)
+            if received is None:
+                time.sleep(0.001)
+                continue
+            with received:
+                parts = received.to_bytes_list()
+            data = extract_metric_payload(parts)
+            header = _decode_header(data)
+            if (
+                header is not None
+                and header["magic"] == HEADER_MAGIC
+                and header["run_id"] == run_id
+                and header["phase"] == 1
+                and header["msg_size"] == msg_size
+            ):
+                return True
+    return False

@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -154,8 +155,10 @@ class router_router_client_bench_t
             ok = false;
         }
 
-        if (ok)
+        if (ok) {
             print_result ();
+            std::cout.flush ();
+        }
         send_stop_token ();
         return ok;
     }
@@ -359,17 +362,14 @@ class router_router_client_bench_t
                                          _run_id,
                                          phase,
                                          _msg_size,
-                                         _seq++,
+                                         _seq,
                                          sent_ts_ns)) {
             return false;
         }
 
-        zlink::message_t request =
-          zlink::advanced::external_message_t::adopt (
-            state.request_buffer.empty () ? NULL : state.request_buffer.data (),
-            state.request_buffer.size (),
-            NULL,
-            NULL);
+        zlink::message_t request = zlink::message_t::from_bytes (
+          state.request_buffer.empty () ? NULL : state.request_buffer.data (),
+          state.request_buffer.size ());
         if (!request.valid ()) {
             return false;
         }
@@ -381,6 +381,7 @@ class router_router_client_bench_t
                   .message (state.request)
                   .flags (zlink::send_flags_t::dontwait)
                   .submit ()) {
+                ++_seq;
                 state.awaiting_reply = true;
                 state.send_pending = false;
                 return set_pollout (state, false);
@@ -454,6 +455,11 @@ class router_router_client_bench_t
         try {
         perf::multi::bench_latency_sampler_t latency;
         unsigned long long count = 0;
+        // PERF_MULTI_TEST_POLICY § 1.3.1: round-trip echo window is bounded
+        // purely by an application clock (steady_clock deadline) plus a -1
+        // (signal-driven) poll wait; no poller timer object is used. Matches
+        // the C reference run_echo_window_round_robin
+        // (bindings/c/perf/multi/common/perf_multi_client_helpers.hpp:901-1075).
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::seconds (seconds);
 
@@ -466,12 +472,12 @@ class router_router_client_bench_t
         }
 
         while (std::chrono::steady_clock::now () < deadline) {
-            // wait(events, ...) reuses _poll_events' backing storage so the
-            // hot poll loop avoids allocating a fresh vector per wake.
-            _poller.wait (
-              _poll_events, 0, std::chrono::milliseconds (-1));
-            if (_poll_events.empty ())
+            const std::optional<zlink::poll_event_t> poll_event =
+              _poller.wait (std::chrono::milliseconds (-1));
+            if (!poll_event.has_value ())
                 continue;
+            _poll_events.clear ();
+            _poll_events.push_back (*poll_event);
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state = static_cast<socket_state_t *> (
@@ -577,7 +583,7 @@ class router_router_client_bench_t
             try {
                 if (std::move (sock->send (_server_rid))
                       .message (stop_msg)
-                      .flags (zlink::send_flags_t::none)
+                      .flags (zlink::send_flags_t::dontwait)
                       .submit ()) {
                     return;
                 }

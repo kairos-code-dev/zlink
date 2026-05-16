@@ -60,11 +60,11 @@ internal static class PerfDealerDealer
             senderMonitor = sender.MonitorOpen(SocketEvent.ConnectionReady);
 
             receiver.Bind(endpoint);
+            endpoint = receiver.Options.LastEndpoint;
             sender.Connect(endpoint);
             if (!(WaitForConnectionReady(receiverMonitor, readyTimeoutMs)
                 && WaitForConnectionReady(senderMonitor, readyTimeoutMs)))
             {
-                ctx.Shutdown();
                 TryCleanup(sender, receiver, endpoint);
                 return 2;
             }
@@ -82,7 +82,6 @@ internal static class PerfDealerDealer
                     durationSeconds, recvTimeoutMs, latencySampleCap,
                     out long received, out var latencySamples))
             {
-                ctx.Shutdown();
                 TryCleanup(sender, receiver, endpoint);
                 return 2;
             }
@@ -91,20 +90,11 @@ internal static class PerfDealerDealer
             var latency = ComputeLatencyStats(latencySamples);
             PrintResult("DEALER_DEALER", transport, size, throughput,
                 latency.mean, latency.p95, latency.p99);
-            ctx.Shutdown();
             TryCleanup(sender, receiver, endpoint);
             return 0;
         }
         catch (Exception ex)
         {
-            try
-            {
-                ctx.Shutdown();
-            }
-            catch (Exception shutdownEx)
-            {
-                Console.Error.WriteLine($"[single-dealer-dealer] shutdown failed: {shutdownEx.Message}");
-            }
             TryCleanup(sender, receiver, endpoint);
             Console.Error.WriteLine($"single_dealer_dealer_error:{ex}");
             return 2;
@@ -197,9 +187,12 @@ internal static class PerfDealerDealer
             seq++;
             try
             {
-                SendBlocking(sender, payload, SendFlags.None);
+                if (!TrySendActiveMessage(sender, payload,
+                        "[single-dealer-dealer]"))
+                    continue;
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex)
+                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
             {
                 continue;
             }

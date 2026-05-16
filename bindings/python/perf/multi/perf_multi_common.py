@@ -108,12 +108,25 @@ def perf_client_context():
     return _perf_context("PERF_MULTI_CLIENT_IO_THREADS")
 
 
+def _env_flag(name):
+    value = os.environ.get(name)
+    return value is not None and value != "" and value == "1"
+
+
+def bench_multi_manual_socket_overrides_allowed():
+    # C perf_multi_runtime.hpp bench_manual_socket_overrides_allowed: numeric
+    # HWM only applied under these env flags; default path = context auto-HWM.
+    return _env_flag("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES") or _env_flag(
+        "PERF_ALLOW_MANUAL_SOCKET_OVERRIDES"
+    )
+
+
 def resolve_multi_send_hwm():
-    return _env_int("PERF_MULTI_SNDHWM", _env_int("PERF_MULTI_HWM", 1000))
+    return _env_int("PERF_MULTI_SNDHWM", _env_int("PERF_MULTI_HWM", 0))
 
 
 def resolve_multi_recv_hwm():
-    return _env_int("PERF_MULTI_RCVHWM", _env_int("PERF_MULTI_HWM", 1000))
+    return _env_int("PERF_MULTI_RCVHWM", _env_int("PERF_MULTI_HWM", 0))
 
 
 def resolve_multi_send_timeout_ms():
@@ -164,6 +177,11 @@ def configure_multi_tls_client(target, transport):
 
 
 def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
+    # C perf_multi_runtime.hpp apply_benchmark_hwm: numeric SNDHWM/RCVHWM only
+    # under PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES. Default path leaves the
+    # context auto-HWM, with the raw-socket per-size msg-unit
+    # (apply_benchmark_auto_hwm_msg_unit) from PERF_MULTI_MSG_UNIT_BYTES.
+    overrides = bench_multi_manual_socket_overrides_allowed()
     send_hwm = resolve_multi_send_hwm()
     recv_hwm = resolve_multi_recv_hwm()
     send_timeout_ms = resolve_multi_send_timeout_ms()
@@ -175,8 +193,11 @@ def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
     )
     for sock in sockets:
         sock.options.linger_ms = 0
-        sock.options.send_high_water_mark = send_hwm
-        sock.options.receive_high_water_mark = recv_hwm
+        if overrides:
+            if send_hwm > 0:
+                sock.options.send_high_water_mark = send_hwm
+            if recv_hwm > 0:
+                sock.options.receive_high_water_mark = recv_hwm
         if msg_unit_bytes > 0:
             sock.options.auto_hwm_msg_unit_bytes = msg_unit_bytes
         sock.options.send_timeout_ms = send_timeout_ms
@@ -184,11 +205,18 @@ def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
 
 
 def apply_multi_spot_node_admission(*nodes):
+    # C perf_multi_runtime.hpp apply_benchmark_spot_node_hwm: SPOT admission
+    # HWM only under PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES; SPOT is
+    # excluded from the raw-socket auto-HWM msg-unit.
+    if not bench_multi_manual_socket_overrides_allowed():
+        return
     send_hwm = resolve_multi_send_hwm()
     recv_hwm = resolve_multi_recv_hwm()
     for node in nodes:
-        node.set_pubsub_hwm(send_hwm)
-        node.set_router_hwm(recv_hwm)
+        if send_hwm > 0:
+            node.set_pubsub_hwm(send_hwm)
+        if recv_hwm > 0:
+            node.set_router_hwm(recv_hwm)
 
 
 def bind_spot_node_endpoint(node, transport, prefix):

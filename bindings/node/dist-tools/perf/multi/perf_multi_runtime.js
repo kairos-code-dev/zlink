@@ -25,9 +25,18 @@ function pollEventHas(event, mask) {
     return ((event?.events ?? 0) & mask) !== 0;
 }
 function applySocketPolicy(socket, options = {}) {
+    const linger = integerEnv('PERF_MULTI_LINGER_MS', 0);
+    // C parity: bindings/c/perf/multi/common/perf_multi_runtime.hpp
+    // apply_debug_timeouts (~986-997) sets ZLINK_OPT_SNDTIMEO/RCVTIMEO to
+    // the 200ms default on every benchmark socket UNCONDITIONALLY, and
+    // returns early (no timeouts) only for the inproc transport. The hot
+    // path is still DONTWAIT send + `-1` poller wait; these socket timeouts
+    // bound individual blocking calls exactly as in the C reference. Match
+    // C: skip for inproc, otherwise apply the C default.
+    const transport = String(options.transport || process.env.PERF_MULTI_TRANSPORT || '').trim().toLowerCase();
+    const isInproc = transport === 'inproc';
     const sendTimeout = integerEnv('PERF_MULTI_SNDTIMEO_MS', 200);
     const recvTimeout = integerEnv('PERF_MULTI_RCVTIMEO_MS', 200);
-    const linger = integerEnv('PERF_MULTI_LINGER_MS', 0);
     if (socket.options) {
         if (manualSocketOverridesEnabled('multi')) {
             const hwm = integerEnv('PERF_MULTI_HWM', 1000);
@@ -36,8 +45,10 @@ function applySocketPolicy(socket, options = {}) {
             socket.options.sendHwm = sendHwm;
             socket.options.recvHwm = recvHwm;
         }
-        socket.options.sendTimeout = sendTimeout;
-        socket.options.recvTimeout = options.recvTimeout ?? recvTimeout;
+        if (!isInproc) {
+            socket.options.sendTimeout = sendTimeout;
+            socket.options.recvTimeout = options.recvTimeout ?? recvTimeout;
+        }
         socket.options.linger = linger;
         if ('noDrop' in socket.options && options.noDrop !== undefined) {
             socket.options.noDrop = Boolean(options.noDrop);
@@ -178,9 +189,17 @@ function emitMultiSocketHwmDetail(socket, label, transport, msgSize) {
     if (!socket || !autoHwmDetailEnabled()) {
         return;
     }
-    let monitor = null;
+    // Capability gap (objects without a monitor surface) is not a fault —
+    // skip the optional diagnostic.
+    if (typeof socket.monitorOpen !== 'function') {
+        return;
+    }
+    // PERF_POLICY § 1.1.4: a failed `monitorOpen` on a socket that DOES
+    // support it is a real broken-socket fault and must surface. Only the
+    // snapshot read + diagnostic emission is best-effort (it never affects
+    // the measured RESULT).
+    const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
     try {
-        monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
         const snapshot = monitor.snapshot();
         const pattern = process.env.PERF_MULTI_PATTERN || process.env.PERF_PATTERN || 'unknown';
         const component = process.env.PERF_MULTI_COMPONENT || 'process';
@@ -400,15 +419,16 @@ function trySocketPublish(socket, topic, payload) {
     }
 }
 async function publishControlUntilSent(socket, waiter, topic, payload) {
+    // PERF_MULTI_TEST_POLICY § 1.3.1: poller wait must be purely
+    // signal-driven. No short timer fallback around the wait — the core
+    // emits a POLLOUT wakeup when the socket drains, so we wait on that
+    // readiness signal alone (mirrors the C `-1` poller-wait contract).
     const body = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
     for (;;) {
         if (trySocketPublish(socket, topic, body)) {
             return;
         }
-        await Promise.race([
-            waiter.wait(POLLOUT),
-            new Promise((resolve) => setTimeout(resolve, 10))
-        ]);
+        await waiter.wait(POLLOUT);
     }
 }
 function createCallbackEventWaiter(register) {

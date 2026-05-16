@@ -337,6 +337,98 @@ emit_failure_row() {
   print_line "      | ${size}B      | FAIL               | FAIL           | FAIL          | FAIL          | FAIL          |"
 }
 
+# Emit one indented (run/median) table data row. Mirrors emit_result_row but
+# accepts an explicit left indent so per-run / median tables match C
+# run_comparison.py single_table_row_line indentation (8 spaces under the
+# "run N/runs:" / "median:" labels) for runs>1.
+emit_result_row_indent() {
+  local metrics_file="${1:-}"
+  local indent="${2:-      }"
+
+  if [[ ! -s "${metrics_file}" ]]; then
+    return
+  fi
+
+  python3 - "${metrics_file}" "${indent}" <<'PY'
+import csv
+import sys
+
+required = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
+metrics = {}
+size = ""
+with open(sys.argv[1], encoding="utf-8") as handle:
+    reader = csv.reader(handle)
+    for row in reader:
+        if len(row) != 7 or row[0] != "RESULT":
+            continue
+        size = row[4]
+        metrics[row[5]] = row[6]
+
+indent = sys.argv[2]
+values = [metrics.get(metric, "0") for metric in required]
+throughput = float(values[0]) / 1000.0
+bandwidth = float(values[1])
+latency = float(values[2])
+latency_p95 = float(values[3])
+latency_p99 = float(values[4])
+throughput_text = f"{throughput:8.3f} Kmsg/s"
+print(
+    f"{indent}| {size + 'B':<8} | {throughput_text:>16} | {bandwidth:>10.3f} MB/s |"
+    f" {latency:>9.3f} ms | {latency_p95:>9.3f} ms | {latency_p99:>9.3f} ms |"
+)
+PY
+}
+
+# Per-metric median across the per-run RESULT lines collected for one
+# (pattern,transport,size). Matches C run_comparison.py: statistics.median()
+# applied independently to throughput/bandwidth/latency/p95/p99, then printed
+# as one indented "median:" data row.
+emit_median_row_indent() {
+  local samples_file="${1:-}"
+  local size="${2:-}"
+  local indent="${3:-        }"
+
+  if [[ ! -s "${samples_file}" ]]; then
+    return 1
+  fi
+
+  python3 - "${samples_file}" "${size}" "${indent}" <<'PY'
+import csv
+import statistics
+import sys
+
+required = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
+samples = {metric: [] for metric in required}
+with open(sys.argv[1], encoding="utf-8", errors="replace") as handle:
+    reader = csv.reader(handle)
+    for row in reader:
+        if len(row) != 7 or row[0] != "RESULT":
+            continue
+        if row[5] in required:
+            try:
+                samples[row[5]].append(float(row[6]))
+            except ValueError:
+                pass
+
+if any(not samples[metric] for metric in required):
+    raise SystemExit(1)
+
+size = sys.argv[2]
+indent = sys.argv[3]
+med = {metric: statistics.median(samples[metric]) for metric in required}
+throughput = med["throughput"] / 1000.0
+bandwidth = med["bandwidth"]
+latency = med["latency"]
+latency_p95 = med["latency_p95"]
+latency_p99 = med["latency_p99"]
+throughput_text = f"{throughput:8.3f} Kmsg/s"
+print(
+    f"{indent}| {size + 'B':<8} | {throughput_text:>16} | {bandwidth:>10.3f} MB/s |"
+    f" {latency:>9.3f} ms | {latency_p95:>9.3f} ms | {latency_p99:>9.3f} ms |"
+)
+PY
+}
+
 extract_required_results() {
   local log_path="${1:-}"
   local pattern="${2:-}"
@@ -517,38 +609,71 @@ status=0
 result_lines=0
 expected_result_lines=0
 failure_count=0
-for (( run_index=1; run_index<=RUNS; run_index++ )); do
-  for pattern_index in "${!patterns[@]}"; do
-    pattern="${patterns[pattern_index]}"
-    pattern="${pattern//[[:space:]]/}"
-    [[ -n "${pattern}" ]] || continue
+# PERF_POLICY § 1.2.2 / § 5.2: for runs>1 the runner owns per-metric median
+# aggregation. Loop structure mirrors C run_comparison.py: runs is the inner
+# loop per (pattern,transport). For runs=1 a single unlabeled table is
+# emitted (unchanged behaviour). For runs>1 each run prints a
+# "run N/RUNS:" labeled, 8-space-indented table, and after all runs a
+# "median:" labeled table prints the per-metric statistics.median() across
+# successful runs for each size.
+SHOW_RUN_LABELS=0
+if [[ "${RUNS}" -gt 1 ]]; then
+  SHOW_RUN_LABELS=1
+fi
+TABLE_HEADER="| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |"
+TABLE_SEPARATOR="|----------|--------------------|----------------|---------------|---------------|---------------|"
 
-    if [[ "${#transports_filter[@]}" -gt 0 ]]; then
-      transports=("${transports_filter[@]}")
-    else
-      IFS=',' read -r -a transports <<< "$(default_transports_for_pattern "${pattern}")"
+for pattern_index in "${!patterns[@]}"; do
+  pattern="${patterns[pattern_index]}"
+  pattern="${pattern//[[:space:]]/}"
+  [[ -n "${pattern}" ]] || continue
+
+  if [[ "${#transports_filter[@]}" -gt 0 ]]; then
+    transports=("${transports_filter[@]}")
+  else
+    IFS=',' read -r -a transports <<< "$(default_transports_for_pattern "${pattern}")"
+  fi
+
+  print_line ""
+  print_line "==============================================================================="
+  print_line ""
+  print_line "## PATTERN: ${pattern} (one-way)"
+  print_line "  > Benchmarking current for ${pattern}..."
+
+  abort_pattern=0
+  for transport_index in "${!transports[@]}"; do
+    transport="${transports[transport_index]}"
+    transport="${transport//[[:space:]]/}"
+    [[ -n "${transport}" ]] || continue
+
+    if ! pattern_supports_transport "${pattern}" "${transport}"; then
+      print_line "UNSUPPORTED,dotnet,${pattern},${transport}"
+      continue
     fi
 
-    print_line ""
-    print_line "==============================================================================="
-    print_line ""
-    print_line "## PATTERN: ${pattern} (one-way)"
-    print_line "  > Benchmarking current for ${pattern}..."
+    print_line "    Testing ${transport}:"
+    if [[ "${SHOW_RUN_LABELS}" -eq 0 ]]; then
+      print_line "      ${TABLE_HEADER}"
+      print_line "      ${TABLE_SEPARATOR}"
+    fi
 
-    abort_pattern=0
-    for transport_index in "${!transports[@]}"; do
-      transport="${transports[transport_index]}"
-      transport="${transport//[[:space:]]/}"
-      [[ -n "${transport}" ]] || continue
+    # Per-size accumulator of successful RESULT lines across runs (for the
+    # median table). Reset per (pattern,transport).
+    for size in "${msg_sizes[@]}"; do
+      size="${size//[[:space:]]/}"
+      [[ -n "${size}" ]] || continue
+      : > "${TMP_DIR}/${pattern,,}_${transport}_${size}.samples"
+    done
 
-      if ! pattern_supports_transport "${pattern}" "${transport}"; then
-        print_line "UNSUPPORTED,dotnet,${pattern},${transport}"
-        continue
+    for (( run_index=1; run_index<=RUNS; run_index++ )); do
+      if [[ "${SHOW_RUN_LABELS}" -eq 1 ]]; then
+        print_line "      run ${run_index}/${RUNS}:"
+        print_line "        ${TABLE_HEADER}"
+        print_line "        ${TABLE_SEPARATOR}"
+        row_indent="        "
+      else
+        row_indent="      "
       fi
-
-      print_line "    Testing ${transport}:"
-      print_line "      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |"
-      print_line "      |----------|--------------------|----------------|---------------|---------------|---------------|"
 
       for size in "${msg_sizes[@]}"; do
         size="${size//[[:space:]]/}"
@@ -557,6 +682,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
 
         metrics_file="${TMP_DIR}/${pattern,,}_${transport}_${size}_run${run_index}.metrics"
         : > "${metrics_file}"
+        samples_file="${TMP_DIR}/${pattern,,}_${transport}_${size}.samples"
         tmp_log="${TMP_DIR}/${pattern,,}_${transport}_${size}_run${run_index}.log"
         if DOTNET_TieredCompilation=1 \
           DOTNET_TC_QuickJitForLoops=1 \
@@ -569,12 +695,13 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             while IFS= read -r result_line; do
               [[ -n "${result_line}" ]] || continue
               printf '%s\n' "${result_line}" >> "${metrics_file}"
+              printf '%s\n' "${result_line}" >> "${samples_file}"
               printf '%s\n' "${result_line}" >> "${RESULT_DATA_FILE}"
               result_lines=$((result_lines + 1))
             done <<< "${extracted}"
             while IFS= read -r table_line; do
               print_line "${table_line}"
-            done < <(emit_result_row "${metrics_file}")
+            done < <(emit_result_row_indent "${metrics_file}" "${row_indent}")
           elif unsupported_line="$(extract_unsupported_line "${tmp_log}" "${pattern}" "${transport}" 2>/dev/null)"; then
             print_line "${unsupported_line}"
             expected_result_lines=$((expected_result_lines - 5))
@@ -583,7 +710,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "missing_required_result_lines"
             status=1
             failure_count=$((failure_count + 1))
-            emit_failure_row "${size}"
+            print_line "${row_indent}| ${size}B      | FAIL               | FAIL           | FAIL          | FAIL          | FAIL          |"
             if [[ "${PERF_FAIL_FAST:-0}" == "1" ]]; then
               abort_pattern=1
               break
@@ -601,7 +728,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "process_exit_nonzero"
           status=1
           failure_count=$((failure_count + 1))
-          emit_failure_row "${size}"
+          print_line "${row_indent}| ${size}B      | FAIL               | FAIL           | FAIL          | FAIL          | FAIL          |"
           if [[ "${PERF_FAIL_FAST:-0}" == "1" ]]; then
             abort_pattern=1
             break
@@ -609,26 +736,48 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         fi
       done
 
-      print_line "    Testing ${transport}: Done"
       if [[ "${abort_pattern}" -eq 1 ]]; then
         break
       fi
-
-      if (( transport_index + 1 < ${#transports[@]} )); then
-        print_line "    [transport cooldown 3000ms]"
-        sleep 3
-      fi
     done
 
+    # PERF_POLICY § 5.2: emit the per-metric median table for runs>1, matching
+    # C run_comparison.py's "median:" labeled block.
+    if [[ "${SHOW_RUN_LABELS}" -eq 1 && "${abort_pattern}" -ne 1 ]]; then
+      print_line "      median:"
+      print_line "        ${TABLE_HEADER}"
+      print_line "        ${TABLE_SEPARATOR}"
+      for size in "${msg_sizes[@]}"; do
+        size="${size//[[:space:]]/}"
+        [[ -n "${size}" ]] || continue
+        samples_file="${TMP_DIR}/${pattern,,}_${transport}_${size}.samples"
+        if median_row="$(emit_median_row_indent "${samples_file}" "${size}" "        ")"; then
+          print_line "${median_row}"
+        else
+          print_line "        | ${size}B      | FAIL               | FAIL           | FAIL          | FAIL          | FAIL          |"
+        fi
+      done
+    fi
+
+    print_line "    Testing ${transport}: Done"
     if [[ "${abort_pattern}" -eq 1 ]]; then
       break
     fi
 
-    if (( pattern_index + 1 < ${#patterns[@]} )); then
-      print_line "[pattern cooldown 3000ms]"
+    if (( transport_index + 1 < ${#transports[@]} )); then
+      print_line "    [transport cooldown 3000ms]"
       sleep 3
     fi
   done
+
+  if [[ "${abort_pattern}" -eq 1 ]]; then
+    break
+  fi
+
+  if (( pattern_index + 1 < ${#patterns[@]} )); then
+    print_line "[pattern cooldown 3000ms]"
+    sleep 3
+  fi
 done
 
 print_line ""

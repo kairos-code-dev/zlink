@@ -26,6 +26,7 @@ internal static class PerfMultiRouterRouterServer
 
         server.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeoutMs);
         server.Bind(endpoint);
+        endpoint = server.Options.LastEndpoint;
         WriteStdoutLine($"READY,{endpoint}");
 
         if (!WaitConnectReadyCount(monitor, clientCount, readyTimeoutMs))

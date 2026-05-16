@@ -10,7 +10,6 @@ internal static class PerfDealerRouter
     private static readonly RoutingId ClientRoutingId =
         RoutingId.FromBytes("CLIENT"u8);
     private const uint RunId = 1;
-    private const uint ReadyPhase = 0;
     private const uint ActivePhase = 1;
 
     private static bool TryCleanup(DealerSocket sender, RouterSocket receiver,
@@ -69,24 +68,23 @@ internal static class PerfDealerRouter
 
             sender.SetRoutingId(ClientRoutingId);
             receiver.Bind(endpoint);
+            endpoint = receiver.Options.LastEndpoint;
             sender.Connect(endpoint);
             if (!(WaitForConnectionReady(receiverMonitor, readyTimeoutMs)
                 && WaitForConnectionReady(senderMonitor, readyTimeoutMs)))
             {
                 DebugLog("single_dealer_router_error:connection_not_ready");
-                ctx.Shutdown();
                 TryCleanup(sender, receiver, endpoint);
                 return 2;
             }
 
-            if (!VerifyRouteReady(sender, receiver, size, recvTimeoutMs))
-            {
-                ctx.Shutdown();
-                TryCleanup(sender, receiver, endpoint);
-                DebugLog("single_dealer_router_error:route_probe_failed");
-                return 2;
-            }
-
+            // PERF_SINGLE_TEST_POLICY § 1.4 / C perf_dealer_router.cpp
+            // run_dealer_router: go directly from the CONNECTION_READY gate
+            // to the active phase. C defines wait_for_dealer_router_ready but
+            // never calls it (only the ROUTER_ROUTER pattern performs a
+            // routing self-check / PING-PONG handshake), so no pre-active
+            // routing probe is performed here. This keeps the active-start
+            // anchor identical to C.
             receiverMonitor.Dispose();
             receiverMonitor = null;
             senderMonitor.Dispose();
@@ -101,7 +99,6 @@ internal static class PerfDealerRouter
                     out var latencySamples))
             {
                 DebugLog("single_dealer_router_error:active_failed");
-                ctx.Shutdown();
                 TryCleanup(sender, receiver, endpoint);
                 return 2;
             }
@@ -110,7 +107,6 @@ internal static class PerfDealerRouter
             var latency = ComputeLatencyStats(latencySamples);
             PrintResult("DEALER_ROUTER", transport, size, throughput,
                 latency.mean, latency.p95, latency.p99);
-            ctx.Shutdown();
             TryCleanup(sender, receiver, endpoint);
             return 0;
         }
@@ -125,59 +121,6 @@ internal static class PerfDealerRouter
             receiverMonitor?.Dispose();
             senderMonitor?.Dispose();
         }
-    }
-
-    private static bool VerifyRouteReady(DealerSocket sender,
-        RouterSocket receiver, int msgSize, int recvTimeoutMs)
-    {
-        int payloadSize = Math.Max(msgSize, PerfMetricHeaderSize);
-        var probe = new byte[payloadSize];
-        Array.Fill(probe, (byte)'p');
-        StampMetricHeader(probe.AsSpan(), RunId, ReadyPhase, msgSize, 1, EpochNs());
-
-        try
-        {
-            if (PerfSocketIo.Send(sender, probe, SendFlags.None) == 0)
-                return false;
-        }
-        catch (ZlinkRecvException ex)
-        {
-            return false;
-        }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno)
-                                        || IsTransientNetworkError(ex.InternalErrno))
-        {
-            return false;
-        }
-
-        using var poller = new Poller();
-        var events = new PollEvent[1];
-        poller.Add(receiver, PollEventFlags.PollIn);
-        long deadlineTicks = DeadlineTicksFromMilliseconds(Math.Max(1000,
-            recvTimeoutMs));
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            int timeoutMs = Math.Max(1,
-                (int)Math.Ceiling((deadlineTicks - Stopwatch.GetTimestamp())
-                    * 1000.0 / Stopwatch.Frequency));
-            if (!WaitForInput(poller, events, timeoutMs))
-                continue;
-
-            var receivedBuffer = new Received();
-            while (TryReceive(receiver, receivedBuffer))
-            {
-                if (!TryGetPayloadPart(receivedBuffer, out Message payloadPart))
-                    continue;
-
-                return TryDecodeExpectedSingleHeader(
-                    payloadPart.AsReadOnlySpan(), msgSize, ReadyPhase,
-                    out _, RunId);
-            }
-
-        }
-
-        return false;
     }
 
     private static bool RunActivePhase(DealerSocket sender, RouterSocket receiver,
@@ -240,11 +183,13 @@ internal static class PerfDealerRouter
                     seq++;
                     try
                     {
-                        if (PerfSocketIo.Send(sender, payload, SendFlags.None) == 0)
+                        if (!TrySendActiveMessage(sender, payload,
+                                "[single-dealer-router]"))
                             continue;
                     }
-                    catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                                    || IsWouldBlock(ex.InternalErrno))
+                    catch (ZlinkException ex)
+                        when (PerfShared.IsTransientBackpressure(
+                                  ex.InternalErrno))
                     {
                         continue;
                     }
@@ -289,23 +234,6 @@ internal static class PerfDealerRouter
         }
 
         return received > 0 && latencySamples.Count > 0;
-    }
-
-    private static bool TryReceive(RouterSocket receiver, Received result)
-    {
-        try
-        {
-            return receiver.Recv(result, RecvFlags.DontWait);
-        }
-        catch (ZlinkRecvException)
-        {
-            return false;
-        }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno))
-        {
-            return false;
-        }
     }
 
     private static bool TryReceiveBlocking(RouterSocket receiver, Received result)
@@ -353,10 +281,5 @@ internal static class PerfDealerRouter
     private static bool IsWouldBlock(int errno)
     {
         return PerfShared.IsWouldBlock(errno);
-    }
-
-    private static bool IsTransientNetworkError(int errno)
-    {
-        return PerfShared.IsTransientNetworkError(errno);
     }
 }

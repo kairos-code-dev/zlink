@@ -141,7 +141,9 @@ public sealed record PerfOptions(
             PerfEnv.ReadPositive("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000),
             clients,
             PerfEnv.ReadPositive("PERF_MULTI_LATENCY_SAMPLE_CAP", 200000),
-            PerfEnv.ReadNonNegative("PERF_IO_THREADS", 0),
+            // PERF_POLICY: multi default context I/O threads is 4 for both
+            // server and client (C bench_io_threads: PERF_IO_THREADS default 4).
+            PerfEnv.ReadPositive("PERF_IO_THREADS", 4),
             ResolveMaxSockets(clients),
             0,
             0,

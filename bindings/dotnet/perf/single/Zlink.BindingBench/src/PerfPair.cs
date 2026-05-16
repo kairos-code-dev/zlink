@@ -35,6 +35,7 @@ internal static class PerfPair
         {
             string endpoint = EndpointFor(transport, "pair");
             left.Bind(endpoint);
+            endpoint = left.Options.LastEndpoint;
             right.Connect(endpoint);
             if (!(WaitForConnectionReady(leftMonitor, readyTimeoutMs)
                 && WaitForConnectionReady(rightMonitor, readyTimeoutMs)))
@@ -59,7 +60,6 @@ internal static class PerfPair
             var latency = ComputeLatencyStats(latencySamples);
             PrintResult("PAIR", transport, size, throughput, latency.mean,
                 latency.p95, latency.p99);
-            ctx.Shutdown();
             return 0;
         }
         catch (Exception ex)
@@ -149,9 +149,11 @@ internal static class PerfPair
             seq++;
             try
             {
-                SendBlocking(sender, payload, SendFlags.None);
+                if (!TrySendActiveMessage(sender, payload, "[single-pair]"))
+                    continue;
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex)
+                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
             {
                 continue;
             }

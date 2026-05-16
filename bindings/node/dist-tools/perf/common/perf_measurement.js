@@ -56,24 +56,27 @@ function decodeMetricHeader(buffer) {
         sentTsNs: buffer.readBigInt64LE(21)
     };
 }
-function decodeMetricHeaderFromParts(parts) {
+// C parity: bindings/c/perf/single/common/perf_single_one_way.hpp
+// recv_single_part_header_flags (~95-113) and perf_single_metric_header.hpp
+// decode_header (~106-119) decode the metric header strictly at byte 0 of
+// the first part and reject any payload whose size does not match the
+// expected payload size. No magic scanning / offset search. The same
+// strict contract applies to multi PUBSUB/SPOT
+// (perf_multi_client_helpers.hpp recv_one_message_header ~621-624 decodes
+// at offset 0; the capture scan is STREAM-raw-only and unused here).
+function decodeMetricHeaderFromParts(parts, expectedSize) {
+    const enforceSize = Number.isFinite(expectedSize) && expectedSize > 0;
     for (const part of parts || []) {
         if (!part || typeof part.data !== 'function') {
             continue;
         }
         const data = part.data();
-        let header = decodeMetricHeader(data);
+        if (enforceSize && data.length !== expectedSize) {
+            return null;
+        }
+        const header = decodeMetricHeader(data);
         if (header) {
             return header;
-        }
-        const magicBytes = Buffer.allocUnsafe(4);
-        magicBytes.writeUInt32LE(METRIC_MAGIC, 0);
-        const offset = data.indexOf(magicBytes);
-        if (offset >= 0 && (data.length - offset) >= HEADER_SIZE) {
-            header = decodeMetricHeader(data.subarray(offset));
-            if (header) {
-                return header;
-            }
         }
     }
     return null;

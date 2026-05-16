@@ -16,6 +16,7 @@ const {
   createRunId,
   currentEpochNs,
   decodeMetricHeaderFromParts,
+  HEADER_SIZE,
   MIN_MSG_SIZE,
   applyAutoHwmMsgUnit,
   applyAutoHwmProfile,
@@ -143,9 +144,19 @@ function emitSingleSocketHwmDetail(socket, pattern, transport, component, msgSiz
   if (!socket || !pattern || !component) {
     return;
   }
-  let monitor = null;
+  // Capability gap (e.g. SpotNode has no monitorOpen) is not a fault —
+  // simply skip the optional diagnostic for objects that do not expose a
+  // monitor surface.
+  if (typeof socket.monitorOpen !== 'function') {
+    return;
+  }
+  // PERF_POLICY § 1.1.4: do not silently swallow real failures. A failed
+  // `monitorOpen` on a socket that DOES support it means a broken/closed
+  // socket — a real benchmark fault that must surface. Only the snapshot
+  // read + diagnostic emission itself is best-effort (it never affects
+  // the measured RESULT).
+  const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
   try {
-    monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
     const snapshot = monitor.snapshot();
     if (!singleAutoHwmSnapshotVisible(snapshot)) {
       return;
@@ -169,7 +180,7 @@ function emitSingleSocketHwmDetail(socket, pattern, transport, component, msgSiz
       + `,socket_message_slots=${snapshot.autoHwmSocketMessageSlots}`
     );
   } catch (err) {
-    // Auto-HWM detail is diagnostic output; keep the benchmark result path primary.
+    // Snapshot/emit is diagnostic only; keep the benchmark result primary.
   } finally {
     monitor?.close();
   }
@@ -360,10 +371,10 @@ function sendSocketRequired(socket, payload, flags = zlink.SendFlags.None) {
   socket.send().message(payload).flags(flags).submit();
 }
 
-function drainRecvSocketNoWaitUntilIdle(socket, collector) {
+function drainRecvSocketNoWaitUntilIdle(socket, collector, payloadSize, viaSubscribe = false) {
   let stopReceived = false;
   while (true) {
-    const received = recvNoWait(socket);
+    const received = viaSubscribe ? subscribeNoWait(socket) : recvNoWait(socket);
     if (!received) {
       return stopReceived;
     }
@@ -371,7 +382,7 @@ function drainRecvSocketNoWaitUntilIdle(socket, collector) {
       stopReceived = true;
       continue;
     }
-    const header = decodeMetricHeaderFromParts(received.parts);
+    const header = decodeMetricHeaderFromParts(received.parts, payloadSize);
     collector.record(header, currentEpochNs());
   }
 }
@@ -384,7 +395,15 @@ async function runLocalSocketOneWayBenchmark({
   createReceiver,
   createSender,
   configureReceiver = null,
-  configureSender = null
+  configureSender = null,
+  // Single-context inproc parity extensions (used by PUBSUB / ROUTER_ROUTER
+  // inproc where the non-inproc path uses a Worker that cannot share the
+  // inproc context). Defaults preserve the PAIR/DEALER behaviour.
+  senderBinds = false,            // PUBSUB: PUB binds, SUB connects
+  drainViaSubscribe = false,      // PUBSUB: subscriber drains via subscribe
+  handshake = null,              // ROUTER_ROUTER: PING/PONG routing-id gate
+  sendActive = null,             // custom send (publish topic / send rid)
+  sendStop = null                // custom wire stop-token send
 }) {
   const ctx = new zlink.Context();
   applyContextPolicy(ctx);
@@ -406,16 +425,29 @@ async function runLocalSocketOneWayBenchmark({
       configureSender(sender);
     }
     ctx.recalculateAutoHwm();
-    receiver.bind(endpoint);
-    sender.connect(endpoint);
+    if (senderBinds) {
+      sender.bind(endpoint);
+      receiver.connect(endpoint);
+    } else {
+      receiver.bind(endpoint);
+      sender.connect(endpoint);
+    }
     await waitForMonitorConnectionReady(receiverMonitor);
     await waitForMonitorConnectionReady(senderMonitor);
+    // ROUTER_ROUTER routing-id discovery gate (C perf_router_router.cpp
+    // does a PING/PONG before the active window). Runs in the single
+    // shared context — no Worker, so inproc works.
+    let activeRoutingId = null;
+    if (typeof handshake === 'function') {
+      activeRoutingId = handshake(sender, receiver);
+    }
 
     const activeStartNs = currentEpochNs();
     const activeStopNs = activeStartNs
       + BigInt(Math.floor(options.duration * 1_000_000_000));
     const runId = createRunId(options.runId ?? 1);
     const payload = createPayload(msgSize);
+    const payloadSize = Math.max(msgSize, HEADER_SIZE);
     const collector = createMetricCollector({
       runId,
       msgSize,
@@ -423,18 +455,57 @@ async function runLocalSocketOneWayBenchmark({
       activeStopNs,
     });
 
+    // PERF_POLICY § 1.1.2 / C bindings/c/perf/single/common/
+    // perf_single_one_way.hpp run_active_phase (~276-358): C runs a
+    // dedicated BLOCKING sender thread + a separate receiver thread that
+    // share one context. Node Worker threads cannot share a zlink context
+    // (inproc is context-local — doc/guide/04-transports.md "Same
+    // context"), so the inproc path cannot spawn an OS sender thread the
+    // way the non-inproc path uses a sender Worker. The faithful single-
+    // context adaptation: emulate C's blocking sender — every message is
+    // retried through backpressure until accepted (NO silent EAGAIN drop,
+    // NO uncounted send) and the receiver drain between attempts plays the
+    // role of C's concurrent receiver thread, relieving backpressure so
+    // the send anchor matches C (`sent` advances only on an accepted
+    // send, exactly like send_active_samples). The valid-recv / deadline
+    // anchor stays in the shared collector (perf_measurement.ts ~280),
+    // mirroring C's `steady_clock::now() < deadline` guard.
+    const drainOnce = () => drainRecvSocketNoWaitUntilIdle(
+      receiver, collector, payloadSize, drainViaSubscribe);
+    const sendOne = typeof sendActive === 'function'
+      ? (value) => sendActive(sender, value, activeRoutingId)
+      : (value) => sendSocketNoWait(sender, value);
+    const sendActiveBlocking = (value) => {
+      while (true) {
+        if (sendOne(value)) {
+          return true;
+        }
+        // Backpressured: drain the receiver (the Node stand-in for C's
+        // concurrent receiver thread) to relieve HWM, then retry the SAME
+        // message. This is the blocking-send semantic, not a drop.
+        if (drainOnce()) {
+          // Stop token observed mid-active (should not happen before we
+          // send it) — treat as fatal handshake error rather than a drop.
+          throw new Error('unexpected stop token during active send');
+        }
+      }
+    };
+
     let seq = 1n;
     while (currentEpochNs() < activeStopNs) {
       stampPayload(payload, { phase: 1, runId, msgSize, seq });
-      if (sendSocketNoWait(sender, payload)) {
-        seq += 1n;
-      }
-      drainRecvSocketNoWaitUntilIdle(receiver, collector);
+      sendActiveBlocking(payload);
+      seq += 1n;
+      drainOnce();
     }
     stampPayload(payload, { phase: 2, runId, msgSize, seq });
-    sendSocketNoWait(sender, payload);
-    sendSocketRequired(sender, STOP_TOKEN_BYTES);
-    while (!drainRecvSocketNoWaitUntilIdle(receiver, collector)) {
+    sendActiveBlocking(payload);
+    if (typeof sendStop === 'function') {
+      sendStop(sender, activeRoutingId);
+    } else {
+      sendSocketRequired(sender, STOP_TOKEN_BYTES);
+    }
+    while (!drainOnce()) {
       // Drain until the wire-level stop token arrives.
     }
     const result = collector.finish();

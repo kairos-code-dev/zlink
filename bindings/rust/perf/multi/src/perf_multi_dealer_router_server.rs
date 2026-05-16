@@ -15,20 +15,10 @@ fn main() {
     let settings = common::MultiSettings::from_env();
     let ctx = common::perf_server_context();
     let router = ctx.router_socket().expect("router");
-    router
-        .common_options()
-        .set_send_hwm(settings.send_hwm)
-        .expect("sndhwm");
-    router
-        .common_options()
-        .set_recv_hwm(settings.recv_hwm)
-        .expect("rcvhwm");
-    if settings.msg_unit_bytes > 0 {
-        router
-            .common_options()
-            .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
-            .expect("auto hwm msg unit");
-    }
+    // C perf_multi_relay_server.hpp: gated numeric HWM + unconditional
+    // AUTO_HWM_MSG_UNIT_BYTES = msg_size.
+    common::apply_multi_hwm(&router, &settings);
+    common::apply_multi_auto_hwm_msg_unit(&router, args.msg_size);
     router
         .common_options()
         .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
@@ -64,9 +54,50 @@ fn main() {
             }
         }
     });
+    // C perf_multi_relay_server.hpp run_server_loop(): poller POLLIN (+ POLLOUT
+    // when there is pending backlog), perf_socket_poll(...,-1) signal-driven.
+    // No DONT_WAIT busy-spin with sleep(1ms). Real send errors propagate (we
+    // panic instead of silently swallowing the data-path send).
+    let poller = Poller::new().expect("poller");
+    poller.add_socket(&router, POLLIN).expect("poller add");
+    let mut want_pollout = false;
     let mut received = zlink::Received::empty();
     while !stop.load(Ordering::Acquire) {
-        let mut progressed = false;
+        let desired = if pending.is_empty() {
+            POLLIN
+        } else {
+            POLLIN | POLLOUT
+        };
+        if desired != (if want_pollout { POLLIN | POLLOUT } else { POLLIN }) {
+            poller
+                .modify_socket(&router, desired)
+                .expect("poller modify");
+            want_pollout = !pending.is_empty();
+        }
+        match poller.wait(-1) {
+            Ok(Some(_)) | Ok(None) => {}
+            Err(err) => panic!("poller wait failed: {err}"),
+        }
+        if stop.load(Ordering::Acquire) {
+            break;
+        }
+        // Flush pending backlog first (POLLOUT side).
+        while let Some((rid, reply_bytes)) = pending.pop_front() {
+            match router
+                .send(&rid)
+                .message(Message::copy_from(&reply_bytes).expect("pending reply"))
+                .flags(SendFlags::DONT_WAIT)
+                .submit()
+            {
+                Ok(true) => {}
+                Ok(false) => {
+                    pending.push_front((rid, reply_bytes));
+                    break;
+                }
+                Err(err) => panic!("pending reply failed: {err}"),
+            }
+        }
+        // Drain readable requests and relay (POLLIN side).
         loop {
             match router.recv(&mut received, RecvFlags::DONT_WAIT) {
                 Ok(true) => {
@@ -81,38 +112,17 @@ fn main() {
                             .flags(SendFlags::DONT_WAIT)
                             .submit()
                         {
-                            Ok(true) => {
-                                progressed = true;
-                                continue;
-                            }
+                            Ok(true) => continue,
                             Ok(false) => {}
                             Err(err) => panic!("received send failed: {err}"),
                         }
                     }
                     pending.push_back((rid, reply_bytes));
-                    progressed = true;
                 }
                 Ok(false) => break,
+                Err(err) if err.code() == RecvResult::NoData => break,
                 Err(err) => panic!("router recv failed: {err}"),
             }
-        }
-        while let Some((rid, reply_bytes)) = pending.pop_front() {
-            match router
-                .send(&rid)
-                .message(Message::copy_from(&reply_bytes).expect("pending reply"))
-                .flags(SendFlags::DONT_WAIT)
-                .submit()
-            {
-                Ok(true) => progressed = true,
-                Ok(false) => {
-                    pending.push_front((rid, reply_bytes));
-                    break;
-                }
-                Err(err) => panic!("pending reply failed: {err}"),
-            }
-        }
-        if !progressed {
-            std::thread::sleep(Duration::from_millis(1));
         }
     }
 }

@@ -81,7 +81,7 @@ class pubsub_client_bench_t
             return false;
         }
 
-        if (!run_active_until_cooldown (
+        if (!run_active_until_stop_token (
               std::chrono::seconds (_phase_cfg.active_seconds),
               &_result.active_count,
               &_result.latency))
@@ -169,7 +169,13 @@ class pubsub_client_bench_t
         return !_sockets.empty ();
     }
 
-    bool run_active_until_cooldown (
+    // Active aggregation closes via the application clock (deadline), and the
+    // server's wire-level stop token on the active topic wakes the -1 poller
+    // wait and ends the phase. The stop token is checked BEFORE parsing the
+    // payload header, matching the C reference recv_one_pubsub_message()
+    // (bindings/c/perf/multi/src/perf_multi_pubsub_client.cpp:76-79) and the
+    // run_recv_duration() stop handling (lines 203-206).
+    bool run_active_until_stop_token (
       std::chrono::milliseconds duration,
       unsigned long long *count_out,
       perf::multi::bench_latency_stats_t *lat_out)
@@ -188,9 +194,9 @@ class pubsub_client_bench_t
         perf::multi::bench_latency_sampler_t latency;
         unsigned long long count = 0;
         const auto deadline = std::chrono::steady_clock::now () + duration;
-        bool cooldown_seen = false;
+        bool phase_done = false;
 
-        while (!cooldown_seen) {
+        while (!phase_done) {
             _poll_events =
               _poller.wait (0, std::chrono::milliseconds (-1));
             const int poll_rc = static_cast<int> (_poll_events.size ());
@@ -230,6 +236,15 @@ class pubsub_client_bench_t
                     const zlink::message_t &part = received.parts ()[0];
                     const size_t recv_size = part.size ();
 
+                    // Check the wire-level stop token BEFORE parsing the
+                    // payload header (matches C reference
+                    // recv_one_pubsub_message lines 76-79).
+                    if (perf::multi::is_stop_token (
+                          part.data (), recv_size)) {
+                        phase_done = true;
+                        continue;
+                    }
+
                     perf_metric::header_t header;
                     if (!perf_metric::decode_payload_header (
                           part.data (),
@@ -243,11 +258,6 @@ class pubsub_client_bench_t
                         continue;
                     }
 
-                    if (header.phase
-                        == static_cast<uint8_t> (perf_metric::phase_cooldown)) {
-                        cooldown_seen = true;
-                        continue;
-                    }
                     if (header.phase
                         != static_cast<uint8_t> (perf_metric::phase_active)
                         || std::chrono::steady_clock::now () >= deadline) {

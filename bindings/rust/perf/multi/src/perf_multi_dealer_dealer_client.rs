@@ -17,17 +17,9 @@ fn main() {
 
     for _ in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
-        sock.common_options()
-            .set_send_hwm(settings.send_hwm)
-            .expect("sndhwm");
-        sock.common_options()
-            .set_recv_hwm(settings.recv_hwm)
-            .expect("rcvhwm");
-        if settings.msg_unit_bytes > 0 {
-            sock.common_options()
-                .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
-                .expect("auto hwm msg unit");
-        }
+        // C: gated numeric HWM + unconditional AUTO_HWM_MSG_UNIT_BYTES.
+        common::apply_multi_hwm(&sock, &settings);
+        common::apply_multi_auto_hwm_msg_unit(&sock, args.msg_size);
         sock.common_options()
             .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
             .expect("rcvtimeo");
@@ -114,6 +106,36 @@ fn main() {
                 Err(err) => panic!("poller wait failed: {err}"),
             }
         }
+    }
+
+    // C perf_multi_dealer_dealer_client.cpp run_single_size_case(): after the
+    // send window, publish the wire stop token on every socket so the server's
+    // poll wakes (the stop token is NOT the server's count anchor — its
+    // measure-seconds deadline is). Bounded retry through transient backpressure.
+    for socket in &sockets {
+        let mut sent = false;
+        for _ in 0..100 {
+            match socket
+                .send()
+                .message(Message::copy_from(common::STOP_TOKEN).expect("stop token"))
+                .submit()
+            {
+                Ok(_) => {
+                    sent = true;
+                    break;
+                }
+                Err(err)
+                    if matches!(
+                        err.code(),
+                        SubmitResult::Backpressured | SubmitResult::NotConnected
+                    ) =>
+                {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Err(err) => panic!("stop token send failed: {err}"),
+            }
+        }
+        let _ = sent;
     }
 
     println!("CLIENT_DONE,{}", args.msg_size);

@@ -3,6 +3,8 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_client_helpers.hpp"
 
+#include <algorithm>
+#include <any>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -109,6 +111,15 @@ bool wait_for_start (size_t msg_size, int timeout_ms)
         return false;
     }
     return true;
+}
+
+size_t active_spot_slot_limit (size_t total_slots, size_t msg_size)
+{
+    if (msg_size >= 131072)
+        return std::min (total_slots, static_cast<size_t> (8));
+    if (msg_size >= 65536)
+        return std::min (total_slots, static_cast<size_t> (32));
+    return total_slots;
 }
 
 void stdin_watcher ()
@@ -222,14 +233,8 @@ bool submit_request (client_slot_t &slot,
           slot.next_seq,
           perf_metric::now_ns ()))
         return false;
-    // Re-adopt the payload buffer on every send: send consumes the wrapper's
-    // valid flag, so reusing the same message_t across sends would fail with
-    // EINVAL on the second iteration.
-    slot.message = zlink::advanced::external_message_t::adopt (
-      slot.payload.data (),
-      slot.payload.size (),
-      NULL,
-      NULL);
+    slot.message = zlink::message_t::from_bytes (
+      slot.payload.data (), slot.payload.size ());
     if (!slot.message.valid ())
         return false;
 
@@ -306,6 +311,28 @@ bool drain_reply (client_slot_t &slot,
     }
 }
 
+bool drain_event_reply (std::vector<client_slot_t> &slots,
+                        const zlink::poll_event_t &event,
+                        uint32_t run_id,
+                        size_t msg_size,
+                        uint64_t deadline_ns,
+                        unsigned long long &reply_count,
+                        perf::multi::bench_latency_sampler_t &latency)
+{
+    if (!event.tag.has_value ())
+        return true;
+    try {
+        const size_t slot_index = std::any_cast<size_t> (event.tag);
+        if (slot_index >= slots.size ())
+            return true;
+        return drain_reply (
+          slots[slot_index], run_id, msg_size, deadline_ns, reply_count, latency);
+    }
+    catch (const std::bad_any_cast &) {
+        return true;
+    }
+}
+
 bool run_active_window (std::vector<client_slot_t> &slots,
                         zlink::poller_t &poller,
                         const perf::multi::multi_bench_settings_t &settings,
@@ -323,14 +350,15 @@ bool run_active_window (std::vector<client_slot_t> &slots,
         slot.next_seq = 1;
     }
 
+    // PERF_MULTI_TEST_POLICY § 1.3.1: the active request/reply window is
+    // bounded purely by an application clock (steady_clock deadline) plus a
+    // -1 (signal-driven) poll wait; no poller timer object is used. Reply
+    // traffic keeps waking the -1 wait, and the deadline check terminates the
+    // loop. Matches the C reference
+    // (bindings/c/perf/multi/src/perf_multi_spot_sendsend_client.cpp:1017-1054).
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::seconds (
                             std::max (1, settings.duration_seconds));
-    const std::chrono::seconds active_duration (
-      std::max (1, settings.duration_seconds));
-    zlink::timer_t active_timer;
-    active_timer.start (active_duration, 1);
-    poller.add (active_timer);
     const uint64_t deadline_ns =
       perf_metric::now_ns ()
       + static_cast<uint64_t> (std::max (1, settings.duration_seconds))
@@ -339,7 +367,10 @@ bool run_active_window (std::vector<client_slot_t> &slots,
     while (!g_stop.load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < deadline) {
         bool has_waiting = false;
-        for (client_slot_t &slot : slots) {
+        const size_t active_slots =
+          active_spot_slot_limit (slots.size (), msg_size);
+        for (size_t i = 0; i < active_slots; ++i) {
+            client_slot_t &slot = slots[i];
             if (!drain_reply (
                   slot, run_id, msg_size, deadline_ns, reply_count, latency))
                 return false;
@@ -350,20 +381,20 @@ bool run_active_window (std::vector<client_slot_t> &slots,
         }
 
         if (has_waiting) {
-            std::vector<zlink::poll_event_t> events = poller.wait (
-              slots.size () + 1, std::chrono::milliseconds (-1));
-            for (size_t i = 0; i < events.size (); ++i) {
-                if (events[i].timer) {
-                    (void) active_timer.recv ();
-                    poller.remove (active_timer);
-                    latency_out = latency.snapshot ();
-                    return true;
-                }
-            }
+            const std::optional<zlink::poll_event_t> event =
+              poller.wait (std::chrono::milliseconds (-1));
+            if (event.has_value ()
+                && !drain_event_reply (slots,
+                                       *event,
+                                       run_id,
+                                       msg_size,
+                                       deadline_ns,
+                                       reply_count,
+                                       latency))
+                return false;
         }
     }
 
-    poller.remove (active_timer);
     latency_out = latency.snapshot ();
     return true;
 }
@@ -433,10 +464,7 @@ bool run_client (const std::string &lib_name,
                                 + std::to_string (i);
         slots[i].spot->set_routing_id (zlink::routing_id_t (
           reinterpret_cast<const uint8_t *> (rid.data ()), rid.size ()));
-        poller.add (*slots[i].spot,
-                    zlink::poll_event_flag_t::pollin
-                      | zlink::poll_event_flag_t::pollout,
-                    i);
+        poller.add (*slots[i].spot, zlink::poll_event_flag_t::pollin, i);
     }
     if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;

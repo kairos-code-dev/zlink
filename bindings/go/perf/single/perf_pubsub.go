@@ -26,6 +26,10 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(publisher, cfg.transport))
 	perfcommon.Must(perfcommon.ConfigureTLSClient(subscriber, cfg.transport))
+	// perf_pubsub.cpp: apply_single_auto_hwm_msg_unit on pub/sub (raw
+	// sockets), then apply_single_hwm (override-gated).
+	perfcommon.ApplySingleAutoHWMMsgUnit(publisher, cfg.msgSize)
+	perfcommon.ApplySingleAutoHWMMsgUnit(subscriber, cfg.msgSize)
 	perfcommon.ApplySingleHWM(publisher)
 	perfcommon.ApplySingleHWM(subscriber)
 	endpoint := perfcommon.BindAndResolveEndpoint(publisher, cfg.transport, "perf-pubsub")

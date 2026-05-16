@@ -110,8 +110,15 @@ bool run_pattern_dealer_router (const std::string &transport,
 
             if (!perf::single::send_payload_blocking (
                   dealer.sock (), payload.data (), payload.size ())) {
+                const int err = errno;
+                if (perf::single::is_transient_send_errno (err)
+                    && std::chrono::steady_clock::now () < active_deadline) {
+                    continue;
+                }
+                if (perf::single::is_transient_send_errno (err))
+                    break;
                 if (perf_debug_enabled ())
-                    std::cerr << "dealer_router: send failed errno=" << errno
+                    std::cerr << "dealer_router: send failed errno=" << err
                               << std::endl;
                 sender_ok.store (false, std::memory_order_release);
                 break;

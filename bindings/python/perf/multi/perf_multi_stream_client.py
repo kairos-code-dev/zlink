@@ -239,7 +239,18 @@ def _open_stream_socket(transport, host, port, timeout_s):
 
 
 def main(argv=None):
-    args = _parse_args(argv or sys.argv[1:])
+    # PERF_MULTI_TEST_POLICY: the MULTI_STREAM client role MUST be the shared
+    # C binary bindings/c/perf/common/streamclient (the measured surface is
+    # the Python STREAM server). run_benchmarks.py spawns that binary; this
+    # hand-rolled Python client is disabled to prevent measuring the wrong
+    # surface.
+    raise SystemExit(
+        "perf_multi_stream_client.py is disabled: the MULTI_STREAM client "
+        "must be the shared C perf_stream_client binary "
+        "(bindings/c/perf/common/streamclient). run_benchmarks.py spawns it "
+        "automatically."
+    )
+    args = _parse_args(argv or sys.argv[1:])  # noqa: F841  (unreachable)
     transport, host, port = _parse_endpoint(args.endpoint)
     if transport != args.transport:
         raise SystemExit("endpoint transport must match --transport")

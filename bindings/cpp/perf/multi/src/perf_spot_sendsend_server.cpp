@@ -77,12 +77,9 @@ bool wait_for_start (size_t msg_size, int timeout_ms)
 }
 
 void stdin_watcher (zlink::service::spot_node_t *control_node,
-                    zlink::service::spot_node_t *data_node,
-                    zlink::service::spot_t *control_pub,
-                    zlink::service::spot_t *control_sub,
-                    size_t expected_ready_count,
-                    int timeout_ms)
+                    zlink::service::spot_node_t *data_node)
 {
+    (void) data_node;
     std::string line;
     while (std::getline (std::cin, line)) {
         std::string endpoint;
@@ -103,25 +100,6 @@ void stdin_watcher (zlink::service::spot_node_t *control_node,
               line, "START,", &start_size)) {
             if (bench_debug_enabled ())
                 std::cerr << "[cpp-spot-sendsend-server] runner START size="
-                          << start_size << std::endl;
-            if (!control_pub || !control_sub
-                || !perf::multi::wait_ready_count_and_data_endpoint (
-                  *control_sub,
-                  data_node,
-                  k_control_topic,
-                  start_size,
-                  expected_ready_count,
-                  timeout_ms)
-                || !perf::multi::publish_control_payload (
-                  *control_pub,
-                  k_control_topic,
-                  perf::multi::make_start_command (start_size),
-                  timeout_ms)) {
-                signal_stop ();
-                return;
-            }
-            if (bench_debug_enabled ())
-                std::cerr << "[cpp-spot-sendsend-server] direct START size="
                           << start_size << std::endl;
             signal_start (start_size);
             continue;
@@ -241,11 +219,7 @@ bool run_server (const std::string &lib_name,
     std::thread stdin_thread (
       stdin_watcher,
       &control_node,
-      &node,
-      &control_pub,
-      &control_sub,
-      std::max<size_t> (1, settings.clients),
-      start_timeout_ms);
+      &node);
     std::cout << "READY," << endpoint << std::endl;
     std::cout << "CONTROL_READY," << control_endpoint << std::endl;
 
@@ -258,31 +232,40 @@ bool run_server (const std::string &lib_name,
             ok = false;
             break;
         }
+        if (!perf::multi::wait_ready_count_and_data_endpoint (
+              control_sub,
+              &node,
+              k_control_topic,
+              msg_size,
+              std::max<size_t> (1, settings.clients),
+              start_timeout_ms)
+            || !perf::multi::publish_control_payload (
+              control_pub,
+              k_control_topic,
+              perf::multi::make_start_command (msg_size),
+              start_timeout_ms)) {
+            ok = false;
+            break;
+        }
+        if (bench_debug_enabled ())
+            std::cerr << "[cpp-spot-sendsend-server] direct START size="
+                      << msg_size << std::endl;
+        // PERF_MULTI_TEST_POLICY § 1.3.1: the active echo window is bounded
+        // purely by an application clock (steady_clock deadline); no poller
+        // timer object is used. This mirrors the C reference, whose server
+        // echoes via a non-blocking drain
+        // (spot_recv_worker_main, bindings/c/perf/multi/src/
+        // perf_multi_spot_sendsend_server.cpp:390-409) while the main thread
+        // bounds the window with idle_until_server_stop (lines 457-479): a
+        // deadline-bounded null poll, NOT a poller timer and NOT a
+        // wakeup-miss fallback.
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::seconds (
                                 std::max (1, settings.duration_seconds));
-        zlink::timer_t active_timer;
-        active_timer.start (
-          std::chrono::seconds (std::max (1, settings.duration_seconds)), 1);
-        poller.add (active_timer);
         while (!g_stop.load (std::memory_order_acquire)
                && std::chrono::steady_clock::now () < deadline) {
-            std::optional<zlink::poll_event_t> event =
-              poller.wait (std::chrono::milliseconds (-1));
-            if (!event.has_value ())
-                continue;
-            if (event->timer) {
-                (void) active_timer.recv ();
-                break;
-            }
-            if (std::chrono::steady_clock::now () >= deadline)
-                break;
+            bool progressed = false;
             for (;;) {
-                if (!echo_one (spot)) {
-                    ok = false;
-                    signal_stop ();
-                    break;
-                }
                 zlink::received_t probe;
                 const int rc =
                   spot.recv_routed (probe, zlink::recv_flags_t::dontwait);
@@ -295,6 +278,7 @@ bool run_server (const std::string &lib_name,
                     signal_stop ();
                     break;
                 }
+                progressed = true;
                 std::vector<zlink::message_t> parts =
                   std::move (probe.parts ());
                 try {
@@ -316,8 +300,31 @@ bool run_server (const std::string &lib_name,
                 if (!ok)
                     break;
             }
+            if (!ok)
+                break;
+            if (progressed)
+                continue;
+
+            // Nothing to echo right now: wait a deadline-bounded slice for
+            // the next request, capped like the C reference's
+            // idle_until_server_stop std::min<long>(wait_ms, 10). The spot
+            // socket is registered in the poller, so inbound traffic wakes
+            // this immediately; the cap only bounds the post-client tail so
+            // the steady_clock deadline (the sole window terminator) is
+            // honored without a poller timer object.
+            const auto now = std::chrono::steady_clock::now ();
+            if (now >= deadline)
+                break;
+            const long remaining_ms =
+              static_cast<long> (
+                std::chrono::duration_cast<std::chrono::milliseconds> (
+                  deadline - now)
+                  .count ());
+            if (remaining_ms <= 0)
+                break;
+            const long wait_ms = std::min<long> (remaining_ms, 10);
+            (void) poller.wait (std::chrono::milliseconds (wait_ms));
         }
-        (void) poller.remove (active_timer);
         if (!ok)
             break;
     }

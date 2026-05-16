@@ -221,11 +221,23 @@ trim_csv() {
 
 default_msg_sizes_for_pattern() {
   local pattern="$1"
-  if [[ "${pattern}" == "MULTI_STREAM" && "${explicit_msg_sizes}" -eq 0 ]]; then
-    echo "${STREAM_DEFAULT_MSG_SIZES}"
-  else
-    echo "${MSG_SIZES}"
+  if [[ "${pattern}" == "MULTI_STREAM" ]]; then
+    if [[ "${explicit_msg_sizes}" -eq 0 ]]; then
+      echo "${STREAM_DEFAULT_MSG_SIZES}"
+      return
+    fi
+    python3 - "${MSG_SIZES}" "${STREAM_DEFAULT_MSG_SIZES}" <<'PY'
+import sys
+
+requested = [item.strip() for item in sys.argv[1].split(",") if item.strip()]
+allowed = [item.strip() for item in sys.argv[2].split(",") if item.strip()]
+allowed_set = set(allowed)
+filtered = [item for item in requested if item in allowed_set]
+print(",".join(filtered or allowed))
+PY
+    return
   fi
+  echo "${MSG_SIZES}"
 }
 
 default_clients_for_pattern() {
@@ -240,6 +252,7 @@ default_clients_for_pattern() {
 pick_endpoint() {
   local transport="$1"
   local token="$2"
+  local port_offset=0
   if [[ "${transport}" == "ipc" ]]; then
     echo "ipc://${RESULTS_ROOT}/multi/tmp/${token}-${RANDOM}.sock"
   else
@@ -247,21 +260,47 @@ pick_endpoint() {
       echo "${transport}://127.0.0.1:${SERVER_BIND_PORT}"
       return
     fi
-    echo "${transport}://127.0.0.1:$(pick_port)"
+    case "${token}" in
+      SPOT) port_offset=3 ;;
+      SPOT_REQREP|SPOT_SENDSEND) port_offset=1 ;;
+    esac
+    echo "${transport}://127.0.0.1:$(pick_port_range "${port_offset}")"
   fi
 }
 
 pick_port() {
+  pick_port_range 0
+}
+
+pick_port_range() {
+  local max_offset="${1:-0}"
   local port
-  port="$(python3 - <<'PY'
+  port="$(python3 - "${max_offset}" <<'PY'
 import socket
-try:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    print(s.getsockname()[1])
-    s.close()
-except OSError:
-    print("")
+import sys
+
+max_offset = int(sys.argv[1])
+for _ in range(1000):
+    sockets = []
+    try:
+        first = socket.socket()
+        first.bind(("127.0.0.1", 0))
+        base = first.getsockname()[1]
+        sockets.append(first)
+        if base + max_offset > 65535:
+            continue
+        for offset in range(1, max_offset + 1):
+            probe = socket.socket()
+            probe.bind(("127.0.0.1", base + offset))
+            sockets.append(probe)
+        print(base)
+        raise SystemExit(0)
+    except OSError:
+        pass
+    finally:
+        for item in sockets:
+            item.close()
+print("")
 PY
 )"
   if [[ "${port}" =~ ^[0-9]+$ ]] && [[ "${port}" -gt 0 ]]; then
@@ -331,7 +370,7 @@ wait_for_pid_or_kill() {
       kill -KILL "${pid}" 2>/dev/null || true
       wait "${pid}" 2>/dev/null || true
       echo "${label} timed out" >&2
-      return 1
+      return 124
     fi
     sleep_ms 100
   done
@@ -991,17 +1030,6 @@ run_socket_case() {
   append_auto_hwm_details "${server_log}"
   append_auto_hwm_details "${client_log}"
 
-  if [[ "${client_exit}" -ne 0 ]]; then
-    record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_exit_${client_exit}"
-    CASE_STATUS="fail"
-    return 0
-  fi
-  if [[ "${server_exit}" -ne 0 ]]; then
-    record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_exit_${server_exit}"
-    CASE_STATUS="fail"
-    return 0
-  fi
-
   if [[ "${bare_pattern}" == "DEALER_ROUTER" \
      || "${bare_pattern}" == "ROUTER_ROUTER" || "${bare_pattern}" == "PUBSUB" \
      || "${bare_pattern}" == "SPOT_REQREP" \
@@ -1009,6 +1037,12 @@ run_socket_case() {
      || "${bare_pattern}" == "SPOT" ]]; then
     metric_log="${client_log}"
   fi
+  if [[ "${client_exit}" -ne 0 ]]; then
+    record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_exit_${client_exit}"
+    CASE_STATUS="fail"
+    return 0
+  fi
+
   local status_record
   status_record="$(case_status "${pattern}" "${transport}" "${size}" "${metric_log}")"
   case "${status_record%%,*}" in
@@ -1022,6 +1056,11 @@ run_socket_case() {
       return 0
       ;;
   esac
+  if [[ "${server_exit}" -ne 0 ]]; then
+    record_failure "${pattern}" "${transport}" "${size}" "${run}" "server_exit_${server_exit}"
+    CASE_STATUS="fail"
+    return 0
+  fi
 
   CASE_STATUS="ok"
   CASE_METRIC_LOG="${metric_log}"

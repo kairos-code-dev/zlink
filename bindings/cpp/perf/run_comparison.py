@@ -2699,6 +2699,59 @@ def run_sizes_test_split(
                         sys.stderr.write(f"[server] {queued_line}")
             return control_connected[0]
 
+        def wait_for_server_result_lines():
+            # DEALER_DEALER is the only multi pattern whose server is the
+            # measuring receiver; STOP must not be sent until all of the
+            # server's RESULT metrics for every size are captured. Mirrors the
+            # C reference (bindings/c/perf/run_comparison.py:2645-2691, called
+            # at 2815) so cpp does not race STOP ahead of the server metrics.
+            if normalize_multi_pattern_name(pattern_name) != "DEALER_DEALER":
+                return
+            if not expected_sizes:
+                return
+
+            deadline = time.monotonic() + max(
+                0.1, timeout_sec, shutdown_timeout_ms / 1000.0
+            )
+
+            def has_expected_results():
+                seen = set()
+                for buffered_line in server_stdout_buffer.text().splitlines():
+                    parsed_line, _warning = parse_result_line(
+                        buffered_line, transport, expected_sizes
+                    )
+                    if not parsed_line:
+                        continue
+                    line_transport, line_size, metric, _value = parsed_line
+                    if line_transport == transport and line_size in expected_sizes:
+                        seen.add((line_size, metric))
+                for size_value in expected_sizes:
+                    for metric_name in REQUIRED_RESULT_METRICS:
+                        if (size_value, metric_name) not in seen:
+                            return False
+                return True
+
+            while (
+                server_proc
+                and server_proc.poll() is None
+                and time.monotonic() < deadline
+            ):
+                pump_server_output_nonblocking()
+                if has_expected_results():
+                    return
+                try:
+                    stream_name, line = out_queue.get(timeout=0.02)
+                except queue.Empty:
+                    continue
+                if line is None:
+                    continue
+                if stream_name == "stdout":
+                    append_server_stdout_line(line)
+                else:
+                    server_stderr_buffer.append(line)
+                    if debug_transitions:
+                        sys.stderr.write(f"[server] {line}")
+
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
             emit_auto_hwm_detail_line(line)
@@ -2775,6 +2828,7 @@ def run_sizes_test_split(
         if use_control_plane:
             progress_meta["server_control_endpoint"] = control_endpoint
 
+        wait_for_server_result_lines()
         stop_server()
         drain_server_output()
         server_rc = server_proc.returncode if server_proc else 0
@@ -2981,6 +3035,18 @@ def run_sizes_test(
                 result_line_callback=result_line_callback,
             )
 
+        def run_one_size_case_with_env(case_size, extra_env):
+            return run_sizes_test_split(
+                names["server"],
+                names["client"],
+                lib_name,
+                transport,
+                [case_size],
+                pattern_name,
+                result_line_callback=None,
+                extra_env=extra_env,
+            )
+
     merged = {
         "status": "success",
         "parsed": {},
@@ -2990,6 +3056,7 @@ def run_sizes_test(
         "warnings": [],
     }
     for size_index, size in enumerate(size_list):
+        normalized_pattern = normalize_multi_pattern_name(pattern_name)
         isolated = None
         if size_start_callback is not None:
             try:
@@ -3007,6 +3074,40 @@ def run_sizes_test(
             reason = isolated.get("reason", "size_case_failed")
             merged["reason"] = f"{reason}_size_{size}"
             return merged
+
+        # MULTI_SPOT clean-latency second pass: the saturated active pass
+        # measures throughput, but SPOT latency must come from a clean,
+        # isolated latency-only pass. Mirrors the C reference
+        # (bindings/c/perf/run_comparison.py:3062-3088): re-run the same size
+        # with PERF_MULTI_SPOT_LATENCY_ONLY=1 and override the SPOT RESULT's
+        # latency / p95 / p99 with the clean-pass values.
+        if (
+            normalized_pattern == "SPOT"
+            and parse_env_int("PERF_MULTI_SPOT_CLEAN_LATENCY", 1) != 0
+        ):
+            clean_latency = run_one_size_case_with_env(
+                size,
+                {
+                    "PERF_MULTI_SPOT_LATENCY_ONLY": "1",
+                    "PERF_MULTI_SPOT_CLEAN_LATENCY": "0",
+                },
+            )
+            merged["warnings"].extend(clean_latency.get("warnings", []))
+            if clean_latency.get("status") != "success":
+                merged["status"] = clean_latency.get("status", "fail")
+                merged["timed_out"] = clean_latency.get("timed_out", False)
+                merged["returncode"] = clean_latency.get("returncode", -1)
+                reason = clean_latency.get("reason", "clean_latency_failed")
+                merged["reason"] = f"{reason}_clean_latency_size_{size}"
+                return merged
+
+            clean_parsed = clean_latency.get("parsed", {}) or {}
+            active_parsed = isolated.get("parsed", {}) or {}
+            for key, value in clean_parsed.items():
+                metric = key.rsplit("|", 1)[-1]
+                if metric in ("latency", LATENCY_P95_METRIC, LATENCY_P99_METRIC):
+                    active_parsed[key] = value
+                    merged["parsed"][key] = value
 
         if size_result_callback is not None:
             try:

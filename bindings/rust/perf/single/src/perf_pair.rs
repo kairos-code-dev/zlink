@@ -15,22 +15,12 @@ fn main() {
     let ctx = common::perf_context();
     let receiver = ctx.pair_socket().expect("receiver");
     let sender = ctx.pair_socket().expect("sender");
-    receiver
-        .common_options()
-        .set_send_hwm(common::resolve_single_send_hwm())
-        .expect("receiver sndhwm");
-    receiver
-        .common_options()
-        .set_recv_hwm(common::resolve_single_recv_hwm())
-        .expect("receiver rcvhwm");
-    sender
-        .common_options()
-        .set_send_hwm(common::resolve_single_send_hwm())
-        .expect("sender sndhwm");
-    sender
-        .common_options()
-        .set_recv_hwm(common::resolve_single_recv_hwm())
-        .expect("sender rcvhwm");
+    // C perf_pair.cpp: raw single sockets always get AUTO_HWM_MSG_UNIT_BYTES =
+    // msg_size; numeric HWM only under the manual-override gate.
+    common::apply_single_hwm(&receiver);
+    common::apply_single_hwm(&sender);
+    common::apply_single_auto_hwm_msg_unit(&receiver, config.size);
+    common::apply_single_auto_hwm_msg_unit(&sender, config.size);
     if matches!(config.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&receiver, &tls).expect("receiver tls");

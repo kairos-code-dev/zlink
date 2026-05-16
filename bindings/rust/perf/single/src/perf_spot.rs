@@ -68,14 +68,6 @@ fn wait_for_spot_ready(publisher: &Spot, subscriber: &Spot, config: &common::Per
     panic!("single SPOT ready probe timed out");
 }
 
-fn spot_send_gap() -> Duration {
-    let micros = std::env::var("PERF_SINGLE_SPOT_SEND_GAP_US")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(0);
-    Duration::from_micros(micros)
-}
-
 fn main() {
     let config = common::PerfConfig::from_env_and_args();
     let Some(publisher_endpoint) =
@@ -130,12 +122,9 @@ fn main() {
     subscriber_node
         .connect_peer(&publisher_endpoint)
         .expect("subscriber connect peer");
-    common::wait_spot_peer_connected(
-        &subscriber_node,
-        common::resolve_single_ready_timeout(),
-        "single SPOT subscriber",
-    );
-
+    // C single SPOT ready = local probe-payload barrier + post-ready settle
+    // only (perf_spot.cpp wait_for_spot_ready_barrier + run_spot_post_ready_settle);
+    // no connected_peer_count snapshot-poll precondition.
     wait_for_spot_ready(&publisher, &subscriber, &config);
     thread::sleep(common::resolve_single_spot_ready_settle());
 
@@ -146,10 +135,12 @@ fn main() {
     // at phase end; the receiver drains with DONT_WAIT and exits only when the
     // stop token arrives, matching the C SPOT single runner.
     let publisher_thread = thread::spawn({
-        let send_gap = spot_send_gap();
         move || {
             let mut seq: u64 = 0;
             let mut payload = vec![0u8; config.size.max(common::HEADER_SIZE)];
+            // C perf_spot.cpp send_spot_samples(): nonblocking publish; on
+            // backpressure poll 1ms (perf_socket_poll(NULL,0,1)). No per-message
+            // send-gap sleep.
             while Instant::now() < active_deadline {
                 common::encode_header(&mut payload, common::PHASE_ACTIVE, config.size as u32, seq);
                 match publisher
@@ -167,10 +158,12 @@ fn main() {
                             SubmitResult::NotConnected
                                 | SubmitResult::NotFound
                                 | SubmitResult::Backpressured
-                        ) => {}
+                        ) =>
+                    {
+                        thread::sleep(Duration::from_millis(1));
+                    }
                     Err(err) => panic!("active publish: {err}"),
                 }
-                thread::sleep(send_gap);
             }
 
             common::send_stop_token(|msg| {

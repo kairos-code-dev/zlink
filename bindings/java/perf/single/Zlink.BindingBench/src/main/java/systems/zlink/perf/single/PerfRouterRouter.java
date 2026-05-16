@@ -12,6 +12,7 @@ import systems.zlink.contracts.MonitorEventType;
 import systems.zlink.contracts.PollEventFlag;
 import systems.zlink.contracts.RouterSocket;
 import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.SendFlags;
 import systems.zlink.contracts.SocketType;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
@@ -57,8 +58,9 @@ final class PerfRouterRouter {
             PerfUtil.configureClientTls(sender, config.transport());
             receiver.setRoutingId(ROUTER1);
             sender.options().connectRoutingId(ROUTER1);
-            receiver.bind(endpoint);
-            sender.connect(endpoint);
+            receiver.bind(PerfUtil.bindEndpoint(endpoint, config.transport()));
+            sender.connect(PerfUtil.connectedEndpoint(receiver, endpoint,
+                config.transport()));
             PerfUtil.waitForMonitorEvent(senderMonitor, READY_EVENT, 1,
                 readyTimeout, "router/router sender ready");
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENT, 1,
@@ -125,15 +127,20 @@ final class PerfRouterRouter {
                         while (System.nanoTime() < activeEnd) {
                             PerfUtil.resetAndWritePayload(active, config.size(),
                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                            sender.send(ROUTER1).message(active).submit();
+                            try (Message outbound = Message.copyOf(active)) {
+                                sender.send(ROUTER1).message(outbound).submit();
+                            }
                         }
                     }
-                    // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
-                    // blocking stop-token send (routed via ROUTER1 because
-                    // ROUTER->ROUTER requires explicit routing id).
-                    try (Message stop = PerfStopToken.newMessage()) {
-                        sender.send(ROUTER1).message(stop).submit();
-                    }
+                    // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with a
+                    // wire-level stop token routed via ROUTER1 (ROUTER->ROUTER
+                    // requires an explicit routing id). C parity:
+                    // perf_router_router.cpp send_router_stop_token (~385-410)
+                    // does a bounded retry (<=100 attempts, 1ms sleep) through
+                    // transient backpressure / no-route. A single blocking
+                    // submit can lose the token under load (ROUTER drops on
+                    // EHOSTUNREACH/ENOTCONN), hanging the receiver on poll(-1).
+                    sendRouterStopToken(sender);
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     finished.countDown();
@@ -153,10 +160,6 @@ final class PerfRouterRouter {
                 SocketType.ROUTER);
             PerfUtil.printSingleMonitorAutoHwm(config, senderMonitor, "sender",
                 SocketType.ROUTER);
-            senderCtx.shutdown();
-            if (!sharedContext) {
-                receiverCtx.shutdown();
-            }
             return metrics.finishSingle(config);
         } finally {
             if (!sharedContext) {
@@ -164,5 +167,22 @@ final class PerfRouterRouter {
             }
             receiverCtx.close();
         }
+    }
+
+    // C parity: perf_router_router.cpp send_router_stop_token (~385-410) /
+    // perf_single_one_way.hpp send_stop_token_with_retry (~200-215). Bounded
+    // retry through transient backpressure / missing route so the single stop
+    // token reaches the ROUTER receiver. DONT_WAIT returns false on
+    // backpressure (the Java analogue of
+    // EAGAIN/EWOULDBLOCK/EHOSTUNREACH/ENOTCONN).
+    private static void sendRouterStopToken(RouterSocket sender) {
+        PerfStopToken.sendWithRetry(() -> {
+            try (Message stop = PerfStopToken.newMessage()) {
+                return sender.send(ROUTER1)
+                    .message(stop)
+                    .flags(SendFlags.DONT_WAIT)
+                    .submit();
+            }
+        }, "router/router");
     }
 }

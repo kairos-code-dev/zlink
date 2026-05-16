@@ -6,6 +6,7 @@ import zlink
 
 from perf_common import (
     STOP_TOKEN,
+    apply_single_auto_hwm_msg_unit,
     apply_single_socket_options,
     benchmark_run_id,
     configure_single_tls_client,
@@ -51,6 +52,7 @@ def main(argv=None):
     args = parse_single_args(argv or sys.argv[1:], pattern="dealer_dealer")
     run_id = benchmark_run_id()
     latencies = []
+    received = 0
     payload = new_payload(args.msg_size)
 
     def send_loop(dealer, active_end):
@@ -63,6 +65,11 @@ def main(argv=None):
         with zlink.DealerSocket(ctx) as server:
             with zlink.DealerSocket(ctx) as client:
                 endpoint = resolve_single_endpoint(args.transport, "dealer-dealer")
+                # C perf_dealer_dealer.cpp: apply_single_auto_hwm_msg_unit on
+                # both raw sockets before setup.
+                apply_single_auto_hwm_msg_unit(
+                    server, client, msg_size=args.msg_size
+                )
                 apply_single_socket_options(server, client)
                 configure_single_tls_server(server, args.transport)
                 configure_single_tls_client(client, args.transport)
@@ -107,19 +114,24 @@ def main(argv=None):
                                     continue
                                 if time.perf_counter() >= active_end:
                                     continue
+                                # C perf_single_one_way.hpp run_active_phase:
+                                # every matched header counts (++received);
+                                # latency clamps clock-skew to 0.0.
+                                received += 1
                                 latency = latency_ns_from_message(data)
-                                if latency is not None:
-                                    latencies.append(latency)
+                                latencies.append(
+                                    latency if latency is not None else 0.0
+                                )
                             if stop_received:
                                 break
 
                 sender.join()
-                if not latencies:
+                if received == 0:
                     raise RuntimeError(
                         "dealer-dealer benchmark did not receive any active message"
                     )
                 metrics = result_metrics(
-                    count=len(latencies),
+                    count=received,
                     msg_size=args.msg_size,
                     elapsed_s=args.duration,
                     latencies_ns=latencies,

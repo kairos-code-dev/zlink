@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"os"
 	"time"
 
 	"zlink.systems/zlink/perf/internal/perfcommon"
@@ -57,6 +58,12 @@ func main() {
 		)
 	}
 
+	// perf_single_one_way.hpp run_active_phase: received==0 / latency
+	// count==0 is a FAIL (no RESULT line, nonzero exit), not 0.000.
+	if !result.Valid {
+		perfcommon.PrintFail(cfg.pattern, cfg.transport, cfg.msgSize)
+		os.Exit(1)
+	}
 	result = perfcommon.FinalizeResult(cfg.pattern, cfg.msgSize, result)
 	perfcommon.PrintResult(cfg.pattern, cfg.transport, cfg.msgSize, result)
 }

@@ -30,6 +30,22 @@ REPO_ROOT = ROOT.parent.parent.parent.parent
 CORE_BUILD_DIR = REPO_ROOT / "core" / "build"
 RUNNER_LIB = CORE_BUILD_DIR / "lib" / "libzlink.so"
 DEFAULT_PYTHONPATH = ROOT.parent.parent / "src"
+# MULTI_STREAM client must be the shared C perf_stream_client binary so the
+# measured surface stays the Python STREAM server (see PERF_MULTI_TEST_POLICY).
+STREAM_CLIENT_DIR = REPO_ROOT / "bindings" / "c" / "perf" / "common" / "streamclient"
+STREAM_CLIENT_BIN = STREAM_CLIENT_DIR / "build" / "perf_stream_client"
+
+
+def _ensure_stream_client():
+    if STREAM_CLIENT_BIN.exists() and os.access(STREAM_CLIENT_BIN, os.X_OK):
+        return STREAM_CLIENT_BIN
+    subprocess.run(
+        ["bash", str(STREAM_CLIENT_DIR / "build.sh")],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return STREAM_CLIENT_BIN
 DEFAULT_PATTERNS = (
     "DEALER_DEALER",
     "DEALER_ROUTER",
@@ -720,6 +736,57 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                     stderr=client_stderr,
                 )
             return "\n".join(chunk for chunk in stdout_chunks if chunk)
+        if pattern == "STREAM":
+            # Spawn the shared C perf_stream_client (mirrors the Go/dotnet
+            # runner: --pattern MULTI_STREAM so RESULT lines match the
+            # Python runner parser; --send-stop-token 1 terminates the
+            # Python STREAM server's receive surface).
+            stream_client_bin = _ensure_stream_client()
+            client_cmd = [
+                str(stream_client_bin),
+                "--transport",
+                transport,
+                "--pattern",
+                "MULTI_STREAM",
+                "--sizes",
+                msg_size,
+                "--runs",
+                "1",
+                "--duration",
+                args.duration,
+                "--ccu",
+                clients,
+                "--send-stop-token",
+                "1",
+                "--endpoint",
+                endpoint,
+            ]
+            try:
+                client_run = subprocess.run(
+                    client_cmd,
+                    cwd=str(REPO_ROOT),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=client_timeout_s,
+                    check=True,
+                )
+            finally:
+                try:
+                    server.stdin.write("STOP\n")
+                    server.stdin.flush()
+                except Exception:
+                    pass
+            if client_run.stdout:
+                stdout_chunks.append(client_run.stdout.strip())
+            if client_run.stderr:
+                stderr_chunks.append(client_run.stderr.strip())
+            try:
+                server.wait(timeout=shutdown_grace_s)
+            except subprocess.TimeoutExpired:
+                _drain_stdout_queue(server, stdout_chunks)
+            _drain_stdout_queue(server, stdout_chunks)
+            return "\n".join(chunk for chunk in stdout_chunks if chunk)
         one_way_pattern = pattern in {"DEALER_DEALER", "PUBSUB"}
         if one_way_pattern:
             client = subprocess.Popen(
@@ -1041,13 +1108,12 @@ def main(argv=None):
                         continue
                     case_env = dict(env)
                     case_env["PERF_RUN_ID"] = str(case_ordinal)
+                    # C multi default path = context auto-HWM with the raw
+                    # socket per-size msg-unit (apply_benchmark_auto_hwm_msg_
+                    # unit). Numeric PERF_MULTI_HWM is only honoured under
+                    # PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES, so do NOT
+                    # force it here.
                     case_env["PERF_MULTI_MSG_UNIT_BYTES"] = str(msg_size)
-                    if (
-                        "PERF_MULTI_HWM" not in case_env
-                        and "PERF_MULTI_SNDHWM" not in case_env
-                        and "PERF_MULTI_RCVHWM" not in case_env
-                    ):
-                        case_env["PERF_MULTI_HWM"] = "10" if pattern == "STREAM" else "100"
                     case_ordinal += 1
                     try:
                         output = _run_pattern(
@@ -1094,12 +1160,11 @@ def main(argv=None):
                             continue
                         case_env = dict(env)
                         case_env["PERF_RUN_ID"] = str(case_ordinal)
-                        if (
-                            "PERF_MULTI_HWM" not in case_env
-                            and "PERF_MULTI_SNDHWM" not in case_env
-                            and "PERF_MULTI_RCVHWM" not in case_env
-                        ):
-                            case_env["PERF_MULTI_HWM"] = "10" if pattern == "STREAM" else "100"
+                        # C multi default path = context auto-HWM with the raw
+                        # socket per-size msg-unit. Numeric PERF_MULTI_HWM only
+                        # honoured under PERF_MULTI_ALLOW_MANUAL_SOCKET_
+                        # OVERRIDES; do NOT force it here.
+                        case_env["PERF_MULTI_MSG_UNIT_BYTES"] = str(msg_size)
                         case_ordinal += 1
                         try:
                             output = _run_pattern(

@@ -56,4 +56,39 @@ public final class PerfStopToken {
     public static Message newMessage() {
         return Message.copyOf(BYTES);
     }
+
+    /**
+     * Bounded retry of a non-blocking stop-token send through transient
+     * backpressure, mirroring the C reference
+     * {@code perf_single_one_way.hpp::send_stop_token_with_retry}
+     * (~200-215): up to 100 attempts with a 1ms sleep between transient
+     * failures so the receiver always observes the wire-level terminator.
+     *
+     * <p>A single blocking submit is NOT equivalent: under load a ROUTER
+     * peer drops on a missing route (EHOSTUNREACH) and a send-timeout-bound
+     * socket can fail on EAGAIN/ETIMEDOUT, losing the only stop token and
+     * hanging a receiver parked on {@code poll(-1)}.
+     *
+     * @param attempt a single non-blocking ({@code DONT_WAIT}) stop-token
+     *                send attempt that returns {@code true} once the token is
+     *                accepted and {@code false} on transient backpressure.
+     * @param label   diagnostic label used in failure messages.
+     */
+    public static void sendWithRetry(java.util.function.BooleanSupplier attempt,
+                                     String label) {
+        for (int retry = 0; retry < 100; retry++) {
+            if (attempt.getAsBoolean()) {
+                return;
+            }
+            try {
+                Thread.sleep(1L);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(
+                    label + " stop-token send interrupted", ex);
+            }
+        }
+        throw new IllegalStateException(
+            label + " stop-token send exhausted retry budget");
+    }
 }

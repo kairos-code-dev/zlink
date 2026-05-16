@@ -8,6 +8,7 @@ const {
   createRunId,
   decodeMetricHeaderFromParts,
   currentEpochNs,
+  HEADER_SIZE,
   summarizeMetrics,
 } = require('../common/perf_metrics');
 const {
@@ -22,7 +23,6 @@ const {
   parseSingleBinaryArgs,
   runLocalSocketOneWayBenchmark,
   spawnSenderWorker,
-  waitForWorkerDone,
   waitForWorkerError,
   waitForMonitorConnectionReady,
   waitForWorkerMessage,
@@ -80,26 +80,22 @@ async function runDealerDealerBenchmark(msgSize, options) {
       activeStopNs,
     });
 
-    // PERF_SINGLE_TEST_POLICY § 1.4: receiver drains until the wire stop
-    // token arrives — in-flight payloads precede it naturally, so the
-    // explicit deadline-based drain is no longer needed.
-    worker.postMessage({ type: 'start' });
-    await Promise.race([
-      waitForWorkerMessage(worker, 'started'),
-      workerError.then((message) => Promise.reject(new Error(message.message)))
-    ]);
+    // PERF_SINGLE_TEST_POLICY § 1.4 / § 2.0.1: no start/stop control
+    // channel. The connection-ready gate above is the only cross-thread
+    // sync (mirrors C spawning sender/receiver threads after
+    // setup_connected_*); the receiver drains until the wire stop token,
+    // exactly like C perf_single_one_way.hpp run_active_phase.
     const recvTask = drainRecvSocket(
       server,
       (received) => {
-        const header = decodeMetricHeaderFromParts(received.parts);
+        const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
         collector.record(header, currentEpochNs());
       }
     );
     await Promise.race([
-      waitForWorkerDone(worker, options.duration),
+      recvTask,
       workerError.then((message) => Promise.reject(new Error(message.message)))
     ]);
-    await recvTask;
     const result = collector.finish();
     emitSingleSocketHwmDetail(server, 'DEALER_DEALER', options.transport, 'receiver', msgSize);
     return result;

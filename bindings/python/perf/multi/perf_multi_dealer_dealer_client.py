@@ -5,6 +5,7 @@ from contextlib import ExitStack
 import zlink
 
 from perf_multi_common import (
+    STOP_TOKEN,
     apply_multi_socket_options,
     benchmark_run_id,
     configure_multi_tls_client,
@@ -17,6 +18,16 @@ from perf_multi_common import (
     stamp_payload,
     wait_monitor_event,
 )
+
+
+def _send_stop_token(sock):
+    # C perf_multi_dealer_dealer_client.cpp send_stop_token: bounded retry
+    # through transient backpressure so the server's receive window observes
+    # the per-socket wire stop token.
+    for _ in range(1000):
+        if send_nonblocking(sock, STOP_TOKEN):
+            return True
+    return False
 
 
 def main(argv=None):
@@ -50,26 +61,55 @@ def main(argv=None):
                     raise SystemExit(f"unexpected command: {command}")
 
                 active_deadline = time.perf_counter() + args.duration
+                send_pending = [False] * len(sockets)
                 with zlink.Poller() as poller:
                     for sock in sockets:
                         poller.add_socket(sock, zlink.PollEventFlag.POLLOUT)
+                    # C run_send_window: per socket, send DONTWAIT until
+                    # EAGAIN -> mark pending; once all attempted, POLLOUT
+                    # poll(-1) the pending sockets and clear on writable.
                     while time.perf_counter() < active_deadline:
-                        progressed = False
                         for index, current_sock in enumerate(sockets):
-                            if time.perf_counter() >= active_deadline:
+                            if send_pending[index]:
+                                continue
+                            while time.perf_counter() < active_deadline:
+                                seq += 1
+                                if send_nonblocking(
+                                    current_sock,
+                                    stamp_payload(
+                                        payloads[index],
+                                        phase=1,
+                                        run_id=run_id,
+                                        seq=seq,
+                                    ),
+                                ):
+                                    continue
+                                # EAGAIN/backpressure: defer until POLLOUT.
+                                send_pending[index] = True
                                 break
-                            seq += 1
-                            progressed |= send_nonblocking(
-                                current_sock,
-                                stamp_payload(
-                                    payloads[index],
-                                    phase=1,
-                                    run_id=run_id,
-                                    seq=seq,
-                                ),
-                            )
-                        if not progressed:
+                        if time.perf_counter() >= active_deadline:
+                            break
+                        if not any(send_pending):
                             continue
+                        # C perf_socket_poll(..., -1) on the pending sockets.
+                        events = safe_poll(poller, -1)
+                        if not events:
+                            continue
+                        for event in events:
+                            if not (
+                                int(event.events)
+                                & int(zlink.PollEventFlag.POLLOUT)
+                            ):
+                                continue
+                            try:
+                                idx = sockets.index(event.socket)
+                            except ValueError:
+                                continue
+                            send_pending[idx] = False
+                # C run_single_size_case: send a wire stop token per socket
+                # so the server receive window terminates.
+                for sock in sockets:
+                    _send_stop_token(sock)
                 print(f"CLIENT_DONE,{args.msg_size}", flush=True)
         finally:
             for sock in sockets:

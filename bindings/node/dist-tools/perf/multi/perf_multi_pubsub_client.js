@@ -3,10 +3,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, summarizeMetrics } = require('../common/perf_metrics');
+const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, HEADER_SIZE, summarizeMetrics } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, subscribeNoWait, waitForConnectionReady } = require('./perf_multi_runtime');
+const { isStopTokenParts } = require('../perf_stop_token');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -34,6 +35,7 @@ async function main() {
             if (line === `START,${options.msgSize}`) {
                 const activeStartNs = currentEpochNs();
                 const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
+                const payloadSize = Math.max(options.msgSize, HEADER_SIZE);
                 collector = createMetricCollector({
                     runId: createRunId(1),
                     msgSize: options.msgSize,
@@ -41,25 +43,27 @@ async function main() {
                     activeStopNs,
                 });
                 const poller = new zlink.Poller();
-                const completionTimer = new zlink.Timer();
                 try {
                     for (let i = 0; i < subs.length; i += 1) {
                         poller.add(subs[i], pollEvents(POLLIN), i);
                     }
-                    completionTimer.start(BigInt(Math.floor((options.duration + 2) * 1_000_000_000)), 1n);
-                    poller.add(completionTimer, 'completion');
-                    let cooldownSeen = false;
-                    while (!cooldownSeen && currentEpochNs() < activeStopNs + 2000000000n) {
+                    // C parity: bindings/c/perf/multi/src/perf_multi_pubsub_client
+                    // .cpp run_recv_duration (~166-228). Pure signal-driven `-1`
+                    // poller wait — NO zlink.Timer, NO duration+2s wall-clock bound.
+                    // The active window closes on the application clock (the
+                    // collector enforces the recvTs<=activeStop anchor —
+                    // perf_measurement.ts ~280) and the phase ends when the
+                    // server's wire stop token wakes the `-1` wait. The stop token
+                    // is checked BEFORE decoding the metric header (C lines 76-79 /
+                    // 203-206; mirrors the already-fixed cpp perf_pubsub_client.cpp
+                    // run_active_until_stop_token ~239-246).
+                    let stopReceived = false;
+                    while (!stopReceived) {
                         const ready = poller.waitMany(poller.size, -1);
                         if (!ready || ready.length === 0) {
                             continue;
                         }
                         for (const event of ready) {
-                            if (event.timer === completionTimer) {
-                                completionTimer.recv();
-                                cooldownSeen = true;
-                                break;
-                            }
                             const index = event.tag ?? event.userData;
                             if (!Number.isInteger(index)) {
                                 continue;
@@ -70,14 +74,11 @@ async function main() {
                                     break;
                                 }
                                 try {
-                                    const header = decodeMetricHeaderFromParts(received.parts);
-                                    if (header && header.phase === 2) {
-                                        cooldownSeen = true;
+                                    if (isStopTokenParts(received.parts)) {
+                                        stopReceived = true;
                                         continue;
                                     }
-                                    if (currentEpochNs() < activeStopNs) {
-                                        collector.record(header, currentEpochNs());
-                                    }
+                                    collector.record(decodeMetricHeaderFromParts(received.parts, payloadSize), currentEpochNs());
                                 }
                                 finally {
                                     received.close();
@@ -87,9 +88,6 @@ async function main() {
                     }
                 }
                 finally {
-                    poller.remove(completionTimer);
-                    completionTimer.stop();
-                    completionTimer.close();
                     poller.close();
                 }
                 break;

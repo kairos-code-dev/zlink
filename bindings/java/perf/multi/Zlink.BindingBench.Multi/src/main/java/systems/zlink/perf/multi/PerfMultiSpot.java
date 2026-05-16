@@ -35,7 +35,6 @@ import java.util.concurrent.atomic.AtomicReference;
 final class PerfMultiSpot {
     private static final String TOPIC = "bench";
     private static final String CHANNEL_NAME = "bench-svc";
-    private static final int MAX_DRAIN_PER_SPOT = 1024;
 
     private PerfMultiSpot() {
     }
@@ -175,7 +174,7 @@ final class PerfMultiSpot {
             if (remainingNs <= 0) {
                 return false;
             }
-            poller.wait(events, Duration.ofNanos(remainingNs));
+            poller.wait(events, Duration.ofMillis(-1));
             for (PollEvent event : events) {
                 if (event.revents().contains(expected)) {
                     return true;
@@ -319,7 +318,9 @@ final class PerfMultiSpot {
                                         boolean[] cooldownSeen,
                                         int index) {
         boolean progressed = false;
-        for (int drained = 0; drained < MAX_DRAIN_PER_SPOT; drained++) {
+        // C parity (perf_multi_spot_client.cpp drain_spot_client_slot): drain
+        // until the recv would block (EAGAIN) with no fixed per-wake cap.
+        while (true) {
             try (TopicMessage received = subscribeNoWait(subscriber)) {
                 if (received == null) {
                     return progressed;
@@ -333,7 +334,6 @@ final class PerfMultiSpot {
                 }
             }
         }
-        return progressed;
     }
 
     private static TopicMessage subscribeNoWait(Spot subscriber) {

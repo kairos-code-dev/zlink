@@ -54,7 +54,12 @@ const MULTI_PATTERN_RUNNERS = {
   },
   MULTI_STREAM: {
     server: 'perf_multi_stream_server.js',
-    client: 'perf_multi_stream_client.js'
+    // MULTI_STREAM uses the shared C `perf_stream_client` binary as the
+    // unambiguous client (see perf_multi_orchestrator buildClientSpawn /
+    // resolveSharedStreamClientBinary), exactly like the cpp/dotnet
+    // runners. The measured surface is the Node STREAM server; there is no
+    // Node STREAM client.
+    client: null
   }
 };
 

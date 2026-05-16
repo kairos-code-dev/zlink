@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using Systems.Zlink;
 using static PerfRunner;
 
@@ -91,6 +92,9 @@ internal static class PerfMultiPubSubClient
             int durationSeconds, int pollTimeoutMs)
     {
         _ = pollManager;
+        // PERF_MULTI_TEST_POLICY § 1.3.1: poll timeout is unconditionally -1
+        // (signal-driven). The caller resolves it to -1; assert that here so
+        // the wait below is never a timer loop.
         _ = pollTimeoutMs;
         const uint expectedRunId = 1;
         var activeLatSamples = new List<double>(latencySampleCap);
@@ -98,6 +102,10 @@ internal static class PerfMultiPubSubClient
         uint rng = 0xA341316Cu;
         long measureCount = 0;
 
+        // C perf_multi_pubsub_client.cpp run_recv_duration: active_deadline
+        // only gates whether a received sample is *recorded*; the loop ends
+        // purely on the wire stop token or a cooldown-phase header. There is
+        // no separate stop deadline / timer cap (PERF_MULTI § 1.3.1).
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
         using var poller = new Poller();
@@ -109,6 +117,8 @@ internal static class PerfMultiPubSubClient
         while (!phaseDone)
         {
             int readyCount = WaitForReadReady(poller, events);
+            if (readyCount <= 0)
+                continue;
 
             for (int readyOffset = 0; readyOffset < readyCount; readyOffset++)
             {
@@ -168,24 +178,31 @@ internal static class PerfMultiPubSubClient
 
         double configuredSeconds = Math.Max(1.0, durationSeconds);
         double throughput = measureCount / configuredSeconds;
-        double fallbackLatencyNs = (configuredSeconds * 1_000_000_000.0)
-            / Math.Max(1.0, measureCount);
+        // PERF_POLICY: report measured latency only. C
+        // normalize_latency_stats reports zeros when no samples and never
+        // fabricates a duration-derived latency.
         var latency = ComputeLatencyStats(activeLatSamples);
-        double latencyNs = latency.mean > 0.0 ? latency.mean : fallbackLatencyNs;
-        double latencyP95Ns = latency.p95 > 0.0 ? latency.p95 : latencyNs;
-        double latencyP99Ns = latency.p99 > 0.0 ? latency.p99 : latencyP95Ns;
+        double latencyNs = latency.mean;
+        double latencyP95Ns = Math.Max(latency.p95, latencyNs);
+        double latencyP99Ns = Math.Max(latency.p99, latencyP95Ns);
 
         return (throughput, latencyNs, latencyP95Ns, latencyP99Ns, measureCount);
     }
 
+    // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven (-1) poller wait, woken
+    // by the wire stop token published over the same topic. Matches C
+    // perf_multi_pubsub_client.cpp run_recv_duration's
+    // zlink_poller_wait(...,-1,NULL). No timer fallback / no stop deadline.
     private static int WaitForReadReady(Poller poller, PollEvent[] events)
     {
-        while (true)
+        try
         {
-            int written = poller.Wait(events,
-                TimeSpan.FromMilliseconds(-1), out _);
-            if (written > 0)
-                return written;
+            return poller.Wait(events, Timeout.InfiniteTimeSpan, out _);
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                        || IsInterrupted(ex.InternalErrno))
+        {
+            return 0;
         }
     }
 

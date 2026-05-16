@@ -15,6 +15,7 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #if defined(_WIN32)
@@ -55,6 +56,41 @@ void debug_log (const std::string &message_)
     if (!perf_debug_enabled ())
         return;
     std::cerr << "spot server: " << message_ << std::endl;
+}
+
+int resolve_multi_int_env (const char *env_name_,
+                           int default_value_,
+                           int min_value_)
+{
+    const char *value = std::getenv (env_name_);
+    if (value == NULL || *value == '\0')
+        return default_value_;
+    char *end = NULL;
+    const long parsed = std::strtol (value, &end, 10);
+    if (end == value)
+        return default_value_;
+    int result = static_cast<int> (parsed);
+    if (result < min_value_)
+        result = min_value_;
+    return result;
+}
+
+// MULTI_SPOT clean-latency second pass: when PERF_MULTI_SPOT_LATENCY_ONLY is
+// set the active phase publishes at a fixed pacing interval (unsaturated) so
+// the client measures clean latency. Mirrors the C reference
+// resolve_spot_latency_only_mode / resolve_spot_latency_only_interval_us
+// (bindings/c/perf/multi/src/perf_multi_spot_server.cpp:197-208) and the
+// run_phase pacing (lines 334-373).
+bool resolve_spot_latency_only_mode ()
+{
+    const char *value = std::getenv ("PERF_MULTI_SPOT_LATENCY_ONLY");
+    return value != NULL && *value != '\0' && std::strcmp (value, "0") != 0;
+}
+
+int resolve_spot_latency_only_interval_us ()
+{
+    return resolve_multi_int_env (
+      "PERF_MULTI_SPOT_LATENCY_ONLY_INTERVAL_US", 1000, 1);
 }
 
 perf::multi::start_signal_state_t g_start_gate;
@@ -135,8 +171,31 @@ bool run_phase (zlink::service::spot_t &spot_,
     unsigned long long publish_blocked_count = 0;
     unsigned long long publish_wait_count = 0;
 
+    // Clean-latency pacing: in latency-only mode the active phase publishes
+    // one message per fixed interval (unsaturated) so the client measures
+    // clean latency. Active aggregation on the client is still the configured
+    // duration. Mirrors C reference run_phase
+    // (bindings/c/perf/multi/src/perf_multi_spot_server.cpp:334-373).
+    const bool latency_only =
+      resolve_spot_latency_only_mode ()
+      && phase_ == perf_metric::phase_active;
+    const auto probe_interval =
+      std::chrono::microseconds (resolve_spot_latency_only_interval_us ());
+    auto next_probe_at = std::chrono::steady_clock::now ();
+
     while (std::chrono::steady_clock::now () < deadline) {
         (void) channel_name_;
+        if (latency_only) {
+            const auto now = std::chrono::steady_clock::now ();
+            if (now < next_probe_at) {
+                const auto wait_for =
+                  std::min<std::chrono::steady_clock::duration> (
+                    next_probe_at - now,
+                    std::chrono::milliseconds (10));
+                std::this_thread::sleep_for (wait_for);
+                continue;
+            }
+        }
         const auto publish_once =
           [&](zlink::send_flags_t flags_, int *saved_errno_out_) -> int {
               if (!saved_errno_out_) {
@@ -183,6 +242,10 @@ bool run_phase (zlink::service::spot_t &spot_,
         if (rc == 0) {
             ++publish_ok_count;
             ++seq_;
+            if (latency_only) {
+                next_probe_at =
+                  std::chrono::steady_clock::now () + probe_interval;
+            }
             continue;
         }
 

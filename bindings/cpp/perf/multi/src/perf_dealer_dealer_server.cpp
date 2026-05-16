@@ -108,19 +108,20 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
       static_cast<size_t> (active_seconds) * 5000000U);
     zlink::message_t part;
     std::vector<zlink::poll_event_t> events;
-    zlink::timer_t active_timer;
-    active_timer.start (std::chrono::seconds (active_seconds), 1);
-    poller.add (active_timer);
+    // PERF_MULTI_TEST_POLICY § 1.3.1: the receive window is bounded purely by
+    // an application clock (steady_clock deadline) plus a -1 (signal-driven)
+    // poll wait; no poller timer object is used. The client's wire-level stop
+    // token ends the phase by waking the -1 wait so the deadline can be
+    // re-checked. Matches the C reference run_receive_window
+    // (bindings/c/perf/multi/src/perf_multi_dealer_dealer_server.cpp:208-301)
+    // and its is_stop_token_message handling (lines 113-116).
     while (std::chrono::steady_clock::now () < deadline) {
         events = poller.wait (1, std::chrono::milliseconds (-1));
-        if (events.empty ())
-            continue;
-        if (events[0].timer) {
-            (void) active_timer.recv ();
+        if (events.empty ()) {
+            if (errno == EINTR)
+                continue;
             break;
         }
-        if (std::chrono::steady_clock::now () >= deadline)
-            break;
         if (!(static_cast<short> (events[0].revents)
               & static_cast<short> (zlink::poll_event_flag_t::pollin))) {
             continue;
@@ -132,9 +133,18 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
             if (rc != 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                     break;
+                if (errno == EINTR)
+                    continue;
                 failed = true;
                 break;
             }
+
+            // Check the wire-level stop token before decoding the payload
+            // header (matches C reference lines 113-116). The stop token
+            // marks active-phase end; the steady_clock deadline still bounds
+            // the window.
+            if (perf::multi::is_stop_token (part.data (), part.size ()))
+                continue;
 
             perf_metric::header_t header;
             if (!perf_metric::decode_payload_header (
@@ -153,8 +163,9 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
         }
         if (failed)
             break;
+        if (std::chrono::steady_clock::now () >= deadline)
+            break;
     }
-    (void) poller.remove (active_timer);
 
     if (failed || active_count == 0 || latency.count () == 0)
         return false;

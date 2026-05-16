@@ -195,6 +195,12 @@ bool send_router_samples (::perf::socket_t *sender_,
                                                   payload_->data (),
                                                   payload_->size ())) {
             const int err = errno;
+            if (perf::single::is_transient_routed_send_errno (err)
+                && std::chrono::steady_clock::now () < deadline) {
+                continue;
+            }
+            if (perf::single::is_transient_routed_send_errno (err))
+                break;
             if (perf_debug_enabled ())
                 std::cerr << "router_router: send failed errno=" << err
                           << std::endl;
@@ -207,8 +213,8 @@ bool send_router_samples (::perf::socket_t *sender_,
 
     // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
     // wire-level blocking stop token.
-    return perf::single::send_stop_token_blocking (
-      *sender_, *state_->target_rid);
+    return perf::single::send_stop_token_blocking (*sender_,
+                                                   *state_->target_rid);
 }
 
 } // namespace

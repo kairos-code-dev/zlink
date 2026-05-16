@@ -6,6 +6,7 @@ import zlink
 
 from perf_common import (
     STOP_TOKEN,
+    apply_single_auto_hwm_msg_unit,
     apply_single_socket_options,
     benchmark_run_id,
     configure_single_tls_client,
@@ -23,6 +24,7 @@ from perf_common import (
     resolve_single_endpoint,
     resolve_single_connect_ready_timeout_ms,
     safe_poll,
+    single_routing_probe,
     stamp_payload,
     wait_monitor_event,
 )
@@ -49,6 +51,7 @@ def main(argv=None):
     args = parse_single_args(argv or sys.argv[1:], pattern="router_router")
     run_id = benchmark_run_id()
     latencies = []
+    received = 0
     payload = new_payload(args.msg_size)
 
     def send_loop(router, active_end):
@@ -65,6 +68,11 @@ def main(argv=None):
                 client.set_routing_id(b"CLIENT")
                 client.router_options.connect_routing_id = b"SERVER"
                 endpoint = resolve_single_endpoint(args.transport, "router-router")
+                # C perf_router_router.cpp: apply_single_auto_hwm_msg_unit on
+                # both raw sockets before setup.
+                apply_single_auto_hwm_msg_unit(
+                    server, client, msg_size=args.msg_size
+                )
                 apply_single_socket_options(server, client)
                 configure_single_tls_server(server, args.transport)
                 configure_single_tls_client(client, args.transport)
@@ -75,6 +83,21 @@ def main(argv=None):
                         monitor,
                         zlink.MonitorEventMask.CONNECTION_READY,
                         timeout_ms=resolve_single_connect_ready_timeout_ms(),
+                    )
+
+                # C perf_router_router.cpp wait_for_router_router_ready:
+                # one-shot routed probe (addressed to the peer routing id)
+                # before phase=active.
+                if not single_routing_probe(
+                    client,
+                    server,
+                    payload,
+                    run_id=run_id,
+                    msg_size=args.msg_size,
+                    routing_id=b"SERVER",
+                ):
+                    raise RuntimeError(
+                        "router-router routing probe did not establish route"
                     )
 
                 active_end = time.perf_counter() + args.duration
@@ -109,19 +132,24 @@ def main(argv=None):
                                     continue
                                 if time.perf_counter() >= active_end:
                                     continue
+                                # C perf_router_router.cpp run_active_phase:
+                                # every matched header counts (++received);
+                                # latency clamps clock-skew to 0.0.
+                                received += 1
                                 latency = latency_ns_from_message(data)
-                                if latency is not None:
-                                    latencies.append(latency)
+                                latencies.append(
+                                    latency if latency is not None else 0.0
+                                )
                             if stop_received:
                                 break
 
                 sender.join()
-                if not latencies:
+                if received == 0:
                     raise RuntimeError(
                         "router-router benchmark did not receive any active message"
                     )
                 metrics = result_metrics(
-                    count=len(latencies),
+                    count=received,
                     msg_size=args.msg_size,
                     elapsed_s=args.duration,
                     latencies_ns=latencies,

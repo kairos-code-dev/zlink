@@ -192,12 +192,23 @@ async function main() {
         await waitForRunnerStart(options.msgSize);
         await waitForControlStart(controlSub, controlSubWaiter, options.msgSize);
         trace('start-handshake-done');
-        activeStopNs = currentEpochNs() + BigInt(Math.floor(options.duration * 1_000_000_000));
+        const controlStartNs = currentEpochNs();
+        activeStopNs = controlStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
         collectActive = true;
         trace('dispatch-ready');
+        // C perf_multi_spot_client.cpp wait_spot_sender_window_done /
+        // resolve_spot_drain_grace_ns: the active window ends on the cooldown
+        // (phase-2) signal from every slot; the fallback deadline is anchored
+        // to the control-start clock plus the active duration plus a
+        // size-scaled drain grace (1x / 2x / 4x of the active duration for
+        // >=128KiB / >=256KiB payloads) — not an ad-hoc fixed +2000ms timer.
+        const graceMultiplier = options.msgSize >= 262144
+            ? 4
+            : (options.msgSize >= 131072 ? 2 : 1);
+        const fallbackDeadlineMs = Math.ceil(options.duration * 1000 * (1 + graceMultiplier));
         await Promise.race([
             completion,
-            new Promise((resolve) => setTimeout(resolve, Math.ceil(options.duration * 1000) + 2000))
+            new Promise((resolve) => setTimeout(resolve, fallbackDeadlineMs))
         ]);
         collectActive = false;
         trace(`drain-complete cooldown=${cooldownSeen.size}`);

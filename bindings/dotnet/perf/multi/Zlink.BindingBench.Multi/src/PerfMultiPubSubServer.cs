@@ -31,6 +31,7 @@ internal static class PerfMultiPubSubServer
         server.Options.Linger = TimeSpan.Zero;
 
         server.Bind(endpoint);
+        endpoint = server.Options.LastEndpoint;
         ApplyAutoHwmMsgUnit(server, size);
         RecalculateAutoHwm(ctx);
         PrintAutoHwmSnapshot(server, "server", options.Transport, size);

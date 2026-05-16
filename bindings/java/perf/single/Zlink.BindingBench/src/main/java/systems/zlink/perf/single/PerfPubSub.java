@@ -46,12 +46,18 @@ final class PerfPubSub {
             PerfUtil.applyMonitorOptions(subMonitor, config);
             PerfUtil.applySocketOptions(pub, config);
             PerfUtil.applySocketOptions(sub, config);
-            pub.options().noDrop(true);
+            // C parity: perf_pubsub.cpp resolve_pubsub_xpub_nodrop_opt
+            // (~18-22) and apply (~198-200): env PERF_SINGLE_PUBSUB_XPUB_NODROP
+            // defaults to enabled; only the exact value "0" disables NODROP.
+            // C always sets ZLINK_PUB_OPT_NODROP explicitly to the resolved
+            // 0/1, so mirror that here.
+            pub.options().noDrop(resolvePubSubXpubNoDrop());
             PerfUtil.configureServerTls(pub, config.transport());
             PerfUtil.configureClientTls(sub, config.transport());
-            pub.bind(endpoint);
+            pub.bind(PerfUtil.bindEndpoint(endpoint, config.transport()));
             sub.setSubscription(TOPIC);
-            sub.connect(endpoint);
+            sub.connect(PerfUtil.connectedEndpoint(pub, endpoint,
+                config.transport()));
             PerfUtil.waitForMonitorEvent(pubMonitor, READY_EVENT, 1,
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "pubsub publisher ready");
@@ -142,10 +148,6 @@ final class PerfPubSub {
             if (failure.get() != null) {
                 throw new IllegalStateException("pubsub receiver failed", failure.get());
             }
-            pubCtx.shutdown();
-            if (!sharedContext) {
-                subCtx.shutdown();
-            }
             return metrics.finishSingle(config);
         } finally {
             if (!sharedContext) {
@@ -153,6 +155,15 @@ final class PerfPubSub {
             }
             pubCtx.close();
         }
+    }
+
+    // C parity: perf_pubsub.cpp resolve_pubsub_xpub_nodrop_opt (~18-22):
+    //   (env && strcmp(env,"0")==0) ? 0 : 1
+    // Default enabled; only the exact string "0" disables it. Any other
+    // value (including unset/blank) leaves NODROP enabled.
+    private static boolean resolvePubSubXpubNoDrop() {
+        String env = System.getenv("PERF_SINGLE_PUBSUB_XPUB_NODROP");
+        return env == null || !env.equals("0");
     }
 
     private static void settleAfterReady() {
@@ -172,20 +183,19 @@ final class PerfPubSub {
                                                PerfSocketPollSet writable,
                                                Message message,
                                                long deadlineNs) {
+        // C parity (perf_pubsub.cpp send step + perf_single_one_way.hpp
+        // send_active_samples): nonblocking publish; on transient backpressure
+        // retry immediately (send_step_retry -> continue) until the deadline,
+        // with no POLLOUT wait or sleep.
         while (System.nanoTime() < deadlineNs) {
-            if (pub.publish(TOPIC)
-                    .message(message)
-                    .flags(SendFlags.DONT_WAIT)
-                    .submit()) {
-                return true;
+            try (Message outbound = Message.copyOf(message)) {
+                if (pub.publish(TOPIC)
+                        .message(outbound)
+                        .flags(SendFlags.DONT_WAIT)
+                        .submit()) {
+                    return true;
+                }
             }
-            long remainingNs = deadlineNs - System.nanoTime();
-            if (remainingNs <= 0) {
-                return false;
-            }
-            int waitMs = (int) Math.max(1L,
-                Math.min(Integer.MAX_VALUE, remainingNs / 1_000_000L));
-            writable.poll(waitMs);
         }
         return false;
     }

@@ -15,7 +15,49 @@ CORE_LIB_DIR="${REPO_DIR}/core/build/lib"
 CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
 CORE_LIB="${CORE_LIB_DIR}/libzlink.so.${CORE_VERSION}"
 PERF_REPORT_PY="${REPO_DIR}/bindings/python/perf/perf_report.py"
+# MULTI_STREAM uses the shared C reference client binary (the measured
+# surface is the Go STREAM server); the Go binding has no STREAM client.
+STREAM_CLIENT_DIR="${REPO_DIR}/bindings/c/perf/common/streamclient"
+STREAM_CLIENT="${REPO_DIR}/bindings/c/build/perf/perf_stream_client"
+STREAM_CLIENT_FALLBACK="${STREAM_CLIENT_DIR}/build/perf_stream_client"
 TOTAL_TIME_ENABLED=0
+
+ensure_stream_client() {
+  if [[ -x "${STREAM_CLIENT}" ]]; then
+    return 0
+  fi
+  if [[ -x "${STREAM_CLIENT_FALLBACK}" ]]; then
+    STREAM_CLIENT="${STREAM_CLIENT_FALLBACK}"
+    return 0
+  fi
+  if bash "${STREAM_CLIENT_DIR}/build.sh" >/dev/null 2>&1 \
+    && [[ -x "${STREAM_CLIENT_FALLBACK}" ]]; then
+    STREAM_CLIENT="${STREAM_CLIENT_FALLBACK}"
+    return 0
+  fi
+  echo "Error: shared perf_stream_client not found and build failed" >&2
+  return 1
+}
+
+run_external_stream_client() {
+  local transport="$1"
+  local size="$2"
+  local duration="$3"
+  local clients="$4"
+  local endpoint="$5"
+  local client_out="$6"
+  local client_err="$7"
+  ensure_stream_client || return 1
+  env \
+    "PERF_PATTERN=STREAM" \
+    "PERF_MULTI_PATTERN=STREAM" \
+    "PERF_MULTI_TRANSPORT=${transport}" \
+    "PERF_MULTI_COMPONENT=client" \
+    "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
+    --sizes "${size}" --runs 1 --duration "${duration}" \
+    --ccu "${clients}" --send-stop-token 1 --endpoint "${endpoint}" \
+    > "${client_out}" 2> "${client_err}"
+}
 
 print_total_time() {
   local status="${1:-0}"
@@ -966,6 +1008,20 @@ run_multi_process_case() {
       fi
     fi
     exec {client_control_fd}>&- || true
+  elif [[ "${pattern}" == "MULTI_STREAM" ]]; then
+    # Shared C reference client; the Go binding has no STREAM client
+    # (measured surface is the Go STREAM server).
+    run_external_stream_client \
+      "${transport}" "${size}" "${duration}" "${clients}" \
+      "${endpoint}" "${client_out}" "${client_err}" &
+    client_pid=$!
+    if ! wait_for_pid "${client_pid}" "${client_timeout}"; then
+      case_status=1
+      kill "${client_pid}" 2>/dev/null || true
+      wait "${client_pid}" 2>/dev/null || true
+    elif ! wait "${client_pid}"; then
+      case_status=1
+    fi
   else
     run_go_perf ./perf/multi \
       --role client \

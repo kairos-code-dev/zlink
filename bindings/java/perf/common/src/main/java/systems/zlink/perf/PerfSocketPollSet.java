@@ -8,7 +8,6 @@ import systems.zlink.contracts.service.spot.*;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import systems.zlink.contracts.PollEvent;
@@ -73,6 +72,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
             case POLLOUT -> readyOut[index];
             case POLLERR -> readyErr[index];
             case POLLPRI -> readyPri[index];
+            case POLLCOMPLETION -> false;
         };
     }
 
@@ -127,11 +127,19 @@ public final class PerfSocketPollSet implements AutoCloseable {
         poller.close();
     }
 
+    // PERF_MULTI § 1.1 "Ready source dispatch": clear only the entries that
+    // were actually dispatched ready on the previous wake, not every socket.
+    // The previous-wake ready set is exactly readyIndexes[0..readyCount); C/C++
+    // reset just the dispatched ready entries. This avoids the O(N) per-wake
+    // Arrays.fill over all four boolean arrays regardless of socket count.
     private void clearReadyEvents() {
-        Arrays.fill(readyIn, false);
-        Arrays.fill(readyOut, false);
-        Arrays.fill(readyErr, false);
-        Arrays.fill(readyPri, false);
+        for (int i = 0; i < readyCount; i++) {
+            int index = readyIndexes[i];
+            readyIn[index] = false;
+            readyOut[index] = false;
+            readyErr[index] = false;
+            readyPri[index] = false;
+        }
         readyCount = 0;
     }
 
@@ -152,6 +160,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
                 case POLLOUT -> 2;
                 case POLLERR -> 4;
                 case POLLPRI -> 8;
+                case POLLCOMPLETION -> 32;
             };
         }
         return mask;

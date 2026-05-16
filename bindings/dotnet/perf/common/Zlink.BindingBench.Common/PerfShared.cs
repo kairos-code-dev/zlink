@@ -14,6 +14,9 @@ public static class PerfShared
     public const int ErrnoEintrWin = 10004;
     public const int ErrnoEagainAlt = 35;
     public const int ErrnoEagainWin = 10035;
+    public const int ErrnoEtimedout = 110;
+    public const int ErrnoEtimedoutAlt = 60;
+    public const int ErrnoEtimedoutWin = 10060;
     public const uint PerfMetricMagic = 0x5A4C_4E4Bu;
     public const int PerfMetricHeaderSize = 29;
     private static int _nextPort = InitializePortSeed();
@@ -119,7 +122,7 @@ public static class PerfShared
             return $"ipc://{path}";
         }
 
-        return $"{transport}://127.0.0.1:{GetPort()}";
+        return $"{transport}://127.0.0.1:*";
     }
 
     private static double NsToMs(double latencyNs)
@@ -212,6 +215,18 @@ public static class PerfShared
     public static bool IsInterrupted(int errno)
     {
         return errno == ErrnoEintr || errno == ErrnoEintrWin;
+    }
+
+    public static bool IsTimedOut(int errno)
+    {
+        return errno == ErrnoEtimedout
+            || errno == ErrnoEtimedoutAlt
+            || errno == ErrnoEtimedoutWin;
+    }
+
+    public static bool IsTransientBackpressure(int errno)
+    {
+        return IsInterrupted(errno) || IsWouldBlock(errno) || IsTimedOut(errno);
     }
 
     public static bool IsTransientNetworkError(int errno)

@@ -19,8 +19,9 @@ import systems.zlink.contracts.RequestResult;
 import systems.zlink.contracts.RoutingId;
 import systems.zlink.contracts.SendFlags;
 import systems.zlink.contracts.SpotDispatchEvent;
+import systems.zlink.contracts.SubmitException;
+import systems.zlink.contracts.SubmitResult;
 import systems.zlink.perf.PerfControl;
-import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
@@ -33,7 +34,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfMultiSpotReqRep {
@@ -47,7 +48,7 @@ final class PerfMultiSpotReqRep {
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         AtomicBoolean stopRequested = new AtomicBoolean(false);
-        AtomicInteger stopSeen = new AtomicInteger();
+        AtomicLong activeEndRef = new AtomicLong(Long.MAX_VALUE);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         String controlEndpoint = derivedEndpoint(config.endpoint(), 1);
         try (Context ctx = PerfUtil.newContext(config);
@@ -67,9 +68,12 @@ final class PerfMultiSpotReqRep {
                 if (info.event() != SpotDispatchEvent.ROUTED_READABLE) {
                     return;
                 }
+                long activeEnd = activeEndRef.get();
+                if (stopRequested.get() || System.nanoTime() >= activeEnd) {
+                    return;
+                }
                 try {
-                    drainServer(replier, config.clients(), stopSeen,
-                        stopRequested);
+                    drainServer(replier, activeEnd);
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     stopRequested.set(true);
@@ -79,7 +83,10 @@ final class PerfMultiSpotReqRep {
                 "spot reqrep server");
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiSpotNodeAutoHwm(config, node, "server");
-            while (!stopRequested.get()) {
+            long activeEnd = System.nanoTime()
+                + Duration.ofSeconds(config.durationSeconds()).toNanos();
+            activeEndRef.set(activeEnd);
+            while (!stopRequested.get() && System.nanoTime() < activeEnd) {
                 Throwable ex = failure.get();
                 if (ex != null) {
                     throw new IllegalStateException(
@@ -87,6 +94,7 @@ final class PerfMultiSpotReqRep {
                 }
                 sleepQuietly(1);
             }
+            stopRequested.set(true);
             return PerfUtil.Result.silent(config);
         }
     }
@@ -148,42 +156,23 @@ final class PerfMultiSpotReqRep {
         }
     }
 
-    private static boolean drainServer(Spot replier,
-                                    int expectedStops,
-                                    AtomicInteger stopSeen,
-                                    AtomicBoolean stopRequested) {
+    private static boolean drainServer(Spot replier, long activeEnd) {
         boolean progressed = false;
         for (;;) {
+            if (System.nanoTime() >= activeEnd) {
+                return progressed;
+            }
             Received received = recvRoutedNoWait(replier);
             if (received == null) {
                 return progressed;
             }
             progressed = true;
             try (received) {
-                boolean stop = PerfStopToken.isStopTokenMessage(
-                    received.firstPart());
                 try (Message reply = received.firstPart().move()) {
                     received.reply().message(reply).submit();
                 }
-                if (stop && stopSeen.incrementAndGet() >= expectedStops) {
-                    stopRequested.set(true);
-                    return progressed;
-                }
             }
         }
-    }
-
-    private static boolean handleServerReceived(Received received,
-                                                int expectedStops,
-                                                AtomicInteger stopSeen,
-                                                AtomicBoolean stopRequested) {
-        if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
-            if (stopSeen.incrementAndGet() >= expectedStops) {
-                stopRequested.set(true);
-            }
-            return true;
-        }
-        return false;
     }
 
     private static void runClientWorkers(List<Spot> requesters,
@@ -212,9 +201,6 @@ final class PerfMultiSpotReqRep {
                             }
                         }
                     }
-                    try (Message stop = PerfStopToken.newMessage()) {
-                        sendToServer(requester, stop, SendFlags.NONE);
-                    }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     throw new IllegalStateException(ex);
@@ -224,15 +210,6 @@ final class PerfMultiSpotReqRep {
             throw new IllegalStateException("spot reqrep client failed",
                 failure.get());
         }
-    }
-
-    private static void sendToServer(Spot requester,
-                                     Message payload,
-                                     SendFlags flags) {
-        requester.sendToSpot(SERVER_NODE_RID, SERVER_SPOT_RID)
-            .message(payload)
-            .flags(flags)
-            .submit();
     }
 
     private static PerfUtil.Header requestReply(Spot requester,
@@ -249,27 +226,36 @@ final class PerfMultiSpotReqRep {
             AtomicReference<PerfUtil.Header> replyRef = new AtomicReference<>();
             AtomicReference<RequestResult> resultRef = new AtomicReference<>();
             AtomicReference<Throwable> callbackFailure = new AtomicReference<>();
-            boolean submitted = requester.requestToSpot(
-                    SERVER_NODE_RID, SERVER_SPOT_RID)
-                .message(payload)
-                .timeout(Duration.ofNanos(remainingNs))
-                .flags(SendFlags.DONT_WAIT)
-                .submit((result, parts) -> {
-                    try {
-                        resultRef.set(result);
-                        if (result == RequestResult.OK
-                            && parts != null
-                            && !parts.isEmpty()) {
-                            replyRef.set(PerfUtil.decodeHeader(
-                                parts.get(0), expectedSize));
+            boolean submitted;
+            try (Message outbound = Message.copyOf(payload)) {
+                submitted = requester.requestToSpot(
+                        SERVER_NODE_RID, SERVER_SPOT_RID)
+                    .message(outbound)
+                    .timeout(Duration.ofNanos(remainingNs))
+                    .flags(SendFlags.DONT_WAIT)
+                    .submit((result, parts) -> {
+                        try {
+                            resultRef.set(result);
+                            if (result == RequestResult.OK
+                                && parts != null
+                                && !parts.isEmpty()) {
+                                replyRef.set(PerfUtil.decodeHeader(
+                                    parts.get(0), expectedSize));
+                            }
+                        } catch (Throwable ex) {
+                            callbackFailure.compareAndSet(null, ex);
+                        } finally {
+                            Message.closeAll(parts);
+                            done.countDown();
                         }
-                    } catch (Throwable ex) {
-                        callbackFailure.compareAndSet(null, ex);
-                    } finally {
-                        Message.closeAll(parts);
-                        done.countDown();
-                    }
-                });
+                    });
+            } catch (SubmitException ex) {
+                if (!isTransientSubmit(ex)
+                    || !waitFor(poller, PollEventFlag.POLLOUT, deadlineNs)) {
+                    throw ex;
+                }
+                continue;
+            }
             if (!submitted) {
                 if (!waitFor(poller, PollEventFlag.POLLOUT, deadlineNs)) {
                     return null;
@@ -305,6 +291,12 @@ final class PerfMultiSpotReqRep {
         }
     }
 
+    private static boolean isTransientSubmit(SubmitException ex) {
+        SubmitResult result = ex.getResult();
+        return result == SubmitResult.BACKPRESSURED
+            || result == SubmitResult.NOT_CONNECTED;
+    }
+
     private static boolean waitFor(Poller poller, PollEventFlag expected,
                                    long deadlineNs) {
         List<PollEvent> events = new ArrayList<>(1);
@@ -313,7 +305,7 @@ final class PerfMultiSpotReqRep {
             if (remainingNs <= 0) {
                 return false;
             }
-            poller.wait(events, Duration.ofNanos(remainingNs));
+            poller.wait(events, Duration.ofMillis(-1));
             for (PollEvent event : events) {
                 if (event.revents().contains(expected)) {
                     return true;

@@ -11,6 +11,7 @@ import systems.zlink.contracts.Message;
 import systems.zlink.contracts.MonitorEventType;
 import systems.zlink.contracts.PollEventFlag;
 import systems.zlink.contracts.PairSocket;
+import systems.zlink.contracts.SendFlags;
 import systems.zlink.contracts.SocketType;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
@@ -43,8 +44,9 @@ final class PerfPair {
             PerfUtil.applySocketOptions(sender, config);
             PerfUtil.configureServerTls(receiver, config.transport());
             PerfUtil.configureClientTls(sender, config.transport());
-            receiver.bind(endpoint);
-            sender.connect(endpoint);
+            receiver.bind(PerfUtil.bindEndpoint(endpoint, config.transport()));
+            sender.connect(PerfUtil.connectedEndpoint(receiver, endpoint,
+                config.transport()));
             PerfUtil.waitForMonitorEvent(senderMonitor, READY_EVENT, 1,
                 readyTimeout, "pair sender ready");
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENT, 1,
@@ -103,14 +105,26 @@ final class PerfPair {
                         while (System.nanoTime() < activeEnd) {
                             PerfUtil.resetAndWritePayload(active, config.size(),
                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                            sender.send().message(active).submit();
+                            try (Message outbound = Message.copyOf(active)) {
+                                sender.send().message(outbound).submit();
+                            }
                         }
                     }
-                    // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
-                    // blocking stop-token send.
-                    try (Message stop = PerfStopToken.newMessage()) {
-                        sender.send().message(stop).submit();
-                    }
+                    // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with a
+                    // wire-level stop token. C parity:
+                    // perf_single_one_way.hpp send_stop_token_with_retry
+                    // (~200-235) bounded-retries through transient
+                    // backpressure so the receiver always observes the
+                    // terminator (a single submit can lose it under load,
+                    // hanging the receiver on poll(-1)).
+                    PerfStopToken.sendWithRetry(() -> {
+                        try (Message stop = PerfStopToken.newMessage()) {
+                            return sender.send()
+                                .message(stop)
+                                .flags(SendFlags.DONT_WAIT)
+                                .submit();
+                        }
+                    }, "pair");
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     finished.countDown();
@@ -129,7 +143,6 @@ final class PerfPair {
                 SocketType.PAIR);
             PerfUtil.printSingleMonitorAutoHwm(config, senderMonitor, "sender",
                 SocketType.PAIR);
-            ctx.shutdown();
             return metrics.finishSingle(config);
         }
     }

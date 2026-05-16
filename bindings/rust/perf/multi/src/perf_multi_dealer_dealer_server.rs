@@ -13,20 +13,10 @@ fn main() {
 
     let ctx = common::perf_server_context();
     let server = ctx.dealer_socket().expect("dealer");
-    server
-        .common_options()
-        .set_send_hwm(settings.send_hwm)
-        .expect("sndhwm");
-    server
-        .common_options()
-        .set_recv_hwm(settings.recv_hwm)
-        .expect("rcvhwm");
-    if settings.msg_unit_bytes > 0 {
-        server
-            .common_options()
-            .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
-            .expect("auto hwm msg unit");
-    }
+    // C perf_multi_dealer_dealer_server.cpp: gated numeric HWM + unconditional
+    // AUTO_HWM_MSG_UNIT_BYTES = msg_size.
+    common::apply_multi_hwm(&server, &settings);
+    common::apply_multi_auto_hwm_msg_unit(&server, args.msg_size);
     server
         .common_options()
         .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
@@ -67,27 +57,67 @@ fn main() {
         return;
     }
 
-    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
+    // C perf_multi_dealer_dealer_server.cpp run_receive_window(): poller POLLIN,
+    // perf_socket_poll(...,-1) signal-driven, drain non-blocking, count until
+    // the measure-seconds deadline. The wire stop token only wakes the poll; it
+    // does NOT anchor aggregation (the server deadline does).
+    let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds.max(1));
     let mut latency_stats = common::LatencyStats::new();
     let mut active_count: u64 = 0;
     let mut received = Received::empty();
 
-    while Instant::now() < deadline {
-        match server.recv(&mut received, RecvFlags::NONE) {
-            Ok(true) => {
-                let data = common::message_payload(received.parts());
-                if Instant::now() < deadline && common::is_valid_active_message(data, args.msg_size)
-                {
-                    let sent_ts_ns = common::decode_sent_ts_ns(data);
-                    latency_stats.record_ns(
-                        common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
-                    );
-                    active_count += 1;
+    let poller = Poller::new().expect("poller");
+    poller.add_socket(&server, POLLIN).expect("poller add");
+
+    let mut record = |received: &Received, latency_stats: &mut common::LatencyStats| {
+        let data = common::message_payload(received.parts());
+        // Stop token (is_valid_active_message is false for it) only ends the
+        // window via the deadline; it is never counted.
+        if Instant::now() < deadline && common::is_valid_active_message(data, args.msg_size) {
+            let sent_ts_ns = common::decode_sent_ts_ns(data);
+            latency_stats
+                .record_ns(common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64);
+            active_count += 1;
+        }
+    };
+
+    'outer: loop {
+        match poller.wait(-1) {
+            Ok(Some(ev)) if ev.is_readable() => {}
+            Ok(_) => continue,
+            Err(err) => panic!("poller wait failed: {err}"),
+        }
+        // Drain everything currently queued without blocking.
+        loop {
+            match server.recv(&mut received, RecvFlags::DONT_WAIT) {
+                Ok(true) => {
+                    record(&received, &mut latency_stats);
                 }
+                Ok(false) => break,
+                Err(err) if err.code() == RecvResult::NoData => break,
+                Err(err) => panic!("recv failed: {err}"),
             }
-            Ok(false) => {}
-            Err(err) if err.code() == RecvResult::NoData => {}
-            Err(err) => panic!("recv failed: {err}"),
+        }
+        if Instant::now() >= deadline {
+            break 'outer;
+        }
+    }
+
+    // C drain_phase_until_idle(2.0s max, 50ms idle): UNCOUNTED tail drain so
+    // stale messages do not spill into the next size case.
+    let drain_deadline = Instant::now() + Duration::from_secs_f64(2.0);
+    let mut idle_deadline = Instant::now() + Duration::from_millis(50);
+    while Instant::now() < drain_deadline {
+        match server.recv(&mut received, RecvFlags::DONT_WAIT) {
+            Ok(true) => {
+                idle_deadline = Instant::now() + Duration::from_millis(50);
+            }
+            Ok(false) | Err(_) => {
+                if Instant::now() >= idle_deadline {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
         }
     }
 

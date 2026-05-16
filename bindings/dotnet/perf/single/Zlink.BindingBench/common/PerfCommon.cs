@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Threading;
 using Systems.Zlink;
 
 internal static partial class PerfRunner
@@ -136,6 +137,66 @@ internal static partial class PerfRunner
         return PerfSocketIo.Send(socket, buffer, flags);
     }
 
+    internal static bool TrySendActiveMessage(IMessageSocket socket,
+        ReadOnlySpan<byte> buffer, string tag)
+    {
+        try
+        {
+            return PerfSocketIo.Send(socket, buffer, SendFlags.DontWait) > 0;
+        }
+        catch (ZlinkException ex)
+            when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"{tag} send failed: {ex.Message}");
+            throw;
+        }
+    }
+
+    internal static bool TrySendRoutedActiveMessage(IRoutedMessageSocket socket,
+        RoutingId routingId, ReadOnlySpan<byte> buffer, string tag)
+    {
+        try
+        {
+            return PerfSocketIo.Send(socket, routingId, buffer,
+                SendFlags.DontWait) > 0;
+        }
+        catch (ZlinkException ex)
+            when (PerfShared.IsTransientBackpressure(ex.InternalErrno)
+                  || PerfShared.IsTransientNetworkError(ex.InternalErrno))
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"{tag} send failed: {ex.Message}");
+            throw;
+        }
+    }
+
+    internal static bool TryPublishActiveMessage(IPublisherSocket socket,
+        string topic, ReadOnlySpan<byte> buffer, string tag)
+    {
+        try
+        {
+            return PerfSocketIo.Publish(socket, topic, buffer,
+                SendFlags.DontWait) > 0;
+        }
+        catch (ZlinkException ex)
+            when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"{tag} send failed: {ex.Message}");
+            throw;
+        }
+    }
+
     internal static bool WaitForInput(Poller poller, Span<PollEvent> events,
         int timeoutMs)
     {
@@ -152,68 +213,144 @@ internal static partial class PerfRunner
         }
     }
 
-    // PERF_SINGLE_TEST_POLICY § 1.4: send the wire-level stop token once
-    // with a blocking send; the receiver exits when it observes the token.
-    internal static void SendStopTokenBlocking(IMessageSocket sender, string tag)
+    // PERF_SINGLE_TEST_POLICY § 1.4: signal-driven (-1) poller wait. A
+    // negative TimeSpan maps to an infinite (-1) native timeout, so the
+    // receiver blocks until woken by the wire-level stop token (matching C
+    // perf_router_router.cpp's blocking recv that ends purely on the stop
+    // token). No timer cap, no atomic shutdown flag.
+    internal static bool WaitForInputSignalDriven(Poller poller,
+        Span<PollEvent> events)
     {
         try
         {
-            sender.Options.SendTimeout = null;
-            if (PerfSocketIo.Send(sender, StopToken.Bytes, SendFlags.None) <= 0)
-                Console.Error.WriteLine($"{tag} stop-token send failed");
+            int written = poller.Wait(events, Timeout.InfiniteTimeSpan, out _);
+            return written > 0;
         }
-        catch (Exception ex)
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                        || IsWouldBlock(ex.InternalErrno))
         {
-            Console.Error.WriteLine($"{tag} stop-token send failed: {ex.Message}");
+            return false;
         }
     }
 
-    internal static void SendRoutedStopTokenBlocking(IRoutedMessageSocket sender,
+    // PERF_SINGLE_TEST_POLICY § 1.4: send the wire-level stop token with a
+    // bounded retry through transient backpressure so the receiver exits when
+    // it observes the token.
+    internal static void SendStopTokenBlocking(IMessageSocket sender, string tag)
+    {
+        for (int retry = 0; retry < 100; retry++)
+        {
+            try
+            {
+                sender.Options.SendTimeout = null;
+                if (PerfSocketIo.Send(sender, StopToken.Bytes,
+                        SendFlags.None) > 0)
+                    return;
+            }
+            catch (ZlinkException ex)
+                when (PerfShared.IsTransientBackpressure(ex.InternalErrno)
+                      || PerfShared.IsTransientNetworkError(ex.InternalErrno))
+            {
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"{tag} stop-token send failed: {ex.Message}");
+                return;
+            }
+
+            Thread.Sleep(1);
+        }
+
+        Console.Error.WriteLine($"{tag} stop-token send failed");
+    }
+
+    internal static bool SendRoutedStopTokenBlocking(IRoutedMessageSocket sender,
         RoutingId routingId, string tag)
     {
-        try
+        for (int retry = 0; retry < 5000; retry++)
         {
-            sender.Options.SendTimeout = null;
-            if (PerfSocketIo.Send(sender, routingId, StopToken.Bytes,
-                    SendFlags.None) <= 0)
-                Console.Error.WriteLine($"{tag} stop-token send failed");
+            try
+            {
+                sender.Options.SendTimeout = null;
+                if (PerfSocketIo.Send(sender, routingId, StopToken.Bytes,
+                        SendFlags.None) > 0)
+                    return true;
+            }
+            catch (ZlinkException ex)
+                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+            {
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"{tag} stop-token send failed: {ex.Message}");
+                return false;
+            }
+
+            Thread.Sleep(1);
         }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"{tag} stop-token send failed: {ex.Message}");
-        }
+
+        Console.Error.WriteLine($"{tag} stop-token send failed");
+        return false;
     }
 
     internal static void PublishStopTokenBlocking(IPublisherSocket sender,
         string topic, string tag)
     {
-        try
+        for (int retry = 0; retry < 100; retry++)
         {
-            sender.Options.SendTimeout = null;
-            if (PerfSocketIo.Publish(sender, topic, StopToken.Bytes,
-                    SendFlags.None) <= 0)
-                Console.Error.WriteLine($"{tag} stop-token publish failed");
+            try
+            {
+                sender.Options.SendTimeout = null;
+                if (PerfSocketIo.Publish(sender, topic, StopToken.Bytes,
+                        SendFlags.None) > 0)
+                    return;
+            }
+            catch (ZlinkException ex)
+                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+            {
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"{tag} stop-token publish failed: {ex.Message}");
+                return;
+            }
+
+            Thread.Sleep(1);
         }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"{tag} stop-token publish failed: {ex.Message}");
-        }
+
+        Console.Error.WriteLine($"{tag} stop-token publish failed");
     }
 
     internal static void PublishSpotStopTokenBlocking(ISpot spot, string topic,
         string tag)
     {
-        try
+        for (int retry = 0; retry < 100; retry++)
         {
-            spot.SendTimeout = null;
-            if (PerfSocketIo.Publish(spot, topic, StopToken.Bytes,
-                    SendFlags.None) <= 0)
-                Console.Error.WriteLine($"{tag} stop-token publish failed");
+            try
+            {
+                spot.SendTimeout = null;
+                if (PerfSocketIo.Publish(spot, topic, StopToken.Bytes,
+                        SendFlags.None) > 0)
+                    return;
+            }
+            catch (ZlinkException ex)
+                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+            {
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"{tag} stop-token publish failed: {ex.Message}");
+                return;
+            }
+
+            Thread.Sleep(1);
         }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"{tag} stop-token publish failed: {ex.Message}");
-        }
+
+        Console.Error.WriteLine($"{tag} stop-token publish failed");
     }
 
     private static int ResolveSingleHwmValue(string specificName)

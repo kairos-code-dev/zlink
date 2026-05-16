@@ -45,35 +45,13 @@ func main() {
 		clients:   loaded.Clients,
 	}
 
-	if *multiRole != "" {
-		runMultiRole(cfg, *multiRole, *multiEndpoint)
-		return
+	// PERF_MULTI_TEST_POLICY: multi benchmarks use the separate-process
+	// (role-based) model exclusively, mirroring the C runner. There is
+	// no in-process single-process variant.
+	if *multiRole == "" {
+		perfcommon.Must(fmt.Errorf("--role is required for multi perf (server|client)"))
 	}
-
-	var result perfcommon.Result
-	switch cfg.pattern {
-	case "MULTI_PUBSUB":
-		result = runMultiPubSub(cfg)
-	case "MULTI_DEALER_DEALER":
-		result = runMultiDealerDealer(cfg)
-	case "MULTI_DEALER_ROUTER":
-		result = runMultiDealerRouter(cfg)
-	case "MULTI_ROUTER_ROUTER":
-		result = runMultiRouterRouter(cfg)
-	case "MULTI_SPOT":
-		result = runMultiSpot(cfg)
-	case "MULTI_SPOT_REQREP":
-		result = runMultiSpotReqRep(cfg)
-	case "MULTI_SPOT_SENDSEND":
-		result = runMultiSpotSendSend(cfg)
-	case "MULTI_STREAM":
-		result = runMultiStream(cfg)
-	default:
-		perfcommon.Must(&unsupportedMultiPatternError{pattern: cfg.pattern})
-	}
-
-	result = perfcommon.FinalizeResult(cfg.pattern, cfg.msgSize, result)
-	perfcommon.PrintResult(cfg.pattern, cfg.transport, cfg.msgSize, result)
+	runMultiRole(cfg, *multiRole, *multiEndpoint)
 }
 
 type unsupportedMultiPatternError struct {
@@ -134,9 +112,9 @@ func runMultiClientRole(cfg multiConfig, endpoint string) {
 	case "MULTI_ROUTER_ROUTER":
 		result := runMultiRouterRouterClientRole(cfg, endpoint)
 		printMultiResult(cfg, result)
-	case "MULTI_STREAM":
-		result := runMultiStreamClient(cfg, endpoint)
-		printMultiResult(cfg, result)
+	// MULTI_STREAM has no Go client role: the shared C
+	// perf_stream_client binary is the reference client (spawned by
+	// run_benchmarks_multi.sh).
 	case "MULTI_SPOT":
 		result := runMultiSpotClient(cfg, endpoint)
 		printMultiResult(cfg, result)
@@ -152,6 +130,13 @@ func runMultiClientRole(cfg multiConfig, endpoint string) {
 }
 
 func printMultiResult(cfg multiConfig, result perfcommon.Result) {
+	// perf_multi_client_helpers.hpp run_one_way_duration /
+	// run_echo_duration / run_recv_duration: recv==0 or lat_count==0
+	// returns false -> FAIL (no RESULT line, nonzero exit).
+	if !result.Valid {
+		perfcommon.PrintFail(cfg.pattern, cfg.transport, cfg.msgSize)
+		os.Exit(1)
+	}
 	result = perfcommon.FinalizeResult(cfg.pattern, cfg.msgSize, result)
 	perfcommon.PrintResult(cfg.pattern, cfg.transport, cfg.msgSize, result)
 }

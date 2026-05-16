@@ -7,7 +7,10 @@ using static PerfRunner;
 
 internal static class PerfPubSub
 {
-    private const string Topic = "perf.topic";
+    // PERF parity: C single PUBSUB publishes on topic "bench", subscribes
+    // to the empty prefix (receive-all), and filters received messages by
+    // topic. Matches bindings/c/perf/single/src/perf_pubsub.cpp.
+    private const string Topic = "bench";
     private const uint RunId = 1;
     private const uint ActivePhase = 1;
 
@@ -40,7 +43,8 @@ internal static class PerfPubSub
                 "PERF_SINGLE_PUBSUB_XPUB_NODROP", 1) > 0 ? 1 : 0;
             pub.Options.NoDrop = xpubNoDrop != 0;
             pub.Bind(endpoint);
-            sub.SetSubscription(Topic);
+            endpoint = pub.Options.LastEndpoint;
+            sub.SetSubscription(string.Empty);
             sub.Connect(endpoint);
 
             if (!(WaitForConnectionReady(pubMonitor, readyTimeoutMs)
@@ -66,7 +70,6 @@ internal static class PerfPubSub
             var latency = ComputeLatencyStats(latencySamples);
             PrintResult("PUBSUB", transport, size, throughput, latency.mean,
                 latency.p95, latency.p99);
-            ctx.Shutdown();
             return 0;
         }
         catch (Exception ex)
@@ -119,6 +122,10 @@ internal static class PerfPubSub
                             break;
                         }
 
+                        if (!string.Equals(maybe.Topic, Topic,
+                                StringComparison.Ordinal))
+                            continue;
+
                         Message body = maybe.FirstPart();
                         ReadOnlySpan<byte> payloadSpan = body.AsReadOnlySpan();
                         if (StopToken.IsStopToken(payloadSpan))
@@ -162,9 +169,12 @@ internal static class PerfPubSub
             seq++;
             try
             {
-                PerfSocketIo.Publish(sender, Topic, payload, SendFlags.None);
+                if (!TryPublishActiveMessage(sender, Topic, payload,
+                        "[single-pubsub]"))
+                    continue;
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
+            catch (ZlinkException ex)
+                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
             {
                 continue;
             }

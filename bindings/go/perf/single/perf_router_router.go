@@ -37,6 +37,10 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
 	debugf("router/router tls setup client")
 	perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
+	// perf_router_router.cpp: apply_single_auto_hwm_msg_unit on the raw
+	// sockets, then apply_single_hwm (override-gated).
+	perfcommon.ApplySingleAutoHWMMsgUnit(server, cfg.msgSize)
+	perfcommon.ApplySingleAutoHWMMsgUnit(client, cfg.msgSize)
 	perfcommon.ApplySingleHWM(server)
 	perfcommon.ApplySingleHWM(client)
 	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-router-router")

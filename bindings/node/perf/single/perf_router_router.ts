@@ -8,6 +8,7 @@ const {
   createRunId,
   decodeMetricHeaderFromParts,
   currentEpochNs,
+  HEADER_SIZE,
   summarizeMetrics,
 } = require('../common/perf_metrics');
 const {
@@ -20,12 +21,13 @@ const {
   drainRecvSocket,
   emitSingleSocketHwmDetail,
   parseSingleBinaryArgs,
+  runLocalSocketOneWayBenchmark,
   spawnSenderWorker,
-  waitForWorkerDone,
   waitForWorkerError,
   waitForMonitorConnectionReady,
   waitForWorkerMessage,
 } = require('./perf_single_common');
+const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
@@ -57,6 +59,62 @@ function handshakeRouterReceiver(receiver) {
 }
 
 async function runRouterRouterBenchmark(msgSize, options) {
+  if (options.transport === 'inproc') {
+    // inproc is context-local so the Worker sender path cannot reach it.
+    // Run both ROUTER sockets in one shared context with the C-faithful
+    // blocking-equivalent one-way model + the PING/PONG routing-id gate
+    // (C perf_router_router.cpp does the same handshake before active).
+    return runLocalSocketOneWayBenchmark({
+      pattern: 'ROUTER_ROUTER',
+      msgSize,
+      options,
+      endpointToken: 'router-router',
+      createReceiver: (ctx) => new zlink.RouterSocket(ctx),
+      createSender: (ctx) => new zlink.RouterSocket(ctx),
+      configureReceiver: (socket) => socket.setRoutingId(RECEIVER_ROUTING_ID),
+      configureSender: (socket) => socket.setRoutingId(zlink.RoutingId.fromBytes(SENDER_ID)),
+      handshake: (sender, receiver) => {
+        sender.send(RECEIVER_ROUTING_ID).message(Buffer.from('PING')).submit();
+        const senderRid = handshakeRouterReceiver(receiver);
+        const reply = new zlink.Received();
+        sender.recv(reply);
+        try {
+          if (partStrings(reply).join(',') !== 'PONG') {
+            throw new Error('router-router handshake reply failed');
+          }
+        } finally {
+          reply.close();
+        }
+        // Receiver replies/active are addressed by the sender's routing
+        // id; the sender addresses the receiver by RECEIVER_ROUTING_ID.
+        return RECEIVER_ROUTING_ID;
+      },
+      sendActive: (socket, payload, routingId) => {
+        try {
+          return socket.send(routingId).message(payload)
+            .flags(zlink.SendFlags.DontWait).submit();
+        } catch (error) {
+          if (error instanceof zlink.SubmitError
+            && (error.result === zlink.SubmitResult.Backpressured
+              || error.result === zlink.SubmitResult.NotConnected
+              || error.result === zlink.SubmitResult.NotFound)) {
+            return false;
+          }
+          const text = String(error && error.message ? error.message : error);
+          if ((error && error.code === 'EAGAIN')
+            || text.includes('Resource temporarily unavailable')) {
+            return false;
+          }
+          throw error;
+        }
+      },
+      sendStop: (socket, routingId) => {
+        socket.send(routingId).message(STOP_TOKEN_BYTES)
+          .flags(zlink.SendFlags.None).submit();
+      },
+    });
+  }
+
   const ctx = new zlink.Context();
   applyContextPolicy(ctx);
   const receiver = new zlink.RouterSocket(ctx);
@@ -107,23 +165,21 @@ async function runRouterRouterBenchmark(msgSize, options) {
       activeStopNs,
     });
 
-    worker.postMessage({ type: 'start' });
-    await Promise.race([
-      waitForWorkerMessage(worker, 'started'),
-      workerError.then((message) => Promise.reject(new Error(message.message)))
-    ]);
+    // PERF_SINGLE_TEST_POLICY § 1.4 / § 2.0.1: the PING/PONG handshake
+    // above is the routing-id discovery gate (C perf_router_router.cpp
+    // does the same). No extra start/stop control channel — the receiver
+    // uses blocking recv + drain and exits on the wire stop token.
     const recvTask = drainRecvSocket(
       receiver,
       (received) => {
-        const header = decodeMetricHeaderFromParts(received.parts);
+        const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
         collector.record(header, currentEpochNs());
       }
     );
     await Promise.race([
-      waitForWorkerDone(worker, options.duration),
+      recvTask,
       workerError.then((message) => Promise.reject(new Error(message.message)))
     ]);
-    await recvTask;
     const result = collector.finish();
     emitSingleSocketHwmDetail(receiver, 'ROUTER_ROUTER', options.transport, 'receiver', msgSize);
     return result;

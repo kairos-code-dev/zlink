@@ -20,6 +20,33 @@ bool wait_for_start_signal (size_t msg_size)
     return perf::multi::wait_for_start_from_stdin (msg_size);
 }
 
+// Publish the wire-level stop token on the active topic with a blocking
+// publish so subscribers are woken from their -1 poller wait and learn the
+// active phase has ended. Matches C reference publish_stop_token() in
+// bindings/c/perf/multi/src/perf_multi_pubsub_server.cpp:113-144.
+bool publish_stop_token (::perf::socket_t &publisher)
+{
+    const size_t token_size = std::strlen (perf::multi::k_stop_token);
+    for (;;) {
+        zlink::message_t part (token_size);
+        if (!part.valid ())
+            return false;
+        std::memcpy (
+          part.data (), perf::multi::k_stop_token, token_size);
+
+        const int rc =
+          publisher.publish (k_topic, part, ZLINK_SEND_FLAGS_NONE);
+        if (rc == 0)
+            return true;
+
+        const int err = errno;
+        if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
+            || err == ETIMEDOUT)
+            continue;
+        return false;
+    }
+}
+
 bool run_phase (::perf::socket_t &publisher,
                 std::vector<char> &payload,
                 size_t msg_size,
@@ -135,14 +162,10 @@ bool perf_pubsub_server (const std::string &lib_name,
                     true))
         return false;
 
-    if (!run_phase (publisher.sock (),
-                    payload,
-                    msg_size,
-                    run_id,
-                    seq,
-                    perf_metric::phase_cooldown,
-                    std::chrono::seconds (1),
-                    true))
+    // Signal active-phase end via the wire-level stop token on the active
+    // topic (blocking publish, deadline ignored), matching the C reference
+    // (bindings/c/perf/multi/src/perf_multi_pubsub_server.cpp:265-268).
+    if (!publish_stop_token (publisher.sock ()))
         return false;
 
     return true;

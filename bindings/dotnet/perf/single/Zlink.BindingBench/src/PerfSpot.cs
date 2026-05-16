@@ -22,6 +22,8 @@ internal static class PerfSpot
         RoutingId.FromBytes("z-perf-spot-pub-s"u8);
     private static readonly RoutingId SubSpotRoutingId =
         RoutingId.FromBytes("a-perf-spot-sub-s"u8);
+    private static readonly RoutingId StopSpotRoutingId =
+        RoutingId.FromBytes("a-perf-spot-stop-s"u8);
 
     internal static int RunSpot(string transport, int size)
     {
@@ -45,16 +47,23 @@ internal static class PerfSpot
             using var subNode = new SpotNode(ctx);
             using var spotPub = pubNode.CreateSpot();
             using var spotSub = subNode.CreateSpot();
+            // PERF_SINGLE_TEST_POLICY § 1.4: the SPOT one-way stop token is
+            // published from a dedicated stop publisher on the subscriber
+            // node so the terminator is not queued behind the saturated
+            // remote data path (matches C bindings/c/perf/single/src/perf_spot.cpp).
+            using var spotStop = subNode.CreateSpot();
 
             pubNode.SetRoutingId(PubNodeRoutingId);
             subNode.SetRoutingId(SubNodeRoutingId);
             spotPub.SetRoutingId(PubSpotRoutingId);
             spotSub.SetRoutingId(SubSpotRoutingId);
+            spotStop.SetRoutingId(StopSpotRoutingId);
             ConfigureSpotNodeTlsIfNeeded(pubNode, transport);
             ConfigureSpotNodeTlsIfNeeded(subNode, transport);
 
             string publisherEndpoint = EndpointFor(transport, "spot-publisher");
             pubNode.Bind(publisherEndpoint);
+            publisherEndpoint = pubNode.LastEndpoint;
             subNode.ConnectPeer(publisherEndpoint);
             spotSub.SetSubscription(Topic);
 
@@ -73,7 +82,7 @@ internal static class PerfSpot
             if (readySettleMs > 0)
                 Thread.Sleep(readySettleMs);
 
-            if (!RunActiveWindow(spotPub, spotSub, activePayload, size,
+            if (!RunActiveWindow(spotPub, spotSub, spotStop, activePayload, size,
                     durationSeconds, recvTimeoutMs, latencySampleCap,
                     out long received, out List<double> latencySamples))
             {
@@ -144,8 +153,8 @@ internal static class PerfSpot
     }
 
     private static bool RunActiveWindow(Spot publisher, Spot subscriber,
-        byte[] payload, int msgSize, int durationSeconds, int recvTimeoutMs,
-        int latencySampleCap, out long received,
+        Spot stopPublisher, byte[] payload, int msgSize, int durationSeconds,
+        int recvTimeoutMs, int latencySampleCap, out long received,
         out List<double> latencySamples)
     {
         _ = recvTimeoutMs;
@@ -222,8 +231,9 @@ internal static class PerfSpot
         }
 
         // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
-        // stop token published on the same topic.
-        PublishSpotStopTokenBlocking(publisher, Topic, "[single-spot]");
+        // stop token published from the dedicated stop publisher on the
+        // subscriber node so it is not stuck behind the active backlog.
+        PublishSpotStopTokenBlocking(stopPublisher, Topic, "[single-spot]");
         receiverThread.Join();
 
         received = activeReceived;

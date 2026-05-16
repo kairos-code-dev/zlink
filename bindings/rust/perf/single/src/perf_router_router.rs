@@ -18,22 +18,13 @@ fn main() {
     let ctx = common::perf_context();
     let receiver = ctx.router_socket().expect("receiver");
     let sender = ctx.router_socket().expect("sender");
-    receiver
-        .common_options()
-        .set_send_hwm(common::resolve_single_send_hwm())
-        .expect("receiver sndhwm");
-    receiver
-        .common_options()
-        .set_recv_hwm(common::resolve_single_recv_hwm())
-        .expect("receiver rcvhwm");
-    sender
-        .common_options()
-        .set_send_hwm(common::resolve_single_send_hwm())
-        .expect("sender sndhwm");
-    sender
-        .common_options()
-        .set_recv_hwm(common::resolve_single_recv_hwm())
-        .expect("sender rcvhwm");
+    // C perf_router_router.cpp: raw single sockets always get
+    // AUTO_HWM_MSG_UNIT_BYTES = msg_size; numeric HWM only under the
+    // manual-override gate.
+    common::apply_single_hwm(&receiver);
+    common::apply_single_hwm(&sender);
+    common::apply_single_auto_hwm_msg_unit(&receiver, config.size);
+    common::apply_single_auto_hwm_msg_unit(&sender, config.size);
     // PERF_SINGLE_TEST_POLICY § 1.4: receiver blocks on `recv()` until the
     // wire-level stop token arrives, so no recv timeout is needed.
 

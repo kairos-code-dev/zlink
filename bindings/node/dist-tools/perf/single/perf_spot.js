@@ -93,10 +93,11 @@ async function runSpotBenchmark(msgSize, options) {
         subscriber.setSubscription(TOPIC);
         const runId = (0, perf_metrics_1.createRunId)(options.runId ?? 1);
         const payload = (0, perf_metrics_1.createPayload)(msgSize);
+        const payloadSize = Math.max(msgSize, perf_metrics_1.HEADER_SIZE);
         let seq = 1n;
         let probeReady = false;
         let stopReceived = false;
-        const activeDeadline = { value: 0 };
+        const activeDeadline = { valueNs: 0n };
         const latenciesNs = [];
         let accepted = 0;
         const collectReadable = (countActive) => {
@@ -108,7 +109,7 @@ async function runSpotBenchmark(msgSize, options) {
                     stopReceived = true;
                     return;
                 }
-                const header = (0, perf_metrics_1.decodeMetricHeaderFromParts)(received.parts);
+                const header = (0, perf_metrics_1.decodeMetricHeaderFromParts)(received.parts, payloadSize);
                 if (!header) {
                     return;
                 }
@@ -125,8 +126,16 @@ async function runSpotBenchmark(msgSize, options) {
                     header.msgSize !== msgSize) {
                     return;
                 }
-                accepted += 1;
+                // Finding 4 / C bindings/c/perf/single/src/perf_spot.cpp
+                // run_active_window (~462-463): only count a phase=active sample
+                // when the receive time is still inside the active window
+                // (`steady_clock::now() < deadline`). Mirrors the shared single
+                // collector recvTs<=activeStop guard (perf_measurement.ts ~280).
                 const nowNs = (0, perf_metrics_1.currentEpochNs)();
+                if (activeDeadline.valueNs !== 0n && nowNs > activeDeadline.valueNs) {
+                    return;
+                }
+                accepted += 1;
                 const sentTsNs = BigInt(header.sentTsNs);
                 if (nowNs >= sentTsNs) {
                     latenciesNs.push(Number(nowNs - sentTsNs));
@@ -156,8 +165,24 @@ async function runSpotBenchmark(msgSize, options) {
             throw new Error('spot ready probe timed out');
         }
         await (0, perf_single_common_1.waitForPostReadySettle)(Number(process.env.PERF_SINGLE_SPOT_READY_SETTLE_MS ?? 1000));
-        activeDeadline.value = Date.now() + options.duration * 1000;
-        while (Date.now() < activeDeadline.value) {
+        // Finding 2 / C bindings/c/perf/single/src/perf_spot.cpp
+        // run_active_window (~423-525): C runs a BLOCKING publisher thread
+        // (send_spot_samples ~388-421: ZLINK_DONTWAIT publish, yield on
+        // backpressure, every accepted publish counts) plus a SEPARATE
+        // receiver thread (poller.wait then DONTWAIT subscribe drain, count
+        // while now < deadline). Node spot handles cannot be shared across
+        // Worker threads, so the faithful single-context adaptation is a
+        // tight publish+drain loop with NO `sleepImmediate()` event-loop-turn
+        // gating: the throughput-count anchor is HWM-backpressure driven
+        // exactly like C (publish retried through backpressure by draining
+        // the subscriber — the Node stand-in for C's concurrent receiver
+        // thread — and `seq`/sent advancing only on an accepted publish, no
+        // silent drop). The active deadline uses the same epoch clock as the
+        // recv-time guard so the count window matches C's `now < deadline`.
+        const activeStartNs = (0, perf_metrics_1.currentEpochNs)();
+        activeDeadline.valueNs = activeStartNs
+            + BigInt(Math.floor(options.duration * 1_000_000_000));
+        while ((0, perf_metrics_1.currentEpochNs)() < activeDeadline.valueNs && !stopReceived) {
             (0, perf_metrics_1.stampPayload)(payload, {
                 phase: 1,
                 runId,
@@ -167,18 +192,16 @@ async function runSpotBenchmark(msgSize, options) {
             if (trySpotPublish(publisher, payload)) {
                 seq += 1n;
             }
+            // Drain the subscriber inline (relieves SPOT backpressure, the Node
+            // equivalent of C's concurrent receiver thread); the deadline guard
+            // inside collectReadable bounds counted samples to the window.
             collectReadable(true);
-            await (0, perf_metrics_1.sleepImmediate)();
         }
-        const catchupDeadline = Date.now() + Number(process.env.PERF_SINGLE_SPOT_ACTIVE_CATCHUP_MS ?? 100);
-        while (Date.now() < catchupDeadline) {
-            if (!collectReadable(true)) {
-                await (0, perf_metrics_1.sleepImmediate)();
-            }
-            if (accepted > 0) {
-                break;
-            }
-        }
+        // C perf_spot.cpp run_active_window: after the active deadline the
+        // sender immediately publishes the stop token via the dedicated stop
+        // publisher (no post-active catch-up phase); the receiver then drains
+        // remaining in-flight payloads until it observes the stop token.
+        //
         // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire stop token
         // and drain in-flight payloads until the receiver observes it. The
         // legacy phase-2 cooldown message + timer-based idle drain are no

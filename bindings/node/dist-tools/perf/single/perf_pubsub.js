@@ -2,14 +2,58 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
-const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, drainRecvSocket, emitSingleSocketHwmDetail, parseSingleBinaryArgs, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForPostReadySettle, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, HEADER_SIZE, summarizeMetrics, } = require('../common/perf_metrics');
+const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsClient, drainRecvSocket, emitSingleSocketHwmDetail, parseSingleBinaryArgs, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerError, waitForPostReadySettle, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 function trace(message) {
     if (process.env.PERF_NODE_TRACE === '1') {
         console.error(`[pubsub] ${message}`);
     }
 }
 async function runPubSubBenchmark(msgSize, options) {
+    if (options.transport === 'inproc') {
+        // inproc is context-local (doc/guide/04-transports.md) so the Worker
+        // sender path cannot reach it. Run PUB+SUB in one shared context with
+        // the C-faithful blocking-equivalent one-way model (same adaptation
+        // as PAIR/DEALER inproc). C perf_pubsub.cpp: PUB binds, SUB connects
+        // + subscribes; wire stop token on the topic ends the phase.
+        const TOPIC = 'bench';
+        return runLocalSocketOneWayBenchmark({
+            pattern: 'PUBSUB',
+            msgSize,
+            options,
+            endpointToken: 'pubsub',
+            createReceiver: (ctx) => new zlink.SubSocket(ctx),
+            createSender: (ctx) => new zlink.PubSocket(ctx),
+            configureReceiver: (socket) => socket.setSubscription(TOPIC),
+            senderBinds: true,
+            drainViaSubscribe: true,
+            sendActive: (socket, payload) => {
+                try {
+                    return socket.publish(TOPIC).message(payload)
+                        .flags(zlink.SendFlags.DontWait).submit();
+                }
+                catch (error) {
+                    if (error instanceof zlink.SubmitError
+                        && (error.result === zlink.SubmitResult.Backpressured
+                            || error.result === zlink.SubmitResult.NotConnected
+                            || error.result === zlink.SubmitResult.NotFound)) {
+                        return false;
+                    }
+                    const text = String(error && error.message ? error.message : error);
+                    if ((error && error.code === 'EAGAIN')
+                        || text.includes('Resource temporarily unavailable')) {
+                        return false;
+                    }
+                    throw error;
+                }
+            },
+            sendStop: (socket) => {
+                socket.publish(TOPIC).message(STOP_TOKEN_BYTES)
+                    .flags(zlink.SendFlags.None).submit();
+            },
+        });
+    }
     const ctx = new zlink.Context();
     applyContextPolicy(ctx);
     const sub = new zlink.SubSocket(ctx);
@@ -25,6 +69,12 @@ async function runPubSubBenchmark(msgSize, options) {
         });
         applyAutoHwmMsgUnit(sub, msgSize);
         ctx.recalculateAutoHwm();
+        // The SUB connects from this (main) process, so it must carry the TLS
+        // client config for tls/wss exactly like the worker's connecting
+        // sockets do (perf_single_sender_worker.ts:51). Without it the SUB
+        // cannot complete the TLS handshake with the TLS PUB bind and the
+        // CONNECTION_READY gate never fires (PUBSUB tls/wss hung pre-data).
+        configureTlsClient(sub, options.transport);
         sub.setSubscription('');
         sub.connect(endpoint);
         worker = spawnSenderWorker({
@@ -47,10 +97,14 @@ async function runPubSubBenchmark(msgSize, options) {
             waitForWorkerMessage(worker, 'bound'),
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
-        worker.postMessage({ type: 'ready' });
+        // C setup_connected_pubsub_pair: wait for the subscriber
+        // CONNECTION_READY and the post-ready settle BEFORE releasing the
+        // publisher's active loop, so the active window starts on a settled
+        // connected pair (not an extra start gate — this is the ready gate).
         await waitForMonitorConnectionReady(subMonitor);
         trace('connection ready');
         await waitForPostReadySettle(Number(process.env.PERF_SINGLE_PUBSUB_READY_SETTLE_MS ?? 1000));
+        worker.postMessage({ type: 'ready' });
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs
             + BigInt(Math.floor(options.duration * 1_000_000_000));
@@ -61,20 +115,19 @@ async function runPubSubBenchmark(msgSize, options) {
             activeStartNs,
             activeStopNs,
         });
-        worker.postMessage({ type: 'start' });
-        await Promise.race([
-            waitForWorkerMessage(worker, 'started'),
-            workerError.then((message) => Promise.reject(new Error(message.message)))
-        ]);
+        // PERF_SINGLE_TEST_POLICY § 1.4 / § 2.0.1 / C setup_connected_pubsub_
+        // pair + send_pubsub_stop_token: the `bound`->CONNECTION_READY->settle
+        // ->`ready` exchange above IS the connection-ready gate (PUB binds in
+        // the worker, SUB connects here). No extra start/stop ack — the
+        // subscriber drains until the wire stop token on the topic.
         const recvTask = drainRecvSocket(sub, (received) => {
-            const header = decodeMetricHeaderFromParts(received.parts);
+            const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
             collector.record(header, currentEpochNs());
         });
         await Promise.race([
-            waitForWorkerDone(worker, options.duration),
+            recvTask,
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
-        await recvTask;
         const result = collector.finish();
         emitSingleSocketHwmDetail(sub, 'PUBSUB', options.transport, 'subscriber', msgSize);
         return result;

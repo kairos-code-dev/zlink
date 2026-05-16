@@ -11,6 +11,7 @@ from perf_multi_common import (
     configure_multi_tls_server,
     extract_metric_payload,
     is_active_message,
+    is_stop_token_in_parts,
     latency_ns_from_message,
     print_result_lines,
     recv_nonblocking,
@@ -49,45 +50,70 @@ def main(argv=None):
                 dealer.bind(endpoint)
                 print(f"READY,{endpoint}", flush=True)
                 with zlink.Poller() as poller:
-                    poller.add_socket(
-                        dealer,
-                        zlink.PollEventFlag.POLLIN | zlink.PollEventFlag.POLLOUT,
-                    )
+                    poller.add_socket(dealer, zlink.PollEventFlag.POLLIN)
                     start_event.wait()
                     if stop_event.is_set():
                         return
                     active_deadline = time.perf_counter() + active_duration_s
                     latencies = []
                     count = 0
-                    while time.perf_counter() < active_deadline and not stop_event.is_set():
-                        remaining_ms = max(
-                            1,
-                            int((active_deadline - time.perf_counter()) * 1000),
-                        )
-                        events = safe_poll(poller, remaining_ms)
-                        if not events:
+
+                    def drain_ready():
+                        # C receive_one_message + drain_non_blocking_messages:
+                        # every matched header counts; latency excludes
+                        # clock-skew (latency_ns_from_message returns None).
+                        nonlocal count
+                        while True:
+                            msg = recv_nonblocking(dealer)
+                            if msg is None:
+                                return
+                            with msg:
+                                parts = msg.to_bytes_list()
+                            if is_stop_token_in_parts(parts):
+                                continue
+                            data = extract_metric_payload(parts)
+                            if not is_active_message(
+                                data,
+                                expected_msg_size=args.msg_size,
+                                run_id=run_id,
+                            ):
+                                continue
+                            count += 1
+                            latency = latency_ns_from_message(data)
+                            if latency is not None:
+                                latencies.append(latency)
+
+                    # C run_receive_window: poll(-1) POLLIN, count until the
+                    # measure deadline, then break.
+                    while not stop_event.is_set():
+                        events = safe_poll(poller, -1)
+                        if events:
+                            for event in events:
+                                if int(event.events) & int(
+                                    zlink.PollEventFlag.POLLIN
+                                ):
+                                    drain_ready()
+                        if time.perf_counter() >= active_deadline:
+                            break
+
+                    # C drain_phase_until_idle: bounded uncounted tail drain
+                    # so late in-flight messages do not skew the next case.
+                    idle_deadline = time.perf_counter() + 0.05
+                    tail_deadline = time.perf_counter() + active_duration_s
+                    while (
+                        not stop_event.is_set()
+                        and time.perf_counter() < tail_deadline
+                    ):
+                        msg = recv_nonblocking(dealer)
+                        if msg is not None:
+                            with msg:
+                                pass
+                            idle_deadline = time.perf_counter() + 0.05
                             continue
-                        for event in events:
-                            if int(event.events) & int(zlink.PollEventFlag.POLLIN):
-                                while True:
-                                    received = recv_nonblocking(dealer)
-                                    if received is None:
-                                        break
-                                    with received:
-                                        parts = received.to_bytes_list()
-                                    data = extract_metric_payload(parts)
-                                    if not is_active_message(
-                                        data,
-                                        expected_msg_size=args.msg_size,
-                                        run_id=run_id,
-                                    ):
-                                        continue
-                                    if time.perf_counter() >= active_deadline:
-                                        continue
-                                    latency = latency_ns_from_message(data)
-                                    if latency is not None:
-                                        latencies.append(latency)
-                                    count += 1
+                        if time.perf_counter() >= idle_deadline:
+                            break
+                        events = safe_poll(poller, 50)
+
                     if count <= 0:
                         raise RuntimeError(
                             "multi dealer-dealer server did not receive any active message"

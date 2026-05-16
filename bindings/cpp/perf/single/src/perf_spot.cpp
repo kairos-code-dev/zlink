@@ -82,10 +82,44 @@ bool header_matches_active_run (const spot_recv_state_t &state_,
 
 bool send_spot_payload (zlink::service::spot_t &spot_,
                         const void *data_,
-                        size_t size_)
+                        size_t size_,
+                        bool dontwait_,
+                        bool *sent_out_)
 {
-    return perf::single::publish_payload_blocking (
-      spot_, k_topic, data_, size_);
+    if (sent_out_)
+        *sent_out_ = false;
+
+    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    if (!msg.valid ())
+        return false;
+    try {
+        const bool sent =
+          dontwait_
+            ? std::move (spot_.publish (k_topic)
+                           .message (msg)
+                           .flags (ZLINK_DONTWAIT))
+                .submit ()
+            : std::move (spot_.publish (k_topic).message (msg)).submit ();
+        if (sent_out_)
+            *sent_out_ = sent;
+        return true;
+    }
+    catch (const zlink::submit_error_t &err) {
+        errno = err.internal_errno ();
+        if (dontwait_
+            && perf::single::is_transient_spot_publish_errno (errno)) {
+            return true;
+        }
+        return false;
+    }
+    catch (const zlink::zlink_error_t &err) {
+        errno = err.internal_errno ();
+        if (dontwait_
+            && perf::single::is_transient_spot_publish_errno (errno)) {
+            return true;
+        }
+        return false;
+    }
 }
 
 bool stamp_and_publish (zlink::service::spot_t &spot_,
@@ -94,23 +128,22 @@ bool stamp_and_publish (zlink::service::spot_t &spot_,
                         size_t msg_size_,
                         uint64_t seq_,
                         perf_single_metric::phase_t phase_,
+                        bool dontwait_,
                         bool *sent_out_)
 {
     if (sent_out_)
         *sent_out_ = false;
-    const bool ok = perf_single_metric::stamp_payload (
-                      payload_.data (),
-                      payload_.size (),
-                      run_id_,
-                      phase_,
-                      msg_size_,
-                      seq_,
-                      perf_single_metric::now_ns ())
-                    && send_spot_payload (
-                      spot_, payload_.data (), payload_.size ());
-    if (sent_out_)
-        *sent_out_ = ok;
-    return ok;
+    if (!perf_single_metric::stamp_payload (payload_.data (),
+                                            payload_.size (),
+                                            run_id_,
+                                            phase_,
+                                            msg_size_,
+                                            seq_,
+                                            perf_single_metric::now_ns ())) {
+        return false;
+    }
+    return send_spot_payload (
+      spot_, payload_.data (), payload_.size (), dontwait_, sent_out_);
 }
 
 bool decode_spot_header (const zlink::topic_message_t &message_,
@@ -235,6 +268,7 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
                                 state_->msg_size,
                                 seq++,
                                 perf_single_metric::phase_warmup,
+                                false,
                                 &sent)) {
             return false;
         }
@@ -461,9 +495,14 @@ bool run_pattern_spot (const std::string &transport,
                                     msg_size,
                                     seq,
                                     perf_single_metric::phase_active,
+                                    true,
                                     &sent)) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
+            }
+            if (!sent) {
+                std::this_thread::yield ();
+                continue;
             }
             ++seq;
         }

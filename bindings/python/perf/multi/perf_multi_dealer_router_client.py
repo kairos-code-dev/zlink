@@ -5,11 +5,10 @@ from contextlib import ExitStack
 import zlink
 
 from perf_multi_common import (
-    STOP_TOKEN,
     apply_multi_socket_options,
     benchmark_run_id,
+    extract_metric_payload,
     is_active_message,
-    is_stop_token_in_parts,
     latency_ns_from_message,
     new_payload,
     parse_client_args,
@@ -29,10 +28,12 @@ def main(argv=None):
     args = parse_client_args(argv or sys.argv[1:], pattern="dealer_router")
     run_id = benchmark_run_id()
     payloads = [new_payload(args.msg_size) for _ in range(args.clients)]
+    # C perf_multi_client_helpers.hpp run_echo_window_round_robin: the echo
+    # client is purely deadline-driven (no wire stop token); awaiting_reply /
+    # send_pending gate inflight==1 per socket.
     waiting_reply = [False] * args.clients
     send_pending = [True] * args.clients
-    stop_sent = [False] * args.clients
-    stopped = [False] * args.clients
+    received = 0
     latencies = []
     seq = 0
 
@@ -63,17 +64,57 @@ def main(argv=None):
                             sock,
                             zlink.PollEventFlag.POLLIN | zlink.PollEventFlag.POLLOUT,
                         )
-                    # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait.
-                    # Each socket exits its loop after the echoed stop token
-                    # comes back. The wait is bounded by the active duration
-                    # so the phase transition can submit the stop token even
-                    # when no new readiness edge arrives exactly at timeout.
-                    while not all(stopped):
-                        now = time.perf_counter()
+                    # C run_echo_window_round_robin: loop until the steady
+                    # deadline (no stop token). Each iteration sends pending
+                    # sockets, then polls (-1, signal-driven) only the
+                    # sockets with interest and dispatches only ready ones.
+                    while time.perf_counter() < active_deadline:
                         for index, current_sock in enumerate(sockets):
-                            if stopped[index] or waiting_reply[index] or not send_pending[index]:
+                            if waiting_reply[index] or not send_pending[index]:
                                 continue
-                            if now < active_deadline:
+                            seq += 1
+                            payload = stamp_payload(
+                                payloads[index],
+                                phase=1,
+                                run_id=run_id,
+                                seq=seq,
+                            )
+                            if send_nonblocking(current_sock, payload):
+                                waiting_reply[index] = True
+                                send_pending[index] = False
+
+                        # Build poll interest per C: POLLIN when awaiting a
+                        # reply, else POLLOUT when a send is pending.
+                        interest = [
+                            i
+                            for i in range(len(sockets))
+                            if waiting_reply[i] or send_pending[i]
+                        ]
+                        if not interest:
+                            for i in range(len(sockets)):
+                                if not waiting_reply[i]:
+                                    send_pending[i] = True
+                            continue
+
+                        # C uses perf_socket_poll(..., -1). The Poller has all
+                        # sockets registered for POLLIN|POLLOUT; -1 wait is
+                        # signal-driven and the result identifies ready
+                        # sources for dispatch.
+                        events = safe_poll(poller, -1)
+                        if not events:
+                            continue
+                        for event in events:
+                            current_sock = event.socket
+                            try:
+                                index = sockets.index(current_sock)
+                            except ValueError:
+                                continue
+                            ev = int(event.events)
+                            if (
+                                ev & int(zlink.PollEventFlag.POLLOUT)
+                                and not waiting_reply[index]
+                                and send_pending[index]
+                            ):
                                 seq += 1
                                 payload = stamp_payload(
                                     payloads[index],
@@ -84,101 +125,37 @@ def main(argv=None):
                                 if send_nonblocking(current_sock, payload):
                                     waiting_reply[index] = True
                                     send_pending[index] = False
-                            elif not stop_sent[index] and send_nonblocking(current_sock, STOP_TOKEN):
-                                waiting_reply[index] = True
-                                send_pending[index] = False
-                                stop_sent[index] = True
-                        wait_ms = max(
-                            1,
-                            min(100, int(max(active_deadline - time.perf_counter(), 0) * 1000)),
-                        )
-                        events = safe_poll(poller, wait_ms)
-                        if not events:
-                            if time.perf_counter() >= active_deadline:
-                                for index, current_sock in enumerate(sockets):
-                                    if (
-                                        not stopped[index]
-                                        and not waiting_reply[index]
-                                        and send_pending[index]
-                                        and not stop_sent[index]
-                                        and send_nonblocking(current_sock, STOP_TOKEN)
-                                    ):
-                                        waiting_reply[index] = True
-                                        send_pending[index] = False
-                                        stop_sent[index] = True
-                            continue
-                        now = time.perf_counter()
-                        for event in events:
-                            current_sock = event.socket
-                            try:
-                                index = sockets.index(current_sock)
-                            except ValueError:
-                                continue
-                            if stopped[index]:
-                                continue
-                            ev = int(event.events)
-                            # Send next payload (active or stop token).
-                            if (
-                                ev & int(zlink.PollEventFlag.POLLOUT)
-                                and not waiting_reply[index]
-                                and send_pending[index]
-                            ):
-                                if now < active_deadline:
-                                    seq += 1
-                                    payload = stamp_payload(
-                                        payloads[index],
-                                        phase=1,
-                                        run_id=run_id,
-                                        seq=seq,
-                                    )
-                                    if send_nonblocking(current_sock, payload):
-                                        waiting_reply[index] = True
-                                        send_pending[index] = False
-                                elif not stop_sent[index]:
-                                    if send_nonblocking(current_sock, STOP_TOKEN):
-                                        waiting_reply[index] = True
-                                        send_pending[index] = False
-                                        stop_sent[index] = True
                             if not (ev & int(zlink.PollEventFlag.POLLIN)):
                                 continue
                             while True:
-                                received = recv_nonblocking(current_sock)
-                                if received is None:
+                                msg = recv_nonblocking(current_sock)
+                                if msg is None:
                                     break
-                                with received:
-                                    parts = received.to_bytes_list()
+                                with msg:
+                                    parts = msg.to_bytes_list()
                                 waiting_reply[index] = False
-                                send_pending[index] = True
-                                if is_stop_token_in_parts(parts):
-                                    stopped[index] = True
-                                    send_pending[index] = False
-                                    break
-                                if (
-                                    time.perf_counter() >= active_deadline
-                                    and not stop_sent[index]
-                                    and send_nonblocking(current_sock, STOP_TOKEN)
-                                ):
-                                    waiting_reply[index] = True
-                                    send_pending[index] = False
-                                    stop_sent[index] = True
-                                    continue
-                                if not parts:
-                                    continue
-                                data = parts[0]
-                                if is_active_message(
+                                data = extract_metric_payload(parts)
+                                header = latency_ns_from_message(data) if data else None
+                                # C: every matched header counts (++local_recv,
+                                # → recv_count); latency only added when not
+                                # clock-skewed (sent_ts_ns>0 && now>=sent_ts),
+                                # halved for the round trip.
+                                if data and is_active_message(
                                     data,
                                     expected_msg_size=args.msg_size,
                                     run_id=run_id,
-                                ) and time.perf_counter() < active_deadline:
-                                    latency = latency_ns_from_message(data)
-                                    if latency is not None:
-                                        latencies.append(latency / 2.0)
-                if not latencies:
+                                ):
+                                    received += 1
+                                    if header is not None:
+                                        latencies.append(header / 2.0)
+                                if time.perf_counter() < active_deadline:
+                                    send_pending[index] = True
+                if received == 0:
                     raise RuntimeError(
                         "multi dealer-router benchmark did not receive any active reply"
                     )
                 metrics = result_metrics(
-                    count=len(latencies),
+                    count=received,
                     msg_size=args.msg_size,
                     elapsed_s=args.duration,
                     latencies_ns=latencies,

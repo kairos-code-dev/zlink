@@ -174,6 +174,22 @@ public final class PerfUtil {
         return PerfMeasurement.endpoint(transport, token);
     }
 
+    public static String bindEndpoint(String endpoint, String transport) {
+        return switch (transport) {
+            case "tcp", "tls", "ws", "wss" ->
+                endpoint.replaceFirst(":[0-9]+$", ":*");
+            default -> endpoint;
+        };
+    }
+
+    public static String connectedEndpoint(Socket boundSocket, String fallback,
+                                           String transport) {
+        return switch (transport) {
+            case "tcp", "tls", "ws", "wss" -> boundSocket.options().lastEndpoint();
+            default -> fallback;
+        };
+    }
+
     public static boolean isEchoPattern(String pattern) {
         return PerfMeasurement.isEchoPattern(pattern);
     }

@@ -66,23 +66,22 @@ internal static class PerfRouterRouter
 
             receiver.SetRoutingId(ReceiverRoutingId);
             sender.SetRoutingId(SenderRoutingId);
-            sender.Options.SetConnectRoutingId(ReceiverRoutingId);
             receiver.Options.Mandatory = true;
             sender.Options.Mandatory = true;
             receiver.Bind(endpoint);
+            endpoint = receiver.Options.LastEndpoint;
             sender.Connect(endpoint);
             if (!(WaitForConnectionReady(receiverMonitor, readyTimeoutMs)
                 && WaitForConnectionReady(senderMonitor, readyTimeoutMs)))
             {
                 DebugLog("single_router_router_error:connection_not_ready");
-                ctx.Shutdown();
                 TryCleanup(sender, receiver, endpoint);
                 return 2;
             }
 
-            if (!VerifyRouteReady(sender, receiver, size, recvTimeoutMs))
+            if (!CompleteHandshake(sender, receiver, readyTimeoutMs,
+                    out RoutingId targetRoutingId))
             {
-                ctx.Shutdown();
                 TryCleanup(sender, receiver, endpoint);
                 DebugLog("single_router_router_error:route_probe_failed");
                 return 2;
@@ -97,12 +96,12 @@ internal static class PerfRouterRouter
             var payload = new byte[payloadSize];
             Array.Fill(payload, (byte)'a');
 
-            if (!RunActivePhase(sender, receiver, payload, size, durationSeconds,
-                    recvTimeoutMs, latencySampleCap, out long received,
+            if (!RunActivePhase(sender, receiver, targetRoutingId, payload,
+                    size, durationSeconds, recvTimeoutMs, latencySampleCap,
+                    out long received,
                     out var latencySamples))
             {
                 DebugLog("single_router_router_error:active_failed");
-                ctx.Shutdown();
                 TryCleanup(sender, receiver, endpoint);
                 return 2;
             }
@@ -111,7 +110,6 @@ internal static class PerfRouterRouter
             var latency = ComputeLatencyStats(latencySamples);
             PrintResult("ROUTER_ROUTER", transport, size, throughput,
                 latency.mean, latency.p95, latency.p99);
-            ctx.Shutdown();
             TryCleanup(sender, receiver, endpoint);
             return 0;
         }
@@ -128,63 +126,95 @@ internal static class PerfRouterRouter
         }
     }
 
-    private static bool VerifyRouteReady(RouterSocket sender,
-        RouterSocket receiver, int msgSize, int recvTimeoutMs)
+    private static bool CompleteHandshake(RouterSocket sender,
+        RouterSocket receiver, int timeoutMs, out RoutingId targetRoutingId)
     {
-        int payloadSize = Math.Max(msgSize, PerfMetricHeaderSize);
-        var probe = new byte[payloadSize];
-        Array.Fill(probe, (byte)'r');
-        StampMetricHeader(probe.AsSpan(), RunId, ReadyPhase, msgSize, 1, EpochNs());
-
-        try
-        {
-            if (PerfSocketIo.Send(sender, ReceiverRoutingId, probe,
-                    SendFlags.None) == 0)
-                return false;
-        }
-        catch (ZlinkRecvException ex)
-        {
-            return false;
-        }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno)
-                                        || IsTransientNetworkError(ex.InternalErrno))
-        {
-            return false;
-        }
+        targetRoutingId = ReceiverRoutingId;
+        ReadOnlySpan<byte> ping = "PING"u8;
+        ReadOnlySpan<byte> pong = "PONG"u8;
+        RoutingId? senderActualRoutingId = null;
 
         using var poller = new Poller();
         var events = new PollEvent[1];
         poller.Add(receiver, PollEventFlags.PollIn);
-        long deadlineTicks = DeadlineTicksFromMilliseconds(Math.Max(1000,
-            recvTimeoutMs));
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        long deadlineTicks = DeadlineTicksFromMilliseconds(Math.Max(1000, timeoutMs));
+        while (senderActualRoutingId == null
+               && Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            int timeoutMs = Math.Max(1,
-                (int)Math.Ceiling((deadlineTicks - Stopwatch.GetTimestamp())
-                    * 1000.0 / Stopwatch.Frequency));
-            if (!WaitForInput(poller, events, timeoutMs))
-                continue;
-
-            var receivedBuffer = new Received();
-            while (TryReceive(receiver, receivedBuffer))
+            try
             {
-                if (!TryGetPayloadPart(receivedBuffer, out Message payloadPart))
-                    continue;
-
-                return TryDecodeExpectedSingleHeader(
-                    payloadPart.AsReadOnlySpan(), msgSize, ReadyPhase,
-                    out _, RunId);
+                _ = PerfSocketIo.Send(sender, ReceiverRoutingId, ping,
+                    SendFlags.DontWait);
+            }
+            catch (ZlinkException ex)
+                when (PerfShared.IsTransientBackpressure(ex.InternalErrno)
+                      || IsTransientNetworkError(ex.InternalErrno))
+            {
             }
 
+            int waitMs = Math.Max(1,
+                (int)Math.Ceiling((deadlineTicks - Stopwatch.GetTimestamp())
+                    * 1000.0 / Stopwatch.Frequency));
+            if (!WaitForInput(poller, events, waitMs))
+                continue;
+
+            using var receivedBuffer = new Received();
+            while (TryReceive(receiver, receivedBuffer))
+            {
+                if (receivedBuffer.RoutingId == null
+                    || !IsPayload(receivedBuffer, ping))
+                    continue;
+
+                senderActualRoutingId = receivedBuffer.RoutingId;
+                break;
+            }
+        }
+
+        if (senderActualRoutingId == null)
+            return false;
+
+        try
+        {
+            if (PerfSocketIo.Send(receiver, senderActualRoutingId.Value, pong,
+                    SendFlags.None) == 0)
+                return false;
+        }
+        catch (ZlinkException ex)
+            when (PerfShared.IsTransientBackpressure(ex.InternalErrno)
+                  || IsTransientNetworkError(ex.InternalErrno))
+        {
+            return false;
+        }
+
+        using var senderPoller = new Poller();
+        var senderEvents = new PollEvent[1];
+        senderPoller.Add(sender, PollEventFlags.PollIn);
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            int waitMs = Math.Max(1,
+                (int)Math.Ceiling((deadlineTicks - Stopwatch.GetTimestamp())
+                    * 1000.0 / Stopwatch.Frequency));
+            if (!WaitForInput(senderPoller, senderEvents, waitMs))
+                continue;
+
+            using var response = new Received();
+            while (TryReceive(sender, response))
+            {
+                if (response.RoutingId == null || !IsPayload(response, pong))
+                    continue;
+
+                targetRoutingId = response.RoutingId.Value;
+                return true;
+            }
         }
 
         return false;
     }
 
     private static bool RunActivePhase(RouterSocket sender, RouterSocket receiver,
-        byte[] payload, int msgSize, int durationSeconds, int recvTimeoutMs,
-        int latencyCap, out long receivedOut, out List<double> latencySamples)
+        RoutingId targetRoutingId, byte[] payload, int msgSize,
+        int durationSeconds, int recvTimeoutMs, int latencyCap,
+        out long receivedOut, out List<double> latencySamples)
     {
         _ = recvTimeoutMs;
         long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
@@ -241,13 +271,14 @@ internal static class PerfRouterRouter
                     seq++;
                     try
                     {
-                        if (PerfSocketIo.Send(sender, ReceiverRoutingId,
-                                payload, SendFlags.None) == 0)
+                        if (PerfSocketIo.Send(sender, targetRoutingId, payload,
+                                SendFlags.None) == 0)
                             continue;
                     }
-                    catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                                    || IsWouldBlock(ex.InternalErrno)
-                                                    || IsTransientNetworkError(ex.InternalErrno))
+                    catch (ZlinkException ex)
+                        when (PerfShared.IsTransientBackpressure(
+                                  ex.InternalErrno)
+                              || IsTransientNetworkError(ex.InternalErrno))
                     {
                         continue;
                     }
@@ -266,20 +297,39 @@ internal static class PerfRouterRouter
             {
                 // Always emit the stop token so the receiver loop exits
                 // even on send failures during the active phase.
-                SendRoutedStopTokenBlocking(sender, ReceiverRoutingId,
-                    "[single-router-router]");
+                if (!SendRoutedStopTokenBlocking(sender, targetRoutingId,
+                        "[single-router-router]"))
+                {
+                    sendError ??= new TimeoutException(
+                        "router-router stop token was not sent");
+                }
             }
         });
         senderThread.IsBackground = true;
         senderThread.Start();
 
+        using var poller = new Poller();
+        var events = new PollEvent[1];
+        poller.Add(receiver, PollEventFlags.PollIn);
         var receivedBuffer = new Received();
+        // PERF_SINGLE_TEST_POLICY § 1.4: signal-driven (-1) poller wait, no
+        // sender_done atomic flag, no short-poll/deadline fallback. The phase
+        // ends purely when the wire-level stop token arrives, matching C
+        // perf_router_router.cpp run_active_phase (recv loop exits only on
+        // recv_rc == 2 / is_stop_token).
         while (!stopReceived)
         {
-            if (!TryReceiveBlocking(receiver, receivedBuffer))
+            if (!WaitForInputSignalDriven(poller, events))
                 continue;
-            if (ProcessReceived(receivedBuffer))
-                stopReceived = true;
+
+            while (TryReceive(receiver, receivedBuffer))
+            {
+                if (ProcessReceived(receivedBuffer))
+                {
+                    stopReceived = true;
+                    break;
+                }
+            }
         }
 
         senderThread.Join();
@@ -312,23 +362,6 @@ internal static class PerfRouterRouter
         }
     }
 
-    private static bool TryReceiveBlocking(RouterSocket receiver, Received result)
-    {
-        try
-        {
-            return receiver.Recv(result);
-        }
-        catch (ZlinkRecvException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
-        {
-            return false;
-        }
-        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                        || IsWouldBlock(ex.InternalErrno))
-        {
-            return false;
-        }
-    }
 
     private static bool TryGetPayloadPart(Received received,
         out Message payloadPart)
@@ -347,6 +380,13 @@ internal static class PerfRouterRouter
 
         payloadPart = default!;
         return false;
+    }
+
+    private static bool IsPayload(Received received, ReadOnlySpan<byte> expected)
+    {
+        if (!TryGetPayloadPart(received, out Message payloadPart))
+            return false;
+        return payloadPart.AsReadOnlySpan().SequenceEqual(expected);
     }
 
     private static bool IsInterrupted(int errno)

@@ -276,18 +276,18 @@ pub struct LatencyStats {
 impl LatencyStats {
     pub fn new() -> Self {
         Self {
-            samples: Vec::with_capacity(resolve_multi_latency_sample_cap().min(1 << 16)),
+            samples: Vec::new(),
             count: 0,
             sum: 0.0,
         }
     }
 
+    // C perf_multi_metrics.hpp bench_latency_sampler_t: every sample retained in
+    // an unbounded growing vector; percentiles are exact.
     pub fn record_ns(&mut self, ns: f64) {
         self.count += 1;
         self.sum += ns;
-        if self.samples.len() < resolve_multi_latency_sample_cap() {
-            self.samples.push(ns);
-        }
+        self.samples.push(ns);
     }
 
     pub fn finish(&mut self) -> StatsResult {
@@ -307,12 +307,23 @@ impl LatencyStats {
     }
 }
 
-fn percentile(sorted: &[f64], p: f64) -> f64 {
+// C perf_multi_metrics.hpp percentile_from_sorted(): linear interpolation
+// between adjacent sorted samples (exact percentile, not nearest-rank).
+fn percentile(sorted: &[f64], q: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
     }
-    let idx = ((sorted.len() as f64 * p) as usize).min(sorted.len() - 1);
-    sorted[idx]
+    if q <= 0.0 {
+        return sorted[0];
+    }
+    if q >= 1.0 {
+        return sorted[sorted.len() - 1];
+    }
+    let pos = (sorted.len() - 1) as f64 * q;
+    let lo = pos as usize;
+    let hi = if lo + 1 < sorted.len() { lo + 1 } else { lo };
+    let frac = pos - lo as f64;
+    sorted[lo] + (sorted[hi] - sorted[lo]) * frac
 }
 
 #[derive(Default)]
@@ -505,8 +516,8 @@ impl MultiSettings {
         Self {
             clients: env_or("PERF_MULTI_CLIENTS", 100),
             duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
-            send_hwm: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 1000)),
-            recv_hwm: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 1000)),
+            send_hwm: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 0)),
+            recv_hwm: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 0)),
             msg_unit_bytes: env_or_i32("PERF_MULTI_MSG_UNIT_BYTES", 0),
             send_timeout_ms: env_or("PERF_MULTI_SNDTIMEO_MS", 200) as u64,
             recv_timeout_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as u64,
@@ -514,11 +525,93 @@ impl MultiSettings {
     }
 }
 
+// C perf_multi_runtime.hpp bench_manual_socket_overrides_allowed(): numeric
+// SNDHWM/RCVHWM only applied when the operator opts in; default path applies
+// no numeric HWM (context auto-HWM governs).
+fn manual_socket_overrides_allowed() -> bool {
+    std::env::var("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES")
+        .ok()
+        .or_else(|| std::env::var("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES").ok())
+        .map(|v| v == "1")
+        .unwrap_or(false)
+}
+
+pub trait MultiSocketHwmOptions {
+    fn set_send_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
+    fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
+    fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ZlinkError>;
+}
+
+macro_rules! impl_multi_socket_hwm_options {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl MultiSocketHwmOptions for $ty {
+                fn set_send_hwm(&self, hwm: i32) -> Result<(), ZlinkError> {
+                    Ok(self.common_options().set_send_hwm(hwm)?)
+                }
+                fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError> {
+                    Ok(self.common_options().set_recv_hwm(hwm)?)
+                }
+                fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ZlinkError> {
+                    Ok(self.common_options().set_auto_hwm_msg_unit_bytes(bytes)?)
+                }
+            }
+        )+
+    };
+}
+
+impl_multi_socket_hwm_options!(
+    PairSocket,
+    PubSocket,
+    DealerSocket,
+    RouterSocket,
+    StreamSocket,
+    SubSocket
+);
+
+// C perf_multi_runtime.hpp apply_benchmark_hwm(): gated behind manual-override
+// flag; only applies positive HWM values.
+pub fn apply_multi_hwm<O: MultiSocketHwmOptions>(opts: &O, settings: &MultiSettings) {
+    if !manual_socket_overrides_allowed() {
+        return;
+    }
+    if settings.send_hwm > 0 {
+        opts.set_send_hwm(settings.send_hwm).expect("sndhwm");
+    }
+    if settings.recv_hwm > 0 {
+        opts.set_recv_hwm(settings.recv_hwm).expect("rcvhwm");
+    }
+}
+
+// C perf_multi_runtime.hpp apply_benchmark_auto_hwm_msg_unit(): raw multi
+// sockets always get ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = msg_size. SPOT
+// node/handle excluded.
+pub fn apply_multi_auto_hwm_msg_unit<O: MultiSocketHwmOptions>(opts: &O, msg_size: usize) {
+    if msg_size == 0 {
+        return;
+    }
+    let unit = msg_size.min(i32::MAX as usize) as i32;
+    opts.set_auto_hwm_msg_unit_bytes(unit)
+        .expect("auto hwm msg unit");
+}
+
+// SPOT excluded from apply_benchmark_auto_hwm_msg_unit in C; node pubsub/router
+// HWM only under the manual-override gate (apply_benchmark_spot_node_hwm).
 pub fn apply_multi_spot_node_admission(node: &zlink::SpotNode, settings: &MultiSettings) {
-    node.set_pubsub_hwm(settings.send_hwm)
-        .expect("spot node pubsub hwm");
-    node.set_router_hwm(settings.recv_hwm)
-        .expect("spot node router hwm");
+    if !manual_socket_overrides_allowed() {
+        return;
+    }
+    let admission = if settings.send_hwm > 0 {
+        settings.send_hwm
+    } else {
+        settings.recv_hwm
+    };
+    if admission > 0 {
+        node.set_pubsub_hwm(admission)
+            .expect("spot node pubsub hwm");
+        node.set_router_hwm(admission)
+            .expect("spot node router hwm");
+    }
 }
 
 pub fn resolve_multi_connect_ready_timeout() -> Duration {
@@ -537,10 +630,6 @@ fn env_or_i32(name: &str, default: i32) -> i32 {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
-}
-
-fn resolve_multi_latency_sample_cap() -> usize {
-    env_or("PERF_MULTI_LATENCY_SAMPLE_CAP", 200_000)
 }
 
 // -- CLI parsing for server/client binaries ----------------------------------

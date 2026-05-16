@@ -32,11 +32,16 @@ type Result struct {
 	LatencyNs    float64
 	LatencyP95Ns float64
 	LatencyP99Ns float64
+	// Valid is false when no valid messages / latency samples were
+	// recorded. perf_single_one_way.hpp run_active_phase returns false
+	// when received==0 or latency count==0; that is a FAIL (no RESULT
+	// line), not a 0.000 result.
+	Valid bool
 }
 
 func NewStats() *Stats {
 	return &Stats{
-		latNs: make([]float64, 0, latencySampleCap()),
+		latNs: make([]float64, 0),
 	}
 }
 
@@ -48,9 +53,9 @@ func (s *Stats) AddLatencyNs(latencyNs float64) {
 	atomic.AddUint64(&s.count, 1)
 	s.mu.Lock()
 	s.sumNs += latencyNs
-	if len(s.latNs) < latencySampleCap() {
-		s.latNs = append(s.latNs, latencyNs)
-	}
+	// perf_single_latency.hpp latency_stats_builder_t::add: unbounded
+	// push_back, exact percentiles, no reservoir cap.
+	s.latNs = append(s.latNs, latencyNs)
 	s.mu.Unlock()
 }
 
@@ -69,7 +74,14 @@ func (s *Stats) Snapshot(duration time.Duration, msgSize int) Result {
 		LatencyNs:    latencyMean,
 		LatencyP95Ns: percentile(s.latNs, 95),
 		LatencyP99Ns: percentile(s.latNs, 99),
+		Valid:        count > 0 && len(s.latNs) > 0,
 	}
+}
+
+// PrintFail mirrors perf_single_monitor.hpp print_failure_diagnostics:
+// emit a FAIL line to stderr (no RESULT lines) and signal nonzero exit.
+func PrintFail(pattern, transport string, msgSize int) {
+	fmt.Fprintf(os.Stderr, "FAIL,current,%s,%s,%d\n", pattern, transport, msgSize)
 }
 
 func PrintResult(pattern, transport string, msgSize int, result Result) {
@@ -78,21 +90,6 @@ func PrintResult(pattern, transport string, msgSize int, result Result) {
 	fmt.Printf("RESULT,current,%s,%s,%d,latency,%.3f\n", pattern, transport, msgSize, result.LatencyNs/1_000_000.0)
 	fmt.Printf("RESULT,current,%s,%s,%d,latency_p95,%.3f\n", pattern, transport, msgSize, result.LatencyP95Ns/1_000_000.0)
 	fmt.Printf("RESULT,current,%s,%s,%d,latency_p99,%.3f\n", pattern, transport, msgSize, result.LatencyP99Ns/1_000_000.0)
-}
-
-func latencySampleCap() int {
-	raw := os.Getenv("PERF_SINGLE_LATENCY_SAMPLE_CAP")
-	if raw == "" {
-		raw = os.Getenv("PERF_MULTI_LATENCY_SAMPLE_CAP")
-	}
-	if raw == "" {
-		return 200000
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value <= 0 {
-		return 200000
-	}
-	return value
 }
 
 func Must(err error) {
@@ -143,30 +140,23 @@ func MultiRecvTimeout() time.Duration {
 	return multiSocketTimeout(false)
 }
 
-func resolveSingleSocketHWM(send bool) int {
-	return resolveSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", send)
-}
-
-func resolveMultiSocketHWM(pattern string, send bool) int {
-	fallback := 100
-	if strings.EqualFold(pattern, "MULTI_STREAM") {
-		fallback = 10
+// bench_common_runtime.hpp bench_single_manual_socket_overrides_allowed /
+// perf_multi_runtime.hpp bench_manual_socket_overrides_allowed: numeric
+// HWM only applies when the manual-override env flag is "1"; otherwise
+// context auto-HWM stays in effect.
+func manualSocketOverridesAllowed(scopedEnv string) bool {
+	value := os.Getenv(scopedEnv)
+	if value == "" {
+		value = os.Getenv("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES")
 	}
-	return resolveSocketHWMWithFallback(
-		"PERF_MULTI_HWM",
-		"PERF_MULTI_SNDHWM",
-		"PERF_MULTI_RCVHWM",
-		send,
-		fallback,
-	)
+	return value == "1"
 }
 
-func resolveSocketHWM(baseEnv, sendEnv, recvEnv string, send bool) int {
-	return resolveSocketHWMWithFallback(baseEnv, sendEnv, recvEnv, send, 1000)
-}
-
-func resolveSocketHWMWithFallback(baseEnv, sendEnv, recvEnv string, send bool, fallback int) int {
-	base := resolveIntEnv(baseEnv, fallback)
+// resolveManualSocketHWM mirrors resolve_single_socket_hwm /
+// bench_hwm_from_env: base default is 0 (auto-HWM); send/recv envs
+// override. Returns 0 when no numeric HWM should be set.
+func resolveManualSocketHWM(baseEnv, sendEnv, recvEnv string, send bool) int {
+	base := resolveIntEnv(baseEnv, 0)
 	if send {
 		return resolveIntEnv(sendEnv, base)
 	}
@@ -201,36 +191,85 @@ type benchmarkSocket interface {
 	SetRecvTimeout(time.Duration) error
 }
 
+type autoHwmMsgUnitSocket interface {
+	SetAutoHwmMsgUnitBytes(int) error
+}
+
+// ApplySingleHWM mirrors bench_common_runtime.hpp apply_single_hwm:
+// numeric SNDHWM/RCVHWM are only set when the manual-override flag is
+// enabled; otherwise context auto-HWM stays in effect.
 func ApplySingleHWM(socket hwmSocket) {
 	if socket == nil {
 		return
 	}
-	sndhwm := resolveSingleSocketHWM(true)
-	rcvhwm := resolveSingleSocketHWM(false)
-	Must(socket.SetSendHWM(sndhwm))
-	Must(socket.SetRecvHWM(rcvhwm))
+	if !manualSocketOverridesAllowed("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES") {
+		return
+	}
+	if sndhwm := resolveManualSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", true); sndhwm > 0 {
+		Must(socket.SetSendHWM(sndhwm))
+	}
+	if rcvhwm := resolveManualSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", false); rcvhwm > 0 {
+		Must(socket.SetRecvHWM(rcvhwm))
+	}
+}
+
+// ApplySingleAutoHWMMsgUnit mirrors apply_single_auto_hwm_msg_unit:
+// set the per-size auto-HWM message-unit on raw sockets so the binding
+// recalculates auto-HWM for the current msg size. NOT applied to SPOT.
+func ApplySingleAutoHWMMsgUnit(socket interface{}, msgSize int) {
+	if socket == nil || msgSize <= 0 {
+		return
+	}
+	if autoSocket, ok := socket.(autoHwmMsgUnitSocket); ok {
+		Must(autoSocket.SetAutoHwmMsgUnitBytes(msgSize))
+	}
 }
 
 func ApplySingleSpotNodeAdmission(node spotNodeAdmission) {
 	if node == nil {
 		return
 	}
-	Must(node.SetPubSubHWM(resolveSingleSocketHWM(true)))
-	Must(node.SetRouterHWM(resolveSingleSocketHWM(false)))
+	if !manualSocketOverridesAllowed("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES") {
+		return
+	}
+	send := resolveManualSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", true)
+	recv := resolveManualSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", false)
+	admission := send
+	if admission <= 0 {
+		admission = recv
+	}
+	if admission > 0 {
+		Must(node.SetPubSubHWM(admission))
+		Must(node.SetRouterHWM(admission))
+	}
 }
 
+// ApplyMultiHWM mirrors perf_multi_runtime.hpp apply_benchmark_hwm:
+// numeric HWM only with manual override; otherwise auto-HWM stays.
 func ApplyMultiHWM(socket hwmSocket, pattern string) {
 	if socket == nil {
 		return
 	}
-	sndhwm := resolveMultiSocketHWM(pattern, true)
-	rcvhwm := resolveMultiSocketHWM(pattern, false)
-	Must(socket.SetSendHWM(sndhwm))
-	Must(socket.SetRecvHWM(rcvhwm))
-	if autoSocket, ok := any(socket).(interface{ SetAutoHwmMsgUnitBytes(int) error }); ok {
-		if msgUnit := resolveIntEnv("PERF_MULTI_MSG_UNIT_BYTES", 0); msgUnit > 0 {
-			Must(autoSocket.SetAutoHwmMsgUnitBytes(msgUnit))
-		}
+	if !manualSocketOverridesAllowed("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES") {
+		return
+	}
+	if sndhwm := resolveManualSocketHWM("PERF_MULTI_HWM", "PERF_MULTI_SNDHWM", "PERF_MULTI_RCVHWM", true); sndhwm > 0 {
+		Must(socket.SetSendHWM(sndhwm))
+	}
+	if rcvhwm := resolveManualSocketHWM("PERF_MULTI_HWM", "PERF_MULTI_SNDHWM", "PERF_MULTI_RCVHWM", false); rcvhwm > 0 {
+		Must(socket.SetRecvHWM(rcvhwm))
+	}
+}
+
+// ApplyMultiAutoHWMMsgUnit mirrors apply_benchmark_auto_hwm_msg_unit:
+// raw multi sockets get the per-size auto-HWM message-unit option set
+// to the current msg size; the binding recalculates auto-HWM.
+func ApplyMultiAutoHWMMsgUnit(socket interface{}, msgSize int) {
+	if socket == nil || msgSize <= 0 {
+		return
+	}
+	if autoSocket, ok := socket.(autoHwmMsgUnitSocket); ok {
+		Must(autoSocket.SetAutoHwmMsgUnitBytes(msgSize))
 	}
 }
 
@@ -238,8 +277,19 @@ func ApplyMultiSpotNodeAdmission(node spotNodeAdmission, pattern string) {
 	if node == nil {
 		return
 	}
-	Must(node.SetPubSubHWM(resolveMultiSocketHWM(pattern, true)))
-	Must(node.SetRouterHWM(resolveMultiSocketHWM(pattern, false)))
+	if !manualSocketOverridesAllowed("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES") {
+		return
+	}
+	send := resolveManualSocketHWM("PERF_MULTI_HWM", "PERF_MULTI_SNDHWM", "PERF_MULTI_RCVHWM", true)
+	recv := resolveManualSocketHWM("PERF_MULTI_HWM", "PERF_MULTI_SNDHWM", "PERF_MULTI_RCVHWM", false)
+	admission := send
+	if admission <= 0 {
+		admission = recv
+	}
+	if admission > 0 {
+		Must(node.SetPubSubHWM(admission))
+		Must(node.SetRouterHWM(admission))
+	}
 }
 
 func ApplySingleBenchmarkSocketOptions(socket benchmarkSocket, transport string) {
@@ -408,15 +458,41 @@ func newContextWithIOThreads(defaultThreads int, envNames ...string) (*zlink.Con
 	return ctx, nil
 }
 
+// IsTransient mirrors the C data-path retry classification: only
+// EAGAIN/EWOULDBLOCK/EINTR are transient. Real connection errors
+// (ENOTCONN/EHOSTUNREACH/ECONNREFUSED/ENETUNREACH/ENOENT) must fail,
+// not silently retry. (perf_single_one_way.hpp send_socket_active_message
+// / recv_single_part_header_flags; perf_multi_client_helpers.hpp
+// classify_send_result.)
 func IsTransient(err error) bool {
 	var zerr zlink.ZlinkError
 	if !errors.As(err, &zerr) {
 		return false
 	}
 	switch zerr.InternalErrno() {
-	case int(syscall.EAGAIN), int(syscall.EINTR), int(syscall.ENOENT),
-		int(syscall.ENOTCONN), int(syscall.EHOSTUNREACH),
-		int(syscall.ECONNREFUSED), int(syscall.ENETUNREACH):
+	// EWOULDBLOCK == EAGAIN on Linux; listing EAGAIN covers both.
+	case int(syscall.EAGAIN), int(syscall.EINTR):
+		return true
+	default:
+		return false
+	}
+}
+
+// IsReadyProbeTransient is the SPOT ready-probe-only transient set:
+// perf_spot.cpp publish_metric_payload retry_ready_probe allows
+// ENOTCONN/EHOSTUNREACH/ENETUNREACH on the DONTWAIT ready-probe path
+// (in addition to the data-path transients) while the peer is still
+// connecting. It must NOT be used on the data path.
+func IsReadyProbeTransient(err error) bool {
+	if IsTransient(err) {
+		return true
+	}
+	var zerr zlink.ZlinkError
+	if !errors.As(err, &zerr) {
+		return false
+	}
+	switch zerr.InternalErrno() {
+	case int(syscall.ENOTCONN), int(syscall.EHOSTUNREACH), int(syscall.ENETUNREACH):
 		return true
 	default:
 		return false

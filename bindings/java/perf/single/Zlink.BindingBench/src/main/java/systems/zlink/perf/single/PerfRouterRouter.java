@@ -169,18 +169,23 @@ final class PerfRouterRouter {
         }
     }
 
-    // C parity: perf_router_router.cpp send_router_stop_token (~385-410) /
-    // perf_single_one_way.hpp send_stop_token_with_retry (~200-215). Bounded
-    // retry through transient backpressure / missing route so the single stop
-    // token reaches the ROUTER receiver. DONT_WAIT returns false on
-    // backpressure (the Java analogue of
-    // EAGAIN/EWOULDBLOCK/EHOSTUNREACH/ENOTCONN).
+    // C parity: perf_router_router.cpp send_router_stop_token (~388-410)
+    // sends the terminator with ZLINK_SEND_FLAGS_NONE (blocking, bounded by
+    // the socket SNDTIMEO) and retries on
+    // EINTR/EAGAIN/EWOULDBLOCK/ETIMEDOUT/EHOSTUNREACH/ENOTCONN. ROUTER->ROUTER
+    // requires an explicit routing id and the route to ROUTER1 can still be
+    // settling right after the active loop; a DONT_WAIT send returns
+    // immediately on a not-yet-ready route, so the 100x1ms budget can expire
+    // before the route exists and the single stop token is lost, hanging the
+    // receiver on poll(-1). Use a blocking send (SendFlags.NONE) so each
+    // attempt waits up to SNDTIMEO for the route, exactly like the C
+    // reference.
     private static void sendRouterStopToken(RouterSocket sender) {
         PerfStopToken.sendWithRetry(() -> {
             try (Message stop = PerfStopToken.newMessage()) {
                 return sender.send(ROUTER1)
                     .message(stop)
-                    .flags(SendFlags.DONT_WAIT)
+                    .flags(SendFlags.NONE)
                     .submit();
             }
         }, "router/router");

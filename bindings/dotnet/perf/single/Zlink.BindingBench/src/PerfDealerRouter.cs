@@ -85,6 +85,14 @@ internal static class PerfDealerRouter
             // routing self-check / PING-PONG handshake), so no pre-active
             // routing probe is performed here. This keeps the active-start
             // anchor identical to C.
+            // ITEM 1: capture AUTO_HWM_DETAIL from the live monitors BEFORE
+            // they are disposed (C parity; auto-HWM applied values are stable
+            // once configured and connection-ready).
+            EmitSingleAutoHwmDetail(receiverMonitor, "DEALER_ROUTER",
+                transport, "receiver", "router", size);
+            EmitSingleAutoHwmDetail(senderMonitor, "DEALER_ROUTER",
+                transport, "sender", "dealer", size);
+
             receiverMonitor.Dispose();
             receiverMonitor = null;
             senderMonitor.Dispose();
@@ -131,105 +139,126 @@ internal static class PerfDealerRouter
         long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
 
         long received = 0;
-        Exception? sendError = null;
+        Exception? recvError = null;
         var samples = new List<double>(Math.Max(0, latencyCap));
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
-        bool stopReceived = false;
 
-        bool ProcessReceived(Received receivedMessage)
+        // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: converged one-way
+        // discipline identical to PerfDealerDealer (the previously-passing
+        // sibling). Receiver thread does a blocking first recv per cycle then
+        // a DontWait burst-drain, exiting on the wire-level stop token; the
+        // sender runs on the main thread with a bounded in-flight credit so
+        // the standing queue depth matches C's shallow pipeline. ROUTER recv
+        // is multi-part ([routing-id..., payload]); the payload is the last
+        // part (TryGetPayloadPart). Latency stays recv_now_ns - sent_ts_ns.
+        bool ProcessBody(ReadOnlySpan<byte> body)
         {
-            if (!TryGetPayloadPart(receivedMessage, out Message payloadMessage))
-                return false;
-
-            ReadOnlySpan<byte> body = payloadMessage.AsReadOnlySpan();
             if (StopToken.IsStopToken(body))
                 return true;
-
-            if (!TryDecodeExpectedSingleHeader(body, msgSize, ActivePhase,
-                    out var header, RunId))
+            long recvTicks = Stopwatch.GetTimestamp();
+            if (TryDecodeExpectedSingleHeader(body, msgSize, ActivePhase,
+                    out var header, RunId)
+                && recvTicks <= deadlineTicks)
             {
-                return false;
+                Interlocked.Increment(ref received);
+                ulong nowNs = EpochNs();
+                if (nowNs >= header.SentTsNs)
+                {
+                    double latencyNs = nowNs - header.SentTsNs;
+                    ReservoirSample(samples, latencyNs, ref sampleSeen,
+                        latencyCap, ref rng);
+                }
             }
-
-            received++;
-            ulong nowNs = EpochNs();
-            if (nowNs >= header.SentTsNs)
-            {
-                double latencyNs = nowNs - header.SentTsNs;
-                ReservoirSample(samples, latencyNs, ref sampleSeen, latencyCap,
-                    ref rng);
-            }
-
             return false;
         }
 
-        // PERF_SINGLE_TEST_POLICY § 1.4: sender no longer flips a
-        // `senderDone` flag. After the active deadline it sends the
-        // wire-level stop token; the receiver loop exits when it sees
-        // the token in the inbound stream.
-        var senderThread = new Thread(() =>
+        var recvThread = new Thread(() =>
         {
+            using var maybe = new Received();
             try
             {
-                ulong seq = 1;
                 while (true)
                 {
-                    long nowTicks = Stopwatch.GetTimestamp();
-                    if (nowTicks >= deadlineTicks)
-                        break;
-                    StampMetricHeader(payload.AsSpan(), RunId, ActivePhase,
-                        msgSize, seq, EpochNsFromTimestamp(nowTicks));
-                    seq++;
                     try
                     {
-                        if (!TrySendActiveMessage(sender, payload,
-                                "[single-dealer-router]"))
+                        if (!receiver.Recv(maybe, RecvFlags.None))
                             continue;
                     }
                     catch (ZlinkException ex)
-                        when (PerfShared.IsTransientBackpressure(
-                                  ex.InternalErrno))
+                        when (IsInterrupted(ex.InternalErrno)
+                              || IsWouldBlock(ex.InternalErrno))
                     {
                         continue;
                     }
+
+                    bool drain = true;
+                    while (drain)
+                    {
+                        if (TryGetPayloadPart(maybe, out Message payloadPart))
+                        {
+                            if (ProcessBody(payloadPart.AsReadOnlySpan()))
+                                return;
+                        }
+                        drain = receiver.Recv(maybe, RecvFlags.DontWait);
+                    }
                 }
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
+            catch (Exception ex)
             {
-                sendError = ex;
+                recvError = ex;
+            }
+        });
+        recvThread.IsBackground = true;
+        recvThread.Start();
+
+        long inflightCap = PerfEnv.ReadNonNegative(
+            "PERF_SINGLE_INFLIGHT_CAP", 256);
+
+        bool sendFailed = false;
+        ulong seq = 1;
+        long sent = 0;
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            if (inflightCap > 0)
+            {
+                while (sent - Interlocked.Read(ref received) >= inflightCap
+                       && Stopwatch.GetTimestamp() < deadlineTicks)
+                {
+                    Thread.SpinWait(1);
+                }
+            }
+            StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize,
+                seq, EpochNs());
+            seq++;
+            try
+            {
+                if (!TrySendActiveMessage(sender, payload,
+                        "[single-dealer-router]"))
+                    continue;
+                sent++;
+            }
+            catch (ZlinkException ex)
+                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
+            {
+                continue;
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"[single-dealer-router] send failed: {ex.Message}");
-                sendError = ex;
+                sendFailed = true;
+                break;
             }
-            finally
-            {
-                // Always emit the stop token so the receiver loop exits
-                // even on send failures during the active phase.
-                SendStopTokenBlocking(sender, "[single-dealer-router]");
-            }
-        });
-        senderThread.IsBackground = true;
-        senderThread.Start();
-
-        var receivedBuffer = new Received();
-        while (!stopReceived)
-        {
-            if (!TryReceiveBlocking(receiver, receivedBuffer))
-                continue;
-            if (ProcessReceived(receivedBuffer))
-                stopReceived = true;
         }
 
-        senderThread.Join();
+        SendStopTokenBlocking(sender, "[single-dealer-router]");
+        recvThread.Join();
 
         latencySamples = samples;
         receivedOut = received;
-        if (sendError != null)
+        if (sendFailed || recvError != null)
         {
-            DebugLog("single_dealer_router_error:send_failed");
+            DebugLog("single_dealer_router_error:active_failed");
             return false;
         }
 

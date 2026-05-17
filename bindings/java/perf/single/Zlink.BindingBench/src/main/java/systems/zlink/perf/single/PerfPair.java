@@ -102,11 +102,26 @@ final class PerfPair {
             Thread traffic = new Thread(() -> {
                 try {
                     try (Message active = PerfUtil.payloadTemplate(config.size())) {
+                        // C parity: perf_pair.cpp send step uses
+                        // send_socket_active_message(sender, &part,
+                        // ZLINK_DONTWAIT, true) and perf_single_one_way.hpp
+                        // send_active_samples (~169-196) retries (continue,
+                        // no seq advance) on transient backpressure. A
+                        // blocking submit() here can wedge the sender thread
+                        // on a full PAIR HWM, so the active loop never reaches
+                        // activeEnd, the wire stop token below is never sent,
+                        // and the receiver's poll(-1) blocks until the harness
+                        // timeout (pair_receiver_thread_timed_out). Mirror C:
+                        // nonblocking send, retry on transient backpressure
+                        // until the duration deadline.
                         while (System.nanoTime() < activeEnd) {
                             PerfUtil.resetAndWritePayload(active, config.size(),
                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                            try (Message outbound = Message.copyOf(active)) {
-                                sender.send().message(outbound).submit();
+                            while (System.nanoTime() < activeEnd
+                                && !trySendActive(sender, active)) {
+                                // send_step_retry: re-attempt the same sample
+                                // without advancing (C send_active_samples
+                                // `continue`).
                             }
                         }
                     }
@@ -144,6 +159,33 @@ final class PerfPair {
             PerfUtil.printSingleMonitorAutoHwm(config, senderMonitor, "sender",
                 SocketType.PAIR);
             return metrics.finishSingle(config);
+        }
+    }
+
+    // C parity: perf_single_one_way.hpp send_socket_active_message
+    // (~145-166). Nonblocking send; returns true when the sample was
+    // accepted (send_step_sent). Transient backpressure (BACKPRESSURED /
+    // EAGAIN / EINTR) yields false so the caller re-attempts the same
+    // sample without advancing (send_step_retry). A non-transient failure
+    // is fatal and propagates (send_step_fatal).
+    private static boolean trySendActive(PairSocket sender, Message active) {
+        try (Message outbound = Message.copyOf(active)) {
+            return sender.send()
+                .message(outbound)
+                .flags(SendFlags.DONT_WAIT)
+                .submit();
+        } catch (systems.zlink.contracts.SubmitException ex) {
+            if (ex.getResult()
+                == systems.zlink.contracts.SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        } catch (systems.zlink.contracts.ZlinkException ex) {
+            int errno = ex.getInternalErrno();
+            if (errno == 11 || errno == 4 || errno == 10035) {
+                return false;
+            }
+            throw ex;
         }
     }
 }

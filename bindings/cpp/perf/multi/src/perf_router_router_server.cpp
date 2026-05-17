@@ -5,13 +5,56 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_entry.hpp"
 
+#include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <deque>
+#include <iostream>
 #include <optional>
+#include <string>
+#include <thread>
 #include <vector>
 
 namespace {
+
+// Termination mirrors the C reference relay server
+// (bindings/c/perf/multi/common/perf_multi_relay_server.hpp): the server has
+// NO socket stop-token path; it stops only via the stdin STOP/QUIT watcher
+// (run_comparison.py writes "STOP\n" then closes stdin) and SIGINT/SIGTERM
+// (run_comparison.py terminate() fallback that interrupts the blocked poll).
+static std::atomic<bool> g_stop_requested (false);
+
+inline void request_stop ()
+{
+    g_stop_requested.store (true, std::memory_order_release);
+}
+
+inline void on_signal (int)
+{
+    request_stop ();
+}
+
+inline void install_signal_handlers ()
+{
+    std::signal (SIGINT, on_signal);
+#if defined(SIGTERM)
+    std::signal (SIGTERM, on_signal);
+#endif
+}
+
+inline void wait_for_stop_stdin ()
+{
+    std::string line;
+    while (std::getline (std::cin, line)) {
+        if (line == "STOP" || line == "QUIT") {
+            request_stop ();
+            return;
+        }
+    }
+    // stdin EOF (run_comparison.py closed the pipe) also means stop.
+    request_stop ();
+}
 
 bool perf_debug_enabled ()
 {
@@ -93,6 +136,11 @@ bool perf_router_router_server (const std::string &lib_name,
     perf::multi::emit_auto_hwm_detail (
       server, "server", "server", transport, msg_size, "router");
 
+    g_stop_requested.store (false, std::memory_order_release);
+    install_signal_handlers ();
+    std::thread stdin_watcher (&wait_for_stop_stdin);
+    stdin_watcher.detach ();
+
     perf::multi::print_ready (endpoint);
 
     struct pending_reply_t
@@ -101,7 +149,6 @@ bool perf_router_router_server (const std::string &lib_name,
         zlink::message_t payload;
     };
 
-    bool stop_requested = false;
     bool failed = false;
     std::deque<pending_reply_t> pending_replies;
     zlink::poller_t poller;
@@ -135,7 +182,12 @@ bool perf_router_router_server (const std::string &lib_name,
 
     int poll_event_mask =
       static_cast<int> (zlink::poll_event_flag_t::pollin);
-    while (!stop_requested) {
+    // Bounded poll wait so the stdin/signal stop flag is observed promptly
+    // without depending solely on a SIGTERM interrupting an infinite poll
+    // (the C reference uses -1 + SIGTERM; this is the equivalent outcome,
+    // just more responsive). 200ms keeps idle wakeups negligible.
+    const std::chrono::milliseconds poll_timeout (200);
+    while (!g_stop_requested.load (std::memory_order_acquire)) {
         const zlink::poll_event_flag_t mask =
           pending_replies.empty ()
             ? zlink::poll_event_flag_t::pollin
@@ -149,7 +201,7 @@ bool perf_router_router_server (const std::string &lib_name,
         }
 
         try {
-            poller.wait (events, 1, std::chrono::milliseconds (-1));
+            poller.wait (events, 1, poll_timeout);
         }
         catch (const zlink::zlink_error_t &err) {
             const int err_no = err.internal_errno ();
@@ -208,10 +260,8 @@ bool perf_router_router_server (const std::string &lib_name,
                 }
                 part = &moved_part;
             }
-            if (perf::multi::is_stop_token (part->data (), part->size ())) {
-                stop_requested = true;
-                break;
-            }
+            // No socket stop-token handling: matches the C reference relay
+            // server, which terminates only via stdin STOP/QUIT + signals.
             if (part->size () == 0)
                 continue;
             const std::optional<zlink::routing_id_t> &source_rid =

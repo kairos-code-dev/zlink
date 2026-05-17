@@ -3,6 +3,7 @@
 package systems.zlink.contracts;
 
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -12,6 +13,11 @@ public final class TopicMessage implements AutoCloseable {
     private String topic;
     private List<Message> parts;
     private boolean closed;
+    // Reusable single-element parts list for the subscribe hot path so a
+    // steady stream of single-part deliveries does not allocate a fresh
+    // immutable List per message (parity with Received.populateRoutedSinglePart
+    // zero-realloc reuse).
+    private ArrayList<Message> reusableSingle;
 
     public TopicMessage() {
         this(null, "", null);
@@ -21,6 +27,28 @@ public final class TopicMessage implements AutoCloseable {
         this.routingId = routingId;
         this.topic = topicId == null ? "" : topicId;
         this.parts = parts == null ? List.of() : List.of(parts);
+    }
+
+    // Hot-path adopt for the common single-part subscribe result. Avoids the
+    // intermediate fresh TopicMessage + Message[] + List.of allocations that
+    // adoptFrom(subscribe(...)) incurs per message.
+    void adoptSingle(RoutingId routingId, String topicId, Message part) {
+        // Close the previous payload without discarding the reusable list.
+        if (!closed && parts != null && !parts.isEmpty()) {
+            Message.closeAll(parts);
+        }
+        ArrayList<Message> slot = reusableSingle;
+        if (slot == null) {
+            slot = new ArrayList<>(1);
+            reusableSingle = slot;
+        } else {
+            slot.clear();
+        }
+        slot.add(part);
+        this.routingId = routingId;
+        this.topic = topicId == null ? "" : topicId;
+        this.parts = slot;
+        this.closed = false;
     }
 
     public void adoptFrom(TopicMessage source) {

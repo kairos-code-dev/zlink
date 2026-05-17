@@ -46,20 +46,54 @@ final class PerfMultiDealerDealer {
             PerfUtil.printMultiSocketAutoHwm(config, server, "server",
                 "server", SocketType.DEALER);
             PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-            // C parity (perf_multi_dealer_dealer_server.cpp run_receive_window):
-            // the counted throughput window is closed by a server-side
-            // measure-seconds deadline, not by the stop token. The signal-driven
-            // (-1) poll only wakes the loop; the stop token wakes the poll too
-            // but does not anchor the aggregation end.
+            // C parity (perf_multi_dealer_dealer_server.cpp run_receive_window
+            // ~240-301): the counted throughput window is closed by a
+            // server-side measure-seconds deadline, not by the stop token. The
+            // signal-driven (-1) poll only wakes the loop; the stop token wakes
+            // the poll too but does not anchor the aggregation end.
+            //
+            // The deadline MUST be re-checked *after* draining a poll wakeup
+            // (matching C's post-receive / post-drain `if (now >= deadline)
+            // break;` at lines 273-275 and 294-296). The client sends an
+            // active window of identical duration and then exits. The server
+            // and client start their windows at slightly different wall-clock
+            // instants (the server clock starts only after its post-START
+            // auto-HWM recalc), so the client can finish its active phase,
+            // emit its stop token(s), and exit while the server still believes
+            // it is a hair before its own deadline. If the server then looped
+            // back into an unbounded perf_socket_poll(-1) there would be no
+            // remaining peer to ever wake it, hanging until the harness
+            // timeout. C tolerates the unconditional -1 only because its
+            // deadline break is evaluated right after the wakeup is consumed;
+            // to keep that termination guarantee robust against the cross-
+            // process start-clock skew the blocking poll is bounded by the
+            // time remaining to the deadline. Data and the wire stop token
+            // still wake the poll immediately (signal-driven, no busy poll);
+            // the bound only ensures the measure window cannot outlive its
+            // deadline when the peer has already gone.
             long measureDeadline = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
-            while (System.nanoTime() < measureDeadline) {
+            while (true) {
+                long remainingNanos = measureDeadline - System.nanoTime();
+                if (remainingNanos <= 0) {
+                    break;
+                }
+                long remainingMs = Math.max(1L,
+                    remainingNanos / 1_000_000L);
                 pollSet.setEvents(0, PollEventFlag.POLLIN);
-                pollSet.poll(-1);
+                pollSet.poll((int) Math.min(remainingMs,
+                    (long) Integer.MAX_VALUE));
                 if (!pollSet.isReady(0, PollEventFlag.POLLIN)) {
                     continue;
                 }
                 drainCounted(server, config, metrics);
+                // Post-drain deadline check (C lines 273-275 / 294-296):
+                // break here so the iteration that consumed the final
+                // traffic + stop token terminates instead of re-entering the
+                // poll after the peer has gone.
+                if (System.nanoTime() >= measureDeadline) {
+                    break;
+                }
             }
             // Tail drain after the measure deadline: receive any remaining
             // in-flight messages WITHOUT counting them so stale traffic does
@@ -167,29 +201,39 @@ final class PerfMultiDealerDealer {
                 }
                 boolean[] pending = new boolean[clients.size()];
                 long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
-                int nextIndex = 0;
                 while (System.nanoTime() < activeEnd) {
-                    boolean progress = false;
-                    for (int offset = 0; offset < clients.size(); offset++) {
-                        int index = (nextIndex + offset) % clients.size();
+                    boolean progressed = false;
+                    boolean hasPending = false;
+                    for (int index = 0; index < clients.size(); index++) {
                         if (pending[index]) {
+                            hasPending = true;
                             continue;
                         }
-                        if (!trySend(clients.get(index), pollSet, pending, index,
-                            payloads[index], config.size(), (byte) PerfUtil.PHASE_ACTIVE)) {
-                            throw new IllegalStateException("dealer/dealer send failed");
-                        }
-                        progress = true;
-                    }
-                    nextIndex = (nextIndex + 1) % clients.size();
-                    boolean hasPending = false;
-                    for (boolean value : pending) {
-                        if (value) {
+                        // C parity: perf_multi_dealer_dealer_client.cpp
+                        // run_send_window (~190-214) sends on a socket in a
+                        // tight inner loop UNTIL it backpressures, then marks
+                        // it pending and moves on. The prior one-message-per-
+                        // socket round-robin meant a freshly stamped message
+                        // waited for ~99 other sockets' send work before its
+                        // io-thread flush, inflating one-way send-queue
+                        // residence (latency) on tls/wss. Draining each
+                        // socket to its HWM in a burst (re-stamping every
+                        // message) keeps stamp-to-wire tight like C.
+                        DealerSocket socket = clients.get(index);
+                        Message payload = payloads[index];
+                        while (System.nanoTime() < activeEnd) {
+                            if (sendOneActive(socket, payload,
+                                    config.size())) {
+                                progressed = true;
+                                continue;
+                            }
+                            pending[index] = true;
+                            pollSet.setEvents(index, PollEventFlag.POLLOUT);
                             hasPending = true;
                             break;
                         }
                     }
-                    if (progress || !hasPending) {
+                    if (progressed || !hasPending) {
                         continue;
                     }
                     // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait for
@@ -231,6 +275,30 @@ final class PerfMultiDealerDealer {
             } catch (Exception e) {
                 System.err.println("[multi-dealer-dealer] cleanup failed: " + e);
             }
+        }
+    }
+
+    // C parity: perf_multi_dealer_dealer_client.cpp send_one_message. Stamp a
+    // fresh payload immediately before the non-blocking send. Returns true on
+    // send_status_ok, false on transient backpressure (send_status_blocked);
+    // a non-transient error is fatal.
+    private static boolean sendOneActive(DealerSocket socket, Message payload,
+                                         int size) {
+        PerfUtil.resetAndWritePayload(payload, size,
+            (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+        try (Message outbound = Message.copyOf(payload)) {
+            return socket.send().message(outbound)
+                .flags(SendFlags.DONT_WAIT).submit();
+        } catch (SubmitException ex) {
+            if (isTransient(ex)) {
+                return false;
+            }
+            throw ex;
+        } catch (ZlinkException ex) {
+            if (isTransient(ex)) {
+                return false;
+            }
+            throw ex;
         }
     }
 

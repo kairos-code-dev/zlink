@@ -11,19 +11,15 @@ from perf_common import (
     benchmark_run_id,
     configure_single_tls_client,
     configure_single_tls_server,
-    extract_metric_payload,
-    is_stop_token_in_parts,
-    latency_ns_from_message,
-    is_active_message,
     new_payload,
     parse_single_args,
     perf_context,
     print_result_lines,
-    recv_nonblocking,
+    run_one_way_receiver,
+    send_nonblocking,
     result_metrics,
     resolve_single_endpoint,
     resolve_single_connect_ready_timeout_ms,
-    safe_poll,
     stamp_payload,
     wait_monitor_event,
 )
@@ -52,8 +48,13 @@ def main(argv=None):
 
     def send_loop(client, active_end):
         try:
+            # C perf_single_one_way.hpp send_active_samples: DONTWAIT send,
+            # re-stamp the payload (fresh now_ns) on every retry, busy-loop
+            # through transient backpressure (no blocking submit).
             while time.perf_counter() < active_end:
-                client.send().message(stamp_payload(payload, phase=1, run_id=run_id)).submit()
+                send_nonblocking(
+                    client, stamp_payload(payload, phase=1, run_id=run_id)
+                )
             # PERF_SINGLE_TEST_POLICY § 1.4: wire stop token instead of
             # threading.Event coordination.
             _send_stop_token(client)
@@ -84,45 +85,16 @@ def main(argv=None):
                 active_end = time.perf_counter() + args.duration
                 sender = threading.Thread(target=send_loop, args=(client, active_end), daemon=True)
                 sender.start()
-                with zlink.Poller() as poller:
-                    poller.add_socket(server, zlink.PollEventFlag.POLLIN)
-                    stop_received = False
-                    # PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait.
-                    while not stop_received:
-                        events = safe_poll(poller, -1)
-                        if not events:
-                            continue
-                        for _event in events:
-                            while True:
-                                received = recv_nonblocking(server)
-                                if received is None:
-                                    break
-                                with received:
-                                    parts = received.to_bytes_list()
-                                if is_stop_token_in_parts(parts):
-                                    stop_received = True
-                                    break
-                                data = extract_metric_payload(parts)
-                                if not is_active_message(
-                                    data,
-                                    expected_msg_size=args.msg_size,
-                                    run_id=run_id,
-                                ):
-                                    continue
-                                if time.perf_counter() >= active_end:
-                                    continue
-                                # C perf_single_one_way.hpp run_active_phase:
-                                # every matched header increments received and
-                                # adds a latency sample (single_latency_ns
-                                # clamps clock-skew to 0.0; the message still
-                                # counts toward throughput).
-                                received += 1
-                                latency = latency_ns_from_message(data)
-                                latencies.append(
-                                    latency if latency is not None else 0.0
-                                )
-                            if stop_received:
-                                break
+                # C perf_single_one_way.hpp run_active_phase receiver.
+                received = run_one_way_receiver(
+                    server,
+                    method="recv",
+                    msg_size=args.msg_size,
+                    run_id=run_id,
+                    active_end=active_end,
+                    received=received,
+                    latencies=latencies,
+                )
 
                 sender.join()
                 if sender_errors:

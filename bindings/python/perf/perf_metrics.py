@@ -78,20 +78,22 @@ def latency_ns_from_message(data):
     return float(now_ns - header["sent_ts_ns"])
 
 
-def extract_metric_payload(parts):
-    for part in parts:
-        if part is None:
-            continue
-        data = bytes(part)
-        header = decode_header(data)
-        if header is not None and header["magic"] == HEADER_MAGIC:
-            return data
-        offset = data.find(HEADER_MAGIC_BYTES)
-        if offset >= 0:
-            candidate = data[offset:]
-            header = decode_header(candidate)
-            if header is not None and header["magic"] == HEADER_MAGIC:
-                return candidate
+def extract_metric_payload(parts, *, expected_size=None):
+    # C perf_single_one_way.hpp recv_single_part_header_flags: the metric
+    # payload is the final data part decoded strictly at offset 0; the
+    # header magic must sit at byte 0 and (when known) the part size must
+    # equal the expected payload size exactly. No arbitrary-offset scan.
+    if not parts:
+        return b""
+    part = parts[-1]
+    if part is None:
+        return b""
+    data = bytes(part)
+    if expected_size is not None and len(data) != expected_size:
+        return b""
+    header = decode_header(data)
+    if header is not None and header["magic"] == HEADER_MAGIC:
+        return data
     return b""
 
 

@@ -17,4 +17,11 @@ final class SendScratch {
     byte[][] cachedRoutingIdKeys;
     MemorySegment[] cachedRoutingIdSegments;
     MemorySegment cachedRoutingIdSegment;
+
+    // Publish hot path: the topic id is almost always a small constant string
+    // reused for every message. C passes a const char* with zero per-call
+    // allocation; cache the last-encoded topic so steady-state publishes do
+    // not re-encode UTF-8 / re-allocate native memory per message.
+    String cachedTopicString;
+    MemorySegment cachedTopicSegment;
 }

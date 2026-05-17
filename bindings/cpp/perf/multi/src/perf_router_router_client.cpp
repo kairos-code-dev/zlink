@@ -159,7 +159,12 @@ class router_router_client_bench_t
             print_result ();
             std::cout.flush ();
         }
-        send_stop_token ();
+        // No stop token: matches the C reference echo client
+        // (bindings/c/perf/multi/src/perf_multi_router_router_client.cpp),
+        // which runs to its deadline and never signals the relay server.
+        // The server is terminated via the run_comparison.py stdin STOP
+        // path (and SIGTERM fallback). dotnet removed its equivalent
+        // TrySendRouterStopToken for the same reason.
         return ok;
     }
 
@@ -566,31 +571,6 @@ class router_router_client_bench_t
           _phase_cfg.active_seconds,
           2.0,
           _result.latency);
-    }
-
-    void send_stop_token ()
-    {
-        for (size_t i = 0; i < _holders.size (); ++i) {
-            zlink::router_socket_t *sock = _holders[i].get ();
-            if (!sock || !sock->valid ())
-                continue;
-
-            zlink::message_t stop_msg (std::strlen (perf::multi::k_stop_token));
-            if (!stop_msg.valid ())
-                continue;
-            std::memcpy (
-              stop_msg.data (), perf::multi::k_stop_token, stop_msg.size ());
-            try {
-                if (std::move (sock->send (_server_rid))
-                      .message (stop_msg)
-                      .flags (zlink::send_flags_t::dontwait)
-                      .submit ()) {
-                    return;
-                }
-            }
-            catch (const zlink::zlink_error_t &) {
-            }
-        }
     }
 
   private:

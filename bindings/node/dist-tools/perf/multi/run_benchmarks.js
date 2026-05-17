@@ -3,8 +3,15 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs = require('node:fs');
 const path = require('node:path');
-const { buildEffectiveOptions, completionLines, defaultMultiMsgSizes, DEFAULT_MULTI_TRANSPORTS, formatFailureRow, formatTableHeader, formatTableRow, hasPrimaryMetricsFromResultLines, medianMetrics, metricLines, parseCommonArgs, patternDirection, primaryMetricsFromResultLines, resolveMultiPatternNames, writeReport } = require('../common/perf_metrics');
+const { defaultMultiMsgSizes, DEFAULT_MULTI_TRANSPORTS, hasPrimaryMetricsFromResultLines, medianMetrics, parseCommonArgs, primaryMetricsFromResultLines, resolveMultiPatternNames } = require('../common/perf_metrics');
+const { buildMetaItems, metaLines, buildMultiOptionItems, effectiveOptionLines, multiResultDataLines, multiTableHeaderLine, multiTableSeparatorLine, multiTableRowLine, isEchoPattern, createAutoHwmCollector } = require('../common/perf_c_emitter');
 const { spawnMultiPair } = require('./perf_multi_orchestrator');
+// C parity: bindings/c/perf/run_comparison.py pattern_direction_label
+// — "echo" for the echo patterns, "one-way" otherwise.
+function patternDirectionLabel(patternName) {
+    return isEchoPattern(patternName) ? 'echo' : 'one-way';
+}
+const PATTERN_SEPARATOR = '===============================================================================';
 const MULTI_PATTERN_RUNNERS = {
     MULTI_DEALER_DEALER: {
         server: 'perf_multi_dealer_dealer_server.js',
@@ -115,6 +122,47 @@ async function spawnMeasuredPair(runner, options) {
     const metrics = primaryMetricsFromResultLines(options.pattern, options.msgSize, lines);
     return { lines, metrics };
 }
+// C parity: bindings/c/perf/run_comparison.py run_sizes_test
+// (~3062-3088). MULTI_SPOT's active pass saturates the receiver, so its
+// reported latency is the backpressured tail (~2400ms in node, not
+// semantically comparable to C's ~0.75ms). C runs a second, clean
+// latency-only pass (PERF_MULTI_SPOT_LATENCY_ONLY=1) where the publisher
+// paces itself and the receiver stays unsaturated, then merges by
+// overriding ONLY latency/latency_p95/latency_p99 from the clean pass
+// into the active-pass metrics (throughput/bandwidth keep the active
+// values). PERF_MULTI_SPOT_CLEAN_LATENCY defaults to 1; set 0 to skip.
+function spotCleanLatencyEnabled() {
+    const raw = process.env.PERF_MULTI_SPOT_CLEAN_LATENCY;
+    if (raw === undefined || raw === '') {
+        return true;
+    }
+    return raw !== '0';
+}
+async function applySpotCleanLatency(patternName, runner, caseOptions, metrics) {
+    if (patternName !== 'MULTI_SPOT' || !metrics || !spotCleanLatencyEnabled()) {
+        return metrics;
+    }
+    const { lines, metrics: cleanMetrics } = await spawnMeasuredPair(runner, {
+        ...caseOptions,
+        extraEnv: {
+            ...(caseOptions.extraEnv || {}),
+            PERF_MULTI_SPOT_LATENCY_ONLY: '1',
+            PERF_MULTI_SPOT_CLEAN_LATENCY: '0'
+        }
+    });
+    if (!cleanMetrics) {
+        const reason = hasUnsupportedToken(lines)
+            ? 'unsupported'
+            : (hasSkipToken(lines) ? 'skip' : 'no_metrics');
+        throw new Error(`spot clean-latency pass failed: ${reason}`);
+    }
+    return {
+        ...metrics,
+        latency: cleanMetrics.latency,
+        latency_p95: cleanMetrics.latency_p95,
+        latency_p99: cleanMetrics.latency_p99
+    };
+}
 function isUnsupported(error) {
     return errorText(error).toLowerCase().includes('protocol not supported');
 }
@@ -123,106 +171,6 @@ function hasUnsupportedToken(lines) {
 }
 function hasSkipToken(lines) {
     return lines.some((line) => line.startsWith('SKIP,'));
-}
-function parseAutoHwmDetailLine(line) {
-    const stripped = String(line || '').trim();
-    if (!stripped.startsWith('AUTO_HWM_DETAIL,')) {
-        return null;
-    }
-    const fields = {};
-    for (const item of stripped.split(',').slice(1)) {
-        const pos = item.indexOf('=');
-        if (pos < 0) {
-            continue;
-        }
-        fields[item.slice(0, pos).trim()] = item.slice(pos + 1).trim();
-    }
-    return Object.keys(fields).length > 0 ? fields : null;
-}
-function bytesToKbDisplay(value) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-        return '?';
-    }
-    if (parsed <= 0) {
-        return '0';
-    }
-    return (parsed % 1024) === 0 ? String(parsed / 1024) : (parsed / 1024).toFixed(1);
-}
-function cellWidths(rows, columns) {
-    return columns.map(([header, key]) => rows.reduce((width, row) => Math.max(width, String(row[key] ?? '?').length), header.length));
-}
-function autoHwmDetailTableLines(rows, pattern) {
-    const patternRows = rows
-        .filter((row) => String(row.pattern || '').toUpperCase() === pattern.toUpperCase());
-    if (patternRows.length === 0) {
-        return [];
-    }
-    const seen = new Set();
-    const displayRows = [];
-    for (const row of patternRows) {
-        const display = {
-            ...row,
-            effective_sndbuf_kb: bytesToKbDisplay(row.effective_sndbuf),
-            effective_rcvbuf_kb: bytesToKbDisplay(row.effective_rcvbuf),
-        };
-        const key = [
-            'msg_size',
-            'component',
-            'label',
-            'socket_type',
-            'role',
-            'sndhwm',
-            'rcvhwm',
-            'effective_sndbuf_kb',
-            'effective_rcvbuf_kb',
-            'effective_message_bytes',
-            'socket_message_slots',
-        ].map((name) => display[name] ?? '').join('\0');
-        if (seen.has(key)) {
-            continue;
-        }
-        seen.add(key);
-        displayRows.push(display);
-    }
-    if (displayRows.length === 0) {
-        return [];
-    }
-    displayRows.sort((lhs, rhs) => {
-        const sizeDiff = Number(lhs.msg_size || 0) - Number(rhs.msg_size || 0);
-        if (sizeDiff !== 0)
-            return sizeDiff;
-        return String(lhs.component || '').localeCompare(String(rhs.component || ''))
-            || String(lhs.label || '').localeCompare(String(rhs.label || ''));
-    });
-    const columns = [
-        ['Size(B)', 'msg_size'],
-        ['Component', 'component'],
-        ['Label', 'label'],
-        ['Type', 'socket_type'],
-        ['Role', 'role'],
-        ['SNDHWM', 'sndhwm'],
-        ['RCVHWM', 'rcvhwm'],
-        ['SNDBUF(KB)', 'effective_sndbuf_kb'],
-        ['RCVBUF(KB)', 'effective_rcvbuf_kb'],
-        ['MsgUnit(B)', 'effective_message_bytes'],
-        ['Slots', 'socket_message_slots'],
-    ];
-    const widths = cellWidths(displayRows, columns);
-    const header = '| ' + columns
-        .map(([name], index) => name.padEnd(widths[index]))
-        .join(' | ') + ' |';
-    const separator = '|-' + widths.map((width) => '-'.repeat(width)).join('-|-') + '-|';
-    return [
-        '',
-        '## Auto-HWM Detail',
-        `- pattern: ${pattern}`,
-        header,
-        separator,
-        ...displayRows.map((row) => '| ' + columns
-            .map(([, key], index) => String(row[key] ?? '?').padEnd(widths[index]))
-            .join(' | ') + ' |')
-    ];
 }
 function explicitClientCount() {
     const configured = Number(process.env.PERF_MULTI_CLIENTS || NaN);
@@ -372,24 +320,29 @@ async function main() {
     const patternCooldownMs = Number.isFinite(options.patternTransitionMs)
         ? options.patternTransitionMs
         : Number(process.env.PERF_MULTI_PATTERN_TRANSITION_MS ?? 3000);
-    const resultLines = [];
-    const reportLines = [];
-    const failures = [];
-    const skips = [];
-    const autoHwmDetails = [];
-    let requestedCombos = 0;
-    let unsupportedCombos = 0;
-    let skippedCombos = 0;
-    const runnablePatterns = [];
+    // C parity: bindings/c/perf/run_comparison.py main() — single TeeStream
+    // so the saved report and stdout receive the EXACT same byte stream.
+    // Buffer every emitted line and write the file at the end so node's
+    // multi report is byte-identical to C's.
+    const out = [];
     const emit = (line = '') => {
         console.log(line);
-        reportLines.push(line);
+        out.push(line);
     };
-    const emitIndented = (prefix, lines) => {
-        for (const line of lines) {
-            emit(`${prefix}${line}`);
-        }
+    // Python `print("\nX")` = blank line then X.
+    const emitSection = (line) => {
+        emit('');
+        emit(line);
     };
+    // C: status_counts + current_results + all_failures + all_skips.
+    const statusCounts = { success: 0, unsupported: 0, skip: 0, fail: 0 };
+    const successRecords = [];
+    const allFailures = [];
+    const allSkips = [];
+    let expectedResultLines = 0;
+    let actualResultLines = 0;
+    const autoHwm = createAutoHwmCollector();
+    const runnablePatterns = [];
     for (const patternName of patternNames) {
         const runner = MULTI_PATTERN_RUNNERS[patternName];
         if (!runner) {
@@ -397,7 +350,8 @@ async function main() {
         }
         const resolution = resolvePatternClients(patternName, options, clientSource);
         if (resolution.skipReason) {
-            skips.push(`${patternName}: ${resolution.skipReason}`);
+            allSkips.push([patternName, resolution.skipReason]);
+            statusCounts.skip += 1;
             continue;
         }
         runnablePatterns.push({
@@ -406,239 +360,297 @@ async function main() {
             clients: resolution.clients
         });
     }
-    if (runnablePatterns.length === 0) {
-        if (skips.length > 0) {
-            console.log('## Skips');
-            for (const skip of skips) {
-                console.log(`- ${skip}`);
-            }
-            return;
-        }
-        throw new Error('no multi patterns selected to run');
+    // C parity: build_meta_items + print_meta_lines, then a blank line
+    // (print_effective_options does print("\n## Effective Options")), then
+    // the effective options block. The report file's first lines are the
+    // META preamble (multi suite only).
+    const metaItems = buildMetaItems('node', options.runs, patternNames, process.cwd());
+    for (const line of metaLines(metaItems)) {
+        emit(line);
     }
-    const headerOptions = {
-        ...options,
-        clients: clientSource === 'policy' ? undefined : options.clients,
-        clientsLabel: clientSource === 'policy'
-            ? 'pattern default (non-stream=100, stream=10000)'
-            : String(options.clients)
-    };
-    console.log('## Effective Options (start)');
-    for (const line of buildEffectiveOptions({
-        ...headerOptions,
-        lang: 'node',
-        suite: 'multi',
-        patterns: patternNames.join(',')
-    })) {
-        console.log(line);
+    const optionItems = buildMultiOptionItems({
+        runs: options.runs,
+        duration: options.duration,
+        patterns: patternNames,
+        transports: options.transports,
+        msgSizes: options.msgSizes
+    });
+    emit('');
+    for (const line of effectiveOptionLines('node', 'multi', 'start', optionItems)) {
+        emit(line);
     }
-    console.log('');
+    let tablesEmitted = false;
     for (let patternIndex = 0; patternIndex < runnablePatterns.length; patternIndex += 1) {
         const { patternName, runner, clients } = runnablePatterns[patternIndex];
-        if (patternIndex > 0) {
-            emit('===============================================================================');
+        if (tablesEmitted) {
+            emit('');
+            emit(PATTERN_SEPARATOR);
             emit('');
         }
-        emit(`## PATTERN: ${patternName} (${patternDirection(patternName)})`);
-        emit('');
-        emit(`  > Benchmarking current for ${patternName}...`);
-        if (clientSource === 'policy' && clients !== defaultClientsForPattern(patternName)) {
-            emit(`  > Memory guard capped clients to ${clients}.`);
+        emit(`## PATTERN: ${patternName} (${patternDirectionLabel(patternName)})`);
+        tablesEmitted = true;
+        const transports = options.transports.filter((transport) => POLICY_TRANSPORTS[patternName].includes(transport));
+        if (transports.length === 0) {
+            emit(`  Skipping ${patternName}: no matching transports.`);
+            allSkips.push([patternName, 'no_matching_transports']);
+            statusCounts.skip += 1;
+            continue;
         }
+        emit(`  > Benchmarking current for ${patternName}...`);
         const msgSizes = patternMsgSizes(patternName, options.msgSizes);
-        for (let transportIndex = 0; transportIndex < options.transports.length; transportIndex += 1) {
-            const transport = options.transports[transportIndex];
-            if (!POLICY_TRANSPORTS[patternName].includes(transport)) {
-                requestedCombos += msgSizes.length;
-                unsupportedCombos += msgSizes.length;
-                emit(`    Testing ${transport}: unsupported Done`);
-                continue;
+        const showRunLabels = options.runs > 1;
+        for (let transportIdx = 0; transportIdx < transports.length; transportIdx += 1) {
+            const transport = transports[transportIdx];
+            const hasNextTransport = (transportIdx + 1) < transports.length;
+            emit(`    Testing ${transport}:`);
+            if (!showRunLabels) {
+                emit(`      ${multiTableHeaderLine()}`);
+                emit(`      ${multiTableSeparatorLine()}`);
             }
-            const transportFailuresBefore = failures.length;
-            requestedCombos += msgSizes.length;
-            const sizesLabel = msgSizes.map((size) => `${size}B`).join(',');
-            emit(`    Testing ${transport} | ${sizesLabel}:`);
-            if (options.runs === 1) {
-                let transportUnsupported = false;
-                emitIndented('      ', formatTableHeader());
+            const samples = new Map(msgSizes.map((size) => [size, []]));
+            const failedSizes = new Map();
+            const sectionEmitted = new Set();
+            let transportUnsupported = false;
+            const emitSizeSection = (size, indent) => {
+                if (sectionEmitted.has(size)) {
+                    return;
+                }
+                emit(`    Testing ${transport} | ${size}B:`);
+                sectionEmitted.add(size);
+                if (showRunLabels) {
+                    emit(`${indent}${multiTableHeaderLine()}`);
+                    emit(`${indent}${multiTableSeparatorLine()}`);
+                }
+            };
+            for (let run = 0; run < options.runs && !transportUnsupported; run += 1) {
+                let rowIndent = '      ';
+                if (showRunLabels) {
+                    emit(`      run ${run + 1}/${options.runs}:`);
+                    rowIndent = '        ';
+                }
                 for (const msgSize of msgSizes) {
+                    if (transportUnsupported) {
+                        break;
+                    }
+                    const caseOptions = {
+                        ...options,
+                        pattern: patternName,
+                        transport,
+                        msgSize,
+                        clients
+                    };
                     try {
-                        const { lines, metrics } = await spawnMeasuredPair(runner, {
-                            ...options,
-                            pattern: patternName,
-                            transport,
-                            msgSize,
-                            clients
-                        });
+                        const { lines, metrics: activeMetrics } = await spawnMeasuredPair(runner, caseOptions);
                         for (const line of lines) {
-                            const detail = parseAutoHwmDetailLine(line);
-                            if (detail) {
-                                autoHwmDetails.push(detail);
-                            }
+                            autoHwm.addLine(line);
                         }
                         const hasMetrics = hasPrimaryMetricsFromResultLines(patternName, msgSize, lines);
                         if (!hasMetrics && hasUnsupportedToken(lines)) {
-                            unsupportedCombos += msgSizes.length;
                             transportUnsupported = true;
                             break;
                         }
                         if (!hasMetrics && hasSkipToken(lines)) {
-                            skippedCombos += 1;
-                            skips.push(`${patternName} current ${transport} ${msgSize}B: skipped`);
-                            emit(`      ${formatFailureRow(msgSize, 'SKIP')}`);
+                            failedSizes.set(msgSize, 'skip');
+                            allSkips.push([
+                                `${patternName} ${transport} ${msgSize}B`, 'skip'
+                            ]);
+                            emitSizeSection(msgSize, rowIndent);
+                            emit(`${rowIndent}${multiTableRowLine(patternName, msgSize, 'fail', null)}`);
                             continue;
                         }
-                        resultLines.push(...metricLines(patternName, transport, msgSize, metrics));
-                        emit(`      ${formatTableRow({ pattern: patternName, msgSize, metrics })}`);
+                        const metrics = await applySpotCleanLatency(patternName, runner, caseOptions, activeMetrics);
+                        samples.get(msgSize).push(metrics);
+                        emitSizeSection(msgSize, rowIndent);
+                        emit(`${rowIndent}${multiTableRowLine(patternName, msgSize, 'success', {
+                            throughput: metrics.throughput,
+                            bandwidth: metrics.bandwidth,
+                            latency: metrics.latency,
+                            latency_p95: metrics.latency_p95,
+                            latency_p99: metrics.latency_p99
+                        })}`);
                     }
                     catch (error) {
                         if (isUnsupported(error)) {
-                            unsupportedCombos += msgSizes.length;
                             transportUnsupported = true;
                             break;
                         }
-                        failures.push(`${patternName} current ${transport} ${msgSize}B: ${errorText(error)}`);
-                        emit(`      ${formatFailureRow(msgSize)}`);
+                        failedSizes.set(msgSize, errorText(error));
+                        allFailures.push([
+                            patternName, 'current', transport, msgSize, errorText(error)
+                        ]);
+                        emitSizeSection(msgSize, rowIndent);
+                        emit(`${rowIndent}${multiTableRowLine(patternName, msgSize, 'fail', null)}`);
                         if (failFast) {
                             throw error;
                         }
                     }
                 }
-                if (transportUnsupported) {
-                    emit(`    Testing ${transport}: unsupported Done`);
-                    continue;
+                if (showRunLabels && run + 1 < options.runs && !transportUnsupported) {
+                    emit(`      [cooldown ${runCooldownMs}ms]`);
+                    if (runCooldownMs > 0) {
+                        await sleepMs(runCooldownMs);
+                    }
                 }
             }
-            else {
-                const runResults = new Map(msgSizes.map((msgSize) => [msgSize, []]));
-                let transportUnsupported = false;
-                for (let run = 1; run <= options.runs; run += 1) {
-                    emit(`      run ${run}/${options.runs}:`);
-                    emitIndented('        ', formatTableHeader());
-                    for (const msgSize of msgSizes) {
-                        try {
-                            const { lines, metrics } = await spawnMeasuredPair(runner, {
-                                ...options,
-                                pattern: patternName,
-                                transport,
-                                msgSize,
-                                clients
-                            });
-                            for (const line of lines) {
-                                const detail = parseAutoHwmDetailLine(line);
-                                if (detail) {
-                                    autoHwmDetails.push(detail);
-                                }
-                            }
-                            const hasMetrics = hasPrimaryMetricsFromResultLines(patternName, msgSize, lines);
-                            if (!hasMetrics && hasUnsupportedToken(lines)) {
-                                unsupportedCombos += msgSizes.length;
-                                transportUnsupported = true;
-                                break;
-                            }
-                            if (!hasMetrics && hasSkipToken(lines)) {
-                                skippedCombos += 1;
-                                skips.push(`${patternName} current ${transport} ${msgSize}B: skipped`);
-                                emit(`        ${formatFailureRow(msgSize, 'SKIP')}`);
-                                continue;
-                            }
-                            runResults.get(msgSize).push(metrics);
-                            emit(`        ${formatTableRow({ pattern: patternName, msgSize, metrics })}`);
-                        }
-                        catch (error) {
-                            if (isUnsupported(error)) {
-                                unsupportedCombos += msgSizes.length;
-                                transportUnsupported = true;
-                                break;
-                            }
-                            failures.push(`${patternName} current ${transport} ${msgSize}B: ${errorText(error)}`);
-                            emit(`        ${formatFailureRow(msgSize)}`);
-                            if (failFast) {
-                                throw error;
-                            }
-                        }
-                    }
-                    if (transportUnsupported) {
-                        emit(`    Testing ${transport}: unsupported Done`);
-                        break;
-                    }
-                    if (run < options.runs) {
-                        emit(`      [cooldown ${runCooldownMs}ms]`);
-                        if (runCooldownMs > 0) {
-                            await sleepMs(runCooldownMs);
-                        }
-                    }
-                }
-                if (transportUnsupported) {
-                    continue;
-                }
+            if (showRunLabels && !transportUnsupported) {
                 emit('      median:');
-                emitIndented('        ', formatTableHeader());
+                emit(`        ${multiTableHeaderLine()}`);
+                emit(`        ${multiTableSeparatorLine()}`);
                 for (const msgSize of msgSizes) {
-                    const metricsList = runResults.get(msgSize);
-                    if (!metricsList || metricsList.length !== options.runs) {
-                        emit(`        ${formatFailureRow(msgSize)}`);
+                    const list = samples.get(msgSize);
+                    if (failedSizes.has(msgSize) || !list || list.length !== options.runs) {
+                        emit(`        ${multiTableRowLine(patternName, msgSize, 'fail', null)}`);
                         continue;
                     }
-                    const metrics = medianMetrics(metricsList);
-                    resultLines.push(...metricLines(patternName, transport, msgSize, metrics));
-                    emit(`        ${formatTableRow({ pattern: patternName, msgSize, metrics })}`);
+                    const metrics = medianMetrics(list);
+                    samples.set(msgSize, [metrics]);
+                    emit(`        ${multiTableRowLine(patternName, msgSize, 'success', {
+                        throughput: metrics.throughput,
+                        bandwidth: metrics.bandwidth,
+                        latency: metrics.latency,
+                        latency_p95: metrics.latency_p95,
+                        latency_p99: metrics.latency_p99
+                    })}`);
                 }
             }
-            const transportFailures = failures.length - transportFailuresBefore;
-            emit(`    Testing ${transport}: ${transportFailures > 0 ? `(failures=${transportFailures}) Done` : 'Done'}`);
-            if (transportIndex + 1 < options.transports.length) {
-                emit(`    [transport cooldown ${transportCooldownMs}ms]`);
-                if (transportCooldownMs > 0) {
-                    await sleepMs(transportCooldownMs);
+            // Classify per (transport, size): C main loop status counting.
+            for (const msgSize of msgSizes) {
+                if (transportUnsupported) {
+                    statusCounts.unsupported += 1;
+                    continue;
                 }
+                const skipped = allSkips.some(([label]) => label === `${patternName} ${transport} ${msgSize}B`);
+                if (skipped) {
+                    statusCounts.skip += 1;
+                    continue;
+                }
+                const list = samples.get(msgSize);
+                if (failedSizes.has(msgSize) || !list || list.length === 0) {
+                    statusCounts.fail += 1;
+                    expectedResultLines += 5;
+                    continue;
+                }
+                const metrics = options.runs > 1 ? list[0] : medianMetrics(list);
+                const [, p95, p99] = require('../common/perf_c_emitter')
+                    .resolveLatencyTriplet(metrics.latency, metrics.latency_p95, metrics.latency_p99);
+                successRecords.push({
+                    pattern: patternName,
+                    transport,
+                    size: msgSize,
+                    throughput: metrics.throughput,
+                    bandwidth: metrics.bandwidth,
+                    latency: metrics.latency,
+                    latency_p95: p95,
+                    latency_p99: p99
+                });
+                statusCounts.success += 1;
+                expectedResultLines += 5;
+                actualResultLines += 5;
+            }
+            emit(`    Testing ${transport}: Done`);
+            if (transportCooldownMs > 0 && hasNextTransport) {
+                emit(`    [transport cooldown ${transportCooldownMs}ms]`);
+                await sleepMs(transportCooldownMs);
+            }
+            if (failFast && allFailures.length > 0) {
+                break;
+            }
+        }
+        // C parity: emit_auto_hwm_detail_table(emit, pattern) after collect.
+        {
+            const tableLines = [];
+            autoHwm.emitDetailTable(tableLines, patternName);
+            for (const line of tableLines) {
+                emit(line);
             }
         }
         if (patternIndex + 1 < runnablePatterns.length && patternCooldownMs > 0) {
+            emit(`[pattern cooldown ${patternCooldownMs}ms]`);
             await sleepMs(patternCooldownMs);
         }
-    }
-    if (failures.length > 0) {
-        emit('');
-        emit('## Failures');
-        for (const failure of failures) {
-            emit(`- ${failure}`);
+        if (failFast && allFailures.length > 0) {
+            break;
         }
     }
-    if (skips.length > 0) {
-        emit('');
-        emit('## Skips');
-        for (const skip of skips) {
-            emit(`- ${skip}`);
-        }
+    // C parity: print_effective_options("result"); Result Data; Completion;
+    // Skips; Failures; Saved result file.
+    emit('');
+    for (const line of effectiveOptionLines('node', 'multi', 'result', optionItems)) {
+        emit(line);
     }
-    for (const patternName of patternNames) {
-        for (const line of autoHwmDetailTableLines(autoHwmDetails, patternName)) {
+    if (successRecords.length > 0) {
+        emitSection('## Result Data');
+        for (const line of multiResultDataLines(successRecords)) {
             emit(line);
         }
     }
-    const expectedCombos = requestedCombos - unsupportedCombos - skippedCombos;
-    const expectedResultLines = expectedCombos * 5;
-    const actualResultLines = resultLines.length;
     const status = expectedResultLines === actualResultLines ? 'complete' : 'partial';
-    console.log('');
-    console.log('## Effective Options (result)');
-    for (const line of buildEffectiveOptions({
-        ...headerOptions,
-        lang: 'node',
-        suite: 'multi',
-        patterns: patternNames.join(',')
-    })) {
-        console.log(line);
+    emitSection('## Completion');
+    emit(`- success: ${statusCounts.success}`);
+    emit(`- unsupported: ${statusCounts.unsupported}`);
+    emit(`- skip: ${statusCounts.skip}`);
+    emit(`- fail: ${statusCounts.fail}`);
+    emit(`- status: ${status}`);
+    emit(`- expected_result_lines: ${expectedResultLines}`);
+    emit(`- actual_result_lines: ${actualResultLines}`);
+    if (allSkips.length > 0) {
+        emitSection('## Skips');
+        for (const [label, reason] of allSkips) {
+            emit(`- ${label}: ${reason}`);
+        }
     }
-    console.log('');
-    for (const line of completionLines(status, expectedResultLines, actualResultLines)) {
-        console.log(line);
+    if (allFailures.length > 0) {
+        emitSection('## Failures');
+        // C parity: sorted(set(all_failures), key=(pattern, size, tr, reason)).
+        const seenFailures = new Set();
+        const unique = [];
+        for (const f of allFailures) {
+            const dedup = f.join(' ');
+            if (seenFailures.has(dedup)) {
+                continue;
+            }
+            seenFailures.add(dedup);
+            unique.push(f);
+        }
+        unique.sort((a, b) => (String(a[0]).localeCompare(String(b[0]))
+            || Number(a[3]) - Number(b[3])
+            || String(a[2]).localeCompare(String(b[2]))
+            || String(a[4]).localeCompare(String(b[4]))));
+        for (const [pattern, libName, tr, sz, reason] of unique) {
+            emit(`- ${pattern} ${libName} ${tr} ${sz}B: ${reason}`);
+        }
     }
-    writeReport(path.join(options.resultsDir, 'multi', 'report'), 'node', 'multi', { ...headerOptions, patterns: patternNames.join(',') }, reportLines, completionLines(status, expectedResultLines, actualResultLines));
+    const reportDir = path.join(options.resultsDir, 'multi', 'report');
+    fs.mkdirSync(reportDir, { recursive: true });
+    const stamp = formatStamp(new Date());
+    const tag = options.resultsTag ? `_${sanitizeTag(options.resultsTag)}` : '';
+    const resultFile = path.join(reportDir, `perf_node_multi_${platformTag()}_${stamp}${tag}.txt`);
+    emit('');
+    emit(`Saved result file: ${resultFile} (status=${status})`);
+    fs.writeFileSync(resultFile, `${out.join('\n')}\n`, 'utf8');
+    if (options.output) {
+        fs.writeFileSync(options.output, `${out.join('\n')}\n`, 'utf8');
+    }
     if (status !== 'complete') {
         process.exitCode = 1;
     }
+}
+function formatStamp(date) {
+    const pad = (value) => String(value).padStart(2, '0');
+    return (`${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
+        + `_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`);
+}
+function sanitizeTag(value) {
+    return String(value).trim().replace(/[^a-zA-Z0-9._-]+/g, '_');
+}
+function platformTag() {
+    if (process.platform === 'win32') {
+        return 'windows';
+    }
+    if (process.platform === 'darwin') {
+        return 'macos';
+    }
+    return 'linux';
 }
 function exitAfterFlush(code) {
     process.stdout.write('', () => {

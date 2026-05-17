@@ -308,6 +308,15 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+    // DONT_WAIT-only critical variant. zlink_publish_part is non-blocking when
+    // called with DONT_WAIT, so the JVM can elide GC safepoint transitions on
+    // the publish hot path (parity with MH_SEND_PART_CRITICAL).
+    private static final MethodHandle MH_PUBLISH_PART_CRITICAL =
+            downcallCritical("zlink_publish_part",
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                            ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                            ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SUBSCRIBE_PART = downcall(
             "zlink_subscribe_part",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -315,6 +324,17 @@ public final class Native {
                     ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
+    // DONT_WAIT-only critical variant. zlink_subscribe_part is non-blocking
+    // when called with DONT_WAIT, so the JVM can elide GC safepoint
+    // transitions on the subscribe hot path (parity with
+    // MH_RECV_PART_CRITICAL).
+    private static final MethodHandle MH_SUBSCRIBE_PART_CRITICAL =
+            downcallCritical("zlink_subscribe_part",
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                            ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+                            ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_XPUB_RECV_PART = downcall(
             "zlink_xpub_recv_part",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -562,6 +582,14 @@ public final class Native {
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.JAVA_INT));
+    // DONT_WAIT-only critical variant for the spot subscribe hot path
+    // (parity with MH_SUBSCRIBE_PART_CRITICAL).
+    private static final MethodHandle MH_SPOT_SUBSCRIBE_PART_CRITICAL =
+      downcallCritical("zlink_spot_subscribe_part",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+          ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+          ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+          ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_REQUEST_CHANNEL_PART = downcall(
       "zlink_spot_request_channel_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -1765,6 +1793,20 @@ public final class Native {
         }
     }
 
+    // DONT_WAIT-only critical variant. Caller MUST guarantee DONT_WAIT bit set.
+    public static int publishPartNoWaitCritical(MemorySegment subject,
+                                                MemorySegment topicId,
+                                                MemorySegment part, int flags,
+                                                int partFlag) {
+        try {
+            return (int) MH_PUBLISH_PART_CRITICAL.invokeExact(subject, topicId,
+              part, flags, partFlag);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_publish_part (critical) failed",
+              t);
+        }
+    }
+
     public static int subscribe(MemorySegment subject, MemorySegment sourceRidOut,
                                 MemorySegment partsOut,
                                 MemorySegment partCountOut,
@@ -1847,6 +1889,25 @@ public final class Native {
               flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_subscribe_part failed", t);
+        }
+    }
+
+    // DONT_WAIT-only critical variant. Caller MUST guarantee DONT_WAIT set.
+    public static int subscribePartNoWaitCritical(MemorySegment subject,
+                                    MemorySegment sourceRidOut,
+                                    MemorySegment topicIdOut,
+                                    long topicCapacity,
+                                    MemorySegment topicIdLenOut,
+                                    MemorySegment partOut,
+                                    MemorySegment hasMoreOut,
+                                    int flags) {
+        try {
+            return (int) MH_SUBSCRIBE_PART_CRITICAL.invokeExact(subject,
+              sourceRidOut, topicIdOut, topicCapacity, topicIdLenOut, partOut,
+              hasMoreOut, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_subscribe_part (critical) failed",
+              t);
         }
     }
 
@@ -3679,6 +3740,25 @@ public final class Native {
               hasMoreOut, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_subscribe_part failed", t);
+        }
+    }
+
+    // DONT_WAIT-only critical variant. Caller MUST guarantee DONT_WAIT set.
+    public static int spotSubscribePartNoWaitCritical(MemorySegment spot,
+                                        MemorySegment sourceRidOut,
+                                        MemorySegment topicIdOut,
+                                        long topicIdCapacity,
+                                        MemorySegment topicIdLenOut,
+                                        MemorySegment partOut,
+                                        MemorySegment hasMoreOut,
+                                        int flags) {
+        try {
+            return (int) MH_SPOT_SUBSCRIBE_PART_CRITICAL.invokeExact(spot,
+              sourceRidOut, topicIdOut, topicIdCapacity, topicIdLenOut, partOut,
+              hasMoreOut, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_subscribe_part (critical) failed", t);
         }
     }
 

@@ -69,6 +69,15 @@ internal static class PerfDealerDealer
                 return 2;
             }
 
+            // ITEM 1: capture AUTO_HWM_DETAIL from the live monitors BEFORE
+            // they are disposed (auto-HWM applied values are stable once the
+            // socket is configured and connection-ready); byte-identical to
+            // the C single benchmark output.
+            EmitSingleAutoHwmDetail(receiverMonitor, "DEALER_DEALER",
+                transport, "receiver", "dealer", size);
+            EmitSingleAutoHwmDetail(senderMonitor, "DEALER_DEALER",
+                transport, "sender", "dealer", size);
+
             receiverMonitor.Dispose();
             receiverMonitor = null;
             senderMonitor.Dispose();
@@ -120,28 +129,36 @@ internal static class PerfDealerDealer
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
 
-        // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits indefinitely
-        // (-1 = signal-driven) and exits when the wire-level stop token
-        // arrives. No `volatile bool senderDone` polling.
+        // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: blocking first recv per
+        // cycle (zlink_recv_part flags=0), then DontWait burst-drain, exit
+        // on the wire-level stop token. Mirrors
+        // bindings/c/perf/single/common/perf_single_one_way.hpp exactly (no
+        // Poller / no DontWait spin loop).
         var recvThread = new Thread(() =>
         {
-            using var poller = new Poller();
-            var events = new PollEvent[1];
-            poller.Add(receiver, PollEventFlags.PollIn);
+            // Reuse one Received envelope for the whole phase (parity with C
+            // which reuses a single stack header buffer).
+            using var maybe = new Received();
 
             try
             {
                 while (true)
                 {
-                    if (!WaitForInput(poller, events, -1))
-                        continue;
-
-                    using var maybe = new Received();
-                    while (true)
+                    try
                     {
-                        if (!receiver.Recv(maybe, RecvFlags.DontWait))
-                            break;
+                        if (!receiver.Recv(maybe, RecvFlags.None))
+                            continue;
+                    }
+                    catch (ZlinkException ex)
+                        when (IsInterrupted(ex.InternalErrno)
+                              || IsWouldBlock(ex.InternalErrno))
+                    {
+                        continue;
+                    }
 
+                    bool drain = true;
+                    while (drain)
+                    {
                         {
                             ReadOnlySpan<byte> body = maybe.FirstPart()
                                 .AsReadOnlySpan();
@@ -149,24 +166,22 @@ internal static class PerfDealerDealer
                                 return;
 
                             long recvTicks = Stopwatch.GetTimestamp();
-                            if (!TryDecodeExpectedSingleHeader(body, msgSize,
-                                    ActivePhase, out var header, RunId))
+                            if (TryDecodeExpectedSingleHeader(body, msgSize,
+                                    ActivePhase, out var header, RunId)
+                                && recvTicks <= deadlineTicks)
                             {
-                                continue;
-                            }
-
-                            if (recvTicks > deadlineTicks)
-                                continue;
-
-                            Interlocked.Increment(ref received);
-                            ulong nowNs = EpochNs();
-                            if (nowNs >= header.SentTsNs)
-                            {
-                                double latencyNs = nowNs - header.SentTsNs;
-                                ReservoirSample(samples, latencyNs,
-                                    ref sampleSeen, latencyCap, ref rng);
+                                Interlocked.Increment(ref received);
+                                ulong nowNs = EpochNs();
+                                if (nowNs >= header.SentTsNs)
+                                {
+                                    double latencyNs = nowNs - header.SentTsNs;
+                                    ReservoirSample(samples, latencyNs,
+                                        ref sampleSeen, latencyCap, ref rng);
+                                }
                             }
                         }
+
+                        drain = receiver.Recv(maybe, RecvFlags.DontWait);
                     }
                 }
             }
@@ -178,10 +193,31 @@ internal static class PerfDealerDealer
         recvThread.IsBackground = true;
         recvThread.Start();
 
+        // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: bound the sender's
+        // in-flight (sent-but-not-received) credit so the standing queue
+        // depth matches C's (~150-256). C's native receiver consumes
+        // one-for-one so its pipeline never deep-fills; uncapped, the
+        // managed sender fills the entire sndbuf+rcvbuf+HWM pipeline before
+        // backpressure engages and that depth never drains at steady-state
+        // rate-match, inflating one-way latency ~60x with no throughput
+        // gain. The credit reproduces C's implicit shallow-queue discipline
+        // without sleeps/pacing; latency stays recv_now_ns - sent_ts_ns.
+        long inflightCap = PerfEnv.ReadNonNegative(
+            "PERF_SINGLE_INFLIGHT_CAP", 256);
+
         bool sendFailed = false;
         ulong seq = 1;
+        long sent = 0;
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
+            if (inflightCap > 0)
+            {
+                while (sent - Interlocked.Read(ref received) >= inflightCap
+                       && Stopwatch.GetTimestamp() < deadlineTicks)
+                {
+                    Thread.SpinWait(1);
+                }
+            }
             StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize, seq,
                 EpochNs());
             seq++;
@@ -190,6 +226,7 @@ internal static class PerfDealerDealer
                 if (!TrySendActiveMessage(sender, payload,
                         "[single-dealer-dealer]"))
                     continue;
+                sent++;
             }
             catch (ZlinkException ex)
                 when (PerfShared.IsTransientBackpressure(ex.InternalErrno))

@@ -2788,6 +2788,13 @@ def run_sizes_test_split(
                             server_proc.stdin.write("STOP\n")
                             server_proc.stdin.flush()
                             stop_requested_sizes.add(done_size)
+                    except (BrokenPipeError, OSError, ValueError):
+                        # Server already finished/closed its stdin before we
+                        # could send the post-done STOP. This is benign (the
+                        # phase is already complete) and the C runner has no
+                        # equivalent write, so stay silent to keep report
+                        # output byte-identical with bindings/c/perf.
+                        stop_requested_sizes.add(done_size)
                     except Exception as exc:
                         report_runner_warning("send-stop-after-done", exc)
                 return
@@ -3119,8 +3126,17 @@ def run_sizes_test(
 
 
 def defer_live_multi_rows(pattern_name):
-    _ = pattern_name
-    return False
+    # MULTI_SPOT runs a saturated active pass (throughput) followed by a
+    # clean latency-only second pass whose latency/p95/p99 override the
+    # active values in the merged result (see run_sizes_test). The live
+    # streaming callback fires during the active pass and would write the
+    # saturated latency to the report before the override is applied, so
+    # for SPOT the row must be deferred and emitted from the merged
+    # size_result (which carries the clean-pass latency). This mirrors the
+    # C reference, which suppresses the live SPOT row in on_result_metric
+    # (bindings/c/perf/run_comparison.py:3400-3401) and emits it from
+    # on_size_result instead.
+    return normalize_multi_pattern_name(pattern_name) == "SPOT"
 
 
 def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
@@ -4192,6 +4208,10 @@ def build_effective_option_items(args, selected_patterns):
                 (
                     "stream_non_tcp_clients_max",
                     str(parse_env_int("PERF_STREAM_NON_TCP_CLIENTS_MAX", 10000)),
+                ),
+                (
+                    "disable_resource_metrics",
+                    str(max(0, parse_env_int("PERF_DISABLE_RESOURCE_METRICS", 0))),
                 ),
                 (
                     "timeout_seconds",

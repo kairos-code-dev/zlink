@@ -161,6 +161,151 @@ public static class PerfShared
         return 0;
     }
 
+    private static string SingleAutoHwmRoleName(uint role)
+    {
+        // Mirrors bench_common_runtime.hpp single_auto_hwm_role_name so the
+        // dotnet AUTO_HWM_DETAIL line is byte-identical to the C benchmark.
+        return role switch
+        {
+            1u => "control",
+            2u => "routed",
+            3u => "fanout",
+            4u => "recv_ingress",
+            5u => "spot_data",
+            6u => "peer_queue",
+            7u => "stream",
+            _ => "none",
+        };
+    }
+
+    private static bool SingleAutoHwmSnapshotVisible(MonitorSnapshot s)
+    {
+        return s.AutoHwmAppliedSndHwm > 0
+            || s.AutoHwmAppliedRcvHwm > 0
+            || s.AutoHwmEffectiveMessageBytes > 0
+            || s.AutoHwmSocketMessageSlots > 0;
+    }
+
+    // Byte-identical port of bench_common_runtime.hpp
+    // emit_single_socket_hwm_detail. The single report emitter
+    // (run_emit.py) parses this AUTO_HWM_DETAIL line exactly like the C
+    // single canonical emitter parses the C benchmark output, so the
+    // "## Auto-HWM Detail" report block matches the C single report.
+    public static void EmitSingleAutoHwmDetail(ISocketMonitor monitor,
+        string pattern, string transport, string component,
+        string socketType, int msgSize)
+    {
+        if (monitor is null)
+            return;
+        MonitorSnapshot snapshot;
+        try
+        {
+            snapshot = monitor.Snapshot();
+        }
+        catch
+        {
+            return;
+        }
+        if (snapshot is null || !SingleAutoHwmSnapshotVisible(snapshot))
+            return;
+
+        WriteStdoutLine(
+            "AUTO_HWM_DETAIL"
+            + $",pattern={pattern}"
+            + $",transport={transport}"
+            + $",component={component}"
+            + $",msg_size={msgSize}"
+            + ",owner=socket"
+            + ",owner_id=0"
+            + $",socket={component}"
+            + $",socket_type={socketType}"
+            + $",role={SingleAutoHwmRoleName(snapshot.AutoHwmRole)}"
+            + $",sndhwm={snapshot.AutoHwmAppliedSndHwm}"
+            + $",rcvhwm={snapshot.AutoHwmAppliedRcvHwm}"
+            + $",effective_message_bytes={snapshot.AutoHwmEffectiveMessageBytes}"
+            + $",effective_sndbuf={snapshot.AutoHwmEffectiveSndbuf}"
+            + $",effective_rcvbuf={snapshot.AutoHwmEffectiveRcvbuf}"
+            + $",socket_message_slots={snapshot.AutoHwmSocketMessageSlots}");
+    }
+
+    private static string SpotSocketOwnerName(SpotNodeSocketOwner owner)
+    {
+        // Mirrors perf_spot.cpp spot_socket_owner_name.
+        return owner switch
+        {
+            SpotNodeSocketOwner.Node => "node",
+            SpotNodeSocketOwner.Spot => "spot",
+            _ => "unknown",
+        };
+    }
+
+    private static string SpotSocketTypeName(SpotNodeSocketType type)
+    {
+        // Mirrors perf_spot.cpp socket_type_name.
+        return type switch
+        {
+            SpotNodeSocketType.Pair => "pair",
+            SpotNodeSocketType.Pub => "pub",
+            SpotNodeSocketType.Sub => "sub",
+            SpotNodeSocketType.Dealer => "dealer",
+            SpotNodeSocketType.Router => "router",
+            SpotNodeSocketType.XPub => "xpub",
+            SpotNodeSocketType.XSub => "xsub",
+            SpotNodeSocketType.Stream => "stream",
+            _ => "unknown",
+        };
+    }
+
+    // Byte-identical port of perf_spot.cpp emit_spot_hwm_detail. Iterates
+    // the SPOT node internal-socket snapshot and prints one AUTO_HWM_DETAIL
+    // line per visible socket so run_emit.py renders SPOT's
+    // "## Auto-HWM Detail" block byte-identically to the C single report.
+    public static void EmitSpotAutoHwmDetail(ISpotNode node,
+        string component, string transport, int msgSize)
+    {
+        if (node is null)
+            return;
+        SpotNodeSocketSnapshotEntry[] entries;
+        try
+        {
+            entries = node.InternalSocketsSnapshot();
+        }
+        catch
+        {
+            return;
+        }
+        if (entries is null)
+            return;
+        foreach (SpotNodeSocketSnapshotEntry entry in entries)
+        {
+            if (!entry.AutoHwmVisible)
+                continue;
+            MonitorSnapshot s = entry.Snapshot;
+            if (s is null
+                || (s.AutoHwmAppliedSndHwm <= 0 && s.AutoHwmAppliedRcvHwm <= 0))
+            {
+                continue;
+            }
+            WriteStdoutLine(
+                "AUTO_HWM_DETAIL"
+                + ",pattern=SPOT"
+                + $",transport={transport}"
+                + $",component={component}"
+                + $",msg_size={msgSize}"
+                + $",owner={SpotSocketOwnerName(entry.Owner)}"
+                + $",owner_id={entry.OwnerId}"
+                + $",socket={entry.SocketName}"
+                + $",socket_type={SpotSocketTypeName(entry.SocketType)}"
+                + $",role={SingleAutoHwmRoleName(s.AutoHwmRole)}"
+                + $",sndhwm={s.AutoHwmAppliedSndHwm}"
+                + $",rcvhwm={s.AutoHwmAppliedRcvHwm}"
+                + $",effective_message_bytes={s.AutoHwmEffectiveMessageBytes}"
+                + $",effective_sndbuf={s.AutoHwmEffectiveSndbuf}"
+                + $",effective_rcvbuf={s.AutoHwmEffectiveRcvbuf}"
+                + $",socket_message_slots={s.AutoHwmSocketMessageSlots}");
+        }
+    }
+
     public static void WriteStdoutLine(string line)
     {
         Console.WriteLine(line);

@@ -41,7 +41,10 @@ internal static class PerfMultiSpotClient
         ConfigureSpotDiscoveryTlsIfNeeded(discovery, config.Transport);
         ConfigureSpotNodeTlsIfNeeded(node, config.Transport);
         ApplySpotSubscriberOptions(node, options);
-        discovery.ConnectRegistry(config.RegistryEndpoint);
+        // ITEM 3 fix: tolerate the post-bind EAGAIN connect race (parity
+        // with C discovery's connect/retry loop).
+        ConnectRegistryWithRetry(discovery, config.RegistryEndpoint,
+            config.ConnectReadyTimeoutMs);
         BindSpotNodeWithRetry(node, config.Transport, "multi-spot-client",
             options);
         node.ConnectPeer(config.DataEndpoint);

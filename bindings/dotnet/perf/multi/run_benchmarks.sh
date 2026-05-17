@@ -247,6 +247,59 @@ print_line() {
   fi
 }
 
+# ITEM 1: byte-identical META block, mirroring the C multi engine
+# (bindings/c/perf/run_comparison.py build_meta_items/print_meta_lines).
+# Emits the same META,<key>,<value> lines and trailing blank line so the
+# dotnet multi report head matches the C multi reference report exactly.
+print_meta_block() {
+  local meta_clients="${1:-}"
+  local os_label cpu_label cores build_label commit_sha ts load_avg
+  os_label="$(python3 -c 'import platform;s=platform.system();r=platform.release();print(f"{s} {r}" if s and r else platform.platform())')"
+  cpu_label="$(python3 - <<'PY'
+import platform, subprocess
+def cpu():
+    try:
+        if platform.system() == "Linux":
+            with open("/proc/cpuinfo", "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if line.lower().startswith("model name"):
+                        p = line.split(":", 1)
+                        if len(p) == 2 and p[1].strip():
+                            return p[1].strip()
+        elif platform.system() == "Darwin":
+            o = subprocess.check_output(["sysctl","-n","machdep.cpu.brand_string"],text=True,stderr=subprocess.DEVNULL).strip()
+            if o:
+                return o
+        c = platform.processor().strip()
+        if c:
+            return c
+    except Exception:
+        pass
+    return "unknown"
+print(cpu())
+PY
+)"
+  cores="$(python3 -c 'import os;print(os.cpu_count() or 0)')"
+  build_label="Release"
+  commit_sha="$(git -C "${REPO_DIR}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  ts="$(python3 -c 'import datetime;print(datetime.datetime.now().astimezone().isoformat(timespec="seconds"))')"
+  load_avg="$(python3 -c 'import os;v=os.getloadavg();print(" ".join(f"{x:.2f}" for x in v))' 2>/dev/null || echo "")"
+  print_line "META,os,${os_label}"
+  print_line "META,cpu,${cpu_label}"
+  print_line "META,cores,${cores}"
+  print_line "META,build,${build_label}"
+  print_line "META,commit,${commit_sha}"
+  print_line "META,timestamp,${ts}"
+  if [[ -n "${load_avg}" ]]; then
+    print_line "META,load_avg,${load_avg}"
+  fi
+  print_line "META,runs,${RUNS}"
+  if [[ -n "${meta_clients}" ]]; then
+    print_line "META,clients,${meta_clients}"
+  fi
+  print_line ""
+}
+
 sleep_ms() {
   local ms="${1:-0}"
   sleep "$(printf '%d.%03d' "$(( ms / 1000 ))" "$(( ms % 1000 ))")"
@@ -701,6 +754,48 @@ print(
     f"      | {size + 'B':<8} | {throughput_text:>16} | {bandwidth:>10.3f} MB/s |"
     f" {latency_ms:>9.3f} ms | {latency_p95_ms:>9.3f} ms | {latency_p99_ms:>9.3f} ms |"
 )
+PY
+}
+
+# C parity: bindings/c/perf/run_comparison.py:3082-3088. Override the live
+# SPOT pass's latency/p95/p99 RESULT rows with the values measured by the
+# clean (paced, latency-only) second pass; throughput/bandwidth keep the
+# live (saturated) numbers. arg1: live block; arg2: clean block.
+merge_spot_clean_latency() {
+  local live_block="${1:-}"
+  local clean_block="${2:-}"
+  python3 - "${live_block}" "${clean_block}" <<'PY'
+import csv
+import io
+import sys
+
+live_text = sys.argv[1]
+clean_text = sys.argv[2]
+
+LATENCY_METRICS = {"latency", "latency_p95", "latency_p99"}
+
+
+def parse(text):
+    rows = []
+    for row in csv.reader(io.StringIO(text)):
+        if len(row) == 7 and row[0] == "RESULT":
+            rows.append(row)
+    return rows
+
+
+clean_by_metric = {}
+for row in parse(clean_text):
+    if row[5] in LATENCY_METRICS:
+        clean_by_metric[row[5]] = row[6]
+
+out = io.StringIO()
+writer = csv.writer(out, lineterminator="\n")
+for row in parse(live_text):
+    if row[5] in clean_by_metric:
+        row = list(row)
+        row[6] = clean_by_metric[row[5]]
+    writer.writerow(row)
+sys.stdout.write(out.getvalue())
 PY
 }
 
@@ -1554,6 +1649,89 @@ run_external_stream_client() {
     "${cmd[@]}" > "${client_log}" 2>&1
 }
 
+# C parity: bindings/c/perf/run_comparison.py:3062-3088 +
+# bindings/c/perf/multi/src/perf_multi_spot_server.cpp:197,334-373.
+# After the live (saturated) SPOT size case, run a fully isolated second
+# size case with PERF_MULTI_SPOT_LATENCY_ONLY=1 so the server publishes one
+# paced probe per interval over an idle link. The clean pass's
+# latency/p95/p99 are then merged over the live result; throughput keeps
+# the live numbers. Echoes the extracted clean RESULT block on success.
+run_spot_clean_latency_pass() {
+  local _pattern="$1"
+  local _transport="$2"
+  local _size="$3"
+  local _run_index="$4"
+  local cl_server_log="${RESULTS_ROOT}/multi/tmp/${_pattern,,}_${_transport}_${_size}_clean_server_run${_run_index}.log"
+  local cl_client_log="${RESULTS_ROOT}/multi/tmp/${_pattern,,}_${_transport}_${_size}_clean_client_run${_run_index}.log"
+  local cl_server_fifo="${RESULTS_ROOT}/multi/tmp/${_pattern,,}_${_transport}_${_size}_clean_server_run${_run_index}.ctl"
+  local cl_client_fifo="${RESULTS_ROOT}/multi/tmp/${_pattern,,}_${_transport}_${_size}_clean_client_run${_run_index}.ctl"
+  rm -f "${cl_server_log}" "${cl_client_log}" "${cl_server_fifo}" "${cl_client_fifo}"
+
+  # C parity (run_comparison.py:3069-3071): the second pass forces
+  # PERF_MULTI_SPOT_LATENCY_ONLY=1 and PERF_MULTI_SPOT_CLEAN_LATENCY=0
+  # (the latter prevents recursion). Exported so the server child inherits
+  # them (run_multi_process's env_prefix does not clear inherited env).
+  export PERF_MULTI_SPOT_LATENCY_ONLY=1
+  export PERF_MULTI_SPOT_CLEAN_LATENCY=0
+
+  local rc=1
+  local cl_server_pid=0 cl_client_pid=0
+  local cl_server_fd='' cl_client_fd=''
+  local cl_server_ep='' cl_control_ep='' cl_client_ctrl_ep='' cl_connected_ep=''
+
+  mkfifo "${cl_server_fifo}"
+  run_multi_process "server" "${cl_server_log}" "" "${cl_server_fifo}" 1
+  cl_server_pid=$!
+  exec {cl_server_fd}>"${cl_server_fifo}"
+  rm -f "${cl_server_fifo}"
+
+  if cl_server_ep="$(wait_for_ready_endpoint "${cl_server_log}" "${SERVER_READY_TIMEOUT_MS}")" \
+     && cl_control_ep="$(wait_for_control_ready_endpoint "${cl_server_log}" "${SERVER_READY_TIMEOUT_MS}")"; then
+    mkfifo "${cl_client_fifo}"
+    run_multi_process "client" "${cl_client_log}" "${cl_server_ep}" "${cl_client_fifo}" 1 "--control-endpoint" "${cl_control_ep}"
+    cl_client_pid=$!
+    exec {cl_client_fd}>"${cl_client_fifo}"
+    rm -f "${cl_client_fifo}"
+
+    if cl_client_ctrl_ep="$(wait_for_client_control_endpoint "${cl_client_log}" "${READY_TIMEOUT_MS}")"; then
+      write_control_line "${cl_server_fd}" 'CONNECT_CONTROL,%s\n' "${cl_client_ctrl_ep}"
+      if cl_connected_ep="$(wait_for_control_connected "${cl_server_log}" "${READY_TIMEOUT_MS}")"; then
+        write_control_line "${cl_client_fd}" 'CONTROL_CONNECTED,%s\n' "${cl_connected_ep}"
+        if wait_for_client_ready_line "${cl_client_log}" "${READY_TIMEOUT_MS}"; then
+          write_control_line "${cl_server_fd}" 'START,%s\n' "${_size}"
+          write_control_line "${cl_client_fd}" 'START,%s\n' "${_size}"
+          local cl_extracted=''
+          if cl_extracted="$(wait_for_results_from_logs \
+              "${cl_client_log}" "${cl_server_log}" "${_pattern}" \
+              "${_transport}" "${_size}" "${RESULT_TIMEOUT_SECONDS}")"; then
+            printf '%s\n' "${cl_extracted}"
+            rc=0
+          fi
+        fi
+      fi
+    fi
+  fi
+
+  [[ -n "${cl_client_fd}" ]] && write_control_line "${cl_client_fd}" 'STOP\n'
+  [[ -n "${cl_server_fd}" ]] && write_control_line "${cl_server_fd}" 'STOP\n'
+  if [[ "${cl_client_pid}" -ne 0 ]]; then
+    wait_for_pid "${cl_client_pid}" "$(shutdown_timeout_seconds)" \
+      || terminate_pid "${cl_client_pid}"
+    wait "${cl_client_pid}" 2>/dev/null || true
+  fi
+  if [[ "${cl_server_pid}" -ne 0 ]]; then
+    wait_for_pid "${cl_server_pid}" "$(shutdown_timeout_seconds)" \
+      || terminate_pid "${cl_server_pid}"
+    wait "${cl_server_pid}" 2>/dev/null || true
+  fi
+  [[ -n "${cl_client_fd}" ]] && exec {cl_client_fd}>&-
+  [[ -n "${cl_server_fd}" ]] && exec {cl_server_fd}>&-
+
+  unset PERF_MULTI_SPOT_LATENCY_ONLY
+  unset PERF_MULTI_SPOT_CLEAN_LATENCY
+  return "${rc}"
+}
+
 ensure_build_output
 prepare_core_runtime
 
@@ -1563,44 +1741,72 @@ if ! PERF_BINARY="$(resolve_perf_binary "${PROJECT_DIR}" "Zlink.BindingBench.Mul
   exit 1
 fi
 
-print_line "## Effective Options (start)"
-print_line "- lang: dotnet"
-print_line "- suite: multi"
-print_line "- runs: ${RUNS}"
-print_line "- duration_seconds: ${DURATION}"
-print_line "- patterns: ${PATTERN}"
-print_line "- transports: ${TRANSPORTS}"
-print_line "- msg_sizes: ${EFFECTIVE_MSG_SIZES_DISPLAY}"
-print_line "- clients: ${EFFECTIVE_CLIENTS_DISPLAY}"
-print_line "- default_clients: 100"
-print_line "- default_stream_clients: 10000"
-print_line "- service_clients: auto"
-print_line "- server_io_threads: ${display_server_io_threads}"
-print_line "- client_io_threads: ${display_client_io_threads}"
-print_line "- hwm: ${DISPLAY_HWM}"
-print_line "- sndhwm: ${DISPLAY_SNDHWM}"
-print_line "- rcvhwm: ${DISPLAY_RCVHWM}"
-print_line "- sndbuf: ${DISPLAY_SNDBUF}"
-print_line "- rcvbuf: ${DISPLAY_RCVBUF}"
-print_line "- ctx_auto_hwm_enable: ${CTX_AUTO_HWM_ENABLE}"
-print_line "- ctx_auto_hwm_profile: ${CTX_AUTO_HWM_PROFILE}"
-print_line "- sndtimeo_ms: ${SNDTIMEO_MS}"
-print_line "- rcvtimeo_ms: ${RCVTIMEO_MS}"
-print_line "- connect_concurrency: ${display_connect_concurrency}"
-print_line "- connect_ready_timeout_ms: ${READY_TIMEOUT_MS}"
-print_line "- monitor_hwm: ${MONITOR_HWM}"
-print_line "- server_ready_timeout_ms: ${SERVER_READY_TIMEOUT_MS}"
-print_line "- server_shutdown_timeout_ms: ${SERVER_SHUTDOWN_TIMEOUT_MS}"
-print_line "- server_bind_port: ${SERVER_BIND_PORT}"
-print_line "- transport_transition_ms: ${TRANSPORT_TRANSITION_MS}"
-print_line "- pattern_transition_ms: ${PATTERN_TRANSITION_MS}"
-print_line "- lat_timeout_ms: ${PERF_LAT_TIMEOUT_MS:-5000}"
-print_line "- stream_non_tcp_clients_max: ${PERF_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
-print_line "- disable_resource_metrics: ${PERF_DISABLE_RESOURCE_METRICS:-0}"
-print_line "- timeout_seconds: ${TIMEOUT_SECONDS_DISPLAY}"
-print_line "- runtime: ${CORE_LIB}"
-print_line "- pin_cpu: ${display_pin_cpu}"
-print_line ""
+# ITEM 1: META clients value mirrors C resolve_clients_meta:
+# env PERF_CLIENTS if numeric; else 10000 when every selected pattern is a
+# stream variant; else 100.
+META_CLIENTS=""
+if [[ "${PERF_CLIENTS:-}" =~ ^[0-9]+$ ]]; then
+  META_CLIENTS="${PERF_CLIENTS}"
+else
+  _all_stream=1
+  for _p in "${PATTERN//,/ }"; do
+    case "${_p}" in
+      MULTI_STREAM|STREAM) ;;
+      *) _all_stream=0 ;;
+    esac
+  done
+  if [[ "${_all_stream}" -eq 1 ]]; then
+    META_CLIENTS="10000"
+  else
+    META_CLIENTS="100"
+  fi
+fi
+print_meta_block "${META_CLIENTS}"
+
+# C multi engine (bindings/c/perf/run_comparison.py print_effective_options)
+# emits this block twice with identical body: once labelled "(start)" before
+# the patterns and once labelled "(result)" right before "## Result Data".
+# Emit byte-identically for both labels.
+print_effective_options() {
+  local label="$1"
+  print_line "## Effective Options (${label})"
+  print_line "- lang: dotnet"
+  print_line "- suite: multi"
+  print_line "- runs: ${RUNS}"
+  print_line "- patterns: ${PATTERN}"
+  print_line "- transports: ${TRANSPORTS}"
+  print_line "- msg_sizes: ${EFFECTIVE_MSG_SIZES_DISPLAY}"
+  print_line "- duration_seconds: ${DURATION}"
+  print_line "- clients: ${EFFECTIVE_CLIENTS_DISPLAY}"
+  print_line "- default_clients: 100"
+  print_line "- default_stream_clients: 10000"
+  print_line "- service_clients: auto"
+  print_line "- server_io_threads: ${display_server_io_threads}"
+  print_line "- client_io_threads: ${display_client_io_threads}"
+  print_line "- hwm: ${DISPLAY_HWM}"
+  print_line "- sndhwm: ${DISPLAY_SNDHWM}"
+  print_line "- rcvhwm: ${DISPLAY_RCVHWM}"
+  print_line "- sndbuf: ${DISPLAY_SNDBUF}"
+  print_line "- rcvbuf: ${DISPLAY_RCVBUF}"
+  print_line "- ctx_auto_hwm_enable: ${CTX_AUTO_HWM_ENABLE}"
+  print_line "- ctx_auto_hwm_profile: ${CTX_AUTO_HWM_PROFILE}"
+  print_line "- sndtimeo_ms: ${SNDTIMEO_MS}"
+  print_line "- rcvtimeo_ms: ${RCVTIMEO_MS}"
+  print_line "- connect_concurrency: ${display_connect_concurrency}"
+  print_line "- connect_ready_timeout_ms: ${READY_TIMEOUT_MS}"
+  print_line "- monitor_hwm: ${MONITOR_HWM}"
+  print_line "- server_ready_timeout_ms: ${SERVER_READY_TIMEOUT_MS}"
+  print_line "- server_shutdown_timeout_ms: ${SERVER_SHUTDOWN_TIMEOUT_MS}"
+  print_line "- server_bind_port: ${SERVER_BIND_PORT}"
+  print_line "- transport_transition_ms: ${TRANSPORT_TRANSITION_MS}"
+  print_line "- pattern_transition_ms: ${PATTERN_TRANSITION_MS}"
+  print_line "- lat_timeout_ms: ${PERF_LAT_TIMEOUT_MS:-5000}"
+  print_line "- stream_non_tcp_clients_max: ${PERF_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
+  print_line "- disable_resource_metrics: ${PERF_DISABLE_RESOURCE_METRICS:-0}"
+  print_line "- timeout_seconds: ${TIMEOUT_SECONDS_DISPLAY}"
+}
+
+print_effective_options "start"
 
 IFS=',' read -r -a patterns <<< "${PATTERN}"
 IFS=',' read -r -a transports <<< "${TRANSPORTS}"
@@ -1631,9 +1837,16 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         pattern_kind="echo"
         ;;
     esac
-    print_line ""
-    print_line "==============================================================================="
-    print_line ""
+    # ITEM 1: C multi engine prints the pattern separator only BETWEEN
+    # patterns (pattern_idx > 0), with no leading separator/blank before the
+    # first pattern and no blank line between Effective Options and the
+    # first "## PATTERN".
+    if [[ "${FIRST_PATTERN_EMITTED:-0}" -eq 1 ]]; then
+      print_line ""
+      print_line "==============================================================================="
+      print_line ""
+    fi
+    FIRST_PATTERN_EMITTED=1
     print_line "## PATTERN: ${pattern} (${pattern_kind})"
     print_line "  > Benchmarking current for ${pattern}..."
     pattern_auto_hwm_logs=()
@@ -2024,6 +2237,31 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           fi
         fi
 
+        # C parity: bindings/c/perf/run_comparison.py:3062-3088. Only the
+        # live MULTI_SPOT pass is saturated; its latency reflects queue
+        # backlog (~2300ms here, like C's pre-fix bug). Defer the live
+        # latency row by running a clean, paced latency-only second pass
+        # and overriding latency/p95/p99 with its uncontended values.
+        # REQREP/SENDSEND are echo (round-trip) patterns and are excluded,
+        # matching C's normalized_pattern == "SPOT" guard.
+        if [[ "${pattern}" == "MULTI_SPOT" \
+              && "${PERF_MULTI_SPOT_CLEAN_LATENCY:-1}" != "0" ]]; then
+          clean_extracted=''
+          if clean_extracted="$(run_spot_clean_latency_pass \
+              "${pattern}" "${transport}" "${size}" "${run_index}")"; then
+            if merged_extracted="$(merge_spot_clean_latency \
+                "${extracted}" "${clean_extracted}")"; then
+              extracted="${merged_extracted}"
+            fi
+          else
+            cat "${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_clean_server_run${run_index}.log" >&2 2>/dev/null || true
+            cat "${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_clean_client_run${run_index}.log" >&2 2>/dev/null || true
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "clean_latency_failed"
+            status=1
+            continue
+          fi
+        fi
+
         pattern_auto_hwm_logs+=("${server_log}" "${client_log}")
         while IFS= read -r result_line; do
           [[ -n "${result_line}" ]] || continue
@@ -2057,49 +2295,46 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
   done
 done
 
+# ITEM 1: the C multi engine (bindings/c/perf/run_comparison.py) calls
+# print_effective_options("result") unconditionally after the last pattern
+# and before "## Result Data" (a leading blank line precedes the header).
+# Match that exactly (C print() prefixes the header with one blank line).
 print_line ""
-print_line "## Effective Options (result)"
-print_line "- lang: dotnet"
-print_line "- suite: multi"
-print_line "- runs: ${RUNS}"
-print_line "- patterns: ${PATTERN}"
-print_line "- transports: ${TRANSPORTS}"
-print_line "- msg_sizes: ${EFFECTIVE_MSG_SIZES_DISPLAY}"
-print_line "- clients: ${EFFECTIVE_CLIENTS_DISPLAY}"
-print_line "- duration_seconds: ${DURATION}"
-print_line "- pin_cpu: ${display_pin_cpu}"
-print_line "- default_clients: 100"
-print_line "- default_stream_clients: 10000"
-print_line "- service_clients: auto"
-print_line "- server_io_threads: ${display_server_io_threads}"
-print_line "- client_io_threads: ${display_client_io_threads}"
-print_line "- hwm: ${DISPLAY_HWM}"
-print_line "- sndhwm: ${DISPLAY_SNDHWM}"
-print_line "- rcvhwm: ${DISPLAY_RCVHWM}"
-print_line "- sndbuf: ${DISPLAY_SNDBUF}"
-print_line "- rcvbuf: ${DISPLAY_RCVBUF}"
-print_line "- ctx_auto_hwm_enable: ${CTX_AUTO_HWM_ENABLE}"
-print_line "- ctx_auto_hwm_profile: ${CTX_AUTO_HWM_PROFILE}"
-print_line "- sndtimeo_ms: ${SNDTIMEO_MS}"
-print_line "- rcvtimeo_ms: ${RCVTIMEO_MS}"
-print_line "- connect_concurrency: ${display_connect_concurrency}"
-print_line "- connect_ready_timeout_ms: ${READY_TIMEOUT_MS}"
-print_line "- monitor_hwm: ${MONITOR_HWM}"
-print_line "- server_ready_timeout_ms: ${SERVER_READY_TIMEOUT_MS}"
-print_line "- server_shutdown_timeout_ms: ${SERVER_SHUTDOWN_TIMEOUT_MS}"
-print_line "- server_bind_port: ${SERVER_BIND_PORT}"
-print_line "- transport_transition_ms: ${TRANSPORT_TRANSITION_MS}"
-print_line "- pattern_transition_ms: ${PATTERN_TRANSITION_MS}"
-print_line "- lat_timeout_ms: ${PERF_LAT_TIMEOUT_MS:-5000}"
-print_line "- stream_non_tcp_clients_max: ${PERF_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
-print_line "- disable_resource_metrics: ${PERF_DISABLE_RESOURCE_METRICS:-0}"
-print_line "- timeout_seconds: ${TIMEOUT_SECONDS_DISPLAY}"
+print_effective_options "result"
+
 if [[ -s "${RESULT_DATA_FILE}" ]]; then
   print_line ""
   print_line "## Result Data"
+  # C emit_result_lines iterates sorted((pattern,transport,size,metric))
+  # tuples and tags every row "current". Re-tag + re-sort the collected
+  # dotnet RESULT lines so the block is byte-identical to C multi.
   while IFS= read -r result_line; do
     print_line "${result_line}"
-  done < "${RESULT_DATA_FILE}"
+  done < <(python3 - "${RESULT_DATA_FILE}" <<'PY'
+import csv, sys
+rows = {}
+with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
+    for row in csv.reader(fh):
+        if len(row) != 7 or row[0] != "RESULT":
+            continue
+        pattern, transport, size, metric, value = (
+            row[2], row[3], row[4], row[5], row[6]
+        )
+        try:
+            size_i = int(size)
+        except ValueError:
+            size_i = 0
+        rows[(pattern, transport, size_i, metric)] = (size, value)
+for key in sorted(rows.keys()):
+    pattern, transport, _size_i, metric = key
+    size, value = rows[key]
+    try:
+        value = f"{float(value):.3f}"
+    except ValueError:
+        pass
+    print(f"RESULT,current,{pattern},{transport},{size},{metric},{value}")
+PY
+)
 fi
 if [[ "${result_lines}" -eq "${expected_result_lines}" && "${status}" -eq 0 ]]; then
   completion_status="complete"
@@ -2109,10 +2344,43 @@ else
 fi
 print_completion_section "${completion_status}" "${expected_result_lines}" "${result_lines}" \
   "${success_count}" "${unsupported_count}" "${skip_count}" "${failure_count}"
-if [[ "${failure_count}" -gt 0 ]]; then
-  print_failures_section "${FAILURES_FILE}"
+# ITEM 1: C multi "## Failures" lines are
+#   - <PATTERN> current <transport> <size>B: <reason>
+# sorted by (pattern, transport, size, reason), unique. Match that exactly
+# instead of the generic key=value failures section.
+if [[ "${failure_count}" -gt 0 && -s "${FAILURES_FILE}" ]]; then
+  print_line ""
+  print_line "## Failures"
+  while IFS= read -r failure_line; do
+    print_line "${failure_line}"
+  done < <(python3 - "${FAILURES_FILE}" <<'PY'
+import csv, sys
+seen = set()
+items = []
+with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
+    for row in csv.reader(fh):
+        if len(row) < 5:
+            continue
+        pattern, transport, size, _run, reason = row[0], row[1], row[2], row[3], row[4]
+        key = (pattern, transport, size, reason)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            size_i = int(size)
+        except ValueError:
+            size_i = 0
+        items.append((pattern, transport, size_i, size, reason))
+for pattern, transport, _si, size, reason in sorted(
+    items, key=lambda x: (x[0], x[1], x[2], x[4])
+):
+    print(f"- {pattern} current {transport} {size}B: {reason}")
+PY
+)
 fi
 
+# C prints "\nSaved result file:" (leading blank line before the line).
+print_line ""
 print_line "Saved result file: ${REPORT} (status=${completion_status})"
 SHOW_TOTAL_TIME=1
 exit "${status}"

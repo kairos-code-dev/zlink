@@ -2,8 +2,10 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const { spawn } = require('node:child_process');
+const fs = require('node:fs');
 const path = require('node:path');
-const { buildEffectiveOptions, completionLines, defaultSingleMsgSizes, DEFAULT_SINGLE_TRANSPORTS, formatFailureRow, formatTableHeader, formatTableRow, hasPrimaryMetricsFromResultLines, medianMetrics, metricLines, parseCommonArgs, patternDirection, primaryMetricsFromResultLines, resolveSinglePatternNames, writeReport } = require('../common/perf_metrics');
+const { defaultSingleMsgSizes, DEFAULT_SINGLE_TRANSPORTS, hasPrimaryMetricsFromResultLines, medianMetrics, parseCommonArgs, primaryMetricsFromResultLines, resolveSinglePatternNames } = require('../common/perf_metrics');
+const { buildSingleOptionItems, effectiveOptionLines, resultDataLines, singleTableHeaderLine, singleTableSeparatorLine, singleTableRowLine } = require('../common/perf_c_emitter');
 const PATTERNS = {
     PAIR: { script: 'perf_pair.js' },
     PUBSUB: { script: 'perf_pubsub.js' },
@@ -312,190 +314,210 @@ async function main() {
     }
     const names = resolveSinglePatternNames(options.pattern);
     const failFast = process.env.PERF_FAIL_FAST === '1';
-    const resultLines = [];
-    const reportLines = [];
-    const failures = [];
-    const skips = [];
     const autoHwmDetails = [];
-    // C parity: bindings/c/perf/single/run_comparison.py keeps a
-    // combo_results dict keyed (pattern, transport, size) (~1330-1366) and
-    // derives complete/partial from it. Each combo gets exactly ONE status
-    // — when a transport is unsupported/skip, EVERY size for that transport
-    // is that status (C lines 1330-1335, whole-transport semantics) — so
-    // there is no double counting and earlier successes on an unsupported
-    // transport do not leak into the expected/complete math.
-    const comboStatus = new Map();
-    const comboKey = (pattern, transport, size) => `${pattern}|${transport}|${size}`;
-    const markTransport = (pattern, transport, status) => {
-        for (const size of options.msgSizes) {
-            comboStatus.set(comboKey(pattern, transport, size), status);
-        }
-    };
-    const markCombo = (pattern, transport, size, status) => {
-        comboStatus.set(comboKey(pattern, transport, size), status);
-    };
+    // C single TeeStream: the saved report file and stdout receive the
+    // EXACT same byte stream. We buffer every emitted line and write the
+    // file at the end so node's report is byte-identical to C's.
+    const out = [];
     const emit = (line = '') => {
         console.log(line);
-        reportLines.push(line);
+        out.push(line);
     };
-    const emitIndented = (prefix, lines) => {
-        for (const line of lines) {
-            emit(`${prefix}${line}`);
-        }
+    // Python `print("\nX")` = blank line then X. emitSection mirrors that.
+    const emitSection = (line) => {
+        emit('');
+        emit(line);
     };
-    console.log('## Effective Options (start)');
-    for (const line of buildEffectiveOptions({ ...options, lang: 'node', suite: 'single', patterns: names.join(',') })) {
-        console.log(line);
+    // C single timeout_sec: max(30, dur*6+15); SPOT also max(dur*12+60).
+    const durationSeconds = Number(process.env.PERF_SINGLE_DURATION_SECONDS || options.duration);
+    let timeoutSeconds = Math.max(30, durationSeconds * 6 + 15);
+    if (names.includes('SPOT')) {
+        timeoutSeconds = Math.max(timeoutSeconds, durationSeconds * 12 + 60);
     }
-    console.log('');
-    for (let patternIndex = 0; patternIndex < names.length; patternIndex += 1) {
-        const name = names[patternIndex];
+    const timeoutOverride = Number(process.env.PERF_SINGLE_TIMEOUT_SECONDS || 0);
+    if (Number.isFinite(timeoutOverride) && timeoutOverride > 0) {
+        timeoutSeconds = Math.trunc(timeoutOverride);
+    }
+    const optionItems = buildSingleOptionItems({
+        runs: options.runs,
+        duration: options.duration,
+        timeoutSeconds,
+        patterns: names,
+        transports: options.transports,
+        msgSizes: options.msgSizes
+    });
+    // C: print_effective_options does print("\n## Effective Options ...").
+    // The report file's first line is therefore an empty line.
+    emit('');
+    for (const line of effectiveOptionLines('node', 'single', 'start', optionItems)) {
+        emit(line);
+    }
+    // combo_results keyed (pattern, transport, size) -> ComboRecord.
+    const comboResults = new Map();
+    const comboKey = (pattern, transport, size) => `${pattern}|${transport}|${size}`;
+    const allFailures = [];
+    let requestedComboCount = 0;
+    const transportTransitionMs = Math.max(0, Number(process.env.PERF_TRANSPORT_TRANSITION_MS || 3000));
+    let tablesEmitted = false;
+    for (const name of names) {
         const runner = PATTERNS[name];
         if (!runner) {
             throw new Error(`unsupported single pattern: ${name}`);
         }
-        if (patternIndex > 0) {
+        const transports = options.transports.filter((transport) => policyTransports(name).includes(transport));
+        const sizes = options.msgSizes;
+        requestedComboCount += transports.length * sizes.length;
+        if (tablesEmitted) {
+            emit('');
             emit('===============================================================================');
             emit('');
         }
-        emit(`## PATTERN: ${name} (${patternDirection(name)})`);
-        emit('');
+        emit(`## PATTERN: ${name} (one-way)`);
+        tablesEmitted = true;
+        if (transports.length === 0) {
+            emit(`  Skipping ${name}: no matching transports.`);
+            continue;
+        }
+        if (sizes.length === 0) {
+            emit(`  Skipping ${name}: no message sizes configured.`);
+            continue;
+        }
         emit(`  > Benchmarking current for ${name}...`);
-        for (const transport of options.transports) {
-            if (isPlatformSkip(name, transport)) {
-                markTransport(name, transport, 'skip');
-                skips.push(`${name} current ${transport}: platform constraint`);
-                emit(`    Testing ${transport}: skip Done`);
-                continue;
-            }
-            const allowed = policyTransports(name);
-            if (!allowed.includes(transport)) {
-                markTransport(name, transport, 'unsupported');
-                emit(`    Testing ${transport}: unsupported Done`);
-                continue;
-            }
-            const transportFailuresBefore = failures.length;
+        for (let transportIdx = 0; transportIdx < transports.length; transportIdx += 1) {
+            const transport = transports[transportIdx];
+            const hasNextTransport = (transportIdx + 1) < transports.length;
             emit(`    Testing ${transport}:`);
-            if (options.runs === 1) {
-                emitIndented('      ', formatTableHeader());
-                const perSizeMetrics = new Map();
-                let transportUnsupported = false;
-                for (const msgSize of options.msgSizes) {
+            const showRunLabels = options.runs > 1;
+            if (!showRunLabels) {
+                emit(`      ${singleTableHeaderLine()}`);
+                emit(`      ${singleTableSeparatorLine()}`);
+            }
+            const samples = new Map(sizes.map((size) => [size, []]));
+            const failedSizes = new Map();
+            const failedRecords = new Map();
+            let transportUnsupported = false;
+            for (let run = 0; run < options.runs && !transportUnsupported; run += 1) {
+                let rowIndent = '      ';
+                if (showRunLabels) {
+                    emit(`      run ${run + 1}/${options.runs}:`);
+                    emit(`        ${singleTableHeaderLine()}`);
+                    emit(`        ${singleTableSeparatorLine()}`);
+                    rowIndent = '        ';
+                }
+                let aborted = false;
+                for (let sizeIdx = 0; sizeIdx < sizes.length; sizeIdx += 1) {
+                    const msgSize = sizes[sizeIdx];
+                    let lines;
                     try {
-                        const lines = await runSingleCase(runner.script, transport, msgSize, options);
-                        for (const line of lines) {
-                            const detail = parseAutoHwmDetailLine(line);
-                            if (detail) {
-                                autoHwmDetails.push(detail);
-                            }
-                        }
-                        if (!hasPrimaryMetricsFromResultLines(name, msgSize, lines) && isUnsupportedLines(lines)) {
-                            // C run_comparison.py ~1286-1295 / 1330-1332: a binary
-                            // UNSUPPORTED marks the WHOLE transport unsupported (all
-                            // sizes), overriding any earlier success on this transport.
-                            markTransport(name, transport, 'unsupported');
-                            transportUnsupported = true;
-                            break;
-                        }
-                        const metrics = primaryMetricsFromResultLines(name, msgSize, lines);
-                        const row = { pattern: name, msgSize, metrics };
-                        emit(`      ${formatTableRow(row)}`);
-                        perSizeMetrics.set(msgSize, metrics);
-                        markCombo(name, transport, msgSize, 'success');
+                        lines = await runSingleCase(runner.script, transport, msgSize, options);
                     }
                     catch (error) {
-                        failures.push(`${name} current ${transport} ${msgSize}B: ${errorText(error)}`);
-                        emit(`      ${formatFailureRow(msgSize)}`);
-                        markCombo(name, transport, msgSize, 'fail');
+                        const reason = String(error && error.message ? error.message : error)
+                            .toLowerCase().includes('timeout') ? 'timeout' : 'fail';
+                        failedSizes.set(msgSize, reason);
+                        allFailures.push([name, transport, msgSize, reason]);
+                        const rec = { status: 'fail' };
+                        failedRecords.set(msgSize, rec);
+                        emit(`${rowIndent}${singleTableRowLine(msgSize, 'fail', rec, name)}`);
                         if (failFast) {
-                            throw error;
+                            aborted = true;
+                            break;
                         }
-                    }
-                }
-                if (transportUnsupported) {
-                    emit(`    Testing ${transport}: unsupported Done`);
-                    continue;
-                }
-                for (const msgSize of options.msgSizes) {
-                    const metrics = perSizeMetrics.get(msgSize);
-                    if (!metrics) {
                         continue;
                     }
-                    resultLines.push(...metricLines(name, transport, msgSize, metrics));
+                    for (const line of lines) {
+                        const detail = parseAutoHwmDetailLine(line);
+                        if (detail) {
+                            autoHwmDetails.push(detail);
+                        }
+                    }
+                    if (!hasPrimaryMetricsFromResultLines(name, msgSize, lines)
+                        && isUnsupportedLines(lines)) {
+                        transportUnsupported = true;
+                        for (const remain of sizes.slice(sizeIdx)) {
+                            emit(`${rowIndent}${singleTableRowLine(remain, 'unsupported', null, name)}`);
+                        }
+                        break;
+                    }
+                    const metrics = primaryMetricsFromResultLines(name, msgSize, lines);
+                    samples.get(msgSize).push(metrics);
+                    emit(`${rowIndent}${singleTableRowLine(msgSize, 'success', {
+                        throughput: metrics.throughput,
+                        bandwidth: metrics.bandwidth,
+                        latency: metrics.latency,
+                        latency_p95: metrics.latency_p95,
+                        latency_p99: metrics.latency_p99
+                    }, name)}`);
+                }
+                if (aborted) {
+                    break;
+                }
+            }
+            if (transportUnsupported) {
+                for (const size of sizes) {
+                    comboResults.set(comboKey(name, transport, size), { status: 'unsupported' });
                 }
             }
             else {
-                const runResults = new Map(options.msgSizes.map((msgSize) => [msgSize, []]));
-                let transportUnsupported = false;
-                for (let run = 1; run <= options.runs; run += 1) {
-                    emit(`      run ${run}/${options.runs}:`);
-                    emitIndented('        ', formatTableHeader());
-                    for (const msgSize of options.msgSizes) {
-                        try {
-                            const lines = await runSingleCase(runner.script, transport, msgSize, options);
-                            for (const line of lines) {
-                                const detail = parseAutoHwmDetailLine(line);
-                                if (detail) {
-                                    autoHwmDetails.push(detail);
-                                }
-                            }
-                            if (!hasPrimaryMetricsFromResultLines(name, msgSize, lines) && isUnsupportedLines(lines)) {
-                                markTransport(name, transport, 'unsupported');
-                                transportUnsupported = true;
-                                break;
-                            }
-                            const metrics = primaryMetricsFromResultLines(name, msgSize, lines);
-                            runResults.get(msgSize).push(metrics);
-                            emit(`        ${formatTableRow({ pattern: name, msgSize, metrics })}`);
+                for (const size of sizes) {
+                    const list = samples.get(size);
+                    if (failedSizes.has(size) || !list || list.length === 0) {
+                        comboResults.set(comboKey(name, transport, size), failedRecords.get(size) || { status: 'fail' });
+                        if (!failedSizes.has(size)) {
+                            allFailures.push([name, transport, size, 'no_data']);
                         }
-                        catch (error) {
-                            failures.push(`${name} current ${transport} ${msgSize}B: ${errorText(error)}`);
-                            emit(`        ${formatFailureRow(msgSize)}`);
-                            markCombo(name, transport, msgSize, 'fail');
-                            if (failFast) {
-                                throw error;
-                            }
-                        }
-                    }
-                    if (transportUnsupported) {
-                        emit(`    Testing ${transport}: unsupported Done`);
-                        break;
-                    }
-                }
-                if (transportUnsupported) {
-                    continue;
-                }
-                emit('      median:');
-                emitIndented('        ', formatTableHeader());
-                for (const msgSize of options.msgSizes) {
-                    const metricsList = runResults.get(msgSize);
-                    if (!metricsList || metricsList.length !== options.runs) {
-                        emit(`        ${formatFailureRow(msgSize)}`);
-                        markCombo(name, transport, msgSize, 'fail');
                         continue;
                     }
-                    const metrics = medianMetrics(metricsList);
-                    emit(`        ${formatTableRow({ pattern: name, msgSize, metrics })}`);
-                    resultLines.push(...metricLines(name, transport, msgSize, metrics));
-                    markCombo(name, transport, msgSize, 'success');
+                    const merged = medianMetrics(list);
+                    comboResults.set(comboKey(name, transport, size), {
+                        status: 'success',
+                        throughput: merged.throughput,
+                        bandwidth: merged.bandwidth,
+                        latency: merged.latency,
+                        latency_p95: merged.latency_p95,
+                        latency_p99: merged.latency_p99
+                    });
                 }
             }
-            const transportFailures = failures.length - transportFailuresBefore;
-            emit(`    Testing ${transport}: ${transportFailures > 0 ? `(failures=${transportFailures}) Done` : 'Done'}`);
+            if (showRunLabels) {
+                emit('      median:');
+                emit(`        ${singleTableHeaderLine()}`);
+                emit(`        ${singleTableSeparatorLine()}`);
+                for (const size of sizes) {
+                    const record = comboResults.get(comboKey(name, transport, size));
+                    if (record && record.status === 'success') {
+                        emit(`        ${singleTableRowLine(size, 'success', record, name)}`);
+                    }
+                    else if (record && record.status === 'unsupported') {
+                        emit(`        ${singleTableRowLine(size, 'unsupported', null, name)}`);
+                    }
+                    else {
+                        emit(`        ${singleTableRowLine(size, 'fail', record, name)}`);
+                    }
+                }
+            }
+            emit(`    Testing ${transport}: Done`);
+            if (transportTransitionMs > 0 && hasNextTransport) {
+                let cooldownMs = transportTransitionMs;
+                const nextTransport = transports[transportIdx + 1];
+                if (nextTransport === 'inproc' && (transport === 'ws' || transport === 'wss')) {
+                    cooldownMs = Math.max(cooldownMs, 30000);
+                }
+                emit(`    [transport cooldown ${cooldownMs}ms]`);
+                await new Promise((resolve) => setTimeout(resolve, cooldownMs));
+            }
+            if (failFast && allFailures.length > 0) {
+                break;
+            }
+        }
+        if (failFast && allFailures.length > 0) {
+            break;
         }
     }
-    if (failures.length > 0) {
-        emit('');
-        emit('## Failures');
-        for (const failure of failures) {
-            emit(`- ${failure}`);
-        }
-    }
-    if (skips.length > 0) {
-        emit('');
-        emit('## Skips');
-        for (const skip of skips) {
-            emit(`- ${skip}`);
+    if (allFailures.length > 0) {
+        emitSection('## Failures');
+        for (const [pattern, transport, size, reason] of allFailures) {
+            emit(`- ${pattern} current ${transport} ${size}B: ${reason}`);
         }
     }
     for (const name of names) {
@@ -503,48 +525,79 @@ async function main() {
             emit(line);
         }
     }
-    // C parity: bindings/c/perf/single/run_comparison.py derives the run
-    // status from per-combo records. unsupported/skip combos are excluded
-    // from the expected set (they produce no RESULT lines); every remaining
-    // expected combo must be success. A combo with no recorded status was
-    // expected but yielded nothing → partial.
-    const totalCombos = names.length * options.transports.length * options.msgSizes.length;
-    let unsupportedCombos = 0;
-    let skippedCombos = 0;
-    let successCombos = 0;
-    let recordedCombos = 0;
-    for (const value of comboStatus.values()) {
-        recordedCombos += 1;
-        if (value === 'unsupported') {
-            unsupportedCombos += 1;
+    let unsupportedComboCount = 0;
+    let skipComboCount = 0;
+    let actualResultLines = 0;
+    const successRecords = [];
+    for (const [key, record] of comboResults) {
+        if (record.status === 'unsupported') {
+            unsupportedComboCount += 1;
         }
-        else if (value === 'skip') {
-            skippedCombos += 1;
+        else if (record.status === 'skip') {
+            skipComboCount += 1;
         }
-        else if (value === 'success') {
-            successCombos += 1;
+        else if (record.status === 'success') {
+            actualResultLines += 5;
+            const [pattern, transport, size] = key.split('|');
+            successRecords.push({
+                pattern,
+                transport,
+                size: Number(size),
+                throughput: record.throughput,
+                bandwidth: record.bandwidth,
+                latency: record.latency,
+                latency_p95: record.latency_p95,
+                latency_p99: record.latency_p99
+            });
         }
     }
-    const expectedCombos = totalCombos - unsupportedCombos - skippedCombos;
-    const expectedResultLines = expectedCombos * 5;
-    const actualResultLines = resultLines.length;
-    const allCombosRecorded = recordedCombos === totalCombos;
-    const status = (allCombosRecorded
-        && successCombos === expectedCombos
-        && expectedResultLines === actualResultLines) ? 'complete' : 'partial';
-    console.log('');
-    console.log('## Effective Options (result)');
-    for (const line of buildEffectiveOptions({ ...options, lang: 'node', suite: 'single', patterns: names.join(',') })) {
-        console.log(line);
+    const expectedResultLines = Math.max(0, (requestedComboCount - unsupportedComboCount - skipComboCount) * 5);
+    const status = expectedResultLines === actualResultLines ? 'complete' : 'partial';
+    emit('');
+    for (const line of effectiveOptionLines('node', 'single', 'result', optionItems)) {
+        emit(line);
     }
-    console.log('');
-    for (const line of completionLines(status, expectedResultLines, actualResultLines)) {
-        console.log(line);
+    if (successRecords.length > 0) {
+        emitSection('## Result Data');
+        for (const line of resultDataLines(successRecords)) {
+            emit(line);
+        }
     }
-    writeReport(path.join(options.resultsDir, 'single', 'report'), 'node', 'single', { ...options, patterns: names.join(',') }, reportLines, completionLines(status, expectedResultLines, actualResultLines));
+    emitSection('## Completion');
+    emit(`- status: ${status}`);
+    emit(`- expected_result_lines: ${expectedResultLines}`);
+    emit(`- actual_result_lines: ${actualResultLines}`);
+    const reportDir = path.join(options.resultsDir, 'single', 'report');
+    fs.mkdirSync(reportDir, { recursive: true });
+    const stamp = formatStamp(new Date());
+    const tag = options.resultsTag ? `_${sanitizeTag(options.resultsTag)}` : '';
+    const resultFile = path.join(reportDir, `perf_node_single_${platformTag()}_${stamp}${tag}.txt`);
+    emit('');
+    emit(`Saved result file: ${resultFile} (status=${status})`);
+    fs.writeFileSync(resultFile, `${out.join('\n')}\n`, 'utf8');
+    if (options.output) {
+        fs.writeFileSync(options.output, `${out.join('\n')}\n`, 'utf8');
+    }
     if (status !== 'complete') {
         process.exitCode = 1;
     }
+}
+function formatStamp(date) {
+    const pad = (value) => String(value).padStart(2, '0');
+    return (`${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
+        + `_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`);
+}
+function sanitizeTag(value) {
+    return String(value).trim().replace(/[^a-zA-Z0-9._-]+/g, '_');
+}
+function platformTag() {
+    if (process.platform === 'win32') {
+        return 'windows';
+    }
+    if (process.platform === 'darwin') {
+        return 'macos';
+    }
+    return 'linux';
 }
 main().catch((error) => {
     console.error(error);

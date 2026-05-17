@@ -103,11 +103,23 @@ final class PerfDealerDealer {
             Thread traffic = new Thread(() -> {
                 try {
                     try (Message active = PerfUtil.payloadTemplate(config.size())) {
+                        // C parity: perf_dealer_dealer.cpp send step uses
+                        // send_socket_active_message(sender, &part,
+                        // ZLINK_DONTWAIT, true) and perf_single_one_way.hpp
+                        // send_active_samples (~169-196) retries the same
+                        // sample (continue, no advance) on transient
+                        // backpressure. A blocking submit() can wedge the
+                        // sender on a full HWM so the active loop never
+                        // reaches activeEnd and the wire stop token below is
+                        // never emitted, hanging the receiver's poll(-1) until
+                        // the harness timeout. Mirror C: nonblocking send,
+                        // retry on transient backpressure until the deadline.
                         while (System.nanoTime() < activeEnd) {
                             PerfUtil.resetAndWritePayload(active, config.size(),
                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                            try (Message outbound = Message.copyOf(active)) {
-                                sender.send().message(outbound).submit();
+                            while (System.nanoTime() < activeEnd
+                                && !trySendActive(sender, active)) {
+                                // send_step_retry: re-attempt same sample.
                             }
                         }
                     }
@@ -145,6 +157,32 @@ final class PerfDealerDealer {
             PerfUtil.printSingleMonitorAutoHwm(config, senderMonitor, "sender",
                 SocketType.DEALER);
             return metrics.finishSingle(config);
+        }
+    }
+
+    // C parity: perf_single_one_way.hpp send_socket_active_message
+    // (~145-166). Nonblocking send; true == send_step_sent. Transient
+    // backpressure (BACKPRESSURED / EAGAIN / EINTR) -> false so the caller
+    // re-attempts the same sample (send_step_retry); a non-transient error
+    // is fatal and propagates (send_step_fatal).
+    private static boolean trySendActive(DealerSocket sender, Message active) {
+        try (Message outbound = Message.copyOf(active)) {
+            return sender.send()
+                .message(outbound)
+                .flags(SendFlags.DONT_WAIT)
+                .submit();
+        } catch (systems.zlink.contracts.SubmitException ex) {
+            if (ex.getResult()
+                == systems.zlink.contracts.SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        } catch (systems.zlink.contracts.ZlinkException ex) {
+            int errno = ex.getInternalErrno();
+            if (errno == 11 || errno == 4 || errno == 10035) {
+                return false;
+            }
+            throw ex;
         }
     }
 }

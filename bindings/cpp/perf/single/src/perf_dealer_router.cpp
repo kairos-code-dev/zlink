@@ -13,34 +13,6 @@ bool perf_debug_enabled ()
     return std::getenv ("PERF_DEBUG") != NULL;
 }
 
-bool record_router_payload (const zlink::received_t &received,
-                            uint32_t run_id,
-                            size_t msg_size,
-                            size_t payload_size,
-                            std::atomic<unsigned long long> &received_count,
-                            perf::single::latency_stats_builder_t &latency_builder)
-{
-    if (received.parts ().size () != 1 || received.parts ()[0].size () != payload_size)
-        return true;
-
-    perf_single_metric::header_t header;
-    if (!perf_single_metric::decode_payload_header (
-          received.parts ()[0].data (), received.parts ()[0].size (), &header)) {
-        return true;
-    }
-    if (!perf_single_metric::is_expected (
-          header, run_id, perf_single_metric::phase_active, msg_size)) {
-        return true;
-    }
-
-    received_count.fetch_add (1, std::memory_order_release);
-    const uint64_t now = perf_single_metric::now_ns ();
-    const double latency_ns =
-      perf_single_metric::elapsed_latency_ns (now, header.sent_ts_ns);
-    latency_builder.add (latency_ns);
-    return true;
-}
-
 } // namespace
 
 bool run_pattern_dealer_router (const std::string &transport,
@@ -131,75 +103,55 @@ bool run_pattern_dealer_router (const std::string &transport,
             sender_ok.store (false, std::memory_order_release);
     });
 
-    zlink::poller_t poller;
-    router.sock ().poller_add (poller, zlink::poll_event_flag_t::pollin);
-    bool stop_received = false;
-    while (!stop_received) {
-        // PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait, no timer cap.
-        std::optional<zlink::poll_event_t> event =
-          poller.wait (std::chrono::milliseconds (-1));
-        if (!event) {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            sender_ok.store (false, std::memory_order_release);
-            break;
-        }
-        if ((static_cast<short> (event->revents)
-             & static_cast<short> (zlink::poll_event_flag_t::pollin))
-            == 0) {
-            continue;
-        }
-
-        for (;;) {
-            try {
-                zlink::received_t received;
-                if (router.sock ().receive (received, ZLINK_DONTWAIT)
-                    != 0) {
-                    if (errno == EAGAIN || errno == EINTR)
-                        break;
-                    sender_ok.store (false, std::memory_order_release);
-                    break;
-                }
-                // routing-id is on received.routing_id(); parts() carries
-                // only the body frames, so a one-frame stop token arrives
-                // as a single-part message.
-                if (received.parts ().size () == 1
-                    && perf::single::is_stop_token_message (
-                         received.parts ()[0])) {
-                    stop_received = true;
-                    break;
-                }
-                if (std::chrono::steady_clock::now () < active_deadline) {
-                    (void) record_router_payload (
-                      received,
-                      run_id,
-                      msg_size,
-                      payload_size,
-                      received_count,
-                      latency_builder);
-                }
-            }
-            catch (const zlink::recv_error_t &err) {
-                if (err.result () == zlink::recv_result_t::no_data
-                    || err.result () == zlink::recv_result_t::busy) {
-                    break;
-                }
+    // C-faithful receiver (bindings/c/perf single perf_dealer_router.cpp
+    // run_active_phase): blocking recv (flags=0, bounded by rcvtimeo) into
+    // a single reused routing_id_t + message_t, exiting on the wire-level
+    // stop token. The previous poller.wait()+received_t drain allocated a
+    // fresh std::vector<message_t> per message (received_t::parts ()
+    // materialize), capping DEALER_ROUTER throughput at ~70% of C; C uses
+    // one reused zlink_msg_t recv buffer with no per-message heap churn.
+    {
+        zlink::routing_id_t source_rid =
+          zlink::detail::unchecked_empty_routing_id ();
+        bool stop_received = false;
+        while (!stop_received) {
+            zlink::message_t part;
+            const int recv_rc =
+              router.sock ().recv (source_rid, part, 0);
+            if (recv_rc != 0) {
+                if (errno == EAGAIN || errno == EINTR)
+                    continue;
                 if (perf_debug_enabled ())
-                    std::cerr << "dealer_router: recv failed result="
-                              << static_cast<int> (err.result ())
-                              << " errno=" << err.internal_errno () << std::endl;
+                    std::cerr << "dealer_router: recv failed errno="
+                              << errno << std::endl;
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
+            if (perf::single::is_stop_token_message (part)) {
+                stop_received = true;
+                break;
+            }
+            if (part.size () != payload_size)
+                continue;
+            perf_single_metric::header_t header;
+            if (!perf_single_metric::decode_payload_header (
+                  part.data (), part.size (), &header))
+                continue;
+            if (!perf_single_metric::is_expected (
+                  header, run_id, perf_single_metric::phase_active,
+                  msg_size))
+                continue;
+            if (std::chrono::steady_clock::now () < active_deadline) {
+                received_count.fetch_add (1, std::memory_order_release);
+                const uint64_t now = perf_single_metric::now_ns ();
+                latency_builder.add (
+                  perf_single_metric::elapsed_latency_ns (
+                    now, header.sent_ts_ns));
+            }
         }
-
-        if (!sender_ok.load (std::memory_order_acquire))
-            break;
     }
 
     sender_thread.join ();
-    // Stop token is the last in-flight message, so any earlier payloads
-    // have already been recorded above. No bounded drain loop needed.
     (void) recv_timeout;
 
     const unsigned long long received =
@@ -214,6 +166,14 @@ bool run_pattern_dealer_router (const std::string &transport,
     }
 
     const perf::single::latency_stats_t latency = latency_builder.snapshot ();
+
+    perf::single::emit_single_socket_hwm_detail (
+      router.sock (), "DEALER_ROUTER", transport, "receiver", "router",
+      msg_size);
+    perf::single::emit_single_socket_hwm_detail (
+      dealer.sock (), "DEALER_ROUTER", transport, "sender", "dealer",
+      msg_size);
+
     const double throughput =
       static_cast<double> (received) / static_cast<double> (duration_s);
     perf::single::print_result (lib_name,

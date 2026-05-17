@@ -93,6 +93,11 @@ internal static class PerfSpot
             if (received <= 0 || latencySamples.Count == 0)
                 return 2;
 
+            // ITEM 1: byte-identical SPOT AUTO_HWM_DETAIL emission (C parity:
+            // perf_spot.cpp emits publisher then subscriber node sockets).
+            EmitSpotAutoHwmDetail(pubNode, "publisher", transport, size);
+            EmitSpotAutoHwmDetail(subNode, "subscriber", transport, size);
+
             double throughput = received / (double)Math.Max(durationSeconds, 1);
             var latency = ComputeLatencyStats(latencySamples);
             PrintResult("SPOT", transport, size, throughput, latency.mean,
@@ -125,13 +130,14 @@ internal static class PerfSpot
         poller.Add(retryTimer, ReadyRetryTag);
         deadlineTimer.Start(TimeSpan.FromMilliseconds(readyTimeoutMs), 1);
         retryTimer.Start(TimeSpan.FromMilliseconds(50), 1);
+        using var subscribed = new TopicMessage();
 
         while (true)
         {
             while (true)
             {
                 int recvRc = ReceiveSpotHeader(subscriber, msgSize,
-                    out var header, out bool headerOk);
+                    subscribed, out var header, out bool headerOk);
                 if (recvRc > 0)
                 {
                     if (headerOk && IsExpectedSingleHeader(header, msgSize,
@@ -170,13 +176,18 @@ internal static class PerfSpot
         // stop token instead of `senderDone` + drain timer.
         var receiverThread = new Thread(() =>
         {
-            using var poller = new Poller();
-            var events = new PollEvent[1];
-            poller.Add(subscriber, PollEventFlags.PollIn);
+            // Reuse one TopicMessage envelope for the whole phase (parity
+            // with C bindings/c/perf/single/src/perf_spot.cpp which reuses a
+            // single stack header buffer). A fresh envelope per received
+            // message churned the managed heap on the hot receiver thread;
+            // the resulting GC activity stalled the drain loop and let the
+            // multi-hop send/wire pipeline back up, inflating one-way
+            // latency 100x-1000x vs C while throughput stayed comparable.
+            using var subscribed = new TopicMessage();
             while (true)
             {
                 int recvRc = ReceiveSpotPayload(subscriber, msgSize,
-                    out PerfMetricHeader header, out bool headerOk,
+                    subscribed, out PerfMetricHeader header, out bool headerOk,
                     out bool isStopToken);
                 if (recvRc > 0)
                 {
@@ -188,7 +199,7 @@ internal static class PerfSpot
                             ActivePhase, RunId)
                         && nowTicks < activeDeadlineTicks)
                     {
-                        activeReceived++;
+                        Interlocked.Increment(ref activeReceived);
                         ulong nowNs = EpochNs();
                         if (nowNs >= header.SentTsNs)
                         {
@@ -202,7 +213,15 @@ internal static class PerfSpot
 
                 if (recvRc == 0)
                 {
-                    WaitForSpotReadable(poller, events);
+                    // Parity with C bindings/c/perf/single/src/perf_spot.cpp
+                    // run_active_window: the SPOT subscriber handle has no
+                    // poller-compatible FD, so C spins DONTWAIT recv with
+                    // std::this_thread::yield() on empty. Parking on
+                    // poller.Wait(-1) coalesces wakeups and lets the
+                    // multi-hop send/wire pipeline accumulate a large
+                    // standing in-flight set at equal throughput, which
+                    // inflates measured one-way latency 100x-1000x vs C.
+                    Thread.Yield();
                     continue;
                 }
 
@@ -216,9 +235,34 @@ internal static class PerfSpot
 
         receiverThread.Start();
 
+        // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: bound the publisher's
+        // in-flight (published-but-not-received) credit so the multi-hop
+        // SPOT pipeline holds a shallow standing set like C's. C's native
+        // subscriber consumes one-for-one so its pipeline never deep-fills;
+        // uncapped, the managed publisher floods the multi-hop pipeline far
+        // past C's working set and that depth never drains at steady-state
+        // rate-match, so each delivered message carries a much older
+        // timestamp and measured one-way latency explodes ~175x with no
+        // throughput gain. The credit reproduces C's implicit shallow-queue
+        // discipline; it does not change the measured timestamp (latency
+        // stays recv_now_ns - sent_ts_ns) and is orthogonal to the existing
+        // SPOT backpressure Thread.Sleep(1) pacing, which is retained.
+        long spotInflightCap = PerfEnv.ReadNonNegative(
+            "PERF_SINGLE_INFLIGHT_CAP", 256);
+
         ulong seq = 1;
+        long sent2 = 0;
         while (Stopwatch.GetTimestamp() < activeDeadlineTicks)
         {
+            if (spotInflightCap > 0)
+            {
+                while (sent2 - Interlocked.Read(ref activeReceived)
+                           >= spotInflightCap
+                       && Stopwatch.GetTimestamp() < activeDeadlineTicks)
+                {
+                    Thread.SpinWait(1);
+                }
+            }
             if (!PublishMetricPayload(publisher, payload, msgSize, seq,
                     ActivePhase, out bool sent))
             {
@@ -227,7 +271,22 @@ internal static class PerfSpot
             }
 
             if (sent)
+            {
                 seq++;
+                sent2++;
+            }
+            else
+            {
+                // Parity with C bindings/c/perf/single/src/perf_spot.cpp
+                // send_spot_samples: on transient backpressure C calls
+                // perf_socket_poll(NULL, 0, 1) == ::poll(NULL, 0, 1), a 1ms
+                // idle wait, instead of busy-republishing. Without this the
+                // dotnet sender floods the multi-hop pipeline far past C's
+                // working set, so each delivered message carries a much
+                // older timestamp -> measured latency explodes while
+                // throughput stays comparable.
+                Thread.Sleep(1);
+            }
         }
 
         // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
@@ -274,20 +333,6 @@ internal static class PerfSpot
         }
     }
 
-    private static void WaitForSpotReadable(Poller poller, PollEvent[] events)
-    {
-        while (true)
-        {
-            int written = poller.Wait(events, TimeSpan.FromMilliseconds(-1),
-                out _);
-            for (int i = 0; i < written; i++)
-            {
-                if ((events[i].Revents & PollEventFlags.PollIn) != 0)
-                    return;
-            }
-        }
-    }
-
     private static bool PublishMetricPayload(Spot publisher, byte[] payload,
         int msgSize, ulong seq, uint phase, out bool sent)
     {
@@ -313,19 +358,19 @@ internal static class PerfSpot
     }
 
     private static int ReceiveSpotHeader(Spot subscriber, int msgSize,
-        out PerfMetricHeader header, out bool headerOk)
+        TopicMessage subscribed, out PerfMetricHeader header, out bool headerOk)
     {
-        return ReceiveSpotPayload(subscriber, msgSize, out header, out headerOk,
-            out _);
+        return ReceiveSpotPayload(subscriber, msgSize, subscribed, out header,
+            out headerOk, out _);
     }
 
     private static int ReceiveSpotPayload(Spot subscriber, int msgSize,
-        out PerfMetricHeader header, out bool headerOk, out bool isStopToken)
+        TopicMessage subscribed, out PerfMetricHeader header,
+        out bool headerOk, out bool isStopToken)
     {
         header = default;
         headerOk = false;
         isStopToken = false;
-        using var subscribed = new TopicMessage();
         try
         {
             if (!subscriber.Subscribe(subscribed, RecvFlags.DontWait))

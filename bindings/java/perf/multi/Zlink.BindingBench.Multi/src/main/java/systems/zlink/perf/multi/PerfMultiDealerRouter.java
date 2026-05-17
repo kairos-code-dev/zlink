@@ -126,17 +126,26 @@ final class PerfMultiDealerRouter {
                 PerfUtil.waitForMonitorEvent(monitors.get(i), READY_EVENT, 1,
                     readyTimeout,
                     "dealer/router client ready");
-                monitors.get(i).close();
             }
-            monitors.clear();
             for (DealerSocket client : clients) {
                 PerfUtil.applyAutoHwmMsgUnit(client, config.size());
             }
             PerfUtil.recalculateAutoHwm(ctx);
+            // C parity: the C dealer/router perf client emits its client-side
+            // AUTO_HWM_DETAIL (component=client, dealer socket) so the report's
+            // "Auto-HWM detail:" table carries both the client AND server rows.
+            // Emit BEFORE closing the monitors -- matching PerfMultiRouterRouter
+            // ordering. The previous code closed+cleared `monitors` first, so
+            // the print loop ran over an empty list and the client row was
+            // silently dropped (only the server row reached the report).
             for (int i = 0; i < monitors.size(); i++) {
                 PerfUtil.printMultiMonitorAutoHwm(config, monitors.get(i),
                     "client", "client[" + i + "]", SocketType.DEALER);
             }
+            for (int i = 0; i < monitors.size(); i++) {
+                monitors.get(i).close();
+            }
+            monitors.clear();
             runDealerRouterClientLoop(clients, config, metrics);
             return metrics.finishMulti(config);
         } finally {

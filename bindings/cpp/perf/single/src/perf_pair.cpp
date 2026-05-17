@@ -191,19 +191,31 @@ bool run_pattern_pair (const std::string &transport,
 
     std::thread sender_thread ([&]() {
         uint64_t seq = 0;
+        // C-faithful send model (bindings/c/perf single
+        // perf_single_one_way.hpp send_active_samples +
+        // send_socket_active_message with ZLINK_DONTWAIT,
+        // retry_on_eagain=true): on transient backpressure, re-stamp a
+        // fresh timestamp and retry immediately. A blocking send instead
+        // stamps once then parks for the full TLS/WS write, so every
+        // delivered message carries a stale timestamp -> latency blows
+        // up 20-1000x on tls/ws/wss at unchanged throughput.
         while (std::chrono::steady_clock::now () < active_deadline) {
-            if (!perf_single_metric::stamp_payload (payload.data (),
-                                                    payload.size (),
-                                                    run_id,
-                                                    perf_single_metric::phase_active,
-                                                    msg_size,
-                                                    seq++,
-                                                    perf_single_metric::now_ns ())
-                || !perf::single::send_payload_blocking (
-                  conn_socket, payload.data (), payload.size ())) {
+            if (!perf_single_metric::stamp_payload (
+                  payload.data (), payload.size (), run_id,
+                  perf_single_metric::phase_active, msg_size, seq,
+                  perf_single_metric::now_ns ())) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
+            const int send_rc = perf::single::send_payload_dontwait (
+              conn_socket, payload.data (), payload.size ());
+            if (send_rc < 0) {
+                sender_ok.store (false, std::memory_order_release);
+                break;
+            }
+            if (send_rc == 0)
+                continue; // backpressure: re-stamp + retry (no sleep)
+            ++seq;
             sent_count.fetch_add (1, std::memory_order_release);
         }
         // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
@@ -225,6 +237,11 @@ bool run_pattern_pair (const std::string &transport,
         return false;
     }
     const perf::single::latency_stats_t latency = latency_builder.snapshot ();
+
+    perf::single::emit_single_socket_hwm_detail (
+      bind_socket, "PAIR", transport, "receiver", "pair", msg_size);
+    perf::single::emit_single_socket_hwm_detail (
+      conn_socket, "PAIR", transport, "sender", "pair", msg_size);
 
     const double throughput =
       duration_s > 0 ? static_cast<double> (active_received) / duration_s : 0.0;

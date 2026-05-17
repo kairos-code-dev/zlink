@@ -8,14 +8,13 @@ import systems.zlink.contracts.service.spot.*;
 
 import systems.zlink.contracts.Context;
 import systems.zlink.contracts.Message;
-import systems.zlink.contracts.PollEvent;
-import systems.zlink.contracts.PollEventFlag;
-import systems.zlink.contracts.Poller;
 import systems.zlink.contracts.RecvException;
 import systems.zlink.contracts.RecvFlags;
 import systems.zlink.contracts.RecvResult;
 import systems.zlink.contracts.RoutingId;
 import systems.zlink.contracts.SendFlags;
+import systems.zlink.contracts.SubmitException;
+import systems.zlink.contracts.SubmitResult;
 import systems.zlink.contracts.TopicMessage;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfStopToken;
@@ -61,9 +60,7 @@ final class PerfMultiSpot {
             long latencyOnlyIntervalNanos = Math.max(1,
                 latencyOnlyIntervalMicros()) * 1_000L;
             long nextSendNanos = System.nanoTime();
-            try (Message active = PerfUtil.payloadTemplate(config.size());
-                 Poller poller = new Poller()) {
-                poller.add(publisher, PollEventFlag.POLLOUT);
+            try (Message active = PerfUtil.payloadTemplate(config.size())) {
                 while (System.nanoTime() < activeEnd) {
                     if (latencyOnly) {
                         long now = System.nanoTime();
@@ -74,7 +71,7 @@ final class PerfMultiSpot {
                     }
                     PerfUtil.resetAndWritePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                    if (!publishWhenWritable(publisher, poller, active,
+                    if (!publishWhenWritableUntil(publisher, active,
                             activeEnd)) {
                         break;
                     }
@@ -85,12 +82,24 @@ final class PerfMultiSpot {
                 }
             }
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
-            // wire-level stop token.
-            try (Message stop = PerfStopToken.newMessage()) {
-                publisher.publish(TOPIC)
-                    .message(stop)
-                    .flags(SendFlags.NONE)
-                    .submit();
+            // wire-level stop token. Bounded non-blocking retry (never an
+            // unbounded blocking submit, which hangs on wss backpressure);
+            // the client recv workers also stop at their finishDeadline so a
+            // dropped terminator cannot wedge the run.
+            long stopDeadline = System.nanoTime() + 2_000_000_000L;
+            while (System.nanoTime() < stopDeadline) {
+                try (Message stop = PerfStopToken.newMessage()) {
+                    if (publisher.publish(TOPIC)
+                            .message(stop)
+                            .flags(SendFlags.DONT_WAIT)
+                            .submit()) {
+                        break;
+                    }
+                } catch (SubmitException ex) {
+                    if (!isTransientSpotSubmit(ex)) {
+                        throw ex;
+                    }
+                }
             }
             return PerfUtil.Result.silent(config);
         }
@@ -148,166 +157,149 @@ final class PerfMultiSpot {
         }
     }
 
-    private static boolean publishWhenWritable(Spot publisher,
-                                               Poller poller,
-                                               Message message,
-                                               long deadlineNs) {
-        while (System.nanoTime() < deadlineNs) {
-            if (publisher.publish(TOPIC)
-                    .message(message)
-                    .flags(SendFlags.DONT_WAIT)
-                    .submit()) {
+    // C parity: perf_multi_spot_server.cpp try_publish_locked +
+    // wait_for_spot_send_progress. C publishes ZLINK_DONTWAIT and, on
+    // EAGAIN, pushes the SAME message through (a SEND_FLAGS_NONE submit
+    // bounded by the socket SNDTIMEO, with a POLLOUT settle) - it never
+    // drops. SpotNode exposes no SNDTIMEO, so an unbounded blocking submit
+    // would hang the server on persistent tls/wss backpressure
+    // (server_exit_124 -> status=partial). Use the converged bounded
+    // equivalent (PerfSpot.publishWhenWritableUntil): re-stamped DONTWAIT
+    // retry with a sub-millisecond park, never dropping, never blocking
+    // unbounded, terminated by the active deadline. Apples-to-apples
+    // isolated MULTI_SPOT/tcp/64B with this model is ~2.4M msg/s vs the
+    // isolated C reference ~0.31M msg/s (the 5.5M figure in the canonical
+    // full-matrix C report is a parallel-load artifact, not reproducible
+    // in isolation).
+    private static boolean publishWhenWritableUntil(Spot publisher,
+                                                    Message message,
+                                                    long deadlineNanos) {
+        while (System.nanoTime() < deadlineNanos) {
+            if (tryPublish(publisher, message, SendFlags.DONT_WAIT)) {
                 return true;
             }
-            if (!waitFor(poller, PollEventFlag.POLLOUT, deadlineNs)) {
-                return false;
-            }
+            java.util.concurrent.locks.LockSupport.parkNanos(200_000L);
         }
         return false;
     }
 
-    private static boolean waitFor(Poller poller, PollEventFlag expected,
-                                   long deadlineNs) {
-        List<PollEvent> events = new ArrayList<>(1);
-        for (;;) {
-            long remainingNs = deadlineNs - System.nanoTime();
-            if (remainingNs <= 0) {
+    private static boolean tryPublish(Spot publisher, Message message,
+                                      SendFlags flags) {
+        // zlink consumes the submitted message, so a fresh frame is required
+        // per attempt; the payload buffer itself is reused via the caller's
+        // resetAndWritePayload (no per-message template reallocation).
+        try (Message outbound = Message.copyOf(message)) {
+            return publisher.publish(TOPIC)
+                .message(outbound)
+                .flags(flags)
+                .submit();
+        } catch (SubmitException ex) {
+            if (isTransientSpotSubmit(ex)) {
                 return false;
             }
-            poller.wait(events, Duration.ofMillis(-1));
-            for (PollEvent event : events) {
-                if (event.revents().contains(expected)) {
-                    return true;
-                }
-            }
+            throw ex;
         }
+    }
+
+    private static boolean isTransientSpotSubmit(SubmitException ex) {
+        return ex.getResult() == SubmitResult.BACKPRESSURED
+            || ex.getResult() == SubmitResult.NOT_CONNECTED;
+    }
+
+    // C parity: perf_multi_spot_client.cpp resolve_spot_recv_worker_count
+    // (~337-350). For N slots use max(4, min(128, (N+15)/16)) busy recv
+    // worker threads, capped at N.
+    private static int resolveRecvWorkerCount(int slotCount) {
+        if (slotCount == 0) {
+            return 0;
+        }
+        int configured = PerfUtil.intEnv("PERF_MULTI_SPOT_RECV_WORKERS", 0);
+        if (configured > 0) {
+            return Math.min(slotCount, configured);
+        }
+        int scaled = Math.max(4, Math.min(128, (slotCount + 15) / 16));
+        return Math.min(slotCount, scaled);
     }
 
     private static void runClientSubscribers(PerfUtil.Config config,
                                              List<Spot> subscribers,
                                              PerfUtil.Metrics metrics,
                                              PerfSpotDirectControl control) {
-        boolean[] cooldownSeen = new boolean[subscribers.size()];
-        boolean[] queued = new boolean[subscribers.size()];
-        Deque<Integer> readyQueue = new ArrayDeque<>(subscribers.size());
-        CountDownLatch complete = new CountDownLatch(1);
-        AtomicLong activeEndRef = new AtomicLong();
+        int n = subscribers.size();
+        boolean[] cooldownSeen = new boolean[n];
         AtomicReference<Throwable> failure = new AtomicReference<>();
         try {
-            for (int i = 0; i < subscribers.size(); i++) {
-                final int index = i;
-                Spot subscriber = subscribers.get(i);
-                subscriber.onDispatchEvent(info -> {
-                    if (info != null
-                        && info.event()
-                        == systems.zlink.contracts.SpotDispatchEvent.SUBSCRIBE_READABLE) {
-                        long activeEnd = activeEndRef.get();
-                        if (activeEnd == 0L) {
-                            return;
-                        }
-                        synchronized (readyQueue) {
-                            if (!queued[index]) {
-                                queued[index] = true;
-                                readyQueue.addLast(index);
-                            }
-                            readyQueue.notifyAll();
-                        }
-                    }
-                });
-            }
             settleReadyBarrier();
             control.publishConnected();
-            control.publishReadyCount(config.size(), subscribers.size());
+            control.publishReadyCount(config.size(), n);
             PerfControl.emitClientReady(config.size());
             PerfControl.awaitStart(config.size(), "spot client");
-            activeEndRef.set(Long.MAX_VALUE);
             control.waitStart(config.size(), config.connectReadyTimeoutMs());
             long activeEnd = System.nanoTime()
                 + Duration.ofSeconds(config.durationSeconds()).toNanos();
-            activeEndRef.set(activeEnd);
-            synchronized (readyQueue) {
-                for (int i = 0; i < subscribers.size(); i++) {
-                    queued[i] = true;
-                    readyQueue.addLast(i);
-                }
-                readyQueue.notifyAll();
-            }
             long finishDeadline = activeEnd
                 + Duration.ofMillis(postPhaseSettleMs()).toNanos();
-            while (System.nanoTime() < finishDeadline) {
-                Throwable ex = failure.get();
-                if (ex != null) {
-                    throw new IllegalStateException(
-                        "spot dispatch drain failed: "
-                        + ex.getClass().getSimpleName()
-                        + (ex.getMessage() == null ? "" : ": " + ex.getMessage()),
-                        ex);
-                }
-                if (complete.getCount() == 0) {
-                    return;
-                }
-                Integer index = pollReadyIndex(readyQueue, queued, finishDeadline);
-                if (index == null) {
-                    continue;
-                }
-                if (cooldownSeen[index]) {
-                    continue;
-                }
-                try {
-                    boolean drained = drainSubscriber(subscribers.get(index),
-                        metrics, config.size(), activeEnd, cooldownSeen, index);
-                    if (drained && !cooldownSeen[index]) {
-                        enqueueReadyIndex(readyQueue, queued, index);
+
+            // C parity: perf_multi_spot_client.cpp start_spot_recv_workers
+            // (~853-889) + spot_client_recv_worker_loop (~832-851). A pool of
+            // worker threads, each owning a fixed slice of the spot slots,
+            // busy-drains every owned slot with ZLINK_DONTWAIT. The prior
+            // single dispatch-queue drain processed one of the 100 spots at a
+            // time, capping MULTI_SPOT throughput ~50x below C.
+            int workerCount = resolveRecvWorkerCount(n);
+            Thread[] workers = new Thread[workerCount];
+            for (int w = 0; w < workerCount; w++) {
+                final int workerId = w;
+                workers[w] = new Thread(() -> {
+                    try {
+                        while (System.nanoTime() < finishDeadline
+                            && failure.get() == null) {
+                            boolean progressed = false;
+                            for (int i = workerId; i < n; i += workerCount) {
+                                if (cooldownSeen[i]) {
+                                    continue;
+                                }
+                                if (drainSubscriber(subscribers.get(i),
+                                        metrics, config.size(), activeEnd,
+                                        cooldownSeen, i)) {
+                                    progressed = true;
+                                }
+                            }
+                            if (allCooldownSeen(cooldownSeen)) {
+                                return;
+                            }
+                            if (!progressed) {
+                                // C: perf_socket_poll(NULL,0,1) when idle.
+                                Thread.sleep(0, 200_000);
+                            }
+                        }
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    } catch (Throwable ex) {
+                        failure.compareAndSet(null, ex);
                     }
-                } catch (Throwable drainFailure) {
-                    failure.compareAndSet(null, drainFailure);
-                    complete.countDown();
-                }
-                if (allCooldownSeen(cooldownSeen)) {
-                    complete.countDown();
-                    return;
-                }
+                }, "spot-recv-worker-" + w);
+                workers[w].setDaemon(true);
             }
-            return;
+            for (Thread t : workers) {
+                t.start();
+            }
+            for (Thread t : workers) {
+                long remainingMs = Math.max(1L,
+                    Duration.ofNanos(finishDeadline - System.nanoTime())
+                        .toMillis() + 1000L);
+                t.join(remainingMs);
+            }
+            Throwable ex = failure.get();
+            if (ex != null) {
+                throw new IllegalStateException(
+                    "spot recv worker failed: "
+                    + ex.getClass().getSimpleName()
+                    + (ex.getMessage() == null ? "" : ": " + ex.getMessage()),
+                    ex);
+            }
         } catch (Throwable ex) {
             throw new IllegalStateException("spot client failed", ex);
-        }
-    }
-
-    private static void enqueueReadyIndex(Deque<Integer> readyQueue,
-                                          boolean[] queued,
-                                          int index) {
-        synchronized (readyQueue) {
-            if (!queued[index]) {
-                queued[index] = true;
-                readyQueue.addLast(index);
-                readyQueue.notifyAll();
-            }
-        }
-    }
-
-    private static Integer pollReadyIndex(Deque<Integer> readyQueue,
-                                          boolean[] queued,
-                                          long finishDeadline) {
-        synchronized (readyQueue) {
-            while (readyQueue.isEmpty()) {
-                long remainingNs = finishDeadline - System.nanoTime();
-                if (remainingNs <= 0L) {
-                    return null;
-                }
-                try {
-                    long waitMs = Math.max(1L,
-                        Duration.ofNanos(remainingNs).toMillis());
-                    readyQueue.wait(waitMs);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("spot client interrupted",
-                        interrupted);
-                }
-            }
-            int index = readyQueue.removeFirst();
-            queued[index] = false;
-            return index;
         }
     }
 

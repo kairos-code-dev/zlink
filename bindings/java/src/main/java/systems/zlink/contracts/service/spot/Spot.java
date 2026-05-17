@@ -130,6 +130,26 @@ public final class Spot implements AutoCloseable {
     private final ThreadLocal<Integer> topicScratchCapacity =
       ThreadLocal.withInitial(() -> TOPIC_SCRATCH_INITIAL_CAPACITY);
 
+    // Subscribe hot path scratch (parity with Socket RecvScratch): persistent
+    // off-heap out-params + a last-topic cache so a steady single-part stream
+    // on one constant topic does not re-allocate an Arena or re-decode a
+    // String per message. The original receiveTopicMessage path allocated an
+    // Arena (5 native segments) + Message[] + new String + new TopicMessage
+    // per delivered message, which capped MULTI_SPOT per-thread throughput.
+    private static final class SpotRecvScratch {
+        final Arena arena = Arena.ofAuto();
+        final MemorySegment ridOut = arena.allocate(ValueLayout.ADDRESS);
+        final MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
+        final MemorySegment topicLenOut =
+          arena.allocate(ValueLayout.JAVA_LONG);
+        final MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
+        byte[] cachedTopicBytes;
+        String cachedTopicString = "";
+    }
+
+    private final ThreadLocal<SpotRecvScratch> spotRecvScratch =
+      ThreadLocal.withInitial(SpotRecvScratch::new);
+
     @FunctionalInterface
     private interface SubscribeCallback {
         void onMessage(RoutingId routingId, String topicId, Received received);
@@ -735,11 +755,155 @@ public final class Spot implements AutoCloseable {
     public boolean subscribe(TopicMessage result, RecvFlags flags) {
         Objects.requireNonNull(result, "result");
         Objects.requireNonNull(flags, "flags");
-        Optional<TopicMessage> fresh = receiveTopicMessage(flags == RecvFlags.DONT_WAIT);
+        if (flags == RecvFlags.DONT_WAIT) {
+            return subscribeIntoFastNoWait(result);
+        }
+        Optional<TopicMessage> fresh = receiveTopicMessage(false);
         if (fresh.isEmpty())
             return false;
         result.adoptFrom(fresh.get());
         return true;
+    }
+
+    // Non-allocating spot subscribe hot path for the DONT_WAIT single-part
+    // case. Mirrors Socket.subscribeIntoFastNoWait: thread-local scratch (no
+    // per-call Arena), critical downcall, cached topic String, reused result.
+    // Multipart payloads fall back to the general allocating reader.
+    private boolean subscribeIntoFastNoWait(TopicMessage result) {
+        ensureOpen();
+        SpotRecvScratch scratch = spotRecvScratch.get();
+        while (true) {
+            scratch.topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
+            Message part = new Message();
+            boolean success = false;
+            try {
+                int rc = Native.spotSubscribePartNoWaitCritical(handle,
+                  scratch.ridOut, scratch.topicOut, TOPIC_CAPACITY,
+                  scratch.topicLenOut,
+                  InternalAccess.messageNativeHandle(part),
+                  scratch.hasMoreOut, RECV_DONTWAIT);
+                if (rc == 0) {
+                    boolean more =
+                      scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                    InternalAccess.messageFinishReceive(part, more);
+                    if (more) {
+                        success = true;
+                        Optional<TopicMessage> fresh =
+                          assembleRemainder(scratch, part);
+                        if (fresh.isEmpty())
+                            return false;
+                        result.adoptFrom(fresh.get());
+                        return true;
+                    }
+                    RoutingId routingId = readRoutingIdPtr(
+                      scratch.ridOut.get(ValueLayout.ADDRESS, 0));
+                    int topicLength = normalizeTopicLength(scratch.topicOut,
+                      TOPIC_CAPACITY,
+                      scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+                    String topicId = cachedSpotTopic(scratch, topicLength);
+                    success = true;
+                    InternalAccess.topicMessageAdoptSingle(result, routingId,
+                      topicId, part);
+                    return true;
+                }
+            } finally {
+                if (!success) {
+                    try {
+                        part.close();
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            }
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR) {
+                continue;
+            }
+            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+                return false;
+            }
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_subscribe_part");
+        }
+    }
+
+    private String cachedSpotTopic(SpotRecvScratch scratch, int topicLength) {
+        // The C buffer can include a trailing NUL; normalizeTopicLength has
+        // already trimmed it from topicLength.
+        if (topicLength == 0) {
+            return "";
+        }
+        byte[] cached = scratch.cachedTopicBytes;
+        if (cached != null && cached.length == topicLength) {
+            boolean same = true;
+            for (int i = 0; i < topicLength; i++) {
+                if (cached[i]
+                    != scratch.topicOut.get(ValueLayout.JAVA_BYTE, i)) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) {
+                return scratch.cachedTopicString;
+            }
+        }
+        byte[] raw = scratch.topicOut.asSlice(0, topicLength)
+          .toArray(ValueLayout.JAVA_BYTE);
+        String decoded = new String(raw, StandardCharsets.UTF_8);
+        scratch.cachedTopicBytes = raw;
+        scratch.cachedTopicString = decoded;
+        return decoded;
+    }
+
+    private Optional<TopicMessage> assembleRemainder(SpotRecvScratch scratch,
+                                                     Message firstPart) {
+        RoutingId routingId = readRoutingIdPtr(
+          scratch.ridOut.get(ValueLayout.ADDRESS, 0));
+        int topicLength = normalizeTopicLength(scratch.topicOut,
+          TOPIC_CAPACITY,
+          scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+        String topicId = decodeTopic(scratch.topicOut, topicLength);
+        java.util.ArrayList<Message> parts = new java.util.ArrayList<>();
+        parts.add(firstPart);
+        while (true) {
+            Message next = new Message();
+            boolean ok = false;
+            try {
+                int rc = Native.spotSubscribePart(handle, scratch.ridOut,
+                  scratch.topicOut, TOPIC_CAPACITY, scratch.topicLenOut,
+                  InternalAccess.messageNativeHandle(next),
+                  scratch.hasMoreOut, RECV_BLOCKING);
+                if (rc == 0) {
+                    ok = true;
+                    boolean more =
+                      scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                    InternalAccess.messageFinishReceive(next, more);
+                    parts.add(next);
+                    if (!more) {
+                        return Optional.of(InternalAccess.topicMessage(
+                          routingId, topicId,
+                          parts.toArray(Message[]::new)));
+                    }
+                    continue;
+                }
+            } finally {
+                if (!ok) {
+                    try {
+                        next.close();
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            }
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR) {
+                continue;
+            }
+            for (Message m : parts) {
+                try {
+                    m.close();
+                } catch (RuntimeException ignored) {
+                }
+            }
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_subscribe_part");
+        }
     }
 
     Optional<TopicMessage> subscribeNoWait() {

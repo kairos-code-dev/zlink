@@ -34,11 +34,15 @@ final class PerfPubSub {
         String endpoint = PerfUtil.endpoint(config.transport(), "single-pubsub");
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-        boolean sharedContext = "inproc".equals(config.transport());
-        Context pubCtx = PerfUtil.newContext(config);
-        Context subCtx = sharedContext ? pubCtx : PerfUtil.newContext(config);
-        try (PubSocket pub = new PubSocket(pubCtx);
-             SubSocket sub = new SubSocket(subCtx)) {
+        // C parity: perf_pubsub.cpp run_pubsub (~185-192) creates ONE
+        // ctx_guard_t and builds BOTH the publisher and subscriber sockets on
+        // it. Using two independent contexts for non-inproc transports (the
+        // prior behaviour) doubled the io-thread scheduling for the PUB->SUB
+        // pipe and capped subscriber throughput ~4x vs C. Share one context
+        // for all transports to match C.
+        Context ctx = PerfUtil.newContext(config);
+        try (PubSocket pub = new PubSocket(ctx);
+             SubSocket sub = new SubSocket(ctx)) {
             var pubMonitor = pub.monitorOpen(MonitorEventType.CONNECTION_READY);
             var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY);
             try {
@@ -52,10 +56,26 @@ final class PerfPubSub {
             // C always sets ZLINK_PUB_OPT_NODROP explicitly to the resolved
             // 0/1, so mirror that here.
             pub.options().noDrop(resolvePubSubXpubNoDrop());
+            // C parity: perf_pubsub.cpp run_pubsub applies
+            // apply_single_auto_hwm_msg_unit(publisher/subscriber, msg_size)
+            // (~201-202) and apply_single_hwm (~35-36) BEFORE bind/connect, so
+            // the per-message auto-HWM sizing is in effect when the transport
+            // pipe is created. Applying it after connect (the prior ordering)
+            // left the tcp PUB->SUB pipe sized by the pre-recalc default,
+            // collapsing PUBSUB/tcp throughput ~4x while inproc (whose pipe
+            // picks up the later recalc) was unaffected.
+            PerfUtil.applyAutoHwmMsgUnit(pub, config.size());
+            PerfUtil.applyAutoHwmMsgUnit(sub, config.size());
+            PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.configureServerTls(pub, config.transport());
             PerfUtil.configureClientTls(sub, config.transport());
             pub.bind(PerfUtil.bindEndpoint(endpoint, config.transport()));
-            sub.setSubscription(TOPIC);
+            // C parity: perf_pubsub.cpp setup_connected_pubsub_pair (~37)
+            // subscribes to "" (subscribe-all). Subscribing to a specific
+            // topic instead forces the core SUB side to run a topic-filter
+            // match on every delivered message, which C avoids entirely and
+            // which throttled steady-state subscriber throughput ~4x.
+            sub.setSubscription("");
             sub.connect(PerfUtil.connectedEndpoint(pub, endpoint,
                 config.transport()));
             PerfUtil.waitForMonitorEvent(pubMonitor, READY_EVENT, 1,
@@ -64,12 +84,6 @@ final class PerfPubSub {
             PerfUtil.waitForMonitorEvent(subMonitor, READY_EVENT, 1,
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "pubsub subscriber ready");
-            PerfUtil.applyAutoHwmMsgUnit(pub, config.size());
-            PerfUtil.applyAutoHwmMsgUnit(sub, config.size());
-            PerfUtil.recalculateAutoHwm(pubCtx);
-            if (!sharedContext) {
-                PerfUtil.recalculateAutoHwm(subCtx);
-            }
             PerfUtil.printSingleMonitorAutoHwm(config, pubMonitor, "publisher",
                 SocketType.PUB);
             PerfUtil.printSingleMonitorAutoHwm(config, subMonitor, "subscriber",
@@ -85,36 +99,52 @@ final class PerfPubSub {
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
             Thread recvThread = new Thread(() -> {
-                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                    List.of(sub), PollEventFlag.POLLIN)) {
-                    while (true) {
-                        pollSet.poll(-1);
-                        if (!pollSet.isReady(0, PollEventFlag.POLLIN)) {
+                // C parity: perf_single_one_way.hpp run_active_phase receiver
+                // thread (~276-327). C does NOT poll the SUB socket: it issues
+                // a blocking subscribe (bounded by RCVTIMEO so an idle socket
+                // returns EAGAIN and the loop keeps cycling) and, on each
+                // payload, burst-drains with ZLINK_DONTWAIT until EAGAIN.
+                // Using a poller here added a poll(-1) syscall round trip per
+                // ~200-message batch which, combined with PUB NODROP
+                // backpressure, throttled steady-state throughput ~4x. The
+                // loop ends purely on the wire-level stop token.
+                try (TopicMessage received = new TopicMessage()) {
+                    boolean stop = false;
+                    while (!stop) {
+                        if (!sub.subscribe(received, RecvFlags.NONE)) {
+                            // RCVTIMEO elapsed with no data: keep cycling
+                            // (matches C recv_result_again -> continue).
                             continue;
                         }
-                        boolean stop = false;
-                        while (true) {
-                            try (TopicMessage received = new TopicMessage()) {
-                                if (!sub.subscribe(received, RecvFlags.DONT_WAIT)) {
-                                    break;
-                                }
-                                if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
-                                    stop = true;
-                                    break;
-                                }
-                                PerfUtil.Header header = PerfUtil.decodeHeader(
-                                    received.firstPart(), config.size());
-                                if (header == null) {
-                                    continue;
-                                }
-                                if (header.phase() == PerfUtil.PHASE_ACTIVE
-                                    && System.nanoTime() < activeEnd) {
-                                    metrics.recordNanos(header.latencyNanos());
-                                }
-                            }
-                        }
-                        if (stop) {
+                        if (PerfStopToken.isStopTokenMessage(
+                                received.firstPart())) {
                             return;
+                        }
+                        PerfUtil.Header header = PerfUtil.decodeHeader(
+                            received.firstPart(), config.size());
+                        if (header != null
+                            && header.phase() == PerfUtil.PHASE_ACTIVE
+                            && System.nanoTime() < activeEnd) {
+                            metrics.recordNanos(header.latencyNanos());
+                        }
+                        // Inner DONT_WAIT burst drain (C lines ~289-315).
+                        while (true) {
+                            if (!sub.subscribe(received,
+                                    RecvFlags.DONT_WAIT)) {
+                                break;
+                            }
+                            if (PerfStopToken.isStopTokenMessage(
+                                    received.firstPart())) {
+                                stop = true;
+                                break;
+                            }
+                            PerfUtil.Header burst = PerfUtil.decodeHeader(
+                                received.firstPart(), config.size());
+                            if (burst != null
+                                && burst.phase() == PerfUtil.PHASE_ACTIVE
+                                && System.nanoTime() < activeEnd) {
+                                metrics.recordNanos(burst.latencyNanos());
+                            }
                         }
                     }
                 } catch (Throwable ex) {
@@ -150,10 +180,7 @@ final class PerfPubSub {
             }
             return metrics.finishSingle(config);
         } finally {
-            if (!sharedContext) {
-                subCtx.close();
-            }
-            pubCtx.close();
+            ctx.close();
         }
     }
 

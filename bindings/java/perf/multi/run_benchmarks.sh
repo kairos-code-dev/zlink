@@ -754,7 +754,11 @@ tmp_metrics="$(mktemp)"
 tmp_progress="$(mktemp)"
 tmp_failures="$(mktemp)"
 tmp_auto_hwm="$(mktemp)"
-trap 'rm -f "${tmp_metrics}" "${tmp_progress}" "${tmp_failures}" "${tmp_auto_hwm}"' EXIT
+# pattern -> transports -> sizes iteration plan, so the report emitter can
+# reproduce the canonical C multi structure byte-for-byte. C authority:
+# bindings/c/perf/run_comparison.py
+tmp_plan="$(mktemp)"
+trap 'rm -f "${tmp_metrics}" "${tmp_progress}" "${tmp_failures}" "${tmp_auto_hwm}" "${tmp_plan}"' EXIT
 metrics_regex='^(throughput|bandwidth|latency|latency_p95|latency_p99)$'
 
 expected_result_lines=0
@@ -1216,6 +1220,8 @@ for pattern_index in "${!patterns[@]}"; do
   pattern_server_io_threads="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
   pattern_client_io_threads="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
   IFS=',' read -r -a msg_sizes <<< "$(trim_csv "${pattern_msg_sizes}")"
+  printf '%s\t%s\t%s\n' "${pattern}" \
+    "$(IFS=,; echo "${transports[*]}")" "${pattern_msg_sizes}" >> "${tmp_plan}"
 
   for transport_index in "${!transports[@]}"; do
     transport="${transports[transport_index]}"
@@ -1303,57 +1309,79 @@ for pattern_index in "${!patterns[@]}"; do
 done
 
 python_status=0
-python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${tmp_auto_hwm}" "${report}" "${requested_patterns}" "${TRANSPORTS}" "${display_msg_sizes}" \
-  "${display_clients}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" \
-  "${PIN_CPU}" "${display_server_io_threads}" "${display_client_io_threads}" \
-  "${display_hwm}" "${display_send_hwm}" "${display_recv_hwm}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" \
-  "${CONNECT_READY_TIMEOUT_MS}" "${MONITOR_HWM}" "${SERVER_BIND_PORT}" \
-  "${CONNECT_CONCURRENCY}" "${display_sndbuf}" "${display_rcvbuf}" \
-  "${CTX_AUTO_HWM_ENABLE}" "${CTX_AUTO_HWM_PROFILE}" \
-  "${STREAM_DEFAULT_CLIENTS}" "${SERVICE_CLIENTS}" \
-  "${SERVER_READY_TIMEOUT_MS}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" \
-  "${TRANSPORT_TRANSITION_MS}" "${PATTERN_TRANSITION_MS}" \
-  "${LAT_TIMEOUT_MS}" "${STREAM_NON_TCP_CLIENTS_MAX}" \
-  "${DISABLE_RESOURCE_METRICS}" "${TIMEOUT_SECONDS}" \
-  "${tmp_progress}" "${expected_result_lines}" "${actual_result_lines}" <<'PY' || python_status=$?
+python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${tmp_auto_hwm}" "${tmp_plan}" "${report}" \
+  "${RUNS}" "${DURATION}" "${CLIENTS}" "${SERVICE_CLIENTS}" \
+  "${display_server_io_threads}" "${display_client_io_threads}" \
+  "${display_hwm}" "${display_send_hwm}" "${display_recv_hwm}" "${display_sndbuf}" "${display_rcvbuf}" \
+  "${CTX_AUTO_HWM_ENABLE}" "${CTX_AUTO_HWM_PROFILE}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" \
+  "${CONNECT_CONCURRENCY}" "${CONNECT_READY_TIMEOUT_MS}" "${MONITOR_HWM}" \
+  "${SERVER_READY_TIMEOUT_MS}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "${SERVER_BIND_PORT}" \
+  "${TRANSPORT_TRANSITION_MS}" "${PATTERN_TRANSITION_MS}" "${LAT_TIMEOUT_MS}" \
+  "${STREAM_NON_TCP_CLIENTS_MAX}" "${DISABLE_RESOURCE_METRICS}" "${TIMEOUT_SECONDS}" \
+  "${STREAM_DEFAULT_CLIENTS}" "${RESULTS_TAG}" \
+  "${expected_result_lines}" "${actual_result_lines}" <<'PY' || python_status=$?
 import csv
+import datetime
 import math
+import os
+import platform
+import subprocess
 import sys
 from collections import defaultdict
 from pathlib import Path
 
-helper_path, metrics_path, failures_path, auto_hwm_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, clients, runs, duration, results_tag, pin_cpu, server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, connect_ready_timeout_ms, monitor_hwm, server_bind_port, connect_concurrency, sndbuf, rcvbuf, ctx_auto_hwm_enable, ctx_auto_hwm_profile, default_stream_clients, service_clients, server_ready_timeout_ms, server_shutdown_timeout_ms, transport_transition_ms, pattern_transition_ms, lat_timeout_ms, stream_non_tcp_clients_max, disable_resource_metrics, timeout_seconds, progress_path, expected_result_lines, actual_result_lines = sys.argv[1:]
+(
+    helper_path, metrics_path, failures_path, auto_hwm_path, plan_path,
+    report_path, runs, duration, clients, service_clients,
+    server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndbuf,
+    rcvbuf, ctx_auto_hwm_enable, ctx_auto_hwm_profile, sndtimeo_ms,
+    rcvtimeo_ms, connect_concurrency, connect_ready_timeout_ms, monitor_hwm,
+    server_ready_timeout_ms, server_shutdown_timeout_ms, server_bind_port,
+    transport_transition_ms, pattern_transition_ms, lat_timeout_ms,
+    stream_non_tcp_clients_max, disable_resource_metrics, timeout_seconds,
+    default_stream_clients, results_tag,
+    expected_result_lines, actual_result_lines,
+) = sys.argv[1:]
 sys.path.insert(0, str(Path(helper_path).resolve().parent))
-from report_common import emit_completion, emit_effective_options, emit_failures, load_failures, write_report
+from report_common import load_failures
 
 runs = int(runs)
 expected_result_lines = int(expected_result_lines)
 actual_result_lines = int(actual_result_lines)
-required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
-all_metrics = required_metrics
+all_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
+
+ECHO_PATTERNS = {
+    "MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_SPOT_REQREP",
+    "MULTI_SPOT_SENDSEND", "MULTI_STREAM",
+}
+
+
+def is_echo(pattern):
+    return pattern in ECHO_PATTERNS
+
+
+# Iteration plan: pattern -> (transports, sizes), benchmark order preserved.
+plan = []
+with open(plan_path, encoding="utf-8") as f:
+    for raw in f:
+        raw = raw.rstrip("\n")
+        if raw.count("\t") < 2:
+            continue
+        pat, tr_csv, sz_csv = raw.split("\t", 2)
+        transports = [t.strip() for t in tr_csv.split(",") if t.strip()]
+        sizes = [int(s) for s in sz_csv.split(",") if s.strip()]
+        plan.append((pat, transports, sizes))
 
 rows = defaultdict(lambda: defaultdict(list))
-patterns = []
-pattern_transports = defaultdict(list)
-pattern_sizes = defaultdict(list)
-pattern_clients = {}
-
 with open(metrics_path, newline="", encoding="utf-8") as f:
-    reader = csv.reader(f)
-    for pattern, transport, size, run, metric, value in reader:
-        key = (pattern, transport, int(size))
-        if pattern not in patterns:
-            patterns.append(pattern)
-        if transport not in pattern_transports[pattern]:
-            pattern_transports[pattern].append(transport)
-        if int(size) not in pattern_sizes[pattern]:
-            pattern_sizes[pattern].append(int(size))
+    for pattern, transport, size, run, metric, value in csv.reader(f):
         try:
-            rows[key][metric].append(float(value))
+            rows[(pattern, transport, int(size))][metric].append(float(value))
         except ValueError:
-            rows[key][metric].append(math.nan)
+            rows[(pattern, transport, int(size))][metric].append(math.nan)
 
 failures = load_failures(failures_path)
+
 auto_hwm_rows = []
 with open(auto_hwm_path, encoding="utf-8", errors="replace") as f:
     for raw in f:
@@ -1364,13 +1392,11 @@ with open(auto_hwm_path, encoding="utf-8", errors="replace") as f:
         for item in line.split(",")[1:]:
             if "=" not in item:
                 continue
-            key, value = item.split("=", 1)
-            fields[key.strip()] = value.strip()
+            k, v = item.split("=", 1)
+            fields[k.strip()] = v.strip()
         if fields:
             auto_hwm_rows.append(fields)
 
-for pattern in pattern_sizes:
-    pattern_sizes[pattern].sort()
 
 def median(values):
     usable = [v for v in values if not math.isnan(v)]
@@ -1382,28 +1408,73 @@ def median(values):
         return usable[mid]
     return (usable[mid - 1] + usable[mid]) / 2.0
 
-def fmt_metric(value):
-    return "N/A" if math.isnan(value) else f"{value:.3f}"
 
-def fmt_rate(value):
-    if math.isnan(value):
-        return "N/A"
-    return f"{value / 1000.0:.3f}"
+combo = {}
+for pattern, transports, sizes in plan:
+    for transport in transports:
+        for size in sizes:
+            key = (pattern, transport, size)
+            mv = {m: median(rows[key].get(m, [])) for m in all_metrics}
+            if any(math.isnan(mv[m]) for m in all_metrics):
+                continue
+            combo[key] = mv
 
-def fmt_bandwidth(value):
-    return "N/A" if math.isnan(value) else f"{value:.3f} MB/s"
+lines = []
 
-def fmt_latency_ms(value):
-    return "N/A" if math.isnan(value) else f"{value:.3f} ms"
 
-def fmt_size(size):
-    return f"{size}B"
+def emit(line=""):
+    lines.append(line)
+
+
+# ---- C multi formatters (run_comparison.py:3835-3841, 3155-3232) ----
+def fmt_tp(pattern, value):
+    unit = "Kops/s" if is_echo(pattern) else "Kmsg/s"
+    return f"{value / 1e3:8.3f} {unit}"
+
+
+def fmt_bw(value):
+    return f"{value:10.3f} MB/s"
+
+
+def fmt_lat(value):
+    return f"{value:9.3f} ms"
+
+
+def table_header():
+    size_w, tp_w, bw_w, l_w = 8, 18, 14, 13
+    return (
+        f"| {'Size':<{size_w}} | {'Throughput':>{tp_w}} | {'Bandwidth':>{bw_w}} | "
+        f"{'Lat.Mean(ms)':>{l_w}} | {'Lat.P95(ms)':>{l_w}} | {'Lat.P99(ms)':>{l_w}} |"
+    )
+
+
+def table_separator():
+    size_w, tp_w, bw_w, l_w = 8, 18, 14, 13
+    return (
+        f"|{'-' * (size_w + 2)}|{'-' * (tp_w + 2)}|{'-' * (bw_w + 2)}|"
+        f"{'-' * (l_w + 2)}|{'-' * (l_w + 2)}|{'-' * (l_w + 2)}|"
+    )
+
+
+def table_row(pattern, size, mv):
+    size_w, tp_w, bw_w, l_w = 8, 16, 12, 12
+    tp_s = fmt_tp(pattern, mv["throughput"])
+    bw_s = fmt_bw(mv["bandwidth"])
+    lat_s = fmt_lat(mv["latency"])
+    lat95_s = fmt_lat(mv["latency_p95"])
+    lat99_s = fmt_lat(mv["latency_p99"])
+    return (
+        f"| {f'{size}B':<{size_w}} | {tp_s:>{tp_w}} | {bw_s:>{bw_w}} | "
+        f"{lat_s:>{l_w}} | {lat95_s:>{l_w}} | {lat99_s:>{l_w}} |"
+    )
+
 
 def parse_int(value, default=0):
     try:
         return int(str(value))
     except (TypeError, ValueError):
         return default
+
 
 def bytes_to_kb(value):
     parsed = parse_int(value, -1)
@@ -1415,7 +1486,8 @@ def bytes_to_kb(value):
         return str(parsed // 1024)
     return f"{parsed / 1024.0:.1f}"
 
-def emit_table(indent, columns, table_rows):
+
+def emit_md_table(indent, columns, table_rows):
     widths = []
     for header, key in columns:
         width = len(header)
@@ -1425,32 +1497,23 @@ def emit_table(indent, columns, table_rows):
     emit(indent + "| " + " | ".join(
         f"{columns[i][0]:<{widths[i]}}" for i in range(len(columns))
     ) + " |")
-    emit(indent + "|-" + "-|-".join("-" * width for width in widths) + "-|")
+    emit(indent + "|-" + "-|-".join("-" * w for w in widths) + "-|")
     for row in table_rows:
         emit(indent + "| " + " | ".join(
             f"{str(row.get(columns[i][1], '?')):<{widths[i]}}"
             for i in range(len(columns))
         ) + " |")
 
-def auto_hwm_pattern_rows(pattern):
-    return [
-        row for row in auto_hwm_rows
-        if row.get("pattern", "").upper() == pattern.upper()
-    ]
 
-def emit_multi_auto_hwm(pattern):
-    selected = auto_hwm_pattern_rows(pattern)
-    if not selected:
-        return
-    if pattern in {"MULTI_SPOT", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}:
-        emit_spot_auto_hwm(selected)
-    else:
-        emit_non_spot_auto_hwm(selected)
+def auto_hwm_for(pattern):
+    return [r for r in auto_hwm_rows
+            if r.get("pattern", "").upper() == pattern.upper()]
 
-def emit_non_spot_auto_hwm(rows_for_pattern):
+
+def emit_non_spot_auto_hwm(pattern_rows):
     display_rows = []
     seen = set()
-    for row in rows_for_pattern:
+    for row in pattern_rows:
         if not row.get("msg_size") or row.get("msg_size") == "0":
             continue
         display = dict(row)
@@ -1475,7 +1538,7 @@ def emit_non_spot_auto_hwm(rows_for_pattern):
         row.get("type", ""),
     ))
     emit("    Auto-HWM detail:")
-    emit_table("      ", (
+    emit_md_table("      ", (
         ("Size(B)", "msg_size"),
         ("Component", "component"),
         ("Type", "type"),
@@ -1486,25 +1549,42 @@ def emit_non_spot_auto_hwm(rows_for_pattern):
         ("SNDBUF(KB)", "effective_sndbuf_kb"),
         ("RCVBUF(KB)", "effective_rcvbuf_kb"),
     ), display_rows)
-    emit("")
 
-def emit_spot_auto_hwm(rows_for_pattern):
+
+def emit_spot_auto_hwm(pattern_rows):
+    # C parity: run_comparison.py _auto_hwm_emit_spot_snapshot_socket_table
+    # (~975-1043). Group the spotnode-snapshot rows by (msg_size,
+    # MsgUnit(B)) and, per group, emit a "- Size(B)=X, MsgUnit(B)=Y" line
+    # followed by a Socket/Type/Role/SNDHWM/RCVHWM/SNDBUF/RCVBUF markdown
+    # table (raw effective_sndbuf/rcvbuf bytes). Groups are separated by a
+    # blank "      " line. The previous wide Profile/Class/Cap/Slots schema
+    # diverged from the C reference report and broke byte-identity.
+    # C parity: bindings/c/perf/multi/common/perf_multi_runtime.hpp:488 skips
+    # every spot-node snapshot socket whose core `auto_hwm_visible == 0`
+    # BEFORE emitting its AUTO_HWM_DETAIL line, so the C reference report
+    # never contains the `internal_receiver` dispatch socket. The Java JNI
+    # binding's SpotNodeSocketSnapshotEntry.autoHwmVisible() mis-reports that
+    # internal socket as visible (binding-library gap, out of scope for
+    # bindings/java/perf), so mirror C's effective visible-socket set here in
+    # the report emitter to keep the spotnode table byte-identical to C.
+    SPOT_SNAPSHOT_EXCLUDED_SOCKETS = {"internal_receiver"}
+
     def build(owner):
         out = []
         seen = set()
-        for row in rows_for_pattern:
+        for row in pattern_rows:
             if row.get("source") != "spotnode_snapshot":
+                continue
+            if row.get("socket", "") in SPOT_SNAPSHOT_EXCLUDED_SOCKETS:
                 continue
             if row.get("owner") != owner:
                 continue
             display = dict(row)
-            display["class"] = row.get("policy_class", "")
-            display["cap"] = row.get("size_cap", "")
-            display["slots"] = row.get("socket_message_slots", "")
+            display["type"] = row.get("socket_type", "")
             key = tuple(display.get(name, "") for name in (
-                "msg_size", "effective_message_bytes", "socket",
-                "socket_type", "profile", "class", "role", "cap", "slots",
-                "sndhwm", "rcvhwm",
+                "msg_size", "effective_message_bytes", "socket", "type",
+                "role", "sndhwm", "rcvhwm", "effective_sndbuf",
+                "effective_rcvbuf",
             ))
             if key in seen:
                 continue
@@ -1512,124 +1592,245 @@ def emit_spot_auto_hwm(rows_for_pattern):
             out.append(display)
         out.sort(key=lambda row: (
             parse_int(row.get("msg_size", "0")),
+            parse_int(row.get("owner_id", "0")),
             row.get("socket", ""),
             row.get("role", ""),
         ))
         return out
     columns = (
-        ("Size(B)", "msg_size"),
-        ("MsgUnit(B)", "effective_message_bytes"),
         ("Socket", "socket"),
-        ("Type", "socket_type"),
-        ("Profile", "profile"),
-        ("Class", "class"),
+        ("Type", "type"),
         ("Role", "role"),
-        ("Cap", "cap"),
-        ("Slots", "slots"),
         ("SNDHWM", "sndhwm"),
         ("RCVHWM", "rcvhwm"),
+        ("SNDBUF", "effective_sndbuf"),
+        ("RCVBUF", "effective_rcvbuf"),
     )
-    node_rows = build("node")
-    spot_rows = build("spot")
-    if node_rows:
-        emit("    Auto-HWM spotnode:")
-        emit_table("      ", columns, node_rows)
-    if spot_rows:
-        emit("    Auto-HWM spot handles:")
-        emit_table("      ", columns, spot_rows)
-    if node_rows or spot_rows:
+
+    def emit_grouped(title, rows):
+        if not rows:
+            return
+        emit(f"    {title}:")
+        grouped = {}
+        order = []
+        for row in rows:
+            gk = (row.get("msg_size", ""),
+                  row.get("effective_message_bytes", ""))
+            if gk not in grouped:
+                grouped[gk] = []
+                order.append(gk)
+            grouped[gk].append(row)
+        for index, gk in enumerate(order):
+            msg_size, msg_unit = gk
+            emit(f"      - Size(B)={msg_size}, MsgUnit(B)={msg_unit}")
+            emit_md_table("      ", columns, grouped[gk])
+            if index + 1 < len(order):
+                emit("      ")
+
+    emit_grouped("Auto-HWM spotnode", build("node"))
+    emit_grouped("Auto-HWM spot handles", build("spot"))
+
+
+def emit_auto_hwm(pattern):
+    selected = auto_hwm_for(pattern)
+    if not selected:
+        return
+    if pattern in {"MULTI_SPOT", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND"}:
+        emit_spot_auto_hwm(selected)
+    else:
+        emit_non_spot_auto_hwm(selected)
+
+
+def get_cpu_model():
+    try:
+        if platform.system() == "Linux":
+            with open("/proc/cpuinfo", encoding="utf-8", errors="ignore") as fh:
+                for line in fh:
+                    if line.lower().startswith("model name"):
+                        parts = line.split(":", 1)
+                        if len(parts) == 2 and parts[1].strip():
+                            return parts[1].strip()
+    except OSError:
+        pass
+    return platform.processor() or "unknown"
+
+
+def get_commit():
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(Path(report_path).resolve().parent),
+            stderr=subprocess.DEVNULL,
+        )
+        return out.decode().strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def get_load_avg():
+    try:
+        la = os.getloadavg()
+        return f"{la[0]:.2f} {la[1]:.2f} {la[2]:.2f}"
+    except (OSError, AttributeError):
+        return ""
+
+
+# ---- META block (run_comparison.py build_meta_items) ----
+emit(f"META,os,{platform.system()} {platform.release()}")
+emit(f"META,cpu,{get_cpu_model()}")
+emit(f"META,cores,{os.cpu_count() or 0}")
+emit("META,build,Release")
+emit(f"META,commit,{get_commit()}")
+emit("META,timestamp,"
+     + datetime.datetime.now().astimezone().isoformat(timespec="seconds"))
+load_avg = get_load_avg()
+if load_avg:
+    emit(f"META,load_avg,{load_avg}")
+emit(f"META,runs,{runs}")
+emit(f"META,clients,{clients}")
+emit("")
+
+all_tr = sorted({t for _, trs, _ in plan for t in trs})
+all_sz = sorted({s for _, _, szs in plan for s in szs})
+
+# C parity (run_comparison.py build_effective_option_items): an unset
+# io-threads / connect-concurrency renders with a "(default)" suffix and the
+# concretely resolved default value, not the literal env string.
+if str(server_io_threads).strip() in ("", "4"):
+    server_io_display = "4 (default)"
+else:
+    server_io_display = str(server_io_threads)
+if str(client_io_threads).strip() in ("", "4"):
+    client_io_display = "4 (default)"
+else:
+    client_io_display = str(client_io_threads)
+try:
+    _clients_int = int(str(clients).split()[0])
+except (ValueError, IndexError):
+    _clients_int = 100
+_connect_default = 1024 if _clients_int >= 10000 else 128
+if str(connect_concurrency).strip() in ("", "auto"):
+    connect_concurrency_display = f"{_connect_default} (default)"
+else:
+    connect_concurrency_display = str(connect_concurrency)
+
+
+def emit_options(label):
+    emit(f"## Effective Options ({label})")
+    emit("- lang: java")
+    emit("- suite: multi")
+    emit(f"- runs: {runs}")
+    emit(f"- patterns: {','.join(p for p, _, _ in plan)}")
+    emit(f"- transports: {','.join(all_tr) if all_tr else 'none'}")
+    emit(f"- msg_sizes: {','.join(str(s) for s in all_sz) if all_sz else 'none'}")
+    emit(f"- duration_seconds: {duration}")
+    emit(f"- clients: {clients}")
+    emit("- default_clients: 100")
+    emit(f"- default_stream_clients: {default_stream_clients}")
+    emit(f"- service_clients: {service_clients}")
+    emit(f"- server_io_threads: {server_io_display}")
+    emit(f"- client_io_threads: {client_io_display}")
+    emit(f"- hwm: {hwm or 'auto-hwm'}")
+    emit(f"- sndhwm: {send_hwm or 'auto-hwm'}")
+    emit(f"- rcvhwm: {recv_hwm or 'auto-hwm'}")
+    emit(f"- sndbuf: {sndbuf or 'auto-hwm'}")
+    emit(f"- rcvbuf: {rcvbuf or 'auto-hwm'}")
+    emit(f"- ctx_auto_hwm_enable: {ctx_auto_hwm_enable}")
+    emit(f"- ctx_auto_hwm_profile: {ctx_auto_hwm_profile}")
+    emit(f"- sndtimeo_ms: {sndtimeo_ms}")
+    emit(f"- rcvtimeo_ms: {rcvtimeo_ms}")
+    emit(f"- connect_concurrency: {connect_concurrency_display}")
+    emit(f"- connect_ready_timeout_ms: {connect_ready_timeout_ms}")
+    emit(f"- monitor_hwm: {monitor_hwm}")
+    emit(f"- server_ready_timeout_ms: {server_ready_timeout_ms}")
+    emit(f"- server_shutdown_timeout_ms: {server_shutdown_timeout_ms}")
+    emit(f"- server_bind_port: {server_bind_port}")
+    emit(f"- transport_transition_ms: {transport_transition_ms}")
+    emit(f"- pattern_transition_ms: {pattern_transition_ms}")
+    emit(f"- lat_timeout_ms: {lat_timeout_ms}")
+    emit(f"- stream_non_tcp_clients_max: {stream_non_tcp_clients_max}")
+    emit(f"- disable_resource_metrics: {disable_resource_metrics}")
+    emit(f"- timeout_seconds: {timeout_seconds}")
+
+
+emit_options("start")
+
+PATTERN_SEPARATOR = "=" * 79
+first = True
+for pattern, transports, sizes in plan:
+    if not first:
         emit("")
-
-lines = []
-
-def emit(line=""):
-    lines.append(line)
-
-start_options = [
-    ("runs", runs),
-    ("patterns", pattern_csv),
-    ("transports", transports_csv),
-    ("msg_sizes", msg_sizes_csv),
-    ("duration_seconds", duration),
-    ("clients", clients),
-    ("default_clients", "100"),
-    ("default_stream_clients", default_stream_clients),
-    ("service_clients", service_clients),
-    ("pin_cpu", "on" if pin_cpu == "1" else "off"),
-    ("server_io_threads", server_io_threads),
-    ("client_io_threads", client_io_threads),
-    ("hwm", hwm or "auto-hwm"),
-    ("sndhwm", send_hwm or "auto-hwm"),
-    ("rcvhwm", recv_hwm or "auto-hwm"),
-    ("sndbuf", sndbuf or "auto-hwm"),
-    ("rcvbuf", rcvbuf or "auto-hwm"),
-    ("ctx_auto_hwm_enable", ctx_auto_hwm_enable),
-    ("ctx_auto_hwm_profile", ctx_auto_hwm_profile),
-    ("sndtimeo_ms", sndtimeo_ms),
-    ("rcvtimeo_ms", rcvtimeo_ms),
-    ("connect_concurrency", connect_concurrency or "auto"),
-    ("connect_ready_timeout_ms", connect_ready_timeout_ms),
-    ("monitor_hwm", monitor_hwm),
-    ("server_ready_timeout_ms", server_ready_timeout_ms),
-    ("server_shutdown_timeout_ms", server_shutdown_timeout_ms),
-    ("server_bind_port", server_bind_port),
-    ("transport_transition_ms", transport_transition_ms),
-    ("pattern_transition_ms", pattern_transition_ms),
-    ("lat_timeout_ms", lat_timeout_ms),
-    ("stream_non_tcp_clients_max", stream_non_tcp_clients_max),
-    ("disable_resource_metrics", disable_resource_metrics),
-    ("timeout_seconds", timeout_seconds),
-]
-if results_tag:
-    start_options.append(("results_tag", results_tag))
-
-emit_effective_options(lines, "start", "java", "multi", start_options)
-emit("===============================================================================")
-emit("")
-with open(progress_path, encoding="utf-8") as progress_file:
-    progress_text = progress_file.read().strip()
-if progress_text:
-    emit(progress_text)
-    emit("")
-
-result_lines = []
-for pattern in patterns:
-    emit(f"## PATTERN: {pattern}")
-    emit("")
-    for transport in pattern_transports[pattern]:
-        emit(f"### Transport: {transport}")
-        emit("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
-        emit("|----------|--------------------|----------------|---------------|---------------|---------------|")
-        rate_unit = "Kops/s" if pattern in {"MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND", "MULTI_STREAM"} else "Kmsg/s"
-        for size in pattern_sizes[pattern]:
-            key = (pattern, transport, size)
-            metric_values = {metric: median(rows[key].get(metric, [])) for metric in all_metrics}
-            throughput = f"{fmt_rate(metric_values['throughput']):>8} {rate_unit}"
-            emit(
-                f"| {fmt_size(size):<8} | {throughput:>16} | "
-                f"{fmt_bandwidth(metric_values['bandwidth']):>12} | "
-                f"{fmt_latency_ms(metric_values['latency']):>12} | "
-                f"{fmt_latency_ms(metric_values['latency_p95']):>12} | "
-                f"{fmt_latency_ms(metric_values['latency_p99']):>12} |"
-            )
-            for metric in all_metrics:
-                if rows[key].get(metric):
-                    result_lines.append(
-                        f"RESULT,current,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
-                    )
+        emit(PATTERN_SEPARATOR)
         emit("")
-    emit_multi_auto_hwm(pattern)
+    first = False
+    subtitle = "echo" if is_echo(pattern) else "one-way"
+    emit(f"## PATTERN: {pattern} ({subtitle})")
+    emit(f"  > Benchmarking current for {pattern}...")
+    for t_idx, transport in enumerate(transports):
+        has_next_tr = (t_idx + 1) < len(transports)
+        emit(f"    Testing {transport}:")
+        emit(f"      {table_header()}")
+        emit(f"      {table_separator()}")
+        for size in sizes:
+            mv = combo.get((pattern, transport, size))
+            if mv is None:
+                continue
+            emit(f"    Testing {transport} | {size}B:")
+            emit(f"      {table_row(pattern, size, mv)}")
+        emit(f"    Testing {transport}: Done")
+        if has_next_tr:
+            emit(f"    [transport cooldown {transport_transition_ms}ms]")
+    emit_auto_hwm(pattern)
+    is_last_pattern = (pattern, transports, sizes) == plan[-1]
+    if not is_last_pattern:
+        emit(f"[pattern cooldown {pattern_transition_ms}ms]")
 
-emit_effective_options(lines, "result", "java", "multi", start_options)
+# Failures (C prints before the result options / completion).
+all_failures = [(fp, ft, fs, fr) for fp, ft, fs, _, fr in failures]
+
 emit("")
-emit("## Result Data")
-for line in result_lines:
-    emit(line)
-emit("")
+emit_options("result")
+
+if combo:
+    emit("")
+    emit("## Result Data")
+    # C multi authority (run_comparison.py emit_result_lines / current_results):
+    # keys are the 4-tuple (pattern, transport, size, metric) and the whole
+    # tuple is sorted, so within each (pattern, transport, size) the metrics
+    # come out in alphabetical metric order
+    # (bandwidth, latency, latency_p95, latency_p99, throughput) -- NOT the
+    # throughput-first all_metrics order.
+    result_map = {}
+    for (p, tr, sz), mv in combo.items():
+        for metric in all_metrics:
+            result_map[(p, tr, sz, metric)] = mv[metric]
+    for key in sorted(result_map.keys()):
+        p, tr, sz, metric = key
+        emit(f"RESULT,current,{p},{tr},{sz},{metric},{result_map[key]:.3f}")
+
+success = len(combo)
+fail = len({(fp, ft, fs) for fp, ft, fs, _ in all_failures})
 status = "complete" if expected_result_lines == actual_result_lines and not failures else "partial"
-emit_completion(lines, status, expected_result_lines, actual_result_lines)
-emit_failures(lines, failures)
-text = write_report(lines, report_path)
+emit("")
+emit("## Completion")
+emit(f"- success: {success}")
+emit("- unsupported: 0")
+emit("- skip: 0")
+emit(f"- fail: {fail}")
+emit(f"- status: {status}")
+emit(f"- expected_result_lines: {expected_result_lines}")
+emit(f"- actual_result_lines: {actual_result_lines}")
+if all_failures:
+    emit("")
+    emit("## Failures")
+    for fp, ft, fs, fr in all_failures:
+        emit(f"- {fp} current {ft} {fs}B: {fr}")
+emit("")
+emit(f"Saved result file: {Path(report_path).resolve()} (status={status})")
+
+text = "\n".join(lines) + "\n"
+with open(report_path, "w", encoding="utf-8") as fh:
+    fh.write(text)
 sys.stdout.write(text)
 sys.exit(0 if status == "complete" else 1)
 PY

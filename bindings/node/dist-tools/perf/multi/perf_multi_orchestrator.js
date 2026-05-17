@@ -237,7 +237,7 @@ function needsRunnerStart(pattern) {
         || pattern === 'MULTI_SPOT_REQREP'
         || pattern === 'MULTI_SPOT_SENDSEND';
 }
-function childEnv(args) {
+function childEnv(args, component) {
     const env = { ...process.env };
     if (args.extraEnv && typeof args.extraEnv === 'object') {
         Object.assign(env, args.extraEnv);
@@ -248,6 +248,14 @@ function childEnv(args) {
     }
     env.PERF_MULTI_PATTERN = String(args.pattern || env.PERF_MULTI_PATTERN || '');
     env.PERF_MULTI_TRANSPORT = String(args.transport || env.PERF_MULTI_TRANSPORT || '');
+    // C parity (bindings/c/perf/run_comparison.py ~L1830): each spawned
+    // perf process is tagged with its component (server|client) so the
+    // AUTO_HWM_DETAIL lines carry per-component identity and the
+    // `## Auto-HWM Detail` table emits per-component (client/server) rows
+    // instead of a single `process` row.
+    if (component) {
+        env.PERF_MULTI_COMPONENT = String(component);
+    }
     if (Number.isFinite(args.hwm)) {
         env.PERF_MULTI_HWM = String(args.hwm);
     }
@@ -428,7 +436,7 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     const serverSpawn = buildPinnedSpawn(process.execPath, [serverPath, ...serverArgs], args);
     const server = spawn(serverSpawn.command, serverSpawn.args, {
         cwd: process.cwd(),
-        env: childEnv(args),
+        env: childEnv(args, 'server'),
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: true
     });
@@ -442,7 +450,7 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     const clientSpawn = buildClientSpawn(clientPath, clientArgs, args);
     const client = spawn(clientSpawn.command, clientSpawn.args, {
         cwd: process.cwd(),
-        env: childEnv(args),
+        env: childEnv(args, 'client'),
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: true
     });

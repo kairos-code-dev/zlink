@@ -87,6 +87,14 @@ internal static class PerfRouterRouter
                 return 2;
             }
 
+            // ITEM 1: capture AUTO_HWM_DETAIL from the live monitors BEFORE
+            // they are disposed (C parity; auto-HWM applied values are stable
+            // once configured and connection-ready).
+            EmitSingleAutoHwmDetail(receiverMonitor, "ROUTER_ROUTER",
+                transport, "receiver", "router", size);
+            EmitSingleAutoHwmDetail(senderMonitor, "ROUTER_ROUTER",
+                transport, "sender", "router", size);
+
             receiverMonitor.Dispose();
             receiverMonitor = null;
             senderMonitor.Dispose();

@@ -232,6 +232,11 @@ bool run_pattern_pubsub (const std::string &transport,
     }
     const perf::single::latency_stats_t latency = latency_builder.snapshot ();
 
+    perf::single::emit_single_socket_hwm_detail (
+      publisher, "PUBSUB", transport, "publisher", "pub", msg_size);
+    perf::single::emit_single_socket_hwm_detail (
+      subscriber, "PUBSUB", transport, "subscriber", "sub", msg_size);
+
     const double throughput =
       static_cast<double> (received) / static_cast<double> (duration_s);
     perf::single::print_result (lib_name,

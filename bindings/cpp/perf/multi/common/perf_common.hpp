@@ -548,6 +548,25 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
     const std::string socket_type_value =
       socket_type && *socket_type ? socket_type : "unknown";
 
+    // Match the C multi reference (perf_multi_runtime.hpp
+    // perf_auto_hwm_sndbuf_display / perf_auto_hwm_rcvbuf_display, also
+    // applied in the spotnode path below): a SUB/XSUB carrying
+    // recv_ingress(4)|control(1) never sends and a PUB/XPUB carrying
+    // spot_data(5)|control(1) never receives, so the C benchmark reports
+    // effective_sndbuf=0 / effective_rcvbuf=0 for the inactive direction
+    // (sndhwm/rcvhwm stay raw).
+    int32_t effective_sndbuf = snapshot.auto_hwm_effective_sndbuf;
+    int32_t effective_rcvbuf = snapshot.auto_hwm_effective_rcvbuf;
+    {
+        const uint32_t role = snapshot.auto_hwm_role;
+        if ((socket_type_value == "pub" || socket_type_value == "xpub")
+            && (role == 1 || role == 5))
+            effective_rcvbuf = 0;
+        if ((socket_type_value == "sub" || socket_type_value == "xsub")
+            && (role == 1 || role == 4))
+            effective_sndbuf = 0;
+    }
+
     const std::string key =
       pattern + "|" + transport_value + "|" + component + "|" + label + "|"
       + std::to_string (msg_size) + "|" + socket_type_value + "|"
@@ -556,8 +575,8 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
       + std::to_string (snapshot.auto_hwm_applied_rcvhwm) + "|"
       + std::to_string (snapshot.auto_hwm_unit_budget_bytes) + "|"
       + std::to_string (snapshot.auto_hwm_effective_message_bytes) + "|"
-      + std::to_string (snapshot.auto_hwm_effective_sndbuf) + "|"
-      + std::to_string (snapshot.auto_hwm_effective_rcvbuf);
+      + std::to_string (effective_sndbuf) + "|"
+      + std::to_string (effective_rcvbuf);
 
     static std::mutex mutex;
     static std::set<std::string> emitted;
@@ -594,8 +613,8 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
               << snapshot.auto_hwm_socket_message_slots
               << ",effective_message_bytes="
               << snapshot.auto_hwm_effective_message_bytes
-              << ",effective_sndbuf=" << snapshot.auto_hwm_effective_sndbuf
-              << ",effective_rcvbuf=" << snapshot.auto_hwm_effective_rcvbuf
+              << ",effective_sndbuf=" << effective_sndbuf
+              << ",effective_rcvbuf=" << effective_rcvbuf
               << ",last_recalc_ms=" << snapshot.auto_hwm_last_recalc_ms
               << ",last_recalc_reason="
               << auto_hwm_recalc_reason_name (

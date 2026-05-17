@@ -183,6 +183,8 @@ normalize_platform() {
   esac
 }
 
+EMITTER="${SCRIPT_DIR}/run_emit.py"
+
 print_line() {
   local line="${1:-}"
   printf '%s\n' "${line}" | tee -a "${REPORT}"
@@ -573,241 +575,38 @@ if [[ -n "${RESULTS_TAG}" ]]; then
   report_base="${report_base}_${RESULTS_TAG}"
 fi
 REPORT="${RESULTS_ROOT}/single/report/${report_base}.txt"
-: > "${REPORT}"
+mkdir -p "${RESULTS_ROOT}/single/report"
 prune_report_dir "${RESULTS_ROOT}/single/report"
 
 ensure_build_output
 prepare_core_runtime
 
-if ! PERF_BINARY="$(resolve_perf_binary "${PROJECT_DIR}" "Zlink.BindingBench")"; then
-  echo "single benchmark binary not found under ${PROJECT_DIR}/bin/${CONFIGURATION}/net8.0." >&2
-  echo "Gate 1 build output is required before smoke." >&2
-  exit 1
+# PERF_POLICY / ITEM 1: report emission is delegated to run_emit.py so the
+# dotnet single report is byte-identical to the C canonical single emitter
+# (bindings/c/perf/single/run_comparison.py). The benchmark .cs sources keep
+# all prior dotnet fixes (8 audit fixes + C-faithful blocking-first-recv /
+# DONTWAIT burst-drain / in-flight credit cap); this script only builds,
+# prepares the core runtime, and drives the byte-faithful emitter.
+EMIT_ARGS=("${PATTERN}" "--runs" "${RUNS}" "--results-dir" "${RESULTS_ROOT}" "--result-file" "${REPORT}")
+if [[ -n "${RESULTS_TAG}" ]]; then
+  EMIT_ARGS+=("--results-tag" "${RESULTS_TAG}")
 fi
 
-print_line "## Effective Options (start)"
-print_line "- lang: dotnet"
-print_line "- suite: single"
-print_line "- runs: ${RUNS}"
-print_line "- duration_seconds: ${DURATION}"
-print_line "- patterns: ${PATTERN}"
-print_line "- transports: ${TRANSPORTS:-auto(pattern)}"
-print_line "- msg_sizes: ${MSG_SIZES}"
-print_line "- runtime: ${CORE_LIB}"
-print_line "- pin_cpu: off"
-print_line ""
-
-IFS=',' read -r -a patterns <<< "${PATTERN}"
+EMIT_ENV=(
+  "PERF_SINGLE_DURATION_SECONDS=${DURATION}"
+  "PERF_CONFIGURATION=${CONFIGURATION}"
+)
 if [[ -n "${TRANSPORTS}" ]]; then
-  IFS=',' read -r -a transports_filter <<< "${TRANSPORTS}"
-else
-  transports_filter=()
+  EMIT_ENV+=("PERF_TRANSPORTS=${TRANSPORTS}")
 fi
-IFS=',' read -r -a msg_sizes <<< "${MSG_SIZES}"
-
-status=0
-result_lines=0
-expected_result_lines=0
-failure_count=0
-# PERF_POLICY § 1.2.2 / § 5.2: for runs>1 the runner owns per-metric median
-# aggregation. Loop structure mirrors C run_comparison.py: runs is the inner
-# loop per (pattern,transport). For runs=1 a single unlabeled table is
-# emitted (unchanged behaviour). For runs>1 each run prints a
-# "run N/RUNS:" labeled, 8-space-indented table, and after all runs a
-# "median:" labeled table prints the per-metric statistics.median() across
-# successful runs for each size.
-SHOW_RUN_LABELS=0
-if [[ "${RUNS}" -gt 1 ]]; then
-  SHOW_RUN_LABELS=1
-fi
-TABLE_HEADER="| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |"
-TABLE_SEPARATOR="|----------|--------------------|----------------|---------------|---------------|---------------|"
-
-for pattern_index in "${!patterns[@]}"; do
-  pattern="${patterns[pattern_index]}"
-  pattern="${pattern//[[:space:]]/}"
-  [[ -n "${pattern}" ]] || continue
-
-  if [[ "${#transports_filter[@]}" -gt 0 ]]; then
-    transports=("${transports_filter[@]}")
-  else
-    IFS=',' read -r -a transports <<< "$(default_transports_for_pattern "${pattern}")"
-  fi
-
-  print_line ""
-  print_line "==============================================================================="
-  print_line ""
-  print_line "## PATTERN: ${pattern} (one-way)"
-  print_line "  > Benchmarking current for ${pattern}..."
-
-  abort_pattern=0
-  for transport_index in "${!transports[@]}"; do
-    transport="${transports[transport_index]}"
-    transport="${transport//[[:space:]]/}"
-    [[ -n "${transport}" ]] || continue
-
-    if ! pattern_supports_transport "${pattern}" "${transport}"; then
-      print_line "UNSUPPORTED,dotnet,${pattern},${transport}"
-      continue
-    fi
-
-    print_line "    Testing ${transport}:"
-    if [[ "${SHOW_RUN_LABELS}" -eq 0 ]]; then
-      print_line "      ${TABLE_HEADER}"
-      print_line "      ${TABLE_SEPARATOR}"
-    fi
-
-    # Per-size accumulator of successful RESULT lines across runs (for the
-    # median table). Reset per (pattern,transport).
-    for size in "${msg_sizes[@]}"; do
-      size="${size//[[:space:]]/}"
-      [[ -n "${size}" ]] || continue
-      : > "${TMP_DIR}/${pattern,,}_${transport}_${size}.samples"
-    done
-
-    for (( run_index=1; run_index<=RUNS; run_index++ )); do
-      if [[ "${SHOW_RUN_LABELS}" -eq 1 ]]; then
-        print_line "      run ${run_index}/${RUNS}:"
-        print_line "        ${TABLE_HEADER}"
-        print_line "        ${TABLE_SEPARATOR}"
-        row_indent="        "
-      else
-        row_indent="      "
-      fi
-
-      for size in "${msg_sizes[@]}"; do
-        size="${size//[[:space:]]/}"
-        [[ -n "${size}" ]] || continue
-        expected_result_lines=$((expected_result_lines + 5))
-
-        metrics_file="${TMP_DIR}/${pattern,,}_${transport}_${size}_run${run_index}.metrics"
-        : > "${metrics_file}"
-        samples_file="${TMP_DIR}/${pattern,,}_${transport}_${size}.samples"
-        tmp_log="${TMP_DIR}/${pattern,,}_${transport}_${size}_run${run_index}.log"
-        if DOTNET_TieredCompilation=1 \
-          DOTNET_TC_QuickJitForLoops=1 \
-          DOTNET_ReadyToRun=1 \
-          PERF_SINGLE_DURATION_SECONDS="${DURATION}" \
-          PERF_CONFIGURATION="${CONFIGURATION}" \
-          bash -lc "${PERF_BINARY@Q} ${pattern@Q} ${transport@Q} ${size@Q}" \
-          > "${tmp_log}" 2>&1; then
-          if extracted="$(extract_required_results "${tmp_log}" "${pattern}" "${transport}" "${size}")"; then
-            while IFS= read -r result_line; do
-              [[ -n "${result_line}" ]] || continue
-              printf '%s\n' "${result_line}" >> "${metrics_file}"
-              printf '%s\n' "${result_line}" >> "${samples_file}"
-              printf '%s\n' "${result_line}" >> "${RESULT_DATA_FILE}"
-              result_lines=$((result_lines + 1))
-            done <<< "${extracted}"
-            while IFS= read -r table_line; do
-              print_line "${table_line}"
-            done < <(emit_result_row_indent "${metrics_file}" "${row_indent}")
-          elif unsupported_line="$(extract_unsupported_line "${tmp_log}" "${pattern}" "${transport}" 2>/dev/null)"; then
-            print_line "${unsupported_line}"
-            expected_result_lines=$((expected_result_lines - 5))
-            continue
-          else
-            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "missing_required_result_lines"
-            status=1
-            failure_count=$((failure_count + 1))
-            print_line "${row_indent}| ${size}B      | FAIL               | FAIL           | FAIL          | FAIL          | FAIL          |"
-            if [[ "${PERF_FAIL_FAST:-0}" == "1" ]]; then
-              abort_pattern=1
-              break
-            fi
-            continue
-          fi
-        else
-          if unsupported_line="$(extract_unsupported_line "${tmp_log}" "${pattern}" "${transport}" 2>/dev/null)"; then
-            print_line "${unsupported_line}"
-            expected_result_lines=$((expected_result_lines - 5))
-            continue
-          fi
-          cat "${tmp_log}" >&2 || true
-          echo "FAIL pattern=${pattern} transport=${transport} size=${size} run=${run_index}" >&2
-          record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "process_exit_nonzero"
-          status=1
-          failure_count=$((failure_count + 1))
-          print_line "${row_indent}| ${size}B      | FAIL               | FAIL           | FAIL          | FAIL          | FAIL          |"
-          if [[ "${PERF_FAIL_FAST:-0}" == "1" ]]; then
-            abort_pattern=1
-            break
-          fi
-        fi
-      done
-
-      if [[ "${abort_pattern}" -eq 1 ]]; then
-        break
-      fi
-    done
-
-    # PERF_POLICY § 5.2: emit the per-metric median table for runs>1, matching
-    # C run_comparison.py's "median:" labeled block.
-    if [[ "${SHOW_RUN_LABELS}" -eq 1 && "${abort_pattern}" -ne 1 ]]; then
-      print_line "      median:"
-      print_line "        ${TABLE_HEADER}"
-      print_line "        ${TABLE_SEPARATOR}"
-      for size in "${msg_sizes[@]}"; do
-        size="${size//[[:space:]]/}"
-        [[ -n "${size}" ]] || continue
-        samples_file="${TMP_DIR}/${pattern,,}_${transport}_${size}.samples"
-        if median_row="$(emit_median_row_indent "${samples_file}" "${size}" "        ")"; then
-          print_line "${median_row}"
-        else
-          print_line "        | ${size}B      | FAIL               | FAIL           | FAIL          | FAIL          | FAIL          |"
-        fi
-      done
-    fi
-
-    print_line "    Testing ${transport}: Done"
-    if [[ "${abort_pattern}" -eq 1 ]]; then
-      break
-    fi
-
-    if (( transport_index + 1 < ${#transports[@]} )); then
-      print_line "    [transport cooldown 3000ms]"
-      sleep 3
-    fi
-  done
-
-  if [[ "${abort_pattern}" -eq 1 ]]; then
-    break
-  fi
-
-  if (( pattern_index + 1 < ${#patterns[@]} )); then
-    print_line "[pattern cooldown 3000ms]"
-    sleep 3
-  fi
-done
-
-print_line ""
-print_line "## Effective Options (result)"
-print_line "- lang: dotnet"
-print_line "- suite: single"
-print_line "- runs: ${RUNS}"
-print_line "- duration_seconds: ${DURATION}"
-print_line "- patterns: ${PATTERN}"
-print_line "- transports: ${TRANSPORTS:-auto(pattern)}"
-print_line "- msg_sizes: ${MSG_SIZES}"
-print_line "- pin_cpu: off"
-if [[ -s "${RESULT_DATA_FILE}" ]]; then
-  print_line ""
-  print_line "## Result Data"
-  while IFS= read -r result_line; do
-    print_line "${result_line}"
-  done < "${RESULT_DATA_FILE}"
-fi
-if [[ "${result_lines}" -eq "${expected_result_lines}" && "${status}" -eq 0 ]]; then
-  completion_status="complete"
-else
-  completion_status="partial"
-  status=1
-fi
-print_completion_section "${completion_status}" "${expected_result_lines}" "${result_lines}"
-if [[ "${failure_count}" -gt 0 ]]; then
-  print_failures_section "${FAILURES_FILE}"
+if [[ -n "${MSG_SIZES}" ]]; then
+  EMIT_ENV+=("PERF_MSG_SIZES=${MSG_SIZES}")
 fi
 
-print_line "Saved result file: ${REPORT} (status=${completion_status})"
+set +e
+env "${EMIT_ENV[@]}" python3 "${EMITTER}" "${EMIT_ARGS[@]}"
+status=$?
+set -e
+
 SHOW_TOTAL_TIME=1
 exit "${status}"

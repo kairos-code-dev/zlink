@@ -42,24 +42,36 @@ final class PerfMultiPubSub {
              PubSocket pub = new PubSocket(ctx)) {
             PerfUtil.applySocketOptions(pub, config);
             PerfUtil.applyAutoHwmMsgUnit(pub, config.size());
-            PerfUtil.recalculateAutoHwm(ctx);
-            PerfUtil.printMultiSocketAutoHwm(config, pub, "server",
-                "server", SocketType.PUB);
             PerfUtil.configureServerTls(pub, config.transport());
             pub.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.awaitStart(config.size(), "pubsub server");
+            // C parity: perf_multi_pubsub_server.cpp run_server_loop (~296-313)
+            // applies apply_benchmark_auto_hwm_msg_unit + apply_benchmark_hwm
+            // and zlink_ctx_auto_hwm_recalculate AFTER the start signal, i.e.
+            // once all SUB clients have connected so the PUB's per-connection
+            // fan-out send queues are resized. Recalcing before bind (before
+            // any subscriber connected) left the tcp per-connection queues on
+            // the default size, collapsing MULTI_PUBSUB/tcp ~17x while the
+            // tls/ws/wss handshake masked the race.
+            PerfUtil.applyAutoHwmMsgUnit(pub, config.size());
+            PerfUtil.recalculateAutoHwm(ctx);
+            PerfUtil.printMultiSocketAutoHwm(config, pub, "server",
+                "server", SocketType.PUB);
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
-            try (Message active = PerfUtil.payloadTemplate(config.size());
-                 PerfSocketPollSet writable = PerfSocketPollSet.fromSockets(
-                     Collections.singletonList((Socket) pub),
-                     PollEventFlag.POLLOUT)) {
+            try (Message active = PerfUtil.payloadTemplate(config.size())) {
                 while (System.nanoTime() < activeEnd) {
                     PerfUtil.resetAndWritePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                    if (!publishWhenWritable(pub, writable, active, activeEnd)) {
-                        break;
-                    }
+                    // C parity: perf_multi_pubsub_server.cpp publish_once
+                    // (~78-110) publishes ZLINK_DONTWAIT and, on EAGAIN
+                    // backpressure, simply DROPS the message and continues to
+                    // the next one at full speed (no retry, no POLLOUT wait).
+                    // The prior retry-until-writable model serialized the
+                    // publisher to the slowest of the 100 fan-out tcp
+                    // connections, collapsing MULTI_PUBSUB/tcp ~17x while
+                    // tls/ws/wss buffering hid it.
+                    publishDropOnBackpressure(pub, active);
                 }
             }
             // C parity (perf_multi_pubsub_server.cpp publish_stop_token): after
@@ -83,11 +95,29 @@ final class PerfMultiPubSub {
                 PerfUtil.applySocketOptions(sub, config);
                 PerfUtil.applyAutoHwmMsgUnit(sub, config.size());
                 PerfUtil.configureClientTls(sub, config.transport());
-                sub.setSubscription(TOPIC);
-                sub.connect(config.endpoint());
+                // C parity: perf_multi_client_helpers.hpp subscribes SUB
+                // clients to "" (k_subscribe_all). A specific-topic
+                // subscription makes the core SUB side run a trie/filter
+                // match per delivered message on every one of the 100
+                // fan-out connections.
+                sub.setSubscription("");
                 subscribers.add(sub);
                 monitors.add(monitor);
             }
+            // C parity: perf_multi_client_helpers.hpp applies
+            // apply_benchmark_socket_options (auto-HWM) BEFORE zlink_connect
+            // (~308 vs ~380). Recalculate the context auto-HWM here, before
+            // any connect, so the per-message sizing is in effect when each
+            // SUB transport pipe is created. Connecting first and recalcing
+            // afterwards left tcp SUB pipes on the pre-recalc default and
+            // collapsed MULTI_PUBSUB/tcp ~10x while tls/ws/wss were far less
+            // affected.
+            PerfUtil.recalculateAutoHwm(ctx);
+            for (SubSocket sub : subscribers) {
+                sub.connect(config.endpoint());
+            }
+            // C parity: refresh_connected_client_auto_hwm (~394) re-applies
+            // after connect.
             PerfUtil.recalculateAutoHwm(ctx);
             for (int i = 0; i < monitors.size(); i++) {
                 PerfUtil.printMultiMonitorAutoHwm(config, monitors.get(i),
@@ -152,32 +182,24 @@ final class PerfMultiPubSub {
         }
     }
 
-    private static boolean publishWhenWritable(PubSocket pub,
-                                               PerfSocketPollSet writable,
-                                               Message message,
-                                               long deadlineNs) {
-        while (System.nanoTime() < deadlineNs) {
-            try (Message outbound = Message.copyOf(message)) {
-                if (pub.publish(TOPIC)
-                        .message(outbound)
-                        .flags(SendFlags.DONT_WAIT)
-                        .submit()) {
-                    return true;
-                }
-            } catch (SubmitException ex) {
-                if (!isTransientSubmit(ex)) {
-                    throw ex;
-                }
+    // C parity: perf_multi_pubsub_server.cpp publish_once. One ZLINK_DONTWAIT
+    // publish attempt; transient backpressure (EAGAIN / NOT_CONNECTED) drops
+    // the message and returns so the caller advances to the next one. No
+    // retry, no POLLOUT wait.
+    private static void publishDropOnBackpressure(PubSocket pub,
+                                                  Message message) {
+        try (Message outbound = Message.copyOf(message)) {
+            pub.publish(TOPIC)
+                .message(outbound)
+                .flags(SendFlags.DONT_WAIT)
+                .submit();
+        } catch (SubmitException ex) {
+            if (!isTransientSubmit(ex)) {
+                throw ex;
             }
-            long remainingNs = deadlineNs - System.nanoTime();
-            if (remainingNs <= 0) {
-                return false;
-            }
-            int waitMs = (int) Math.max(1L,
-                Math.min(Integer.MAX_VALUE, remainingNs / 1_000_000L));
-            writable.poll(waitMs);
+            // Dropped under backpressure (C: ++publish_blocked_count;
+            // return true) — continue to the next message.
         }
-        return false;
     }
 
     private static boolean isTransientSubmit(SubmitException ex) {

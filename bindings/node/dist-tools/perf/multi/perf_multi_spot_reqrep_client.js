@@ -159,8 +159,29 @@ async function main() {
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${slots.length}`);
         console.log(`CLIENT_READY,${options.msgSize}`);
         trace('client-ready');
-        await waitForRunnerStart(options.msgSize);
-        await waitForControlStart(controlSub, controlSubWaiter, options.msgSize);
+        // C parity: bindings/c/perf/multi/src/perf_multi_spot_client.cpp
+        // wait_msg_size_start_with_ready_republish (~1270-1306). The control
+        // PUB->SUB link is a slow joiner; a one-shot READY_COUNT can be
+        // dropped before the server SUB subscription propagates (publish is
+        // now bounded, not an infinite block). Re-publish READY_COUNT every
+        // 250ms while waiting for START (stdin from the runner or control
+        // channel, whichever lands first) so the server always observes the
+        // ready count and the handshake never wedges.
+        let started = false;
+        const startFromRunner = waitForRunnerStart(options.msgSize).then(() => {
+            started = true;
+        });
+        const startFromControl = waitForControlStart(controlSub, controlSubWaiter, options.msgSize).then(() => {
+            started = true;
+        });
+        let nextReadyAt = Date.now();
+        while (!started) {
+            if (Date.now() >= nextReadyAt) {
+                await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${slots.length}`);
+                nextReadyAt = Date.now() + 250;
+            }
+            await Promise.race([startFromRunner, startFromControl, sleepImmediate()]);
+        }
         trace('start-ready');
         const runId = createRunId(1);
         const activeStartNs = currentEpochNs();

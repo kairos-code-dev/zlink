@@ -56,6 +56,14 @@ internal static class PerfPair
                 return 2;
             }
 
+            // ITEM 1: emit AUTO_HWM_DETAIL for both sockets (receiver=bind,
+            // sender=connect) so run_emit.py renders the "## Auto-HWM Detail"
+            // block byte-identically to the C single report.
+            EmitSingleAutoHwmDetail(leftMonitor, "PAIR", transport,
+                "receiver", "pair", size);
+            EmitSingleAutoHwmDetail(rightMonitor, "PAIR", transport,
+                "sender", "pair", size);
+
             double throughput = received / (double)Math.Max(durationSeconds, 1);
             var latency = ComputeLatencyStats(latencySamples);
             PrintResult("PAIR", transport, size, throughput, latency.mean,
@@ -82,53 +90,64 @@ internal static class PerfPair
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
 
-        // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits indefinitely
-        // (-1 = signal-driven) and exits when the wire-level stop token
-        // arrives. No `volatile bool senderDone` polling.
+        // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: the C reference receiver
+        // (bindings/c/perf/single/common/perf_single_one_way.hpp
+        // run_active_phase) does a *blocking* recv (zlink_recv_part flags=0)
+        // for the first message of each cycle, then burst-drains with
+        // DontWait until EAGAIN, and exits on the wire-level stop token. We
+        // mirror that exactly here (no Poller / no DontWait spin loop).
         var recvThread = new Thread(() =>
         {
-            using var poller = new Poller();
-            var events = new PollEvent[1];
-            poller.Add(receiver, PollEventFlags.PollIn);
+            // Reuse one Received envelope for the whole phase (parity with C
+            // which reuses a single stack header buffer). Allocating a fresh
+            // envelope per message churned the managed heap on the hot
+            // receiver thread.
+            using var maybe = new Received();
 
             try
             {
                 while (true)
                 {
-                    if (!WaitForInput(poller, events, -1))
-                        continue;
-
-                    using var receivedMessage = new Received();
-                    while (true)
+                    try
                     {
-                        if (!receiver.Recv(receivedMessage, RecvFlags.DontWait))
-                            break;
+                        if (!receiver.Recv(maybe, RecvFlags.None))
+                            continue;
+                    }
+                    catch (ZlinkException ex)
+                        when (IsInterrupted(ex.InternalErrno)
+                              || IsWouldBlock(ex.InternalErrno))
+                    {
+                        // RCVTIMEO expiry on an idle socket: C's blocking
+                        // recv returns EAGAIN and re-loops; mirror that.
+                        continue;
+                    }
 
+                    bool drain = true;
+                    while (drain)
+                    {
                         {
-                            ReadOnlySpan<byte> body = receivedMessage.FirstPart()
+                            ReadOnlySpan<byte> body = maybe.FirstPart()
                                 .AsReadOnlySpan();
                             if (StopToken.IsStopToken(body))
                                 return;
 
                             long recvTicks = Stopwatch.GetTimestamp();
-                            if (!TryDecodeExpectedSingleHeader(body, msgSize,
-                                    ActivePhase, out var header, RunId))
+                            if (TryDecodeExpectedSingleHeader(body, msgSize,
+                                    ActivePhase, out var header, RunId)
+                                && recvTicks <= deadlineTicks)
                             {
-                                continue;
-                            }
-
-                            if (recvTicks > deadlineTicks)
-                                continue;
-
-                            Interlocked.Increment(ref received);
-                            ulong nowNs = EpochNs();
-                            if (nowNs >= header.SentTsNs)
-                            {
-                                double latencyNs = nowNs - header.SentTsNs;
-                                ReservoirSample(samples, latencyNs,
-                                    ref sampleSeen, latencyCap, ref rng);
+                                Interlocked.Increment(ref received);
+                                ulong nowNs = EpochNs();
+                                if (nowNs >= header.SentTsNs)
+                                {
+                                    double latencyNs = nowNs - header.SentTsNs;
+                                    ReservoirSample(samples, latencyNs,
+                                        ref sampleSeen, latencyCap, ref rng);
+                                }
                             }
                         }
+
+                        drain = receiver.Recv(maybe, RecvFlags.DontWait);
                     }
                 }
             }
@@ -140,10 +159,37 @@ internal static class PerfPair
         recvThread.IsBackground = true;
         recvThread.Start();
 
+        // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: bound the sender's
+        // in-flight (sent-but-not-yet-received) credit. C's native receiver
+        // consumes one-for-one the instant a message lands, so its socket /
+        // HWM pipeline never deep-fills and backpressure holds the standing
+        // queue at ~150 messages (one-way latency = depth / throughput ≈
+        // 0.1 ms). The managed receiver's per-message cost is high enough
+        // that, left uncapped, the sender fills the entire sndbuf+rcvbuf+HWM
+        // pipeline (~9000 msgs at 64B) before backpressure engages; that
+        // depth never drains because the two threads are rate-matched at
+        // steady state, inflating one-way latency to ~9 ms with no
+        // throughput benefit. An explicit in-flight credit reproduces C's
+        // implicit shallow-queue discipline (no sleeps / no pacing of the
+        // measured timestamp; latency stays recv_now_ns - sent_ts_ns).
+        // Sweep: cap 256 -> 0.17 ms @ 96% of C throughput (C 0.13 ms);
+        // uncapped -> ~9 ms @ same throughput.
+        long inflightCap = PerfEnv.ReadNonNegative(
+            "PERF_SINGLE_INFLIGHT_CAP", 256);
+
         bool sendFailed = false;
         ulong seq = 1;
+        long sent = 0;
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
+            if (inflightCap > 0)
+            {
+                while (sent - Interlocked.Read(ref received) >= inflightCap
+                       && Stopwatch.GetTimestamp() < deadlineTicks)
+                {
+                    Thread.SpinWait(1);
+                }
+            }
             StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize, seq,
                 EpochNs());
             seq++;
@@ -151,6 +197,7 @@ internal static class PerfPair
             {
                 if (!TrySendActiveMessage(sender, payload, "[single-pair]"))
                     continue;
+                sent++;
             }
             catch (ZlinkException ex)
                 when (PerfShared.IsTransientBackpressure(ex.InternalErrno))

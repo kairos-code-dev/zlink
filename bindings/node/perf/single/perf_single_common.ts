@@ -283,21 +283,37 @@ async function waitForPostReadySettle(timeoutMs) {
   }
 }
 
-// PERF_SINGLE_TEST_POLICY § 1.4: receiver waits with `-1` (signal-driven)
-// and exits on the wire-level stop token. The legacy `shouldStop()` flag
-// (and short `pollTimeoutMs`) are no longer used; phase end is signaled
-// purely by the sender emitting `STOP_TOKEN_BYTES` on the wire.
+// C parity: bindings/c/perf/single/common/perf_single_one_way.hpp
+// run_active_phase (~269-326) — the receiver thread issues a BLOCKING recv
+// bounded by the socket-level `ZLINK_OPT_RCVTIMEO` (set by
+// bench_common_runtime.hpp:516 to `PERF_SINGLE_RCVTIMEO_MS`, default 200),
+// so recv returns EAGAIN on idle and the loop keeps CYCLING; it only EXITS
+// on the wire stop token or a real error (phase end stays wire-stop-token
+// driven, PERF_SINGLE_TEST_POLICY § 1.4). C is the sole authority: although
+// PERF_SINGLE_TEST_POLICY.md:131 lists the receiver poller wait as `-1`,
+// the C reference bounds every individual recv by RCVTIMEO and cycles, so
+// we match C and bound the poller wait by the same RCVTIMEO budget rather
+// than blocking on `-1`.
 //
-// Note: Node's `pollerWaitMany` is a synchronous N-API call that blocks the
-// JS event loop until a wakeup arrives. Callers spawn this drain as an
-// unawaited Promise, so we must yield to the event loop at least once
-// before the first blocking wait — otherwise queued worker postMessages
-// (e.g. the `start` command) cannot be delivered and the worker never
-// produces data, causing a deadlock.
+// This is also load-bearing for correctness: `Poller.waitMany` is a
+// synchronous N-API call that blocks the JS event loop. An unbounded
+// (`-1`) wait blocks the receiver — and the JS loop — forever when the
+// peer Worker stalls (observed: a hung DEALER_DEALER/ipc case with the
+// main thread parked in `do_sys_poll` and the worker thread futex-blocked
+// inside a native zlink call). The `Promise.race` against the sender-Worker
+// error channel can then never settle, hard-hanging the case to the
+// harness timeout. The RCVTIMEO-bounded wakeup mirrors C's EAGAIN cycle so
+// the loop (and the error race) always makes progress, while the
+// `await sleepImmediate()` yields once per cycle so queued Worker
+// postMessages and the error channel are delivered.
 async function drainRecvSocket(socket, onMessage) {
   const poller = new zlink.Poller();
   poller.add(socket, pollEvents(POLLIN));
   const useSubscribe = typeof socket.subscribe === 'function';
+  const recvTimeoutMs = Math.max(
+    1,
+    integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200)
+  );
 
   try {
     let stopReceived = false;
@@ -314,7 +330,7 @@ async function drainRecvSocket(socket, onMessage) {
       await sleepImmediate();
       let ready = [];
       try {
-        ready = poller.waitMany(Math.max(1, poller.size), -1);
+        ready = poller.waitMany(Math.max(1, poller.size), recvTimeoutMs);
       } catch (error) {
         const text = String(error && error.message ? error.message : error);
         if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
@@ -323,8 +339,9 @@ async function drainRecvSocket(socket, onMessage) {
         throw error;
       }
       if (ready.length === 0) {
-        // Spurious wake-ups are unexpected with `-1`, but treat them as
-        // benign and keep waiting.
+        // RCVTIMEO elapsed with no data — C's recv EAGAIN-on-idle
+        // (perf_single_one_way.hpp ~269-326): keep cycling. The loop exits
+        // only on the wire stop token or a real error.
         continue;
       }
       while (true) {
@@ -403,7 +420,15 @@ async function runLocalSocketOneWayBenchmark({
   drainViaSubscribe = false,      // PUBSUB: subscriber drains via subscribe
   handshake = null,              // ROUTER_ROUTER: PING/PONG routing-id gate
   sendActive = null,             // custom send (publish topic / send rid)
-  sendStop = null                // custom wire stop-token send
+  sendStop = null,               // custom wire stop-token send
+  // C parity: the AUTO_HWM_DETAIL `component=` token must match the C
+  // reference's per-pattern socket labels. PAIR/DEALER use receiver/sender
+  // (C default); PUBSUB's C reference (perf_pubsub.cpp ~L259-269) labels
+  // the PUB `publisher` and the SUB `subscriber`, so the inproc path must
+  // emit those names too (otherwise the `## Auto-HWM Detail` collector
+  // gains extra non-C `receiver`/`sender` rows for PUBSUB).
+  receiverHwmComponent = 'receiver',
+  senderHwmComponent = 'sender'
 }) {
   const ctx = new zlink.Context();
   applyContextPolicy(ctx);
@@ -509,8 +534,8 @@ async function runLocalSocketOneWayBenchmark({
       // Drain until the wire-level stop token arrives.
     }
     const result = collector.finish();
-    emitSingleSocketHwmDetail(receiver, pattern, options.transport, 'receiver', msgSize);
-    emitSingleSocketHwmDetail(sender, pattern, options.transport, 'sender', msgSize);
+    emitSingleSocketHwmDetail(receiver, pattern, options.transport, receiverHwmComponent, msgSize);
+    emitSingleSocketHwmDetail(sender, pattern, options.transport, senderHwmComponent, msgSize);
     return result;
   } finally {
     receiverMonitor.close();

@@ -11,9 +11,6 @@ from perf_common import (
     benchmark_run_id,
     configure_single_tls_client,
     configure_single_tls_server,
-    is_stop_token_in_parts,
-    latency_ns_from_message,
-    is_active_message,
     new_payload,
     parse_single_args,
     perf_context,
@@ -23,8 +20,8 @@ from perf_common import (
     resolve_single_pubsub_ready_settle_s,
     resolve_single_pubsub_recv_timeout_ms,
     result_metrics,
-    recv_nonblocking,
-    safe_poll,
+    run_one_way_receiver,
+    publish_nonblocking,
     stamp_payload,
     wait_monitor_event,
 )
@@ -54,8 +51,12 @@ def main(argv=None):
     received = 0
 
     def send_loop(publisher, active_end):
+        # C send_active_samples: DONTWAIT publish, re-stamp fresh now_ns on
+        # every retry, busy-loop through transient backpressure.
         while time.perf_counter() < active_end:
-            publisher.publish(TOPIC).message(stamp_payload(payload, phase=1, run_id=run_id)).submit()
+            publish_nonblocking(
+                publisher, TOPIC, stamp_payload(payload, phase=1, run_id=run_id)
+            )
         _publish_stop_token(publisher)
     with perf_context() as ctx:
         with zlink.PubSocket(ctx) as publisher:
@@ -91,46 +92,16 @@ def main(argv=None):
                     target=send_loop, args=(publisher, active_end), daemon=True
                 )
                 sender.start()
-                with zlink.Poller() as poller:
-                    poller.add_socket(subscriber, zlink.PollEventFlag.POLLIN)
-                    stop_received = False
-                    # PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait.
-                    while not stop_received:
-                        events = safe_poll(poller, -1)
-                        if not events:
-                            continue
-                        for event in events:
-                            current_sock = event.socket
-                            while True:
-                                received = recv_nonblocking(current_sock, method="subscribe")
-                                if received is None:
-                                    break
-                                with received:
-                                    parts = received.to_bytes_list()
-                                if is_stop_token_in_parts(parts):
-                                    stop_received = True
-                                    break
-                                if not parts:
-                                    continue
-                                data = parts[0]
-                                if not is_active_message(
-                                    data,
-                                    expected_msg_size=args.msg_size,
-                                    run_id=run_id,
-                                ):
-                                    continue
-                                if time.perf_counter() >= active_end:
-                                    continue
-                                # C perf_pubsub.cpp run_active_phase: every
-                                # matched header counts (++received); latency
-                                # clamps clock-skew to 0.0.
-                                received += 1
-                                latency = latency_ns_from_message(data)
-                                latencies.append(
-                                    latency if latency is not None else 0.0
-                                )
-                            if stop_received:
-                                break
+                # C perf_pubsub.cpp run_active_phase receiver.
+                received = run_one_way_receiver(
+                    subscriber,
+                    method="subscribe",
+                    msg_size=args.msg_size,
+                    run_id=run_id,
+                    active_end=active_end,
+                    received=received,
+                    latencies=latencies,
+                )
 
                 sender.join()
                 if received == 0:

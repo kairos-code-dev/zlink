@@ -30,7 +30,15 @@ SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-${PERF_SNDTIMEO_MS:-200}}"
 RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-${PERF_RCVTIMEO_MS:-200}}"
 TRANSPORT_TRANSITION_MS="${PERF_TRANSPORT_TRANSITION_MS:-3000}"
 RUN_COOLDOWN_MS="${PERF_SINGLE_RUN_COOLDOWN_MS:-${PERF_RUN_COOLDOWN_MS:-3000}}"
-CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-1}"
+if [[ -n "${PERF_CTX_AUTO_HWM_ENABLE:-}" ]]; then
+  CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE}"
+  CTX_AUTO_HWM_ENABLE_EXPLICIT=1
+else
+  # Match C runner: unset means the binding/core default governs auto-HWM
+  # (still enabled); the report shows "core-default".
+  CTX_AUTO_HWM_ENABLE=1
+  CTX_AUTO_HWM_ENABLE_EXPLICIT=0
+fi
 CTX_AUTO_HWM_PROFILE="${PERF_SINGLE_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}"
 
 usage() {
@@ -315,55 +323,22 @@ record_failure() {
     "${pattern}" "${transport}" "${size}" "${run}" "${reason}" >> "${tmp_failures}"
 }
 
-format_progress_row_from_output() {
-  local pattern="$1"
-  local transport="$2"
-  local size="$3"
-  local prefix="$4"
-  local output_text="$5"
-  python3 - "$pattern" "$transport" "$size" "$prefix" "$output_text" <<'PY'
-import sys
-
-pattern, transport, size, prefix, output_text = sys.argv[1:]
-size = int(size)
-unit = "Kops/s" if pattern in {"DEALER_ROUTER", "ROUTER_ROUTER"} else "Kmsg/s"
-metrics = {}
-for line in output_text.splitlines():
-    if not line.startswith("RESULT,"):
-        continue
-    parts = line.strip().split(",")
-    if len(parts) != 7:
-        continue
-    _, _, result_pattern, result_transport, result_size, metric, value = parts
-    if result_pattern == pattern and result_transport == transport and int(result_size) == size:
-        metrics[metric] = float(value)
-required = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
-if any(metric not in metrics for metric in required):
-    raise SystemExit(1)
-print(
-    f"{prefix}| {size}B | {metrics['throughput'] / 1000.0:.2f} {unit} | "
-    f"{metrics['bandwidth']:.2f} MB/s | {metrics['latency']:.3f} ms | "
-    f"{metrics['latency_p95']:.3f} ms | {metrics['latency_p99']:.3f} ms |"
-)
-PY
-}
-
-print_table_header() {
-  local prefix="$1"
-  echo "${prefix}| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |"
-  echo "${prefix}|------|------------|-----------|--------------|-------------|-------------|"
-}
-
 IFS=',' read -r -a patterns <<< "$(trim_csv "${PATTERN}")"
 IFS=',' read -r -a msg_sizes <<< "$(trim_csv "${MSG_SIZES}")"
+
+# Record the pattern -> transport iteration order so the report emitter can
+# reproduce the canonical C structure (progress lines + cooldown markers)
+# byte-for-byte. C authority: bindings/c/perf/single/run_comparison.py
+tmp_plan="$(mktemp)"
+trap 'rm -f "${tmp_metrics}" "${tmp_failures}" "${tmp_auto_hwm}" "${tmp_plan}"' EXIT
 
 for pattern in "${patterns[@]}"; do
   current_transports="${TRANSPORTS:-$(default_transports "${pattern}")}"
   IFS=',' read -r -a transports <<< "$(trim_csv "${current_transports}")"
+  printf '%s\t%s\n' "${pattern}" "${current_transports}" >> "${tmp_plan}"
   for transport_index in "${!transports[@]}"; do
     transport="${transports[$transport_index]}"
-    echo "    Testing ${transport} | ${MSG_SIZES}:"
-    print_table_header "      "
+    echo "    Testing ${transport}:"
     for size in "${msg_sizes[@]}"; do
       for ((run=1; run<=RUNS; run++)); do
         expected_result_lines=$((expected_result_lines + 5))
@@ -419,65 +394,97 @@ for pattern in "${patterns[@]}"; do
           | awk -F',' '/^RESULT,/ && ($6=="throughput" || $6=="bandwidth" || $6=="latency" || $6=="latency_p95" || $6=="latency_p99") {count++} END {print count+0}')"
         if [[ "${required_count}" -ne 5 ]]; then
           record_failure "${pattern}" "${transport}" "${size}" "${run}" "missing_required_result_lines"
-        else
-          row="$(format_progress_row_from_output "${pattern}" "${transport}" "${size}" "      " "${output}")"
-          echo "${row}"
         fi
         if (( run < RUNS )); then
-          echo "[cooldown ${RUN_COOLDOWN_MS}ms]"
           sleep_ms "${RUN_COOLDOWN_MS}"
         fi
       done
     done
+    echo "    Testing ${transport}: Done"
     if [[ "${TRANSPORT_TRANSITION_MS}" -gt 0 && "$((transport_index + 1))" -lt "${#transports[@]}" ]]; then
-      sleep_ms "${TRANSPORT_TRANSITION_MS}"
+      next_transport="${transports[$((transport_index + 1))]}"
+      cooldown_ms="${TRANSPORT_TRANSITION_MS}"
+      if [[ "${next_transport}" == "inproc" && ( "${transport}" == "ws" || "${transport}" == "wss" ) ]]; then
+        if [[ "${cooldown_ms}" -lt 30000 ]]; then
+          cooldown_ms=30000
+        fi
+      fi
+      sleep_ms "${cooldown_ms}"
     fi
   done
 done
 
+# C single timeout_seconds: max(30, dur*6+15); if SPOT present max(that, dur*12+60)
+TIMEOUT_SECONDS="$(python3 - "${DURATION}" "${PATTERN}" <<'PY'
+import sys
+dur = int(sys.argv[1])
+patterns = sys.argv[2]
+val = max(30, dur * 6 + 15)
+if "SPOT" in patterns.split(","):
+    val = max(val, dur * 12 + 60)
+print(val)
+PY
+)"
+
+if [[ "${CTX_AUTO_HWM_ENABLE_EXPLICIT}" -eq 1 ]]; then
+  CTX_AUTO_HWM_ENABLE_DISPLAY="${CTX_AUTO_HWM_ENABLE}"
+else
+  CTX_AUTO_HWM_ENABLE_DISPLAY="core-default"
+fi
+
 python_status=0
-python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${tmp_auto_hwm}" "${report}" "${PATTERN}" "${TRANSPORTS}" "${MSG_SIZES}" \
-  "${RUNS}" "${DURATION}" "${RESULTS_TAG}" "${PIN_CPU}" "${expected_result_lines}" "${actual_result_lines}" \
+python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${tmp_auto_hwm}" "${tmp_plan}" "${report}" "${PATTERN}" "${MSG_SIZES}" \
+  "${RUNS}" "${DURATION}" "${TIMEOUT_SECONDS}" "${RESULTS_TAG}" "${PIN_CPU}" "${expected_result_lines}" "${actual_result_lines}" \
   "${IO_THREADS}" "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" \
   "${RCVTIMEO_MS}" "${SNDBUF}" "${RCVBUF}" \
-  "${CTX_AUTO_HWM_ENABLE}" "${CTX_AUTO_HWM_PROFILE}" "${OUTPUT_PATH}" <<'PY' || python_status=$?
+  "${CTX_AUTO_HWM_ENABLE_DISPLAY}" "${CTX_AUTO_HWM_PROFILE}" "${OUTPUT_PATH}" <<'PY' || python_status=$?
 import csv
 import math
 import sys
 from collections import defaultdict
 from pathlib import Path
 
-helper_path, metrics_path, failures_path, auto_hwm_path, report_path, pattern_csv, transports_csv, msg_sizes_csv, runs, duration, results_tag, pin_cpu, expected_result_lines, actual_result_lines, io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, sndbuf, rcvbuf, ctx_auto_hwm_enable, ctx_auto_hwm_profile, output_path = sys.argv[1:]
+(
+    helper_path, metrics_path, failures_path, auto_hwm_path, plan_path,
+    report_path, pattern_csv, msg_sizes_csv, runs, duration, timeout_seconds,
+    results_tag, pin_cpu, expected_result_lines, actual_result_lines,
+    io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, sndbuf,
+    rcvbuf, ctx_auto_hwm_enable, ctx_auto_hwm_profile, output_path,
+) = sys.argv[1:]
 sys.path.insert(0, str(Path(helper_path).resolve().parent))
-from report_common import emit_completion, emit_effective_options, emit_failures, load_failures, write_report
+from report_common import load_failures
 
 runs = int(runs)
 expected_result_lines = int(expected_result_lines)
 actual_result_lines = int(actual_result_lines)
-required_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
-all_metrics = required_metrics
+all_metrics = ["throughput", "bandwidth", "latency", "latency_p95", "latency_p99"]
+
+# Iteration plan (pattern -> ordered transports), preserving benchmark order.
+plan = []
+with open(plan_path, encoding="utf-8") as f:
+    for raw in f:
+        raw = raw.rstrip("\n")
+        if not raw or "\t" not in raw:
+            continue
+        pat, tr_csv = raw.split("\t", 1)
+        transports = [t.strip() for t in tr_csv.split(",") if t.strip()]
+        plan.append((pat, transports))
 
 rows = defaultdict(lambda: defaultdict(list))
-patterns = []
-pattern_transports = defaultdict(list)
-pattern_sizes = defaultdict(list)
-
+plan_sizes = []
 with open(metrics_path, newline="", encoding="utf-8") as f:
-    reader = csv.reader(f)
-    for pattern, transport, size, run, metric, value in reader:
+    for pattern, transport, size, run, metric, value in csv.reader(f):
         key = (pattern, transport, int(size))
-        if pattern not in patterns:
-            patterns.append(pattern)
-        if transport not in pattern_transports[pattern]:
-            pattern_transports[pattern].append(transport)
-        if int(size) not in pattern_sizes[pattern]:
-            pattern_sizes[pattern].append(int(size))
+        if int(size) not in plan_sizes:
+            plan_sizes.append(int(size))
         try:
             rows[key][metric].append(float(value))
         except ValueError:
             rows[key][metric].append(math.nan)
+plan_sizes.sort()
 
 failures = load_failures(failures_path)
+
 auto_hwm_rows = []
 with open(auto_hwm_path, encoding="utf-8", errors="replace") as f:
     for raw in f:
@@ -488,13 +495,11 @@ with open(auto_hwm_path, encoding="utf-8", errors="replace") as f:
         for item in line.split(",")[1:]:
             if "=" not in item:
                 continue
-            key, value = item.split("=", 1)
-            fields[key.strip()] = value.strip()
+            k, v = item.split("=", 1)
+            fields[k.strip()] = v.strip()
         if fields:
             auto_hwm_rows.append(fields)
 
-for pattern in pattern_sizes:
-    pattern_sizes[pattern].sort()
 
 def median(values):
     usable = [v for v in values if not math.isnan(v)]
@@ -506,22 +511,63 @@ def median(values):
         return usable[mid]
     return (usable[mid - 1] + usable[mid]) / 2.0
 
-def fmt_metric(value):
-    return "N/A" if math.isnan(value) else f"{value:.3f}"
 
-def fmt_rate(value):
-    if math.isnan(value):
-        return "N/A"
-    return f"{value / 1000.0:.3f} Kmsg/s"
+# Median-aggregate per combo (matches C statistics.median over runs).
+combo = {}
+for pattern, transports in plan:
+    for transport in transports:
+        for size in plan_sizes:
+            key = (pattern, transport, size)
+            mv = {m: median(rows[key].get(m, [])) for m in all_metrics}
+            if any(math.isnan(mv[m]) for m in all_metrics):
+                continue
+            combo[key] = mv
 
-def fmt_bandwidth(value):
-    return "N/A" if math.isnan(value) else f"{value:.3f} MB/s"
+lines = []
 
-def fmt_latency_ms(value):
-    return "N/A" if math.isnan(value) else f"{value:.3f} ms"
 
-def fmt_size(size):
-    return f"{size}B"
+def emit(line=""):
+    lines.append(line)
+
+
+# ---- C: format_throughput / format_bandwidth / format_latency_ms ----
+def fmt_tp(value):
+    return f"{value / 1e3:6.2f} Kmsg/s"
+
+
+def fmt_bw(value):
+    return f"{value:8.2f} MB/s"
+
+
+def fmt_lat(value):
+    return f"{value:8.3f} ms"
+
+
+def table_header():
+    return (
+        "| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |"
+        "   Lat.P95(ms) |   Lat.P99(ms) |"
+    )
+
+
+def table_separator():
+    return (
+        "|----------|------------------|--------------|--------------|--------------|"
+        "--------------|"
+    )
+
+
+def table_row(size, mv):
+    tp_s = fmt_tp(mv["throughput"])
+    bw_s = fmt_bw(mv["bandwidth"])
+    lat_s = fmt_lat(mv["latency"])
+    lat95_s = fmt_lat(mv["latency_p95"])
+    lat99_s = fmt_lat(mv["latency_p99"])
+    return (
+        f"| {f'{size}B':<8} | {tp_s:>16} | {bw_s:>12} | {lat_s:>12} | "
+        f"{lat95_s:>12} | {lat99_s:>12} |"
+    )
+
 
 def bytes_to_kb(value):
     try:
@@ -534,24 +580,31 @@ def bytes_to_kb(value):
         return str(parsed // 1024)
     return f"{parsed / 1024.0:.1f}"
 
-def emit_table(columns, rows):
-    widths = []
-    for header, key in columns:
-        width = len(header)
-        for row in rows:
-            width = max(width, len(str(row.get(key, "?"))))
-        widths.append(width)
-    emit("| " + " | ".join(
-        f"{columns[i][0]:<{widths[i]}}" for i in range(len(columns))
-    ) + " |")
-    emit("|-" + "-|-".join("-" * width for width in widths) + "-|")
-    for row in rows:
-        emit("| " + " | ".join(
-            f"{str(row.get(columns[i][1], '?')):<{widths[i]}}"
-            for i in range(len(columns))
-        ) + " |")
 
-def emit_single_auto_hwm(pattern):
+def emit_options(label):
+    emit(f"## Effective Options ({label})")
+    emit("- lang: java")
+    emit("- suite: single")
+    emit(f"- runs: {runs}")
+    emit(f"- duration_seconds: {duration}")
+    emit(f"- timeout_seconds: {timeout_seconds}")
+    emit(f"- io_threads: {io_threads or '1'}")
+    emit(f"- hwm: {hwm or 'auto-hwm'}")
+    emit(f"- sndhwm: {send_hwm or 'auto-hwm'}")
+    emit(f"- rcvhwm: {recv_hwm or 'auto-hwm'}")
+    emit(f"- sndbuf: {sndbuf or 'auto-hwm'}")
+    emit(f"- rcvbuf: {rcvbuf or 'auto-hwm'}")
+    emit(f"- sndtimeo_ms: {sndtimeo_ms}")
+    emit(f"- rcvtimeo_ms: {rcvtimeo_ms}")
+    emit(f"- ctx_auto_hwm_enable: {ctx_auto_hwm_enable}")
+    emit(f"- ctx_auto_hwm_profile: {ctx_auto_hwm_profile}")
+    all_tr = sorted({t for _, trs in plan for t in trs})
+    emit(f"- patterns: {','.join(p for p, _ in plan)}")
+    emit(f"- transports: {','.join(all_tr) if all_tr else 'none'}")
+    emit(f"- msg_sizes: {','.join(str(s) for s in plan_sizes) if plan_sizes else 'none'}")
+
+
+def emit_auto_hwm(pattern):
     selected = []
     seen = set()
     for row in auto_hwm_rows:
@@ -570,16 +623,14 @@ def emit_single_auto_hwm(pattern):
         seen.add(key)
         selected.append(display)
     if not selected:
-        return
+        return False
     selected.sort(key=lambda row: (
         int(row.get("msg_size", "0") or "0"),
         row.get("component", ""),
         row.get("owner", ""),
         row.get("socket", ""),
     ))
-    emit("## Auto-HWM Detail")
-    emit(f"- pattern: {pattern}")
-    emit_table((
+    columns = (
         ("Size(B)", "msg_size"),
         ("Component", "component"),
         ("Owner", "owner"),
@@ -592,77 +643,107 @@ def emit_single_auto_hwm(pattern):
         ("RCVBUF(KB)", "rcvbuf_kb"),
         ("MsgUnit(B)", "effective_message_bytes"),
         ("Slots", "socket_message_slots"),
-    ), selected)
+    )
+    widths = []
+    for header, k in columns:
+        w = len(header)
+        for row in selected:
+            w = max(w, len(str(row.get(k, "?"))))
+        widths.append(w)
+    emit("## Auto-HWM Detail")
+    emit(f"- pattern: {pattern}")
+    emit("| " + " | ".join(
+        f"{columns[i][0]:<{widths[i]}}" for i in range(len(columns))
+    ) + " |")
+    emit("|-" + "-|-".join("-" * w for w in widths) + "-|")
+    for row in selected:
+        emit("| " + " | ".join(
+            f"{str(row.get(columns[i][1], '?')):<{widths[i]}}"
+            for i in range(len(columns))
+        ) + " |")
     emit("")
+    return True
 
-lines = []
 
-def emit(line=""):
-    lines.append(line)
+PATTERN_SEPARATOR = "=" * 79
 
-start_options = [
-    ("runs", runs),
-    ("duration_seconds", duration),
-    ("patterns", pattern_csv),
-    ("transports", transports_csv or "default-per-pattern"),
-    ("msg_sizes", msg_sizes_csv),
-    ("pin_cpu", "on" if pin_cpu == "1" else "off"),
-    ("io_threads", io_threads or "default(binding)"),
-    ("hwm", hwm or "auto-hwm"),
-    ("sndhwm", send_hwm or "auto-hwm"),
-    ("rcvhwm", recv_hwm or "auto-hwm"),
-    ("sndbuf", sndbuf or "auto-hwm"),
-    ("rcvbuf", rcvbuf or "auto-hwm"),
-    ("sndtimeo_ms", sndtimeo_ms),
-    ("rcvtimeo_ms", rcvtimeo_ms),
-    ("ctx_auto_hwm_enable", ctx_auto_hwm_enable),
-    ("ctx_auto_hwm_profile", ctx_auto_hwm_profile),
-]
-if results_tag:
-    start_options.append(("results_tag", results_tag))
-
-emit_effective_options(lines, "start", "java", "single", start_options)
-emit("===============================================================================")
+# Leading blank line then start options (matches C print("\n## Effective ...")).
 emit("")
+emit_options("start")
 
-result_lines = []
-for pattern in patterns:
-    emit(f"## PATTERN: {pattern}")
-    emit("")
-    for transport in pattern_transports[pattern]:
-        emit(f"### Transport: {transport}")
-        emit("| Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |")
-        emit("|----------|--------------------|----------------|---------------|---------------|---------------|")
-        for size in pattern_sizes[pattern]:
-            key = (pattern, transport, size)
-            metric_values = {metric: median(rows[key].get(metric, [])) for metric in all_metrics}
-            emit(
-                f"| {fmt_size(size):<8} | {fmt_rate(metric_values['throughput']):>16} | "
-                f"{fmt_bandwidth(metric_values['bandwidth']):>12} | "
-                f"{fmt_latency_ms(metric_values['latency']):>12} | "
-                f"{fmt_latency_ms(metric_values['latency_p95']):>12} | "
-                f"{fmt_latency_ms(metric_values['latency_p99']):>12} |"
-            )
-            for metric in all_metrics:
-                if rows[key].get(metric):
-                    result_lines.append(
-                        f"RESULT,current,{pattern},{transport},{size},{metric},{fmt_metric(metric_values[metric])}"
-                    )
+first_pattern = True
+for pattern, transports in plan:
+    if not first_pattern:
         emit("")
+        emit(PATTERN_SEPARATOR)
+        emit("")
+    first_pattern = False
+    emit(f"## PATTERN: {pattern} (one-way)")
+    emit(f"  > Benchmarking current for {pattern}...")
+    for t_idx, transport in enumerate(transports):
+        has_next = (t_idx + 1) < len(transports)
+        emit(f"    Testing {transport}:")
+        emit(f"      {table_header()}")
+        emit(f"      {table_separator()}")
+        for size in plan_sizes:
+            mv = combo.get((pattern, transport, size))
+            if mv is None:
+                continue
+            emit(f"      {table_row(size, mv)}")
+        emit(f"    Testing {transport}: Done")
+        if has_next:
+            cooldown_ms = 3000
+            next_transport = transports[t_idx + 1]
+            if next_transport == "inproc" and transport in ("ws", "wss"):
+                cooldown_ms = max(cooldown_ms, 30000)
+            emit(f"    [transport cooldown {cooldown_ms}ms]")
 
-for pattern in patterns:
-    emit_single_auto_hwm(pattern)
+# Failures block (C prints before auto-hwm tables).
+all_failures = []
+for f_pattern, f_transport, f_size, f_run, f_reason in failures:
+    all_failures.append((f_pattern, f_transport, f_size, f_reason))
+if all_failures:
+    emit("")
+    emit("## Failures")
+    for f_pattern, f_transport, f_size, f_reason in all_failures:
+        emit(f"- {f_pattern} current {f_transport} {f_size}B: {f_reason}")
 
-emit_effective_options(lines, "result", "java", "single", start_options)
+# Auto-HWM detail tables (one blank line before the first).
 emit("")
-emit("## Result Data")
-for line in result_lines:
-    emit(line)
+for pattern, _ in plan:
+    emit_auto_hwm(pattern)
+# Drop a trailing empty line so result options spacing matches C.
+if lines and lines[-1] == "":
+    lines.pop()
+
 emit("")
+emit_options("result")
+
+has_results = bool(combo)
+if has_results:
+    emit("")
+    emit("## Result Data")
+    for key in sorted(combo.keys()):
+        p, tr, sz = key
+        mv = combo[key]
+        for metric in all_metrics:
+            emit(f"RESULT,current,{p},{tr},{sz},{metric},{mv[metric]:.3f}")
+
 status = "complete" if expected_result_lines == actual_result_lines and not failures else "partial"
-emit_completion(lines, status, expected_result_lines, actual_result_lines)
-emit_failures(lines, failures)
-text = write_report(lines, report_path, output_path)
+emit("")
+emit("## Completion")
+emit(f"- status: {status}")
+emit(f"- expected_result_lines: {expected_result_lines}")
+emit(f"- actual_result_lines: {actual_result_lines}")
+emit("")
+emit(f"Saved result file: {Path(report_path).resolve()} (status={status})")
+
+text = "\n".join(lines) + "\n"
+with open(report_path, "w", encoding="utf-8") as fh:
+    fh.write(text)
+if output_path:
+    with open(output_path, "a", encoding="utf-8") as fh:
+        fh.write(text)
 sys.stdout.write(text)
 sys.exit(0 if status == "complete" else 1)
 PY

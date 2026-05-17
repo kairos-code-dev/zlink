@@ -31,7 +31,14 @@ internal static class PerfMultiSpotServer
         registry.Bind(config.RegistryPubEndpoint, config.RegistryRouterEndpoint);
         registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
         ConfigureSpotDiscoveryTlsIfNeeded(discovery, config.Transport);
-        discovery.ConnectRegistry(config.RegistryRouterEndpoint);
+        // ITEM 3 fix: the ONLY real defect was the unresolved wildcard
+        // ("tcp://127.0.0.1:*") registry endpoint, which made
+        // Discovery.ConnectRegistry fail with errno 22 (EINVAL) and the
+        // whole MULTI_SPOT pattern be misreported as UNSUPPORTED. Discovery
+        // connects to the registry ROUTER endpoint (matching the working
+        // samples/DiscoveryRegistry sample); endpoints are now concrete.
+        ConnectRegistryWithRetry(discovery, config.RegistryRouterEndpoint,
+            config.ReadyTimeoutMs);
 
         ConfigureSpotNodeTlsIfNeeded(nodePub, config.Transport);
         ConfigureSpotNodePublisher(nodePub, options, config);
@@ -74,6 +81,8 @@ internal static class PerfMultiSpotServer
             }
         });
 
+        // ITEM 3 fix: advertise the registry ROUTER endpoint (what the
+        // client's Discovery.ConnectRegistry connects to), now concrete.
         WriteStdoutLine(
             $"READY,{actualDataEndpoint}|{config.RegistryRouterEndpoint}");
         WriteStdoutLine($"CONTROL_READY,{actualControlEndpoint}");
@@ -112,10 +121,11 @@ internal static class PerfMultiSpotServer
             Math.Max(1, ResolveMultiDurationSeconds(options)),
             ResolveMultiConnectReadyTimeoutMs(options),
             MultiEndpointFor(options.Transport, "multi-spot-data", options),
-            MultiEndpointFor(options.Transport, "multi-spot-registry-pub",
-                options),
-            MultiEndpointFor(options.Transport, "multi-spot-registry-router",
-                options),
+            // ITEM 3 fix: registry endpoints must be CONCRETE (not "*") so
+            // the bound address can be reused for Discovery.ConnectRegistry
+            // (server side) and advertised to the client via READY.
+            MultiRegistryEndpoint(options.Transport, options),
+            MultiRegistryEndpoint(options.Transport, options),
             MultiEndpointFor(options.Transport, "multi-spot-control", options));
     }
 
@@ -144,12 +154,37 @@ internal static class PerfMultiSpotServer
                 TimeSpan.FromMilliseconds(Math.Max(1000, timeoutMs)));
     }
 
+    // C parity: bindings/c/perf/multi/src/perf_multi_spot_server.cpp:197.
+    // PERF_MULTI_SPOT_LATENCY_ONLY enables a paced (one message per
+    // interval) active publish so the second comparison pass measures
+    // uncontended round-trip latency instead of the saturated live pass.
+    private static bool ResolveSpotLatencyOnlyMode()
+    {
+        string? value = Environment.GetEnvironmentVariable(
+            "PERF_MULTI_SPOT_LATENCY_ONLY");
+        return !string.IsNullOrEmpty(value) && value != "0";
+    }
+
+    // C parity: resolve_spot_latency_only_interval_us() default 1000us.
+    private static int ResolveSpotLatencyOnlyIntervalUs()
+    {
+        return PerfEnv.ReadPositive(
+            "PERF_MULTI_SPOT_LATENCY_ONLY_INTERVAL_US", 1000);
+    }
+
     private static int RunActivePhase(Spot spotPub,
         RunnerControlState controlState, SpotServerConfig config)
     {
         ulong seq = 1;
         var payload = new byte[Math.Max(config.Size, PerfMetricHeaderSize)];
         Array.Fill(payload, (byte)'a');
+
+        bool latencyOnly = ResolveSpotLatencyOnlyMode();
+        long probeIntervalTicks = latencyOnly
+            ? (long)(ResolveSpotLatencyOnlyIntervalUs()
+                     * (Stopwatch.Frequency / 1_000_000.0))
+            : 0;
+        long nextProbeTicks = Stopwatch.GetTimestamp();
 
         long activeDeadlineTicks = DeadlineTicksFromSeconds(config.DurationSeconds);
         using var activeTimer = new Systems.Zlink.Timer();
@@ -163,11 +198,31 @@ internal static class PerfMultiSpotServer
         while (!controlState.StopRequested
                && Stopwatch.GetTimestamp() < activeDeadlineTicks)
         {
+            // C parity (perf_multi_spot_server.cpp:350): in latency-only
+            // mode, sleep until the next paced send slot so each probe
+            // travels over an idle link.
+            if (latencyOnly)
+            {
+                long now = Stopwatch.GetTimestamp();
+                if (now < nextProbeTicks)
+                {
+                    long waitTicks = nextProbeTicks - now;
+                    long waitMs = Math.Max(1,
+                        waitTicks * 1000 / Stopwatch.Frequency);
+                    System.Threading.Thread.Sleep(
+                        (int)Math.Min(waitMs, int.MaxValue));
+                    continue;
+                }
+            }
+
             StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Active,
                 config.Size, seq, EpochNs());
             if (TryPublish(spotPub, config, payload, SendFlags.DontWait))
             {
                 seq++;
+                if (latencyOnly)
+                    nextProbeTicks = Stopwatch.GetTimestamp()
+                        + probeIntervalTicks;
                 continue;
             }
 

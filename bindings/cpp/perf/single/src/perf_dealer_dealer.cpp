@@ -7,44 +7,6 @@
 #include <thread>
 #include <vector>
 
-namespace {
-
-bool record_dealer_payload (const zlink::received_t &received,
-                            uint32_t run_id,
-                            size_t msg_size,
-                            size_t payload_size,
-                            std::atomic<unsigned long long> &received_count,
-                            perf::single::latency_stats_builder_t &latency_builder)
-{
-    const zlink::message_t *payload = NULL;
-    if (received.parts ().size () == 1) {
-        payload = &received.parts ()[0];
-    } else if (received.parts ().size () == 2
-               && received.parts ()[0].size () == 0) {
-        payload = &received.parts ()[1];
-    }
-    if (!payload || payload->size () != payload_size)
-        return true;
-
-    perf_single_metric::header_t header;
-    if (!perf_single_metric::decode_payload_header (
-          payload->data (), payload->size (), &header)) {
-        return true;
-    }
-
-    if (!perf_single_metric::is_expected (
-          header, run_id, perf_single_metric::phase_active, msg_size)) {
-        return true;
-    }
-
-    received_count.fetch_add (1, std::memory_order_release);
-    const uint64_t now = perf_single_metric::now_ns ();
-    latency_builder.add (
-      perf_single_metric::elapsed_latency_ns (now, header.sent_ts_ns));
-    return true;
-}
-
-} // namespace
 
 bool run_pattern_dealer_dealer (const std::string &transport,
                                 size_t msg_size,
@@ -107,19 +69,31 @@ bool run_pattern_dealer_dealer (const std::string &transport,
 
     std::thread sender_thread ([&]() {
         uint64_t seq = 1;
+        // C-faithful send model (bindings/c/perf single
+        // perf_single_one_way.hpp send_active_samples +
+        // send_socket_active_message with ZLINK_DONTWAIT,
+        // retry_on_eagain=true): on transient backpressure, re-stamp a
+        // fresh timestamp and retry immediately. A blocking send stamps
+        // once then parks for the full TLS/WS write, so every delivered
+        // message carries a stale timestamp -> latency blows up
+        // ~700-1000x on tls/ws/wss at unchanged throughput.
         while (std::chrono::steady_clock::now () < active_deadline) {
-            if (!perf_single_metric::stamp_payload (payload.data (),
-                                                    payload.size (),
-                                                    run_id,
-                                                    perf_single_metric::phase_active,
-                                                    msg_size,
-                                                    seq++,
-                                                    perf_single_metric::now_ns ())
-                || !perf::single::send_payload_blocking (
-                  conn_socket.sock (), payload.data (), payload.size ())) {
+            if (!perf_single_metric::stamp_payload (
+                  payload.data (), payload.size (), run_id,
+                  perf_single_metric::phase_active, msg_size, seq,
+                  perf_single_metric::now_ns ())) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
+            const int send_rc = perf::single::send_payload_dontwait (
+              conn_socket.sock (), payload.data (), payload.size ());
+            if (send_rc < 0) {
+                sender_ok.store (false, std::memory_order_release);
+                break;
+            }
+            if (send_rc == 0)
+                continue; // backpressure: re-stamp + retry (no sleep)
+            ++seq;
             sent_count.fetch_add (1, std::memory_order_release);
         }
         // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
@@ -128,82 +102,84 @@ bool run_pattern_dealer_dealer (const std::string &transport,
             sender_ok.store (false, std::memory_order_release);
     });
 
-    zlink::poller_t poller;
-    bind_socket.sock ().poller_add (poller, zlink::poll_event_flag_t::pollin);
-    bool stop_received = false;
-    while (!stop_received) {
-        // PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait, no timer cap.
-        std::optional<zlink::poll_event_t> event =
-          poller.wait (std::chrono::milliseconds (-1));
-        if (!event) {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            sender_ok.store (false, std::memory_order_release);
-            break;
-        }
-        if ((static_cast<short> (event->revents)
-             & static_cast<short> (zlink::poll_event_flag_t::pollin))
-            == 0) {
-            continue;
-        }
+    // C-faithful receiver (bindings/c/perf single
+    // perf_single_one_way.hpp run_active_phase): dedicated thread doing a
+    // blocking recv (flags=0, bounded by rcvtimeo so it returns EAGAIN on
+    // idle and keeps cycling) followed by a tight DONTWAIT inner
+    // burst-drain until EAGAIN. This paces the receiver to the wire one
+    // message at a time instead of poller.wait()+drain-everything, which
+    // let the busy-spinning DONTWAIT sender build an unbounded queue under
+    // TLS/WS CPU pressure and inflated tail latency 30-300x. A single
+    // reused message_t (no per-message std::vector<message_t>
+    // materialization) matches C's single zlink_msg_t recv buffer.
+    std::thread receiver_thread ([&]() {
+        auto handle_part =
+          [&] (zlink::message_t &part_, bool *stop_out_) -> bool {
+            *stop_out_ = false;
+            if (perf::single::is_stop_token_message (part_)) {
+                *stop_out_ = true;
+                return true;
+            }
+            if (part_.size () != payload_size)
+                return true;
+            perf_single_metric::header_t header;
+            if (!perf_single_metric::decode_payload_header (
+                  part_.data (), part_.size (), &header))
+                return true;
+            if (!perf_single_metric::is_expected (
+                  header, run_id, perf_single_metric::phase_active,
+                  msg_size))
+                return true;
+            if (std::chrono::steady_clock::now () < active_deadline) {
+                received_count.fetch_add (1, std::memory_order_release);
+                const uint64_t now = perf_single_metric::now_ns ();
+                latency_builder.add (
+                  perf_single_metric::elapsed_latency_ns (
+                    now, header.sent_ts_ns));
+            }
+            return true;
+        };
 
-        for (;;) {
-            zlink::received_t received;
-            const int recv_rc =
-              bind_socket.sock ().receive (received, ZLINK_DONTWAIT);
+        while (true) {
+            zlink::message_t part;
+            const int recv_rc = bind_socket.sock ().recv (part, 0);
             if (recv_rc != 0) {
                 if (errno == EAGAIN || errno == EINTR)
-                    break;
+                    continue;
                 sender_ok.store (false, std::memory_order_release);
-                break;
+                return;
             }
-            if (received.parts ().size () == 1
-                && perf::single::is_stop_token_message (received.parts ()[0])) {
-                stop_received = true;
-                break;
-            }
-            if (std::chrono::steady_clock::now () < active_deadline
-                && !record_dealer_payload (received,
-                                           run_id,
-                                           msg_size,
-                                           payload_size,
-                                           received_count,
-                                           latency_builder)) {
+            bool stop = false;
+            if (!handle_part (part, &stop)) {
                 sender_ok.store (false, std::memory_order_release);
-                break;
+                return;
+            }
+            if (stop)
+                return;
+
+            for (;;) {
+                zlink::message_t burst;
+                const int burst_rc =
+                  bind_socket.sock ().recv (burst, ZLINK_DONTWAIT);
+                if (burst_rc != 0) {
+                    if (errno == EAGAIN || errno == EINTR)
+                        break;
+                    sender_ok.store (false, std::memory_order_release);
+                    return;
+                }
+                bool burst_stop = false;
+                if (!handle_part (burst, &burst_stop)) {
+                    sender_ok.store (false, std::memory_order_release);
+                    return;
+                }
+                if (burst_stop)
+                    return;
             }
         }
-    }
+    });
 
     sender_thread.join ();
-    // Stop token is the last in-flight message, so any earlier payloads
-    // have already been recorded above. No bounded drain loop needed.
-    const auto drain_deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (0);
-    while (received_count.load (std::memory_order_acquire)
-             < sent_count.load (std::memory_order_acquire)
-           && std::chrono::steady_clock::now () < drain_deadline) {
-        zlink::received_t received;
-        const int recv_rc =
-          bind_socket.sock ().receive (received, ZLINK_DONTWAIT);
-        if (recv_rc != 0) {
-            if (errno == EAGAIN || errno == EINTR)
-                break;
-            sender_ok.store (false, std::memory_order_release);
-            break;
-        }
-        if (std::chrono::steady_clock::now () < active_deadline
-            && !record_dealer_payload (received,
-                                       run_id,
-                                       msg_size,
-                                       payload_size,
-                                       received_count,
-                                       latency_builder)) {
-            sender_ok.store (false, std::memory_order_release);
-            break;
-        }
-    }
+    receiver_thread.join ();
 
     const unsigned long long received =
       received_count.load (std::memory_order_acquire);
@@ -212,6 +188,13 @@ bool run_pattern_dealer_dealer (const std::string &transport,
         return false;
     }
     const perf::single::latency_stats_t latency = latency_builder.snapshot ();
+
+    perf::single::emit_single_socket_hwm_detail (
+      bind_socket.sock (), "DEALER_DEALER", transport, "receiver", "dealer",
+      msg_size);
+    perf::single::emit_single_socket_hwm_detail (
+      conn_socket.sock (), "DEALER_DEALER", transport, "sender", "dealer",
+      msg_size);
 
     const double throughput =
       static_cast<double> (received) / static_cast<double> (duration_s);

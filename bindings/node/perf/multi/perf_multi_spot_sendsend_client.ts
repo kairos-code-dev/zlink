@@ -144,8 +144,34 @@ async function main() {
     );
     console.log(`CLIENT_READY,${options.msgSize}`);
 
-    await waitForRunnerStart(options.msgSize);
-    await waitForControlStart(controlSub, controlSubWaiter, options.msgSize);
+    // C parity: wait_msg_size_start_with_ready_republish — re-publish
+    // READY_COUNT every 250ms while waiting for START (stdin or control)
+    // so the slow-joiner control link can never wedge the handshake now
+    // that publishControlUntilSent is bounded (returns on timeout).
+    let started = false;
+    const startFromRunner = waitForRunnerStart(options.msgSize).then(() => {
+      started = true;
+    });
+    const startFromControl = waitForControlStart(
+      controlSub,
+      controlSubWaiter,
+      options.msgSize
+    ).then(() => {
+      started = true;
+    });
+    let nextReadyAt = Date.now();
+    while (!started) {
+      if (Date.now() >= nextReadyAt) {
+        await publishControlUntilSent(
+          controlPub,
+          controlPubWaiter,
+          CONTROL_TOPIC,
+          `READY_COUNT,${options.msgSize},${slots.length}`
+        );
+        nextReadyAt = Date.now() + 250;
+      }
+      await Promise.race([startFromRunner, startFromControl, sleepImmediate()]);
+    }
 
     const runId = createRunId(1);
     const activeStartNs = currentEpochNs();

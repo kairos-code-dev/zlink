@@ -735,11 +735,163 @@ public abstract class Socket implements AutoCloseable {
 
     boolean subscribe(TopicMessage result, ReceiveFlag flags) {
         Objects.requireNonNull(result, "result");
+        if (flags == ReceiveFlag.DONTWAIT) {
+            return subscribeIntoFastNoWait(result);
+        }
         TopicMessage fresh = subscribe(flags);
         if (fresh == null)
             return false;
         result.adoptFrom(fresh);
         return true;
+    }
+
+    // Non-allocating subscribe hot path for the DONT_WAIT single-part case
+    // (the perf/streaming common path). Mirrors recvIntoNoWait: thread-local
+    // RecvScratch (no per-call Arena), critical downcall, cached topic
+    // String, and a reused result. Multipart payloads fall back to the
+    // general allocating path.
+    private boolean subscribeIntoFastNoWait(TopicMessage result) {
+        ensureOpen();
+        prepareRecvLikeOperation();
+        RecvScratch scratch = recvScratch.get();
+        while (true) {
+            scratch.topicLenOut.set(ValueLayout.JAVA_LONG, 0,
+                RecvScratch.TOPIC_CAPACITY);
+            Message part = new Message();
+            boolean success = false;
+            try {
+                int rc = Native.subscribePartNoWaitCritical(handle,
+                    scratch.sourceRidOut, scratch.topicOut,
+                    RecvScratch.TOPIC_CAPACITY, scratch.topicLenOut,
+                    part.nativeHandle(), scratch.hasMoreOut,
+                    ReceiveFlag.DONTWAIT.getValue());
+                if (rc == 0) {
+                    boolean hasMore =
+                        scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                    part.finishReceive(hasMore);
+                    if (hasMore) {
+                        // Rare multipart payload: hand the already-received
+                        // first part to the general path to assemble the
+                        // remainder, preserving exact semantics.
+                        success = true;
+                        TopicMessage fresh = subscribeAssembleRemainder(
+                            scratch, part);
+                        result.adoptFrom(fresh);
+                        return true;
+                    }
+                    RoutingId routingId = Socket.toRoutingId(
+                        Socket.decodeRoutingIdPtr(scratch.sourceRidOut.get(
+                            ValueLayout.ADDRESS, 0)));
+                    int topicLength = Socket.normalizeTopicLength(
+                        scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
+                        scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+                    String topicId = cachedTopicString(scratch,
+                        scratch.topicOut, topicLength);
+                    success = true;
+                    result.adoptSingle(routingId, topicId, part);
+                    return true;
+                }
+            } finally {
+                if (!success) {
+                    try {
+                        part.close();
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            }
+
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR) {
+                continue;
+            }
+            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+                return false;
+            }
+            throw ZlinkException.fromLastError("zlink_subscribe_part");
+        }
+    }
+
+    // Decodes the topic id, reusing the last String when the raw topic bytes
+    // are unchanged (steady-state single-topic streams). Mirrors C reusing a
+    // fixed topic buffer and comparing against the expected constant.
+    private static String cachedTopicString(RecvScratch scratch,
+                                            MemorySegment topicOut,
+                                            int topicLength) {
+        if (topicLength == 0) {
+            return "";
+        }
+        byte[] cached = scratch.cachedTopicBytes;
+        if (cached != null && cached.length == topicLength) {
+            boolean same = true;
+            for (int i = 0; i < topicLength; i++) {
+                if (cached[i] != topicOut.get(ValueLayout.JAVA_BYTE, i)) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) {
+                return scratch.cachedTopicString;
+            }
+        }
+        byte[] raw = topicOut.asSlice(0, topicLength)
+            .toArray(ValueLayout.JAVA_BYTE);
+        String decoded = new String(raw, StandardCharsets.UTF_8);
+        scratch.cachedTopicBytes = raw;
+        scratch.cachedTopicString = decoded;
+        return decoded;
+    }
+
+    // Assembles a multipart subscribe payload whose first part has already
+    // been received into the fast path. Delegates the tail to the general
+    // allocating reader for exact parity.
+    private TopicMessage subscribeAssembleRemainder(RecvScratch scratch,
+                                                    Message firstPart) {
+        RoutingId routingId = Socket.toRoutingId(
+            Socket.decodeRoutingIdPtr(scratch.sourceRidOut.get(
+                ValueLayout.ADDRESS, 0)));
+        int topicLength = Socket.normalizeTopicLength(
+            scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
+            scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+        String topicId = topicLength == 0 ? ""
+            : new String(scratch.topicOut.asSlice(0, topicLength)
+                .toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+        java.util.ArrayList<Message> parts = new java.util.ArrayList<>();
+        parts.add(firstPart);
+        while (true) {
+            Message next = new Message();
+            boolean ok = false;
+            try {
+                int rc = Native.subscribePart(handle, scratch.sourceRidOut,
+                    scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
+                    scratch.topicLenOut, next.nativeHandle(),
+                    scratch.hasMoreOut, ReceiveFlag.NONE.getValue());
+                if (rc == 0) {
+                    ok = true;
+                    boolean more =
+                        scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                    next.finishReceive(more);
+                    parts.add(next);
+                    if (!more) {
+                        return new TopicMessage(routingId, topicId,
+                            parts.toArray(Message[]::new));
+                    }
+                    continue;
+                }
+            } finally {
+                if (!ok) {
+                    try {
+                        next.close();
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            }
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR) {
+                continue;
+            }
+            Message.closeAll(parts);
+            throw ZlinkException.fromLastError("zlink_subscribe_part");
+        }
     }
 
     Optional<TopicMessage> subscribeNoWait() {
@@ -1439,31 +1591,63 @@ public abstract class Socket implements AutoCloseable {
         return rc;
     }
 
+    // Publish hot path. Mirrors sendPartOnce: reuse the thread-local
+    // SendScratch (no per-call Arena), cache the encoded topic segment (C
+    // passes a const char* with zero per-call allocation), pass the message's
+    // own native handle directly (no extra msgInit/msgMove), and use the
+    // safepoint-eliding critical downcall when DONT_WAIT is set.
     private int publishPartOnce(String topicId, Message message, int flags,
                                 int partFlag) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeTopic = arena.allocateFrom(topicId,
-                StandardCharsets.UTF_8);
-            return publishPartOnce(nativeTopic, message, flags, partFlag,
-                arena);
+        SendScratch scratch = sendScratch.get();
+        MemorySegment nativeTopic = nativeTopic(scratch, topicId);
+        MemorySegment messageHandle = message.nativeHandle();
+        boolean useCritical =
+            (flags & SendFlag.DONTWAIT.getValue()) != 0;
+        int rc = useCritical
+            ? Native.publishPartNoWaitCritical(handle, nativeTopic,
+                messageHandle, flags, partFlag)
+            : Native.publishPart(handle, nativeTopic, messageHandle, flags,
+                partFlag);
+        if (rc == 0) {
+            message.markTransferred();
         }
+        return rc;
     }
 
+    // Multipart publish step against a pre-encoded native topic segment.
+    // Same handle-direct, critical-when-DONT_WAIT model as the single-part
+    // publishPartOnce above.
     private int publishPartOnce(MemorySegment nativeTopic, Message message,
-                                int flags, int partFlag, Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-        Object anchor = message.transferTo(nativeMsg);
-        try {
-            int rc = Native.publishPart(handle, nativeTopic, nativeMsg,
-                flags, partFlag);
-            if (rc != 0) {
-                message.restoreFromNative(nativeMsg, false, anchor);
-            }
-            return rc;
-        } catch (RuntimeException ex) {
-            message.restoreFromNative(nativeMsg, false, anchor);
-            throw ex;
+                                int flags, int partFlag) {
+        MemorySegment messageHandle = message.nativeHandle();
+        boolean useCritical =
+            (flags & SendFlag.DONTWAIT.getValue()) != 0;
+        int rc = useCritical
+            ? Native.publishPartNoWaitCritical(handle, nativeTopic,
+                messageHandle, flags, partFlag)
+            : Native.publishPart(handle, nativeTopic, messageHandle, flags,
+                partFlag);
+        if (rc == 0) {
+            message.markTransferred();
         }
+        return rc;
+    }
+
+    // Returns a cached native UTF-8 encoding of the topic. Steady-state
+    // publishes reuse the same constant topic, so the common path is a
+    // reference/equality hit with no allocation or re-encoding.
+    private static MemorySegment nativeTopic(SendScratch scratch,
+                                             String topicId) {
+        if (scratch.cachedTopicString != null
+            && scratch.cachedTopicString.equals(topicId)
+            && scratch.cachedTopicSegment != null) {
+            return scratch.cachedTopicSegment;
+        }
+        MemorySegment encoded = scratch.arena.allocateFrom(topicId,
+            StandardCharsets.UTF_8);
+        scratch.cachedTopicString = topicId;
+        scratch.cachedTopicSegment = encoded;
+        return encoded;
     }
 
     void recvMessageFrame(Message message, ReceiveFlag flag) {
@@ -1603,28 +1787,25 @@ public abstract class Socket implements AutoCloseable {
         ensureBlockingSendAllowed(flags);
         boolean explicitNonBlocking =
             (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeTopic = arena.allocateFrom(topicId,
-                StandardCharsets.UTF_8);
-            for (int i = 0; i < parts.size(); i++) {
-                int partFlag = i + 1 < parts.size()
-                    ? Native.PART_MORE : Native.PART_FINAL;
-                while (true) {
-                    int rc = publishPartOnce(nativeTopic, parts.get(i),
-                        flags.getValue(), partFlag, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
-                        continue;
-                    if ((nonBlocking || explicitNonBlocking)
-                        && (errno == ERRNO_EAGAIN
-                            || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                        throw new SubmitException(SubmitResult.BACKPRESSURED,
-                            errno);
-                    }
-                    throwPartSubmitFailure("zlink_publish_part");
+        MemorySegment nativeTopic = nativeTopic(sendScratch.get(), topicId);
+        for (int i = 0; i < parts.size(); i++) {
+            int partFlag = i + 1 < parts.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = publishPartOnce(nativeTopic, parts.get(i),
+                    flags.getValue(), partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == ERRNO_EINTR)
+                    continue;
+                if ((nonBlocking || explicitNonBlocking)
+                    && (errno == ERRNO_EAGAIN
+                        || errno == ERRNO_EWOULDBLOCK_WIN)) {
+                    throw new SubmitException(SubmitResult.BACKPRESSURED,
+                        errno);
                 }
+                throwPartSubmitFailure("zlink_publish_part");
             }
         }
     }
@@ -1632,22 +1813,19 @@ public abstract class Socket implements AutoCloseable {
     SendResult publishNoWaitPartsResult(String topicId, List<Message> parts) {
         ensureOpen();
         validateParts(parts);
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeTopic = arena.allocateFrom(topicId,
-                StandardCharsets.UTF_8);
-            for (int i = 0; i < parts.size(); i++) {
-                int partFlag = i + 1 < parts.size()
-                    ? Native.PART_MORE : Native.PART_FINAL;
-                while (true) {
-                    int rc = publishPartOnce(nativeTopic, parts.get(i),
-                        SendFlag.DONTWAIT.getValue(), partFlag, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
-                        continue;
-                    return classifyNonBlockingSendErrno("zlink_publish_part");
-                }
+        MemorySegment nativeTopic = nativeTopic(sendScratch.get(), topicId);
+        for (int i = 0; i < parts.size(); i++) {
+            int partFlag = i + 1 < parts.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = publishPartOnce(nativeTopic, parts.get(i),
+                    SendFlag.DONTWAIT.getValue(), partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == ERRNO_EINTR)
+                    continue;
+                return classifyNonBlockingSendErrno("zlink_publish_part");
             }
         }
         return SendResult.SENT;
@@ -3602,6 +3780,14 @@ public abstract class Socket implements AutoCloseable {
         }
 
         private static void validateTopicUtf8(String topicId, String name) {
+            // Fast path for the publish hot loop: a Java char encodes to at
+            // most 3 UTF-8 bytes (BMP) or a surrogate pair to 4, so the byte
+            // length never exceeds 3 * char-count. When that bound already
+            // fits the capacity, skip the per-call getBytes() allocation.
+            int chars = topicId.length();
+            if ((long) chars * 3L < Socket.TOPIC_CAPACITY) {
+                return;
+            }
             int bytes = topicId.getBytes(StandardCharsets.UTF_8).length;
             validateFilterBytes(bytes, name);
         }

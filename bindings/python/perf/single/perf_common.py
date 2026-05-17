@@ -1,5 +1,6 @@
 import argparse
 import os
+import struct
 import sys
 import time
 from pathlib import Path
@@ -154,6 +155,13 @@ def apply_single_socket_options(*sockets, receive_timeout_ms=None):
     )
     for sock in sockets:
         sock.options.linger_ms = 0
+        # bindings/cpp/perf single perf_pair.cpp et al set tcp_no_delay on
+        # the raw single sockets so 64B one-way throughput is not pinned by
+        # Nagle coalescing. Best-effort: ignore on transports without it.
+        try:
+            sock.options.tcp_no_delay = True
+        except Exception:
+            pass
         if overrides:
             if send_hwm > 0:
                 sock.options.send_high_water_mark = send_hwm
@@ -188,16 +196,19 @@ def apply_single_spot_node_admission(*nodes):
             node.set_router_hwm(recv_hwm)
 
 
-def recv_nonblocking(sock, *, method="recv"):
+def _recv_storage(method):
     zlink_mod = _require_zlink()
     if method == "recv":
-        recv_method = sock.recv_into
-        storage = zlink_mod.Received()
-    elif method == "subscribe":
-        recv_method = sock.subscribe_into
-        storage = zlink_mod.TopicMessage()
-    else:
-        raise ValueError(f"unsupported recv method: {method}")
+        return zlink_mod.Received()
+    if method == "subscribe":
+        return zlink_mod.TopicMessage()
+    raise ValueError(f"unsupported recv method: {method}")
+
+
+def recv_nonblocking(sock, *, method="recv"):
+    zlink_mod = _require_zlink()
+    recv_method = sock.subscribe_into if method == "subscribe" else sock.recv_into
+    storage = _recv_storage(method)
     try:
         return storage if recv_method(storage, flags=zlink_mod.RecvFlags.DONT_WAIT) else None
     except zlink_mod.RecvError as exc:
@@ -206,15 +217,157 @@ def recv_nonblocking(sock, *, method="recv"):
         raise
 
 
+def storage_data_part(storage):
+    """Return the bytes of the final (data) frame of a received message
+    without materializing every frame via to_bytes_list(). The metric
+    payload is always the last frame (C recv_single_part_header_flags
+    rejects extra/routing frames); router prepends only a routing frame
+    as binding metadata, never as a data frame here."""
+
+    parts = storage.parts
+    if not parts:
+        return b""
+    return parts[-1].to_bytes()
+
+
+def recv_into_storage(sock, storage, *, method="recv", blocking=True):
+    """C perf_single_one_way.hpp recv idiom: blocking first recv then a
+    DONTWAIT burst-drain, both reusing one caller-owned storage object
+    (no poller, no per-message storage allocation). Returns True on a
+    received message, False on EAGAIN/NO_DATA."""
+
+    zlink_mod = _require_zlink()
+    recv_method = sock.subscribe_into if method == "subscribe" else sock.recv_into
+    flags = 0 if blocking else int(zlink_mod.RecvFlags.DONT_WAIT)
+    try:
+        return bool(recv_method(storage, flags=flags))
+    except zlink_mod.RecvError as exc:
+        if exc.result == zlink_mod.RecvResult.NO_DATA:
+            return False
+        raise
+
+
+def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
+                         received, latencies):
+    """C perf_single_one_way.hpp run_active_phase receiver, fused for the
+    Python hot path: blocking first recv then DONTWAIT burst-drain on one
+    reused storage object; header decoded strictly at offset 0 with an
+    exact size check; latency = recv_ns - sent_ts_ns clamped to 0.0 (the
+    message still counts toward throughput). Exits only on the wire stop
+    token or a fatal recv error. Returns the updated received count."""
+
+    from perf_metrics import (
+        HEADER_FORMAT,
+        HEADER_MAGIC,
+        HEADER_SIZE,
+    )
+
+    zlink_mod = _require_zlink()
+    recv_method = sock.subscribe_into if method == "subscribe" else sock.recv_into
+    dont_wait = int(zlink_mod.RecvFlags.DONT_WAIT)
+    recv_error = zlink_mod.RecvError
+    no_data = zlink_mod.RecvResult.NO_DATA
+    storage = _recv_storage(method)
+    unpack_from = struct.unpack_from
+    perf_counter = time.perf_counter
+    time_ns = time.time_ns
+    count = received
+
+    stop_received = False
+    while not stop_received:
+        flags = 0  # C: blocking first recv, then DONTWAIT burst-drain
+        while True:
+            try:
+                if not recv_method(storage, flags=flags):
+                    break
+            except recv_error as exc:
+                if exc.result == no_data:
+                    break
+                raise
+            flags = dont_wait
+            parts = storage.parts
+            data = parts[-1].to_bytes() if parts else b""
+            storage.close()
+            if data == STOP_TOKEN:
+                stop_received = True
+                break
+            if len(data) != msg_size or len(data) < HEADER_SIZE:
+                continue
+            magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = (
+                unpack_from(HEADER_FORMAT, data, 0)
+            )
+            if (
+                magic != HEADER_MAGIC
+                or phase != 1
+                or hdr_msg_size != msg_size
+                or hdr_run_id != run_id
+            ):
+                continue
+            if perf_counter() >= active_end:
+                continue
+            count += 1
+            now_ns = time_ns()
+            if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
+                latencies.append(float(now_ns - sent_ts_ns))
+            else:
+                latencies.append(0.0)
+
+    return count
+
+
+_DONT_WAIT_FLAG = None
+_LOW_LEVEL_SEND = None
+
+
+def _dont_wait_flag():
+    global _DONT_WAIT_FLAG
+    if _DONT_WAIT_FLAG is None:
+        _DONT_WAIT_FLAG = int(_require_zlink().SendFlags.DONT_WAIT)
+    return _DONT_WAIT_FLAG
+
+
+def _low_level_send_methods():
+    # The fluent socket.send()/publish() entry points return a per-call
+    # SendOp builder, which the profiler flagged as the single largest
+    # per-message cost. The socket classes also inherit lower-level
+    # message-socket methods that take the payload directly and return a
+    # bool; bind to those once and reuse on the hot path.
+    global _LOW_LEVEL_SEND
+    if _LOW_LEVEL_SEND is None:
+        from zlink._runtime.sockets.socket_base import (
+            _MessageSocket,
+            _PublisherSocket,
+            _RoutedMessageSocket,
+        )
+
+        _LOW_LEVEL_SEND = (
+            _MessageSocket.send,
+            _RoutedMessageSocket.send,
+            _PublisherSocket.publish,
+        )
+    return _LOW_LEVEL_SEND
+
+
 def send_nonblocking(sock, payload, *, routing_id=None):
     zlink_mod = _require_zlink()
+    msg_send, routed_send, _ = _low_level_send_methods()
+    flag = _dont_wait_flag()
     try:
         if routing_id is None:
-            op = sock.send().flags(zlink_mod.SendFlags.DONT_WAIT)
-        else:
-            op = sock.send(routing_id).flags(zlink_mod.SendFlags.DONT_WAIT)
-        op.message(payload)
-        return bool(op.submit())
+            return bool(msg_send(sock, payload, flags=flag))
+        return bool(routed_send(sock, routing_id, payload, flags=flag))
+    except zlink_mod.SubmitError as exc:
+        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
+            return False
+        raise
+
+
+def publish_nonblocking(sock, topic, payload):
+    zlink_mod = _require_zlink()
+    _, _, publish = _low_level_send_methods()
+    flag = _dont_wait_flag()
+    try:
+        return bool(publish(sock, topic, payload, flags=flag))
     except zlink_mod.SubmitError as exc:
         if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
             return False

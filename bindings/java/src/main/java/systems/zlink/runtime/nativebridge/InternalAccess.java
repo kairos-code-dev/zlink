@@ -108,6 +108,9 @@ public final class InternalAccess {
     private static final MethodHandle TOPIC_MESSAGE =
         constructor(TopicMessage.class, RoutingId.class,
           String.class, Message[].class);
+    private static final MethodHandle TOPIC_MESSAGE_ADOPT_SINGLE =
+        virtualMethod(TopicMessage.class, "adoptSingle", void.class,
+          RoutingId.class, String.class, Message.class);
     private static final MethodHandle RECEIVED_FORCE_MATERIALIZE =
         virtualMethod(Received.class, "forceMaterialize", void.class);
     private static final MethodHandle RECEIVED_TAKE_PARTS =
@@ -429,6 +432,20 @@ public final class InternalAccess {
         try {
             return (TopicMessage) TOPIC_MESSAGE.invoke(routingId,
               topicId, parts);
+        } catch (Throwable t) {
+            throw unchecked(t);
+        }
+    }
+
+    // Hot-path: reuse an existing TopicMessage for a single-part delivery,
+    // avoiding the per-message Message[]+TopicMessage allocation.
+    public static void topicMessageAdoptSingle(TopicMessage target,
+                                               RoutingId routingId,
+                                               String topicId,
+                                               Message part) {
+        try {
+            TOPIC_MESSAGE_ADOPT_SINGLE.invoke(target, routingId, topicId,
+              part);
         } catch (Throwable t) {
             throw unchecked(t);
         }

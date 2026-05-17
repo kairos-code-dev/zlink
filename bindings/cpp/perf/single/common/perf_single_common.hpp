@@ -324,6 +324,87 @@ inline bool is_stop_token_message (const zlink::message_t &msg_)
     return is_stop_token (msg_.data (), msg_.size ());
 }
 
+// C-faithful AUTO_HWM_DETAIL emitter. Mirrors
+// bindings/c/perf/single/common/bench_common_runtime.hpp
+// emit_single_socket_hwm_detail byte-for-byte so the runner's
+// "## Auto-HWM Detail" block is identical to the C reference.
+inline const char *single_auto_hwm_role_name (uint32_t role_)
+{
+    switch (role_) {
+    case 1:
+        return "control";
+    case 2:
+        return "routed";
+    case 3:
+        return "fanout";
+    case 4:
+        return "recv_ingress";
+    case 5:
+        return "spot_data";
+    case 6:
+        return "peer_queue";
+    case 7:
+        return "stream";
+    default:
+        return "none";
+    }
+}
+
+inline bool single_auto_hwm_snapshot_visible (
+  const zlink::monitor_snapshot_t &snapshot_)
+{
+    return snapshot_.auto_hwm_applied_sndhwm > 0
+           || snapshot_.auto_hwm_applied_rcvhwm > 0
+           || snapshot_.auto_hwm_effective_message_bytes > 0
+           || snapshot_.auto_hwm_socket_message_slots > 0;
+}
+
+template<typename SocketLike>
+inline void emit_single_socket_hwm_detail (const SocketLike &socket_,
+                                           const char *pattern_,
+                                           const std::string &transport_,
+                                           const char *component_,
+                                           const char *socket_type_,
+                                           size_t msg_size_)
+{
+    if (!pattern_ || !component_ || !socket_type_)
+        return;
+
+    zlink::monitor_snapshot_t snapshot;
+    try {
+        zlink::monitor_handle_t monitor =
+          socket_.monitor_handle (zlink::monitor_event::connection_ready);
+        if (!monitor.valid ())
+            return;
+        snapshot = monitor.snapshot ();
+    }
+    catch (const zlink::zlink_error_t &) {
+        return;
+    }
+    if (!single_auto_hwm_snapshot_visible (snapshot))
+        return;
+
+    std::cout << "AUTO_HWM_DETAIL"
+              << ",pattern=" << pattern_
+              << ",transport=" << transport_
+              << ",component=" << component_
+              << ",msg_size=" << msg_size_
+              << ",owner=socket"
+              << ",owner_id=0"
+              << ",socket=" << component_
+              << ",socket_type=" << socket_type_
+              << ",role="
+              << single_auto_hwm_role_name (snapshot.auto_hwm_role)
+              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+              << ",effective_message_bytes="
+              << snapshot.auto_hwm_effective_message_bytes
+              << ",effective_sndbuf=" << snapshot.auto_hwm_effective_sndbuf
+              << ",effective_rcvbuf=" << snapshot.auto_hwm_effective_rcvbuf
+              << ",socket_message_slots="
+              << snapshot.auto_hwm_socket_message_slots << std::endl;
+}
+
 inline bool send_payload_blocking (perf_socket_t &socket_,
                                    const void *data_,
                                    size_t size_)
@@ -490,6 +571,58 @@ inline bool publish_payload_blocking_retry (zlink::service::spot_t &spot_,
     }
     errno = EAGAIN;
     return false;
+}
+
+// C-faithful DONTWAIT send (mirrors bindings/c/perf single
+// perf_single_one_way.hpp send_socket_active_message with
+// retry_on_eagain=true). Returns:
+//   1  -> sent
+//   0  -> transient backpressure (EAGAIN/EWOULDBLOCK/ETIMEDOUT/EINTR);
+//         caller must re-stamp a fresh timestamp and retry, exactly like
+//         C's send_active_samples loop, so the delivered message never
+//         carries a stale timestamp.
+//  -1  -> fatal error
+inline int send_payload_dontwait (zlink::pair_socket_t &socket_,
+                                   const void *data_,
+                                   size_t size_)
+{
+    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    if (!msg.valid ())
+        return -1;
+    try {
+        const bool sent =
+          std::move (socket_.send ().message (msg).flags (ZLINK_DONTWAIT))
+            .submit ();
+        return sent ? 1 : 0;
+    }
+    catch (const zlink::zlink_error_t &err) {
+        errno = err.internal_errno ();
+        if (is_transient_send_errno (errno))
+            return 0;
+        return -1;
+    }
+}
+
+inline int send_payload_dontwait (perf_socket_t &socket_,
+                                   const void *data_,
+                                   size_t size_)
+{
+    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    if (!msg.valid ())
+        return -1;
+    try {
+        // send_socket() returns 0 on success and -1 with errno already
+        // set (EAGAIN on backpressure, internal_errno on error).
+        if (::perf::send_socket (socket_, msg, ZLINK_DONTWAIT) == 0)
+            return 1;
+        return is_transient_send_errno (errno) ? 0 : -1;
+    }
+    catch (const zlink::zlink_error_t &err) {
+        errno = err.internal_errno ();
+        if (is_transient_send_errno (errno))
+            return 0;
+        return -1;
+    }
 }
 
 inline bool send_stop_token_blocking (perf_socket_t &socket_)

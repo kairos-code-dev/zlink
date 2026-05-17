@@ -150,44 +150,214 @@ function socketTypeName(socketOrType) {
         return 'stream';
     return 'unknown';
 }
-function autoHwmSendSideVisible(socketType, role) {
-    const roleName = autoHwmRoleName(role);
-    return roleName === 'fanout'
-        || roleName === 'spot_data'
-        || roleName === 'routed'
-        || roleName === 'control'
-        || roleName === 'peer_queue'
-        || roleName === 'stream'
-        || socketTypeName(socketType) === 'pub'
-        || socketTypeName(socketType) === 'router'
-        || socketTypeName(socketType) === 'dealer'
-        || socketTypeName(socketType) === 'stream';
-}
-function autoHwmRecvSideVisible(socketType, role) {
-    const roleName = autoHwmRoleName(role);
-    return roleName === 'recv_ingress'
-        || roleName === 'routed'
-        || roleName === 'control'
-        || roleName === 'peer_queue'
-        || roleName === 'stream'
-        || socketTypeName(socketType) === 'sub'
-        || socketTypeName(socketType) === 'router'
-        || socketTypeName(socketType) === 'dealer'
-        || socketTypeName(socketType) === 'stream';
-}
-function hwmSndBufDisplay(snapshot, socketType) {
-    return autoHwmSendSideVisible(socketType, snapshot.autoHwmRole)
+// C parity: perf_auto_hwm_sndbuf_display / perf_auto_hwm_rcvbuf_display
+// (bindings/c/perf/multi/common/perf_multi_runtime.hpp ~L292-306). The
+// AUTO_HWM_DETAIL `effective_sndbuf=`/`effective_rcvbuf=` tokens use the
+// *narrow* visibility rule and emit "0" (not "-") for the hidden side, so
+// the `## Auto-HWM Detail` collector renders the C `SNDBUF(KB)/RCVBUF(KB)`
+// columns byte-identically (the emitter applies the "-" only to the
+// SNDHWM/RCVHWM columns). The broad per-socket monitor rule must not be
+// used here or the buffer columns diverge from C (notably MULTI_PUBSUB).
+function hwmSndBufDisplay(snapshot, socket) {
+    const typeName = socketTypeName(socket);
+    const roleName = autoHwmRoleName(snapshot.autoHwmRole);
+    return autoHwmSnapshotSendSideVisible(typeName, roleName)
         ? String(snapshot.autoHwmEffectiveSndBuf)
-        : '-';
+        : '0';
 }
-function hwmRcvBufDisplay(snapshot, socketType) {
-    return autoHwmRecvSideVisible(socketType, snapshot.autoHwmRole)
+function hwmRcvBufDisplay(snapshot, socket) {
+    const typeName = socketTypeName(socket);
+    const roleName = autoHwmRoleName(snapshot.autoHwmRole);
+    return autoHwmSnapshotRecvSideVisible(typeName, roleName)
         ? String(snapshot.autoHwmEffectiveRcvBuf)
-        : '-';
+        : '0';
+}
+// C parity: bindings/c/perf/multi/common/perf_multi_runtime.hpp
+// perf_socket_type_name() — internal-socket snapshot entries carry a
+// numeric socket type, so the AUTO_HWM_DETAIL `socket_type=` token must
+// be derived from the numeric enum (not a JS socket instance).
+function autoHwmSnapshotSocketTypeName(socketType) {
+    return socketTypeName(typeof socketType === 'number' ? socketType : Number(socketType));
+}
+// C parity: perf_auto_hwm_send_side_visible / perf_auto_hwm_recv_side_visible.
+// NOTE: this is the *narrow* spotnode-snapshot rule (SUB/XSUB + recv_ingress/
+// control hides send; PUB/XPUB + spot_data/control hides recv), distinct
+// from the broader per-socket monitor rule used by hwmSndBufDisplay.
+function autoHwmSnapshotSendSideVisible(socketTypeName_, roleName) {
+    if ((socketTypeName_ === 'sub' || socketTypeName_ === 'xsub')
+        && (roleName === 'recv_ingress' || roleName === 'control')) {
+        return false;
+    }
+    return true;
+}
+function autoHwmSnapshotRecvSideVisible(socketTypeName_, roleName) {
+    if ((socketTypeName_ === 'pub' || socketTypeName_ === 'xpub')
+        && (roleName === 'spot_data' || roleName === 'control')) {
+        return false;
+    }
+    return true;
+}
+function autoHwmEffectiveMsgSize(msgSize) {
+    if (msgSize && Number(msgSize) !== 0) {
+        return Number(msgSize);
+    }
+    const value = process.env.PERF_MSG_SIZES || process.env.PERF_MULTI_MSG_SIZES;
+    if (!value) {
+        return 0;
+    }
+    const parsed = Number.parseInt(String(value).trim(), 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+function autoHwmLabelIsControlSnapshot(label) {
+    return typeof label === 'string' && label.indexOf('control') >= 0;
+}
+// C parity: perf_auto_hwm_include_spot_snapshot_row — under a control-scope
+// label only the peer control mesh sockets are surfaced.
+function autoHwmIncludeSpotSnapshotRow(label, socketName) {
+    if (!autoHwmLabelIsControlSnapshot(label)) {
+        return true;
+    }
+    return socketName === 'peer_ctrl_pub' || socketName === 'peer_ctrl_sub';
+}
+const emittedSpotNodeAutoHwmSnapshots = new Set();
+// C keys the snapshot dedup on the spot-node pointer; the JS handle has no
+// stringifiable identity, so assign a stable per-node id (one node per
+// perf process — scope/transport/msg_size already disambiguate the rest).
+const spotNodeIdentityIds = new WeakMap();
+let spotNodeIdentitySeq = 0;
+function spotNodeIdentity(node) {
+    let id = spotNodeIdentityIds.get(node);
+    if (id === undefined) {
+        spotNodeIdentitySeq += 1;
+        id = spotNodeIdentitySeq;
+        spotNodeIdentityIds.set(node, id);
+    }
+    return id;
+}
+// Faithful port of perf_print_spot_node_auto_hwm_snapshot +
+// perf_emit_spot_node_auto_hwm_detail
+// (bindings/c/perf/multi/common/perf_multi_runtime.hpp ~L379-509):
+// enumerate the spot node's internal sockets and emit one
+// AUTO_HWM_DETAIL,...,source=spotnode_snapshot line per visible socket so
+// the `## Auto-HWM Detail` collector renders the C `Auto-HWM spotnode:`
+// per-size tables (external-router / local-pub / mesh-pub / mesh-xsub /
+// peer_ctrl_*). Presentation-only; never touches measured RESULT or the
+// termination/2-pass paths.
+function emitSpotNodeAutoHwmSnapshot(node, label, transport, msgSize) {
+    if (typeof node.internalSocketsSnapshot !== 'function') {
+        return false;
+    }
+    const pattern = process.env.PERF_MULTI_PATTERN || process.env.PERF_PATTERN || 'unknown';
+    const component = process.env.PERF_MULTI_COMPONENT || 'process';
+    const effectiveTransport = transport || process.env.PERF_MULTI_TRANSPORT || 'unknown';
+    const snapshotScope = autoHwmLabelIsControlSnapshot(label) ? 'control' : 'data';
+    const dedupKey = [
+        String(spotNodeIdentity(node)),
+        effectiveTransport,
+        String(msgSize || 0),
+        snapshotScope
+    ].join('|');
+    if (emittedSpotNodeAutoHwmSnapshots.has(dedupKey)) {
+        return true;
+    }
+    emittedSpotNodeAutoHwmSnapshots.add(dedupKey);
+    let rows;
+    try {
+        rows = node.internalSocketsSnapshot();
+    }
+    catch (err) {
+        return false;
+    }
+    if (!Array.isArray(rows) || rows.length === 0) {
+        return true;
+    }
+    const effectiveMsgSize = autoHwmEffectiveMsgSize(msgSize);
+    for (const row of rows) {
+        if (!row || row.autoHwmVisible === false) {
+            continue;
+        }
+        // C parity (bindings/c/perf/multi/common/perf_multi_runtime.hpp:488
+        // `if (rows[i].auto_hwm_visible == 0) continue;`): in the C perf
+        // reference the spot-dispatch `internal_receiver` snapshot socket is
+        // always reported with auto_hwm_visible==0 — its SUB is never
+        // auto-HWM-activated under C's `perf_create_default_spot_handle`
+        // flow, so C's filter drops it and the `Auto-HWM spotnode:` table
+        // never contains an `internal_receiver` row (verified: zero
+        // occurrences across every C multi reference report). The node
+        // `createSpot()` path activates that internal SUB earlier
+        // (auto_hwm_enabled / auto_hwm_role become non-zero), so core's
+        // auto_hwm_visible_from_snapshot() surfaces it as visible=1 and
+        // node would otherwise emit an extra row whose 17-char socket name
+        // also widens the MULTI_SPOT Auto-HWM column widths. Match C's
+        // reference auto_hwm_visible semantics for this internal transport
+        // socket by excluding it here (presentation-only; never touches a
+        // measured RESULT or the termination/2-pass paths).
+        if (row.socketName === 'internal_receiver') {
+            continue;
+        }
+        if (!autoHwmIncludeSpotSnapshotRow(label, row.socketName)) {
+            continue;
+        }
+        const snapshot = row.snapshot;
+        if (!snapshot) {
+            continue;
+        }
+        const typeName = autoHwmSnapshotSocketTypeName(row.socketType);
+        const roleName = autoHwmRoleName(snapshot.autoHwmRole);
+        // C: owner enum NODE(1)/SPOT(2) -> node|spot, scope shared|per-spot.
+        const ownerNode = Number(row.owner) === 1;
+        const owner = ownerNode ? 'node' : 'spot';
+        const scope = ownerNode ? 'shared' : 'per-spot';
+        const sndbuf = autoHwmSnapshotSendSideVisible(typeName, roleName)
+            ? String(snapshot.autoHwmEffectiveSndBuf)
+            : '0';
+        const rcvbuf = autoHwmSnapshotRecvSideVisible(typeName, roleName)
+            ? String(snapshot.autoHwmEffectiveRcvBuf)
+            : '0';
+        console.log('AUTO_HWM_DETAIL'
+            + `,pattern=${pattern}`
+            + `,transport=${effectiveTransport}`
+            + `,component=${component}`
+            + `,label=${row.socketName}`
+            + `,owner=${owner}`
+            + `,owner_id=${row.ownerId}`
+            + `,socket=${row.socketName}`
+            + `,socket_type=${typeName}`
+            + `,msg_size=${effectiveMsgSize}`
+            + ',source=spotnode_snapshot'
+            + `,enabled=${snapshot.autoHwmEnabled ? 1 : 0}`
+            + `,role=${roleName}`
+            + `,role_id=${snapshot.autoHwmRole}`
+            + `,profile=${autoHwmProfileName(snapshot.autoHwmProfile)}`
+            + `,profile_id=${snapshot.autoHwmProfile}`
+            + `,policy_class=${autoHwmPolicyClassName(snapshot.autoHwmPolicyClass)}`
+            + `,policy_class_id=${snapshot.autoHwmPolicyClass}`
+            + `,unit_budget_bytes=${snapshot.autoHwmUnitBudgetBytes}`
+            + `,size_cap=${snapshot.autoHwmSizeCap}`
+            + `,scope=${scope}`
+            + `,sndhwm=${snapshot.autoHwmAppliedSndHwm}`
+            + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwm}`
+            + `,socket_message_slots=${snapshot.autoHwmSocketMessageSlots}`
+            + `,effective_message_bytes=${snapshot.autoHwmEffectiveMessageBytes}`
+            + `,effective_sndbuf=${sndbuf}`
+            + `,effective_rcvbuf=${rcvbuf}`
+            + `,last_recalc_reason=${autoHwmRecalcReasonName(snapshot.autoHwmLastRecalcReason)}`);
+    }
+    return true;
 }
 function emitMultiSocketHwmDetail(socket, label, transport, msgSize) {
     if (!socket || !autoHwmDetailEnabled()) {
         return;
+    }
+    // C parity (perf_print_auto_hwm_snapshot ~L577): a `spotnode*` label on
+    // a spot-node service handle takes the internal-socket snapshot path
+    // instead of the per-socket monitor path, yielding the C
+    // `Auto-HWM spotnode:` per-size tables.
+    if (typeof label === 'string' && label.indexOf('spotnode') === 0
+        && typeof socket.internalSocketsSnapshot === 'function') {
+        if (emitSpotNodeAutoHwmSnapshot(socket, label, transport, msgSize)) {
+            return;
+        }
     }
     // Capability gap (objects without a monitor surface) is not a fault —
     // skip the optional diagnostic.
@@ -418,18 +588,37 @@ function trySocketPublish(socket, topic, payload) {
         throw error;
     }
 }
-async function publishControlUntilSent(socket, waiter, topic, payload) {
-    // PERF_MULTI_TEST_POLICY § 1.3.1: poller wait must be purely
-    // signal-driven. No short timer fallback around the wait — the core
-    // emits a POLLOUT wakeup when the socket drains, so we wait on that
-    // readiness signal alone (mirrors the C `-1` poller-wait contract).
+function sleepMs(ms) {
+    return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+// C parity: bindings/c/perf/multi/common/perf_multi_spot_control.hpp
+// publish_control_payload (~536-584). The control PUB->SUB link is a
+// slow-joiner channel: a single publish can be dropped/backpressured
+// while the peer's subscription is still propagating, and a PUB socket
+// emits NO POLLOUT drain wakeup when it has no live subscriber pipe.
+// C therefore does NOT wait on a signal-driven `-1` POLLOUT poller for
+// control sends — it uses a BOUNDED deadline
+// (PERF_MULTI_CONNECT_READY_TIMEOUT_MS, default 5000ms), a blocking
+// publish attempt, and a short (<=10ms) timed idle wait on backpressure,
+// then RETURNS (false) on timeout so the caller's higher-level handshake
+// loop (e.g. wait_msg_size_start_with_ready_republish) can re-publish.
+// An infinite signal-driven loop here is the MULTI_SPOT non-termination
+// root cause, so this mirrors C exactly: bounded, returns a boolean.
+async function publishControlUntilSent(socket, _waiter, topic, payload) {
     const body = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
-    for (;;) {
+    const deadlineMs = Math.max(1, integerEnv('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000));
+    const deadline = Date.now() + deadlineMs;
+    while (Date.now() < deadline) {
         if (trySocketPublish(socket, topic, body)) {
-            return;
+            return true;
         }
-        await waiter.wait(POLLOUT);
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+            break;
+        }
+        await sleepMs(Math.min(remaining, 10));
     }
+    return false;
 }
 function createCallbackEventWaiter(register) {
     let pending = 0;

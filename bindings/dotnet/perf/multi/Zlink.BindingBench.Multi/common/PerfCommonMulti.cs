@@ -82,6 +82,74 @@ internal static partial class PerfRunner
         return EndpointFor(transport, name);
     }
 
+    // ITEM 3 (MULTI_SPOT fix): the IRegistry binding exposes no resolved
+    // endpoint readback after a wildcard bind, so a "tcp://127.0.0.1:*"
+    // bind cannot be reused as the connect target (discovery.ConnectRegistry
+    // and the READY advertisement need a concrete address). Reserve a
+    // concrete free TCP port up front so the SAME endpoint string is valid
+    // for Registry.Bind, the server's own Discovery.ConnectRegistry, and the
+    // client (via the READY line). Mirrors C, whose registry endpoints are
+    // concrete addresses the discovery layer reuses verbatim.
+    internal static int ReserveFreeTcpPort()
+    {
+        var listener = new System.Net.Sockets.TcpListener(
+            System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    // ITEM 3 (MULTI_SPOT fix): zlink_discovery_connect_registry is
+    // non-blocking; immediately after Registry.Bind the registry PUB socket
+    // is not yet connectable and the call returns EAGAIN (errno 11, code
+    // 604). C's discovery layer tolerates this via its connect/retry loop;
+    // reproduce that here with a bounded retry so MULTI_SPOT is actually
+    // exercised instead of being misreported as UNSUPPORTED.
+    internal static void ConnectRegistryWithRetry(Discovery discovery,
+        string registryPubEndpoint, int timeoutMs)
+    {
+        int budget = Math.Max(2000, timeoutMs);
+        var sw = Stopwatch.StartNew();
+        ZlinkException? last = null;
+        while (sw.ElapsedMilliseconds < budget)
+        {
+            try
+            {
+                discovery.ConnectRegistry(registryPubEndpoint);
+                return;
+            }
+            catch (ZlinkException ex) when (PerfShared.IsWouldBlock(
+                       ex.InternalErrno) || PerfShared.IsInterrupted(
+                       ex.InternalErrno))
+            {
+                last = ex;
+                Thread.Sleep(20);
+            }
+        }
+        if (last != null)
+            throw last;
+        discovery.ConnectRegistry(registryPubEndpoint);
+    }
+
+    internal static string MultiRegistryEndpoint(string transport,
+        PerfOptions options)
+    {
+        int bindPort = options.ServerBindPort;
+        if (bindPort > 0)
+            return $"{transport}://127.0.0.1:{bindPort}";
+        // Preserve the original data-plane transport scheme (parity with the
+        // prior MultiEndpointFor behaviour) but pin a concrete loopback port
+        // so the Bind endpoint string can be reused verbatim for
+        // Discovery.ConnectRegistry and the READY advertisement.
+        return $"{transport}://127.0.0.1:{ReserveFreeTcpPort()}";
+    }
+
     internal static string BindSpotNodeWithRetry(SpotNode node,
         string transport, string endpointName, PerfOptions options)
     {
@@ -401,8 +469,8 @@ internal static partial class PerfRunner
                 + $",rcvhwm={fields.RcvHwm}"
                 + $",socket_message_slots={snapshot.AutoHwmSocketMessageSlots}"
                 + $",effective_message_bytes={snapshot.AutoHwmEffectiveMessageBytes}"
-                + $",effective_sndbuf={fields.EffectiveSndbuf}"
-                + $",effective_rcvbuf={fields.EffectiveRcvbuf}"
+                + $",effective_sndbuf={AutoHwmSndbufDisplay(socketType, snapshot.AutoHwmRole, fields.EffectiveSndbuf)}"
+                + $",effective_rcvbuf={AutoHwmRcvbufDisplay(socketType, snapshot.AutoHwmRole, fields.EffectiveRcvbuf)}"
                 + $",last_recalc_reason={AutoHwmRecalcReasonName(snapshot.AutoHwmLastRecalcReason)}";
 
             WriteAutoHwmDetailLine(detail);
@@ -442,8 +510,8 @@ internal static partial class PerfRunner
             + $",rcvhwm={fields.RcvHwm}"
             + $",socket_message_slots={fields.SocketMessageSlots}"
             + $",effective_message_bytes={fields.EffectiveMessageBytes}"
-            + $",effective_sndbuf={fields.EffectiveSndbuf}"
-            + $",effective_rcvbuf={fields.EffectiveRcvbuf}"
+            + $",effective_sndbuf={AutoHwmSndbufDisplay(socketType, fields.Role, fields.EffectiveSndbuf)}"
+            + $",effective_rcvbuf={AutoHwmRcvbufDisplay(socketType, fields.Role, fields.EffectiveRcvbuf)}"
             + $",last_recalc_ms={fields.LastRecalcMs}"
             + $",last_recalc_reason={AutoHwmRecalcReasonName(fields.LastRecalcReason)}"
             + $",send_blocked_ratio_ppm={fields.SendBlockedRatioPpm}"
@@ -536,6 +604,43 @@ internal static partial class PerfRunner
     }
 
     private static int BoolInt(bool value) => value ? 1 : 0;
+
+    // Byte-identical port of perf_multi_runtime.hpp
+    // perf_auto_hwm_send_side_visible / perf_auto_hwm_recv_side_visible.
+    // A SUB/XSUB carrying recv_ingress|control never sends; a PUB/XPUB
+    // carrying spot_data|control never receives. The C multi benchmark
+    // emits effective_sndbuf=0 / effective_rcvbuf=0 for those inactive
+    // directions (sndhwm/rcvhwm stay raw), so the AUTO_HWM_DETAIL line and
+    // the resulting report tables match the C reference exactly.
+    private static bool AutoHwmSendSideVisible(string socketType, uint role)
+    {
+        string roleName = AutoHwmRoleName(role);
+        if ((socketType == "sub" || socketType == "xsub")
+            && (roleName == "recv_ingress" || roleName == "control"))
+            return false;
+        return true;
+    }
+
+    private static bool AutoHwmRecvSideVisible(string socketType, uint role)
+    {
+        string roleName = AutoHwmRoleName(role);
+        if ((socketType == "pub" || socketType == "xpub")
+            && (roleName == "spot_data" || roleName == "control"))
+            return false;
+        return true;
+    }
+
+    private static string AutoHwmSndbufDisplay(string socketType, uint role,
+        int effectiveSndbuf)
+        => AutoHwmSendSideVisible(socketType, role)
+            ? $"{effectiveSndbuf}"
+            : "0";
+
+    private static string AutoHwmRcvbufDisplay(string socketType, uint role,
+        int effectiveRcvbuf)
+        => AutoHwmRecvSideVisible(socketType, role)
+            ? $"{effectiveRcvbuf}"
+            : "0";
 
     private static string AutoHwmRoleName(uint role)
         => role switch

@@ -112,6 +112,16 @@ final class PerfTransport {
 
     static void applySocketOptions(Socket socket, PerfUtil.Config config) {
         socket.options().linger(Duration.ZERO);
+        // C parity: the C perf reference relies on the core default
+        // TCP_NODELAY=1 for tcp sockets (and the multi suite sets it
+        // explicitly in apply_benchmark_socket_options). The Java binding
+        // does not apply that default, so small-message tcp publishes were
+        // Nagle-batched, collapsing PUBSUB/tcp (single and multi) throughput
+        // ~4x vs C while inproc/tls/ws were unaffected. Set it explicitly for
+        // tcp to match the C reference.
+        if ("tcp".equals(config.transport())) {
+            socket.options().tcpNoDelay(true);
+        }
         if ("multi".equals(config.suite())) {
             if (manualSocketOverridesEnabled(config.suite())) {
                 applyManualSocketSizing(socket, config);

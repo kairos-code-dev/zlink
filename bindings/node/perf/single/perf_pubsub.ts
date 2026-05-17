@@ -54,6 +54,12 @@ async function runPubSubBenchmark(msgSize, options) {
       configureReceiver: (socket) => socket.setSubscription(TOPIC),
       senderBinds: true,
       drainViaSubscribe: true,
+      // C perf_pubsub.cpp emits AUTO_HWM_DETAIL for the PUB as
+      // `publisher` and the SUB as `subscriber`; mirror those labels so
+      // the `## Auto-HWM Detail` PUBSUB block is byte-identical to C
+      // (receiver=SUB=subscriber, sender=PUB=publisher).
+      receiverHwmComponent: 'subscriber',
+      senderHwmComponent: 'publisher',
       sendActive: (socket, payload) => {
         try {
           return socket.publish(TOPIC).message(payload)

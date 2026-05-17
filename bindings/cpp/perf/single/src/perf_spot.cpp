@@ -304,6 +304,116 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
     return false;
 }
 
+// C-faithful SPOT AUTO_HWM_DETAIL emitter. Mirrors
+// bindings/c/perf/single/src/perf_spot.cpp emit_spot_hwm_detail
+// byte-for-byte so the runner's "## Auto-HWM Detail" SPOT block
+// is identical to the C reference.
+const char *spot_socket_type_name (zlink::spot_node_socket_type_t type_)
+{
+    switch (type_) {
+    case zlink::spot_node_socket_type_t::pair:
+        return "pair";
+    case zlink::spot_node_socket_type_t::pub:
+        return "pub";
+    case zlink::spot_node_socket_type_t::sub:
+        return "sub";
+    case zlink::spot_node_socket_type_t::dealer:
+        return "dealer";
+    case zlink::spot_node_socket_type_t::router:
+        return "router";
+    case zlink::spot_node_socket_type_t::xpub:
+        return "xpub";
+    case zlink::spot_node_socket_type_t::xsub:
+        return "xsub";
+    case zlink::spot_node_socket_type_t::stream:
+        return "stream";
+    default:
+        return "unknown";
+    }
+}
+
+const char *spot_socket_owner_name (zlink::spot_node_socket_owner_t owner_)
+{
+    switch (owner_) {
+    case zlink::spot_node_socket_owner::node:
+        return "node";
+    case zlink::spot_node_socket_owner::spot:
+        return "spot";
+    default:
+        return "unknown";
+    }
+}
+
+const char *spot_auto_hwm_role_name (uint32_t role_)
+{
+    switch (role_) {
+    case 1:
+        return "control";
+    case 2:
+        return "routed";
+    case 3:
+        return "fanout";
+    case 4:
+        return "recv_ingress";
+    case 5:
+        return "spot_data";
+    case 6:
+        return "peer_queue";
+    case 7:
+        return "stream";
+    default:
+        return "none";
+    }
+}
+
+void emit_spot_hwm_detail (zlink::service::spot_node_t &node_,
+                           const char *component_,
+                           const std::string &transport_,
+                           size_t msg_size_)
+{
+    if (!component_)
+        return;
+
+    std::vector<zlink::spot_node_socket_snapshot_entry_t> entries;
+    try {
+        entries = node_.internal_sockets_snapshot ();
+    }
+    catch (const zlink::zlink_error_t &) {
+        return;
+    }
+
+    for (size_t i = 0; i < entries.size (); ++i) {
+        const zlink::spot_node_socket_snapshot_entry_t &entry = entries[i];
+        if (!entry.auto_hwm_visible ())
+            continue;
+        const zlink::monitor_snapshot_t &snapshot = entry.snapshot ();
+        if (snapshot.auto_hwm_applied_sndhwm <= 0
+            && snapshot.auto_hwm_applied_rcvhwm <= 0) {
+            continue;
+        }
+        std::cout << "AUTO_HWM_DETAIL"
+                  << ",pattern=SPOT"
+                  << ",transport=" << transport_
+                  << ",component=" << component_
+                  << ",msg_size=" << msg_size_
+                  << ",owner=" << spot_socket_owner_name (entry.owner ())
+                  << ",owner_id=" << entry.owner_id ()
+                  << ",socket=" << entry.socket_name ()
+                  << ",socket_type="
+                  << spot_socket_type_name (entry.socket_type ())
+                  << ",role="
+                  << spot_auto_hwm_role_name (snapshot.auto_hwm_role)
+                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+                  << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+                  << ",effective_message_bytes="
+                  << snapshot.auto_hwm_effective_message_bytes
+                  << ",effective_sndbuf=" << snapshot.auto_hwm_effective_sndbuf
+                  << ",effective_rcvbuf=" << snapshot.auto_hwm_effective_rcvbuf
+                  << ",socket_message_slots="
+                  << snapshot.auto_hwm_socket_message_slots << std::endl;
+    }
+}
+
 } // namespace
 
 bool run_pattern_spot (const std::string &transport,
@@ -501,7 +611,14 @@ bool run_pattern_spot (const std::string &transport,
                 break;
             }
             if (!sent) {
-                std::this_thread::yield ();
+                // PERF_SINGLE_TEST_POLICY: mirror C reference
+                // perf_spot.cpp send_spot_samples, which calls
+                // perf_socket_poll(NULL, 0, 1) (a 1ms idle wait) on
+                // backpressure. Without this pacing the sender busy-spins
+                // and floods the pipeline with stale-timestamp messages,
+                // inflating delivered latency ~2000x at unchanged
+                // throughput.
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
                 continue;
             }
             ++seq;
@@ -526,6 +643,9 @@ bool run_pattern_spot (const std::string &transport,
     }
 
     const perf::single::latency_stats_t latency = latency_builder.snapshot ();
+
+    emit_spot_hwm_detail (pub_node, "publisher", transport, msg_size);
+    emit_spot_hwm_detail (sub_node, "subscriber", transport, msg_size);
 
     const double throughput =
       static_cast<double> (received_total) / static_cast<double> (duration_s);

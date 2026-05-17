@@ -81,6 +81,11 @@ binding 내부 병목인지 perf 측정 오류인지 먼저 구분한다.
 - 내부 API, private API, native helper, C API 직접 호출로 수치를 만드는 방식은
   인정하지 않는다.
 - 수치 달성만을 위해 perf 전용 public API나 zero-copy 우회 API를 추가하지 않는다.
+- 버그가 확인되면 perf에서 우회하지 않고 버그를 먼저 수정한다.
+- 버그 수정 전에는 해당 동작을 재현하는 회귀테스트를 먼저 작성한다.
+- binding 버그이면 해당 언어 binding 라이브러리에서 수정한다.
+- core 버그이면 core에서 수정한 뒤 `bindings/dev_sync_local_core_libs.sh`로
+  bindings에 local core library를 다시 배포한다.
 - `doc/perf/PERF_POLICY.md`,
   `doc/perf/PERF_SINGLE_TEST_POLICY.md`,
   `doc/perf/PERF_MULTI_TEST_POLICY.md`를 항상 따른다.

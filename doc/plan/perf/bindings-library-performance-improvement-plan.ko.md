@@ -14,6 +14,12 @@ public API를 통해 내는 실제 성능을 개선하는 일이다. perf는 `do
 목표 비율은 같은 suite, pattern, transport, message size, metric 조합에서
 `bindings/c/perf` 결과를 기준으로 계산한다.
 
+C 기준은 core 내부 이론 성능이 아니라, `bindings/c/perf`가 public C API로 측정한
+C binding 라이브러리의 일반적인 성능이다. 기준으로 삼는 C 결과는 같은 기본 옵션으로
+실행한 최근 full 측정 결과여야 하며, 특정 실험이나 debug 재현을 위한 일회성 결과는
+기준으로 쓰지 않는다. C 결과 자체가 비정상적으로 낮거나 높아 보이면 같은 조건으로
+재측정해 일반적인 범위를 먼저 확인한다.
+
 | 순서 | 언어 | perf 경로 |
 |------|------|-----------|
 | 1 | C++ | `bindings/cpp/perf` |
@@ -24,20 +30,43 @@ public API를 통해 내는 실제 성능을 개선하는 일이다. perf는 `do
 | 6 | Go | `bindings/go/perf` |
 | 7 | Rust | `bindings/rust/perf` |
 
-목표 비율은 message size별로 다르게 적용한다. 최근 full 측정에서는 큰 메시지가
-항상 더 쉬운 목표가 아니며, copy, buffer 수명, routing, transport 비용 때문에
-64KB 이상에서 오히려 C 대비 비율이 낮아지는 조합이 있었다. 아래 표는 측정 오차와
-런타임 변동을 감안한 최소 통과 기준이다. 모든 패턴 중 최솟값 기준으로 판단하며,
-특정 패턴에서 이 수치를 밑돌면 해당 size 목표를 달성하지 못한 것으로 본다.
+목표 비율은 size 하나로만 정하지 않는다. 최근 C++ full 비교에서는 size보다
+pattern 차이가 더 컸다. 예를 들어 single `PAIR`, `PUBSUB`, `SPOT`은 C와 비슷하거나
+더 빠른 조합이 많았지만, routed pattern인 `DEALER_ROUTER`, `ROUTER_ROUTER`는 일부
+transport와 큰 메시지에서 크게 낮아졌다.
 
-| Size | C++ | .NET | Java | Rust | Go | Node | Python |
-|------|-----|------|------|------|----|------|--------|
-| 64B | >=30% | >=30% | >=20% | >=45% | >=25% | >=15% | >=8% |
-| 256B | >=35% | >=25% | >=20% | >=45% | >=25% | >=15% | >=8% |
-| 1024B | >=30% | >=45% | >=20% | >=45% | >=25% | >=18% | >=10% |
-| 64KB | >=30% | >=10% | >=20% | >=40% | >=20% | >=15% | >=8% |
-| 128KB | >=25% | >=10% | >=30% | >=40% | >=20% | >=12% | >=6% |
-| 256KB | >=30% | >=10% | >=45% | >=40% | >=20% | >=12% | >=6% |
+다만 `ROUTER_ROUTER` 또는 `MULTI_ROUTER_ROUTER`가 현재 특정 binding에서 낮게 나온
+결과를 그대로 낮은 목표 기준으로 인정하지 않는다. 같은 suite, transport, size에서
+C의 `ROUTER_ROUTER`와 `DEALER_ROUTER` 차이가 작다면 해당 binding도 그 차이에
+가까워야 한다. 즉 routed router 성능은 C 대비 절대 비율뿐 아니라 같은 binding의
+`DEALER_ROUTER` 대비 상대 비율로도 검증한다. C++ `MULTI_ROUTER_ROUTER`처럼
+`MULTI_DEALER_ROUTER` 대비 과도하게 낮은 결과는 목표 완화 근거가 아니라 binding
+라이브러리 병목 또는 버그 후보로 본다.
+
+따라서 완료 판단은 pattern 그룹별 범위를 먼저 적용하고, size는 보조 기준으로 본다.
+아래 표의 왼쪽 값은 최소 통과 기준이고, 오른쪽 값은 안정권 기준이다. 64KB 이상 큰
+메시지는 같은 pattern 그룹 안에서 낮은 쪽 기준을 적용하고, 64B~1024B 작은 메시지는
+높은 쪽 기준에 가까워지는 것을 목표로 한다.
+
+Node와 Python은 별도 근거 없이 큰 차이를 두지 않는다. 두 binding 모두 동적
+런타임과 native 경계 비용이 큰 그룹으로 보고 같은 목표 범위를 적용한다. Rust는
+C++보다 높은 기준으로 두지 않는다. 둘 다 native binding 그룹으로 보며, public API
+래퍼 비용을 감안하더라도 managed runtime binding보다는 높은 기준을 적용한다.
+
+| Pattern 그룹 | 포함 pattern | C++/Rust | .NET/Java | Go | Node/Python |
+|--------------|--------------|----------|-----------|----|-------------|
+| 단순 one-way | `PAIR`, `PUBSUB`, `DEALER_DEALER`, `MULTI_PUBSUB`, `MULTI_STREAM` | 80~90% | 63~73% | 53~63% | 35~43% |
+| routed one-way | `DEALER_ROUTER`, `ROUTER_ROUTER` | 70~83% | 55~67% | 47~57% | 33~40% |
+| multi routed echo | `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER` | 65~77% | 50~63% | 40~53% | 30~37% |
+| SPOT 계열 | `SPOT`, `MULTI_SPOT`, `MULTI_SPOT_REQREP`, `MULTI_SPOT_SENDSEND` | 75~90% | 60~70% | 50~60% | 33~40% |
+
+`ROUTER_ROUTER` 계열은 추가로 아래 상대 기준을 적용한다.
+
+- C의 `ROUTER_ROUTER / DEALER_ROUTER` 비율을 같은 suite, transport, size에서 계산한다.
+- 대상 binding의 `ROUTER_ROUTER / DEALER_ROUTER` 비율이 C의 상대 비율보다 크게
+  낮으면, 절대 목표 비율을 넘더라도 완료로 보지 않는다.
+- 상대 비율 허용 오차는 측정 오차를 감안해 C++/Rust는 10%p, .NET/Java/Go는 15%p,
+  Node/Python은 20%p로 본다.
 
 latency, latency_p95, latency_p99는 throughput 목표를 만족하더라도 C 대비 과도하게
 악화되면 완료로 보지 않는다. 레이턴시 악화가 보이면 같은 조합을 다시 측정하고,

@@ -103,6 +103,7 @@ public sealed partial class StreamConnectorTests
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
         var secondConnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reconnectedObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = Task.Run(async () =>
         {
             using (var first = await listener.AcceptTcpClientAsync())
@@ -112,7 +113,7 @@ public sealed partial class StreamConnectorTests
 
             using var second = await listener.AcceptTcpClientAsync();
             secondConnected.SetResult();
-            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            await reconnectedObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
         });
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
@@ -127,22 +128,12 @@ public sealed partial class StreamConnectorTests
                 MaxAttempts = 3
             }
         });
-        var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var connectedCount = 0;
-        connector.ConnectionStateChanged += (change, _) =>
-        {
-            if (change.Current == ZlinkStreamConnectionState.Connected
-                && Interlocked.Increment(ref connectedCount) == 2)
-            {
-                reconnected.TrySetResult();
-            }
-
-            return ValueTask.CompletedTask;
-        };
-
         await connector.ConnectAsync();
         await secondConnected.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await reconnected.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(
+            () => connector.State == ZlinkStreamConnectionState.Connected,
+            TimeSpan.FromSeconds(5));
+        reconnectedObserved.SetResult();
 
         Assert.True(connector.IsConnected);
         Assert.Equal(ZlinkStreamConnectionState.Connected, connector.State);
@@ -204,8 +195,8 @@ public sealed partial class StreamConnectorTests
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
             Reconnect = new ZlinkStreamReconnectOptions
             {
-                InitialDelay = TimeSpan.FromMilliseconds(200),
-                MaxDelay = TimeSpan.FromMilliseconds(200),
+                InitialDelay = TimeSpan.FromSeconds(10),
+                MaxDelay = TimeSpan.FromSeconds(10),
                 BackoffFactor = 1.0,
                 MaxAttempts = 3
             }

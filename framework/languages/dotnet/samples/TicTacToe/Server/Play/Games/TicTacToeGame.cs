@@ -20,7 +20,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
     private DateTimeOffset? _turnDeadline;
     private IZLinkTimer? _gameTick;
 
-    private IZLinkSpotContext Context { get; } = context;
+    public IZLinkSpotContext Context { get; } = context;
 
     public void Configure()
     {

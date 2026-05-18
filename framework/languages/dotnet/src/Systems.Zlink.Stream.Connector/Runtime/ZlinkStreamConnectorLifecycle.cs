@@ -266,25 +266,40 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         Interlocked.Exchange(ref _lastInboundTicks, now);
         Interlocked.Exchange(ref _lastPingTicks, now);
 
-        var receiveTask = taskRunner.Run(
-            "stream-receive-loop",
-            _ => new ValueTask(RunReceiveLoopGuardedAsync(runReceiveLoop, sessionCts.Token)));
-        var heartbeatTask = options.Heartbeat.Enabled
-            ? taskRunner.Run(
-                "stream-heartbeat-loop",
-                _ => new ValueTask(RunHeartbeatLoopAsync(sessionCts.Token)))
-            : null;
-
         LifecycleSnapshot oldSnapshot;
         ZlinkStreamConnectionStateChanged? change;
+        var closeAttachedConnection = false;
         lock (_gate)
         {
-            oldSnapshot = DetachLocked();
-            _connection = connection;
-            _sessionCts = sessionCts;
-            _receiveTask = receiveTask;
-            _heartbeatTask = heartbeatTask;
-            change = SetStateLocked(ZlinkStreamConnectionState.Connected, null);
+            if (_state == ZlinkStreamConnectionState.Closed)
+            {
+                oldSnapshot = default;
+                change = null;
+                closeAttachedConnection = true;
+            }
+            else
+            {
+                oldSnapshot = DetachLocked();
+                _connection = connection;
+                _sessionCts = sessionCts;
+                _receiveTask = taskRunner.Run(
+                    "stream-receive-loop",
+                    _ => new ValueTask(RunReceiveLoopGuardedAsync(runReceiveLoop, sessionCts.Token)));
+                _heartbeatTask = options.Heartbeat.Enabled
+                    ? taskRunner.Run(
+                        "stream-heartbeat-loop",
+                        _ => new ValueTask(RunHeartbeatLoopAsync(sessionCts.Token)))
+                    : null;
+                change = SetStateLocked(ZlinkStreamConnectionState.Connected, null);
+            }
+        }
+
+        if (closeAttachedConnection)
+        {
+            sessionCts.Cancel();
+            await CloseConnectionAsync(connection, cancellationToken).ConfigureAwait(false);
+            sessionCts.Dispose();
+            return;
         }
 
         oldSnapshot.SessionCts?.Cancel();

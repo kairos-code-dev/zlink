@@ -1235,9 +1235,6 @@ builder.Services.AddZLinkFramework(options =>
 DI 등록 (Play 서버):
 
 ```csharp
-builder.Services.AddScoped<PlayerActorFactory>();
-builder.Services.AddSingleton<RegistryPlayRouteStore>();
-builder.Services.AddSingleton<RegistrySpotRouteStore>();
 builder.Services.AddZLinkFramework(options =>
 {
     options.AddActorFactory<PlayerActorFactory>("player");
@@ -1288,11 +1285,13 @@ options.AddRoutedChannel("backend", routed =>
 
 options.AddActorFactory<TicTacToeActorFactory>("player");
 
-public sealed class TicTacToeActor(string actorId)
+public sealed class TicTacToeActor(
+    string actorId,
+    IZLinkActorContext context)
     : IZLinkActor
 {
     public string ActorId { get; } = actorId;
-    public IZLinkActorContext Context { get; set; } = default!;
+    public IZLinkActorContext Context { get; } = context;
 
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         => ValueTask.CompletedTask;
@@ -1358,9 +1357,9 @@ session callback 이 직접 결정하는 것은 다음과 같다.
 framework helper 는 actor-session binding 과 transport 세부 작업만 가려 준다.
 
 ```csharp
-public sealed class TicTacToeSession : IZLinkSession
+public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSession
 {
-    public IZLinkSessionContext Context { get; set; } = default!;
+    public IZLinkSessionContext Context { get; } = context;
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
@@ -1371,21 +1370,21 @@ public sealed class TicTacToeSession : IZLinkSession
         {
             AuthReq request = payload.FromJson<AuthReq>();
 
-            IZLinkActorRef actor = await Context.BindActorHandleAsync(
+            IZLinkActorRef actor = await context.BindActorHandleAsync(
                 request.ActorId,
                 request.ActorType,
                 cancellationToken);
 
             authenticatedActors.Remember(request.ActorId, actor);
 
-            await Context.Reply(new AuthRep(ok: true))
+            await context.Reply(new AuthRep(ok: true))
                 .Submit(cancellationToken);
             return;
         }
 
         if (authenticatedActors.TryGet(header, out IZLinkActorRef actor))
         {
-            await Context.DispatchToActorAsync(
+            await context.DispatchToActorAsync(
                 actor,
                 header,
                 payload,

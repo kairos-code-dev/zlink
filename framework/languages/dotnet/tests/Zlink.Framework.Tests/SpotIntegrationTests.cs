@@ -410,7 +410,7 @@ public sealed class SpotIntegrationTests
 
         var first = await manager.CreateAsync("actor-stage");
         var second = await manager.CreateAsync("actor-stage");
-        var actor = new TestActor("actor-1", recorder);
+        var actor = (TestActor)(await actorRuntime.CreateLocalActorAsync("actor-1", "test")).Actor;
 
         var firstReply = await actorRuntime.JoinActorAsync<JoinStageRequest, JoinStageReply>(
             first.SpotRid,
@@ -432,7 +432,7 @@ public sealed class SpotIntegrationTests
                 && recorder.SpotActorLeaves.Contains($"actor-1@{first.SpotRid.ToHex()}"),
             TimeSpan.FromSeconds(5));
 
-        var contextActor = new TestActor("actor-context", recorder);
+        var contextActor = (TestActor)(await actorRuntime.CreateLocalActorAsync("actor-context", "test")).Actor;
         await actorRuntime.AttachActorAsync(contextActor, new TestStream("session-context"));
         using (var joinBody = global::Systems.Zlink.Message.FromString(first.SpotRid.ToHex()))
         {
@@ -492,6 +492,11 @@ public sealed class SpotIntegrationTests
         Assert.False(recorder.ConcurrentViolation);
         Assert.Equal("room-2", recorder.DispatchRooms.LastOrDefault());
         Assert.DoesNotContain("room-1", recorder.DispatchRooms);
+
+        await actorRuntime.DisconnectActorAsync(actor, stream);
+        await actorRuntime.DisconnectActorAsync(
+            contextActor,
+            new TestStream("session-context"));
 
         await host.StopAsync();
     }
@@ -556,6 +561,7 @@ public sealed class SpotIntegrationTests
         builder.Services.AddZLinkFramework(options =>
         {
             options.UseSpotDiscovery("game.registry", _ => { });
+            options.AddActorFactory<RegistryTestActorFactory>("registry");
             options.AddSpotNode("registry-node", spot =>
             {
                 spot.Bind(spotNode);
@@ -572,7 +578,7 @@ public sealed class SpotIntegrationTests
         var recorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
         var first = await manager.CreateAsync("registry-stage");
         var second = await manager.CreateAsync("registry-stage");
-        var actor = new RegistryTestActor("registry-actor", recorder);
+        var actor = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("registry-actor", "registry")).Actor;
         await actorRuntime.AttachActorAsync(actor, new TestStream("registry-session"));
 
         using (var joinBody = global::Systems.Zlink.Message.FromString(first.SpotRid.ToHex()))
@@ -624,6 +630,10 @@ public sealed class SpotIntegrationTests
 
         Assert.Contains($"entry-joined:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);
 
+        await actorRuntime.DisconnectActorAsync(
+            actor,
+            new TestStream("registry-session"));
+
         await host.StopAsync();
     }
 
@@ -647,6 +657,7 @@ public sealed class SpotIntegrationTests
         builder.Services.AddZLinkFramework(options =>
         {
             options.UseSpotDiscovery("game.registry-location", _ => { });
+            options.AddActorFactory<RegistryTestActorFactory>("registry");
             options.AddSpotNode("registry-location-node", spot =>
             {
                 spot.Bind(spotNode);
@@ -663,7 +674,7 @@ public sealed class SpotIntegrationTests
         var recorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
         var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
         var stage = await manager.CreateAsync("registry-stage");
-        var actor = new RegistryTestActor("registry-location-actor", recorder);
+        var actor = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("registry-location-actor", "registry")).Actor;
         await actorRuntime.AttachActorAsync(actor, new TestStream("registry-location-session"));
 
         Task? joinTask = null;
@@ -696,6 +707,10 @@ public sealed class SpotIntegrationTests
             $"dispatch:registry-location-actor:entry-room:after-join:{stage.SpotRid.ToHex()}",
             recorder.Events);
 
+        await actorRuntime.DisconnectActorAsync(
+            actor,
+            new TestStream("registry-location-session"));
+
         await host.StopAsync();
     }
 
@@ -713,6 +728,7 @@ public sealed class SpotIntegrationTests
         builder.Services.AddZLinkFramework(options =>
         {
             options.UseSpotDiscovery("game.entry-mailbox", _ => { });
+            options.AddActorFactory<RegistryTestActorFactory>("registry");
             options.AddSpotNode("entry-mailbox-node", spot =>
             {
                 spot.Bind(spotNode);
@@ -726,8 +742,8 @@ public sealed class SpotIntegrationTests
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var registryRecorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
         var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
-        var actorA = new RegistryTestActor("entry-actor-a", registryRecorder);
-        var actorB = new RegistryTestActor("entry-actor-b", registryRecorder);
+        var actorA = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("entry-actor-a", "registry")).Actor;
+        var actorB = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("entry-actor-b", "registry")).Actor;
         await actorRuntime.AttachActorAsync(actorA, new TestStream("entry-session-a"));
         await actorRuntime.AttachActorAsync(actorB, new TestStream("entry-session-b"));
 
@@ -766,6 +782,9 @@ public sealed class SpotIntegrationTests
         await actorASecond!.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Contains("record:entry-actor-a:after-a", mailboxRecorder.Events);
 
+        await actorRuntime.DisconnectActorAsync(actorA, new TestStream("entry-session-a"));
+        await actorRuntime.DisconnectActorAsync(actorB, new TestStream("entry-session-b"));
+
         await host.StopAsync();
     }
 
@@ -783,6 +802,7 @@ public sealed class SpotIntegrationTests
         builder.Services.AddZLinkFramework(options =>
         {
             options.UseSpotDiscovery("game.entry-native-batch", _ => { });
+            options.AddActorFactory<RegistryTestActorFactory>("registry");
             options.AddSpotNode("entry-native-batch-node", spot =>
             {
                 spot.Bind(spotNode);
@@ -800,8 +820,8 @@ public sealed class SpotIntegrationTests
             .GetSpotNodeRuntime("entry-native-batch-node")
             .EntrySpotActivation
             ?? throw new InvalidOperationException("Entry Spot activation was not created.");
-        var actorA = new RegistryTestActor("entry-native-a", registryRecorder);
-        var actorB = new RegistryTestActor("entry-native-b", registryRecorder);
+        var actorA = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("entry-native-a", "registry")).Actor;
+        var actorB = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("entry-native-b", "registry")).Actor;
         await actorRuntime.AttachActorAsync(actorA, new TestStream("entry-native-session-a"));
         await actorRuntime.AttachActorAsync(actorB, new TestStream("entry-native-session-b"));
 
@@ -834,6 +854,9 @@ public sealed class SpotIntegrationTests
         await dispatch.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Contains("record:entry-native-a:after-a", mailboxRecorder.Events);
 
+        await actorRuntime.DisconnectActorAsync(actorA, new TestStream("entry-native-session-a"));
+        await actorRuntime.DisconnectActorAsync(actorB, new TestStream("entry-native-session-b"));
+
         await host.StopAsync();
     }
 
@@ -845,7 +868,10 @@ public sealed class SpotIntegrationTests
         builder.Services.AddSingleton<EntrySpotMailboxRecorder>();
         builder.Services.AddScoped<LocalActorBlockingHandler>();
         builder.Services.AddScoped<LocalActorRecordingHandler>();
-        builder.Services.AddZLinkFramework(_ => { });
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddActorFactory<RegistryTestActorFactory>("registry");
+        });
 
         using var host = builder.Build();
         await host.StartAsync();
@@ -853,8 +879,8 @@ public sealed class SpotIntegrationTests
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var registryRecorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
         var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
-        var actorA = new RegistryTestActor("local-actor-a", registryRecorder);
-        var actorB = new RegistryTestActor("local-actor-b", registryRecorder);
+        var actorA = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("local-actor-a", "registry")).Actor;
+        var actorB = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("local-actor-b", "registry")).Actor;
         await actorRuntime.AttachActorAsync(actorA, new TestStream("local-session-a"));
         await actorRuntime.AttachActorAsync(actorB, new TestStream("local-session-b"));
 
@@ -893,6 +919,9 @@ public sealed class SpotIntegrationTests
         await actorASecond!.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Contains("local-record:local-actor-a:after-a", mailboxRecorder.Events);
 
+        await actorRuntime.DisconnectActorAsync(actorA, new TestStream("local-session-a"));
+        await actorRuntime.DisconnectActorAsync(actorB, new TestStream("local-session-b"));
+
         await host.StopAsync();
     }
 
@@ -912,6 +941,7 @@ public sealed class SpotIntegrationTests
         {
             options.AddHandlersFromAssemblyOf<SpotIntegrationTests>();
             options.UseSpotDiscovery("game.stage", _ => { });
+            options.AddActorFactory<TestActorFactory>("test");
             options.AddClientServerChannel("actor-pre-api", channel =>
             {
                 channel.EnableServer(server => server.Bind(preJoinApi));
@@ -942,7 +972,7 @@ public sealed class SpotIntegrationTests
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var recorder = host.Services.GetRequiredService<ActorIntegrationRecorder>();
         var created = await manager.CreateAsync("actor-stage");
-        var actor = new TestActor("actor-context-client", recorder);
+        var actor = (TestActor)(await actorRuntime.CreateLocalActorAsync("actor-context-client", "test")).Actor;
         await actorRuntime.AttachActorAsync(actor, new TestStream("session-context-client"));
 
         using (var preJoinBody = global::Systems.Zlink.Message.FromString("before"))
@@ -982,6 +1012,10 @@ public sealed class SpotIntegrationTests
 
         Assert.Contains("after:after", recorder.ChannelReplies);
 
+        await actorRuntime.DisconnectActorAsync(
+            actor,
+            new TestStream("session-context-client"));
+
         await host.StopAsync();
     }
 
@@ -996,6 +1030,7 @@ public sealed class SpotIntegrationTests
         builder.Services.AddZLinkFramework(options =>
         {
             options.UseSpotDiscovery("game.stage", _ => { });
+            options.AddActorFactory<TestActorFactory>("test");
             options.AddSpotNode("actor-node", spot =>
             {
                 spot.Bind(spotNode);
@@ -1010,7 +1045,7 @@ public sealed class SpotIntegrationTests
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var recorder = host.Services.GetRequiredService<ActorIntegrationRecorder>();
         var created = await manager.CreateAsync("actor-stage");
-        var actor = new TestActor("actor-2", recorder);
+        var actor = (TestActor)(await actorRuntime.CreateLocalActorAsync("actor-2", "test")).Actor;
 
         _ = await actorRuntime.JoinActorAsync<JoinStageRequest, JoinStageReply>(
             created.SpotRid,
@@ -1281,19 +1316,17 @@ public sealed class SpotIntegrationTests
         }
     }
 
-    public sealed class TestActor : IZLinkActor
+    public sealed class TestActor(
+        string actorId,
+        IZLinkActorContext context,
+        ActorIntegrationRecorder recorder) : IZLinkActor
     {
-        public TestActor(string actorId, ActorIntegrationRecorder recorder)
-        {
-            ActorId = actorId;
-            Recorder = recorder;
-        }
 
-        public string ActorId { get; }
+        public string ActorId { get; } = actorId;
 
-        public IZLinkActorContext Context { get; set; } = default!;
+        public IZLinkActorContext Context { get; } = context;
 
-        public ActorIntegrationRecorder Recorder { get; }
+        public ActorIntegrationRecorder Recorder { get; } = recorder;
 
         public ActorStageSpot? Spot { get; private set; }
 
@@ -1648,11 +1681,12 @@ public sealed class SpotIntegrationTests
 
     public sealed class RegistryTestActor(
         string actorId,
+        IZLinkActorContext context,
         EntrySpotActorRegistryRecorder recorder) : IZLinkActor
     {
         public string ActorId { get; } = actorId;
 
-        public IZLinkActorContext Context { get; set; } = default!;
+        public IZLinkActorContext Context { get; } = context;
 
         public EntrySpotActorRegistryRecorder Recorder { get; } = recorder;
 
@@ -1683,6 +1717,20 @@ public sealed class SpotIntegrationTests
         {
             _ = cancellationToken;
             return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class RegistryTestActorFactory(
+        EntrySpotActorRegistryRecorder recorder) : IZLinkActorFactory
+    {
+        public ValueTask<IZLinkActor> CreateAsync(
+            string actorId,
+            IZLinkActorContext context,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IZLinkActor>(
+                new RegistryTestActor(actorId, context, recorder));
         }
     }
 
@@ -1730,10 +1778,11 @@ public sealed class SpotIntegrationTests
     {
         public ValueTask<IZLinkActor> CreateAsync(
             string actorId,
+            IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult<IZLinkActor>(new TestActor(actorId, recorder));
+            return ValueTask.FromResult<IZLinkActor>(new TestActor(actorId, context, recorder));
         }
     }
 
@@ -1743,12 +1792,13 @@ public sealed class SpotIntegrationTests
     {
         public async ValueTask<IZLinkActor> CreateAsync(
             string actorId,
+            IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref factoryRecorder.CreateCount);
             factoryRecorder.FirstFactoryCall.TrySetResult();
             await factoryRecorder.ReleaseFactory.Task.WaitAsync(cancellationToken);
-            return new TestActor(actorId, actorRecorder);
+            return new TestActor(actorId, context, actorRecorder);
         }
     }
 

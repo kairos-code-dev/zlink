@@ -139,7 +139,7 @@ public interface IZLinkActor
 {
     string ActorId { get; }
 
-    IZLinkActorContext Context { get; set; }
+    IZLinkActorContext Context { get; }
 
     void Configure()
     {
@@ -153,10 +153,10 @@ public interface IZLinkActor
 
 - **`ActorId`** -- actor 를 식별하는 고유 ID 다. 보통 인증 단계에서 결정되어,
   factory 의 생성자 인자로 전달된다.
-- **`Context`** -- framework 가 attach 직후에 주입하는 값이다. actor 가
-  메시지 dispatch 나 outbound 호출을 하려면 이 context 를 거친다. application
-  코드가 직접 set 하지는 않는다. 다만 framework 가 set 할 수 있어야 하므로
-  set accessor 를 둔다.
+- **`Context`** -- framework 가 actor 생성 시점에 factory 로 넘기는 값이다.
+  actor 가 메시지 dispatch 나 outbound 호출을 하려면 이 context 를 거친다.
+  application 코드는 factory 에서 받은 context 를 actor 생성자에 넘기고,
+  actor 는 get-only property 로 노출한다.
 - **`Configure()`** -- actor 가 처리할 packet handler 를 등록하는 자리다.
   attach 직후 한 번 호출된다 (자세한 흐름은 §4 에서 다룬다).
 - **`OnDisconnectedAsync(...)`** -- actor 가 더 이상 dispatch 를 받지 않게
@@ -177,6 +177,7 @@ public interface IZLinkActorFactory
 {
     ValueTask<IZLinkActor> CreateAsync(
         string actorId,
+        IZLinkActorContext context,
         CancellationToken cancellationToken = default);
 }
 ```
@@ -191,10 +192,12 @@ public sealed class PlayerActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
         string actorId,
+        IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new PlayerActor(actorId));
+        return ValueTask.FromResult<IZLinkActor>(
+            new PlayerActor(actorId, context));
     }
 }
 ```
@@ -202,7 +205,6 @@ public sealed class PlayerActorFactory : IZLinkActorFactory
 등록 코드는 다음과 같다.
 
 ```csharp
-builder.Services.AddScoped<PlayerActorFactory>();
 builder.Services.AddZLinkFramework(options =>
 {
     options.AddActorFactory<PlayerActorFactory>("player");
@@ -239,9 +241,9 @@ sequenceDiagram
 
     Note over FW: 1. 생성
     App->>FW: CreateActor("player", actorId) (session 안 or AttachActor)
-    FW->>Fact: CreateAsync(actorId)
+    FW->>Fact: CreateAsync(actorId, context)
     Fact-->>FW: actor instance
-    FW->>Act: Context = ctx 주입
+    FW->>Act: Context property 검증
     FW->>Act: Configure()
     Note over FW: handler는 Entry/User Spot registry가 등록
 
@@ -318,10 +320,13 @@ mailbox[^mailbox] 로 들어간다. 같은 actor 의 packet 끼리만 순서가 
 mailbox 가 보호하는 구도다.
 
 ```csharp
-public sealed class PlayerActor(string actorId, IAuthService auth) : IZLinkActor
+public sealed class PlayerActor(
+    string actorId,
+    IZLinkActorContext context,
+    IAuthService auth) : IZLinkActor
 {
     public string ActorId { get; } = actorId;
-    public IZLinkActorContext Context { get; set; } = default!;
+    public IZLinkActorContext Context { get; } = context;
 
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         => ValueTask.CompletedTask;
@@ -375,11 +380,13 @@ actor 가 처리할 packet handler 는 **현재 실행 문맥의 registry 에 �
 `Context.AddActorPacket<THandler, TActor>()` 로 명시적으로 묶는다.
 
 ```csharp
-public sealed class PlayerActor(string actorId) : IZLinkActor
+public sealed class PlayerActor(
+    string actorId,
+    IZLinkActorContext context) : IZLinkActor
 {
     public string ActorId { get; } = actorId;
 
-    public IZLinkActorContext Context { get; set; } = default!;
+    public IZLinkActorContext Context { get; } = context;
 
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
@@ -488,11 +495,11 @@ callback 은 join / leave 가 commit 된 직후 같은 실행 문맥에서 호�
 
 ### 4.3 등록 순서
 
-handler 클래스는 반드시 DI 에 등록해야 한다. 가장 간단한 방법은 다음과 같다.
+handler 클래스는 Entry Spot 이나 user Spot 의 `Configure()` 에서 타입으로
+등록한다. framework 는 handler 실행 시 DI 에 등록된 의존성을 사용해 handler
+인스턴스를 만든다.
 
 ```csharp
-builder.Services.AddScoped<JoinMatchHandler>();
-builder.Services.AddScoped<PlaceMarkHandler>();
 builder.Services.AddZLinkFramework(options =>
 {
     options.AddHandlersFromAssemblyOf<JoinMatchHandler>();
@@ -937,11 +944,6 @@ builder.Services.AddZLinkFramework(options =>
 Play 서버는 다음과 같이 등록한다.
 
 ```csharp
-builder.Services.AddScoped<PlayerActorFactory>();
-builder.Services.AddScoped<PlayerEntrySpot>();
-builder.Services.AddScoped<MatchSpot>();
-builder.Services.AddSingleton<RegistryPlayRouteStore>();
-builder.Services.AddSingleton<RegistrySpotRouteStore>();
 builder.Services.AddZLinkFramework(options =>
 {
     options.AddActorFactory<PlayerActorFactory>("player");

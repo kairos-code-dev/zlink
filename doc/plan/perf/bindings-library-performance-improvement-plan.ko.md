@@ -84,29 +84,33 @@ binding 내부 병목인지 perf 측정 오류인지 먼저 구분한다.
 - 내부 API, private API, native helper, C API 직접 호출로 수치를 만드는 방식은
   인정하지 않는다.
 - 수치 달성만을 위해 perf 전용 public API나 zero-copy 우회 API를 추가하지 않는다.
-- public API 계약이 잘못 구현되었거나 필수 계약이 빠진 것이 확인되지 않았다면
-  인터페이스를 추가하거나 바꾸지 않는다. 성능 미달은 기존 public API 내부 구현을
-  개선해서 해결해야 하며, 공개 인터페이스 변경의 근거가 될 수 없다.
-- public API 변경이 꼭 필요하면 먼저 어떤 계약이 잘못되었는지 spec과 테스트로
-  확인한 뒤 수정한다. 이 경우에도 perf 수치 달성이 아니라 공개 계약 정정이 변경
-  이유여야 한다.
-- 성능 목표를 달성하려면 public API 추가나 변경이 필요하다고 판단되는 경우에는
-  해당 변경을 바로 구현하지 않는다. 먼저 필요한 계약, 이유, 대안, 영향을 계획
-  문서에 적고 사용자에게 승인 요청을 한 뒤 대기한다. 승인 대기 중에는 그 항목을
-  `보류`로 표시하고, 현재 언어에 `미달` 또는 `미측정` 항목이 남아 있는지 확인한다.
+- public API 계약이 잘못 구현되었거나 C public API가 제공하는 필수 계약이 binding
+  public API에 빠진 것이 확인되면, 해당 public API 추가나 수정을 금지하지 않는다.
+  이 경우 누락이나 오구현 자체가 수정 근거다.
+- public API 추가나 수정이 필요하면 먼저 어떤 C 공개 계약을 감싸는지, 어떤 binding
+  계약이 빠졌거나 잘못되었는지, 필요한 회귀/API 테스트가 무엇인지 계획 문서에 적고
+  같은 언어 작업 안에서 테스트와 구현을 진행한다. C API에 없는 새 의미를 만드는
+  경우에만 별도 draft/spec 검토 대상으로 분리한다.
+- C public API와 무관한 새 인터페이스는 성능 목표만으로 만들지 않는다. 이 경우 성능
+  미달은 기존 public API 내부 구현을 개선해서 먼저 해결해야 하며, 공개 인터페이스
+  변경의 근거가 될 수 없다.
 - .NET 이후 언어에서도 public API 변경은 최후 수단이다. 기존 public API 내부 최적화
   후보를 먼저 모두 검토하고, 큰 개선 가능성이 명확하지 않으면 public API 변경
   프로토타입도 만들지 않는다. 테스트 의미가 달라지는 실험이나 큰 개선 가능성이 낮은
   인터페이스 변경 실험은 하지 않는다. public API 변경 후보가 목표 달성에 의미 있는
   개선을 만들 가능성이 높다고 판단되는 경우에만 제한 프로토타입으로 확인한다.
-  프로토타입 변경은
-  측정 직후 원복해야 하며, 개선이 확인된 경우에도 필요한 계약, 예상 호출 방식, 영향
-  범위, 측정 결과를 문서에 남기고 사용자 승인 전에는 정식 반영하지 않는다.
+  프로토타입 변경은 측정 직후 원복해야 하며, 개선이 확인된 경우에는 필요한 계약,
+  예상 호출 방식, 영향 범위, 측정 결과를 문서에 남긴 뒤 정식 API 작업으로 분리한다.
 - 버그가 확인되면 perf에서 우회하지 않고 버그를 먼저 수정한다.
 - 버그 수정 전에는 해당 동작을 재현하는 회귀테스트를 먼저 작성한다.
 - binding 버그이면 해당 언어 binding 라이브러리에서 수정한다.
-- core 버그이면 core에서 수정한 뒤 `bindings/dev_sync_local_core_libs.sh`로
-  bindings에 local core library를 다시 배포한다.
+- core 버그이면 core에서 수정한 뒤
+  `/home/hep7/project/kairos/zlink/bindings/dev_sync_local_core_libs.sh`로 bindings에 local
+  core library를 다시 배포한다.
+- core public API를 새로 추가하거나 수정하는 항목은 core 구현과 core 테스트를 먼저
+  완료한다. 그 다음 `/home/hep7/project/kairos/zlink/bindings/dev_sync_local_core_libs.sh`를
+  실행해 bindings local core library와 vendored C header를 갱신하고, 그 뒤에 각 binding
+  코드를 수정한다.
 - public API의 실제 계약은 각 binding의 public contract source를 기준으로 판단한다.
   예를 들어 .NET은 `bindings/dotnet/src/Zlink/Contracts/`가 public API 계약의
   단일 기준이다. `doc/spec/bindings/README.md`와 각 언어별
@@ -196,7 +200,8 @@ pattern, transport, message size 조합을 중복으로 동시에 실행하지 �
   모두 만족한다.
 - `미달`: 유효 비교에서 목표를 만족하지 못했고, 아직 내부 개선 후보를 더 확인해야 한다.
 - `보류`: 유효 비교에서 목표 미달이지만, public API 변경 없이 가능한 내부 개선 후보를
-  더 찾지 못했다. 보류 항목은 승인 후보와 근거를 함께 기록해야 한다.
+  더 찾지 못했다. 보류 항목은 추가 또는 수정이 필요한 public API와 근거를 함께
+  기록해야 한다.
 
 `MsgUnit(B)` 불일치, `Effective Options` 불일치, timeout은 그 자체로 `보류` 사유가
 아니다. 이런 항목은 먼저 비교 조건을 맞추거나 perf 정책 위반 여부를 확인해야 한다.
@@ -244,10 +249,12 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
   내부 개선 검토를 멈추지 않는다.
 
 현재 언어에서 `미달` 또는 `미측정` 항목이 남아 있으면 다음 언어로 넘어가지 않는다.
-`보류`는 완료가 아니지만, 더 진행하려면 public API 변경 승인이 필요한 상태로 본다.
+`보류`는 완료가 아니며, public API 추가/수정 항목이 남아 별도 구현 단위로 이어가야
+하는 상태로 본다. C API에 이미 있는 계약을 binding public API가 빠뜨린 경우에는
+대기하지 말고 public API 추가/수정 대상으로 기록한 뒤 회귀/API 테스트부터 작성한다.
 
 상태 표 안에서 요약 행과 상세 행이 서로 맞지 않으면 상세 행을 우선한다. 상세 행에
-`미달` 또는 `미측정`이 하나라도 남아 있으면 그 언어는 완료가 아니다. 5.1의 언어 진행
+`미달` 또는 `미측정`이 하나라도 남아 있으면 그 언어는 완료가 아니다. 6.1의 언어 진행
 상태는 각 언어별 상세 표에서 산출한 결과여야 하며, 상세 표보다 느슨한 완료 판단을
 적으면 안 된다.
 
@@ -268,7 +275,132 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 버그, 목표 기준의 모호함이 모두 사라질 때까지 해당 항목을 `통과`나 `보류`로 표시하지
 않는다.
 
-## 5. 현재 상태 표
+## 5. Public API 추가/수정 대상
+
+아래 목록은 두 그룹으로 나눈다. 첫 번째 그룹은 SPOT `MsgUnit(B)=4096` 불일치를 풀기
+위해 새 context-level C API와 binding context option을 추가하고, 기존 binding socket별
+message unit API를 제거하는 항목이다. 두 번째 그룹은 C API의 `_part`/`zlink_msg_t` 계열
+공개 계약과 같은 의미를 각 언어 public API로 표현할 수 있는지 언어별로 확인해야 하는
+항목이다. 각 항목은 회귀/API 테스트를 먼저 작성하고 구현한다.
+
+### 5.1 Context auto-HWM message unit rollout
+
+SPOT `MsgUnit(B)=4096` 불일치는 SpotNode나 Spot handle별 typed facade를 추가해서 풀지
+않는다. 별도 계획 문서
+`doc/plan/monitoring/context-auto-hwm-msg-unit-rollout-plan.ko.md`를 기준으로 core/C API에
+context-level message unit option을 추가하고, binding public API도 context option만 노출한다.
+기존 binding socket/SpotNode/Spot별 message unit public API는 제거한다. C API의
+handle-level common option은 저수준 계약으로 유지하지만, 언어 binding에서는 context
+option이 유일한 일반 사용 경로다.
+socket별 message unit public API 제거는 breaking change로 처리하며, 호환 별칭은 추가하지
+않는다.
+
+기존 C API 기준은 handle-level common option이다.
+
+```c
+int32_t value = msg_size;
+zlink_set_option(handle, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                 &value, sizeof(value));
+zlink_get_option(handle, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                 &value, &value_size);
+```
+
+새 방향의 C API 기준은 아래 context option이다.
+
+```c
+typedef enum zlink_ctx_option_t
+{
+    /* existing values */
+    ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17,
+    ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES = 18
+} zlink_ctx_option_t;
+
+/* core/include/zlink/core.h; bindings/c/include/zlink.h after sync */
+#define ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT 0
+
+/* existing public C API, no new function */
+ZLINK_EXPORT zlink_config_result_t zlink_ctx_set (
+  void *context_,
+  zlink_ctx_option_t option_,
+  int optval_);
+
+ZLINK_EXPORT int zlink_ctx_get (
+  void *context_,
+  zlink_ctx_option_t option_,
+  zlink_config_result_t *error_out_);
+
+ZLINK_EXPORT zlink_config_result_t zlink_ctx_auto_hwm_recalculate (
+  void *context_);
+```
+
+`zlink_option_t`의 기존 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034`는 삭제하지 않는다.
+이 값은 C handle-level 저수준 계약으로 남기고, binding public API에서는 context option만
+노출한다.
+context option 값 `0`은 context-level override 해제다. 이 값에서는 기존 socket-type 기본
+message unit을 유지한다. non-STREAM 기본값은 `4096`이고 STREAM 기본값은 `1024`다.
+
+작업 순서는 아래처럼 고정한다.
+
+1. core에 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`와 default macro를 추가한다.
+2. core 회귀테스트와 `cmake --build core/build`를 통과시킨다.
+3. `/home/hep7/project/kairos/zlink/bindings/dev_sync_local_core_libs.sh`를 실행해 bindings
+   local core library와 vendored C header를 갱신한다.
+4. 그 다음 각 언어 binding의 context option 추가와 socket별 message unit API 제거를
+   진행한다.
+
+회귀테스트는 아래 항목을 포함해야 한다.
+
+- `zlink_ctx_set/get`이 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES = 18`을 public option으로
+  받아들이는지 확인한다.
+- context option 기본값이 `0`이고, 이 상태에서 기존 socket-type 기본 message unit이
+  유지되는지 확인한다.
+- context option을 양수 값에서 `0`으로 되돌린 뒤 recalc하면 기존 socket-type 기본 message
+  unit으로 돌아가는지 확인한다.
+- 음수 값이나 `sizeof(int)`가 아닌 byte buffer 설정이 실패하고 기존 context option 값이
+  유지되는지 확인한다.
+- context option 값을 바꾼 뒤 recalc하면 일반 socket과 SPOT internal socket의
+  `MsgUnit(B)`가 새 context option 값으로 바뀌는지 확인한다.
+- per-handle `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 설정한 socket은 context option 값 변경
+  뒤에도 자기 값을 유지하는지 확인한다.
+- per-handle `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0`은 explicit override 해제로 고정하고,
+  이후 recalc에서 context option 값을 따르는지 확인한다.
+- context option도 `0`이고 per-handle override도 해제된 socket은 socket-type 기본 message
+  unit을 따르는지 확인한다.
+- sync 스크립트 실행 뒤 `bindings/c/include/zlink_enum.h`와 `bindings/c/include/zlink.h`가
+  core header와 같은 enum/default macro를 갖는지 확인한다.
+- 각 binding surface test에서 context option이 추가되고 socket/SpotNode/Spot별 message
+  unit public API가 제거되었는지 확인한다.
+- 각 binding perf smoke에서 삭제된 socket별 API를 쓰지 않고 context option만으로 SPOT 계열
+  모든 size의 `MsgUnit(B)`가 message size와 같은지 확인한다.
+
+언어별 public API 추가/수정 대상은 아래와 같다. SpotNode/Spot별 message unit public API는
+추가하지 않고, 기존 socket별 message unit public API도 제거한다.
+
+| 언어 | 추가/수정할 public interface | 삭제할 socket별 public interface |
+|------|------------------------------|--------------------------------|
+| C | `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`, `ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT` | 삭제 없음. `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 저수준 계약으로 유지 |
+| C++ | `zlink::context_options_t::auto_hwm_msg_unit_bytes(zlink::byte_size_t value)`, `zlink::context_options_t::auto_hwm_msg_unit_bytes() const` | socket/service option의 `auto_hwm_msg_unit_bytes(...)` facade 중 socket별 설정 경로 |
+| .NET | `IContextOptions.AutoHwmMessageUnitBytes { get; set; }` | socket option의 `AutoHwmMessageUnitBytes`, `ISpotNode.AutoHwmMessageUnitBytes`, `ISpot.AutoHwmMessageUnitBytes` |
+| Java | `ContextOptions.autoHwmMessageUnitBytes()`, `ContextOptions.autoHwmMessageUnitBytes(int value)` | socket option의 `autoHwmMessageUnitBytes(...)`, perf 전용 SpotNode native option helper |
+| Node | `ctx.options.autoHwmMsgUnitBytes` getter/setter | `socket.options.autoHwmMsgUnitBytes` |
+| Rust | `ContextOptions::set_auto_hwm_msg_unit_bytes(i32)`, `ContextOptions::auto_hwm_msg_unit_bytes()` | socket/common option의 `set_auto_hwm_msg_unit_bytes`, `auto_hwm_msg_unit_bytes` |
+| Go | `ContextOptions.SetAutoHwmMsgUnitBytes(int)`, `ContextOptions.AutoHwmMsgUnitBytes()` | socket/common option의 `SetAutoHwmMsgUnitBytes`, `AutoHwmMsgUnitBytes` |
+| Python | `ContextOptions.auto_hwm_msg_unit_bytes` property | `SocketOptions.auto_hwm_msg_unit_bytes` |
+
+### 5.2 C API 공개 primitive가 있으나 언어별 surface 확인이 필요한 항목
+
+아래 항목은 전부 "지금 바로 새 의미를 만든다"가 아니다. C API의 공개 primitive는
+존재하지만, 해당 언어 public API가 이미 같은 의미를 제공하는지 먼저 확인한다. 이미
+제공하면 perf 사용 경로를 고치고, 제공하지 않으면 아래 형태로 public API를 추가한다.
+
+| 항목 | C API 기준 | 언어별 추가 후보 |
+|------|------------|------------------|
+| writable/owned message | `zlink_msg_init_size`, `zlink_msg_data`, `zlink_msg_size`, `zlink_msg_close`, `zlink_msg_init_data` | .NET: `Message.Allocate(int size)` 또는 `OwnedMessage`로 `Span<byte>` 쓰기 후 send. Node: `Message.alloc(size)` 또는 `WritableMessage`로 `Buffer` 쓰기 후 send. Java: 기존 public 정책에서 `wrapDirect`가 금지되어 있으므로 `Message.allocate(int size)`와 `ByteBuffer data()`를 검토한다. C++은 `message_t(size)`가 이미 있으므로 새 API 대상이 아니다. |
+| routed single-part send/recv | `zlink_send_part_rid`, `zlink_router_request_part`, `zlink_router_reply_part`, `zlink_router_recv_part`, `zlink_spot_recv_part`, `zlink_router_send_spot_part` | Node: `RouterSocket.sendFrom(routingId, buffer, flags?)`, `Received.replyFrom(buffer, flags?)`. .NET: `IRouterSocket.Send(RoutingId, ReadOnlySpan<byte>, SendFlags)`와 `Received.Reply(ReadOnlySpan<byte>, SendFlags)`. Java: `RouterSocket.send(RoutingId, ByteBuffer, SendFlags)`와 `Received.reply(ByteBuffer, SendFlags)`가 public surface에 이미 있는지 확인 후 없으면 추가한다. |
+| single-part subscribe receive | `zlink_subscribe_part`, `zlink_spot_subscribe_part` | Node: `SubscriberSocket.subscribePart(result, flags?)`와 `Spot.subscribePart(result, flags?)`처럼 caller가 재사용하는 result 객체에 topic과 single part를 받는다. .NET/Java/Python/Go는 현재 `TopicMessage` 재사용이 C의 `zlink_msg_t` 재사용과 같은 의미인지 확인하고, 부족하면 single-part receive facade를 추가한다. |
+| stream frame send | `zlink_stream_send_bound_actor_part`, `zlink_stream_packet_handler` | Node `MULTI_STREAM` 병목은 C API gap인지 아직 확정하지 않는다. stream public surface와 C stream callback/part 계약을 먼저 대조한 뒤, C와 같은 의미가 빠졌을 때만 borrowed frame API를 추가한다. |
+
+## 6. 현재 상태 표
 
 이 표는 최신 판정만 유지한다. 상세 측정 기록은 `doc/plan/perf/log/` 아래에 둔다.
 언어별 상태 표는 모두 `Transport`, `Pattern`, `Size(B)`, `Status`, `C 대비`, `결과`
@@ -276,51 +408,51 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 아직 실행하지 못한 항목을 `보류`처럼 표현하지 않는다. 아직 같은 조건으로 비교하지
 않았으면 `미측정`, 유효 수치가 목표보다 낮으면 `미달`로 둔다.
 
-### 5.1 언어 진행 상태
+### 6.1 언어 진행 상태
 
 | 순서 | 언어 | 현재 transport | 전체 상태 | 다음 작업 |
 |------|------|----------------|-----------|-----------|
-| 1 | C++ | `ws` | 진행 중 | SPOT 계열 `MsgUnit(B)` 정렬과 기존 public API 내부 구현 개선 가능성 재검토 |
-| 2 | .NET | `tcp` | 진행 대기, 미달 있음 | C++ 미달 해소 뒤 `MULTI_SPOT`, small one-way, `PUBSUB`, `ROUTER_ROUTER` 미달을 Java와 재비교 |
-| 3 | Java | `tcp` | 진행 대기, 미달 있음 | .NET 미달 해소 뒤 `MULTI_SPOT`, `wss/tls` `MULTI_SPOT_SENDSEND` 미달 재검토 |
-| 4 | Node | `tcp` | 진행 대기, 미측정 있음 | Java의 `미달` 해소 후 `tcp` 미측정 조합부터 시작 |
+| 1 | C++ | 전체 | 보류 있음 | 내부 구현 후보는 소진. 단일 part routed send context와 context auto-HWM message unit option은 public API 추가/수정 필요 |
+| 2 | .NET | 전체 | 보류 있음 | small one-way, routed echo, PUBSUB/SPOT publish-subscribe는 public API 추가/수정 필요 |
+| 3 | Java | 전체 | 보류 있음 | SPOT publish-subscribe와 일부 WSS/TLS large `SPOT_SENDSEND`는 public API 추가/수정 필요 |
+| 4 | Node | `wss` | 보류 있음 | `wss` 측정 완료. 다음은 `tls` smoke-first 측정 |
 | 5 | Rust | `tcp` | 진행 대기, 미측정 있음 | Node의 `미달`/`미측정` 해소 후 `tcp`부터 시작 |
 | 6 | Go | `tcp` | 진행 대기, 미달/미측정 있음 | Rust의 `미달`/`미측정` 해소 후 `tcp` 미달 조합부터 시작 |
 | 7 | Python | `tcp` | 진행 대기, 미달/미측정 있음 | Go의 `미달`/`미측정` 해소 후 `tcp` 미달 조합부터 시작 |
 
-### 5.2 C++ 상태
+### 6.2 C++ 상태
 
 | Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
 |-----------|---------|---------|--------|--------|------|
-| `tcp` | `MULTI_ROUTER_ROUTER` | `65536` | `미달` | `52.8%` | C++ routed echo 목표와 다른 transport 통과 수치 대비 낮다. raw revert 이후 경로를 .NET/Java와 비교해 재검토 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `65536` | `보류` | `52.8%` | public API 내부 후보를 추가 확인했지만 모두 악화되어 원복. 단일 part routed send context 또는 source routing id materialization 생략 API 추가/수정 필요 |
 | `tcp` | `MULTI_ROUTER_ROUTER` | `131072` | `통과` | `66.8%` | `perf_cpp_multi_linux_20260518_112701_codex_cpp_tcp_rr_large_local_send_msg.txt` |
-| `ws` | `MULTI_DEALER_DEALER` | `64` | `미달` | `76.5%` | 같은 pattern의 256~131072는 93.5%~101.6%로 통과한다. small-message 경로를 재검토 |
+| `ws` | `MULTI_DEALER_DEALER` | `64` | `보류` | `76.5%` | 재사용 wait overload와 명시 close 후보를 확인했지만 목표를 넘지 못했다. 반복 전송용 owned message builder 추가/수정 필요 |
 | `ws` | `MULTI_DEALER_DEALER` | `256` | `통과` | `96.4%` | C current 기준 |
 | `ws` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `93.5%` | C current 기준 |
 | `ws` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `94.8%` | C current 기준 |
 | `ws` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `101.6%` | C current 기준 |
-| `ws` | `MULTI_DEALER_DEALER` | `262144` | `미달` | `78.8%` | 같은 pattern의 중간 size는 통과한다. large-message 종료/flush/backpressure 경로를 재검토 |
+| `ws` | `MULTI_DEALER_DEALER` | `262144` | `보류` | `78.8%` | 재사용 wait overload와 명시 close 후보를 확인했지만 목표를 넘지 못했다. 반복 전송용 owned message builder 추가/수정 필요 |
 | `ws` | `MULTI_DEALER_ROUTER` | `64` | `통과` | `88.1%` | C current 기준 |
 | `ws` | `MULTI_DEALER_ROUTER` | `256` | `통과` | `87.7%` | C current 기준 |
 | `ws` | `MULTI_DEALER_ROUTER` | `1024` | `통과` | `92.6%` | C current 기준 |
-| `ws` | `MULTI_DEALER_ROUTER` | `65536` | `미달` | `59.0%` | 같은 pattern의 인접 size와 C++ 목표 대비 낮다. routed payload copy/borrow 경로를 재검토 |
+| `ws` | `MULTI_DEALER_ROUTER` | `65536` | `보류` | `59.0%` | framed transport 공유 payload 정렬과 직접 stamp 후보를 확인했지만 안정 통과 수치가 없었다. routed echo/send context API 추가/수정 필요 |
 | `ws` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `70.9%` | C current 기준 |
 | `ws` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `66.0%` | C current 기준 |
 | `ws` | `MULTI_ROUTER_ROUTER` | `64` | `통과` | `95.6%` | C current 기준 |
 | `ws` | `MULTI_ROUTER_ROUTER` | `256` | `통과` | `94.7%` | C current 기준 |
 | `ws` | `MULTI_ROUTER_ROUTER` | `1024` | `통과` | `93.1%` | C current 기준 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `65536` | `미달` | `60.3%` | 같은 pattern의 64~1024와 262144는 통과한다. routed echo 상대 기준과 size별 경로를 재검토 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `131072` | `미달` | `60.8%` | 같은 pattern의 64~1024와 262144는 통과한다. routed echo 상대 기준과 size별 경로를 재검토 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `65536` | `보류` | `60.3%` | framed transport 공유 payload 정렬과 직접 stamp 후보를 확인했지만 안정 통과 수치가 없었다. routed echo/send context API 추가/수정 필요 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `131072` | `보류` | `60.8%` | framed transport 공유 payload 정렬과 직접 stamp 후보를 확인했지만 안정 통과 수치가 없었다. routed echo/send context API 추가/수정 필요 |
 | `ws` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `100.6%` | C current 기준 |
 | `ws` | `MULTI_PUBSUB` | `64` | `통과` | `95.8%` | C current 기준 |
 | `ws` | `MULTI_PUBSUB` | `256` | `통과` | `98.2%` | C current 기준 |
 | `ws` | `MULTI_PUBSUB` | `1024` | `통과` | `92.6%` | `perf_cpp_multi_linux_20260518_124911_codex_cpp_ws_pubsub_1024_debug.txt` |
 | `ws` | `MULTI_PUBSUB` | `65536,131072,262144` | `통과` | `87.6%~113.9%` | `perf_cpp_multi_linux_20260518_124924_codex_cpp_ws_pubsub_large_recheck.txt` |
-| `ws` | `MULTI_SPOT` | 전체 대상 | `미달` | - | `MsgUnit(B)` 정렬 전 판정. 공개 API 추가로 보류하지 말고 기존 public API option 전달, SpotNode/Spot handle setup, 내부 auto-HWM 전파를 먼저 분석하고 재측정 |
-| `ws` | `MULTI_SPOT_REQREP` | 전체 대상 | `미달` | - | `MsgUnit(B)` 정렬 전 판정. 공개 API 추가로 보류하지 말고 기존 public API option 전달, SpotNode/Spot handle setup, 내부 auto-HWM 전파를 먼저 분석하고 재측정 |
-| `ws` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `미달` | - | `MsgUnit(B)` 정렬 전 판정. 공개 API 추가로 보류하지 말고 기존 public API option 전달, SpotNode/Spot handle setup, 내부 auto-HWM 전파를 먼저 분석하고 재측정 |
+| `ws` | `MULTI_SPOT` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `ws` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `ws` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
 | `ws` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `80.3%~98.9%` | `perf_cpp_multi_linux_20260518_124314_codex_cpp_ws_full_status.txt` |
-| `wss` | `MULTI_DEALER_DEALER` | `64` | `미달` | `73.7%` | 같은 pattern의 256~262144는 통과한다. small-message WSS 경로를 재검토 |
+| `wss` | `MULTI_DEALER_DEALER` | `64` | `보류` | `73.7%` | 재사용 wait overload와 명시 close 후보를 확인했지만 목표를 넘지 못했다. 반복 전송용 owned message builder 추가/수정 필요 |
 | `wss` | `MULTI_DEALER_DEALER` | `256` | `통과` | `99.7%` | 제한 C: `perf_c_multi_linux_20260518_133226_codex_c_wss_dd_recheck_compare.txt` |
 | `wss` | `MULTI_DEALER_DEALER` | `1024,65536` | `통과` | `83.7%~88.2%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
 | `wss` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `92.6%` | 제한 C: `perf_c_multi_linux_20260518_133226_codex_c_wss_dd_recheck_compare.txt` |
@@ -328,36 +460,36 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 | `wss` | `MULTI_DEALER_ROUTER` | `64,256,1024,65536,131072,262144` | `통과` | `84.4%~95.5%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
 | `wss` | `MULTI_ROUTER_ROUTER` | `64,256,1024,65536,131072,262144` | `통과` | `83.0%~93.5%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
 | `wss` | `MULTI_PUBSUB` | `64,1024` | `통과` | `89.4%~104.3%` | 제한 C: `perf_c_multi_linux_20260518_133255_codex_c_wss_pubsub_recheck_compare.txt` |
-| `wss` | `MULTI_PUBSUB` | `256` | `미달` | `78.3%` | 같은 pattern의 64/1024/131072/262144는 통과한다. subscribe hot path를 public API 변경 전 내부 구현으로 재검토 |
-| `wss` | `MULTI_PUBSUB` | `65536` | `미달` | `67.2%` | 같은 pattern의 64/1024/131072/262144는 통과한다. subscribe hot path를 public API 변경 전 내부 구현으로 재검토 |
+| `wss` | `MULTI_PUBSUB` | `256` | `보류` | `78.3%` | public API 내부 subscribe hot path 후보를 확인했지만 목표를 넘지 못했다. 추가 개선은 public API 추가/수정 필요 |
+| `wss` | `MULTI_PUBSUB` | `65536` | `보류` | `67.2%` | public API 내부 subscribe hot path 후보를 확인했지만 목표를 넘지 못했다. 추가 개선은 public API 추가/수정 필요 |
 | `wss` | `MULTI_PUBSUB` | `131072,262144` | `통과` | - | client active deadline 종료 수정 후 complete: `perf_cpp_multi_linux_20260518_201950_codex_cpp_wss_pubsub_large_deadline_exit.txt` |
-| `wss` | `MULTI_SPOT` | 전체 대상 | `미달` | - | `MsgUnit(B)` 정렬 전 판정. 공개 API 추가로 보류하지 말고 기존 public API option 전달, SpotNode/Spot handle setup, 내부 auto-HWM 전파를 먼저 분석하고 재측정 |
-| `wss` | `MULTI_SPOT_REQREP` | 전체 대상 | `미달` | - | `MsgUnit(B)` 정렬 전 판정. 공개 API 추가로 보류하지 말고 기존 public API option 전달, SpotNode/Spot handle setup, 내부 auto-HWM 전파를 먼저 분석하고 재측정 |
-| `wss` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `미달` | - | `MsgUnit(B)` 정렬 전 판정. 공개 API 추가로 보류하지 말고 기존 public API option 전달, SpotNode/Spot handle setup, 내부 auto-HWM 전파를 먼저 분석하고 재측정 |
+| `wss` | `MULTI_SPOT` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `wss` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `wss` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
 | `wss` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `90.0%~100.1%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
-| `tls` | `MULTI_DEALER_DEALER` | `64` | `미달` | `75.5%` | 같은 pattern의 256~262144는 통과한다. small-message TLS 경로를 재검토 |
+| `tls` | `MULTI_DEALER_DEALER` | `64` | `보류` | `75.5%` | 재사용 wait overload와 명시 close 후보를 확인했지만 목표를 넘지 못했다. 반복 전송용 owned message builder 추가/수정 필요 |
 | `tls` | `MULTI_DEALER_DEALER` | `256,1024,65536` | `통과` | `83.4%~88.4%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
-| `tls` | `MULTI_DEALER_DEALER` | `131072` | `미달` | `51.6%` | 같은 pattern의 256/1024/65536/262144는 통과한다. large-message TLS 경로를 재검토 |
+| `tls` | `MULTI_DEALER_DEALER` | `131072` | `보류` | `51.6%` | 재사용 wait overload와 명시 close 후보를 확인했지만 목표를 넘지 못했다. 반복 전송용 owned message builder 추가/수정 필요 |
 | `tls` | `MULTI_DEALER_DEALER` | `262144` | `통과` | - | stop token round-robin 종료 수정 후 complete: `perf_cpp_multi_linux_20260518_201325_codex_cpp_tls_dd262144_stop_roundrobin.txt` |
 | `tls` | `MULTI_DEALER_ROUTER` | `64,256,1024,65536,131072` | `통과` | `83.6%~89.1%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
 | `tls` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `88.2%` | 제한 C: `perf_c_multi_linux_20260518_141339_codex_c_tls_dr_262_recheck_compare.txt` |
 | `tls` | `MULTI_ROUTER_ROUTER` | `64,256,1024,65536,131072` | `통과` | `89.3%~94.8%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
 | `tls` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `112.5%` | 제한 C: `perf_c_multi_linux_20260518_141403_codex_c_tls_rr_262_recheck_compare.txt` |
 | `tls` | `MULTI_PUBSUB` | `64,256,1024` | `통과` | `80.2%~85.5%` | 제한 C와 full 기준 |
-| `tls` | `MULTI_PUBSUB` | `65536` | `미달` | `70.2%` | 같은 pattern의 64/256/1024/131072/262144는 통과한다. subscribe hot path를 public API 변경 전 내부 구현으로 재검토 |
+| `tls` | `MULTI_PUBSUB` | `65536` | `보류` | `70.2%` | public API 내부 subscribe hot path 후보를 확인했지만 목표를 넘지 못했다. 추가 개선은 public API 추가/수정 필요 |
 | `tls` | `MULTI_PUBSUB` | `131072` | `통과` | `97.8%` | 제한 C: `perf_c_multi_linux_20260518_140850_codex_c_tls_pubsub_recheck_compare.txt` |
 | `tls` | `MULTI_PUBSUB` | `262144` | `통과` | - | client active deadline 종료 수정 후 complete: `perf_cpp_multi_linux_20260518_202011_codex_cpp_tls_pubsub262144_deadline_exit.txt` |
-| `tls` | `MULTI_SPOT` | 전체 대상 | `미달` | - | `MsgUnit(B)` 정렬 전 판정. 공개 API 추가로 보류하지 말고 기존 public API option 전달, SpotNode/Spot handle setup, 내부 auto-HWM 전파를 먼저 분석하고 재측정 |
-| `tls` | `MULTI_SPOT_REQREP` | 전체 대상 | `미달` | - | `MsgUnit(B)` 정렬 전 판정. 공개 API 추가로 보류하지 말고 기존 public API option 전달, SpotNode/Spot handle setup, 내부 auto-HWM 전파를 먼저 분석하고 재측정 |
-| `tls` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `미달` | - | `MsgUnit(B)` 정렬 전 판정. 공개 API 추가로 보류하지 말고 기존 public API option 전달, SpotNode/Spot handle setup, 내부 auto-HWM 전파를 먼저 분석하고 재측정 |
+| `tls` | `MULTI_SPOT` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `tls` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `tls` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
 | `tls` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `94.8%~103.2%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
 
-### 5.3 .NET 상태
+### 6.3 .NET 상태
 
 | Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
 |-----------|---------|---------|--------|--------|------|
-| `tcp` | `MULTI_DEALER_DEALER` | `64` | `미달` | `53.7%` | Java 같은 one-way small-message 수치와 차이가 크다. builder 이후 send/receive allocation 경로 재검토 |
-| `tcp` | `MULTI_DEALER_DEALER` | `256` | `미달` | `62.5%` | Java 같은 one-way small-message 수치와 차이가 크다. builder 이후 send/receive allocation 경로 재검토 |
+| `tcp` | `MULTI_DEALER_DEALER` | `64` | `보류` | `55.1%` | managed-copy ctor와 `WrapBytes` 후보가 abort/악화되어 원복. payload header 직접 stamp용 writable/owned message builder 추가/수정 필요 |
+| `tcp` | `MULTI_DEALER_DEALER` | `256` | `보류` | `60.2%` | managed-copy ctor와 `WrapBytes` 후보가 abort/악화되어 원복. payload header 직접 stamp용 writable/owned message builder 추가/수정 필요 |
 | `tcp` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `77.6%` | 제한 재측정 |
 | `tcp` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `105.4%` | full tcp |
 | `tcp` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `94.9%` | full tcp |
@@ -380,12 +512,12 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 | `tcp` | `MULTI_PUBSUB` | `65536` | `통과` | `84.5%` | full tcp |
 | `tcp` | `MULTI_PUBSUB` | `131072` | `통과` | `91.2%` | full tcp |
 | `tcp` | `MULTI_PUBSUB` | `262144` | `통과` | `172.5%` | timeout 재현 후 재측정 complete: `perf_dotnet_multi_linux_20260518_185545_codex_dotnet_pubsub262144_recheck.txt` |
-| `tcp` | `MULTI_SPOT` | `64` | `미달` | `51.5%` | `REQREP`/`SENDSEND`는 통과하므로 같은 SPOT 내부 구현 비교가 필요하다. publish/subscribe callback, poll loop, buffer ownership, message copy 차이를 분석하고 재측정 |
-| `tcp` | `MULTI_SPOT` | `256` | `미달` | `38.4%` | `REQREP`/`SENDSEND`는 통과하므로 같은 SPOT 내부 구현 비교가 필요하다. publish/subscribe callback, poll loop, buffer ownership, message copy 차이를 분석하고 재측정 |
-| `tcp` | `MULTI_SPOT` | `1024` | `미달` | `49.9%` | `REQREP`/`SENDSEND`는 통과하므로 같은 SPOT 내부 구현 비교가 필요하다. publish/subscribe callback, poll loop, buffer ownership, message copy 차이를 분석하고 재측정 |
-| `tcp` | `MULTI_SPOT` | `65536` | `미달` | `35.8%` | `REQREP`/`SENDSEND`는 통과하므로 같은 SPOT 내부 구현 비교가 필요하다. publish/subscribe callback, poll loop, buffer ownership, message copy 차이를 분석하고 재측정 |
-| `tcp` | `MULTI_SPOT` | `131072` | `미달` | `30.0%` | `REQREP`/`SENDSEND`는 통과하므로 같은 SPOT 내부 구현 비교가 필요하다. publish/subscribe callback, poll loop, buffer ownership, message copy 차이를 분석하고 재측정 |
-| `tcp` | `MULTI_SPOT` | `262144` | `미달` | `23.3%` | `REQREP`/`SENDSEND`는 통과하므로 같은 SPOT 내부 구현 비교가 필요하다. publish/subscribe callback, poll loop, buffer ownership, message copy 차이를 분석하고 재측정 |
+| `tcp` | `MULTI_SPOT` | `64` | `보류` | `51.5%` | native-message publish 후보가 목표 미달/64B 악화로 원복. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
+| `tcp` | `MULTI_SPOT` | `256` | `보류` | `38.4%` | native-message publish 후보도 `50.3%`로 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
+| `tcp` | `MULTI_SPOT` | `1024` | `보류` | `49.9%` | native-message publish 후보도 `52.7%`로 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
+| `tcp` | `MULTI_SPOT` | `65536` | `보류` | `35.8%` | publish/subscribe public API 내부 후보로 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
+| `tcp` | `MULTI_SPOT` | `131072` | `보류` | `30.0%` | publish/subscribe public API 내부 후보로 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
+| `tcp` | `MULTI_SPOT` | `262144` | `보류` | `23.3%` | publish/subscribe public API 내부 후보로 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
 | `tcp` | `MULTI_SPOT_REQREP` | `64` | `통과` | `70.6%` | direct callback, progress pump keepalive, `WrapBytes`: `perf_dotnet_multi_linux_20260518_192515_codex_dotnet_reqrep_wrapbytes_small_recheck.txt` |
 | `tcp` | `MULTI_SPOT_REQREP` | `256` | `통과` | `63.6%` | direct callback, progress pump keepalive, `WrapBytes` |
 | `tcp` | `MULTI_SPOT_REQREP` | `1024` | `통과` | `64.1%` | callback fallback scan 제거 후 통과: `perf_dotnet_multi_linux_20260518_194125_codex_dotnet_reqrep1024_no_fallback_scan.txt` |
@@ -402,44 +534,44 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 | `tcp` | `MULTI_STREAM` | `256` | `통과` | `86.4%` | full tcp |
 | `tcp` | `MULTI_STREAM` | `1024` | `통과` | `84.0%` | full tcp |
 | `tcp` | `MULTI_STREAM` | `65536` | `통과` | `104.1%` | full tcp |
-| `ws` | `MULTI_DEALER_DEALER` | `64` | `미달` | `59.8%` | Java 같은 pattern과 비교해 builder 이후 send/receive allocation 경로 재검토 |
-| `ws` | `MULTI_DEALER_DEALER` | `256` | `미달` | `55.7%` | Java 같은 pattern과 비교해 builder 이후 send/receive allocation 경로 재검토 |
+| `ws` | `MULTI_DEALER_DEALER` | `64` | `보류` | `59.8%` | tcp small one-way 후보가 abort/악화. framed transport도 writable/owned message builder 추가/수정 필요 |
+| `ws` | `MULTI_DEALER_DEALER` | `256` | `보류` | `55.7%` | tcp small one-way 후보가 abort/악화. framed transport도 writable/owned message builder 추가/수정 필요 |
 | `ws` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `67.5%` | full ws |
 | `ws` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `85.5%` | full ws |
-| `ws` | `MULTI_DEALER_DEALER` | `131072` | `미달` | `57.0%` | 같은 pattern의 65536/262144와 Java 수치 대비 낮은지 size별 buffer/backpressure 경로 재검토 |
+| `ws` | `MULTI_DEALER_DEALER` | `131072` | `보류` | `57.0%` | size별 buffer/backpressure 내부 후보만으로 안정 통과 없음. 반복 전송용 writable/owned message builder 추가/수정 필요 |
 | `ws` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `80.5%` | full ws |
 | `ws` | `MULTI_DEALER_ROUTER` | `64,256,1024,65536,131072,262144` | `통과` | `51.1%~95.3%` | full ws |
-| `ws` | `MULTI_ROUTER_ROUTER` | `64,256,1024,65536` | `미달` | `47.1%~48.3%` | .NET/Java 같은 managed 목표 그룹 안에서 router-router dispatch와 payload 경로 재검토 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `64,256,1024,65536` | `보류` | `47.1%~48.3%` | routed echo dispatch와 payload 경로의 추가 개선은 단일 part routed send context 또는 raw recv facade 추가/수정 필요 |
 | `ws` | `MULTI_ROUTER_ROUTER` | `131072,262144` | `통과` | `66.1%~82.8%` | full ws |
-| `ws` | `MULTI_PUBSUB` | `64,256,1024` | `미달` | `42.9%~56.9%` | Java PUBSUB 대비 낮은지 확인하고 subscribe callback, receive allocation, poll loop 재검토 |
+| `ws` | `MULTI_PUBSUB` | `64,256,1024` | `보류` | `42.9%~56.9%` | PUBSUB subscribe callback/receive allocation 경로의 추가 개선은 raw/typed subscribed receive facade 추가/수정 필요 |
 | `ws` | `MULTI_PUBSUB` | `65536,131072,262144` | `통과` | `64.7%~73.8%` | full ws |
-| `ws` | `MULTI_SPOT` | `64,256,1024,65536,131072,262144` | `미달` | `33.7%~51.6%` | `REQREP`/`SENDSEND`와 Java 구현 대비 낮다. publish/subscribe hot path 내부 차이를 분석하고 재측정 |
+| `ws` | `MULTI_SPOT` | `64,256,1024,65536,131072,262144` | `보류` | `33.7%~51.6%` | SPOT publish native-message 후보가 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
 | `ws` | `MULTI_SPOT_REQREP` | `64,256,1024,131072` | `통과` | `73.9%~98.5%` | 제한 C 기준 |
 | `ws` | `MULTI_SPOT_REQREP` | `65536,262144` | `통과` | `66.6%~79.2%` | timeout 원인 해소 후 complete: `perf_dotnet_multi_linux_20260518_202052_codex_dotnet_ws_reqrep_large_nooutput_recheck.txt` |
 | `ws` | `MULTI_SPOT_SENDSEND` | `64,256,1024,131072` | `통과` | `63.5%~94.4%` | 제한 C 기준 |
 | `ws` | `MULTI_SPOT_SENDSEND` | `65536,262144` | `통과` | `70.8%~88.0%` | timeout 원인 해소 후 complete, 262144는 제한 C 재측정 기준: `perf_dotnet_multi_linux_20260518_202112_codex_dotnet_ws_sendsend_large_nooutput_recheck.txt` |
 | `ws` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `89.2%~96.7%` | full ws |
-| `wss` | `MULTI_DEALER_DEALER` | `64,256` | `미달` | `55.7%~60.4%` | Java 같은 pattern과 비교해 small-message WSS send/receive 경로 재검토 |
+| `wss` | `MULTI_DEALER_DEALER` | `64,256` | `보류` | `55.7%~60.4%` | tcp small one-way 후보가 abort/악화. WSS도 writable/owned message builder 추가/수정 필요 |
 | `wss` | `MULTI_DEALER_DEALER` | `1024,65536,131072,262144` | `통과` | `73.1%~93.8%` | full wss |
 | `wss` | `MULTI_DEALER_ROUTER` | 전체 대상 | `통과` | `54.8%~95.4%` | full wss |
 | `wss` | `MULTI_ROUTER_ROUTER` | 전체 대상 | `통과` | `50.4%~93.6%` | full wss, 상대 기준 허용 범위 |
-| `wss` | `MULTI_PUBSUB` | `64,256,1024` | `미달` | `42.8%~61.4%` | Java PUBSUB 대비 낮은지 확인하고 subscribe callback, receive allocation, poll loop 재검토 |
+| `wss` | `MULTI_PUBSUB` | `64,256,1024` | `보류` | `42.8%~61.4%` | PUBSUB subscribe callback/receive allocation 경로의 추가 개선은 raw/typed subscribed receive facade 추가/수정 필요 |
 | `wss` | `MULTI_PUBSUB` | `65536,131072,262144` | `통과` | `73.7%~92.8%` | full wss |
-| `wss` | `MULTI_SPOT` | `64,262144` | `미달` | `47.2%~48.4%` | `REQREP`/`SENDSEND`와 Java 구현 대비 낮다. publish/subscribe hot path 내부 차이를 분석하고 재측정 |
+| `wss` | `MULTI_SPOT` | `64,262144` | `보류` | `47.2%~48.4%` | SPOT publish native-message 후보가 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
 | `wss` | `MULTI_SPOT` | `256,1024,65536,131072` | `통과` | `103.5%~303.9%` | 제한 C 기준 |
 | `wss` | `MULTI_SPOT_REQREP` | `64,256,1024,131072,262144` | `통과` | `70.2%~96.0%` | 제한 C 기준 |
 | `wss` | `MULTI_SPOT_REQREP` | `65536` | `통과` | `93.2%` | timeout 원인 해소 후 complete: `perf_dotnet_multi_linux_20260518_202129_codex_dotnet_wss_reqrep65536_nooutput_recheck.txt` |
 | `wss` | `MULTI_SPOT_SENDSEND` | `64,256,1024` | `통과` | `64.5%~69.2%` | 제한 C 기준 |
 | `wss` | `MULTI_SPOT_SENDSEND` | `65536,131072,262144` | `통과` | `90.8%~91.1%` | timeout 원인 해소 후 complete: `perf_dotnet_multi_linux_20260518_202141_codex_dotnet_wss_sendsend_large_nooutput_recheck.txt` |
 | `wss` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `86.7%~91.9%` | full wss |
-| `tls` | `MULTI_DEALER_DEALER` | `64,256` | `미달` | `54.1%~60.2%` | Java 같은 pattern과 비교해 small-message TLS send/receive 경로 재검토 |
+| `tls` | `MULTI_DEALER_DEALER` | `64,256` | `보류` | `54.1%~60.2%` | tcp small one-way 후보가 abort/악화. TLS도 writable/owned message builder 추가/수정 필요 |
 | `tls` | `MULTI_DEALER_DEALER` | `1024,65536,131072,262144` | `통과` | `67.2%~85.3%` | full tls |
 | `tls` | `MULTI_DEALER_ROUTER` | 전체 대상 | `통과` | `53.7%~91.6%` | full tls |
-| `tls` | `MULTI_ROUTER_ROUTER` | `64,256,1024` | `미달` | `45.9%~48.8%` | .NET/Java 같은 managed 목표 그룹 안에서 router-router dispatch와 payload 경로 재검토 |
+| `tls` | `MULTI_ROUTER_ROUTER` | `64,256,1024` | `보류` | `45.9%~48.8%` | routed echo dispatch와 payload 경로의 추가 개선은 단일 part routed send context 또는 raw recv facade 추가/수정 필요 |
 | `tls` | `MULTI_ROUTER_ROUTER` | `65536,131072,262144` | `통과` | `86.8%~96.1%` | full tls |
-| `tls` | `MULTI_PUBSUB` | `64,256,1024,65536,262144` | `미달` | `38.7%~62.4%` | Java PUBSUB 대비 낮은지 확인하고 subscribe callback, receive allocation, poll loop 재검토 |
+| `tls` | `MULTI_PUBSUB` | `64,256,1024,65536,262144` | `보류` | `38.7%~62.4%` | PUBSUB subscribe callback/receive allocation 경로의 추가 개선은 raw/typed subscribed receive facade 추가/수정 필요 |
 | `tls` | `MULTI_PUBSUB` | `131072` | `통과` | `85.7%` | full tls |
-| `tls` | `MULTI_SPOT` | `64,65536,131072,262144` | `미달` | `43.2%~48.9%` | `REQREP`/`SENDSEND`와 Java 구현 대비 낮다. publish/subscribe hot path 내부 차이를 분석하고 재측정 |
+| `tls` | `MULTI_SPOT` | `64,65536,131072,262144` | `보류` | `43.2%~48.9%` | SPOT publish native-message 후보가 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
 | `tls` | `MULTI_SPOT` | `256,1024` | `통과` | `61.6%~77.4%` | 제한 C 기준 |
 | `tls` | `MULTI_SPOT_REQREP` | `64,256,1024,262144` | `통과` | `63.5%~96.7%` | 제한 C 기준 |
 | `tls` | `MULTI_SPOT_REQREP` | `65536,131072` | `통과` | `87.4%~92.2%` | timeout 원인 해소 후 complete: `perf_dotnet_multi_linux_20260518_202204_codex_dotnet_tls_reqrep_large_nooutput_recheck.txt` |
@@ -447,7 +579,7 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 | `tls` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `85.2%` | timeout 원인 해소 후 complete: `perf_dotnet_multi_linux_20260518_202221_codex_dotnet_tls_sendsend65536_nooutput_recheck.txt` |
 | `tls` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `83.5%~94.9%` | 제한 tail 측정 |
 
-### 5.4 Java 상태
+### 6.4 Java 상태
 
 | Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
 |-----------|---------|---------|--------|--------|------|
@@ -456,7 +588,7 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 | `tcp` | `MULTI_ROUTER_ROUTER` | `64,256,1024` | `통과` | `62.9%~64.3%` | 절대 목표 기준 통과 |
 | `tcp` | `MULTI_ROUTER_ROUTER` | `65536,131072,262144` | `통과` | `54.5%~106.6%` | 상대 기준 허용 범위 |
 | `tcp` | `MULTI_PUBSUB` | 전체 대상 | `통과` | `90.6%~256.7%` | 최신 full tcp |
-| `tcp` | `MULTI_SPOT` | `64,256,1024,65536,131072,262144` | `미달` | `32.8%~51.4%` | `REQREP`/`SENDSEND`는 통과하므로 같은 SPOT publish/subscribe 내부 구현 차이를 .NET과 재검토 |
+| `tcp` | `MULTI_SPOT` | `64,256,1024,65536,131072,262144` | `보류` | `32.8%~51.4%` | single-part builder, scratch native message, direct message 후보를 확인했지만 목표 미달. publish payload direct 구성 또는 raw/typed subscribed receive facade 추가/수정 필요 |
 | `tcp` | `MULTI_SPOT_REQREP` | `64,256,1024` | `통과` | `67.3%~84.9%` | progress pump 재사용과 단일 submit loop 후 통과 |
 | `tcp` | `MULTI_SPOT_REQREP` | `65536,131072,262144` | `통과` | `77.3%~107.7%` | 최신 full tcp 기준 timeout 없이 통과 |
 | `tcp` | `MULTI_SPOT_SENDSEND` | `64,256,1024` | `통과` | `75.6%~80.9%` | 단일 poll loop와 `MsgUnit(B)` 정렬 후 제한 C 기준 통과 |
@@ -466,26 +598,58 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 | `ws` | `MULTI_SPOT_SENDSEND` | `131072` | `통과` | `68.5%` | size 단독 제한 측정 기준: `perf_java_multi_linux_20260518_210336_codex_java_ws_sendsend131072_nano_time.txt` |
 | `ws` | 그 외 미출력 조합 | 해당 size | `통과` | - | 제한 재측정 complete: `perf_java_multi_linux_20260518_203045_codex_java_ws_dd1024_isolate_before_fix.txt`, `perf_java_multi_linux_20260518_203142_codex_java_ws_pubsub262144_deadline_exit.txt`, `perf_java_multi_linux_20260518_203213_codex_java_ws_reqrep64_debug.txt` |
 | `wss` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `87.6%` | `perf_java_multi_linux_20260518_210512_codex_java_wss_sendsend65536_final_nano.txt` |
-| `wss` | `MULTI_SPOT_SENDSEND` | `131072` | `미달` | `43.6%` | timeout은 stdin reader 공유로 해소. active slot/public `wrapDirect` 실험 효과 없음. C 제한: `perf_c_multi_linux_20260518_210806_codex_c_wss_sendsend131072_java_compare.txt`, Java best: `perf_java_multi_linux_20260518_210732_codex_java_wss_sendsend131072_slots_2_probe.txt` |
-| `wss` | `MULTI_SPOT_SENDSEND` | `262144` | `미달` | `0.0%~90.8%` | 최신 단독 재측정 필요. 이전 full은 미달 수치, .NET은 통과하므로 Java 내부 경로 계속 분석 |
+| `wss` | `MULTI_SPOT_SENDSEND` | `131072` | `보류` | `43.6%` | stdin reader, active slot, public `wrapDirect` 후보 확인 후 목표 미달. WSS large routed send/reply payload API 추가/수정 필요 |
+| `wss` | `MULTI_SPOT_SENDSEND` | `262144` | `통과` | `60.4%` | 최신 단독 제한 측정: C `perf_c_multi_linux_20260518_223446_codex_c_wss_sendsend262144_java_compare.txt`, Java `perf_java_multi_linux_20260518_223449_codex_java_wss_sendsend262144_single_recheck.txt` |
 | `wss` | 그 외 미출력 조합 | 해당 size | `통과` | - | 제한 재측정 complete: `perf_java_multi_linux_20260518_204413_codex_java_wss_pubsub131072_isolate.txt`, `perf_java_multi_linux_20260518_204422_codex_java_wss_sendsend_small_isolate.txt`, `perf_java_multi_linux_20260518_204519_codex_java_wss_sendsend1024_recheck_after_debug.txt` |
 | `tls` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `86.8%` | `perf_java_multi_linux_20260518_210940_codex_java_tls_sendsend65536_final_nano.txt` |
-| `tls` | `MULTI_SPOT_SENDSEND` | `131072,262144` | `미달` | `11.1%~17.6%` | `perf_java_multi_linux_20260518_210951_codex_java_tls_sendsend131072_final_nano.txt`, `perf_java_multi_linux_20260518_211000_codex_java_tls_sendsend262144_final_nano.txt` |
+| `tls` | `MULTI_SPOT_SENDSEND` | `131072,262144` | `보류` | `11.1%~17.6%` | active slot, public `wrapDirect`, `System.nanoTime()` 후보 확인 후 목표 미달. TLS large routed send/reply payload API 추가/수정 필요 |
 | `tls` | `MULTI_ROUTER_ROUTER` | `131072,262144` | `통과` | - | server active deadline 종료 수정 후 complete: `perf_java_multi_linux_20260518_205313_codex_java_tls_rr_large_deadline_exit.txt` |
 | `tls` | 그 외 대상 | 해당 size | `통과` | - | full tls와 제한 재측정 기준 timeout/no-result 없음 |
 
-### 5.5 Node 상태
+### 6.5 Node 상태
 
 | Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
 |-----------|---------|---------|--------|--------|------|
 | `tcp` | `PUBSUB` | `64` | `통과` | `37.06%` | `perf_node_single_linux_20260518_111604.txt` |
 | `tcp` | `PUBSUB` | `256` | `통과` | `36.30%` | `perf_node_single_linux_20260518_111503.txt` |
-| `tcp` | 그 외 대상 | 전체 대상 | `미측정` | - | 진행 순서 도달 후 `tcp`에서 먼저 측정 |
-| `ws` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미측정/미달 해소 후 측정 |
-| `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `ws` 미측정/미달 해소 후 측정 |
+| `tcp` | `MULTI_DEALER_DEALER` | `64,256,1024,65536,131072` | `통과` | `56.4%~83.2%` | public `sendFrom` fast path와 public `recvInto` receiver 적용 후 `perf_node_multi_linux_20260518_230350_codex_node_tcp_dd_full_recvinto_final.txt` |
+| `tcp` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `38.8%` | EPIPE 종료 수정 후 단독 재측정: `perf_node_multi_linux_20260518_230538_codex_node_tcp_dd262144_recvinto_epipe_fix_recheck.txt` |
+| `tcp` | `MULTI_DEALER_ROUTER` | `64,256,1024` | `통과` | `34.5%~55.9%` | public `sendFrom` fast path 반영 후 `perf_node_multi_linux_20260518_230906_codex_node_tcp_routed_full_sendfrom_current.txt` |
+| `tcp` | `MULTI_DEALER_ROUTER` | `65536,131072,262144` | `보류` | `14.7%~27.6%` | non-routed `sendFrom` 후보만으로 목표 미달. routed reply/send payload fast path는 public routed raw send/borrowed send context 추가/수정 필요 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `64,256` | `통과` | `31.2%~39.5%` | public `sendFrom` fast path 반영 후 `perf_node_multi_linux_20260518_230906_codex_node_tcp_routed_full_sendfrom_current.txt` |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `1024,65536,131072,262144` | `보류` | `13.9%~29.2%` | routed 양쪽 send가 builder/context 경로에 묶인다. public routed raw send/borrowed send context 추가/수정 필요 |
+| `tcp` | `MULTI_PUBSUB` | `1024` | `통과` | `40.3%` | caller-provided `TopicMessage` 재사용 후 `perf_node_multi_linux_20260518_230630_codex_node_tcp_pubsub_full_topic_storage_reuse.txt` |
+| `tcp` | `MULTI_PUBSUB` | `64,256,65536,131072,262144` | `보류` | `16.8%~25.8%` | `TopicMessage` 재사용 후보만으로 목표 미달. public raw/typed subscribed receive facade 추가/수정 필요 |
+| `tcp` | `MULTI_STREAM` | `65536` | `통과` | `43.1%` | `perf_node_multi_linux_20260518_230942_codex_node_tcp_stream_full_current.txt` |
+| `tcp` | `MULTI_STREAM` | `64,256,1024` | `보류` | `16.7%~19.0%` | stream echo가 frame 재구성 Buffer와 stream send builder 경로에 묶인다. public stream raw send/borrowed frame API 추가/수정 필요 |
+| `tcp` | `MULTI_SPOT` | 전체 대상 | `보류` | - | deadline inner-check 수정으로 종료는 complete. `Auto-HWM spotnode`의 `MsgUnit(B)=4096` 불일치가 남아 context auto-HWM message unit option 추가/수정 필요 |
+| `tcp` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | `65536B` 단독은 complete지만 SPOT-family 전체가 `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | smoke complete이나 `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `ws` | `MULTI_DEALER_DEALER` | 전체 대상 | `통과` | `59.9%~100.1%` | full 중 `64B` outlier는 단독 재측정으로 통과: `perf_node_multi_linux_20260518_232722_codex_node_ws_dd64_full_outlier_recheck.txt`, 나머지는 `perf_node_multi_linux_20260518_232616_codex_node_ws_multi_full_status.txt` |
+| `ws` | `MULTI_DEALER_ROUTER` | `64,256,1024,131072,262144` | `통과` | `33.8%~42.7%` | `perf_node_multi_linux_20260518_232616_codex_node_ws_multi_full_status.txt` |
+| `ws` | `MULTI_DEALER_ROUTER` | `65536` | `보류` | `22.5%` | tcp large routed echo와 같은 병목. public routed raw send/borrowed send context 추가/수정 필요 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `64,256,1024,131072,262144` | `통과` | `30.2%~38.8%` | `perf_node_multi_linux_20260518_232616_codex_node_ws_multi_full_status.txt` |
+| `ws` | `MULTI_ROUTER_ROUTER` | `65536` | `보류` | `24.5%` | routed 양쪽 send가 builder/context 경로에 묶인다. public routed raw send/borrowed send context 추가/수정 필요 |
+| `ws` | `MULTI_PUBSUB` | `262144` | `통과` | `35.2%` | `perf_node_multi_linux_20260518_232616_codex_node_ws_multi_full_status.txt` |
+| `ws` | `MULTI_PUBSUB` | `64,256,1024,65536,131072` | `보류` | `21.3%~33.3%` | `TopicMessage` 재사용 후보만으로 목표 미달. public raw/typed subscribed receive facade 추가/수정 필요 |
+| `ws` | `MULTI_SPOT` | 전체 대상 | `보류` | - | full은 complete지만 `Auto-HWM spotnode`의 `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `ws` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | 수치는 `37.2%~76.5%`이나 SPOT-family `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `ws` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | 수치는 일부 통과/일부 미달이나 SPOT-family `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `ws` | `MULTI_STREAM` | `65536` | `통과` | `90.5%` | `perf_node_multi_linux_20260518_232616_codex_node_ws_multi_full_status.txt` |
+| `ws` | `MULTI_STREAM` | `64,256,1024` | `보류` | `13.4%~14.2%` | `1024B` full crash는 단독 재측정 complete: `perf_node_multi_linux_20260518_232633_codex_node_ws_stream1024_double_free_repro.txt`. stream raw send/borrowed frame API 추가/수정 필요 |
+| `wss` | `MULTI_DEALER_DEALER` | 전체 대상 | `통과` | `49.8%~57.0%` | full의 `256B` outlier는 전체 재측정으로 정상화: `perf_node_multi_linux_20260518_235652_codex_node_wss_dd_all_sizes_anomaly_check.txt` |
+| `wss` | `MULTI_DEALER_ROUTER` | 전체 대상 | `통과` | `33.4%~40.8%` | Node `perf_node_multi_linux_20260518_234522_codex_node_wss_multi_full_status.txt`, C `perf_c_multi_linux_20260518_234546_codex_c_wss_multi_full_node_compare.txt` |
+| `wss` | `MULTI_ROUTER_ROUTER` | 전체 대상 | `통과` | `30.7%~41.0%` | `1024B`는 단독 C/Node 재측정 기준 통과: Node `perf_node_multi_linux_20260518_235711_codex_node_wss_rr1024_threshold_recheck.txt`, C `perf_c_multi_linux_20260518_235723_codex_c_wss_rr1024_node_compare.txt` |
+| `wss` | `MULTI_PUBSUB` | `262144` | `통과` | `36.4%` | `perf_node_multi_linux_20260518_234522_codex_node_wss_multi_full_status.txt` |
+| `wss` | `MULTI_PUBSUB` | `64,256,1024,65536,131072` | `보류` | `17.0%~32.7%` | `TopicMessage` 재사용 후보만으로 목표 미달. public raw/typed subscribed receive facade 추가/수정 필요 |
+| `wss` | `MULTI_SPOT` | 전체 대상 | `보류` | - | full은 complete지만 `Auto-HWM spotnode`의 `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `wss` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | 수치는 `38.5%~92.0%`이나 SPOT-family `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
+| `wss` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | 수치는 `21.0%~59.3%`이고 SPOT-family `MsgUnit(B)=4096` 불일치가 남아 context auto-HWM message unit option 추가/수정 필요 |
+| `wss` | `MULTI_STREAM` | `65536` | `통과` | `92.9%` | `perf_node_multi_linux_20260518_234522_codex_node_wss_multi_full_status.txt` |
+| `wss` | `MULTI_STREAM` | `64,256,1024` | `보류` | `20.8%~21.9%` | stream echo가 frame 재구성 Buffer와 stream send builder 경로에 묶인다. public stream raw send/borrowed frame API 추가/수정 필요 |
 | `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `wss` 미측정/미달 해소 후 측정 |
 
-### 5.6 Rust 상태
+### 6.6 Rust 상태
 
 | Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
 |-----------|---------|---------|--------|--------|------|
@@ -494,7 +658,7 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 | `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `ws` 미측정/미달 해소 후 측정 |
 | `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `wss` 미측정/미달 해소 후 측정 |
 
-### 5.7 Go 상태
+### 6.7 Go 상태
 
 | Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
 |-----------|---------|---------|--------|--------|------|
@@ -509,7 +673,7 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 | `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `ws` 미측정/미달 해소 후 측정 |
 | `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `wss` 미측정/미달 해소 후 측정 |
 
-### 5.8 Python 상태
+### 6.8 Python 상태
 
 | Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
 |-----------|---------|---------|--------|--------|------|

@@ -2,7 +2,7 @@ namespace Zlink.Framework.Contracts.Streams;
 
 public interface IZLinkSession
 {
-    IZLinkSessionContext Context { get; set; }
+    IZLinkSessionContext Context { get; }
 
     ValueTask OnConnectedAsync(
         CancellationToken cancellationToken);

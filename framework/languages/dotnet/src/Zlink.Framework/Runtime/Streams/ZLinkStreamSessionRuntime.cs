@@ -32,7 +32,6 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         _removeSession = removeSession;
         _headerCodec = headerCodec;
         Stream = new ZLinkManagedStream(socket, routingId, headerCodec);
-        _handler = (IZLinkSession)scope.ServiceProvider.GetRequiredService(headerSessionType!);
         _context = new ZLinkSessionContext(
             scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>(),
             scope.ServiceProvider.GetRequiredService<IZLinkClient>(),
@@ -40,7 +39,15 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             headerCodec,
             CloseAsync,
             CloseByProxyAsync);
-        _handler.Context = _context;
+        _handler = (IZLinkSession)ActivatorUtilities.CreateInstance(
+            scope.ServiceProvider,
+            headerSessionType!,
+            _context);
+        if (!ReferenceEquals(_handler.Context, _context))
+        {
+            throw new InvalidOperationException(
+                $"Session '{_handler.GetType().FullName}' must expose the context provided by the runtime.");
+        }
     }
 
     public ZLinkManagedStream Stream { get; }

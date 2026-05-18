@@ -26,6 +26,12 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
             _scope.ServiceProvider,
             entrySpotType,
             this);
+        if (!ReferenceEquals(EntrySpot.Context, this))
+        {
+            throw new InvalidOperationException(
+                $"Entry SPOT '{entrySpotType.FullName}' must expose the context provided by the runtime.");
+        }
+
         _invoker = new ZLinkSpotHandlerInvoker(_scope.ServiceProvider, EntrySpot);
         _handlerExecutor = new ZLinkEntrySpotHandlerExecutor(services, EntrySpot);
     }

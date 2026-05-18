@@ -12,7 +12,11 @@ internal static class ZLinkStreamProtocolDefaults
 
     public static IZlinkStreamPacketNameResolver PacketNameResolver { get; } = new DefaultPacketNameResolver();
 
-    public static IZlinkStreamCompressionCodec Lz4CompressionCodec { get; } = new DefaultLz4CompressionCodec();
+    public static ReadOnlyMemory<byte> Lz4Compress(ReadOnlyMemory<byte> payload)
+        => LZ4Pickler.Pickle(payload.Span);
+
+    public static ReadOnlyMemory<byte> Lz4Decompress(ReadOnlyMemory<byte> payload)
+        => LZ4Pickler.Unpickle(payload.Span);
 
     private sealed class DefaultHeaderCodec : IZlinkStreamHeaderCodec
     {
@@ -222,17 +226,6 @@ internal static class ZLinkStreamProtocolDefaults
                 type.GetCustomAttribute<ZlinkStreamPacketNameAttribute>(inherit: false)?.Name
                 ?? type.Name);
         }
-    }
-
-    private sealed class DefaultLz4CompressionCodec : IZlinkStreamCompressionCodec
-    {
-        public ZlinkStreamCompression Compression => ZlinkStreamCompression.Lz4;
-
-        public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
-            => LZ4Pickler.Pickle(payload.Span);
-
-        public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload)
-            => LZ4Pickler.Unpickle(payload.Span);
     }
 
     private static class MetadataCodec

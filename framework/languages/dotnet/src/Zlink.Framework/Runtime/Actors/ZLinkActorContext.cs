@@ -2,10 +2,9 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorContext(
     ZLinkFrameworkRuntime runtime,
-    IZLinkActor actor,
     ZLinkActorRuntimeState state) : IZLinkActorContext
 {
-    public string ActorId => actor.ActorId;
+    public string ActorId => state.ActorId;
 
     public string? SessionId => state.SessionId;
 
@@ -22,7 +21,7 @@ internal sealed class ZLinkActorContext(
     public void AddPacket<THandler>()
         where THandler : class
     {
-        state.AddPacket(actor, typeof(THandler), null);
+        state.AddPacket(CurrentActor, typeof(THandler), null);
     }
 
     public void AddPacket<THandler>(string messageName)
@@ -33,7 +32,7 @@ internal sealed class ZLinkActorContext(
             throw new InvalidOperationException("Actor packet name must not be empty.");
         }
 
-        state.AddPacket(actor, typeof(THandler), messageName);
+        state.AddPacket(CurrentActor, typeof(THandler), messageName);
     }
 
     public IZLinkSpot GetSpot()
@@ -66,7 +65,7 @@ internal sealed class ZLinkActorContext(
             throw new InvalidOperationException("SPOT name must not be empty.");
         }
 
-        return new ZLinkActorJoinSpotCall<TRequest>(runtime, actor, spotName, null, request);
+        return new ZLinkActorJoinSpotCall<TRequest>(runtime, CurrentActor, spotName, null, request);
     }
 
     public IZLinkActorJoinSpotCall JoinSpot<TRequest>(
@@ -74,7 +73,7 @@ internal sealed class ZLinkActorContext(
         TRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return new ZLinkActorJoinSpotCall<TRequest>(runtime, actor, null, spotId, request);
+        return new ZLinkActorJoinSpotCall<TRequest>(runtime, CurrentActor, null, spotId, request);
     }
 
     public IZLinkActorJoinSpotCall JoinSpot<TRequest>(
@@ -84,7 +83,7 @@ internal sealed class ZLinkActorContext(
         ArgumentNullException.ThrowIfNull(request);
         return new ZLinkActorJoinSpotCall<TRequest>(
             runtime,
-            actor,
+            CurrentActor,
             null,
             ZLinkSpotId.FromRoutingId(spotRid),
             request);
@@ -138,6 +137,10 @@ internal sealed class ZLinkActorContext(
     {
         return JoinSpot(spotRid, request).SubmitAsync<TReply>(cancellationToken);
     }
+
+    private IZLinkActor CurrentActor
+        => state.Actor ?? throw new InvalidOperationException(
+            $"Actor '{state.ActorId}' has not been created.");
 }
 
 internal sealed class ZLinkActorChannelSendCall<TMessage>(

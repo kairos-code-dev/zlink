@@ -260,6 +260,7 @@ public interface IZLinkTimer : IAsyncDisposable
 
 public interface IZLinkSpot
 {
+    IZLinkSpotContext Context { get; }
 }
 
 public interface IZLinkSpotContext

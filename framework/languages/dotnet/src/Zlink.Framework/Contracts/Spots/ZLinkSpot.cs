@@ -52,6 +52,8 @@ public sealed record ZLinkSpotActorLifecycleInfo(
 
 public interface IZLinkSpot
 {
+    IZLinkSpotContext Context { get; }
+
     void Configure()
     {
     }

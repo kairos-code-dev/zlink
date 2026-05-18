@@ -13,6 +13,8 @@ public sealed partial class StreamConnectorTests
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
         var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var packetWritten = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
@@ -27,29 +29,34 @@ public sealed partial class StreamConnectorTests
                     "manual",
                     ZlinkStreamMetadata.Empty)).ToArray(),
                 "payload"u8.ToArray());
+            packetWritten.SetResult();
+            await received.Task.WaitAsync(TimeSpan.FromSeconds(15));
         });
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat()
         });
-        var received = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var receivedThread = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.On("manual", (_, _) =>
         {
-            received.SetResult(Environment.CurrentManagedThreadId);
+            receivedThread.SetResult(Environment.CurrentManagedThreadId);
+            received.TrySetResult();
             return ValueTask.CompletedTask;
         });
 
         await connector.ConnectAsync();
+        await packetWritten.Task.WaitAsync(TimeSpan.FromSeconds(15));
         await WaitUntilAsync(
             () => connector.PendingDispatchCount > 0,
-            TimeSpan.FromSeconds(5));
+            TimeSpan.FromSeconds(15));
 
-        Assert.False(received.Task.IsCompleted);
+        Assert.False(receivedThread.Task.IsCompleted);
         var dispatchThread = Environment.CurrentManagedThreadId;
         await connector.DispatchAsync();
 
-        Assert.Equal(dispatchThread, await received.Task.WaitAsync(TimeSpan.FromSeconds(1)));
+        Assert.Equal(dispatchThread, await receivedThread.Task.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(0, connector.PendingDispatchCount);
         await server;
     }
@@ -61,6 +68,8 @@ public sealed partial class StreamConnectorTests
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
         var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var packetWritten = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
@@ -75,14 +84,16 @@ public sealed partial class StreamConnectorTests
                     "immediate",
                     ZlinkStreamMetadata.Empty)).ToArray(),
                 Array.Empty<byte>());
+            packetWritten.SetResult();
+            await received.Task.WaitAsync(TimeSpan.FromSeconds(15));
         });
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
-        var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.On("immediate", (_, _) =>
         {
             received.SetResult();
@@ -90,7 +101,8 @@ public sealed partial class StreamConnectorTests
         });
 
         await connector.ConnectAsync();
-        await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await packetWritten.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        await received.Task.WaitAsync(TimeSpan.FromSeconds(15));
 
         Assert.Equal(0, connector.PendingDispatchCount);
         await server;

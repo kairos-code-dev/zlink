@@ -5,8 +5,6 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal static class ZLinkStreamPacketPayloadCodec
 {
-    private static readonly IZlinkStreamCompressionCodec CompressionCodec = ZLinkStreamProtocolDefaults.Lz4CompressionCodec;
-
     public static object? Decode(
         ZlinkStreamHeader header,
         Message payloadMessage,
@@ -20,7 +18,7 @@ internal static class ZLinkStreamPacketPayloadCodec
         var payload = payloadMessage.AsReadOnlyMemory();
         if ((header.Flags & ZlinkStreamHeaderFlags.PayloadCompressed) != 0)
         {
-            payload = CompressionCodec.Decompress(payload);
+            payload = ZLinkStreamProtocolDefaults.Lz4Decompress(payload);
         }
 
         if (messageType == typeof(ZlinkStreamEncodedPayload))

@@ -1,11 +1,10 @@
+using Systems.Zlink;
 using TicTacToe.Server.Play.Games;
 using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Actors.Handlers;
 
-internal sealed class PlayActorJoinGameHandler(
-    TicTacToeJoinService games,
-    ILogger<PlayActorJoinGameHandler> logger)
+internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler> logger)
     : IZLinkEntrySpotActorSendHandler<PlayActor, JoinGameReq>
 {
     public async ValueTask HandleAsync(
@@ -18,7 +17,14 @@ internal sealed class PlayActorJoinGameHandler(
             actor.ActorId,
             message.GameId);
 
-        var reply = await games.JoinAsync(actor, message, cancellationToken);
+        var spotRid = RoutingId.FromString(message.GameId);
+        var joined = await actor.Context.JoinSpot(
+                ZLinkSpotId.FromRoutingId(spotRid),
+                new TicTacToeGameJoinReq(message.GameId, actor.ActorId))
+            .Timeout(SampleTimeouts.Request)
+            .SubmitAsync<TicTacToeGameJoinRes>(cancellationToken);
+
+        var reply = new JoinGameRes(joined.State);
         await actor.Context.Reply(reply)
             .Submit(cancellationToken);
         logger.LogInformation(

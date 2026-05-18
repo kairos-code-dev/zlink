@@ -1,11 +1,13 @@
 namespace Zlink.Framework.Runtime.Actors;
 
-internal sealed class ZLinkActorRuntimeState
+internal sealed class ZLinkActorRuntimeState(string actorId)
 {
     private readonly ZLinkActorPacketRegistry _packets = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ZLinkActorDispatchMailbox _dispatchMailbox = new();
     private Task<IZLinkActor>? _actorCreationTask;
+
+    public string ActorId { get; } = actorId;
 
     public string? SessionId { get; set; }
 

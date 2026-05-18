@@ -115,6 +115,9 @@ public sealed partial class StreamConnectorTests
         }
     }
 
+    private static ZlinkStreamHeartbeatOptions DisabledHeartbeat()
+        => new() { Enabled = false };
+
     private static X509Certificate2 CreateSelfSignedCertificate()
     {
         using var rsa = RSA.Create(2048);

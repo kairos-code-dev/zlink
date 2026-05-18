@@ -635,9 +635,11 @@ internal sealed class TestHostRawStreamRecorder(TestHostEventSink sink)
     }
 }
 
-internal sealed class TestHostRawStreamSession(TestHostRawStreamRecorder recorder) : IZLinkSession
+internal sealed class TestHostRawStreamSession(
+    TestHostRawStreamRecorder recorder,
+    IZLinkSessionContext context) : IZLinkSession
 {
-    public IZLinkSessionContext Context { get; set; } = default!;
+    public IZLinkSessionContext Context { get; } = context;
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {

@@ -274,6 +274,10 @@ user Spot 클래스도 같은 방식이다. `IZLinkSpot` 을 구현하고, user 
 actor handler 를 등록한다. room, stage, zone 상태를 다루는 packet 은 Entry Spot
 이 아니라 이쪽 registry 에 둔다.
 
+Entry Spot 과 user Spot 모두 context 는 생성자에서 주입받아 `Context` property
+로 그대로 노출한다. framework 는 생성된 spot 이 주입된 context 를 노출하지
+않으면 activation 을 실패시킨다.
+
 ```csharp
 public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 {

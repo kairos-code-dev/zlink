@@ -6,7 +6,8 @@ internal sealed class ZLinkActorCreationCoordinator(
     ZLinkFrameworkRuntime runtime,
     IServiceProvider services,
     Func<IZLinkBackendSpotNode?> getActorSpotNode,
-    Func<IZLinkActor, ZLinkActorRuntimeState, ZLinkActorContext> ensureActorContext)
+    Func<ZLinkActorRuntimeState, ZLinkActorContext> ensureActorContext,
+    Func<IZLinkActor, ZLinkActorRuntimeState, ZLinkActorContext> bindActorContext)
 {
     public async ValueTask<CreateActorResult> CreateAndBindActorAsync(
         ZLinkActorRuntimeState state,
@@ -41,8 +42,9 @@ internal sealed class ZLinkActorCreationCoordinator(
         CancellationToken cancellationToken)
     {
         await using var scope = services.CreateAsyncScope();
+        var context = ensureActorContext(state);
         var factory = (IZLinkActorFactory)scope.ServiceProvider.GetRequiredService(factoryType);
-        var actor = await factory.CreateAsync(actorId, cancellationToken)
+        var actor = await factory.CreateAsync(actorId, context, cancellationToken)
             .ConfigureAwait(false);
         if (actor is null)
         {
@@ -55,7 +57,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                 $"Actor factory '{factoryType}' returned actor id '{actor.ActorId}' for requested id '{actorId}'.");
         }
 
-        ensureActorContext(actor, state);
+        bindActorContext(actor, state);
 
         var node = getActorSpotNode();
         if (node is not null && state.NativeActorRef is null)

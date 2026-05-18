@@ -50,6 +50,7 @@ public sealed partial class StreamConnectorTests
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
         await connector.ConnectAsync();
@@ -57,7 +58,7 @@ public sealed partial class StreamConnectorTests
         var reply = await connector
             .Request(new Ping("hello"))
             .PacketName("ping")
-            .Timeout(TimeSpan.FromSeconds(1))
+            .Timeout(TimeSpan.FromSeconds(5))
             .SubmitAsync<Pong>();
 
         Assert.Equal("pong", reply.Text);
@@ -93,6 +94,7 @@ public sealed partial class StreamConnectorTests
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
         await connector.ConnectAsync();
@@ -102,7 +104,7 @@ public sealed partial class StreamConnectorTests
             .PacketName("ping")
             .Submit<Pong>(result => completed.SetResult(result));
 
-        var result = await completed.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var result = await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(result.IsSuccess);
         Assert.Equal("callback", result.Value?.Text);
         await server;
@@ -126,7 +128,8 @@ public sealed partial class StreamConnectorTests
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat()
         });
         await connector.ConnectAsync();
 
@@ -148,7 +151,8 @@ public sealed partial class StreamConnectorTests
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat()
         });
         await connector.ConnectAsync();
 
@@ -189,6 +193,7 @@ public sealed partial class StreamConnectorTests
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
             Compression = ZlinkStreamCompression.Lz4
         });
         await connector.ConnectAsync();

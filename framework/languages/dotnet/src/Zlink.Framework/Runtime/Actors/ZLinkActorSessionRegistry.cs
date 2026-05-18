@@ -14,7 +14,7 @@ internal sealed class ZLinkActorSessionRegistry
                 return existing;
             }
 
-            var created = new ZLinkActorRuntimeState();
+            var created = new ZLinkActorRuntimeState(actorId);
             _states.Add(actorId, created);
             return created;
         }

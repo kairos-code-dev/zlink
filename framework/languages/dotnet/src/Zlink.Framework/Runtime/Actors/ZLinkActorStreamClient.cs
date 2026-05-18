@@ -21,7 +21,6 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
     TMessage message)
 {
     private static readonly IZlinkStreamPacketNameResolver MessageNameResolver = ZLinkStreamProtocolDefaults.PacketNameResolver;
-    private static readonly IZlinkStreamCompressionCodec CompressionCodec = ZLinkStreamProtocolDefaults.Lz4CompressionCodec;
     private string _messageName = MessageNameResolver.Resolve(typeof(TMessage));
     private ZlinkStreamMetadata _metadata = ZlinkStreamMetadata.Empty;
     private bool _compress;
@@ -66,7 +65,7 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
 
         if (_compress)
         {
-            payload = CompressionCodec.Compress(payload);
+            payload = ZLinkStreamProtocolDefaults.Lz4Compress(payload);
             flags |= ZlinkStreamHeaderFlags.PayloadCompressed;
         }
 

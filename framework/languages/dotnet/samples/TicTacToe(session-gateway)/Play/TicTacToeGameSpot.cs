@@ -8,10 +8,12 @@ internal sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
 {
     private readonly TicTacToeMatchRoom _room = new(context.SpotId.Value);
 
+    public IZLinkSpotContext Context { get; } = context;
+
     public void Configure()
     {
-        context.AddActorJoin<TicTacToeGameJoinHandler, PlayerActor, JoinMatchReq, JoinMatchSpotResult>();
-        context.AddActorPacket<PlaceMarkHandler, PlayerActor>();
+        Context.AddActorJoin<TicTacToeGameJoinHandler, PlayerActor, JoinMatchReq, JoinMatchSpotResult>();
+        Context.AddActorPacket<PlaceMarkHandler, PlayerActor>();
     }
 
     public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
@@ -33,7 +35,7 @@ internal sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
         var actorId = actor.ActorId;
         var (slot, isNewActor) = _room.GetOrAddActor(actorId);
         _room.StartWhenReady();
-        await context.JoinActorAsync(actor, cancellationToken)
+        await Context.JoinActorAsync(actor, cancellationToken)
             .ConfigureAwait(false);
         var snapshot = _room.Snapshot();
         return new JoinMatchSpotResult(

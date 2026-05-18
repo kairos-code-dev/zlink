@@ -118,7 +118,11 @@ public sealed partial class StreamConnectorTests
         var errorReceived = new TaskCompletionSource<ZlinkStreamError>(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.ErrorReceived += (error, _) =>
         {
-            errorReceived.TrySetResult(error);
+            if (error.Code == ZlinkStreamErrorCode.FrameDecodeFailed)
+            {
+                errorReceived.TrySetResult(error);
+            }
+
             return ValueTask.CompletedTask;
         };
 

@@ -106,7 +106,7 @@ public sealed class ZLinkMessageMetadata
 
 public interface IZLinkSession
 {
-    IZLinkSessionContext Context { get; set; }
+    IZLinkSessionContext Context { get; }
 
     ValueTask OnConnectedAsync(CancellationToken cancellationToken);
 
@@ -182,6 +182,10 @@ public interface IZLinkSessionContext :
     IZLinkSessionActorDispatchContext,
     IZLinkSessionLifecycle;
 ```
+
+`Context` 는 framework 가 session 을 생성할 때 생성자 인자로 제공한다.
+session 구현체는 이 값을 get-only property 로 그대로 노출해야 하며, runtime 은
+생성 직후 같은 context 인스턴스인지 검증한다.
 
 여기서 기대하는 동작은 다음과 같다.
 

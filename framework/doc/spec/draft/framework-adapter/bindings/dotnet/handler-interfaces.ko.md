@@ -317,6 +317,8 @@ SPOT 객체는 Actor 와 같은 원칙을 따른다. 즉 callback 표면과 실�
 ```csharp
 public interface IZLinkSpot
 {
+    IZLinkSpotContext Context { get; }
+
     void Configure()
     {
     }
@@ -420,6 +422,10 @@ public interface IZLinkEntrySpotContext : IZLinkActorHandlerRegistry
     RoutingId NodeRid { get; }
 }
 
+// Context property는 안내용 convention 이 아니라 공개 계약이다. framework 는
+// 객체를 생성할 때 현재 인스턴스에 맞는 context 를 생성자 인자로 넘기며,
+// 생성된 객체가 그 context 를 그대로 노출하지 않으면 activation 을 실패시킨다.
+// application 코드는 생성자에서 받은 값을 get-only property 에 보관한다.
 public interface IZLinkSpotPacketHandler<TSpot, in TMessage>
     where TSpot : IZLinkSpot
 {
@@ -1017,7 +1023,7 @@ public readonly record struct ZLinkStreamDiagnostic(
 
 public interface IZLinkSession
 {
-    IZLinkSessionContext Context { get; set; }
+    IZLinkSessionContext Context { get; }
 
     ValueTask OnConnectedAsync(CancellationToken cancellationToken);
 
@@ -1132,6 +1138,10 @@ public interface IZLinkSessionRequestCall
     ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 ```
+
+session 구현체는 framework 가 생성자에 넘긴 `IZLinkSessionContext` 를
+`Context` property 로 그대로 노출해야 한다. 이 규칙은 문서 가이드가 아니라
+runtime 이 검증하는 계약이다.
 
 `CloseAsync(...)` 는 현재 session 의 stream peer 연결을 서버 쪽에서 끊는
 동작이다.
@@ -1356,7 +1366,7 @@ public interface IZLinkActor
 {
     string ActorId { get; }
 
-    IZLinkActorContext Context { get; set; }
+    IZLinkActorContext Context { get; }
 
     void Configure()
     {
@@ -1434,8 +1444,13 @@ public interface IZLinkActorFactory
 {
     ValueTask<IZLinkActor> CreateAsync(
         string actorId,
+        IZLinkActorContext context,
         CancellationToken cancellationToken = default);
 }
+
+// actor 구현체는 factory 가 받은 context 를 생성자에 넘겨 보관하고,
+// Context property 로 그대로 노출해야 한다. framework 는 bind 시점에
+// 같은 context 인스턴스인지 검증한다.
 
 // Spot에 actor를 join할 때 호출되는 handler. spot 등록의 AddActorJoin<...>() 표면이
 // 이 generic 인자를 받고, framework는 join 시점에 target spot, joining actor,

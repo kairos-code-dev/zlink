@@ -22,7 +22,9 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
         ValidateActorType(descriptor, actor);
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, payload, descriptor.MessageType);
-        var handler = services.GetRequiredService(descriptor.HandlerType);
+        var handler = ActivatorUtilities.GetServiceOrCreateInstance(
+            services,
+            descriptor.HandlerType);
         var metadata = CreateMessageMetadata(header);
         var arguments = ArrayPool<object?>.Shared.Rent(3);
         arguments[0] = descriptor.ActorType is null ? message : actor;
@@ -59,7 +61,9 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
         ValidateActorType(descriptor, actor);
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, payload, descriptor.MessageType);
-        var handler = services.GetRequiredService(descriptor.HandlerType);
+        var handler = ActivatorUtilities.GetServiceOrCreateInstance(
+            services,
+            descriptor.HandlerType);
         var metadata = CreateMessageMetadata(header);
         var arguments = ArrayPool<object?>.Shared.Rent(3);
         arguments[0] = descriptor.ActorType is null ? message! : actor;

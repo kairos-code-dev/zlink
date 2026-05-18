@@ -38,6 +38,7 @@ public sealed partial class StreamConnectorTests
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
         await connector.ConnectAsync();
@@ -56,6 +57,7 @@ public sealed partial class StreamConnectorTests
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
         var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var receivedAll = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
@@ -80,6 +82,7 @@ public sealed partial class StreamConnectorTests
                     "h2",
                     ZlinkStreamMetadata.Empty)).ToArray(),
                 "b2"u8.ToArray());
+            await receivedAll.Task.WaitAsync(TimeSpan.FromSeconds(5));
         });
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
@@ -100,6 +103,7 @@ public sealed partial class StreamConnectorTests
         {
             received.Add($"{message.Name}:{Encoding.UTF8.GetString(message.Payload.Payload.Span)}");
             second.SetResult();
+            receivedAll.TrySetResult();
             return ValueTask.CompletedTask;
         });
 
@@ -134,7 +138,8 @@ public sealed partial class StreamConnectorTests
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri($"ws://127.0.0.1:{port}/ws/")
+            Endpoint = new Uri($"ws://127.0.0.1:{port}/ws/"),
+            Heartbeat = DisabledHeartbeat()
         });
         await connector.ConnectAsync();
 
@@ -168,6 +173,7 @@ public sealed partial class StreamConnectorTests
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tls://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
             SkipServerCertificateValidation = true
         });
         await connector.ConnectAsync();

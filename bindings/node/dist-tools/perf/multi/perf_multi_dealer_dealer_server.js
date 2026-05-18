@@ -3,11 +3,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, HEADER_SIZE, summarizeMetrics } = require('../common/perf_metrics');
+const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, HEADER_SIZE, summarizeMetrics } = require('../common/perf_metrics');
 const { configureTlsServer } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWait, waitForConnectionReadyCount } = require('./perf_multi_runtime');
-const { isStopTokenParts } = require('../perf_stop_token');
+const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, waitForConnectionReadyCount } = require('./perf_multi_runtime');
+const { isStopToken } = require('../perf_stop_token');
 // MULTI_DEALER_DEALER server == RECEIVER / MEASURER.
 //
 // C parity: bindings/c/perf/multi/src/perf_multi_dealer_dealer_server.cpp
@@ -32,6 +32,7 @@ async function main() {
     const server = new zlink.DealerSocket(ctx);
     const poller = new zlink.Poller();
     const payloadSize = Math.max(options.msgSize, HEADER_SIZE);
+    const recvBuffer = Buffer.allocUnsafe(payloadSize);
     let rl = null;
     let collector = null;
     try {
@@ -75,19 +76,14 @@ async function main() {
                     continue;
                 }
                 while (true) {
-                    const received = recvNoWait(server);
-                    if (!received) {
+                    const receivedBytes = server.recvInto(recvBuffer, zlink.RecvFlags.DontWait);
+                    if (receivedBytes === null) {
                         break;
                     }
-                    try {
-                        if (isStopTokenParts(received.parts)) {
-                            continue;
-                        }
-                        collector.record(decodeMetricHeaderFromParts(received.parts, payloadSize), currentEpochNs());
+                    if (isStopToken(recvBuffer.subarray(0, receivedBytes))) {
+                        continue;
                     }
-                    finally {
-                        received.close();
-                    }
+                    collector.record(receivedBytes === payloadSize ? decodeMetricHeader(recvBuffer) : null, currentEpochNs());
                 }
             }
             // C parity: bindings/c/perf/multi/src/perf_multi_dealer_dealer_server
@@ -105,11 +101,9 @@ async function main() {
             while (currentEpochNs() < tailDeadlineNs && currentEpochNs() < idleDeadlineNs) {
                 let drained = false;
                 while (true) {
-                    const received = recvNoWait(server);
-                    if (!received) {
+                    if (server.recvInto(recvBuffer, zlink.RecvFlags.DontWait) === null) {
                         break;
                     }
-                    received.close();
                     drained = true;
                 }
                 if (drained) {

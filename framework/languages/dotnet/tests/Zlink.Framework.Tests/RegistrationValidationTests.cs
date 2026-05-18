@@ -395,7 +395,12 @@ public sealed class RegistrationValidationTests
 
     private sealed class TestHeaderSession : IZLinkSession
     {
-        public IZLinkSessionContext Context { get; set; } = default!;
+        public TestHeaderSession(IZLinkSessionContext context)
+        {
+            Context = context;
+        }
+
+        public IZLinkSessionContext Context { get; }
 
         public ValueTask OnConnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
@@ -423,10 +428,11 @@ public sealed class RegistrationValidationTests
     {
         public ValueTask<IZLinkActor> CreateAsync(
             string actorId,
+            IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult<IZLinkActor>(new TestActor(actorId));
+            return ValueTask.FromResult<IZLinkActor>(new TestActor(actorId, context));
         }
     }
 
@@ -501,11 +507,13 @@ public sealed class RegistrationValidationTests
         }
     }
 
-    private sealed class TestActor(string actorId) : IZLinkActor
+    private sealed class TestActor(
+        string actorId,
+        IZLinkActorContext context) : IZLinkActor
     {
         public string ActorId { get; } = actorId;
 
-        public IZLinkActorContext Context { get; set; } = default!;
+        public IZLinkActorContext Context { get; } = context;
 
         public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {

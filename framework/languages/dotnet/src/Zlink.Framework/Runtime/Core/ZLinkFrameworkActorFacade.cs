@@ -1,4 +1,5 @@
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Core;
 
@@ -19,7 +20,9 @@ internal sealed class ZLinkFrameworkActorFacade(
         var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
         var node = getActorSpotNode();
 
-        if (node is not null && actorState.NativeActorRef is { } actorRef)
+        if (node is not null
+            && actorState.NativeActorRef is { } actorRef
+            && actorState.Stream is ZLinkManagedStream)
         {
             return await NativeJoinActorAsync<TRequest, TReply>(
                 state,

@@ -5,13 +5,14 @@ using Zlink.Framework.Contracts.Streams;
 namespace TicTacToe.SessionActorDispatch.Session;
 
 internal sealed class SessionRelaySession(
+    IZLinkSessionContext context,
     IEnumerable<ISessionRelayPacketHandler> handlers) : IZLinkSession
 {
     private readonly IReadOnlyDictionary<string, ISessionRelayPacketHandler> _handlers =
         handlers.ToDictionary(static handler => handler.PacketName, StringComparer.Ordinal);
     private readonly SessionRelayState _state = new();
 
-    public IZLinkSessionContext Context { get; set; } = default!;
+    public IZLinkSessionContext Context { get; } = context;
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {

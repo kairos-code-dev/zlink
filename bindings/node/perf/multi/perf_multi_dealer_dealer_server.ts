@@ -7,7 +7,7 @@ const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
   createRunId,
-  decodeMetricHeaderFromParts,
+  decodeMetricHeader,
   currentEpochNs,
   HEADER_SIZE,
   summarizeMetrics
@@ -22,10 +22,9 @@ const {
   emitMultiSocketHwmDetail,
   pollEvents,
   pollEventHas,
-  recvNoWait,
   waitForConnectionReadyCount
 } = require('./perf_multi_runtime');
-const { isStopTokenParts } = require('../perf_stop_token');
+const { isStopToken } = require('../perf_stop_token');
 
 // MULTI_DEALER_DEALER server == RECEIVER / MEASURER.
 //
@@ -51,6 +50,7 @@ async function main() {
   const server = new zlink.DealerSocket(ctx);
   const poller = new zlink.Poller();
   const payloadSize = Math.max(options.msgSize, HEADER_SIZE);
+  const recvBuffer = Buffer.allocUnsafe(payloadSize);
   let rl = null;
   let collector = null;
 
@@ -98,21 +98,17 @@ async function main() {
           continue;
         }
         while (true) {
-          const received = recvNoWait(server);
-          if (!received) {
+          const receivedBytes = server.recvInto(recvBuffer, zlink.RecvFlags.DontWait);
+          if (receivedBytes === null) {
             break;
           }
-          try {
-            if (isStopTokenParts(received.parts)) {
-              continue;
-            }
-            collector.record(
-              decodeMetricHeaderFromParts(received.parts, payloadSize),
-              currentEpochNs()
-            );
-          } finally {
-            received.close();
+          if (isStopToken(recvBuffer.subarray(0, receivedBytes))) {
+            continue;
           }
+          collector.record(
+            receivedBytes === payloadSize ? decodeMetricHeader(recvBuffer) : null,
+            currentEpochNs()
+          );
         }
       }
 
@@ -131,11 +127,9 @@ async function main() {
       while (currentEpochNs() < tailDeadlineNs && currentEpochNs() < idleDeadlineNs) {
         let drained = false;
         while (true) {
-          const received = recvNoWait(server);
-          if (!received) {
+          if (server.recvInto(recvBuffer, zlink.RecvFlags.DontWait) === null) {
             break;
           }
-          received.close();
           drained = true;
         }
         if (drained) {

@@ -4,8 +4,6 @@ namespace Systems.Zlink.Stream.Connector.Runtime.Protocol.Compression;
 
 internal sealed class ZlinkStreamLz4CompressionCodec : IZlinkStreamCompressionCodec
 {
-    public ZlinkStreamCompression Compression => ZlinkStreamCompression.Lz4;
-
     public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
         => LZ4Pickler.Pickle(payload.Span);
 

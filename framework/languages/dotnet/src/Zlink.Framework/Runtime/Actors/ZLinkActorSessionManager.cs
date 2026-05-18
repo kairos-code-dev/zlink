@@ -9,9 +9,14 @@ internal sealed partial class ZLinkActorSessionManager(
 {
     private readonly ZLinkActorSessionRegistry _actorSessions = new();
     private ZLinkActorCreationCoordinator ActorCreation => _actorCreationInitialized
-        ??= new ZLinkActorCreationCoordinator(runtime, services, getActorSpotNode, EnsureActorContext);
+        ??= new ZLinkActorCreationCoordinator(
+            runtime,
+            services,
+            getActorSpotNode,
+            EnsureActorContext,
+            BindActorContext);
     private ZLinkActorDispatchRouter DispatchRouter => _dispatchRouterInitialized
-        ??= new ZLinkActorDispatchRouter(runtime, services, _actorSessions, EnsureActorContext);
+        ??= new ZLinkActorDispatchRouter(runtime, services, _actorSessions, BindActorContext);
 
     private ZLinkActorCreationCoordinator? _actorCreationInitialized;
     private ZLinkActorDispatchRouter? _dispatchRouterInitialized;
@@ -68,10 +73,16 @@ internal sealed partial class ZLinkActorSessionManager(
             .ConfigureAwait(false);
     }
 
-    private ZLinkActorContext EnsureActorContext(
+    private ZLinkActorContext BindActorContext(
         IZLinkActor actor,
         ZLinkActorRuntimeState state)
     {
+        if (!string.Equals(state.ActorId, actor.ActorId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Actor state id '{state.ActorId}' does not match actor id '{actor.ActorId}'.");
+        }
+
         if (state.Actor is not null
             && !ReferenceEquals(state.Actor, actor)
             && (state.SessionId is not null || state.Activation is not null))
@@ -83,20 +94,15 @@ internal sealed partial class ZLinkActorSessionManager(
         if (!ReferenceEquals(state.Actor, actor))
         {
             state.Actor = actor;
-            state.Context = null;
             state.IsConfigured = false;
             state.ClearPacketRegistrations();
         }
 
-        if (state.Context is not { } context)
-        {
-            context = new ZLinkActorContext(runtime, actor, state);
-            state.Context = context;
-        }
-
+        var context = EnsureActorContext(state);
         if (!ReferenceEquals(actor.Context, context))
         {
-            actor.Context = context;
+            throw new InvalidOperationException(
+                $"Actor '{actor.ActorId}' must expose the context provided by its factory.");
         }
 
         if (!state.IsConfigured)
@@ -111,6 +117,17 @@ internal sealed partial class ZLinkActorSessionManager(
                 state.IsConfigured = false;
                 throw;
             }
+        }
+
+        return context;
+    }
+
+    private ZLinkActorContext EnsureActorContext(ZLinkActorRuntimeState state)
+    {
+        if (state.Context is not { } context)
+        {
+            context = new ZLinkActorContext(runtime, state);
+            state.Context = context;
         }
 
         return context;

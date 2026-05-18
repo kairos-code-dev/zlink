@@ -21,7 +21,7 @@ const {
   applySocketPolicy,
   emitMultiSocketHwmDetail,
   pollEvents,
-  subscribeNoWait,
+  subscribeNoWaitInto,
   waitForConnectionReady
 } = require('./perf_multi_runtime');
 const { isStopTokenParts } = require('../perf_stop_token');
@@ -31,6 +31,7 @@ async function main() {
   const ctx = new zlink.Context();
   applyContextPolicy(ctx, 'client', 'MULTI_PUBSUB');
   const subs = [];
+  const receivedBuffers = [];
   let rl = null;
   let collector = null;
 
@@ -43,6 +44,7 @@ async function main() {
       await waitForConnectionReady(sub, () => sub.connect(options.endpoint));
       applyAutoHwmMsgUnit(sub, options.msgSize);
       subs.push(sub);
+      receivedBuffers.push(new zlink.TopicMessage());
     }
     ctx.recalculateAutoHwm();
     for (const sub of subs) {
@@ -88,23 +90,19 @@ async function main() {
               if (!Number.isInteger(index)) {
                 continue;
               }
+              const received = receivedBuffers[index];
               while (true) {
-                const received = subscribeNoWait(subs[index]);
-                if (!received) {
+                if (!subscribeNoWaitInto(subs[index], received)) {
                   break;
                 }
-                try {
-                  if (isStopTokenParts(received.parts)) {
-                    stopReceived = true;
-                    continue;
-                  }
-                  collector.record(
-                    decodeMetricHeaderFromParts(received.parts, payloadSize),
-                    currentEpochNs()
-                  );
-                } finally {
-                  received.close();
+                if (isStopTokenParts(received.parts)) {
+                  stopReceived = true;
+                  continue;
                 }
+                collector.record(
+                  decodeMetricHeaderFromParts(received.parts, payloadSize),
+                  currentEpochNs()
+                );
               }
             }
           }
@@ -130,6 +128,9 @@ async function main() {
     console.log(`CLIENT_DONE,${options.msgSize}`);
   } finally {
     rl?.close();
+    for (const received of receivedBuffers) {
+      received.close();
+    }
     for (const sub of subs) {
       sub.close();
     }

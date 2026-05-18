@@ -204,6 +204,11 @@ async function main() {
                     const { spot } = slots[i];
                     let drained = 0;
                     while (drained < burstCap) {
+                        if (currentEpochNs() >= fallbackDeadlineNs) {
+                            deadlineReached = true;
+                            trace('recv-loop fallback-deadline-inner');
+                            break;
+                        }
                         if (!trySpotSubscribeInto(spot, reusable)) {
                             break;
                         }

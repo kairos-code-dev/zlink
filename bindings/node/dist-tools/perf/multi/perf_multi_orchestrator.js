@@ -136,6 +136,46 @@ async function waitForExit(processRef) {
 async function flushProcessOutput() {
     await new Promise((resolve) => setTimeout(resolve, 50));
 }
+function isClosedPipeError(error) {
+    return error
+        && (error.code === 'EPIPE'
+            || error.code === 'ERR_STREAM_DESTROYED'
+            || error.code === 'ERR_STREAM_WRITE_AFTER_END');
+}
+function ensureChildStdinErrorHandler(processRef) {
+    const stdin = processRef?.stdin;
+    if (!stdin || processRef.__stdinErrorHandlerAttached) {
+        return;
+    }
+    stdin.on('error', (error) => {
+        if (!isClosedPipeError(error)) {
+            processRef.__stdinWriteError = error;
+        }
+    });
+    processRef.__stdinErrorHandlerAttached = true;
+}
+function writeChildLine(processRef, line, options = {}) {
+    const stdin = processRef?.stdin;
+    if (!stdin || !stdin.writable || stdin.destroyed) {
+        return;
+    }
+    ensureChildStdinErrorHandler(processRef);
+    try {
+        stdin.write(line, (error) => {
+            if (error && !isClosedPipeError(error)) {
+                processRef.__stdinWriteError = error;
+            }
+        });
+        if (options.end) {
+            stdin.end();
+        }
+    }
+    catch (error) {
+        if (!isClosedPipeError(error)) {
+            throw error;
+        }
+    }
+}
 async function terminateProcessTree(processRef, timeoutMs = 5000) {
     if (processRef.exitCode !== null || processRef.signalCode !== null) {
         return;
@@ -168,10 +208,7 @@ async function terminateProcessTree(processRef, timeoutMs = 5000) {
     await waitForExit(processRef);
 }
 async function stopServer(server, label, timeoutMs = 5000) {
-    if (server.stdin.writable) {
-        server.stdin.write('STOP\n');
-        server.stdin.end();
-    }
+    writeChildLine(server, 'STOP\n', { end: true });
     try {
         const graceful = await Promise.race([
             once(server, 'exit'),
@@ -460,9 +497,7 @@ async function spawnMultiPair(serverScript, clientScript, args) {
         || args.pattern === 'MULTI_SPOT_SENDSEND') {
         const clientControlLine = await waitForPrefix(client, 'CLIENT_CONTROL_ENDPOINT,', clientScript, 20_000);
         const clientControlEndpoint = clientControlLine.split(',')[1];
-        if (server.stdin.writable) {
-            server.stdin.write(`CONNECT_CONTROL,${clientControlEndpoint}\n`);
-        }
+        writeChildLine(server, `CONNECT_CONTROL,${clientControlEndpoint}\n`);
         let controlConnectedLine;
         try {
             controlConnectedLine = await waitForPrefix(server, 'CONTROL_CONNECTED,', serverScript, 20_000);
@@ -470,20 +505,14 @@ async function spawnMultiPair(serverScript, clientScript, args) {
         catch (error) {
             controlConnectedLine = `CONTROL_CONNECTED,${clientControlEndpoint}`;
         }
-        if (client.stdin.writable) {
-            client.stdin.write(`${controlConnectedLine}\n`);
-        }
+        writeChildLine(client, `${controlConnectedLine}\n`);
     }
     if (needsClientReady(args.pattern)) {
         await waitForLine(client, clientReadyLine(args.msgSize), clientScript, resolveClientReadyTimeoutMs(args));
     }
     if (needsRunnerStart(args.pattern)) {
-        if (server.stdin.writable) {
-            server.stdin.write(`${startLine(args.msgSize)}\n`);
-        }
-        if (client.stdin.writable) {
-            client.stdin.write(`${startLine(args.msgSize)}\n`);
-        }
+        writeChildLine(server, `${startLine(args.msgSize)}\n`);
+        writeChildLine(client, `${startLine(args.msgSize)}\n`);
     }
     const clientTimeoutMs = resolveMultiTimeoutSeconds(args) * 1000;
     let clientExitCode;

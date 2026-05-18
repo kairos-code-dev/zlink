@@ -25,10 +25,14 @@
   - poller socket cache
   - latency reserve
   - sparse poll event construction
+  - source routing id native copy 방식 변경: `perf_cpp_multi_linux_20260518_221411_codex_cpp_tcp_rr65536_rid_partial_copy.txt`, 악화되어 원복
+  - RR client request slot 재사용: `perf_cpp_multi_linux_20260518_221607_codex_cpp_tcp_rr65536_reuse_request_slot.txt`, 악화되어 원복
+  - 동일 source routing id 대입 생략: `perf_cpp_multi_linux_20260518_221726_codex_cpp_tcp_rr65536_rid_skip_same.txt`, 악화되어 원복
+  - 원복 후 source 기준 재빌드: `perf_cpp_multi_linux_20260518_222013_codex_cpp_tcp_rr65536_source_rebuild_after_failed_candidates.txt`
 - 보류 이유
   - public API 변경 없이 시도한 후보가 목표 미달이거나 128KB 회귀를 만들었다.
   - 현재 public builder 경로는 이미 단일 파트 raw routed send로 내려간다.
-  - 승인 후보: 단일 파트 routed send API, 반복 전송용 pre-bound routed sender API,
+  - 추가/수정 후보: 단일 파트 routed send API, 반복 전송용 pre-bound routed sender API,
     source routing id materialization 생략 API.
 
 ### C++ ws full multi
@@ -105,19 +109,17 @@
       목표를 넘지 못했다.
     - 직접 `message_t` payload에 stamp하는 방식은 64B만 소폭 개선하고 256KB latency를
       크게 악화시켜 폐기했다.
-    - 승인 후보: 반복 전송용 owned message builder 또는 benchmark target 재검토.
+    - 추가/수정 후보: 반복 전송용 owned message builder 또는 benchmark target 재검토.
   - `MULTI_DEALER_ROUTER/ws/65536`, `MULTI_ROUTER_ROUTER/ws/65536,131072`
     - framed transport 공유 payload buffer 정렬과 직접 stamp 후보를 확인했지만 안정적인
       통과 수치를 만들지 못했다.
     - 현재 public routed recv/send API는 C처럼 native routing id pointer를 그대로
       재사용하는 hot path를 노출하지 않는다.
-    - 승인 후보: routing id materialization 없이 받은 route context로 단일 part를
+    - 추가/수정 후보: routing id materialization 없이 받은 route context로 단일 part를
       다시 보내는 public routed echo/send context API.
-  - C++ public API에는 SPOT node 또는 SPOT handle의 pub/sub auto-HWM message unit을
-    message size로 설정하는 typed facade가 없다.
+  - C++ public API에는 context-level auto-HWM message unit option이 없다.
   - raw option bag이나 C API 직접 호출은 public API hot path 원칙에 맞지 않는다.
-  - 승인 후보: SPOT node pub/sub default auto-HWM message unit facade와 SPOT handle
-    auto-HWM message unit facade의 공개 계약 추가.
+  - 추가/수정 후보: context auto-HWM message unit option 공개 계약 추가.
 
 ### C++ wss full multi
 
@@ -157,7 +159,7 @@
   - `MULTI_PUBSUB` client hot path는 현재 public `subscribe(topic_message_t&)`가
     message마다 topic string과 parts vector를 물질화한다. C 기준처럼 topic buffer와
     단일 part를 재사용하는 public subscribe facade가 없다.
-  - 승인 후보: single-part pub/sub receive를 topic buffer와 message out parameter에
+  - 추가/수정 후보: single-part pub/sub receive를 topic buffer와 message out parameter에
     직접 받는 public API.
 
 ### C++ tls full multi
@@ -205,10 +207,10 @@
   - `PUBSUB`은 앞선 wss 검토에서 typed publish 경로가 timeout으로 악화되어 되돌렸다.
     남은 병목은 public `subscribe(topic_message_t&)`의 topic string과 parts vector
     물질화 비용으로 본다.
-  - SPOT 계열은 public C++ SPOT node 또는 handle에 pub/sub auto-HWM message unit을
-    message size로 맞추는 typed facade가 없어 raw option이나 C API로 우회하지 않았다.
-  - 승인 후보는 ws/wss와 같다. 반복 전송용 owned message builder, single-part
-    pub/sub receive facade, SPOT auto-HWM message unit typed facade가 필요하다.
+  - SPOT 계열은 public C++ context option으로 pub/sub auto-HWM message unit을 message
+    size로 맞추는 계약이 없어 raw option이나 C API로 우회하지 않았다.
+  - 추가/수정 후보는 ws/wss와 같다. 반복 전송용 owned message builder, single-part
+    pub/sub receive facade, context auto-HWM message unit option이 필요하다.
 
 ## .NET
 
@@ -813,6 +815,46 @@
 - 판정
   - .NET `MULTI_SPOT_REQREP/tcp/1024`는 통과로 바뀌었다.
 
+## .NET small one-way와 SPOT publish 후보 확인
+
+- `MULTI_DEALER_DEALER/tcp/64,256`
+  - 최신 제한 비교:
+    - .NET `perf_dotnet_multi_linux_20260518_222421_codex_dotnet_tcp_dd_small_recheck.txt`
+      기준 `64,256B = 1.619M,1.127Mmsg/s`.
+    - C `perf_c_multi_linux_20260518_222421_codex_c_tcp_dd_small_dotnet_compare.txt`
+      기준 `64,256B = 2.940M,1.872Mmsg/s`.
+    - C 대비 `55.1%`, `60.2%`로 여전히 목표 미달이다.
+  - 내부 후보:
+    - `Message(ReadOnlySpan<byte>)`를 managed snapshot 뒤 borrowed-send로 보내는 후보는
+      `perf_dotnet_multi_linux_20260518_222618_codex_dotnet_tcp_dd_small_managed_copy_ctor.txt`
+      에서 server abort와 큰 성능 악화를 만들었다. 코드는 원복했다.
+    - one-way sender에서 `Message.WrapBytes`를 직접 쓰는 후보는
+      `perf_dotnet_multi_linux_20260518_222720_codex_dotnet_tcp_dd_small_wrapbytes_candidate.txt`
+      에서 server abort와 큰 성능 악화를 만들었다. 코드는 원복했다.
+  - 판정:
+    - 현재 public API로는 payload header를 native send message에 직접 stamp할 수 없어
+      byte array stamp 뒤 `Message` 생성 복사가 남는다.
+    - 추가 개선은 반복 전송용 writable/owned message builder 또는 동등한 public API 추가/수정이
+    필요하므로 보류로 둔다.
+
+- `MULTI_SPOT/tcp/64,256,1024`
+  - SPOT publish server가 `Message.WrapBytes`를 쓰는 경로와 반대로, C처럼 native message로
+    복사하는 후보를 시험했다.
+  - C 제한 기준:
+    `perf_c_multi_linux_20260518_222930_codex_c_tcp_spot_small_dotnet_compare.txt`
+    에서 `64,256,1024B = 6.713M,5.806M,5.485Mmsg/s`.
+  - .NET 후보:
+    `perf_dotnet_multi_linux_20260518_223040_codex_dotnet_tcp_spot_small_native_message_candidate2.txt`
+    에서 `64,256,1024B = 3.081M,2.918M,2.891Mmsg/s`.
+  - C 대비 `45.9%`, `50.3%`, `52.7%`로 목표를 넘지 못했고 `64B`는 기존 수치보다 낮았다.
+    코드는 원복했다.
+  - 판정:
+    - SPOT/PUBSUB publish-subscribe 계열의 남은 병목은 public API 내부 후보만으로는
+      목표를 넘기지 못했다.
+    - 추가 개선은 publish payload를 직접 구성하는 writable message builder, 또는
+      subscribed frame을 재사용 버퍼로 받는 typed/raw receive facade 추가/수정이 필요하므로
+      보류로 둔다.
+
 ## Java tcp 미달 항목 재검토
 
 - `MULTI_DEALER_ROUTER`
@@ -825,9 +867,10 @@
     기준 `64,256,1024B = 234.87K,228.26K,228.53Kops/s`다.
   - 최신 `DEALER_ROUTER` 대비 `ROUTER_ROUTER` 상대 비율은 `73.5%~74.1%`다.
   - C의 같은 상대 비율은 `95.6%~97.9%`라서 상대 기준은 `21.5~24.4%p` 낮다.
-  - client hot path에서 existing public byte[] routing-id send overload 사용을 검토했지만,
-    필요한 `SendFlag` 타입이 package-private이라 perf runner에서 public API만으로는 사용할
-    수 없었다. public API 추가 없이 의미를 보존하는 후보가 없어 보류로 둔다.
+  - client hot path에서 기존 public byte[] routing-id send overload 사용을 검토했다.
+    현재 Java `SendFlags`는 public이므로 package-private flag 문제는 보류 사유가 아니다.
+    남은 확인 대상은 public routed single-part send가 C의 `_part` 경로와 같은 의미로
+    내려가는지, routing id materialization을 피할 수 있는지다.
 
 - `MULTI_SPOT`
   - `Spot.publish(...).message(...).submit()` 단일 part 경로가 내부에서 `MessagePartsBuffer`
@@ -885,3 +928,152 @@
   - `wss/131072`, `wss/262144`, `tls/131072`, `tls/262144`는 미달로 남긴다.
   - 미달 원인은 timeout이나 `MsgUnit(B)`가 아니다. 다음 확인 대상은 Java SPOT routed
     send/reply large payload 경로에서 WSS/TLS backpressure와 native submit copy/reference 처리다.
+
+### Java WSS 262144 단독 재측정
+
+- 측정
+  - C `wss/MULTI_SPOT_SENDSEND/262144`:
+    `perf_c_multi_linux_20260518_223446_codex_c_wss_sendsend262144_java_compare.txt`
+    에서 `3.768Kops/s`.
+  - Java `wss/MULTI_SPOT_SENDSEND/262144`:
+    `perf_java_multi_linux_20260518_223449_codex_java_wss_sendsend262144_single_recheck.txt`
+    에서 `2.274Kops/s`.
+  - C 대비 `60.4%`이고 `MsgUnit(B)=262144`가 양쪽 모두 맞다.
+
+- 판정
+  - `wss/MULTI_SPOT_SENDSEND/262144`는 최신 단독 제한 측정 기준 통과로 바꾼다.
+  - `wss/131072`, `tls/131072`, `tls/262144`는 앞선 active slot/public `wrapDirect`
+    실험과 `System.nanoTime()` 정렬 뒤에도 목표 미달이다. public API 변경 없이 더 확인할
+    내부 후보가 없어 보류로 둔다.
+
+## Node tcp 측정과 내부 후보
+
+- `MULTI_SPOT` smoke 중 `262144B`에서 종료가 지연됐다.
+  - 원인은 client drain loop가 slot별 inner burst 안에서 fallback deadline을 다시 확인하지
+    않아 큰 backlog를 오래 비우는 동안 종료 조건을 지나치는 것이었다.
+  - `bindings/node/tests/optimization_guard.test.ts`에 inner burst deadline guard를 먼저 추가했고
+    실패를 확인한 뒤, `perf_multi_spot_client.ts`의 inner loop에 deadline 확인을 추가했다.
+  - 수정 후 `perf_node_multi_linux_20260518_224402_codex_node_tcp_spot262144_deadline_inner_fix.txt`
+    는 complete다.
+  - 다만 `Auto-HWM spotnode`는 여전히 모든 size에서 `MsgUnit(B)=4096`이라 C와 조건이 다르다.
+    Node public API에는 context auto-HWM message unit option이 없어 SPOT
+    계열은 보류로 둔다.
+
+- `MULTI_DEALER_DEALER`
+  - non-routed single-part sender는 public `sendFrom(..., DontWait)` fast path를 쓰도록 바꿨다.
+    guard를 먼저 추가했고 실패/통과를 확인했다.
+  - receiver는 caller-provided `Received` 재사용만으로는 목표를 넘지 못했다.
+  - 이후 public `recvInto(buffer, DontWait)`로 단일 part payload를 직접 받도록 바꿨다.
+    이 경로는 `MULTI_DEALER_DEALER`의 wire format이 single-part라서 의미를 보존한다.
+  - 최종 full:
+    `perf_node_multi_linux_20260518_230350_codex_node_tcp_dd_full_recvinto_final.txt`.
+    `64,256,1024,65536,131072B`는 C 대비 `56.4%~83.2%`로 통과다.
+  - `262144B` 단독:
+    `perf_node_multi_linux_20260518_230538_codex_node_tcp_dd262144_recvinto_epipe_fix_recheck.txt`.
+    C 대비 `38.8%`로 통과다.
+
+- runner 종료 버그
+  - `DEALER_DEALER/262144` 단독 재측정 중 server stdin에 `STOP`을 쓰는 시점에 이미 pipe가
+    닫혀 `EPIPE`가 unhandled error로 올라왔다.
+  - `writeChildLine` guard를 추가해 closed child stdin pipe를 닫힌 상태로 처리하고, `STOP`,
+    `START`, SPOT control line 전송에 같은 helper를 쓰도록 바꿨다.
+  - guard test는 `node multi orchestrator ignores closed child stdin pipes`다.
+
+- `MULTI_PUBSUB`
+  - client hot path에서 `TopicMessage`를 매 recv마다 새로 만들던 부분을 caller-provided
+    storage 재사용으로 바꿨다.
+  - `perf_node_multi_linux_20260518_230630_codex_node_tcp_pubsub_full_topic_storage_reuse.txt`
+    기준 `1024B`는 C 대비 `40.3%`로 통과다.
+  - `64,256,65536,131072,262144B`는 `16.8%~25.8%`로 미달이다. `TopicMessage` 재사용만으로는
+    목표를 넘지 못했고, 추가 개선은 public raw/typed subscribed receive facade 추가/수정이 필요해
+    보류로 둔다.
+
+- routed echo와 stream
+  - `perf_node_multi_linux_20260518_230906_codex_node_tcp_routed_full_sendfrom_current.txt`
+    기준 `MULTI_DEALER_ROUTER`는 `64,256,1024B` 통과, large는 `14.7%~27.6%`로 보류다.
+  - 같은 파일 기준 `MULTI_ROUTER_ROUTER`는 `64,256B` 통과, `1024B` 이상은 `13.9%~29.2%`로
+    보류다.
+  - routed server reply/send는 public builder/context 경로에 묶여 있어 추가 개선은 public
+    routed raw send 또는 borrowed send context 추가/수정이 필요하다.
+  - `perf_node_multi_linux_20260518_230942_codex_node_tcp_stream_full_current.txt` 기준
+    `MULTI_STREAM/65536B`는 `43.1%`로 통과지만 `64,256,1024B`는 `16.7%~19.0%`다.
+    stream echo는 frame 재구성 Buffer와 stream send builder 경로에 묶여 있어 public stream
+    raw send/borrowed frame API 추가/수정 없이는 보류로 둔다.
+
+## Node ws smoke/full 측정
+
+- smoke
+  - `perf_node_multi_linux_20260518_231615_codex_node_ws_multi_smoke_all_sizes.txt`는
+    `MULTI_SPOT/ws/262144B`에서 `fast_mutex.hpp:98` `Invalid argument`가 한 번 발생해 partial이다.
+  - 같은 조합 단독 재현:
+    `perf_node_multi_linux_20260518_231641_codex_node_ws_spot262144_fast_mutex_repro.txt`.
+    단독은 complete라서 broad smoke 중 transient crash로 기록한다.
+
+- full
+  - `perf_node_multi_linux_20260518_232616_codex_node_ws_multi_full_status.txt`는
+    `MULTI_STREAM/ws/1024B`에서 `double free or corruption (fasttop)`이 한 번 발생해 partial이다.
+  - 같은 조합 단독 재현:
+    `perf_node_multi_linux_20260518_232633_codex_node_ws_stream1024_double_free_repro.txt`.
+    단독은 complete라서 broad full 중 transient crash로 기록한다.
+  - `MULTI_DEALER_DEALER/ws/64B`는 full에서 outlier `63.0Kmsg/s`였지만
+    `perf_node_multi_linux_20260518_232722_codex_node_ws_dd64_full_outlier_recheck.txt`
+    에서 `1.840Mmsg/s`, C 대비 `59.9%`로 통과다.
+
+- 판정
+  - `MULTI_DEALER_DEALER/ws` 전체는 `59.9%~100.1%`로 통과다.
+  - `MULTI_DEALER_ROUTER/ws`는 `65536B`만 `22.5%`로 보류, 나머지는 `33.8%~42.7%`로 통과다.
+  - `MULTI_ROUTER_ROUTER/ws`는 `65536B`만 `24.5%`로 보류, 나머지는 `30.2%~38.8%`로 통과다.
+  - `MULTI_PUBSUB/ws`는 `262144B`만 `35.2%`로 통과, 나머지는 `21.3%~33.3%`로 보류다.
+  - `MULTI_STREAM/ws`는 `65536B`만 `90.5%`로 통과, `64,256,1024B`는 `13.4%~14.2%`로 보류다.
+  - SPOT 계열은 full 수치와 별개로 `Auto-HWM spotnode`의 `MsgUnit(B)=4096` 불일치가 남아
+    모두 보류다. context auto-HWM message unit option 추가/수정이 필요하다.
+
+## Node wss smoke/full 측정
+
+- smoke
+  - `perf_node_multi_linux_20260518_233410_codex_node_wss_multi_smoke_all_sizes.txt`는
+    `MULTI_SPOT_SENDSEND/wss/256B` bind 충돌과 `MULTI_STREAM/wss/65536B` client 실패로 partial이다.
+  - 남은 `perf_multi_spot_sendsend_server.js`를 정리한 뒤 같은 실패 행을 단독 재측정했다.
+    `perf_node_multi_linux_20260518_233448_codex_node_wss_spot_sendsend256_bind_repro.txt`와
+    `perf_node_multi_linux_20260518_233501_codex_node_wss_stream65536_client_fail_repro.txt`는
+    모두 complete다.
+
+- full과 C 기준
+  - Node full:
+    `perf_node_multi_linux_20260518_234522_codex_node_wss_multi_full_status.txt`, complete.
+  - C full 기준:
+    `perf_c_multi_linux_20260518_234546_codex_c_wss_multi_full_node_compare.txt`, complete.
+  - `MULTI_DEALER_DEALER/wss/256B`는 full 뒤 단독 재측정에서 낮은 outlier가 있었지만,
+    전체 DD 재측정 `perf_node_multi_linux_20260518_235652_codex_node_wss_dd_all_sizes_anomaly_check.txt`
+    에서 정상 범위로 돌아왔다.
+  - `MULTI_ROUTER_ROUTER/wss/1024B`는 full 기준 29.5%라 기준선에 걸렸고, Node/C 단독 재측정
+    `perf_node_multi_linux_20260518_235711_codex_node_wss_rr1024_threshold_recheck.txt`,
+    `perf_c_multi_linux_20260518_235723_codex_c_wss_rr1024_node_compare.txt` 기준 30.7%로 통과다.
+
+- 판정
+  - `MULTI_DEALER_DEALER/wss` 전체는 `49.8%~57.0%`로 통과다.
+  - `MULTI_DEALER_ROUTER/wss` 전체는 `33.4%~40.8%`로 통과다.
+  - `MULTI_ROUTER_ROUTER/wss` 전체는 `30.7%~41.0%`로 통과다.
+  - `MULTI_PUBSUB/wss`는 `262144B`만 `36.4%`로 통과, 나머지는 `17.0%~32.7%`로 보류다.
+  - `MULTI_STREAM/wss`는 `65536B`만 `92.9%`로 통과, `64,256,1024B`는 `20.8%~21.9%`로 보류다.
+  - SPOT 계열은 full 수치와 별개로 `Auto-HWM spotnode`의 `MsgUnit(B)=4096` 불일치가 남아
+    모두 보류다. context auto-HWM message unit option 추가/수정이 필요하다.
+
+## Public API 제한 해석 정정
+
+- C API가 이미 제공하는 계약을 binding public API가 빠뜨렸거나 잘못 감싼 경우에는
+  public API 추가/수정을 금지하지 않는다. 이 경우 누락이나 오구현 자체가 수정 근거다.
+- SPOT 계열 `MsgUnit(B)=4096` 문제는 이 기준에 해당한다. C API는
+  `zlink_set_option`, `zlink_get_option`과 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`
+  경로를 제공하고, 이 common option은 SPOT pub/sub default로 전파된다.
+  Node는 일반 socket `autoHwmMsgUnitBytes`만 노출하고 context auto-HWM message unit option이 없으므로 public API 추가/수정 대상으로 둔다.
+- 이후 방향은 SpotNode/Spot별 facade가 아니라
+  `doc/plan/monitoring/context-auto-hwm-msg-unit-rollout-plan.ko.md`의 context option
+  rollout로 정정했다.
+- 같은 context 안에서 socket마다 평균 message size를 따로 제어하는 사용 사례는 일반 경로로
+  보지 않는다. 따라서 새 context option을 추가하는 동시에 binding public API의 socket별
+  message unit facade는 제거하는 방향으로 정리했다. C API의 handle-level option은 저수준
+  계약으로 유지한다.
+- 현재 확인된 public API 추가/수정 대상 목록은
+  `doc/plan/perf/bindings-library-performance-improvement-plan.ko.md`의
+  `Public API 추가/수정 대상` 섹션에 모았다.

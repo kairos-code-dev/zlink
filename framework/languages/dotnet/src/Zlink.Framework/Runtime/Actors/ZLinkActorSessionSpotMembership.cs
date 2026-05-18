@@ -8,7 +8,7 @@ internal sealed partial class ZLinkActorSessionManager
         CancellationToken cancellationToken = default)
     {
         var state = _actorSessions.GetOrCreate(actor.ActorId);
-        EnsureActorContext(actor, state);
+        BindActorContext(actor, state);
 
         var previousActivation = await state.ExecuteLockedAsync(
             () => state.Activation,
@@ -38,7 +38,7 @@ internal sealed partial class ZLinkActorSessionManager
         CancellationToken cancellationToken = default)
     {
         var state = _actorSessions.GetOrCreate(actor.ActorId);
-        EnsureActorContext(actor, state);
+        BindActorContext(actor, state);
         var currentSpotRid = activation.SpotRid;
 
         var shouldPrune = await state.ExecuteLockedAsync(
@@ -47,7 +47,7 @@ internal sealed partial class ZLinkActorSessionManager
                 if (ReferenceEquals(state.Activation, activation))
                 {
                     state.Activation = null;
-                    return state.SessionId is null;
+                    return false;
                 }
 
                 return false;

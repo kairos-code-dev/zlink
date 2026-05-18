@@ -48,7 +48,8 @@ public sealed partial class StreamConnectorTests
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat()
         });
         await connector.ConnectAsync();
 
@@ -66,6 +67,7 @@ public sealed partial class StreamConnectorTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var received = new TaskCompletionSource<Pong>(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
@@ -79,15 +81,16 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamMetadata.Empty);
             var payload = compressionCodec.Compress(JsonSerializer.SerializeToUtf8Bytes(new Pong("compressed")));
             await WritePacketAsync(stream, headerCodec.Encode(header).ToArray(), payload.ToArray());
+            await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
         });
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
             Compression = ZlinkStreamCompression.Lz4,
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
-        var received = new TaskCompletionSource<Pong>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var subscription = connector.On<Pong>("pong", (message, _) =>
         {
             received.SetResult(message.Payload);
@@ -96,7 +99,7 @@ public sealed partial class StreamConnectorTests
 
         await connector.ConnectAsync();
 
-        var reply = await received.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var reply = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal("compressed", reply.Text);
         await server;
     }

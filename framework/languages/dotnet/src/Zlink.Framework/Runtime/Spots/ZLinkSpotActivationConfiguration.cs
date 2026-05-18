@@ -10,6 +10,12 @@ internal sealed partial class ZLinkSpotActivation
             throw new InvalidOperationException("SPOT has already been attached to this context.");
         }
 
+        if (!ReferenceEquals(spot.Context, this))
+        {
+            throw new InvalidOperationException(
+                $"SPOT '{spot.GetType().FullName}' must expose the context provided by the runtime.");
+        }
+
         _spot = spot;
         _actorHandlers = new ZLinkSpotActorHandlerRegistry(
             ZLinkSpotActorHandlerSurface.UserSpot,

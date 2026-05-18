@@ -4,7 +4,7 @@ public interface IZLinkActor
 {
     string ActorId { get; }
 
-    IZLinkActorContext Context { get; set; }
+    IZLinkActorContext Context { get; }
 
     void Configure()
     {

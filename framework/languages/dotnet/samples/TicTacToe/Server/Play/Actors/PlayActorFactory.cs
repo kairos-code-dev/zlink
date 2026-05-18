@@ -4,9 +4,10 @@ internal sealed class PlayActorFactory(ILogger<PlayActor> logger) : IZLinkActorF
 {
     public ValueTask<IZLinkActor> CreateAsync(
         string actorId,
+        IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new PlayActor(actorId, logger));
+        return ValueTask.FromResult<IZLinkActor>(new PlayActor(actorId, context, logger));
     }
 }

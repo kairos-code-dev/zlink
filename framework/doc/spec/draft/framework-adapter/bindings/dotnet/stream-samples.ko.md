@@ -66,7 +66,7 @@ public sealed class ZLinkMessageMetadata
 
 public interface IZLinkSession
 {
-    IZLinkSessionContext Context { get; set; }
+    IZLinkSessionContext Context { get; }
 
     ValueTask OnConnectedAsync(CancellationToken cancellationToken);
 
@@ -128,6 +128,10 @@ public interface IZLinkSessionContext :
     IZLinkSessionLifecycle;
 ```
 
+session context 는 callback 인자가 아니라 session 인스턴스 생성 시점에
+주입되는 계약이다. framework 는 생성된 session 의 `Context` 가 주입한
+context 와 같은 인스턴스인지 확인한다.
+
 `CloseAsync(...)` 는 현재 session 의 client stream 연결을 서버 쪽에서 끊을 때
 사용한다. 예를 들어 인증에 실패했거나 protocol 위반이 확인되어 응답을 돌려준 뒤,
 더 이상 packet[^packet] 을 받지 않으려는 상황을 생각할 수 있다. 그럴 때 session
@@ -170,10 +174,10 @@ builder.Services.AddZLinkFramework(options =>
     });
 });
 
-public sealed class ClientHeaderSession
+public sealed class ClientHeaderSession(IZLinkSessionContext context)
     : IZLinkSession
 {
-    public IZLinkSessionContext Context { get; set; } = default!;
+    public IZLinkSessionContext Context { get; } = context;
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
@@ -205,7 +209,7 @@ public sealed class ClientHeaderSession
             {
                 ClientInput input = payload.FromJson<ClientInput>();
 
-                await Context
+                await context
                     .SendChannel(
                         "play",
                         new ForwardInputCommand
@@ -221,7 +225,7 @@ public sealed class ClientHeaderSession
             {
                 Ping ping = payload.FromJson<Ping>();
 
-                await Context
+                await context
                     .SendChannel(
                         "api",
                         new ReportPingCommand
@@ -230,7 +234,7 @@ public sealed class ClientHeaderSession
                         })
                     .Submit(cancellationToken);
 
-                await Context
+                await context
                     .Reply(new Pong
                     {
                         Sequence = ping.Sequence
@@ -252,8 +256,9 @@ public sealed class ClientHeaderSession
 - header session 이 내부 header 를 해석해 `ClientInput`, `Ping` 같은 packet
   name 을 뽑아 준다. 그러면 application 은 그 이름에 맞는 타입으로 decode 한다.
 - application 측에는 recv loop 가 없다. session callback 만 구현하면 된다.
-- 다른 서버로의 outbound 호출은 session 이 `Context.SendChannel(...)` 또는
-  `Context.RequestChannel(...)` 를 통해 처리한다.
+- 다른 서버로의 outbound 호출은 session 이 생성자에서 받은
+  `IZLinkSessionContext` 로 `SendChannel(...)` 또는 `RequestChannel(...)` 를
+  호출해 처리한다.
 - packet decode 는 payload 의 serializer helper 를 거쳐 수행한다.
 - 타입이 protobuf generated 타입(`IMessage<T>` 계열) 이면 protobuf 로 읽는다.
 - 그 외의 일반 class 는 json 으로 읽는 것을 샘플 기본 규칙으로 둔다.
@@ -327,9 +332,9 @@ builder.Services.AddZLinkFramework(options =>
     });
 });
 
-public sealed class ClientHeaderSession : IZLinkSession
+public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSession
 {
-    public IZLinkSessionContext Context { get; set; } = default!;
+    public IZLinkSessionContext Context { get; } = context;
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
@@ -355,7 +360,7 @@ public sealed class ClientHeaderSession : IZLinkSession
         Message payload,
         CancellationToken cancellationToken)
     {
-        return Context
+        return context
             .Reply(new Pong())
             .Submit(cancellationToken);
     }
@@ -366,8 +371,8 @@ public sealed class ClientHeaderSession : IZLinkSession
 
 - framework 가 decode 해 둔 header 와 payload 를 받아 곧장 응답하고 싶다.
 - 그렇다고 해서 recv loop 를 손수 작성하고 싶지는 않다.
-- 필요할 때 현재 session 에서 `Context.Reply(...)` 로 응답을 돌려보낼 수 있어야
-  한다.
+- 필요할 때 현재 session 에서 생성자 주입된 `IZLinkSessionContext` 로
+  `Reply(...)` 를 호출해 응답을 돌려보낼 수 있어야 한다.
 
 ## 5. session 처리 수준
 

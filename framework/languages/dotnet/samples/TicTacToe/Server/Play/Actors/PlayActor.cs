@@ -2,12 +2,13 @@ namespace TicTacToe.Server.Play.Actors;
 
 internal sealed class PlayActor(
     string actorId,
+    IZLinkActorContext context,
     ILogger<PlayActor> logger)
     : IZLinkActor
 {
     public string ActorId { get; } = actorId;
 
-    public IZLinkActorContext Context { get; set; } = default!;
+    public IZLinkActorContext Context { get; } = context;
 
     public string GameId { get; private set; } = string.Empty;
 

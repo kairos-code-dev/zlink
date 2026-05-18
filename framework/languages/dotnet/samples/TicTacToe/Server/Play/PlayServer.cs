@@ -1,9 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 using TicTacToe.Server.Play.Actors;
-using TicTacToe.Server.Play.Actors.Handlers;
-using TicTacToe.Server.Play.Games;
-using TicTacToe.Server.Play.Handlers;
 using TicTacToe.Server.Play.Sessions;
 
 namespace TicTacToe.Server.Play;
@@ -16,16 +13,6 @@ internal sealed class PlayServer(SampleSettings settings)
         SampleLogging.Configure(builder.Logging, settings, "play");
 
         builder.Services.AddSingleton(settings);
-        builder.Services.AddScoped<CreateGameHandler>();
-        builder.Services.AddScoped<PlaySession>();
-        builder.Services.AddScoped<PlaySessionAuthenticator>();
-        builder.Services.AddScoped<PlayEntrySpot>();
-        builder.Services.AddScoped<PlayActorFactory>();
-        builder.Services.AddScoped<TicTacToeJoinService>();
-        builder.Services.AddScoped<TicTacToeGameJoinHandler>();
-        builder.Services.AddScoped<TicTacToeGameTimerHandler>();
-        builder.Services.AddScoped<PlayActorJoinGameHandler>();
-        builder.Services.AddScoped<PlayActorPlaceMarkHandler>();
 
         builder.Services.AddZLinkFramework(options =>
         {

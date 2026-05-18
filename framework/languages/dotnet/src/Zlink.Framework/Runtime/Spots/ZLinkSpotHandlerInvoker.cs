@@ -182,7 +182,9 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
     {
         try
         {
-            var handler = services.GetRequiredService(handlerType);
+            var handler = ActivatorUtilities.GetServiceOrCreateInstance(
+                services,
+                handlerType);
             var result = invoker(handler, arguments);
             return await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
         }

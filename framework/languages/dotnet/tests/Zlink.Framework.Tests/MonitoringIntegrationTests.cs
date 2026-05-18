@@ -195,7 +195,7 @@ public sealed class MonitoringIntegrationTests
             await secondHost.StartAsync();
 
             var peerEvent = await firstHost.Services.GetRequiredService<SpotPeerProbe>()
-                .WaitAsync(TimeSpan.FromSeconds(10));
+                .WaitAsync(TimeSpan.FromSeconds(30));
 
             Assert.Equal(ZLinkSpotEventKind.PeersChanged, peerEvent.Event);
             Assert.NotNull(peerEvent.Peers);

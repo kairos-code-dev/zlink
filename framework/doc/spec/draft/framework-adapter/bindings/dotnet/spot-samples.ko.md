@@ -53,6 +53,8 @@
 ```csharp
 public interface IZLinkSpot
 {
+    IZLinkSpotContext Context { get; }
+
     void Configure()
     {
     }
@@ -80,6 +82,9 @@ public interface IZLinkSpotContext
     ZLinkSpotId SpotId { get; }
     RoutingId NodeRid { get; }
     string SpotName { get; }
+
+    // IZLinkSpot.Context 는 framework 가 생성자에 넘긴 context 를
+    // 그대로 노출하는 공개 계약이다.
 
     void AddPacket<THandler>()
         where THandler : class
@@ -916,6 +921,8 @@ public interface IZLinkActor
 {
     string ActorId { get; }
 
+    IZLinkActorContext Context { get; }
+
     void Configure()
     {
     }
@@ -1292,6 +1299,7 @@ public sealed class SampleSession
     private readonly ISampleActorFactoryRegistry _actors;
 
     public SampleSession(
+        IZLinkSessionContext context,
         ISampleRoomDirectory rooms,
         ISampleAuthVerifier authVerifier,
         ISampleActorFactoryRegistry actors)
@@ -1301,7 +1309,7 @@ public sealed class SampleSession
         _actors = actors;
     }
 
-    public IZLinkSessionContext Context { get; set; } = default!;
+    public IZLinkSessionContext Context { get; } = context;
 
     public SampleActor? Actor { get; private set; }
     public IZLinkActorRef? ActorRef { get; private set; }

@@ -211,6 +211,7 @@ public sealed class StreamIntegrationTests
             Assert.Equal("\"pong\"", Encoding.UTF8.GetString(secondReply.Payload));
 
             Assert.NotNull(recorder.LastSessionId);
+            Assert.Equal(recorder.LastSessionId, recorder.ConstructorContextSessionId);
             Assert.NotNull(recorder.LastRoutingId);
             AssertStreamMetadata(endpoint, clientLocalPort, recorder.LastLocalAddr, recorder.LastRemoteAddr);
             Assert.True(
@@ -970,6 +971,8 @@ public sealed class StreamIntegrationTests
 
         public string? LastSessionId { get; set; }
 
+        public string? ConstructorContextSessionId { get; set; }
+
         public global::Systems.Zlink.RoutingId? LastRoutingId { get; set; }
 
         public string? LastLocalAddr { get; set; }
@@ -1038,28 +1041,40 @@ public sealed class StreamIntegrationTests
         }
     }
 
-    public sealed class HeaderStreamSession(HeaderStreamRecorder recorder) : IZLinkSession
+    public sealed class HeaderStreamSession : IZLinkSession
     {
-        public IZLinkSessionContext Context { get; set; } = default!;
+        private readonly HeaderStreamRecorder _recorder;
+        private readonly IZLinkSessionContext _context;
+
+        public HeaderStreamSession(
+            HeaderStreamRecorder recorder,
+            IZLinkSessionContext context)
+        {
+            _recorder = recorder;
+            _context = context;
+            recorder.ConstructorContextSessionId = context.SessionId;
+        }
+
+        public IZLinkSessionContext Context => _context;
 
         public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
         {
-            using var lease = recorder.EnterCallback(Context.SessionId);
+            using var lease = _recorder.EnterCallback(_context.SessionId);
             _ = cancellationToken;
-            recorder.LastSessionId = Context.SessionId;
-            recorder.LastRoutingId = Context.RoutingId;
-            recorder.LastLocalAddr = Context.LocalAddr;
-            recorder.LastRemoteAddr = Context.RemoteAddr;
-            recorder.ConnectedCount++;
-            recorder.ConnectedSessionIds.Add(Context.SessionId);
+            _recorder.LastSessionId = _context.SessionId;
+            _recorder.LastRoutingId = _context.RoutingId;
+            _recorder.LastLocalAddr = _context.LocalAddr;
+            _recorder.LastRemoteAddr = _context.RemoteAddr;
+            _recorder.ConnectedCount++;
+            _recorder.ConnectedSessionIds.Add(_context.SessionId);
             return ValueTask.CompletedTask;
         }
 
         public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
-            using var lease = recorder.EnterCallback(Context.SessionId);
+            using var lease = _recorder.EnterCallback(_context.SessionId);
             _ = cancellationToken;
-            recorder.DisconnectedCount++;
+            _recorder.DisconnectedCount++;
             return ValueTask.CompletedTask;
         }
 
@@ -1067,10 +1082,10 @@ public sealed class StreamIntegrationTests
             ZLinkStreamError error,
             CancellationToken cancellationToken)
         {
-            using var lease = recorder.EnterCallback(Context.SessionId);
+            using var lease = _recorder.EnterCallback(_context.SessionId);
             _ = cancellationToken;
-            recorder.LastError = error;
-            recorder.ErrorCount++;
+            _recorder.LastError = error;
+            _recorder.ErrorCount++;
             return ValueTask.CompletedTask;
         }
 
@@ -1079,16 +1094,16 @@ public sealed class StreamIntegrationTests
             global::Systems.Zlink.Message payload,
             CancellationToken cancellationToken)
         {
-            using var lease = recorder.EnterCallback(Context.SessionId);
+            using var lease = _recorder.EnterCallback(_context.SessionId);
             _ = cancellationToken;
             _ = header;
-            recorder.ReceivedPayloads.Add(Encoding.UTF8.GetString(payload.AsReadOnlySpan()).Trim('"'));
-            if (recorder.ReceivedPayloads.Contains("close"))
+            _recorder.ReceivedPayloads.Add(Encoding.UTF8.GetString(payload.AsReadOnlySpan()).Trim('"'));
+            if (_recorder.ReceivedPayloads.Contains("close"))
             {
-                return Context.CloseAsync(cancellationToken);
+                return _context.CloseAsync(cancellationToken);
             }
 
-            return Context.Reply("pong")
+            return _context.Reply("pong")
                 .Submit(cancellationToken);
         }
     }
@@ -1209,11 +1224,14 @@ public sealed class StreamIntegrationTests
         }
     }
 
-    public sealed class GatewayActor(string actorId, ActorDispatchRecorder recorder) : IZLinkActor
+    public sealed class GatewayActor(
+        string actorId,
+        IZLinkActorContext context,
+        ActorDispatchRecorder recorder) : IZLinkActor
     {
         public string ActorId { get; } = actorId;
 
-        public IZLinkActorContext Context { get; set; } = default!;
+        public IZLinkActorContext Context { get; } = context;
 
         public ActorDispatchRecorder Recorder { get; } = recorder;
 
@@ -1236,25 +1254,22 @@ public sealed class StreamIntegrationTests
     {
         public ValueTask<IZLinkActor> CreateAsync(
             string actorId,
+            IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             recorder.RecordCreated();
-            return ValueTask.FromResult<IZLinkActor>(new GatewayActor(actorId, recorder));
+            return ValueTask.FromResult<IZLinkActor>(new GatewayActor(actorId, context, recorder));
         }
     }
 
-    public sealed class GatewayRelaySession : IZLinkSession
+    public sealed class GatewayRelaySession(
+        GatewaySessionRecorder recorder,
+        IZLinkSessionContext context) : IZLinkSession
     {
-        private readonly GatewaySessionRecorder _recorder;
         private IZLinkActorRef? _actor;
 
-        public GatewayRelaySession(GatewaySessionRecorder recorder)
-        {
-            _recorder = recorder;
-        }
-
-        public IZLinkSessionContext Context { get; set; } = default!;
+        public IZLinkSessionContext Context { get; } = context;
 
         public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
         {
@@ -1264,7 +1279,7 @@ public sealed class StreamIntegrationTests
 
         public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
-            _recorder.RecordDisconnected();
+            recorder.RecordDisconnected();
             var actor = _actor;
             _actor = null;
             if (actor is not null)
@@ -1301,17 +1316,13 @@ public sealed class StreamIntegrationTests
         }
     }
 
-    public sealed class LocalNotifyDisconnectSession : IZLinkSession
+    public sealed class LocalNotifyDisconnectSession(
+        GatewaySessionRecorder recorder,
+        IZLinkSessionContext context) : IZLinkSession
     {
-        private readonly GatewaySessionRecorder _recorder;
         private IZLinkActorRef? _actor;
 
-        public LocalNotifyDisconnectSession(GatewaySessionRecorder recorder)
-        {
-            _recorder = recorder;
-        }
-
-        public IZLinkSessionContext Context { get; set; } = default!;
+        public IZLinkSessionContext Context { get; } = context;
 
         public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
         {
@@ -1321,7 +1332,7 @@ public sealed class StreamIntegrationTests
 
         public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
-            _recorder.RecordDisconnected();
+            recorder.RecordDisconnected();
             var actor = _actor;
             _actor = null;
             if (actor is not null)

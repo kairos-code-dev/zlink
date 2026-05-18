@@ -255,12 +255,13 @@ internal sealed class FixtureSendHandler
 
 internal sealed record FixtureSendCommand(string Value);
 
-internal sealed class FixtureRawStreamSession : IZLinkSession
+internal sealed class FixtureRawStreamSession(IZLinkSessionContext context) : IZLinkSession
 {
-    public IZLinkSessionContext Context { get; set; } = default!;
+    public IZLinkSessionContext Context { get; } = context;
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
+        _ = Context;
         _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
@@ -325,20 +326,23 @@ internal sealed class FixtureActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
         string actorId,
+        IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new FixtureActor(actorId));
+        return ValueTask.FromResult<IZLinkActor>(new FixtureActor(actorId, context));
     }
 }
 
-internal sealed class FixtureActor(string actorId = "fixture") : IZLinkActor
+internal sealed class FixtureActor(
+    string actorId,
+    IZLinkActorContext context) : IZLinkActor
 {
     public string ActorId { get; } = actorId;
 
     public FixtureActorSpot? Spot { get; private set; }
 
-    public IZLinkActorContext Context { get; set; } = default!;
+    public IZLinkActorContext Context { get; } = context;
 
     public void AttachSpot(FixtureActorSpot spot)
     {
@@ -383,11 +387,11 @@ internal sealed class FixtureActor(string actorId = "fixture") : IZLinkActor
     }
 }
 
-internal sealed class FixtureActorPacketSession : IZLinkSession
+internal sealed class FixtureActorPacketSession(IZLinkSessionContext context) : IZLinkSession
 {
     private IZLinkActorRef? _actor;
 
-    public IZLinkSessionContext Context { get; set; } = default!;
+    public IZLinkSessionContext Context { get; } = context;
 
     public async ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {

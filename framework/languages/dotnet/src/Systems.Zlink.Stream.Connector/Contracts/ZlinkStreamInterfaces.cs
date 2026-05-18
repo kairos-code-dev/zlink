@@ -11,12 +11,3 @@ public interface IZlinkStreamPacketNameResolver
 {
     string Resolve(Type payloadType);
 }
-
-public interface IZlinkStreamCompressionCodec
-{
-    ZlinkStreamCompression Compression { get; }
-
-    ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload);
-
-    ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload);
-}

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
 using TicTacToe.Server.Play.Actors;
@@ -5,14 +6,16 @@ using TicTacToe.Server.Play.Actors;
 namespace TicTacToe.Server.Play.Sessions;
 
 sealed class PlaySession(
-    PlaySessionAuthenticator authenticator,
+    IZLinkSessionContext context,
     ILogger<PlaySession> logger)
     : IZLinkSession
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     private string? _actorId;
     private IZLinkActorRef? _actor;
 
-    public IZLinkSessionContext Context { get; set; } = null!;
+    public IZLinkSessionContext Context { get; } = context;
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
@@ -68,7 +71,7 @@ sealed class PlaySession(
 
         if (string.Equals(header.Name, nameof(AuthenticateReq), StringComparison.Ordinal))
         {
-            var authenticated = await authenticator.AuthenticateAsync(Context, payload, cancellationToken);
+            var authenticated = await AuthenticateAsync(payload, cancellationToken);
             _actorId = authenticated.ActorId;
             _actor = authenticated.Actor;
             return;
@@ -85,4 +88,41 @@ sealed class PlaySession(
             actorId);
         await Context.DispatchToActorAsync(actor, header, payload, cancellationToken);
     }
+
+    private async ValueTask<AuthenticatedPlaySession> AuthenticateAsync(
+        Message payload,
+        CancellationToken cancellationToken)
+    {
+        var authenticate = payload.FromJson<AuthenticateReq>(JsonOptions);
+
+        logger.LogInformation(
+            "play stream -> api: authenticate requested. sessionId={SessionId}",
+            Context.SessionId);
+
+        var reply = await Context.RequestChannel(
+                SampleChannels.Api,
+                new AuthenticatePlayerReq(authenticate.AccessToken))
+            .Timeout(SampleTimeouts.Request)
+            .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
+
+        var actor = await Context.CreateAndBindActorAsync(
+                reply.ActorId,
+                SampleTypes.PlayerActor,
+                cancellationToken)
+            .ConfigureAwait(false);
+        await Context.Reply(new AuthenticateRes(reply.ActorId))
+            .Submit(cancellationToken);
+
+        logger.LogInformation(
+            "api -> play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}, actor={ActorId}",
+            Context.SessionId,
+            reply.ActorId,
+            actor.ActorId);
+
+        return new AuthenticatedPlaySession(reply.ActorId, actor);
+    }
+
+    private readonly record struct AuthenticatedPlaySession(
+        string ActorId,
+        IZLinkActorRef Actor);
 }

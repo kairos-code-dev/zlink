@@ -6,13 +6,14 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, HEADER_SIZE, summarizeMetrics } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, subscribeNoWait, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, subscribeNoWaitInto, waitForConnectionReady } = require('./perf_multi_runtime');
 const { isStopTokenParts } = require('../perf_stop_token');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
     applyContextPolicy(ctx, 'client', 'MULTI_PUBSUB');
     const subs = [];
+    const receivedBuffers = [];
     let rl = null;
     let collector = null;
     try {
@@ -24,6 +25,7 @@ async function main() {
             await waitForConnectionReady(sub, () => sub.connect(options.endpoint));
             applyAutoHwmMsgUnit(sub, options.msgSize);
             subs.push(sub);
+            receivedBuffers.push(new zlink.TopicMessage());
         }
         ctx.recalculateAutoHwm();
         for (const sub of subs) {
@@ -68,21 +70,16 @@ async function main() {
                             if (!Number.isInteger(index)) {
                                 continue;
                             }
+                            const received = receivedBuffers[index];
                             while (true) {
-                                const received = subscribeNoWait(subs[index]);
-                                if (!received) {
+                                if (!subscribeNoWaitInto(subs[index], received)) {
                                     break;
                                 }
-                                try {
-                                    if (isStopTokenParts(received.parts)) {
-                                        stopReceived = true;
-                                        continue;
-                                    }
-                                    collector.record(decodeMetricHeaderFromParts(received.parts, payloadSize), currentEpochNs());
+                                if (isStopTokenParts(received.parts)) {
+                                    stopReceived = true;
+                                    continue;
                                 }
-                                finally {
-                                    received.close();
-                                }
+                                collector.record(decodeMetricHeaderFromParts(received.parts, payloadSize), currentEpochNs());
                             }
                         }
                     }
@@ -101,6 +98,9 @@ async function main() {
     }
     finally {
         rl?.close();
+        for (const received of receivedBuffers) {
+            received.close();
+        }
         for (const sub of subs) {
             sub.close();
         }

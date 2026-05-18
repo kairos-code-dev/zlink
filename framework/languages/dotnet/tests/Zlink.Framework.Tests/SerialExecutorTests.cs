@@ -188,7 +188,7 @@ public sealed class SerialExecutorTests
     [Fact]
     public async Task ActorDispatchCancellation_Does_Not_Stop_Current_Or_Later_Dispatch()
     {
-        var state = new ZLinkActorRuntimeState();
+        var state = new ZLinkActorRuntimeState("test-actor");
         var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var secondRan = false;
@@ -236,7 +236,7 @@ public sealed class SerialExecutorTests
     [Fact]
     public async Task ActorDispatchMailbox_Runs_Waiters_In_Fifo_Order()
     {
-        var state = new ZLinkActorRuntimeState();
+        var state = new ZLinkActorRuntimeState("test-actor");
         var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var order = new List<string>();

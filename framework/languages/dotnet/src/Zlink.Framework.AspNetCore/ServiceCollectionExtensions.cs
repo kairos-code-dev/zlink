@@ -238,14 +238,6 @@ public static class ServiceCollectionExtensions
             services.AddScoped(actorFactoryType);
         }
 
-        foreach (var streamNode in registration.StreamNodes.Values)
-        {
-            if (streamNode.HeaderSessionType is not null)
-            {
-                services.AddScoped(streamNode.HeaderSessionType);
-            }
-        }
-
         foreach (var routed in registration.RouteChannels.Values)
         {
             foreach (var handler in routed.SendHandlers)

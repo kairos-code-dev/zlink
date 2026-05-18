@@ -515,11 +515,15 @@ function recvNoWaitInto(socket, received) {
 
 function subscribeNoWait(socket) {
   const received = new zlink.TopicMessage();
+  return subscribeNoWaitInto(socket, received) ? received : null;
+}
+
+function subscribeNoWaitInto(socket, received) {
   try {
-    return socket.subscribe(received, RecvFlags.DontWait) ? received : null;
+    return socket.subscribe(received, RecvFlags.DontWait);
   } catch (error) {
     if (error instanceof zlink.RecvError && error.result === RecvResult.NoData) {
-      return null;
+      return false;
     }
     throw error;
   }
@@ -584,6 +588,9 @@ function trySocketSend(socket, ...args) {
   try {
     const routed = args.length >= 2 && args[0] instanceof zlink.RoutingId;
     const payload = routed ? args[1] : args[0];
+    if (!routed && !Array.isArray(payload) && typeof socket.sendFrom === 'function') {
+      return socket.sendFrom(payload, zlink.SendFlags.DontWait);
+    }
     let op = routed ? socket.send(args[0]) : socket.send();
     const parts = Array.isArray(payload) ? payload : [payload];
     for (const part of parts) {
@@ -791,6 +798,7 @@ module.exports = {
   recvNoWaitInto,
   sendStopTokenOnce,
   subscribeNoWait,
+  subscribeNoWaitInto,
   trySocketPublish,
   trySocketSend,
   waitForControlStart,

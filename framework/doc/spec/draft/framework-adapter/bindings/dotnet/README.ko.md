@@ -80,8 +80,8 @@
     `RouterSocket`, `SpotNode`, `Spot`)은 `Zlink` namespace 아래에 둔다. 즉
     wire/transport[^wire-transport] 레벨이다.
   - framework adapter 표면 타입은 `ZLink` prefix로 통일한다. 예를 들어
-    `IZLinkSession`, `IZLinkSessionPacket`, `IZLinkActorContext`,
-    `IZLinkSessionProxy` 같은 형태다. 즉 framework가 사용자에게 노출하는 모든
+    `IZLinkSession`, `IZLinkActorContext`, `IZLinkSessionProxy` 같은 형태다.
+    즉 framework가 사용자에게 노출하는 모든
     interface, record, enum, exception 은 `ZLink`를 쓴다.
   - 패키지 id 와 namespace 단어(`Systems.Zlink.*`)는 native binding 규칙을
     따른다. 타입 이름의 casing 의도와 namespace 이름의 casing 의도는 서로
@@ -135,7 +135,7 @@
 | [aspnet-core-actor.ko.md](./aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkActorClient, IZLinkSessionProxy, session actor dispatch (gateway) 패턴 |
 | [session-actor-dispatch.ko.md](./session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkSessionProxy`, `IZLinkActorClient`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md) 에서 다룬다. |
 | [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
-| [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` / Unity Stream Connector, TCP / TLS / WS / WSS transport, header / body packet 송수신 |
+| [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` / Unity Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신 |
 | [unity-stream-connector.ko.md](./unity-stream-connector.ko.md) | Unity package, `MonoBehaviour` wrapper, main thread callback dispatch, lifecycle |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM serializer, write, monitor-event mapping 의 결정 기준 |
 | [aspnet-core-monitoring.ko.md](./aspnet-core-monitoring.ko.md) | socket / registry / spot runtime monitoring 이벤트와 snapshot 조회 모델 |

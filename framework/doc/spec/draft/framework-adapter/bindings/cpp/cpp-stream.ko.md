@@ -25,7 +25,7 @@ framework MVP에서 `STREAM`은 packet 방식만 지원한다. 그중에서도 H
 - application이 직접 raw `stream_socket` recv loop를 돌리는 모델
 
 이 제한은 framework가 packet lifecycle, dispatch ordering, backpressure, 오류 처리를
-한곳에서 관리하기 위한 것이다. application은 Header와 body를 받은 뒤 업무 처리에만
+한곳에서 관리하기 위한 것이다. application은 Header와 payload를 받은 뒤 업무 처리에만
 집중한다.
 
 ## 2. Session 표면
@@ -47,7 +47,7 @@ public:
     virtual std::string session_id() const = 0;
     virtual std::future<void> write_packet(
       const stream_header_t &header,
-      const zlink::message_t &body) = 0;
+      const zlink::message_t &payload) = 0;
 };
 
 class packet_stream_session_t {
@@ -58,7 +58,7 @@ public:
     virtual void on_packet(
       stream_t &stream,
       const stream_header_t &header,
-      const zlink::message_t &body) = 0;
+      const zlink::message_t &payload) = 0;
 };
 
 } // namespace zlink::framework
@@ -83,8 +83,8 @@ app.use_zlink([](auto &zlink) {
 app.handlers()
   .packet_stream(
     "route-stream",
-    [](auto &stream, const auto &header, const auto &body) {
-        handle_route_packet(stream, header, body);
+    [](auto &stream, const auto &header, const auto &payload) {
+        handle_route_packet(stream, header, payload);
     });
 ```
 

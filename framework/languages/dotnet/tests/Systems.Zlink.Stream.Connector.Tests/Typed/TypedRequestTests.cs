@@ -43,8 +43,8 @@ public sealed partial class StreamConnectorTests
                 requestHeader.RequestSeq,
                 "pong.res",
                 ZlinkStreamMetadata.Empty);
-            var responseBody = JsonSerializer.SerializeToUtf8Bytes(new Pong("pong"));
-            await WritePacketAsync(stream, headerCodec.Encode(responseHeader).ToArray(), responseBody);
+            var responsePayload = JsonSerializer.SerializeToUtf8Bytes(new Pong("pong"));
+            await WritePacketAsync(stream, headerCodec.Encode(responseHeader).ToArray(), responsePayload);
         });
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions

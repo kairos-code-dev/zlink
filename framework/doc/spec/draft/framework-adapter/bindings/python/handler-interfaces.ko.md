@@ -155,7 +155,7 @@ class ZLinkStream:
     async def write_packet(
         self,
         header: Message,
-        body: Message,
+        payload: Message,
         flags: SendFlags = SendFlags.NONE,
     ) -> None: ...
 
@@ -187,7 +187,7 @@ class ZLinkPacketStreamSession(Protocol):
         self,
         stream: ZLinkStream,
         header: Message,
-        body: Message,
+        payload: Message,
     ) -> None: ...
 
 

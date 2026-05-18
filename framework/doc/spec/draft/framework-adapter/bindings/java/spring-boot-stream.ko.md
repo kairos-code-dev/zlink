@@ -45,7 +45,7 @@ public final class GameStreamSession implements ZLinkPacketStreamSession {
     public CompletionStage<Void> onPacketAsync(
         ZLinkStream stream,
         Message header,
-        Message body) {
+        Message payload) {
         return CompletableFuture.completedFuture(null);
     }
 }

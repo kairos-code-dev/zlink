@@ -10,11 +10,9 @@ public sealed class ZlinkStreamConnectorOptions
 
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
-    public TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(10);
+    public ZlinkStreamHeartbeatOptions? Heartbeat { get; init; }
 
-    public TimeSpan HeartbeatTimeout { get; init; } = TimeSpan.FromSeconds(30);
-
-    public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
+    public ZlinkStreamReconnectOptions? Reconnect { get; init; }
 
     public int MaxSendFrameSize { get; init; } = 1024 * 1024;
 
@@ -33,4 +31,22 @@ public sealed class ZlinkStreamConnectorOptions
     public IZlinkStreamCompressionCodec? CompressionCodec { get; init; }
 
     public IZlinkStreamPacketNameResolver? NameResolver { get; init; }
+}
+
+public sealed class ZlinkStreamHeartbeatOptions
+{
+    public TimeSpan Interval { get; init; } = TimeSpan.FromSeconds(1);
+
+    public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(5);
+}
+
+public sealed class ZlinkStreamReconnectOptions
+{
+    public TimeSpan InitialDelay { get; init; } = TimeSpan.FromMilliseconds(250);
+
+    public TimeSpan MaxDelay { get; init; } = TimeSpan.FromSeconds(5);
+
+    public double BackoffFactor { get; init; } = 2.0;
+
+    public int? MaxAttempts { get; init; } = 3;
 }

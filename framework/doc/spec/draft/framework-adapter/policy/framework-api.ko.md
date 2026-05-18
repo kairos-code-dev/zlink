@@ -26,8 +26,8 @@
 - 서버 간 `send/request`는 HTTP handler mapping과 닮은 경험으로 보이게 한다.
 - raw transport header는 handler 인자로 직접 노출하지 않는다.
 - 서버 간 framework transport는 공통
-  [message-model.ko.md](./message-model.ko.md)의 multipart `header + body` 계약을
-  따른다. 각 언어 adapter는 body를 header object 안에 다시 넣어 단일 메시지로
+  [message-model.ko.md](./message-model.ko.md)의 multipart `header + payload` 계약을
+  따른다. 각 언어 adapter는 payload를 header object 안에 다시 넣어 단일 메시지로
   직렬화하면 안 된다.
 
 ## 2. 공통 방향
@@ -35,7 +35,7 @@
 ### 2.1 서버 쪽
 
 - handler를 프레임워크 표준 등록 방식으로 붙인다.
-- 요청 body는 typed object로 받는다.
+- 요청 payload는 typed object로 받는다.
 - header metadata와 timeout 정보는 context에서 조회한다.
 - `send`는 응답 없는 handler, `request`는 응답 있는 handler로 설명할 수 있어야
   한다.
@@ -75,7 +75,7 @@
   target `RoutingId`를 숨기는 형태를 우선한다.
 - application public API가 typed object 중심이더라도 adapter 내부 wire에서는
   server-to-server message를 multipart로 유지한다. handler 표면에서 raw header를
-  숨기는 일과 transport에서 header/body를 한 메시지로 합치는 일은 다르다.
+  숨기는 일과 transport에서 header/payload를 한 메시지로 합치는 일은 다르다.
 - session server와 play server를 분리하는 구조에서는 `actorId`를 client-facing
   공개 키로 사용한다. session -> actor 방향은 actor create/dispatch helper로,
   actor -> client 방향은 `IZLinkSessionProxy`로 나눈다. actor 개념의 라이프사이클
@@ -98,12 +98,12 @@ section 2에 정의되어 있다. 이 문서는 channel messaging, `PUB/SUB`, `S
 transport 축마다 wire shape도 섞으면 안 된다.
 
 - channel, routed channel, SPOT channel, internal actor dispatch, internal session
-  proxy는 서버 간 framework message이므로 multipart `header + body`를 사용한다.
+  proxy는 서버 간 framework message이므로 multipart `header + payload`를 사용한다.
 - STREAM은 session 연결 위의 packet transport이므로 단일 stream packet 안에
-  stream header/body frame을 넣는다.
+  stream header/payload frame을 넣는다.
 
 이 구분은 모든 언어 adapter에 적용된다. 언어별 serializer나 framework DI 모양이
-달라도, 서버 간 body를 JSON envelope의 필드로 넣어 다시 인코딩하는 방식은 이
+달라도, 서버 간 payload를 JSON envelope의 필드로 넣어 다시 인코딩하는 방식은 이
 정책에 맞지 않는다.
 
 ### 2.4 runtime monitoring
@@ -193,10 +193,9 @@ DTO가 아니다. actor 참조는 framework가 발급한 actor handle이며, 내
 session bind, actor dispatch 대상, routing 선택과 연결될 수 있다. 따라서
 `ActorRef` 계열은 concrete 값 객체보다 interface로 두는 편이 맞다.
 
-session packet도 비슷하다. packet은 stream에서 막 도착한 frame을 application handler가
-읽는 view이며, native body message의 수명과 decode 정책이 함께 붙어 있다. 따라서
-`SessionPacket` 계열은 저장 가능한 순수 값이라기보다 framework가 제공하는 packet
-view로 보고 interface로 둔다.
+stream session 입력도 비슷하다. stream에서 막 도착한 frame은 framework가 decode한
+header와 native payload message의 쌍으로 application handler에 전달된다. payload message의
+수명과 decode 정책은 값 객체가 아니라 callback 호출 범위의 계약으로 다룬다.
 
 concrete 값 객체가 맞는 경우는 아래와 같다.
 
@@ -376,7 +375,7 @@ zlink 라이브러리의 `SpotDispatchEvent` 중 두 가지가 actor lifecycle�
 framework는 이 두 이벤트를 아래와 같이 처리한다.
 
 - `ActorJoinReadable` → `Spot.RecvActorJoin(DontWait)` 루프로 모든 요청을 drain한 뒤 application join handler를 호출하고 `ReplyActorJoin`으로 결과를 반환한다. join handler에는 join 요청의 `TargetActor`(해당 spot에 이미 등록된 로컬 actor)와 요청 메시지를 전달한다.
-- `ActorReadable` → 백엔드가 미리 drain한 `ActorPart` 목록을 받아 STREAM 메시지 단위로 묶어서 actor dispatch를 수행한다. 각 메시지는 header part (More=true) + body part (More=false) 구조다.
+- `ActorReadable` → 백엔드가 미리 drain한 `ActorPart` 목록을 받아 STREAM 메시지 단위로 묶어서 actor dispatch를 수행한다. 각 메시지는 header part (More=true) + payload part (More=false) 구조다.
 
 `OnDispatchEvent` 핸들러는 spot 초기화 시 항상 등록한다. 패킷 handler나 actor join handler가 없는 spot도 런타임에 actor가 join될 수 있으므로 `ActorReadable` 이벤트를 받을 준비가 되어 있어야 한다.
 

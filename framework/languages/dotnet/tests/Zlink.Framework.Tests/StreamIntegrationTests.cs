@@ -233,6 +233,52 @@ public sealed class StreamIntegrationTests
     }
 
     [Fact]
+    public async Task HeaderStreamSession_Responds_To_Heartbeat_Control_Ping()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var recorder = new HeaderStreamRecorder();
+
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton(recorder);
+            services.AddZLinkFramework(options =>
+            {
+                options.AddStreamNode("header.node", stream =>
+                {
+                    stream.Bind(endpoint);
+                    stream.AddHeaderSession<HeaderStreamSession>();
+                });
+            });
+        });
+        try
+        {
+            using var client = ConnectRawClient(endpoint);
+            var network = client.GetStream();
+
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Control,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "$zlink.heartbeat.ping",
+                    ZlinkStreamMetadata.Empty),
+                ReadOnlySpan<byte>.Empty));
+
+            var reply = ReceiveFrame(network);
+            Assert.Equal(ZlinkStreamMessageKind.Control, reply.Header.Kind);
+            Assert.Equal("$zlink.heartbeat.pong", reply.Header.Name);
+            Assert.Empty(reply.Payload);
+            Assert.Empty(recorder.ReceivedPayloads);
+        }
+        finally
+        {
+            await host.StopAsync();
+            host.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task HeaderStreamSession_Can_Close_Current_Client_Stream()
     {
         var endpoint = GetFreeTcpEndpoint();

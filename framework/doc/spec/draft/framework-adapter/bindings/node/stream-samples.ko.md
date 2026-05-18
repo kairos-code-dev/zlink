@@ -17,7 +17,7 @@ export class RouteSession implements ZLinkPacketStreamSession {
   async onPacket(
     stream: ZLinkStream,
     header: Message,
-    body: Message,
+    payload: Message,
   ): Promise<void> {
   }
 }

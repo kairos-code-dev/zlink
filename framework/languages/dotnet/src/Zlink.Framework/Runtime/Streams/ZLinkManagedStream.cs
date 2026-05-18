@@ -33,14 +33,6 @@ internal sealed class ZLinkManagedStream : IZLinkStream
         return _socket.Send(_routingId, payload, flags);
     }
 
-    public bool Write(
-        Message header,
-        Message payload,
-        SendFlags flags = SendFlags.None)
-    {
-        return _socket.Send(_routingId, [header, payload], flags);
-    }
-
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

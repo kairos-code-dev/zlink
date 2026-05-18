@@ -8,7 +8,7 @@
 
 # Draft -- ZLink Framework .NET Session Actor Dispatch
 
-> 이 문서는 **구현 전 초안**이다.
+> 이 문서는 **릴리스 전 초안**이다.
 > 아직 공개된 계약[^public-contract]이 아니며, `.NET` `ZLink Framework`에서
 > session actor dispatch[^session-actor-dispatch] 표면을 어떤 시그니처와 등록
 > 코드로 노출할지 정리해 둔 문서다.
@@ -62,7 +62,7 @@ Session 서버에서 Play 서버 actor 로 보내는 actor dispatch request / se
 | `parts[0]` | routed framework header. packet name은 internal actor dispatch packet 이름을 사용한다 |
 | `parts[1]` | actor dispatch metadata. actor route와 함께, local actor를 새로 만들어야 하는 경우를 위한 `ActorId`, `ActorType`만 둔다 |
 | `parts[2]` | encoded stream header bytes. stream packet kind, codec, request sequence, packet name, metadata snapshot은 모두 이 part에 둔다 |
-| `parts[3]` | application body bytes. framework codec이나 stream packet codec이 만든 payload를 그대로 둔다 |
+| `parts[3]` | application payload bytes. framework codec이나 stream packet codec이 만든 payload를 그대로 둔다 |
 
 반대 방향도 같은 원칙을 따른다. Play 서버 actor 에서 Session 서버의 client
 stream 으로 보내는 session proxy send / request 는 다음 part 구성을 사용한다.
@@ -71,31 +71,31 @@ stream 으로 보내는 session proxy send / request 는 다음 part 구성을 �
 |------|------|
 | `parts[0]` | routed framework header. packet name은 internal session proxy packet 이름을 사용한다 |
 | `parts[1]` | session proxy metadata. `ActorId`, `BindingToken`, client packet name, reply 필요 여부, metadata snapshot을 함께 담는다 |
-| `parts[2]` | application body bytes |
+| `parts[2]` | application payload bytes |
 
 reply 도 같은 원칙을 따른다. routed reply header 는 `parts[0]` 에 두고, reply
-body 는 별도 part 로 둔다. body 가 없으면 빈 body part 를 그대로 남긴다.
+payload 는 별도 part 로 둔다. payload 가 없으면 빈 payload part 를 그대로 남긴다.
 
 다음과 같은 형태는 이 초안의 내부 routed wire 계약이 아니다.
 
-- `ZLinkActorDispatchPacket` 같은 단일 DTO 안에 `StreamHeader` 와 `byte[] Body`
+- `ZLinkActorDispatchPacket` 같은 단일 DTO 안에 `StreamHeader` 와 `byte[] Payload`
   를 같이 넣고, 그 DTO 전체를 다시 JSON 으로 직렬화하는 방식
-- `ZLinkSessionProxyPacket` 같은 단일 DTO 안에 proxy metadata 와 body bytes 를
+- `ZLinkSessionProxyPacket` 같은 단일 DTO 안에 proxy metadata 와 payload bytes 를
   함께 묶는 방식
-- `parts[0]` 한 part 만 보내고 그 안에서 header 와 body 를 모두 decode 하는
+- `parts[0]` 한 part 만 보내고 그 안에서 header 와 payload 를 모두 decode 하는
   방식
 
 이 제한은 단순히 성능 때문만이 아니다. 다음 두 가지 이유 때문이다.
 
 - route 와 dispatch 는 header 와 metadata 만 읽고도 target 과 handler 를
   결정할 수 있어야 한다.
-- application body 는 handler 가 정해진 뒤에 등록된 codec 이 decode 해야 한다.
+- application payload 는 handler 가 정해진 뒤에 등록된 codec 이 decode 해야 한다.
 
-그래야 큰 body, binary body, 압축 body, attachment 가 들어와도 framework 내부
-route 경로가 body 재인코딩 비용을 떠안지 않는다.
+그래야 큰 payload, binary payload, 압축 payload, attachment 가 들어와도 framework 내부
+route 경로가 payload 재인코딩 비용을 떠안지 않는다.
 
 STREAM 자체는 예외다. client 와 Session 서버 사이의 STREAM transport 는
-stream packet 하나 안에 stream header / body frame 을 그대로 담는다. 위에서
+stream packet 하나 안에 stream header / payload frame 을 그대로 담는다. 위에서
 말한 multipart 계약은 Session 서버와 Play 서버처럼 framework 서버끼리
 주고받는 routed transport 구간에만 적용한다.
 
@@ -545,13 +545,11 @@ internal sealed class ZLinkStreamSessionRuntime
 
     public async ValueTask OnTransportFrameAsync(
         ZLinkStreamHeader header,
-        ReadOnlyMemory<byte> body,
+        Message payload,
         CancellationToken cancellationToken)
     {
-        var packet = DecodeSessionPacket(header, body);
-
         await _sessionQueue.PostAsync(
-            ct => _session.OnDispatchAsync(packet, ct),
+            ct => _session.OnDispatchAsync(header, payload, ct),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -601,7 +599,8 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
 
     public async ValueTask DispatchToActorAsync(
         IZLinkActorRef actorRef,
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken)
     {
         var binding = _bindings.GetCurrentBinding(actorRef.ActorId);
@@ -609,13 +608,15 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         await _actorDispatch.PostFromSessionAsync(
             actorRef,
             binding,
-            packet,
+            header,
+            payload,
             cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask<TReply> RequestActorAsync<TReply>(
         IZLinkActorRef actorRef,
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken)
     {
         var binding = _bindings.GetCurrentBinding(actorRef.ActorId);
@@ -623,7 +624,8 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         return await _actorDispatch.InvokeFromSessionAsync<TReply>(
             actorRef,
             binding,
-            packet,
+            header,
+            payload,
             cancellationToken).ConfigureAwait(false);
     }
 }
@@ -676,13 +678,15 @@ internal sealed class ZLinkActorDispatchRuntime
     public async ValueTask PostFromSessionAsync(
         IZLinkActorRef actorRef,
         ZLinkActorSessionBinding binding,
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken)
     {
         var item = CreateActorWorkItem<object?>(
             actorRef,
             binding,
-            packet,
+            header,
+            payload,
             expectReply: false);
 
         await EnqueueByCurrentLocationAsync(
@@ -694,13 +698,15 @@ internal sealed class ZLinkActorDispatchRuntime
     public async ValueTask<TReply> InvokeFromSessionAsync<TReply>(
         IZLinkActorRef actorRef,
         ZLinkActorSessionBinding binding,
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken)
     {
         var item = CreateActorWorkItem<TReply>(
             actorRef,
             binding,
-            packet,
+            header,
+            payload,
             expectReply: true);
 
         var queued = await EnqueueByCurrentLocationAsync(
@@ -1335,12 +1341,13 @@ public sealed class TicTacToeSession : IZLinkSession
     public IZLinkSessionContext Context { get; set; } = default!;
 
     public async ValueTask OnDispatchAsync(
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken)
     {
-        if (packet.PacketName == "auth")
+        if (header.Name == "auth")
         {
-            AuthReq request = packet.Decode<AuthReq>();
+            AuthReq request = payload.FromJson<AuthReq>();
 
             IZLinkActorRef actor = await Context.BindActorHandleAsync(
                 request.ActorId,
@@ -1354,11 +1361,12 @@ public sealed class TicTacToeSession : IZLinkSession
             return;
         }
 
-        if (authenticatedActors.TryGet(packet, out IZLinkActorRef actor))
+        if (authenticatedActors.TryGet(header, out IZLinkActorRef actor))
         {
             await Context.DispatchToActorAsync(
                 actor,
-                packet,
+                header,
+                payload,
                 cancellationToken);
             return;
         }

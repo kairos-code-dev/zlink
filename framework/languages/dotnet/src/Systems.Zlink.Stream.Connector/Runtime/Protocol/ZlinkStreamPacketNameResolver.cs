@@ -7,10 +7,10 @@ internal sealed class ZlinkStreamPacketNameResolver : IZlinkStreamPacketNameReso
 {
     private static readonly ConcurrentDictionary<Type, string> Cache = new();
 
-    public string Resolve(Type bodyType)
+    public string Resolve(Type payloadType)
     {
-        ArgumentNullException.ThrowIfNull(bodyType);
-        return Cache.GetOrAdd(bodyType, static type =>
+        ArgumentNullException.ThrowIfNull(payloadType);
+        return Cache.GetOrAdd(payloadType, static type =>
             type.GetCustomAttribute<ZlinkStreamPacketNameAttribute>(inherit: false)?.Name
             ?? type.Name);
     }

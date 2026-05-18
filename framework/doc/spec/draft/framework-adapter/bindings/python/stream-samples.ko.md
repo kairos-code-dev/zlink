@@ -17,7 +17,7 @@ class RouteSession(ZLinkPacketStreamSession):
         self,
         stream: ZLinkStream,
         header: Message,
-        body: Message,
+        payload: Message,
     ) -> None:
         return None
 

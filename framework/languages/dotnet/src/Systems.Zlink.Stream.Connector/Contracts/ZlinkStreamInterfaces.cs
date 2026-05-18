@@ -9,7 +9,7 @@ public interface IZlinkStreamHeaderCodec
 
 public interface IZlinkStreamPacketNameResolver
 {
-    string Resolve(Type bodyType);
+    string Resolve(Type payloadType);
 }
 
 public interface IZlinkStreamCompressionCodec

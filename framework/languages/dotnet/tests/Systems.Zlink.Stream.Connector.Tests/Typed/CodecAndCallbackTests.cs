@@ -21,7 +21,7 @@ using StreamJson = Systems.Zlink.Stream.Connector.Json.ZlinkStreamJsonExtensions
 public sealed partial class StreamConnectorTests
 {
     [Fact]
-    public void JsonExtensionBuildsEncodedBody()
+    public void JsonExtensionBuildsEncodedPayload()
     {
         var payload = StreamJson.ToJson(new Ping("hello"));
 

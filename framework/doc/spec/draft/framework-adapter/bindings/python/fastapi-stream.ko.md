@@ -32,7 +32,7 @@ class ZLinkPacketStreamSession(Protocol):
         self,
         stream: ZLinkStream,
         header: Message,
-        body: Message,
+        payload: Message,
     ) -> None: ...
 
 class ZLinkRawStreamSession(Protocol):

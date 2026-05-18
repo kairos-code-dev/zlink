@@ -1,18 +1,5 @@
 namespace Zlink.Framework.Contracts.Streams;
 
-public interface IZLinkSessionPacket
-{
-    string PacketName { get; }
-
-    ZLinkMessageMetadata Metadata { get; }
-
-    ZlinkStreamHeader Header { get; }
-
-    Message Payload { get; }
-
-    TMessage Decode<TMessage>();
-}
-
 public interface IZLinkSession
 {
     IZLinkSessionContext Context { get; set; }
@@ -26,13 +13,6 @@ public interface IZLinkSession
     ValueTask OnErrorAsync(
         ZLinkStreamError error,
         CancellationToken cancellationToken);
-
-    ValueTask OnDispatchAsync(
-        IZLinkSessionPacket packet,
-        CancellationToken cancellationToken)
-    {
-        return OnDispatchAsync(packet.Header, packet.Payload, cancellationToken);
-    }
 
     ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
@@ -88,15 +68,6 @@ public interface IZLinkSessionActorDispatchContext
         CancellationToken cancellationToken = default);
 
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
-
-    ValueTask DispatchToActorAsync(
-        IZLinkSessionPacket packet,
-        CancellationToken cancellationToken = default);
-
-    ValueTask DispatchToActorAsync(
-        IZLinkActorRef actor,
-        IZLinkSessionPacket packet,
-        CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         ZlinkStreamHeader header,

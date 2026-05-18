@@ -22,14 +22,14 @@ recv loop를 application 표면에 직접 올리지 않는 편을 기본으로 �
 export interface ZLinkStream {
   sessionId: string;
   write(payload: Message, flags?: SendFlags): Promise<void>;
-  writePacket(header: Message, body: Message, flags?: SendFlags): Promise<void>;
+  writePacket(header: Message, payload: Message, flags?: SendFlags): Promise<void>;
 }
 
 export interface ZLinkPacketStreamSession {
   onPacket(
     stream: ZLinkStream,
     header: Message,
-    body: Message,
+    payload: Message,
   ): Promise<void>;
 }
 

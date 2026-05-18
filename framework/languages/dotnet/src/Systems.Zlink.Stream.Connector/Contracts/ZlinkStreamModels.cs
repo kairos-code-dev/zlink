@@ -30,6 +30,11 @@ public sealed record ZlinkStreamError(
     string Message,
     Exception? Exception = null);
 
+public sealed record ZlinkStreamConnectionStateChanged(
+    ZlinkStreamConnectionState Previous,
+    ZlinkStreamConnectionState Current,
+    ZlinkStreamError? Error = null);
+
 public sealed class ZlinkStreamException(ZlinkStreamError error) : Exception(error.Message, error.Exception)
 {
     public ZlinkStreamError Error { get; } = error;

@@ -1719,17 +1719,6 @@ public sealed class SpotIntegrationTests
             return true;
         }
 
-        public bool Write(
-            global::Systems.Zlink.Message header,
-            global::Systems.Zlink.Message body,
-            global::Systems.Zlink.SendFlags flags = global::Systems.Zlink.SendFlags.None)
-        {
-            _ = header;
-            _ = body;
-            _ = flags;
-            return true;
-        }
-
         public ValueTask CloseAsync(CancellationToken cancellationToken = default)
         {
             _ = cancellationToken;

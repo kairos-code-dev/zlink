@@ -29,7 +29,7 @@
 | [정책 문서 목록](./policy/README.ko.md) | 공통 정책 문서의 전체 목록과 읽는 순서 |
 | [개요](./policy/overview.ko.md) | Framework Adapter의 목적과 우선 범위 |
 | [상호작용 모델](./policy/interaction-model.ko.md) | request-response, command, publish-subscribe 같은 사용자 모델 |
-| [메시지 모델](./policy/message-model.ko.md) | header/body 구조와 metadata 정책 |
+| [메시지 모델](./policy/message-model.ko.md) | header/payload 구조와 metadata 정책 |
 | [Channel topology](./policy/channel-topology.ko.md) | channel grouping, discovery, 수동 연결, 내부 transport 매핑 |
 | [Framework API](./policy/framework-api.ko.md) | 언어별 framework API의 공통 방향 |
 | [Actor 모델](./policy/actor-model.ko.md) | actor 위치, session binding, Entry Spot, user Spot, dispatch 기준 |

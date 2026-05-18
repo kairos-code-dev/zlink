@@ -41,10 +41,10 @@ packet session 방식으로 정리하는 것이다.
 `STREAM` 은 일반 channel messaging handler 와 같은 감각으로 무리하게 맞추지
 않는다. 특히 다음 원칙을 둔다.
 
-- framework 가 decode 한 stream frame 을 `IZLinkSessionPacket` 으로 감싼 뒤
-  처리한다.
+- framework 가 stream header 를 decode 한 뒤 `ZlinkStreamHeader header` 와
+  `Message payload` 를 session callback 에 전달한다.
 - `playhouse` 처럼 header 는 framework 내부에서 packet name 과 metadata 로
-  해석한다. application 은 `packet.PacketName` 을 보고 각 packet 타입으로
+  해석한다. application 은 `header.Name` 을 보고 각 packet 타입으로
   decode 하는 모델을 자연스러운 기본으로 본다.
 - 이 decode helper 는 `playhouse/extensions` 처럼 transport 본체에 섞지 않는다.
   대신 `Message` 위에 얹는 serializer extension 계층으로 두는 편을 기본으로
@@ -77,14 +77,9 @@ public interface IZLinkStream
 
     string? RemoteAddr { get; }
 
-    ValueTask WriteAsync(
+    bool Write(
         Message payload,
-        CancellationToken cancellationToken = default);
-
-    ValueTask WriteAsync(
-        Message header,
-        Message body,
-        CancellationToken cancellationToken = default);
+        SendFlags flags = SendFlags.None);
 }
 
 public enum ZLinkStreamSessionError
@@ -109,15 +104,6 @@ public sealed class ZLinkMessageMetadata
     public static ZLinkMessageMetadata Empty { get; }
 }
 
-public interface IZLinkSessionPacket
-{
-    string PacketName { get; }
-
-    ZLinkMessageMetadata Metadata { get; }
-
-    TMessage Decode<TMessage>();
-}
-
 public interface IZLinkSession
 {
     IZLinkSessionContext Context { get; set; }
@@ -131,7 +117,8 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken);
 }
 
@@ -150,12 +137,14 @@ public interface IZLinkSessionActorDispatchContext
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
 
     ValueTask DispatchToActorAsync(
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken = default);
 }
 
@@ -200,10 +189,10 @@ public interface IZLinkSessionContext :
 - actor stream 연결과 해제는 별도의 `IZLinkSessionActorAttachmentContext` 표면
   으로 분리한다.
 - `CloseAsync(...)` 는 현재 stream client 의 연결을 서버 쪽에서 끊는다.
-- header session 은 C API 가 잘라 준 stream frame 을 framework 가
-  `IZLinkSessionPacket` 으로 감싼 뒤 받는다.
+- header session 은 C API 가 잘라 준 stream frame 을 framework 가 header 와
+  payload 로 나누어 받은 뒤 처리한다.
 - application 은 packet name 을 보고 각 packet 타입으로 decode 한다.
-- 이 decode 과정은 가능하면 packet 내부의 `Message.AsReadOnlySpan()` 기반
+- 이 decode 과정은 가능하면 payload 의 `Message.AsReadOnlySpan()` 기반
   helper 를 사용한다. 추가 복사를 피하기 위해서다.
 - `IZLinkStream` 의 `SessionId`, `RoutingId`, `LocalAddr`, `RemoteAddr` 로 peer
   와 연결 metadata 를 읽는다.
@@ -280,8 +269,8 @@ builder.Services.AddZLinkFramework(options =>
 예를 들면 다음과 같이 쓴다.
 
 ```csharp
-ClientInput input = packet.Decode<ClientInput>();
-ChatRequest request = packet.Decode<ChatRequest>();
+ClientInput input = payload.FromJson<ClientInput>();
+ChatRequest request = payload.FromJson<ChatRequest>();
 ```
 
 이 구조의 장점은 다음과 같다.
@@ -289,7 +278,7 @@ ChatRequest request = packet.Decode<ChatRequest>();
 - protobuf / json / messagepack 의존성을 transport core 에 고정하지 않아도
   된다.
 - serializer 를 별도 패키지로 분리하기 쉽다.
-- packet 내부의 `Message.AsReadOnlySpan()` 기반 helper 를 써서 불필요한 복사를
+- payload 의 `Message.AsReadOnlySpan()` 기반 helper 를 써서 불필요한 복사를
   줄이기 쉽다.
 - `playhouse/extensions` 와 비슷한 사용 경험을 만들 수 있다.
 
@@ -324,7 +313,8 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
   handshake 실패와 socket / node 단위 오류는 runtime monitoring 에서 다룬다.
   즉 session callback 에 올리지 않는다.
 - raw chunk 직접 처리 표면은 현재 공개 계약에 넣지 않는다. 지금 단계의 session
-  은 framework 가 decode 한 `IZLinkSessionPacket` 을 받는 계약으로 둔다.
+  은 framework 가 decode 한 `ZlinkStreamHeader` 와 `Message` payload 를 받는
+  계약으로 둔다.
 
 ## 8. 회귀 테스트
 

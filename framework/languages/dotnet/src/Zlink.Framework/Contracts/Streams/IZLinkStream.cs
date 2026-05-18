@@ -14,11 +14,6 @@ public interface IZLinkStream
         Message payload,
         SendFlags flags = SendFlags.None);
 
-    bool Write(
-        Message header,
-        Message payload,
-        SendFlags flags = SendFlags.None);
-
     ValueTask CloseAsync(
         CancellationToken cancellationToken = default);
 }

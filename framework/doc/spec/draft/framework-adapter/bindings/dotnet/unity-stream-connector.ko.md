@@ -8,7 +8,7 @@
 
 # Draft -- ZLink Stream Connector For Unity
 
-> 이 문서는 **구현 전 초안**이다.
+> 이 문서는 **릴리스 전 초안**이다.
 > 아직 공개된 계약[^public-contract]이 아니며, Unity에서 `ZLink STREAM` 서버에
 > 접속하는 `Systems.Zlink.Stream.Connector.Unity` package를 어떤 모양으로 노출할지
 > 정리해 둔 문서다.
@@ -23,7 +23,7 @@ Unity package 는 새로 wire protocol[^wire-protocol] 을 만들지 않는다. 
 를 그대로 따른다.
 
 - TCP, TLS, WS, WSS transport
-- STREAM `header + body` framing[^framing]
+- STREAM `header + payload` framing[^framing]
 - helper header
 - codec[^codec]
 - compression
@@ -83,58 +83,40 @@ Unity 사용자는 `MonoBehaviour` wrapper 를 통해 연결과 callback 을 다
 ```csharp
 public sealed class ZlinkUnityStreamConnectorOptions
 {
-    public ZlinkStreamConnectorOptions ConnectorOptions { get; init; }
+    public required ZlinkStreamConnectorOptions Connector { get; init; }
 
-    public bool ConnectOnStart { get; init; }
+    public ZlinkUnityDispatchOptions Dispatch { get; init; } = new();
 
-    public ZlinkUnityDispatchOptions Dispatch { get; init; }
-
-    public ZlinkUnityPausePolicy PausePolicy { get; init; }
+    public ZlinkUnityPausePolicy PausePolicy { get; init; } = ZlinkUnityPausePolicy.KeepConnected;
 }
 ```
 
 ```csharp
 public sealed class ZlinkStreamConnectorBehaviour : MonoBehaviour
 {
-    public string Endpoint { get; set; } = "tcp://127.0.0.1:18082";
-
-    public bool ConnectOnStart { get; set; }
-
-    public ZlinkUnityPausePolicy PausePolicy { get; set; }
-
     public bool IsConnected { get; }
 
-    public ZlinkStreamConnector? Connector { get; }
+    public IZlinkStreamConnector? Connector { get; }
 
-    public event Action<ZlinkStreamError>? ErrorReceived;
-
-    public event Action? Disconnected;
+    public ZlinkUnityCallbackDispatcher? Dispatcher { get; }
 
     public void Configure(ZlinkUnityStreamConnectorOptions options);
 
-    public Task ConnectAsync(CancellationToken cancellationToken = default);
+    public ValueTask ConnectAsync(CancellationToken cancellationToken = default);
 
-    public Task CloseAsync(CancellationToken cancellationToken = default);
+    public ValueTask CloseAsync(CancellationToken cancellationToken = default);
 
-    public ZlinkStreamSendBuilder<TBody> Send<TBody>(
-        TBody body);
+    public void EnqueueCallback(Func<ValueTask> callback);
 
-    public ZlinkStreamRequestBuilder<TBody> Request<TBody>(
-        TBody body);
-
-    public IDisposable On<TBody>(
-        Action<ZlinkStreamMessage<TBody>> handler);
-
-    public IDisposable On<TBody>(
-        string name,
-        Action<ZlinkStreamMessage<TBody>> handler);
+    public ValueTask PumpCallbacksAsync(CancellationToken cancellationToken = default);
 }
 ```
 
-Unity wrapper 는 `Task` 를 노출할 수 있다. 하지만 사용자 callback 은 반드시
-Unity main thread 에서 호출되어야 한다. 이유는 단순하다. 사용자는
-`On<TBody>(...)` 로 등록한 typed callback 안에서 `GameObject`, `Transform`,
-`UI` 같은 Unity 객체를 그대로 다룰 수 있어야 하기 때문이다.
+Unity wrapper 는 core connector 연결과 callback queue pump만 얇게 감싼다.
+typed `Send`, `Request`, `On`은 `Connector`로 노출된 `IZlinkStreamConnector`와
+codec extension을 그대로 사용한다. 사용자 callback 은 반드시 Unity main thread 에서
+호출되어야 한다. 이유는 단순하다. 사용자는 typed callback 안에서 `GameObject`,
+`Transform`, `UI` 같은 Unity 객체를 그대로 다룰 수 있어야 하기 때문이다.
 
 typed `Send`, `Request`, codec, compression helper 는 core connector 와 같은
 의미를 유지한다. Unity wrapper 가 자체적으로 별도의 이름 규칙이나 helper
@@ -157,42 +139,44 @@ core connector 의 receive loop 는 worker thread[^worker-thread] 에서 실행�
 4. 사용자 callback 을 Unity main thread 에서 호출한다.
 
 callback queue 에는 최대 pending 개수를 둘 수 있다. 한도를 넘었을 때 어떻게
-처리할지 — drop 할지, disconnect 할지 — 는 옵션으로 정한다.
+처리할지, 즉 새 callback을 버릴지, 오래된 callback을 버릴지, 실패로 알릴지는
+옵션으로 정한다.
 
 ```csharp
 public sealed class ZlinkUnityDispatchOptions
 {
-    public int MaxPendingCallbacks { get; init; } = 4096;
+    public int MaxQueuedCallbacks { get; init; } = 1024;
 
-    public ZlinkUnityCallbackOverflowPolicy OverflowPolicy { get; init; }
+    public ZlinkUnityCallbackOverflowPolicy OverflowPolicy { get; init; } =
+        ZlinkUnityCallbackOverflowPolicy.Throw;
 }
 
 public enum ZlinkUnityCallbackOverflowPolicy
 {
-    Disconnect,
     DropNewest,
-    DropOldest
+    DropOldest,
+    Throw
 }
 ```
 
-기본값으로는 `Disconnect` 가 적합하다. callback queue overflow 는 사용자가
-packet 을 제때 처리하지 못하고 있다는 신호다. 이를 조용히 유실시키면 문제를
-추적하기 어려워진다. 그래서 명시적으로 끊는 쪽을 기본으로 둔다.
+기본값은 `Throw`다. callback queue overflow 는 사용자가 packet 을 제때 처리하지
+못하고 있다는 신호다. 이를 조용히 유실시키면 문제를 추적하기 어렵기 때문에,
+기본 동작은 명시적으로 실패한다.
 
 dispatcher 구현은 다음 표면을 만족해야 한다.
 
 ```csharp
-public sealed class ZlinkUnityCallbackDispatcher : MonoBehaviour
+public sealed class ZlinkUnityCallbackDispatcher
 {
-    public int PendingCount { get; }
+    public int Count { get; }
 
-    public void Enqueue(Action callback);
+    public void Enqueue(Func<ValueTask> callback);
 
-    public void Drain();
+    public ValueTask PumpAsync(CancellationToken cancellationToken = default);
 }
 ```
 
-`Drain()` 은 `Update()` 에서 호출한다. package 내부 구현은 다른 타입을 사용해도
+`PumpAsync()` 는 `Update()` 에서 호출한다. package 내부 구현은 다른 타입을 사용해도
 무방하다. 단 "사용자 callback 은 Unity main thread 에서 호출된다" 는 계약만은
 반드시 유지해야 한다.
 
@@ -200,7 +184,6 @@ public sealed class ZlinkUnityCallbackDispatcher : MonoBehaviour
 
 Unity adapter는 다음 lifecycle 규칙을 지켜야 한다.
 
-- `Start()`에서 `ConnectOnStart`가 켜져 있으면 연결을 시작한다.
 - `OnDestroy()`에서 connector를 닫는다.
 - `OnApplicationPause(true)` 동작은 자동 disconnect로 고정하지 않는다.
 - pause/resume 정책은 옵션으로 둔다.
@@ -210,15 +193,14 @@ Unity adapter는 다음 lifecycle 규칙을 지켜야 한다.
 ```csharp
 public enum ZlinkUnityPausePolicy
 {
-    KeepConnection,
-    CloseOnPause,
-    CloseAndReconnectOnResume
+    KeepConnected,
+    CloseOnPause
 }
 ```
 
 모바일 환경에서는 pause 중에 네트워크가 끊길 수 있다. 따라서 `Disconnected`
-callback 과 명시적 reconnect helper 를 함께 제공해야 한다. 단 자동 reconnect
-를 기본값으로 켜두지는 않는다.
+callback 과 core connector의 reconnect option 을 함께 사용할 수 있어야 한다.
+Unity adapter 는 자동 reconnect 정책을 임의로 강제하지 않는다.
 
 ## 7. Transport
 
@@ -243,7 +225,7 @@ Unity sample은 게임 도메인을 끌고 들어오지 않는다. 다음만 보
 
 1. endpoint 입력
 2. connect 버튼
-3. packet name과 body 입력
+3. packet name과 payload 입력
 4. send 버튼
 5. received packet log
 6. disconnect 버튼
@@ -283,7 +265,7 @@ connector 계약을 실제로 검증하는 테스트만 둔다. Unity runtime �
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^wire-protocol]: wire protocol은 네트워크 위에서 바이트가 실제로 어떤 형식으로 흐르는지를 정의한 규약이다.
-[^framing]: framing은 연속된 바이트 스트림에서 메시지의 시작과 끝을 구분하는 방식을 가리킨다. STREAM에서는 header와 body를 묶어 하나의 packet 단위로 자른다.
+[^framing]: framing은 연속된 바이트 스트림에서 메시지의 시작과 끝을 구분하는 방식을 가리킨다. STREAM에서는 header와 payload를 묶어 하나의 packet 단위로 자른다.
 [^codec]: codec은 객체와 바이트 표현 사이의 직렬화/역직렬화를 담당하는 컴포넌트다. 예: Protobuf, MessagePack, JSON.
 [^asmdef]: `asmdef`는 Unity에서 코드 일부를 별도의 어셈블리로 떼어내기 위해 사용하는 Assembly Definition 파일이다.
 [^monobehaviour]: `MonoBehaviour`는 Unity의 컴포넌트 기본 타입으로, `GameObject`에 붙어 lifecycle 메서드(`Start`, `Update` 등)를 통해 동작한다.

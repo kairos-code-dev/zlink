@@ -32,10 +32,11 @@ registration surface 와 테스트 기준도 나중에 같이 흔들리지 않�
 
 serializer 계층은 다음 네 가지 방향으로 잡혀 있다.
 
-- `STREAM` session callback 은 `IZLinkSessionPacket` 을 인자로 받는다.
+- `STREAM` session callback 은 `ZlinkStreamHeader header` 와 `Message payload` 를
+  인자로 받는다.
 - packet session 에서는 framework 가 먼저 내부 header 를 읽고, packet name 과
   metadata 를 만들어 둔다.
-- application 코드는 `packet.PacketName` 을 보고 각각의 packet 타입으로
+- application 코드는 `header.Name` 을 보고 각각의 packet 타입으로
   decode 한다.
 - protobuf, json, messagepack 같은 객체 변환은 transport 본체에 두지 않는다.
   `playhouse/extensions` 같은 extension 계층에 두는 방향을 기본으로 본다.
@@ -59,7 +60,7 @@ serializer 계층은 다음 네 가지 방향으로 잡혀 있다.
 
 - transport 본체는 `Message` 까지만 책임진다.
 - serializer 는 extension 패키지로 분리한다.
-- handler 샘플은 `packet.Decode<T>()` 같은 helper 를 기준으로 작성한다.
+- handler 샘플은 payload serializer helper 를 기준으로 작성한다.
 - generated protobuf 타입은 `IMessage<T>` 계열인지 보고 protobuf 로 해석한다.
 - 그 외의 일반 클래스는 json 으로 해석하는 규칙을 기본값으로 둔다.
 - helper 내부에서는 `Message.AsReadOnlySpan()` 을 사용해, 추가 복사가 일어나지
@@ -72,7 +73,7 @@ serializer 계층은 다음 네 가지 방향으로 잡혀 있다.
 
 요지는 다음과 같다.
 
-- `IZLinkStream.WriteAsync(payload, ct)` 와 `WriteAsync(header, body, ct)`,
+- `IZLinkStream.WriteAsync(payload, ct)` 와 `WriteAsync(header, payload, ct)`,
   이렇게 두 overload 만 둔다.
 - 동기 `bool Write(...)` 표면은 deprecated 다. framework 내부 fast path 에서만
   쓰고, application 코드는 `WriteAsync(...)` 또는 actor 경로

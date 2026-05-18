@@ -350,7 +350,7 @@ public:
     virtual std::string session_id() const = 0;
     virtual std::future<void> write_packet(
       const stream_header_t &header,
-      const zlink::message_t &body) = 0;
+      const zlink::message_t &payload) = 0;
 };
 
 class handler_registry_t {

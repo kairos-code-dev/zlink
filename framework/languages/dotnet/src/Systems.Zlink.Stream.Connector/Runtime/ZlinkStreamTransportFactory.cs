@@ -14,6 +14,77 @@ internal static class ZlinkStreamTransportFactory
             throw new ArgumentException("Endpoint is required.", nameof(options));
         }
 
+        _ = ResolveTransport(options);
+
+        if (options.ConnectTimeout <= TimeSpan.Zero)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "ConnectTimeout must be positive.");
+        }
+
+        if (options.RequestTimeout <= TimeSpan.Zero)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "RequestTimeout must be positive.");
+        }
+
+        if (options.Heartbeat is { } heartbeat)
+        {
+            if (heartbeat.Interval <= TimeSpan.Zero)
+            {
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.ValidationFailed,
+                    "Heartbeat interval must be positive.");
+            }
+
+            if (heartbeat.Timeout <= TimeSpan.Zero)
+            {
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.ValidationFailed,
+                    "Heartbeat timeout must be positive.");
+            }
+
+            if (heartbeat.Timeout <= heartbeat.Interval)
+            {
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.ValidationFailed,
+                    "Heartbeat timeout must be greater than the heartbeat interval.");
+            }
+        }
+
+        if (options.Reconnect is { } reconnect)
+        {
+            if (reconnect.InitialDelay <= TimeSpan.Zero)
+            {
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.ValidationFailed,
+                    "Reconnect InitialDelay must be positive.");
+            }
+
+            if (reconnect.MaxDelay <= TimeSpan.Zero)
+            {
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.ValidationFailed,
+                    "Reconnect MaxDelay must be positive.");
+            }
+
+            if (reconnect.BackoffFactor < 1.0)
+            {
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.ValidationFailed,
+                    "Reconnect BackoffFactor must be at least 1.0.");
+            }
+
+            if (reconnect.MaxAttempts <= 0)
+            {
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.ValidationFailed,
+                    "Reconnect MaxAttempts must be null or positive.");
+            }
+        }
+
         if (options.MaxSendFrameSize <= 0)
         {
             throw ZlinkStreamConnector.Error(
@@ -51,7 +122,6 @@ internal static class ZlinkStreamTransportFactory
         CancellationToken cancellationToken)
     {
         var webSocket = new ClientWebSocket();
-        webSocket.Options.KeepAliveInterval = options.HeartbeatInterval;
         if (options.SkipServerCertificateValidation)
         {
             webSocket.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;

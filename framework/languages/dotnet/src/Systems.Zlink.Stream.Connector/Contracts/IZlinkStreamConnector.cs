@@ -6,7 +6,11 @@ public interface IZlinkStreamConnector : IAsyncDisposable
 
     event Func<CancellationToken, ValueTask>? Disconnected;
 
+    event Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? ConnectionStateChanged;
+
     bool IsConnected { get; }
+
+    ZlinkStreamConnectionState State { get; }
 
     ZlinkStreamConnectorOptions Options { get; }
 

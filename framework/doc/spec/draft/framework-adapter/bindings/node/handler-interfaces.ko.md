@@ -46,7 +46,7 @@ export interface ZLinkStream {
   remoteAddr?: string;
 
   write(payload: Message, flags?: SendFlags): Promise<void>;
-  writePacket(header: Message, body: Message, flags?: SendFlags): Promise<void>;
+  writePacket(header: Message, payload: Message, flags?: SendFlags): Promise<void>;
 }
 
 export enum ZLinkStreamSessionError {
@@ -66,7 +66,7 @@ export interface ZLinkPacketStreamSession {
   onConnected(stream: ZLinkStream): Promise<void>;
   onDisconnected(stream: ZLinkStream): Promise<void>;
   onError(stream: ZLinkStream, error: ZLinkStreamError): Promise<void>;
-  onPacket(stream: ZLinkStream, header: Message, body: Message): Promise<void>;
+  onPacket(stream: ZLinkStream, header: Message, payload: Message): Promise<void>;
 }
 
 export interface ZLinkRawStreamSession {

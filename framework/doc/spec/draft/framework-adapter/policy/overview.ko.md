@@ -61,9 +61,9 @@ transport 축은 사용자에게 그대로 노출하지 않더라도, 내부 wir
 adapter가 공통으로 지켜야 한다.
 
 - 서버 간 framework message (`DEALER/ROUTER`, routed channel, `SPOT` channel,
-  internal actor dispatch, internal session proxy)는 multipart `header + body`를
+  internal actor dispatch, internal session proxy)는 multipart `header + payload`를
   사용한다.
-- `STREAM`은 하나의 stream packet을 기본 단위로 사용한다. stream header와 body는 그
+- `STREAM`은 하나의 stream packet을 기본 단위로 사용한다. stream header와 payload는 그
   packet 안의 frame으로 다룬다.
 
 이 구분은 성능과 소유권을 위한 기본 정책이다. 서버 간 body를 header와 함께 단일

@@ -15,37 +15,55 @@ internal sealed class ZlinkStreamReceiveDispatcher(
 
     public async ValueTask DispatchPacketAsync(ZlinkStreamFrame frame, CancellationToken cancellationToken)
     {
-        ZlinkStreamHeader header;
-        try
+        var header = headerCodec.Decode(frame.Header);
+
+        if (header.Kind == ZlinkStreamMessageKind.Control)
         {
-            header = headerCodec.Decode(frame.Header);
-        }
-        catch (ZlinkStreamException ex)
-        {
-            await callbacks.PublishErrorAsync(ex.Error, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-        catch (Exception ex)
-        {
-            await callbacks.PublishErrorAsync(new ZlinkStreamError(
-                ZlinkStreamErrorCode.FrameDecodeFailed,
-                "Stream header decode failed.",
-                ex), cancellationToken).ConfigureAwait(false);
+            await DispatchControlAsync(header, frame.Payload, cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        if (pending.TryComplete(header, frame, ParseErrorBody))
+        if (pending.TryComplete(header, frame, ParseErrorPayload))
         {
             return;
         }
 
         if (header.Kind == ZlinkStreamMessageKind.Error && header.RequestSeq is null)
         {
-            await callbacks.PublishErrorAsync(ParseErrorBody(frame.Payload), cancellationToken).ConfigureAwait(false);
+            await callbacks.PublishErrorAsync(ParseErrorPayload(frame.Payload), cancellationToken).ConfigureAwait(false);
             return;
         }
 
         await QueueTypedHandlersAsync(header, frame.Payload, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask DispatchControlAsync(
+        ZlinkStreamHeader header,
+        ReadOnlyMemory<byte> payload,
+        CancellationToken cancellationToken)
+    {
+        if (payload.Length != 0)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.FrameDecodeFailed,
+                "Control packet payload must be empty.");
+        }
+
+        if (header.Name == ZlinkStreamConnector.HeartbeatPingName)
+        {
+            await frameSender.SendControlAsync(ZlinkStreamConnector.HeartbeatPongName, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (header.Name == ZlinkStreamConnector.HeartbeatPongName)
+        {
+            return;
+        }
+
+        throw ZlinkStreamConnector.Error(
+            ZlinkStreamErrorCode.FrameDecodeFailed,
+            "Unknown control packet.");
     }
 
     public async Task HandlerPumpAsync()
@@ -89,8 +107,8 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         {
             try
             {
-                var bodyObject = new ZlinkStreamEncodedPayload(header.Codec, payload);
-                await handler.Invoke(new ZlinkStreamMessage(header.Name, header.Metadata, bodyObject), bodyObject, cancellationToken)
+                var payloadObject = new ZlinkStreamEncodedPayload(header.Codec, payload);
+                await handler.Invoke(new ZlinkStreamMessage(header.Name, header.Metadata, payloadObject), payloadObject, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -103,7 +121,7 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         }
     }
 
-    private static ZlinkStreamError ParseErrorBody(ReadOnlyMemory<byte> payload)
+    private static ZlinkStreamError ParseErrorPayload(ReadOnlyMemory<byte> payload)
     {
         try
         {

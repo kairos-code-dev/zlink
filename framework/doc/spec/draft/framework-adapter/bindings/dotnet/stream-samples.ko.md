@@ -39,14 +39,9 @@ recv 방식을 사용하는 샘플은 이 문서에 포함하지 않는다.
 ```csharp
 public interface IZLinkStream
 {
-    ValueTask WriteAsync(
+    bool Write(
         Message payload,
-        CancellationToken cancellationToken = default);
-
-    ValueTask WriteAsync(
-        Message header,
-        Message body,
-        CancellationToken cancellationToken = default);
+        SendFlags flags = SendFlags.None);
 }
 
 public enum ZLinkStreamSessionError
@@ -69,15 +64,6 @@ public sealed class ZLinkMessageMetadata
     public static ZLinkMessageMetadata Empty { get; }
 }
 
-public interface IZLinkSessionPacket
-{
-    string PacketName { get; }
-
-    ZLinkMessageMetadata Metadata { get; }
-
-    TMessage Decode<TMessage>();
-}
-
 public interface IZLinkSession
 {
     IZLinkSessionContext Context { get; set; }
@@ -91,7 +77,8 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken);
 }
 
@@ -110,12 +97,14 @@ public interface IZLinkSessionActorDispatchContext
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
 
     ValueTask DispatchToActorAsync(
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken = default);
 }
 
@@ -204,14 +193,15 @@ public sealed class ClientHeaderSession
     }
 
     public async ValueTask OnDispatchAsync(
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken)
     {
-        switch (packet.PacketName)
+        switch (header.Name)
         {
             case "ClientInput":
             {
-                ClientInput input = packet.Decode<ClientInput>();
+                ClientInput input = payload.FromJson<ClientInput>();
 
                 await Context
                     .SendChannel(
@@ -227,7 +217,7 @@ public sealed class ClientHeaderSession
 
             case "Ping":
             {
-                Ping ping = packet.Decode<Ping>();
+                Ping ping = payload.FromJson<Ping>();
 
                 await Context
                     .SendChannel(
@@ -255,14 +245,14 @@ public sealed class ClientHeaderSession
 
 이 샘플을 읽을 때 짚어야 할 점은 다음과 같다.
 
-- application 은 `IZLinkSessionPacket.PacketName` 을 dispatch 기준으로 사용한다.
+- application 은 `ZlinkStreamHeader.Name` 을 dispatch 기준으로 사용한다.
 - packet 은 고정 타입 하나로 곧장 올라오는 구조가 아니다.
 - header session 이 내부 header 를 해석해 `ClientInput`, `Ping` 같은 packet
   name 을 뽑아 준다. 그러면 application 은 그 이름에 맞는 타입으로 decode 한다.
 - application 측에는 recv loop 가 없다. session callback 만 구현하면 된다.
 - 다른 서버로의 outbound 호출은 session 이 `Context.SendChannel(...)` 또는
   `Context.RequestChannel(...)` 를 통해 처리한다.
-- packet decode 는 `packet.Decode<T>()` 같은 helper 를 거쳐 수행한다.
+- packet decode 는 payload 의 serializer helper 를 거쳐 수행한다.
 - 타입이 protobuf generated 타입(`IMessage<T>` 계열) 이면 protobuf 로 읽는다.
 - 그 외의 일반 class 는 json 으로 읽는 것을 샘플 기본 규칙으로 둔다.
 - 이 helper 는 내부에서 `Message.AsReadOnlySpan()` 을 활용한다. 즉 추가 복사를
@@ -274,25 +264,21 @@ public sealed class ClientHeaderSession
 
 - `RouteHeader` 를 먼저 읽는다.
 - `RouteHeader.MsgId` 를 dispatch 기준으로 사용한다.
-- `packet.Payload` 를 각 protobuf 타입으로 parse 한다.
+- `Message payload` 를 각 protobuf 타입으로 parse 한다.
 
-예컨대 session packet decode 는 다음처럼 target type 기준으로 serializer 를
-골라 두는 방식이 가능하다. 실제 body bytes 에 직접 접근하는 부분은 framework
-packet 내부 구현에 숨겨 둔다.
+예컨대 session payload decode 는 다음처럼 target type 기준으로 serializer 를
+골라 두는 방식이 가능하다. 실제 payload bytes 에 직접 접근하는 부분은 serializer
+helper 내부 구현에 숨겨 둔다.
 
 ```csharp
-public sealed class ZLinkSessionPacket : IZLinkSessionPacket
+public static class ZLinkSessionPayloadCodecs
 {
-    public string PacketName { get; }
-
-    public ZLinkMessageMetadata Metadata { get; }
-
-    public T Decode<T>()
+    public static T Decode<T>(Message payload)
     {
         if (IsGeneratedProtoMessage(typeof(T)))
-            return DecodeGeneratedProto<T>();
+            return DecodeGeneratedProto<T>(payload);
 
-        return DecodeJson<T>();
+        return DecodeJson<T>(payload);
     }
 
     private static bool IsGeneratedProtoMessage(Type type)
@@ -303,17 +289,17 @@ public sealed class ZLinkSessionPacket : IZLinkSessionPacket
             && iface.GenericTypeArguments[0] == type);
     }
 
-    private T DecodeGeneratedProto<T>() => throw new NotImplementedException();
+    private static T DecodeGeneratedProto<T>(Message payload) => throw new NotImplementedException();
 
-    private T DecodeJson<T>() => throw new NotImplementedException();
+    private static T DecodeJson<T>(Message payload) => throw new NotImplementedException();
 }
 ```
 
 정리하면 이 샘플은 다음 규칙을 전제로 깔고 있다.
 
-- protobuf generated 타입이라면 `packet.Decode<T>()` 가 protobuf parser 를
+- protobuf generated 타입이라면 payload decode helper 가 protobuf parser 를
   선택한다.
-- 일반 POCO class 라면 `packet.Decode<T>()` 가 json parser 를 선택한다.
+- 일반 POCO class 라면 payload decode helper 가 json parser 를 선택한다.
 - application 은 serializer 이름보다 "이 payload 를 어떤 타입으로 읽을 것인가"
   에 집중하면 된다.
 
@@ -363,7 +349,8 @@ public sealed class ClientHeaderSession : IZLinkSession
     }
 
     public ValueTask OnDispatchAsync(
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken)
     {
         return Context
@@ -375,7 +362,7 @@ public sealed class ClientHeaderSession : IZLinkSession
 
 이 샘플은 다음 같은 상황에 어울린다.
 
-- framework 가 decode 해 둔 session packet 을 그대로 받아 곧장 응답하고 싶다.
+- framework 가 decode 해 둔 header 와 payload 를 받아 곧장 응답하고 싶다.
 - 그렇다고 해서 recv loop 를 손수 작성하고 싶지는 않다.
 - 필요할 때 현재 session 에서 `Context.Reply(...)` 로 응답을 돌려보낼 수 있어야
   한다.
@@ -385,7 +372,7 @@ public sealed class ClientHeaderSession : IZLinkSession
 이 절은 현재 표면이 어느 수준의 session 처리를 보여 주는지를 정리한다.
 
 - header session
-  - C API 가 이미 잘라 둔 stream frame 을 framework packet 으로 감싼 뒤
+  - C API 가 이미 잘라 둔 stream frame 을 framework 가 header 와 payload 로 나눠
     처리한다
   - session lifecycle[^lifecycle] 과 packet callback 을 함께 구현한다
   - packet name 을 보고 각각의 packet 타입으로 decode 한다
@@ -444,7 +431,7 @@ STREAM 샘플은 다음을 하나의 흐름으로 보여 준다.
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^stream]: `STREAM`은 외부 클라이언트와 서버 사이를 잇는, 연결 지향적인 양방향 메시지 통로를 가리키는 ZLink 추상이다. 한 connection 위에서 여러 packet이 순서대로 오가는 구조다.
-[^packet]: packet은 stream 위에서 한 단위로 묶여 전달되는 메시지다. header에 종류와 metadata가 들어가고, body에 실제 payload가 담긴다.
+[^packet]: packet은 stream 위에서 한 단위로 묶여 전달되는 메시지다. header에 종류와 metadata가 들어가고, payload에 실제 payload가 담긴다.
 [^handler]: handler는 들어온 요청·메시지·packet을 받아 실제 처리를 수행하는 사용자 코드를 가리킨다.
 [^transport]: transport는 실제 네트워크 위에서 바이트를 실어 나르는 계층을 뜻한다(TCP, TLS, WS, WSS 등). 그 위에 framework의 packet/session 추상이 올라간다.
 [^lifecycle]: lifecycle은 어떤 컴포넌트가 생성·시작·종료에 이르는 동안 거치는 단계와 순서를 묶어 부르는 말이다.

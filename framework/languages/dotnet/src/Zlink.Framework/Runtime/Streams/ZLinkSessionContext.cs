@@ -108,13 +108,6 @@ internal sealed class ZLinkSessionContext(
     }
 
     public ValueTask DispatchToActorAsync(
-        IZLinkSessionPacket packet,
-        CancellationToken cancellationToken = default)
-    {
-        return DispatchToActorAsync(packet.Header, packet.Payload.Move(), cancellationToken);
-    }
-
-    public ValueTask DispatchToActorAsync(
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken = default)
@@ -123,15 +116,6 @@ internal sealed class ZLinkSessionContext(
             ?? throw new InvalidOperationException("No actor is attached to the current session.");
 
         return _actorRelay.DispatchAttachedAsync(actor, header, payload, cancellationToken);
-    }
-
-    public async ValueTask DispatchToActorAsync(
-        IZLinkActorRef actor,
-        IZLinkSessionPacket packet,
-        CancellationToken cancellationToken = default)
-    {
-        await DispatchToActorAsync(actor, packet.Header, packet.Payload.Move(), cancellationToken)
-            .ConfigureAwait(false);
     }
 
     public async ValueTask DispatchToActorAsync(

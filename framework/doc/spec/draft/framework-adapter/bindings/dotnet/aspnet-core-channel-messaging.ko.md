@@ -539,7 +539,7 @@ public sealed class UserHandlers
 
 이 모델에서 기대하는 동작은 다음과 같다.
 
-- body 는 typed 객체로 역직렬화된다.
+- payload 는 typed 객체로 역직렬화된다.
 - `ZLinkRequestContext` 에서 header, correlation id[^correlationid], deadline, 호출자
   메타데이터를 읽는다.
 - `CancellationToken` 으로 timeout / cancel 을 그대로 이어 준다.
@@ -609,7 +609,7 @@ sequenceDiagram
     end
     Note over CH: one outbound channel chooses one connection mode
 
-    RP->>RT: request frame(packet=GetProfileRequest, body, headers)
+    RP->>RT: request frame(packet=GetProfileRequest, payload, headers)
     RT->>CH: Select inbound session / validate route
     CH-->>RT: session ready
 
@@ -618,7 +618,7 @@ sequenceDiagram
     REG-->>DSP: EndpointInfo
     Note over REG,DSP: channel-scoped lookup<br/>handlerType=ProfileHandlers<br/>method=HandleAsync<br/>requestType=ProfileRequest<br/>replyType=ProfileReply
 
-    DSP->>CODEC: Deserialize(ProfileRequest, body)
+    DSP->>CODEC: Deserialize(ProfileRequest, payload)
     CODEC-->>DSP: ProfileRequest
 
     DSP->>RT: CreateRequestContext(frame metadata)
@@ -640,9 +640,9 @@ sequenceDiagram
     PIPE-->>DSP: ProfileReply
 
     DSP->>CODEC: Serialize(ProfileReply)
-    CODEC-->>DSP: reply body
+    CODEC-->>DSP: reply payload
 
-    DSP->>RT: WriteReply(correlationId, reply body, headers)
+    DSP->>RT: WriteReply(correlationId, reply payload, headers)
     RT-->>RP: reply frame
 
     DSP->>SCOPE: DisposeAsync()
@@ -923,8 +923,8 @@ ZLink handler filter[^filter] 로 둔다.
 
 현재 초안은 다음 구성을 가정한다.
 
-- 메시지 = `header + body`
-- body codec = `protobuf` 또는 `json`
+- 메시지 = `header + payload`
+- payload codec = `protobuf` 또는 `json`
 
 서버 간 channel message 는 공통
 [message-model.ko.md](../../policy/message-model.ko.md) 의 multipart 계약을 따른다. 즉
@@ -932,14 +932,14 @@ framework runtime 이 `DEALER/ROUTER` 또는 `PUB/SUB` 로 보내는 wire messag
 다음과 같다.
 
 - `parts[0] = framework header`
-- `parts[1] = body payload`
+- `parts[1] = payload`
 
-이때 header 와 body 를 하나의 JSON envelope 로 합쳐서, 단일 `Message` 로 보내지는
+이때 header 와 payload 를 하나의 JSON envelope 로 합쳐서, 단일 `Message` 로 보내지는
 않는다.
 
 이 규칙은 handler 표면을 복잡하게 만들기 위한 것이 아니다. application handler 는 여전히
-typed request body 와 context 를 받는다. multipart 구조는 adapter 내부의 transport
-계약일 뿐이다. 이 계약의 목적은 route 와 dispatch 가 header 만 먼저 읽고, body decode
+typed request payload 와 context 를 받는다. multipart 구조는 adapter 내부의 transport
+계약일 뿐이다. 이 계약의 목적은 route 와 dispatch 가 header 만 먼저 읽고, payload decode
 는 handler 선택 이후로 늦출 수 있게 하는 것이다.
 
 `.NET` 표면에서는 codec 등록과 serializer 선택을 다음과 같이 노출할 수 있다.
@@ -1051,7 +1051,7 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
     client, publisher, subscriber 네 가지가 있다. 한 channel 이 둘 이상의 capability 를
     동시에 가질 수도 있다(channel 타입에 따라).
 
-[^codec]: **codec** 은 body 를 바이트 배열과 객체 사이로 변환하는 직렬화기다. JSON,
+[^codec]: **codec** 은 payload 를 바이트 배열과 객체 사이로 변환하는 직렬화기다. JSON,
     Protobuf, MessagePack 등이 여기에 해당한다.
 
 [^rid]: **RoutingId** (rid) 는 zlink core 가 각 peer 에게 부여하는 식별자다. channel

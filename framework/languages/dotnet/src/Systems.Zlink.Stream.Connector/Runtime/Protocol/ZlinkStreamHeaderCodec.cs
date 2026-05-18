@@ -12,14 +12,14 @@ internal sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
 
     public ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header)
     {
-        ZlinkStreamConnector.ValidateName(header.Name);
+        ZlinkStreamConnector.ValidateName(header.Name, allowReserved: header.Kind == ZlinkStreamMessageKind.Control);
         ValidateEnum(header.Kind, header.Codec, header.Flags);
 
         var nameBytes = Encoding.UTF8.GetBytes(header.Name);
         var hasRequestSeq = header.RequestSeq is not null;
         var hasMetadata = header.Metadata.Count > 0;
         var flags = header.Flags;
-        ValidateHeaderSemantics(header.Kind, header.Codec, hasRequestSeq);
+        ValidateHeaderSemantics(header.Kind, header.Codec, flags, hasRequestSeq, hasMetadata);
 
         flags = hasRequestSeq ? flags | ZlinkStreamHeaderFlags.HasRequestSeq : flags & ~ZlinkStreamHeaderFlags.HasRequestSeq;
         flags = hasMetadata ? flags | ZlinkStreamHeaderFlags.HasMetadata : flags & ~ZlinkStreamHeaderFlags.HasMetadata;
@@ -127,7 +127,8 @@ internal sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Helper header contains trailing bytes.");
         }
 
-        ValidateHeaderSemantics(kind, codec, requestSeq is not null);
+        ZlinkStreamConnector.ValidateName(name, allowReserved: kind == ZlinkStreamMessageKind.Control);
+        ValidateHeaderSemantics(kind, codec, flags, requestSeq is not null, metadata.Count > 0);
         return new ZlinkStreamHeader(kind, codec, flags, requestSeq, name, metadata);
     }
 
@@ -158,7 +159,9 @@ internal sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
     private static void ValidateHeaderSemantics(
         ZlinkStreamMessageKind kind,
         ZlinkStreamCodec codec,
-        bool hasRequestSeq)
+        ZlinkStreamHeaderFlags flags,
+        bool hasRequestSeq,
+        bool hasMetadata)
     {
         if (kind == ZlinkStreamMessageKind.Send && hasRequestSeq)
         {
@@ -173,6 +176,29 @@ internal sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
         if (kind == ZlinkStreamMessageKind.Error && codec != ZlinkStreamCodec.Json)
         {
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Error packet must use the JSON codec.");
+        }
+
+        if (kind == ZlinkStreamMessageKind.Control)
+        {
+            if (flags != ZlinkStreamHeaderFlags.None)
+            {
+                throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Control packet must not contain flags.");
+            }
+
+            if (codec != ZlinkStreamCodec.Raw)
+            {
+                throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Control packet must use the raw codec.");
+            }
+
+            if (hasRequestSeq)
+            {
+                throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Control packet must not contain a request sequence.");
+            }
+
+            if (hasMetadata)
+            {
+                throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Control packet must not contain metadata.");
+            }
         }
     }
 }

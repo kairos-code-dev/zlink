@@ -30,8 +30,8 @@
 
 - 서버 쪽에서는 프레임워크의 handler 등록 방식으로 요청을 받는다.
 - 클라이언트 쪽에서는 DI로 주입된 client 또는 proxy를 통해 요청을 보낸다.
-- 요청 하나마다 header, body, timeout, metadata를 다룰 수 있다.
-- body는 `protobuf` 또는 `json`처럼 codec에 따라 직렬화된다.
+- 요청 하나마다 header, payload, timeout, metadata를 다룰 수 있다.
+- payload는 `protobuf` 또는 `json`처럼 codec에 따라 직렬화된다.
 - 대상 서버 주소를 직접 적지 않고, channel 이름 기준으로 보낼 수 있다.
 
 즉 사용자는 "몇 번 포트의 어느 peer에게 connect할까"보다
@@ -58,7 +58,7 @@ location-transparent 호출이 가능해야 한다.
 ## 4. 기대하는 처리 흐름
 
 1. 애플리케이션이 `profile-service` client를 DI로 받는다.
-2. client가 `GetProfileRequest`를 header + body 메시지로 만든다.
+2. client가 `GetProfileRequest`를 header + payload 메시지로 만든다.
 3. `ZLink Framework`가 `profile-service` 전용 channel을 통해 요청을 보낸다.
 4. 서버 handler가 요청을 처리한다.
 5. 응답 또는 에러가 같은 상관관계 정보와 함께 돌아온다.
@@ -80,6 +80,6 @@ location-transparent 호출이 가능해야 한다.
 - `ZLink Framework`의 **기본 모델**은 request-response여야 한다.
 - `rid`를 직접 다루는 routed 호출은 고급 내부 모델로 남길 수 있지만, 기본 서버
   API로 삼는 것은 우선순위가 낮다.
-- body codec은 고정하지 않아야 한다.
+- payload codec은 고정하지 않아야 한다.
 - 기본 packet key를 안정적으로 정할 수 있어야 한다.
 - 기본 규칙만으로 부족하면 `PacketName` 같은 explicit override가 있어야 한다.

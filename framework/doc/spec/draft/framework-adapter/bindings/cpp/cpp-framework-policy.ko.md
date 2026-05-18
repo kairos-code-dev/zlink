@@ -623,7 +623,7 @@ framing, 임의 byte stream dispatch는 MVP 범위에 넣지 않는다.
 
 이 제한은 `.NET` framework 쪽 STREAM 정책과 같은 방향이다. application handler가
 transport별 framing이나 raw stream read loop를 직접 다루지 않게 하고, framework가
-검증 가능한 packet header와 body 단위로 lifecycle, dispatch, backpressure를 닫기
+검증 가능한 packet header와 payload 단위로 lifecycle, dispatch, backpressure를 닫기
 위한 정책이다.
 
 ### 4.16 Transport Abstraction

@@ -202,7 +202,7 @@ public interface IZLinkRequestHandler<in TRequest, TResponse>
 }
 ```
 
-- `TRequest` 는 이미 decode 된 body 다.
+- `TRequest` 는 이미 decode 된 payload 다.
 - `TResponse` 도 framework 가 encode 할 typed 결과다.
 - raw multipart header 는 인자로 넘기지 않는다.
 - 이 interface 를 구현한 class 는 `ZLinkHandlerScanner` 가 attribute 없이도
@@ -990,14 +990,9 @@ public interface IZLinkStream
 
     string? RemoteAddr { get; }
 
-    ValueTask WriteAsync(
+    bool Write(
         Message payload,
-        CancellationToken cancellationToken = default);
-
-    ValueTask WriteAsync(
-        Message header,
-        Message body,
-        CancellationToken cancellationToken = default);
+        SendFlags flags = SendFlags.None);
 
     ValueTask CloseAsync(
         CancellationToken cancellationToken = default);
@@ -1020,15 +1015,6 @@ public readonly record struct ZLinkStreamDiagnostic(
     int NativeCode,
     string? Message);
 
-public interface IZLinkSessionPacket
-{
-    string PacketName { get; }
-
-    ZLinkMessageMetadata Metadata { get; }
-
-    TMessage Decode<TMessage>();
-}
-
 public interface IZLinkSession
 {
     IZLinkSessionContext Context { get; set; }
@@ -1042,7 +1028,8 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken);
 }
 
@@ -1090,12 +1077,14 @@ public interface IZLinkSessionActorDispatchContext
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
 
     ValueTask DispatchToActorAsync(
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken = default);
 }
 
@@ -1162,18 +1151,12 @@ public interface IZLinkSessionRequestCall
 `sessionId + bindingToken` 이다. 이 binding 상태는 public resolver 계약이
 아니라, framework/core runtime 의 내부 상태다.
 
-`WriteAsync(...)` 는 framework Header 기반 packet session 에서 stream 으로
-packet 을 보내는 async submit 이다.
+`Write(...)` 는 framework Header 기반 packet session 에서 stream 으로 packet 을
+보내는 low-level submit 이다. 일반 application 코드는 가능한 한 `Context.Send(...)`,
+`Context.Reply(...)`, `IZLinkSessionProxy` 같은 framework helper 를 사용한다.
 
-backpressure 는 framework 내부에서 처리한다. nonblocking write 와 ready
-notification 을 조합해서 처리한다.
-
-동기 `bool Write(...)` 는 더 이상 public 표면이 아니다. framework 내부
-fast path 에서만 사용하는 deprecated surface 로 본다.
-
-application 코드는 `WriteAsync(...)` 둘 중 하나를 사용한다. 다만 actor 가
-stream 을 직접 다루는 패턴이 아니라면, `IZLinkSessionProxy` 를 경유한다
-(actor-model §10 참고).
+backpressure 는 framework 내부에서 처리한다. actor 가 stream 을 직접 다루는
+패턴이 아니라면, `IZLinkSessionProxy` 를 경유한다(actor-model §10 참고).
 
 `OnErrorAsync(...)` 는 application handler 내부에서 발생한 예외를 받는
 callback 이 아니다.
@@ -1214,7 +1197,8 @@ optional detail 로 본다.
 즉 현재 방향은 다음과 같이 정리할 수 있다.
 
 - header session
-  - `OnDispatchAsync(...)`로 framework가 만든 `IZLinkSessionPacket`을 받는다.
+  - `OnDispatchAsync(...)`로 framework가 decode 한 `ZlinkStreamHeader`와
+    `Message` payload를 받는다.
   - stream에 응답을 보내거나 actor로 넘기는 동작은 `Context`를 통해 수행한다.
 - 공통 lifecycle
   - `OnConnectedAsync(...)`
@@ -1459,7 +1443,7 @@ public interface IZLinkActorFactory
 
 // Spot에 actor를 join할 때 호출되는 handler. spot 등록의 AddActorJoin<...>() 표면이
 // 이 generic 인자를 받고, framework는 join 시점에 target spot, joining actor,
-// request body를 함께 넘긴다. spot 실행 문맥 안에서 호출된다.
+// request payload를 함께 넘긴다. spot 실행 문맥 안에서 호출된다.
 public interface IZLinkSpotActorJoinHandler<TSpot, TActor, in TRequest, TReply>
     where TSpot : IZLinkSpot
     where TActor : IZLinkActor
@@ -2113,16 +2097,16 @@ package 가 사용한다.
 또는 spot key 기반 client 를 사용한다.
 
 이 helper 의 내부 wire 형식은 공통 message model 의 multipart
-`header + body` 계약을 따른다.
+`header + payload` 계약을 따른다.
 
 typed `message` 나 `request` 인자를 받더라도, runtime 은 route header 와
-body 를 하나의 `Message` 로 합쳐서 직렬화하지 않는다. 대신 part 를 분리해
+payload 를 하나의 `Message` 로 합쳐서 직렬화하지 않는다. 대신 part 를 분리해
 둔다.
 
 - framework header 는 첫 번째 part 에 둔다.
-- codec 이 생성한 body bytes 는 별도의 part 에 둔다.
+- codec 이 생성한 payload bytes 는 별도의 part 에 둔다.
 - actor dispatch 나 session proxy 처럼 내부 metadata 가 추가로 필요한
-  경로에서는, body 앞에 metadata part 를 더 붙일 수 있다.
+  경로에서는, payload 앞에 metadata part 를 더 붙일 수 있다.
 
 ```csharp
 internal interface IZLinkRouteTransport
@@ -2282,7 +2266,7 @@ public interface IZLinkActorSessionBindingStore
 ```
 
 resolver 의 입력에는 다음 값들을 넘기지 않는다. metadata, packet name,
-raw message, decoded body 다.
+raw message, decoded payload 다.
 
 이런 값들이 필요해 보이면 어떻게 해야 할까. caller 의 domain placement
 코드에서 actor id 나 spot key 를 먼저 결정해야 한다.
@@ -3571,7 +3555,7 @@ session lifecycle 은 세 가지 callback 으로 노출한다. `OnConnectedAsync
 
 attribute 기반 handler 의 메서드 시그니처는 다음 규칙을 따른다.
 
-- 첫 번째 인자: decoded body 타입
+- 첫 번째 인자: decoded payload 타입
 - 두 번째 인자: context 타입 (생략 가능)
 - 마지막 인자: `CancellationToken` (생략 가능)
 - request handler 반환: `ValueTask<T>` 또는 `Task<T>`

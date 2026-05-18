@@ -18,7 +18,7 @@ using Xunit;
 public sealed partial class StreamConnectorTests
 {
     [Fact]
-    public async Task TcpSendUsesHeaderBodyFrame()
+    public async Task TcpSendUsesHeaderPayloadFrame()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();

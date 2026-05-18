@@ -17,7 +17,7 @@ internal sealed class ZlinkStreamFrameSender(
         bool compress,
         ZlinkStreamRequestSeq? requestSeq)
     {
-        ZlinkStreamConnector.ValidateName(name);
+        ZlinkStreamConnector.ValidateName(name, allowReserved: kind == ZlinkStreamMessageKind.Control);
         var payloadBytes = payload.Payload;
         var flags = requestSeq is null
             ? ZlinkStreamHeaderFlags.None
@@ -31,6 +31,19 @@ internal sealed class ZlinkStreamFrameSender(
 
         var header = new ZlinkStreamHeader(kind, payload.Codec, flags, requestSeq, name, metadata);
         return new ZlinkStreamOutboundFrame(header, EncodeHeaderForSend(header), payloadBytes);
+    }
+
+    public async ValueTask SendControlAsync(string name, CancellationToken cancellationToken)
+    {
+        var frame = BuildOutboundFrame(
+            ZlinkStreamMessageKind.Control,
+            name,
+            new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, ReadOnlyMemory<byte>.Empty),
+            ZlinkStreamMetadata.Empty,
+            compress: false,
+            requestSeq: null);
+        ValidateSendReady(frame.HeaderBytes, frame.PayloadBytes);
+        await SendPacketAsync(frame.HeaderBytes, frame.PayloadBytes, cancellationToken).ConfigureAwait(false);
     }
 
     public void ValidateSendReady(ReadOnlyMemory<byte> header, ReadOnlyMemory<byte> payload)

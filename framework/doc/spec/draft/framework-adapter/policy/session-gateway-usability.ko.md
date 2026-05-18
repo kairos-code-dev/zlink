@@ -97,7 +97,7 @@ handler가 작은 router가 된다.
 문제는 아래와 같다.
 
 - handler가 framework relay envelope와 game command dispatch를 동시에 안다.
-- 새 message를 추가할 때 packet name 문자열과 body decode 대상이 함께 늘어난다.
+- 새 message를 추가할 때 packet name 문자열과 payload decode 대상이 함께 늘어난다.
 - packet name 오타는 compile 단계에서 잡히지 않는다.
 - handler가 깊은 domain 모듈이 아니라 얕은 분기 모듈이 된다.
 
@@ -222,7 +222,7 @@ envelope 조립, request sequence 보존처럼 반복되면 위험한 작업만 
 | auth branch, actor choice                                  |
 +------------------------------------------------------------+
 | Play Handler                                               |
-| typed body, domain reply                                   |
+| typed payload, domain reply                                   |
 +------------------------------------------------------------+
 ```
 
@@ -243,7 +243,7 @@ surface에서는 이 raw handler 이름을 유지하지 않는다.
 원한다.
 
 - actor id를 알고 싶다.
-- typed request body를 받고 싶다.
+- typed request payload를 받고 싶다.
 - typed reply를 반환하고 싶다.
 
 ### 8.2 제안 handler 모양
@@ -252,7 +252,7 @@ typed handler는 `SessionProxy`나 routed channel에 붙지 않는다. handler�
 spot 같은 실행 문맥에 등록된다. session은 일부 packet을 local 처리하고, 나머지를
 actor/node/spot 실행 문맥으로 relay한다. typed handler가 받는 값은 아래로 제한한다.
 
-- typed request body 한 개
+- typed request payload 한 개
 - actor handler 변종이면 actor 인스턴스 한 개
 - handler context (actor id, router channel id, metadata snapshot, `SessionProxy`,
   필요하면 deadline)
@@ -369,7 +369,7 @@ node 등록 표면에, spot handler는 spot 등록 표면에 둔다. `SessionPro
 
 `packetName`은 기본적으로 message type metadata에서 얻는다. override가 필요하면
 객체의 실행 문맥 안에서 명시한다. 동일한 실행 문맥 안에서 같은 `kind + packetName`에
-handler가 둘 이상 등록되면 startup에서 실패해야 한다. body type은 dispatch key가
+handler가 둘 이상 등록되면 startup에서 실패해야 한다. payload type은 dispatch key가
 아니라 decode 대상이다.
 
 resolver는 transport builder가 아니라 framework service 설정에 등록한다. transport
@@ -409,7 +409,7 @@ typed actor/node/spot dispatch를 동시에 선택하는 public 설정은 만들
 사용자 code에서 `RoutingId`가 반복되는 이유는 framework가 domain key를 transport
 target으로 바꾸는 경계를 제공하지 않기 때문이다.
 
-session server가 client packet을 play server로 보내려면 `actorId` 또는 request body의
+session server가 client packet을 play server로 보내려면 `actorId` 또는 request payload의
 domain key에서 actor node `RoutingId`를 찾아야 한다. actor가 user Spot에 들어갈 때는
 `spotName` 또는 `spotId`에서 target Spot 위치를 찾아야 한다.
 
@@ -428,7 +428,7 @@ framework는 resolver가 어떤 저장소를 쓰는지 알지 않는다. 공개 
   spot id". actor의 `JoinSpot(...)` 같은 표면에서 transport 위치값을 숨긴다.
 
 actor resolver 입력은 `actorId` 하나로 유지한다. spot resolver 입력은 spot domain key
-하나로 유지한다. metadata, packet name, raw message, application body는 resolver에
+하나로 유지한다. metadata, packet name, raw message, application payload는 resolver에
 넘기지 않는다. game 단위 배치가 필요하면 `gameId` 자체를 actor id 또는 spot id로
 설계하거나, session의 domain placement code에서 actor/spot 대상을 먼저 결정한다.
 resolver가 raw message 객체나 packet switch를 직접 보지 않게 해야 resolver가 작은
@@ -562,8 +562,8 @@ session context는 handler registry를 갖지 않는다. 사용자는 기존 ses
   create 요청을 보낸다. actor 생성과 session bind를 한 호출에 묶는다.
 - `BindActorHandleAsync(actorId, actorType, ct)` -- 현재 session host의 local
   `SpotNode` actor runtime에서 dispatch handle을 만든다. remote node를 직접 지정하지 않는다.
-- `DispatchToActorAsync(actorRef, packet, ct)` -- actor dispatch envelope와 원본
-  stream request sequence를 보존한 actor dispatch.
+- `DispatchToActorAsync(actorRef, header, payload, ct)` -- actor dispatch envelope와
+  원본 stream request sequence를 보존한 actor dispatch.
 
 `IZLinkActorRef` (binding별 동등 이름)는 local `SpotNode` actor runtime의 actor에 대한
 dispatch handle만 노출한다. application actor 객체(`IZLinkActor`) 자체와는 다른 표면이다.
@@ -648,7 +648,7 @@ session callback 안에서 정책 code는 아래 흐름을 따른다 (framework�
    `CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)`를 호출한다. helper가
    local actor 생성 또는 local handle 준비, session binding metadata 생성, 내부 binding 갱신을
    한 묶음으로 처리한다.
-3. 인증된 actor가 있는 packet은 `DispatchToActorAsync(actorRef, packet, ct)`로
+3. 인증된 actor가 있는 packet은 `DispatchToActorAsync(actorRef, header, payload, ct)`로
    actor 실행 문맥으로 넘긴다. 인증되지 않은 packet은 application이 명시 error로
    거부한다.
 4. session-local reply가 필요한 경우 session context의 reply helper를 사용한다.
@@ -664,7 +664,7 @@ session callback 안에서 정책 code는 아래 흐름을 따른다 (framework�
 framework가 맡는 규칙은 아래로 제한한다.
 
 - 원본 stream request sequence를 보존한다.
-- 원본 body bytes는 sample serializer가 아니라 framework codec/message 경로로
+- 원본 payload bytes는 sample serializer가 아니라 framework codec/message 경로로
   다룬다.
 - `DispatchToActorAsync(...)`는 raw stream frame relay 세부 처리를 숨긴다.
 - reply matching은 message name이 아니라 request sequence 기준으로 유지한다.
@@ -708,7 +708,7 @@ caller가 `RoutingId`를 모르더라도 같은 routed mesh 위에서 request/re
 3. 반환된 `RouterChannelId`와 session router id로 내부 routed transport call을 만든다.
 4. routed transport payload는 multipart로 만든다. route header는 `parts[0]`에 두고,
    `ActorId`, `SessionId`, `BindingToken`, packet name, application metadata snapshot 같은
-   session proxy metadata는 별도 metadata part에 둔다. application body는 별도 body
+   session proxy metadata는 별도 metadata part에 둔다. application payload는 별도 payload
    part로 유지한다.
 5. target session server가 metadata의 `SessionId`와 `BindingToken`을 현재 local
    binding과 비교한 뒤 client stream으로 전송한다.
@@ -757,15 +757,15 @@ session actor dispatch sample은 별도 serializer helper를 두면 안 된다. 
 상위 표면은 아래 규칙을 따른다.
 
 - application message는 등록된 framework codec registry로 encode/decode한다.
-- typed handler는 codec registry가 decode한 body를 받는다.
+- typed handler는 codec registry가 decode한 payload를 받는다.
 - internal session actor dispatch envelope와 session proxy envelope는 framework가 소유한다.
 - internal envelope의 wire 형식은 public sample code가 알 필요 없다.
-- 내부 routed transport에서는 envelope header와 body를 한 `Message`로 합치지 않는다.
+- 내부 routed transport에서는 envelope header와 payload를 한 `Message`로 합치지 않는다.
   서버 간 경로는 공통 message model의 multipart 계약을 따른다.
 - sample에는 `SampleJson` 같은 serializer wrapper를 두지 않는다.
 
 internal metadata part가 JSON을 쓰는지, binary codec을 쓰는지는 framework 구현 선택이다.
-하지만 metadata part와 body part를 하나로 합치는 것은 구현 선택이 아니다. 중요한
+하지만 metadata part와 payload part를 하나로 합치는 것은 구현 선택이 아니다. 중요한
 계약은 application handler가 framework codec registry와 typed message만 보고, 내부
 server-to-server wire는 multipart 경계를 유지한다는 점이다.
 
@@ -881,7 +881,7 @@ public sealed class PlayActorRelayHandler : IZLinkActorRelayHandler
 
         if (packetName == "game.create")
         {
-            CreateMatchReq req = message.Body.Decode<CreateMatchReq>();
+            CreateMatchReq req = message.Payload.Decode<CreateMatchReq>();
             CreateMatchRes rep = await game.CreateAsync(
                 context.ActorId,
                 req,
@@ -891,7 +891,7 @@ public sealed class PlayActorRelayHandler : IZLinkActorRelayHandler
 
         if (packetName == "game.move")
         {
-            MoveReq req = message.Body.Decode<MoveReq>();
+            MoveReq req = message.Payload.Decode<MoveReq>();
             MoveRep rep = await game.MoveAsync(
                 context.ActorId,
                 req,
@@ -915,14 +915,14 @@ domain message handler는 actor 실행 문맥에만 등록된다.
 
 제안 방식에서 코드 모양은 아래 흐름으로 정리한다.
 
-- actor handler -- typed request body와 actor instance, `CancellationToken`만 받는다.
+- actor handler -- typed request payload와 actor instance, `CancellationToken`만 받는다.
   raw envelope나 packet switch는 없다.
 - actor 객체 -- `Configure()` 단계에서 자기에게 보낼 packet handler를 명시적으로
   등록한다.
 - host 등록 -- transport(routed channel, stream node)와 actor factory만 등록한다.
 - session callback -- 인증 packet에서 actor id와 actor type을 결정한 뒤
   `CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)`를 호출하고, 이후 packet은
-  `DispatchToActorAsync(actorRef, packet, ct)`로 넘긴다.
+  `DispatchToActorAsync(actorRef, header, payload, ct)`로 넘긴다.
 
 framework가 보장하는 부분은 local actor create 또는 handle 준비와 현재 session binding
 metadata 갱신을 한 흐름으로 묶고, dispatch helper가 원본 request sequence와 codec 경로를
@@ -949,7 +949,7 @@ framework가 공통 error kind를 제공해야 한다.
 | `SessionProxyTimeout` | session proxy request가 제한 시간 안에 완료되지 않았다. |
 | `ActorDispatchTimeout` | actor dispatch request가 제한 시간 안에 완료되지 않았다. |
 | `ActorDispatchHandlerFailed` | play handler가 예외를 던졌거나 reply를 만들지 못했다. |
-| `CodecFailed` | body encode/decode가 실패했다. |
+| `CodecFailed` | payload encode/decode가 실패했다. |
 
 request/reply 경로에서는 가능한 한 error reply로 돌려보낸다. send 경로에서는 호출자의
 `Submit(...)` task가 실패한다. client stream에 어떤 wire error를 보낼지는 stream
@@ -1008,7 +1008,7 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
 | route resolver spot path | spot name/id 기반 호출과 `JoinSpot(...)`이 spot route를 찾고 routed message를 보낸다. |
 | session proxy binding path | session proxy가 actor-session binding으로 session router id와 session id를 찾아 client에게 보낸다. |
 | dispatch ref path | `DispatchToActorAsync(...)`는 이미 받은 `IZLinkActorRef` target을 사용하고 play route resolver를 다시 호출하지 않는다. |
-| resolver 입력 제한 | actor resolver는 `actorId`만, spot resolver는 spot name/id만 입력으로 받고 metadata, packet name, body를 받지 않는다. |
+| resolver 입력 제한 | actor resolver는 `actorId`만, spot resolver는 spot name/id만 입력으로 받고 metadata, packet name, payload를 받지 않는다. |
 | missing play resolver validation | `IZLinkActorClient` 사용 시 play route resolver가 없으면 startup 또는 첫 호출에서 명확한 framework error가 난다. |
 | missing spot resolver validation | spot name/id 기반 client 또는 `JoinSpot(...)` 사용 시 spot route resolver가 없으면 명확한 framework error가 난다. |
 | missing actor-session binding validation | `IZLinkSessionProxy` 사용 시 actor-session binding이 없으면 명확한 framework error가 난다. |
@@ -1034,8 +1034,8 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
 | metadata 기본 deny | 별도 forwarding 설정이 없으면 application metadata가 actor context로 전달되지 않는다. |
 | metadata propagation | 허용된 application metadata는 actor context까지 전달되고 raw request sequence는 노출되지 않는다. |
 | metadata raw header 비노출 | actor handler context가 stream session id, peer endpoint, source session node rid, native handle을 노출하지 않는다. |
-| codec registry 사용 | sample serializer 없이 framework codec으로 body가 encode/decode된다. |
-| codec failure | body encode/decode 실패가 `CodecFailed` 계열 error로 전달된다. |
+| codec registry 사용 | sample serializer 없이 framework codec으로 payload가 encode/decode된다. |
+| codec failure | payload encode/decode 실패가 `CodecFailed` 계열 error로 전달된다. |
 | session proxy timeout | `SessionProxy.Request(...).Timeout(...)` 대기가 timeout되면 pending request를 정리하고 `SessionProxyTimeout`으로 실패한다. |
 | actor dispatch timeout | actor dispatch request timeout이 pending request를 정리하고 `ActorDispatchTimeout`으로 실패한다. |
 | route not found error | play route가 없거나 actor-session binding이 없으면 transport send를 시도하지 않고 명확한 error로 실패한다. |

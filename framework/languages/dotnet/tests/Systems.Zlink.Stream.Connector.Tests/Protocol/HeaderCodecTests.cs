@@ -85,4 +85,61 @@ public sealed partial class StreamConnectorTests
         Assert.Throws<ZlinkStreamException>(() => codec.Decode(errorWithRawCodec));
     }
 
+    [Fact]
+    public void HeaderCodecEnforcesControlPacketContract()
+    {
+        var codec = ZlinkStreamDefaultCodecs.Header();
+
+        var control = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Control,
+            ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "$zlink.heartbeat.ping",
+            ZlinkStreamMetadata.Empty);
+        var decoded = codec.Decode(codec.Encode(control));
+        Assert.Equal(ZlinkStreamMessageKind.Control, decoded.Kind);
+        Assert.Equal("$zlink.heartbeat.ping", decoded.Name);
+
+        Assert.Throws<ZlinkStreamException>(() => codec.Encode(new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Control,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "$zlink.heartbeat.ping",
+            ZlinkStreamMetadata.Empty)));
+
+        Assert.Throws<ZlinkStreamException>(() => codec.Encode(new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Control,
+            ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.PayloadCompressed,
+            null,
+            "$zlink.heartbeat.ping",
+            ZlinkStreamMetadata.Empty)));
+
+        Assert.Throws<ZlinkStreamException>(() => codec.Encode(new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Control,
+            ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.None,
+            new ZlinkStreamRequestSeq(1),
+            "$zlink.heartbeat.ping",
+            ZlinkStreamMetadata.Empty)));
+
+        Assert.Throws<ZlinkStreamException>(() => codec.Encode(new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Control,
+            ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "$zlink.heartbeat.ping",
+            ZlinkStreamMetadata.Empty.With("traceId", "abc"))));
+
+        Assert.Throws<ZlinkStreamException>(() => codec.Encode(new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "$zlink.user",
+            ZlinkStreamMetadata.Empty)));
+    }
+
 }

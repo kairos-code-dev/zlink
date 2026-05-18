@@ -5,6 +5,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(ZlinkStreamTaskRunner taskRu
     private readonly object _gate = new();
     private Func<ZlinkStreamError, CancellationToken, ValueTask>? _errorReceived;
     private Func<CancellationToken, ValueTask>? _disconnected;
+    private Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? _connectionStateChanged;
 
     public void AddErrorReceived(Func<ZlinkStreamError, CancellationToken, ValueTask>? handler)
     {
@@ -38,6 +39,22 @@ internal sealed class ZlinkStreamConnectorCallbacks(ZlinkStreamTaskRunner taskRu
         }
     }
 
+    public void AddConnectionStateChanged(Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? handler)
+    {
+        lock (_gate)
+        {
+            _connectionStateChanged += handler;
+        }
+    }
+
+    public void RemoveConnectionStateChanged(Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? handler)
+    {
+        lock (_gate)
+        {
+            _connectionStateChanged -= handler;
+        }
+    }
+
     public async ValueTask PublishErrorAsync(ZlinkStreamError error, CancellationToken cancellationToken)
     {
         var handler = SnapshotErrorReceived();
@@ -55,6 +72,19 @@ internal sealed class ZlinkStreamConnectorCallbacks(ZlinkStreamTaskRunner taskRu
         {
             await InvokeUserCallbackAsync(
                 () => disconnected(cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async ValueTask NotifyConnectionStateChangedAsync(
+        ZlinkStreamConnectionStateChanged change,
+        CancellationToken cancellationToken)
+    {
+        var handler = SnapshotConnectionStateChanged();
+        if (handler is not null)
+        {
+            await InvokeUserCallbackAsync(
+                () => handler(change, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
     }
@@ -128,6 +158,14 @@ internal sealed class ZlinkStreamConnectorCallbacks(ZlinkStreamTaskRunner taskRu
         lock (_gate)
         {
             return _disconnected;
+        }
+    }
+
+    private Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? SnapshotConnectionStateChanged()
+    {
+        lock (_gate)
+        {
+            return _connectionStateChanged;
         }
     }
 }

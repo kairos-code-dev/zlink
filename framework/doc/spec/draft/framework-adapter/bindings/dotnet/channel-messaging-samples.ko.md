@@ -792,7 +792,7 @@ public sealed class UserHandlers
 핵심은 한 가지다. raw header 를 method 인자로 직접 받지 않는다. 대신 다음과 같이
 받는다.
 
-- body 는 typed object 로 받는다.
+- payload 는 typed object 로 받는다.
 - metadata 는 context 에서 읽는다.
 
 여기서 또 한 가지 짚어 둘 점이 있다. 기본 dispatch key 는, class 이름이 아니라 request

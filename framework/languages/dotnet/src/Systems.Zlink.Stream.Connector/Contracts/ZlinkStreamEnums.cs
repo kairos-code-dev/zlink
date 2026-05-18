@@ -42,7 +42,8 @@ public enum ZlinkStreamMessageKind : byte
     Send = 1,
     Request = 2,
     Response = 3,
-    Error = 4
+    Error = 4,
+    Control = 5
 }
 
 [Flags]
@@ -70,4 +71,14 @@ public enum ZlinkStreamErrorCode
     DecompressionFailed,
     UserCallbackFailed,
     RemoteError
+}
+
+public enum ZlinkStreamConnectionState
+{
+    Created,
+    Connecting,
+    Connected,
+    Reconnecting,
+    Disconnected,
+    Closed
 }

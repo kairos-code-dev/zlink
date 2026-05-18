@@ -463,7 +463,7 @@ public readonly record struct ZLinkSpotRoute(
 ```
 
 resolver 입력은 spot key 하나로 제한한다. 즉 packet 이름, metadata, request
-body 는 resolver 에 넘기지 않는다. 그런 값이 필요한 경우라면 application 의
+payload 는 resolver 에 넘기지 않는다. 그런 값이 필요한 경우라면 application 의
 placement 코드가 먼저 spot name 또는 spot id 를 결정해 두어야 한다.
 - `pub/sub`과 spot publisher client의 manual 연결은 endpoint 집합만 등록한다.
   다만 전자는 peer `SpotNode`의 mesh 주소이고, 후자는 외부 publish ingress 주소다.

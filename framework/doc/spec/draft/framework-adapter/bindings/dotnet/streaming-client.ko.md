@@ -8,8 +8,8 @@
 
 # Draft -- ZLink Stream Connector For .NET
 
-> 이 문서는 **구현 전 초안**이다.
-> 즉 아직 공개된 계약[^public-contract]이 아니며, `.NET`과 Unity에서 `ZLink STREAM`[^stream]
+> 이 문서는 **릴리스 전 초안**이다.
+> 즉 아직 배포된 공개 계약[^public-contract]이 아니며, `.NET`과 Unity에서 `ZLink STREAM`[^stream]
 > 서버에 접속하는 stream connector[^stream-connector]를 어떤 모양으로 노출할지 정리해 둔
 > 문서다.
 
@@ -23,8 +23,9 @@
 
 서버와 client 의 역할은 다음과 같이 나뉜다.
 
-- 서버 framework 의 callback 이 받는 값은 `IZLinkSessionPacket` 이다.
-- connector 의 typed API 와 fluent API 는, client 쪽에서 wire 의 header / body 를 만들어
+- 서버 framework 의 callback 이 받는 값은 `ZlinkStreamHeader header` 와
+  `Message payload` 이다.
+- connector 의 typed API 와 fluent API 는, client 쪽에서 wire 의 header / payload 를 만들어
   주는 helper 계층이다.
 
 이 client 는 게임 도메인 자체를 포함하지 않는다. 사용자가 그 위에 채팅, 게임, 장비 제어,
@@ -127,15 +128,15 @@ public sealed class ZlinkStreamConnectorOptions
 
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
-    public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
+    public ZlinkStreamHeartbeatOptions? Heartbeat { get; init; }
 
-    public TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(10);
-
-    public TimeSpan HeartbeatTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public ZlinkStreamReconnectOptions? Reconnect { get; init; }
 
     public int MaxSendFrameSize { get; init; } = 1024 * 1024;
 
     public int MaxSendMetadataSize { get; init; } = 1024;
+
+    public int HandlerQueueCapacity { get; init; } = 4096;
 
     public bool SkipServerCertificateValidation { get; init; }
 
@@ -143,11 +144,29 @@ public sealed class ZlinkStreamConnectorOptions
 
     public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
 
-    public IZLinkStreamHeaderCodec? HeaderCodec { get; init; }
+    public IZlinkStreamHeaderCodec? HeaderCodec { get; init; }
 
     public IZlinkStreamCompressionCodec? CompressionCodec { get; init; }
 
     public IZlinkStreamPacketNameResolver? NameResolver { get; init; }
+}
+
+public sealed class ZlinkStreamHeartbeatOptions
+{
+    public TimeSpan Interval { get; init; } = TimeSpan.FromSeconds(1);
+
+    public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(5);
+}
+
+public sealed class ZlinkStreamReconnectOptions
+{
+    public TimeSpan InitialDelay { get; init; } = TimeSpan.FromMilliseconds(250);
+
+    public TimeSpan MaxDelay { get; init; } = TimeSpan.FromSeconds(5);
+
+    public double BackoffFactor { get; init; } = 2.0;
+
+    public int? MaxAttempts { get; init; } = 3;
 }
 ```
 
@@ -157,34 +176,41 @@ public sealed class ZlinkStreamConnectorOptions
 `MaxSendFrameSize` 와 `MaxSendMetadataSize` 는 connector 가 내보내는 packet 에 대한
 기본 보호 장치다. 즉 보내는 쪽 한도다.
 
+`HandlerQueueCapacity` 는 수신 handler callback 을 내부 queue 에 보관할 수 있는
+최대 개수다. handler 가 수신 속도를 따라가지 못해 queue 가 닫히거나 꽉 차면,
+connector 는 사용자 callback 을 무한히 쌓지 않고 error 로 알린다.
+
 반면 수신 payload 에 도메인별로 거는 크기 제한은 connector 의 기본 계약에 포함하지
 않는다. 수신 크기 제한이 필요한 애플리케이션이라면, handler 또는 상위 protocol 에서
 별도로 검사해야 한다.
 
-`HeartbeatTimeout` 은 마지막으로 받은 heartbeat 응답을 기준으로 한 임계값이다. 이 시간이
-지나도록 새 응답이 더 들어오지 않으면, 해당 연결을 죽은 것으로 간주한다. 기본값은
-30 초다.
+`Heartbeat == null`이면 connector는 heartbeat ping을 시작하지 않는다.
+`Heartbeat`를 지정하면 기본값은 1초 interval과 5초 timeout이다.
+timeout은 마지막 inbound frame 이후 새 frame이 들어오지 않은 시간을 기준으로 판정한다.
+heartbeat ping, heartbeat pong, 사용자 packet 모두 inbound liveness 신호가 된다.
 
-`IdleTimeout` 은 어느 방향으로든 트래픽이 전혀 없는 상태가 이어진 시간에 대한 임계값
-이다. 이 시간을 넘기면 connector 가 연결을 닫는다. 기본값은 60 초다.
+`Reconnect == null`이면 자동 reconnect를 하지 않는다.
+`Reconnect` 옵션 객체가 있으면 자동 reconnect를 켠 것으로 해석한다.
+기본값은 `InitialDelay = 250ms`, `MaxDelay = 5s`, `BackoffFactor = 2.0`,
+`MaxAttempts = 3`이다.
 
 ## 5. Packet 모델
 
 이 절에서는 wire 위의 packet 한 단위가 어떻게 생겼는지, 그리고 helper 가 그 안의
-header 와 body 를 어떻게 채워 넣는지를 정리한다.
+header 와 payload 를 어떻게 채워 넣는지를 정리한다.
 
-wire packet[^wire] 의 가장 낮은 단위 모델은 `header + body` 형태다.
+wire packet[^wire] 의 가장 낮은 단위 모델은 `header + payload` 형태다.
 
 ```csharp
-public sealed record ZlinkStreamEncodedBody(
+public sealed record ZlinkStreamEncodedPayload(
     ZlinkStreamCodec Codec,
-    ReadOnlyMemory<byte> Body,
+    ReadOnlyMemory<byte> Payload,
     Type? MessageType = null);
 ```
 
 사용자 API 는 raw header bytes 를 직접 받지 않는다. 대신 다음 규칙을 따른다.
 
-- 기본 packet 이름은 body 객체의 CLR 타입 이름을 사용한다.
+- 기본 packet 이름은 payload 객체의 CLR 타입 이름을 사용한다.
 - 호출자가 명시한 이름이 있다면 그쪽이 우선이다.
 - 추가 metadata 가 필요하면 작은 key-value 쌍을 metadata 로 덧붙인다.
 
@@ -192,16 +218,16 @@ public sealed record ZlinkStreamEncodedBody(
 public sealed record ZlinkStreamMessage(
     string Name,
     ZlinkStreamMetadata Metadata,
-    object? Body);
+    object? Payload);
 
-public sealed record ZlinkStreamMessage<TBody>(
+public sealed record ZlinkStreamMessage<TPayload>(
     string Name,
     ZlinkStreamMetadata Metadata,
-    TBody Body);
+    TPayload Payload);
 ```
 
 `ZlinkStreamMessage` 는 어디까지나 helper 모델이다. 실제 transport framing 은 항상
-`ReadOnlyMemory<byte> Header` 와 `ReadOnlyMemory<byte> Body` 를 기준으로 이루어진다.
+`ReadOnlyMemory<byte> Header` 와 `ReadOnlyMemory<byte> Payload` 를 기준으로 이루어진다.
 
 helper 는 다음 값을 모두 byte header 로 인코딩한다.
 
@@ -210,16 +236,16 @@ helper 는 다음 값을 모두 byte header 로 인코딩한다.
 - codec 정보
 - request correlation 정보
 
-서버 framework 는 이렇게 만들어진 결과를 `IZLinkSessionPacket` 으로 감싸, session
-callback 에 흘려보낸다.
+서버 framework 는 이렇게 만들어진 header 와 payload 를 session callback 에
+흘려보낸다.
 
 STREAM frame 의 앞쪽 `2B` 는 connector helper header 가 아니라 `header_size` 다.
 따라서 `.NET` helper 가 만들어 내는 packet 도 wire 에서는 다음 순서를 그대로 따른다.
 
 ```text
-+------------------+------------------+------------------+------------------+
-| u16 header_size  | u32 body_size    | header bytes     | body bytes       |
-+------------------+------------------+------------------+------------------+
++----------------+----------------+----------------+----------------+
+| u16 header_len | u32 payload_sz | header bytes   | payload bytes  |
++----------------+----------------+----------------+----------------+
 ```
 
 helper header 는 binary header 다. 구조는 다음과 같다.
@@ -241,33 +267,34 @@ public enum ZlinkStreamMessageKind : byte
     Send = 1,
     Request = 2,
     Response = 3,
-    Error = 4
+    Error = 4,
+    Control = 5
 }
 
 [Flags]
-public enum ZLinkStreamHeaderFlags : byte
+public enum ZlinkStreamHeaderFlags : byte
 {
     None = 0,
     HasRequestSeq = 0x01,
     HasMetadata = 0x02,
-    BodyCompressed = 0x04
+    PayloadCompressed = 0x04
 }
 
 public readonly record struct ZlinkStreamRequestSeq(ulong Value);
 
-public sealed record ZLinkStreamHeader(
+public sealed record ZlinkStreamHeader(
     ZlinkStreamMessageKind Kind,
     ZlinkStreamCodec Codec,
-    ZLinkStreamHeaderFlags Flags,
+    ZlinkStreamHeaderFlags Flags,
     ZlinkStreamRequestSeq? RequestSeq,
     string Name,
     ZlinkStreamMetadata Metadata);
 
-public interface IZLinkStreamHeaderCodec
+public interface IZlinkStreamHeaderCodec
 {
-    ReadOnlyMemory<byte> Encode(ZLinkStreamHeader header);
+    ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header);
 
-    ZLinkStreamHeader Decode(ReadOnlyMemory<byte> header);
+    ZlinkStreamHeader Decode(ReadOnlyMemory<byte> header);
 }
 ```
 
@@ -320,11 +347,16 @@ helper header 의 `flags` 값은 공통 스펙과 동일하게 맞춘다.
 |------|-------|------|
 | has request seq | `0x01` | `request_seq` 필드가 있다 |
 | has metadata | `0x02` | `meta` 필드가 있다 |
-| body compressed | `0x04` | body가 압축된 상태다 |
+| payload compressed | `0x04` | payload가 압축된 상태다 |
+
+`Control` kind는 connector 내부 control frame이다.
+현재 `.NET` connector는 `$zlink.heartbeat.ping`과 `$zlink.heartbeat.pong`을 예약한다.
+control frame은 `Raw` codec, `None` flags, null request sequence, empty metadata, empty
+payload를 사용한다. 응용 packet name은 `$zlink.` prefix를 사용할 수 없다.
 
 압축 알고리즘은 packet 마다 header 에 따로 적지 않는다. 대신 `.NET` connector 의
-`Compression` option 으로 한 번만 정한다. `body compressed` flag 는 단지 "이 packet
-의 body 가 그 알고리즘으로 압축되어 있다" 는 표시일 뿐이다.
+`Compression` option 으로 한 번만 정한다. `payload compressed` flag 는 단지 "이 packet
+의 payload 가 그 알고리즘으로 압축되어 있다" 는 표시일 뿐이다.
 
 주의할 점이 하나 있다. 이 옵션이 client → server 자동 압축을 켜는 것은 아니다. client
 에서 server 로 보낼 때는, send / request builder 에서 `.Compress()` 를 명시한 경우에만
@@ -388,119 +420,173 @@ public sealed class ZlinkStreamPacketNameAttribute : Attribute
 
 public interface IZlinkStreamPacketNameResolver
 {
-    string Resolve(Type bodyType);
+    string Resolve(Type payloadType);
 }
 ```
 
 resolver 가 돌려준 이름은 UTF-8 기준 255 bytes 를 넘으면 안 된다.
 
-## 8. Connector API 초안
+## 8. 연결 생명주기
+
+Connector는 아래 상태를 공개한다.
+
+```csharp
+public enum ZlinkStreamConnectionState
+{
+    Created,
+    Connecting,
+    Connected,
+    Reconnecting,
+    Disconnected,
+    Closed
+}
+```
+
+`IsConnected`는 `Connected` 상태에서만 `true`다.
+`CloseAsync()`와 `DisposeAsync()` 뒤 상태는 `Closed`이며, 같은 connector 객체를 다시
+연결하지 않는다.
+
+`ConnectAsync()`는 상태별로 아래처럼 동작한다.
+
+| 현재 상태 | 동작 |
+|-----------|------|
+| `Created` | 초기 연결을 시작한다 |
+| `Disconnected` | 수동 재연결을 시작한다 |
+| `Connecting` | 이미 진행 중인 연결 시도를 기다린다 |
+| `Connected` | 성공으로 즉시 반환한다 |
+| `Reconnecting` | 자동 reconnect loop 결과를 기다린다 |
+| `Closed` | `ObjectDisposedException`으로 실패한다 |
+
+자동 reconnect는 `Reconnect` 옵션 객체가 있을 때만 켜진다.
+reconnect 중 submit은 내부 queue에 저장하지 않고 `Disconnected` 오류로 실패한다.
+연결이 끊기면 pending request는 모두 실패하며, reconnect 뒤 자동 재전송하지 않는다.
+
+Heartbeat를 켠 경우 connector는 `Heartbeat.Interval`마다 control ping을 보낸다.
+`Heartbeat.Timeout` 동안 inbound frame이 없으면 transport를 끊긴 것으로 처리하고
+reconnect 정책을 적용한다. `Heartbeat == null`이어도 inbound heartbeat ping에는 pong으로
+응답한다.
+
+## 9. Connector API 초안
 
 이 절에서는 연결을 열고 닫는 표면, 그리고 send / request / subscribe 의 진입점을 정리한다.
 
 ```csharp
-public sealed class ZlinkStreamConnector : IAsyncDisposable
+public interface IZlinkStreamConnector : IAsyncDisposable
 {
-    public event Func<ZlinkStreamError, CancellationToken, ValueTask>? ErrorReceived;
+    event Func<ZlinkStreamError, CancellationToken, ValueTask>? ErrorReceived;
 
-    public event Func<CancellationToken, ValueTask>? Disconnected;
+    event Func<CancellationToken, ValueTask>? Disconnected;
 
-    public bool IsConnected { get; }
+    event Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? ConnectionStateChanged;
 
-    public ZlinkStreamConnectorOptions Options { get; }
+    bool IsConnected { get; }
 
-    public static ValueTask<ZlinkStreamConnector> ConnectAsync(
-        ZlinkStreamConnectorOptions options,
+    ZlinkStreamConnectionState State { get; }
+
+    ZlinkStreamConnectorOptions Options { get; }
+
+    ValueTask ConnectAsync(
         CancellationToken cancellationToken = default);
 
-    public ValueTask ConnectAsync(
+    ValueTask CloseAsync(
         CancellationToken cancellationToken = default);
 
-    public ValueTask CloseAsync(
-        CancellationToken cancellationToken = default);
+    IZlinkStreamSendCall Send(
+        ZlinkStreamEncodedPayload payload);
 
-    public ZlinkStreamSendBuilder Send(
-        ZlinkStreamEncodedBody body);
+    IZlinkStreamRequestCall Request(
+        ZlinkStreamEncodedPayload payload);
 
-    public ZlinkStreamRequestBuilder Request(
-        ZlinkStreamEncodedBody body);
-
-    public IDisposable On(
+    IDisposable On(
         string name,
-        Func<ZlinkStreamMessage<ZlinkStreamEncodedBody>, CancellationToken, ValueTask> handler);
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler);
+}
+
+public sealed record ZlinkStreamConnectionStateChanged(
+    ZlinkStreamConnectionState Previous,
+    ZlinkStreamConnectionState Current,
+    ZlinkStreamError? Error = null);
+
+public static class ZlinkStreamConnectorFactory
+{
+    public static IZlinkStreamConnector Create(
+        ZlinkStreamConnectorOptions options);
 }
 ```
 
+`Create()`는 객체만 만들고 네트워크 연결을 열지 않는다.
+호출자는 handler와 event callback을 등록한 뒤 `ConnectAsync()`를 호출한다.
+
 connector 는 이 문서에서 정의한 helper header 만 decode 한다. 수신한 packet 은
 `On(...)` 에 등록해 둔 이름별 handler 로 전달한다. helper header decode 가 실패하면,
-오류만 `ErrorReceived` 로 전달한다. packet body 를 raw 상태 그대로 사용자에게
+오류만 `ErrorReceived` 로 전달한다. packet payload 를 raw 상태 그대로 사용자에게
 넘겨주지는 않는다.
 
-`Send(...).Submit(...)` 은 응답을 기다리지 않는 submit API 다. 실제 transport write 는
-connector 내부에서 비동기로 수행된다.
+`Send(...).Submit(...)` 은 응답을 기다리지 않는 submit API 다.
 
 submit 시점의 동작은 두 갈래로 나뉜다.
 
-- 호출 시점에는 즉시 판단할 수 있는 validation 실패만 예외로 던진다. 예를 들어 frame
-  size, packet name, metadata size, 연결 상태가 이에 해당한다.
-- write 도중에 발생한 오류는 `ErrorReceived` 로 전달한다.
+- async API 는 validation 실패와 transport write 실패를 예외로 반환한다.
+- send 중 transport 오류가 발생하면 같은 오류를 `ErrorReceived` 로도 알리고,
+  connector lifecycle은 연결 끊김 처리로 들어간다.
+- callback 기반 request API 는 실패를 callback result로 전달한다.
 
 stream connector 의 public option 에는 `SendTimeout` 을 두지 않는다. 이유는 다음과 같다.
 connector send 는 request / reply 대기와 의미가 다른 fire-and-forget submit 이다.
 여기에 timeout 옵션을 노출하면, request timeout 과 의미가 뒤섞이게 된다. connector
 에서 timeout 이 필요한 공개 옵션은, request 의 reply 대기용인 `RequestTimeout` 뿐이다.
 
-## 9. Send / Request Builder API 초안
+## 10. Send / Request Builder API 초안
 
 이 절에서는 send / request 를 보낼 때 사용하는 fluent builder 의 모양과, codec 을 어떻게
 연결하는지 정리한다.
 
 fluent builder 는 timeout, metadata, cancellation 을 호출 단위로 조절할 수 있게 해 준다.
-codec 은 `ZlinkStreamEncodedBody` 안에 들어 있는 값을 그대로 사용한다.
+codec 은 `ZlinkStreamEncodedPayload` 안에 들어 있는 값을 그대로 사용한다.
 
 호출 흐름은 다음과 같다.
 
-- 호출자는 `ToJson`, `ToMsgPack`, `ToProto` 같은 명시형 helper 를 통해, body bytes 와
+- 호출자는 `ToJson`, `ToMsgPack`, `ToProto` 같은 명시형 helper 를 통해, payload bytes 와
   codec 값을 함께 만든다.
 - 각 codec package 는 일반 CLR 객체를 곧장 넘길 수 있는 typed convenience builder 도
   함께 제공한다.
 - 예를 들어 JSON package 의 namespace 를 사용하면, `Request(request)` 는 JSON 으로
-  body 를 만들고 `Async<TReply>()` 는 JSON 으로 reply 를 읽는다.
+  payload 를 만들고 `Async<TReply>()` 는 JSON 으로 reply 를 읽는다.
 
 ```csharp
-public sealed class ZlinkStreamSendBuilder
+public interface IZlinkStreamSendCall
 {
-    public ZlinkStreamSendBuilder PacketName(string packetName);
+    IZlinkStreamSendCall PacketName(string packetName);
 
-    public ZlinkStreamSendBuilder Metadata(string key, string value);
+    IZlinkStreamSendCall Metadata(string key, string value);
 
-    public ZlinkStreamSendBuilder Metadata(ZlinkStreamMetadata metadata);
+    IZlinkStreamSendCall Metadata(ZlinkStreamMetadata metadata);
 
-    public ZlinkStreamSendBuilder Compress();
+    IZlinkStreamSendCall Compress();
 
-    public ValueTask Submit(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
-public sealed class ZlinkStreamRequestBuilder
+public interface IZlinkStreamRequestCall
 {
-    public ZlinkStreamRequestBuilder PacketName(string packetName);
+    IZlinkStreamRequestCall PacketName(string packetName);
 
-    public ZlinkStreamRequestBuilder Metadata(string key, string value);
+    IZlinkStreamRequestCall Metadata(string key, string value);
 
-    public ZlinkStreamRequestBuilder Metadata(ZlinkStreamMetadata metadata);
+    IZlinkStreamRequestCall Metadata(ZlinkStreamMetadata metadata);
 
-    public ZlinkStreamRequestBuilder Timeout(TimeSpan timeout);
+    IZlinkStreamRequestCall Timeout(TimeSpan timeout);
 
-    public ZlinkStreamRequestBuilder Compress();
+    IZlinkStreamRequestCall Compress();
 
-    public ValueTask<ZlinkStreamEncodedBody> Submit(
+    ValueTask<ZlinkStreamEncodedPayload> SubmitAsync(
         CancellationToken cancellationToken = default);
 
-    public void Submit(
+    void Submit(
         Action<ZlinkStreamResult> callback);
 
-    public void Submit(
-        Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback);
+    void Submit(
+        Action<ZlinkStreamResult<ZlinkStreamEncodedPayload>> callback);
 }
 ```
 
@@ -512,10 +598,10 @@ var reply = await client
     .Request(new GetProfileRequest { AccountId = accountId })
     .Timeout(TimeSpan.FromMilliseconds(200))
     .Metadata("traceId", traceId)
-    .Submit<GetProfileReply>(cancellationToken);
+    .SubmitAsync<GetProfileReply>(cancellationToken);
 ```
 
-packet 이름을 따로 명시하지 않으면, 기본 이름은 namespace 를 뺀 body 의 CLR 타입
+packet 이름을 따로 명시하지 않으면, 기본 이름은 namespace 를 뺀 payload 의 CLR 타입
 이름이 된다. 다른 이름이 필요하다면, `ZlinkStreamPacketNameAttribute` 또는
 `IZlinkStreamPacketNameResolver` 를 사용한다.
 
@@ -542,16 +628,16 @@ client
 
 `.Compress()` 의 동작은 다음과 같다.
 
-- body 만 압축한다.
-- helper header 의 `flags` 에 `body compressed` 표시를 켠다.
+- payload 만 압축한다.
+- helper header 의 `flags` 에 `payload compressed` 표시를 켠다.
 
 서버 쪽 흐름은 다음과 같이 이어진다.
 
-- 서버 framework 는 wire 의 header / body 를 `IZLinkSessionPacket` 으로 감싼다.
-- 서버 쪽 helper 나 actor adapter 는 packet 의 metadata 를 보고, 필요한 경우 body 의
+- 서버 framework 는 wire 의 header / payload 를 decode 해서 session callback 에 넘긴다.
+- 서버 쪽 helper 나 actor adapter 는 header 의 metadata 를 보고, 필요한 경우 payload 의
   압축을 해제한다.
 
-## 10. Result / Error API 초안
+## 11. Result / Error API 초안
 
 이 절에서는 성공 / 실패를 어떤 모양으로 사용자에게 돌려주는지, 그리고 async 와 callback
 표면이 error 를 어떻게 다르게 처리하는지 정리한다.
@@ -611,7 +697,7 @@ public readonly struct ZlinkStreamResult<T>
 
 다만 두 경로에서 사용하는 error code 가 가지는 의미는 서로 같아야 한다.
 
-## 11. Codec API 초안
+## 12. Codec API 초안
 
 이 절에서는 codec 을 어떻게 갈아 끼우는지, 그리고 자동 선택 helper 가 어떤 우선순위를
 따르는지 정리한다.
@@ -619,7 +705,7 @@ public readonly struct ZlinkStreamResult<T>
 core 패키지는 codec 을 강제로 정해 두지 않는다. codec package 는 두 가지 표면을
 함께 제공한다.
 
-- 명시형 extension method 로 `ZlinkStreamEncodedBody` 를 만들고 읽는 표면.
+- 명시형 extension method 로 `ZlinkStreamEncodedPayload` 를 만들고 읽는 표면.
 - typed convenience builder 로 일반 CLR 객체를 그대로 `Send`, `Request`, `On` 에
   넘기는 표면.
 
@@ -628,30 +714,41 @@ namespace Systems.Zlink.Stream.Connector.Json;
 
 public static class ZlinkStreamJsonExtensions
 {
-    ZlinkStreamEncodedBody ToJson<T>(
+    ZlinkStreamEncodedPayload ToJson<T>(
         this T value,
         JsonSerializerOptions? options = null);
 
     T FromJson<T>(
-        this ZlinkStreamEncodedBody body,
+        this ZlinkStreamEncodedPayload payload,
         JsonSerializerOptions? options = null);
 
-    ZlinkStreamJsonRequestBuilder Request<T>(
-        this ZlinkStreamConnector connector,
-        T body,
-        JsonSerializerOptions? options = null);
+}
+
+public static class ZlinkStreamJsonConnectorExtensions
+{
+    ZlinkStreamJsonSendBuilder Send<TPayload>(
+        this IZlinkStreamConnector connector,
+        TPayload payload);
+
+    ZlinkStreamJsonRequestBuilder Request<TPayload>(
+        this IZlinkStreamConnector connector,
+        TPayload payload);
+
+    IDisposable On<TPayload>(
+        this IZlinkStreamConnector connector,
+        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler);
 }
 
 namespace Systems.Zlink.Stream.Connector.MessagePack;
 
 public static class ZlinkStreamMessagePackExtensions
 {
-    ZlinkStreamEncodedBody ToMsgPack<T>(
+    ZlinkStreamEncodedPayload ToMsgPack<T>(
         this T value,
         MessagePackSerializerOptions? options = null);
 
     T FromMsgPack<T>(
-        this ZlinkStreamEncodedBody body,
+        this ZlinkStreamEncodedPayload payload,
         MessagePackSerializerOptions? options = null);
 }
 
@@ -659,10 +756,10 @@ namespace Systems.Zlink.Stream.Connector.Protobuf;
 
 public static class ZlinkStreamProtobufExtensions
 {
-    ZlinkStreamEncodedBody ToProto<T>(this T value)
+    ZlinkStreamEncodedPayload ToProto<T>(this T value)
         where T : IMessage<T>;
 
-    T FromProto<T>(this ZlinkStreamEncodedBody body)
+    T FromProto<T>(this ZlinkStreamEncodedPayload payload)
         where T : IMessage<T>, new();
 }
 ```
@@ -684,20 +781,20 @@ connector core 는 타입만 보고서 JSON, MessagePack, Protobuf 가운데 하
 2. `[MessagePackObject]` 가 붙은 타입이면 MessagePack 을 사용한다.
 3. 그 외 일반 CLR 객체는 JSON 을 사용한다.
 
-## 12. Compression Codec API 초안
+## 13. Compression Codec API 초안
 
 이 절에서는 압축 코덱의 인터페이스와, 어느 시점에 어떤 오류를 던지는지 정리한다.
 
-compression package 는 아래 인터페이스로 body 의 압축과 해제를 제공한다.
+compression package 는 아래 인터페이스로 payload 의 압축과 해제를 제공한다.
 
 ```csharp
 public interface IZlinkStreamCompressionCodec
 {
     ZlinkStreamCompression Compression { get; }
 
-    ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> body);
+    ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload);
 
-    ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> body);
+    ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload);
 }
 ```
 
@@ -706,16 +803,16 @@ public interface IZlinkStreamCompressionCodec
 
 기본 동작은 다음과 같다.
 
-- `ZlinkStreamCompression.None` 은 body 를 그대로 둔다.
-- `BodyCompressed` flag 가 켜져 있는데도 `Compression` 이 `None` 이거나
+- `ZlinkStreamCompression.None` 은 payload 를 그대로 둔다.
+- `PayloadCompressed` flag 가 켜져 있는데도 `Compression` 이 `None` 이거나
   `CompressionCodec` 이 없다면, 이는 decode error 로 처리한다.
 
-## 13. Request Helper
+## 14. Request Helper
 
 이 절에서는 request / reply 흐름에 필요한 기능과, request 와 response 의 짝짓기 규칙을
 정리한다.
 
-request helper 는 `header + body` 전송 위에 얹는 선택 기능이다. 다만 일반 client 에서도
+request helper 는 `header + payload` 전송 위에 얹는 선택 기능이다. 다만 일반 client 에서도
 충분히 자주 쓰는 흐름이라, core 패키지 안에 함께 포함한다.
 
 요구 사항은 다음과 같다.
@@ -723,7 +820,7 @@ request helper 는 `header + body` 전송 위에 얹는 선택 기능이다. 다
 - async request
 - callback request
 - fluent request builder
-- body 타입 이름 또는 명시적인 packet 이름
+- payload 타입 이름 또는 명시적인 packet 이름
 - optional metadata
 - request timeout
 - pending request map
@@ -749,21 +846,21 @@ request / response 규칙은 다음과 같다.
 - request timeout, close, disconnect가 발생하면 pending request는 모두 실패 처리되고
   map에서 제거된다.
 
-`Error` 의 body 는 codec 과 무관하게, UTF-8 JSON object 로 인코딩한다.
+`Error` 의 payload 는 codec 과 무관하게, UTF-8 JSON object 로 인코딩한다.
 
 ```json
 {"code":"error_code","message":"message"}
 ```
 
-애플리케이션 도메인의 error 를 정상 reply body 로 다루고 싶다면, `Response` kind 와
-사용자 정의 body schema 를 사용한다.
+애플리케이션 도메인의 error 를 정상 reply payload 로 다루고 싶다면, `Response` kind 와
+사용자 정의 payload schema 를 사용한다.
 
-## 14. Codec Extension
+## 15. Codec Extension
 
 이 절에서는 codec 확장 패키지가 할 수 있는 일과, 절대 바꿔서는 안 되는 규칙을 정리한다.
 
 core 패키지는 codec 을 강제하지 않는다. 다음 확장 패키지가 따로 있다. 이들은 packet
-이름, optional metadata, body payload 를 만들고 parse 하는 일만 돕는다.
+이름, optional metadata, payload 를 만들고 parse 하는 일만 돕는다.
 
 - JSON
 - MessagePack
@@ -783,41 +880,41 @@ var reply = await client
     .Request(new ChatRequest("hello"))
     .PacketName("chat.request")
     .Timeout(TimeSpan.FromSeconds(1))
-    .Submit<ChatReply>(cancellationToken);
+    .SubmitAsync<ChatReply>(cancellationToken);
 ```
 
 전체 흐름은 다음과 같다.
 
-- codec extension 은 body bytes 와 함께 `ZlinkStreamCodec` 값을 만들어 준다.
+- codec extension 은 payload bytes 와 함께 `ZlinkStreamCodec` 값을 만들어 준다.
 - connector 는 그 codec 값을 helper header 에 그대로 적는다.
-- core API 는 reply 나 handler 에 `ZlinkStreamEncodedBody` 를 그대로 흘려보낸다.
-- codec package 의 typed convenience API 가 이를 다시, 지정된 reply / body 타입으로
+- core API 는 reply 나 handler 에 `ZlinkStreamEncodedPayload` 를 그대로 흘려보낸다.
+- codec package 의 typed convenience API 가 이를 다시, 지정된 reply / payload 타입으로
   풀어 준다.
 
 다만 codec extension 이 transport, timeout, request map, callback dispatch 의 규칙을
 바꿔서는 안 된다.
 
-## 15. Compression
+## 16. Compression
 
 이 절에서는 server → client 와 client → server 두 방향의 압축 동작을 따로 정리한다.
 
 server → client 방향은 typed API 에서 자동 압축 해제를 제공한다.
 
-- 서버가 helper header 에 `body compressed` flag 를 켜고 body 를 보낸다.
-- 그러면 `.NET` connector 가, typed 사용자 callback 이 호출되기 전에 body 를 미리 압축
+- 서버가 helper header 에 `payload compressed` flag 를 켜고 payload 를 보낸다.
+- 그러면 `.NET` connector 가, typed 사용자 callback 이 호출되기 전에 payload 를 미리 압축
   해제해 둔다.
-- typed message handler 와 request reply decode 는 모두, 압축이 해제된 body 를 받는다.
+- typed message handler 와 request reply decode 는 모두, 압축이 해제된 payload 를 받는다.
 - 압축 해제에 실패하면, `DecompressionFailed` error 로 사용자에게 전달한다.
 
 client → server 방향은 명시적으로 호출했을 때만 압축한다.
 
 - 기본 `Send` 와 `Request` 는 압축하지 않는다.
-- `.Compress()` 를 호출한 send / request 만 body 를 압축한다.
-- 압축이 적용된 packet 에는, helper header 에 `body compressed` flag 를 켠다.
+- `.Compress()` 를 호출한 send / request 만 payload 를 압축한다.
+- 압축이 적용된 packet 에는, helper header 에 `payload compressed` flag 를 켠다.
 
-압축은 오직 body 에만 적용한다. helper header 는 절대 압축하지 않는다.
+압축은 오직 payload 에만 적용한다. helper header 는 절대 압축하지 않는다.
 
-## 16. Unity Adapter
+## 17. Unity Adapter
 
 이 절에서는 Unity 패키지가 core 위에 얇게 얹는 부분과, 무엇을 그대로 두는지를 정리한다.
 
@@ -832,7 +929,7 @@ Unity 측 상세 계약은 [unity-stream-connector.ko.md](./unity-stream-connect
 기준으로 한다. Unity adapter 는 `ZlinkStreamConnector` 의 packet 의미나 helper header
 의미를 임의로 바꾸지 않는다.
 
-## 17. 완료 기준
+## 18. 완료 기준
 
 이 절에서는 `.NET` 구현이 "끝났다" 고 말하려면, 어떤 시나리오가 모두 동작해야 하는지를
 정리한다.
@@ -848,11 +945,11 @@ Unity 측 상세 계약은 [unity-stream-connector.ko.md](./unity-stream-connect
 - TLS 자체 서명 인증서 검증 옵션을 테스트한다.
 - partial read, multi-packet read, send frame limit 동작을 테스트한다.
 - JSON, MessagePack, Protobuf extension이 core packet 계약을 바꾸지 않는지 테스트한다.
-- server-to-client 방향에서 압축된 body를 typed API가 자동으로 해제한다.
+- server-to-client 방향에서 압축된 payload를 typed API가 자동으로 해제한다.
 - client-to-server 방향의 압축은 `.Compress()`를 호출한 packet에만 적용된다.
 - Unity adapter가 main thread callback dispatch와 lifecycle close를 보장한다.
 
-## 18. 구현 순서
+## 19. 구현 순서
 
 이 절에서는 작업을 어떤 순서로 쌓아 가는지 정리한다. 단 단계마다 공개 계약을 따로
 끊어 내려는 목적은 아니다.
@@ -869,7 +966,7 @@ Unity 측 상세 계약은 [unity-stream-connector.ko.md](./unity-stream-connect
 8. TLS, WebSocket, WebSocket over TLS transport
 9. Unity adapter package
 
-## 19. 회귀 테스트
+## 20. 회귀 테스트
 
 이 절에서는 어떤 항목을 어떤 단위로 회귀 테스트로 묶어 두는지, 그리고 API 수정 시
 어떤 위치를 함께 맞춰야 하는지 정리한다.
@@ -889,7 +986,7 @@ Connector API 를 수정하는 경우에는, 아래 테스트 이름과 문서 �
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `StreamConnectorTests.TcpSendUsesHeaderBodyFrame` | TCP transport가 header/body frame 형식을 그대로 사용한다. |
+| `StreamConnectorTests.TcpSendUsesHeaderPayloadFrame` | TCP transport가 header/payload frame 형식을 그대로 사용한다. |
 | `StreamConnectorTests.TcpReceiveDispatchesMultipleHeaderPacketsInOrder` | 여러 header packet을 순서대로 callback에 전달한다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | typed request가 request sequence로 response를 정확히 짝짓는다. |
 | `StreamConnectorTests.PacketNameAttributeIsUsedByDefault` | packet name attribute가 기본 packet 이름으로 사용된다. |
@@ -899,7 +996,7 @@ Connector API 를 수정하는 경우에는, 아래 테스트 이름과 문서 �
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^stream]: `STREAM`은 외부 클라이언트와 서버 사이를 잇는, 연결 지향적인 양방향 메시지 통로를 가리키는 ZLink 추상이다.
 [^stream-connector]: Stream Connector는 클라이언트(예: .NET app, Unity)에서 STREAM 서버에 접속해 packet을 주고받도록 돕는 클라이언트 측 라이브러리다.
-[^packet]: packet은 stream 위에서 한 단위로 묶여 오가는 메시지로, header에 종류·metadata·correlation 정보가, body에 실제 payload가 담긴다.
+[^packet]: packet은 stream 위에서 한 단위로 묶여 오가는 메시지로, header에 종류·metadata·correlation 정보가, payload에 실제 payload가 담긴다.
 [^tcp]: TCP는 신뢰성 있는 바이트 스트림 전송을 제공하는 기본 transport 프로토콜이다.
 [^tls]: TLS는 TCP 위에 암호화와 인증을 더한 transport다. `tls://` scheme으로 표기한다.
 [^ws]: WS(WebSocket)는 HTTP 핸드셰이크 위에 올라가는 양방향 메시지 프레이밍 프로토콜이다.

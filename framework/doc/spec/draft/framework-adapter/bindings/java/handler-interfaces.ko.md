@@ -115,7 +115,7 @@ public interface ZLinkStream {
 
     boolean write(Message payload, SendFlags flags);
 
-    boolean write(Message header, Message body, SendFlags flags);
+    boolean write(Message header, Message payload, SendFlags flags);
 }
 
 public enum ZLinkStreamSessionError {
@@ -149,7 +149,7 @@ public interface ZLinkPacketStreamSession {
     CompletionStage<Void> onPacketAsync(
         ZLinkStream stream,
         Message header,
-        Message body);
+        Message payload);
 }
 
 public interface ZLinkRawStreamSession {

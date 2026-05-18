@@ -182,9 +182,9 @@ loop 를 직접 다루지 않고, 등록 표면만 본다.
    요청을 넣는다.
 3. join handler는 `IZLinkSpotActorMembership.JoinActorAsync(actor)`를 호출해
    `actorId -> spot runtime` 연결을 membership으로 기록한다.
-4. 그 뒤 session에서 packet이 오면 framework가 `IZLinkSessionPacket` 형태로
-   정규화한다.
-5. 정규화된 packet을 해당 actor가 attach된 `Spot` runtime의 inbox에 넣는다.
+4. 그 뒤 session에서 packet이 오면 framework가 header와 payload를 actor dispatch
+   envelope로 정규화한다.
+5. 정규화된 dispatch를 해당 actor가 attach된 `Spot` runtime의 inbox에 넣는다.
 6. 그 `Spot` inbox를 소비하는 실행기는 하나뿐이라고 가정한다.
 7. 그 실행기 안에서만 `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 handler가
    호출된다.
@@ -226,8 +226,8 @@ handler 가 같은 `Spot` state 를 동시에 만지고 있는가" 를 매번 �
 - join 된 actor 의 packet 은 `Spot` 실행 문맥 바깥에서 직접 처리하지 않는다.
 - framework 내부의 `SubmitAsync(...)` 는 `Spot` 이 소유한 직렬 실행 규칙 안에서
   만 수행된다. 그 안에서 최종적으로 actor packet handler 가 호출된다.
-- stream packet 은 framework `IZLinkSessionPacket` 으로 정규화된 뒤, 같은 actor
-  dispatch 경로를 그대로 탄다.
+- stream packet 은 framework 가 header와 payload를 보존한 actor dispatch로
+  정규화한 뒤, 같은 actor dispatch 경로를 그대로 탄다.
 
 즉 "`Spot` 에 actor 가 join 된다" 는 말은 membership 만 가리키는 것이 아니다.
 **그 actor 의 packet 처리 ownership 이 해당 `Spot` 으로 넘어간다** 는 뜻으로

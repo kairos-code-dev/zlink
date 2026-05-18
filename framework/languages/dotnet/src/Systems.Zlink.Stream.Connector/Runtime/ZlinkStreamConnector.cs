@@ -5,6 +5,10 @@ namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 {
+    internal const string ReservedPacketNamePrefix = "$zlink.";
+    internal const string HeartbeatPingName = "$zlink.heartbeat.ping";
+    internal const string HeartbeatPongName = "$zlink.heartbeat.pong";
+
     private readonly ZlinkStreamPendingRequests _pending = new();
     private readonly ZlinkStreamTypedHandlerRegistry _typedHandlers = new();
     private readonly Channel<ZlinkStreamHandlerWorkItem> _handlerQueue;
@@ -40,7 +44,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         }
 
         _nameResolver = options.NameResolver ?? new ZlinkStreamPacketNameResolver();
-        _lifecycle = new ZlinkStreamConnectorLifecycle(options, _pending, _taskRunner);
+        _lifecycle = new ZlinkStreamConnectorLifecycle(options, _pending, _taskRunner, _callbacks);
         _handlerQueue = Channel.CreateBounded<ZlinkStreamHandlerWorkItem>(
             new BoundedChannelOptions(options.HandlerQueueCapacity)
             {
@@ -63,11 +67,9 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             _frameSender,
             _callbacks);
         _receiveLoop = new ZlinkStreamReceiveLoop(
-            _pending,
             _receiveDispatcher,
-            _callbacks,
             () => _lifecycle.Connection,
-            _lifecycle.ClearConnection);
+            _lifecycle.RecordInbound);
         _handlerPump = _taskRunner.Run(
             "stream-handler-pump",
             _ => new ValueTask(_receiveDispatcher.HandlerPumpAsync()));
@@ -97,7 +99,21 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         }
     }
 
+    public event Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? ConnectionStateChanged
+    {
+        add
+        {
+            _callbacks.AddConnectionStateChanged(value);
+        }
+        remove
+        {
+            _callbacks.RemoveConnectionStateChanged(value);
+        }
+    }
+
     public bool IsConnected => _lifecycle.IsConnected;
+
+    public ZlinkStreamConnectionState State => _lifecycle.State;
 
     public ZlinkStreamConnectorOptions Options { get; }
 
@@ -105,6 +121,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     {
         await _lifecycle.ConnectAsync(
                 _receiveLoop.RunAsync,
+                SendHeartbeatPingAsync,
                 ThrowIfDisposed,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -126,6 +143,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
+        ThrowIfClosed();
         ValidateName(name);
 
         return _typedHandlers.Add(name, handler);
@@ -140,8 +158,16 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         CancellationToken cancellationToken)
     {
         var frame = _frameSender.BuildOutboundFrame(kind, name, payload, metadata, compress, null);
-        _frameSender.ValidateSendReady(frame.HeaderBytes, frame.BodyBytes);
-        await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.BodyBytes, cancellationToken).ConfigureAwait(false);
+        _frameSender.ValidateSendReady(frame.HeaderBytes, frame.PayloadBytes);
+        try
+        {
+            await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.PayloadBytes, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ZlinkStreamException ex) when (ex.Error.Code == ZlinkStreamErrorCode.SendFailed)
+        {
+            await _lifecycle.HandleTransportErrorAsync(ex.Error, cancellationToken).ConfigureAwait(false);
+            throw;
+        }
     }
 
     async ValueTask<ZlinkStreamEncodedPayload> IZlinkStreamConnectorInternal.RequestEncodedAsync(
@@ -175,10 +201,19 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
         try
         {
-            _frameSender.ValidateSendReady(frame.HeaderBytes, frame.BodyBytes);
+            _frameSender.ValidateSendReady(frame.HeaderBytes, frame.PayloadBytes);
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(timeout);
-            await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.BodyBytes, timeoutCts.Token).ConfigureAwait(false);
+            try
+            {
+                await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.PayloadBytes, timeoutCts.Token).ConfigureAwait(false);
+            }
+            catch (ZlinkStreamException ex) when (ex.Error.Code == ZlinkStreamErrorCode.SendFailed)
+            {
+                await _lifecycle.HandleTransportErrorAsync(ex.Error, cancellationToken).ConfigureAwait(false);
+                throw;
+            }
+
             var packet = await _pending.WaitAsync(pending, timeout, cancellationToken).ConfigureAwait(false);
             var replyHeader = _headerCodec.Decode(packet.Header);
             var replyBody = _frameSender.DecompressIfNeeded(replyHeader, packet.Payload);
@@ -237,15 +272,17 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         _lifetimeCts.Dispose();
     }
 
-    private string ResolveName(Type bodyType)
+    private string ResolveName(Type payloadType)
     {
-        var name = _nameResolver.Resolve(bodyType);
+        ThrowIfClosed();
+        var name = _nameResolver.Resolve(payloadType);
         ValidateName(name);
         return name;
     }
 
     private string? ResolveNameOrDefault(ZlinkStreamEncodedPayload payload)
     {
+        ThrowIfClosed();
         if (payload.MessageType is null)
         {
             return null;
@@ -254,11 +291,16 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         return ResolveName(payload.MessageType);
     }
 
-    internal static void ValidateName(string name)
+    internal static void ValidateName(string name, bool allowReserved = false)
     {
         if (string.IsNullOrEmpty(name))
         {
             throw Error(ZlinkStreamErrorCode.ValidationFailed, "Message name must not be empty.");
+        }
+
+        if (!allowReserved && name.StartsWith(ReservedPacketNamePrefix, StringComparison.Ordinal))
+        {
+            throw Error(ZlinkStreamErrorCode.ValidationFailed, "Message name uses a reserved zlink prefix.");
         }
 
         if (Encoding.UTF8.GetByteCount(name) > byte.MaxValue)
@@ -273,6 +315,20 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         {
             throw new ObjectDisposedException(nameof(ZlinkStreamConnector));
         }
+    }
+
+    private void ThrowIfClosed()
+    {
+        ThrowIfDisposed();
+        if (_lifecycle.State == ZlinkStreamConnectionState.Closed)
+        {
+            throw new ObjectDisposedException(nameof(ZlinkStreamConnector), "Connector is closed.");
+        }
+    }
+
+    private async ValueTask SendHeartbeatPingAsync(CancellationToken cancellationToken)
+    {
+        await _frameSender.SendControlAsync(HeartbeatPingName, cancellationToken).ConfigureAwait(false);
     }
 
     internal static ZlinkStreamException Error(

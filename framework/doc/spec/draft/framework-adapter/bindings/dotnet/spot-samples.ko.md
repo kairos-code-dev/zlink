@@ -1336,13 +1336,14 @@ public sealed class SampleSession
     }
 
     public async ValueTask OnDispatchAsync(
-        IZLinkSessionPacket packet,
+        ZlinkStreamHeader header,
+        Message payload,
         CancellationToken cancellationToken)
     {
         if (Actor is null)
         {
             if (!string.Equals(
-                packet.PacketName,
+                header.Name,
                 "SampleAuthenticateRequest",
                 StringComparison.Ordinal))
             {
@@ -1351,7 +1352,7 @@ public sealed class SampleSession
             }
 
             SampleAuthenticateRequest authRequest =
-                packet.Decode<SampleAuthenticateRequest>();
+                payload.FromJson<SampleAuthenticateRequest>();
 
             SampleAuthenticationResult auth =
                 await _authVerifier.VerifyAsync(
@@ -1382,12 +1383,12 @@ public sealed class SampleSession
         }
 
         if (string.Equals(
-            packet.PacketName,
+            header.Name,
             "SampleJoinRoomRequest",
             StringComparison.Ordinal))
         {
             SampleJoinRoomRequest join =
-                packet.Decode<SampleJoinRoomRequest>();
+                payload.FromJson<SampleJoinRoomRequest>();
 
             SampleSpot room =
                 await _rooms.GetRequiredAsync(
@@ -1413,7 +1414,8 @@ public sealed class SampleSession
 
         await Context.DispatchToActorAsync(
             ActorRef ?? throw new InvalidOperationException("Actor is not bound."),
-            packet,
+            header,
+            payload,
             cancellationToken);
     }
 }
@@ -1524,9 +1526,9 @@ packet 의 hot path[^hot-path] 까지 다시 끌고 들어오지 않는 편이 �
 이 구조라면 "같은 account 의 actor 는 그대로 두고 stream 만 교체한다"는
 reconnect 정책을 설명하기가 훨씬 쉬워진다.
 
-이 샘플 코드는 framework session packet 을 기준으로 작성했다. framework 는
-decode 된 `IZLinkSessionPacket` 을 내부 dispatch 경로로 같은 `Spot` 문맥에
-올려 두고, 최종 actor 로직은 등록된 actor packet handler 가 처리한다.
+이 샘플 코드는 framework session header와 payload를 기준으로 작성했다.
+framework 는 decode 된 header와 payload를 내부 dispatch 경로로 같은 `Spot`
+문맥에 올려 두고, 최종 actor 로직은 등록된 actor packet handler 가 처리한다.
 
 또한 room timer 는 room 에 join 된 actor 만 본다. 인증은 끝났지만 아직
 `SampleJoinRoomRequest` 를 보내지 않은 연결은 `SampleSpot` 바깥의 stream

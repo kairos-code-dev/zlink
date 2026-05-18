@@ -33,11 +33,11 @@ app.handlers()
     "route-stream",
     [](zlink::framework::stream_t &stream,
        const zlink::framework::stream_header_t &header,
-       const zlink::message_t &body) {
+       const zlink::message_t &payload) {
         route_packet_t packet{
           .session_id = std::string(header.session_id()),
           .packet_name = std::string(header.packet_name()),
-          .body = decode_route_body(body),
+          .payload = decode_route_body(payload),
         };
 
         handle_route_packet(stream, packet);

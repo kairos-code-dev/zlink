@@ -34,7 +34,7 @@ draft 문서는 현재 공개 계약이 아니다.
 - `interaction-model`
   - request-response, command, publish-subscribe, stream 같은 공용 상호작용 의미
 - `message-model`
-  - header/body, packet key, codec, correlation 같은 공통 메시지 의미
+  - header/payload, packet key, codec, correlation 같은 공통 메시지 의미
 - `channel-topology`
   - channel grouping, Discovery, 수동 연결, inbound/outbound 경로 같은 내부 매핑
 - `framework-api`

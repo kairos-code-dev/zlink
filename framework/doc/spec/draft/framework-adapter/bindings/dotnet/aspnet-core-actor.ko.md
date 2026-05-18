@@ -888,10 +888,10 @@ sequenceDiagram
 이 routed channel 내부 메시지는
 [message-model.ko.md](../../policy/message-model.ko.md) 의 multipart 계약을
 따른다. Session 서버와 Play 서버 사이에서는 route header, actor / session
-metadata, stream header, body 를 각각 별도의 part 로 나누어 전송한다.
+metadata, stream header, payload 를 각각 별도의 part 로 나누어 전송한다.
 
 client 와 Session 서버 사이의 STREAM packet 은 그대로 단일 stream packet
-frame 으로 처리한다. 따라서 actor dispatch body 를 내부 DTO[^dto] 의 `byte[]`
+frame 으로 처리한다. 따라서 actor dispatch payload 를 내부 DTO[^dto] 의 `byte[]`
 필드에 담아 다시 JSON envelope[^json-envelope] 로 감싸 보내는 방식은 이
 초안의 목표가 아니다.
 

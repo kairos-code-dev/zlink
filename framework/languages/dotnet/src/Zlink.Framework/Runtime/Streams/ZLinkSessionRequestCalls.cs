@@ -5,7 +5,7 @@ internal sealed class ZLinkSessionRequestCall<TRequest>(
     TRequest request,
     TimeSpan defaultTimeout) : IZLinkSessionRequestCall
 {
-    private static readonly IZlinkStreamPacketNameResolver PacketNameResolver = ZlinkStreamDefaultCodecs.PacketNameResolver();
+    private static readonly IZlinkStreamPacketNameResolver PacketNameResolver = ZLinkStreamProtocolDefaults.PacketNameResolver;
 
     private string? _packetName = PacketNameResolver.Resolve(typeof(TRequest));
     private TimeSpan? _timeout;

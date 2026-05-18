@@ -6,8 +6,8 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
     ZLinkSessionContext context,
     TMessage message)
 {
-    private static readonly IZlinkStreamPacketNameResolver MessageNameResolver = ZlinkStreamDefaultCodecs.PacketNameResolver();
-    private static readonly IZlinkStreamCompressionCodec CompressionCodec = ZlinkStreamDefaultCodecs.Lz4Compression();
+    private static readonly IZlinkStreamPacketNameResolver MessageNameResolver = ZLinkStreamProtocolDefaults.PacketNameResolver;
+    private static readonly IZlinkStreamCompressionCodec CompressionCodec = ZLinkStreamProtocolDefaults.Lz4CompressionCodec;
     private string _messageName = MessageNameResolver.Resolve(typeof(TMessage));
     private ZlinkStreamMetadata _metadata = ZlinkStreamMetadata.Empty;
     private bool _compress;

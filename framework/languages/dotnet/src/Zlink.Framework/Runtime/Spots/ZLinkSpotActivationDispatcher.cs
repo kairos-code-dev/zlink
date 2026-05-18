@@ -13,7 +13,7 @@ internal sealed class ZLinkSpotActivationDispatcher(
     Func<ZLinkSpotActorHandlerRegistry?> actorHandlers,
     Func<ZLinkSpotHandlerInvoker> handlerInvoker)
 {
-    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZlinkStreamDefaultCodecs.Header();
+    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZLinkStreamProtocolDefaults.HeaderCodec;
     private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher =
         new(runtime, actorHandlers, handlerInvoker);
     private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher =

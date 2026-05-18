@@ -4,7 +4,7 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal static class ZLinkActorPacketDescriptorFactory
 {
-    private static readonly IZlinkStreamPacketNameResolver MessageNameResolver = ZlinkStreamDefaultCodecs.PacketNameResolver();
+    private static readonly IZlinkStreamPacketNameResolver MessageNameResolver = ZLinkStreamProtocolDefaults.PacketNameResolver;
 
     public static ZLinkActorPacketDescriptor Create(
         Type handlerType,

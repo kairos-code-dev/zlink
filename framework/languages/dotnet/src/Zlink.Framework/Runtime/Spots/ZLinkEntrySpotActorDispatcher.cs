@@ -3,7 +3,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkEntrySpotActorDispatcher
 {
-    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZlinkStreamDefaultCodecs.Header();
+    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZLinkStreamProtocolDefaults.HeaderCodec;
     private static readonly int MaxConcurrentDispatches = Math.Max(1, Environment.ProcessorCount);
 
     public static async Task DispatchAsync(

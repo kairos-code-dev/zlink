@@ -35,7 +35,7 @@ internal sealed class ZLinkActorClientSendCall<TMessage>(
     string actorId,
     TMessage message) : IZLinkActorClientSendCall
 {
-    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZlinkStreamDefaultCodecs.Header();
+    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZLinkStreamProtocolDefaults.HeaderCodec;
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
 
@@ -117,7 +117,7 @@ internal sealed class ZLinkActorClientRequestCall<TRequest>(
     string actorId,
     TRequest request) : IZLinkActorClientRequestCall
 {
-    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZlinkStreamDefaultCodecs.Header();
+    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZLinkStreamProtocolDefaults.HeaderCodec;
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);

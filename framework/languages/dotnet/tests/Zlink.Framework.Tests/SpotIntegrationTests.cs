@@ -1996,7 +1996,7 @@ public sealed class SpotIntegrationTests
         IZLinkActor actor,
         string packetName)
     {
-        var codec = ZlinkStreamDefaultCodecs.Header();
+        var codec = ZLinkStreamProtocolDefaults.HeaderCodec;
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Send,
             ZlinkStreamCodec.Raw,

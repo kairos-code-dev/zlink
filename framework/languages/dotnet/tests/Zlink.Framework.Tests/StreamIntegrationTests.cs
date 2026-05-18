@@ -37,7 +37,7 @@ public sealed class StreamIntegrationTests
     [Fact]
     public void SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch()
     {
-        var headerCodec = ZlinkStreamDefaultCodecs.Header();
+        var headerCodec = ZLinkStreamProtocolDefaults.HeaderCodec;
         var routeHeader = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Command,
             "gateway",
@@ -896,7 +896,7 @@ public sealed class StreamIntegrationTests
         ReadOnlySpan<byte> payload,
         IZlinkStreamHeaderCodec? headerCodec = null)
     {
-        var headerBytes = (headerCodec ?? ZlinkStreamDefaultCodecs.Header()).Encode(header).ToArray();
+        var headerBytes = (headerCodec ?? ZLinkStreamProtocolDefaults.HeaderCodec).Encode(header).ToArray();
         var frame = new byte[6 + headerBytes.Length + payload.Length];
         frame[0] = (byte)(headerBytes.Length >> 8);
         frame[1] = (byte)headerBytes.Length;
@@ -919,7 +919,7 @@ public sealed class StreamIntegrationTests
         var payloadLength = (lengths[2] << 24) | (lengths[3] << 16) | (lengths[4] << 8) | lengths[5];
         var headerBytes = ReceiveExact(stream, headerLength);
         var payloadBytes = ReceiveExact(stream, payloadLength);
-        var header = (headerCodec ?? ZlinkStreamDefaultCodecs.Header()).Decode(headerBytes);
+        var header = (headerCodec ?? ZLinkStreamProtocolDefaults.HeaderCodec).Decode(headerBytes);
         return (header, payloadBytes);
     }
 
@@ -1423,7 +1423,7 @@ public sealed class StreamIntegrationTests
 
     private sealed class PrefixStreamHeaderCodec(byte prefix) : IZlinkStreamHeaderCodec
     {
-        private readonly IZlinkStreamHeaderCodec _inner = ZlinkStreamDefaultCodecs.Header();
+        private readonly IZlinkStreamHeaderCodec _inner = ZLinkStreamProtocolDefaults.HeaderCodec;
 
         public ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header)
         {

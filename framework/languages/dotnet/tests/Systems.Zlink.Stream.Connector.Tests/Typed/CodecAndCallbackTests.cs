@@ -33,7 +33,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task AutoCodecUsesMessagePackObjectAttribute()
     {
-        var headerCodec = ZlinkStreamDefaultCodecs.Header();
+        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -61,8 +61,8 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task TypedCallbackDecompressesServerPacket()
     {
-        var headerCodec = ZlinkStreamDefaultCodecs.Header();
-        var compressionCodec = ZlinkStreamDefaultCodecs.Lz4Compression();
+        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var compressionCodec = ZlinkStreamDefaultCodecFactory.Lz4Compression();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;

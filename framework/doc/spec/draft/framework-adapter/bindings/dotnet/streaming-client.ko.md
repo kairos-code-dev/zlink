@@ -137,11 +137,9 @@ public sealed class ZlinkStreamConnectorOptions
 
     public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
 
-    public IZlinkStreamHeaderCodec HeaderCodec { get; init; } =
-        ZlinkStreamDefaultCodecs.Header();
+    public IZlinkStreamHeaderCodec HeaderCodec { get; init; }
 
-    public IZlinkStreamPacketNameResolver NameResolver { get; init; } =
-        ZlinkStreamDefaultCodecs.PacketNameResolver();
+    public IZlinkStreamPacketNameResolver NameResolver { get; init; }
 }
 
 public sealed class ZlinkStreamHeartbeatOptions
@@ -199,13 +197,14 @@ send 경로의 segmented write 는 공개 option 으로 노출하지 않는다. 
 header, payload 를 나누어 쓸 수 있으면 connector 가 내부에서 자동으로 사용한다. 지원하지
 않는 transport 에서는 하나의 frame buffer 로 합쳐서 보낸다.
 
-`HeaderCodec` 은 helper header 의 binary 표현을 바꾸는 확장 지점이다. 기본값은
-`ZlinkStreamDefaultCodecs.Header()` 이다. custom header codec 을 쓰면 서버 framework 의
-STREAM node 에도 같은 codec 을 등록해야 한다. 별도 negotiation 은 없으므로 client 와
-server 의 codec 이 다르면 header decode error 로 실패한다.
+`HeaderCodec` 은 helper header 의 binary 표현을 바꾸는 확장 지점이다. 값을 지정하지
+않으면 connector 가 제공하는 내부 기본 codec 을 사용한다. 기본 codec 을 생성하는 별도
+public factory 는 공개하지 않는다. custom header codec 을 쓰면 서버 framework 의 STREAM
+node 에도 같은 codec 을 등록해야 한다. 별도 negotiation 은 없으므로 client 와 server 의
+codec 이 다르면 header decode error 로 실패한다.
 
-`NameResolver` 는 payload 타입에서 packet 이름을 고르는 정책이다. 기본값은
-`ZlinkStreamDefaultCodecs.PacketNameResolver()` 이며, 기본 구현은 namespace 를 제외한
+`NameResolver` 는 payload 타입에서 packet 이름을 고르는 정책이다. 값을 지정하지 않으면
+connector 가 제공하는 내부 기본 resolver 를 사용한다. 기본 resolver 는 namespace 를 제외한
 CLR 타입 이름을 사용한다.
 
 반면 수신 payload 에 도메인별로 거는 크기 제한은 connector 의 기본 계약에 포함하지

@@ -31,7 +31,7 @@ public sealed partial class StreamConnectorTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
-        var headerCodec = ZlinkStreamDefaultCodecs.Header();
+        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();
@@ -63,7 +63,7 @@ public sealed partial class StreamConnectorTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
-        var headerCodec = ZlinkStreamDefaultCodecs.Header();
+        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
         var server = Task.Run(async () =>
         {
             using var tcp = await listener.AcceptTcpClientAsync();

@@ -5,7 +5,7 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal static class ZLinkStreamPacketPayloadCodec
 {
-    private static readonly IZlinkStreamCompressionCodec CompressionCodec = ZlinkStreamDefaultCodecs.Lz4Compression();
+    private static readonly IZlinkStreamCompressionCodec CompressionCodec = ZLinkStreamProtocolDefaults.Lz4CompressionCodec;
 
     public static object? Decode(
         ZlinkStreamHeader header,

@@ -107,6 +107,18 @@ public sealed partial class StreamConnectorTests
         Assert.Empty(violations);
     }
 
+    [Fact]
+    public void ConnectorDefaultCodecFactory_IsNotPublicContract()
+    {
+        var exportedTypeNames = typeof(IZlinkStreamConnector).Assembly
+            .GetExportedTypes()
+            .Select(static type => type.Name)
+            .ToArray();
+
+        Assert.DoesNotContain("ZlinkStreamDefaultCodecs", exportedTypeNames);
+        Assert.DoesNotContain("ZlinkStreamDefaultCodecFactory", exportedTypeNames);
+    }
+
     private static string GetConnectorSourceRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

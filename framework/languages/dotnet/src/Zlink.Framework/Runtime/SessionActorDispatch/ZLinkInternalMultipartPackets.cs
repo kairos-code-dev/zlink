@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.SessionActorDispatch;
 
 internal static class ZLinkInternalMultipartPackets
 {
-    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZlinkStreamDefaultCodecs.Header();
+    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZLinkStreamProtocolDefaults.HeaderCodec;
 
     public static IReadOnlyList<Message> CreateActorDispatchParts(
         string actorId,

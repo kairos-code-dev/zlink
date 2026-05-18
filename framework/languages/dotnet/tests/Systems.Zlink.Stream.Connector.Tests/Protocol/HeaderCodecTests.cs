@@ -19,7 +19,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void HeaderCodecRoundTripsMetadataAndRequestSeq()
     {
-        var codec = ZlinkStreamDefaultCodecs.Header();
+        var codec = ZlinkStreamDefaultCodecFactory.Header();
         var source = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
             ZlinkStreamCodec.Json,
@@ -40,7 +40,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void HeaderCodecRejectsUnknownFlag()
     {
-        var codec = ZlinkStreamDefaultCodecs.Header();
+        var codec = ZlinkStreamDefaultCodecFactory.Header();
         var bytes = new byte[] { 1, 1, 0x80, 1, (byte)'x' };
 
         var exception = Assert.Throws<ZlinkStreamException>(() => codec.Decode(bytes));
@@ -51,7 +51,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void HeaderCodecRejectsInvalidRequestSeqAndErrorCodecCombinations()
     {
-        var codec = ZlinkStreamDefaultCodecs.Header();
+        var codec = ZlinkStreamDefaultCodecFactory.Header();
 
         var sendWithRequestSeq = new byte[12];
         sendWithRequestSeq[0] = (byte)ZlinkStreamMessageKind.Send;
@@ -88,7 +88,7 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void HeaderCodecEnforcesControlPacketContract()
     {
-        var codec = ZlinkStreamDefaultCodecs.Header();
+        var codec = ZlinkStreamDefaultCodecFactory.Header();
 
         var control = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Control,

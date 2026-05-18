@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Runtime.Streams;
 using Zlink.Framework.Tests.Common;
 
 namespace Zlink.Framework.MultiProcessTests;
@@ -383,7 +384,7 @@ public sealed class TopologyMultiProcessTests
         ZlinkStreamHeader header,
         ReadOnlySpan<byte> payload)
     {
-        var headerBytes = ZlinkStreamDefaultCodecs.Header().Encode(header).ToArray();
+        var headerBytes = ZLinkStreamProtocolDefaults.HeaderCodec.Encode(header).ToArray();
         var frame = new byte[6 + headerBytes.Length + payload.Length];
         frame[0] = (byte)(headerBytes.Length >> 8);
         frame[1] = (byte)headerBytes.Length;
@@ -403,7 +404,7 @@ public sealed class TopologyMultiProcessTests
         var payloadLength = (lengths[2] << 24) | (lengths[3] << 16) | (lengths[4] << 8) | lengths[5];
         var headerBytes = ReceiveExact(stream, headerLength);
         var payloadBytes = ReceiveExact(stream, payloadLength);
-        var header = ZlinkStreamDefaultCodecs.Header().Decode(headerBytes);
+        var header = ZLinkStreamProtocolDefaults.HeaderCodec.Decode(headerBytes);
         return (header, payloadBytes);
     }
 

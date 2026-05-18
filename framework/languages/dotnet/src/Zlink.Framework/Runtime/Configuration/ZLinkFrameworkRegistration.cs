@@ -115,7 +115,7 @@ internal sealed class ZLinkStreamNodeRegistration
 
     public Type? HeaderSessionType { get; set; }
 
-    public IZlinkStreamHeaderCodec HeaderCodec { get; set; } = ZlinkStreamDefaultCodecs.Header();
+    public IZlinkStreamHeaderCodec HeaderCodec { get; set; } = ZLinkStreamProtocolDefaults.HeaderCodec;
 }
 
 internal sealed class ZLinkRouteChannelRegistration

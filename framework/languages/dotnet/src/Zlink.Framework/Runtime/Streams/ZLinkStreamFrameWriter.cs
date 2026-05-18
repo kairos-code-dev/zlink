@@ -39,5 +39,5 @@ internal static class ZLinkStreamFrameWriter
     private static IZlinkStreamHeaderCodec ResolveHeaderCodec(IZLinkStream stream)
         => stream is ZLinkManagedStream managedStream
             ? managedStream.HeaderCodec
-            : ZlinkStreamDefaultCodecs.Header();
+            : ZLinkStreamProtocolDefaults.HeaderCodec;
 }

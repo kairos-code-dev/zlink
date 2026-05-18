@@ -65,18 +65,35 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public async Task SendFrameLimitIsEnforcedBeforeTransportWrite()
+    public async Task SendPayloadLimitIsEnforcedBeforeTransportWrite()
     {
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri("tcp://127.0.0.1:1"),
-            MaxSendFrameSize = 6
+            MaxSendPayloadSize = 1
         });
 
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
-            await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
+            await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "bb"u8.ToArray()))
                 .PacketName("h")
                 .Submit());
+
+        Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
+    }
+
+    [Fact]
+    public async Task RequestPayloadLimitIsEnforcedBeforeTransportWrite()
+    {
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri("tcp://127.0.0.1:1"),
+            MaxSendPayloadSize = 1
+        });
+
+        var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
+            await connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "bb"u8.ToArray()))
+                .PacketName("h")
+                .SubmitAsync());
 
         Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
     }

@@ -186,7 +186,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
     private async Task ReconnectLoopAsync()
     {
         var reconnect = options.Reconnect;
-        if (reconnect is null)
+        if (!reconnect.Enabled)
         {
             return;
         }
@@ -269,11 +269,11 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         var receiveTask = taskRunner.Run(
             "stream-receive-loop",
             _ => new ValueTask(RunReceiveLoopGuardedAsync(runReceiveLoop, sessionCts.Token)));
-        var heartbeatTask = options.Heartbeat is null
-            ? null
-            : taskRunner.Run(
+        var heartbeatTask = options.Heartbeat.Enabled
+            ? taskRunner.Run(
                 "stream-heartbeat-loop",
-                _ => new ValueTask(RunHeartbeatLoopAsync(sessionCts.Token)));
+                _ => new ValueTask(RunHeartbeatLoopAsync(sessionCts.Token)))
+            : null;
 
         LifecycleSnapshot oldSnapshot;
         ZlinkStreamConnectionStateChanged? change;
@@ -323,7 +323,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
     {
         var heartbeat = options.Heartbeat;
         var sendHeartbeatPing = _sendHeartbeatPing;
-        if (heartbeat is null || sendHeartbeatPing is null)
+        if (!heartbeat.Enabled || sendHeartbeatPing is null)
         {
             return;
         }
@@ -375,9 +375,9 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             }
 
             snapshot = DetachLocked();
-            var nextState = options.Reconnect is null
-                ? ZlinkStreamConnectionState.Disconnected
-                : ZlinkStreamConnectionState.Reconnecting;
+            var nextState = options.Reconnect.Enabled
+                ? ZlinkStreamConnectionState.Reconnecting
+                : ZlinkStreamConnectionState.Disconnected;
             change = SetStateLocked(nextState, error);
 
             if (nextState == ZlinkStreamConnectionState.Reconnecting && _activeConnectTask is null)

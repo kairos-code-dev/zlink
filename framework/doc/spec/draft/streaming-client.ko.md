@@ -354,7 +354,7 @@ error payload schema는 connector helper 전용이다. 애플리케이션 도메
 Connector 생성과 네트워크 연결은 분리한다. 생성 함수는 connector 객체를 만들 뿐이며,
 실제 연결은 `ConnectAsync()` 같은 명시적 연결 API에서 시작한다.
 
-Heartbeat와 reconnect는 옵션 객체가 있을 때만 켜진다.
+Heartbeat와 reconnect는 기본으로 켜져 있으며, 각 옵션의 `Enabled = false`로 끌 수 있다.
 
 - heartbeat를 켜면 connector는 1초 기본 interval로 ping을 보내고, 5초 기본 timeout 동안
   inbound frame이 없으면 연결을 끊긴 것으로 처리한다.
@@ -382,7 +382,7 @@ heartbeat timeout 기준, reconnect delay 계산, pending request 실패 규칙�
 - callback receive와 explicit receive API가 모두 검증된다.
 - request callback과 async request가 timeout, response, close 상황을 처리한다.
 - heartbeat control ping/pong, heartbeat timeout, reconnect 성공/실패를 테스트한다.
-- partial read, multi-packet read, send frame limit, close 중 send 실패를 테스트한다.
+- partial read, multi-packet read, send payload limit, close 중 send 실패를 테스트한다.
 - codec extension이 core transport 계약을 바꾸지 않는지 검증한다.
 - server-to-client compressed payload를 client connector typed API가 자동으로 압축
   해제한다.

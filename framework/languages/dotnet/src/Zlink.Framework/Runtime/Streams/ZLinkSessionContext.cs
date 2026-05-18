@@ -5,6 +5,7 @@ internal sealed class ZLinkSessionContext(
     ZLinkFrameworkRuntime runtime,
     IZLinkClient client,
     IZLinkStream stream,
+    IZlinkStreamHeaderCodec headerCodec,
     Func<CancellationToken, ValueTask> closeAsync)
     : IZLinkSessionContext, IZLinkSessionActorAttachmentContext
 {
@@ -143,6 +144,8 @@ internal sealed class ZLinkSessionContext(
     }
 
     internal ZlinkStreamHeader? CurrentDispatchHeader => _currentDispatchHeader;
+
+    internal IZlinkStreamHeaderCodec HeaderCodec => headerCodec;
 
     internal async ValueTask CleanupActorBindingsAsync(CancellationToken cancellationToken)
     {

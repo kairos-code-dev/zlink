@@ -28,6 +28,7 @@ internal sealed class ZLinkStreamRuntimeManager(
                 socket,
                 monitor,
                 streamNodeRegistration.HeaderSessionType,
+                streamNodeRegistration.HeaderCodec,
                 state.TaskRunner);
             runtime.Start();
             state.StreamNodes.Add(streamNodeRegistration.StreamNodeName, runtime);

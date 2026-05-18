@@ -11,7 +11,18 @@ public sealed partial class StreamConnectorTests
     {
         var options = new ZlinkStreamReconnectOptions();
 
+        Assert.True(options.Enabled);
         Assert.Equal(3, options.MaxAttempts);
+    }
+
+    [Fact]
+    public void HeartbeatDefaultIsEnabled()
+    {
+        var options = new ZlinkStreamHeartbeatOptions();
+
+        Assert.True(options.Enabled);
+        Assert.Equal(TimeSpan.FromSeconds(1), options.Interval);
+        Assert.Equal(TimeSpan.FromSeconds(5), options.Timeout);
     }
 
     [Fact]
@@ -47,7 +58,7 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public async Task InboundHeartbeatPingReceivesPongWithoutHeartbeatOption()
+    public async Task InboundHeartbeatPingReceivesPongWhenHeartbeatDisabled()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -77,7 +88,8 @@ public sealed partial class StreamConnectorTests
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false }
         });
 
         await connector.ConnectAsync();

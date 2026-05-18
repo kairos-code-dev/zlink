@@ -5,7 +5,8 @@ namespace Zlink.Framework.Runtime.Streams;
 internal sealed class ZLinkStreamSessionTable(
     IServiceProvider services,
     IZLinkBackendStreamSocket socket,
-    Type? headerSessionType)
+    Type? headerSessionType,
+    IZlinkStreamHeaderCodec headerCodec)
 {
     private readonly Dictionary<string, ZLinkStreamSessionRuntime> _sessions = [];
     private readonly Queue<(string LocalAddr, string RemoteAddr)> _pendingConnectionMetadata = [];
@@ -59,6 +60,7 @@ internal sealed class ZLinkStreamSessionTable(
                 socket,
                 routingId,
                 headerSessionType,
+                headerCodec,
                 Remove);
             _sessions.Add(sessionId, created);
             session = created;

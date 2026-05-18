@@ -30,17 +30,10 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         _taskRunner = new ZlinkStreamTaskRunner(_lifetimeCts.Token);
         _callbacks = new ZlinkStreamConnectorCallbacks(_taskRunner);
 
-        _headerCodec = options.HeaderCodec ?? new ZlinkStreamHeaderCodec();
-        _compressionCodec = options.CompressionCodec
-            ?? (options.Compression == ZlinkStreamCompression.Lz4 ? new ZlinkStreamLz4CompressionCodec() : null);
-        if (_compressionCodec is not null && _compressionCodec.Compression != options.Compression)
-        {
-            throw Error(
-                ZlinkStreamErrorCode.ConfigurationError,
-                "Configured compression codec does not match the connector compression option.");
-        }
+        _headerCodec = options.HeaderCodec;
+        _compressionCodec = CreateCompressionCodec(options.Compression);
 
-        _nameResolver = options.NameResolver ?? new ZlinkStreamPacketNameResolver();
+        _nameResolver = options.NameResolver;
         _lifecycle = new ZlinkStreamConnectorLifecycle(options, _pending, _taskRunner, _callbacks);
         _frameSender = new ZlinkStreamFrameSender(
             options,
@@ -312,6 +305,16 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     private async ValueTask SendHeartbeatPingAsync(CancellationToken cancellationToken)
     {
         await _frameSender.SendControlAsync(HeartbeatPingName, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static IZlinkStreamCompressionCodec? CreateCompressionCodec(ZlinkStreamCompression compression)
+    {
+        return compression switch
+        {
+            ZlinkStreamCompression.None => null,
+            ZlinkStreamCompression.Lz4 => new ZlinkStreamLz4CompressionCodec(),
+            _ => throw Error(ZlinkStreamErrorCode.ConfigurationError, "Compression option is not supported.")
+        };
     }
 
     internal static ZlinkStreamException Error(

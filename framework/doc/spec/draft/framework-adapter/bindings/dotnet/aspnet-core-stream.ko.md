@@ -235,6 +235,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddStreamNode("client.stream", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9100");
+        stream.UseHeaderCodec(ZlinkStreamDefaultCodecs.Header());
         stream.AddHeaderSession<ClientHeaderSession>();
     });
 });
@@ -243,6 +244,8 @@ builder.Services.AddZLinkFramework(options =>
 이 등록 모델에서 짚어 둘 점은 다음과 같다.
 
 - framework Header 기반 packet session 만 붙인다.
+- custom header codec 을 쓰는 경우 `UseHeaderCodec(...)` 으로 STREAM node 에 등록한다.
+  이 codec 은 client connector 의 `HeaderCodec` 과 같아야 한다.
 - 한 `stream node` 에는 stream session 을 하나만 둔다.
 - 같은 node 에 stream session 을 둘 이상 함께 두지 않는다.
 - recv callback 이나 recv loop 를 application 이 직접 노출받지 않는다.

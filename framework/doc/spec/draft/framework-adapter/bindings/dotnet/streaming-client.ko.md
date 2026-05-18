@@ -128,27 +128,27 @@ public sealed class ZlinkStreamConnectorOptions
 
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
-    public ZlinkStreamHeartbeatOptions? Heartbeat { get; init; }
+    public ZlinkStreamHeartbeatOptions Heartbeat { get; init; } = new();
 
-    public ZlinkStreamReconnectOptions? Reconnect { get; init; }
+    public ZlinkStreamReconnectOptions Reconnect { get; init; } = new();
 
-    public int MaxSendFrameSize { get; init; } = 1024 * 1024;
+    public int MaxSendPayloadSize { get; init; } = 64 * 1024;
 
     public bool SkipServerCertificateValidation { get; init; }
 
-    public bool EnableSegmentedSend { get; init; } = true;
-
     public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
 
-    public IZlinkStreamHeaderCodec? HeaderCodec { get; init; }
+    public IZlinkStreamHeaderCodec HeaderCodec { get; init; } =
+        ZlinkStreamDefaultCodecs.Header();
 
-    public IZlinkStreamCompressionCodec? CompressionCodec { get; init; }
-
-    public IZlinkStreamPacketNameResolver? NameResolver { get; init; }
+    public IZlinkStreamPacketNameResolver NameResolver { get; init; } =
+        ZlinkStreamDefaultCodecs.PacketNameResolver();
 }
 
 public sealed class ZlinkStreamHeartbeatOptions
 {
+    public bool Enabled { get; init; } = true;
+
     public TimeSpan Interval { get; init; } = TimeSpan.FromSeconds(1);
 
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(5);
@@ -156,6 +156,8 @@ public sealed class ZlinkStreamHeartbeatOptions
 
 public sealed class ZlinkStreamReconnectOptions
 {
+    public bool Enabled { get; init; } = true;
+
     public TimeSpan InitialDelay { get; init; } = TimeSpan.FromMilliseconds(250);
 
     public TimeSpan MaxDelay { get; init; } = TimeSpan.FromSeconds(5);
@@ -169,8 +171,11 @@ public sealed class ZlinkStreamReconnectOptions
 `SkipServerCertificateValidation` 은 테스트용 자체 서명 인증서를 검증할 때만 쓰는
 옵션이다. 운영 환경에서는 기본값 `false` 를 반드시 그대로 두어야 한다.
 
-`MaxSendFrameSize` 는 connector 가 내보내는 packet 에 대한 기본 보호 장치다.
-즉 보내는 쪽 한도다.
+`MaxSendPayloadSize` 는 connector 가 내보내는 payload bytes 에 대한 기본 보호 장치다.
+기본값은 64KB다. 이 한도는 prefix 와 encoded header 를 뺀 payload 기준으로 적용한다.
+64KB 를 넘는 payload 가 필요한 애플리케이션은 이 값을 의도적으로 키워야 한다.
+`.Compress()` 를 호출한 경우에도 한도 검사는 압축 전 원본 payload 기준으로 한다.
+한도를 넘으면 transport write 전에 `FrameTooLarge` 예외가 난다.
 
 metadata encoded payload 는 1024 bytes 고정 한도를 사용한다. header 전체 길이는 STREAM
 frame prefix 의 `u16 header_len` 으로 표현되므로 65535 bytes 를 넘을 수 없다. 하지만
@@ -182,17 +187,29 @@ metadata 는 route, trace id, locale 같은 작은 key-value 를 담는 용도�
 수준의 자연스러운 backpressure 가 걸린다. packet 을 임의로 drop 하거나 queue 초과 오류로
 연결 의미를 깨지 않는다.
 
+send 경로의 segmented write 는 공개 option 으로 노출하지 않는다. transport 가 prefix,
+header, payload 를 나누어 쓸 수 있으면 connector 가 내부에서 자동으로 사용한다. 지원하지
+않는 transport 에서는 하나의 frame buffer 로 합쳐서 보낸다.
+
+`HeaderCodec` 은 helper header 의 binary 표현을 바꾸는 확장 지점이다. 기본값은
+`ZlinkStreamDefaultCodecs.Header()` 이다. custom header codec 을 쓰면 서버 framework 의
+STREAM node 에도 같은 codec 을 등록해야 한다. 별도 negotiation 은 없으므로 client 와
+server 의 codec 이 다르면 header decode error 로 실패한다.
+
+`NameResolver` 는 payload 타입에서 packet 이름을 고르는 정책이다. 기본값은
+`ZlinkStreamDefaultCodecs.PacketNameResolver()` 이며, 기본 구현은 namespace 를 제외한
+CLR 타입 이름을 사용한다.
+
 반면 수신 payload 에 도메인별로 거는 크기 제한은 connector 의 기본 계약에 포함하지
 않는다. 수신 크기 제한이 필요한 애플리케이션이라면, handler 또는 상위 protocol 에서
 별도로 검사해야 한다.
 
-`Heartbeat == null`이면 connector는 heartbeat ping을 시작하지 않는다.
-`Heartbeat`를 지정하면 기본값은 1초 interval과 5초 timeout이다.
+`Heartbeat`는 기본으로 켜져 있다. 끄고 싶으면 `Heartbeat.Enabled = false`로 설정한다.
+기본값은 1초 interval과 5초 timeout이다.
 timeout은 마지막 inbound frame 이후 새 frame이 들어오지 않은 시간을 기준으로 판정한다.
 heartbeat ping, heartbeat pong, 사용자 packet 모두 inbound liveness 신호가 된다.
 
-`Reconnect == null`이면 자동 reconnect를 하지 않는다.
-`Reconnect` 옵션 객체가 있으면 자동 reconnect를 켠 것으로 해석한다.
+`Reconnect`도 기본으로 켜져 있다. 끄고 싶으면 `Reconnect.Enabled = false`로 설정한다.
 기본값은 `InitialDelay = 250ms`, `MaxDelay = 5s`, `BackoffFactor = 2.0`,
 `MaxAttempts = 3`이다.
 
@@ -459,13 +476,13 @@ public enum ZlinkStreamConnectionState
 | `Reconnecting` | 자동 reconnect loop 결과를 기다린다 |
 | `Closed` | `ObjectDisposedException`으로 실패한다 |
 
-자동 reconnect는 `Reconnect` 옵션 객체가 있을 때만 켜진다.
+자동 reconnect는 기본으로 켜져 있으며, `Reconnect.Enabled = false`이면 꺼진다.
 reconnect 중 submit은 내부 queue에 저장하지 않고 `Disconnected` 오류로 실패한다.
 연결이 끊기면 pending request는 모두 실패하며, reconnect 뒤 자동 재전송하지 않는다.
 
-Heartbeat를 켠 경우 connector는 `Heartbeat.Interval`마다 control ping을 보낸다.
+Heartbeat가 켜져 있으면 connector는 `Heartbeat.Interval`마다 control ping을 보낸다.
 `Heartbeat.Timeout` 동안 inbound frame이 없으면 transport를 끊긴 것으로 처리하고
-reconnect 정책을 적용한다. `Heartbeat == null`이어도 inbound heartbeat ping에는 pong으로
+reconnect 정책을 적용한다. `Heartbeat.Enabled = false`여도 inbound heartbeat ping에는 pong으로
 응답한다.
 
 ## 9. Connector API 초안
@@ -783,20 +800,19 @@ connector core 는 타입만 보고서 JSON, MessagePack, Protobuf 가운데 하
 2. `[MessagePackObject]` 가 붙은 타입이면 MessagePack 을 사용한다.
 3. 그 외 일반 CLR 객체는 JSON 을 사용한다.
 
-## 13. Compression Codec API 초안
+## 13. Compression 초안
 
-이 절에서는 압축 코덱의 인터페이스와, 어느 시점에 어떤 오류를 던지는지 정리한다.
+이 절에서는 압축 설정과, 어느 시점에 어떤 오류를 던지는지 정리한다.
 
-compression package 는 아래 인터페이스로 payload 의 압축과 해제를 제공한다.
+connector public option 은 `ZlinkStreamCompression` enum 만 노출한다. 압축 코덱 구현은
+framework 가 제공하는 것만 사용한다. 사용자가 임의 compression codec 을 connector
+option 으로 끼우는 경로는 제공하지 않는다.
 
 ```csharp
-public interface IZlinkStreamCompressionCodec
+public enum ZlinkStreamCompression
 {
-    ZlinkStreamCompression Compression { get; }
-
-    ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload);
-
-    ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload);
+    None = 0,
+    Lz4 = 1
 }
 ```
 
@@ -806,8 +822,9 @@ public interface IZlinkStreamCompressionCodec
 기본 동작은 다음과 같다.
 
 - `ZlinkStreamCompression.None` 은 payload 를 그대로 둔다.
-- `PayloadCompressed` flag 가 켜져 있는데도 `Compression` 이 `None` 이거나
-  `CompressionCodec` 이 없다면, 이는 decode error 로 처리한다.
+- `ZlinkStreamCompression.Lz4` 는 framework 가 제공하는 LZ4 codec 을 사용한다.
+- `PayloadCompressed` flag 가 켜져 있는데도 `Compression` 이 `None` 이라면, 이는 decode
+  error 로 처리한다.
 
 ## 14. Request Helper
 
@@ -945,7 +962,7 @@ Unity 측 상세 계약은 [unity-stream-connector.ko.md](./unity-stream-connect
 - request timeout, close 중 pending request 실패, disconnected 상태에서의 send 동작을
   테스트한다.
 - TLS 자체 서명 인증서 검증 옵션을 테스트한다.
-- partial read, multi-packet read, send frame limit 동작을 테스트한다.
+- partial read, multi-packet read, send payload limit 동작을 테스트한다.
 - JSON, MessagePack, Protobuf extension이 core packet 계약을 바꾸지 않는지 테스트한다.
 - server-to-client 방향에서 압축된 payload를 typed API가 자동으로 해제한다.
 - client-to-server 방향의 압축은 `.Compress()`를 호출한 packet에만 적용된다.
@@ -993,6 +1010,8 @@ Connector API 를 수정하는 경우에는, 아래 테스트 이름과 문서 �
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | typed request가 request sequence로 response를 정확히 짝짓는다. |
 | `StreamConnectorTests.PacketNameAttributeIsUsedByDefault` | packet name attribute가 기본 packet 이름으로 사용된다. |
 | `StreamConnectorTests.MetadataSendLimitIsEnforced` | metadata 크기 제한이 send 시점 이전에 적용된다. |
+| `StreamConnectorTests.SendPayloadLimitIsEnforcedBeforeTransportWrite` | send payload 크기 제한이 transport write 전에 적용된다. |
+| `StreamConnectorTests.RequestPayloadLimitIsEnforcedBeforeTransportWrite` | request payload 크기 제한이 pending request 전송 전에 적용된다. |
 | `StreamConnectorTests.TypedCallbackDecompressesServerPacket` | 압축된 server packet을 typed callback에서 정상 복원한다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

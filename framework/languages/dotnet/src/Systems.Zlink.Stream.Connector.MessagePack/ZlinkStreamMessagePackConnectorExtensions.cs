@@ -26,8 +26,7 @@ public static class ZlinkStreamMessagePackConnectorExtensions
         Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        var resolver = connector.Options.NameResolver ?? ZlinkStreamDefaultCodecs.PacketNameResolver();
-        return connector.On(resolver.Resolve(typeof(TPayload)), handler);
+        return connector.On(connector.Options.NameResolver.Resolve(typeof(TPayload)), handler);
     }
 
     public static IDisposable On<TPayload>(

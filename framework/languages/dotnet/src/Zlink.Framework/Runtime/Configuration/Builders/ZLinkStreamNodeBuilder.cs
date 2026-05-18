@@ -23,4 +23,9 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
 
         registration.HeaderSessionType = typeof(TSession);
     }
+
+    public void UseHeaderCodec(IZlinkStreamHeaderCodec headerCodec)
+    {
+        registration.HeaderCodec = headerCodec ?? throw new ArgumentNullException(nameof(headerCodec));
+    }
 }

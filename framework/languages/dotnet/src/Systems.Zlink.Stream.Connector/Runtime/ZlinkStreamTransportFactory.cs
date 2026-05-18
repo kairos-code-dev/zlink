@@ -16,6 +16,34 @@ internal static class ZlinkStreamTransportFactory
 
         _ = ResolveTransport(options);
 
+        if (options.HeaderCodec is null)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "HeaderCodec is required.");
+        }
+
+        if (options.NameResolver is null)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "NameResolver is required.");
+        }
+
+        if (options.Heartbeat is null)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "Heartbeat options are required.");
+        }
+
+        if (options.Reconnect is null)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "Reconnect options are required.");
+        }
+
         if (options.ConnectTimeout <= TimeSpan.Zero)
         {
             throw ZlinkStreamConnector.Error(
@@ -30,8 +58,9 @@ internal static class ZlinkStreamTransportFactory
                 "RequestTimeout must be positive.");
         }
 
-        if (options.Heartbeat is { } heartbeat)
+        if (options.Heartbeat.Enabled)
         {
+            var heartbeat = options.Heartbeat;
             if (heartbeat.Interval <= TimeSpan.Zero)
             {
                 throw ZlinkStreamConnector.Error(
@@ -54,8 +83,9 @@ internal static class ZlinkStreamTransportFactory
             }
         }
 
-        if (options.Reconnect is { } reconnect)
+        if (options.Reconnect.Enabled)
         {
+            var reconnect = options.Reconnect;
             if (reconnect.InitialDelay <= TimeSpan.Zero)
             {
                 throw ZlinkStreamConnector.Error(
@@ -85,13 +115,12 @@ internal static class ZlinkStreamTransportFactory
             }
         }
 
-        if (options.MaxSendFrameSize <= 0)
+        if (options.MaxSendPayloadSize <= 0)
         {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
-                "MaxSendFrameSize must be positive.");
+                "MaxSendPayloadSize must be positive.");
         }
-
     }
 
     public static async ValueTask<IZlinkStreamConnection> ConnectAsync(

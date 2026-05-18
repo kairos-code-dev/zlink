@@ -233,6 +233,57 @@ public sealed class StreamIntegrationTests
     }
 
     [Fact]
+    public async Task HeaderStreamSession_Uses_Configured_HeaderCodec()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var recorder = new HeaderStreamRecorder();
+        var headerCodec = new PrefixStreamHeaderCodec(0x7a);
+        using var callbackCapture = CallbackExceptionCapture.Start();
+
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton(recorder);
+            services.AddZLinkFramework(options =>
+            {
+                options.AddStreamNode("header.node", stream =>
+                {
+                    stream.Bind(endpoint);
+                    stream.UseHeaderCodec(headerCodec);
+                    stream.AddHeaderSession<HeaderStreamSession>();
+                });
+            });
+        });
+        try
+        {
+            using var client = ConnectRawClient(endpoint);
+            var network = client.GetStream();
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Request,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    new ZlinkStreamRequestSeq(11),
+                    "ping",
+                    ZlinkStreamMetadata.Empty),
+                "\"custom\""u8,
+                headerCodec));
+
+            await RetryAsync(
+                () => recorder.ReceivedPayloads.Contains("custom") && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+            callbackCapture.ThrowIfAny();
+
+            var reply = ReceiveFrame(network, new ZlinkStreamRequestSeq(11), headerCodec);
+            Assert.Equal(ZlinkStreamMessageKind.Response, reply.Header.Kind);
+            Assert.Equal("\"pong\"", Encoding.UTF8.GetString(reply.Payload));
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
     public async Task HeaderStreamSession_Responds_To_Heartbeat_Control_Ping()
     {
         var endpoint = GetFreeTcpEndpoint();
@@ -644,9 +695,10 @@ public sealed class StreamIntegrationTests
 
     private static byte[] BuildStreamPacketFrame(
         ZlinkStreamHeader header,
-        ReadOnlySpan<byte> payload)
+        ReadOnlySpan<byte> payload,
+        IZlinkStreamHeaderCodec? headerCodec = null)
     {
-        var headerBytes = ZlinkStreamDefaultCodecs.Header().Encode(header).ToArray();
+        var headerBytes = (headerCodec ?? ZlinkStreamDefaultCodecs.Header()).Encode(header).ToArray();
         var frame = new byte[6 + headerBytes.Length + payload.Length];
         frame[0] = (byte)(headerBytes.Length >> 8);
         frame[1] = (byte)headerBytes.Length;
@@ -660,24 +712,27 @@ public sealed class StreamIntegrationTests
         return frame;
     }
 
-    private static (ZlinkStreamHeader Header, byte[] Payload) ReceiveFrame(NetworkStream stream)
+    private static (ZlinkStreamHeader Header, byte[] Payload) ReceiveFrame(
+        NetworkStream stream,
+        IZlinkStreamHeaderCodec? headerCodec = null)
     {
         var lengths = ReceiveExact(stream, 6);
         var headerLength = (lengths[0] << 8) | lengths[1];
         var payloadLength = (lengths[2] << 24) | (lengths[3] << 16) | (lengths[4] << 8) | lengths[5];
         var headerBytes = ReceiveExact(stream, headerLength);
         var payloadBytes = ReceiveExact(stream, payloadLength);
-        var header = ZlinkStreamDefaultCodecs.Header().Decode(headerBytes);
+        var header = (headerCodec ?? ZlinkStreamDefaultCodecs.Header()).Decode(headerBytes);
         return (header, payloadBytes);
     }
 
     private static (ZlinkStreamHeader Header, byte[] Payload) ReceiveFrame(
         NetworkStream stream,
-        ZlinkStreamRequestSeq requestSeq)
+        ZlinkStreamRequestSeq requestSeq,
+        IZlinkStreamHeaderCodec? headerCodec = null)
     {
         while (true)
         {
-            var frame = ReceiveFrame(stream);
+            var frame = ReceiveFrame(stream, headerCodec);
             if (frame.Header.RequestSeq == requestSeq)
             {
                 return frame;
@@ -1064,6 +1119,30 @@ public sealed class StreamIntegrationTests
 
             recorder.ForwardedTenantId = context.Metadata.TryGetApplicationValue("tenant-id", out _);
             return ValueTask.FromResult(new GatewayPong($"play:{request.Value}", 101));
+        }
+    }
+
+    private sealed class PrefixStreamHeaderCodec(byte prefix) : IZlinkStreamHeaderCodec
+    {
+        private readonly IZlinkStreamHeaderCodec _inner = ZlinkStreamDefaultCodecs.Header();
+
+        public ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header)
+        {
+            var encoded = _inner.Encode(header);
+            var bytes = new byte[encoded.Length + 1];
+            bytes[0] = prefix;
+            encoded.CopyTo(bytes.AsMemory(1));
+            return bytes;
+        }
+
+        public ZlinkStreamHeader Decode(ReadOnlyMemory<byte> header)
+        {
+            if (header.Length == 0 || header.Span[0] != prefix)
+            {
+                throw new InvalidOperationException("Unexpected stream header prefix.");
+            }
+
+            return _inner.Decode(header[1..]);
         }
     }
 

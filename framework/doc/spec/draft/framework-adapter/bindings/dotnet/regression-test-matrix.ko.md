@@ -123,6 +123,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | stale session binding token guard | `integration-single-process` | 이전 stream에서 늦게 도착한 unbind나 stale `SessionProxy` 메시지가 새 binding을 지우거나 사용하지 못한다 |
 | stale session proxy send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
 | session proxy wire multipart | `integration-single-process` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 route header, proxy metadata, payload를 별도 part로 유지하면서, client STREAM에는 단일 stream packet으로 쓴다 |
+| session proxy disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
+| session proxy disconnect remote actor | `integration-single-process` | remote actor 가 actor id 없이 `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다 |
 | session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |

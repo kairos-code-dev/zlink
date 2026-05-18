@@ -163,7 +163,8 @@ public interface IZlinkStreamConnector : IAsyncDisposable
 ## 옵션 구조
 
 Heartbeat와 reconnect 옵션은 기본 연결 옵션에서 분리한다.
-옵션이 없으면 기능이 꺼진 것으로 해석한다.
+옵션 객체는 항상 존재하고 기본으로 켜져 있다. 기능을 끄려면 각 옵션의 `Enabled`를
+`false`로 설정한다.
 
 ```csharp
 public sealed class ZlinkStreamConnectorOptions
@@ -174,13 +175,15 @@ public sealed class ZlinkStreamConnectorOptions
 
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
-    public ZlinkStreamHeartbeatOptions? Heartbeat { get; init; }
+    public ZlinkStreamHeartbeatOptions Heartbeat { get; init; } = new();
 
-    public ZlinkStreamReconnectOptions? Reconnect { get; init; }
+    public ZlinkStreamReconnectOptions Reconnect { get; init; } = new();
 }
 
 public sealed class ZlinkStreamHeartbeatOptions
 {
+    public bool Enabled { get; init; } = true;
+
     public TimeSpan Interval { get; init; } = TimeSpan.FromSeconds(1);
 
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(5);
@@ -188,6 +191,8 @@ public sealed class ZlinkStreamHeartbeatOptions
 
 public sealed class ZlinkStreamReconnectOptions
 {
+    public bool Enabled { get; init; } = true;
+
     public TimeSpan InitialDelay { get; init; } = TimeSpan.FromMilliseconds(250);
 
     public TimeSpan MaxDelay { get; init; } = TimeSpan.FromSeconds(5);
@@ -198,10 +203,9 @@ public sealed class ZlinkStreamReconnectOptions
 }
 ```
 
-`Heartbeat == null`이면 Connector는 응용 계층 heartbeat를 보내지 않는다.
-`Reconnect == null`이면 자동 reconnect를 하지 않는다.
-`Reconnect` 옵션 객체가 있으면 자동 reconnect를 켠 것으로 해석한다.
-heartbeat를 명시적으로 켠 경우 기본값은 1초 간격과 5초 timeout이다.
+`Heartbeat.Enabled = false`이면 Connector는 응용 계층 heartbeat를 보내지 않는다.
+`Reconnect.Enabled = false`이면 자동 reconnect를 하지 않는다.
+기본값은 둘 다 켜진 상태이며, heartbeat 기본값은 1초 간격과 5초 timeout이다.
 이 값은 짧은 끊김을 빠르게 감지하되, heartbeat ping 몇 번이 지연되는 상황은
 바로 장애로 보지 않기 위한 기준이다.
 
@@ -220,7 +224,8 @@ heartbeat를 명시적으로 켠 경우 기본값은 1초 간격과 5초 timeout
 
 ## Heartbeat 옵션 검증
 
-언어별 Connector는 heartbeat 옵션에 아래 검증 규칙을 동일하게 적용해야 한다.
+언어별 Connector는 `Heartbeat.Enabled = true`일 때 아래 검증 규칙을 동일하게 적용해야 한다.
+`Enabled = false`이면 heartbeat timer를 만들지 않으므로 interval과 timeout은 사용하지 않는다.
 
 | 옵션 | 유효 조건 | 실패 의미 |
 |------|-----------|-----------|
@@ -323,8 +328,8 @@ Connector는 알 수 없는 control frame을 사용자 handler로 넘기지 않�
 `Kind == Control`인데 `Flags`가 `None`이 아니거나 metadata, request sequence, payload가
 들어 있으면 protocol 오류로 처리한다.
 
-Connector는 `Heartbeat == null`이어도 inbound heartbeat ping에는 pong으로 응답해야 한다.
-`Heartbeat == null`은 로컬 Connector가 ping을 시작하지 않는다는 뜻이지,
+Connector는 `Heartbeat.Enabled = false`여도 inbound heartbeat ping에는 pong으로 응답해야 한다.
+`Heartbeat.Enabled = false`는 로컬 Connector가 ping을 시작하지 않는다는 뜻이지,
 peer가 보낸 control frame을 이해하지 않는다는 뜻이 아니다.
 
 Connector는 사용자 packet name에 `$zlink.` prefix를 허용하지 않는다.
@@ -449,7 +454,8 @@ Reconnect loop는 한 Connector에서 동시에 하나만 실행된다.
 
 ## Reconnect 옵션 검증
 
-언어별 Connector는 아래 검증 규칙을 동일하게 적용해야 한다.
+언어별 Connector는 `Reconnect.Enabled = true`일 때 아래 검증 규칙을 동일하게 적용해야 한다.
+`Enabled = false`이면 reconnect loop를 만들지 않으므로 delay와 attempt 값은 사용하지 않는다.
 
 | 옵션 | 유효 조건 | 실패 의미 |
 |------|-----------|-----------|
@@ -632,8 +638,8 @@ client가 timeout을 발생시킬 수 있다.
 
 | 테스트 | 확인할 내용 |
 |--------|-------------|
-| `Heartbeat_Disabled_DoesNotSendPing` | `Heartbeat == null`이면 Connector가 heartbeat ping을 시작하지 않는다 |
-| `Heartbeat_RespondsToPingEvenWhenDisabled` | `Heartbeat == null`이어도 inbound heartbeat ping에는 pong을 보낸다 |
+| `Heartbeat_Disabled_DoesNotSendPing` | `Heartbeat.Enabled = false`이면 Connector가 heartbeat ping을 시작하지 않는다 |
+| `Heartbeat_RespondsToPingEvenWhenDisabled` | `Heartbeat.Enabled = false`여도 inbound heartbeat ping에는 pong을 보낸다 |
 | `Heartbeat_SendsPingAtInterval` | `Connected` 상태에서 interval마다 heartbeat ping을 보낸다 |
 | `Heartbeat_PongIsNotDispatchedToUserHandler` | heartbeat pong은 사용자 handler로 전달되지 않는다 |
 | `Heartbeat_PingIsNotDispatchedToUserHandler` | heartbeat ping은 사용자 handler로 전달되지 않는다 |
@@ -658,7 +664,7 @@ client가 timeout을 발생시킬 수 있다.
 
 | 테스트 | 확인할 내용 |
 |--------|-------------|
-| `Reconnect_Disabled_StopsAtDisconnected` | `Reconnect == null`이면 연결 끊김 뒤 `Disconnected` 상태로 남는다 |
+| `Reconnect_Disabled_StopsAtDisconnected` | `Reconnect.Enabled = false`이면 연결 끊김 뒤 `Disconnected` 상태로 남는다 |
 | `Reconnect_Enabled_TransitionsToReconnecting` | reconnect가 켜져 있으면 연결 끊김 뒤 `Reconnecting` 상태로 들어간다 |
 | `Reconnect_UsesDefaultAttemptDelays` | 기본값은 `250ms -> 500ms -> 1s` 순서로 세 번 시도한다 |
 | `Reconnect_ClampsInitialDelayToMaxDelay` | `InitialDelay > MaxDelay`이면 첫 delay부터 `MaxDelay`를 쓴다 |

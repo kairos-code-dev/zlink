@@ -10,27 +10,25 @@ public sealed class ZlinkStreamConnectorOptions
 
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
-    public ZlinkStreamHeartbeatOptions? Heartbeat { get; init; }
+    public ZlinkStreamHeartbeatOptions Heartbeat { get; init; } = new();
 
-    public ZlinkStreamReconnectOptions? Reconnect { get; init; }
+    public ZlinkStreamReconnectOptions Reconnect { get; init; } = new();
 
-    public int MaxSendFrameSize { get; init; } = 1024 * 1024;
+    public int MaxSendPayloadSize { get; init; } = 64 * 1024;
 
     public bool SkipServerCertificateValidation { get; init; }
 
-    public bool EnableSegmentedSend { get; init; } = true;
-
     public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
 
-    public IZlinkStreamHeaderCodec? HeaderCodec { get; init; }
+    public IZlinkStreamHeaderCodec HeaderCodec { get; init; } = ZlinkStreamDefaultCodecs.Header();
 
-    public IZlinkStreamCompressionCodec? CompressionCodec { get; init; }
-
-    public IZlinkStreamPacketNameResolver? NameResolver { get; init; }
+    public IZlinkStreamPacketNameResolver NameResolver { get; init; } = ZlinkStreamDefaultCodecs.PacketNameResolver();
 }
 
 public sealed class ZlinkStreamHeartbeatOptions
 {
+    public bool Enabled { get; init; } = true;
+
     public TimeSpan Interval { get; init; } = TimeSpan.FromSeconds(1);
 
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(5);
@@ -38,6 +36,8 @@ public sealed class ZlinkStreamHeartbeatOptions
 
 public sealed class ZlinkStreamReconnectOptions
 {
+    public bool Enabled { get; init; } = true;
+
     public TimeSpan InitialDelay { get; init; } = TimeSpan.FromMilliseconds(250);
 
     public TimeSpan MaxDelay { get; init; } = TimeSpan.FromSeconds(5);

@@ -112,6 +112,8 @@ public interface IZLinkStreamNodeBuilder
 {
     void Bind(string endpoint);
 
+    void UseHeaderCodec(IZlinkStreamHeaderCodec headerCodec);
+
     void AddHeaderSession<TSession>()
         where TSession : class, IZLinkSession;
 }

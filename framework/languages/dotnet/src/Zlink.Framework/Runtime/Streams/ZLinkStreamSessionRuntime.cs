@@ -14,7 +14,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private readonly ZLinkStreamSessionSerialExecutor _serial = new();
     private readonly IZLinkSession _handler;
     private readonly ZLinkSessionContext _context;
-    private readonly IZlinkStreamHeaderCodec _headerCodec = ZlinkStreamDefaultCodecs.Header();
+    private readonly IZlinkStreamHeaderCodec _headerCodec;
     private int _connected;
     private int _disconnected;
     private int _disposed;
@@ -24,17 +24,20 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         IZLinkBackendStreamSocket socket,
         RoutingId routingId,
         Type? headerSessionType,
+        IZlinkStreamHeaderCodec headerCodec,
         Action<string> removeSession)
     {
         _scope = scope;
         _socket = socket;
         _removeSession = removeSession;
-        Stream = new ZLinkManagedStream(socket, routingId);
+        _headerCodec = headerCodec;
+        Stream = new ZLinkManagedStream(socket, routingId, headerCodec);
         _handler = (IZLinkSession)scope.ServiceProvider.GetRequiredService(headerSessionType!);
         _context = new ZLinkSessionContext(
             scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>(),
             scope.ServiceProvider.GetRequiredService<IZLinkClient>(),
             Stream,
+            headerCodec,
             CloseAsync);
         _handler.Context = _context;
     }

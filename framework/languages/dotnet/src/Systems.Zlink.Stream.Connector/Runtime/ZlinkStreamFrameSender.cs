@@ -21,6 +21,7 @@ internal sealed class ZlinkStreamFrameSender(
     {
         ZlinkStreamConnector.ValidateName(name, allowReserved: kind == ZlinkStreamMessageKind.Control);
         var payloadBytes = payload.Payload;
+        ZlinkStreamFrameCodec.ValidateSendPayload(payloadBytes.Length, options.MaxSendPayloadSize);
         var flags = requestSeq is null
             ? ZlinkStreamHeaderFlags.None
             : ZlinkStreamHeaderFlags.HasRequestSeq;
@@ -50,7 +51,7 @@ internal sealed class ZlinkStreamFrameSender(
 
     public void ValidateSendReady(ReadOnlyMemory<byte> header, ReadOnlyMemory<byte> payload)
     {
-        ZlinkStreamFrameCodec.ValidateSendFrame(header.Length, payload.Length, options.MaxSendFrameSize);
+        ZlinkStreamFrameCodec.ValidateSendFrame(header.Length, payload.Length);
         if (connectionProvider() is null)
         {
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.Disconnected, "Connector is not connected.");
@@ -73,7 +74,7 @@ internal sealed class ZlinkStreamFrameSender(
             await sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                if (options.EnableSegmentedSend && connection.CanWriteSegments)
+                if (connection.CanWriteSegments)
                 {
                     var prefix = ArrayPool<byte>.Shared.Rent(6);
                     try
@@ -105,16 +106,14 @@ internal sealed class ZlinkStreamFrameSender(
                 {
                     var frameSize = ZlinkStreamFrameCodec.GetFrameSize(
                         header.Length,
-                        payload.Length,
-                        options.MaxSendFrameSize);
+                        payload.Length);
                     var frame = ArrayPool<byte>.Shared.Rent(frameSize);
                     try
                     {
                         ZlinkStreamFrameCodec.WriteFrame(
                             frame.AsSpan(0, frameSize),
                             header,
-                            payload,
-                            options.MaxSendFrameSize);
+                            payload);
                         await connection.WriteAsync(
                             frame.AsMemory(0, frameSize),
                             cancellationToken).ConfigureAwait(false);

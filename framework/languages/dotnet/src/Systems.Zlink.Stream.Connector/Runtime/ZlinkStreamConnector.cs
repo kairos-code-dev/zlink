@@ -28,7 +28,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         Options = options ?? throw new ArgumentNullException(nameof(options));
         ZlinkStreamTransportFactory.ValidateOptions(options);
         _taskRunner = new ZlinkStreamTaskRunner(_lifetimeCts.Token);
-        _callbacks = new ZlinkStreamConnectorCallbacks(_taskRunner);
+        _callbacks = new ZlinkStreamConnectorCallbacks(_taskRunner, options.DispatchMode);
 
         _headerCodec = options.HeaderCodec;
         _compressionCodec = CreateCompressionCodec(options.Compression);
@@ -95,6 +95,8 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
     public ZlinkStreamConnectorOptions Options { get; }
 
+    public int PendingDispatchCount => _callbacks.PendingDispatchCount;
+
     public async ValueTask ConnectAsync(CancellationToken cancellationToken = default)
     {
         await _lifecycle.ConnectAsync(
@@ -108,6 +110,12 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     public async ValueTask CloseAsync(CancellationToken cancellationToken = default)
     {
         await _lifecycle.CloseAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask DispatchAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await _callbacks.DispatchAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public IZlinkStreamSendCall Send(ZlinkStreamEncodedPayload payload)

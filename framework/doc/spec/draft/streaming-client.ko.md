@@ -158,14 +158,27 @@ error code의 의미는 언어 간 최대한 맞춘다.
 
 ### 5.6 Callback dispatch
 
-일반 connector core는 callback thread를 숨기지 않는다. callback이 receive loop 또는
-worker thread에서 호출될 수 있음을 문서화한다.
+connector core는 사용자 callback을 network receive loop에서 직접 호출하지 않는 것을
+기본값으로 삼는다. client 환경에서는 UI thread, game loop, embedded loop처럼 사용자가
+직접 정한 thread에서 callback을 실행해야 thread 충돌을 피할 수 있기 때문이다.
 
-runtime adapter는 해당 runtime의 주 스레드 규칙을 맞춘다.
+기본 dispatch mode는 `Manual`이다. 이 경우 connector는 아래 callback을 내부 queue에
+넣고, 사용자가 `DispatchAsync()`를 호출한 thread에서 실행한다.
 
-- Unity adapter는 Unity main thread에서 사용자 callback을 호출한다.
-- Unreal plugin은 Game Thread에서 사용자 callback을 호출한다.
-- 일반 서버/콘솔용 library는 특정 UI thread를 기본으로 가정하지 않는다.
+- `On(...)` packet handler
+- `ErrorReceived`
+- `Disconnected`
+- `ConnectionStateChanged`
+- request callback submit
+
+`PendingDispatchCount`는 아직 dispatch되지 않은 callback 수를 반환한다. 일반 client는
+자신의 main loop에서 `DispatchAsync()`를 반복 호출한다. 기존처럼 worker thread에서 바로
+callback을 실행하고 싶은 서버형 프로그램이나 테스트는 `DispatchMode = Immediate`를
+선택할 수 있다.
+
+Unity 같은 runtime은 별도 connector를 만들지 않고 같은 core connector를 사용한다. Unity
+사용자는 `MonoBehaviour.Update()`에서 `DispatchAsync()`를 호출하면 사용자 callback이 Unity
+main thread에서 실행된다.
 
 ### 5.7 Codec extension
 
@@ -387,8 +400,9 @@ heartbeat timeout 기준, reconnect delay 계산, pending request 실패 규칙�
 - server-to-client compressed payload를 client connector typed API가 자동으로 압축
   해제한다.
 - client-to-server compression은 명시 호출에서만 적용된다.
-- Unity adapter는 main thread callback dispatch를 검증한다.
-- Unreal plugin은 Game Thread callback dispatch를 검증한다.
+- manual dispatch는 사용자 callback이 `DispatchAsync()`를 호출한 thread에서 실행되는지
+  검증한다.
+- immediate dispatch는 기존처럼 별도 pump 호출 없이 callback이 실행되는지 검증한다.
 
 ## 10. 결정 사항
 

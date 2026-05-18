@@ -118,6 +118,7 @@ public sealed partial class StreamConnectorTests
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
             Reconnect = new ZlinkStreamReconnectOptions
             {
                 InitialDelay = TimeSpan.FromMilliseconds(10),
@@ -200,6 +201,7 @@ public sealed partial class StreamConnectorTests
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
             Reconnect = new ZlinkStreamReconnectOptions
             {
                 InitialDelay = TimeSpan.FromMilliseconds(200),

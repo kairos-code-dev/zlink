@@ -18,6 +18,8 @@ public sealed class ZlinkStreamConnectorOptions
 
     public bool SkipServerCertificateValidation { get; init; }
 
+    public ZlinkStreamDispatchMode DispatchMode { get; init; } = ZlinkStreamDispatchMode.Manual;
+
     public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
 
     public IZlinkStreamHeaderCodec HeaderCodec { get; init; } = ZlinkStreamDefaultCodecs.Header();

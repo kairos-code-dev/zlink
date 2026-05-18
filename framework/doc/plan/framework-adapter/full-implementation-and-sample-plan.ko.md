@@ -61,7 +61,7 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
    - [stream-open-items.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/stream-open-items.ko.md)
    - [stream-samples.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/stream-samples.ko.md)
    - [streaming-client.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/streaming-client.ko.md)
-   - [unity-stream-connector.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/unity-stream-connector.ko.md)
+   - [unity-stream-connector.ko.md](../../../../doc/guide/unity-stream-connector.ko.md)
 4. sample spec
    - [tictactoe-game-sample.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/tictactoe-game-sample.ko.md)
    - [README.ko.md](../../spec/sample/tictactoe/README.ko.md)
@@ -441,7 +441,7 @@ find framework/samples -name "*.csproj" 2>/dev/null | sort
 - stream connector public surface에 `ZlinkStreamConnectorOptions.SendTimeout`과 send
   builder `WithTimeout(...)`이 없다.
 - `streaming-client.ko.md`의 API와 코드가 일치한다.
-- Unity adapter sample도 새 API를 사용한다.
+- Unity 사용 가이드는 별도 adapter가 아니라 공통 connector의 `DispatchAsync()` 사용법을 설명한다.
 - JSON, MessagePack, Protobuf, Auto codec extension의 옵션 처리와 자동 선택 규칙이
   각 codec 문서와 코드에서 같은 의미를 가진다.
 

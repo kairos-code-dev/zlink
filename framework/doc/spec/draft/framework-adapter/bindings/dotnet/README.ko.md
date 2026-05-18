@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../README.ko.md)
 
-[Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Actor](./aspnet-core-actor.ko.md) | [Session Actor Dispatch](./session-actor-dispatch.ko.md) | [Stream Connector](./streaming-client.ko.md) | [Unity Stream Connector](./unity-stream-connector.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
+[Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Actor](./aspnet-core-actor.ko.md) | [Session Actor Dispatch](./session-actor-dispatch.ko.md) | [Stream Connector](./streaming-client.ko.md) | [Unity 가이드](../../../../../../../doc/guide/unity-stream-connector.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
 
 # Draft -- ZLink Framework For .NET
 
@@ -88,10 +88,8 @@
     별개다.
 - `zlink.systems` 도메인을 기반으로 한 package 와 namespace는 역순 도메인
   규칙[^reverse-dns]을 따른다. `.NET`의 NuGet[^nuget] package id 와 namespace는
-  `Systems.Zlink.*`를 사용한다. Unity package id는 lowercase reverse-DNS인
-  `systems.zlink.*`를 사용한다. 예를 들어 framework는
-  `Systems.Zlink.Framework`, Stream Connector는 `Systems.Zlink.Stream.Connector`,
-  Unity adapter는 `systems.zlink.stream.connector.unity` 가 된다.
+  `Systems.Zlink.*`를 사용한다. 예를 들어 framework는
+  `Systems.Zlink.Framework`, Stream Connector는 `Systems.Zlink.Stream.Connector`가 된다.
 - 수동 연결은 `channel + capability`[^capability] 또는 `spot node + capability`
   단위로 설명한다. 같은 capability 안에서는 `Discovery` 기반 자동 연결과 manual
   연결을 섞지 않는다.
@@ -136,8 +134,8 @@
 | [aspnet-core-actor.ko.md](./aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkActorClient, IZLinkSessionProxy, IZLinkActorSessionClient, session actor dispatch (gateway) 패턴 |
 | [session-actor-dispatch.ko.md](./session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkSessionProxy`, `IZLinkActorSessionClient`, `IZLinkActorClient`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md) 에서 다룬다. |
 | [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
-| [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` / Unity Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신 |
-| [unity-stream-connector.ko.md](./unity-stream-connector.ko.md) | Unity package, `MonoBehaviour` wrapper, main thread callback dispatch, lifecycle |
+| [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신, manual dispatch |
+| [Unity Stream Connector 가이드](../../../../../../../doc/guide/unity-stream-connector.ko.md) | Unity `MonoBehaviour`에서 공통 connector의 `DispatchAsync()`를 호출하는 사용법 |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM serializer, write, monitor-event mapping 의 결정 기준 |
 | [aspnet-core-monitoring.ko.md](./aspnet-core-monitoring.ko.md) | socket / registry / spot runtime monitoring 이벤트와 snapshot 조회 모델 |
 | [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) | `playhouse` Stage 같은 상위 모델을 SPOT 위에 감쌀 때 추가로 필요한 조건 |

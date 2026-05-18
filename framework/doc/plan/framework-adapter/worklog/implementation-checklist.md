@@ -404,9 +404,9 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
    - stage wrapper: draft는 `SPOT` 위에 얹는 상위 application wrapper를 별도 범위로
      둔다. 현재 framework public API에는 `IStage*` 표면을 추가하지 않는 것이 맞으므로
      이번 queue에서는 `not-applicable`이다.
-   - Unity connector: `Systems.Zlink.Stream.Connector.Unity`는 core stream connector를
-     감싸며 `SendTimeout` public option이나 old `Exec*` API를 노출하지 않는다. 이번
-     queue에서 추가 구현이 필요하지 않다.
+   - Unity connector: 별도 `Systems.Zlink.Stream.Connector.Unity` 패키지는 두지
+     않는다. Unity도 core stream connector를 사용하고 `MonoBehaviour.Update()`에서
+     `DispatchAsync()`를 호출하는 방식은 guide 문서에서 설명한다.
 10. `verified`: 문서 대조 리뷰를 다시 실행하고 이 파일의 모든 `verified`을
    `implemented`, `verified`, `not-applicable` 중 하나로 바꾼다. `not-applicable`은
    이유를 반드시 쓴다. 위 `Reference Documents`의 일반 `verified` 항목은 이 단계에서

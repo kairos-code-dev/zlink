@@ -37,7 +37,8 @@ public sealed partial class StreamConnectorTests
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
         await connector.ConnectAsync();
 
@@ -83,7 +84,8 @@ public sealed partial class StreamConnectorTests
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
         var received = new List<string>();
         var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

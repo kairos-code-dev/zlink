@@ -81,7 +81,10 @@ internal sealed class ZlinkStreamReceiveDispatcher(
             try
             {
                 var payloadObject = new ZlinkStreamEncodedPayload(header.Codec, payload);
-                await handler.Invoke(new ZlinkStreamMessage(header.Name, header.Metadata, payloadObject), payloadObject, cancellationToken)
+                var message = new ZlinkStreamMessage(header.Name, header.Metadata, payloadObject);
+                await callbacks.DispatchUserCallbackAsync(
+                        dispatchedToken => handler.Invoke(message, payloadObject, dispatchedToken),
+                        cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (Exception ex)

@@ -84,7 +84,8 @@ public sealed partial class StreamConnectorTests
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
-            Compression = ZlinkStreamCompression.Lz4
+            Compression = ZlinkStreamCompression.Lz4,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
         var received = new TaskCompletionSource<Pong>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var subscription = connector.On<Pong>("pong", (message, _) =>

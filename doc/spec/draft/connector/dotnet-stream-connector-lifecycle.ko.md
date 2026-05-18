@@ -175,6 +175,9 @@ public sealed class ZlinkStreamConnectorOptions
 
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
+    public ZlinkStreamDispatchMode DispatchMode { get; init; } =
+        ZlinkStreamDispatchMode.Manual;
+
     public ZlinkStreamHeartbeatOptions Heartbeat { get; init; } = new();
 
     public ZlinkStreamReconnectOptions Reconnect { get; init; } = new();
@@ -211,6 +214,12 @@ public sealed class ZlinkStreamReconnectOptions
 
 기존 `HeartbeatInterval`, `HeartbeatTimeout`, `IdleTimeout` 같은 평면 옵션은 제거한다.
 이름만 있는 옵션보다, 기능 단위의 값 객체가 어떤 기능을 켜는지 더 분명하기 때문이다.
+
+`DispatchMode = Manual`이 기본값이다. 이 모드에서는 connector 내부 receive loop와
+reconnect loop가 사용자 callback을 직접 실행하지 않고 dispatch queue에 넣는다. 사용자는
+자신이 원하는 thread에서 `DispatchAsync()`를 호출해 `On(...)` handler, error event,
+disconnect event, state event, request callback을 실행한다. `DispatchMode = Immediate`는
+기존처럼 내부 worker 흐름에서 callback을 즉시 실행한다.
 
 ## 기본 옵션 검증
 
@@ -698,6 +707,8 @@ client가 timeout을 발생시킬 수 있다.
 | `Events_CloseWithoutActiveTransportDoesNotFireDisconnected` | active transport가 없을 때 close하면 `Disconnected` event가 호출되지 않는다 |
 | `Handlers_SurviveReconnect` | `On(...)`으로 등록한 handler는 reconnect 뒤에도 유지된다 |
 | `Callbacks_SurviveReconnect` | error/disconnect/state callback 등록은 reconnect 뒤에도 유지된다 |
+| `ManualDispatchRunsHandlerOnDispatchCaller` | 기본 manual dispatch에서 callback은 `DispatchAsync()` 호출 thread에서 실행된다 |
+| `ImmediateDispatchRunsHandlerWithoutManualDispatch` | immediate dispatch에서는 별도 pump 없이 callback이 실행된다 |
 
 ### 서버 stream runtime
 

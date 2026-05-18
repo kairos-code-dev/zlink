@@ -1,0 +1,116 @@
+# Unity Stream Connector 사용 가이드
+
+이 문서는 Unity client에서 `Systems.Zlink.Stream.Connector`를 사용하는 방법을 설명한다.
+Unity 전용 connector package는 따로 두지 않는다. Unity도 일반 `.NET` connector를 그대로
+사용하고, Unity main thread에서 `DispatchAsync()`를 호출해 사용자 callback을 실행한다.
+
+## 기본 원칙
+
+Unity 객체는 main thread 밖에서 직접 다루면 안 된다. 그래서 connector의 기본 dispatch mode는
+`Manual`이다. 이 모드에서는 network receive loop가 `On(...)` handler, error event,
+disconnect event, request callback을 직접 호출하지 않고 connector 내부 queue에 넣는다.
+
+Unity에서는 `MonoBehaviour.Update()`에서 `DispatchAsync()`를 호출한다. 그러면 그 frame에
+쌓여 있던 callback이 Unity main thread에서 실행된다.
+
+## MonoBehaviour 예시
+
+```csharp
+using System;
+using System.Threading.Tasks;
+using Systems.Zlink.Stream.Connector;
+using Systems.Zlink.Stream.Connector.Contracts;
+using UnityEngine;
+
+public sealed class ZlinkStreamClientBehaviour : MonoBehaviour
+{
+    private IZlinkStreamConnector? _connector;
+
+    private async void Start()
+    {
+        _connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri("wss://example.com/stream")
+        });
+
+        _connector.ConnectionStateChanged += (change, _) =>
+        {
+            Debug.Log($"ZLink stream state: {change.Current}");
+            return ValueTask.CompletedTask;
+        };
+
+        _connector.On("game.update", (message, _) =>
+        {
+            Debug.Log($"packet: {message.Name}, bytes: {message.Payload.Payload.Length}");
+            return ValueTask.CompletedTask;
+        });
+
+        await _connector.ConnectAsync();
+    }
+
+    private async void Update()
+    {
+        if (_connector is not null)
+        {
+            await _connector.DispatchAsync();
+        }
+    }
+
+    private async void OnDestroy()
+    {
+        if (_connector is not null)
+        {
+            await _connector.CloseAsync();
+            await _connector.DisposeAsync();
+            _connector = null;
+        }
+    }
+}
+```
+
+`Update()`에서 `DispatchAsync()`를 호출하지 않으면 handler와 event는 실행되지 않는다.
+`PendingDispatchCount`를 보면 아직 처리하지 않은 callback 수를 확인할 수 있다.
+
+## 일시 정지 처리
+
+모바일에서는 앱이 background로 내려갈 수 있다. 연결을 유지할지 닫을지는 application 정책이다.
+짧은 전환을 허용하려면 기본 reconnect 정책을 그대로 두고, 명시적으로 닫고 싶으면
+`OnApplicationPause`에서 `CloseAsync()`를 호출한다.
+
+```csharp
+private async void OnApplicationPause(bool paused)
+{
+    if (paused && _connector is not null)
+    {
+        await _connector.CloseAsync();
+    }
+}
+```
+
+## 코루틴을 쓰는 프로젝트
+
+최신 Unity에서는 `async` / `await`를 사용할 수 있으므로 코루틴이 필수는 아니다. 기존 코드가
+`StartCoroutine(...)` 중심이라면 아래처럼 얇은 helper를 application 안에 둘 수 있다.
+
+```csharp
+using System.Collections;
+
+private IEnumerator DispatchCoroutine()
+{
+    if (_connector is null)
+    {
+        yield break;
+    }
+
+    var task = _connector.DispatchAsync().AsTask();
+    while (!task.IsCompleted)
+    {
+        yield return null;
+    }
+
+    task.GetAwaiter().GetResult();
+}
+```
+
+이 helper는 Unity 사용법일 뿐 connector 계약이 아니다. connector 자체는 Unity 타입에
+의존하지 않는다.

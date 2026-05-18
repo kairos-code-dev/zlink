@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Stream Connector For Unity](unity-stream-connector.ko.md) | [다음: ZLink Framework ASP.NET Core Monitoring](aspnet-core-monitoring.ko.md)
+[문서 목록](../../README.ko.md) | [이전: ZLink Stream Connector For .NET](streaming-client.ko.md) | [다음: ZLink Framework ASP.NET Core Monitoring](aspnet-core-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)

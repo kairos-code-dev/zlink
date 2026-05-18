@@ -81,6 +81,40 @@ public sealed partial class StreamConnectorTests
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
+    private static async Task DispatchUntilAsync(
+        IZlinkStreamConnector connector,
+        Func<bool> predicate,
+        TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (!predicate())
+        {
+            await connector.DispatchAsync();
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                throw new TimeoutException("Connector dispatch timeout.");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10));
+        }
+    }
+
+    private static async Task WaitUntilAsync(
+        Func<bool> predicate,
+        TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (!predicate())
+        {
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                throw new TimeoutException("Condition wait timeout.");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10));
+        }
+    }
+
     private static X509Certificate2 CreateSelfSignedCertificate()
     {
         using var rsa = RSA.Create(2048);

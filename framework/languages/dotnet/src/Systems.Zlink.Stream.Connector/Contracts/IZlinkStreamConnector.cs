@@ -14,9 +14,13 @@ public interface IZlinkStreamConnector : IAsyncDisposable
 
     ZlinkStreamConnectorOptions Options { get; }
 
+    int PendingDispatchCount { get; }
+
     ValueTask ConnectAsync(CancellationToken cancellationToken = default);
 
     ValueTask CloseAsync(CancellationToken cancellationToken = default);
+
+    ValueTask DispatchAsync(CancellationToken cancellationToken = default);
 
     IZlinkStreamSendCall Send(ZlinkStreamEncodedPayload payload);
 

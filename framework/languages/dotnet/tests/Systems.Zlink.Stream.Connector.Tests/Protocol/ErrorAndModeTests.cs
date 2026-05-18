@@ -123,7 +123,11 @@ public sealed partial class StreamConnectorTests
         };
 
         await connector.ConnectAsync();
-        var error = await errorReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await DispatchUntilAsync(
+            connector,
+            () => errorReceived.Task.IsCompleted,
+            TimeSpan.FromSeconds(5));
+        var error = await errorReceived.Task;
 
         Assert.Equal(ZlinkStreamErrorCode.FrameDecodeFailed, error.Code);
         await server;

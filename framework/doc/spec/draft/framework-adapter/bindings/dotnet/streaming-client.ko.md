@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET Session Actor Dispatch](session-actor-dispatch.ko.md) | [다음: ZLink Stream Connector For Unity](unity-stream-connector.ko.md)
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET Session Actor Dispatch](session-actor-dispatch.ko.md) | [다음: ZLink Framework ASP.NET Core Monitoring](aspnet-core-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../README.ko.md)
 
-[.NET 묶음](./README.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Unity Stream Connector](./unity-stream-connector.ko.md) | [공통 Stream Connector](../../../streaming-client.ko.md)
+[.NET 묶음](./README.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Unity 가이드](../../../../../../../doc/guide/unity-stream-connector.ko.md) | [공통 Stream Connector](../../../streaming-client.ko.md)
 
 # Draft -- ZLink Stream Connector For .NET
 
@@ -41,14 +41,10 @@
 | 패키지 | 대상 | 역할 |
 |--------|------|------|
 | `Systems.Zlink.Stream.Connector` | 일반 C# / .NET | TCP[^tcp], TLS[^tls], WS[^ws], WSS[^wss] transport[^transport]와 packet connector core |
-| `Systems.Zlink.Stream.Connector.Unity` | Unity | Unity main thread callback dispatch와 Unity package metadata |
 | `Systems.Zlink.Stream.Connector.Json` | 선택 | JSON packet helper |
 | `Systems.Zlink.Stream.Connector.MessagePack` | 선택 | MessagePack packet helper |
 | `Systems.Zlink.Stream.Connector.Protobuf` | 선택 | Protobuf packet helper |
 | `Systems.Zlink.Stream.Connector.Codecs` | 선택 | 타입 특성을 보고 codec[^codec]을 자동으로 골라 주는 convenience helper |
-
-Unity 패키지는 일반 C# 패키지 위에 얇게 얹는 형태로만 둔다. 즉 별도의 wire protocol 을
-새로 만들어서는 안 된다.
 
 `.NET` Stream Connector 는 NuGet[^nuget] 으로 별도 배포할 수 있어야 한다. NuGet 의
 package id 와 `.NET` namespace 는 `Systems.Zlink.Stream.Connector` 계열을 그대로 사용한다.
@@ -136,6 +132,9 @@ public sealed class ZlinkStreamConnectorOptions
 
     public bool SkipServerCertificateValidation { get; init; }
 
+    public ZlinkStreamDispatchMode DispatchMode { get; init; } =
+        ZlinkStreamDispatchMode.Manual;
+
     public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
 
     public IZlinkStreamHeaderCodec HeaderCodec { get; init; } =
@@ -182,10 +181,19 @@ frame prefix 의 `u16 header_len` 으로 표현되므로 65535 bytes 를 넘을 
 metadata 는 route, trace id, locale 같은 작은 key-value 를 담는 용도이므로, 사용자가
 한도를 키우는 option 은 제공하지 않는다. 큰 업무 데이터는 payload 로 보내야 한다.
 
-수신 handler callback 은 내부 bounded queue 에 쌓지 않는다. connector 는 packet 을 받은
-순서대로 handler 를 직접 await 한다. handler 가 느리면 다음 read 가 늦어지고, transport
-수준의 자연스러운 backpressure 가 걸린다. packet 을 임의로 drop 하거나 queue 초과 오류로
-연결 의미를 깨지 않는다.
+수신 packet 자체를 내부 bounded queue 에 쌓거나 임의로 drop 하지 않는다. receive loop는
+packet을 읽은 뒤 사용자 callback work item만 dispatch queue에 넣고 다음 read를 계속한다.
+사용자 callback이 느리면 `DispatchAsync()`를 호출하는 application loop가 늦어질 뿐,
+network receive loop를 막지 않는다.
+
+사용자 callback 실행은 별도의 dispatch queue로 분리한다. 기본값인
+`DispatchMode = Manual`에서는 receive loop, reconnect loop, request callback task가
+사용자 handler를 직접 호출하지 않고 queue에 넣는다. 사용자는 자신이 원하는 thread에서
+`DispatchAsync()`를 호출해 `On(...)` handler, lifecycle event, error event, request
+callback을 실행한다. `PendingDispatchCount`는 아직 실행되지 않은 callback 수다.
+
+`DispatchMode = Immediate`는 기존 방식처럼 내부 worker 흐름에서 callback을 바로 실행한다.
+UI thread나 game loop가 있는 client에서는 `Manual`을 유지해야 한다.
 
 send 경로의 segmented write 는 공개 option 으로 노출하지 않는다. transport 가 prefix,
 header, payload 를 나누어 쓸 수 있으면 connector 가 내부에서 자동으로 사용한다. 지원하지
@@ -504,10 +512,15 @@ public interface IZlinkStreamConnector : IAsyncDisposable
 
     ZlinkStreamConnectorOptions Options { get; }
 
+    int PendingDispatchCount { get; }
+
     ValueTask ConnectAsync(
         CancellationToken cancellationToken = default);
 
     ValueTask CloseAsync(
+        CancellationToken cancellationToken = default);
+
+    ValueTask DispatchAsync(
         CancellationToken cancellationToken = default);
 
     IZlinkStreamSendCall Send(
@@ -933,20 +946,18 @@ client → server 방향은 명시적으로 호출했을 때만 압축한다.
 
 압축은 오직 payload 에만 적용한다. helper header 는 절대 압축하지 않는다.
 
-## 17. Unity Adapter
+## 17. Unity 사용
 
-이 절에서는 Unity 패키지가 core 위에 얇게 얹는 부분과, 무엇을 그대로 두는지를 정리한다.
+이 절에서는 Unity에서 별도 connector package 없이 core connector를 사용하는 기준만 정리한다.
 
-`Systems.Zlink.Stream.Connector.Unity` 는 별도의 Unity package 로 배포한다. 이 Unity
-package 는 `Systems.Zlink.Stream.Connector` core 를 참조하고, 그 위에 다음을 얇게 얹는다.
+Unity용 별도 connector package는 두지 않는다. Unity도 `Systems.Zlink.Stream.Connector`
+core를 그대로 사용하고, `MonoBehaviour.Update()`에서 `DispatchAsync()`를 호출한다. 그러면
+수신 handler와 lifecycle event가 Unity main thread에서 실행된다.
 
-- Unity main thread callback dispatch
-- `MonoBehaviour` wrapper
-- Unity lifecycle
-
-Unity 측 상세 계약은 [unity-stream-connector.ko.md](./unity-stream-connector.ko.md) 를
-기준으로 한다. Unity adapter 는 `ZlinkStreamConnector` 의 packet 의미나 helper header
-의미를 임의로 바꾸지 않는다.
+Unity 사용 예제와 lifecycle 처리 방식은
+[Unity Stream Connector 가이드](../../../../../../../doc/guide/unity-stream-connector.ko.md)
+에서 다룬다. 이 가이드는 사용법 문서이며, 별도의 wire protocol이나 별도 public API 계약을
+정의하지 않는다.
 
 ## 18. 완료 기준
 
@@ -966,7 +977,8 @@ Unity 측 상세 계약은 [unity-stream-connector.ko.md](./unity-stream-connect
 - JSON, MessagePack, Protobuf extension이 core packet 계약을 바꾸지 않는지 테스트한다.
 - server-to-client 방향에서 압축된 payload를 typed API가 자동으로 해제한다.
 - client-to-server 방향의 압축은 `.Compress()`를 호출한 packet에만 적용된다.
-- Unity adapter가 main thread callback dispatch와 lifecycle close를 보장한다.
+- manual dispatch에서 callback이 `DispatchAsync()` 호출 thread에서 실행되는지 테스트한다.
+- immediate dispatch에서 별도 pump 호출 없이 callback이 실행되는지 테스트한다.
 
 ## 19. 구현 순서
 
@@ -983,7 +995,7 @@ Unity 측 상세 계약은 [unity-stream-connector.ko.md](./unity-stream-connect
 6. MessagePack, Protobuf codec
 7. LZ4 compression과 server-to-client 자동 압축 해제
 8. TLS, WebSocket, WebSocket over TLS transport
-9. Unity adapter package
+9. Unity 사용 가이드
 
 ## 20. 회귀 테스트
 
@@ -1013,6 +1025,8 @@ Connector API 를 수정하는 경우에는, 아래 테스트 이름과 문서 �
 | `StreamConnectorTests.SendPayloadLimitIsEnforcedBeforeTransportWrite` | send payload 크기 제한이 transport write 전에 적용된다. |
 | `StreamConnectorTests.RequestPayloadLimitIsEnforcedBeforeTransportWrite` | request payload 크기 제한이 pending request 전송 전에 적용된다. |
 | `StreamConnectorTests.TypedCallbackDecompressesServerPacket` | 압축된 server packet을 typed callback에서 정상 복원한다. |
+| `StreamConnectorTests.ManualDispatchRunsHandlerOnDispatchCaller` | 기본 manual dispatch에서 callback이 `DispatchAsync()` 호출 thread에서 실행된다. |
+| `StreamConnectorTests.ImmediateDispatchRunsHandlerWithoutManualDispatch` | immediate dispatch에서는 별도 pump 없이 callback이 실행된다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^stream]: `STREAM`은 외부 클라이언트와 서버 사이를 잇는, 연결 지향적인 양방향 메시지 통로를 가리키는 ZLink 추상이다.

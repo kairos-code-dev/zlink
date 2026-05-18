@@ -33,10 +33,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.LockSupport;
 
 final class PerfMultiSpotSendSend {
     private static final RoutingId SERVER_NODE_RID =
@@ -50,6 +49,7 @@ final class PerfMultiSpotSendSend {
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         CountDownLatch stopped = new CountDownLatch(1);
         AtomicInteger stopSeen = new AtomicInteger();
+        AtomicLong activeEndRef = new AtomicLong(Long.MAX_VALUE);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         String controlEndpoint = derivedEndpoint(config.endpoint(), 1);
         try (Context ctx = PerfUtil.newContext(config);
@@ -65,12 +65,20 @@ final class PerfMultiSpotSendSend {
             node.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.emitControlReady(controlEndpoint);
+            int expectedStops = activeSpotSlotLimit(config.clients(),
+                config.size());
             spot.onDispatchEvent(info -> {
                 if (info.event() != SpotDispatchEvent.ROUTED_READABLE) {
                     return;
                 }
+                long activeEnd = activeEndRef.get();
+                if (System.nanoTime() >= activeEnd) {
+                    stopped.countDown();
+                    return;
+                }
                 try {
-                    drainServer(spot, config.clients(), stopSeen, stopped);
+                    drainServer(spot, expectedStops, stopSeen, stopped,
+                        activeEnd);
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     stopped.countDown();
@@ -80,7 +88,10 @@ final class PerfMultiSpotSendSend {
                 "spot sendsend server");
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiSpotNodeAutoHwm(config, node, "server");
-            while (stopped.getCount() != 0) {
+            long activeEnd = System.nanoTime()
+                + config.durationSeconds() * 1_000_000_000L;
+            activeEndRef.set(activeEnd);
+            while (stopped.getCount() != 0 && System.nanoTime() < activeEnd) {
                 Throwable ex = failure.get();
                 if (ex != null) {
                     throw new IllegalStateException(
@@ -88,6 +99,7 @@ final class PerfMultiSpotSendSend {
                 }
                 sleepQuietly(1);
             }
+            stopped.countDown();
             return PerfUtil.Result.silent(config);
         }
     }
@@ -150,9 +162,14 @@ final class PerfMultiSpotSendSend {
     private static boolean drainServer(Spot spot,
                                     int expectedStops,
                                     AtomicInteger stopSeen,
-                                    CountDownLatch stopped) {
+                                    CountDownLatch stopped,
+                                    long activeEnd) {
         boolean progressed = false;
         for (;;) {
+            if (System.nanoTime() >= activeEnd) {
+                stopped.countDown();
+                return progressed;
+            }
             Received received = recvRoutedNoWait(spot);
             if (received == null) {
                 return progressed;
@@ -165,12 +182,10 @@ final class PerfMultiSpotSendSend {
                     }
                     continue;
                 }
-                try (Message reply = received.firstPart().move()) {
-                    received.send()
-                        .message(reply)
-                        .flags(SendFlags.DONT_WAIT)
-                        .submit();
-                }
+                received.send()
+                    .message(received.firstPart())
+                    .flags(SendFlags.DONT_WAIT)
+                    .submit();
             }
         }
     }
@@ -198,50 +213,64 @@ final class PerfMultiSpotSendSend {
     private static void runClientWorkers(List<Spot> spots,
                                          PerfUtil.Config config,
                                          PerfUtil.Metrics metrics) {
-        AtomicReference<Throwable> failure = new AtomicReference<>();
-        PerfMultiSendLoops.runClients(spots.size(), (index, durationSeconds) ->
-            new Thread(() -> {
-                try {
-                    Spot spot = spots.get(index);
-                    long activeEnd = System.nanoTime()
-                        + durationSeconds * 1_000_000_000L;
-                    AtomicBoolean waitingReply = new AtomicBoolean();
-                    spot.onDispatchEvent(info -> {
-                        if (info.event() == SpotDispatchEvent.ROUTED_READABLE) {
-                            drainClientReplies(spot, config.size(), metrics,
-                                waitingReply, activeEnd);
-                        }
-                    });
-                    try (Message active = PerfUtil.payloadTemplate(config.size());
-                         Poller poller = new Poller()) {
-                        poller.add(spot, PollEventFlag.POLLOUT);
-                        while (System.nanoTime() < activeEnd) {
-                            while (waitingReply.get()
-                                   && System.nanoTime() < activeEnd) {
-                                LockSupport.parkNanos(100_000L);
-                            }
-                            if (System.nanoTime() >= activeEnd) {
-                                break;
-                            }
-                            PerfUtil.resetAndWritePayload(active, config.size(),
-                                (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                            waitingReply.set(true);
-                            if (!sendToServerWhenWritable(spot, poller, active,
-                                    activeEnd)) {
-                                waitingReply.set(false);
-                                break;
-                            }
-                        }
+        int n = spots.size();
+        int msgSize = config.size();
+        int activeSlots = activeSpotSlotLimit(n, msgSize);
+        Message[] payloads = new Message[n];
+        boolean[] waitingReply = new boolean[n];
+        List<PollEvent> events = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            payloads[i] = PerfUtil.payloadTemplate(msgSize);
+        }
+        try (Poller poller = new Poller()) {
+            for (int i = 0; i < n; i++) {
+                poller.add(spots.get(i), Integer.valueOf(i),
+                    PollEventFlag.POLLIN);
+            }
+            long activeEnd = System.nanoTime()
+                + config.durationSeconds() * 1_000_000_000L;
+            while (System.nanoTime() < activeEnd) {
+                boolean sendProgress = false;
+                boolean hasWaitingReply = false;
+                for (int i = 0; i < activeSlots; i++) {
+                    if (waitingReply[i]) {
+                        hasWaitingReply = true;
+                        continue;
                     }
-                    sendStopToServer(spot);
-                } catch (Throwable ex) {
-                    failure.compareAndSet(null, ex);
-                    throw new IllegalStateException(ex);
+                    PerfUtil.resetAndWritePayload(payloads[i], msgSize,
+                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+                    waitingReply[i] = true;
+                    if (trySendToServer(spots.get(i), payloads[i],
+                            SendFlags.DONT_WAIT)) {
+                        sendProgress = true;
+                    } else {
+                        waitingReply[i] = false;
+                    }
                 }
-            }, "multi-spot-sendsend-client-" + index), config.durationSeconds());
-        if (failure.get() != null) {
-            throw new IllegalStateException("spot sendsend client failed",
-                failure.get());
+                if (sendProgress) {
+                    continue;
+                }
+                long remainingNs = activeEnd - System.nanoTime();
+                if (remainingNs <= 0L) {
+                    break;
+                }
+                Duration waitDuration = Duration.ofNanos(
+                    Math.max(1L, remainingNs));
+                poller.wait(events, waitDuration);
+                for (PollEvent event : events) {
+                    if (!event.revents().contains(PollEventFlag.POLLIN)
+                        || !(event.tag() instanceof Integer index)) {
+                        continue;
+                    }
+                    drainClientReply(spots.get(index), msgSize, metrics,
+                        waitingReply, index, activeEnd);
+                }
+            }
+        } finally {
+            Message.closeAll(List.of(payloads));
+            for (Spot spot : spots) {
+                sendStopToServer(spot);
+            }
         }
     }
 
@@ -253,33 +282,26 @@ final class PerfMultiSpotSendSend {
             .submit();
     }
 
-    private static boolean sendToServerWhenWritable(Spot spot,
-                                                    Poller poller,
-                                                    Message message,
-                                                    long deadlineNs) {
-        for (;;) {
-            if (System.nanoTime() >= deadlineNs) {
+    private static boolean trySendToServer(Spot spot, Message message,
+                                           SendFlags flags) {
+        try {
+            sendToServer(spot, message, flags);
+            return true;
+        } catch (SubmitException ex) {
+            if (isTransientSubmit(ex)) {
                 return false;
             }
-            try {
-                try (Message outbound = Message.copyOf(message)) {
-                    sendToServer(spot, outbound, SendFlags.DONT_WAIT);
-                }
-                return true;
-            } catch (SubmitException ex) {
-                if (!isTransientSubmit(ex)) {
-                    throw ex;
-                }
-                if (!waitFor(poller, PollEventFlag.POLLOUT, deadlineNs)) {
-                    return false;
-                }
-            }
+            throw ex;
         }
     }
 
     private static void sendStopToServer(Spot spot) {
         try (Message stop = PerfStopToken.newMessage()) {
-            sendToServer(spot, stop, SendFlags.NONE);
+            sendToServer(spot, stop, SendFlags.DONT_WAIT);
+        } catch (SubmitException ex) {
+            if (!isTransientSubmit(ex)) {
+                throw ex;
+            }
         }
     }
 
@@ -289,46 +311,39 @@ final class PerfMultiSpotSendSend {
             || result == SubmitResult.NOT_CONNECTED;
     }
 
-    private static void drainClientReplies(Spot spot,
-                                           int size,
-                                           PerfUtil.Metrics metrics,
-                                           AtomicBoolean waitingReply,
-                                           long activeEnd) {
-        for (;;) {
-            Received received = recvRoutedNoWait(spot);
-            if (received == null) {
+    private static void drainClientReply(Spot spot,
+                                         int size,
+                                         PerfUtil.Metrics metrics,
+                                         boolean[] waitingReply,
+                                         int index,
+                                         long activeEnd) {
+        Received received = recvRoutedNoWait(spot);
+        if (received == null) {
+            return;
+        }
+        try (received) {
+            if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
                 return;
             }
-            try (received) {
-                if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
-                    continue;
-                }
-                PerfUtil.Header reply = PerfUtil.decodeHeader(
-                    received.firstPart(), size);
-                waitingReply.set(false);
-                if (reply.phase() == PerfUtil.PHASE_ACTIVE
-                    && System.nanoTime() < activeEnd) {
-                    metrics.recordNanos(reply.latencyNanos() / 2L);
-                }
+            PerfUtil.Header reply = PerfUtil.decodeHeader(
+                received.firstPart(), size);
+            waitingReply[index] = false;
+            if (reply.phase() == PerfUtil.PHASE_ACTIVE
+                && System.nanoTime() < activeEnd) {
+                metrics.recordNanos(reply.latencyNanos() / 2L);
             }
         }
     }
 
-    private static boolean waitFor(Poller poller, PollEventFlag expected,
-                                   long deadlineNs) {
-        List<PollEvent> events = new ArrayList<>(1);
-        for (;;) {
-            long remainingNs = deadlineNs - System.nanoTime();
-            if (remainingNs <= 0) {
-                return false;
-            }
-            poller.wait(events, Duration.ofMillis(-1));
-            for (PollEvent event : events) {
-                if (event.revents().contains(expected)) {
-                    return true;
-                }
-            }
-        }
+    private static int activeSpotSlotLimit(int totalSlots, int msgSize) {
+        int hwmSlots = Math.max(1, 1_048_576 / Math.max(1, msgSize));
+        if (msgSize >= 262_144)
+            return Math.min(totalSlots, hwmSlots);
+        if (msgSize >= 131_072)
+            return Math.min(totalSlots, 8);
+        if (msgSize >= 65_536)
+            return Math.min(totalSlots, 8);
+        return totalSlots;
     }
 
     private static Received recvRoutedNoWait(Spot spot) {

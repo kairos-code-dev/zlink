@@ -194,10 +194,24 @@ bool run_server (const std::string &lib_name,
     if (!spot.valid () || !control_pub.valid () || !control_sub.valid ())
         return false;
     control_sub.set_subscription (k_control_topic);
+    const size_t snapshot_msg_size =
+      msg_sizes.empty () ? msg_size : msg_sizes[0];
+    if (!perf::multi::apply_spot_auto_hwm_msg_unit (node, snapshot_msg_size)
+        || !perf::multi::apply_spot_auto_hwm_msg_unit (
+          control_node, snapshot_msg_size)
+        || !perf::multi::apply_spot_auto_hwm_msg_unit (
+          spot, snapshot_msg_size)
+        || !perf::multi::apply_spot_auto_hwm_msg_unit (
+          control_pub, snapshot_msg_size)
+        || !perf::multi::apply_spot_auto_hwm_msg_unit (
+          control_sub, snapshot_msg_size))
+        return false;
     if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;
-    perf::multi::emit_spot_node_auto_hwm_snapshot (node, transport, 64);
-    perf::multi::emit_spot_node_auto_hwm_snapshot (control_node, transport, 64);
+    perf::multi::emit_spot_node_auto_hwm_snapshot (
+      node, transport, snapshot_msg_size);
+    perf::multi::emit_spot_node_auto_hwm_snapshot (
+      control_node, transport, snapshot_msg_size);
     spot.set_routing_id (text_rid (k_server_spot_rid));
 
     const int base_port = settings.server_bind_port > 0

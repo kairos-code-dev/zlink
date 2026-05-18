@@ -79,6 +79,8 @@ final class SpotRoutedSupport implements AutoCloseable {
     private static final AtomicLong NEXT_CALLBACK_ID = new AtomicLong(1L);
     private static final ConcurrentMap<Long, CompletableFuture<Received>> PENDING =
       new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Long, PendingCallback> PENDING_CALLBACKS =
+      new ConcurrentHashMap<>();
     private static final ConcurrentMap<Long, SpotRoutedSupport> DISPATCH_RECEIVERS =
       new ConcurrentHashMap<>();
     private static final ScheduledExecutorService REQUEST_TIMEOUTS =
@@ -128,10 +130,13 @@ final class SpotRoutedSupport implements AutoCloseable {
                           SendFlags flags,
                           Duration timeout) {
         try {
-            requestToSpot(destNodeRid, destSpotRid, parts, timeout, flags)
-              .whenComplete((reply, error) -> callback.accept(error == null
-                ? RequestResult.OK : requestResult(error),
-                reply == null ? List.of() : reply));
+            requestViaNativeCallback(parts, callback, timeout,
+              (arena, payload, requestId, timeoutMs) -> {
+                  submitSpotRequestSpot(destNodeRid, destSpotRid, payload,
+                    REPLY_CALLBACK, MemorySegment.ofAddress(requestId),
+                    flags.value(), toTimeoutInt(timeoutMs));
+                  return 0;
+              });
             return true;
         } catch (SubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
@@ -161,10 +166,13 @@ final class SpotRoutedSupport implements AutoCloseable {
                             SendFlags flags,
                             Duration timeout) {
         try {
-            requestToRouter(peerRid, parts, timeout, flags)
-              .whenComplete((reply, error) -> callback.accept(error == null
-                ? RequestResult.OK : requestResult(error),
-                reply == null ? List.of() : reply));
+            requestViaNativeCallback(parts, callback, timeout,
+              (arena, payload, requestId, timeoutMs) -> {
+                  submitSpotRequestRouter(peerRid, payload, REPLY_CALLBACK,
+                    MemorySegment.ofAddress(requestId), flags.value(),
+                    toTimeoutInt(timeoutMs));
+                  return 0;
+              });
             return true;
         } catch (SubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
@@ -556,10 +564,24 @@ final class SpotRoutedSupport implements AutoCloseable {
                                           Duration timeout,
                                           NativeRequest request) {
         Objects.requireNonNull(callback, "callback");
-        requestViaNative(parts, timeout, request)
-          .whenComplete((reply, error) -> callback.accept(error == null
-            ? RequestResult.OK : requestResult(error),
-            reply == null ? List.of() : reply));
+        long timeoutMs = timeoutMillis(timeout);
+        long requestId = NEXT_REQUEST_ID.getAndIncrement();
+        PendingCallback pending = registerPendingCallback(requestId, timeoutMs,
+            callback);
+        RequestProgressPump.trackSpotRequest(pending.progress, handle(),
+            "zlink-spot-routed-request-progress");
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = request.invoke(arena, parts, requestId, timeoutMs);
+            if (rc != 0) {
+                PENDING_CALLBACKS.remove(requestId, pending);
+                pending.cancel();
+                throw new SubmitException(SubmitResult.fromValue(rc));
+            }
+        } catch (RuntimeException ex) {
+            PENDING_CALLBACKS.remove(requestId, pending);
+            pending.cancel();
+            throw ex;
+        }
     }
 
     private void sendViaNative(List<Message> parts, NativeSubmit submitter) {
@@ -910,32 +932,109 @@ final class SpotRoutedSupport implements AutoCloseable {
         return future;
     }
 
+    private static PendingCallback registerPendingCallback(
+      long requestId,
+      long timeoutMs,
+      BiConsumer<RequestResult, List<Message>> callback) {
+        PendingCallback pending = new PendingCallback(callback);
+        PENDING_CALLBACKS.put(requestId, pending);
+        ScheduledFuture<?> timeout = REQUEST_TIMEOUTS.schedule(() -> {
+            PendingCallback removed = PENDING_CALLBACKS.remove(requestId);
+            if (removed != null) {
+                removed.complete(RequestResult.TIMED_OUT, List.of(), null);
+            }
+        }, timeoutMs, TimeUnit.MILLISECONDS);
+        pending.setTimeout(timeout);
+        return pending;
+    }
+
     private static void handleReplyCallback(int result, MemorySegment parts,
                                             long partCount,
                                             MemorySegment userdata) {
         long requestId = userdata.address();
         CompletableFuture<Received> future = PENDING.remove(requestId);
+        PendingCallback pending = PENDING_CALLBACKS.remove(requestId);
         try {
             if (result != RequestResult.OK.value()) {
                 if (future != null) {
                     future.completeExceptionally(new RequestException(
                         RequestResult.fromValue(result), result));
                 }
+                if (pending != null) {
+                    pending.complete(RequestResult.fromValue(result), List.of(),
+                        null);
+                }
                 return;
             }
             Message[] frames = InternalAccess.messageFromOwnedMsgVectorShared(
               parts, partCount);
-            Received received = InternalAccess.received(null, null, frames, 0L,
-              false, null);
-            if (future == null || !future.complete(received)) {
-                received.close();
+            if (pending != null) {
+                pending.complete(RequestResult.OK, java.util.Arrays.asList(frames),
+                    frames);
+            } else {
+                Received received = InternalAccess.received(null, null, frames,
+                    0L, false, null);
+                if (future == null || !future.complete(received)) {
+                    received.close();
+                }
             }
         } catch (Throwable error) {
             if (future != null) {
                 future.completeExceptionally(error);
             }
+            if (pending != null) {
+                pending.completeExceptionally(error);
+            }
         } finally {
             NativeMsg.multipartClose(parts, partCount);
+        }
+    }
+
+    private static final class PendingCallback {
+        private final BiConsumer<RequestResult, List<Message>> callback;
+        private final CompletableFuture<Void> progress = new CompletableFuture<>();
+        private volatile ScheduledFuture<?> timeout;
+
+        private PendingCallback(
+          BiConsumer<RequestResult, List<Message>> callback) {
+            this.callback = callback;
+        }
+
+        private void setTimeout(ScheduledFuture<?> timeout) {
+            this.timeout = timeout;
+        }
+
+        private void cancel() {
+            ScheduledFuture<?> activeTimeout = timeout;
+            if (activeTimeout != null) {
+                activeTimeout.cancel(false);
+            }
+            progress.complete(null);
+        }
+
+        private void complete(RequestResult result, List<Message> reply,
+                              Message[] closeOnCallbackFailure) {
+            ScheduledFuture<?> activeTimeout = timeout;
+            if (activeTimeout != null) {
+                activeTimeout.cancel(false);
+            }
+            try {
+                callback.accept(result, reply);
+                progress.complete(null);
+            } catch (Throwable error) {
+                if (closeOnCallbackFailure != null) {
+                    Message.closeAll(closeOnCallbackFailure);
+                }
+                progress.completeExceptionally(error);
+            }
+        }
+
+        private void completeExceptionally(Throwable error) {
+            ScheduledFuture<?> activeTimeout = timeout;
+            if (activeTimeout != null) {
+                activeTimeout.cancel(false);
+            }
+            progress.completeExceptionally(error);
         }
     }
 

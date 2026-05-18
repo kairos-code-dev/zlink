@@ -169,12 +169,10 @@ class pubsub_client_bench_t
         return !_sockets.empty ();
     }
 
-    // Active aggregation closes via the application clock (deadline), and the
-    // server's wire-level stop token on the active topic wakes the -1 poller
-    // wait and ends the phase. The stop token is checked BEFORE parsing the
-    // payload header, matching the C reference recv_one_pubsub_message()
-    // (bindings/c/perf/multi/src/perf_multi_pubsub_client.cpp:76-79) and the
-    // run_recv_duration() stop handling (lines 203-206).
+    // Active aggregation is bounded by the application clock. The server's
+    // wire-level stop token still ends the phase early when delivered, but a
+    // lost stop token must not leave the client parked in poll forever after
+    // the active deadline has already elapsed.
     bool run_active_until_stop_token (
       std::chrono::milliseconds duration,
       unsigned long long *count_out,
@@ -197,16 +195,28 @@ class pubsub_client_bench_t
         bool phase_done = false;
 
         while (!phase_done) {
+            const auto now = std::chrono::steady_clock::now ();
+            if (now >= deadline)
+                break;
+            std::chrono::milliseconds poll_wait =
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - now);
+            if (poll_wait.count () <= 0)
+                poll_wait = std::chrono::milliseconds (1);
+
             _poll_events =
-              _poller.wait (0, std::chrono::milliseconds (-1));
+              _poller.wait (0, poll_wait);
             const int poll_rc = static_cast<int> (_poll_events.size ());
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)
                     continue;
                 return false;
             }
-            if (poll_rc == 0)
+            if (poll_rc == 0) {
+                if (std::chrono::steady_clock::now () >= deadline)
+                    break;
                 continue;
+            }
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 ::perf::socket_t *sock = NULL;

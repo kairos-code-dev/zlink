@@ -166,11 +166,7 @@ final class PerfMultiSpot {
     // (server_exit_124 -> status=partial). Use the converged bounded
     // equivalent (PerfSpot.publishWhenWritableUntil): re-stamped DONTWAIT
     // retry with a sub-millisecond park, never dropping, never blocking
-    // unbounded, terminated by the active deadline. Apples-to-apples
-    // isolated MULTI_SPOT/tcp/64B with this model is ~2.4M msg/s vs the
-    // isolated C reference ~0.31M msg/s (the 5.5M figure in the canonical
-    // full-matrix C report is a parallel-load artifact, not reproducible
-    // in isolation).
+    // unbounded, terminated by the active deadline.
     private static boolean publishWhenWritableUntil(Spot publisher,
                                                     Message message,
                                                     long deadlineNanos) {
@@ -251,6 +247,7 @@ final class PerfMultiSpot {
             for (int w = 0; w < workerCount; w++) {
                 final int workerId = w;
                 workers[w] = new Thread(() -> {
+                    TopicMessage reusable = new TopicMessage();
                     try {
                         while (System.nanoTime() < finishDeadline
                             && failure.get() == null) {
@@ -261,7 +258,7 @@ final class PerfMultiSpot {
                                 }
                                 if (drainSubscriber(subscribers.get(i),
                                         metrics, config.size(), activeEnd,
-                                        cooldownSeen, i)) {
+                                        cooldownSeen, i, reusable)) {
                                     progressed = true;
                                 }
                             }
@@ -277,6 +274,8 @@ final class PerfMultiSpot {
                         Thread.currentThread().interrupt();
                     } catch (Throwable ex) {
                         failure.compareAndSet(null, ex);
+                    } finally {
+                        reusable.close();
                     }
                 }, "spot-recv-worker-" + w);
                 workers[w].setDaemon(true);
@@ -308,15 +307,16 @@ final class PerfMultiSpot {
                                         int expectedSize,
                                         long activeEnd,
                                         boolean[] cooldownSeen,
-                                        int index) {
+                                        int index,
+                                        TopicMessage received) {
         boolean progressed = false;
         // C parity (perf_multi_spot_client.cpp drain_spot_client_slot): drain
         // until the recv would block (EAGAIN) with no fixed per-wake cap.
         while (true) {
-            try (TopicMessage received = subscribeNoWait(subscriber)) {
-                if (received == null) {
-                    return progressed;
-                }
+            if (!subscribeNoWait(subscriber, received)) {
+                return progressed;
+            }
+            try {
                 progressed = true;
                 int phase = handleDelivery(received, metrics, expectedSize,
                     activeEnd);
@@ -324,21 +324,23 @@ final class PerfMultiSpot {
                     cooldownSeen[index] = true;
                     return progressed;
                 }
+            } finally {
+                received.close();
             }
         }
     }
 
-    private static TopicMessage subscribeNoWait(Spot subscriber) {
+    private static boolean subscribeNoWait(Spot subscriber,
+                                           TopicMessage received) {
         try {
-            TopicMessage message = new TopicMessage();
-            return subscriber.subscribe(message, RecvFlags.DONT_WAIT) ? message : null;
+            return subscriber.subscribe(received, RecvFlags.DONT_WAIT);
         } catch (RecvException ex) {
             RecvResult result = ex.getResult();
             if (result == RecvResult.NO_DATA
                 || result == RecvResult.BUSY
                 || result == RecvResult.TERMINATED
                 || result == RecvResult.INVALID_HANDLE) {
-                return null;
+                return false;
             }
             throw new IllegalStateException("recv_result_" + result, ex);
         }

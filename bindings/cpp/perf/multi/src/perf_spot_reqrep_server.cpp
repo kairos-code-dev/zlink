@@ -175,6 +175,19 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
     catch (const std::exception &) {
         return false;
     }
+    const size_t snapshot_msg_size =
+      msg_sizes.empty () ? msg_size : msg_sizes[0];
+    if (!perf::multi::apply_spot_auto_hwm_msg_unit (
+          data_node, snapshot_msg_size)
+        || !perf::multi::apply_spot_auto_hwm_msg_unit (
+          control_node, snapshot_msg_size)
+        || !perf::multi::apply_spot_auto_hwm_msg_unit (
+          responder, snapshot_msg_size)
+        || !perf::multi::apply_spot_auto_hwm_msg_unit (
+          control_pub, snapshot_msg_size)
+        || !perf::multi::apply_spot_auto_hwm_msg_unit (
+          control_sub, snapshot_msg_size))
+        return false;
 
     const std::string endpoint =
       bind_data_endpoint (data_node, transport, settings.server_bind_port);
@@ -188,8 +201,10 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
         return false;
 
     (void) perf::multi::recalculate_auto_hwm (ctx);
-    perf::multi::emit_spot_node_auto_hwm_snapshot (data_node, transport, 64);
-    perf::multi::emit_spot_node_auto_hwm_snapshot (control_node, transport, 64);
+    perf::multi::emit_spot_node_auto_hwm_snapshot (
+      data_node, transport, snapshot_msg_size);
+    perf::multi::emit_spot_node_auto_hwm_snapshot (
+      control_node, transport, snapshot_msg_size);
 
     perf::multi::print_ready (endpoint);
     std::cout << "CONTROL_READY," << control_endpoint << std::endl;

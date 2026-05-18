@@ -1096,6 +1096,10 @@ public sealed partial class Spot : ISpot
         OnRoutedReply;
     private static readonly IntPtr RoutedReplyHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(RoutedReplyHandler);
+    private static readonly NativeMethods.ZlinkReplyHandlerDelegate RoutedReplyCallbackHandler =
+        OnRoutedReplyCallback;
+    private static readonly IntPtr RoutedReplyCallbackHandlerPtr =
+        Marshal.GetFunctionPointerForDelegate(RoutedReplyCallbackHandler);
     private static readonly NativeMethods.ZlinkFreeFnDelegate BorrowedBufferFree =
         OnBorrowedBufferFree;
     private static readonly IntPtr BorrowedBufferFreePtr =
@@ -1656,20 +1660,8 @@ public sealed partial class Spot : ISpot
             throw new ArgumentNullException(nameof(callback));
         try
         {
-            RequestReplySupport.AttachResultCallback(
-                () => RequestToSpotAsyncInternal(destNodeRid, destSpotRid, parts,
-                    timeout ?? TimeSpan.Zero, CancellationToken.None, (int)flags),
-                (result, reply) =>
-                {
-                    IReadOnlyList<Message> payload = Array.Empty<Message>();
-                    if (reply != null)
-                    {
-                        payload = RequestReplySupport.TakeOwnedParts(reply);
-                        reply.Dispose();
-                    }
-                    callback(result, payload);
-                });
-            return true;
+            return RequestToSpotCallbackInternal(destNodeRid, destSpotRid, parts,
+                callback, flags, timeout ?? TimeSpan.Zero);
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
             && RequestReplySupport.MapSendNoWaitResult(error)
@@ -2286,6 +2278,64 @@ public sealed partial class Spot : ISpot
                     flags, partFlag, timeoutMs));
     }
 
+    private unsafe bool RequestToSpotCallbackInternal(
+        RoutingId destNodeRid, RoutingId destSpotRid, IReadOnlyList<Message> parts,
+        Action<RequestResult, IReadOnlyList<Message>> callback, SendFlags flags,
+        TimeSpan timeout)
+    {
+        EnsureParts(parts, nameof(parts));
+        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
+        ZlinkRoutingId spotRid = destSpotRid.ToNative();
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        uint timeoutMs = NormalizeTimeout(timeout);
+        GCHandle handle = default;
+        SpotRequestCallbackState? state = null;
+
+        try
+        {
+            state = new SpotRequestCallbackState(callback,
+                RequestProgressPump.AttachSpotCallback(_handle));
+            handle = GCHandle.Alloc(state, GCHandleType.Normal);
+
+            for (int i = 0; i < cloned.Length; i++)
+            {
+                ZlinkMsg nativePart = default;
+                cloned[i].MoveTo(ref nativePart);
+                bool submitted = false;
+                try
+                {
+                    int rc = NativeMethods.zlink_spot_request_spot_part(_handle,
+                        ref nodeRid, ref spotRid, ref nativePart,
+                        RoutedReplyCallbackHandlerPtr, GCHandle.ToIntPtr(handle),
+                        (int)flags,
+                        i + 1 < cloned.Length
+                            ? NativeMethods.ZlinkPartFlag.More
+                            : NativeMethods.ZlinkPartFlag.Final,
+                        timeoutMs);
+                    submitted = true;
+                    if (rc != 0)
+                        throw ZlinkException.CreateSubmitException(
+                            NativeMethods.zlink_errno());
+                }
+                finally
+                {
+                    if (!submitted)
+                        NativeMethods.zlink_msg_close(ref nativePart);
+                }
+            }
+
+            return true;
+        }
+        catch
+        {
+            state?.DisposeProgress();
+            if (handle.IsAllocated)
+                handle.Free();
+            RequestReplySupport.DisposeParts(cloned);
+            throw;
+        }
+    }
+
     private unsafe Task<Received> RequestToRouterAsyncInternal(RoutingId peerRid,
         IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct,
         int flags = 0)
@@ -2368,6 +2418,77 @@ public sealed partial class Spot : ISpot
                 handle.Free();
             RequestReplySupport.DisposeParts(cloned);
             throw;
+        }
+    }
+
+    private sealed class SpotRequestCallbackState
+    {
+        private readonly Action<RequestResult, IReadOnlyList<Message>> _callback;
+        private readonly RequestProgressPump.ProgressLease _progress;
+        private int _completed;
+
+        internal SpotRequestCallbackState(
+            Action<RequestResult, IReadOnlyList<Message>> callback,
+            RequestProgressPump.ProgressLease progress)
+        {
+            _callback = callback;
+            _progress = progress;
+        }
+
+        internal bool TryStartCompletion()
+        {
+            if (Interlocked.Exchange(ref _completed, 1) != 0)
+                return false;
+            DisposeProgress();
+            return true;
+        }
+
+        internal void Invoke(RequestResult result,
+            IReadOnlyList<Message> payload)
+        {
+            try
+            {
+                _callback(result, payload);
+            }
+            catch (Exception ex)
+            {
+                Runtime.ReportUnhandledCallbackException(ex);
+            }
+        }
+
+        internal void DisposeProgress()
+        {
+            _progress.Dispose();
+        }
+    }
+
+    private static void OnRoutedReplyCallback(int result, IntPtr parts,
+        nuint partCount, IntPtr userData)
+    {
+        GCHandle handle = GCHandle.FromIntPtr(userData);
+        SpotRequestCallbackState state =
+            (SpotRequestCallbackState)handle.Target!;
+        try
+        {
+            if (!state.TryStartCompletion())
+                return;
+
+            if (result != 0)
+            {
+                state.Invoke((RequestResult)result, Array.Empty<Message>());
+                return;
+            }
+
+            Message[] replyParts = Message.FromNativeVector(parts, partCount);
+            parts = IntPtr.Zero;
+            partCount = 0;
+            state.Invoke(RequestResult.Ok, replyParts);
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
+            handle.Free();
         }
     }
 

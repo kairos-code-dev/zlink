@@ -381,6 +381,11 @@ class spot_client_bench_t
         if (!perf::multi::apply_spot_node_admission_hwm (
               *_control_node, control_hwm, control_hwm))
             return false;
+        const size_t snapshot_msg_size =
+          _msg_sizes.empty () ? static_cast<size_t> (64) : _msg_sizes[0];
+        if (!perf::multi::apply_spot_auto_hwm_msg_unit (
+              *_control_node, snapshot_msg_size))
+            return false;
 
         const int base_port = perf::multi::bench_port_base (50000);
         std::string local_control_endpoint;
@@ -401,6 +406,11 @@ class spot_client_bench_t
             || !_control_sub->valid ()) {
             return false;
         }
+        if (!perf::multi::apply_spot_auto_hwm_msg_unit (
+              *_control_pub, snapshot_msg_size)
+            || !perf::multi::apply_spot_auto_hwm_msg_unit (
+              *_control_sub, snapshot_msg_size))
+            return false;
 
         _control_pub->request_timeout (
           std::chrono::milliseconds (control_timeout_ms));
@@ -410,8 +420,6 @@ class spot_client_bench_t
 
         if (!perf::multi::recalculate_auto_hwm (_ctx))
             return false;
-        const size_t snapshot_msg_size =
-          _msg_sizes.empty () ? static_cast<size_t> (64) : _msg_sizes[0];
         perf::multi::emit_spot_node_auto_hwm_snapshot (
           *_control_node, _transport, snapshot_msg_size);
         std::cout << "CLIENT_CONTROL_ENDPOINT," << local_control_endpoint
@@ -428,6 +436,11 @@ class spot_client_bench_t
             return false;
         if (!perf::multi::apply_spot_node_admission_hwm (
               *_data_node, _settings.sndhwm, _settings.rcvhwm))
+            return false;
+        const size_t snapshot_msg_size =
+          _msg_sizes.empty () ? static_cast<size_t> (64) : _msg_sizes[0];
+        if (!perf::multi::apply_spot_auto_hwm_msg_unit (
+              *_data_node, snapshot_msg_size))
             return false;
         try {
             _data_node->connect_peer (_server_endpoint);
@@ -448,6 +461,9 @@ class spot_client_bench_t
               std::chrono::milliseconds (_settings.rcvtimeo_ms));
             slot->spot->set_subscription (k_topic);
             slot->owner = this;
+            if (!perf::multi::apply_spot_auto_hwm_msg_unit (
+                  *slot->spot, snapshot_msg_size))
+                return false;
 
             _slots.push_back (std::move (slot));
         }
@@ -456,8 +472,6 @@ class spot_client_bench_t
             return false;
         if (!perf::multi::recalculate_auto_hwm (_ctx))
             return false;
-        const size_t snapshot_msg_size =
-          _msg_sizes.empty () ? static_cast<size_t> (64) : _msg_sizes[0];
         perf::multi::emit_spot_node_auto_hwm_snapshot (
           *_data_node, _transport, snapshot_msg_size);
         return !_slots.empty ();

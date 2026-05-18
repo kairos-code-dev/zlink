@@ -17,6 +17,10 @@ import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class PerfControl {
+    private static final Object STDIN_LOCK = new Object();
+    private static final BufferedReader STDIN_READER = new BufferedReader(
+        new InputStreamReader(System.in, StandardCharsets.UTF_8));
+
     private PerfControl() {
     }
 
@@ -47,12 +51,12 @@ public final class PerfControl {
     public static void awaitStart(int size, String label) {
         String expected = "START," + size;
         try {
-            BufferedReader reader = new BufferedReader(
-                new InputStreamReader(System.in, StandardCharsets.UTF_8));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (expected.equals(line)) {
-                    return;
+            synchronized (STDIN_LOCK) {
+                String line;
+                while ((line = STDIN_READER.readLine()) != null) {
+                    if (expected.equals(line)) {
+                        return;
+                    }
                 }
             }
         } catch (java.io.IOException ex) {
@@ -64,12 +68,12 @@ public final class PerfControl {
     public static void awaitControlConnected(String endpoint, String label) {
         String expected = "CONTROL_CONNECTED," + endpoint;
         try {
-            BufferedReader reader = new BufferedReader(
-                new InputStreamReader(System.in, StandardCharsets.UTF_8));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (expected.equals(line)) {
-                    return;
+            synchronized (STDIN_LOCK) {
+                String line;
+                while ((line = STDIN_READER.readLine()) != null) {
+                    if (expected.equals(line)) {
+                        return;
+                    }
                 }
             }
         } catch (java.io.IOException ex) {
@@ -81,16 +85,16 @@ public final class PerfControl {
     public static void awaitStartAndAckControl(int size, String label) {
         String expectedStart = "START," + size;
         try {
-            BufferedReader reader = new BufferedReader(
-                new InputStreamReader(System.in, StandardCharsets.UTF_8));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.startsWith("CONNECT_CONTROL,")) {
-                    emitControlConnected(line.substring("CONNECT_CONTROL,".length()));
-                    continue;
-                }
-                if (expectedStart.equals(line)) {
-                    return;
+            synchronized (STDIN_LOCK) {
+                String line;
+                while ((line = STDIN_READER.readLine()) != null) {
+                    if (line.startsWith("CONNECT_CONTROL,")) {
+                        emitControlConnected(line.substring("CONNECT_CONTROL,".length()));
+                        continue;
+                    }
+                    if (expectedStart.equals(line)) {
+                        return;
+                    }
                 }
             }
         } catch (java.io.IOException ex) {

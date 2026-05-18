@@ -20,6 +20,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class RequestProgressPump {
     private static final int ZLINK_POLLCOMPLETION = 32;
     private static final long POLLER_EVENT_SIZE = 48;
+    private static final int POLLER_EVENT_BATCH = 64;
+    private static final long IDLE_KEEPALIVE_NANOS = 1_000_000_000L;
+    private static final int POLL_RECHECK_TIMEOUT_MS = 10;
     private static final ConcurrentMap<Key, Pump> PUMPS = new ConcurrentHashMap<>();
 
     private RequestProgressPump() {
@@ -102,16 +105,27 @@ public final class RequestProgressPump {
                     return;
                 }
                 try (Arena arena = Arena.ofConfined()) {
-                    MemorySegment event = arena.allocate(POLLER_EVENT_SIZE,
-                        Long.BYTES);
-                    while (pending.get() > 0) {
+                    MemorySegment events = arena.allocate(
+                        POLLER_EVENT_SIZE * POLLER_EVENT_BATCH, Long.BYTES);
+                    long idleDeadlineNs = 0L;
+                    for (;;) {
+                        int timeoutMs = POLL_RECHECK_TIMEOUT_MS;
+                        if (pending.get() <= 0) {
+                            long now = System.nanoTime();
+                            if (idleDeadlineNs == 0L) {
+                                idleDeadlineNs = now + IDLE_KEEPALIVE_NANOS;
+                            } else if (now >= idleDeadlineNs) {
+                                break;
+                            }
+                        } else {
+                            idleDeadlineNs = 0L;
+                        }
                         try {
-                            Native.pollerWait(poller, event, 1, -1);
+                            Native.pollerWait(poller, events,
+                                POLLER_EVENT_BATCH, timeoutMs);
                         } catch (Throwable ignored) {
                             break;
                         }
-                        if (pending.get() <= 0)
-                            break;
                     }
                 }
             } finally {

@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Systems.Zlink.Native;
@@ -11,8 +12,12 @@ namespace Systems.Zlink;
 internal static class RequestProgressPump
 {
     private const short PollCompletion = 32;
+    private const int PollerEventBatch = 64;
+    private const int PollRecheckTimeoutMs = 10;
+    private static readonly long IdleKeepaliveTicks =
+        Stopwatch.Frequency;
 
-    private sealed class ProgressState
+    internal sealed class ProgressState
     {
         internal int ActiveCount;
         internal int WorkerRunning;
@@ -29,6 +34,24 @@ internal static class RequestProgressPump
     internal static Task<T> AttachSpot<T>(IntPtr handle, Task<T> task)
     {
         return Attach(SpotStates, handle, task);
+    }
+
+    internal static ProgressLease AttachSpotCallback(IntPtr handle)
+    {
+        return Attach(SpotStates, handle);
+    }
+
+    private static ProgressLease Attach(
+        ConcurrentDictionary<nint, ProgressState> states, IntPtr handle)
+    {
+        if (handle == IntPtr.Zero)
+            return default;
+
+        nint key = handle;
+        ProgressState state = states.GetOrAdd(key, _ => new ProgressState());
+        Interlocked.Increment(ref state.ActiveCount);
+        EnsureWorker(states, key, state, handle);
+        return new ProgressLease(states, key, state);
     }
 
     private static Task<T> Attach<T>(ConcurrentDictionary<nint, ProgressState> states,
@@ -55,6 +78,35 @@ internal static class RequestProgressPump
         return task;
     }
 
+    internal readonly struct ProgressLease
+    {
+        private readonly ConcurrentDictionary<nint, ProgressState> _states;
+        private readonly nint _key;
+        private readonly ProgressState _state;
+        private readonly bool _active;
+
+        internal ProgressLease(
+            ConcurrentDictionary<nint, ProgressState> states, nint key,
+            ProgressState state)
+        {
+            _states = states;
+            _key = key;
+            _state = state;
+            _active = true;
+        }
+
+        public void Dispose()
+        {
+            if (!_active)
+                return;
+            if (Interlocked.Decrement(ref _state.ActiveCount) == 0
+                && Volatile.Read(ref _state.WorkerRunning) == 0)
+            {
+                _states.TryRemove(_key, out _);
+            }
+        }
+    }
+
     private static void EnsureWorker(
         ConcurrentDictionary<nint, ProgressState> states,
         nint key,
@@ -64,7 +116,7 @@ internal static class RequestProgressPump
         if (Interlocked.CompareExchange(ref state.WorkerRunning, 1, 0) != 0)
             return;
 
-        _ = Task.Run(async () =>
+        Thread worker = new(() =>
         {
             IntPtr poller = IntPtr.Zero;
             try
@@ -75,20 +127,37 @@ internal static class RequestProgressPump
                 if (NativeMethods.zlink_poller_add(poller, handle,
                     IntPtr.Zero, PollCompletion) != 0)
                     return;
-                ZlinkPollerEvent[] events = new ZlinkPollerEvent[1];
-                while (Volatile.Read(ref state.ActiveCount) > 0)
+                ZlinkPollerEvent[] events =
+                    new ZlinkPollerEvent[PollerEventBatch];
+                long idleDeadlineTicks = 0;
+                while (true)
                 {
+                    int activeCount = Volatile.Read(ref state.ActiveCount);
+                    if (activeCount <= 0)
+                    {
+                        long nowTicks = Stopwatch.GetTimestamp();
+                        if (idleDeadlineTicks == 0)
+                            idleDeadlineTicks = nowTicks + IdleKeepaliveTicks;
+                        else if (nowTicks >= idleDeadlineTicks)
+                            break;
+                    }
+                    else
+                    {
+                        idleDeadlineTicks = 0;
+                    }
+
                     try
                     {
-                        _ = NativeMethods.zlink_poller_wait(poller, events, 1,
-                            -1, out _);
+                        _ = NativeMethods.zlink_poller_wait(poller, events,
+                            events.Length,
+                            activeCount > 0 ? -1 : PollRecheckTimeoutMs,
+                            out _);
                     }
                     catch
                     {
                         break;
                     }
                 }
-                await Task.CompletedTask.ConfigureAwait(false);
             }
             finally
             {
@@ -105,6 +174,11 @@ internal static class RequestProgressPump
                 else
                     EnsureWorker(states, key, state, handle);
             }
-        });
+        })
+        {
+            IsBackground = true,
+            Name = "Zlink request progress"
+        };
+        worker.Start();
     }
 }

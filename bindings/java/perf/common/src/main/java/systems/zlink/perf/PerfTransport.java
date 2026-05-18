@@ -14,6 +14,11 @@ import systems.zlink.contracts.Socket;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.runtime.nativebridge.InternalAccess;
+import systems.zlink.runtime.nativebridge.Native;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -22,6 +27,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfTransport {
+    private static final int ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034;
+
     private PerfTransport() {
     }
 
@@ -172,7 +179,25 @@ final class PerfTransport {
     }
 
     static void applySpotOptions(SpotNode node, PerfUtil.Config config) {
-        // SpotNode public API intentionally exposes topology/lifecycle only.
+        if (config.size() <= 0) {
+            return;
+        }
+        setSpotNodeCommonIntOption(node, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+            config.size());
+    }
+
+    private static void setSpotNodeCommonIntOption(SpotNode node, int option,
+                                                   int value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
+            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
+            int rc = Native.setSockOpt(InternalAccess.spotNodeHandle(node),
+                option, nativeValue, Integer.BYTES);
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(
+                    "zlink_set_option");
+            }
+        }
     }
 
     static void await(CountDownLatch latch, String label, Duration timeout) {

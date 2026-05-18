@@ -10,6 +10,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <cstdint>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -47,9 +48,19 @@ template<typename SubjectT>
 inline bool apply_spot_auto_hwm_msg_unit (SubjectT &subject_,
                                           size_t msg_size_)
 {
-    (void) subject_;
-    (void) msg_size_;
-    return true;
+    if (msg_size_ == 0)
+        return true;
+    try {
+        apply_spot_auto_hwm_msg_unit_impl (
+          subject_,
+          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)),
+          0);
+        return true;
+    }
+    catch (const zlink::config_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
 }
 
 template<typename SpotNode>

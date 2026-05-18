@@ -31,7 +31,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -169,7 +168,13 @@ final class PerfMultiSpotReqRep {
             progressed = true;
             try (received) {
                 try (Message reply = received.firstPart().move()) {
-                    received.reply().message(reply).submit();
+                    try {
+                        received.reply().message(reply).submit();
+                    } catch (SubmitException ex) {
+                        if (!isTransientSubmit(ex)) {
+                            throw ex;
+                        }
+                    }
                 }
             }
         }
@@ -178,140 +183,151 @@ final class PerfMultiSpotReqRep {
     private static void runClientWorkers(List<Spot> requesters,
                                          PerfUtil.Config config,
                                          PerfUtil.Metrics metrics) {
+        int activeClients = activeSpotSlotLimit(requesters.size(), config.size());
+        Message[] payloads = new Message[activeClients];
+        AtomicBoolean[] waitingReply = new AtomicBoolean[activeClients];
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        PerfMultiSendLoops.runClients(requesters.size(), (index, durationSeconds) ->
-            new Thread(() -> {
-                try {
-                    Spot requester = requesters.get(index);
-                    long activeEnd = System.nanoTime()
-                        + durationSeconds * 1_000_000_000L;
-                    try (Message active = PerfUtil.payloadTemplate(config.size());
-                         Poller poller = new Poller()) {
-                        poller.add(requester, PollEventFlag.POLLIN,
-                            PollEventFlag.POLLOUT);
-                        while (System.nanoTime() < activeEnd) {
-                            PerfUtil.resetAndWritePayload(active, config.size(),
-                                (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                            PerfUtil.Header reply = requestReply(requester,
-                                poller, active, config.size(), activeEnd);
-                            if (reply != null
-                                && reply.phase() == PerfUtil.PHASE_ACTIVE
-                                && System.nanoTime() < activeEnd) {
-                                metrics.recordNanos(reply.latencyNanos() / 2L);
-                            }
-                        }
-                    }
-                } catch (Throwable ex) {
-                    failure.compareAndSet(null, ex);
-                    throw new IllegalStateException(ex);
+        for (int i = 0; i < activeClients; i++) {
+            payloads[i] = PerfUtil.payloadTemplate(config.size());
+            waitingReply[i] = new AtomicBoolean();
+        }
+        Poller completionPoller = null;
+        try {
+            List<PollEvent> completionEvents = new ArrayList<>(activeClients);
+            if (config.size() >= 65_536) {
+                completionPoller = new Poller();
+                for (int i = 0; i < activeClients; i++) {
+                    completionPoller.add(requesters.get(i), Integer.valueOf(i),
+                        PollEventFlag.POLLCOMPLETION);
                 }
-            }, "multi-spot-reqrep-client-" + index), config.durationSeconds());
-        if (failure.get() != null) {
-            throw new IllegalStateException("spot reqrep client failed",
-                failure.get());
+            }
+            long activeEnd = System.nanoTime()
+                + config.durationSeconds() * 1_000_000_000L;
+            while (System.nanoTime() < activeEnd) {
+                Throwable error = failure.get();
+                if (error != null) {
+                    throw new IllegalStateException(
+                        "spot reqrep callback failed", error);
+                }
+                boolean sendProgress = false;
+                boolean hasWaitingReply = false;
+                for (int i = 0; i < activeClients; i++) {
+                    if (waitingReply[i].get()) {
+                        hasWaitingReply = true;
+                        continue;
+                    }
+                    PerfUtil.resetAndWritePayload(payloads[i], config.size(),
+                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
+                    waitingReply[i].set(true);
+                    if (submitRequest(requesters.get(i), payloads[i],
+                            waitingReply[i], config.size(), activeEnd,
+                            metrics, failure)) {
+                        sendProgress = true;
+                    } else {
+                        waitingReply[i].set(false);
+                    }
+                }
+                if (!sendProgress && hasWaitingReply) {
+                    if (completionPoller != null) {
+                        completionPoller.wait(completionEvents,
+                            Duration.ofMillis(1));
+                    } else {
+                        java.util.concurrent.locks.LockSupport.parkNanos(
+                            100_000L);
+                    }
+                } else if (completionPoller != null) {
+                    completionPoller.wait(completionEvents,
+                        Duration.ZERO);
+                }
+            }
+            waitForOutstandingCallbacks(waitingReply, failure);
+        } finally {
+            if (completionPoller != null) {
+                completionPoller.close();
+            }
+            Message.closeAll(List.of(payloads));
         }
     }
 
-    private static PerfUtil.Header requestReply(Spot requester,
-                                                Poller poller,
-                                                Message payload,
-                                                int expectedSize,
-                                                long deadlineNs) {
-        for (;;) {
-            long remainingNs = deadlineNs - System.nanoTime();
-            if (remainingNs <= 0L) {
-                return null;
-            }
-            CountDownLatch done = new CountDownLatch(1);
-            AtomicReference<PerfUtil.Header> replyRef = new AtomicReference<>();
-            AtomicReference<RequestResult> resultRef = new AtomicReference<>();
-            AtomicReference<Throwable> callbackFailure = new AtomicReference<>();
-            boolean submitted;
-            try (Message outbound = Message.copyOf(payload)) {
-                submitted = requester.requestToSpot(
-                        SERVER_NODE_RID, SERVER_SPOT_RID)
-                    .message(outbound)
-                    .timeout(Duration.ofNanos(remainingNs))
-                    .flags(SendFlags.DONT_WAIT)
-                    .submit((result, parts) -> {
-                        try {
-                            resultRef.set(result);
-                            if (result == RequestResult.OK
-                                && parts != null
-                                && !parts.isEmpty()) {
-                                replyRef.set(PerfUtil.decodeHeader(
-                                    parts.get(0), expectedSize));
-                            }
-                        } catch (Throwable ex) {
-                            callbackFailure.compareAndSet(null, ex);
-                        } finally {
-                            Message.closeAll(parts);
-                            done.countDown();
-                        }
-                    });
-            } catch (SubmitException ex) {
-                if (!isTransientSubmit(ex)
-                    || !waitFor(poller, PollEventFlag.POLLOUT, deadlineNs)) {
-                    throw ex;
-                }
-                continue;
-            }
-            if (!submitted) {
-                if (!waitFor(poller, PollEventFlag.POLLOUT, deadlineNs)) {
-                    return null;
-                }
-                continue;
-            }
-            try {
-                long waitMillis = Math.max(1L,
-                    TimeUnit.NANOSECONDS.toMillis(remainingNs));
-                if (!done.await(waitMillis, TimeUnit.MILLISECONDS)) {
-                    return null;
-                }
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("spot reqrep interrupted", ex);
-            }
-            Throwable failure = callbackFailure.get();
-            if (failure != null) {
-                throw new IllegalStateException("spot reqrep callback failed",
-                    failure);
-            }
-            RequestResult result = resultRef.get();
-            if (result == RequestResult.BUSY
-                || result == RequestResult.NOT_CONNECTED
-                || result == RequestResult.TIMED_OUT) {
-                continue;
-            }
-            if (result != RequestResult.OK) {
-                throw new IllegalStateException("spot reqrep failed: "
-                    + result);
-            }
-            return replyRef.get();
+    private static boolean submitRequest(Spot requester,
+                                         Message payload,
+                                         AtomicBoolean waitingReply,
+                                         int expectedSize,
+                                         long activeEnd,
+                                         PerfUtil.Metrics metrics,
+                                         AtomicReference<Throwable> failure) {
+        long remainingNs = activeEnd - System.nanoTime();
+        if (remainingNs <= 0L) {
+            return false;
         }
+        try {
+            return requester.requestToSpot(SERVER_NODE_RID, SERVER_SPOT_RID)
+              .message(payload)
+              .timeout(Duration.ofNanos(remainingNs))
+              .flags(SendFlags.DONT_WAIT)
+              .submit((result, parts) -> {
+                  try {
+                      if (result == RequestResult.OK
+                          && parts != null
+                          && !parts.isEmpty()
+                          && System.nanoTime() < activeEnd) {
+                          PerfUtil.Header reply = PerfUtil.decodeHeader(
+                              parts.get(0), expectedSize);
+                          if (reply.phase() == PerfUtil.PHASE_ACTIVE) {
+                              metrics.recordNanos(reply.latencyNanos() / 2L);
+                        }
+                      }
+                  } catch (Throwable ex) {
+                      failure.compareAndSet(null, ex);
+                  } finally {
+                      Message.closeAll(parts);
+                      waitingReply.set(false);
+                  }
+              });
+        } catch (SubmitException ex) {
+            if (isTransientSubmit(ex)) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    private static void waitForOutstandingCallbacks(AtomicBoolean[] waitingReply,
+                                                    AtomicReference<Throwable> failure) {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(500);
+        while (System.nanoTime() < deadline) {
+            Throwable error = failure.get();
+            if (error != null) {
+                throw new IllegalStateException("spot reqrep callback failed",
+                    error);
+            }
+            boolean hasWaitingReply = false;
+            for (AtomicBoolean waiting : waitingReply) {
+                if (waiting.get()) {
+                    hasWaitingReply = true;
+                    break;
+                }
+            }
+            if (!hasWaitingReply) {
+                return;
+            }
+            java.util.concurrent.locks.LockSupport.parkNanos(100_000L);
+        }
+    }
+
+    private static int activeSpotSlotLimit(int clients, int msgSize) {
+        int hwmSlots = Math.max(1, 1_048_576 / Math.max(1, msgSize));
+        if (msgSize >= 131_072)
+            return Math.min(clients, Math.min(8, hwmSlots));
+        if (msgSize >= 65_536)
+            return Math.min(clients, Math.min(32, hwmSlots));
+        return clients;
     }
 
     private static boolean isTransientSubmit(SubmitException ex) {
         SubmitResult result = ex.getResult();
         return result == SubmitResult.BACKPRESSURED
             || result == SubmitResult.NOT_CONNECTED;
-    }
-
-    private static boolean waitFor(Poller poller, PollEventFlag expected,
-                                   long deadlineNs) {
-        List<PollEvent> events = new ArrayList<>(1);
-        for (;;) {
-            long remainingNs = deadlineNs - System.nanoTime();
-            if (remainingNs <= 0) {
-                return false;
-            }
-            poller.wait(events, Duration.ofMillis(-1));
-            for (PollEvent event : events) {
-                if (event.revents().contains(expected)) {
-                    return true;
-                }
-            }
-        }
     }
 
     private static Received recvRoutedNoWait(Spot spot) {

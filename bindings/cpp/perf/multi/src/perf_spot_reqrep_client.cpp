@@ -313,6 +313,9 @@ class spot_reqrep_client_bench_t
         if (!perf::multi::apply_spot_node_admission_hwm (
               *_data_node, _settings.sndhwm, _settings.rcvhwm))
             return false;
+        if (!perf::multi::apply_spot_auto_hwm_msg_unit (
+              *_data_node, _msg_size))
+            return false;
         _local_data_endpoint =
           perf::multi::bind_spot_endpoint (
             *_data_node, _transport, perf::multi::bench_port_base (52000));
@@ -342,6 +345,9 @@ class spot_reqrep_client_bench_t
             slot->spot->set_routing_id (zlink::routing_id_t::from_bytes (
               reinterpret_cast<const uint8_t *> (rid_text.data ()),
               rid_text.size ()));
+            if (!perf::multi::apply_spot_auto_hwm_msg_unit (
+                  *slot->spot, _msg_size))
+                return false;
             slot->payload.assign (payload_size, k_payload_fill);
             _slots.push_back (std::move (slot));
         }
@@ -597,6 +603,10 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
         || !perf::multi::apply_spot_node_admission_hwm (
           control_node, settings.sndhwm, settings.rcvhwm))
         return false;
+    const size_t snapshot_msg_size = msg_size;
+    if (!perf::multi::apply_spot_auto_hwm_msg_unit (
+          control_node, snapshot_msg_size))
+        return false;
 
     const int base_port = perf::multi::bench_port_base (50000);
     const std::string local_control_endpoint =
@@ -605,6 +615,9 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
         return false;
     zlink::service::spot_t control_spot = control_node.create_spot ();
     if (!control_spot.valid ())
+        return false;
+    if (!perf::multi::apply_spot_auto_hwm_msg_unit (
+          control_spot, snapshot_msg_size))
         return false;
     control_spot.set_subscription (k_control_topic);
     try {
@@ -615,7 +628,7 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
     }
     (void) perf::multi::recalculate_auto_hwm (control_ctx);
     perf::multi::emit_spot_node_auto_hwm_snapshot (
-      control_node, transport, 64);
+      control_node, transport, snapshot_msg_size);
     std::cout << "CLIENT_CONTROL_ENDPOINT," << local_control_endpoint
               << std::endl;
 

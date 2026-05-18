@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -116,14 +117,12 @@ class dealer_dealer_client_bench_t
                         NULL))
             return false;
 
-        // Signal active-phase end to the measuring server with a wire-level
-        // stop token on every client socket (blocking send, deadline
-        // ignored), matching the C reference per-socket send_stop_token loop
-        // (bindings/c/perf/multi/src/perf_multi_dealer_dealer_client.cpp:290-293).
-        for (size_t i = 0; i < _socket_states.size (); ++i) {
-            if (!send_stop_token (_socket_states[i]))
-                return false;
-        }
+        // Signal active-phase end to the measuring server. A large secure
+        // transport case can leave some sockets backpressured at the end of
+        // the active window; stop token delivery must not block forever on
+        // one saturated socket before trying the rest.
+        if (!send_stop_tokens ())
+            return false;
 
         std::cout << "CLIENT_DONE," << _msg_size << std::endl;
         return _result.active_count > 0;
@@ -291,41 +290,51 @@ class dealer_dealer_client_bench_t
         return false;
     }
 
-    // Blocking send of the wire-level stop token on one socket. Matches the
-    // C reference send_stop_token()
-    // (bindings/c/perf/multi/src/perf_multi_dealer_dealer_client.cpp:114-140).
-    bool send_stop_token (socket_state_t &state)
+    bool try_send_stop_token (socket_state_t &state)
     {
         if (!state.sock)
             return false;
         const size_t token_size = std::strlen (perf::multi::k_stop_token);
-        for (;;) {
-            zlink::message_t part =
-              zlink::message_t::from_bytes (
-                perf::multi::k_stop_token, token_size);
-            if (!part.valid ())
-                return false;
-            bool sent = false;
-            try {
-                sent = std::move (state.sock->send ())
-                         .message (part)
-                         .submit ();
-            }
-            catch (const zlink::submit_error_t &) {
-                const int err = errno;
-                if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
-                    || err == ETIMEDOUT)
-                    continue;
-                return false;
-            }
+        zlink::message_t part =
+          zlink::message_t::from_bytes (
+            perf::multi::k_stop_token, token_size);
+        if (!part.valid ())
+            return false;
+
+        try {
+            const bool sent = std::move (state.sock->send ())
+                                .message (part)
+                                .flags (zlink::send_flags_t::dontwait)
+                                .submit ();
             if (sent)
                 return true;
-            const int err = errno;
-            if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
-                || err == ETIMEDOUT)
-                continue;
-            return false;
         }
+        catch (const zlink::submit_error_t &) {
+            const int err = errno;
+            if (err != EINTR && err != EAGAIN && err != EWOULDBLOCK
+                && err != ETIMEDOUT)
+                return false;
+        }
+
+        return false;
+    }
+
+    bool send_stop_tokens ()
+    {
+        const int wait_ms = std::max (1, _settings.sndtimeo_ms);
+        const auto deadline =
+          std::chrono::steady_clock::now () + std::chrono::milliseconds (wait_ms);
+
+        do {
+            for (size_t i = 0; i < _socket_states.size (); ++i) {
+                if (try_send_stop_token (_socket_states[i]))
+                    return true;
+            }
+            std::this_thread::yield ();
+        } while (std::chrono::steady_clock::now () < deadline);
+
+        debug_log ("stop token send could not make progress");
+        return false;
     }
 
     bool run_phase (perf_metric::phase_t phase,

@@ -105,24 +105,44 @@ internal static class RequestReplySupport
                     ?? new ZlinkRequestException(RequestResult.ProtocolError);
                 if (error is ZlinkRequestException requestError)
                 {
-                    CallbackDelivery.Post(context, () => callback(
+                    DeliverCallback(context, () => callback(
                         (RequestResult)requestError.Code, null));
                     return;
                 }
 
-                CallbackDelivery.Post(context, () => callback(
+                DeliverCallback(context, () => callback(
                     RequestResult.ProtocolError, null));
                 return;
             }
             if (task.IsCanceled)
             {
-                CallbackDelivery.Post(context, () => callback(
+                DeliverCallback(context, () => callback(
                     RequestResult.Terminated, null));
                 return;
             }
-            CallbackDelivery.Post(context, () => callback(RequestResult.Ok,
+            DeliverCallback(context, () => callback(RequestResult.Ok,
                 task.Result));
-        }, TaskScheduler.Default);
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private static void DeliverCallback(SynchronizationContext? context,
+        Action action)
+    {
+        if (context != null)
+        {
+            CallbackDelivery.Post(context, action);
+            return;
+        }
+
+        try
+        {
+            action();
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+        }
     }
 
     internal static SendResult MapSendNoWaitResult(ZlinkException error)

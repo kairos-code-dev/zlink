@@ -8,7 +8,6 @@ import systems.zlink.contracts.service.spot.*;
 
 import systems.zlink.contracts.Message;
 import java.net.ServerSocket;
-import java.time.Instant;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -88,9 +87,7 @@ final class PerfMeasurement {
     }
 
     static long nowNs() {
-        Instant now = Instant.now();
-        return Math.addExact(Math.multiplyExact(now.getEpochSecond(), 1_000_000_000L),
-            now.getNano());
+        return System.nanoTime();
     }
 
     static double bytesToMb(long bytes) {

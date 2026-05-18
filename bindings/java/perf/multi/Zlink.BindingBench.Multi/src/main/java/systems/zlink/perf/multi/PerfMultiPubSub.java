@@ -139,13 +139,25 @@ final class PerfMultiPubSub {
                 pollSockets, PollEventFlag.POLLIN)) {
                 long activeEnd = System.nanoTime()
                     + config.durationSeconds() * 1_000_000_000L;
-                // C parity (perf_multi_pubsub_client.cpp run_recv_duration):
-                // signal-driven (-1) poll; the loop ends only on the wire-level
-                // stop token (or cooldown). The active deadline gates which
-                // messages are counted, not the poll timeout.
+                // The active deadline is authoritative for measurement. The
+                // server stop token still ends the phase early when delivered,
+                // but a lost stop token must not leave the client blocked in
+                // poll after the measured window has elapsed.
                 boolean phaseDone = false;
                 while (!phaseDone) {
-                    int readyCount = pollSet.poll(-1);
+                    long remainingNs = activeEnd - System.nanoTime();
+                    if (remainingNs <= 0L) {
+                        break;
+                    }
+                    int waitMs = (int) Math.min(Integer.MAX_VALUE,
+                        Math.max(1L, remainingNs / 1_000_000L));
+                    int readyCount = pollSet.poll(waitMs);
+                    if (readyCount <= 0) {
+                        if (System.nanoTime() >= activeEnd) {
+                            break;
+                        }
+                        continue;
+                    }
                     for (int readyOffset = 0; readyOffset < readyCount; readyOffset++) {
                         int index = pollSet.readyIndexAt(readyOffset);
                         if (!pollSet.isReady(index, PollEventFlag.POLLIN)) {

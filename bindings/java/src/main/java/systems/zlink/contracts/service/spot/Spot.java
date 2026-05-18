@@ -147,8 +147,16 @@ public final class Spot implements AutoCloseable {
         String cachedTopicString = "";
     }
 
+    private static final class SpotSendScratch {
+        final Arena arena = Arena.ofAuto();
+        final MemorySegment nativeMsg =
+          arena.allocate(NativeLayouts.MSG_LAYOUT);
+    }
+
     private final ThreadLocal<SpotRecvScratch> spotRecvScratch =
       ThreadLocal.withInitial(SpotRecvScratch::new);
+    private final ThreadLocal<SpotSendScratch> spotSendScratch =
+      ThreadLocal.withInitial(SpotSendScratch::new);
 
     @FunctionalInterface
     private interface SubscribeCallback {
@@ -260,18 +268,21 @@ public final class Spot implements AutoCloseable {
     }
 
     public SendOp publish(String topicId) {
-        return new SendBuilder((parts, flags) ->
-            publish(topicId, parts, flags));
+        return new SendBuilder(
+          (part, flags) -> publish(topicId, part, flags),
+          (parts, flags) -> publish(topicId, parts, flags));
     }
 
     public SendOp sendChannel(String channelName) {
-        return new SendBuilder((parts, flags) ->
-            sendChannel(channelName, parts, flags));
+        return new SendBuilder(
+          (part, flags) -> sendChannel(channelName, part, flags),
+          (parts, flags) -> sendChannel(channelName, parts, flags));
     }
 
     public SendOp sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid) {
-        return new SendBuilder((parts, flags) ->
-            sendToSpot(destNodeRid, destSpotRid, parts, flags));
+        return new SendBuilder(
+          (part, flags) -> sendToSpot(destNodeRid, destSpotRid, part, flags),
+          (parts, flags) -> sendToSpot(destNodeRid, destSpotRid, parts, flags));
     }
 
     public RequestOp requestChannel(String channelName) {
@@ -1232,19 +1243,36 @@ public final class Spot implements AutoCloseable {
     }
 
     private final class SendBuilder implements SendOp, SendSubmitOp {
+        private final SingleSendInvoker singleInvoker;
         private final SendInvoker invoker;
-        private final MessagePartsBuffer parts = new MessagePartsBuffer();
+        private Message singlePart;
+        private MessagePartsBuffer parts;
+        private int partCount;
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
-        private SendBuilder(SendInvoker invoker) {
+        private SendBuilder(SingleSendInvoker singleInvoker,
+                            SendInvoker invoker) {
+            this.singleInvoker = Objects.requireNonNull(singleInvoker,
+              "singleInvoker");
             this.invoker = invoker;
         }
 
         @Override
         public SendSubmitOp message(Message part) {
             ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
+            Objects.requireNonNull(part, "part");
+            if (partCount == 0) {
+                singlePart = part;
+            } else {
+                if (parts == null) {
+                    parts = new MessagePartsBuffer();
+                    parts.add(singlePart);
+                    singlePart = null;
+                }
+                parts.add(part);
+            }
+            partCount++;
             return this;
         }
 
@@ -1258,12 +1286,15 @@ public final class Spot implements AutoCloseable {
         @Override
         public boolean submit() {
             markSubmitted();
+            if (partCount == 1) {
+                return singleInvoker.submit(singlePart, flags);
+            }
             return invoker.submit(parts.asList(), flags);
         }
 
         private void markSubmitted() {
             ensureNotSubmitted();
-            if (parts.isEmpty())
+            if (partCount == 0)
                 throw new IllegalArgumentException("at least one message required");
             submitted = true;
         }
@@ -1415,6 +1446,11 @@ public final class Spot implements AutoCloseable {
             if (submitted)
                 throw new IllegalStateException("operation already submitted");
         }
+    }
+
+    @FunctionalInterface
+    private interface SingleSendInvoker {
+        boolean submit(Message part, SendFlags flags);
     }
 
     @FunctionalInterface
@@ -1845,15 +1881,19 @@ public final class Spot implements AutoCloseable {
 
     private int spotPublishPartOnce(String topicId, Message part, int flags,
                                     int partFlag) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment topic = topicCString(topicId);
-            return spotPublishPartOnce(topic, part, flags, partFlag, arena);
-        }
+        return spotPublishPartOnce(topicCString(topicId), part, flags,
+          partFlag, spotSendScratch.get().nativeMsg);
     }
 
     private int spotPublishPartOnce(MemorySegment topic, Message part,
                                     int flags, int partFlag, Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        return spotPublishPartOnce(topic, part, flags, partFlag,
+          arena.allocate(NativeLayouts.MSG_LAYOUT));
+    }
+
+    private int spotPublishPartOnce(MemorySegment topic, Message part,
+                                    int flags, int partFlag,
+                                    MemorySegment nativeMsg) {
         Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
         try {
             int rc = Native.spotPublishPart(handle, topic, nativeMsg, flags,

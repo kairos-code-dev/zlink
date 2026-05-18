@@ -20,6 +20,7 @@ internal static class PerfMultiSpotReqRep
     private const int ActiveWakeTag = -4;
     private static int s_debugClientSendLogs;
     private static int s_debugClientReplyLogs;
+    private static int s_debugClientHeaderLogs;
     private static int s_debugClientPhaseLogs;
     private static int s_debugServerRecvLogs;
     private static int s_debugServerReplyLogs;
@@ -60,7 +61,7 @@ internal static class PerfMultiSpotReqRep
     }
 
     private static readonly SpotEchoConfig ReqRepConfig = new(
-        SpotEchoMode.SendSend,
+        SpotEchoMode.RequestReply,
         ReqRepPattern,
         "SPOT-REQREP-SERVER-NODE",
         "SPOT-REQREP-SERVER-SPOT",
@@ -347,8 +348,9 @@ internal static class PerfMultiSpotReqRep
                 return 2;
             }
 
-            if (!RunActiveWindow(slots, size, durationSeconds, readyTimeoutMs,
-                    config))
+            int requestTimeoutMs = ResolveSpotReqRepRequestTimeoutMs(options);
+            if (!RunActiveWindow(slots, size, durationSeconds,
+                    requestTimeoutMs, config))
                 return 2;
 
             return PrintMultiResult(config.Pattern, options.Transport, size,
@@ -631,8 +633,7 @@ internal static class PerfMultiSpotReqRep
                 Message reply = received.FirstPart();
                 if (mode == SpotEchoMode.RequestReply)
                 {
-                    received.Reply().Message(reply)
-                        .Flags(SendFlags.DontWait).Submit();
+                    received.Reply().Message(reply).Submit();
                     DebugLogLimited(ref s_debugServerReplyLogs,
                         "spot_reqrep_server: reply ok");
                 }
@@ -662,7 +663,7 @@ internal static class PerfMultiSpotReqRep
     }
 
     private static bool RunActiveWindow(List<ClientSlot> slots, int size,
-        int durationSeconds, int readyTimeoutMs, SpotEchoConfig config)
+        int durationSeconds, int requestTimeoutMs, SpotEchoConfig config)
     {
         Exception? failure = null;
         long activeDeadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
@@ -721,7 +722,7 @@ internal static class PerfMultiSpotReqRep
                 try
                 {
                     SendResult result = config.Mode == SpotEchoMode.RequestReply
-                        ? TrySendRequest(slot, size, readyTimeoutMs, config)
+                        ? TrySendRequest(slot, size, requestTimeoutMs, config)
                         : TrySendOneWay(slot, size, config);
                     if (result == SendResult.Sent)
                         sendProgress = true;
@@ -739,10 +740,6 @@ internal static class PerfMultiSpotReqRep
                     return false;
                 }
             }
-
-            if (config.Mode == SpotEchoMode.RequestReply)
-                DrainRequestReplyFallback(slots, activeSlots, size,
-                    activeDeadlineTicks);
 
             if (sendProgress)
                 continue;
@@ -762,7 +759,7 @@ internal static class PerfMultiSpotReqRep
         }
 
         DebugLogLimited(ref s_debugClientPhaseLogs,
-            $"spot_reqrep_client: active loop end count={TotalMeasureCount(slots)}");
+            $"spot_reqrep_client: active loop end count={TotalMeasureCount(slots)} deadline={activeDeadlineTicks} now={Stopwatch.GetTimestamp()}");
         if (config.Mode == SpotEchoMode.RequestReply)
             WaitForPendingReplies(slots, activeSlots, 1000);
         DebugLogLimited(ref s_debugClientPhaseLogs,
@@ -799,16 +796,16 @@ internal static class PerfMultiSpotReqRep
     }
 
     private static SendResult TrySendRequest(ClientSlot slot, int size,
-        int readyTimeoutMs, SpotEchoConfig config)
+        int requestTimeoutMs, SpotEchoConfig config)
     {
         ulong seq = slot.NextSeq++;
-        ReadOnlySpan<byte> payloadBytes = slot.PreparePayload(size, seq);
-        using var payload = new Message(payloadBytes);
+        byte[] payloadBytes = slot.PreparePayload(size, seq);
+        using var payload = Message.WrapBytes(payloadBytes);
         Volatile.Write(ref slot.WaitingReply, 1);
         bool submitted = slot.Requester
             .RequestToSpot(config.ServerNodeRoutingId, config.ServerSpotRoutingId)
             .Message(payload)
-            .Timeout(TimeSpan.FromMilliseconds(Math.Max(1, readyTimeoutMs)))
+            .Timeout(TimeSpan.FromMilliseconds(Math.Max(1, requestTimeoutMs)))
             .Flags(SendFlags.DontWait)
             .Submit((result, parts) =>
                 OnRequestReply(slot, result, parts, size));
@@ -824,12 +821,22 @@ internal static class PerfMultiSpotReqRep
         return SendResult.Blocked;
     }
 
+    private static int ResolveSpotReqRepRequestTimeoutMs(PerfOptions options)
+    {
+        int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
+        if (rcvTimeoutMs > 0)
+            return rcvTimeoutMs;
+
+        int sndTimeoutMs = ResolveMultiSndTimeoutMs(options);
+        return sndTimeoutMs > 0 ? sndTimeoutMs : 200;
+    }
+
     private static SendResult TrySendOneWay(ClientSlot slot, int size,
         SpotEchoConfig config)
     {
         ulong seq = slot.NextSeq++;
-        ReadOnlySpan<byte> payloadBytes = slot.PreparePayload(size, seq);
-        using var payload = new Message(payloadBytes);
+        byte[] payloadBytes = slot.PreparePayload(size, seq);
+        using var payload = Message.WrapBytes(payloadBytes);
         Volatile.Write(ref slot.WaitingReply, 1);
         bool submitted = slot.Requester
             .SendToSpot(config.ServerNodeRoutingId, config.ServerSpotRoutingId)
@@ -958,11 +965,15 @@ internal static class PerfMultiSpotReqRep
                 return;
 
             ReadOnlySpan<byte> body = replyParts[0].AsReadOnlySpan();
-            if (PerfShared.TryDecodeMetricHeader(body,
+            if (!PerfShared.TryDecodeMetricHeader(body,
                     out PerfMetricHeader header))
             {
-                RecordReply(slot, header, size);
+                DebugLogLimited(ref s_debugClientHeaderLogs,
+                    $"spot_reqrep_client: reply decode failed size={body.Length}");
+                return;
             }
+
+            RecordReply(slot, header, size);
         }
         finally
         {
@@ -1019,10 +1030,14 @@ internal static class PerfMultiSpotReqRep
             || header.MsgSize != (uint)size
             || header.RunId != RunId)
         {
+            DebugLogLimited(ref s_debugClientHeaderLogs,
+                $"spot_reqrep_client: reply header mismatch run={header.RunId} phase={header.Phase} size={header.MsgSize} expected_size={size}");
             return;
         }
 
         Interlocked.Increment(ref slot.MeasureCount);
+        DebugLogLimited(ref s_debugClientHeaderLogs,
+            $"spot_reqrep_client: recorded reply seq={header.Seq} count={Volatile.Read(ref slot.MeasureCount)}");
         slot.Wake?.Signal();
         ulong nowNs = EpochNs();
         if (header.SentTsNs > 0 && nowNs >= header.SentTsNs)
@@ -1033,10 +1048,11 @@ internal static class PerfMultiSpotReqRep
 
     private static int ActiveSpotSlotLimit(int totalSlots, int msgSize)
     {
+        int hwmSlots = Math.Max(1, 1_048_576 / Math.Max(1, msgSize));
         if (msgSize >= 131072)
-            return Math.Min(totalSlots, 8);
+            return Math.Min(totalSlots, Math.Min(8, hwmSlots));
         if (msgSize >= 65536)
-            return Math.Min(totalSlots, 32);
+            return Math.Min(totalSlots, Math.Max(1, Math.Min(32, hwmSlots) / 2));
         return totalSlots;
     }
 
@@ -1198,7 +1214,7 @@ internal static class PerfMultiSpotReqRep
         internal PollWake? Wake;
         private byte[] _payload = Array.Empty<byte>();
 
-        internal ReadOnlySpan<byte> PreparePayload(int size, ulong seq)
+        internal byte[] PreparePayload(int size, ulong seq)
         {
             int payloadSize = Math.Max(size, PerfMetricHeaderSize);
             if (_payload.Length != payloadSize)
@@ -1209,7 +1225,7 @@ internal static class PerfMultiSpotReqRep
 
             StampMetricHeader(_payload.AsSpan(), RunId, PerfPhase.Active,
                 size, seq, EpochNs());
-            return _payload.AsSpan();
+            return _payload;
         }
 
         internal void ResetForActive()

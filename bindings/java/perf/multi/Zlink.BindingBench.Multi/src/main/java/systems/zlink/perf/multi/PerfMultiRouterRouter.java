@@ -54,7 +54,6 @@ final class PerfMultiRouterRouter {
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiMonitorAutoHwm(config, monitor, "server",
                 "server", SocketType.ROUTER);
-            int stops = 0;
             Deque<PendingReply> pendingReplies = new ArrayDeque<>();
             // Long-lived caller-provided Received reused across every recv on
             // the server hot path. The binding refills its internal state in
@@ -64,17 +63,22 @@ final class PerfMultiRouterRouter {
             systems.zlink.contracts.Received receivedBuffer = new systems.zlink.contracts.Received();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 List.of(server), PollEventFlag.POLLIN)) {
-                // PERF_MULTI_TEST_POLICY § 1.2 echo server: DONT_WAIT + per-socket
-                // pending deque, drain POLLIN until EAGAIN, drain POLLOUT to flush
-                // pending. § 1.3.1: signal-driven wait (-1).
-                while (stops < config.clients()) {
+                long activeEnd = System.nanoTime()
+                    + config.durationSeconds() * 1_000_000_000L;
+                while (System.nanoTime() < activeEnd
+                    || !pendingReplies.isEmpty()) {
                     if (pendingReplies.isEmpty()) {
                         pollSet.setEvents(0, PollEventFlag.POLLIN);
                     } else {
                         pollSet.setEvents(0,
                             PollEventFlag.POLLIN, PollEventFlag.POLLOUT);
                     }
-                    pollSet.poll(-1);
+                    long remainingNs = activeEnd - System.nanoTime();
+                    int waitMs = remainingNs > 0L
+                        ? (int) Math.min(Integer.MAX_VALUE,
+                            Math.max(1L, remainingNs / 1_000_000L))
+                        : 1;
+                    pollSet.poll(waitMs);
                     boolean writable =
                         pollSet.isReady(0, PollEventFlag.POLLOUT);
                     boolean readable =
@@ -100,7 +104,6 @@ final class PerfMultiRouterRouter {
 
                         if (PerfStopToken.isStopTokenMessage(
                                 receivedBuffer.firstPart())) {
-                            stops++;
                             receivedBuffer.close();
                             continue;
                         }
@@ -247,7 +250,13 @@ final class PerfMultiRouterRouter {
                         waitingWritable[idx]);
                 }
                 rrIndex = (startIndex + 1) % n;
-                int readyCount = pollSet.poll(-1);
+                long remainingNs = activeEnd - System.nanoTime();
+                if (remainingNs <= 0L) {
+                    break;
+                }
+                int waitMs = (int) Math.min(Integer.MAX_VALUE,
+                    Math.max(1L, remainingNs / 1_000_000L));
+                int readyCount = pollSet.poll(waitMs);
                 for (int readyOffset = 0; readyOffset < readyCount;
                      readyOffset++) {
                     int idx = pollSet.readyIndexAt(readyOffset);
@@ -275,6 +284,7 @@ final class PerfMultiRouterRouter {
                         .message(stop)
                         .flags(SendFlags.DONT_WAIT)
                         .submit();
+                } catch (RuntimeException ignored) {
                 }
             }
         }

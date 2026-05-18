@@ -356,6 +356,31 @@
 
 ## Java
 
+- `tcp` full
+  - Java: `perf_java_multi_linux_20260518_160351_codex_java_tcp_full_status.txt`
+    - 상태: complete, 46 success / 0 fail
+    - `Effective Options`: transport `tcp`, duration 5s, clients 100,
+      timeout auto, auto-HWM, socket buffer auto-HWM.
+  - 판정 요약
+    - `DEALER_DEALER`: 전체 통과, C 대비 `68.2%~92.7%`.
+    - `DEALER_ROUTER`: 전체 통과, C 대비 `55.3%~87.0%`.
+    - `ROUTER_ROUTER`: 64/256/1024는 절대 기준 통과지만 C의
+      `ROUTER_ROUTER / DEALER_ROUTER` 상대 비율보다 22.0~22.8%p 낮아 `미달`.
+      65536/131072/262144는 통과.
+    - `PUBSUB`: 전체 통과, C 대비 `90.6%~256.7%`.
+    - `STREAM`: 전체 통과, C 대비 `102.5%~135.1%`.
+  - SPOT 계열
+    - full 결과의 SPOT 계열은 `MsgUnit(B)=4096`으로 출력되어 유효 비교로 쓰지 않는다.
+    - 비공개 native bridge로 SpotNode 내부 pub/sub message unit을 맞추는 후보를
+      제한 측정했지만 서버가 `READY`를 내기 전에 timeout으로 실패했다.
+    - 이 후보는 public API hot path도 아니고 안정적으로 동작하지 않아 원복했다.
+    - 현재 Java public API에는 SpotNode의 SPOT 내부 pub/sub message unit을 테스트
+      size로 맞추는 계약이 없다. 하지만 `MsgUnit(B)` 불일치와 public API 제약만으로
+      보류하지 않는다. small size 수치가 낮고 내부 개선 후보가 남아 있으므로 SPOT
+      계열은 `미달`로 유지한다.
+  - 정정: Java `tcp`는 아직 완료가 아니다. `MULTI_ROUTER_ROUTER/tcp/64,256,1024`,
+    `MULTI_SPOT`, `MULTI_SPOT_REQREP`, `MULTI_SPOT_SENDSEND` 미달을 먼저 개선한다.
+- 아래 항목은 `tcp` full 전의 부분 측정 기록이다.
 - `MULTI_PUBSUB/tcp/64`
   - Java: `2075974.2`
   - C 기준: `3518022.8`
@@ -386,6 +411,150 @@
   - 결과: `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260518_111220_codex_java_mdr_tcp65536_131072_after_router_single_fastpath.txt`
 - SPOT 계열
   - `MsgUnit(B)=4096` 불일치 때문에 64B 유효 비교로 보지 않는다.
+
+- Java SPOT 개선 라운드
+  - 적용한 내부 변경
+    - `PerfTransport.applySpotOptions`에서 C perf와 같은
+      `zlink_set_option(..., ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES)` 경로로
+      SpotNode의 auto-HWM message unit을 테스트 size와 맞췄다.
+      Java public API surface는 변경하지 않았다.
+    - `MULTI_SPOT_SENDSEND` 클라이언트는 C perf처럼 하나의 poll loop가 여러
+      Spot을 round-robin으로 구동하도록 바꿨다. 100개 Java thread 구조는 C의
+      측정 의미와 달라서 제거했다.
+  - 성공한 제한 측정
+    - Java:
+      `perf_java_multi_linux_20260518_164226_codex_java_tcp_spot_family_after_sendsend_msgunit.txt`
+    - C `MULTI_SPOT` 제한 기준:
+      `perf_c_multi_linux_20260518_165437_codex_c_tcp_spot_isolated_compare.txt`
+    - C `MULTI_SPOT_SENDSEND` 제한 기준:
+      `perf_c_multi_linux_20260518_163633_codex_c_tcp_sendsend_isolated_compare.txt`
+  - 판정
+    - `MULTI_SPOT_SENDSEND/tcp/64,256,1024`: Java `177K~194Kops/s`,
+      C 제한 기준 `75.6%~80.9%`, 통과.
+    - `MULTI_SPOT/tcp/*`: `MsgUnit(B)`는 정렬됐지만 C 제한 기준
+      `34.3%~43.1%`, 미달.
+    - `MULTI_SPOT_REQREP/tcp/64,256,1024`: `4.2%~4.7%`, 미달.
+    - `MULTI_SPOT_REQREP/tcp/65536,131072,262144`와
+      `MULTI_SPOT_SENDSEND/tcp/65536,131072,262144`: timeout 또는 실패, 미달.
+  - 실패한 후보
+    - `Spot.recvRouted(Received, ...)`를 직접 채우는 fast path는
+      `MULTI_SPOT_SENDSEND/tcp/64,256,1024`를 약 `2.5Kops/s`까지 낮춰 폐기했다.
+    - `SPOT_REQREP` 클라이언트의 per-request latch를 없앤 async window 후보는
+      `256B`만 `2.8Kops/s`로 성공하고 `64/1024B`가 실패해 폐기했다.
+  - 다음 내부 후보
+    - `SPOT_REQREP`는 public request API의 hot path가 spot마다 progress pump를
+      따로 갖는 구조라, C처럼 여러 spot request를 하나의 progress loop에서
+      처리할 수 있는 내부 개선을 먼저 검토한다.
+
+- Java `MULTI_SPOT_REQREP/tcp` progress pump와 client submit loop 개선
+  - 코드 변경
+    - `RequestProgressPump`가 request 하나가 끝날 때마다 poller/thread를 바로
+      종료하지 않고 짧은 idle 구간 동안 유지하도록 바꿨다. public API는 변경하지
+      않았다.
+    - Java perf client의 `MULTI_SPOT_REQREP` hot loop를 100개 worker와
+      per-request latch 구조에서 하나의 submit loop와 callback 완료 처리 구조로
+      바꿨다. 큰 message에서는 C perf와 같은 active slot 제한을 적용했다.
+    - transient submit backpressure는 C perf와 같이 fatal 실패로 보지 않고 같은
+      active window 안에서 재시도하도록 정렬했다.
+  - 측정 결과
+    - `64B`: `166673.2ops/s`, C full 기준 `86.6%`, 통과.
+      결과: `perf_java_multi_linux_20260518_170706_codex_java_tcp_reqrep_single_submit_loop.txt`
+    - `256B`: `162561.6ops/s`, C full 기준 `75.6%`, 통과.
+      결과: `perf_java_multi_linux_20260518_170747_codex_java_tcp_reqrep_single_submit_loop_256_recheck.txt`
+    - `1024B`: `148392.4ops/s`, C full 기준 `66.2%`, 통과.
+      결과: `perf_java_multi_linux_20260518_170706_codex_java_tcp_reqrep_single_submit_loop.txt`
+    - `65536B,131072B,262144B`: timeout은 없어졌지만 C full 기준
+      `0.16%~0.38%`로 미달.
+      결과: `perf_java_multi_linux_20260518_170802_codex_java_tcp_reqrep_single_submit_loop_large.txt`
+  - 판정
+    - `MULTI_SPOT_REQREP/tcp/64,256,1024`: 통과.
+    - `MULTI_SPOT_REQREP/tcp/65536,131072,262144`: 미달. public API 제한 또는
+      timeout을 보류 사유로 쓰지 않고, 큰 message에서 submit/copy/progress 경로의
+      내부 후보를 계속 확인한다.
+
+- Java `MULTI_SPOT_REQREP/tcp` 큰 message 후속 개선
+  - 코드 변경
+    - 작은 message는 기존 dispatch callback server 경로를 유지하고, 큰 message만
+      server active loop에서 직접 `recvRouted(DONT_WAIT)`를 drain하도록 분기했다.
+    - server reply의 transient submit 실패는 C perf처럼 fatal로 보지 않고 계속
+      진행하도록 맞췄다.
+    - 큰 message client는 active spot에 대해 public `Poller`의 `POLLCOMPLETION`을
+      함께 기다리도록 했다.
+  - 최신 측정
+    - `64,256,1024B`: `163.5K,163.6K,151.0Kops/s`,
+      C full 기준 `67.3%~84.9%`, 통과.
+      결과: `perf_java_multi_linux_20260518_171915_codex_java_tcp_reqrep_size_split_small_recheck.txt`
+    - `65536,131072B`: `7.68K,4.06Kops/s`,
+      C full 기준 `14.3%~17.4%`, 미달.
+      결과: `perf_java_multi_linux_20260518_171620_codex_java_tcp_reqrep_completion_poller_large.txt`
+    - `262144B`: `1.60Kops/s`, C full 기준 `19.2%`, 미달.
+      결과: `perf_java_multi_linux_20260518_171738_codex_java_tcp_reqrep_262144_completion_poller_recheck.txt`
+  - 판정
+    - 큰 message는 timeout/no-sample 문제가 사라졌지만 목표와 큰 차이가 남아 있다.
+      보류가 아니며, 다음 후보는 SPOT routed reply/request large payload의 내부
+      submit 경로와 copy/reference 처리를 계속 확인하는 것이다.
+
+- Java `MULTI_SPOT/tcp` TopicMessage 재사용 후보
+  - 코드 변경
+    - receive worker가 message마다 `TopicMessage`를 새로 만들지 않고, public
+      `subscribe(TopicMessage, DONT_WAIT)`의 caller-provided 결과 객체를 worker별로
+      재사용하도록 바꿨다.
+  - 측정 결과
+    - `64,256,1024B`: `2.35M,2.31M,2.51Mmsg/s`,
+      C 제한 기준 `33.9%~41.4%`, 미달.
+      결과: `perf_java_multi_linux_20260518_172205_codex_java_tcp_spot_reuse_topicmessage_small.txt`
+    - `65536B`: `810.7Kmsg/s`, C 제한 기준 `64.3%`, 통과.
+    - `131072,262144B`: `288.0K,148.0Kmsg/s`,
+      C 제한 기준 `30.4%~34.4%`, 미달.
+      결과: `perf_java_multi_linux_20260518_172316_codex_java_tcp_spot_reuse_topicmessage_large.txt`
+  - 판정
+    - `MULTI_SPOT/tcp/65536`은 통과로 변경한다.
+    - 나머지 `MULTI_SPOT` size는 미달이며 보류가 아니다.
+
+- .NET `MULTI_SPOT_REQREP/tcp` C 대비 확인
+  - 기준 파일
+    - .NET: `perf_dotnet_multi_linux_20260518_142736_codex_dotnet_tcp_full_status.txt`
+    - C: `perf_c_multi_linux_20260518_143705_codex_c_tcp_full_dotnet_compare.txt`
+  - 결과
+    - `64B`: .NET `150191.4ops/s`, C `192535.2ops/s`, C 대비 `78.0%`, 통과.
+    - `256B`: .NET `149533.8ops/s`, C `214975.2ops/s`, C 대비 `69.6%`, 통과.
+    - `1024B`: .NET `140512.6ops/s`, C `224221.2ops/s`, C 대비 `62.7%`, 통과.
+    - `65536B`: .NET timeout/no result, 미달.
+    - `131072B`: .NET `20153.2ops/s`, C `23335.2ops/s`, C 대비 `86.4%`, 통과.
+    - `262144B`: .NET timeout/no result, 미달.
+  - 판정
+    - timeout만으로 보류하지 않는다. `65536B`, `262144B`는 내부 원인 재검토 대상이다.
+
+- Java `MULTI_SPOT_REQREP/tcp` 큰 message 추가 원인 확인
+  - callback submit 내부 경로를 `CompletableFuture<Received> -> thenApply -> whenComplete`
+    체인 대신 callback registry가 직접 완료하도록 바꿨다. public API 시그니처는 바꾸지 않았다.
+  - reply submit을 `messageTransferTo`로 바꾸는 실험은 reply message 소유권 의미를 흔들 수
+    있어 유지하지 않고 원래의 `messageCopyTo`로 되돌렸다.
+  - server large-size 전용 direct drain과 1ms sleep은 C/C++ perf의 dispatch drain 방식과
+    다르므로 dispatch handler drain으로 정렬했다.
+  - request progress pump는 완료 이벤트를 한 번에 1개만 받던 것을 64개 batch로 받도록
+    바꿨다. public API는 바꾸지 않았다.
+  - 측정 결과
+    - `perf_java_multi_linux_20260518_173428_codex_java_tcp_reqrep_direct_callback_large.txt`:
+      `65536,131072,262144B = 7554.8,3980.4,2317.2ops/s`.
+    - `perf_java_multi_linux_20260518_173546_codex_java_tcp_reqrep_dispatch_server_large.txt`:
+      `7593.4,3977.8,2328.0ops/s`.
+    - `perf_java_multi_linux_20260518_173729_codex_java_tcp_reqrep_progress_batch_large.txt`:
+      `7628.0,4061.2,2322.0ops/s`.
+  - C 기준 대비
+    - `65536B`: `7628.0 / 53713.6 = 14.2%`, 미달.
+    - `131072B`: `4061.2 / 23335.2 = 17.4%`, 미달.
+    - `262144B`: `2322.0 / 8298.4 = 28.0%`, 미달.
+  - 추가 실험
+    - perf client의 별도 completion poller를 제거하고 callback에서 client loop를 `unpark`하는
+      방식은 `65536B`, `131072B`에서 runner 실패가 나고 성능 이득도 없어 유지하지 않았다.
+  - 판정
+    - 현재 확인된 주 병목은 timeout이나 `MsgUnit(B)` 불일치가 아니다.
+    - callback 직접 완료와 progress batch도 큰 개선을 만들지 못했으므로 다음 후보는
+      SPOT routed request/reply의 large payload submit 경로에서 C의 `zlink_msg_init_data`
+      기반 전송과 Java public `Message` 보존 계약 사이의 copy/reference 처리 차이다.
+    - public API 변경 없이 내부에서 보존 계약을 유지하면서 copy 비용을 줄일 수 있는지 계속
+      확인한다.
 
 ## Node
 
@@ -435,3 +604,284 @@
   - `bindings/python/perf/results/multi/report/perf_python_multi_linux_20260518_115738_codex_python_tcp64_owned_recv.txt`
 - 주의
   - SPOT 계열은 `MsgUnit(B)=4096`이라 64B 비교 기준으로 쓰지 않는다.
+
+## .NET SPOT_REQREP 재검토
+
+- timeout/no result는 timeout 증가나 retry로 처리하지 않고 원인을 추적했다.
+- 확인한 구현 불일치
+  - `MULTI_SPOT_REQREP` 설정이 `RequestReply`가 아니라 `SendSend` 모드로 되어 있었다.
+    이 상태에서 나온 기존 숫자는 C `MULTI_SPOT_REQREP`와 같은 의미가 아니므로 공식
+    통과 근거로 쓰지 않는다.
+  - request operation timeout이 `PERF_MULTI_RCVTIMEO_MS`/`PERF_MULTI_SNDTIMEO_MS`
+    200ms가 아니라 connect-ready timeout을 사용하고 있었다.
+  - public callback completion이 active window 이후에 늦게 실행되어 server가 reply를
+    보낸 뒤에도 client measure count가 0으로 끝나는 재현을 확인했다.
+- 적용한 의미 보존 수정
+  - `.NET MULTI_SPOT_REQREP`를 실제 `RequestReply` 모드로 되돌렸다.
+  - request timeout은 C와 같은 `rcvtimeo_ms` 우선, 없으면 `sndtimeo_ms`, 마지막 fallback
+    200ms로 맞췄다.
+  - `SynchronizationContext`가 없는 request callback은 completion continuation에서 바로
+    실행하도록 바꿔 dispatcher 지연을 줄였다. public API 시그니처는 바꾸지 않았다.
+- 측정
+  - `perf_dotnet_multi_linux_20260518_174741_codex_dotnet_tcp_reqrep_request_timeout_fix.txt`:
+    timeout 의미 수정만 적용했을 때 `262144B = 8205.6ops/s`가 나왔으나, 이 시점에는
+    `ReqRepConfig`가 아직 `SendSend` 모드였으므로 공식 판정에 쓰지 않는다.
+  - `perf_dotnet_multi_linux_20260518_175008_codex_dotnet_tcp_reqrep_mode_fix.txt`:
+    `RequestReply` 모드 정정 후 `65536B`, `262144B` 모두 result_timeout.
+  - `perf_dotnet_multi_linux_20260518_181748_codex_dotnet_tcp_reqrep_direct_callback_65536.txt`:
+    callback 직접 전달 후에도 `65536B` result_timeout.
+- 현재 판정
+  - 아래 `.NET/Java timeout 원인 수정과 tcp 비교 갱신`에서 후속 수정과 재측정을 완료했다.
+    이 시점의 timeout/no-result 판정은 폐기하고, 최신 수치 기반 판정을 사용한다.
+
+## .NET/Java timeout 원인 수정과 tcp 비교 갱신
+
+- .NET `MULTI_SPOT_REQREP`
+  - 원인
+    - `RequestProgressPump`가 `Task.Run` 안에서 native poll을 무기한 blocking하여
+      ThreadPool worker를 점유했다. 100개 request spot에서 completion continuation이
+      active window 뒤로 밀려 server reply가 있어도 client count가 0으로 끝났다.
+    - 큰 message에서는 auto-HWM slot 수와 같은 수의 request를 동시에 걸 때 request
+      submit 경로가 HWM 근처에서 멈췄다.
+  - 수정
+    - request progress worker를 ThreadPool이 아니라 dedicated background thread로
+      실행하도록 바꿨다. public API는 바꾸지 않았다.
+    - `SPOT_REQREP`/`SPOT_SENDSEND` perf client의 large message in-flight slot을
+      auto-HWM slot의 절반으로 제한했다. client 수는 그대로 100이고, 동시에 outstanding인
+      public API 호출 수만 HWM 용량에 맞췄다.
+  - 확인 결과
+    - `perf_dotnet_multi_linux_20260518_184839_codex_dotnet_reqrep64_progress_thread.txt`:
+      `64B` timeout 해소, `17.35Kops/s`.
+    - `perf_dotnet_multi_linux_20260518_185507_codex_dotnet_reqrep_large_half_hwm_slots.txt`:
+      `65536,131072,262144B = 19.24K,12.77K,6.21Kops/s`, complete.
+    - `perf_dotnet_multi_linux_20260518_185532_codex_dotnet_sendsend65536_half_hwm_slots.txt`:
+      `SPOT_SENDSEND/65536B = 36.31Kops/s`, complete.
+    - `perf_dotnet_multi_linux_20260518_185545_codex_dotnet_pubsub262144_recheck.txt`:
+      `PUBSUB/262144B = 36.20Kmsg/s`, complete.
+  - 판정
+    - timeout 자체는 해소됐다.
+    - 실제 RequestReply 모드 기준 .NET `SPOT_REQREP/tcp`는
+      `64,256,1024,65536,131072B`가 C 대비 `8.3%~54.7%`라 미달이다.
+      `262144B`는 `74.8%`로 통과다.
+
+- Java `MULTI_SPOT_SENDSEND`
+  - 원인
+    - large message에서 active in-flight slot이 auto-HWM 용량을 초과했다.
+    - 측정 뒤 stop token을 모든 client 수만큼 기다려 server가 종료되지 않는 경우가 있었다.
+      실제 client 로그에는 결과가 있었지만 runner가 `server_exit_124`로 실패 처리했다.
+  - 수정
+    - large message in-flight slot을 auto-HWM slot의 절반으로 제한했다.
+    - 측정에 실제 참여한 active slot 수만큼 stop token을 기대하도록 server 종료 조건을
+      맞췄다. stop token 전송은 cleanup 경로이므로 transient submit 실패는 결과를 막지
+      않게 했다.
+  - 확인 결과
+    - `perf_java_multi_linux_20260518_185601_codex_java_sendsend_large_half_hwm_slots.txt`:
+      `65536B = 38.12Kops/s`, complete.
+    - `perf_java_multi_linux_20260518_185808_codex_java_sendsend_tail_active_stop_count.txt`:
+      `131072,262144B = 15.31K,6.65Kops/s`, complete.
+  - 판정
+    - Java `SPOT_SENDSEND/tcp/65536,131072,262144`는 C 대비 `81.1%~131.3%`로 통과다.
+
+- 현재 tcp 비교 요약
+  - .NET은 실제 RequestReply 모드로 정정하면서 기존 `SPOT_REQREP` 통과 판정 일부가
+    취소됐다. 이는 성능 회귀가 아니라 이전 측정 의미가 `SendSend`였던 오류를 바로잡은
+    결과다.
+  - Java는 `SPOT_REQREP`와 `SPOT_SENDSEND`의 timeout/no-result가 해소됐고,
+    최신 tcp 비교에서는 두 패턴 모두 C 대비 목표를 만족한다.
+
+### .NET/Java tcp 전체 pattern/size 처리량 비교
+
+아래 값은 최신 .NET/Java tcp report와 C full tcp 기준을 합쳐 계산했다. 단위는
+`Kops/s` 또는 `Kmsg/s` 계열의 초당 처리량이다.
+
+| Pattern | Size(B) | .NET | Java | Java/.NET | .NET/C | Java/C |
+|---------|--------:|-----:|-----:|----------:|-------:|-------:|
+| `MULTI_DEALER_DEALER` | 64 | 1568.6K | 2027.4K | 129.2% | 52.4% | 67.7% |
+| `MULTI_DEALER_DEALER` | 256 | 1176.8K | 1723.6K | 146.5% | 61.0% | 89.3% |
+| `MULTI_DEALER_DEALER` | 1024 | 1064.0K | 1209.5K | 113.7% | 77.1% | 87.6% |
+| `MULTI_DEALER_DEALER` | 65536 | 192.4K | 113.0K | 58.7% | 113.1% | 66.4% |
+| `MULTI_DEALER_DEALER` | 131072 | 91.3K | 56.3K | 61.6% | 99.2% | 61.1% |
+| `MULTI_DEALER_DEALER` | 262144 | 41.2K | 31.4K | 76.1% | 84.6% | 64.4% |
+| `MULTI_DEALER_ROUTER` | 64 | 240.0K | 268.9K | 112.0% | 61.7% | 69.2% |
+| `MULTI_DEALER_ROUTER` | 256 | 243.4K | 283.2K | 116.3% | 64.2% | 74.7% |
+| `MULTI_DEALER_ROUTER` | 1024 | 237.7K | 281.2K | 118.3% | 65.5% | 77.4% |
+| `MULTI_DEALER_ROUTER` | 65536 | 103.4K | 71.2K | 68.8% | 69.3% | 47.7% |
+| `MULTI_DEALER_ROUTER` | 131072 | 53.6K | 35.7K | 66.7% | 94.3% | 62.9% |
+| `MULTI_DEALER_ROUTER` | 262144 | 30.4K | 18.6K | 61.3% | 133.2% | 81.7% |
+| `MULTI_ROUTER_ROUTER` | 64 | 198.8K | 212.3K | 106.8% | 53.4% | 57.1% |
+| `MULTI_ROUTER_ROUTER` | 256 | 195.5K | 210.9K | 107.9% | 53.9% | 58.1% |
+| `MULTI_ROUTER_ROUTER` | 1024 | 196.9K | 210.4K | 106.9% | 55.4% | 59.2% |
+| `MULTI_ROUTER_ROUTER` | 65536 | 95.6K | 70.0K | 73.2% | 67.3% | 49.3% |
+| `MULTI_ROUTER_ROUTER` | 131072 | 51.5K | 37.0K | 71.9% | 86.2% | 62.0% |
+| `MULTI_ROUTER_ROUTER` | 262144 | 24.5K | 19.1K | 77.7% | 128.4% | 99.8% |
+| `MULTI_PUBSUB` | 64 | 1370.6K | 1805.8K | 131.8% | 62.6% | 82.4% |
+| `MULTI_PUBSUB` | 256 | 1431.6K | 1870.9K | 130.7% | 69.7% | 91.1% |
+| `MULTI_PUBSUB` | 1024 | 924.0K | 1046.7K | 113.3% | 111.1% | 125.8% |
+| `MULTI_PUBSUB` | 65536 | 164.7K | 272.3K | 165.4% | 89.0% | 147.2% |
+| `MULTI_PUBSUB` | 131072 | 71.8K | 113.7K | 158.3% | 112.0% | 177.4% |
+| `MULTI_PUBSUB` | 262144 | 36.2K | 40.0K | 110.4% | 172.5% | 190.4% |
+| `MULTI_SPOT` | 64 | 3055.8K | 2504.1K | 81.9% | 55.1% | 45.1% |
+| `MULTI_SPOT` | 256 | 2694.0K | 2257.9K | 83.8% | 40.4% | 33.9% |
+| `MULTI_SPOT` | 1024 | 2766.9K | 2308.8K | 83.4% | 49.4% | 41.2% |
+| `MULTI_SPOT` | 65536 | 487.6K | 660.8K | 135.5% | 40.9% | 55.5% |
+| `MULTI_SPOT` | 131072 | 292.7K | 296.3K | 101.2% | 39.8% | 40.3% |
+| `MULTI_SPOT` | 262144 | 168.8K | 169.0K | 100.1% | 37.5% | 37.5% |
+| `MULTI_SPOT_REQREP` | 64 | 18.0K | 127.0K | 706.7% | 9.3% | 66.0% |
+| `MULTI_SPOT_REQREP` | 256 | 18.8K | 159.2K | 848.5% | 8.7% | 74.0% |
+| `MULTI_SPOT_REQREP` | 1024 | 18.7K | 144.4K | 772.8% | 8.3% | 64.4% |
+| `MULTI_SPOT_REQREP` | 65536 | 19.2K | 48.3K | 251.0% | 35.8% | 89.9% |
+| `MULTI_SPOT_REQREP` | 131072 | 12.8K | 18.0K | 141.3% | 54.7% | 77.3% |
+| `MULTI_SPOT_REQREP` | 262144 | 6.2K | 8.9K | 144.0% | 74.8% | 107.7% |
+| `MULTI_SPOT_SENDSEND` | 64 | 147.0K | 199.6K | 135.8% | 65.8% | 89.3% |
+| `MULTI_SPOT_SENDSEND` | 256 | 146.5K | 195.9K | 133.7% | 65.9% | 88.2% |
+| `MULTI_SPOT_SENDSEND` | 1024 | 143.9K | 186.3K | 129.4% | 66.8% | 86.5% |
+| `MULTI_SPOT_SENDSEND` | 65536 | 36.3K | 38.1K | 105.0% | 93.1% | 97.7% |
+| `MULTI_SPOT_SENDSEND` | 131072 | 20.2K | 15.3K | 75.7% | 107.2% | 81.1% |
+| `MULTI_SPOT_SENDSEND` | 262144 | 7.9K | 6.7K | 84.0% | 156.3% | 131.3% |
+| `MULTI_STREAM` | 64 | 342.9K | 356.2K | 103.9% | 96.3% | 100.0% |
+| `MULTI_STREAM` | 256 | 300.4K | 342.3K | 113.9% | 87.4% | 99.5% |
+| `MULTI_STREAM` | 1024 | 268.2K | 323.0K | 120.4% | 83.6% | 100.6% |
+| `MULTI_STREAM` | 65536 | 48.8K | 50.1K | 102.7% | 112.9% | 116.0% |
+
+## .NET SPOT_REQREP 직접 callback 개선
+
+- 원인
+  - Java와 비교했을 때 .NET `SPOT_REQREP`는 실제 RequestReply 모드에서 작은 message가
+    `18Kops/s` 수준으로 낮았다.
+  - Java `RequestProgressPump`는 pending 요청이 없어져도 짧게 유지되지만, .NET pump는
+    요청 1개가 끝날 때마다 poller/thread를 바로 종료했다. 반복 request/reply에서 thread와
+    poller 생성 비용이 매 요청마다 발생했다.
+  - .NET callback `Submit(...)` 경로가 public callback을 직접 완료하지 않고 `Task` 기반
+    async 경로를 경유해 TCS/continuation 비용을 추가로 지불했다.
+  - perf runner는 payload를 `new Message(span)`으로 만들고 binding 내부 clone에서 다시
+    복사했다. Java runner는 재사용 payload를 넘기므로 같은 의미에서 .NET의 첫 복사는
+    불필요했다.
+  - .NET server reply는 `DONTWAIT`를 사용했지만 C server reply는 blocking submit이다.
+    HWM 압력 아래에서 이 차이가 timeout/no-result로 이어졌다.
+
+- 수정
+  - `RequestProgressPump`를 dedicated background thread로 유지하고, pending 0 이후에도
+    1초 keepalive를 둔다. active 요청이 있을 때는 signal-driven wait를 사용한다.
+  - `Spot.RequestToSpot(...).Submit(callback)` 내부 구현을 직접 native callback 완료 경로로
+    바꿨다. public API 시그니처와 계약은 바꾸지 않았다.
+  - `.NET SPOT_REQREP` perf runner의 payload 생성은 기존 public `Message.WrapBytes`를
+    사용해 첫 번째 복사를 제거했다.
+  - `.NET SPOT_REQREP` server reply는 C와 같이 blocking reply로 맞췄다.
+  - large message active slot은 timeout을 유발한 HWM 초과 구간을 피하되, 기존 HWM 절반
+    고정보다 C 상한과 auto-HWM 값을 더 가깝게 반영하도록 조정했다. `65536B`는 active 16에서
+    timeout이 재현되어 stable complete가 확인된 active 8을 유지하고, `131072B`와
+    `262144B`는 auto-HWM cap까지 사용한다.
+
+- 측정
+  - `.NET small`: `perf_dotnet_multi_linux_20260518_192515_codex_dotnet_reqrep_wrapbytes_small_recheck.txt`
+    - `64,256,1024B = 136.01K,136.80K,132.15Kops/s`.
+  - `.NET large`: `perf_dotnet_multi_linux_20260518_192658_codex_dotnet_reqrep_wrapbytes_large_final.txt`
+    - `65536,131072,262144B = 34.76K,24.12K,9.71Kops/s`.
+  - Java large recheck:
+    `perf_java_multi_linux_20260518_192338_codex_java_reqrep_hwm_cap_large_recheck.txt`
+    - `65536,131072,262144B = 51.12K,21.71K,8.07Kops/s`.
+
+- 판정
+  - C full tcp 기준 .NET `SPOT_REQREP/tcp`는 `64,256,65536,131072,262144B`가 통과로
+    바뀌었다.
+  - `1024B`는 `58.9%`로 목표 하한에 근소하게 미달한다. timeout/no-result는 아니며,
+    다음 라운드에서 추가 내부 최적화 후보를 찾는다.
+  - 추가 후보로 per-slot latency buffer 사전 할당을 시험했지만
+    `perf_dotnet_multi_linux_20260518_193010_codex_dotnet_reqrep1024_latency_prealloc.txt`
+    에서 `132.09Kops/s`로 개선이 없어 코드는 되돌렸다.
+
+## .NET SPOT_REQREP 1024 fallback scan 제거
+
+- 원인
+  - .NET `SPOT_REQREP`는 direct native callback과 progress pump를 쓰면서도 active loop에서
+    매 반복마다 `RecvRouted(DontWait)` fallback을 모든 active spot에 대해 훑었다.
+  - C와 Java의 request/reply callback 경로는 이 fallback scan을 사용하지 않는다. .NET은
+    callback 완료 시 wake fd를 신호하므로 같은 의미에서 fallback scan은 hot path 비용이다.
+
+- 수정
+  - `RequestReply` 모드의 active loop에서 `DrainRequestReplyFallback` 호출을 제거했다.
+  - 공개 API는 바꾸지 않았다.
+  - progress callback 등록에서 요청마다 만들던 관리 객체를 struct lease로 줄였다. 이 후보만
+    단독 측정했을 때는 개선이 거의 없었지만, fallback scan 제거와 함께 유지해도 의미 변화는
+    없다.
+
+- 측정
+  - `perf_dotnet_multi_linux_20260518_194125_codex_dotnet_reqrep1024_no_fallback_scan.txt`
+    - `MULTI_SPOT_REQREP/tcp/1024 = 143.83Kops/s`
+    - C full tcp `224.22Kops/s` 대비 `64.1%`
+
+- 판정
+  - .NET `MULTI_SPOT_REQREP/tcp/1024`는 통과로 바뀌었다.
+
+## Java tcp 미달 항목 재검토
+
+- `MULTI_DEALER_ROUTER`
+  - 이전 `1024B` 제한 측정 timeout은 재현되지 않았다.
+  - `perf_java_multi_linux_20260518_195221_codex_java_dealer_router_small_after_spot_internal.txt`
+    에서 `64,256,1024B = 316.90K,308.82K,310.94Kops/s`, complete다.
+
+- `MULTI_ROUTER_ROUTER`
+  - `perf_java_multi_linux_20260518_193615_codex_java_router_router_small_current_recheck.txt`
+    기준 `64,256,1024B = 234.87K,228.26K,228.53Kops/s`다.
+  - 최신 `DEALER_ROUTER` 대비 `ROUTER_ROUTER` 상대 비율은 `73.5%~74.1%`다.
+  - C의 같은 상대 비율은 `95.6%~97.9%`라서 상대 기준은 `21.5~24.4%p` 낮다.
+  - client hot path에서 existing public byte[] routing-id send overload 사용을 검토했지만,
+    필요한 `SendFlag` 타입이 package-private이라 perf runner에서 public API만으로는 사용할
+    수 없었다. public API 추가 없이 의미를 보존하는 후보가 없어 보류로 둔다.
+
+- `MULTI_SPOT`
+  - `Spot.publish(...).message(...).submit()` 단일 part 경로가 내부에서 `MessagePartsBuffer`
+    경로를 타던 부분을 single-part builder fast path로 바꿨다.
+  - 단일 publish native 임시 `zlink_msg_t`는 thread-local scratch를 쓰도록 바꿨다.
+  - `perf_java_multi_linux_20260518_194759_codex_java_spot_send_scratch_small.txt`
+    에서 `64,256,1024B = 2.42M,2.57M,2.45Mmsg/s`로 작은 개선은 있었지만 목표에는 부족했다.
+  - `perf_java_multi_linux_20260518_194404_codex_java_spot_single_send_builder.txt`
+    에서 large 포함 전체 측정은 complete였고 `65536,131072,262144B =
+    612.65K,345.70K,147.96Kmsg/s`다.
+  - 직접 새 메시지를 만들고 헤더만 stamp하는 후보는
+    `perf_java_multi_linux_20260518_195022_codex_java_spot_direct_message_small.txt`
+    에서 clean latency pass가 실패해 의미 보존 후보로 채택하지 않고 되돌렸다.
+
+- 판정
+  - Java `tcp`에서 남은 `미달` 표시는 `보류`로 바꿨다. 보류 근거는 public API 변경 없이
+    측정 의미를 유지하는 내부 후보가 더 확인되지 않았기 때문이다.
+
+## Java ws/wss/tls SPOT_SENDSEND 후속 라운드
+
+- 수정
+  - `PerfControl`이 같은 stdin FIFO에 대해 매번 새 `BufferedReader`를 만들던 문제를 고쳤다.
+    앞 reader가 `START` 줄을 미리 버퍼링하면 뒤 reader가 영원히 못 받아 client timeout이
+    나던 원인이다. 공용 reader와 lock을 사용해 control line 소비 순서를 보존한다.
+  - Java perf timestamp를 `Instant.now()` 기반 epoch ns에서 `System.nanoTime()`으로 바꿨다.
+    SPOT echo latency는 같은 client 프로세스가 stamp와 receive를 모두 처리하므로 단조 시계로
+    충분하고 hot path 비용이 낮다.
+  - `MULTI_SPOT_SENDSEND` client는 재사용 payload를 다시 `Message.copyOf(...)` 하지 않고
+    public send builder에 그대로 넘긴다. public API는 바꾸지 않았다.
+  - server reply도 `received.firstPart().move()` 임시 객체를 만들지 않고 받은 part를 그대로
+    public send builder에 넘긴다. public API는 바꾸지 않았다.
+  - public `Message.wrapDirect(ByteBuffer)` 노출 실험은 `wss/131072B`에서 개선이 없어 바로
+    원복했다. 최종 코드에는 public interface 변경이 없다.
+
+- 측정
+  - C 제한 기준 `ws/65536,131072,262144`:
+    `perf_c_multi_linux_20260518_205954_codex_c_ws_sendsend_large_java_compare.txt`.
+  - Java `ws/65536,262144`:
+    `perf_java_multi_linux_20260518_210350_codex_java_ws_sendsend_large_final_nano.txt`.
+  - Java `ws/131072` 단독:
+    `perf_java_multi_linux_20260518_210336_codex_java_ws_sendsend131072_nano_time.txt`.
+  - Java `wss/65536`:
+    `perf_java_multi_linux_20260518_210512_codex_java_wss_sendsend65536_final_nano.txt`.
+  - Java `wss/131072` best probe:
+    `perf_java_multi_linux_20260518_210732_codex_java_wss_sendsend131072_slots_2_probe.txt`.
+  - C `wss/131072` 제한 기준:
+    `perf_c_multi_linux_20260518_210806_codex_c_wss_sendsend131072_java_compare.txt`.
+  - Java `tls/65536,131072,262144`:
+    `perf_java_multi_linux_20260518_210940_codex_java_tls_sendsend65536_final_nano.txt`,
+    `perf_java_multi_linux_20260518_210951_codex_java_tls_sendsend131072_final_nano.txt`,
+    `perf_java_multi_linux_20260518_211000_codex_java_tls_sendsend262144_final_nano.txt`.
+
+- 판정
+  - `ws/65536`, `ws/131072`, `ws/262144`, `wss/65536`, `tls/65536`은 통과다.
+  - `wss/131072`, `wss/262144`, `tls/131072`, `tls/262144`는 미달로 남긴다.
+  - 미달 원인은 timeout이나 `MsgUnit(B)`가 아니다. 다음 확인 대상은 Java SPOT routed
+    send/reply large payload 경로에서 WSS/TLS backpressure와 native submit copy/reference 처리다.

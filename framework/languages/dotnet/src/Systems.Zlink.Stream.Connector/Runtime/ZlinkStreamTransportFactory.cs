@@ -92,19 +92,6 @@ internal static class ZlinkStreamTransportFactory
                 "MaxSendFrameSize must be positive.");
         }
 
-        if (options.MaxSendMetadataSize < 0)
-        {
-            throw ZlinkStreamConnector.Error(
-                ZlinkStreamErrorCode.ValidationFailed,
-                "MaxSendMetadataSize must not be negative.");
-        }
-
-        if (options.HandlerQueueCapacity <= 0)
-        {
-            throw ZlinkStreamConnector.Error(
-                ZlinkStreamErrorCode.ValidationFailed,
-                "HandlerQueueCapacity must be positive.");
-        }
     }
 
     public static async ValueTask<IZlinkStreamConnection> ConnectAsync(

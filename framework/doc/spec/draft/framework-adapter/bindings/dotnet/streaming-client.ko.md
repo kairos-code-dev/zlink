@@ -134,10 +134,6 @@ public sealed class ZlinkStreamConnectorOptions
 
     public int MaxSendFrameSize { get; init; } = 1024 * 1024;
 
-    public int MaxSendMetadataSize { get; init; } = 1024;
-
-    public int HandlerQueueCapacity { get; init; } = 4096;
-
     public bool SkipServerCertificateValidation { get; init; }
 
     public bool EnableSegmentedSend { get; init; } = true;
@@ -173,12 +169,18 @@ public sealed class ZlinkStreamReconnectOptions
 `SkipServerCertificateValidation` 은 테스트용 자체 서명 인증서를 검증할 때만 쓰는
 옵션이다. 운영 환경에서는 기본값 `false` 를 반드시 그대로 두어야 한다.
 
-`MaxSendFrameSize` 와 `MaxSendMetadataSize` 는 connector 가 내보내는 packet 에 대한
-기본 보호 장치다. 즉 보내는 쪽 한도다.
+`MaxSendFrameSize` 는 connector 가 내보내는 packet 에 대한 기본 보호 장치다.
+즉 보내는 쪽 한도다.
 
-`HandlerQueueCapacity` 는 수신 handler callback 을 내부 queue 에 보관할 수 있는
-최대 개수다. handler 가 수신 속도를 따라가지 못해 queue 가 닫히거나 꽉 차면,
-connector 는 사용자 callback 을 무한히 쌓지 않고 error 로 알린다.
+metadata encoded payload 는 1024 bytes 고정 한도를 사용한다. header 전체 길이는 STREAM
+frame prefix 의 `u16 header_len` 으로 표현되므로 65535 bytes 를 넘을 수 없다. 하지만
+metadata 는 route, trace id, locale 같은 작은 key-value 를 담는 용도이므로, 사용자가
+한도를 키우는 option 은 제공하지 않는다. 큰 업무 데이터는 payload 로 보내야 한다.
+
+수신 handler callback 은 내부 bounded queue 에 쌓지 않는다. connector 는 packet 을 받은
+순서대로 handler 를 직접 await 한다. handler 가 느리면 다음 read 가 늦어지고, transport
+수준의 자연스러운 backpressure 가 걸린다. packet 을 임의로 drop 하거나 queue 초과 오류로
+연결 의미를 깨지 않는다.
 
 반면 수신 payload 에 도메인별로 거는 크기 제한은 connector 의 기본 계약에 포함하지
 않는다. 수신 크기 제한이 필요한 애플리케이션이라면, handler 또는 상위 protocol 에서
@@ -311,9 +313,9 @@ metadata 는 `u16 meta_len + metadata bytes` 형태로 붙는다. metadata 는 h
 크기 제한은 다음과 같이 두 단계로 본다.
 
 - `meta_len` wire 필드가 표현할 수 있는 최댓값은 65535 bytes 다.
-- 그러나 `MaxSendMetadataSize` 의 기본값은 1024 bytes 다.
-- 따라서 `.NET` connector 는 `MaxSendMetadataSize` 를 넘어가는 metadata 를 보내려 하면,
-  이를 error 로 처리해야 한다.
+- `.NET` connector 는 metadata encoded payload 가 1024 bytes 를 넘으면 보내기 전에
+  validation error 로 처리한다.
+- 1024 bytes 한도는 public option 으로 조절하지 않는다.
 
 helper header 에 들어가는 모든 multi-byte integer 는 network byte order 로 표기한다.
 

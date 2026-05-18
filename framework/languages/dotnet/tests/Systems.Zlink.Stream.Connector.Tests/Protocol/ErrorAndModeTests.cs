@@ -82,19 +82,6 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public void InvalidHandlerQueueCapacityIsRejected()
-    {
-        var exception = Assert.Throws<ZlinkStreamException>(() =>
-            ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-            {
-                Endpoint = new Uri("tcp://127.0.0.1:1"),
-                HandlerQueueCapacity = 0
-            }));
-
-        Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
-    }
-
-    [Fact]
     public async Task InvalidHeaderFramePublishesDecodeError()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);

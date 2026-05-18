@@ -1,5 +1,4 @@
 using System.Text;
-using System.Threading.Channels;
 
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
@@ -11,7 +10,6 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
     private readonly ZlinkStreamPendingRequests _pending = new();
     private readonly ZlinkStreamTypedHandlerRegistry _typedHandlers = new();
-    private readonly Channel<ZlinkStreamHandlerWorkItem> _handlerQueue;
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly CancellationTokenSource _lifetimeCts = new();
     private readonly ZlinkStreamTaskRunner _taskRunner;
@@ -23,7 +21,6 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     private readonly ZlinkStreamFrameSender _frameSender;
     private readonly ZlinkStreamReceiveDispatcher _receiveDispatcher;
     private readonly ZlinkStreamReceiveLoop _receiveLoop;
-    private readonly Task _handlerPump;
     private int _disposed;
 
     internal ZlinkStreamConnector(ZlinkStreamConnectorOptions options)
@@ -45,14 +42,6 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
         _nameResolver = options.NameResolver ?? new ZlinkStreamPacketNameResolver();
         _lifecycle = new ZlinkStreamConnectorLifecycle(options, _pending, _taskRunner, _callbacks);
-        _handlerQueue = Channel.CreateBounded<ZlinkStreamHandlerWorkItem>(
-            new BoundedChannelOptions(options.HandlerQueueCapacity)
-            {
-                SingleReader = true,
-                SingleWriter = false,
-                FullMode = BoundedChannelFullMode.Wait,
-                AllowSynchronousContinuations = false
-            });
         _frameSender = new ZlinkStreamFrameSender(
             options,
             _headerCodec,
@@ -63,16 +52,12 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             _headerCodec,
             _pending,
             _typedHandlers,
-            _handlerQueue,
             _frameSender,
             _callbacks);
         _receiveLoop = new ZlinkStreamReceiveLoop(
             _receiveDispatcher,
             () => _lifecycle.Connection,
             _lifecycle.RecordInbound);
-        _handlerPump = _taskRunner.Run(
-            "stream-handler-pump",
-            _ => new ValueTask(_receiveDispatcher.HandlerPumpAsync()));
     }
 
     public event Func<ZlinkStreamError, CancellationToken, ValueTask>? ErrorReceived
@@ -265,8 +250,6 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
         await CloseAsync().ConfigureAwait(false);
         _lifetimeCts.Cancel();
-        _handlerQueue.Writer.TryComplete();
-        await _handlerPump.ConfigureAwait(false);
         _sendGate.Dispose();
         _lifecycle.Dispose();
         _lifetimeCts.Dispose();

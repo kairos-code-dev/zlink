@@ -276,9 +276,9 @@ request 사이에 중복되면 안 된다. 값 `0`은 사용하지 않는다.
 
 `name_len`은 1 이상 255 bytes 이하여야 한다. 긴 namespace 전체 이름을 header에 그대로 넣지 말고,
 짧은 packet name 또는 alias를 사용한다. `meta_len`은 wire에서 `u16`이지만 connector
-기본 최대값은 1024 bytes로 둔다. 구현은 옵션으로 이 값을 낮추거나 높일 수 있지만,
-65535 bytes를 넘길 수 없다. metadata에는 trace id, tenant id, locale처럼 작은 값만
-넣고 큰 업무 payload는 payload에 넣는다.
+최대값은 1024 bytes로 고정한다. 구현은 이 값을 public option으로 노출하지 않는다.
+metadata에는 trace id, tenant id, locale처럼 작은 값만 넣고 큰 업무 payload는 payload에
+넣는다.
 
 metadata bytes는 아래 순서의 binary key-value 목록이다.
 

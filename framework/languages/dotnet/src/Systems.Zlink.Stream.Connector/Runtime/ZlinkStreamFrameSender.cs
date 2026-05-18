@@ -9,6 +9,8 @@ internal sealed class ZlinkStreamFrameSender(
     SemaphoreSlim sendGate,
     Func<IZlinkStreamConnection?> connectionProvider)
 {
+    internal const int MaxMetadataPayloadSize = 1024;
+
     public ZlinkStreamOutboundFrame BuildOutboundFrame(
         ZlinkStreamMessageKind kind,
         string name,
@@ -162,11 +164,11 @@ internal sealed class ZlinkStreamFrameSender(
     {
         var encoded = headerCodec.Encode(header);
         var metadataLength = ZlinkStreamHeaderCodec.GetMetadataPayloadSize(header.Metadata);
-        if (metadataLength > options.MaxSendMetadataSize)
+        if (metadataLength > MaxMetadataPayloadSize)
         {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
-                $"Metadata payload exceeds MaxSendMetadataSize ({options.MaxSendMetadataSize}).");
+                $"Metadata payload exceeds fixed limit ({MaxMetadataPayloadSize}).");
         }
 
         return encoded;

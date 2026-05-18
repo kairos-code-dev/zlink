@@ -146,15 +146,14 @@ public sealed partial class StreamConnectorTests
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
-            MaxSendMetadataSize = 4
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
         await connector.ConnectAsync();
 
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
             await connector.Send(new Ping("hello"))
                 .PacketName("ping")
-                .Metadata("traceId", "abcdef")
+                .Metadata("traceId", new string('x', 1014))
                 .Submit());
 
         Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);

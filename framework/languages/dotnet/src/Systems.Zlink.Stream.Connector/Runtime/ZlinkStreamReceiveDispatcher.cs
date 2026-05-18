@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Threading.Channels;
 
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
@@ -7,7 +6,6 @@ internal sealed class ZlinkStreamReceiveDispatcher(
     IZlinkStreamHeaderCodec headerCodec,
     ZlinkStreamPendingRequests pending,
     ZlinkStreamTypedHandlerRegistry typedHandlers,
-    Channel<ZlinkStreamHandlerWorkItem> handlerQueue,
     ZlinkStreamFrameSender frameSender,
     ZlinkStreamConnectorCallbacks callbacks)
 {
@@ -34,7 +32,7 @@ internal sealed class ZlinkStreamReceiveDispatcher(
             return;
         }
 
-        await QueueTypedHandlersAsync(header, frame.Payload, cancellationToken).ConfigureAwait(false);
+        await DispatchTypedHandlersAsync(header, frame.Payload, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask DispatchControlAsync(
@@ -66,16 +64,7 @@ internal sealed class ZlinkStreamReceiveDispatcher(
             "Unknown control packet.");
     }
 
-    public async Task HandlerPumpAsync()
-    {
-        await foreach (var item in handlerQueue.Reader.ReadAllAsync().ConfigureAwait(false))
-        {
-            await DispatchTypedHandlersAsync(item.Header, item.Payload, item.Handlers, CancellationToken.None)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private ValueTask QueueTypedHandlersAsync(
+    private async ValueTask DispatchTypedHandlersAsync(
         ZlinkStreamHeader header,
         ReadOnlyMemory<byte> wirePayload,
         CancellationToken cancellationToken)
@@ -83,26 +72,10 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         var handlers = typedHandlers.Snapshot(header.Name);
         if (handlers.Count == 0)
         {
-            return ValueTask.CompletedTask;
+            return;
         }
 
         var payload = frameSender.DecompressIfNeeded(header, wirePayload);
-        if (!handlerQueue.Writer.TryWrite(new ZlinkStreamHandlerWorkItem(header, payload, handlers)))
-        {
-            return callbacks.PublishErrorAsync(
-                new ZlinkStreamError(ZlinkStreamErrorCode.Disconnected, "Connector handler queue is closed."),
-                cancellationToken);
-        }
-
-        return ValueTask.CompletedTask;
-    }
-
-    private async ValueTask DispatchTypedHandlersAsync(
-        ZlinkStreamHeader header,
-        ReadOnlyMemory<byte> payload,
-        IReadOnlyList<ZlinkStreamTypedHandlerRegistry.TypedHandler> handlers,
-        CancellationToken cancellationToken)
-    {
         foreach (var handler in handlers)
         {
             try

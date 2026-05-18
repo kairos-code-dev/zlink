@@ -41,8 +41,7 @@ framework 는 위 모델 위에 `.NET` 다운 모양을 한 겹 더 얹어서 �
 
 - lifecycle 요소 -- constructor injection, `OnDisconnectedAsync`, DI
   scope[^di-scope]
-- fluent 호출 표면 -- `IZLinkActorContext`, `IZLinkActorClient`,
-  `IZLinkSessionProxy`
+- fluent 호출 표면 -- `IZLinkActorContext`, `IZLinkSessionProxy`
 
 책임은 두 갈래로 나눠서 본다.
 
@@ -70,7 +69,7 @@ application 이 등록한 resolver[^resolver] 에 위임한다.
 - STREAM session binding
 - user Spot join (framework가 노출하는 표면)
 - session actor dispatch[^session-actor-dispatch] (gateway[^gateway]) 패턴
-- outbound `IZLinkActorClient` / `IZLinkSessionProxy` 표면
+- outbound `IZLinkSessionProxy` / `IZLinkActorSessionClient` 표면
 - 등록 API 정리
 
 다음 항목은 이 문서가 다루지 않으므로 별도 문서에서 본다.
@@ -549,65 +548,13 @@ public interface IZLinkActorContext
 | `Send<TMessage>(...)` | bound client stream으로 데이터를 push (session-bound actor 전용) |
 | `Reply<TMessage>(...)` | client request의 응답을 send (session-bound actor 전용) |
 
-## 6. Outbound: 다른 곳에서 actor 호출하기
+## 6. Actor Route Resolver
 
-이 절은 actor 인스턴스 바깥에서 actor 를 어떻게 부르는지, 그리고 그 호출이
-어떤 resolver 위에서 동작하는지를 정리한다.
+session 이 actor 로 packet 을 relay 할 때는 `IZLinkSession.OnDispatchAsync(...)`
+에서 actor handle 을 만들거나 찾은 뒤 `DispatchToActorAsync(...)` 를 호출한다.
+application 이 actor runtime 을 직접 호출하는 별도 public client 는 두지 않는다.
 
-### 6.1 `IZLinkActorClient`
-
-application 의 다른 코드에서 특정 actor 를 부르고 싶을 때 쓰는 outbound
-client 다. 호출하는 쪽은 actor 의 물리적 위치를 몰라도 된다. 즉 어느 노드의
-어느 spot 이나 session 에 사는지 알 필요 없이, **`actorId`** 만 넘기면
-충분하다.
-
-```csharp
-public interface IZLinkActorClient
-{
-    IZLinkActorClientSendCall Send<TMessage>(string actorId, TMessage message);
-    IZLinkActorClientRequestCall Request<TRequest>(string actorId, TRequest request);
-}
-
-public interface IZLinkActorClientSendCall
-{
-    IZLinkActorClientSendCall PacketName(string packetName);
-    IZLinkActorClientSendCall Metadata(string key, string value);
-    ValueTask Submit(CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkActorClientRequestCall
-{
-    IZLinkActorClientRequestCall PacketName(string packetName);
-    IZLinkActorClientRequestCall Metadata(string key, string value);
-    IZLinkActorClientRequestCall Timeout(TimeSpan timeout);
-    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
-}
-```
-
-`IZLinkActorClient` 는 actor id 를 routed channel 과 대상 노드의 `RoutingId`
-로 풀어 내야 한다. 이 변환을 위해 내부적으로 application 이 등록한 **play
-route resolver**[^playroute] 를 호출한다 (§6.2 참고).
-
-```csharp
-public sealed class GameDispatcher(IZLinkActorClient actors)
-{
-    public ValueTask SendPlaceMarkAsync(
-        string playerActorId,
-        PlaceMarkCommand command,
-        CancellationToken ct)
-    {
-        return actors
-            .Send(playerActorId, command)
-            .Submit(ct);
-    }
-}
-```
-
-`IZLinkActorClient` 를 쓰려면 반드시 `AddActorPlayRouteResolver<>()` 를 함께
-등록해야 한다. resolver 등록 없이 호출하면 startup
-validation[^startup-validation] 단계에서 오류로 막힌다.
-
-### 6.2 `IZLinkActorPlayRouteResolver`
+### 6.1 `IZLinkActorPlayRouteResolver`
 
 "이 actor id 는 지금 어느 routed channel 의 어느 노드에 있다" 는 정보를
 application 이 돌려주기 위한 resolver 다. framework 는 이 정보를 가지고 routed
@@ -1216,7 +1163,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
 
 [^playroute]: **play route resolver**는 actor id를 받아 그 actor가 지금 어느
     routed channel의 어느 노드에 사는지를 돌려주는 resolver다.
-    `IZLinkActorClient`가 outbound 호출 시 내부적으로 사용한다.
+    session actor dispatch 가 remote actor 위치를 찾을 때 내부적으로 사용한다.
 
 [^startup-validation]: startup validation은 framework가 호스트 시작 시점에
     등록 상태를 점검해서, 누락된 의존성이나 잘못된 조합을 즉시 예외로 보고하는

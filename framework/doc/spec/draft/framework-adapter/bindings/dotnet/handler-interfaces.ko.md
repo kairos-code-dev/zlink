@@ -72,7 +72,6 @@
 | policy | `IZLinkMessageMetadataPolicy` | application metadata forwarding 허용 여부 | 4.4.2 |
 | factory | `IZLinkActorFactory` | actor type별 actor 생성 | 4.4.1 |
 | handler | `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | spot에 actor가 join할 때 호출되는 handler | 4.4.1 |
-| client | `IZLinkActorClient` | actor id 기반 actor runtime 호출 | 5.5 |
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
 | client | `IZLinkSessionProxy` | 현재 actor -> 현재 client session 호출 | 5.6 |
 | client | `IZLinkActorSessionClient` | actor id 기반 actor -> client session 호출 | 5.6 |
@@ -2036,49 +2035,15 @@ publish 도 send 와 동일한 성능 규칙을 따른다. 즉 다음과 같이 
   `SendTimeout` 까지 backpressure 를 기다린다. timeout 이 만료되면 예외로
   실패한다.
 
-### 5.5 IZLinkActorClient
+### 5.5 Actor Route Resolver
 
-actor id 만으로 actor runtime 에 packet 을 보내는 client 다.
+session 에서 actor 로 packet 을 relay 할 때는 `IZLinkSessionContext` 의
+`DispatchToActorAsync(...)` 를 사용한다. actor runtime 을 직접 호출하는 별도
+public client 는 두지 않는다.
 
-route 결정은 `IZLinkActorPlayRouteResolver` 가 담당한다. 호출자는 play
-node 의 `RoutingId` 를 직접 넘기지 않는다.
-
-```csharp
-public interface IZLinkActorClient
-{
-    IZLinkActorClientSendCall Send<TMessage>(
-        string actorId,
-        TMessage message);
-
-    IZLinkActorClientRequestCall Request<TRequest>(
-        string actorId,
-        TRequest request);
-}
-
-public interface IZLinkActorClientSendCall
-{
-    IZLinkActorClientSendCall PacketName(string packetName);
-
-    IZLinkActorClientSendCall Metadata(
-        string key,
-        string value);
-
-    ValueTask Submit(CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkActorClientRequestCall
-{
-    IZLinkActorClientRequestCall PacketName(string packetName);
-
-    IZLinkActorClientRequestCall Metadata(
-        string key,
-        string value);
-
-    IZLinkActorClientRequestCall Timeout(TimeSpan timeout);
-
-    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
-}
-```
+remote actor 위치가 필요하면 framework 는 `IZLinkActorPlayRouteResolver` 로
+actor id 를 routed channel 과 대상 노드의 `RoutingId` 로 풀어 낸다. 호출자는
+이 위치값을 직접 다루지 않는다.
 
 ### 5.5.1 route transport helper
 
@@ -2135,8 +2100,9 @@ internal interface IZLinkRouteRequestCall
 }
 ```
 
-기본 application 표면에서는 actor id 또는 spot id 기반 호출을 권장한다.
-즉 `IZLinkActorClient` 와 `IZLinkSpotClient` 다.
+기본 application 표면에서는 session relay, actor context, spot client 같은
+도메인 표면을 권장한다. actor runtime 으로 직접 보내는 범용 public client 는
+두지 않는다.
 
 direct target helper 는 transport 위치값을 이미 알고 있는 framework 내부
 경로에 한해서만 둔다.
@@ -2569,8 +2535,8 @@ public interface IZLinkFrameworkOptions
 - `AddActorFactory(...)`
   - actor type 문자열에 대응하는 actor factory를 등록한다.
 - `AddActorPlayRouteResolver(...)`
-  - `IZLinkActorClient`가 actor id로 play/runtime route를 찾을 때 사용할 resolver를
-    등록한다.
+  - session actor dispatch 가 actor id로 play/runtime route를 찾을 때 사용할
+    resolver를 등록한다.
 - `AddSpotRouteResolver(...)`
   - `IZLinkSpotClient`나 `JoinSpot(spotName, ...)`이 spot name 또는 spot id로 user
     Spot route를 찾을 때 사용할 resolver를 등록한다.

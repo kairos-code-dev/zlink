@@ -1,40 +1,5 @@
 namespace Zlink.Framework.Contracts.Streams;
 
-public interface IZLinkActorClient
-{
-    IZLinkActorClientSendCall Send<TMessage>(
-        string actorId,
-        TMessage message);
-
-    IZLinkActorClientRequestCall Request<TRequest>(
-        string actorId,
-        TRequest request);
-}
-
-public interface IZLinkActorClientSendCall
-{
-    IZLinkActorClientSendCall PacketName(string packetName);
-
-    IZLinkActorClientSendCall Metadata(
-        string key,
-        string value);
-
-    ValueTask Submit(CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkActorClientRequestCall
-{
-    IZLinkActorClientRequestCall PacketName(string packetName);
-
-    IZLinkActorClientRequestCall Metadata(
-        string key,
-        string value);
-
-    IZLinkActorClientRequestCall Timeout(TimeSpan timeout);
-
-    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
-}
-
 public interface IZLinkActorPlayRouteResolver
 {
     ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(

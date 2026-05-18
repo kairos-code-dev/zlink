@@ -131,8 +131,8 @@
 |------|------------|
 | [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md) | channel 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, lifecycle, middleware / filter |
 | [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish / subscribe, discovery |
-| [aspnet-core-actor.ko.md](./aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkActorClient, IZLinkSessionProxy, IZLinkActorSessionClient, session actor dispatch (gateway) 패턴 |
-| [session-actor-dispatch.ko.md](./session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkSessionProxy`, `IZLinkActorSessionClient`, `IZLinkActorClient`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md) 에서 다룬다. |
+| [aspnet-core-actor.ko.md](./aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkSessionProxy, IZLinkActorSessionClient, session actor dispatch (gateway) 패턴 |
+| [session-actor-dispatch.ko.md](./session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkSessionProxy`, `IZLinkActorSessionClient`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md) 에서 다룬다. |
 | [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
 | [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신, manual dispatch |
 | [Unity Stream Connector 가이드](../../../../../../../doc/guide/unity-stream-connector.ko.md) | Unity `MonoBehaviour`에서 공통 connector의 `DispatchAsync()`를 호출하는 사용법 |

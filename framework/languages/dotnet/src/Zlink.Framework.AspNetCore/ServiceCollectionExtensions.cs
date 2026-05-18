@@ -193,11 +193,6 @@ public static class ServiceCollectionExtensions
             services.AddSingleton(
                 typeof(IZLinkActorPlayRouteResolver),
                 provider => provider.GetRequiredService(registration.ActorPlayRouteResolverType));
-            services.AddSingleton<IZLinkActorClient, ZLinkActorClientService>();
-        }
-        else
-        {
-            services.AddSingleton<IZLinkActorClient, ZLinkMissingActorClient>();
         }
 
         if (registration.SpotRouteResolverType is not null)

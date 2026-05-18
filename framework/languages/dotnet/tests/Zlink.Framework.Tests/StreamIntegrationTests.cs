@@ -498,18 +498,22 @@ public sealed class StreamIntegrationTests
             Assert.Equal("client:from-play", gatewayReply.Value);
             Assert.NotEqual(0UL, gatewayReply.RequestSeq);
 
-            var actorClient = sessionHost.Services.GetRequiredService<IZLinkActorClient>();
-            var actorClientReply = await actorClient.Request(
-                    "player-1",
-                    new GatewayPing("from-actor-client"))
-                .PacketName("relay.echo")
-                .Metadata("trace-id", "trace-actor-client")
-                .Timeout(TimeSpan.FromSeconds(10))
-                .SubmitAsync<GatewayPong>();
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Request,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    new ZlinkStreamRequestSeq(102),
+                    "relay.echo",
+                    ZlinkStreamMetadata.Empty
+                        .With("trace-id", "trace-session-relay")),
+                JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("from-session-relay"), JsonOptions)));
+            var secondRelayReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(102));
+            var secondRelayBody = JsonSerializer.Deserialize<GatewayPong>(secondRelayReply.Payload, JsonOptions);
 
-            Assert.Equal("play:from-actor-client", actorClientReply.Value);
+            Assert.Equal("play:from-session-relay", secondRelayBody?.Value);
             Assert.Equal("relay.echo", proxyRecorder.LastPacketName);
-            Assert.Equal("trace-actor-client", proxyRecorder.LastTraceId);
+            Assert.Equal("trace-session-relay", proxyRecorder.LastTraceId);
             callbackCapture.ThrowIfAny();
 
             client.Dispose();
@@ -762,14 +766,18 @@ public sealed class StreamIntegrationTests
                     && callbackCapture.IsEmpty,
                 TimeSpan.FromSeconds(5));
 
-            var actorClient = sessionHost.Services.GetRequiredService<IZLinkActorClient>();
-            var disconnectReply = await actorClient.Request(
-                    "player-1",
-                    new GatewayPing("close-remote"))
-                .PacketName("session.disconnect")
-                .Timeout(TimeSpan.FromSeconds(10))
-                .SubmitAsync<GatewayPong>();
-            Assert.Equal("disconnect:close-remote", disconnectReply.Value);
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Request,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    new ZlinkStreamRequestSeq(202),
+                    "session.disconnect",
+                    ZlinkStreamMetadata.Empty),
+                JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("close-remote"), JsonOptions)));
+            var disconnectReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(202));
+            var disconnectBody = JsonSerializer.Deserialize<GatewayPong>(disconnectReply.Payload, JsonOptions);
+            Assert.Equal("disconnect:close-remote", disconnectBody?.Value);
 
             await RetryAsync(
                 () => actorRecorder.ProxyDisconnectCount == 1

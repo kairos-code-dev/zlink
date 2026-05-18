@@ -1141,42 +1141,37 @@ session 에서 `BindActorHandleAsync(...)` 로 다시 들어오면, framework �
 이 규칙이 있어야 client reconnect 가 "새 게임에 참여"가 아니라 "기존 actor 의
 새 연결"로 동작한다.
 
-## 5. IZLinkActorClient (actor id 기반 호출)
+## 5. Session에서 actor로 relay
 
-이 절은 actor 의 위치(node) 를 호출자가 직접 알지 않아도 되는 client 표면을
-다룬다.
-
-`IZLinkActorClient` 는 actor id 하나만으로 actor runtime 에 호출을 보낸다.
-route 결정은 `IZLinkActorPlayRouteResolver` 가 맡는다. 즉 호출자는 play node 의
-`RoutingId` 를 직접 넘기지 않는다.
+session actor dispatch 에서 session 은 actor runtime 을 직접 호출하는 범용
+public client 를 사용하지 않는다. client stream 에서 받은 packet 은
+`IZLinkSession.OnDispatchAsync(...)` 로 올라오고, session 구현은 actor handle 을
+만든 뒤 `DispatchToActorAsync(...)` 로 전달한다.
 
 ```csharp
-public interface IZLinkActorClient
+public interface IZLinkSessionActorDispatchContext
 {
-    IZLinkActorClientSendCall Send<TMessage>(
+    ValueTask<IZLinkActorRef> CreateAndBindActorAsync(
         string actorId,
-        TMessage message);
+        string actorType,
+        CancellationToken cancellationToken = default);
 
-    IZLinkActorClientRequestCall Request<TRequest>(
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
-        TRequest request);
-}
+        string actorType,
+        CancellationToken cancellationToken = default);
 
-public interface IZLinkActorClientSendCall
-{
-    IZLinkActorClientSendCall PacketName(string packetName);
-    IZLinkActorClientSendCall Metadata(string key, string value);
-    ValueTask Submit(CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkActorClientRequestCall
-{
-    IZLinkActorClientRequestCall PacketName(string packetName);
-    IZLinkActorClientRequestCall Metadata(string key, string value);
-    IZLinkActorClientRequestCall Timeout(TimeSpan timeout);
-    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
+    ValueTask DispatchToActorAsync(
+        IZLinkActorRef actor,
+        ZlinkStreamHeader header,
+        Message payload,
+        CancellationToken cancellationToken = default);
 }
 ```
+
+이 표면만 남기면 session 코드의 의도가 분명해진다. session 은 "받은 client
+packet 을 어떤 actor 에 relay 할지"만 결정하고, remote actor route 와 multipart
+전송은 framework 내부가 처리한다.
 
 ## 6. Actor/Spot route resolver 등록
 
@@ -1525,7 +1520,7 @@ retry helper 와는 성격이 다르다. diagnostic helper 가 보여 주는 것
 - cross-binding 정책, 의미, 회귀 테스트, POSD 결론 →
   [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md)
 - 인터페이스 전체 정의 → [handler-interfaces.ko.md](./handler-interfaces.ko.md)
-  §4.4 (session), §5.5 (`IZLinkActorClient`), §5.6 (`IZLinkSessionProxy`), §5.7
+  §4.4 (session), §5.5 (session relay), §5.6 (`IZLinkSessionProxy`), §5.7
   (actor route resolver)
 - actor 라이프사이클과 actor handler 모델 →
   [aspnet-core-actor.ko.md](./aspnet-core-actor.ko.md)

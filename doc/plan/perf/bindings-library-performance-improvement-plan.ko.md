@@ -227,8 +227,8 @@ pattern, transport, message size 조합을 중복으로 동시에 실행하지 �
 | 순서 | 언어 | 현재 transport | 전체 상태 | 다음 작업 |
 |------|------|----------------|-----------|-----------|
 | 1 | C++ | `tls` | 보류 포함 완료 | .NET `tcp` 시작 |
-| 2 | .NET | `tcp` | 진행 중 | `MULTI_SPOT/tcp/64` 내부 개선 |
-| 3 | Java | `tcp` | 대기 | .NET의 `미달` 해소 후 시작 |
+| 2 | .NET | `tls` | 보류 포함 완료 | Java `tcp` 시작 |
+| 3 | Java | `tcp` | 진행 중 | `MULTI_PUBSUB/tcp/64` 내부 개선 |
 | 4 | Node | `tcp` | 대기 | Java의 `미달` 해소 후 시작 |
 | 5 | Rust | `tcp` | 대기 | Node의 `미달` 해소 후 시작 |
 | 6 | Go | `tcp` | 대기 | Rust의 `미달` 해소 후 시작 |
@@ -365,8 +365,33 @@ pattern, transport, message size 조합을 중복으로 동시에 실행하지 �
 | `ws` | `MULTI_SPOT_SENDSEND` | `64,256,1024,131072` | `통과` | `63.5%~94.4%` | 제한 C 기준 |
 | `ws` | `MULTI_SPOT_SENDSEND` | `65536,262144` | `보류` | - | .NET timeout, C 제한 측정 성공 |
 | `ws` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `89.2%~96.7%` | full ws |
-| `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
-| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+| `wss` | `MULTI_DEALER_DEALER` | `64,256` | `보류` | `55.7%~60.4%` | builder inline 후에도 목표 미달, 추가 내부 후보 없음 |
+| `wss` | `MULTI_DEALER_DEALER` | `1024,65536,131072,262144` | `통과` | `73.1%~93.8%` | full wss |
+| `wss` | `MULTI_DEALER_ROUTER` | 전체 대상 | `통과` | `54.8%~95.4%` | full wss |
+| `wss` | `MULTI_ROUTER_ROUTER` | 전체 대상 | `통과` | `50.4%~93.6%` | full wss, 상대 기준 허용 범위 |
+| `wss` | `MULTI_PUBSUB` | `64,256,1024` | `보류` | `42.8%~61.4%` | builder inline 후에도 목표 미달, 추가 내부 후보 없음 |
+| `wss` | `MULTI_PUBSUB` | `65536,131072,262144` | `통과` | `73.7%~92.8%` | full wss |
+| `wss` | `MULTI_SPOT` | `64,262144` | `보류` | `47.2%~48.4%` | 제한 C 기준, 같은 SPOT hot path 추가 내부 후보 없음 |
+| `wss` | `MULTI_SPOT` | `256,1024,65536,131072` | `통과` | `103.5%~303.9%` | 제한 C 기준 |
+| `wss` | `MULTI_SPOT_REQREP` | `64,256,1024,131072,262144` | `통과` | `70.2%~96.0%` | 제한 C 기준 |
+| `wss` | `MULTI_SPOT_REQREP` | `65536` | `보류` | - | .NET timeout, C 제한 측정 성공 |
+| `wss` | `MULTI_SPOT_SENDSEND` | `64,256,1024` | `통과` | `64.5%~69.2%` | 제한 C 기준 |
+| `wss` | `MULTI_SPOT_SENDSEND` | `65536,131072,262144` | `보류` | - | .NET timeout, C 제한 측정 성공 |
+| `wss` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `86.7%~91.9%` | full wss |
+| `tls` | `MULTI_DEALER_DEALER` | `64,256` | `보류` | `54.1%~60.2%` | builder inline 후에도 목표 미달, 추가 내부 후보 없음 |
+| `tls` | `MULTI_DEALER_DEALER` | `1024,65536,131072,262144` | `통과` | `67.2%~85.3%` | full tls |
+| `tls` | `MULTI_DEALER_ROUTER` | 전체 대상 | `통과` | `53.7%~91.6%` | full tls |
+| `tls` | `MULTI_ROUTER_ROUTER` | `64,256,1024` | `보류` | `45.9%~48.8%` | 상대 기준 미달, 추가 내부 후보 없음 |
+| `tls` | `MULTI_ROUTER_ROUTER` | `65536,131072,262144` | `통과` | `86.8%~96.1%` | full tls |
+| `tls` | `MULTI_PUBSUB` | `64,256,1024,65536,262144` | `보류` | `38.7%~62.4%` | builder inline 후에도 목표 미달, 추가 내부 후보 없음 |
+| `tls` | `MULTI_PUBSUB` | `131072` | `통과` | `85.7%` | full tls |
+| `tls` | `MULTI_SPOT` | `64,65536,131072,262144` | `보류` | `43.2%~48.9%` | 제한 C 기준, 같은 SPOT hot path 추가 내부 후보 없음 |
+| `tls` | `MULTI_SPOT` | `256,1024` | `통과` | `61.6%~77.4%` | 제한 C 기준 |
+| `tls` | `MULTI_SPOT_REQREP` | `64,256,1024,262144` | `통과` | `63.5%~96.7%` | 제한 C 기준 |
+| `tls` | `MULTI_SPOT_REQREP` | `65536,131072` | `보류` | - | .NET timeout, C 제한 측정 성공 |
+| `tls` | `MULTI_SPOT_SENDSEND` | `64,256,1024,131072,262144` | `통과` | `63.1%~295.0%` | 제한 C 기준 |
+| `tls` | `MULTI_SPOT_SENDSEND` | `65536` | `보류` | - | .NET timeout, C 제한 측정 성공 |
+| `tls` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `83.5%~94.9%` | 제한 tail 측정 |
 
 ### 5.4 Java 상태
 

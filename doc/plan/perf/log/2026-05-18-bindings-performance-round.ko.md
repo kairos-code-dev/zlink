@@ -299,6 +299,23 @@
     - `SPOT_REQREP`: 64/256/1024/131072 통과, 65536/262144 보류.
     - `SPOT_SENDSEND`: 64/256/1024/131072 통과, 65536/262144 보류.
     - `STREAM`: 전체 통과.
+- `wss` full
+  - .NET: `perf_dotnet_multi_linux_20260518_152442_codex_dotnet_wss_full_status.txt`
+    - 상태: partial, 42 success / 4 fail
+    - fail: `MULTI_SPOT_REQREP/wss/65536`,
+      `MULTI_SPOT_SENDSEND/wss/65536`,
+      `MULTI_SPOT_SENDSEND/wss/131072`,
+      `MULTI_SPOT_SENDSEND/wss/262144`
+    - `MsgUnit(B)`는 출력된 모든 size에서 message size와 일치했다.
+  - C SPOT 제한 기준: `perf_c_multi_linux_20260518_153614_codex_c_wss_spot_dotnet_compare.txt`
+    - baseline SPOT의 `MsgUnit(B)=4096` 이력이 있어 SPOT 계열만 같은 조건으로 재측정했다.
+  - 판정 요약
+    - `DEALER_DEALER`: 64/256 보류, 나머지 통과.
+    - `DEALER_ROUTER`, `ROUTER_ROUTER`, `STREAM`: 전체 통과.
+    - `PUBSUB`: 64/256/1024 보류, 65536/131072/262144 통과.
+    - `SPOT`: 64/262144 보류, 256/1024/65536/131072 통과.
+    - `SPOT_REQREP`: 65536 보류, 나머지 통과.
+    - `SPOT_SENDSEND`: 64/256/1024 통과, 65536/131072/262144 보류.
   - `Message.WrapBytes`가 기존 thread-local `Message` pool을 쓰도록 하는 후보:
     `perf_dotnet_multi_linux_20260518_145139_codex_dotnet_tcp_spot64_message_pool.txt`
     - .NET: `2,919,071.4 msg/s`, C 대비 `50.1%`
@@ -311,6 +328,31 @@
 - 보류 이유
   - 현재 public API를 유지한 내부 후보는 목표에 닿지 못했다.
   - public API 변경 후보도 실측 개선 폭이 작아 최후 수단으로 계속 진행할 근거가 부족하다.
+- `tls` full
+  - .NET: `perf_dotnet_multi_linux_20260518_154137_codex_dotnet_tls_full_status.txt`
+    - full runner는 `MULTI_SPOT_REQREP/tls/131072` 이후 자식 benchmark 없이 shell만 남아
+      멈췄다. 이미 기록된 결과는 유지하고, 남은 조합은 제한 tail 측정으로 채웠다.
+  - .NET tail 제한 측정:
+    `perf_dotnet_multi_linux_20260518_155100_codex_dotnet_tls_tail_status.txt`
+    - 상태: partial, 13 success / 3 fail
+    - fail: `MULTI_SPOT_REQREP/tls/65536`,
+      `MULTI_SPOT_REQREP/tls/131072`, `MULTI_SPOT_SENDSEND/tls/65536`
+    - `MsgUnit(B)`는 출력된 모든 size에서 message size와 일치했다.
+  - C SPOT 제한 기준: `perf_c_multi_linux_20260518_155605_codex_c_tls_spot_dotnet_compare.txt`
+    - baseline SPOT의 `MsgUnit(B)=4096` 이력이 있어 SPOT 계열만 같은 조건으로 재측정했다.
+    - `Effective Options`는 .NET과 같은 transport, size, duration, client 수, timeout,
+      auto-HWM, socket buffer 조건이었다.
+  - 판정 요약
+    - `DEALER_DEALER`: 64/256 보류, 나머지 통과.
+    - `DEALER_ROUTER`: 전체 통과.
+    - `ROUTER_ROUTER`: 64/256/1024 보류, 65536/131072/262144 통과.
+    - `PUBSUB`: 64/256/1024/65536/262144 보류, 131072 통과.
+    - `SPOT`: 64/65536/131072/262144 보류, 256/1024 통과.
+    - `SPOT_REQREP`: 64/256/1024/262144 통과, 65536/131072 보류.
+    - `SPOT_SENDSEND`: 64/256/1024/131072/262144 통과, 65536 보류.
+    - `STREAM`: 전체 통과.
+  - .NET은 `tcp`, `ws`, `wss`, `tls` 모두 `미달` 또는 `미측정` 없이
+    `통과`와 `보류`만 남았다. 다음 순서는 Java `tcp`다.
 
 ## Java
 

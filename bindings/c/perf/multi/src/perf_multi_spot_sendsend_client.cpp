@@ -702,25 +702,32 @@ bool handle_recv_parts(spot_reqrep_client_slot_t *slot,
 
     perf_multi_metric::header_t header;
     if (!perf_multi_metric::decode_payload_header(
-          zlink_msg_data(&parts[0]), zlink_msg_size(&parts[0]), &header)
-        || !perf_multi_metric::is_expected(
-          header,
-          state->active_run_id.load(std::memory_order_acquire),
-          perf_multi_metric::phase_active,
-          state->active_msg_size.load(std::memory_order_acquire))) {
+          zlink_msg_data(&parts[0]), zlink_msg_size(&parts[0]), &header)) {
         zlink_multipart_close(parts, part_count);
         return true;
     }
 
     const uint64_t now_ns = perf_multi_metric::now_ns();
-    if (now_ns < state->active_deadline_ns.load(std::memory_order_acquire)
-        && header.sent_ts_ns > 0
-        && now_ns >= static_cast<uint64_t>(header.sent_ts_ns)) {
-        const double sample_ns =
-          static_cast<double>(now_ns - static_cast<uint64_t>(header.sent_ts_ns))
-          / 2.0;
-        state->active_reply_count.fetch_add(1, std::memory_order_acq_rel);
-        state->active_latency.add(sample_ns);
+    bool recorded_sample = false;
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (perf_multi_metric::is_expected(
+              header,
+              state->active_run_id.load(std::memory_order_acquire),
+              perf_multi_metric::phase_active,
+              state->active_msg_size.load(std::memory_order_acquire))
+            && now_ns < state->active_deadline_ns.load(std::memory_order_acquire)
+            && header.sent_ts_ns > 0
+            && now_ns >= static_cast<uint64_t>(header.sent_ts_ns)) {
+            const double sample_ns =
+              static_cast<double>(now_ns - static_cast<uint64_t>(header.sent_ts_ns))
+              / 2.0;
+            state->active_reply_count.fetch_add(1, std::memory_order_acq_rel);
+            state->active_latency.add(sample_ns);
+            recorded_sample = true;
+        }
+    }
+    if (recorded_sample) {
         if (bench_debug_enabled()
             && g_client_debug_recv_logs.fetch_add(1, std::memory_order_acq_rel)
                  < 8) {
@@ -998,15 +1005,18 @@ bool run_active_window(spot_reqrep_client_state_t *state,
         return false;
     }
 
-    state->active_run_id.store(run_id, std::memory_order_release);
-    state->active_msg_size.store(msg_size, std::memory_order_release);
-    state->active_deadline_ns.store(
-      perf_multi_metric::now_ns()
-        + static_cast<uint64_t>(std::max(1, settings.duration_seconds))
-            * 1000000000ULL,
-      std::memory_order_release);
-    state->active_reply_count.store(0, std::memory_order_release);
-    state->active_latency.reset();
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->active_run_id.store(run_id, std::memory_order_release);
+        state->active_msg_size.store(msg_size, std::memory_order_release);
+        state->active_deadline_ns.store(
+          perf_multi_metric::now_ns()
+            + static_cast<uint64_t>(std::max(1, settings.duration_seconds))
+                * 1000000000ULL,
+          std::memory_order_release);
+        state->active_reply_count.store(0, std::memory_order_release);
+        state->active_latency.reset();
+    }
     for (size_t i = 0; i < state->slots.size(); ++i) {
         reset_active_slot(&state->slots[i]);
     }
@@ -1053,9 +1063,12 @@ bool run_active_window(spot_reqrep_client_state_t *state,
             return false;
     }
 
-    *reply_count_out =
-      state->active_reply_count.load(std::memory_order_acquire);
-    *latency_out = state->active_latency.snapshot();
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        *reply_count_out =
+          state->active_reply_count.load(std::memory_order_acquire);
+        *latency_out = state->active_latency.snapshot();
+    }
     return true;
 }
 

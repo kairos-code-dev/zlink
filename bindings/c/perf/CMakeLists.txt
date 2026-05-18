@@ -6,6 +6,7 @@ endif()
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(Python3 COMPONENTS Interpreter)
 
 get_filename_component(ZLINK_C_BINDINGS_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 get_filename_component(ZLINK_REPO_ROOT_DIR "${ZLINK_C_BINDINGS_DIR}/../.." ABSOLUTE)
@@ -140,3 +141,31 @@ endfunction()
                            multi/src/perf_multi_stream_server.cpp)
 target_compile_definitions(comp_src_stream_server PRIVATE
                            PERF_MULTI_STREAM_PATTERN_NAME="MULTI_STREAM")
+
+if(ZLINK_C_REGISTER_CTEST AND Python3_Interpreter_FOUND AND UNIX AND NOT APPLE)
+    function(add_perf_multi_spot_size_sweep_regression test_name pattern_name)
+        add_test(
+            NAME ${test_name}
+            COMMAND ${CMAKE_COMMAND} -E env
+                "PERF_ALLOW_MULTI=1"
+                "PERF_FAIL_FAST=1"
+                "PERF_TRANSPORTS=tcp"
+                "PERF_MSG_SIZES=64,256,1024,65536,131072"
+                "PERF_DURATION_SECONDS=5"
+                "PERF_CTX_AUTO_HWM_ENABLE=1"
+                "LD_LIBRARY_PATH=${ZLINK_C_CORE_RUNTIME_DIR}:$ENV{LD_LIBRARY_PATH}"
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/run_comparison.py"
+                "${pattern_name}"
+                "--build-dir" "${CMAKE_BINARY_DIR}"
+                "--result-file" "${CMAKE_CURRENT_BINARY_DIR}/${test_name}.txt")
+        set_tests_properties(${test_name} PROPERTIES
+            LABELS "perf;regression"
+            TIMEOUT 90)
+    endfunction()
+
+    add_perf_multi_spot_size_sweep_regression(
+        perf_multi_spot_reqrep_size_sweep_regression SPOT_REQREP)
+    add_perf_multi_spot_size_sweep_regression(
+        perf_multi_spot_sendsend_size_sweep_regression SPOT_SENDSEND)
+endif()

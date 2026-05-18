@@ -45,8 +45,6 @@ public interface IZLinkActorContext
 
     IZLinkActorSendCall Send<TMessage>(TMessage message);
 
-    IZLinkActorReplyCall Reply<TMessage>(TMessage message);
-
     ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
         string spotName,
         TRequest request,

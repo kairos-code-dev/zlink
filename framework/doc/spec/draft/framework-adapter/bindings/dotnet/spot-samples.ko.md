@@ -1261,21 +1261,12 @@ public sealed class SampleActor : IZLinkActor
             .SubmitAsync<SampleJoinRoomReply>(cancellationToken);
     }
 
-    public ValueTask ReplyAsync<TMessage>(
-        TMessage message,
-        CancellationToken cancellationToken)
-    {
-        return _context
-            .Reply(message)
-            .Submit(cancellationToken);
-    }
-
 }
 
 public sealed class SampleMoveActorHandler
-    : IZLinkSpotActorSendHandler<SampleSpot, SampleActor, SampleMoveActorCommand>
+    : IZLinkSpotActorRequestHandler<SampleSpot, SampleActor, SampleMoveActorCommand, SampleMoveActorReply>
 {
-    public ValueTask HandleAsync(
+    public ValueTask<SampleMoveActorReply> HandleAsync(
         SampleSpot room,
         SampleActor actor,
         SampleMoveActorCommand message,
@@ -1283,11 +1274,11 @@ public sealed class SampleMoveActorHandler
     {
         actor.MarkSeen(DateTimeOffset.UtcNow);
         room.PublishSampleState();
-        return actor.ReplyAsync(new SampleMoveActorReply
+        return ValueTask.FromResult(new SampleMoveActorReply
         {
             X = message.X,
             Y = message.Y
-        }, cancellationToken);
+        });
     }
 }
 

@@ -74,6 +74,16 @@ public sealed class ScaffoldSmokeTests
     }
 
     [Fact]
+    public void PublicSurface_Removes_ActorReply_And_StreamClientContracts()
+    {
+        AssertMissingMethod(typeof(IZLinkActorContext), "Reply");
+        Assert.DoesNotContain(
+            typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes(),
+            static type => type.FullName == "Zlink.Framework.Contracts.Actors.IZLinkActorReplyCall"
+                || type.FullName == "Zlink.Framework.Contracts.Actors.IZLinkActorStreamClient");
+    }
+
+    [Fact]
     public void FrameworkPublicTypeSourceFiles_LiveUnderContracts()
     {
         var frameworkRoot = Common.FrameworkTestEnvironment.GetFrameworkRoot();

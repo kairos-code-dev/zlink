@@ -109,11 +109,6 @@ internal sealed class ZLinkActorContext(
         return new ZLinkActorSendCall<TMessage>(state, message);
     }
 
-    public IZLinkActorReplyCall Reply<TMessage>(TMessage message)
-    {
-        return new ZLinkActorReplyCall<TMessage>(state, message);
-    }
-
     public ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
         string spotName,
         TRequest request,

@@ -1412,8 +1412,6 @@ public interface IZLinkActorContext
         TMessage message);
 
     IZLinkActorSendCall Send<TMessage>(TMessage message);
-
-    IZLinkActorReplyCall Reply<TMessage>(TMessage message);
 }
 
 public interface IZLinkActorJoinSpotCall<TReply>
@@ -1423,13 +1421,6 @@ public interface IZLinkActorJoinSpotCall<TReply>
     ValueTask<TReply> Submit(CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkActorStreamClient
-{
-    IZLinkActorSendCall Send<TMessage>(TMessage message);
-
-    IZLinkActorReplyCall Reply<TMessage>(TMessage message);
-}
-
 public interface IZLinkActorSendCall
 {
     IZLinkActorSendCall Metadata(string key, string value);
@@ -1437,15 +1428,6 @@ public interface IZLinkActorSendCall
     IZLinkActorSendCall PacketName(string messageName);
 
     IZLinkActorSendCall Compress();
-
-    ValueTask Submit(CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkActorReplyCall
-{
-    IZLinkActorReplyCall Metadata(string key, string value);
-
-    IZLinkActorReplyCall Compress();
 
     ValueTask Submit(CancellationToken cancellationToken = default);
 }
@@ -1593,12 +1575,19 @@ actor membership 변경은 actor callback 에서 처리하지 않는다. 대신
 `spotName -> RoutingId` 변환은 framework 내부의 spot route resolver 가
 담당한다. actor handler 표면에는 `RoutingId` 를 노출하지 않는다.
 
-`Send(...)` 와 `Reply(...)` 는 현재 actor 에 연결되어 있는 stream client
-로 packet 을 보낸다.
+`Send(...)` 는 현재 actor 에 연결되어 있는 stream client 로 packet 을
+보낸다. request 에 대한 응답은 actor context 에서 직접 쓰지 않고,
+request handler 의 반환값으로 보낸다.
 
-context 가 `IZLinkStream` 이나 `IZLinkActorStreamClient` 객체를 직접
-노출하지는 않는다. stream 이 연결되지 않은 actor 에서 이 API 를 호출하면,
-명확한 실패로 처리된다.
+actor, Entry Spot actor, user Spot actor request 는 모두 같은 방식으로
+처리한다. `IZLinkActorRequestHandler<..., TReply>`,
+`IZLinkEntrySpotActorRequestHandler<..., TReply>`,
+`IZLinkSpotActorRequestHandler<..., TReply>` 가 반환한 값이 reply 가 되고,
+framework 가 원래 request 의 sequence 정보를 사용해 response 를 작성한다.
+따라서 request packet 은 send handler 로 fallback dispatch 되지 않는다.
+
+context 가 `IZLinkStream` 객체를 직접 노출하지는 않는다. stream 이 연결되지
+않은 actor 에서 `Send(...)` 를 호출하면, 명확한 실패로 처리된다.
 
 actor 또는 `Spot` callback 안에서 task 기반 request 를 `await` 할 때
 주의할 점이 있다. thread 를 점유하지는 않지만, 현재 callback task 는 응답
@@ -3771,6 +3760,10 @@ interface 설명을 변경하면, 아래 테스트도 함께 조정한다.
 | `RegistrationValidationTests.AddZLinkFramework_RegistersValidatedConfigurationAndFilterTypes` | options, codec, filter, channel, stream, spot 등록 표면이 DI 등록 결과에 반영된다. |
 | `ChannelMessagingIntegrationTests.Filters_Run_In_Registration_Order_Around_Handler_Dispatch` | handler filter 인터페이스가 등록 순서대로 dispatch 앞뒤를 감싼다. |
 | `HandlerResultAwaiterTests.AwaitAsync_Returns_ValueTaskOfT_Result` | `ValueTask<T>` handler 결과를 값 타입 boxing 여부와 무관하게 기다리고 실제 reply 값을 반환한다. |
+| `StreamIntegrationTests.ActorPacketRegistry_DoesNot_Resolve_Request_To_Send_Handler` | actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
+| `StreamIntegrationTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot/user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
+| `StreamIntegrationTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |
+| `ScaffoldSmokeTests.PublicSurface_Removes_ActorReply_And_StreamClientContracts` | actor context Reply 와 actor stream client 계약이 public surface 에 다시 노출되지 않는다. |
 
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.
 [^transport]: 메시지가 실제로 네트워크나 IPC 위에서 오가는 하부 계층. ZLink에서는 socket, stream, route 등이 이에 해당한다.

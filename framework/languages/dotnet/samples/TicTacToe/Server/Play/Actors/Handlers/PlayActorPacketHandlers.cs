@@ -5,9 +5,9 @@ using Zlink.Framework.Contracts.Spots;
 namespace TicTacToe.Server.Play.Actors.Handlers;
 
 internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler> logger)
-    : IZLinkEntrySpotActorSendHandler<PlayActor, JoinGameReq>
+    : IZLinkEntrySpotActorRequestHandler<PlayActor, JoinGameReq, JoinGameRes>
 {
-    public async ValueTask HandleAsync(
+    public async ValueTask<JoinGameRes> HandleAsync(
         PlayActor actor,
         JoinGameReq message,
         CancellationToken cancellationToken)
@@ -25,20 +25,19 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
             .SubmitAsync<TicTacToeGameJoinRes>(cancellationToken);
 
         var reply = new JoinGameRes(joined.State);
-        await actor.Context.Reply(reply)
-            .Submit(cancellationToken);
         logger.LogInformation(
-            "actor -> client: JoinGameRes sent. actor={ActorId}, gameId={GameId}, mark={Mark}",
+            "actor -> client: JoinGameRes returned. actor={ActorId}, gameId={GameId}, mark={Mark}",
             actor.ActorId,
             reply.State.GameId,
             reply.State.XActorId == actor.ActorId ? "X" : "O");
+        return reply;
     }
 }
 
 internal sealed class PlayActorPlaceMarkHandler(ILogger<PlayActorPlaceMarkHandler> logger)
-    : IZLinkSpotActorSendHandler<TicTacToeGame, PlayActor, PlaceMarkReq>
+    : IZLinkSpotActorRequestHandler<TicTacToeGame, PlayActor, PlaceMarkReq, PlaceMarkRes>
 {
-    public async ValueTask HandleAsync(
+    public async ValueTask<PlaceMarkRes> HandleAsync(
         TicTacToeGame spot,
         PlayActor actor,
         PlaceMarkReq message,
@@ -52,14 +51,13 @@ internal sealed class PlayActorPlaceMarkHandler(ILogger<PlayActorPlaceMarkHandle
             message.Cell);
 
         var reply = await spot.PlaceMarkAsync(actor, message.Cell, cancellationToken);
-        await actor.Context.Reply(reply)
-            .Submit(cancellationToken);
 
         logger.LogInformation(
-            "actor -> client: PlaceMarkRes sent. actor={ActorId}, gameId={GameId}, board={Board}, status={Status}",
+            "actor -> client: PlaceMarkRes returned. actor={ActorId}, gameId={GameId}, board={Board}, status={Status}",
             actor.ActorId,
             reply.State.GameId,
             reply.State.Board,
             reply.State.Status);
+        return reply;
     }
 }

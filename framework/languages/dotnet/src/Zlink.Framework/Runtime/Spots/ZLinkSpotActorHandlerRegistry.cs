@@ -104,17 +104,13 @@ internal sealed class ZLinkSpotActorHandlerRegistry
         ZlinkStreamHeader header,
         out ZLinkSpotActorPacketDescriptor? descriptor)
     {
-        var kind = header.Kind == ZlinkStreamMessageKind.Request
-            ? ZLinkMessageKind.Request
-            : ZLinkMessageKind.Command;
-
-        if (_packets.TryGetValue((kind, actorType, header.Name), out descriptor))
+        if (!TryGetMessageKind(header.Kind, out var kind))
         {
-            return true;
+            descriptor = null;
+            return false;
         }
 
-        if (kind == ZLinkMessageKind.Request
-            && _packets.TryGetValue((ZLinkMessageKind.Command, actorType, header.Name), out descriptor))
+        if (_packets.TryGetValue((kind, actorType, header.Name), out descriptor))
         {
             return true;
         }
@@ -132,6 +128,24 @@ internal sealed class ZLinkSpotActorHandlerRegistry
 
         descriptor = null;
         return false;
+    }
+
+    private static bool TryGetMessageKind(
+        ZlinkStreamMessageKind streamKind,
+        out ZLinkMessageKind kind)
+    {
+        switch (streamKind)
+        {
+            case ZlinkStreamMessageKind.Send:
+                kind = ZLinkMessageKind.Command;
+                return true;
+            case ZlinkStreamMessageKind.Request:
+                kind = ZLinkMessageKind.Request;
+                return true;
+            default:
+                kind = default;
+                return false;
+        }
     }
 
     public bool TryResolveJoined(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)

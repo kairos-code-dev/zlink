@@ -126,12 +126,26 @@ internal sealed class ZLinkSessionContext(
         {
             using (payload)
             {
-                await runtime.SubmitActorByIdAsync(
-                        actorRef.ActorId,
-                        header,
-                        payload,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                if (header.RequestSeq is not null)
+                {
+                    var reply = await runtime.SubmitActorForReplyAsync(
+                            actorRef.ActorId,
+                            header,
+                            payload,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    await ReplyRawAsync(header, header.Codec, reply, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    await runtime.SubmitActorByIdAsync(
+                            actorRef.ActorId,
+                            header,
+                            payload,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
 
             return;

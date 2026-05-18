@@ -151,7 +151,11 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
 | actor context channel request 경로 | `integration-single-process` | join 전 `Context.RequestChannel(...)`은 일반 channel client 경로를, join 후에는 현재 `Spot`의 channel client 경로를 사용한다 |
-| actor context stream API | `integration-single-process` | actor는 `Context.Send(...)`, `Context.Reply(...)`로 client stream에 쓰고, `IZLinkStream`을 직접 노출받지 않는다 |
+| actor context stream send API | `integration-single-process` | actor는 `Context.Send(...)`로 client stream에 push하고, `IZLinkStream`을 직접 노출받지 않는다 |
+| actor request handler reply | `unit` | actor request packet은 actor request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
+| Spot actor request handler reply | `unit` | Entry Spot/user Spot actor request packet은 request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
+| local actor request relay reply | `integration-single-process` | local session actor relay도 actor request handler 반환값으로 stream response를 작성한다 |
+| actor reply public surface 제거 | `unit` | actor context Reply와 actor stream client 계약이 public surface에 다시 노출되지 않는다 |
 
 ## 6. Stream Regression 항목
 

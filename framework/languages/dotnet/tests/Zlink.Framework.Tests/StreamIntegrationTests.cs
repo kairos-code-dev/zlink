@@ -84,6 +84,58 @@ public sealed class StreamIntegrationTests
     }
 
     [Fact]
+    public void ActorPacketRegistry_DoesNot_Resolve_Request_To_Send_Handler()
+    {
+        var registry = new ZLinkActorPacketRegistry();
+        var actor = new RegistryOnlyActor("registry-only");
+        var requestHeader = CreateStreamHeader(ZlinkStreamMessageKind.Request, "packet");
+        var sendHeader = CreateStreamHeader(ZlinkStreamMessageKind.Send, "packet");
+        var responseHeader = CreateStreamHeader(ZlinkStreamMessageKind.Response, "packet");
+        var errorHeader = CreateStreamHeader(ZlinkStreamMessageKind.Error, "packet");
+        var controlHeader = CreateStreamHeader(ZlinkStreamMessageKind.Control, "packet");
+
+        registry.Add(actor, typeof(RegistryOnlyActorSendHandler), "packet");
+
+        Assert.True(registry.TryResolve(sendHeader, out var sendDescriptor));
+        Assert.NotNull(sendDescriptor);
+        Assert.False(registry.TryResolve(requestHeader, out _));
+        Assert.False(registry.TryResolve(responseHeader, out _));
+        Assert.False(registry.TryResolve(errorHeader, out _));
+        Assert.False(registry.TryResolve(controlHeader, out _));
+        Assert.False(registry.TryResolveRequest("packet", out _));
+    }
+
+    [Fact]
+    public void SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler()
+    {
+        var entryRegistry = new ZLinkSpotActorHandlerRegistry(ZLinkSpotActorHandlerSurface.EntrySpot);
+        var userRegistry = new ZLinkSpotActorHandlerRegistry(
+            ZLinkSpotActorHandlerSurface.UserSpot,
+            typeof(RegistryOnlySpot));
+        var requestHeader = CreateStreamHeader(ZlinkStreamMessageKind.Request, "packet");
+        var sendHeader = CreateStreamHeader(ZlinkStreamMessageKind.Send, "packet");
+        var responseHeader = CreateStreamHeader(ZlinkStreamMessageKind.Response, "packet");
+        var errorHeader = CreateStreamHeader(ZlinkStreamMessageKind.Error, "packet");
+        var controlHeader = CreateStreamHeader(ZlinkStreamMessageKind.Control, "packet");
+
+        entryRegistry.AddPacket(typeof(RegistryOnlyEntrySpotActorSendHandler), typeof(RegistryOnlyActor), "packet");
+        userRegistry.AddPacket(typeof(RegistryOnlyUserSpotActorSendHandler), typeof(RegistryOnlyActor), "packet");
+
+        Assert.True(entryRegistry.TryResolve(typeof(RegistryOnlyActor), sendHeader, out var entrySendDescriptor));
+        Assert.NotNull(entrySendDescriptor);
+        Assert.False(entryRegistry.TryResolve(typeof(RegistryOnlyActor), requestHeader, out _));
+        Assert.False(entryRegistry.TryResolve(typeof(RegistryOnlyActor), responseHeader, out _));
+        Assert.False(entryRegistry.TryResolve(typeof(RegistryOnlyActor), errorHeader, out _));
+        Assert.False(entryRegistry.TryResolve(typeof(RegistryOnlyActor), controlHeader, out _));
+        Assert.True(userRegistry.TryResolve(typeof(RegistryOnlyActor), sendHeader, out var userSendDescriptor));
+        Assert.NotNull(userSendDescriptor);
+        Assert.False(userRegistry.TryResolve(typeof(RegistryOnlyActor), requestHeader, out _));
+        Assert.False(userRegistry.TryResolve(typeof(RegistryOnlyActor), responseHeader, out _));
+        Assert.False(userRegistry.TryResolve(typeof(RegistryOnlyActor), errorHeader, out _));
+        Assert.False(userRegistry.TryResolve(typeof(RegistryOnlyActor), controlHeader, out _));
+    }
+
+    [Fact]
     public async Task ActorManager_CreateAsync_Throws_When_ActorAlreadyExists()
     {
         var spotEndpoint = GetFreeTcpEndpoint();
@@ -354,7 +406,9 @@ public sealed class StreamIntegrationTests
                 TimeSpan.FromSeconds(5));
             callbackCapture.ThrowIfAny();
             var reply = ReceiveFrame(network, new ZlinkStreamRequestSeq(1));
-            Assert.Equal(ZlinkStreamMessageKind.Response, reply.Header.Kind);
+            Assert.True(
+                reply.Header.Kind == ZlinkStreamMessageKind.Response,
+                Encoding.UTF8.GetString(reply.Payload));
             Assert.Equal(new ZlinkStreamRequestSeq(1), reply.Header.RequestSeq);
             Assert.Equal("\"pong\"", Encoding.UTF8.GetString(reply.Payload));
 
@@ -441,7 +495,9 @@ public sealed class StreamIntegrationTests
             callbackCapture.ThrowIfAny();
 
             var reply = ReceiveFrame(network, new ZlinkStreamRequestSeq(11), headerCodec);
-            Assert.Equal(ZlinkStreamMessageKind.Response, reply.Header.Kind);
+            Assert.True(
+                reply.Header.Kind == ZlinkStreamMessageKind.Response,
+                Encoding.UTF8.GetString(reply.Payload));
             Assert.Equal("\"pong\"", Encoding.UTF8.GetString(reply.Payload));
         }
         finally
@@ -709,6 +765,84 @@ public sealed class StreamIntegrationTests
         finally
         {
             await ChannelMessagingTestSupport.StopHostsAsync(sessionHost, playHost);
+        }
+    }
+
+    [Fact]
+    public async Task LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler()
+    {
+        var streamEndpoint = GetFreeTcpEndpoint();
+        var routerEndpoint = GetFreeTcpEndpoint();
+        var spotEndpoint = GetFreeTcpEndpoint();
+        var localRid = RoutingId.FromString("0909");
+        var recorder = new ActorDispatchRecorder();
+        var sessionLocations = new ActorSessionLocationStore();
+        using var callbackCapture = CallbackExceptionCapture.Start();
+
+        var host = await CreateHostAsync(routerEndpoint, services =>
+        {
+            services.AddSingleton(recorder);
+            services.AddSingleton(new GatewaySessionRecorder());
+            services.AddSingleton(sessionLocations);
+            services.AddScoped<GatewayActorFactory>();
+            services.AddScoped<GatewayActorHandler>();
+            services.AddScoped<GatewaySessionDisconnectHandler>();
+            services.AddScoped<GatewaySessionDisconnectRequestHandler>();
+            services.AddScoped<GatewayRelaySession>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddActorSessionBindingStore<ActorSessionLocationStore>();
+                options.AddSpotNode("actor-node", spot =>
+                {
+                    spot.Bind(spotEndpoint);
+                });
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(routerEndpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
+                    routed.UseManualConnections(connections => connections.Connect(routerEndpoint));
+                });
+                options.AddStreamNode("client.stream", stream =>
+                {
+                    stream.Bind(streamEndpoint);
+                    stream.AddHeaderSession<GatewayRelaySession>();
+                });
+            });
+        });
+
+        await host.Services.GetRequiredService<IZLinkActorManager>()
+            .GetOrCreateAsync("player-1", "player");
+
+        try
+        {
+            using var client = ConnectRawClient(streamEndpoint);
+            var network = client.GetStream();
+
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Request,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    new ZlinkStreamRequestSeq(401),
+                    "relay.echo",
+                    ZlinkStreamMetadata.Empty),
+                JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("local"), JsonOptions)));
+
+            var reply = ReceiveFrame(network, new ZlinkStreamRequestSeq(401));
+            var body = JsonSerializer.Deserialize<GatewayPong>(reply.Payload, JsonOptions);
+
+            Assert.True(
+                reply.Header.Kind == ZlinkStreamMessageKind.Response,
+                Encoding.UTF8.GetString(reply.Payload));
+            Assert.Equal("play:local", body?.Value);
+            Assert.Equal(101UL, body?.RequestSeq);
+            Assert.Equal("relay.echo", recorder.LastPacketName);
+            callbackCapture.ThrowIfAny();
+        }
+        finally
+        {
+            await host.StopAsync();
         }
     }
 
@@ -1150,6 +1284,26 @@ public sealed class StreamIntegrationTests
         return $"tcp://127.0.0.1:{endpoint.Port}";
     }
 
+    private static ZlinkStreamHeader CreateStreamHeader(
+        ZlinkStreamMessageKind kind,
+        string packetName)
+    {
+        var requestSeq = kind is ZlinkStreamMessageKind.Request or ZlinkStreamMessageKind.Response
+            ? new ZlinkStreamRequestSeq(1)
+            : (ZlinkStreamRequestSeq?)null;
+        return new ZlinkStreamHeader(
+            kind,
+            kind == ZlinkStreamMessageKind.Control
+                ? ZlinkStreamCodec.Raw
+                : ZlinkStreamCodec.Json,
+            requestSeq is not null
+                ? ZlinkStreamHeaderFlags.HasRequestSeq
+                : ZlinkStreamHeaderFlags.None,
+            requestSeq,
+            packetName,
+            ZlinkStreamMetadata.Empty);
+    }
+
     private static TcpClient ConnectRawClient(string endpoint)
     {
         var uri = new Uri(endpoint);
@@ -1506,6 +1660,72 @@ public sealed class StreamIntegrationTests
             return ValueTask.FromResult(new ZLinkActorSessionRoute(
                 binding.SessionRouterId,
                 binding.BindingToken));
+        }
+    }
+
+    public sealed class RegistryOnlyActor(string actorId) : IZLinkActor
+    {
+        public string ActorId { get; } = actorId;
+
+        public IZLinkActorContext Context
+            => throw new InvalidOperationException("Registry-only actor does not expose context.");
+
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class RegistryOnlyActorSendHandler
+        : IZLinkActorPacketHandler<RegistryOnlyActor, GatewayPing>
+    {
+        public ValueTask HandleAsync(
+            RegistryOnlyActor actor,
+            GatewayPing message,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = message;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class RegistryOnlyEntrySpotActorSendHandler
+        : IZLinkEntrySpotActorSendHandler<RegistryOnlyActor, GatewayPing>
+    {
+        public ValueTask HandleAsync(
+            RegistryOnlyActor actor,
+            GatewayPing message,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = message;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class RegistryOnlySpot(IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+    }
+
+    public sealed class RegistryOnlyUserSpotActorSendHandler
+        : IZLinkSpotActorSendHandler<RegistryOnlySpot, RegistryOnlyActor, GatewayPing>
+    {
+        public ValueTask HandleAsync(
+            RegistryOnlySpot spot,
+            RegistryOnlyActor actor,
+            GatewayPing message,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            _ = actor;
+            _ = message;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
         }
     }
 

@@ -1763,6 +1763,15 @@ else
 fi
 print_meta_block "${META_CLIENTS}"
 
+ROUTED_ECHO_BORROW_PAYLOAD="none"
+case ",${PATTERN}," in
+  *,MULTI_DEALER_ROUTER,*|*,MULTI_ROUTER_ROUTER,*)
+    case ",${TRANSPORTS}," in
+      *,tcp,*) ROUTED_ECHO_BORROW_PAYLOAD="tcp" ;;
+    esac
+    ;;
+esac
+
 # C multi engine (bindings/c/perf/run_comparison.py print_effective_options)
 # emits this block twice with identical body: once labelled "(start)" before
 # the patterns and once labelled "(result)" right before "## Result Data".
@@ -1776,7 +1785,7 @@ print_effective_options() {
   print_line "- patterns: ${PATTERN}"
   print_line "- transports: ${TRANSPORTS}"
   print_line "- msg_sizes: ${EFFECTIVE_MSG_SIZES_DISPLAY}"
-  print_line "- routed_echo_borrow_payload: none"
+  print_line "- routed_echo_borrow_payload: ${ROUTED_ECHO_BORROW_PAYLOAD}"
   print_line "- duration_seconds: ${DURATION}"
   print_line "- clients: ${EFFECTIVE_CLIENTS_DISPLAY}"
   print_line "- default_clients: 100"

@@ -160,6 +160,56 @@
   - 승인 후보: single-part pub/sub receive를 topic buffer와 message out parameter에
     직접 받는 public API.
 
+### C++ tls full multi
+
+- 실행 명령
+  - `bindings/cpp/perf/run_binding_multi.sh --reuse-build --transports tls --results-tag codex_cpp_tls_full_status`
+- 결과 파일
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt`
+- C 기준
+  - 첫 비교: `bindings/c/perf/baseline/perf_c_multi_linux_20260513_101034.txt`
+  - 미달 또는 timeout 항목은 같은 transport와 pattern으로 제한 재측정했다.
+- 통과
+  - `MULTI_DEALER_DEALER/tls/256,1024,65536`: C 대비 `83.4%~88.4%`
+  - `MULTI_DEALER_ROUTER/tls/64,256,1024,65536,131072`: C 대비 `83.6%~89.1%`
+  - `MULTI_DEALER_ROUTER/tls/262144`: 제한 C 대비 `88.2%`
+  - `MULTI_ROUTER_ROUTER/tls/64,256,1024,65536,131072`: C 대비 `89.3%~94.8%`
+  - `MULTI_ROUTER_ROUTER/tls/262144`: 제한 C 대비 `112.5%`
+  - `MULTI_PUBSUB/tls/64,256`: 제한 C 대비 `80.9%~85.5%`
+  - `MULTI_PUBSUB/tls/1024`: C 대비 `80.2%`
+  - `MULTI_PUBSUB/tls/131072`: 제한 C 대비 `97.8%`
+  - `MULTI_STREAM/tls/64,256,1024,65536`: C 대비 `94.8%~103.2%`
+- 제한 C 재측정
+  - `DEALER_DEALER`: `perf_c_multi_linux_20260518_140428_codex_c_tls_dd_recheck_compare.txt`
+  - `PUBSUB`: `perf_c_multi_linux_20260518_140850_codex_c_tls_pubsub_recheck_compare.txt`
+  - `DEALER_ROUTER/262144`: `perf_c_multi_linux_20260518_141339_codex_c_tls_dr_262_recheck_compare.txt`
+  - `ROUTER_ROUTER/262144`: `perf_c_multi_linux_20260518_141403_codex_c_tls_rr_262_recheck_compare.txt`
+- 제한 C++ 재측정
+  - `DEALER_DEALER`: `perf_cpp_multi_linux_20260518_140451_codex_cpp_tls_dd_recheck.txt`
+  - `PUBSUB`: `perf_cpp_multi_linux_20260518_140925_codex_cpp_tls_pubsub_recheck.txt`
+  - `DEALER_ROUTER/262144`: `perf_cpp_multi_linux_20260518_141353_codex_cpp_tls_dr_262_recheck.txt`
+  - `ROUTER_ROUTER/262144`: `perf_cpp_multi_linux_20260518_141416_codex_cpp_tls_rr_262_recheck.txt`
+- 보류
+  - `MULTI_DEALER_DEALER/tls/64`: 제한 C 대비 `75.5%`
+  - `MULTI_DEALER_DEALER/tls/131072`: 제한 C 대비 `51.6%`
+  - `MULTI_DEALER_DEALER/tls/262144`: C++ timeout, C 제한 측정은 성공
+  - `MULTI_PUBSUB/tls/65536`: 제한 C 대비 `70.2%`
+  - `MULTI_PUBSUB/tls/262144`: C++ timeout, C 제한 측정은 성공
+  - `MULTI_SPOT/tls/*`: `Unknown error 204 (errno=14)`, `MsgUnit(B)=4096`
+  - `MULTI_SPOT_REQREP/tls/*`: `CLIENT_READY,64`, `MsgUnit(B)=4096`
+  - `MULTI_SPOT_SENDSEND/tls/*`: `CLIENT_READY,64`, `MsgUnit(B)=4096`
+- 보류 이유
+  - `DEALER_DEALER`은 기존 public API의 재사용 wait overload와 수신 메시지 명시 close
+    정렬 후에도 목표를 넘지 못했다. 직접 message payload stamp 방식은 앞선 ws 검토에서
+    큰 메시지 latency를 악화시켜 폐기했다.
+  - `PUBSUB`은 앞선 wss 검토에서 typed publish 경로가 timeout으로 악화되어 되돌렸다.
+    남은 병목은 public `subscribe(topic_message_t&)`의 topic string과 parts vector
+    물질화 비용으로 본다.
+  - SPOT 계열은 public C++ SPOT node 또는 handle에 pub/sub auto-HWM message unit을
+    message size로 맞추는 typed facade가 없어 raw option이나 C API로 우회하지 않았다.
+  - 승인 후보는 ws/wss와 같다. 반복 전송용 owned message builder, single-part
+    pub/sub receive facade, SPOT auto-HWM message unit typed facade가 필요하다.
+
 ## .NET
 
 - `MULTI_SPOT/tcp/64`
@@ -177,12 +227,90 @@
   - 상태: 미달
   - 결과: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260518_103205_codex_ws64_client_hotloop_probe.txt`
 - 확인한 내부 후보
-  - receive worker 수 조정
   - publish builder fast path
   - payload 생성 방식 변경
   - client hot loop 개선
 - 남은 후보
   - tcp-first 원칙상 `MULTI_SPOT/tcp/64`부터 다시 직접 개선한다.
+- 2026-05-18 재측정
+  - C 제한 기준: `perf_c_multi_linux_20260518_141639_codex_c_tcp_spot64_dotnet_compare.txt`
+    - C: `5,832,409.8 msg/s`
+  - .NET current: `perf_dotnet_multi_linux_20260518_141619_codex_dotnet_tcp_spot64_current_recheck.txt`
+    - .NET: `3,001,629.4 msg/s`, C 대비 `51.5%`
+  - `PERF_DOTNET_SPOT_RECV_WORKERS=8` probe:
+    `perf_dotnet_multi_linux_20260518_141837_codex_dotnet_tcp_spot64_recv_workers8_probe.txt`
+    - .NET: `2,718,605.2 msg/s`, 개선 없음
+    - 이 값은 C perf와 worker 조건이 달라지는 실험이므로 통과/보류 판정 근거로 쓰지 않는다.
+      이후 라운드에서는 테스트 의미가 달라지는 worker 수 변경 실험을 하지 않는다.
+- 중단한 public API 프로토타입
+  - 직접 publish overload 후보: `3,147,725.4 msg/s`
+  - 단일 part subscribe buffer 후보: `3,269,798.4 msg/s`
+  - span publish 후보: `3,069,849.4 msg/s`
+  - 목표 60%에 필요한 약 `3,499,446 msg/s`에 미달했고 개선 폭도 크지 않아 public API
+    변경 후보로 계속 진행하지 않는다. 프로토타입 코드는 측정 직후 원복했다.
+- 기존 API 내부 프로토타입
+  - routed echo tcp client payload를 C와 같은 의미로 맞추는 perf 정렬:
+    `perf_dotnet_multi_linux_20260518_145439_codex_dotnet_tcp_routed_full_borrow_payload.txt`
+    - `Effective Options`: `routed_echo_borrow_payload=tcp`
+    - `MULTI_DEALER_ROUTER`: `62.5%`, `64.8%`, `65.8%`, `80.6%`, `103.6%`, `130.6%`
+    - `MULTI_ROUTER_ROUTER`: `54.9%`, `56.0%`, `54.5%`, `73.9%`, `93.1%`, `145.7%`
+    - `MULTI_ROUTER_ROUTER/tcp/1024`는 절대 기준은 넘지만 C의
+      `ROUTER_ROUTER / DEALER_ROUTER` 상대 비율보다 15%p를 조금 넘게 낮아
+      제한 재측정 대상으로 남겼다.
+  - tcp borderline 제한 재측정:
+    `perf_dotnet_multi_linux_20260518_145742_codex_dotnet_tcp_borderline_recheck.txt`
+    - `MULTI_DEALER_DEALER/tcp/64`: `1,601,415.8 msg/s`, C 대비 `53.5%`, 미달
+    - `MULTI_DEALER_DEALER/tcp/256`: `1,205,802.6 msg/s`, C 대비 `62.5%`, 미달
+    - `MULTI_PUBSUB/tcp/64`: `1,343,102.4 msg/s`, C 대비 `61.3%`, 미달
+    - `MULTI_ROUTER_ROUTER/tcp/1024`: `202,117.4 msg/s`, C 대비 `56.9%`, 통과
+    - `MULTI_SPOT_SENDSEND/tcp/64`: `155,329.8 msg/s`, C 대비 `69.5%`, 통과
+  - raw send/publish builder inline 후보:
+    `perf_dotnet_multi_linux_20260518_150141_codex_dotnet_tcp_oneway_inline_candidate.txt`
+    - 단위 테스트: `bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj`, 145개 통과
+    - `MULTI_PUBSUB/tcp/64`: `1,468,394.2 msg/s`, C 대비 `67.0%`, 통과
+    - `MULTI_DEALER_DEALER/tcp/64`: `1,608,215.0 msg/s`, C 대비 `53.7%`, 보류
+    - `MULTI_DEALER_DEALER/tcp/256`: `1,167,607.0 msg/s`, C 대비 `60.5%`, 보류
+    - 남은 `DEALER_DEALER` small miss는 public API builder와 `Message` 생성 비용이
+      결합된 경로다. public API 변경 없이 적용 가능한 얇은 builder inline 후보는
+      목표에 닿지 못했고, 의미가 달라지는 borrowed payload 전환은 C one-way 조건과
+      맞지 않아 시도하지 않았다.
+  - SPOT echo large timeout 제한 재측정:
+    `perf_dotnet_multi_linux_20260518_150313_codex_dotnet_tcp_spot_timeout_recheck.txt`
+    - `MULTI_SPOT_REQREP/tcp/65536`: timeout
+    - `MULTI_SPOT_REQREP/tcp/262144`: timeout
+    - `MULTI_SPOT_SENDSEND/tcp/65536`: timeout
+    - `MULTI_SPOT_SENDSEND/tcp/262144`: timeout
+    - `MsgUnit(B)`는 각 message size와 같았다. timeout, HWM, client 수를 바꾸면
+      C 비교 조건과 달라지므로 조정하지 않았다.
+- `ws` full
+  - .NET: `perf_dotnet_multi_linux_20260518_150810_codex_dotnet_ws_full_status.txt`
+    - 상태: partial, 42 success / 4 fail
+    - fail: `MULTI_SPOT_REQREP/ws/65536`, `MULTI_SPOT_REQREP/ws/262144`,
+      `MULTI_SPOT_SENDSEND/ws/65536`, `MULTI_SPOT_SENDSEND/ws/262144`
+    - `MsgUnit(B)`는 출력된 모든 size에서 message size와 일치했다.
+  - C SPOT 제한 기준: `perf_c_multi_linux_20260518_151858_codex_c_ws_spot_dotnet_compare.txt`
+    - baseline SPOT의 `MsgUnit(B)=4096` 이력이 있어 SPOT 계열만 같은 조건으로 재측정했다.
+  - 판정 요약
+    - `DEALER_DEALER`: 64/256/131072 보류, 나머지 통과.
+    - `DEALER_ROUTER`: 전체 통과.
+    - `ROUTER_ROUTER`: 64/256/1024/65536 보류, 131072/262144 통과.
+    - `PUBSUB`: 64/256/1024 보류, 65536/131072/262144 통과.
+    - `SPOT`: 전체 보류. C 제한 기준 대비 `33.7%~51.6%`.
+    - `SPOT_REQREP`: 64/256/1024/131072 통과, 65536/262144 보류.
+    - `SPOT_SENDSEND`: 64/256/1024/131072 통과, 65536/262144 보류.
+    - `STREAM`: 전체 통과.
+  - `Message.WrapBytes`가 기존 thread-local `Message` pool을 쓰도록 하는 후보:
+    `perf_dotnet_multi_linux_20260518_145139_codex_dotnet_tcp_spot64_message_pool.txt`
+    - .NET: `2,919,071.4 msg/s`, C 대비 `50.1%`
+    - 같은 public API와 같은 조건을 유지한 내부 변경이지만 목표에 미달했고, 직전 제한
+      측정보다 낫지 않아 원복했다.
+  - SPOT publish에서 borrowed send를 우회하고 native message copy를 강제하는 후보:
+    `perf_dotnet_multi_linux_20260518_142632_codex_dotnet_tcp_spot64_copy_send_proto.txt`
+    - .NET: `3,094,403.6 msg/s`, C 대비 `53.1%`
+  - 목표에 미달하고 `Message.WrapBytes`의 zero-copy 의도와도 맞지 않아 원복했다.
+- 보류 이유
+  - 현재 public API를 유지한 내부 후보는 목표에 닿지 못했다.
+  - public API 변경 후보도 실측 개선 폭이 작아 최후 수단으로 계속 진행할 근거가 부족하다.
 
 ## Java
 

@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -111,6 +112,7 @@ internal sealed class MessageSocketSendOperation : SendOperation,
         _socket = socket;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SendSubmitOperation Message(Message message)
     {
         EnsureNotSubmitted();
@@ -118,6 +120,7 @@ internal sealed class MessageSocketSendOperation : SendOperation,
         return this;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SendSubmitOperation Flags(SendFlags flags)
     {
         EnsureNotSubmitted();
@@ -125,6 +128,7 @@ internal sealed class MessageSocketSendOperation : SendOperation,
         return this;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Submit()
     {
         EnsureReady();
@@ -162,6 +166,7 @@ internal sealed class PublisherSendOperation : SendOperation, SendSubmitOperatio
         _topic = topic;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SendSubmitOperation Message(Message message)
     {
         EnsureNotSubmitted();
@@ -169,6 +174,7 @@ internal sealed class PublisherSendOperation : SendOperation, SendSubmitOperatio
         return this;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SendSubmitOperation Flags(SendFlags flags)
     {
         EnsureNotSubmitted();
@@ -176,6 +182,7 @@ internal sealed class PublisherSendOperation : SendOperation, SendSubmitOperatio
         return this;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Submit()
     {
         EnsureReady();

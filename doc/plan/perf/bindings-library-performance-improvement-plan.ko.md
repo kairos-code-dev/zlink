@@ -77,6 +77,9 @@ binding 내부 병목인지 perf 측정 오류인지 먼저 구분한다.
 - 성능 개선 대상은 perf가 아니라 각 언어 binding 라이브러리다.
 - perf는 버그가 있거나 `doc/perf` 원칙을 위배했을 때만 수정한다.
 - binding perf는 `bindings/c/perf`와 같은 의미를 측정해야 한다.
+- C perf와 다른 의미를 만드는 실험은 하지 않는다. worker 수, client 수, transport,
+  pattern, message size, duration, timeout, HWM, socket buffer, borrow/copy 정책은
+  C와 대상 binding이 같은 조건일 때만 비교 근거로 사용한다.
 - binding perf hot path는 해당 언어의 public API를 사용해야 한다.
 - 내부 API, private API, native helper, C API 직접 호출로 수치를 만드는 방식은
   인정하지 않는다.
@@ -91,6 +94,14 @@ binding 내부 병목인지 perf 측정 오류인지 먼저 구분한다.
   해당 변경을 바로 구현하지 않는다. 먼저 필요한 계약, 이유, 대안, 영향을 계획
   문서에 적고 사용자에게 승인 요청을 한 뒤 대기한다. 승인 대기 중에는 그 항목을
   `보류`로 표시하고, 현재 언어에 `미달` 또는 `미측정` 항목이 남아 있는지 확인한다.
+- .NET 이후 언어에서도 public API 변경은 최후 수단이다. 기존 public API 내부 최적화
+  후보를 먼저 모두 검토하고, 큰 개선 가능성이 명확하지 않으면 public API 변경
+  프로토타입도 만들지 않는다. 테스트 의미가 달라지는 실험이나 큰 개선 가능성이 낮은
+  인터페이스 변경 실험은 하지 않는다. public API 변경 후보가 목표 달성에 의미 있는
+  개선을 만들 가능성이 높다고 판단되는 경우에만 제한 프로토타입으로 확인한다.
+  프로토타입 변경은
+  측정 직후 원복해야 하며, 개선이 확인된 경우에도 필요한 계약, 예상 호출 방식, 영향
+  범위, 측정 결과를 문서에 남기고 사용자 승인 전에는 정식 반영하지 않는다.
 - 버그가 확인되면 perf에서 우회하지 않고 버그를 먼저 수정한다.
 - 버그 수정 전에는 해당 동작을 재현하는 회귀테스트를 먼저 작성한다.
 - binding 버그이면 해당 언어 binding 라이브러리에서 수정한다.
@@ -215,8 +226,8 @@ pattern, transport, message size 조합을 중복으로 동시에 실행하지 �
 
 | 순서 | 언어 | 현재 transport | 전체 상태 | 다음 작업 |
 |------|------|----------------|-----------|-----------|
-| 1 | C++ | `tls` | 진행 중 | `tls` 제한 측정 시작 |
-| 2 | .NET | `tcp` | 대기 | C++의 `미달` 해소 후 시작 |
+| 1 | C++ | `tls` | 보류 포함 완료 | .NET `tcp` 시작 |
+| 2 | .NET | `tcp` | 진행 중 | `MULTI_SPOT/tcp/64` 내부 개선 |
 | 3 | Java | `tcp` | 대기 | .NET의 `미달` 해소 후 시작 |
 | 4 | Node | `tcp` | 대기 | Java의 `미달` 해소 후 시작 |
 | 5 | Rust | `tcp` | 대기 | Node의 `미달` 해소 후 시작 |
@@ -270,14 +281,90 @@ pattern, transport, message size 조합을 중복으로 동시에 실행하지 �
 | `wss` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | 실행 실패, `MsgUnit(B)=4096`; SPOT pub/sub auto-HWM message unit typed facade 승인 필요 |
 | `wss` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | 실행 실패, `MsgUnit(B)=4096`; SPOT pub/sub auto-HWM message unit typed facade 승인 필요 |
 | `wss` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `90.0%~100.1%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
-| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | 다음 측정 대상 |
+| `tls` | `MULTI_DEALER_DEALER` | `64` | `보류` | `75.5%` | 제한 C 기준, public API 변경 없이 추가 내부 후보 없음 |
+| `tls` | `MULTI_DEALER_DEALER` | `256,1024,65536` | `통과` | `83.4%~88.4%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
+| `tls` | `MULTI_DEALER_DEALER` | `131072` | `보류` | `51.6%` | 제한 C 기준, public API 변경 없이 추가 내부 후보 없음 |
+| `tls` | `MULTI_DEALER_DEALER` | `262144` | `보류` | - | C++ timeout, C 제한 측정은 성공 |
+| `tls` | `MULTI_DEALER_ROUTER` | `64,256,1024,65536,131072` | `통과` | `83.6%~89.1%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
+| `tls` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `88.2%` | 제한 C: `perf_c_multi_linux_20260518_141339_codex_c_tls_dr_262_recheck_compare.txt` |
+| `tls` | `MULTI_ROUTER_ROUTER` | `64,256,1024,65536,131072` | `통과` | `89.3%~94.8%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
+| `tls` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `112.5%` | 제한 C: `perf_c_multi_linux_20260518_141403_codex_c_tls_rr_262_recheck_compare.txt` |
+| `tls` | `MULTI_PUBSUB` | `64,256,1024` | `통과` | `80.2%~85.5%` | 제한 C와 full 기준 |
+| `tls` | `MULTI_PUBSUB` | `65536` | `보류` | `70.2%` | public subscribe hot path 승인 필요 |
+| `tls` | `MULTI_PUBSUB` | `131072` | `통과` | `97.8%` | 제한 C: `perf_c_multi_linux_20260518_140850_codex_c_tls_pubsub_recheck_compare.txt` |
+| `tls` | `MULTI_PUBSUB` | `262144` | `보류` | - | C++ timeout, C 제한 측정은 성공 |
+| `tls` | `MULTI_SPOT` | 전체 대상 | `보류` | - | 실행 실패, `MsgUnit(B)=4096`; SPOT pub/sub auto-HWM message unit typed facade 승인 필요 |
+| `tls` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | 실행 실패, `MsgUnit(B)=4096`; SPOT pub/sub auto-HWM message unit typed facade 승인 필요 |
+| `tls` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | 실행 실패, `MsgUnit(B)=4096`; SPOT pub/sub auto-HWM message unit typed facade 승인 필요 |
+| `tls` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `94.8%~103.2%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
 
 ### 5.3 .NET 상태
 
 | Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
 |-----------|---------|---------|--------|--------|------|
-| `tcp` | `MULTI_SPOT` | `64` | `미달` | `52.2%` | `perf_dotnet_multi_linux_20260518_111857_codex_tcp64_contract_hotloop_check.txt` |
-| `ws` | `MULTI_SPOT` | `64` | `미측정` | `46.3%` | `tcp` 미달 상태에서 참고 측정만 존재 |
+| `tcp` | `MULTI_DEALER_DEALER` | `64` | `보류` | `53.7%` | builder inline 후보 후에도 미달, 추가 내부 후보 없음 |
+| `tcp` | `MULTI_DEALER_DEALER` | `256` | `보류` | `62.5%` | 제한 재측정에서도 미달, 추가 내부 후보 없음 |
+| `tcp` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `77.6%` | 제한 재측정 |
+| `tcp` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `105.4%` | full tcp |
+| `tcp` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `94.9%` | full tcp |
+| `tcp` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `83.2%` | full tcp |
+| `tcp` | `MULTI_DEALER_ROUTER` | `64` | `통과` | `62.5%` | `routed_echo_borrow_payload=tcp` 정렬 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `256` | `통과` | `64.8%` | `routed_echo_borrow_payload=tcp` 정렬 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `1024` | `통과` | `65.8%` | `routed_echo_borrow_payload=tcp` 정렬 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `65536` | `통과` | `80.6%` | `routed_echo_borrow_payload=tcp` 정렬 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `103.6%` | `routed_echo_borrow_payload=tcp` 정렬 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `130.6%` | `routed_echo_borrow_payload=tcp` 정렬 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `64` | `통과` | `54.9%` | 상대 기준 허용 범위 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `256` | `통과` | `56.0%` | 상대 기준 허용 범위 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `1024` | `통과` | `56.9%` | 제한 재측정, 상대 기준 허용 범위 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `65536` | `통과` | `73.9%` | 상대 기준 허용 범위 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `131072` | `통과` | `93.1%` | 상대 기준 허용 범위 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `145.7%` | 상대 기준 허용 범위 |
+| `tcp` | `MULTI_PUBSUB` | `64` | `통과` | `67.0%` | builder inline 후보 후 통과 |
+| `tcp` | `MULTI_PUBSUB` | `256` | `통과` | `71.7%` | 제한 재측정 |
+| `tcp` | `MULTI_PUBSUB` | `1024` | `통과` | `103.4%` | 제한 재측정 |
+| `tcp` | `MULTI_PUBSUB` | `65536` | `통과` | `84.5%` | full tcp |
+| `tcp` | `MULTI_PUBSUB` | `131072` | `통과` | `91.2%` | full tcp |
+| `tcp` | `MULTI_PUBSUB` | `262144` | `통과` | `121.0%` | full tcp |
+| `tcp` | `MULTI_SPOT` | `64` | `보류` | `51.5%` | 같은 조건 내부 후보 실패, public API 변경 실험은 계속하지 않음 |
+| `tcp` | `MULTI_SPOT` | `256` | `보류` | `38.4%` | 같은 SPOT publish/subscribe hot path, 추가 내부 후보 없음 |
+| `tcp` | `MULTI_SPOT` | `1024` | `보류` | `49.9%` | 같은 SPOT publish/subscribe hot path, 추가 내부 후보 없음 |
+| `tcp` | `MULTI_SPOT` | `65536` | `보류` | `35.8%` | 같은 SPOT publish/subscribe hot path, 추가 내부 후보 없음 |
+| `tcp` | `MULTI_SPOT` | `131072` | `보류` | `30.0%` | 같은 SPOT publish/subscribe hot path, 추가 내부 후보 없음 |
+| `tcp` | `MULTI_SPOT` | `262144` | `보류` | `23.3%` | 같은 SPOT publish/subscribe hot path, 추가 내부 후보 없음 |
+| `tcp` | `MULTI_SPOT_REQREP` | `64` | `통과` | `78.0%` | full tcp |
+| `tcp` | `MULTI_SPOT_REQREP` | `256` | `통과` | `69.6%` | full tcp |
+| `tcp` | `MULTI_SPOT_REQREP` | `1024` | `통과` | `62.7%` | full tcp |
+| `tcp` | `MULTI_SPOT_REQREP` | `65536` | `보류` | - | 제한 재측정도 timeout, 조건 변경 없이 추가 내부 후보 없음 |
+| `tcp` | `MULTI_SPOT_REQREP` | `131072` | `통과` | `86.4%` | full tcp |
+| `tcp` | `MULTI_SPOT_REQREP` | `262144` | `보류` | - | 제한 재측정도 timeout, 조건 변경 없이 추가 내부 후보 없음 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `64` | `통과` | `69.5%` | 제한 재측정 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `256` | `통과` | `72.7%` | 제한 재측정 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `1024` | `통과` | `72.9%` | 제한 재측정 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `65536` | `보류` | - | 제한 재측정도 timeout, 조건 변경 없이 추가 내부 후보 없음 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `131072` | `통과` | `91.3%` | full tcp |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `262144` | `보류` | - | full tcp는 통과했으나 제한 재측정 timeout |
+| `tcp` | `MULTI_STREAM` | `64` | `통과` | `91.8%` | full tcp |
+| `tcp` | `MULTI_STREAM` | `256` | `통과` | `86.4%` | full tcp |
+| `tcp` | `MULTI_STREAM` | `1024` | `통과` | `84.0%` | full tcp |
+| `tcp` | `MULTI_STREAM` | `65536` | `통과` | `104.1%` | full tcp |
+| `ws` | `MULTI_DEALER_DEALER` | `64` | `보류` | `59.8%` | builder inline 후에도 목표 미달, 추가 내부 후보 없음 |
+| `ws` | `MULTI_DEALER_DEALER` | `256` | `보류` | `55.7%` | builder inline 후에도 목표 미달, 추가 내부 후보 없음 |
+| `ws` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `67.5%` | full ws |
+| `ws` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `85.5%` | full ws |
+| `ws` | `MULTI_DEALER_DEALER` | `131072` | `보류` | `57.0%` | 같은 one-way hot path, 추가 내부 후보 없음 |
+| `ws` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `80.5%` | full ws |
+| `ws` | `MULTI_DEALER_ROUTER` | `64,256,1024,65536,131072,262144` | `통과` | `51.1%~95.3%` | full ws |
+| `ws` | `MULTI_ROUTER_ROUTER` | `64,256,1024,65536` | `보류` | `47.1%~48.3%` | 상대 기준 미달, 추가 내부 후보 없음 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `131072,262144` | `통과` | `66.1%~82.8%` | full ws |
+| `ws` | `MULTI_PUBSUB` | `64,256,1024` | `보류` | `42.9%~56.9%` | builder inline 후에도 목표 미달, 추가 내부 후보 없음 |
+| `ws` | `MULTI_PUBSUB` | `65536,131072,262144` | `통과` | `64.7%~73.8%` | full ws |
+| `ws` | `MULTI_SPOT` | `64,256,1024,65536,131072,262144` | `보류` | `33.7%~51.6%` | 제한 C 기준, 같은 SPOT hot path 추가 내부 후보 없음 |
+| `ws` | `MULTI_SPOT_REQREP` | `64,256,1024,131072` | `통과` | `73.9%~98.5%` | 제한 C 기준 |
+| `ws` | `MULTI_SPOT_REQREP` | `65536,262144` | `보류` | - | .NET timeout, C 제한 측정 성공 |
+| `ws` | `MULTI_SPOT_SENDSEND` | `64,256,1024,131072` | `통과` | `63.5%~94.4%` | 제한 C 기준 |
+| `ws` | `MULTI_SPOT_SENDSEND` | `65536,262144` | `보류` | - | .NET timeout, C 제한 측정 성공 |
+| `ws` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `89.2%~96.7%` | full ws |
 | `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
 | `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
 

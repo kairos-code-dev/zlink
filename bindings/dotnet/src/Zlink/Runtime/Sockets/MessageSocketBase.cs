@@ -23,6 +23,7 @@ public abstract class MessageSocketBase : ConnectableSocketBase, IMessageSocket
     /// <summary>
     /// Start a send operation (operation builder).
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SendOperation Send()
     {
         return new MessageSocketSendOperation(this);

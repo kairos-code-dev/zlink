@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Systems.Zlink.Sockets.Internal;
 
 namespace Systems.Zlink;
@@ -23,6 +24,7 @@ public abstract class PublisherSocketBase : ConnectableSocketBase, IPublisherSoc
     /// <summary>
     /// Start a topic publish operation (operation builder).
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SendOperation Publish(string topic)
     {
         if (topic == null)
@@ -30,6 +32,7 @@ public abstract class PublisherSocketBase : ConnectableSocketBase, IPublisherSoc
         return new PublisherSendOperation(this, topic);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool PublishCore(string topic, Message message,
         SendFlags flags = SendFlags.None)
     {

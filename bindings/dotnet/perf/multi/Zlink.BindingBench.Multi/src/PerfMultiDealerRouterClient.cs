@@ -57,7 +57,8 @@ internal static class PerfMultiDealerRouterClient
                 PrintAutoHwmSnapshot(clients[0], "endpoint",
                     options.Transport, size);
 
-            var slots = CreateSlots(activeClients, size);
+            var slots = CreateSlots(activeClients, size,
+                options.Transport == "tcp");
             var result = RunMultiDealerRouterClientLoop(pollManager, slots,
                 size, latencySampleCap, pollTimeoutMs, durationSeconds,
                 readyTimeoutMs);
@@ -86,14 +87,15 @@ internal static class PerfMultiDealerRouterClient
     }
 
     private static DealerRouterClientSlot[] CreateSlots(
-        List<SocketBase> activeClients, int msgSize)
+        List<SocketBase> activeClients, int msgSize, bool borrowPayload)
     {
         var slots = new DealerRouterClientSlot[activeClients.Count];
         for (int i = 0; i < activeClients.Count; i++)
         {
             var payload = new byte[Math.Max(msgSize, PerfMetricHeaderSize)];
             Array.Fill(payload, (byte)'a');
-            slots[i] = new DealerRouterClientSlot(activeClients[i], payload);
+            slots[i] = new DealerRouterClientSlot(activeClients[i], payload,
+                borrowPayload);
         }
 
         return slots;
@@ -302,7 +304,9 @@ internal static class PerfMultiDealerRouterClient
 
     private static bool TrySend(DealerRouterClientSlot slot)
     {
-        using Message message = new(slot.Payload.AsSpan());
+        using Message message = slot.BorrowPayload
+            ? Message.WrapBytes(slot.Payload)
+            : new Message(slot.Payload.AsSpan());
         return ((DealerSocket)slot.Socket).Send().Message(message)
             .Flags(SendFlags.DontWait).Submit();
     }
@@ -322,15 +326,18 @@ internal static class PerfMultiDealerRouterClient
 
     private sealed class DealerRouterClientSlot
     {
-        internal DealerRouterClientSlot(SocketBase socket, byte[] payload)
+        internal DealerRouterClientSlot(SocketBase socket, byte[] payload,
+            bool borrowPayload)
         {
             Socket = socket;
             Payload = payload;
+            BorrowPayload = borrowPayload;
             ReusableReceived = new Received();
         }
 
         internal SocketBase Socket { get; }
         internal byte[] Payload { get; }
+        internal bool BorrowPayload { get; }
         // Caller-provided storage reused across every recv on this slot.
         // The binding overwrites the internal state in place, avoiding the
         // per-recv Received allocation.

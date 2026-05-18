@@ -37,6 +37,13 @@ internal sealed class AuthenticateSessionPacketHandler(
             }
 
             context.State.ActorId = authenticated.ActorId;
+            await context.Stream.RequestChannel(
+                    SampleNames.PlayChannel,
+                    new EnsurePlayerActorReq(authenticated.ActorId))
+                .Timeout(SampleTimings.RequestTimeout)
+                .SubmitAsync<EnsurePlayerActorRes>(cancellationToken)
+                .ConfigureAwait(false);
+
             var route = await playRoutes.ResolvePlayRouteAsync(authenticated.ActorId, cancellationToken)
                 .ConfigureAwait(false);
             await actorRoutes.EnsureRouteAsync(

@@ -18,6 +18,7 @@ global using Zlink.Framework.Contracts.Timers;
 global using Zlink.Framework.Runtime.Dispatch;
 global using Zlink.Framework.Runtime.Handlers;
 global using Zlink.Framework.Runtime.Messaging;
+global using Zlink.Framework.Runtime.Actors;
 global using Zlink.Framework.Runtime.Backend.Contracts;
 global using Zlink.Framework.Runtime.Backend.DotNet;
 global using Zlink.Framework.Runtime.Channels;

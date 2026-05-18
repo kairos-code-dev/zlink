@@ -84,6 +84,152 @@ public sealed class StreamIntegrationTests
     }
 
     [Fact]
+    public async Task ActorManager_CreateAsync_Throws_When_ActorAlreadyExists()
+    {
+        var host = await CreateHostAsync("actor-manager", services =>
+        {
+            services.AddSingleton<ActorDispatchRecorder>();
+            services.AddScoped<GatewayActorFactory>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<GatewayActorFactory>("player");
+            });
+        });
+
+        try
+        {
+            var actors = host.Services.GetRequiredService<IZLinkActorManager>();
+            var recorder = host.Services.GetRequiredService<ActorDispatchRecorder>();
+
+            var created = await actors.CreateAsync("actor-duplicate", "player");
+            var found = await actors.FindAsync("actor-duplicate");
+            var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+                () => actors.CreateAsync("actor-duplicate", "player").AsTask());
+
+            Assert.Equal(ZLinkFrameworkErrorKind.ActorAlreadyExists, ex.Kind);
+            Assert.Same(created, found);
+            Assert.Equal(1, recorder.CreatedCount);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ActorManager_GetOrCreateAsync_Reuses_ExistingActor_And_Rejects_TypeMismatch()
+    {
+        var host = await CreateHostAsync("actor-manager", services =>
+        {
+            services.AddSingleton<ActorDispatchRecorder>();
+            services.AddScoped<GatewayActorFactory>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddActorFactory<GatewayActorFactory>("spectator");
+            });
+        });
+
+        try
+        {
+            var actors = host.Services.GetRequiredService<IZLinkActorManager>();
+            var recorder = host.Services.GetRequiredService<ActorDispatchRecorder>();
+
+            var created = await actors.GetOrCreateAsync("actor-reuse", "player");
+            var reused = await actors.GetOrCreateAsync("actor-reuse", "player");
+            var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+                () => actors.GetOrCreateAsync("actor-reuse", "spectator").AsTask());
+
+            Assert.Same(created, reused);
+            Assert.Equal(ZLinkFrameworkErrorKind.ActorTypeMismatch, ex.Kind);
+            Assert.Equal(1, recorder.CreatedCount);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ActorManager_CreateAsync_Clears_State_When_Configure_Fails()
+    {
+        var recorder = new ConfigureFailureRecorder();
+        var host = await CreateHostAsync("actor-manager", services =>
+        {
+            services.AddSingleton(recorder);
+            services.AddScoped<ConfigureFailureActorFactory>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<ConfigureFailureActorFactory>("player");
+            });
+        });
+
+        try
+        {
+            var actors = host.Services.GetRequiredService<IZLinkActorManager>();
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => actors.CreateAsync("actor-configure-retry", "player").AsTask());
+            recorder.FailConfigure = false;
+            var foundAfterFailure = await actors.FindAsync("actor-configure-retry");
+            var createdAfterRetry = await actors.CreateAsync("actor-configure-retry", "player");
+
+            Assert.Equal("configure failed", ex.Message);
+            Assert.Null(foundAfterFailure);
+            Assert.Equal("actor-configure-retry", createdAfterRetry.ActorId);
+            Assert.Equal(2, recorder.CreatedCount);
+            Assert.Equal(2, recorder.ConfigureCount);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task BindActorHandleAsync_DoesNot_Create_LocalActor()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var recorder = new ActorDispatchRecorder();
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton(recorder);
+            services.AddScoped<GatewayActorFactory>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(endpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.FromString("1001"));
+                    routed.UseManualConnections(connections => connections.Connect(endpoint));
+                });
+            });
+        });
+
+        try
+        {
+            var context = new ZLinkSessionContext(
+                host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
+                host.Services.GetRequiredService<IZLinkClient>(),
+                new SpotIntegrationTests.TestStream("missing-actor-session"),
+                ZLinkStreamProtocolDefaults.HeaderCodec,
+                static _ => ValueTask.CompletedTask,
+                static _ => ValueTask.CompletedTask);
+
+            var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+                () => context.BindActorHandleAsync("missing-player", "player").AsTask());
+
+            Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, ex.Kind);
+            Assert.Equal(0, recorder.CreatedCount);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
     public void SessionProxy_Uses_Multipart_Routed_Client_Push()
     {
         var routeHeader = new ZLinkEnvelopeHeader(
@@ -415,6 +561,8 @@ public sealed class StreamIntegrationTests
                 });
             });
         });
+        await playHost.Services.GetRequiredService<IZLinkActorManager>()
+            .GetOrCreateAsync("player-1", "player");
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
@@ -444,7 +592,6 @@ public sealed class StreamIntegrationTests
         {
             using var client = ConnectRawClient(streamEndpoint);
             var network = client.GetStream();
-            await Task.Delay(250);
 
             SendAll(network, BuildStreamPacketFrame(
                 new ZlinkStreamHeader(
@@ -499,6 +646,17 @@ public sealed class StreamIntegrationTests
             Assert.Equal("client:from-play", gatewayReply.Value);
             Assert.NotEqual(0UL, gatewayReply.RequestSeq);
 
+            await sessionProxy.Send(
+                    "player-1",
+                    new GatewayPing("one-way-from-play"))
+                .PacketName("client.notify")
+                .Submit();
+            var clientPush = ReceiveFrame(network);
+            Assert.Equal(ZlinkStreamMessageKind.Send, clientPush.Header.Kind);
+            Assert.Equal("client.notify", clientPush.Header.Name);
+            var clientPushBody = JsonSerializer.Deserialize<GatewayPing>(clientPush.Payload, JsonOptions);
+            Assert.Equal("one-way-from-play", clientPushBody?.Value);
+
             SendAll(network, BuildStreamPacketFrame(
                 new ZlinkStreamHeader(
                     ZlinkStreamMessageKind.Request,
@@ -521,6 +679,87 @@ public sealed class StreamIntegrationTests
             await RetryAsync(
                 () => proxyRecorder.DisconnectedCount > 0 && callbackCapture.IsEmpty,
                 TimeSpan.FromSeconds(5));
+            callbackCapture.ThrowIfAny();
+        }
+        finally
+        {
+            await ChannelMessagingTestSupport.StopHostsAsync(sessionHost, playHost);
+        }
+    }
+
+    [Fact]
+    public async Task RemoteActorDispatch_DoesNot_Create_MissingActor()
+    {
+        var streamEndpoint = GetFreeTcpEndpoint();
+        var sessionRouterEndpoint = GetFreeTcpEndpoint();
+        var playRouterEndpoint = GetFreeTcpEndpoint();
+        var sessionRid = RoutingId.FromString("0707");
+        var playRid = RoutingId.FromString("0808");
+        var actorRecorder = new ActorDispatchRecorder();
+        var sessionLocations = new ActorSessionLocationStore();
+        using var callbackCapture = CallbackExceptionCapture.Start();
+
+        var playHost = await CreateHostAsync(playRouterEndpoint, services =>
+        {
+            services.AddSingleton(actorRecorder);
+            services.AddSingleton(sessionLocations);
+            services.AddScoped<GatewayActorFactory>();
+            services.AddScoped<GatewayActorHandler>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddActorSessionBindingStore<ActorSessionLocationStore>();
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(playRouterEndpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = playRid);
+                    routed.UseManualConnections(connections => connections.Connect(sessionRouterEndpoint));
+                });
+            });
+        });
+
+        var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
+        {
+            services.AddSingleton(new ActorPlayRouteStore(playRid));
+            services.AddSingleton(new GatewaySessionRecorder());
+            services.AddSingleton(sessionLocations);
+            services.AddScoped<MissingRemoteActorRelaySession>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorSessionBindingStore<ActorSessionLocationStore>();
+                options.AddActorPlayRouteResolver<ActorPlayRouteStore>();
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(sessionRouterEndpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = sessionRid);
+                    routed.UseManualConnections(connections => connections.Connect(playRouterEndpoint));
+                });
+                options.AddStreamNode("client.stream", stream =>
+                {
+                    stream.Bind(streamEndpoint);
+                    stream.AddHeaderSession<MissingRemoteActorRelaySession>();
+                });
+            });
+        });
+
+        try
+        {
+            using var client = ConnectRawClient(streamEndpoint);
+            var network = client.GetStream();
+
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Request,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    new ZlinkStreamRequestSeq(301),
+                    "relay.echo",
+                    ZlinkStreamMetadata.Empty),
+                JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("missing-remote"), JsonOptions)));
+
+            var error = ReceiveFrame(network, new ZlinkStreamRequestSeq(301));
+            Assert.Equal(ZlinkStreamMessageKind.Error, error.Header.Kind);
+            Assert.Equal(0, actorRecorder.CreatedCount);
             callbackCapture.ThrowIfAny();
         }
         finally
@@ -718,6 +957,8 @@ public sealed class StreamIntegrationTests
                 });
             });
         });
+        await playHost.Services.GetRequiredService<IZLinkActorManager>()
+            .GetOrCreateAsync("player-1", "player");
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
@@ -747,7 +988,6 @@ public sealed class StreamIntegrationTests
         {
             using var client = ConnectRawClient(streamEndpoint);
             var network = client.GetStream();
-            await Task.Delay(250);
 
             SendAll(network, BuildStreamPacketFrame(
                 new ZlinkStreamHeader(
@@ -1263,6 +1503,67 @@ public sealed class StreamIntegrationTests
         }
     }
 
+    public sealed class ConfigureFailureRecorder
+    {
+        private int _createdCount;
+        private int _configureCount;
+
+        public bool FailConfigure { get; set; } = true;
+
+        public int CreatedCount => Volatile.Read(ref _createdCount);
+
+        public int ConfigureCount => Volatile.Read(ref _configureCount);
+
+        public void RecordCreated()
+        {
+            Interlocked.Increment(ref _createdCount);
+        }
+
+        public void RecordConfigure()
+        {
+            Interlocked.Increment(ref _configureCount);
+        }
+    }
+
+    public sealed class ConfigureFailureActor(
+        string actorId,
+        IZLinkActorContext context,
+        ConfigureFailureRecorder recorder) : IZLinkActor
+    {
+        public string ActorId { get; } = actorId;
+
+        public IZLinkActorContext Context { get; } = context;
+
+        public void Configure()
+        {
+            recorder.RecordConfigure();
+            if (recorder.FailConfigure)
+            {
+                throw new InvalidOperationException("configure failed");
+            }
+        }
+
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class ConfigureFailureActorFactory(ConfigureFailureRecorder recorder) : IZLinkActorFactory
+    {
+        public ValueTask<IZLinkActor> CreateAsync(
+            string actorId,
+            IZLinkActorContext context,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            recorder.RecordCreated();
+            return ValueTask.FromResult<IZLinkActor>(
+                new ConfigureFailureActor(actorId, context, recorder));
+        }
+    }
+
     public sealed class GatewayRelaySession(
         GatewaySessionRecorder recorder,
         IZLinkSessionContext context) : IZLinkSession
@@ -1307,8 +1608,55 @@ public sealed class StreamIntegrationTests
                 "player",
                 cancellationToken);
 
-            await Context.DispatchToActorAsync(
+            await Context.RelayToActorAsync(
                     _actor ?? throw new InvalidOperationException("Actor was not created."),
+                    header,
+                    payload,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    public sealed class MissingRemoteActorRelaySession(IZLinkSessionContext context) : IZLinkSession
+    {
+        private IZLinkActorRef? _actor;
+
+        public IZLinkSessionContext Context { get; } = context;
+
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            _actor = null;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnErrorAsync(
+            ZLinkStreamError error,
+            CancellationToken cancellationToken)
+        {
+            _ = error;
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+
+        public async ValueTask OnDispatchAsync(
+            ZlinkStreamHeader header,
+            Message payload,
+            CancellationToken cancellationToken)
+        {
+            _actor ??= await Context.BindActorHandleAsync(
+                "player-1",
+                "player",
+                cancellationToken);
+
+            await Context.RelayToActorAsync(
+                    _actor,
                     header,
                     payload,
                     cancellationToken)
@@ -1318,6 +1666,7 @@ public sealed class StreamIntegrationTests
 
     public sealed class LocalNotifyDisconnectSession(
         GatewaySessionRecorder recorder,
+        IZLinkActorManager actors,
         IZLinkSessionContext context) : IZLinkSession
     {
         private IZLinkActorRef? _actor;
@@ -1358,16 +1707,25 @@ public sealed class StreamIntegrationTests
             _ = header;
             using (payload)
             {
-                _actor ??= await Context.CreateAndBindActorAsync(
-                        "local-player-1",
-                        "player",
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                if (_actor is null)
+                {
+                    await actors.GetOrCreateAsync(
+                            "local-player-1",
+                            "player",
+                            cancellationToken)
+                        .ConfigureAwait(false);
+
+                    _actor = await Context.BindActorHandleAsync(
+                            "local-player-1",
+                            "player",
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
 
                 if (!string.Equals(header.Name, "open", StringComparison.Ordinal))
                 {
                     using var dispatchPayload = payload.Move();
-                    await Context.DispatchToActorAsync(
+                    await Context.RelayToActorAsync(
                             _actor,
                             header,
                             dispatchPayload,

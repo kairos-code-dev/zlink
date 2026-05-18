@@ -23,6 +23,7 @@ internal sealed class SessionActorDispatchPlayerClient(
             Endpoint = new Uri(streamEndpoint),
             ConnectTimeout = SampleTimings.ConnectTimeout,
             RequestTimeout = SampleTimings.RequestTimeout,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
         });
         await connector.ConnectAsync(cancellationToken).ConfigureAwait(false);
 

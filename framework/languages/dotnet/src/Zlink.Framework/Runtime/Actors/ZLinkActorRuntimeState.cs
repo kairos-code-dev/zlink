@@ -9,6 +9,8 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public string ActorId { get; } = actorId;
 
+    public string? ActorType { get; private set; }
+
     public string? SessionId { get; set; }
 
     public IZLinkStream? Stream { get; set; }
@@ -26,6 +28,8 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     public bool IsConfigured { get; set; }
 
     public async ValueTask<ZLinkActorCreationOperation> GetOrStartActorCreationAsync(
+        string actorType,
+        bool failIfExists,
         Func<Task<IZLinkActor>> createActor,
         CancellationToken cancellationToken)
     {
@@ -33,16 +37,38 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         var task = await ExecuteLockedAsync(
             () =>
             {
+                if (ActorType is not null
+                    && !string.Equals(ActorType, actorType, StringComparison.Ordinal))
+                {
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorTypeMismatch,
+                        $"Actor '{ActorId}' already uses actor type '{ActorType}', not '{actorType}'.");
+                }
+
                 if (Actor is not null)
                 {
+                    if (failIfExists)
+                    {
+                        throw new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.ActorAlreadyExists,
+                            $"Actor '{ActorId}' already exists.");
+                    }
+
                     return Task.FromResult(Actor);
                 }
 
                 if (_actorCreationTask is null)
                 {
+                    ActorType = actorType;
                     created = true;
                     _actorCreationTask = createActor();
                     _ = ClearActorCreationTaskWhenCompletedAsync(_actorCreationTask);
+                }
+                else if (failIfExists)
+                {
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorAlreadyExists,
+                        $"Actor '{ActorId}' is already being created.");
                 }
 
                 return _actorCreationTask;
@@ -50,6 +76,21 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
             cancellationToken).ConfigureAwait(false);
 
         return new ZLinkActorCreationOperation(task, created);
+    }
+
+    public async ValueTask ClearFailedActorCreationAsync(Task<IZLinkActor> creationTask)
+    {
+        await ExecuteLockedAsync(
+            () =>
+            {
+                if (!ReferenceEquals(_actorCreationTask, creationTask))
+                {
+                    return;
+                }
+
+                ClearFailedActorCreationLocked();
+            },
+            CancellationToken.None).ConfigureAwait(false);
     }
 
     public async ValueTask ExecuteLockedAsync(
@@ -143,12 +184,14 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     private async Task ClearActorCreationTaskWhenCompletedAsync(Task<IZLinkActor> creationTask)
     {
+        var succeeded = true;
         try
         {
             await creationTask.ConfigureAwait(false);
         }
         catch
         {
+            succeeded = false;
         }
 
         await ExecuteLockedAsync(
@@ -156,10 +199,32 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
             {
                 if (ReferenceEquals(_actorCreationTask, creationTask))
                 {
-                    _actorCreationTask = null;
+                    if (succeeded)
+                    {
+                        _actorCreationTask = null;
+                    }
+                    else
+                    {
+                        ClearFailedActorCreationLocked();
+                    }
                 }
             },
             CancellationToken.None).ConfigureAwait(false);
+    }
+
+    private void ClearFailedActorCreationLocked()
+    {
+        _actorCreationTask = null;
+        if (!IsConfigured)
+        {
+            Actor = null;
+            ClearPacketRegistrations();
+        }
+
+        if (Actor is null)
+        {
+            ActorType = null;
+        }
     }
 
     public readonly struct DispatchScope : IDisposable

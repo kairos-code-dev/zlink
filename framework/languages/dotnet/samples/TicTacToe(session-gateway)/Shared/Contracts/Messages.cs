@@ -11,6 +11,10 @@ public sealed record AuthenticateActorRes(
     string? ActorId,
     string? Reason);
 
+public sealed record EnsurePlayerActorReq(string ActorId);
+
+public sealed record EnsurePlayerActorRes(string ActorId);
+
 public sealed record CreateMatchReq(string? OwnerActorId = null);
 
 public sealed record CreateMatchRes(

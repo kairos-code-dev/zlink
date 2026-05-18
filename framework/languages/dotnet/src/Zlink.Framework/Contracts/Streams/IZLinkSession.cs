@@ -57,19 +57,12 @@ public interface IZLinkSessionClientStream
 
 public interface IZLinkSessionActorDispatchContext
 {
-    ValueTask<IZLinkActorRef> CreateAndBindActorAsync(
-        string actorId,
-        string actorType,
-        CancellationToken cancellationToken = default);
-
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
 
-    IZLinkSessionRequestCall Request<TRequest>(TRequest request);
-
-    ValueTask DispatchToActorAsync(
+    ValueTask RelayToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
         Message payload,

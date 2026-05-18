@@ -122,8 +122,9 @@ application 입장에서 자주 마주치는 조합은 두 가지다.
   user Spot 에 join 해서 game room 이나 stage 같은 도메인 객체로 동작한다.
   대부분의 `ASP.NET Core` gateway 시나리오에서 기본형으로 쓰는 모양이다.
 
-actor 인스턴스는 framework 가 직접 만들지 않는다. application 이 등록한
-**factory**[^factory] 를 통해 생성한다.
+actor 인스턴스는 session bind 과정에서 임의로 만들어지지 않는다. application 이
+actor 가 필요하다고 판단한 시점에 `IZLinkActorManager` 를 호출하고, framework 는
+등록된 **factory**[^factory] 를 통해 actor 를 만든다.
 
 ## 3. Actor 라이프사이클
 
@@ -167,6 +168,31 @@ public interface IZLinkActor
   표면을 직접 호출하지 않는다.
 
 ### 3.2 `IZLinkActorFactory`
+
+application 은 `IZLinkActorManager` 로 actor 생성을 명시한다. `CreateAsync(...)`
+는 이미 같은 actor id가 있으면 `ActorAlreadyExists` 를 던진다. 같은 actor id를
+다른 actor type으로 다시 사용하면 `ActorTypeMismatch` 를 던진다.
+`GetOrCreateAsync(...)` 는 같은 actor type의 기존 actor 를 재사용하고, 없으면
+factory 로 새 actor 를 만든다.
+
+```csharp
+public interface IZLinkActorManager
+{
+    ValueTask<IZLinkActor> CreateAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActor?> FindAsync(
+        string actorId,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActor> GetOrCreateAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default);
+}
+```
 
 actor 인스턴스를 만들어 내는 application 객체다. 사용 흐름은 두 단계다. 먼저
 DI 에 등록한다. 그 다음
@@ -240,7 +266,7 @@ sequenceDiagram
     participant Spot as User Spot (선택)
 
     Note over FW: 1. 생성
-    App->>FW: CreateActor("player", actorId) (session 안 or AttachActor)
+    App->>FW: IZLinkActorManager.GetOrCreateAsync(actorId, "player")
     FW->>Fact: CreateAsync(actorId, context)
     Fact-->>FW: actor instance
     FW->>Act: Context property 검증
@@ -558,7 +584,7 @@ public interface IZLinkActorContext
 ## 6. Actor Route Resolver
 
 session 이 actor 로 packet 을 relay 할 때는 `IZLinkSession.OnDispatchAsync(...)`
-에서 actor handle 을 만들거나 찾은 뒤 `DispatchToActorAsync(...)` 를 호출한다.
+에서 actor handle 을 만들거나 찾은 뒤 `RelayToActorAsync(...)` 를 호출한다.
 application 이 actor runtime 을 직접 호출하는 별도 public client 는 두지 않는다.
 
 ### 6.1 `IZLinkActorPlayRouteResolver`
@@ -714,19 +740,12 @@ public interface IZLinkSessionActorAttachmentContext
 
 public interface IZLinkSessionActorDispatchContext
 {
-    ValueTask<IZLinkActorRef> CreateAndBindActorAsync(
-        string actorId,
-        string actorType,
-        CancellationToken cancellationToken = default);
-
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
 
-    IZLinkSessionRequestCall Request<TRequest>(TRequest request);
-
-    ValueTask DispatchToActorAsync(...);
+    ValueTask RelayToActorAsync(...);
 }
 
 public interface IZLinkActorRef
@@ -742,16 +761,13 @@ public interface IZLinkActorRef
 - `AttachActorAsync(...)` -- 이미 만든 actor 인스턴스를 현재 session 에
   attach 한다. session 이 끊어지면 framework 가 자동으로
   `OnDisconnectedAsync` 를 호출한다.
-- `CreateAndBindActorAsync(actorId, actorType, ...)` -- factory 를 불러 새
-  actor 를 만들고, 그 actor 를 현재 session 에 attach 한다. 이 두 동작을
-  **한 호출 안에서 atomic 하게** 처리하는 것이 특징이다. 즉 생성과 session
-  bind 를 별도로 노출하지 않는다.
-- `BindActorHandleAsync(actorId, actorType, ...)` -- 현재 session host 의
-  local `SpotNode` actor runtime 에서 actor handle 을 얻고, 현재
-  actor-session binding 을 기록한다. actor 는 기본적으로 `SpotNode` 에서
-  생성한다. 따라서 framework session 표면은 remote node 를 직접 지정하는
-  create / handle API 를 제공하지 않는다.
-- `DispatchToActorAsync(...)` -- 들어온 packet 을 actor 에게 dispatch 한다.
+- `BindActorHandleAsync(actorId, actorType, ...)` -- actor handle 을 얻고,
+  현재 actor-session binding 을 기록한다. 이 API 는 actor 를 새로 만들지
+  않는다. local actor handle 이 필요하면 application 이 먼저
+  `IZLinkActorManager.CreateAsync(...)` 또는 `GetOrCreateAsync(...)` 로 actor
+  를 준비해야 한다. remote actor handle 인 경우에는 route resolver 결과로
+  binding handle 만 만든다.
+- `RelayToActorAsync(...)` -- 들어온 packet 을 actor 에게 dispatch 한다.
   보통 framework 가 자동으로 처리한다.
 - `IZLinkActorRef.NotifyDisconnectedAsync(...)` -- session 이 연결 종료를
   application actor 에 알려야 할 때 호출한다. 이 호출은 actor-session binding
@@ -776,13 +792,14 @@ sequenceDiagram
 
     C->>S: STREAM connect + authenticate
     S->>S: 인증 (AuthenticateReq → actorId)
-    S->>Act: CreateAndBindActorAsync("player", actorId)
-    Note over Act: factory가 actor 생성
+    S->>FW: IZLinkActorManager.GetOrCreateAsync(actorId, "player")
+    S->>Act: BindActorHandleAsync(actorId, "player")
+    Note over Act: bind는 actor를 새로 만들지 않음
     S->>Loc: BindSessionAsync(actorId, sessionRouterId, token)
 
     Note over C,Act: 이후 client packet
     C->>S: PlaceMarkReq
-    S->>Act: DispatchToActorAsync(...)
+    S->>Act: RelayToActorAsync(...)
     Act->>Act: handler 실행
 
     Note over C,Act: 연결 종료
@@ -987,8 +1004,10 @@ builder.Services.AddZLinkFramework(options =>
 actor-session binding 은 framework / core runtime 내부에서 관리한다. 각 서버의
 역할을 나누어 보면 다음과 같다.
 
-- Session 서버는 인증과 `CreateAndBindActorAsync(...)` 또는
-  `BindActorHandleAsync(...)` 흐름에서 binding 을 갱신한다.
+- Session 서버는 인증 후 local actor 가 필요한 경우
+  `IZLinkActorManager.GetOrCreateAsync(...)` 로 actor 를 준비한 뒤
+  `BindActorHandleAsync(...)` 로 actor handle 과 session binding 을 얻는다.
+  remote actor handle 은 session 서버에서 만들지 않는다.
 - Play actor 는 actor context 의 `IZLinkSessionProxy` 로 자기 client binding 을
   사용한다. application service 가 actor id 를 기준으로 client binding 을
   찾아야 하면 `IZLinkActorSessionClient` 를 사용한다.

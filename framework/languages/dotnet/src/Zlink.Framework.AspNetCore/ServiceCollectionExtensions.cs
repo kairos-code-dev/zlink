@@ -186,6 +186,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IZLinkSpotMeshPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
         services.AddSingleton<IZLinkSpotPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
         services.AddSingleton<IZLinkSpotConnectionManager, ZLinkSpotConnectionManagerService>();
+        services.AddSingleton<IZLinkActorManager, ZLinkActorManagerService>();
 
         if (registration.ActorPlayRouteResolverType is not null)
         {

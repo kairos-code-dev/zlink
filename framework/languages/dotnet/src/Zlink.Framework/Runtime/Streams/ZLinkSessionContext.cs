@@ -52,25 +52,6 @@ internal sealed class ZLinkSessionContext(
         return new ZLinkSessionReplyCall<TMessage>(this, message);
     }
 
-    public async ValueTask<IZLinkActorRef> CreateAndBindActorAsync(
-        string actorId,
-        string actorType,
-        CancellationToken cancellationToken = default)
-    {
-        var route = runtime.ResolveLocalActorRoute();
-        await runtime.CreateLocalActorAsync(actorId, actorType, cancellationToken)
-            .ConfigureAwait(false);
-        return await _actorBindings.BindAsync(
-            this,
-            SessionId,
-            actorId,
-            actorType,
-            route.RouterChannelId,
-            route.TargetNodeRid,
-            NotifyLocalActorDisconnectedAsync,
-            cancellationToken).ConfigureAwait(false);
-    }
-
     public async ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
@@ -78,6 +59,16 @@ internal sealed class ZLinkSessionContext(
     {
         var route = await ResolveActorRouteAsync(actorId, cancellationToken)
             .ConfigureAwait(false);
+        var isLocalRoute = route.TargetNodeRid.Equals(runtime.ResolveSessionRouterId(route.RouterChannelId));
+        if (isLocalRoute)
+        {
+            EnsureLocalActorExists(actorId, actorType);
+        }
+
+        Func<ZLinkActorRef, CancellationToken, ValueTask> notifyDisconnectedAsync =
+            isLocalRoute
+            ? NotifyLocalActorDisconnectedAsync
+            : NotifyRoutedActorDisconnectedAsync;
         return await _actorBindings.BindAsync(
             this,
             SessionId,
@@ -85,16 +76,20 @@ internal sealed class ZLinkSessionContext(
             actorType,
             route.RouterChannelId,
             route.TargetNodeRid,
-            NotifyRoutedActorDisconnectedAsync,
+            notifyDisconnectedAsync,
             cancellationToken).ConfigureAwait(false);
     }
 
-    public IZLinkSessionRequestCall Request<TRequest>(TRequest request)
+    private void EnsureLocalActorExists(string actorId, string actorType)
     {
-        return new ZLinkSessionRequestCall<TRequest>(
-            this,
-            request,
-            runtime.Registration.DefaultTimeout);
+        if (runtime.TryGetCreatedActor(actorId, actorType, out _))
+        {
+            return;
+        }
+
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorRouteNotFound,
+            $"Actor '{actorId}' is not created on the local actor runtime.");
     }
 
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)
@@ -116,7 +111,7 @@ internal sealed class ZLinkSessionContext(
         _actor = actor;
     }
 
-    public async ValueTask DispatchToActorAsync(
+    public async ValueTask RelayToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
         Message payload,
@@ -273,13 +268,4 @@ internal sealed class ZLinkSessionContext(
         return Transport.ReplyErrorAsync(requestHeader, exception, cancellationToken);
     }
 
-    internal async ValueTask<TReply> RequestClientAsync<TRequest, TReply>(
-        TRequest request,
-        string packetName,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        return await Transport.RequestJsonAsync<TRequest, TReply>(request, packetName, timeout, cancellationToken)
-            .ConfigureAwait(false);
-    }
 }

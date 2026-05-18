@@ -38,6 +38,10 @@ public static class SessionServerHostFactory
             {
                 channel.EnableClient();
             });
+            options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
+            {
+                channel.EnableClient();
+            });
             options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
             {
                 routed.Bind(sessionNode.RouterEndpoint);

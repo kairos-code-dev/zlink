@@ -1,12 +1,12 @@
 using System.Text.Json;
 using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
-using TicTacToe.Server.Play.Actors;
 
 namespace TicTacToe.Server.Play.Sessions;
 
 sealed class PlaySession(
     IZLinkSessionContext context,
+    IZLinkActorManager actors,
     ILogger<PlaySession> logger)
     : IZLinkSession
 {
@@ -86,7 +86,7 @@ sealed class PlaySession(
             "play stream -> actor: dispatching packet. name={MessageName}, actor={ActorId}",
             header.Name,
             actorId);
-        await Context.DispatchToActorAsync(actor, header, payload, cancellationToken);
+        await Context.RelayToActorAsync(actor, header, payload, cancellationToken);
     }
 
     private async ValueTask<AuthenticatedPlaySession> AuthenticateAsync(
@@ -105,7 +105,13 @@ sealed class PlaySession(
             .Timeout(SampleTimeouts.Request)
             .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
 
-        var actor = await Context.CreateAndBindActorAsync(
+        await actors.GetOrCreateAsync(
+                reply.ActorId,
+                SampleTypes.PlayerActor,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var actor = await Context.BindActorHandleAsync(
                 reply.ActorId,
                 SampleTypes.PlayerActor,
                 cancellationToken)

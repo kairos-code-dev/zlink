@@ -13,6 +13,7 @@ internal sealed class ZLinkActorCreationCoordinator(
         ZLinkActorRuntimeState state,
         string actorId,
         string actorType,
+        bool failIfExists,
         CancellationToken cancellationToken)
     {
         if (!runtime.Registration.ActorFactories.TryGetValue(actorType, out var factoryType))
@@ -23,6 +24,8 @@ internal sealed class ZLinkActorCreationCoordinator(
         }
 
         var creation = await state.GetOrStartActorCreationAsync(
+                actorType,
+                failIfExists,
                 () => CreateActorCoreAsync(
                     state,
                     actorId,
@@ -31,8 +34,17 @@ internal sealed class ZLinkActorCreationCoordinator(
                 cancellationToken)
             .ConfigureAwait(false);
 
-        var actor = await creation.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-        return new CreateActorResult(actor, creation.Created);
+        try
+        {
+            var actor = await creation.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return new CreateActorResult(actor, creation.Created);
+        }
+        catch
+        {
+            await state.ClearFailedActorCreationAsync(creation.Task)
+                .ConfigureAwait(false);
+            throw;
+        }
     }
 
     private async ValueTask<IZLinkActor> CreateActorCoreAsync(

@@ -69,7 +69,6 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
         var metadata = ZLinkInternalMultipartPackets.DecodeActorDispatchMetadata(received);
         var streamHeader = ZLinkInternalMultipartPackets.DecodeActorDispatchStreamHeader(received);
         using var body = ZLinkInternalMultipartPackets.DecodeActorDispatchBody(received);
-        await EnsureLocalActorAsync(runtime, metadata, cancellationToken).ConfigureAwait(false);
         await runtime.SubmitActorByIdAsync(
             metadata.ActorId,
             streamHeader,
@@ -82,7 +81,6 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
         CancellationToken cancellationToken)
     {
         var metadata = ZLinkInternalMultipartPackets.DecodeActorDisconnectedMetadata(received);
-        await EnsureLocalActorAsync(runtime, metadata, cancellationToken).ConfigureAwait(false);
         await runtime.NotifyActorDisconnectedByIdAsync(metadata.ActorId, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -94,7 +92,6 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
         var metadata = ZLinkInternalMultipartPackets.DecodeActorDispatchMetadata(received);
         var streamHeader = ZLinkInternalMultipartPackets.DecodeActorDispatchStreamHeader(received);
         using var body = ZLinkInternalMultipartPackets.DecodeActorDispatchBody(received);
-        await EnsureLocalActorAsync(runtime, metadata, cancellationToken).ConfigureAwait(false);
         var reply = await runtime.SubmitActorForReplyAsync(
                 metadata.ActorId,
                 streamHeader,
@@ -102,20 +99,6 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
                 cancellationToken)
             .ConfigureAwait(false);
         return Message.FromBytes(reply);
-    }
-
-    private static async ValueTask EnsureLocalActorAsync(
-        ZLinkFrameworkRuntime runtime,
-        ZLinkActorDispatchMetadata metadata,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(metadata.ActorType))
-        {
-            return;
-        }
-
-        await runtime.CreateLocalActorAsync(metadata.ActorId, metadata.ActorType, cancellationToken)
-            .ConfigureAwait(false);
     }
 
     private async ValueTask DispatchSessionProxySendAsync(

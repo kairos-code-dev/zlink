@@ -20,6 +20,14 @@ internal sealed class ZLinkActorSessionRegistry
         }
     }
 
+    public bool TryGet(string actorId, out ZLinkActorRuntimeState state)
+    {
+        lock (_gate)
+        {
+            return _states.TryGetValue(actorId, out state!);
+        }
+    }
+
     public void TryRemove(string actorId, ZLinkActorRuntimeState state)
     {
         lock (_gate)

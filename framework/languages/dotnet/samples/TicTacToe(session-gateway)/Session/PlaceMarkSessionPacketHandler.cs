@@ -28,7 +28,7 @@ internal sealed class PlaceMarkSessionPacketHandler(
                 route,
                 cancellationToken)
             .ConfigureAwait(false);
-        await context.Stream.DispatchToActorAsync(actor, header, payload, cancellationToken)
+        await context.Stream.RelayToActorAsync(actor, header, payload, cancellationToken)
             .ConfigureAwait(false);
     }
 }

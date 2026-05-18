@@ -68,6 +68,7 @@ public sealed class ScaffoldSmokeTests
         AssertMissingMethod(typeof(IZLinkSpotClient), "RequestTo");
         Assert.NotNull(typeof(IZLinkFrameworkOptions).GetMethod("AddActorFactory"));
         Assert.Contains(typeof(IZLinkActor), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
+        Assert.Contains(typeof(IZLinkActorManager), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
         Assert.Contains(typeof(IZLinkSession), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
         Assert.Contains(typeof(IZLinkSessionContext), typeof(ZLinkFrameworkAssemblyMarker).Assembly.GetExportedTypes());
     }

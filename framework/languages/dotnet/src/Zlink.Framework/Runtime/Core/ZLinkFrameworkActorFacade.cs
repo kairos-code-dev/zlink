@@ -91,6 +91,29 @@ internal sealed class ZLinkFrameworkActorFacade(
         return await actorSessionManager.CreateAndBindActorAsync(actorId, actorType, cancellationToken);
     }
 
+    public async ValueTask<CreateActorResult> CreateActorAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default)
+    {
+        return await actorSessionManager.CreateActorAsync(actorId, actorType, cancellationToken);
+    }
+
+    public async ValueTask<IZLinkActor?> FindActorAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        return await actorSessionManager.FindActorAsync(actorId, cancellationToken);
+    }
+
+    public bool TryGetCreatedActor(
+        string actorId,
+        string actorType,
+        out IZLinkActor actor)
+    {
+        return actorSessionManager.TryGetCreatedActor(actorId, actorType, out actor);
+    }
+
     public async ValueTask<byte[]> SubmitActorForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,

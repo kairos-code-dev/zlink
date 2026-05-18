@@ -26,6 +26,7 @@ public static class PlayServerHostFactory
         builder.Services.AddSingleton<GameNotificationPublisher>();
         builder.Services.AddScoped<PlayerActorFactory>();
         builder.Services.AddScoped<TicTacToeEntrySpot>();
+        builder.Services.AddScoped<EnsurePlayerActorHandler>();
         builder.Services.AddScoped<CreateMatchRoomHandler>();
         builder.Services.AddScoped<JoinMatchHandler>();
         builder.Services.AddScoped<TicTacToeGameJoinHandler>();

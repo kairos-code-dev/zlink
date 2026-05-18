@@ -60,11 +60,12 @@
 | context | `IZLinkSessionIdentityContext` | stream session identity 조회 | 4.4 |
 | context | `IZLinkSessionChannelClient` | session 안에서 channel request/send 호출 | 4.4 |
 | context | `IZLinkSessionClientStream` | session에서 client stream으로 send/reply | 4.4 |
-| context | `IZLinkSessionActorDispatchContext` | session에서 actor 생성과 dispatch 수행 | 4.4 |
+| context | `IZLinkSessionActorDispatchContext` | session에서 actor handle binding과 dispatch 수행 | 4.4 |
 | context | `IZLinkSessionLifecycle` | session close 제어 | 4.4 |
 | context | `IZLinkSessionActorAttachmentContext` | actor와 session stream 연결/해제 | 4.4 |
 | value | `IZLinkActorRef` | session이 actor dispatch target으로 들고 있는 handle | 4.4.1 |
 | handler | `IZLinkActor` | actor runtime 안에서 생성되는 application actor | 4.4.1 |
+| manager | `IZLinkActorManager` | actor id와 actor type으로 actor 생성, 조회, 재사용 | 4.4.1 |
 | context | `IZLinkActorContext` | spot join, channel/client stream 호출 | 4.4.1 |
 | handler | `IZLinkActorSendHandler<TMessage>` / `IZLinkActorRequestHandler<TRequest, TReply>` | actor 안에서 처리하는 session relay message handler | 4.4.1 |
 | handler | `IZLinkActorPacketHandler<TActor, TMessage>` / `IZLinkActorRequestHandler<TActor, TRequest, TReply>` | actor instance 를 직접 받는 actor message handler | 4.4.1 |
@@ -1073,22 +1074,32 @@ public interface IZLinkSessionClientStream
 
 public interface IZLinkSessionActorDispatchContext
 {
-    ValueTask<IZLinkActorRef> CreateAndBindActorAsync(
-        string actorId,
-        string actorType,
-        CancellationToken cancellationToken = default);
-
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
 
-    IZLinkSessionRequestCall Request<TRequest>(TRequest request);
-
-    ValueTask DispatchToActorAsync(
+    ValueTask RelayToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
         Message payload,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorManager
+{
+    ValueTask<IZLinkActor> CreateAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActor?> FindAsync(
+        string actorId,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActor> GetOrCreateAsync(
+        string actorId,
+        string actorType,
         CancellationToken cancellationToken = default);
 }
 
@@ -1132,14 +1143,6 @@ public interface IZLinkSessionReplyCall
     ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkSessionRequestCall
-{
-    IZLinkSessionRequestCall PacketName(string packetName);
-
-    IZLinkSessionRequestCall Timeout(TimeSpan timeout);
-
-    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
-}
 ```
 
 session 구현체는 framework 가 생성자에 넘긴 `IZLinkSessionContext` 를
@@ -2111,7 +2114,7 @@ publish 도 send 와 동일한 성능 규칙을 따른다. 즉 다음과 같이 
 ### 5.5 Actor Route Resolver
 
 session 에서 actor 로 packet 을 relay 할 때는 `IZLinkSessionContext` 의
-`DispatchToActorAsync(...)` 를 사용한다. actor runtime 을 직접 호출하는 별도
+`RelayToActorAsync(...)` 를 사용한다. actor runtime 을 직접 호출하는 별도
 public client 는 두지 않는다.
 
 remote actor 위치가 필요하면 framework 는 `IZLinkActorPlayRouteResolver` 로

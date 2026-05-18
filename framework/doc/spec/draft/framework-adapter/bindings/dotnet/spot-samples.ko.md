@@ -899,7 +899,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
 이 모델을 public 계약으로 노출하려면, actor join 은 `IZLinkSpot` 의 override
 가 아니라 다음 표면들의 조합으로 나타나야 한다.
 
-- session 의 `CreateAndBindActorAsync(...)` 또는 `BindActorHandleAsync(...)`
+- session 의 `BindActorHandleAsync(...)`
 - `IZLinkActorContext.JoinSpot(...)`
 - `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>`
 
@@ -1374,7 +1374,7 @@ public sealed class SampleSession
                     cancellationToken);
 
             Actor = actor;
-            ActorRef = await Context.CreateAndBindActorAsync(
+            ActorRef = await Context.BindActorHandleAsync(
                 auth.AccountId,
                 auth.ActorType,
                 cancellationToken);
@@ -1419,7 +1419,7 @@ public sealed class SampleSession
                 "JoinRoom is required before gameplay packets.");
         }
 
-        await Context.DispatchToActorAsync(
+        await Context.RelayToActorAsync(
             ActorRef ?? throw new InvalidOperationException("Actor is not bound."),
             header,
             payload,

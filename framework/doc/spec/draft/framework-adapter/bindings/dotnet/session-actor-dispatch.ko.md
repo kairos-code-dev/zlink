@@ -36,7 +36,7 @@
 
 | 축 | `.NET` 표면 |
 |----|-------------|
-| session → actor dispatch | `IZLinkSessionContext.CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)` |
+| session → actor relay | `IZLinkSessionContext.BindActorHandleAsync(...)`, `RelayToActorAsync(...)` |
 | actor handler | `IZLinkActorSendHandler<TMessage>`, `IZLinkActorRequestHandler<TRequest, TReply>`, `IZLinkActorPacketHandler<TActor, TMessage>`, `IZLinkActorRequestHandler<TActor, TRequest, TReply>` |
 | spot actor handler | `IZLinkEntrySpotActorSendHandler<TActor, TMessage>`, `IZLinkEntrySpotActorRequestHandler<TActor, TRequest, TReply>`, `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
 | actor → own client push | `context.SessionProxy.Send(msg).Submit(...)` / `context.SessionProxy.Request(req).SubmitAsync<TReply>(...)` |
@@ -590,7 +590,7 @@ public request / reply 경로가 아니다. 그저 work item 을 queue 에 안�
 넘기는지를 다룬다.
 
 session callback 안에서 actor 에게 packet 을 넘기는 public 표면은
-`DispatchToActorAsync(...)` 같은 helper 다. 이 helper 는 session queue 를 actor
+`RelayToActorAsync(...)` 같은 helper 다. 이 helper 는 session queue 를 actor
 실행 queue 로 이어 주는 bridge 역할을 한다.
 
 ```csharp
@@ -599,7 +599,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     private readonly ZLinkActorDispatchRuntime _actorDispatch;
     private readonly ZLinkActorBindingTable _bindings;
 
-    public async ValueTask DispatchToActorAsync(
+    public async ValueTask RelayToActorAsync(
         IZLinkActorRef actorRef,
         ZlinkStreamHeader header,
         Message payload,
@@ -635,7 +635,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
 
 두 helper 는 끝나는 시점이 다르다.
 
-- send 성격의 `DispatchToActorAsync(...)` 는 actor 의 실행 줄에 packet 을 넣는
+- send 성격의 `RelayToActorAsync(...)` 는 actor 의 실행 줄에 packet 을 넣는
   데 성공한 시점에 끝난다.
 - 반면 request 성격의 `RequestActorAsync<TReply>(...)` 는 actor handler 가 만든
   reply 를 받을 때까지 기다린다.
@@ -1107,8 +1107,7 @@ GamePromptRep prompt = await sessionProxy
 기존에 사용하던 `SessionGateway` 라는 이름은 새 public API 에서 제거한다.
 이름이 두 갈래로 정리된다.
 
-- session → actor 방향: `CreateAndBindActorAsync(...)`,
-  `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)`,
+- session → actor 방향: `BindActorHandleAsync(...)`, `RelayToActorAsync(...)`,
   `IZLinkActorRef.NotifyDisconnectedAsync(...)` 를 사용한다.
 - actor → 자기 client 방향: actor context 의 `IZLinkSessionProxy` 를 사용한다.
 - actor id 를 지정해서 다른 actor 의 client session 에 보내야 하는 application
@@ -1147,22 +1146,17 @@ session 에서 `BindActorHandleAsync(...)` 로 다시 들어오면, framework �
 session actor dispatch 에서 session 은 actor runtime 을 직접 호출하는 범용
 public client 를 사용하지 않는다. client stream 에서 받은 packet 은
 `IZLinkSession.OnDispatchAsync(...)` 로 올라오고, session 구현은 actor handle 을
-만든 뒤 `DispatchToActorAsync(...)` 로 전달한다.
+만든 뒤 `RelayToActorAsync(...)` 로 전달한다.
 
 ```csharp
 public interface IZLinkSessionActorDispatchContext
 {
-    ValueTask<IZLinkActorRef> CreateAndBindActorAsync(
-        string actorId,
-        string actorType,
-        CancellationToken cancellationToken = default);
-
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask DispatchToActorAsync(
+    ValueTask RelayToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
         Message payload,
@@ -1385,7 +1379,7 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
 
         if (authenticatedActors.TryGet(header, out IZLinkActorRef actor))
         {
-            await context.DispatchToActorAsync(
+            await context.RelayToActorAsync(
                 actor,
                 header,
                 payload,
@@ -1470,6 +1464,7 @@ public enum ZLinkFrameworkErrorKind
     ActorRouteNotFound,
     ActorCreateFailed,
     ActorAlreadyExists,
+    ActorTypeMismatch,
     ActorSessionNotBound,
     SessionProxyTimeout,
     ActorDispatchTimeout,
@@ -1482,11 +1477,12 @@ public enum ZLinkFrameworkErrorKind
 [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md)
 §17 error-kind 매트릭스에서 다룬다.
 
-`ActorCreateFailed` 와 `ActorAlreadyExists` 는 local `SpotNode` 의 actor
-runtime 이 actor 를 새로 만들거나 handle 을 준비할 때 사용한다.
-`BindActorHandleAsync(...)` 는 remote node 를 직접 지정하지 않는다. 현재
-actor 에 bound 된 session 이 없어서 client push 를 보낼 수 없으면
-`ActorSessionNotBound` 로 분류한다.
+`ActorCreateFailed`, `ActorAlreadyExists`, `ActorTypeMismatch` 는
+`IZLinkActorManager` 로 local actor 를 준비할 때 사용한다.
+`BindActorHandleAsync(...)` 와 routed actor dispatch 수신 경로는 actor 를
+생성하지 않고, remote node 를 직접 지정하지도 않는다. actor 가 없으면 dispatch
+는 `ActorRouteNotFound` 로 실패한다. 현재 actor 에 bound 된 session 이 없어서
+client push 를 보낼 수 없으면 `ActorSessionNotBound` 로 분류한다.
 
 `IsRetriable` 은 framework 가 자동으로 retry 해 준다는 의미가 아니다. caller
 가 retry policy 를 만들 때 참고할 수 있는 분류일 뿐이다. sample 코드에서도 이
@@ -1549,7 +1545,7 @@ session actor dispatch 항목은 다음 요소가 하나의 흐름으로 맞물�
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고, request sequence를 통해 reply를 되돌린다. |
-| `StreamIntegrationTests.ActorRefNotifyDisconnected_Notifies_Local_Bound_Actor` | `CreateAndBindActorAsync(...)` 로 만든 local actor ref의 disconnect 알림이 actor `OnDisconnectedAsync(...)` 로 전달된다. |
+| `StreamIntegrationTests.ActorRefNotifyDisconnected_Notifies_Local_Bound_Actor` | `BindActorHandleAsync(...)` 로 만든 local actor ref의 disconnect 알림이 actor `OnDisconnectedAsync(...)` 로 전달된다. |
 | `StreamIntegrationTests.SessionProxyDisconnect_FromLocalActor_Closes_Client_Without_Session_Disconnect_Callback` | local actor 가 `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출하면 session binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다. |
 | `StreamIntegrationTests.SessionProxyDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback` | remote actor 가 routed `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다. |
 | `StreamIntegrationTests.SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch` | Session 서버와 Play 서버 사이의 actor dispatch가 route header, actor metadata, stream header, body를 각각 별도 part로 유지한다. |

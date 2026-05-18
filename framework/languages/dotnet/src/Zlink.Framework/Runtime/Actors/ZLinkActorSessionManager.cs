@@ -26,11 +26,74 @@ internal sealed partial class ZLinkActorSessionManager(
         string actorType,
         CancellationToken cancellationToken = default)
     {
+        return await CreateAndBindActorAsync(
+                actorId,
+                actorType,
+                failIfExists: false,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<CreateActorResult> CreateActorAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default)
+    {
+        return await CreateAndBindActorAsync(
+                actorId,
+                actorType,
+                failIfExists: true,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public ValueTask<IZLinkActor?> FindActorAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(
+            _actorSessions.TryGet(actorId, out var state)
+                ? state.Actor
+                : null);
+    }
+
+    public bool TryGetCreatedActor(
+        string actorId,
+        string actorType,
+        out IZLinkActor actor)
+    {
+        actor = null!;
+        if (!_actorSessions.TryGet(actorId, out var state)
+            || state.Actor is not { } existing)
+        {
+            return false;
+        }
+
+        if (state.ActorType is not null
+            && !string.Equals(state.ActorType, actorType, StringComparison.Ordinal))
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorTypeMismatch,
+                $"Actor '{actorId}' already uses actor type '{state.ActorType}', not '{actorType}'.");
+        }
+
+        actor = existing;
+        return true;
+    }
+
+    private async ValueTask<CreateActorResult> CreateAndBindActorAsync(
+        string actorId,
+        string actorType,
+        bool failIfExists,
+        CancellationToken cancellationToken)
+    {
         var state = _actorSessions.GetOrCreate(actorId);
         return await ActorCreation.CreateAndBindActorAsync(
                 state,
                 actorId,
                 actorType,
+                failIfExists,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -91,11 +154,13 @@ internal sealed partial class ZLinkActorSessionManager(
                 $"Actor id '{actor.ActorId}' is already bound to another actor instance.");
         }
 
+        var assignedActor = false;
         if (!ReferenceEquals(state.Actor, actor))
         {
             state.Actor = actor;
             state.IsConfigured = false;
             state.ClearPacketRegistrations();
+            assignedActor = true;
         }
 
         var context = EnsureActorContext(state);
@@ -115,6 +180,12 @@ internal sealed partial class ZLinkActorSessionManager(
             catch
             {
                 state.IsConfigured = false;
+                if (assignedActor)
+                {
+                    state.Actor = null;
+                    state.ClearPacketRegistrations();
+                }
+
                 throw;
             }
         }

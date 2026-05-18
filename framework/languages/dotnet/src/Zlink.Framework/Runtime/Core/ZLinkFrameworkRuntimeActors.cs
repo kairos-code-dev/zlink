@@ -52,6 +52,23 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken = default)
         => await _actors.CreateLocalActorAsync(actorId, actorType, cancellationToken);
 
+    internal async ValueTask<CreateActorResult> CreateActorAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default)
+        => await _actors.CreateActorAsync(actorId, actorType, cancellationToken);
+
+    internal async ValueTask<IZLinkActor?> FindActorAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+        => await _actors.FindActorAsync(actorId, cancellationToken);
+
+    internal bool TryGetCreatedActor(
+        string actorId,
+        string actorType,
+        out IZLinkActor actor)
+        => _actors.TryGetCreatedActor(actorId, actorType, out actor);
+
     internal async ValueTask<byte[]> SubmitActorForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,

@@ -171,6 +171,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         var state = GetOrStartState();
         return state.SpotNodes.TryGetValue(spotNodeName, out var node)
             ? node
-            : throw new InvalidOperationException($"SPOT node '{spotNodeName}' is not registered.");
+            : throw new ZLinkConfigurationException($"SPOT node '{spotNodeName}' is not registered.");
     }
 }

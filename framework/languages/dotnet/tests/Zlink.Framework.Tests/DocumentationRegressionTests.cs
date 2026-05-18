@@ -17,6 +17,7 @@ public sealed class DocumentationRegressionTests
         "aspnet-core-monitoring.ko.md",
         "aspnet-core-registry.ko.md",
         "behavior-matrix.ko.md",
+        "di-capability-exposure-policy.ko.md",
         "regression-test-matrix.ko.md",
         "lifecycle-and-failure-semantics.ko.md",
         "implementation-scope-and-nongoals.ko.md",

@@ -863,6 +863,8 @@ public sealed class SpotIntegrationTests
     [Fact]
     public async Task LocalActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors()
     {
+        var spotNode = GetFreeTcpEndpoint();
+
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton<EntrySpotActorRegistryRecorder>();
         builder.Services.AddSingleton<EntrySpotMailboxRecorder>();
@@ -871,6 +873,10 @@ public sealed class SpotIntegrationTests
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddActorFactory<RegistryTestActorFactory>("registry");
+            options.AddSpotNode("actor-node", spot =>
+            {
+                spot.Bind(spotNode);
+            });
         });
 
         using var host = builder.Build();

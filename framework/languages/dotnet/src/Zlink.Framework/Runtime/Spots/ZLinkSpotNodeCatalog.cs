@@ -28,7 +28,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             if (!registration.SpotFactories.TryGetValue(spotName, out var spotType))
             {
-                throw new InvalidOperationException(
+                throw new ZLinkConfigurationException(
                     $"SPOT factory '{spotName}' is not registered on node '{registration.SpotNodeName}'.");
             }
 

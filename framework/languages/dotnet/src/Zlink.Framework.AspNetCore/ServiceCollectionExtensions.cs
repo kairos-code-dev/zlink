@@ -180,13 +180,25 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ZLinkEventPublisher>();
         services.AddSingleton<IZLinkFanoutPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
         services.AddSingleton<IZLinkEventPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
-        services.AddSingleton<IZLinkSpotManager, ZLinkSpotManagerService>();
-        services.AddSingleton<IZLinkSpotClient, ZLinkSpotClientService>();
-        services.AddSingleton<ZLinkSpotPublisherClientService>();
-        services.AddSingleton<IZLinkSpotMeshPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
-        services.AddSingleton<IZLinkSpotPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
-        services.AddSingleton<IZLinkSpotConnectionManager, ZLinkSpotConnectionManagerService>();
-        services.AddSingleton<IZLinkActorManager, ZLinkActorManagerService>();
+
+        if (HasSpotNode(registration))
+        {
+            services.AddSingleton<IZLinkSpotManager, ZLinkSpotManagerService>();
+            services.AddSingleton<IZLinkSpotClient, ZLinkSpotClientService>();
+            services.AddSingleton<IZLinkSpotConnectionManager, ZLinkSpotConnectionManagerService>();
+        }
+
+        if (HasSpotPublisherClient(registration))
+        {
+            services.AddSingleton<ZLinkSpotPublisherClientService>();
+            services.AddSingleton<IZLinkSpotMeshPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
+            services.AddSingleton<IZLinkSpotPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
+        }
+
+        if (HasSpotNode(registration) && registration.ActorFactories.Count > 0)
+        {
+            services.AddSingleton<IZLinkActorManager, ZLinkActorManagerService>();
+        }
 
         if (registration.ActorPlayRouteResolverType is not null)
         {
@@ -216,13 +228,19 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IZLinkActorSessionClient>(
                 provider => provider.GetRequiredService<ZLinkSessionProxyService>());
         }
-        else
-        {
-            services.AddSingleton<IZLinkSessionProxyFactory, ZLinkMissingSessionProxyFactory>();
-            services.AddSingleton<IZLinkActorSessionClient, ZLinkMissingSessionProxy>();
-        }
 
         return services;
+    }
+
+    private static bool HasSpotNode(ZLinkFrameworkRegistration registration)
+    {
+        return registration.SpotNodes.Count > 0;
+    }
+
+    private static bool HasSpotPublisherClient(ZLinkFrameworkRegistration registration)
+    {
+        return registration.SpotNodes.Values.Any(static spotNode =>
+            spotNode.AttachedSpotPublisherClients.Count > 0);
     }
 
     private static IServiceCollection AddZLinkApplicationServices(

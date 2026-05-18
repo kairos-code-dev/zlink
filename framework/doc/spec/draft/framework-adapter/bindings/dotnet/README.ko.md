@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../README.ko.md)
 
-[Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Actor](./aspnet-core-actor.ko.md) | [Session Actor Dispatch](./session-actor-dispatch.ko.md) | [Stream Connector](./streaming-client.ko.md) | [Unity 가이드](../../../../../../../doc/guide/unity-stream-connector.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
+[Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Actor](./aspnet-core-actor.ko.md) | [Session Actor Dispatch](./session-actor-dispatch.ko.md) | [Stream Connector](./streaming-client.ko.md) | [Unity 가이드](../../../../../../../doc/guide/unity-stream-connector.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [DI Capability](./di-capability-exposure-policy.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
 
 # Draft -- ZLink Framework For .NET
 
@@ -150,6 +150,7 @@
 | 문서 | 다루는 범위 |
 |------|------------|
 | [behavior-matrix.ko.md](./behavior-matrix.ko.md) | capability 조합별 기대 동작, startup validation, 허용 / 비허용 조합 |
+| [di-capability-exposure-policy.ko.md](./di-capability-exposure-policy.ko.md) | DI 로 노출되는 public service interface 와 capability 등록 조건 |
 | [lifecycle-and-failure-semantics.ko.md](./lifecycle-and-failure-semantics.ko.md) | startup / shutdown 순서, fail-fast[^fail-fast] 규칙, reconnect 와 runtime error 의 의미 |
 | [regression-test-matrix.ko.md](./regression-test-matrix.ko.md) | 구현 중에도 항상 유지해야 할 회귀 테스트 항목, CI 계층, release gate |
 | [implementation-scope-and-nongoals.ko.md](./implementation-scope-and-nongoals.ko.md) | 현재 계획의 전체 구현 범위, 비목표, 완료 판정 기준 |

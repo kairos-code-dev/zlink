@@ -69,7 +69,7 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
     {
         return services.GetService(typeof(IZLinkSpotRouteResolver)) is IZLinkSpotRouteResolver resolver
             ? resolver
-            : throw new InvalidOperationException(
+            : throw new ZLinkConfigurationException(
                 "IZLinkSpotClient spot routing requires AddSpotRouteResolver<TResolver>().");
     }
 }

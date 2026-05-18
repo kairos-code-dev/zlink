@@ -88,6 +88,25 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | channel wire multipart[^wire-multipart] | `integration-single-process` | 서버 간 channel send/request/reply가 `header`와 `payload`를 별도 message part로 보내고, handler dispatch는 header part만 보고 packet을 고른다 |
 | publish wire multipart | `integration-single-process` | `PUB/SUB` publish도 framework header와 payload를 별도 part로 유지하고, subscriber handler에는 typed payload만 전달된다 |
 
+## 4.1 DI Capability Regression 항목
+
+| 항목 | 계층 | 통과 기준 |
+|------|------|-----------|
+| actor factory without SpotNode | `unit` | actor factory 만 등록하면 startup validation 예외 |
+| actor manager without SpotNode | `unit` | SpotNode 없는 구성에서는 `IZLinkActorManager` 가 DI 에 없다 |
+| actor manager with SpotNode only | `unit` | SpotNode 만 있고 actor factory 가 없으면 `IZLinkActorManager` 가 DI 에 없다 |
+| actor manager with SpotNode and actor factory | `unit` | SpotNode 와 actor factory 가 모두 있으면 `IZLinkActorManager` 가 DI 에 등록된다 |
+| Spot service without SpotNode | `unit` | SpotNode 없는 구성에서는 `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotConnectionManager` 가 DI 에 없다 |
+| Spot service with SpotNode | `unit` | SpotNode 가 있으면 Spot service 가 DI 에 등록된다 |
+| Spot publisher without publisher capability | `unit` | SpotNode 가 있어도 publisher capability 가 없으면 Spot publisher service 는 DI 에 없다 |
+| Spot publisher with publisher capability | `unit` | Spot publisher capability 가 있으면 `IZLinkSpotPublisherClient` 와 `IZLinkSpotMeshPublisherClient` 가 DI 에 등록된다 |
+| session proxy without binding store | `unit` | binding store 없이는 `IZLinkSessionProxyFactory`, `IZLinkActorSessionClient` 가 DI 에 없다 |
+| binding store without route mesh | `unit` | binding store 가 있지만 route mesh channel 이 없으면 startup validation 예외 |
+| Spot route resolver without SpotNode | `unit` | route 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRouteResolver` 를 등록할 수 있다 |
+| Spot client with resolver only | `unit` | Spot route resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotClient` 는 DI 에 없다 |
+| route channel missing at call time | `unit` | `IZLinkRouteClient` 호출 시 route channel 이 없으면 `ZLinkConfigurationException` |
+| channel client missing at call time | `unit` | `IZLinkClient` 호출 시 channel client capability 가 없으면 `ZLinkConfigurationException` |
+
 ## 5. Spot Regression 항목
 
 | 항목 | 계층 | 통과 기준 |
@@ -203,6 +222,7 @@ backend gate 와 별도로 유지한다.
 - `aspnet-core-monitoring.ko.md`
 - `aspnet-core-registry.ko.md`
 - `behavior-matrix.ko.md`
+- `di-capability-exposure-policy.ko.md`
 - `regression-test-matrix.ko.md`
 - `lifecycle-and-failure-semantics.ko.md`
 - `implementation-scope-and-nongoals.ko.md`

@@ -40,7 +40,7 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
 
         if (!registration.AttachedChannelClients.TryGetValue(channelName, out var attached))
         {
-            throw new InvalidOperationException(
+            throw new ZLinkConfigurationException(
                 $"SPOT node '{nodeName}' attached channel client '{channelName}' is not registered.");
         }
 
@@ -84,7 +84,7 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
 
         if (!registration.AttachedSpotPublisherClients.TryGetValue(channelName, out var attached))
         {
-            throw new InvalidOperationException(
+            throw new ZLinkConfigurationException(
                 $"SPOT node '{nodeName}' publisher client '{channelName}' is not registered.");
         }
 

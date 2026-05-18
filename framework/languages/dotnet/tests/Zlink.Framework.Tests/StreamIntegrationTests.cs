@@ -86,6 +86,7 @@ public sealed class StreamIntegrationTests
     [Fact]
     public async Task ActorManager_CreateAsync_Throws_When_ActorAlreadyExists()
     {
+        var spotEndpoint = GetFreeTcpEndpoint();
         var host = await CreateHostAsync("actor-manager", services =>
         {
             services.AddSingleton<ActorDispatchRecorder>();
@@ -93,6 +94,10 @@ public sealed class StreamIntegrationTests
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddSpotNode("actor-node", spot =>
+                {
+                    spot.Bind(spotEndpoint);
+                });
             });
         });
 
@@ -119,6 +124,7 @@ public sealed class StreamIntegrationTests
     [Fact]
     public async Task ActorManager_GetOrCreateAsync_Reuses_ExistingActor_And_Rejects_TypeMismatch()
     {
+        var spotEndpoint = GetFreeTcpEndpoint();
         var host = await CreateHostAsync("actor-manager", services =>
         {
             services.AddSingleton<ActorDispatchRecorder>();
@@ -127,6 +133,10 @@ public sealed class StreamIntegrationTests
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddActorFactory<GatewayActorFactory>("spectator");
+                options.AddSpotNode("actor-node", spot =>
+                {
+                    spot.Bind(spotEndpoint);
+                });
             });
         });
 
@@ -153,6 +163,7 @@ public sealed class StreamIntegrationTests
     [Fact]
     public async Task ActorManager_CreateAsync_Clears_State_When_Configure_Fails()
     {
+        var spotEndpoint = GetFreeTcpEndpoint();
         var recorder = new ConfigureFailureRecorder();
         var host = await CreateHostAsync("actor-manager", services =>
         {
@@ -161,6 +172,10 @@ public sealed class StreamIntegrationTests
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<ConfigureFailureActorFactory>("player");
+                options.AddSpotNode("actor-node", spot =>
+                {
+                    spot.Bind(spotEndpoint);
+                });
             });
         });
 
@@ -190,6 +205,7 @@ public sealed class StreamIntegrationTests
     public async Task BindActorHandleAsync_DoesNot_Create_LocalActor()
     {
         var endpoint = GetFreeTcpEndpoint();
+        var spotEndpoint = GetFreeTcpEndpoint();
         var recorder = new ActorDispatchRecorder();
         var host = await CreateHostAsync(endpoint, services =>
         {
@@ -198,6 +214,10 @@ public sealed class StreamIntegrationTests
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddSpotNode("actor-node", spot =>
+                {
+                    spot.Bind(spotEndpoint);
+                });
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(endpoint);
@@ -531,6 +551,7 @@ public sealed class StreamIntegrationTests
         var streamEndpoint = GetFreeTcpEndpoint();
         var sessionRouterEndpoint = GetFreeTcpEndpoint();
         var playRouterEndpoint = GetFreeTcpEndpoint();
+        var playSpotEndpoint = GetFreeTcpEndpoint();
         var sessionRid = RoutingId.FromString("0101");
         var playRid = RoutingId.FromString("0202");
         var proxyRecorder = new ActorDispatchRecorder();
@@ -553,6 +574,10 @@ public sealed class StreamIntegrationTests
                 });
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddActorSessionBindingStore<ActorSessionLocationStore>();
+                options.AddSpotNode("actor-node", spot =>
+                {
+                    spot.Bind(playSpotEndpoint);
+                });
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(playRouterEndpoint);
@@ -693,6 +718,7 @@ public sealed class StreamIntegrationTests
         var streamEndpoint = GetFreeTcpEndpoint();
         var sessionRouterEndpoint = GetFreeTcpEndpoint();
         var playRouterEndpoint = GetFreeTcpEndpoint();
+        var playSpotEndpoint = GetFreeTcpEndpoint();
         var sessionRid = RoutingId.FromString("0707");
         var playRid = RoutingId.FromString("0808");
         var actorRecorder = new ActorDispatchRecorder();
@@ -709,6 +735,10 @@ public sealed class StreamIntegrationTests
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddActorSessionBindingStore<ActorSessionLocationStore>();
+                options.AddSpotNode("actor-node", spot =>
+                {
+                    spot.Bind(playSpotEndpoint);
+                });
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(playRouterEndpoint);
@@ -773,6 +803,7 @@ public sealed class StreamIntegrationTests
     {
         var streamEndpoint = GetFreeTcpEndpoint();
         var routerEndpoint = GetFreeTcpEndpoint();
+        var spotEndpoint = GetFreeTcpEndpoint();
         var localRid = RoutingId.FromString("0303");
         var recorder = new ActorDispatchRecorder();
         var sessionRecorder = new GatewaySessionRecorder();
@@ -793,6 +824,10 @@ public sealed class StreamIntegrationTests
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddActorSessionBindingStore<ActorSessionLocationStore>();
+                options.AddSpotNode("actor-node", spot =>
+                {
+                    spot.Bind(spotEndpoint);
+                });
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(routerEndpoint);
@@ -844,6 +879,7 @@ public sealed class StreamIntegrationTests
     {
         var streamEndpoint = GetFreeTcpEndpoint();
         var routerEndpoint = GetFreeTcpEndpoint();
+        var spotEndpoint = GetFreeTcpEndpoint();
         var localRid = RoutingId.FromString("0404");
         var actorRecorder = new ActorDispatchRecorder();
         var sessionRecorder = new GatewaySessionRecorder();
@@ -865,6 +901,10 @@ public sealed class StreamIntegrationTests
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddActorSessionBindingStore<ActorSessionLocationStore>();
                 options.AddActorPlayRouteResolver<ActorPlayRouteStore>();
+                options.AddSpotNode("actor-node", spot =>
+                {
+                    spot.Bind(spotEndpoint);
+                });
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(routerEndpoint);
@@ -930,6 +970,7 @@ public sealed class StreamIntegrationTests
         var streamEndpoint = GetFreeTcpEndpoint();
         var sessionRouterEndpoint = GetFreeTcpEndpoint();
         var playRouterEndpoint = GetFreeTcpEndpoint();
+        var playSpotEndpoint = GetFreeTcpEndpoint();
         var sessionRid = RoutingId.FromString("0505");
         var playRid = RoutingId.FromString("0606");
         var actorRecorder = new ActorDispatchRecorder();
@@ -949,6 +990,10 @@ public sealed class StreamIntegrationTests
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddActorSessionBindingStore<ActorSessionLocationStore>();
+                options.AddSpotNode("actor-node", spot =>
+                {
+                    spot.Bind(playSpotEndpoint);
+                });
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(playRouterEndpoint);

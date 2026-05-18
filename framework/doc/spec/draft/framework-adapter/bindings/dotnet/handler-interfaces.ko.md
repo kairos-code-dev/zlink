@@ -3699,6 +3699,26 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
   않고, spot 자체의 constructor injection 과 cached dependency 를 사용하는
   편이 좋다. 그래야 hot path 와의 경계가 더 분명해진다.
 
+### 13.1 public service DI 등록 조건
+
+모든 public service interface 를 항상 DI 에 등록하지는 않는다. 생성자 주입은
+그 기능을 사용할 수 있다는 신호가 되므로, capability 가 없는 service 는 등록하지
+않는다. 자세한 결정 배경은
+[di-capability-exposure-policy.ko.md](./di-capability-exposure-policy.ko.md) 에서
+다룬다.
+
+| Interface | DI 등록 조건 |
+|-----------|--------------|
+| `IZLinkClient`, `IZLinkClientServerClient` | 항상 등록한다. channel 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
+| `IZLinkRouteClient` | 항상 등록한다. route channel 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
+| `IZLinkEventPublisher`, `IZLinkFanoutPublisher` | 항상 등록한다. publisher capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
+| `IZLinkChannelConnectionManager` | 항상 등록한다. 대상 channel capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
+| `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotConnectionManager` | `SpotNode` 가 하나 이상 있을 때 등록한다 |
+| `IZLinkSpotPublisherClient`, `IZLinkSpotMeshPublisherClient` | Spot publisher client capability 가 하나 이상 있을 때 등록한다 |
+| `IZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록한다 |
+| `IZLinkSessionProxyFactory`, `IZLinkActorSessionClient` | actor-session binding store 와 route mesh channel 이 모두 있을 때 등록한다 |
+| `IZLinkActorPlayRouteResolver`, `IZLinkSpotRouteResolver`, `IZLinkActorSessionBindingStore` | 해당 resolver/store registration 이 있을 때 등록한다 |
+
 local handler 가 붙는 channel 의 의미는 다음과 같다. route prefix 가
 아니라, 애플리케이션이 해당 channel 에서 server 역할을 수행한다는 의미다.
 

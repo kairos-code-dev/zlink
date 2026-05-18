@@ -13,6 +13,18 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 "AddSpotMesh(...) requires spotMesh.UseDiscovery(...).");
         }
 
+        if (registration.ActorFactories.Count > 0 && registration.SpotNodes.Count == 0)
+        {
+            throw new ZLinkConfigurationException(
+                "Actor factory registration requires at least one SpotNode.");
+        }
+
+        if (registration.ActorSessionBindingStoreType is not null && registration.RouteChannels.Count == 0)
+        {
+            throw new ZLinkConfigurationException(
+                "Actor session proxy requires AddRouteMeshChannel(...).");
+        }
+
         foreach (var channel in registration.Channels.Values)
         {
             ValidateChannel(channel, registration.Discovery is not null);

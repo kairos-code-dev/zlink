@@ -220,6 +220,237 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void AddZLinkFramework_Throws_When_ActorFactory_Without_SpotNode()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<TestActorFactory>("warrior");
+            }));
+
+        Assert.Contains("requires at least one SpotNode", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_DoesNot_Register_ActorManager_Without_SpotNode()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(_ => { });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Null(provider.GetService<IZLinkActorManager>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_DoesNot_Register_SpotServices_Without_SpotNode()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(_ => { });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Null(provider.GetService<IZLinkSpotManager>());
+        Assert.Null(provider.GetService<IZLinkSpotClient>());
+        Assert.Null(provider.GetService<IZLinkSpotConnectionManager>());
+        Assert.Null(provider.GetService<IZLinkSpotPublisherClient>());
+        Assert.Null(provider.GetService<IZLinkSpotMeshPublisherClient>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Registers_SpotServices_When_SpotNode_Exists()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddSpotNode("stage-node", spot =>
+            {
+                spot.Bind("tcp://127.0.0.1:6200");
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.NotNull(provider.GetService<IZLinkSpotManager>());
+        Assert.NotNull(provider.GetService<IZLinkSpotClient>());
+        Assert.NotNull(provider.GetService<IZLinkSpotConnectionManager>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_DoesNot_Register_ActorManager_With_SpotNode_Only()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddSpotNode("stage-node", spot =>
+            {
+                spot.Bind("tcp://127.0.0.1:6203");
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Null(provider.GetService<IZLinkActorManager>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Registers_ActorManager_When_SpotNode_And_ActorFactory_Exist()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddActorFactory<TestActorFactory>("warrior");
+            options.AddSpotNode("actor-node", spot =>
+            {
+                spot.Bind("tcp://127.0.0.1:6201");
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.NotNull(provider.GetService<IZLinkActorManager>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_DoesNot_Register_SpotPublisher_Without_PublisherCapability()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddSpotNode("stage-node", spot =>
+            {
+                spot.Bind("tcp://127.0.0.1:6204");
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Null(provider.GetService<IZLinkSpotPublisherClient>());
+        Assert.Null(provider.GetService<IZLinkSpotMeshPublisherClient>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Registers_SpotPublisher_When_PublisherCapability_Exists()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.stage", _ => { });
+            options.AddSpotNode("stage-node", spot =>
+            {
+                spot.Bind("tcp://127.0.0.1:6205");
+                spot.AttachSpotMeshPublisherClient("game.stage");
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.NotNull(provider.GetService<IZLinkSpotPublisherClient>());
+        Assert.NotNull(provider.GetService<IZLinkSpotMeshPublisherClient>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_DoesNot_Register_SessionProxy_Without_BindingStore()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.AddRouteMeshChannel("gateway", routed =>
+            {
+                routed.Bind("tcp://127.0.0.1:6202");
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Null(provider.GetService<IZLinkSessionProxyFactory>());
+        Assert.Null(provider.GetService<IZLinkActorSessionClient>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_When_BindingStore_Without_RouteMesh()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorSessionBindingStore<TestActorSessionBindingStore>();
+            }));
+
+        Assert.Contains("requires AddRouteMeshChannel", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Allows_SpotRouteResolver_Without_SpotNode()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddSpotRouteResolver<TestSpotRouteResolver>();
+        });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.IsType<TestSpotRouteResolver>(provider.GetRequiredService<IZLinkSpotRouteResolver>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_DoesNot_Register_SpotClient_With_Resolver_Only()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddSpotRouteResolver<TestSpotRouteResolver>();
+        });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Null(provider.GetService<IZLinkSpotClient>());
+    }
+
+    [Fact]
+    public async Task RouteClient_Throws_ConfigurationException_When_RouteChannel_Missing()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(_ => { });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var client = host.Services.GetRequiredService<IZLinkRouteClient>();
+        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() =>
+            client.SendTo(
+                    "missing",
+                    global::Systems.Zlink.RoutingId.FromString("01"),
+                    "ping")
+                .Submit().AsTask());
+
+        Assert.Contains("Route channel 'missing' is not registered", exception.Message, StringComparison.Ordinal);
+        await host.StopAsync();
+    }
+
+    [Fact]
+    public async Task ChannelClient_Throws_ConfigurationException_When_ClientCapability_Missing()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(_ => { });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var client = host.Services.GetRequiredService<IZLinkClient>();
+        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() =>
+            client.Send("missing", "ping").Submit().AsTask());
+
+        Assert.Contains("Channel client 'missing' is not registered", exception.Message, StringComparison.Ordinal);
+        await host.StopAsync();
+    }
+
+    [Fact]
     public void AddZLinkFramework_Throws_WhenServerHasNoBindEndpoint()
     {
         var services = new ServiceCollection();
@@ -282,6 +513,11 @@ public sealed class RegistrationValidationTests
             {
                 stream.Bind("tcp://127.0.0.1:9100");
                 stream.AddHeaderSession<TestHeaderSession>();
+            });
+
+            options.AddRouteMeshChannel("gateway", routed =>
+            {
+                routed.Bind("tcp://127.0.0.1:7301");
             });
 
             options.AddSpotNode("stage-node", spot =>

@@ -262,7 +262,7 @@ internal sealed class ZLinkActorJoinSpotCall<TRequest>(
 
         if (runtime.Services.GetService(typeof(IZLinkSpotRouteResolver)) is not IZLinkSpotRouteResolver resolver)
         {
-            throw new InvalidOperationException(
+            throw new ZLinkConfigurationException(
                 "Actor JoinSpot(string, ...) requires AddSpotRouteResolver<TResolver>().");
         }
 

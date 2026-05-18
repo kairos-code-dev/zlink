@@ -37,7 +37,7 @@ internal sealed class ZLinkSpotRuntimeManager(
             }
         }
 
-        throw new InvalidOperationException(
+        throw new ZLinkConfigurationException(
             $"SPOT publisher client channel '{channelName}' is not registered.");
     }
 
@@ -55,7 +55,7 @@ internal sealed class ZLinkSpotRuntimeManager(
             }
         }
 
-        throw new InvalidOperationException($"SPOT factory '{spotName}' is not registered.");
+        throw new ZLinkConfigurationException($"SPOT factory '{spotName}' is not registered.");
     }
 
     public async ValueTask<ZLinkSpotInfo?> GetAsync(
@@ -288,7 +288,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     {
         return state.SpotNodes.TryGetValue(spotNodeName, out var node)
             ? node
-            : throw new InvalidOperationException($"SPOT node '{spotNodeName}' is not registered.");
+            : throw new ZLinkConfigurationException($"SPOT node '{spotNodeName}' is not registered.");
     }
 
     public ZLinkSpotActivation? GetActivationBySpotRid(

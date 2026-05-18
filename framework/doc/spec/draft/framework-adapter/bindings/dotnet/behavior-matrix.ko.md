@@ -78,7 +78,7 @@
 | `router` capability만 등록 | 허용 | inbound routed call만 받는다 |
 | attach된 channel client capability 등록 + channel discovery/manual 경로 있음 | 허용 | spot 내부에서 outbound channel 호출이 가능하다 |
 | attach된 channel client capability 등록 + channel peer acquisition 경로 없음 | 비허용 | startup validation 오류 |
-| local spot 없는 외부 publish는 `IZLinkSpotPublisherClient` 사용 | 허용 | 특정 SPOT channel publish만 수행한다 |
+| local spot factory 없는 외부 publish node는 `IZLinkSpotPublisherClient` 사용 | 허용 | Spot publisher client capability 만 둔 `SpotNode` 로 특정 SPOT channel publish만 수행한다 |
 
 ## 5. Stream Node Matrix
 

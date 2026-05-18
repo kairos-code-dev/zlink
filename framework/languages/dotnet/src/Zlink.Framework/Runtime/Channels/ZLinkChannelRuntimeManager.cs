@@ -26,7 +26,7 @@ internal sealed class ZLinkChannelRuntimeManager(
             if (!registration.Channels.TryGetValue(channelName, out var channel)
                 || channel.Client is null)
             {
-                throw new InvalidOperationException($"Channel client '{channelName}' is not registered.");
+                throw new ZLinkConfigurationException($"Channel client '{channelName}' is not registered.");
             }
 
             var bundle = _bundleFactory.CreateClientBundle(state, channelName, channel);
@@ -49,7 +49,7 @@ internal sealed class ZLinkChannelRuntimeManager(
             if (!registration.Channels.TryGetValue(channelName, out var channel)
                 || channel.Publisher is null)
             {
-                throw new InvalidOperationException($"Channel publisher '{channelName}' is not registered.");
+                throw new ZLinkConfigurationException($"Channel publisher '{channelName}' is not registered.");
             }
 
             var bundle = _bundleFactory.CreatePublisherBundle(state, channelName, channel);
@@ -64,7 +64,7 @@ internal sealed class ZLinkChannelRuntimeManager(
     {
         return state.RouteChannels.TryGetValue(routerChannelId, out var routed)
             ? routed
-            : throw new InvalidOperationException($"Route channel '{routerChannelId}' is not registered.");
+            : throw new ZLinkConfigurationException($"Route channel '{routerChannelId}' is not registered.");
     }
 
     public void InitializeInboundChannels(
@@ -144,7 +144,7 @@ internal sealed class ZLinkChannelRuntimeManager(
         if (!registration.Channels.TryGetValue(channelName, out var channel)
             || channel.Client is null)
         {
-            throw new InvalidOperationException($"Channel client '{channelName}' is not registered.");
+            throw new ZLinkConfigurationException($"Channel client '{channelName}' is not registered.");
         }
 
         return new ZLinkRuntimeConnections(
@@ -176,7 +176,7 @@ internal sealed class ZLinkChannelRuntimeManager(
     {
         if (!state.SubscriberBundles.TryGetValue(channelName, out var bundle))
         {
-            throw new InvalidOperationException($"Channel subscriber '{channelName}' is not registered.");
+            throw new ZLinkConfigurationException($"Channel subscriber '{channelName}' is not registered.");
         }
 
         return new ZLinkRuntimeConnections(

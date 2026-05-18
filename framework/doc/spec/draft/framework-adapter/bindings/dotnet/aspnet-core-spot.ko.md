@@ -440,10 +440,7 @@ memory cache 중 무엇을 쓰는지 알지 못한다. handler 와 actor 코드 
 `RoutingId` 를 직접 들고 다니지 않는다.
 
 ```csharp
-public readonly record struct ZLinkSpotId(string Value)
-{
-    public override string ToString() => Value;
-}
+namespace Zlink.Framework.Contracts.Spots;
 
 public interface IZLinkSpotRouteResolver
 {

@@ -1,4 +1,5 @@
 using TicTacToe.SessionGateway.Shared.Configuration;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;

@@ -1187,6 +1187,8 @@ packet 을 어떤 actor 에 relay 할지"만 결정하고, remote actor route �
   경계를 넘을 수 있다면, spot route resolver 도 함께 등록한다.
 
 ```csharp
+namespace Zlink.Framework.Contracts.Actors;
+
 public interface IZLinkActorPlayRouteResolver
 {
     ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
@@ -1197,11 +1199,10 @@ public interface IZLinkActorPlayRouteResolver
 public readonly record struct ZLinkActorRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid);
+```
 
-public readonly record struct ZLinkSpotId(string Value)
-{
-    public override string ToString() => Value;
-}
+```csharp
+namespace Zlink.Framework.Contracts.Spots;
 
 public interface IZLinkSpotRouteResolver
 {

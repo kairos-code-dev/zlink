@@ -561,6 +561,8 @@ application 이 돌려주기 위한 resolver 다. framework 는 이 정보를 �
 채널 send / request 를 구성한다.
 
 ```csharp
+namespace Zlink.Framework.Contracts.Actors;
+
 public interface IZLinkActorPlayRouteResolver
 {
     ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(

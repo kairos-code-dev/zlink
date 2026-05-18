@@ -2192,6 +2192,8 @@ client 연결을 끊기로 결정한 경우 이 메서드를 호출하며, sessi
 binding store plug-in 을 등록하는 방식으로 처리한다.
 
 ```csharp
+namespace Zlink.Framework.Contracts.Actors;
+
 public interface IZLinkActorPlayRouteResolver
 {
     ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
@@ -2202,6 +2204,10 @@ public interface IZLinkActorPlayRouteResolver
 public readonly record struct ZLinkActorRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid);
+```
+
+```csharp
+namespace Zlink.Framework.Contracts.Spots;
 
 public interface IZLinkSpotRouteResolver
 {
@@ -2218,6 +2224,10 @@ public readonly record struct ZLinkSpotRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid,
     ZLinkSpotId SpotId);
+```
+
+```csharp
+namespace Zlink.Framework.Contracts.Streams;
 
 public readonly record struct ZLinkActorSessionRoute(
     RoutingId SessionRouterId,

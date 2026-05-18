@@ -3,6 +3,7 @@ using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;

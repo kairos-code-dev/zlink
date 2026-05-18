@@ -67,6 +67,22 @@ internal sealed class ZLinkActorDispatchRouter(
         }
     }
 
+    public async ValueTask NotifyDisconnectedByIdAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        var state = actorSessions.GetOrCreate(actorId);
+        var actor = state.Actor
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorId}' is not active.");
+
+        await state.ExecuteLifecycleAsync(
+                ct => NotifyDisconnectedByCurrentLocationAsync(actor, state, ct),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private async ValueTask<byte[]> SubmitForReplyAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState state,
@@ -186,6 +202,35 @@ internal sealed class ZLinkActorDispatchRouter(
     {
         await _packetDispatcher.DispatchAsync(state, actor, header, payload, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async ValueTask NotifyDisconnectedByCurrentLocationAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState state,
+        CancellationToken cancellationToken)
+    {
+        var activation = await state.ExecuteLockedAsync(
+            () =>
+            {
+                var currentActivation = state.Activation;
+                if (currentActivation is not null && currentActivation.IsDisposed)
+                {
+                    state.Activation = null;
+                    currentActivation = null;
+                }
+
+                return currentActivation;
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        if (activation is not null)
+        {
+            await activation.NotifyActorDisconnectedAsync(actor, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await actor.OnDisconnectedAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<byte[]> DispatchLocalForReplyAsync(

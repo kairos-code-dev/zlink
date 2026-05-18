@@ -1,16 +1,14 @@
 using System.Text.Json;
 using Systems.Zlink;
-using TicTacToe.Server.Play.Actors;
 
 namespace TicTacToe.Server.Play.Sessions;
 
 internal sealed class PlaySessionAuthenticator(
-    PlayActorFactory actorFactory,
     ILogger<PlaySessionAuthenticator> logger)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async ValueTask<PlayActor> AuthenticateAsync(
+    public async ValueTask<AuthenticatedPlaySession> AuthenticateAsync(
         IZLinkSessionContext context,
         Message payload,
         CancellationToken cancellationToken)
@@ -27,9 +25,11 @@ internal sealed class PlaySessionAuthenticator(
             .Timeout(SampleTimeouts.Request)
             .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
 
-        var actor = (PlayActor)await actorFactory.CreateAsync(reply.ActorId, cancellationToken)
+        var actor = await context.CreateAndBindActorAsync(
+                reply.ActorId,
+                SampleTypes.PlayerActor,
+                cancellationToken)
             .ConfigureAwait(false);
-        await ((IZLinkSessionActorAttachmentContext)context).AttachActorAsync(actor, cancellationToken);
         await context.Reply(new AuthenticateRes(reply.ActorId))
             .Submit(cancellationToken);
 
@@ -39,6 +39,10 @@ internal sealed class PlaySessionAuthenticator(
             reply.ActorId,
             actor.ActorId);
 
-        return actor;
+        return new AuthenticatedPlaySession(reply.ActorId, actor);
     }
 }
+
+internal readonly record struct AuthenticatedPlaySession(
+    string ActorId,
+    IZLinkActorRef Actor);

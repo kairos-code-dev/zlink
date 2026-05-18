@@ -44,6 +44,16 @@ internal static class ZLinkInternalMultipartPackets
         ];
     }
 
+    public static IReadOnlyList<Message> CreateActorDisconnectedParts(
+        string actorId,
+        string actorType)
+    {
+        return
+        [
+            ZLinkEnvelopeCodec.EncodePart(new ZLinkActorDispatchMetadata(actorId, actorType))
+        ];
+    }
+
     public static ZLinkActorDispatchMetadata DecodeActorDispatchMetadata(Received received)
     {
         EnsurePartCount(received, 4, "actor dispatch");
@@ -60,6 +70,12 @@ internal static class ZLinkInternalMultipartPackets
     {
         EnsurePartCount(received, 4, "actor dispatch");
         return Message.FromBytes(received.Parts[3].AsReadOnlySpan());
+    }
+
+    public static ZLinkActorDispatchMetadata DecodeActorDisconnectedMetadata(Received received)
+    {
+        EnsurePartCount(received, 2, "actor disconnected");
+        return ZLinkEnvelopeCodec.DecodePart<ZLinkActorDispatchMetadata>(received.Parts[1]);
     }
 
     public static ZLinkSessionProxyEnvelope DecodeSessionProxyEnvelope(Received received)

@@ -13,6 +13,7 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         string actorType,
         string routerChannelId,
         RoutingId actorNodeRid,
+        Func<ZLinkActorRef, CancellationToken, ValueTask> notifyDisconnectedAsync,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(actorId))
@@ -47,7 +48,12 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             _bindings[actorId] = binding;
         }
 
-        return new ZLinkActorRef(actorId, actorType, routerChannelId, actorNodeRid);
+        return new ZLinkActorRef(
+            actorId,
+            actorType,
+            routerChannelId,
+            actorNodeRid,
+            notifyDisconnectedAsync);
     }
 
     public async ValueTask CleanupAsync(

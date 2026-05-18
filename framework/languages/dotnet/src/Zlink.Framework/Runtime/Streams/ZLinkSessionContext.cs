@@ -13,7 +13,7 @@ internal sealed class ZLinkSessionContext(
     private readonly ZLinkSessionRequestTracker _requests = new();
     private ZLinkSessionStreamTransport? _transport;
     private readonly ZLinkSessionActorBindingRegistry _actorBindings = new(runtime);
-    private readonly ZLinkSessionActorRelay _actorRelay = new(runtime, stream);
+    private readonly ZLinkSessionActorRelay _actorRelay = new(runtime);
 
     private ZLinkSessionStreamTransport Transport
         => _transport ??= new ZLinkSessionStreamTransport(stream, _requests);
@@ -65,6 +65,7 @@ internal sealed class ZLinkSessionContext(
             actorType,
             route.RouterChannelId,
             route.TargetNodeRid,
+            NotifyLocalActorDisconnectedAsync,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -82,6 +83,7 @@ internal sealed class ZLinkSessionContext(
             actorType,
             route.RouterChannelId,
             route.TargetNodeRid,
+            NotifyRoutedActorDisconnectedAsync,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -107,17 +109,6 @@ internal sealed class ZLinkSessionContext(
         _actor = actor;
     }
 
-    public ValueTask DispatchToActorAsync(
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken = default)
-    {
-        var actor = _actor
-            ?? throw new InvalidOperationException("No actor is attached to the current session.");
-
-        return _actorRelay.DispatchAttachedAsync(actor, header, payload, cancellationToken);
-    }
-
     public async ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
@@ -138,7 +129,7 @@ internal sealed class ZLinkSessionContext(
             .ConfigureAwait(false);
     }
 
-    public async ValueTask DisconnectActorAsync(
+    private async ValueTask DisconnectActorAsync(
         CancellationToken cancellationToken = default)
     {
         var actor = _actor;
@@ -186,6 +177,22 @@ internal sealed class ZLinkSessionContext(
         }
 
         return runtime.ResolveLocalActorRoute();
+    }
+
+    private async ValueTask NotifyLocalActorDisconnectedAsync(
+        ZLinkActorRef actor,
+        CancellationToken cancellationToken)
+    {
+        await runtime.NotifyActorDisconnectedByIdAsync(actor.ActorId, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask NotifyRoutedActorDisconnectedAsync(
+        ZLinkActorRef actor,
+        CancellationToken cancellationToken)
+    {
+        await _actorRelay.NotifyDisconnectedAsync(actor, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal bool TryCompleteResponse(

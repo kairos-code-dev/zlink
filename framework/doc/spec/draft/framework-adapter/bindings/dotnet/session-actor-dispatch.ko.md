@@ -1090,7 +1090,8 @@ GamePromptRep prompt = await sessionProxy
 이름이 두 갈래로 정리된다.
 
 - session → actor 방향: `CreateAndBindActorAsync(...)`,
-  `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)` 를 사용한다.
+  `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)`,
+  `IZLinkActorRef.NotifyDisconnectedAsync(...)` 를 사용한다.
 - actor → client 방향: `IZLinkSessionProxy` 를 사용한다.
 
 `IZLinkSessionProxy.Send(...).Submit(...)` 은 one-way push 다. 이 호출은
@@ -1379,8 +1380,15 @@ public sealed class TicTacToeSession : IZLinkSession
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
         => ValueTask.CompletedTask;
 
-    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-        => ValueTask.CompletedTask;
+    public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+    {
+        foreach (IZLinkActorRef actor in authenticatedActors.Values)
+        {
+            await actor.NotifyDisconnectedAsync(cancellationToken);
+        }
+
+        authenticatedActors.Clear();
+    }
 
     public ValueTask OnErrorAsync(
         ZLinkStreamError error,
@@ -1520,6 +1528,7 @@ session actor dispatch 항목은 다음 요소가 하나의 흐름으로 맞물�
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고, request sequence를 통해 reply를 되돌린다. |
+| `StreamIntegrationTests.ActorRefNotifyDisconnected_Notifies_Local_Bound_Actor` | `CreateAndBindActorAsync(...)` 로 만든 local actor ref의 disconnect 알림이 actor `OnDisconnectedAsync(...)` 로 전달된다. |
 | `StreamIntegrationTests.SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch` | Session 서버와 Play 서버 사이의 actor dispatch가 route header, actor metadata, stream header, body를 각각 별도 part로 유지한다. |
 | `StreamIntegrationTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 proxy metadata와 body를 별도 part로 유지하고, client에게는 단일 STREAM packet으로 보낸다. |
 | `SpotIntegrationTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot actor packet이 actor별 순서를 지키되, 서로 다른 actor를 전역으로 막지 않는다. |

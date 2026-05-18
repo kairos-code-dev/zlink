@@ -8,6 +8,7 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
     public bool CanHandleSend(string packetName)
     {
         return packetName is ZLinkInternalPacketNames.ActorDispatch
+            or ZLinkInternalPacketNames.ActorDisconnected
             or ZLinkInternalPacketNames.SessionProxy;
     }
 
@@ -26,6 +27,9 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
         {
             case ZLinkInternalPacketNames.ActorDispatch:
                 await DispatchActorDispatchSendAsync(received, cancellationToken).ConfigureAwait(false);
+                return;
+            case ZLinkInternalPacketNames.ActorDisconnected:
+                await DispatchActorDisconnectedAsync(received, cancellationToken).ConfigureAwait(false);
                 return;
             case ZLinkInternalPacketNames.SessionProxy:
                 await DispatchSessionProxySendAsync(received, cancellationToken).ConfigureAwait(false);
@@ -67,6 +71,16 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
             streamHeader,
             body,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask DispatchActorDisconnectedAsync(
+        Received received,
+        CancellationToken cancellationToken)
+    {
+        var metadata = ZLinkInternalMultipartPackets.DecodeActorDisconnectedMetadata(received);
+        await EnsureLocalActorAsync(runtime, metadata, cancellationToken).ConfigureAwait(false);
+        await runtime.NotifyActorDisconnectedByIdAsync(metadata.ActorId, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<Message> DispatchActorDispatchRequestAsync(

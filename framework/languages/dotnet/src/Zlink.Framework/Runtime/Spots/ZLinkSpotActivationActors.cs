@@ -92,6 +92,16 @@ internal sealed partial class ZLinkSpotActivation
             cancellationToken);
     }
 
+    public ValueTask NotifyActorDisconnectedAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        return ExecuteSerializedAsync(
+            async static (_, state, ct) => await state.OnDisconnectedAsync(ct),
+            actor,
+            cancellationToken);
+    }
+
     private async ValueTask JoinActorCoreAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken)

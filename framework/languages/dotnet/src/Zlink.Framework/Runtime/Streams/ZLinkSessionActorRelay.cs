@@ -2,35 +2,8 @@
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionActorRelay(
-    ZLinkFrameworkRuntime runtime,
-    IZLinkStream stream)
+    ZLinkFrameworkRuntime runtime)
 {
-    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZlinkStreamDefaultCodecs.Header();
-
-    public ValueTask DispatchAttachedAsync(
-        IZLinkActor actor,
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken)
-    {
-        var node = runtime.GetActorSpotNode();
-        var actorState = runtime.GetOrCreateActorState(actor.ActorId);
-        if (node is not null
-            && actorState.NativeActorRef is not null
-            && stream is ZLinkManagedStream managedStream)
-        {
-            using var encodedHeader = Message.FromBytes(HeaderCodec.Encode(header).Span);
-            using (payload)
-            {
-                managedStream.SendBoundActor(actor.ActorId, [encodedHeader, payload]);
-            }
-
-            return ValueTask.CompletedTask;
-        }
-
-        return runtime.SubmitActorAsync(actor, header, payload, cancellationToken);
-    }
-
     public async ValueTask DispatchRemoteAsync(
         ZLinkActorRef actorRef,
         ZlinkStreamHeader header,
@@ -70,6 +43,26 @@ internal sealed class ZLinkSessionActorRelay(
                     cancellationToken)
                 .ConfigureAwait(false);
         }
+    }
+
+    public async ValueTask NotifyDisconnectedAsync(
+        ZLinkActorRef actorRef,
+        CancellationToken cancellationToken)
+    {
+        var routeClient = runtime.RouteClient as IZLinkMultipartRouteClient
+            ?? throw new InvalidOperationException("Route client does not support multipart internal packets.");
+
+        var parts = ZLinkInternalMultipartPackets.CreateActorDisconnectedParts(
+            actorRef.ActorId,
+            actorRef.ActorType);
+
+        await routeClient.SendPartsTo(
+                actorRef.RouterChannelId,
+                actorRef.TargetNodeRid,
+                ZLinkInternalPacketNames.ActorDisconnected,
+                parts,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<ReadOnlyMemory<byte>> RequestActorReplyAsync(

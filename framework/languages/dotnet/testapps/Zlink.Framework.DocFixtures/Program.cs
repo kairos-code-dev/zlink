@@ -383,26 +383,25 @@ internal sealed class FixtureActor(string actorId = "fixture") : IZLinkActor
     }
 }
 
-internal sealed class FixtureActorPacketSession(
-    IZLinkSpotManager spotManager)
-    : IZLinkSession
+internal sealed class FixtureActorPacketSession : IZLinkSession
 {
-    private readonly FixtureActor _actor = new();
+    private IZLinkActorRef? _actor;
 
     public IZLinkSessionContext Context { get; set; } = default!;
 
     public async ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
-        await ((IZLinkSessionActorAttachmentContext)Context).AttachActorAsync(_actor, cancellationToken);
-        var created = await spotManager.CreateAsync("fixture-actor-stage", cancellationToken);
-        _ = await _actor.Context
-            .JoinSpot(created.SpotRid, new FixtureActorJoinRequest("fixture-room"))
-            .SubmitAsync<FixtureActorJoinReply>(cancellationToken);
+        _actor = await Context.CreateAndBindActorAsync(
+            "fixture",
+            "hero",
+            cancellationToken);
     }
 
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
-        return ((IZLinkSessionActorAttachmentContext)Context).DisconnectActorAsync(cancellationToken);
+        _ = cancellationToken;
+        _actor = null;
+        return ValueTask.CompletedTask;
     }
 
     public ValueTask OnErrorAsync(
@@ -419,6 +418,7 @@ internal sealed class FixtureActorPacketSession(
         global::Systems.Zlink.Message payload,
         CancellationToken cancellationToken)
     {
-        return Context.DispatchToActorAsync(header, payload, cancellationToken);
+        var actor = _actor ?? throw new InvalidOperationException("Actor is not bound.");
+        return Context.DispatchToActorAsync(actor, header, payload, cancellationToken);
     }
 }

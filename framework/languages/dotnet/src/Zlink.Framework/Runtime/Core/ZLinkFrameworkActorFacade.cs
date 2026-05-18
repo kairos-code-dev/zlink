@@ -106,6 +106,13 @@ internal sealed class ZLinkFrameworkActorFacade(
         await actorSessionManager.SubmitActorByIdAsync(actorId, header, payload, cancellationToken);
     }
 
+    public async ValueTask NotifyDisconnectedByIdAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        await actorSessionManager.NotifyDisconnectedByIdAsync(actorId, cancellationToken);
+    }
+
     public ZLinkActorRuntimeState GetOrCreateActorState(string actorId)
     {
         return actorSessionManager.GetOrCreateState(actorId);

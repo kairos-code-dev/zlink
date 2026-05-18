@@ -457,10 +457,83 @@ public sealed class StreamIntegrationTests
             Assert.Equal("relay.echo", proxyRecorder.LastPacketName);
             Assert.Equal("trace-actor-client", proxyRecorder.LastTraceId);
             callbackCapture.ThrowIfAny();
+
+            client.Dispose();
+            await RetryAsync(
+                () => proxyRecorder.DisconnectedCount > 0 && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+            callbackCapture.ThrowIfAny();
         }
         finally
         {
             await ChannelMessagingTestSupport.StopHostsAsync(sessionHost, playHost);
+        }
+    }
+
+    [Fact]
+    public async Task ActorRefNotifyDisconnected_Notifies_Local_Bound_Actor()
+    {
+        var streamEndpoint = GetFreeTcpEndpoint();
+        var routerEndpoint = GetFreeTcpEndpoint();
+        var localRid = RoutingId.FromString("0303");
+        var recorder = new ActorDispatchRecorder();
+        var sessionLocations = new ActorSessionLocationStore();
+        using var callbackCapture = CallbackExceptionCapture.Start();
+
+        var host = await CreateHostAsync(routerEndpoint, services =>
+        {
+            services.AddSingleton(recorder);
+            services.AddSingleton(sessionLocations);
+            services.AddScoped<GatewayActorFactory>();
+            services.AddScoped<GatewayActorHandler>();
+            services.AddScoped<LocalNotifyDisconnectSession>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddActorSessionBindingStore<ActorSessionLocationStore>();
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(routerEndpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
+                    routed.UseManualConnections(connections => connections.Connect(routerEndpoint));
+                });
+                options.AddStreamNode("client.stream", stream =>
+                {
+                    stream.Bind(streamEndpoint);
+                    stream.AddHeaderSession<LocalNotifyDisconnectSession>();
+                });
+            });
+        });
+
+        try
+        {
+            using var client = ConnectRawClient(streamEndpoint);
+            var network = client.GetStream();
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "open",
+                    ZlinkStreamMetadata.Empty),
+                "\"open\""u8));
+
+            await RetryAsync(
+                () => recorder.CreatedCount == 1 && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+            callbackCapture.ThrowIfAny();
+
+            client.Dispose();
+            await RetryAsync(
+                () => recorder.DisconnectedCount > 0 && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+            callbackCapture.ThrowIfAny();
+        }
+        finally
+        {
+            await host.StopAsync();
+            host.Dispose();
         }
     }
 
@@ -777,11 +850,28 @@ public sealed class StreamIntegrationTests
 
     public sealed class ActorDispatchRecorder
     {
+        private int _createdCount;
+        private int _disconnectedCount;
+
         public string? LastPacketName { get; set; }
 
         public string? LastTraceId { get; set; }
 
         public bool ForwardedTenantId { get; set; }
+
+        public int CreatedCount => Volatile.Read(ref _createdCount);
+
+        public int DisconnectedCount => Volatile.Read(ref _disconnectedCount);
+
+        public void RecordCreated()
+        {
+            Interlocked.Increment(ref _createdCount);
+        }
+
+        public void RecordDisconnected()
+        {
+            Interlocked.Increment(ref _disconnectedCount);
+        }
     }
 
     public sealed class ActorSessionLocationStore
@@ -826,11 +916,13 @@ public sealed class StreamIntegrationTests
         }
     }
 
-    public sealed class GatewayActor(string actorId) : IZLinkActor
+    public sealed class GatewayActor(string actorId, ActorDispatchRecorder recorder) : IZLinkActor
     {
         public string ActorId { get; } = actorId;
 
         public IZLinkActorContext Context { get; set; } = default!;
+
+        public ActorDispatchRecorder Recorder { get; } = recorder;
 
         public void Configure()
         {
@@ -840,18 +932,20 @@ public sealed class StreamIntegrationTests
         public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
             _ = cancellationToken;
+            Recorder.RecordDisconnected();
             return ValueTask.CompletedTask;
         }
     }
 
-    public sealed class GatewayActorFactory : IZLinkActorFactory
+    public sealed class GatewayActorFactory(ActorDispatchRecorder recorder) : IZLinkActorFactory
     {
         public ValueTask<IZLinkActor> CreateAsync(
             string actorId,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult<IZLinkActor>(new GatewayActor(actorId));
+            recorder.RecordCreated();
+            return ValueTask.FromResult<IZLinkActor>(new GatewayActor(actorId, recorder));
         }
     }
 
@@ -867,11 +961,14 @@ public sealed class StreamIntegrationTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
-            _ = cancellationToken;
+            var actor = _actor;
             _actor = null;
-            return ValueTask.CompletedTask;
+            if (actor is not null)
+            {
+                await actor.NotifyDisconnectedAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
         public ValueTask OnErrorAsync(
@@ -899,6 +996,54 @@ public sealed class StreamIntegrationTests
                     payload,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+    }
+
+    public sealed class LocalNotifyDisconnectSession : IZLinkSession
+    {
+        private IZLinkActorRef? _actor;
+
+        public IZLinkSessionContext Context { get; set; } = default!;
+
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+
+        public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        {
+            var actor = _actor;
+            _actor = null;
+            if (actor is not null)
+            {
+                await actor.NotifyDisconnectedAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        public ValueTask OnErrorAsync(
+            ZLinkStreamError error,
+            CancellationToken cancellationToken)
+        {
+            _ = error;
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
+        }
+
+        public async ValueTask OnDispatchAsync(
+            ZlinkStreamHeader header,
+            Message payload,
+            CancellationToken cancellationToken)
+        {
+            _ = header;
+            using (payload)
+            {
+                _actor ??= await Context.CreateAndBindActorAsync(
+                        "local-player-1",
+                        "player",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
     }
 

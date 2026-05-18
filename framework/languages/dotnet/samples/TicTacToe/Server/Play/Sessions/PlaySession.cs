@@ -10,6 +10,7 @@ sealed class PlaySession(
     : IZLinkSession
 {
     private string? _actorId;
+    private IZLinkActorRef? _actor;
 
     public IZLinkSessionContext Context { get; set; } = null!;
 
@@ -22,16 +23,21 @@ sealed class PlaySession(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+    public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
         var actorId = _actorId;
+        var actor = _actor;
         _actorId = null;
+        _actor = null;
         logger.LogInformation(
             "client -> play stream: disconnected. sessionId={SessionId}, actor={ActorId}",
             Context.SessionId,
             actorId ?? "(unauthenticated)");
 
-        return ((IZLinkSessionActorAttachmentContext)Context).DisconnectActorAsync(cancellationToken);
+        if (actor is not null)
+        {
+            await actor.NotifyDisconnectedAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public ValueTask OnErrorAsync(
@@ -62,12 +68,13 @@ sealed class PlaySession(
 
         if (string.Equals(header.Name, nameof(AuthenticateReq), StringComparison.Ordinal))
         {
-            var actor = await authenticator.AuthenticateAsync(Context, payload, cancellationToken);
-            _actorId = actor.ActorId;
+            var authenticated = await authenticator.AuthenticateAsync(Context, payload, cancellationToken);
+            _actorId = authenticated.ActorId;
+            _actor = authenticated.Actor;
             return;
         }
 
-        if (actorId is null)
+        if (actorId is null || _actor is not { } actor)
         {
             throw new InvalidOperationException("AuthenticateReq is required before play packets.");
         }
@@ -76,6 +83,6 @@ sealed class PlaySession(
             "play stream -> actor: dispatching packet. name={MessageName}, actor={ActorId}",
             header.Name,
             actorId);
-        await Context.DispatchToActorAsync(header, payload, cancellationToken);
+        await Context.DispatchToActorAsync(actor, header, payload, cancellationToken);
     }
 }

@@ -1077,11 +1077,6 @@ public interface IZLinkSessionActorDispatchContext
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
 
     ValueTask DispatchToActorAsync(
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken = default);
-
-    ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
         Message payload,
@@ -1098,9 +1093,6 @@ public interface IZLinkSessionActorAttachmentContext
 {
     ValueTask AttachActorAsync(
         IZLinkActor actor,
-        CancellationToken cancellationToken = default);
-
-    ValueTask DisconnectActorAsync(
         CancellationToken cancellationToken = default);
 }
 
@@ -1354,6 +1346,9 @@ public interface IZLinkActorRef
 {
     string ActorId { get; }
     string ActorType { get; }
+
+    ValueTask NotifyDisconnectedAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActor

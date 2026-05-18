@@ -739,7 +739,8 @@ public interface IZLinkActorReplyCall
 
 session-attached actor 는 client stream 연결과 lifecycle 을 함께한다. client
 가 인증을 마치고 session 이 열리면 그 session 안에서 actor 가 생성된다.
-session 이 닫히면 `OnDisconnectedAsync` 로 정리된다.
+session 이 닫히면 framework 가 attach 된 actor 의 `OnDisconnectedAsync` 를
+호출해 정리한다.
 
 이 패턴은 보통 **gateway / playhouse[^playhouse]** 같은 서버에서 사용한다.
 즉 client 는 stream 으로 들어오고, server 는 그 client 를 actor 로 다룬다.
@@ -752,9 +753,6 @@ public interface IZLinkSessionActorAttachmentContext
 {
     ValueTask AttachActorAsync(
         IZLinkActor actor,
-        CancellationToken cancellationToken = default);
-
-    ValueTask DisconnectActorAsync(
         CancellationToken cancellationToken = default);
 }
 
@@ -774,6 +772,15 @@ public interface IZLinkSessionActorDispatchContext
 
     ValueTask DispatchToActorAsync(...);
 }
+
+public interface IZLinkActorRef
+{
+    string ActorId { get; }
+    string ActorType { get; }
+
+    ValueTask NotifyDisconnectedAsync(
+        CancellationToken cancellationToken = default);
+}
 ```
 
 - `AttachActorAsync(...)` -- 이미 만든 actor 인스턴스를 현재 session 에
@@ -790,6 +797,10 @@ public interface IZLinkSessionActorDispatchContext
   create / handle API 를 제공하지 않는다.
 - `DispatchToActorAsync(...)` -- 들어온 packet 을 actor 에게 dispatch 한다.
   보통 framework 가 자동으로 처리한다.
+- `IZLinkActorRef.NotifyDisconnectedAsync(...)` -- session 이 연결 종료를
+  application actor 에 알려야 할 때 호출한다. 이 호출은 actor-session binding
+  정리 API 가 아니라 actor callback 전달 API 이며, local actor 와 remote actor
+  handle 에 같은 방식으로 동작한다.
 
 session callback 에서 unbound standalone actor 를 만드는 표면은 두지 않는다.
 standalone actor 가 필요하다면 actor node 측에서 별도의 등록 표면을 쓴다 (예:

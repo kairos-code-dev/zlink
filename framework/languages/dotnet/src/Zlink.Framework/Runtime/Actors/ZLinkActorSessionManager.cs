@@ -60,6 +60,14 @@ internal sealed partial class ZLinkActorSessionManager(
             .ConfigureAwait(false);
     }
 
+    public async ValueTask NotifyDisconnectedByIdAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        await DispatchRouter.NotifyDisconnectedByIdAsync(actorId, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private ZLinkActorContext EnsureActorContext(
         IZLinkActor actor,
         ZLinkActorRuntimeState state)

@@ -100,6 +100,14 @@ internal sealed class ZLinkActorRuntimeState
         return await operation(cancellationToken).ConfigureAwait(false);
     }
 
+    public async ValueTask ExecuteLifecycleAsync(
+        Func<CancellationToken, ValueTask> operation,
+        CancellationToken cancellationToken)
+    {
+        using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
+        await operation(cancellationToken).ConfigureAwait(false);
+    }
+
     public DispatchScope EnterDispatch(ZlinkStreamHeader header)
     {
         var previous = CurrentDispatch;

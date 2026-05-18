@@ -66,6 +66,11 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken = default)
         => await _actors.SubmitActorByIdAsync(actorId, header, payload, cancellationToken);
 
+    internal async ValueTask NotifyActorDisconnectedByIdAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+        => await _actors.NotifyDisconnectedByIdAsync(actorId, cancellationToken);
+
     internal ZLinkActorRuntimeState GetOrCreateActorState(string actorId)
         => _actors.GetOrCreateActorState(actorId);
 

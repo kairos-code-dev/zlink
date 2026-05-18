@@ -4,6 +4,8 @@ internal static class ZLinkInternalPacketNames
 {
     public const string ActorDispatch = "ZLink.ActorDispatch";
 
+    public const string ActorDisconnected = "ZLink.ActorDisconnected";
+
     public const string SessionProxy = "ZLink.SessionProxy";
 }
 

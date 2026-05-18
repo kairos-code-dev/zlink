@@ -123,12 +123,6 @@ impl<'a> CommonSocketOptions<'a> {
     pub fn max_msg_size(&self) -> Result<i64, ConfigError> {
         self.inner.max_msg_size()
     }
-    pub fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError> {
-        self.inner.set_auto_hwm_msg_unit_bytes(bytes)
-    }
-    pub fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError> {
-        self.inner.auto_hwm_msg_unit_bytes()
-    }
     pub fn set_backlog(&self, value: i32) -> Result<(), ConfigError> {
         self.inner.set_backlog(value)
     }
@@ -158,8 +152,10 @@ impl<'a> RouterSocketOptions<'a> {
         Self { inner }
     }
     pub fn set_mandatory(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.inner
-            .set_router_bool_opt(ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_MANDATORY, enabled)
+        self.inner.set_router_bool_opt(
+            ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_MANDATORY,
+            enabled,
+        )
     }
     pub fn set_probe(&self, enabled: bool) -> Result<(), ConfigError> {
         self.inner

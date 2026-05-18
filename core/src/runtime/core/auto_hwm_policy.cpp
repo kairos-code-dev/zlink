@@ -152,7 +152,8 @@ int auto_buffer_bytes_for_message (uint64_t message_bytes_,
 
 zlink::auto_hwm_context_plan_t::auto_hwm_context_plan_t () :
     enabled (false),
-    profile (ZLINK_AUTO_HWM_PROFILE_BALANCED)
+    profile (ZLINK_AUTO_HWM_PROFILE_BALANCED),
+    message_unit_bytes (0)
 {
 }
 
@@ -245,7 +246,8 @@ zlink::auto_hwm_policy_class_t zlink::auto_hwm_policy_class_for_role (
 
 void zlink::auto_hwm_context_plan_make (bool enabled_,
                                         zlink_auto_hwm_profile_t profile_,
-                                        auto_hwm_context_plan_t *out_)
+                                        auto_hwm_context_plan_t *out_,
+                                        int message_unit_bytes_)
 {
     if (!out_)
         return;
@@ -253,6 +255,7 @@ void zlink::auto_hwm_context_plan_make (bool enabled_,
     *out_ = auto_hwm_context_plan_t ();
     out_->enabled = enabled_;
     out_->profile = normalize_profile (profile_);
+    out_->message_unit_bytes = message_unit_bytes_ > 0 ? message_unit_bytes_ : 0;
 }
 
 void zlink::auto_hwm_socket_plan_prepare (

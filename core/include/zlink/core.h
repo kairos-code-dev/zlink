@@ -48,6 +48,7 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT 1
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
+#define ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT 0
 
 /**
  * @brief Create a new zlink context.

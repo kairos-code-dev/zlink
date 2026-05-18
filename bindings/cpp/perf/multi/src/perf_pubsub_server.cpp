@@ -125,8 +125,7 @@ bool perf_pubsub_server (const std::string &lib_name,
 
     perf::multi::apply_benchmark_socket_options (
       publisher.sock (), settings, transport);
-    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (
-          publisher.sock (), msg_size)
+    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (ctx, msg_size)
         || !perf::multi::recalculate_auto_hwm (ctx))
         return false;
     if (!perf::multi::setup_tls_server (publisher.sock (), transport))

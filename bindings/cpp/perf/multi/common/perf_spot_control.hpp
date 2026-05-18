@@ -27,34 +27,15 @@
 namespace perf {
 namespace multi {
 
-template<typename SubjectT>
-inline auto apply_spot_auto_hwm_msg_unit_impl (
-  SubjectT &subject_,
-  zlink::byte_size_t value_,
-  int) -> decltype (subject_.auto_hwm_msg_unit_bytes (value_), void ())
-{
-    subject_.auto_hwm_msg_unit_bytes (value_);
-}
-
-template<typename SubjectT>
-inline void apply_spot_auto_hwm_msg_unit_impl (
-  SubjectT &,
-  zlink::byte_size_t,
-  long)
-{
-}
-
-template<typename SubjectT>
-inline bool apply_spot_auto_hwm_msg_unit (SubjectT &subject_,
+inline bool apply_spot_auto_hwm_msg_unit (zlink::context_t &ctx_,
                                           size_t msg_size_)
 {
     if (msg_size_ == 0)
         return true;
     try {
-        apply_spot_auto_hwm_msg_unit_impl (
-          subject_,
-          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)),
-          0);
+        zlink::context_options_t options = ctx_.options ();
+        options.auto_hwm_msg_unit_bytes (
+          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
         return true;
     }
     catch (const zlink::config_error_t &err) {
@@ -681,7 +662,7 @@ inline bool initialize_client_control_session (
 
     if (!configure_spot_control_tls (*control_node, transport_))
         return false;
-    if (!apply_spot_auto_hwm_msg_unit (*control_node, msg_size_))
+    if (!apply_spot_auto_hwm_msg_unit (ctx_, msg_size_))
         return false;
 
     const int base_port =
@@ -705,9 +686,6 @@ inline bool initialize_client_control_session (
       new SpotHandle (control_node->create_spot ()));
     if (!control_spot->valid ())
         return false;
-    if (!apply_spot_auto_hwm_msg_unit (*control_spot, msg_size_))
-        return false;
-
     control_spot->options ().send_timeout (
       std::chrono::milliseconds (settings_.sndtimeo_ms));
     control_spot->options ().recv_timeout (
@@ -743,15 +721,12 @@ inline bool initialize_client_slot (
     if (!apply_spot_node_admission_hwm (
           *slot_->node, settings_.sndhwm, settings_.rcvhwm))
         return false;
-    if (!apply_spot_auto_hwm_msg_unit (*slot_->node, msg_size_))
+    if (!apply_spot_auto_hwm_msg_unit (ctx_, msg_size_))
         return false;
 
     slot_->spot.reset (new SpotHandle (slot_->node->create_spot ()));
     if (!slot_->spot->valid ())
         return false;
-    if (!apply_spot_auto_hwm_msg_unit (*slot_->spot, msg_size_))
-        return false;
-
     if (!configure_spot_client_tls (*slot_->node, transport_))
         return false;
     try {

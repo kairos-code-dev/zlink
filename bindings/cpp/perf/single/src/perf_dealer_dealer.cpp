@@ -31,10 +31,7 @@ bool run_pattern_dealer_dealer (const std::string &transport,
 
     (void) bind_socket.sock ().set_option (zlink::compat::options::socket_options::tcp_nodelay, 1);
     (void) conn_socket.sock ().set_option (zlink::compat::options::socket_options::tcp_nodelay, 1);
-    if (!perf::single::apply_single_auto_hwm_msg_unit (
-          bind_socket.sock (), msg_size)
-        || !perf::single::apply_single_auto_hwm_msg_unit (
-          conn_socket.sock (), msg_size)
+    if (!perf::single::apply_single_auto_hwm_msg_unit (ctx, msg_size)
         || !perf::single::recalculate_single_auto_hwm (ctx)) {
         return false;
     }

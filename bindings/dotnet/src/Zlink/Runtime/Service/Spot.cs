@@ -100,12 +100,6 @@ public sealed class SpotNode : ISpotNode
         set => PublisherOptions.SendTimeout = value;
     }
 
-    public int AutoHwmMessageUnitBytes
-    {
-        set => SetOption(SpotNodeSocketRole.Node,
-            SocketOptions.AutoHwmMsgUnitBytes, value);
-    }
-
     public int DispatchWorkersMin
     {
         get => GetAdmissionOption(SpotNodeOption.DispatchWorkersMin);
@@ -1277,12 +1271,6 @@ public sealed partial class Spot : ISpot
     {
         get => Options.Linger;
         set => Options.Linger = value;
-    }
-
-    public int AutoHwmMessageUnitBytes
-    {
-        get => Options.AutoHwmMessageUnitBytes;
-        set => Options.AutoHwmMessageUnitBytes = value;
     }
 
     public SendOperation Publish(string topic)

@@ -1,7 +1,9 @@
 # Context Auto-HWM Message Unit Rollout Plan
 
-이 문서는 구현 전 실행 계획이다. 아직 공개 계약이 아니며, 정식 spec은 구현과
-회귀테스트가 끝난 뒤 반영한다.
+이 문서는 rollout 실행 계획과 완료 기록이다. `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`
+구현, 회귀테스트, binding API 전환, perf smoke, 정식 spec 반영이 완료되었다.
+현재 공개 계약은 `doc/spec/core/context.md`, `doc/spec/core/context.ko.md`,
+`doc/spec/bindings/README.md`를 기준으로 한다.
 
 ## 1. 결정
 

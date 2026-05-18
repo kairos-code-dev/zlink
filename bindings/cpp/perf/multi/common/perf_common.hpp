@@ -355,50 +355,15 @@ inline void apply_debug_timeouts (SocketLike &socket,
       socket, zlink::compat::options::socket_options::linger, 0);
 }
 
-inline bool apply_benchmark_auto_hwm_msg_unit (perf_socket_t &socket,
+inline bool apply_benchmark_auto_hwm_msg_unit (ctx_guard_t &ctx,
                                                size_t msg_size)
 {
     if (msg_size == 0)
         return true;
-    return socket.set_auto_hwm_msg_unit_bytes (msg_size) == 0;
-}
-
-template<typename SubjectT>
-inline auto apply_benchmark_auto_hwm_msg_unit_typed_impl (
-  SubjectT &subject,
-  zlink::byte_size_t value,
-  int) -> decltype (subject.auto_hwm_msg_unit_bytes (value), void ())
-{
-    subject.auto_hwm_msg_unit_bytes (value);
-}
-
-template<typename SubjectT>
-inline auto apply_benchmark_auto_hwm_msg_unit_typed_impl (
-  SubjectT &subject,
-  zlink::byte_size_t value,
-  long) -> decltype (subject.options ().auto_hwm_msg_unit_bytes (value), void ())
-{
-    subject.options ().auto_hwm_msg_unit_bytes (value);
-}
-
-template<typename SubjectT>
-inline void apply_benchmark_auto_hwm_msg_unit_typed_impl (
-  SubjectT &,
-  zlink::byte_size_t,
-  ...)
-{
-}
-
-template<typename SubjectT>
-inline bool apply_benchmark_auto_hwm_msg_unit_typed (SubjectT &subject,
-                                                    size_t msg_size)
-{
-    if (msg_size == 0)
-        return true;
     try {
-        apply_benchmark_auto_hwm_msg_unit_typed_impl (
-          subject,
-          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size)), 0);
+        zlink::context_options_t options = ctx.ctx ().options ();
+        options.auto_hwm_msg_unit_bytes (
+          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size)));
         return true;
     }
     catch (const zlink::config_error_t &err) {

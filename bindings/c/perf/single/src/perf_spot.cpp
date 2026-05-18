@@ -578,6 +578,10 @@ int run_case (const std::string &lib_name_,
         print_fail ();
         return 1;
     }
+    if (!apply_single_auto_hwm_msg_unit (ctx.get (), msg_size_)) {
+        print_fail ();
+        return 1;
+    }
 
     void *publisher_node = zlink_spot_node_new (ctx.get (), NULL);
     void *subscriber_node = zlink_spot_node_new (ctx.get (), NULL);

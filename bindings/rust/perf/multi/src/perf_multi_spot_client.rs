@@ -111,6 +111,7 @@ fn main() {
     }
 
     let ctx = common::perf_client_context();
+    common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let data_node = SpotNode::new(&ctx).expect("spot data node");
     let control_node = SpotNode::new(&ctx).expect("spot control node");
     setup_tls_client(&data_node, &args.transport);

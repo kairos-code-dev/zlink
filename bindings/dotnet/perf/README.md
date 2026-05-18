@@ -81,11 +81,11 @@ Managed runs set `DOTNET_TieredCompilation=1`,
 active window uses the same tiered-runtime policy as `doc/perf/PERF_POLICY.md`.
 
 Multi uses `PERF_IO_THREADS=4` by default for both server and client processes,
-matching the C multi policy. Raw socket multi patterns set the current message
-size as `AutoHwmMessageUnitBytes` on benchmark sockets and then call context
-auto-HWM recalculation before active measurement. SPOT benchmark handles do not
-set per-socket message-unit overrides; they use the SPOT node/context HWM
-configuration path.
+matching the C multi policy. Benchmark processes set the current message size
+as `Context.Options.AutoHwmMessageUnitBytes` and then call context auto-HWM
+recalculation before active measurement. SPOT benchmark handles do not expose
+or set per-socket message-unit overrides; their internal sockets use the same
+context HWM configuration path.
 
 ## Results
 

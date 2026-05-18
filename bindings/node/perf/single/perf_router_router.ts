@@ -124,7 +124,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
 
   try {
     applySocketPolicy(receiver, options);
-    applyAutoHwmMsgUnit(receiver, msgSize);
+    applyAutoHwmMsgUnit(ctx, msgSize);
     ctx.recalculateAutoHwm();
     receiver.setRoutingId(RECEIVER_ROUTING_ID);
     configureTlsServer(receiver, options.transport);

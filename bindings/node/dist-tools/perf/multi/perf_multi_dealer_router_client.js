@@ -30,7 +30,7 @@ async function main() {
         }
         for (let i = 0; i < dealers.length; i += 1) {
             await waitForConnectionReady(dealers[i], () => dealers[i].connect(options.endpoint));
-            applyAutoHwmMsgUnit(dealers[i], options.msgSize);
+            applyAutoHwmMsgUnit(ctx, options.msgSize);
             poller.add(dealers[i], pollEvents(POLLIN | POLLOUT), i);
         }
         ctx.recalculateAutoHwm();

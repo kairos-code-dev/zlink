@@ -240,6 +240,17 @@ func (o *ContextOptions) AutoHwmProfile() (AutoHwmProfile, error) {
 	return AutoHwmProfile(value), err
 }
 
+func (o *ContextOptions) SetAutoHwmMsgUnitBytes(value int) error {
+	if value < 0 {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	return o.ctx.setIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, value)
+}
+
+func (o *ContextOptions) AutoHwmMsgUnitBytes() (int, error) {
+	return o.ctx.getIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES)
+}
+
 func (c *Context) setIntOption(option C.zlink_ctx_option_t, value int) error {
 	if c == nil || c.closed {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}

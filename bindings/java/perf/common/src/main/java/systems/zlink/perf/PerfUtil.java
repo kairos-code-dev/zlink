@@ -230,10 +230,6 @@ public final class PerfUtil {
         PerfTransport.applySocketOptions(socket, config);
     }
 
-    public static void applyAutoHwmMsgUnit(Socket socket, int msgSize) {
-        PerfTransport.applyAutoHwmMsgUnit(socket, msgSize);
-    }
-
     public static void recalculateAutoHwm(Context ctx) {
         PerfTransport.recalculateAutoHwm(ctx);
     }
@@ -268,10 +264,6 @@ public final class PerfUtil {
     public static void printMultiSpotNodeAutoHwm(Config config, SpotNode node,
                                                  String component) {
         PerfAutoHwm.printMultiSpotNode(config, node, component);
-    }
-
-    public static void applySpotOptions(SpotNode node, Config config) {
-        PerfTransport.applySpotOptions(node, config);
     }
 
     public static void await(CountDownLatch latch, String label, Duration timeout) {

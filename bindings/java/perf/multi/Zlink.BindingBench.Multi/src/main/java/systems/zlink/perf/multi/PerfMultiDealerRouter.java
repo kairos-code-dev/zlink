@@ -45,7 +45,6 @@ final class PerfMultiDealerRouter {
             PerfUtil.waitForMonitorEvent(monitor, READY_EVENT, config.clients(),
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "dealer/router server ready");
-            PerfUtil.applyAutoHwmMsgUnit(server, config.size());
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiMonitorAutoHwm(config, monitor, "server",
                 "server", SocketType.ROUTER);
@@ -128,7 +127,6 @@ final class PerfMultiDealerRouter {
                     "dealer/router client ready");
             }
             for (DealerSocket client : clients) {
-                PerfUtil.applyAutoHwmMsgUnit(client, config.size());
             }
             PerfUtil.recalculateAutoHwm(ctx);
             // C parity: the C dealer/router perf client emits its client-side

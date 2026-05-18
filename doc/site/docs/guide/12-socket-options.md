@@ -101,33 +101,36 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
 
 ## 2. Automatic HWM Message Unit
 
-`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` tells the automatic HWM policy how many
-bytes one planned queue slot should represent. It is not a maximum message
-size; `ZLINK_OPT_MAXMSGSIZE` is the inbound size limit.
+`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` tells the automatic HWM policy how many
+bytes one planned queue slot should represent for sockets in the context. It
+is not a maximum message size; `ZLINK_OPT_MAXMSGSIZE` is the inbound size
+limit.
 
-Use this option when the typical payload size for a socket is known and differs
-from the default planning size. Leave it at `0` when the socket-type default is
-a better description of the workload.
+Use this context option when the typical payload size for a workload is known
+and differs from the default planning size. Leave it at `0` when the
+socket-type default is a better description of the workload. The low-level C
+socket option `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` is still available when one
+raw socket must use a different message unit from the rest of its context.
 
 | Socket type | Default message unit |
 |-------------|----------------------|
 | `STREAM` | `1024` bytes |
 | all other socket types | `4096` bytes |
 
-`zlink_get_option()` returns the raw configured value. A returned value of `0`
-means "use the socket-type default"; the actual value used by the current
-calculation is visible in monitor snapshots as
+`zlink_ctx_get()` returns the raw context value. A returned value of `0` means
+"use the socket-type default"; the actual value used by the current calculation
+is visible in monitor snapshots as
 `auto_hwm_effective_message_bytes`.
 
 ```c
 int msg_unit = 8192;
-zlink_set_option(socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-                 &msg_unit, sizeof(msg_unit));
+zlink_ctx_set(ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, msg_unit);
 ```
 
 Negative values fail with `EINVAL` and do not change the existing setting.
-When a fixed HWM is set manually with `ZLINK_OPT_SNDHWM` or
-`ZLINK_OPT_RCVHWM`, that manual HWM remains in force.
+When a fixed HWM is set manually with `ZLINK_OPT_SNDHWM` or `ZLINK_OPT_RCVHWM`,
+that manual HWM remains in force. If both the context option and the raw socket
+option are set, the raw socket option wins for that socket.
 
 ### Manual Recalculation Trigger
 

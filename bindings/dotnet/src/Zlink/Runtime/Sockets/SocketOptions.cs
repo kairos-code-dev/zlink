@@ -111,8 +111,6 @@ internal static class SocketOptions
         Int(SocketOption.RidDuplicatePolicy);
     public static SocketOptionKey<int> RouteValueMaxSize { get; } =
         Int(SocketOption.RouteValueMaxSize);
-    public static SocketOptionKey<int> AutoHwmMsgUnitBytes { get; } =
-        Int(SocketOption.AutoHwmMsgUnitBytes);
     public static SocketOptionKey<int> DiscoverySpotOwnerSync { get; } =
         Int(SocketOption.DiscoverySpotOwnerSync);
     public static SocketOptionKey<int> DiscoveryActorRouteSync { get; } =

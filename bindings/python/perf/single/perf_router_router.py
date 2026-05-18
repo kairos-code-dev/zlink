@@ -62,17 +62,13 @@ def main(argv=None):
         _send_router_stop_token(router, b"SERVER")
 
     with perf_context() as ctx:
+        apply_single_auto_hwm_msg_unit(ctx, args.msg_size)
         with zlink.RouterSocket(ctx) as server:
             with zlink.RouterSocket(ctx) as client:
                 server.set_routing_id(b"SERVER")
                 client.set_routing_id(b"CLIENT")
                 client.router_options.connect_routing_id = b"SERVER"
                 endpoint = resolve_single_endpoint(args.transport, "router-router")
-                # C perf_router_router.cpp: apply_single_auto_hwm_msg_unit on
-                # both raw sockets before setup.
-                apply_single_auto_hwm_msg_unit(
-                    server, client, msg_size=args.msg_size
-                )
                 apply_single_socket_options(server, client)
                 configure_single_tls_server(server, args.transport)
                 configure_single_tls_client(client, args.transport)

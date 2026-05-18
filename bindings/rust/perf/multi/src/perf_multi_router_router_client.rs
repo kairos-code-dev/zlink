@@ -39,6 +39,7 @@ fn main() {
     let settings = common::MultiSettings::from_env();
 
     let ctx = common::perf_client_context();
+    common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let server_rid = RoutingId::from_bytes(b"perf-rr-server");
     let mut sockets: Vec<RouterSocket> = Vec::with_capacity(settings.clients);
     let mut payloads: Vec<Vec<u8>> = Vec::with_capacity(settings.clients);
@@ -55,11 +56,6 @@ fn main() {
         sock.common_options()
             .set_recv_hwm(settings.recv_hwm)
             .expect("rcvhwm");
-        if settings.msg_unit_bytes > 0 {
-            sock.common_options()
-                .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
-                .expect("auto hwm msg unit");
-        }
         sock.common_options()
             .set_recv_timeout(Duration::from_millis(1))
             .expect("recv timeout");

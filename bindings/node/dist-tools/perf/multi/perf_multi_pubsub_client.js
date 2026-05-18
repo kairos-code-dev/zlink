@@ -23,7 +23,7 @@ async function main() {
             configureTlsClient(sub, options.transport);
             sub.setSubscription('perf.topic');
             await waitForConnectionReady(sub, () => sub.connect(options.endpoint));
-            applyAutoHwmMsgUnit(sub, options.msgSize);
+            applyAutoHwmMsgUnit(ctx, options.msgSize);
             subs.push(sub);
             receivedBuffers.push(new zlink.TopicMessage());
         }

@@ -14,14 +14,12 @@ fn main() {
     };
 
     let ctx = common::perf_context();
+    common::apply_single_auto_hwm_msg_unit(&ctx, config.size);
     let pub_sock = ctx.pub_socket().expect("pub");
     let sub_sock = ctx.sub_socket().expect("sub");
-    // C perf_pubsub.cpp: raw single sockets always get AUTO_HWM_MSG_UNIT_BYTES
-    // = msg_size; numeric HWM only under the manual-override gate.
+    // Match C perf: numeric socket HWM remains behind the manual-override gate.
     common::apply_single_hwm(&pub_sock);
     common::apply_single_hwm(&sub_sock);
-    common::apply_single_auto_hwm_msg_unit(&pub_sock, config.size);
-    common::apply_single_auto_hwm_msg_unit(&sub_sock, config.size);
     if matches!(config.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         common::setup_raw_tls_server(&pub_sock, &tls).expect("pub tls");

@@ -11,15 +11,11 @@ function manualSocketOverridesEnabled(suite) {
     || integerEnv('PERF_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0;
 }
 
-function applyAutoHwmMsgUnit(socket, msgSize) {
-  if (msgSize <= 0 || !socket.options) {
+function applyAutoHwmMsgUnit(ctx, msgSize) {
+  if (msgSize <= 0 || !ctx?.options || !('autoHwmMsgUnitBytes' in ctx.options)) {
     return;
   }
-  try {
-    socket.options.autoHwmMsgUnitBytes = msgSize;
-  } catch (err) {
-    // Diagnostic hint only; some public socket types do not expose it.
-  }
+  ctx.options.autoHwmMsgUnitBytes = msgSize;
 }
 
 function resolveAutoHwmProfile(zlink) {

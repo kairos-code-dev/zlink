@@ -369,17 +369,21 @@ inline void apply_single_hwm(void *socket_)
         set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
 }
 
-inline void apply_single_auto_hwm_msg_unit(void *socket_, size_t msg_size_)
+inline bool apply_single_auto_hwm_msg_unit(void *ctx_, size_t msg_size_)
 {
-    if (!socket_ || msg_size_ == 0)
-        return;
+    if (!ctx_ || msg_size_ == 0)
+        return true;
 
     const int msg_unit =
       msg_size_ > static_cast<size_t>(INT_MAX)
         ? INT_MAX
         : static_cast<int>(msg_size_);
-    set_sockopt_int(socket_, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, msg_unit,
-                    "ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES");
+    if (!set_ctx_opt_int(ctx_,
+                         ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                         msg_unit,
+                         "ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES"))
+        return false;
+    return zlink_ctx_auto_hwm_recalculate(ctx_) == ZLINK_CONFIG_OK;
 }
 
 inline const char *single_socket_type_name(zlink_socket_type_t type_)

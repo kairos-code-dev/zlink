@@ -50,8 +50,7 @@ internal static class PerfRouterRouter
         using var sender = new RouterSocket(ctx);
         ApplySingleSocketOptions(receiver);
         ApplySingleSocketOptions(sender);
-        ApplySingleAutoHwmMsgUnit(receiver, size);
-        ApplySingleAutoHwmMsgUnit(sender, size);
+        ApplySingleAutoHwmMsgUnit(ctx, size);
         RecalculateSingleAutoHwm(ctx);
         ConfigureTlsServerIfNeeded(receiver, transport);
         ConfigureTlsClientIfNeeded(sender, transport);

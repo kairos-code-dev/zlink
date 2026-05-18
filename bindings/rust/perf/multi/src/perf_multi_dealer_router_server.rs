@@ -14,11 +14,10 @@ fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
     let ctx = common::perf_server_context();
+    common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let router = ctx.router_socket().expect("router");
-    // C perf_multi_relay_server.hpp: gated numeric HWM + unconditional
-    // AUTO_HWM_MSG_UNIT_BYTES = msg_size.
+    // C parity: numeric HWM remains behind the manual-override gate.
     common::apply_multi_hwm(&router, &settings);
-    common::apply_multi_auto_hwm_msg_unit(&router, args.msg_size);
     router
         .common_options()
         .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))

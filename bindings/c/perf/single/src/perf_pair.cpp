@@ -39,6 +39,10 @@ void run_pair (const std::string &transport,
         print_fail ();
         return;
     }
+    if (!apply_single_auto_hwm_msg_unit (ctx.get (), msg_size)) {
+        print_fail ();
+        return;
+    }
 
     socket_guard_t bind_socket (ctx.get (), ZLINK_SOCKET_PAIR);
     socket_guard_t connect_socket (ctx.get (), ZLINK_SOCKET_PAIR);
@@ -47,8 +51,6 @@ void run_pair (const std::string &transport,
         return;
     }
 
-    apply_single_auto_hwm_msg_unit (bind_socket.get (), msg_size);
-    apply_single_auto_hwm_msg_unit (connect_socket.get (), msg_size);
     if (!setup_connected_pair (
           bind_socket.get (), connect_socket.get (), transport,
           lib_name + "_pair")) {

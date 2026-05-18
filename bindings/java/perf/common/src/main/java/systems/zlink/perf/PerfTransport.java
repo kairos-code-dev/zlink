@@ -14,11 +14,6 @@ import systems.zlink.contracts.Socket;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.runtime.nativebridge.InternalAccess;
-import systems.zlink.runtime.nativebridge.Native;
-import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -27,8 +22,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfTransport {
-    private static final int ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034;
-
     private PerfTransport() {
     }
 
@@ -40,6 +33,9 @@ final class PerfTransport {
         ctx.options().blocky(benchCtxBlocky());
         ctx.options().autoHwmEnabled(benchCtxAutoHwmEnabled());
         ctx.options().autoHwmProfile(benchCtxAutoHwmProfile());
+        if (config.size() > 0) {
+            ctx.options().autoHwmMessageUnitBytes(config.size());
+        }
         return ctx;
     }
 
@@ -161,13 +157,6 @@ final class PerfTransport {
         }
     }
 
-    static void applyAutoHwmMsgUnit(Socket socket, int msgSize) {
-        if (msgSize <= 0) {
-            return;
-        }
-        socket.options().autoHwmMessageUnitBytes(msgSize);
-    }
-
     static void recalculateAutoHwm(Context ctx) {
         ctx.recalculateAutoHwm();
     }
@@ -176,28 +165,6 @@ final class PerfTransport {
         // The aligned MonitorSocket surface does not accept generic HWM tuning.
         // Perf runners keep the hook for parity, but unsupported monitor options
         // must degrade to a no-op instead of failing startup.
-    }
-
-    static void applySpotOptions(SpotNode node, PerfUtil.Config config) {
-        if (config.size() <= 0) {
-            return;
-        }
-        setSpotNodeCommonIntOption(node, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-            config.size());
-    }
-
-    private static void setSpotNodeCommonIntOption(SpotNode node, int option,
-                                                   int value) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setSockOpt(InternalAccess.spotNodeHandle(node),
-                option, nativeValue, Integer.BYTES);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_set_option");
-            }
-        }
     }
 
     static void await(CountDownLatch latch, String label, Duration timeout) {

@@ -154,18 +154,6 @@ class CommonSocketOptions:
         )
 
     @property
-    def auto_hwm_msg_unit_bytes(self):
-        return self._socket._get_common_int_option(
-            SocketOption.AUTO_HWM_MSG_UNIT_BYTES
-        )
-
-    @auto_hwm_msg_unit_bytes.setter
-    def auto_hwm_msg_unit_bytes(self, value):
-        self._socket._set_common_int_option(
-            SocketOption.AUTO_HWM_MSG_UNIT_BYTES, value
-        )
-
-    @property
     def backlog(self):
         return self._socket._get_common_int_option(SocketOption.BACKLOG)
 

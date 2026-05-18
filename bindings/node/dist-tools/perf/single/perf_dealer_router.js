@@ -23,7 +23,7 @@ async function runDealerRouterBenchmark(msgSize, options) {
     let worker = null;
     try {
         applySocketPolicy(router, options);
-        applyAutoHwmMsgUnit(router, msgSize);
+        applyAutoHwmMsgUnit(ctx, msgSize);
         ctx.recalculateAutoHwm();
         configureTlsServer(router, options.transport);
         router.bind(endpoint);

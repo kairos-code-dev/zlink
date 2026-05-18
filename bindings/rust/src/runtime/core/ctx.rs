@@ -363,6 +363,21 @@ impl ContextOptions<'_> {
         )
     }
 
+    pub fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError> {
+        self.context
+            .get_int_option(ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES as i32)
+    }
+
+    pub fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError> {
+        if bytes < 0 {
+            return Err(config_validation_error());
+        }
+        self.context.set_int_option(
+            ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES as i32,
+            bytes,
+        )
+    }
+
     pub fn add_thread_affinity(&self, cpu: i32) -> Result<(), ConfigError> {
         self.context.set_int_option(
             ffi::zlink_ctx_option_t::ZLINK_THREAD_AFFINITY_CPU_ADD as i32,

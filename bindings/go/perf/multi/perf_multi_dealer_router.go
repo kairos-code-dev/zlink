@@ -19,7 +19,7 @@ func runMultiDealerRouterServer(cfg multiConfig) {
 	defer router.Close()
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(router, cfg.transport))
-	perfcommon.ApplyMultiAutoHWMMsgUnit(router, cfg.msgSize)
+	perfcommon.ApplyMultiAutoHWMMsgUnit(serverCtx, cfg.msgSize)
 	perfcommon.ApplyMultiHWM(router, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(router, cfg.transport)
 	endpoint := perfcommon.BindAndResolveEndpoint(router, cfg.transport, "perf-multi-dealer-router")
@@ -55,7 +55,7 @@ func runMultiDealerRouterClient(cfg multiConfig, endpoint string) perfcommon.Res
 		perfcommon.Must(err)
 		dealerMon := perfcommon.OpenMonitor(dealer)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(dealer, cfg.transport))
-		perfcommon.ApplyMultiAutoHWMMsgUnit(dealer, cfg.msgSize)
+		perfcommon.ApplyMultiAutoHWMMsgUnit(clientCtx, cfg.msgSize)
 		perfcommon.ApplyMultiHWM(dealer, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(dealer, cfg.transport)
 		rid := zlink.NewRoutingID([]byte(fmt.Sprintf("dealer-%06d", i)))

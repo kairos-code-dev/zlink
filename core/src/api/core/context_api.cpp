@@ -37,6 +37,7 @@ static const public_ctx_option_descriptor_t public_ctx_options[] = {
   {ZLINK_CTX_OPT_AUTO_HWM_ENABLE, true, true},
   {ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS, true, true},
   {ZLINK_CTX_OPT_AUTO_HWM_PROFILE, true, true},
+  {ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, true, true},
 };
 
 static const public_ctx_option_descriptor_t *find_public_ctx_option (

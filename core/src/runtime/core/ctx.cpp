@@ -79,6 +79,7 @@ zlink::ctx_t::ctx_t () :
     _auto_hwm_enabled (ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0),
     _auto_hwm_recalc_debounce_ms (ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT),
     _auto_hwm_profile (ZLINK_CTX_AUTO_HWM_PROFILE_DFLT),
+    _auto_hwm_msg_unit_bytes (ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT),
     _auto_hwm_recalc_pending (false),
     _auto_hwm_last_change_ms (0),
     _auto_hwm_recalc_deadline_ms (0),
@@ -195,10 +196,12 @@ int zlink::ctx_t::auto_hwm_recalculate_now ()
 {
     bool enabled = false;
     zlink_auto_hwm_profile_t profile = ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
+    int message_unit_bytes = ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT;
     {
         scoped_lock_t locker (_opt_sync);
         enabled = _auto_hwm_enabled;
         profile = _auto_hwm_profile;
+        message_unit_bytes = _auto_hwm_msg_unit_bytes;
     }
 
     scoped_lock_t runtime_lock (_slot_sync);
@@ -215,7 +218,8 @@ int zlink::ctx_t::auto_hwm_recalculate_now ()
         return 0;
 
     auto_hwm_context_plan_t context_plan;
-    auto_hwm_context_plan_make (enabled, profile, &context_plan);
+    auto_hwm_context_plan_make (enabled, profile, &context_plan,
+                                message_unit_bytes);
 
     std::vector<auto_hwm_socket_plan_t> plans;
     plans.reserve (sockets.size ());
@@ -264,6 +268,12 @@ zlink_auto_hwm_profile_t zlink::ctx_t::auto_hwm_profile () const
 {
     scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
     return _auto_hwm_profile;
+}
+
+int zlink::ctx_t::auto_hwm_msg_unit_bytes () const
+{
+    scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
+    return _auto_hwm_msg_unit_bytes;
 }
 
 void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
@@ -380,6 +390,15 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
+        case ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            if (is_int && value >= 0) {
+                scoped_lock_t locker (_opt_sync);
+                _auto_hwm_msg_unit_bytes = value;
+                refresh_auto_hwm = true;
+                break;
+            }
+            break;
+
         case ZLINK_INTERNAL_OPT_IPV6:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
@@ -468,6 +487,14 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _auto_hwm_profile;
+                return 0;
+            }
+            break;
+
+        case ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _auto_hwm_msg_unit_bytes;
                 return 0;
             }
             break;

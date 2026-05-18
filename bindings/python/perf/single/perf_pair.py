@@ -62,14 +62,10 @@ def main(argv=None):
             sender_errors.append(exc)
 
     with perf_context() as ctx:
+        apply_single_auto_hwm_msg_unit(ctx, args.msg_size)
         with zlink.PairSocket(ctx) as server:
             with zlink.PairSocket(ctx) as client:
                 endpoint = resolve_single_endpoint(args.transport, "pair")
-                # C perf_pair.cpp: apply_single_auto_hwm_msg_unit on both raw
-                # sockets before setup, then apply_single_hwm/options.
-                apply_single_auto_hwm_msg_unit(
-                    server, client, msg_size=args.msg_size
-                )
                 apply_single_socket_options(server, client)
                 configure_single_tls_server(server, args.transport)
                 configure_single_tls_client(client, args.transport)

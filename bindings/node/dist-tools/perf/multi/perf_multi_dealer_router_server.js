@@ -21,7 +21,7 @@ async function main() {
         applySocketPolicy(router);
         configureTlsServer(router, options.transport);
         router.bind(options.endpoint);
-        applyAutoHwmMsgUnit(router, options.msgSize);
+        applyAutoHwmMsgUnit(ctx, options.msgSize);
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(router, 'endpoint', options.transport, options.msgSize);
         poller.add(router, pollEvents(POLLIN));

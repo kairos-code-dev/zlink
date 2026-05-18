@@ -3344,11 +3344,12 @@ Bindings must expose `ZLINK_OPT_RID_DUPLICATE_POLICY`,
 result values `NOT_FOUND`, `CONFLICT`, and `BUSY` using each language's
 normal enum/error mapping style.
 
-Bindings that expose raw common socket options must also expose
-`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` with value `0x3034`. Typed wrappers may
-name it as an automatic-HWM message-unit option, but the contract stays the
-same as C: `int` bytes, raw default `0`, and negative values fail with
-`EINVAL`.
+The C binding exposes `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` with value `0x3034`
+through the native socket option contract and
+`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` with value `18` through the context
+option contract. Higher-level bindings must expose the capability through the
+typed context option facade. They must not add socket, SpotNode, or Spot public
+facades for the message unit.
 
 ## Related Docs
 - `bindings/cpp/`

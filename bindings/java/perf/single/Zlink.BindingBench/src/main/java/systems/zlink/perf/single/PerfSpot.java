@@ -40,8 +40,6 @@ final class PerfSpot {
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
             PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-            PerfUtil.applySpotOptions(publisherNode, config);
-            PerfUtil.applySpotOptions(subscriberNode, config);
             PerfUtil.configureServerTls(publisherNode, config.transport());
             PerfUtil.configureClientTls(publisherNode, config.transport());
             PerfUtil.configureServerTls(subscriberNode, config.transport());

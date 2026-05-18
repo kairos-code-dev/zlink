@@ -384,7 +384,7 @@ class spot_client_bench_t
         const size_t snapshot_msg_size =
           _msg_sizes.empty () ? static_cast<size_t> (64) : _msg_sizes[0];
         if (!perf::multi::apply_spot_auto_hwm_msg_unit (
-              *_control_node, snapshot_msg_size))
+              _ctx.ctx (), snapshot_msg_size))
             return false;
 
         const int base_port = perf::multi::bench_port_base (50000);
@@ -406,12 +406,6 @@ class spot_client_bench_t
             || !_control_sub->valid ()) {
             return false;
         }
-        if (!perf::multi::apply_spot_auto_hwm_msg_unit (
-              *_control_pub, snapshot_msg_size)
-            || !perf::multi::apply_spot_auto_hwm_msg_unit (
-              *_control_sub, snapshot_msg_size))
-            return false;
-
         _control_pub->request_timeout (
           std::chrono::milliseconds (control_timeout_ms));
         _control_sub->request_timeout (
@@ -440,7 +434,7 @@ class spot_client_bench_t
         const size_t snapshot_msg_size =
           _msg_sizes.empty () ? static_cast<size_t> (64) : _msg_sizes[0];
         if (!perf::multi::apply_spot_auto_hwm_msg_unit (
-              *_data_node, snapshot_msg_size))
+              _ctx.ctx (), snapshot_msg_size))
             return false;
         try {
             _data_node->connect_peer (_server_endpoint);
@@ -461,10 +455,6 @@ class spot_client_bench_t
               std::chrono::milliseconds (_settings.rcvtimeo_ms));
             slot->spot->set_subscription (k_topic);
             slot->owner = this;
-            if (!perf::multi::apply_spot_auto_hwm_msg_unit (
-                  *slot->spot, snapshot_msg_size))
-                return false;
-
             _slots.push_back (std::move (slot));
         }
 

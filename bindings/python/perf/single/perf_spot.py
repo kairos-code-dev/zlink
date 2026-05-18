@@ -7,6 +7,7 @@ import zlink
 from perf_common import (
     HEADER_MAGIC,
     STOP_TOKEN,
+    apply_single_auto_hwm_msg_unit,
     benchmark_run_id,
     apply_single_spot_node_admission,
     configure_single_tls_client,
@@ -58,6 +59,7 @@ def main(argv=None):
     active_payload = new_payload(args.msg_size)
 
     with perf_context() as ctx:
+        apply_single_auto_hwm_msg_unit(ctx, args.msg_size)
         # C single perf_spot.cpp: registry / discovery are NULL. The
         # publisher node binds and the subscriber node connect-peers
         # directly; no registry/discovery bootstrap in the measured path.

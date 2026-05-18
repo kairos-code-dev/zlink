@@ -450,6 +450,15 @@ func TestSurfaceTypedOptionMethods(t *testing.T) {
 	if !hasMethod((*zlink.ContextOptions)(nil), "RemoveThreadAffinity") {
 		t.Fatalf("ContextOptions should expose thread affinity remove")
 	}
+	if !hasMethod((*zlink.ContextOptions)(nil), "SetAutoHwmMsgUnitBytes") {
+		t.Fatalf("ContextOptions should expose context auto-HWM message unit setter")
+	}
+	if hasMethod((*zlink.PairSocket)(nil), "SetAutoHwmMsgUnitBytes") {
+		t.Fatalf("PairSocket should not expose socket-level auto-HWM message unit")
+	}
+	if hasMethod((*zlink.CommonSocketOptions)(nil), "SetAutoHwmMsgUnitBytes") {
+		t.Fatalf("CommonSocketOptions should not expose socket-level auto-HWM message unit")
+	}
 	if !hasMethod((*zlink.RouterSocket)(nil), "SetMandatory") {
 		t.Fatalf("RouterSocket should expose router-specific options")
 	}

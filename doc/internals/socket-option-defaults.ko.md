@@ -109,9 +109,10 @@ helper API를 호출하기 전까지는 인증서 경로와 CA 경로가 비어 
   `COMPACT`, `LOW_LATENCY`, `BALANCED`, `THROUGHPUT`이고 기본값은 `BALANCED`다.
 - deprecated context memory budget과 bootstrap context 옵션은 호환을 위해 남긴
   no-op 필드다. 이 옵션들은 소켓 기본값이나 HWM 계산에 영향을 주지 않는다.
-- `auto_hwm_effective_message_bytes`는 소켓별 값이다.
-  `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`가 양수이면 그 값을 쓰고, 아니면
-  STREAM 기본 `1024` 또는 non-STREAM 기본 `4096`을 쓴다.
+- `auto_hwm_effective_message_bytes`는 소켓별 값이다. raw socket
+  `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` override가 양수이면 그 값을 먼저 쓰고,
+  아니면 context `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` 양수 값을 쓴다.
+  둘 다 없으면 STREAM 기본 `1024` 또는 non-STREAM 기본 `4096`을 쓴다.
 - planner는 policy class(`fanout`, `spot_data`, `routed`, `peer_queue`,
   `stream`, `recv_ingress`, `control`), profile별 per-connection 단위 예산,
   메시지 크기별 cap을 고른다. 최종 HWM은 최소 `1`, 최대 해당 size cap으로

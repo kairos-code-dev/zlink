@@ -19,6 +19,7 @@ internal static class PerfMultiSpotServer
         using var ctx = new Context();
         using var controlState = new RunnerControlState(config.Size);
         ApplyMultiServerContextOptions(ctx, options);
+        ApplyAutoHwmMsgUnit(ctx, config.Size);
 
         using var registry = new Registry(ctx);
         using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh,
@@ -26,7 +27,6 @@ internal static class PerfMultiSpotServer
         using var nodePub = new SpotNode(ctx);
         using var spotPub = nodePub.CreateSpot();
         ApplyMultiSpotSocketOptions(spotPub, options);
-        ApplySpotAutoHwmMsgUnit(spotPub, config.Size);
 
         ConfigureSpotRegistryTlsIfNeeded(registry, config.Transport);
         registry.Bind(config.RegistryPubEndpoint, config.RegistryRouterEndpoint);
@@ -43,18 +43,14 @@ internal static class PerfMultiSpotServer
 
         ConfigureSpotNodeTlsIfNeeded(nodePub, config.Transport);
         ConfigureSpotNodePublisher(nodePub, options, config);
-        ApplySpotNodeAutoHwmMsgUnit(nodePub, config.Size);
         nodePub.Bind(config.DataEndpoint);
         nodePub.AttachDiscovery(discovery);
 
         using var controlNode = new SpotNode(ctx);
         ConfigureSpotNodeTlsIfNeeded(controlNode, config.Transport);
         ConfigureSpotControlNode(controlNode, config.ReadyTimeoutMs);
-        ApplySpotNodeAutoHwmMsgUnit(controlNode, config.Size);
         using var controlPub = controlNode.CreateSpot();
         using var controlSub = controlNode.CreateSpot();
-        ApplySpotAutoHwmMsgUnit(controlPub, config.Size);
-        ApplySpotAutoHwmMsgUnit(controlSub, config.Size);
         controlSub.SetSubscription(ControlTopic);
         controlNode.Bind(config.ControlEndpoint);
         string actualDataEndpoint = nodePub.LastEndpoint;

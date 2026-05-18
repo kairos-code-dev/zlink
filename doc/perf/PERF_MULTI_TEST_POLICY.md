@@ -297,22 +297,21 @@ ready 판정, active 시작 조건을 바꾸면 안 된다.
   쓰거나 single suite 기본값 `1`을 multi에 가져오면 비교 의미가 달라진다.
 - 기본 실행에서는 pattern/role 특례 없이 같은 context budget을 공유한다.
   숫자 HWM이나 transport buffer를 직접 주입해서 결과를 고정하지 않는다.
-- raw multi benchmark socket은 실행 중인 메시지 크기를
-  `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`로 전달할 수 있다. 이 값은 최대 메시지
+- multi runner는 실행 중인 메시지 크기를 context
+  `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`로 전달한다. 이 값은 최대 메시지
   크기 제한이 아니라 auto-HWM 예산을 메시지 슬롯으로 바꾸는 계획 단위다.
-- C, .NET, Java 등 raw socket multi perf는 size 케이스마다 아래 순서를
-  지켜야 한다.
-  1. socket 생성과 bind/connect 준비를 끝낸다.
-  2. 해당 케이스의 payload size를 모든 benchmark raw socket에
+- C, .NET, Java 등 multi perf는 size 케이스마다 아래 순서를 지켜야 한다.
+  1. benchmark context를 만든다.
+  2. 해당 케이스의 payload size를 context
      `AUTO_HWM_MSG_UNIT_BYTES`로 설정한다.
-  3. 같은 context에서 auto-HWM 재계산을 호출한다.
+  3. socket, SpotNode, Spot handle을 생성하고 bind/connect 준비를 끝낸다.
   4. ready gate 이후 active phase를 시작한다.
 - 이 순서가 빠지면 작은 메시지와 큰 메시지가 같은 HWM 계획 단위를 쓰게 되어
   C 기준과 비교 의미가 달라진다.
-- SPOT node와 SPOT handle은 이 공통 옵션을 설정하지 않는다.
+- SPOT node와 SPOT handle에는 raw socket 공통 옵션을 설정하지 않는다.
   `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 raw socket 옵션이므로 SPOT 서비스
   핸들에 적용하려는 코드는 정책 위반이다. C API에서는 해당 호출이 `EINVAL`로
-  실패한다.
+  실패한다. SPOT 내부 data-path socket은 context message unit을 따른다.
 - SPOT per-spot socket은 role budget을 spot 수로 나눈 scope budget으로
   계산한다. 100-client `MULTI_SPOT_SENDSEND`에서 64 KiB payload를 통과시키려면
   1024 MiB에서도 per-spot HWM이 목표 동시성보다 작을 수 있으므로 2048 MiB

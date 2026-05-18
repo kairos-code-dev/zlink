@@ -5,6 +5,7 @@
 #include "../Errors/error.hpp"
 
 #include <chrono>
+#include <climits>
 
 namespace zlink
 {
@@ -41,6 +42,8 @@ class context_options_t
     void auto_hwm_recalc_debounce (std::chrono::milliseconds value_);
     zlink::auto_hwm_profile auto_hwm_profile () const;
     void auto_hwm_profile (zlink::auto_hwm_profile profile_);
+    byte_size_t auto_hwm_msg_unit_bytes () const;
+    void auto_hwm_msg_unit_bytes (byte_size_t value_);
     socket_count_t socket_limit () const;
     byte_size_t msg_t_size () const;
     void add_thread_affinity (cpu_index_t cpu_);
@@ -336,6 +339,26 @@ inline void context_options_t::auto_hwm_profile (
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (_ctx.set_option_raw (
         ZLINK_CTX_OPT_AUTO_HWM_PROFILE, static_cast<int> (profile_))));
+}
+
+inline byte_size_t context_options_t::auto_hwm_msg_unit_bytes () const
+{
+    zlink_config_result_t error = ZLINK_CONFIG_OK;
+    const int value =
+      _ctx.get_option_raw (ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &error);
+    if (error != ZLINK_CONFIG_OK)
+        throw config_error_t (static_cast<config_result_t> (error));
+    return byte_size_t::bytes (value);
+}
+
+inline void context_options_t::auto_hwm_msg_unit_bytes (byte_size_t value_)
+{
+    if (value_.bytes () < 0 || value_.bytes () > INT_MAX)
+        throw config_error_t (config_result_t::invalid_argument, EINVAL);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (_ctx.set_option_raw (
+        ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+        static_cast<int> (value_.bytes ()))));
 }
 
 inline socket_count_t context_options_t::socket_limit () const

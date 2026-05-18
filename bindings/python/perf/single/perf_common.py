@@ -172,14 +172,12 @@ def apply_single_socket_options(*sockets, receive_timeout_ms=None):
         sock.options.receive_timeout_ms = recv_timeout_ms
 
 
-def apply_single_auto_hwm_msg_unit(*sockets, msg_size):
-    # C bench_common_runtime.hpp apply_single_auto_hwm_msg_unit: raw single
-    # sockets get ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = msg_size so context
-    # auto-HWM sizes the per-socket queue. SPOT node/handle excluded.
+def apply_single_auto_hwm_msg_unit(ctx, msg_size):
+    # Context-level message unit follows the current payload size; numeric
+    # socket HWM remains behind the manual-override gate.
     if msg_size <= 0:
         return
-    for sock in sockets:
-        sock.options.auto_hwm_msg_unit_bytes = msg_size
+    ctx.options.auto_hwm_msg_unit_bytes = msg_size
 
 
 def apply_single_spot_node_admission(*nodes):

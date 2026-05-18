@@ -14,6 +14,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	ctx, err := perfcommon.NewSingleContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
+	perfcommon.ApplySingleAutoHWMMsgUnit(ctx, cfg.msgSize)
 
 	publisherNode, err := ctx.SpotNode()
 	perfcommon.Must(err)

@@ -187,6 +187,10 @@ void run_pubsub (const std::string &transport,
         print_fail ();
         return;
     }
+    if (!apply_single_auto_hwm_msg_unit (ctx.get (), msg_size)) {
+        print_fail ();
+        return;
+    }
 
     socket_guard_t publisher (ctx.get (), ZLINK_SOCKET_PUB);
     socket_guard_t subscriber (ctx.get (), ZLINK_SOCKET_SUB);
@@ -198,8 +202,6 @@ void run_pubsub (const std::string &transport,
     set_pub_opt_int (
       publisher.get (), ZLINK_PUB_OPT_NODROP, resolve_pubsub_xpub_nodrop_opt (),
       "ZLINK_PUB_OPT_NODROP");
-    apply_single_auto_hwm_msg_unit (publisher.get (), msg_size);
-    apply_single_auto_hwm_msg_unit (subscriber.get (), msg_size);
     if (!setup_connected_pubsub_pair (
           publisher.get (), subscriber.get (), transport, lib_name + "_pubsub")) {
         print_fail ();

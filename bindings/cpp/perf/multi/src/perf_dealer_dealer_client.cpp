@@ -187,13 +187,8 @@ class dealer_dealer_client_bench_t
 
     void refresh_auto_hwm_msg_unit ()
     {
-        for (size_t i = 0; i < _holders.size (); ++i) {
-            if (!_holders[i].get () || !_holders[i]->valid ())
-                continue;
-            _holders[i]->options ().auto_hwm_msg_unit_bytes (
-              zlink::byte_size_t::bytes (static_cast<int64_t> (_msg_size)));
-        }
-        _ctx.ctx ().recalculate_auto_hwm ();
+        (void) perf::multi::apply_benchmark_auto_hwm_msg_unit (_ctx, _msg_size);
+        (void) perf::multi::recalculate_auto_hwm (_ctx);
         if (!_holders.empty () && _holders[0].get () && _holders[0]->valid ()) {
             perf::multi::emit_auto_hwm_detail (
               *_holders[0], "client", "endpoint", _transport, _msg_size, "dealer");

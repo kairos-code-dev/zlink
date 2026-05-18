@@ -29,7 +29,8 @@ typedef enum zlink_ctx_option_t
     ZLINK_CTX_OPT_BLOCKY          = 10,
     ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 12,
     ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS = 14,
-    ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17
+    ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17,
+    ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES = 18
 } zlink_ctx_option_t;
 ```
 
@@ -59,6 +60,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | Whether automatic HWM policy is enabled (`0` = disabled, `1` = enabled) |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | Minimum debounce window in milliseconds before connection churn triggers another automatic HWM recalculation (`>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | Automatic HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). Invalid values fail with `EINVAL`. |
+| `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 18 | Context-level message-unit size in bytes used by automatic HWM planning (`0` = socket-type default, negative values fail with `EINVAL`). |
 
 ## Default Values
 
@@ -70,6 +72,7 @@ typedef enum zlink_auto_hwm_profile_t
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
+#define ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT 0
 ```
 
 | Constant | Value | Description |
@@ -81,6 +84,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | Automatic HWM policy enabled by default. Sockets use the balanced profile unless the application disables auto-HWM or sets manual HWM values. |
 | `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | Default debounce window for automatic HWM recalculation (ms) |
 | `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Default automatic HWM profile |
+| `ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT` | 0 | Use each socket type's default message unit: `1024` bytes for STREAM and `4096` bytes for other sockets. |
 
 The automatic buffer floor is profile-dependent. `COMPACT` uses a 128 KiB
 `SNDBUF` / `RCVBUF` floor. `LOW_LATENCY`, `BALANCED`, and `THROUGHPUT` use a
@@ -179,6 +183,9 @@ immediately, but only for sockets that still use automatic `SNDHWM` /
 automatic HWM calculation and is safe to change while the context is live.
 The profile selects the per-connection unit budget, size cap, and automatic
 `SNDBUF` / `RCVBUF` floor used by the automatic HWM planner.
+`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` updates the message unit used by
+automatic HWM planning for sockets that do not have an explicit per-socket
+override. A value of `0` returns those sockets to their socket-type default.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 

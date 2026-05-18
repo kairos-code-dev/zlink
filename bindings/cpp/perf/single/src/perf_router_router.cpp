@@ -248,10 +248,7 @@ bool run_pattern_router_router (const std::string &transport,
     (void) sender.sock ().set_routing_id (std::string (k_sender_id));
     (void) receiver.sock ().set (zlink::compat::options::router_options::mandatory, 1);
     (void) sender.sock ().set (zlink::compat::options::router_options::mandatory, 1);
-    if (!perf::single::apply_single_auto_hwm_msg_unit (
-          receiver.sock (), msg_size)
-        || !perf::single::apply_single_auto_hwm_msg_unit (
-          sender.sock (), msg_size)
+    if (!perf::single::apply_single_auto_hwm_msg_unit (ctx, msg_size)
         || !perf::single::recalculate_single_auto_hwm (ctx)) {
         perf::single::print_fail_result (
           lib_name, "ROUTER_ROUTER", transport, msg_size);

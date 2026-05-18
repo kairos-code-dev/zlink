@@ -26,7 +26,8 @@ export const ContextOption = Object.freeze({
   BLOCKY: 10,
   AUTO_HWM_ENABLE: 12,
   AUTO_HWM_RECALC_DEBOUNCE_MS: 14,
-  AUTO_HWM_PROFILE: 17
+  AUTO_HWM_PROFILE: 17,
+  AUTO_HWM_MSG_UNIT_BYTES: 18
 } as const);
 
 export const AutoHwmProfile = Object.freeze({

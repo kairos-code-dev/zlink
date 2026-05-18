@@ -730,9 +730,11 @@ streamSocket.bindActor(sessionRid, actorRef)
 - Actor dispatch surface는 SPOT과 같은 service layer 공개 기능이다. 모든
   바인딩은 언어별 관례에 맞는 공개 타입으로 노출하며, 공통 의미는 아래
   `Actor Dispatch Binding Contract` 절과 `Actor Dispatch Policy` 절을 따른다.
-- `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` 은 모든 바인딩에서 typed context option 으로
-  노출해야 한다. 값은 compact, low latency, balanced, throughput 네 profile 이며
-  기본값은 balanced 이다.
+- `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` 과
+  `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` 는 모든 바인딩에서 typed context option
+  으로 노출해야 한다. profile 값은 compact, low latency, balanced, throughput
+  네 가지이며 기본값은 balanced 이다. context message unit 기본값 `0`은 소켓
+  타입별 기본 메시지 단위를 쓰겠다는 뜻이다.
 - `MonitorSnapshot` 은 core `zlink_monitor_snapshot_t` 의 auto-HWM v2 진단 필드를
   빠뜨리지 않고 노출해야 한다. enabled, profile, role, policy class,
   unit budget, size cap, socket message slots, effective message bytes,
@@ -745,10 +747,12 @@ streamSocket.bindActor(sessionRid, actorRef)
   `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` 네 가지 admission option과
   `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN`,
   `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` 두 가지 dispatch worker option이다.
-  C API의 공통 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 raw socket의 자동 HWM
-  메시지 단위 설정으로만 노출한다. SPOT node와 SPOT handle에는 이 공통 옵션을
-  설정할 수 없으며, 호출하면 `EINVAL`로 실패한다. 이 값은 메시지 크기 제한이
-  아니라 자동 HWM 예산을 슬롯 수로 바꿀 때 쓰는 계획 단위다.
+  C API의 공통 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 raw socket의 명시
+  override로만 유지한다. 언어별 고수준 바인딩은 이 값을 socket/SpotNode/Spot
+  public facade로 노출하지 않고, context option만 canonical API로 노출한다.
+  SPOT node와 SPOT handle에는 raw socket 공통 옵션을 설정할 수 없으며,
+  호출하면 `EINVAL`로 실패한다. 이 값은 메시지 크기 제한이 아니라 자동 HWM
+  예산을 슬롯 수로 바꿀 때 쓰는 계획 단위다.
   dispatch worker option은 `SpotNode` 소유 callback worker pool의 크기만
   조정하며, `ZLINK_IO_THREADS`나 data-plane thread 수를 뜻하지 않는다.
   `min`은 1 이상, `max`는 `min` 이상이어야 한다. 명시 설정이 없으면
@@ -4555,12 +4559,14 @@ result values `NOT_FOUND`, `CONFLICT`, and `BUSY` using each language's
 normal enum/error mapping style.
 
 The C binding exposes `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` with value `0x3034`
-through the native option contract. Higher-level bindings must expose the same
-capability through their typed option facade rather than a raw option bag.
-Compatibility-only raw option paths, if retained by a binding, must be clearly
-separated from the canonical API, must not be used by new docs, samples, or
-tests, and must keep the C contract: `int` bytes, raw default `0`, and
-negative values fail with `EINVAL`.
+through the native socket option contract and
+`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` with value `18` through the context
+option contract. Higher-level bindings must expose the capability through the
+typed context option facade. They must not add socket, SpotNode, or Spot public
+facades for the message unit. Compatibility-only raw socket paths, if retained
+by a binding, must be clearly separated from the canonical API, must not be
+used by new docs, samples, or tests, and must keep the C contract: `int` bytes,
+raw default `0`, and negative values fail with `EINVAL`.
 
 ## Related Docs
 - `bindings/cpp/`

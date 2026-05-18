@@ -392,17 +392,17 @@ inline bool create_client_sockets (
 }
 
 inline void refresh_connected_client_auto_hwm (
+  void *ctx,
   const std::vector<void *> &sockets,
   zlink_socket_type_t client_socket_type,
   int hwm_value,
   const std::string &transport,
   size_t msg_size)
 {
+    (void) apply_benchmark_context_auto_hwm_msg_unit (ctx, msg_size);
     for (size_t i = 0; i < sockets.size (); ++i) {
         if (!sockets[i])
             continue;
-        apply_benchmark_auto_hwm_msg_unit (
-          sockets[i], client_socket_type, msg_size);
         apply_benchmark_hwm (sockets[i], hwm_value);
     }
 

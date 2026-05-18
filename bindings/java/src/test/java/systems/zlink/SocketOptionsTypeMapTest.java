@@ -20,10 +20,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 public class SocketOptionsTypeMapTest {
-    private static final Set<Integer> COMPATIBILITY_ONLY_OPTION_IDS = Set.of(
+    private static final Set<Integer> NON_SOCKET_CATALOG_OPTION_IDS = Set.of(
       SocketOption.SUBSCRIBE.getValue(),
       SocketOption.UNSUBSCRIBE.getValue(),
-      SocketOption.RCVMORE.getValue()
+      SocketOption.RCVMORE.getValue(),
+      SocketOption.AUTO_HWM_MSG_UNIT_BYTES.getValue()
     );
 
     @Test
@@ -44,7 +45,7 @@ public class SocketOptionsTypeMapTest {
         }
 
         for (SocketOption option : SocketOption.values()) {
-            if (COMPATIBILITY_ONLY_OPTION_IDS.contains(option.getValue()))
+            if (NON_SOCKET_CATALOG_OPTION_IDS.contains(option.getValue()))
                 continue;
             assertTrue(idCounts.containsKey(option.getValue()),
                 "missing mapping for enum option: " + option.name());

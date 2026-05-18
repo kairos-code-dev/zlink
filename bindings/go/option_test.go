@@ -57,6 +57,24 @@ func TestCommonTypedOptions(t *testing.T) {
 	if got, err := opts.AutoHwmProfile(); err != nil || got != zlink.AutoHwmProfileCompact {
 		t.Fatalf("AutoHwmProfile() = (%v, %v), want (compact, nil)", got, err)
 	}
+	if got, err := opts.AutoHwmMsgUnitBytes(); err != nil || got != 0 {
+		t.Fatalf("AutoHwmMsgUnitBytes() = (%d, %v), want (0, nil)", got, err)
+	}
+	if err := opts.SetAutoHwmMsgUnitBytes(64); err != nil {
+		t.Fatalf("SetAutoHwmMsgUnitBytes(64) error = %v", err)
+	}
+	if got, err := opts.AutoHwmMsgUnitBytes(); err != nil || got != 64 {
+		t.Fatalf("AutoHwmMsgUnitBytes() = (%d, %v), want (64, nil)", got, err)
+	}
+	if err := opts.SetAutoHwmMsgUnitBytes(0); err != nil {
+		t.Fatalf("SetAutoHwmMsgUnitBytes(0) error = %v", err)
+	}
+	if got, err := opts.AutoHwmMsgUnitBytes(); err != nil || got != 0 {
+		t.Fatalf("AutoHwmMsgUnitBytes() after reset = (%d, %v), want (0, nil)", got, err)
+	}
+	if err := opts.SetAutoHwmMsgUnitBytes(-1); err == nil {
+		t.Fatalf("SetAutoHwmMsgUnitBytes(-1) succeeded, want error")
+	}
 }
 
 func TestSocketSpecificOptions(t *testing.T) {

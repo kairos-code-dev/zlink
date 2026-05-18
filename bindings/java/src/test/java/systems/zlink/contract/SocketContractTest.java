@@ -727,6 +727,8 @@ public class SocketContractTest {
             assertTrue(stream.options().notifyEnabled());
             assertTrue(hasPublicMethod(PairSocket.class, "options"));
             assertEquals(CommonSocketOptions.class, pair.options().getClass());
+            assertFalse(hasPublicMethod(CommonSocketOptions.class,
+                "autoHwmMessageUnitBytes"));
         }
     }
 

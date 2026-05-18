@@ -41,7 +41,6 @@ final class PerfMultiDealerDealer {
             server.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.awaitStart(config.size(), "dealer/dealer server");
-            PerfUtil.applyAutoHwmMsgUnit(server, config.size());
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiSocketAutoHwm(config, server, "server",
                 "server", SocketType.DEALER);
@@ -179,7 +178,6 @@ final class PerfMultiDealerDealer {
                     readyTimeout, "dealer/dealer client ready");
             }
             for (DealerSocket client : clients) {
-                PerfUtil.applyAutoHwmMsgUnit(client, config.size());
             }
             PerfUtil.recalculateAutoHwm(ctx);
             for (int i = 0; i < monitors.size(); i++) {

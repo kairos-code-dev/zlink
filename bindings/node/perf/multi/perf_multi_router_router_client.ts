@@ -59,7 +59,7 @@ async function main() {
     }
     for (let i = 0; i < routers.length; i += 1) {
       await waitForConnectionReady(routers[i], () => routers[i].connect(options.endpoint));
-      applyAutoHwmMsgUnit(routers[i], options.msgSize);
+      applyAutoHwmMsgUnit(ctx, options.msgSize);
       poller.add(routers[i], pollEvents(POLLIN | POLLOUT), i);
     }
     ctx.recalculateAutoHwm();

@@ -432,6 +432,10 @@ bool run_pattern_spot (const std::string &transport,
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return false;
     }
+    if (!perf::single::apply_single_auto_hwm_msg_unit (ctx, msg_size)) {
+        perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
+        return false;
+    }
 
     zlink::service::spot_node_t pub_node (ctx.ctx ());
     zlink::service::spot_node_t sub_node (ctx.ctx ());

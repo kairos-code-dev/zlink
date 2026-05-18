@@ -23,8 +23,7 @@ internal static class PerfPair
         using var right = new PairSocket(ctx);
         ApplySingleSocketOptions(left);
         ApplySingleSocketOptions(right);
-        ApplySingleAutoHwmMsgUnit(left, size);
-        ApplySingleAutoHwmMsgUnit(right, size);
+        ApplySingleAutoHwmMsgUnit(ctx, size);
         RecalculateSingleAutoHwm(ctx);
         ConfigureTlsServerIfNeeded(left, transport);
         ConfigureTlsClientIfNeeded(right, transport);

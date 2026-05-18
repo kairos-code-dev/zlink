@@ -32,7 +32,7 @@ internal static class PerfMultiDealerRouterServer
         if (!WaitConnectReadyCount(monitor, clientCount, readyTimeoutMs))
             return 2;
 
-        ApplyAutoHwmMsgUnit(server, size);
+        ApplyAutoHwmMsgUnit(ctx, size);
         RecalculateAutoHwm(ctx);
         PrintAutoHwmSnapshot(server, "server", options.Transport, size);
 

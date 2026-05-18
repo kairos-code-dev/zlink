@@ -432,6 +432,11 @@ void run_dealer_router (const std::string &transport,
         fflush (NULL);
         std::_Exit (1);
     }
+    if (!apply_single_auto_hwm_msg_unit (ctx.get (), msg_size)) {
+        print_fail ();
+        fflush (NULL);
+        std::_Exit (1);
+    }
 
     socket_guard_t receiver (ctx.get (), ZLINK_SOCKET_ROUTER);
     socket_guard_t sender (ctx.get (), ZLINK_SOCKET_DEALER);
@@ -441,8 +446,6 @@ void run_dealer_router (const std::string &transport,
         std::_Exit (1);
     }
 
-    apply_single_auto_hwm_msg_unit (receiver.get (), msg_size);
-    apply_single_auto_hwm_msg_unit (sender.get (), msg_size);
     if (!setup_dealer_router_session (
           receiver.get (), sender.get (), transport,
           lib_name + "_dealer_router")) {

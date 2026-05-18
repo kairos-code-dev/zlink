@@ -27,6 +27,7 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 	serverCtx, err := perfcommon.NewMultiServerContext()
 	perfcommon.Must(err)
 	defer serverCtx.Close()
+	perfcommon.ApplyMultiAutoHWMMsgUnit(serverCtx, cfg.msgSize)
 
 	serverNode, err := serverCtx.SpotNode()
 	perfcommon.Must(err)
@@ -140,6 +141,7 @@ func runMultiSpotSendSendClientRole(cfg multiConfig, endpoint string) perfcommon
 	clientCtx, err := perfcommon.NewMultiClientContext()
 	perfcommon.Must(err)
 	defer clientCtx.Close()
+	perfcommon.ApplyMultiAutoHWMMsgUnit(clientCtx, cfg.msgSize)
 	clientNode, err := clientCtx.SpotNode()
 	perfcommon.Must(err)
 	defer clientNode.Close()

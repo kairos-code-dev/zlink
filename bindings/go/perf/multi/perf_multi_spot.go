@@ -16,6 +16,7 @@ func runMultiSpotServer(cfg multiConfig) {
 	ctx, err := perfcommon.NewMultiServerContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
+	perfcommon.ApplyMultiAutoHWMMsgUnit(ctx, cfg.msgSize)
 
 	dataNode, err := ctx.SpotNode()
 	perfcommon.Must(err)
@@ -137,6 +138,7 @@ func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
 	ctx, err := perfcommon.NewMultiClientContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
+	perfcommon.ApplyMultiAutoHWMMsgUnit(ctx, cfg.msgSize)
 	dataNode, err := ctx.SpotNode()
 	perfcommon.Must(err)
 	defer dataNode.Close()

@@ -47,7 +47,6 @@ final class PerfMultiSpot {
                  ctx, config, controlEndpoint, "spot-server")) {
             node.setRoutingId(routingId("z-java-multi-spot-server"));
             publisher.setRoutingId(routingId("z-java-multi-spot-server-spot"));
-            PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             node.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
@@ -119,7 +118,6 @@ final class PerfMultiSpot {
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
                  ctx, config, clientControlEndpoint, "spot-client")) {
             node.setRoutingId(routingId("a-java-multi-spot-client"));
-            PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
 

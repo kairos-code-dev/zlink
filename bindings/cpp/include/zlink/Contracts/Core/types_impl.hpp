@@ -424,26 +424,6 @@ inline void common_socket_options_t::max_message_size (byte_size_t value)
       _handle, compat::options::socket_option::maxmsgsize, value.bytes ());
 }
 
-inline byte_size_t common_socket_options_t::auto_hwm_msg_unit_bytes () const
-{
-    return byte_size_t::bytes (
-      detail::get_common_option_value<int> (
-        _handle, compat::options::socket_option::auto_hwm_msg_unit_bytes));
-}
-
-inline void common_socket_options_t::auto_hwm_msg_unit_bytes (
-  byte_size_t value)
-{
-    if (value.bytes () < 0)
-        throw config_error_t (config_result_t::invalid_argument, EINVAL);
-    if (value.bytes () > INT_MAX)
-        throw config_error_t (config_result_t::invalid_argument, EINVAL);
-    const int native_value = static_cast<int> (value.bytes ());
-    detail::set_common_option_value<int> (
-      _handle, compat::options::socket_option::auto_hwm_msg_unit_bytes,
-      native_value);
-}
-
 inline socket_backlog_t common_socket_options_t::backlog () const
 {
     return socket_backlog_t::value (

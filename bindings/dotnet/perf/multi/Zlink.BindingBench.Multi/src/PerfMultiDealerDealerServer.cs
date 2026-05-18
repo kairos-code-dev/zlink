@@ -42,7 +42,7 @@ internal static class PerfMultiDealerDealerServer
             return controlState.StopRequested ? 0 : 2;
         }
 
-        ApplyAutoHwmMsgUnit(server, size);
+        ApplyAutoHwmMsgUnit(ctx, size);
         RecalculateAutoHwm(ctx);
         PrintAutoHwmSnapshot(server, "server", options.Transport, size);
 

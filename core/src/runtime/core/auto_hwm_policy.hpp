@@ -47,6 +47,7 @@ struct auto_hwm_context_plan_t
 
     bool enabled;
     zlink_auto_hwm_profile_t profile;
+    int message_unit_bytes;
 };
 
 struct auto_hwm_socket_plan_t
@@ -78,7 +79,8 @@ auto_hwm_policy_class_t auto_hwm_policy_class_for_role (
   int socket_type_);
 void auto_hwm_context_plan_make (bool enabled_,
                                  zlink_auto_hwm_profile_t profile_,
-                                 auto_hwm_context_plan_t *out_);
+                                 auto_hwm_context_plan_t *out_,
+                                 int message_unit_bytes_ = 0);
 void auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                    int socket_type_,
                                    size_t managed_connections_,

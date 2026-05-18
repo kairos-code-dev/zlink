@@ -111,9 +111,10 @@ The helper call itself supplies policy values such as
   default is `BALANCED`.
 - The deprecated context memory-budget and bootstrap context options are
   no-op compatibility fields. They do not influence socket defaults or HWM.
-- `auto_hwm_effective_message_bytes` is socket-specific. It uses
-  `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` when positive, otherwise the STREAM
-  default `1024` or non-STREAM default `4096`.
+- `auto_hwm_effective_message_bytes` is socket-specific. It uses a positive
+  raw socket `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` override first, then a positive
+  context `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`, otherwise the STREAM default
+  `1024` or non-STREAM default `4096`.
 - The planner chooses a policy class (`fanout`, `spot_data`, `routed`,
   `peer_queue`, `stream`, `recv_ingress`, or `control`), a profile-specific
   per-connection unit budget, and a message-size cap. The final HWM is clamped

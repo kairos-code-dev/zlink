@@ -179,13 +179,11 @@ def configure_multi_tls_client(target, transport):
 def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
     # C perf_multi_runtime.hpp apply_benchmark_hwm: numeric SNDHWM/RCVHWM only
     # under PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES. Default path leaves the
-    # context auto-HWM, with the raw-socket per-size msg-unit
-    # (apply_benchmark_auto_hwm_msg_unit) from PERF_MULTI_MSG_UNIT_BYTES.
+    # context auto-HWM in effect.
     overrides = bench_multi_manual_socket_overrides_allowed()
     send_hwm = resolve_multi_send_hwm()
     recv_hwm = resolve_multi_recv_hwm()
     send_timeout_ms = resolve_multi_send_timeout_ms()
-    msg_unit_bytes = _env_int("PERF_MULTI_MSG_UNIT_BYTES", 0)
     recv_timeout_ms = (
         resolve_multi_recv_timeout_ms()
         if receive_timeout_ms is None
@@ -198,10 +196,14 @@ def apply_multi_socket_options(*sockets, receive_timeout_ms=None):
                 sock.options.send_high_water_mark = send_hwm
             if recv_hwm > 0:
                 sock.options.receive_high_water_mark = recv_hwm
-        if msg_unit_bytes > 0:
-            sock.options.auto_hwm_msg_unit_bytes = msg_unit_bytes
         sock.options.send_timeout_ms = send_timeout_ms
         sock.options.receive_timeout_ms = recv_timeout_ms
+
+
+def apply_multi_auto_hwm_msg_unit(ctx, msg_size):
+    if msg_size <= 0:
+        return
+    ctx.options.auto_hwm_msg_unit_bytes = msg_size
 
 
 def apply_multi_spot_node_admission(*nodes):

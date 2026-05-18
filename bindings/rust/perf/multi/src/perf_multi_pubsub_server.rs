@@ -12,6 +12,7 @@ fn main() {
     let settings = common::MultiSettings::from_env();
 
     let ctx = common::perf_server_context();
+    common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let pub_sock = ctx.pub_socket().expect("pub");
     pub_sock
         .common_options()
@@ -21,12 +22,6 @@ fn main() {
         .common_options()
         .set_recv_hwm(settings.recv_hwm)
         .expect("rcvhwm");
-    if settings.msg_unit_bytes > 0 {
-        pub_sock
-            .common_options()
-            .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
-            .expect("auto hwm msg unit");
-    }
     pub_sock
         .common_options()
         .set_send_timeout(Duration::from_millis(settings.send_timeout_ms))

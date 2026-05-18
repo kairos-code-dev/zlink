@@ -12,11 +12,10 @@ fn main() {
     let settings = common::MultiSettings::from_env();
 
     let ctx = common::perf_server_context();
+    common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let server = ctx.dealer_socket().expect("dealer");
-    // C perf_multi_dealer_dealer_server.cpp: gated numeric HWM + unconditional
-    // AUTO_HWM_MSG_UNIT_BYTES = msg_size.
+    // C parity: numeric HWM remains behind the manual-override gate.
     common::apply_multi_hwm(&server, &settings);
-    common::apply_multi_auto_hwm_msg_unit(&server, args.msg_size);
     server
         .common_options()
         .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))

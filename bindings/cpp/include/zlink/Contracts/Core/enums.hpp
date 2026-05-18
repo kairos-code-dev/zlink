@@ -36,7 +36,8 @@ enum class context_option : int
     auto_hwm_enable = ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
     auto_hwm_recalc_debounce_ms =
       ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS,
-    auto_hwm_profile = ZLINK_CTX_OPT_AUTO_HWM_PROFILE
+    auto_hwm_profile = ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
+    auto_hwm_msg_unit_bytes = ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES
 };
 
 enum class auto_hwm_profile : int

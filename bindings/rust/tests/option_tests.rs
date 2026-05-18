@@ -18,6 +18,17 @@ fn context_option_auto_hwm_profile() {
 }
 
 #[test]
+fn context_option_auto_hwm_msg_unit_bytes() {
+    let ctx = Context::new().unwrap();
+    assert_eq!(ctx.options().auto_hwm_msg_unit_bytes().unwrap(), 0);
+    ctx.options().set_auto_hwm_msg_unit_bytes(64).unwrap();
+    assert_eq!(ctx.options().auto_hwm_msg_unit_bytes().unwrap(), 64);
+    ctx.options().set_auto_hwm_msg_unit_bytes(0).unwrap();
+    assert_eq!(ctx.options().auto_hwm_msg_unit_bytes().unwrap(), 0);
+    assert!(ctx.options().set_auto_hwm_msg_unit_bytes(-1).is_err());
+}
+
+#[test]
 fn common_option_send_hwm() {
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();

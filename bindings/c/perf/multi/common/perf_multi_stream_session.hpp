@@ -75,6 +75,7 @@ enum send_result_t
 struct session_t
 {
     session_t() :
+        ctx(NULL),
         send_socket(NULL),
         recv_count(0),
         send_count(0),
@@ -87,6 +88,7 @@ struct session_t
     {
     }
 
+    void *ctx;
     void *send_socket;
     std::atomic<unsigned long long> recv_count;
     std::atomic<unsigned long long> send_count;
@@ -109,6 +111,7 @@ inline bool is_stop_payload(const unsigned char *data,
 }
 
 inline void reset_session(session_t *session,
+                          void *ctx,
                           void *send_socket,
                           zlink_socket_type_t auto_hwm_socket_type,
                           int auto_hwm_hwm_value,
@@ -116,6 +119,7 @@ inline void reset_session(session_t *session,
 {
     if (!session)
         return;
+    session->ctx = ctx;
     session->send_socket = send_socket;
     session->recv_count.store(0, std::memory_order_release);
     session->send_count.store(0, std::memory_order_release);
@@ -274,10 +278,9 @@ inline bool handle_packet_message(session_t *session,
           body_payload_size,
           std::memory_order_acq_rel,
           std::memory_order_acquire)) {
-        apply_benchmark_auto_hwm_msg_unit (
-          session->send_socket,
-          session->auto_hwm_socket_type,
-          body_payload_size);
+        if (!apply_benchmark_context_auto_hwm_msg_unit (
+              session->ctx, body_payload_size))
+            return false;
         apply_benchmark_hwm (
           session->send_socket,
           session->auto_hwm_hwm_value);

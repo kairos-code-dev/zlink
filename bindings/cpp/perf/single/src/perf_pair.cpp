@@ -94,10 +94,7 @@ bool run_pattern_pair (const std::string &transport,
 
     bind_socket.options ().tcp_no_delay (true);
     conn_socket.options ().tcp_no_delay (true);
-    if (!perf::single::apply_single_auto_hwm_msg_unit (
-          bind_socket, msg_size)
-        || !perf::single::apply_single_auto_hwm_msg_unit (
-          conn_socket, msg_size)
+    if (!perf::single::apply_single_auto_hwm_msg_unit (ctx, msg_size)
         || !perf::single::recalculate_single_auto_hwm (ctx)) {
         if (perf_debug_enabled ())
             std::cerr << "pair: auto-hwm msg unit setup failed errno=" << errno

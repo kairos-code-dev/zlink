@@ -290,9 +290,10 @@ status   = (expected == actual) ? "complete" : "partial"
 
 - `Effective Options`에는 `lang`과 `suite` 항목이 반드시 포함되어야 한다.
 - single 엔진은 최대 파일 수를 100으로 하드코딩한다 (`PERF_RESULTS_MAX_FILES` 미참조).
-- single SPOT 은 SPOT node 또는 SPOT handle에
-  `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 설정하지 않는다. 이 옵션은 raw socket의
-  자동 HWM 메시지 단위 설정이며, SPOT 서비스 핸들에 적용하려는 코드는 정책
+- single runner는 payload size를 context
+  `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`로 설정한다. SPOT node 또는 SPOT
+  handle에 raw socket `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 직접 설정하지
+  않는다. 이 raw socket 옵션을 SPOT 서비스 핸들에 적용하려는 코드는 정책
   위반이다. C API에서는 해당 호출이 `EINVAL`로 실패한다.
 
 ---

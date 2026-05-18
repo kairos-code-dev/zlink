@@ -24,6 +24,8 @@ public interface IContextOptions
 
     AutoHwmProfile AutoHwmProfile { get; set; }
 
+    int AutoHwmMessageUnitBytes { get; set; }
+
     bool AutoHwmEnabled { get; set; }
 
     TimeSpan AutoHwmRecalcDebounce { get; set; }

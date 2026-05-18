@@ -343,39 +343,13 @@ internal static partial class PerfRunner
         spot.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
     }
 
-    internal static void ApplyAutoHwmMsgUnit(SocketBase socket, int msgSize)
+    internal static void ApplyAutoHwmMsgUnit(Context ctx, int msgSize)
     {
         if (msgSize <= 0)
             return;
         try
         {
-            socket.Options.AutoHwmMessageUnitBytes = msgSize;
-        }
-        catch (ZlinkException)
-        {
-        }
-    }
-
-    internal static void ApplySpotNodeAutoHwmMsgUnit(SpotNode node, int msgSize)
-    {
-        if (msgSize <= 0)
-            return;
-        try
-        {
-            node.AutoHwmMessageUnitBytes = msgSize;
-        }
-        catch (ZlinkException)
-        {
-        }
-    }
-
-    internal static void ApplySpotAutoHwmMsgUnit(Spot spot, int msgSize)
-    {
-        if (msgSize <= 0)
-            return;
-        try
-        {
-            spot.AutoHwmMessageUnitBytes = msgSize;
+            ctx.Options.AutoHwmMessageUnitBytes = msgSize;
         }
         catch (ZlinkException)
         {

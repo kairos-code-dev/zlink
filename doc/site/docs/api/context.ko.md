@@ -27,6 +27,7 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_CTX_OPT_AUTO_HWM_ENABLE 12
 #define ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS 14
 #define ZLINK_CTX_OPT_AUTO_HWM_PROFILE 17
+#define ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES 18
 ```
 
 ```c
@@ -55,6 +56,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | 자동 HWM(고수위 표시, High-Water Mark) 정책 사용 여부 (`0` = 비활성, `1` = 활성) |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | 연결 변화가 이어질 때 자동 HWM 재계산을 다시 실행하기 전에 기다리는 최소 디바운스 시간 (ms, `>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | 자동 HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). 알 수 없는 값은 `EINVAL`로 실패 |
+| `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 18 | 자동 HWM 계산에서 쓰는 context 수준 메시지 단위 (바이트 단위). `0`은 소켓 타입 기본값 사용, 음수는 `EINVAL`로 실패 |
 
 ## 기본값
 
@@ -66,6 +68,7 @@ typedef enum zlink_auto_hwm_profile_t
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
+#define ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT 0
 ```
 
 | 상수 | 값 | 설명 |
@@ -77,6 +80,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | 자동 HWM 정책이 기본으로 활성화되어 있음. 애플리케이션이 auto-HWM을 끄거나 수동 HWM을 설정하지 않으면 balanced profile을 사용함 |
 | `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | 자동 HWM 재계산 기본 디바운스 시간 (ms) |
 | `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 자동 HWM 기본 profile |
+| `ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT` | 0 | 각 소켓 타입의 기본 메시지 단위를 사용. STREAM은 `1024` bytes, 그 외 소켓은 `4096` bytes |
 
 ## 함수
 

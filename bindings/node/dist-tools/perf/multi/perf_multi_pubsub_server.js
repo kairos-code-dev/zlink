@@ -21,7 +21,7 @@ async function main() {
         });
         configureTlsServer(pub, options.transport);
         pub.bind(options.endpoint);
-        applyAutoHwmMsgUnit(pub, options.msgSize);
+        applyAutoHwmMsgUnit(ctx, options.msgSize);
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(pub, 'endpoint', options.transport, options.msgSize);
         console.log(`READY,${options.endpoint}`);

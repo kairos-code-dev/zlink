@@ -41,20 +41,14 @@ final class PerfMultiPubSub {
         try (Context ctx = PerfUtil.newContext(config);
              PubSocket pub = new PubSocket(ctx)) {
             PerfUtil.applySocketOptions(pub, config);
-            PerfUtil.applyAutoHwmMsgUnit(pub, config.size());
             PerfUtil.configureServerTls(pub, config.transport());
             pub.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.awaitStart(config.size(), "pubsub server");
-            // C parity: perf_multi_pubsub_server.cpp run_server_loop (~296-313)
-            // applies apply_benchmark_auto_hwm_msg_unit + apply_benchmark_hwm
-            // and zlink_ctx_auto_hwm_recalculate AFTER the start signal, i.e.
-            // once all SUB clients have connected so the PUB's per-connection
-            // fan-out send queues are resized. Recalcing before bind (before
-            // any subscriber connected) left the tcp per-connection queues on
-            // the default size, collapsing MULTI_PUBSUB/tcp ~17x while the
-            // tls/ws/wss handshake masked the race.
-            PerfUtil.applyAutoHwmMsgUnit(pub, config.size());
+            // C parity: PerfUtil.newContext applies the benchmark message size
+            // as the context auto-HWM message unit. Recalculate AFTER the start
+            // signal, once all SUB clients have connected, so the PUB's
+            // per-connection fan-out send queues are resized.
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiSocketAutoHwm(config, pub, "server",
                 "server", SocketType.PUB);
@@ -93,7 +87,6 @@ final class PerfMultiPubSub {
                 MonitorSocket monitor = sub.monitorOpen(READY_EVENT);
                 PerfUtil.applyMonitorOptions(monitor, config);
                 PerfUtil.applySocketOptions(sub, config);
-                PerfUtil.applyAutoHwmMsgUnit(sub, config.size());
                 PerfUtil.configureClientTls(sub, config.transport());
                 // C parity: perf_multi_client_helpers.hpp subscribes SUB
                 // clients to "" (k_subscribe_all). A specific-topic

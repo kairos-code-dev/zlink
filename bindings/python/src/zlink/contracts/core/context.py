@@ -172,6 +172,16 @@ class ContextOptions:
         self._context._set_option(ContextOption.AUTO_HWM_PROFILE, int(value))
 
     @property
+    def auto_hwm_msg_unit_bytes(self):
+        return self._context._get_option(ContextOption.AUTO_HWM_MSG_UNIT_BYTES)
+
+    @auto_hwm_msg_unit_bytes.setter
+    def auto_hwm_msg_unit_bytes(self, value):
+        if value < 0:
+            raise ValueError("auto_hwm_msg_unit_bytes must be non-negative")
+        self._context._set_option(ContextOption.AUTO_HWM_MSG_UNIT_BYTES, value)
+
+    @property
     def socket_limit(self):
         return self._context._get_option(ContextOption.SOCKET_LIMIT)
 

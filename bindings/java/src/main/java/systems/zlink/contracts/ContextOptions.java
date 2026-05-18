@@ -111,6 +111,18 @@ public final class ContextOptions {
         context.setOption(ContextOption.AUTO_HWM_PROFILE, profile.value());
     }
 
+    public int autoHwmMessageUnitBytes() {
+        return context.getOption(ContextOption.AUTO_HWM_MSG_UNIT_BYTES);
+    }
+
+    public void autoHwmMessageUnitBytes(int value) {
+        if (value < 0) {
+            throw new IllegalArgumentException(
+                "autoHwmMessageUnitBytes must be non-negative");
+        }
+        context.setOption(ContextOption.AUTO_HWM_MSG_UNIT_BYTES, value);
+    }
+
     public void addThreadAffinity(int cpu) {
         context.setOption(ContextOption.THREAD_AFFINITY_CPU_ADD, cpu);
     }

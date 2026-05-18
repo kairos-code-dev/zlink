@@ -94,6 +94,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         }
         close_client_monitors (&monitors);
         refresh_connected_client_auto_hwm (
+          ctx.get (),
           sockets,
           k_client_socket_type,
           settings.hwm,

@@ -96,8 +96,7 @@ async function main() {
   try {
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
-    applyAutoHwmMsgUnit(controlPub, options.msgSize);
-    applyAutoHwmMsgUnit(controlSub, options.msgSize);
+    applyAutoHwmMsgUnit(ctx, options.msgSize);
     applySpotNodeAdmission(node);
     controlPub.bind(options.controlEndpoint);
     console.log(`CLIENT_CONTROL_ENDPOINT,${options.controlEndpoint}`);

@@ -62,14 +62,10 @@ def main(argv=None):
         _send_stop_token(dealer)
 
     with perf_context() as ctx:
+        apply_single_auto_hwm_msg_unit(ctx, args.msg_size)
         with zlink.DealerSocket(ctx) as server:
             with zlink.DealerSocket(ctx) as client:
                 endpoint = resolve_single_endpoint(args.transport, "dealer-dealer")
-                # C perf_dealer_dealer.cpp: apply_single_auto_hwm_msg_unit on
-                # both raw sockets before setup.
-                apply_single_auto_hwm_msg_unit(
-                    server, client, msg_size=args.msg_size
-                )
                 apply_single_socket_options(server, client)
                 configure_single_tls_server(server, args.transport)
                 configure_single_tls_client(client, args.transport)

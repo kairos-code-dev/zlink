@@ -45,8 +45,7 @@ internal static class PerfDealerDealer
         using var sender = new DealerSocket(ctx);
         ApplySingleSocketOptions(receiver);
         ApplySingleSocketOptions(sender);
-        ApplySingleAutoHwmMsgUnit(receiver, size);
-        ApplySingleAutoHwmMsgUnit(sender, size);
+        ApplySingleAutoHwmMsgUnit(ctx, size);
         RecalculateSingleAutoHwm(ctx);
         ConfigureTlsServerIfNeeded(receiver, transport);
         ConfigureTlsClientIfNeeded(sender, transport);

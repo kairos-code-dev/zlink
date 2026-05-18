@@ -19,7 +19,7 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 	defer server.Close()
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
-	perfcommon.ApplyMultiAutoHWMMsgUnit(server, cfg.msgSize)
+	perfcommon.ApplyMultiAutoHWMMsgUnit(serverCtx, cfg.msgSize)
 	perfcommon.ApplyMultiHWM(server, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(server, cfg.transport)
 	endpoint := perfcommon.BindAndResolveEndpoint(server, cfg.transport, "perf-multi-dealer-dealer")
@@ -92,7 +92,7 @@ func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
 		perfcommon.Must(err)
 		clientMon := perfcommon.OpenMonitor(client)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
-		perfcommon.ApplyMultiAutoHWMMsgUnit(client, cfg.msgSize)
+		perfcommon.ApplyMultiAutoHWMMsgUnit(clientCtx, cfg.msgSize)
 		perfcommon.ApplyMultiHWM(client, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(client, cfg.transport)
 		perfcommon.Must(client.Connect(endpoint))

@@ -113,37 +113,8 @@ bool set_sockopt_int (SocketLike &socket_,
     }
 }
 void apply_single_hwm (perf_socket_t &socket_);
-bool apply_single_auto_hwm_msg_unit (perf_socket_t &socket_, size_t msg_size_);
+bool apply_single_auto_hwm_msg_unit (ctx_guard_t &ctx_, size_t msg_size_);
 bool recalculate_single_auto_hwm (ctx_guard_t &ctx_);
-namespace detail {
-template<typename SubjectLike>
-auto apply_auto_hwm_msg_unit_impl (SubjectLike &subject_,
-                                   zlink::byte_size_t value_,
-                                   int)
-  -> decltype (subject_.options ().auto_hwm_msg_unit_bytes (value_), bool ())
-{
-    subject_.options ().auto_hwm_msg_unit_bytes (value_);
-    return true;
-}
-
-template<typename SubjectLike>
-auto apply_auto_hwm_msg_unit_impl (SubjectLike &subject_,
-                                   zlink::byte_size_t value_,
-                                   long)
-  -> decltype (subject_.auto_hwm_msg_unit_bytes (value_), bool ())
-{
-    subject_.auto_hwm_msg_unit_bytes (value_);
-    return true;
-}
-
-template<typename SubjectLike>
-bool apply_auto_hwm_msg_unit_impl (SubjectLike &,
-                                   zlink::byte_size_t,
-                                   ...)
-{
-    return true;
-}
-} // namespace detail
 
 template<typename SocketLike>
 void apply_single_hwm (SocketLike &socket_)
@@ -156,23 +127,6 @@ void apply_single_hwm (SocketLike &socket_)
       socket_, zlink::compat::options::socket_options::sndhwm, sndhwm, "sndhwm");
     (void) set_sockopt_int (
       socket_, zlink::compat::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
-}
-template<typename SocketLike>
-bool apply_single_auto_hwm_msg_unit (SocketLike &socket_, size_t msg_size_)
-{
-    if (msg_size_ == 0)
-        return true;
-    try {
-        detail::apply_auto_hwm_msg_unit_impl (
-          socket_,
-          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)),
-          0);
-        return true;
-    }
-    catch (const zlink::config_error_t &err) {
-        errno = err.internal_errno ();
-        return false;
-    }
 }
 // Applies linger/send/recv timeout defaults for benchmark sockets.
 void apply_single_benchmark_socket_options (perf_socket_t &socket_,

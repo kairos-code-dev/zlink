@@ -50,8 +50,6 @@ int map_common_to_spot_pub_option (zlink_option_t option_)
             return ZLINK_SPOT_PUB_OPT_SNDBUF;
         case ZLINK_OPT_RCVBUF:
             return ZLINK_SPOT_PUB_OPT_RCVBUF;
-        case ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            return ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES;
         default:
             return -1;
     }
@@ -68,8 +66,6 @@ int map_common_to_spot_sub_option (zlink_option_t option_)
             return ZLINK_SPOT_SUB_OPT_RCVBUF;
         case ZLINK_OPT_RCVTIMEO:
             return ZLINK_SPOT_SUB_OPT_RCVTIMEO;
-        case ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            return ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES;
         default:
             return -1;
     }
@@ -92,8 +88,6 @@ int map_common_to_socket_option (zlink_option_t option_)
             return ZLINK_INTERNAL_OPT_SNDBUF;
         case ZLINK_OPT_RCVBUF:
             return ZLINK_INTERNAL_OPT_RCVBUF;
-        case ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            return ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES;
         default:
             return -1;
     }

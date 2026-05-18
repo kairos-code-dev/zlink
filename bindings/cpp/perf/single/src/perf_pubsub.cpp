@@ -80,8 +80,7 @@ bool run_pattern_pubsub (const std::string &transport,
 
     publisher.options ().no_drop (true);
     (void) subscriber.set_subscription (std::string ());
-    if (!perf::single::apply_single_auto_hwm_msg_unit (publisher, msg_size)
-        || !perf::single::apply_single_auto_hwm_msg_unit (subscriber, msg_size)
+    if (!perf::single::apply_single_auto_hwm_msg_unit (ctx, msg_size)
         || !perf::single::recalculate_single_auto_hwm (ctx)) {
         if (perf_debug_enabled ())
             std::cerr << "pubsub: auto-hwm msg unit setup failed errno=" << errno

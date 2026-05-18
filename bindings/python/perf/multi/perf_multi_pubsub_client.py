@@ -6,6 +6,7 @@ import zlink
 
 from perf_multi_common import (
     TOPIC,
+    apply_multi_auto_hwm_msg_unit,
     apply_multi_socket_options,
     benchmark_run_id,
     is_stop_token_in_parts,
@@ -31,6 +32,7 @@ def main(argv=None):
     count = 0
 
     with perf_client_context() as ctx:
+        apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         sockets = [zlink.SubSocket(ctx) for _ in range(args.clients)]
         try:
             with ExitStack() as stack:

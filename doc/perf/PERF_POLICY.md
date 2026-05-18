@@ -418,12 +418,13 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `bindings/c/p
   benchmark socket은 역할별 예외 없이 같은 context budget 아래에서 core
   계산값을 사용한다. 기본 경로에서 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`
   를 숫자로 직접 고정하지 않는다.
-- raw socket benchmark는 메시지 크기별로 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를
-  현재 테스트 메시지 크기와 같은 값으로 설정할 수 있다. 이 옵션은 raw socket
-  자동 HWM의 메시지 단위 설정이며, SPOT node 또는 SPOT handle에는 설정하지
-  않는다. SPOT 서비스 핸들에 이 공통 옵션을 설정하려는 코드는 정책 위반이고,
-  C API에서는 `EINVAL` 실패로 처리된다. C perf runner는 일반 패턴의 결과 행
-  뒤에 runtime snapshot에서 실제 수집한 `Auto-HWM detail` 표를 붙이고,
+- benchmark는 메시지 크기별로 context
+  `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 현재 테스트 메시지 크기와 같은 값으로
+  설정한다. raw socket `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 저수준 socket별
+  override로만 유지하며, SPOT node 또는 SPOT handle에는 설정하지 않는다. SPOT
+  서비스 핸들에 이 공통 옵션을 설정하려는 코드는 정책 위반이고, C API에서는
+  `EINVAL` 실패로 처리된다. C perf runner는 일반 패턴의 결과 행 뒤에 runtime
+  snapshot에서 실제 수집한 `Auto-HWM detail` 표를 붙이고,
   `Size(B)`, `MsgUnit(B)`, `Scope`, `ScopeCount`를 적용 HWM과 함께 보여야 한다.
   SPOT 계열은
   `zlink_spot_node_internal_sockets_snapshot()` 결과 중 `auto_hwm_visible == 1`인
@@ -812,7 +813,7 @@ bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 - official perf runner의 기본 동작은 **현재 소스 기준 최신 벤치마크 산출물**을 사용하도록 configure/build를 수행하는 것이다. `--reuse-build`는 stale build 사용을 명시적으로 허용하는 유일한 opt-out이며, 이 플래그 없이 이전 산출물/스크립트를 그대로 실행하는 runner는 정책 위반이다.
 - 결과 의미에 직접 영향을 주는 기본값(`clients`, `stream clients`, `server/client io_threads`, `hwm`, `stream hwm`)은 baseline/full-run 계약의 일부다. 기본값을 변경하면 문서와 runner help, 예시, baseline 비교 기준을 같은 변경에서 함께 갱신해야 한다.
 - multi suite의 기본 context I/O thread 수는 모든 언어에서 server/client 모두 `4`다. C, .NET, Java 등 binding perf runner는 별도 override가 없으면 server process와 client process 양쪽에 같은 값 `4`를 적용해야 한다. single suite 기본값 `1`과 섞어 쓰면 C 기준과 비교 의미가 달라진다.
-- multi raw socket 패턴은 각 size 케이스를 실행할 때 해당 payload size를 socket의 auto-HWM message unit으로 설정한 뒤 context auto-HWM을 재계산해야 한다. 이 값은 payload 최대 크기 제한이 아니라 HWM 예산을 메시지 슬롯 수로 환산하기 위한 기준 단위다. size별 msg unit 설정이 빠지면 C perf와 HWM/버퍼 조건이 달라져 결과 비교가 무효가 된다.
+- multi 패턴은 각 size 케이스를 실행할 때 해당 payload size를 context auto-HWM message unit으로 설정해야 한다. 이 값은 payload 최대 크기 제한이 아니라 HWM 예산을 메시지 슬롯 수로 환산하기 위한 기준 단위다. size별 msg unit 설정이 빠지면 C perf와 HWM/버퍼 조건이 달라져 결과 비교가 무효가 된다.
 
 ---
 

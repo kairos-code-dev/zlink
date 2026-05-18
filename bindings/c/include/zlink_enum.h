@@ -20,7 +20,8 @@ typedef enum zlink_ctx_option_t
     ZLINK_CTX_OPT_BLOCKY = 10,
     ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 12,
     ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS = 14,
-    ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17
+    ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17,
+    ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES = 18
 } zlink_ctx_option_t;
 
 typedef enum zlink_auto_hwm_profile_t

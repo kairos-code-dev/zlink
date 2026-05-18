@@ -17,7 +17,7 @@ func runMultiPubSubServer(cfg multiConfig) {
 	perfcommon.Must(err)
 	defer publisher.Close()
 	perfcommon.Must(perfcommon.ConfigureTLSServer(publisher, cfg.transport))
-	perfcommon.ApplyMultiAutoHWMMsgUnit(publisher, cfg.msgSize)
+	perfcommon.ApplyMultiAutoHWMMsgUnit(ctx, cfg.msgSize)
 	perfcommon.ApplyMultiHWM(publisher, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(publisher, cfg.transport)
 	endpoint := perfcommon.BindAndResolveEndpoint(publisher, cfg.transport, "perf-multi-pubsub")
@@ -51,6 +51,7 @@ func runMultiPubSubClient(cfg multiConfig, endpoint string) perfcommon.Result {
 	ctx, err := perfcommon.NewMultiClientContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
+	perfcommon.ApplyMultiAutoHWMMsgUnit(ctx, cfg.msgSize)
 
 	stats := perfcommon.NewStats()
 	subs := make([]*zlink.SubSocket, 0, cfg.clients)
@@ -61,7 +62,6 @@ func runMultiPubSubClient(cfg multiConfig, endpoint string) perfcommon.Result {
 		}
 		subs = append(subs, sub)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(sub, cfg.transport))
-		perfcommon.ApplyMultiAutoHWMMsgUnit(sub, cfg.msgSize)
 		perfcommon.ApplyMultiHWM(sub, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(sub, cfg.transport)
 		subMon := perfcommon.OpenMonitor(sub)

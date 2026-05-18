@@ -118,8 +118,7 @@ async function main() {
     spotPoller.add(spot, [POLLOUT], 'spot');
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
-    applyAutoHwmMsgUnit(controlPub, options.msgSize);
-    applyAutoHwmMsgUnit(controlSub, options.msgSize);
+    applyAutoHwmMsgUnit(ctx, options.msgSize);
     controlPub.bind(options.controlEndpoint);
     controlSub.setSubscription(CONTROL_TOPIC);
     ctx.recalculateAutoHwm();

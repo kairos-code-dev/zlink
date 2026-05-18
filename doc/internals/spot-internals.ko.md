@@ -395,11 +395,12 @@ transport socket HWM 양쪽에 적용된다.
 숫자 override가 없으면 SpotNode admission HWM은 profile별 메시지 수 기준을
 사용한다. 기준값은 COMPACT `64`, LOW_LATENCY `128`, BALANCED `256`,
 THROUGHPUT `512`다. SPOT service handle에는 raw socket용
-`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 설정하지 않으므로 기본 SPOT 경로는
-non-STREAM 기본 메시지 단위 `4096` byte로 계산된다. 따라서 balanced 기본값은
-`256`이며, 작은 payload가 많다는 이유만으로 `1024`로 올라가지 않는다.
-peer control socket은 이 admission 묶음에 포함되지 않으며 control-plane HWM을
-유지한다.
+`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 설정할 수 없다. 대신 SPOT data-path
+socket은 context `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`가 양수이면 그 값을
+사용하고, context 값이 `0`이면 non-STREAM 기본 메시지 단위 `4096` byte로
+계산된다. 기본 context 값에서는 balanced 기본값이 `256`이며, 작은 payload가
+많다는 이유만으로 `1024`로 올라가지 않는다. peer control socket은 이 admission
+묶음에 포함되지 않으며 control-plane HWM을 유지한다.
 
 relay socket(`fanout`, `mesh-pub` SNDHWM = 0)과 delivery socket은 HWM `0`을
 사용한다. 이렇게 해야 SPOT 내부의 숨은 per-peer 또는 per-target 큐 제한이 메시지

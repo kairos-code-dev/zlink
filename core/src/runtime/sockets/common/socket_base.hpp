@@ -621,6 +621,7 @@ class socket_base_t : public own_t,
     size_t _auto_hwm_scope_count;
     bool _auto_hwm_role_override;
     bool _auto_hwm_policy_enabled;
+    bool _auto_hwm_msg_unit_override;
     bool _manual_sndhwm;
     bool _manual_rcvhwm;
     bool _manual_sndbuf;

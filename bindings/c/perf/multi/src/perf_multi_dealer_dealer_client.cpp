@@ -367,6 +367,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         }
 
         refresh_connected_client_auto_hwm (
+          ctx.get (),
           sockets,
           static_cast<zlink_socket_type_t> (k_client_socket_type),
           settings.hwm,

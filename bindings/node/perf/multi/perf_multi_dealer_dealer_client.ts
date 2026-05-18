@@ -55,7 +55,7 @@ async function main() {
     }
     for (const dealer of dealers) {
       await waitForConnectionReady(dealer, () => dealer.connect(options.endpoint));
-      applyAutoHwmMsgUnit(dealer, options.msgSize);
+      applyAutoHwmMsgUnit(ctx, options.msgSize);
     }
     ctx.recalculateAutoHwm();
     for (const dealer of dealers) {

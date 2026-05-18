@@ -50,7 +50,6 @@ final class PerfMultiRouterRouter {
             PerfUtil.waitForMonitorEvent(monitor, READY_EVENT, config.clients(),
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "router/router server ready");
-            PerfUtil.applyAutoHwmMsgUnit(server, config.size());
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiMonitorAutoHwm(config, monitor, "server",
                 "server", SocketType.ROUTER);
@@ -175,7 +174,6 @@ final class PerfMultiRouterRouter {
                         "router/router client ready[" + i + "]");
                 }
                 for (int i = 0; i < clientCount; i++) {
-                    PerfUtil.applyAutoHwmMsgUnit(clients.get(i), config.size());
                 }
                 PerfUtil.recalculateAutoHwm(ctx);
                 for (int i = 0; i < clientCount; i++) {

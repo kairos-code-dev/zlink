@@ -387,8 +387,7 @@ receiverHwmComponent = 'receiver', senderHwmComponent = 'sender' }) {
     try {
         applySocketPolicy(receiver, options);
         applySocketPolicy(sender, options);
-        applyAutoHwmMsgUnit(receiver, msgSize);
-        applyAutoHwmMsgUnit(sender, msgSize);
+        applyAutoHwmMsgUnit(ctx, msgSize);
         if (typeof configureReceiver === 'function') {
             configureReceiver(receiver);
         }

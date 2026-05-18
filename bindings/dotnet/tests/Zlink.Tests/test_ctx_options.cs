@@ -1,3 +1,4 @@
+using System;
 using Xunit;
 
 namespace Systems.Zlink.Tests;
@@ -19,6 +20,14 @@ public sealed class test_ctx_options
 
         ctx.Options.AutoHwmProfile = AutoHwmProfile.Compact;
         Assert.Equal(AutoHwmProfile.Compact, ctx.Options.AutoHwmProfile);
+
+        Assert.Equal(0, ctx.Options.AutoHwmMessageUnitBytes);
+        ctx.Options.AutoHwmMessageUnitBytes = 64;
+        Assert.Equal(64, ctx.Options.AutoHwmMessageUnitBytes);
+        ctx.Options.AutoHwmMessageUnitBytes = 0;
+        Assert.Equal(0, ctx.Options.AutoHwmMessageUnitBytes);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ctx.Options.AutoHwmMessageUnitBytes = -1);
     }
 
     [Fact]

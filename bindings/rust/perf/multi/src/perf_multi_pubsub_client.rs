@@ -52,13 +52,13 @@ fn main() {
     let settings = common::MultiSettings::from_env();
 
     let ctx = common::perf_client_context();
+    common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let mut sockets: Vec<SubSocket> = Vec::with_capacity(settings.clients);
 
     for _ in 0..settings.clients {
         let sub = ctx.sub_socket().expect("sub");
-        // C: gated numeric HWM + unconditional AUTO_HWM_MSG_UNIT_BYTES.
+        // C parity: numeric HWM remains behind the manual-override gate.
         common::apply_multi_hwm(&sub, &settings);
-        common::apply_multi_auto_hwm_msg_unit(&sub, args.msg_size);
         if matches!(args.transport.as_str(), "tls" | "wss") {
             let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
             common::setup_raw_tls_client(&sub, &tls).expect("client tls");

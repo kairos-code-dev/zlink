@@ -19,8 +19,8 @@ use crate::message::{Message, RoutingId};
 use crate::monitor::MonitorSnapshot;
 use crate::request_progress::RequestProgressGuard;
 use crate::socket::{
-    CallbackBox, close_unreceived_part, prepare_send_parts,
-    routing_id_from_ptr, send_ready_trampoline, submit_part_sequence, take_parts,
+    CallbackBox, close_unreceived_part, prepare_send_parts, routing_id_from_ptr,
+    send_ready_trampoline, submit_part_sequence, take_parts,
 };
 
 // ---------------------------------------------------------------------------

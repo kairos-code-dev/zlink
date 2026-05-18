@@ -68,8 +68,7 @@ async function main() {
 
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
-    applyAutoHwmMsgUnit(controlPub, options.msgSize);
-    applyAutoHwmMsgUnit(controlSub, options.msgSize);
+    applyAutoHwmMsgUnit(ctx, options.msgSize);
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(controlPub, 'spotnode_control_pub', options.transport, options.msgSize);
     emitMultiSocketHwmDetail(controlSub, 'spotnode_control_sub', options.transport, options.msgSize);

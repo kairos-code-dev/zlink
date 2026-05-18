@@ -77,6 +77,7 @@ fn main() {
     };
 
     let ctx = common::perf_context();
+    common::apply_single_auto_hwm_msg_unit(&ctx, config.size);
     let publisher_node = SpotNode::new(&ctx).expect("publisher node");
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node");
     common::apply_single_spot_node_admission(&publisher_node);

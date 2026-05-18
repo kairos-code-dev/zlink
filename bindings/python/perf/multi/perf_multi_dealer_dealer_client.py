@@ -6,6 +6,7 @@ import zlink
 
 from perf_multi_common import (
     STOP_TOKEN,
+    apply_multi_auto_hwm_msg_unit,
     apply_multi_socket_options,
     benchmark_run_id,
     configure_multi_tls_client,
@@ -37,6 +38,7 @@ def main(argv=None):
     seq = 0
 
     with perf_client_context() as ctx:
+        apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         sockets = [zlink.DealerSocket(ctx) for _ in range(args.clients)]
         try:
             with ExitStack() as stack:

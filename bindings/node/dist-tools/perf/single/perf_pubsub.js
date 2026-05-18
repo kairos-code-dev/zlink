@@ -73,7 +73,7 @@ async function runPubSubBenchmark(msgSize, options) {
                 ?? process.env.PERF_SINGLE_RCVTIMEO_MS
                 ?? 200)
         });
-        applyAutoHwmMsgUnit(sub, msgSize);
+        applyAutoHwmMsgUnit(ctx, msgSize);
         ctx.recalculateAutoHwm();
         // The SUB connects from this (main) process, so it must carry the TLS
         // client config for tls/wss exactly like the worker's connecting

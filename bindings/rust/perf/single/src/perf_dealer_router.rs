@@ -16,17 +16,14 @@ fn main() {
     };
 
     let ctx = common::perf_context();
+    common::apply_single_auto_hwm_msg_unit(&ctx, config.size);
     let router = ctx.router_socket().expect("router");
     let dealer = ctx.dealer_socket().expect("dealer");
     let rid = RoutingId::from_bytes(b"perf-dealer");
     dealer.set_routing_id(&rid).expect("set rid");
-    // C perf_dealer_router.cpp: raw single sockets always get
-    // AUTO_HWM_MSG_UNIT_BYTES = msg_size; numeric HWM only under the
-    // manual-override gate.
+    // Match C perf: numeric socket HWM remains behind the manual-override gate.
     common::apply_single_hwm(&router);
     common::apply_single_hwm(&dealer);
-    common::apply_single_auto_hwm_msg_unit(&router, config.size);
-    common::apply_single_auto_hwm_msg_unit(&dealer, config.size);
     // PERF_SINGLE_TEST_POLICY § 1.4: receiver blocks on `recv()` until the
     // wire-level stop token arrives, so no recv timeout is needed.
 

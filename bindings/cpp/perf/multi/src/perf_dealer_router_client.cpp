@@ -141,8 +141,8 @@ class dealer_router_client_bench_t
                 routing_id.size ()));
 
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
-            if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-                  sock, _msg_size))
+            if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (
+                  _ctx, _msg_size))
                 return false;
             if (!perf::multi::setup_tls_client (sock, _transport))
                 return false;

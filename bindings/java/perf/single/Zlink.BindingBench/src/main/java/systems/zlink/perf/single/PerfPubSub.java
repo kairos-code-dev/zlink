@@ -56,16 +56,10 @@ final class PerfPubSub {
             // C always sets ZLINK_PUB_OPT_NODROP explicitly to the resolved
             // 0/1, so mirror that here.
             pub.options().noDrop(resolvePubSubXpubNoDrop());
-            // C parity: perf_pubsub.cpp run_pubsub applies
-            // apply_single_auto_hwm_msg_unit(publisher/subscriber, msg_size)
-            // (~201-202) and apply_single_hwm (~35-36) BEFORE bind/connect, so
-            // the per-message auto-HWM sizing is in effect when the transport
-            // pipe is created. Applying it after connect (the prior ordering)
-            // left the tcp PUB->SUB pipe sized by the pre-recalc default,
-            // collapsing PUBSUB/tcp throughput ~4x while inproc (whose pipe
-            // picks up the later recalc) was unaffected.
-            PerfUtil.applyAutoHwmMsgUnit(pub, config.size());
-            PerfUtil.applyAutoHwmMsgUnit(sub, config.size());
+            // C parity: PerfUtil.newContext applies the benchmark message size
+            // as the context auto-HWM message unit before sockets are created.
+            // Recalculating here keeps that per-message sizing in effect when
+            // the transport pipe is created.
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.configureServerTls(pub, config.transport());
             PerfUtil.configureClientTls(sub, config.transport());

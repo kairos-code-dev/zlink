@@ -81,8 +81,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
 
     perf::multi::apply_benchmark_socket_options (
       server, settings, transport);
-    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-          server, msg_size))
+    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (ctx, msg_size))
         return false;
     if (!perf::multi::setup_tls_server (server, transport))
         return false;

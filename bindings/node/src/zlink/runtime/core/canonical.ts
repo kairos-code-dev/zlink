@@ -1228,8 +1228,6 @@ export class CommonSocketOptions {
   set heartbeatTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.HEARTBEAT_TIMEOUT, int32Buffer(value, 'heartbeatTimeout')); }
   get maxMsgSize(): bigint { return readInt64Option(this._socket.getSockOptRaw(SocketOption.MAXMSGSIZE), 'maxMsgSize'); }
   set maxMsgSize(value: bigint) { this._socket.setSockOptRaw(SocketOption.MAXMSGSIZE, int64Buffer(value, 'maxMsgSize')); }
-  get autoHwmMsgUnitBytes(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.AUTO_HWM_MSG_UNIT_BYTES), 'autoHwmMsgUnitBytes'); }
-  set autoHwmMsgUnitBytes(value: number) { this._socket.setSockOptRaw(SocketOption.AUTO_HWM_MSG_UNIT_BYTES, int32Buffer(value, 'autoHwmMsgUnitBytes')); }
   get lastEndpoint(): string { return readStringOption(this._socket.getSockOptRaw(SocketOption.LAST_ENDPOINT)); }
   get backlog(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.BACKLOG), 'backlog'); }
   set backlog(value: number) { this._socket.setSockOptRaw(SocketOption.BACKLOG, int32Buffer(value, 'backlog')); }
@@ -1387,6 +1385,14 @@ export class ContextOptions {
   set autoHwmRecalcDebounceMs(value: number) { this._context.setOptionRawInternal(ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS, value | 0); }
   get autoHwmProfile(): AutoHwmProfileValue { return this._context.getOptionRawInternal(ContextOption.AUTO_HWM_PROFILE) as AutoHwmProfileValue; }
   set autoHwmProfile(value: AutoHwmProfileValue) { this._context.setOptionRawInternal(ContextOption.AUTO_HWM_PROFILE, value | 0); }
+  get autoHwmMsgUnitBytes(): number { return this._context.getOptionRawInternal(ContextOption.AUTO_HWM_MSG_UNIT_BYTES); }
+  set autoHwmMsgUnitBytes(value: number) {
+    const normalized = value | 0;
+    if (normalized < 0 || normalized !== value) {
+      throw new RangeError('autoHwmMsgUnitBytes must be a non-negative int32');
+    }
+    this._context.setOptionRawInternal(ContextOption.AUTO_HWM_MSG_UNIT_BYTES, normalized);
+  }
   get threadNamePrefix(): string { return this._threadNamePrefix; }
   set threadNamePrefix(value: string) {
     const normalized = validateCString(value, 'threadNamePrefix');

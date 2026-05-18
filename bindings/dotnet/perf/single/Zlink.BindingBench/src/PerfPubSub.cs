@@ -28,8 +28,7 @@ internal static class PerfPubSub
         using var sub = new SubSocket(ctx);
         ApplySingleSocketOptions(pub);
         ApplySingleSocketOptions(sub);
-        ApplySingleAutoHwmMsgUnit(pub, size);
-        ApplySingleAutoHwmMsgUnit(sub, size);
+        ApplySingleAutoHwmMsgUnit(ctx, size);
         RecalculateSingleAutoHwm(ctx);
         ConfigureTlsServerIfNeeded(pub, transport);
         ConfigureTlsClientIfNeeded(sub, transport);

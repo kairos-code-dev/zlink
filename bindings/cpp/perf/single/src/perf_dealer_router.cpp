@@ -37,9 +37,7 @@ bool run_pattern_dealer_router (const std::string &transport,
     }
 
     (void) dealer.sock ().set_routing_id (std::string ("CLIENT"));
-    if (!perf::single::apply_single_auto_hwm_msg_unit (router.sock (), msg_size)
-        || !perf::single::apply_single_auto_hwm_msg_unit (
-          dealer.sock (), msg_size)
+    if (!perf::single::apply_single_auto_hwm_msg_unit (ctx, msg_size)
         || !perf::single::recalculate_single_auto_hwm (ctx)) {
         return false;
     }

@@ -55,7 +55,6 @@ final class PerfMultiStream {
         try (Context ctx = PerfUtil.newContext(config);
             StreamSocket server = new StreamSocket(ctx)) {
             PerfUtil.applySocketOptions(server, config);
-            PerfUtil.applyAutoHwmMsgUnit(server, config.size());
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiSocketAutoHwm(config, server, "server",
                 "server", SocketType.STREAM);

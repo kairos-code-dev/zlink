@@ -525,28 +525,6 @@ class socket_t
         });
     }
 
-    int set_auto_hwm_msg_unit_bytes (size_t value_)
-    {
-        return visit ([&] (auto &socket_) -> int {
-            using socket_type_t = typename std::decay<decltype (socket_)>::type;
-            if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
-                errno = ENOTSOCK;
-                return -1;
-            } else {
-                try {
-                    common_socket_options_t options = socket_.options ();
-                    options.auto_hwm_msg_unit_bytes (
-                      byte_size_t::bytes (static_cast<int64_t> (value_)));
-                    return 0;
-                }
-                catch (const zlink_error_t &err) {
-                    errno = err.internal_errno ();
-                    return -1;
-                }
-            }
-        });
-    }
-
     int subscribe (topic_message_t &topic_message_out_,
                    int flags_ = 0)
     {

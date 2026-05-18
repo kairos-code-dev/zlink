@@ -187,10 +187,10 @@ bool initialize_reqrep_server_session(
         return false;
     }
     const size_t max_msg_size = perf_current_benchmark_max_msg_size(64);
-    apply_benchmark_auto_hwm_msg_unit(
-      session->node, ZLINK_SOCKET_DEALER, max_msg_size);
-    apply_benchmark_auto_hwm_msg_unit(
-      session->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
+    if (!apply_benchmark_context_auto_hwm_msg_unit(ctx.get(), max_msg_size)) {
+        perf_multi_spot_control::destroy_server_session(session);
+        return false;
+    }
 
     session->pub = perf_create_default_spot_handle(session->node);
     session->control_pub =
@@ -480,6 +480,7 @@ bool idle_until_server_stop(const std::chrono::steady_clock::time_point &deadlin
 }
 
 bool run_server_loop(spot_reqrep_server_state_t *state,
+                     void *ctx,
                      const multi_bench_settings_t &settings,
                      const std::vector<size_t> &msg_sizes)
 {
@@ -492,6 +493,8 @@ bool run_server_loop(spot_reqrep_server_state_t *state,
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         const size_t msg_size = msg_sizes[i];
+        if (!apply_benchmark_context_auto_hwm_msg_unit(ctx, msg_size))
+            return false;
         if (!perf_multi_handshake::wait_for_start(
               &state->start_gate, msg_size, start_timeout_ms)) {
             if (bench_debug_enabled())
@@ -592,7 +595,7 @@ int run_server_benchmark(const std::string &lib_name,
         != 0) {
         return 1;
     }
-    const bool ok = run_server_loop(&state, settings, msg_sizes);
+    const bool ok = run_server_loop(&state, ctx.get (), settings, msg_sizes);
     fast_exit_process(ok ? 0 : 1);
     return ok ? 0 : 1;
 }

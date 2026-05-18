@@ -191,10 +191,6 @@ type benchmarkSocket interface {
 	SetRecvTimeout(time.Duration) error
 }
 
-type autoHwmMsgUnitSocket interface {
-	SetAutoHwmMsgUnitBytes(int) error
-}
-
 // ApplySingleHWM mirrors bench_common_runtime.hpp apply_single_hwm:
 // numeric SNDHWM/RCVHWM are only set when the manual-override flag is
 // enabled; otherwise context auto-HWM stays in effect.
@@ -213,16 +209,13 @@ func ApplySingleHWM(socket hwmSocket) {
 	}
 }
 
-// ApplySingleAutoHWMMsgUnit mirrors apply_single_auto_hwm_msg_unit:
-// set the per-size auto-HWM message-unit on raw sockets so the binding
-// recalculates auto-HWM for the current msg size. NOT applied to SPOT.
-func ApplySingleAutoHWMMsgUnit(socket interface{}, msgSize int) {
-	if socket == nil || msgSize <= 0 {
+// ApplySingleAutoHWMMsgUnit sets the context message-unit for the current
+// payload size; numeric socket HWM remains behind the manual-override gate.
+func ApplySingleAutoHWMMsgUnit(ctx *zlink.Context, msgSize int) {
+	if ctx == nil || msgSize <= 0 {
 		return
 	}
-	if autoSocket, ok := socket.(autoHwmMsgUnitSocket); ok {
-		Must(autoSocket.SetAutoHwmMsgUnitBytes(msgSize))
-	}
+	Must(ctx.Options().SetAutoHwmMsgUnitBytes(msgSize))
 }
 
 func ApplySingleSpotNodeAdmission(node spotNodeAdmission) {
@@ -261,16 +254,13 @@ func ApplyMultiHWM(socket hwmSocket, pattern string) {
 	}
 }
 
-// ApplyMultiAutoHWMMsgUnit mirrors apply_benchmark_auto_hwm_msg_unit:
-// raw multi sockets get the per-size auto-HWM message-unit option set
-// to the current msg size; the binding recalculates auto-HWM.
-func ApplyMultiAutoHWMMsgUnit(socket interface{}, msgSize int) {
-	if socket == nil || msgSize <= 0 {
+// ApplyMultiAutoHWMMsgUnit sets the context message-unit for the current
+// payload size; numeric socket HWM remains behind the manual-override gate.
+func ApplyMultiAutoHWMMsgUnit(ctx *zlink.Context, msgSize int) {
+	if ctx == nil || msgSize <= 0 {
 		return
 	}
-	if autoSocket, ok := socket.(autoHwmMsgUnitSocket); ok {
-		Must(autoSocket.SetAutoHwmMsgUnitBytes(msgSize))
-	}
+	Must(ctx.Options().SetAutoHwmMsgUnitBytes(msgSize))
 }
 
 func ApplyMultiSpotNodeAdmission(node spotNodeAdmission, pattern string) {

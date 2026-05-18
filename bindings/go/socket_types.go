@@ -189,15 +189,6 @@ func (o *CommonSocketOptions) RIDDuplicatePolicy() (RIDDuplicatePolicy, error) {
 	return RIDDuplicatePolicy(value), err
 }
 
-func (o *CommonSocketOptions) SetAutoHwmMsgUnitBytes(value int) error {
-	return o.socket.setIntOption(C.ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, int32(value))
-}
-
-func (o *CommonSocketOptions) AutoHwmMsgUnitBytes() (int, error) {
-	value, err := o.socket.getIntOption(C.ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES)
-	return int(value), err
-}
-
 func (o *CommonSocketOptions) SetConnectTimeout(value time.Duration) error {
 	return o.socket.setDurationOption(C.ZLINK_OPT_CONNECT_TIMEOUT, value)
 }
@@ -929,15 +920,6 @@ func (s *connectionSocket) RidDuplicatePolicy() (int, error) {
 
 func (s *connectionSocket) CommonOptions() *CommonSocketOptions {
 	return &CommonSocketOptions{socket: s}
-}
-
-func (s *connectionSocket) SetAutoHwmMsgUnitBytes(value int) error {
-	return s.setIntOption(C.ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, int32(value))
-}
-
-func (s *connectionSocket) AutoHwmMsgUnitBytes() (int, error) {
-	value, err := s.getIntOption(C.ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES)
-	return int(value), err
 }
 
 func (s *connectionSocket) LastEndpoint() (string, error) {

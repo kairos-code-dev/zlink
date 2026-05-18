@@ -51,8 +51,6 @@ final class PerfPair {
                 readyTimeout, "pair sender ready");
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENT, 1,
                 readyTimeout, "pair receiver ready");
-            PerfUtil.applyAutoHwmMsgUnit(receiver, config.size());
-            PerfUtil.applyAutoHwmMsgUnit(sender, config.size());
             PerfUtil.recalculateAutoHwm(ctx);
 
             // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits with -1 and exits

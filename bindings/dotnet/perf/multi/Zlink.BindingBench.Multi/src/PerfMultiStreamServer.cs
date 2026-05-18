@@ -34,7 +34,7 @@ internal static class PerfMultiStreamServer
         ApplyMultiServerContextOptions(ctx, options);
         using var server = new StreamSocket(ctx);
         ApplyMultiSocketOptions(server, options);
-        ApplyAutoHwmMsgUnit(server, options.Size);
+        ApplyAutoHwmMsgUnit(ctx, options.Size);
         RecalculateAutoHwm(ctx);
         PrintAutoHwmSnapshot(server, "server", options.Transport,
             options.Size);

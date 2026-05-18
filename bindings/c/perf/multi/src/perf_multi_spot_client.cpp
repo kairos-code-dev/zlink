@@ -1004,8 +1004,8 @@ bool create_control_spot(ctx_guard_t &ctx,
             zlink_spot_node_destroy(&state->control_node);
         return false;
     }
-    apply_benchmark_auto_hwm_msg_unit(
-      state->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
+    if (!apply_benchmark_context_auto_hwm_msg_unit(ctx.get(), max_msg_size))
+        return false;
     if (!apply_benchmark_spot_node_hwm(
           state->control_node, settings.hwm, true, true)) {
         zlink_spot_node_destroy(&state->control_node);
@@ -1099,8 +1099,8 @@ bool create_spot_slots(ctx_guard_t &ctx,
                 zlink_spot_node_destroy(&state->data_node);
             return false;
         }
-        apply_benchmark_auto_hwm_msg_unit(
-          state->data_node, ZLINK_SOCKET_DEALER, max_msg_size);
+        if (!apply_benchmark_context_auto_hwm_msg_unit(ctx.get(), max_msg_size))
+            return false;
         if (!apply_benchmark_spot_node_hwm(
               state->data_node, settings.hwm, true, true)) {
             g_last_spot_slot_failure =
@@ -1452,12 +1452,15 @@ bool wait_spot_sender_window_done(spot_client_state_t *state)
 }
 
 bool run_single_size_case(spot_client_state_t *state,
+                          void *ctx,
                           const multi_bench_settings_t &settings,
                           const std::string &lib_name,
                           const std::string &transport,
                           size_t msg_size,
                           uint32_t run_id)
 {
+    if (!apply_benchmark_context_auto_hwm_msg_unit(ctx, msg_size))
+        return false;
     const int phase_timeout_ms =
       resolve_spot_phase_timeout_ms(settings, msg_size);
     const double probe_seconds = resolve_spot_latency_probe_seconds();
@@ -1726,6 +1729,7 @@ int run_client_benchmark(const std::string &lib_name,
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         if (!run_single_size_case(&state,
+                                  ctx.get (),
                                   settings,
                                   lib_name,
                                   transport,

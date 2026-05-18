@@ -31,7 +31,7 @@ func runMultiRouterRouterServer(cfg multiConfig) {
 
 	serverID := zlink.NewRoutingID([]byte("SERVER"))
 	perfcommon.Must(perfcommon.ConfigureTLSServer(server, cfg.transport))
-	perfcommon.ApplyMultiAutoHWMMsgUnit(server, cfg.msgSize)
+	perfcommon.ApplyMultiAutoHWMMsgUnit(serverCtx, cfg.msgSize)
 	perfcommon.ApplyMultiHWM(server, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(server, cfg.transport)
 	perfcommon.Must(server.SetRoutingID(serverID))
@@ -57,7 +57,7 @@ func runMultiRouterRouterClientRole(cfg multiConfig, endpoint string) perfcommon
 		perfcommon.Must(socketErr)
 		clientMon := perfcommon.OpenMonitor(client)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
-		perfcommon.ApplyMultiAutoHWMMsgUnit(client, cfg.msgSize)
+		perfcommon.ApplyMultiAutoHWMMsgUnit(clientCtx, cfg.msgSize)
 		perfcommon.ApplyMultiHWM(client, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(client, cfg.transport)
 		clientID := zlink.NewRoutingID([]byte(fmt.Sprintf("router-%06d", i)))

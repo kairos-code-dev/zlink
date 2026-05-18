@@ -59,7 +59,6 @@ final class PerfMultiSpotSendSend {
                  ctx, config, controlEndpoint, "sendsend-server")) {
             node.setRoutingId(SERVER_NODE_RID);
             spot.setRoutingId(SERVER_SPOT_RID);
-            PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
             node.bind(config.endpoint());
@@ -121,7 +120,6 @@ final class PerfMultiSpotSendSend {
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
                  ctx, config, clientControlEndpoint, "sendsend-client")) {
             node.setRoutingId(routingId("SPOT-SENDSEND-CLIENT-NODE"));
-            PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
             node.bind(clientDataEndpoint);

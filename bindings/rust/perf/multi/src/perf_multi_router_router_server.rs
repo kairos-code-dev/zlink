@@ -14,6 +14,7 @@ fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
     let ctx = common::perf_server_context();
+    common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let router = ctx.router_socket().expect("router");
     let rid = RoutingId::from_bytes(b"perf-rr-server");
     router.set_routing_id(&rid).expect("set rid");
@@ -25,12 +26,6 @@ fn main() {
         .common_options()
         .set_recv_hwm(settings.recv_hwm)
         .expect("rcvhwm");
-    if settings.msg_unit_bytes > 0 {
-        router
-            .common_options()
-            .set_auto_hwm_msg_unit_bytes(settings.msg_unit_bytes)
-            .expect("auto hwm msg unit");
-    }
     router
         .common_options()
         .set_recv_timeout(Duration::from_millis(1))

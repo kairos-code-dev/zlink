@@ -54,7 +54,6 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     int PubSubHighWaterMark { get; set; }
     bool PublisherNoDrop { set; }
     TimeSpan? PublisherSendTimeout { set; }
-    int AutoHwmMessageUnitBytes { set; }
     int DispatchWorkersMin { get; set; }
     int DispatchWorkersMax { get; set; }
     RoutingId RoutingId { get; }
@@ -101,7 +100,6 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
     TimeSpan? SendTimeout { get; set; }
     TimeSpan? ReceiveTimeout { get; set; }
     TimeSpan? Linger { get; set; }
-    int AutoHwmMessageUnitBytes { get; set; }
 
     void SetRoutingId(RoutingId routingId);
     SendOperation Publish(string topic);

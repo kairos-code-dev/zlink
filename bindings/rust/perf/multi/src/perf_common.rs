@@ -506,7 +506,6 @@ pub struct MultiSettings {
     pub duration_seconds: u64,
     pub send_hwm: i32,
     pub recv_hwm: i32,
-    pub msg_unit_bytes: i32,
     pub send_timeout_ms: u64,
     pub recv_timeout_ms: u64,
 }
@@ -518,7 +517,6 @@ impl MultiSettings {
             duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
             send_hwm: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 0)),
             recv_hwm: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 0)),
-            msg_unit_bytes: env_or_i32("PERF_MULTI_MSG_UNIT_BYTES", 0),
             send_timeout_ms: env_or("PERF_MULTI_SNDTIMEO_MS", 200) as u64,
             recv_timeout_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as u64,
         }
@@ -539,7 +537,6 @@ fn manual_socket_overrides_allowed() -> bool {
 pub trait MultiSocketHwmOptions {
     fn set_send_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
     fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
-    fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ZlinkError>;
 }
 
 macro_rules! impl_multi_socket_hwm_options {
@@ -551,9 +548,6 @@ macro_rules! impl_multi_socket_hwm_options {
                 }
                 fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError> {
                     Ok(self.common_options().set_recv_hwm(hwm)?)
-                }
-                fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ZlinkError> {
-                    Ok(self.common_options().set_auto_hwm_msg_unit_bytes(bytes)?)
                 }
             }
         )+
@@ -583,20 +577,18 @@ pub fn apply_multi_hwm<O: MultiSocketHwmOptions>(opts: &O, settings: &MultiSetti
     }
 }
 
-// C perf_multi_runtime.hpp apply_benchmark_auto_hwm_msg_unit(): raw multi
-// sockets always get ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = msg_size. SPOT
-// node/handle excluded.
-pub fn apply_multi_auto_hwm_msg_unit<O: MultiSocketHwmOptions>(opts: &O, msg_size: usize) {
+pub fn apply_multi_auto_hwm_msg_unit(ctx: &Context, msg_size: usize) {
     if msg_size == 0 {
         return;
     }
     let unit = msg_size.min(i32::MAX as usize) as i32;
-    opts.set_auto_hwm_msg_unit_bytes(unit)
+    ctx.options()
+        .set_auto_hwm_msg_unit_bytes(unit)
         .expect("auto hwm msg unit");
 }
 
-// SPOT excluded from apply_benchmark_auto_hwm_msg_unit in C; node pubsub/router
-// HWM only under the manual-override gate (apply_benchmark_spot_node_hwm).
+// SPOT only applies node admission HWM under the manual-override gate; the
+// context message unit is applied once on the benchmark context.
 pub fn apply_multi_spot_node_admission(node: &zlink::SpotNode, settings: &MultiSettings) {
     if !manual_socket_overrides_allowed() {
         return;

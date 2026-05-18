@@ -5,6 +5,7 @@ from collections import deque
 import zlink
 
 from perf_multi_common import (
+    apply_multi_auto_hwm_msg_unit,
     apply_multi_socket_options,
     benchmark_endpoint,
     parse_server_args,
@@ -32,6 +33,7 @@ def main(argv=None):
     threading.Thread(target=wait_stop, daemon=True).start()
 
     with perf_server_context() as ctx:
+        apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         with zlink.RouterSocket(ctx) as router:
             apply_multi_socket_options(router)
             router.bind(endpoint)

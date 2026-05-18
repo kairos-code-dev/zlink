@@ -20,7 +20,8 @@ internal enum ContextOption
     SpotWorkerThreads = 11,
     AutoHwmEnabled = 12,
     AutoHwmRecalcDebounce = 14,
-    AutoHwmProfile = 17
+    AutoHwmProfile = 17,
+    AutoHwmMsgUnitBytes = 18
 }
 
 internal enum SocketOption

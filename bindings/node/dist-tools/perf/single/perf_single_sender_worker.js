@@ -147,28 +147,28 @@ async function main() {
             case 'pair':
                 socket = new zlink.PairSocket(ctx);
                 applySocketPolicy(socket, options);
-                applyAutoHwmMsgUnit(socket, msgSize);
+                applyAutoHwmMsgUnit(ctx, msgSize);
                 ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);
                 break;
             case 'dealer_dealer':
                 socket = new zlink.DealerSocket(ctx);
                 applySocketPolicy(socket, options);
-                applyAutoHwmMsgUnit(socket, msgSize);
+                applyAutoHwmMsgUnit(ctx, msgSize);
                 ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);
                 break;
             case 'dealer_router':
                 socket = new zlink.DealerSocket(ctx);
                 applySocketPolicy(socket, options);
-                applyAutoHwmMsgUnit(socket, msgSize);
+                applyAutoHwmMsgUnit(ctx, msgSize);
                 ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);
                 break;
             case 'pubsub':
                 socket = new zlink.PubSocket(ctx);
                 applySocketPolicy(socket, options);
-                applyAutoHwmMsgUnit(socket, msgSize);
+                applyAutoHwmMsgUnit(ctx, msgSize);
                 ctx.recalculateAutoHwm();
                 configureTlsServer(socket, transport);
                 socket.bind(endpoint);
@@ -178,7 +178,7 @@ async function main() {
             case 'router_router': {
                 socket = new zlink.RouterSocket(ctx);
                 applySocketPolicy(socket, options);
-                applyAutoHwmMsgUnit(socket, msgSize);
+                applyAutoHwmMsgUnit(ctx, msgSize);
                 socket.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(senderRoutingIdBytes)));
                 ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);

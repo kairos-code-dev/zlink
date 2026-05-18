@@ -132,14 +132,6 @@ public class CommonSocketOptions {
         socket.setOption(SocketOptions.ROUTE_VALUE_MAX_SIZE, value);
     }
 
-    public int autoHwmMessageUnitBytes() {
-        return socket.getOption(SocketOptions.AUTO_HWM_MSG_UNIT_BYTES);
-    }
-
-    public void autoHwmMessageUnitBytes(int value) {
-        socket.setOption(SocketOptions.AUTO_HWM_MSG_UNIT_BYTES, value);
-    }
-
     public Duration connectTimeout() {
         return Duration.ofMillis(socket.getOption(SocketOptions.CONNECT_TIMEOUT));
     }

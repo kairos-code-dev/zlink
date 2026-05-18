@@ -659,7 +659,6 @@ pub fn apply_single_hwm<O: SingleSocketHwmOptions>(opts: &O) {
 pub trait SingleSocketHwmOptions {
     fn set_send_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
     fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
-    fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ZlinkError>;
 }
 
 macro_rules! impl_single_socket_hwm_options {
@@ -672,9 +671,6 @@ macro_rules! impl_single_socket_hwm_options {
                 fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError> {
                     Ok(self.common_options().set_recv_hwm(hwm)?)
                 }
-                fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ZlinkError> {
-                    Ok(self.common_options().set_auto_hwm_msg_unit_bytes(bytes)?)
-                }
             }
         )+
     };
@@ -682,21 +678,18 @@ macro_rules! impl_single_socket_hwm_options {
 
 impl_single_socket_hwm_options!(PairSocket, PubSocket, DealerSocket, RouterSocket, SubSocket);
 
-// C bench_common_runtime.hpp apply_single_auto_hwm_msg_unit(): raw single
-// sockets (PAIR/DEALER/ROUTER/PUB/SUB) always get
-// ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = msg_size. SPOT node/handle excluded.
-pub fn apply_single_auto_hwm_msg_unit<O: SingleSocketHwmOptions>(opts: &O, msg_size: usize) {
+pub fn apply_single_auto_hwm_msg_unit(ctx: &Context, msg_size: usize) {
     if msg_size == 0 {
         return;
     }
     let unit = msg_size.min(i32::MAX as usize) as i32;
-    opts.set_auto_hwm_msg_unit_bytes(unit)
+    ctx.options()
+        .set_auto_hwm_msg_unit_bytes(unit)
         .expect("auto hwm msg unit");
 }
 
-// SPOT is excluded from apply_single_auto_hwm_msg_unit in C; the C SPOT runner
-// only applies the gated apply_single_hwm to the spot handles and never sets a
-// node pubsub/router HWM. Match that: default path applies no numeric HWM.
+// SPOT only applies node admission HWM under the manual-override gate; the
+// context message unit is applied once on the benchmark context.
 pub fn apply_single_spot_node_admission(node: &zlink::SpotNode) {
     if !manual_socket_overrides_allowed() {
         return;

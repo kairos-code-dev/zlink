@@ -372,21 +372,6 @@ impl SocketInner {
         get_i64_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_MAXMSGSIZE)
     }
 
-    pub fn set_auto_hwm_msg_unit_bytes(&self, bytes: i32) -> Result<(), ConfigError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-            bytes,
-        )
-    }
-
-    pub fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError> {
-        get_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-        )
-    }
-
     pub fn set_backlog(&self, value: i32) -> Result<(), ConfigError> {
         set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_BACKLOG, value)
     }

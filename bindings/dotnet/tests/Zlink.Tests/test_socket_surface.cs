@@ -196,6 +196,12 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(Context), "GetOption"));
         Assert.NotNull(typeof(ContextOptions).GetProperty("ThreadNamePrefix",
             BindingFlags.Instance | BindingFlags.Public));
+        Assert.NotNull(typeof(ContextOptions).GetProperty(
+            nameof(ContextOptions.AutoHwmMessageUnitBytes),
+            BindingFlags.Instance | BindingFlags.Public));
+        Assert.Null(typeof(CommonSocketOptions).GetProperty(
+            "AutoHwmMessageUnitBytes",
+            BindingFlags.Instance | BindingFlags.Public));
 
         Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send"));
         Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
@@ -251,6 +257,10 @@ public sealed class test_socket_surface
             "SetRouterHighWaterMarkProfile"));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode),
             "SetPubSubHighWaterMarkProfile"));
+        Assert.Null(typeof(SpotNode).GetProperty("AutoHwmMessageUnitBytes",
+            BindingFlags.Instance | BindingFlags.Public));
+        Assert.Null(typeof(Spot).GetProperty("AutoHwmMessageUnitBytes",
+            BindingFlags.Instance | BindingFlags.Public));
         Assert.False(HasPublicInstanceMethod(typeof(Message),
             "GetPropertyString"));
         Assert.True(typeof(SocketBase).GetMethod(nameof(SocketBase.MonitorOpen))!

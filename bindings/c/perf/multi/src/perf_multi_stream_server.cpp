@@ -116,6 +116,7 @@ int main (int argc, char **argv)
     perf_stop_requested ().store (false, std::memory_order_release);
     perf_multi_stream::reset_session (
       &g_stream_session,
+      ctx.get (),
       server,
       ZLINK_SOCKET_STREAM,
       settings.hwm,

@@ -19,11 +19,10 @@ fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
     let ctx = common::perf_server_context();
+    common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let mut stream = ctx.stream_socket().expect("stream");
-    // C perf_multi_stream_server.cpp: gated numeric HWM + unconditional
-    // AUTO_HWM_MSG_UNIT_BYTES = msg_size.
+    // C parity: numeric HWM remains behind the manual-override gate.
     common::apply_multi_hwm(&stream, &settings);
-    common::apply_multi_auto_hwm_msg_unit(&stream, args.msg_size);
     stream
         .common_options()
         .set_send_timeout(std::time::Duration::from_millis(settings.send_timeout_ms))

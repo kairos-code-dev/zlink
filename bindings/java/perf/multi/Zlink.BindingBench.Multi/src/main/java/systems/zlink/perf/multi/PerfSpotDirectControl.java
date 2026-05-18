@@ -42,7 +42,6 @@ final class PerfSpotDirectControl implements AutoCloseable {
         node.setRoutingId(routingId(label + "-control-node"));
         pub.setRoutingId(routingId(label + "-control-pub"));
         sub.setRoutingId(routingId(label + "-control-sub"));
-        PerfUtil.applySpotOptions(node, config);
         PerfUtil.configureServerTls(node, config.transport());
         PerfUtil.configureClientTls(node, config.transport());
         node.bind(endpoint);

@@ -36,11 +36,6 @@ internal sealed class SpotNodePublisherOptions
             value ? 1 : 0);
     }
 
-    public int AutoHwmMessageUnitBytes
-    {
-        set => _node.SetOption(SpotNodeSocketRole.Pub,
-            SocketOptions.AutoHwmMsgUnitBytes, value);
-    }
 }
 
 internal sealed class SpotNodeSubscriberOptions
@@ -69,9 +64,4 @@ internal sealed class SpotNodeSubscriberOptions
             CommonSocketOptions.EncodeDuration(value, nameof(value)));
     }
 
-    public int AutoHwmMessageUnitBytes
-    {
-        set => _node.SetOption(SpotNodeSocketRole.Sub,
-            SocketOptions.AutoHwmMsgUnitBytes, value);
-    }
 }

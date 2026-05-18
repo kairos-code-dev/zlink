@@ -729,32 +729,10 @@ void test_pair_ipc_large_message_shutdown ()
     assert (inbound.parts ()[0].size () == payload_size);
 }
 
-void test_common_auto_hwm_msg_unit_option_contract ()
-{
-    zlink::context_t ctx;
-    zlink::stream_socket_t socket (ctx);
-    zlink::stream_socket_options_t options = socket.options ();
-
-    options.auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (64));
-    assert (options.auto_hwm_msg_unit_bytes ().bytes () == 64);
-
-    bool rejected = false;
-    try {
-        options.auto_hwm_msg_unit_bytes (
-          zlink::byte_size_t::bytes (
-            static_cast<int64_t> (INT_MAX) + 1));
-    }
-    catch (const zlink::config_error_t &err) {
-        rejected = err.internal_errno () == EINVAL;
-    }
-    assert (rejected);
-}
-
 } // namespace
 
 int main ()
 {
-    test_common_auto_hwm_msg_unit_option_contract ();
     test_pair_send_recv_single_part ();
     test_pair_send_recv_single_part_direct ();
     test_pair_direct_recv_no_data_preserves_output ();

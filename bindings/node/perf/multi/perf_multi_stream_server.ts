@@ -44,7 +44,7 @@ async function main() {
   try {
     applySocketPolicy(stream);
     configureTlsServer(stream, options.transport);
-    applyAutoHwmMsgUnit(stream, options.msgSize);
+    applyAutoHwmMsgUnit(ctx, options.msgSize);
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(stream, 'endpoint', options.transport, options.msgSize);
     stream.bind(options.endpoint);

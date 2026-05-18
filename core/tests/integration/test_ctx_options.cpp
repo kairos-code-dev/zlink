@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <limits>
+#include <vector>
 #include <string.h>
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
@@ -8,6 +9,9 @@
 SETUP_TEARDOWN_TESTCONTEXT
 
 #define WAIT_FOR_BACKGROUND_THREAD_INSPECTION (0)
+
+static void read_socket_auto_hwm_snapshot (void *socket_,
+                                           zlink_monitor_snapshot_t *out_);
 
 #ifdef ZLINK_HAVE_LINUX
 #include <sys/time.h>
@@ -299,6 +303,171 @@ void test_ctx_option_auto_hwm_round_trip ()
                      NULL));
 }
 
+void test_ctx_option_auto_hwm_msg_unit_round_trip_and_validation ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT,
+      zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+    zlink_config_result_t err = ZLINK_CONFIG_INVALID_ARGUMENT;
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &err));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, err);
+
+    const int negative = -1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, negative));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+
+    const int value = 128;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_ctx_set_data (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value,
+                          sizeof (value) - 1));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
+    TEST_ASSERT_EQUAL_INT (
+      0, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+}
+
+void test_ctx_option_auto_hwm_msg_unit_applies_to_socket_snapshots ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (router);
+    zlink_monitor_snapshot_t snapshot;
+    read_socket_auto_hwm_snapshot (router, &snapshot);
+    TEST_ASSERT_EQUAL_UINT64 (64u, snapshot.auto_hwm_effective_message_bytes);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
+    read_socket_auto_hwm_snapshot (router, &snapshot);
+    TEST_ASSERT_EQUAL_UINT64 (256u, snapshot.auto_hwm_effective_message_bytes);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
+    read_socket_auto_hwm_snapshot (router, &snapshot);
+    TEST_ASSERT_EQUAL_UINT64 (4096u, snapshot.auto_hwm_effective_message_bytes);
+    test_context_socket_close (router);
+
+    void *stream = test_context_socket (ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    read_socket_auto_hwm_snapshot (stream, &snapshot);
+    TEST_ASSERT_EQUAL_UINT64 (1024u, snapshot.auto_hwm_effective_message_bytes);
+    test_context_socket_close (stream);
+}
+
+void test_ctx_option_auto_hwm_msg_unit_preserves_socket_override_priority ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+
+    void *explicit_socket = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (explicit_socket);
+    void *context_socket = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (context_socket);
+
+    int override_value = 512;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      explicit_socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &override_value,
+      sizeof (override_value)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
+
+    zlink_monitor_snapshot_t snapshot;
+    read_socket_auto_hwm_snapshot (explicit_socket, &snapshot);
+    TEST_ASSERT_EQUAL_UINT64 (512u, snapshot.auto_hwm_effective_message_bytes);
+    read_socket_auto_hwm_snapshot (context_socket, &snapshot);
+    TEST_ASSERT_EQUAL_UINT64 (256u, snapshot.auto_hwm_effective_message_bytes);
+
+    override_value = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      explicit_socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &override_value,
+      sizeof (override_value)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
+    read_socket_auto_hwm_snapshot (explicit_socket, &snapshot);
+    TEST_ASSERT_EQUAL_UINT64 (256u, snapshot.auto_hwm_effective_message_bytes);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
+    read_socket_auto_hwm_snapshot (explicit_socket, &snapshot);
+    TEST_ASSERT_EQUAL_UINT64 (4096u, snapshot.auto_hwm_effective_message_bytes);
+
+    test_context_socket_close (context_socket);
+    test_context_socket_close (explicit_socket);
+}
+
+static std::vector<zlink_spot_node_socket_snapshot_entry_t>
+read_spot_internal_socket_snapshot (void *node_)
+{
+    size_t count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_internal_sockets_snapshot (node_, NULL, NULL, &count));
+    std::vector<zlink_spot_node_socket_snapshot_entry_t> rows (count);
+    if (count != 0) {
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_internal_sockets_snapshot (
+          node_, NULL, &rows[0], &count));
+        rows.resize (count);
+    }
+    return rows;
+}
+
+static void assert_visible_spot_msg_unit (void *node_, uint64_t expected_)
+{
+    const std::vector<zlink_spot_node_socket_snapshot_entry_t> rows =
+      read_spot_internal_socket_snapshot (node_);
+    size_t visible_count = 0;
+    for (size_t i = 0; i != rows.size (); ++i) {
+        if (rows[i].auto_hwm_visible == 0)
+            continue;
+        ++visible_count;
+        TEST_ASSERT_EQUAL_UINT64 (
+          expected_, rows[i].snapshot.auto_hwm_effective_message_bytes);
+    }
+    TEST_ASSERT_TRUE (visible_count > 0);
+}
+
+void test_ctx_option_auto_hwm_msg_unit_applies_to_spot_internal_sockets ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+
+    assert_visible_spot_msg_unit (node, 64u);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
+    assert_visible_spot_msg_unit (node, 256u);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+}
+
 void test_ctx_option_auto_hwm_enabled_applies_profile ()
 {
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
@@ -532,6 +701,10 @@ int main (void)
     RUN_TEST (test_ctx_option_blocky);
     RUN_TEST (test_ctx_option_auto_hwm_defaults);
     RUN_TEST (test_ctx_option_auto_hwm_round_trip);
+    RUN_TEST (test_ctx_option_auto_hwm_msg_unit_round_trip_and_validation);
+    RUN_TEST (test_ctx_option_auto_hwm_msg_unit_applies_to_socket_snapshots);
+    RUN_TEST (test_ctx_option_auto_hwm_msg_unit_preserves_socket_override_priority);
+    RUN_TEST (test_ctx_option_auto_hwm_msg_unit_applies_to_spot_internal_sockets);
     RUN_TEST (test_ctx_option_auto_hwm_enabled_applies_profile);
     RUN_TEST (test_socket_option_auto_hwm_msg_unit_round_trip);
     RUN_TEST (test_socket_option_auto_hwm_stream_default_msg_unit);

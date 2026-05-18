@@ -139,6 +139,9 @@ template<typename T> class has_context_options_facade_t
                     std::declval<U &> ().auto_hwm_profile (),
                     std::declval<U &> ().auto_hwm_profile (
                       zlink::auto_hwm_profile::balanced),
+                    std::declval<U &> ().auto_hwm_msg_unit_bytes (),
+                    std::declval<U &> ().auto_hwm_msg_unit_bytes (
+                      zlink::byte_size_t::bytes (64)),
                     std::declval<U &> ().socket_limit (),
                     std::declval<U &> ().msg_t_size (),
                     std::declval<U &> ().add_thread_affinity (
@@ -202,6 +205,10 @@ void test_context_options ()
     assert (options.auto_hwm_profile () == zlink::auto_hwm_profile::compact);
     options.auto_hwm_profile (zlink::auto_hwm_profile::throughput);
     assert (options.auto_hwm_profile () == zlink::auto_hwm_profile::throughput);
+    options.auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (64));
+    assert (options.auto_hwm_msg_unit_bytes ().bytes () == 64);
+    options.auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (0));
+    assert (options.auto_hwm_msg_unit_bytes ().bytes () == 0);
 
     options.io_threads (zlink::io_thread_count_t::value (2));
     assert (options.io_threads ().value () == 2);

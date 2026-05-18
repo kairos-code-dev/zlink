@@ -415,6 +415,7 @@ void print_server_metrics(const std::string &lib_name,
 }
 
 bool run_server_loop(spot_server_state_t *state,
+                     void *ctx,
                      const multi_bench_settings_t &settings,
                      const std::string &lib_name,
                      const std::string &transport,
@@ -430,6 +431,8 @@ bool run_server_loop(spot_server_state_t *state,
                std::max(1000, settings.connect_ready_timeout_ms * 6));
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
+        if (!apply_benchmark_context_auto_hwm_msg_unit(ctx, msg_sizes[i]))
+            return false;
         if (perf_stop_requested ().load(std::memory_order_acquire)) {
             if (bench_transition_debug_enabled()) {
                 std::cerr << "[multi-spot-server] loop stop before size="
@@ -599,7 +602,7 @@ int run_server_benchmark(const std::string &lib_name,
     }
 
     const bool ok =
-      run_server_loop(&state, settings, lib_name, transport, msg_sizes);
+      run_server_loop(&state, ctx.get (), settings, lib_name, transport, msg_sizes);
     if (bench_transition_debug_enabled()) {
         std::cerr << "[multi-spot-server] benchmark done ok=" << (ok ? 1 : 0)
                   << " stop="

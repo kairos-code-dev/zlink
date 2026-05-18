@@ -142,6 +142,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     void schedule_auto_hwm_recalculate ();
     int auto_hwm_recalculate_now ();
     zlink_auto_hwm_profile_t auto_hwm_profile () const;
+    int auto_hwm_msg_unit_bytes () const;
 
   private:
     friend class ctx_bootstrap_t;
@@ -192,6 +193,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     bool _auto_hwm_enabled;
     int _auto_hwm_recalc_debounce_ms;
     zlink_auto_hwm_profile_t _auto_hwm_profile;
+    int _auto_hwm_msg_unit_bytes;
     bool _auto_hwm_recalc_pending;
     uint64_t _auto_hwm_last_change_ms;
     uint64_t _auto_hwm_recalc_deadline_ms;

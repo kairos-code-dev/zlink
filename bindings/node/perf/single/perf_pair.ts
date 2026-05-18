@@ -49,7 +49,7 @@ async function runPairBenchmark(msgSize, options) {
 
   try {
     applySocketPolicy(server, options);
-    applyAutoHwmMsgUnit(server, msgSize);
+    applyAutoHwmMsgUnit(ctx, msgSize);
     ctx.recalculateAutoHwm();
     configureTlsServer(server, options.transport);
     server.bind(endpoint);

@@ -33,6 +33,7 @@ internal static class PerfMultiSpotClient
         using var ctx = new Context();
         using var controlState = new RunnerControlState(config.Size);
         ApplyMultiClientContextOptions(ctx, options);
+        ApplyAutoHwmMsgUnit(ctx, config.Size);
 
         using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh,
             config.ChannelName);
@@ -41,7 +42,6 @@ internal static class PerfMultiSpotClient
         ConfigureSpotDiscoveryTlsIfNeeded(discovery, config.Transport);
         ConfigureSpotNodeTlsIfNeeded(node, config.Transport);
         ApplySpotSubscriberOptions(node, options);
-        ApplySpotNodeAutoHwmMsgUnit(node, config.Size);
         // ITEM 3 fix: tolerate the post-bind EAGAIN connect race (parity
         // with C discovery's connect/retry loop).
         ConnectRegistryWithRetry(discovery, config.RegistryEndpoint,
@@ -67,7 +67,6 @@ internal static class PerfMultiSpotClient
             {
                 var subscriber = node.CreateSpot();
                 ApplyMultiSpotSocketOptions(subscriber, options);
-                ApplySpotAutoHwmMsgUnit(subscriber, config.Size);
                 subscriber.SetSubscription(Topic);
                 var slot = new SpotClientSlot(subscriber,
                     new SpotClientSlotState(config.LatencySampleCap,
@@ -80,11 +79,8 @@ internal static class PerfMultiSpotClient
             using var controlNode = new SpotNode(ctx);
             ConfigureSpotNodeTlsIfNeeded(controlNode, config.Transport);
             ConfigureSpotControlNode(controlNode, config.ConnectReadyTimeoutMs);
-            ApplySpotNodeAutoHwmMsgUnit(controlNode, config.Size);
             using var controlPub = controlNode.CreateSpot();
             using var controlSub = controlNode.CreateSpot();
-            ApplySpotAutoHwmMsgUnit(controlPub, config.Size);
-            ApplySpotAutoHwmMsgUnit(controlSub, config.Size);
             controlSub.SetSubscription(ControlTopic);
             string localControlEndpoint = BindSpotNodeWithRetry(controlNode,
                 config.Transport, "multi-spot-ctrl-client", options);

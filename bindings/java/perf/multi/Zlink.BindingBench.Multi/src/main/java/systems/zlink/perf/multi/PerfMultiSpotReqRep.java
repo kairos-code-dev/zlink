@@ -57,7 +57,6 @@ final class PerfMultiSpotReqRep {
                  ctx, config, controlEndpoint, "reqrep-server")) {
             node.setRoutingId(SERVER_NODE_RID);
             replier.setRoutingId(SERVER_SPOT_RID);
-            PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
             node.bind(config.endpoint());
@@ -116,7 +115,6 @@ final class PerfMultiSpotReqRep {
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
                  ctx, config, clientControlEndpoint, "reqrep-client")) {
             node.setRoutingId(routingId("SPOT-REQREP-CLIENT-NODE"));
-            PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
             node.bind(clientDataEndpoint);

@@ -214,4 +214,3 @@ fn recv_router_once(handle: *mut c_void, flags: u32) -> Result<Option<Received>,
         recv_flags = ffi::ZLINK_DONTWAIT;
     }
 }
-

@@ -200,6 +200,7 @@ inline bool flush_pending_replies (void *server,
 }
 
 inline bool drain_recv_and_relay (void *server,
+                                  void *ctx,
                                   zlink_socket_type_t socket_type,
                                   int hwm_value,
                                   const std::string &transport,
@@ -262,7 +263,10 @@ inline bool drain_recv_and_relay (void *server,
         const size_t msg_size =
           part_count > 0 && parts ? zlink_msg_size (&parts[0]) : 0;
         if (active_msg_size && msg_size > 0 && *active_msg_size != msg_size) {
-            apply_benchmark_auto_hwm_msg_unit (server, socket_type, msg_size);
+            if (!apply_benchmark_context_auto_hwm_msg_unit (ctx, msg_size)) {
+                zlink_multipart_close (parts, part_count);
+                return false;
+            }
             apply_benchmark_hwm (server, hwm_value);
             *active_msg_size = msg_size;
             perf_print_auto_hwm_snapshot (
@@ -305,6 +309,7 @@ inline bool drain_recv_and_relay (void *server,
 
 inline bool run_server_loop (const relay_server_config_t &config,
                              void *server,
+                             void *ctx,
                              int hwm_value,
                              const std::string &lib_name,
                              const std::string &transport)
@@ -343,6 +348,7 @@ inline bool run_server_loop (const relay_server_config_t &config,
         if ((item.revents & ZLINK_POLLIN) != 0) {
             bool recv_drained = false;
             if (!drain_recv_and_relay (server,
+                                       ctx,
                                        config.socket_type,
                                        hwm_value,
                                        transport,
@@ -423,7 +429,8 @@ inline int run_server_benchmark (const relay_server_config_t &config,
     std::cout << "READY," << endpoint << std::endl;
 
     const bool loop_ok =
-      run_server_loop (config, server, settings.hwm, lib_name, transport);
+      run_server_loop (
+        config, server, ctx.get (), settings.hwm, lib_name, transport);
 
     zlink_close (server);
     return loop_ok ? 0 : 1;

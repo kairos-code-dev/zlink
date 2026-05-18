@@ -51,8 +51,6 @@ final class PerfRouterRouter {
             PerfUtil.applyMonitorOptions(senderMonitor, config);
             PerfUtil.applySocketOptions(receiver, config);
             PerfUtil.applySocketOptions(sender, config);
-            PerfUtil.applyAutoHwmMsgUnit(receiver, config.size());
-            PerfUtil.applyAutoHwmMsgUnit(sender, config.size());
             PerfUtil.recalculateAutoHwm(receiverCtx);
             PerfUtil.configureServerTls(receiver, config.transport());
             PerfUtil.configureClientTls(sender, config.transport());

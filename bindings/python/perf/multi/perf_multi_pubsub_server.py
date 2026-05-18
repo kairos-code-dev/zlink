@@ -8,6 +8,7 @@ import zlink
 from perf_multi_common import (
     STOP_TOKEN,
     TOPIC,
+    apply_multi_auto_hwm_msg_unit,
     apply_multi_socket_options,
     benchmark_endpoint,
     benchmark_run_id,
@@ -44,6 +45,7 @@ def main(argv=None):
     threading.Thread(target=read_commands, daemon=True).start()
 
     with perf_server_context() as ctx:
+        apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         with zlink.PubSocket(ctx) as publisher:
             apply_multi_socket_options(publisher)
             publisher.bind(endpoint)

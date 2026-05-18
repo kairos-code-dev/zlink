@@ -39,6 +39,7 @@ fn main() {
     let settings = common::MultiSettings::from_env();
 
     let ctx = common::perf_client_context();
+    common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let mut sockets: Vec<DealerSocket> = Vec::with_capacity(settings.clients);
     let mut payloads: Vec<Vec<u8>> = Vec::with_capacity(settings.clients);
     let mut waiting_reply = vec![false; settings.clients];
@@ -48,9 +49,8 @@ fn main() {
 
     for index in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
-        // C: gated numeric HWM + unconditional AUTO_HWM_MSG_UNIT_BYTES.
+        // C parity: numeric HWM remains behind the manual-override gate.
         common::apply_multi_hwm(&sock, &settings);
-        common::apply_multi_auto_hwm_msg_unit(&sock, args.msg_size);
         sock.common_options()
             .set_send_timeout(Duration::from_millis(settings.send_timeout_ms))
             .expect("send timeout");

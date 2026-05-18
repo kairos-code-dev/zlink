@@ -111,6 +111,7 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _auto_hwm_scope_count (1),
     _auto_hwm_role_override (false),
     _auto_hwm_policy_enabled (true),
+    _auto_hwm_msg_unit_override (false),
     _manual_sndhwm (false),
     _manual_rcvhwm (false),
     _manual_sndbuf (false),
@@ -243,9 +244,15 @@ zlink::auto_hwm_socket_plan_t zlink::socket_base_t::prepare_auto_hwm_socket_plan
     }
 
     auto_hwm_socket_plan_t plan;
+    ctx_t *ctx = get_ctx ();
+    const int message_unit_bytes =
+      _auto_hwm_msg_unit_override
+        ? options.auto_hwm_msg_unit_bytes
+        : (ctx ? ctx->auto_hwm_msg_unit_bytes ()
+               : context_.message_unit_bytes);
     auto_hwm_socket_plan_prepare (
       role, options.type, managed_connections, managed_connections, &plan,
-      options.auto_hwm_msg_unit_bytes, options.sndbuf, options.rcvbuf,
+      message_unit_bytes, options.sndbuf, options.rcvbuf,
       _manual_sndbuf, _manual_rcvbuf, _auto_hwm_scope, _auto_hwm_scope_count,
       true);
     plan.pending_messages = pending_messages;
@@ -317,8 +324,9 @@ void zlink::socket_base_t::refresh_auto_hwm_policy (bool force_apply_)
     }
 
     const bool enabled = ctx->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0;
-    auto_hwm_context_plan_make (enabled, ctx->auto_hwm_profile (),
-                                &_auto_hwm_context_plan);
+    auto_hwm_context_plan_make (
+      enabled, ctx->auto_hwm_profile (), &_auto_hwm_context_plan,
+      ctx->auto_hwm_msg_unit_bytes ());
     _auto_hwm_socket_plan = prepare_auto_hwm_socket_plan (_auto_hwm_context_plan);
     auto_hwm_context_finalize (&_auto_hwm_context_plan, &_auto_hwm_socket_plan,
                                1);

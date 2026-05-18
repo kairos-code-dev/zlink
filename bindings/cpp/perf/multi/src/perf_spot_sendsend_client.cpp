@@ -434,9 +434,7 @@ bool run_client (const std::string &lib_name,
           data_node, settings.sndhwm, settings.rcvhwm))
         return false;
     if (!perf::multi::apply_spot_auto_hwm_msg_unit (
-          control_node, snapshot_msg_size)
-        || !perf::multi::apply_spot_auto_hwm_msg_unit (
-          data_node, snapshot_msg_size))
+          ctx.ctx (), snapshot_msg_size))
         return false;
 
     const int base_port = perf::multi::bench_port_base (50000);
@@ -447,11 +445,6 @@ bool run_client (const std::string &lib_name,
     zlink::service::spot_t control_pub = control_node.create_spot ();
     zlink::service::spot_t control_sub = control_node.create_spot ();
     if (!control_pub.valid () || !control_sub.valid ())
-        return false;
-    if (!perf::multi::apply_spot_auto_hwm_msg_unit (
-          control_pub, snapshot_msg_size)
-        || !perf::multi::apply_spot_auto_hwm_msg_unit (
-          control_sub, snapshot_msg_size))
         return false;
     control_sub.set_subscription (k_control_topic);
     const std::string local_data_endpoint =
@@ -476,9 +469,6 @@ bool run_client (const std::string &lib_name,
                                 + std::to_string (i);
         slots[i].spot->set_routing_id (zlink::routing_id_t (
           reinterpret_cast<const uint8_t *> (rid.data ()), rid.size ()));
-        if (!perf::multi::apply_spot_auto_hwm_msg_unit (
-              *slots[i].spot, snapshot_msg_size))
-            return false;
         poller.add (*slots[i].spot, zlink::poll_event_flag_t::pollin, i);
     }
     if (!perf::multi::recalculate_auto_hwm (ctx))

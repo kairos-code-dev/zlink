@@ -155,11 +155,20 @@ void apply_single_hwm (perf_socket_t &socket_)
       socket_, zlink::compat::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
 }
 
-bool apply_single_auto_hwm_msg_unit (perf_socket_t &socket_, size_t msg_size_)
+bool apply_single_auto_hwm_msg_unit (ctx_guard_t &ctx_, size_t msg_size_)
 {
     if (msg_size_ == 0)
         return true;
-    return socket_.set_auto_hwm_msg_unit_bytes (msg_size_) == 0;
+    try {
+        zlink::context_options_t options = ctx_.ctx ().options ();
+        options.auto_hwm_msg_unit_bytes (
+          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
+        return true;
+    }
+    catch (const zlink::config_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
 }
 
 bool recalculate_single_auto_hwm (ctx_guard_t &ctx_)

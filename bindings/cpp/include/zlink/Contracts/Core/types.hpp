@@ -261,8 +261,7 @@ enum class socket_option : int
     tls_password = ZLINK_OPT_TLS_PASSWORD,
     zmp_metadata = ZLINK_OPT_ZMP_METADATA,
     rid_duplicate_policy = ZLINK_OPT_RID_DUPLICATE_POLICY,
-    route_value_max_size = ZLINK_OPT_ROUTE_VALUE_MAX_SIZE,
-    auto_hwm_msg_unit_bytes = ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES
+    route_value_max_size = ZLINK_OPT_ROUTE_VALUE_MAX_SIZE
 };
 
 enum class router_option : int
@@ -568,8 +567,6 @@ class common_socket_options_t
     void rid_duplicate_policy (rid_duplicate_policy_t value);
     byte_size_t max_message_size () const;
     void max_message_size (byte_size_t value);
-    byte_size_t auto_hwm_msg_unit_bytes () const;
-    void auto_hwm_msg_unit_bytes (byte_size_t value);
     socket_backlog_t backlog () const;
     void backlog (socket_backlog_t value);
     std::chrono::milliseconds reconnect_interval () const;

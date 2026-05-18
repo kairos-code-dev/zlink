@@ -133,6 +133,9 @@ int zlink::socket_base_t::setsockopt (int option_,
                 _manual_sndbuf = true;
             else if (option_ == ZLINK_INTERNAL_OPT_RCVBUF)
                 _manual_rcvbuf = true;
+            else if (option_ == ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES)
+                _auto_hwm_msg_unit_override =
+                  options.auto_hwm_msg_unit_bytes > 0;
 
             if (option_ == ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES
                 || option_ == ZLINK_INTERNAL_OPT_SNDBUF

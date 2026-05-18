@@ -9,6 +9,7 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 	ctx, err := perfcommon.NewSingleContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
+	perfcommon.ApplySingleAutoHWMMsgUnit(ctx, cfg.msgSize)
 
 	router, err := ctx.RouterSocket()
 	perfcommon.Must(err)
@@ -25,10 +26,6 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(router, cfg.transport))
 	perfcommon.Must(perfcommon.ConfigureTLSClient(dealer, cfg.transport))
-	// perf_dealer_router.cpp: apply_single_auto_hwm_msg_unit on the raw
-	// receiver/sender sockets, then apply_single_hwm (override-gated).
-	perfcommon.ApplySingleAutoHWMMsgUnit(router, cfg.msgSize)
-	perfcommon.ApplySingleAutoHWMMsgUnit(dealer, cfg.msgSize)
 	perfcommon.ApplySingleHWM(router)
 	perfcommon.ApplySingleHWM(dealer)
 	endpoint := perfcommon.BindAndResolveEndpoint(router, cfg.transport, "perf-dealer-router")

@@ -173,6 +173,7 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
   assert.equal(typeof ctx.options.threadPriority, 'number');
   assert.equal(typeof ctx.options.blocky, 'boolean');
   assert.equal(typeof ctx.options.autoHwmProfile, 'number');
+  assert.equal(ctx.options.autoHwmMsgUnitBytes, 0);
 
   ctx.options.ioThreads = ctx.options.ioThreads;
   ctx.options.maxSockets = ctx.options.maxSockets;
@@ -180,6 +181,14 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
   ctx.options.blocky = ctx.options.blocky;
   ctx.options.autoHwmProfile = zlink.AutoHwmProfile.Compact;
   assert.equal(ctx.options.autoHwmProfile, zlink.AutoHwmProfile.Compact);
+  ctx.options.autoHwmMsgUnitBytes = 64;
+  assert.equal(ctx.options.autoHwmMsgUnitBytes, 64);
+  ctx.options.autoHwmMsgUnitBytes = 0;
+  assert.equal(ctx.options.autoHwmMsgUnitBytes, 0);
+  assert.throws(() => {
+    ctx.options.autoHwmMsgUnitBytes = -1;
+  }, RangeError);
+  assert.equal('autoHwmMsgUnitBytes' in pair.options, false);
   try {
     assert.equal(typeof ctx.options.threadSchedulingPolicy, 'number');
     ctx.options.threadSchedulingPolicy = ctx.options.threadSchedulingPolicy;

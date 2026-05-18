@@ -392,10 +392,12 @@ queue limits and transport socket HWM.
 With no numeric override, SpotNode admission HWM uses the profile's message-count
 baseline: COMPACT `64`, LOW_LATENCY `128`, BALANCED `256`, THROUGHPUT `512`.
 SPOT service handles do not accept the raw-socket
-`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` option, so the default SPOT path is planned
-with the non-STREAM default message unit, `4096` bytes. The balanced default is
-therefore `256`; small payloads do not raise it to `1024` by themselves. Peer
-control sockets stay outside this admission group.
+`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` option. SPOT data-path sockets instead use
+the context `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` when it is positive, or the
+non-STREAM default message unit, `4096` bytes, when the context value is `0`.
+With the default context value the balanced default is therefore `256`; small
+payloads do not raise it to `1024` by themselves. Peer control sockets stay
+outside this admission group.
 
 Relay sockets (`fanout` SNDHWM 0, `mesh-pub` SNDHWM per auto-HWM) and delivery
 sockets use HWM `0`. This prevents hidden per-peer or per-target queue caps inside

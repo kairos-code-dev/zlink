@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ContextContractTest {
@@ -45,6 +46,13 @@ public class ContextContractTest {
             assertDoesNotThrow(
                 () -> options.autoHwmProfile(AutoHwmProfile.COMPACT));
             assertEquals(AutoHwmProfile.COMPACT, options.autoHwmProfile());
+            assertEquals(0, options.autoHwmMessageUnitBytes());
+            assertDoesNotThrow(() -> options.autoHwmMessageUnitBytes(64));
+            assertEquals(64, options.autoHwmMessageUnitBytes());
+            assertDoesNotThrow(() -> options.autoHwmMessageUnitBytes(0));
+            assertEquals(0, options.autoHwmMessageUnitBytes());
+            assertThrows(IllegalArgumentException.class,
+                () -> options.autoHwmMessageUnitBytes(-1));
             assertTrue(options.msgTSize() > 0);
         }
     }

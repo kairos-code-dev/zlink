@@ -334,15 +334,7 @@ bool perf_spot_server (const std::string &lib_name,
         return false;
     const size_t snapshot_msg_size = msg_sizes.empty () ? msg_size_ : msg_sizes[0];
     if (!perf::multi::apply_spot_auto_hwm_msg_unit (
-          node, snapshot_msg_size)
-        || !perf::multi::apply_spot_auto_hwm_msg_unit (
-          control_node, snapshot_msg_size)
-        || !perf::multi::apply_spot_auto_hwm_msg_unit (
-          spot, snapshot_msg_size)
-        || !perf::multi::apply_spot_auto_hwm_msg_unit (
-          control_pub, snapshot_msg_size)
-        || !perf::multi::apply_spot_auto_hwm_msg_unit (
-          control_sub, snapshot_msg_size))
+          ctx.ctx (), snapshot_msg_size))
         return false;
     if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;

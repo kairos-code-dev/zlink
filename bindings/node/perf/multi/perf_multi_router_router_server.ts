@@ -39,7 +39,7 @@ async function main() {
       zlink.RoutingId.fromBytes(Buffer.from('multi-router-router-server', 'ascii'))
     );
     router.bind(options.endpoint);
-    applyAutoHwmMsgUnit(router, options.msgSize);
+    applyAutoHwmMsgUnit(ctx, options.msgSize);
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(router, 'endpoint', options.transport, options.msgSize);
     poller.add(router, pollEvents(POLLIN));

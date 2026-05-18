@@ -97,30 +97,35 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
 
 ## 2. 자동 HWM 메시지 단위
 
-`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 자동 HWM 정책이 큐 슬롯 1개를 몇
-바이트로 볼지 정한다. 이 값은 최대 메시지 크기 제한이 아니다. 인바운드
-메시지 크기 제한은 `ZLINK_OPT_MAXMSGSIZE`가 담당한다.
+`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 context 안의 소켓에 대해 자동 HWM
+정책이 큐 슬롯 1개를 몇 바이트로 볼지 정합니다. 이 값은 최대 메시지 크기
+제한이 아닙니다. 인바운드 메시지 크기 제한은 `ZLINK_OPT_MAXMSGSIZE`가
+담당합니다.
 
-소켓의 일반적인 payload 크기를 알고 있고 기본 계획 크기와 다를 때만 이
-옵션을 조정한다. 기본값 `0`은 소켓 타입별 기본 메시지 단위를 쓰겠다는 뜻이다.
+워크로드의 일반적인 payload 크기를 알고 있고 기본 계획 크기와 다를 때 이
+context 옵션을 조정합니다. 기본값 `0`은 소켓 타입별 기본 메시지 단위를
+쓰겠다는 뜻입니다. C 저수준 socket option인
+`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 한 raw socket만 context와 다른 메시지
+단위를 써야 할 때 사용할 수 있습니다.
 
 | 소켓 타입 | 기본 메시지 단위 |
 |-----------|------------------|
 | `STREAM` | `1024` bytes |
 | 그 외 소켓 | `4096` bytes |
 
-`zlink_get_option()`은 사용자가 설정한 raw 값을 반환한다. 반환값이 `0`이면
-소켓 타입별 기본값을 쓴다는 뜻이고, 실제 계산에 쓰인 값은 monitor snapshot의
-`auto_hwm_effective_message_bytes`에서 확인한다.
+`zlink_ctx_get()`은 사용자가 설정한 context raw 값을 반환합니다. 반환값이
+`0`이면 소켓 타입별 기본값을 쓴다는 뜻이고, 실제 계산에 쓰인 값은 monitor
+snapshot의 `auto_hwm_effective_message_bytes`에서 확인합니다.
 
 ```c
 int msg_unit = 8192;
-zlink_set_option(socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-                 &msg_unit, sizeof(msg_unit));
+zlink_ctx_set(ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, msg_unit);
 ```
 
-음수는 `EINVAL`로 실패하며 기존 설정을 바꾸지 않는다. `ZLINK_OPT_SNDHWM` 또는
-`ZLINK_OPT_RCVHWM`을 직접 설정한 소켓에서는 그 수동 HWM이 계속 우선한다.
+음수는 `EINVAL`로 실패하며 기존 설정을 바꾸지 않습니다. `ZLINK_OPT_SNDHWM`
+또는 `ZLINK_OPT_RCVHWM`을 직접 설정한 소켓에서는 그 수동 HWM이 계속
+우선합니다. context option과 raw socket option을 모두 설정하면 해당 소켓에는
+raw socket option이 우선 적용됩니다.
 
 ### 수동 재계산 트리거
 

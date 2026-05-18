@@ -123,6 +123,13 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.assertEqual(
                 ctx.options.auto_hwm_profile, zlink.AutoHwmProfile.THROUGHPUT
             )
+            self.assertEqual(ctx.options.auto_hwm_msg_unit_bytes, 0)
+            ctx.options.auto_hwm_msg_unit_bytes = 64
+            self.assertEqual(ctx.options.auto_hwm_msg_unit_bytes, 64)
+            ctx.options.auto_hwm_msg_unit_bytes = 0
+            self.assertEqual(ctx.options.auto_hwm_msg_unit_bytes, 0)
+            with self.assertRaises(ValueError):
+                ctx.options.auto_hwm_msg_unit_bytes = -1
             self.assertFalse(hasattr(ctx.options, "ioThreads"))
             self.assertFalse(hasattr(ctx.options, "maxSockets"))
 
@@ -133,6 +140,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
             with zlink.PairSocket(ctx) as sock:
                 self.assertTrue(hasattr(sock, "get_channel_name"))
                 self.assertTrue(hasattr(sock, "set_channel_name"))
+                self.assertFalse(hasattr(sock.options, "auto_hwm_msg_unit_bytes"))
                 options = sock.options
                 self.assertIn("connect_timeout_ms", dir(options))
                 self.assertIn("ipv6", dir(options))

@@ -417,11 +417,11 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void ApplySingleAutoHwmMsgUnit(SocketBase socket, int msgSize)
+    internal static void ApplySingleAutoHwmMsgUnit(Context ctx, int msgSize)
     {
         if (msgSize <= 0)
             return;
-        socket.Options.AutoHwmMessageUnitBytes = msgSize;
+        ctx.Options.AutoHwmMessageUnitBytes = msgSize;
     }
 
     internal static void RecalculateSingleAutoHwm(Context ctx)

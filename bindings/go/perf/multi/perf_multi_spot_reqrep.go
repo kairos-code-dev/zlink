@@ -23,6 +23,7 @@ func runMultiSpotReqRepServer(cfg multiConfig) {
 	replierCtx, err := perfcommon.NewMultiServerContext()
 	perfcommon.Must(err)
 	defer replierCtx.Close()
+	perfcommon.ApplyMultiAutoHWMMsgUnit(replierCtx, cfg.msgSize)
 
 	replierNode, err := replierCtx.SpotNode()
 	perfcommon.Must(err)
@@ -147,6 +148,7 @@ func runMultiSpotReqRepClientRole(cfg multiConfig, endpoint string) perfcommon.R
 	clientCtx, err := perfcommon.NewMultiClientContext()
 	perfcommon.Must(err)
 	defer clientCtx.Close()
+	perfcommon.ApplyMultiAutoHWMMsgUnit(clientCtx, cfg.msgSize)
 	node, err := clientCtx.SpotNode()
 	perfcommon.Must(err)
 	defer node.Close()

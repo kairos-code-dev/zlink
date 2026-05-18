@@ -5,6 +5,7 @@ from contextlib import ExitStack
 import zlink
 
 from perf_multi_common import (
+    apply_multi_auto_hwm_msg_unit,
     apply_multi_socket_options,
     benchmark_run_id,
     extract_metric_payload,
@@ -36,6 +37,7 @@ def main(argv=None):
     seq = 0
 
     with perf_client_context() as ctx:
+        apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         sockets = [zlink.RouterSocket(ctx) for _ in range(args.clients)]
         try:
             with ExitStack() as stack:

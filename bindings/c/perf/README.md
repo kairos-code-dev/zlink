@@ -129,9 +129,10 @@ Profile guidance after the auto-HWM message-unit change:
 | `throughput` | larger per-connection queue depth for high throughput sweeps |
 
 If calculated HWM values are too small for the target traffic shape, first
-select a larger profile. Use `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` only when the
-raw benchmark socket's effective message unit differs from the socket-type
-default.
+select a larger profile. Use `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` when the
+benchmark context's effective message unit differs from the socket-type default.
+Use raw socket `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` only for a socket-specific
+override inside that context.
 
 ## SPOT One-Way Latency
 

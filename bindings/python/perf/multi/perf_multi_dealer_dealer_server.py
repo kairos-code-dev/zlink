@@ -5,6 +5,7 @@ import time
 import zlink
 
 from perf_multi_common import (
+    apply_multi_auto_hwm_msg_unit,
     apply_multi_socket_options,
     benchmark_endpoint,
     benchmark_run_id,
@@ -43,6 +44,7 @@ def main(argv=None):
     threading.Thread(target=read_commands, daemon=True).start()
 
     with perf_server_context() as ctx:
+        apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         with zlink.DealerSocket(ctx) as dealer:
             configure_multi_tls_server(dealer, args.transport)
             apply_multi_socket_options(dealer)

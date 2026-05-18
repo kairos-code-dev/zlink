@@ -49,7 +49,7 @@ async function runDealerRouterBenchmark(msgSize, options) {
 
   try {
     applySocketPolicy(router, options);
-    applyAutoHwmMsgUnit(router, msgSize);
+    applyAutoHwmMsgUnit(ctx, msgSize);
     ctx.recalculateAutoHwm();
     configureTlsServer(router, options.transport);
     router.bind(endpoint);

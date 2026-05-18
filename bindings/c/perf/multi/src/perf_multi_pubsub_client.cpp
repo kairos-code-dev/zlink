@@ -363,6 +363,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         const size_t msg_size = msg_sizes[si];
         const uint32_t run_id = static_cast<uint32_t> (si + 1);
         refresh_connected_client_auto_hwm (
+          ctx.get (),
           sockets,
           k_client_socket_type,
           base_settings.hwm,

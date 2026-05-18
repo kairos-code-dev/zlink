@@ -125,9 +125,4 @@ internal sealed class SpotOptions
             CommonSocketOptions.EncodeDuration(value, nameof(value)));
     }
 
-    public int AutoHwmMessageUnitBytes
-    {
-        get => _spot.GetSocketOption(SocketOptions.AutoHwmMsgUnitBytes);
-        set => _spot.SetSocketOption(SocketOptions.AutoHwmMsgUnitBytes, value);
-    }
 }

@@ -7,6 +7,7 @@ import zlink
 
 from perf_multi_common import (
     TOPIC,
+    apply_multi_auto_hwm_msg_unit,
     apply_multi_spot_node_admission,
     bind_spot_node_endpoint,
     configure_multi_tls_client,
@@ -74,6 +75,7 @@ def main(argv=None):
                 return
 
     with perf_server_context() as ctx:
+        apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         data_node = zlink.SpotNode(ctx)
         control_node = zlink.SpotNode(ctx)
         configure_multi_tls_server(data_node, args.transport)

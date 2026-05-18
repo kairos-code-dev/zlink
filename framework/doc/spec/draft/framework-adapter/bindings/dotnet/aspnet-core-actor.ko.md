@@ -848,6 +848,11 @@ actor handler 는 **`IZLinkSessionProxy`** 에 "현재 actor 의 client 로 mess
 를 보내라" 고만 부탁한다. 다른 actor id 의 client 로 보내야 하는 service 는
 **`IZLinkActorSessionClient`** 를 사용한다.
 
+actor handler 인터페이스와 `ZLinkActorSendContext` /
+`ZLinkActorRequestContext` 는 `Zlink.Framework.Contracts.Actors` 에 둔다.
+`IZLinkSessionProxy` 는 client stream 연결을 향한 proxy 이므로
+`Zlink.Framework.Contracts.Streams` 에 남긴다.
+
 이 부탁을 받은 framework 는 다음 순서로 일을 처리한다.
 
 1. actor-session binding 에서 현재 session 노드를 찾는다.
@@ -868,6 +873,9 @@ frame 으로 처리한다. 따라서 actor dispatch payload 를 내부 DTO[^dto]
 ### 9.2 `IZLinkSessionProxy`
 
 ```csharp
+using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Streams;
+
 public interface IZLinkSessionProxy
 {
     IZLinkSessionProxySendCall Send<TMessage>(TMessage message);

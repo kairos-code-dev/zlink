@@ -66,6 +66,9 @@
 | value | `IZLinkActorRef` | session이 actor dispatch target으로 들고 있는 handle | 4.4.1 |
 | handler | `IZLinkActor` | actor runtime 안에서 생성되는 application actor | 4.4.1 |
 | context | `IZLinkActorContext` | spot join, channel/client stream 호출 | 4.4.1 |
+| handler | `IZLinkActorSendHandler<TMessage>` / `IZLinkActorRequestHandler<TRequest, TReply>` | actor 안에서 처리하는 session relay message handler | 4.4.1 |
+| handler | `IZLinkActorPacketHandler<TActor, TMessage>` / `IZLinkActorRequestHandler<TActor, TRequest, TReply>` | actor instance 를 직접 받는 actor message handler | 4.4.1 |
+| context | `ZLinkActorSendContext` / `ZLinkActorRequestContext` | actor handler 실행 context. session proxy 와 metadata 를 제공한다 | 4.4.1 |
 | handler | `IZLinkEntrySpotActorSendHandler<TActor, TMessage>` / `IZLinkEntrySpotActorRequestHandler<TActor, TRequest, TReply>` | Entry Spot actor message handler | 4.4.2 |
 | handler | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` / `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user Spot actor message handler | 4.4.2 |
 | value | `ZLinkMessageMetadata` | actor/session proxy call에 전달되는 application/codec metadata snapshot | 4.4.2 |
@@ -1352,6 +1355,10 @@ actor 실행 객체와 session dispatch handle 은 분리해서 다룬다. sessi
 가 `Context` 를 설정한 다음, `Configure()` 를 한 번 호출한다. 그 이후의
 callback signature 는 context 인자를 매번 다시 받지 않는다.
 
+actor handler 계약은 actor 런타임이 소유하므로 `Zlink.Framework.Contracts.Actors`
+namespace 에 둔다. session 은 `IZLinkSessionActorDispatchContext` 로 packet 을
+actor 에 전달할 뿐이고, handler 선택과 실행은 actor runtime 이 처리한다.
+
 ```csharp
 public interface IZLinkActorRef
 {
@@ -1451,6 +1458,57 @@ public interface IZLinkActorFactory
 // actor 구현체는 factory 가 받은 context 를 생성자에 넘겨 보관하고,
 // Context property 로 그대로 노출해야 한다. framework 는 bind 시점에
 // 같은 context 인스턴스인지 검증한다.
+
+public interface IZLinkActorSendHandler<in TMessage>
+{
+    ValueTask HandleAsync(
+        TMessage message,
+        ZLinkActorSendContext context,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkActorRequestHandler<in TRequest, TReply>
+{
+    ValueTask<TReply> HandleAsync(
+        TRequest request,
+        ZLinkActorRequestContext context,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkActorPacketHandler<in TActor, in TMessage>
+    where TActor : IZLinkActor
+{
+    ValueTask HandleAsync(
+        TActor actor,
+        TMessage message,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkActorRequestHandler<in TActor, in TRequest, TReply>
+    where TActor : IZLinkActor
+{
+    ValueTask<TReply> HandleAsync(
+        TActor actor,
+        TRequest request,
+        CancellationToken cancellationToken);
+}
+
+public sealed class ZLinkActorSendContext : ZLinkHandlerContext
+{
+    public string ActorId { get; }
+    public string RouterChannelId { get; }
+    public ZLinkMessageMetadata Metadata { get; }
+    public IZLinkSessionProxy SessionProxy { get; }
+}
+
+public sealed class ZLinkActorRequestContext : ZLinkHandlerContext
+{
+    public string ActorId { get; }
+    public string RouterChannelId { get; }
+    public ZLinkMessageMetadata Metadata { get; }
+    public IZLinkSessionProxy SessionProxy { get; }
+    public new DateTimeOffset? Deadline { get; }
+}
 
 // Spot에 actor를 join할 때 호출되는 handler. spot 등록의 AddActorJoin<...>() 표면이
 // 이 generic 인자를 받고, framework는 join 시점에 target spot, joining actor,
@@ -2126,6 +2184,12 @@ direct target helper 는 transport 위치값을 이미 알고 있는 framework �
 
 actor handler 가 client session 으로 push 또는 request 를 보낼 때 사용하는
 client 다.
+
+`IZLinkSessionProxy` 자체는 연결된 client stream 을 향한 proxy 이므로
+`Zlink.Framework.Contracts.Streams` 에 둔다. 다만 이 proxy 를 받는
+`ZLinkActorSendContext` / `ZLinkActorRequestContext` 와 actor handler
+인터페이스는 actor runtime 이 선택하고 실행하므로
+`Zlink.Framework.Contracts.Actors` 에 둔다.
 
 application handler 는 actor id 만 넘긴다. 다음 metadata 들은
 framework/core 의 actor-session binding 안에만 머문다.

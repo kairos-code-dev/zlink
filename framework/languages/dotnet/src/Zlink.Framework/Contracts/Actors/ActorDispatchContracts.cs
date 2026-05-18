@@ -1,6 +1,7 @@
-using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Streams;
 
-namespace Zlink.Framework.Contracts.Streams;
+namespace Zlink.Framework.Contracts.Actors;
 
 public interface IZLinkActorSendHandler<in TMessage>
 {

@@ -7,11 +7,11 @@ internal sealed class ZlinkStreamTypedHandlerRegistry
 
     public IDisposable Add(
         string name,
-        Func<ZlinkStreamMessage<ZlinkStreamEncodedBody>, CancellationToken, ValueTask> handler)
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler)
     {
-        var typed = new TypedHandler(async (message, body, cancellationToken) =>
+        var typed = new TypedHandler(async (message, payload, cancellationToken) =>
         {
-            await handler(new ZlinkStreamMessage<ZlinkStreamEncodedBody>(message.Name, message.Metadata, (ZlinkStreamEncodedBody)body!), cancellationToken)
+            await handler(new ZlinkStreamMessage<ZlinkStreamEncodedPayload>(message.Name, message.Metadata, (ZlinkStreamEncodedPayload)payload!), cancellationToken)
                 .ConfigureAwait(false);
         });
 

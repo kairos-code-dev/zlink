@@ -5,42 +5,42 @@ namespace Systems.Zlink.Stream.Connector.Json;
 
 public static class ZlinkStreamJsonConnectorExtensions
 {
-    public static ZlinkStreamJsonSendBuilder Send<TBody>(
+    public static ZlinkStreamJsonSendBuilder Send<TPayload>(
         this IZlinkStreamConnector connector,
-        TBody body)
+        TPayload payload)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return new ZlinkStreamJsonSendBuilder(connector.Send(body.ToJson()));
+        return new ZlinkStreamJsonSendBuilder(connector.Send(payload.ToJson()));
     }
 
-    public static ZlinkStreamJsonRequestBuilder Request<TBody>(
+    public static ZlinkStreamJsonRequestBuilder Request<TPayload>(
         this IZlinkStreamConnector connector,
-        TBody body)
+        TPayload payload)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return new ZlinkStreamJsonRequestBuilder(connector.Request(body.ToJson()));
+        return new ZlinkStreamJsonRequestBuilder(connector.Request(payload.ToJson()));
     }
 
-    public static IDisposable On<TBody>(
+    public static IDisposable On<TPayload>(
         this IZlinkStreamConnector connector,
-        Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
+        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(connector);
         var resolver = connector.Options.NameResolver ?? ZlinkStreamDefaultCodecs.PacketNameResolver();
-        return connector.On(resolver.Resolve(typeof(TBody)), handler);
+        return connector.On(resolver.Resolve(typeof(TPayload)), handler);
     }
 
-    public static IDisposable On<TBody>(
+    public static IDisposable On<TPayload>(
         this IZlinkStreamConnector connector,
         string name,
-        Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
+        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(connector);
         ArgumentNullException.ThrowIfNull(handler);
         return connector.On(name, (message, cancellationToken) =>
         {
-            var body = message.Body.FromJson<TBody>();
-            return handler(new ZlinkStreamMessage<TBody>(message.Name, message.Metadata, body), cancellationToken);
+            var payload = message.Payload.FromJson<TPayload>();
+            return handler(new ZlinkStreamMessage<TPayload>(message.Name, message.Metadata, payload), cancellationToken);
         });
     }
 }

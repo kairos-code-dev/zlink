@@ -46,7 +46,6 @@ public sealed record SpotNodeSocketSnapshotEntry(
     bool AutoHwmVisible,
     MonitorSnapshot Snapshot);
 
-
 public interface ISpotNode : IDisposable, IAsyncDisposable
 {
     AutoHwmProfile RouterHwmProfile { get; set; }
@@ -55,6 +54,7 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     int PubSubHighWaterMark { get; set; }
     bool PublisherNoDrop { set; }
     TimeSpan? PublisherSendTimeout { set; }
+    int AutoHwmMessageUnitBytes { set; }
     int DispatchWorkersMin { get; set; }
     int DispatchWorkersMax { get; set; }
     RoutingId RoutingId { get; }

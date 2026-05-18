@@ -15,13 +15,14 @@ internal sealed partial class SocketKernel
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
-            MultipartMessageCollection parts = ReceiveSubscribedParts(flags,
-                topicBuffer, out byte[]? routingIdBytes, out string topic)
-                ?? throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            RoutingId? routingId = routingIdBytes == null
-                ? null
-                : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-            if (parts.Count == 0)
+            if (!ReceiveSubscribedParts(flags, topicBuffer,
+                    out RoutingIdSnapshot routingId, out int topicLength,
+                    out Message? singlePart, out MultipartMessageCollection? parts))
+                throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
+            string topic = DecodeTopic(topicBuffer, (nuint)topicLength);
+            if (singlePart != null)
+                return new TopicMessage(routingId, topic, singlePart);
+            if (parts == null || parts.Count == 0)
                 throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
             return new TopicMessage(routingId, topic, parts);
         }
@@ -33,27 +34,24 @@ internal sealed partial class SocketKernel
 
     private unsafe bool SubscribeInto(TopicMessage result, int flags)
     {
-        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
-        try
+        byte[] topicBuffer = result.GetWritableTopicBuffer(TopicBufferSize);
+        bool allowNoData = (flags & DontWaitFlag) != 0;
+        bool received = ReceiveSubscribedParts(flags, topicBuffer,
+            out RoutingIdSnapshot routingId, out int topicLength,
+            out Message? singlePart, out MultipartMessageCollection? parts,
+            allowNoData: allowNoData);
+        if (!received)
+            return false;
+        if (singlePart != null)
         {
-            bool allowNoData = (flags & DontWaitFlag) != 0;
-            MultipartMessageCollection? parts = ReceiveSubscribedParts(flags,
-                topicBuffer, out byte[]? routingIdBytes, out string topic,
-                allowNoData: allowNoData);
-            if (parts == null)
-                return false;
-            RoutingId? routingId = routingIdBytes == null
-                ? null
-                : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-            if (parts.Count == 0)
-                throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            result.Populate(routingId, topic, parts);
+            result.PopulateSinglePartFromWritableTopicBuffer(routingId,
+                topicLength, singlePart);
             return true;
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(topicBuffer);
-        }
+        if (parts == null || parts.Count == 0)
+            throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
+        result.PopulateFromWritableTopicBuffer(routingId, topicLength, parts);
+        return true;
     }
 
     private unsafe byte[][] ReceiveRawSubscribedFramesCore(int flags)

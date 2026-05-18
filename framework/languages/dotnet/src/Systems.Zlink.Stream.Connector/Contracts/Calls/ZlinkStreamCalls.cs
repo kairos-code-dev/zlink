@@ -25,9 +25,9 @@ public interface IZlinkStreamRequestCall
 
     IZlinkStreamRequestCall Compress();
 
-    ValueTask<ZlinkStreamEncodedBody> SubmitAsync(CancellationToken cancellationToken = default);
+    ValueTask<ZlinkStreamEncodedPayload> SubmitAsync(CancellationToken cancellationToken = default);
 
     void Submit(Action<ZlinkStreamResult> callback);
 
-    void Submit(Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback);
+    void Submit(Action<ZlinkStreamResult<ZlinkStreamEncodedPayload>> callback);
 }

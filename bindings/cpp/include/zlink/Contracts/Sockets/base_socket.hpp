@@ -339,7 +339,13 @@ class base_socket_t
           envelope.has_request_seq ? std::optional<uint64_t> (envelope.request_seq)
                                    : std::nullopt;
 
-        if (envelope.parts.size () == 1u) {
+        if (envelope.single_part.has_value ()) {
+            received_ = received_t (
+              source_rid, source_spot_rid, request_seq,
+              std::move (*envelope.single_part),
+              std::function<void(std::vector<message_t> &, send_flags_t)> (),
+              std::move (send_fn));
+        } else if (envelope.parts.size () == 1u) {
             received_ = received_t (
               source_rid, source_spot_rid, request_seq,
               std::move (envelope.parts[0]),

@@ -11,7 +11,7 @@ internal sealed class ZLinkActorDispatchRouter(
     public async ValueTask SubmitByIdAsync(
         string actorId,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
         var state = actorSessions.GetOrCreate(actorId);
@@ -20,13 +20,13 @@ internal sealed class ZLinkActorDispatchRouter(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor '{actorId}' is not active.");
 
-        await SubmitAsync(actor, header, body, cancellationToken).ConfigureAwait(false);
+        await SubmitAsync(actor, header, payload, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask<byte[]> SubmitForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
         var state = actorSessions.GetOrCreate(actorId);
@@ -35,14 +35,14 @@ internal sealed class ZLinkActorDispatchRouter(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor '{actorId}' is not active.");
 
-        return await SubmitForReplyAsync(actor, state, header, body, cancellationToken)
+        return await SubmitForReplyAsync(actor, state, header, payload, cancellationToken)
             .ConfigureAwait(false);
     }
 
     public async ValueTask SubmitAsync(
         IZLinkActor actor,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
         var actorId = actor.ActorId;
@@ -54,7 +54,7 @@ internal sealed class ZLinkActorDispatchRouter(
         {
             shouldPrune = await state.ExecuteDispatchAsync(
                     header,
-                    ct => SubmitByCurrentLocationAsync(actor, state, header, body, ct),
+                    ct => SubmitByCurrentLocationAsync(actor, state, header, payload, ct),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -71,12 +71,12 @@ internal sealed class ZLinkActorDispatchRouter(
         IZLinkActor actor,
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
         return await state.ExecuteDispatchAsync(
                 header,
-                ct => SubmitByCurrentLocationForReplyAsync(actor, state, header, body, ct),
+                ct => SubmitByCurrentLocationForReplyAsync(actor, state, header, payload, ct),
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -85,7 +85,7 @@ internal sealed class ZLinkActorDispatchRouter(
         IZLinkActor actor,
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
         var activation = await state.ExecuteLockedAsync(
@@ -110,19 +110,19 @@ internal sealed class ZLinkActorDispatchRouter(
                     actor,
                     state,
                     header,
-                    body,
+                    payload,
                     cancellationToken)
                 .ConfigureAwait(false))
             {
                 return activation.prune;
             }
 
-            await _packetDispatcher.DispatchAsync(state, actor, header, body, cancellationToken)
+            await _packetDispatcher.DispatchAsync(state, actor, header, payload, cancellationToken)
                 .ConfigureAwait(false);
             return activation.prune;
         }
 
-        await activation.currentActivation.SubmitActorAsync(actor, state, header, body, cancellationToken)
+        await activation.currentActivation.SubmitActorAsync(actor, state, header, payload, cancellationToken)
             .ConfigureAwait(false);
         return activation.prune;
     }
@@ -131,7 +131,7 @@ internal sealed class ZLinkActorDispatchRouter(
         IZLinkActor actor,
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
         var activation = await state.ExecuteLockedAsync(
@@ -154,7 +154,7 @@ internal sealed class ZLinkActorDispatchRouter(
                     actor,
                     state,
                     header,
-                    body,
+                    payload,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -163,7 +163,7 @@ internal sealed class ZLinkActorDispatchRouter(
                 actor,
                 state,
                 header,
-                body,
+                payload,
                 cancellationToken)
             .ConfigureAwait(false);
         if (entryResult.Handled)
@@ -173,7 +173,7 @@ internal sealed class ZLinkActorDispatchRouter(
                     $"Entry Spot actor request handler for '{header.Name}' returned no reply.");
         }
 
-        return await DispatchLocalForReplyAsync(actor, state, header, body, cancellationToken)
+        return await DispatchLocalForReplyAsync(actor, state, header, payload, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -181,10 +181,10 @@ internal sealed class ZLinkActorDispatchRouter(
         IZLinkActor actor,
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
-        await _packetDispatcher.DispatchAsync(state, actor, header, body, cancellationToken)
+        await _packetDispatcher.DispatchAsync(state, actor, header, payload, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -192,10 +192,10 @@ internal sealed class ZLinkActorDispatchRouter(
         IZLinkActor actor,
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
-        return await _packetDispatcher.DispatchForReplyAsync(state, actor, header, body, cancellationToken)
+        return await _packetDispatcher.DispatchForReplyAsync(state, actor, header, payload, cancellationToken)
             .ConfigureAwait(false);
     }
 }

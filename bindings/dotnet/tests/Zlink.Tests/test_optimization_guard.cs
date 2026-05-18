@@ -80,6 +80,43 @@ public sealed class test_optimization_guard
         Assert.DoesNotContain("FieldInfo.GetValue", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void publish_topic_cache_encodes_null_terminated_utf8_without_temp_string()
+    {
+        string source = ReadZlinkSource();
+
+        Assert.Contains("PublishTopicEncoding.GetNullTerminatedUtf8", source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("topic + '\\0'", source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void publish_part_interop_does_not_marshal_topic_strings()
+    {
+        string source = ReadZlinkSource();
+
+        Assert.Contains("zlink_publish_part_utf8", source,
+            StringComparison.Ordinal);
+        Assert.Contains("zlink_spot_publish_part_utf8", source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("zlink_publish_part(IntPtr subject",
+            source, StringComparison.Ordinal);
+        Assert.DoesNotContain("zlink_spot_publish_part(IntPtr spot",
+            source, StringComparison.Ordinal);
+        Assert.DoesNotContain("string topicId, ref ZlinkMsg part",
+            source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void spot_dispatch_subscribe_readable_uses_cached_info()
+    {
+        string source = ReadZlinkSource();
+
+        Assert.Contains("SpotDispatchInfo.SubscribeReadableSpot", source,
+            StringComparison.Ordinal);
+    }
+
     private static string ReadZlinkSource([CallerFilePath] string file = "")
     {
         string repoRoot = Path.GetFullPath(Path.Combine(

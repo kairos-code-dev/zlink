@@ -8,7 +8,7 @@ internal sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
     private const ZlinkStreamHeaderFlags KnownFlags =
         ZlinkStreamHeaderFlags.HasRequestSeq |
         ZlinkStreamHeaderFlags.HasMetadata |
-        ZlinkStreamHeaderFlags.BodyCompressed;
+        ZlinkStreamHeaderFlags.PayloadCompressed;
 
     public ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header)
     {

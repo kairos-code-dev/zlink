@@ -278,7 +278,7 @@ public sealed class TopologyMultiProcessTests
         var reply = ReceiveFrame(network);
         Assert.Equal(ZlinkStreamMessageKind.Response, reply.Header.Kind);
         Assert.Equal("ping", reply.Header.Name);
-        Assert.Equal("\"pong\"", Encoding.UTF8.GetString(reply.Body));
+        Assert.Equal("\"pong\"", Encoding.UTF8.GetString(reply.Payload));
 
         var connectedLine = await WaitForFileLineAsync(
             eventFilePath,
@@ -381,30 +381,30 @@ public sealed class TopologyMultiProcessTests
 
     private static byte[] BuildStreamPacketFrame(
         ZlinkStreamHeader header,
-        ReadOnlySpan<byte> body)
+        ReadOnlySpan<byte> payload)
     {
         var headerBytes = ZlinkStreamDefaultCodecs.Header().Encode(header).ToArray();
-        var frame = new byte[6 + headerBytes.Length + body.Length];
+        var frame = new byte[6 + headerBytes.Length + payload.Length];
         frame[0] = (byte)(headerBytes.Length >> 8);
         frame[1] = (byte)headerBytes.Length;
-        frame[2] = (byte)(body.Length >> 24);
-        frame[3] = (byte)(body.Length >> 16);
-        frame[4] = (byte)(body.Length >> 8);
-        frame[5] = (byte)body.Length;
+        frame[2] = (byte)(payload.Length >> 24);
+        frame[3] = (byte)(payload.Length >> 16);
+        frame[4] = (byte)(payload.Length >> 8);
+        frame[5] = (byte)payload.Length;
         headerBytes.CopyTo(frame.AsSpan(6, headerBytes.Length));
-        body.CopyTo(frame.AsSpan(6 + headerBytes.Length, body.Length));
+        payload.CopyTo(frame.AsSpan(6 + headerBytes.Length, payload.Length));
         return frame;
     }
 
-    private static (ZlinkStreamHeader Header, byte[] Body) ReceiveFrame(NetworkStream stream)
+    private static (ZlinkStreamHeader Header, byte[] Payload) ReceiveFrame(NetworkStream stream)
     {
         var lengths = ReceiveExact(stream, 6);
         var headerLength = (lengths[0] << 8) | lengths[1];
-        var bodyLength = (lengths[2] << 24) | (lengths[3] << 16) | (lengths[4] << 8) | lengths[5];
+        var payloadLength = (lengths[2] << 24) | (lengths[3] << 16) | (lengths[4] << 8) | lengths[5];
         var headerBytes = ReceiveExact(stream, headerLength);
-        var bodyBytes = ReceiveExact(stream, bodyLength);
+        var payloadBytes = ReceiveExact(stream, payloadLength);
         var header = ZlinkStreamDefaultCodecs.Header().Decode(headerBytes);
-        return (header, bodyBytes);
+        return (header, payloadBytes);
     }
 
     private static async Task<T> RetryAsync<T>(

@@ -35,7 +35,7 @@ internal sealed class ZlinkStreamPendingRequests
 
         if (header.Kind == ZlinkStreamMessageKind.Error)
         {
-            pending.Fail(parseError(frame.Body));
+            pending.Fail(parseError(frame.Payload));
             return true;
         }
 

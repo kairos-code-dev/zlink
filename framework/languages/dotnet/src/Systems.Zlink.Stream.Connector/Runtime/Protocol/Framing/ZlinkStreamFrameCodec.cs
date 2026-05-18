@@ -4,81 +4,81 @@ namespace Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 
 internal readonly record struct ZlinkStreamFrame(
     ReadOnlyMemory<byte> Header,
-    ReadOnlyMemory<byte> Body);
+    ReadOnlyMemory<byte> Payload);
 
 internal static class ZlinkStreamFrameCodec
 {
-    public static void ValidateSendFrame(int headerLength, int bodyLength, int maxFrameSize)
+    public static void ValidateSendFrame(int headerLength, int payloadLength, int maxFrameSize)
     {
         if (headerLength > ushort.MaxValue)
         {
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameTooLarge, "Header exceeds u16 header_size.");
         }
 
-        var totalSize = checked(2 + 4 + headerLength + bodyLength);
+        var totalSize = checked(2 + 4 + headerLength + payloadLength);
         if (totalSize > maxFrameSize)
         {
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameTooLarge, "Frame exceeds MaxSendFrameSize.");
         }
     }
 
-    public static ReadOnlyMemory<byte> EncodePrefix(int headerLength, int bodyLength)
+    public static ReadOnlyMemory<byte> EncodePrefix(int headerLength, int payloadLength)
     {
-        ValidateSendFrame(headerLength, bodyLength, int.MaxValue);
+        ValidateSendFrame(headerLength, payloadLength, int.MaxValue);
         var prefix = new byte[6];
-        WritePrefix(prefix, headerLength, bodyLength);
+        WritePrefix(prefix, headerLength, payloadLength);
         return prefix;
     }
 
     public static void WritePrefix(
         Span<byte> destination,
         int headerLength,
-        int bodyLength)
+        int payloadLength)
     {
         if (destination.Length < 6)
         {
             throw new ArgumentException("Frame prefix destination must be at least 6 bytes.", nameof(destination));
         }
 
-        ValidateSendFrame(headerLength, bodyLength, int.MaxValue);
+        ValidateSendFrame(headerLength, payloadLength, int.MaxValue);
         BinaryPrimitives.WriteUInt16BigEndian(destination[..2], (ushort)headerLength);
-        BinaryPrimitives.WriteUInt32BigEndian(destination.Slice(2, 4), (uint)bodyLength);
+        BinaryPrimitives.WriteUInt32BigEndian(destination.Slice(2, 4), (uint)payloadLength);
     }
 
     public static ReadOnlyMemory<byte> Encode(
         ReadOnlyMemory<byte> header,
-        ReadOnlyMemory<byte> body,
+        ReadOnlyMemory<byte> payload,
         int maxFrameSize)
     {
-        ValidateSendFrame(header.Length, body.Length, maxFrameSize);
+        ValidateSendFrame(header.Length, payload.Length, maxFrameSize);
 
-        var totalSize = checked(2 + 4 + header.Length + body.Length);
+        var totalSize = checked(2 + 4 + header.Length + payload.Length);
         var frame = new byte[totalSize];
-        WriteFrame(frame, header, body, maxFrameSize);
+        WriteFrame(frame, header, payload, maxFrameSize);
         return frame;
     }
 
-    public static int GetFrameSize(int headerLength, int bodyLength, int maxFrameSize)
+    public static int GetFrameSize(int headerLength, int payloadLength, int maxFrameSize)
     {
-        ValidateSendFrame(headerLength, bodyLength, maxFrameSize);
-        return checked(2 + 4 + headerLength + bodyLength);
+        ValidateSendFrame(headerLength, payloadLength, maxFrameSize);
+        return checked(2 + 4 + headerLength + payloadLength);
     }
 
     public static void WriteFrame(
         Span<byte> destination,
         ReadOnlyMemory<byte> header,
-        ReadOnlyMemory<byte> body,
+        ReadOnlyMemory<byte> payload,
         int maxFrameSize)
     {
-        var totalSize = GetFrameSize(header.Length, body.Length, maxFrameSize);
+        var totalSize = GetFrameSize(header.Length, payload.Length, maxFrameSize);
         if (destination.Length < totalSize)
         {
             throw new ArgumentException("Frame destination is smaller than the encoded frame.", nameof(destination));
         }
 
-        WritePrefix(destination[..6], header.Length, body.Length);
+        WritePrefix(destination[..6], header.Length, payload.Length);
         header.Span.CopyTo(destination[6..]);
-        body.Span.CopyTo(destination[(6 + header.Length)..]);
+        payload.Span.CopyTo(destination[(6 + header.Length)..]);
     }
 
     public static async ValueTask<ZlinkStreamFrame> ReadAsync(
@@ -88,17 +88,17 @@ internal static class ZlinkStreamFrameCodec
         var prefix = new byte[6];
         await ReadExactAsync(connection, prefix, cancellationToken).ConfigureAwait(false);
         var headerSize = BinaryPrimitives.ReadUInt16BigEndian(prefix.AsSpan(0, 2));
-        var bodySize = BinaryPrimitives.ReadUInt32BigEndian(prefix.AsSpan(2, 4));
-        if (bodySize > int.MaxValue)
+        var payloadSize = BinaryPrimitives.ReadUInt32BigEndian(prefix.AsSpan(2, 4));
+        if (payloadSize > int.MaxValue)
         {
-            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameTooLarge, "Body exceeds supported in-memory size.");
+            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameTooLarge, "Payload exceeds supported in-memory size.");
         }
 
         var header = new byte[headerSize];
-        var body = new byte[(int)bodySize];
+        var payload = new byte[(int)payloadSize];
         await ReadExactAsync(connection, header, cancellationToken).ConfigureAwait(false);
-        await ReadExactAsync(connection, body, cancellationToken).ConfigureAwait(false);
-        return new ZlinkStreamFrame(header, body);
+        await ReadExactAsync(connection, payload, cancellationToken).ConfigureAwait(false);
+        return new ZlinkStreamFrame(header, payload);
     }
 
     private static async ValueTask ReadExactAsync(

@@ -43,14 +43,14 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         Enqueue(() => MarkConnectedAsync(localAddr, remoteAddr));
     }
 
-    public void EnqueuePacket(Message header, Message body)
+    public void EnqueuePacket(Message header, Message payload)
     {
         Enqueue(
-            () => DispatchPacketAsync(header, body),
+            () => DispatchPacketAsync(header, payload),
             () =>
             {
                 header.Dispose();
-                body.Dispose();
+                payload.Dispose();
             });
     }
 
@@ -90,14 +90,14 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
     private async ValueTask DispatchPacketAsync(
         Message header,
-        Message body)
+        Message payload)
     {
         using (header)
-        using (body)
+        using (payload)
         {
             await EnsureConnectedAsync();
             var decoded = _headerCodec.Decode(header.AsReadOnlyMemory());
-            if (_context.TryCompleteResponse(decoded, body))
+            if (_context.TryCompleteResponse(decoded, payload))
             {
                 return;
             }
@@ -105,7 +105,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             _context.EnterDispatch(decoded);
             try
             {
-                using var packet = new ZLinkSessionPacket(decoded, body.Move());
+                using var packet = new ZLinkSessionPacket(decoded, payload.Move());
                 await _handler.OnDispatchAsync(
                     packet,
                     CancellationToken.None);

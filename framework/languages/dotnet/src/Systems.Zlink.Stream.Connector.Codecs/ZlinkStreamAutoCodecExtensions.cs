@@ -5,42 +5,42 @@ namespace Systems.Zlink.Stream.Connector.Codecs;
 
 public static class ZlinkStreamAutoCodecExtensions
 {
-    public static ZlinkStreamAutoCodecSendBuilder Send<TBody>(
+    public static ZlinkStreamAutoCodecSendBuilder Send<TPayload>(
         this IZlinkStreamConnector connector,
-        TBody body)
+        TPayload payload)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return new ZlinkStreamAutoCodecSendBuilder(connector.Send(ZlinkStreamAutoCodecSelector.Encode(body)));
+        return new ZlinkStreamAutoCodecSendBuilder(connector.Send(ZlinkStreamAutoCodecSelector.Encode(payload)));
     }
 
-    public static ZlinkStreamAutoCodecRequestBuilder Request<TBody>(
+    public static ZlinkStreamAutoCodecRequestBuilder Request<TPayload>(
         this IZlinkStreamConnector connector,
-        TBody body)
+        TPayload payload)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return new ZlinkStreamAutoCodecRequestBuilder(connector.Request(ZlinkStreamAutoCodecSelector.Encode(body)));
+        return new ZlinkStreamAutoCodecRequestBuilder(connector.Request(ZlinkStreamAutoCodecSelector.Encode(payload)));
     }
 
-    public static IDisposable On<TBody>(
+    public static IDisposable On<TPayload>(
         this IZlinkStreamConnector connector,
-        Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
+        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(connector);
         var resolver = connector.Options.NameResolver ?? ZlinkStreamDefaultCodecs.PacketNameResolver();
-        return connector.On(resolver.Resolve(typeof(TBody)), handler);
+        return connector.On(resolver.Resolve(typeof(TPayload)), handler);
     }
 
-    public static IDisposable On<TBody>(
+    public static IDisposable On<TPayload>(
         this IZlinkStreamConnector connector,
         string name,
-        Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
+        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(connector);
         ArgumentNullException.ThrowIfNull(handler);
         return connector.On(name, (message, cancellationToken) =>
         {
-            var body = ZlinkStreamAutoCodecSelector.Decode<TBody>(message.Body);
-            return handler(new ZlinkStreamMessage<TBody>(message.Name, message.Metadata, body), cancellationToken);
+            var payload = ZlinkStreamAutoCodecSelector.Decode<TPayload>(message.Payload);
+            return handler(new ZlinkStreamMessage<TPayload>(message.Name, message.Metadata, payload), cancellationToken);
         });
     }
 }

@@ -74,10 +74,10 @@ internal sealed class ZLinkFrameworkActorFacade(
     public async ValueTask SubmitActorAsync(
         IZLinkActor actor,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
-        await actorSessionManager.SubmitActorAsync(actor, header, body, cancellationToken);
+        await actorSessionManager.SubmitActorAsync(actor, header, payload, cancellationToken);
     }
 
     public async ValueTask<CreateActorResult> CreateLocalActorAsync(
@@ -91,19 +91,19 @@ internal sealed class ZLinkFrameworkActorFacade(
     public async ValueTask<byte[]> SubmitActorForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
-        return await actorSessionManager.SubmitActorForReplyAsync(actorId, header, body, cancellationToken);
+        return await actorSessionManager.SubmitActorForReplyAsync(actorId, header, payload, cancellationToken);
     }
 
     public async ValueTask SubmitActorByIdAsync(
         string actorId,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
-        await actorSessionManager.SubmitActorByIdAsync(actorId, header, body, cancellationToken);
+        await actorSessionManager.SubmitActorByIdAsync(actorId, header, payload, cancellationToken);
     }
 
     public ZLinkActorRuntimeState GetOrCreateActorState(string actorId)

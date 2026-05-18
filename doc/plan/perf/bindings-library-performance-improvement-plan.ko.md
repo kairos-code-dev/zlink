@@ -26,9 +26,9 @@ C binding 라이브러리의 일반적인 성능이다. 기준으로 삼는 C �
 | 2 | .NET | `bindings/dotnet/perf` |
 | 3 | Java | `bindings/java/perf` |
 | 4 | Node | `bindings/node/perf` |
-| 5 | Python | `bindings/python/perf` |
+| 5 | Rust | `bindings/rust/perf` |
 | 6 | Go | `bindings/go/perf` |
-| 7 | Rust | `bindings/rust/perf` |
+| 7 | Python | `bindings/python/perf` |
 
 목표 비율은 size 하나로만 정하지 않는다. 최근 C++ full 비교에서는 size보다
 pattern 차이가 더 컸다. 예를 들어 single `PAIR`, `PUBSUB`, `SPOT`은 C와 비슷하거나
@@ -81,11 +81,29 @@ binding 내부 병목인지 perf 측정 오류인지 먼저 구분한다.
 - 내부 API, private API, native helper, C API 직접 호출로 수치를 만드는 방식은
   인정하지 않는다.
 - 수치 달성만을 위해 perf 전용 public API나 zero-copy 우회 API를 추가하지 않는다.
+- public API 계약이 잘못 구현되었거나 필수 계약이 빠진 것이 확인되지 않았다면
+  인터페이스를 추가하거나 바꾸지 않는다. 성능 미달은 기존 public API 내부 구현을
+  개선해서 해결해야 하며, 공개 인터페이스 변경의 근거가 될 수 없다.
+- public API 변경이 꼭 필요하면 먼저 어떤 계약이 잘못되었는지 spec과 테스트로
+  확인한 뒤 수정한다. 이 경우에도 perf 수치 달성이 아니라 공개 계약 정정이 변경
+  이유여야 한다.
+- 성능 목표를 달성하려면 public API 추가나 변경이 필요하다고 판단되는 경우에는
+  해당 변경을 바로 구현하지 않는다. 먼저 필요한 계약, 이유, 대안, 영향을 계획
+  문서에 적고 사용자에게 승인 요청을 한 뒤 대기한다. 승인 대기 중에는 그 항목을
+  `보류`로 표시하고, 현재 언어에 `미달` 또는 `미측정` 항목이 남아 있는지 확인한다.
 - 버그가 확인되면 perf에서 우회하지 않고 버그를 먼저 수정한다.
 - 버그 수정 전에는 해당 동작을 재현하는 회귀테스트를 먼저 작성한다.
 - binding 버그이면 해당 언어 binding 라이브러리에서 수정한다.
 - core 버그이면 core에서 수정한 뒤 `bindings/dev_sync_local_core_libs.sh`로
   bindings에 local core library를 다시 배포한다.
+- public API의 실제 계약은 각 binding의 public contract source를 기준으로 판단한다.
+  예를 들어 .NET은 `bindings/dotnet/src/Zlink/Contracts/`가 public API 계약의
+  단일 기준이다. `doc/spec/bindings/README.md`와 각 언어별
+  `doc/spec/bindings/<lang>/README.md`는 API 목록이 아니라 public API 작성,
+  배치, internal boundary 검토 규칙으로만 사용한다. perf 프로젝트가 `internal`
+  surface나 `InternalsVisibleTo`에 의존하면 안 된다.
+- Auto-HWM message unit처럼 binding spec에서 typed option facade로 제공해야 한다고
+  정한 기능은 그 규칙을 따른다. raw option bag이나 perf 전용 helper로 우회하지 않는다.
 - `doc/perf/PERF_POLICY.md`,
   `doc/perf/PERF_SINGLE_TEST_POLICY.md`,
   `doc/perf/PERF_MULTI_TEST_POLICY.md`를 항상 따른다.
@@ -100,58 +118,233 @@ binding 내부 병목인지 perf 측정 오류인지 먼저 구분한다.
   `bindings/c/perf/run_benchmarks_multi.sh`
 
 스크립트에 설정된 기본값을 바꾸지 않는다. 비교 범위를 좁힐 때만
-`--transports`와 `--patterns`로 특정 transport와 특정 pattern을 지정한다.
+`--transports`와 `--pattern`으로 특정 transport와 특정 pattern을 지정한다.
+제한 측정은 transport를 먼저 고정하고, 그 안에서 message size 일부 또는 전체를
+확인한다. 예를 들어 작은 message size만 골라 `tcp,ws,wss,tls`를 한 번에 돌리는
+방식은 쓰지 않는다. 먼저 `tcp`만 대상으로 pattern과 message size 일부 또는 전체를
+비교한다. `tcp`에서 목표 비율을 만족한 뒤에만 같은 방식으로 `ws`, `wss`, `tls`
+순서로 넘어간다. transport를 바꿀 때마다 C 기준과 대상 binding 결과의 옵션을 다시
+대조한다.
+제한 측정으로 C와 대상 binding을 다시 비교할 때는 결과 파일의 `Effective Options`를
+먼저 대조한다. suite, pattern, transport, message size, duration, client 수,
+timeout, HWM, socket buffer 설정이 같은지 확인해야 한다. auto-HWM을 사용하는 경우에는
+`Auto-HWM Detail`, `Auto-HWM spotnode`, `Auto-HWM spot handles`에 보이는 모든
+`MsgUnit(B)`가 해당 message size와 같은지도 확인한다. 예를 들어 64B 테스트에서
+`MsgUnit(B)=4096`이 보이면 그 결과는 비교 기준으로 쓰지 않는다. SPOT 계열은 데이터
+소켓뿐 아니라 제어용 SpotNode와 SPOT handle도 같은 message size를 사용해야 한다.
+이 값이 다르면 HWM slot 수와 socket buffer 크기가 달라져 처리량 비교가 왜곡될 수 있다.
+또한 routed echo 계열처럼 C perf가 특정 transport에서 payload를 빌려 쓰는 경우에는
+`Effective Options`의 `routed_echo_borrow_payload` 값도 함께 확인한다. 이 값이 다르면
+메시지 복사 비용이 비교에 섞이므로, 결과를 binding 자체 성능으로 단정하지 않는다.
+
+C는 개선 대상 언어가 아니라 비교군이다. 따라서 첫 비교에서는 C perf를 매번 새로
+실행하지 않고, `bindings/c/perf/baseline/` 아래의 최근 full 측정 결과를 사용한다.
+이 기준 파일은 같은 기본 옵션으로 실행한 결과여야 하며, 특정 실험이나 debug 재현을
+위해 제한 실행한 결과는 기준으로 쓰지 않는다.
+
+측정 오차가 의심되거나 C 기준 파일의 특정 조합이 비정상적으로 보일 때만, 비교 범위를
+같은 transport와 pattern으로 제한해서 C와 대상 binding을 각각 다시 측정한다. 이때도
+C는 새 기준을 만들기 위한 보조 측정일 뿐이며, 동시에 여러 C perf를 계속 돌리지 않는다.
 
 한 라운드는 아래 순서로 진행한다.
 
-1. 같은 transport와 pattern을 C perf로 측정한다.
-2. 같은 transport와 pattern을 대상 binding perf로 측정한다.
+1. `bindings/c/perf/baseline/`의 최근 full C 결과에서 같은 suite, pattern, transport,
+   message size, metric 값을 찾는다.
+2. 대상 binding perf를 언어별로 하나만 실행한다.
 3. C 대비 비율을 계산한다.
 4. 미달 조합의 병목을 binding 라이브러리에서 찾는다.
 5. binding 라이브러리를 수정한다.
-6. 같은 조합을 다시 측정한다.
-7. 목표를 넘을 때까지 반복한다.
+6. 같은 조합의 대상 binding perf를 다시 측정한다.
+7. 측정 오차가 의심되면 같은 transport와 pattern으로 C와 대상 binding을 제한
+   재측정한 뒤 다시 비교한다.
+8. 목표를 넘을 때까지 반복한다.
 
 single과 multi는 같은 원칙으로 반복한다. 한 번에 전체 matrix를 돌리지 않고,
-`--transports`와 `--patterns`로 조합을 좁혀 원인과 개선 효과를 확인한 뒤 다음
-조합으로 이동한다.
+`--transports`와 `--pattern`으로 조합을 좁혀 원인과 개선 효과를 확인한 뒤 다음
+조합으로 이동한다. 제한 측정 순서는 transport 우선이다. `tcp`의 미달 조합이 남아 있으면
+`ws`, `wss`, `tls` 측정으로 넘어가지 않는다. `tcp`가 통과한 뒤 다음 transport로
+넘어갈 때도 한 번에 하나의 transport만 선택해서 C 기준과 대상 binding을 비교한다.
 
-언어별 작업은 순차로 진행한다. 현재 대상 언어의 모든 single/multi 대상 조합이
-목표 비율을 만족한 뒤에만 다음 언어로 넘어간다. 특정 transport나 pattern 일부가
-목표를 넘었더라도 미달 조합이 하나라도 남아 있으면 해당 언어 작업은 계속 진행한다.
+언어별 작업은 한 번에 한 언어만 진행한다. 진행 순서는 C++, .NET, Java, Node, Rust,
+Go, Python이다. 현재 언어의 모든 대상 transport, pattern, size가 `통과` 또는 `보류`
+상태가 되기 전에는 다음 언어로 넘어가지 않는다. `미달` 또는 `미측정` 항목이 하나라도
+남아 있으면 현재 언어 작업을 계속한다.
 
-## 4. 에이전트 운영
+공식 perf 실행은 기본적으로 하나만 실행한다. 측정 오차 확인을 위해 C와 대상 binding을
+제한 재측정해야 할 때도 전체 공식 perf 실행 수는 두 개를 넘기지 않는다. 같은 suite,
+pattern, transport, message size 조합을 중복으로 동시에 실행하지 않는다.
 
-성능 개선은 한 번에 한 개 언어 binding을 대상으로 진행한다. 같은 언어 안에서는
-측정, 병목 분석, 구현 검토를 나누어 병렬로 진행할 수 있지만, 서로 다른 언어를
-동시에 개선 대상으로 삼지 않는다.
+## 4. 직접 진행 절차
 
-- 작업 에이전트 A: 현재 언어 binding의 측정과 C 대비 비율 계산 담당
-- 작업 에이전트 B: 현재 언어 binding의 병목 분석과 라이브러리 수정 담당
-- 감독 에이전트: 결과 검토, perf 원칙 위반 여부 확인, 다음 작업 지시 담당
+이 작업은 측정, 병목 분석, 코드 수정, 재측정, 문서 갱신을 직접 수행한다.
 
-감독 에이전트는 각 라운드마다 아래를 확인한다.
+상태 값은 아래 네 가지로만 기록한다.
+
+- `미측정`: 아직 같은 조건의 C 기준과 대상 binding 결과를 비교하지 않았다.
+- `통과`: 목표 비율, 상대 기준, latency 조건, `Effective Options`, `MsgUnit(B)` 조건을
+  모두 만족한다.
+- `미달`: 유효 비교에서 목표를 만족하지 못했고, 아직 내부 개선 후보를 더 확인해야 한다.
+- `보류`: 유효 비교에서 목표 미달이지만, public API 변경 없이 가능한 내부 개선 후보를
+  더 찾지 못했다. 보류 항목은 승인 후보와 근거를 함께 기록해야 한다.
+
+현재 언어에서 `미달` 또는 `미측정` 항목이 남아 있으면 다음 언어로 넘어가지 않는다.
+`보류`는 완료가 아니지만, 더 진행하려면 public API 변경 승인이 필요한 상태로 본다.
+
+매 라운드마다 아래를 직접 확인한다.
 
 - C 기준과 binding 결과가 같은 suite, transport, pattern, size를 비교했는지
-- perf 수정이 필요한 경우 실제 버그나 원칙 위반이 있는지
+- `tcp`의 모든 대상 pattern/size가 `통과` 또는 `보류`가 되었는지
+- `tcp`에 `미달` 또는 `미측정`이 남은 상태에서 `ws`, `wss`, `tls`로 넘어가지 않았는지
+- 제한 재측정 결과의 `Effective Options`와 auto-HWM `MsgUnit(B)`가 서로 같은지
+- C 기준으로 `bindings/c/perf/baseline/`의 최근 full 결과를 먼저 사용했는지
+- C 재측정은 측정 오차나 비정상 기준이 의심되는 제한 조합에서만 실행했는지
+- perf 수정이 필요한 경우 실제 버그나 정책 위반 근거가 있는지
 - 수정이 binding public API 내부 구현 개선인지
-- 목표 비율을 모든 항목에서 만족했는지
-- 미달 항목이 남아 있으면 다음 병목 후보와 재측정 조합이 명확한지
-- 실행 중 새 이슈가 발견되었는지, 발견된 이슈가 테스트와 수정으로 닫혔는지
-- 계획 문서가 현재 실행 방식, 판단 기준, 남은 이슈를 정확히 반영하는지
-- 작업 에이전트들이 살아 있는지 5분 단위로 확인하고, 멈췄거나 응답이 없으면
-  현재 라운드 상태를 확인한 뒤 다음 작업을 다시 지시하는지
+- 새로 발견한 결과를 상태 표와 로그 문서에 반영했는지
 
-목표에 도달하지 못한 언어는 완료로 표시하지 않는다. 감독 에이전트는 미달 항목이
-남아 있는 동안 작업 에이전트에게 계속 다음 측정과 수정 지시를 내린다. 현재 언어가
-완료되면 `## 1. 범위와 목표`의 순서에 따라 다음 언어를 시작한다.
+실행 중 문제가 발견되면 같은 언어 안에서 원인을 리뷰하고, 회귀테스트 작성, 버그 수정,
+재측정, 문서 갱신을 반복한다. 측정 실패, 기준 불일치, perf 정책 위반, binding/core
+버그, 목표 기준의 모호함이 모두 사라질 때까지 해당 항목을 `통과`나 `보류`로 표시하지
+않는다.
 
-실행 중 문제가 발견되면 같은 라운드 안에서 원인을 리뷰하고, 회귀테스트 작성,
-버그 수정, 재측정, 문서 갱신을 반복한다. 측정 실패, 기준 불일치, perf 정책 위반,
-binding/core 버그, 목표 기준의 모호함이 모두 사라질 때까지 해당 언어 작업을
-종료하지 않는다.
+## 5. 현재 상태 표
 
-## 5. 완료 기준
+이 표는 최신 판정만 유지한다. 상세 측정 기록은 `doc/plan/perf/log/` 아래에 둔다.
+
+### 5.1 언어 진행 상태
+
+| 순서 | 언어 | 현재 transport | 전체 상태 | 다음 작업 |
+|------|------|----------------|-----------|-----------|
+| 1 | C++ | `tls` | 진행 중 | `tls` 제한 측정 시작 |
+| 2 | .NET | `tcp` | 대기 | C++의 `미달` 해소 후 시작 |
+| 3 | Java | `tcp` | 대기 | .NET의 `미달` 해소 후 시작 |
+| 4 | Node | `tcp` | 대기 | Java의 `미달` 해소 후 시작 |
+| 5 | Rust | `tcp` | 대기 | Node의 `미달` 해소 후 시작 |
+| 6 | Go | `tcp` | 대기 | Rust의 `미달` 해소 후 시작 |
+| 7 | Python | `tcp` | 대기 | Go의 `미달` 해소 후 시작 |
+
+### 5.2 C++ 상태
+
+| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
+|-----------|---------|---------|--------|--------|------|
+| `tcp` | `MULTI_ROUTER_ROUTER` | `65536` | `보류` | `52.8%` | `perf_cpp_multi_linux_20260518_114136_codex_cpp_tcp_rr_64_after_raw_revert.txt` |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `131072` | `통과` | `66.8%` | `perf_cpp_multi_linux_20260518_112701_codex_cpp_tcp_rr_large_local_send_msg.txt` |
+| `ws` | `MULTI_DEALER_DEALER` | `64` | `보류` | `76.5%` | public API 변경 없이 추가 내부 후보 없음 |
+| `ws` | `MULTI_DEALER_DEALER` | `256` | `통과` | `96.4%` | C current 기준 |
+| `ws` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `93.5%` | C current 기준 |
+| `ws` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `94.8%` | C current 기준 |
+| `ws` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `101.6%` | C current 기준 |
+| `ws` | `MULTI_DEALER_DEALER` | `262144` | `보류` | `78.8%` | public API 변경 없이 추가 내부 후보 없음 |
+| `ws` | `MULTI_DEALER_ROUTER` | `64` | `통과` | `88.1%` | C current 기준 |
+| `ws` | `MULTI_DEALER_ROUTER` | `256` | `통과` | `87.7%` | C current 기준 |
+| `ws` | `MULTI_DEALER_ROUTER` | `1024` | `통과` | `92.6%` | C current 기준 |
+| `ws` | `MULTI_DEALER_ROUTER` | `65536` | `보류` | `59.0%` | public API 변경 없이 추가 내부 후보 없음 |
+| `ws` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `70.9%` | C current 기준 |
+| `ws` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `66.0%` | C current 기준 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `64` | `통과` | `95.6%` | C current 기준 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `256` | `통과` | `94.7%` | C current 기준 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `1024` | `통과` | `93.1%` | C current 기준 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `65536` | `보류` | `60.3%` | public API 변경 없이 추가 내부 후보 없음 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `131072` | `보류` | `60.8%` | public API 변경 없이 추가 내부 후보 없음 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `100.6%` | C current 기준 |
+| `ws` | `MULTI_PUBSUB` | `64` | `통과` | `95.8%` | C current 기준 |
+| `ws` | `MULTI_PUBSUB` | `256` | `통과` | `98.2%` | C current 기준 |
+| `ws` | `MULTI_PUBSUB` | `1024` | `통과` | `92.6%` | `perf_cpp_multi_linux_20260518_124911_codex_cpp_ws_pubsub_1024_debug.txt` |
+| `ws` | `MULTI_PUBSUB` | `65536,131072,262144` | `통과` | `87.6%~113.9%` | `perf_cpp_multi_linux_20260518_124924_codex_cpp_ws_pubsub_large_recheck.txt` |
+| `ws` | `MULTI_SPOT` | 전체 대상 | `보류` | - | 실행 실패, `MsgUnit(B)=4096`; SPOT pub/sub auto-HWM message unit typed facade 승인 필요 |
+| `ws` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | 실행 실패, `MsgUnit(B)=4096`; SPOT pub/sub auto-HWM message unit typed facade 승인 필요 |
+| `ws` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | 실행 실패, `MsgUnit(B)=4096`; SPOT pub/sub auto-HWM message unit typed facade 승인 필요 |
+| `ws` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `80.3%~98.9%` | `perf_cpp_multi_linux_20260518_124314_codex_cpp_ws_full_status.txt` |
+| `wss` | `MULTI_DEALER_DEALER` | `64` | `보류` | `73.7%` | 제한 C 기준, public API 변경 없이 추가 내부 후보 없음 |
+| `wss` | `MULTI_DEALER_DEALER` | `256` | `통과` | `99.7%` | 제한 C: `perf_c_multi_linux_20260518_133226_codex_c_wss_dd_recheck_compare.txt` |
+| `wss` | `MULTI_DEALER_DEALER` | `1024,65536` | `통과` | `83.7%~88.2%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
+| `wss` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `92.6%` | 제한 C: `perf_c_multi_linux_20260518_133226_codex_c_wss_dd_recheck_compare.txt` |
+| `wss` | `MULTI_DEALER_DEALER` | `262144` | `보류` | - | C++ timeout, C 제한 측정은 성공 |
+| `wss` | `MULTI_DEALER_ROUTER` | `64,256,1024,65536,131072,262144` | `통과` | `84.4%~95.5%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
+| `wss` | `MULTI_ROUTER_ROUTER` | `64,256,1024,65536,131072,262144` | `통과` | `83.0%~93.5%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
+| `wss` | `MULTI_PUBSUB` | `64,1024` | `통과` | `89.4%~104.3%` | 제한 C: `perf_c_multi_linux_20260518_133255_codex_c_wss_pubsub_recheck_compare.txt` |
+| `wss` | `MULTI_PUBSUB` | `256` | `보류` | `78.3%` | typed publish 후보 timeout, public subscribe hot path 승인 필요 |
+| `wss` | `MULTI_PUBSUB` | `65536` | `보류` | `67.2%` | typed publish 후보 timeout, public subscribe hot path 승인 필요 |
+| `wss` | `MULTI_PUBSUB` | `131072,262144` | `보류` | - | C++ timeout, C 제한 측정은 성공 |
+| `wss` | `MULTI_SPOT` | 전체 대상 | `보류` | - | 실행 실패, `MsgUnit(B)=4096`; SPOT pub/sub auto-HWM message unit typed facade 승인 필요 |
+| `wss` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | 실행 실패, `MsgUnit(B)=4096`; SPOT pub/sub auto-HWM message unit typed facade 승인 필요 |
+| `wss` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | 실행 실패, `MsgUnit(B)=4096`; SPOT pub/sub auto-HWM message unit typed facade 승인 필요 |
+| `wss` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `90.0%~100.1%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
+| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | 다음 측정 대상 |
+
+### 5.3 .NET 상태
+
+| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
+|-----------|---------|---------|--------|--------|------|
+| `tcp` | `MULTI_SPOT` | `64` | `미달` | `52.2%` | `perf_dotnet_multi_linux_20260518_111857_codex_tcp64_contract_hotloop_check.txt` |
+| `ws` | `MULTI_SPOT` | `64` | `미측정` | `46.3%` | `tcp` 미달 상태에서 참고 측정만 존재 |
+| `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+
+### 5.4 Java 상태
+
+| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
+|-----------|---------|---------|--------|--------|------|
+| `tcp` | `MULTI_PUBSUB` | `64` | `미달` | `59.0%` | `perf_java_multi_linux_20260518_111324_codex_java_mpubsub_tcp64_after_sendbuilder_single_storage.txt` |
+| `tcp` | `MULTI_PUBSUB` | `256` | `통과` | `65.2%` | `perf_java_multi_linux_20260518_110614_codex_java_mpubsub_tcp64_256_after_reuse_topicmsg.txt` |
+| `tcp` | `MULTI_DEALER_ROUTER` | `65536` | `미달` | `46.7%` | `perf_java_multi_linux_20260518_111220_codex_java_mdr_tcp65536_131072_after_router_single_fastpath.txt` |
+| `tcp` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `56.6%` | `perf_java_multi_linux_20260518_111220_codex_java_mdr_tcp65536_131072_after_router_single_fastpath.txt` |
+| `tcp` | SPOT 계열 | `64` | `미달` | - | `MsgUnit(B)=4096` 불일치 |
+| `ws` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+| `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+
+### 5.5 Node 상태
+
+| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
+|-----------|---------|---------|--------|--------|------|
+| `tcp` | `PUBSUB` | `64` | `통과` | `37.06%` | `perf_node_single_linux_20260518_111604.txt` |
+| `tcp` | `PUBSUB` | `256` | `통과` | `36.30%` | `perf_node_single_linux_20260518_111503.txt` |
+| `tcp` | 그 외 대상 | 전체 대상 | `미측정` | - | 전체 완료 아님 |
+| `ws` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 전체 완료 전 보류 |
+| `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 전체 완료 전 보류 |
+| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 전체 완료 전 보류 |
+
+### 5.6 Rust 상태
+
+| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
+|-----------|---------|---------|--------|--------|------|
+| `tcp` | 전체 대상 | 전체 대상 | `미측정` | - | C++ -> .NET -> Java -> Node 이후 진행 |
+| `ws` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 전체 완료 전 보류 |
+| `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 전체 완료 전 보류 |
+| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 전체 완료 전 보류 |
+
+### 5.7 Go 상태
+
+| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
+|-----------|---------|---------|--------|--------|------|
+| `tcp` | `PAIR` | `64` | `통과` | `79.80%` | `perf_go_single_linux_20260518_115650_codex_go_tcp64_single_recv_into.txt` |
+| `tcp` | `DEALER_DEALER` | `64` | `통과` | `78.05%` | `perf_go_single_linux_20260518_115650_codex_go_tcp64_single_recv_into.txt` |
+| `tcp` | `DEALER_ROUTER` | `64` | `미달` | `45.12%` | `perf_go_single_linux_20260518_115650_codex_go_tcp64_single_recv_into.txt` |
+| `tcp` | `ROUTER_ROUTER` | `64` | `통과` | `50.49%` | `perf_go_single_linux_20260518_115650_codex_go_tcp64_single_recv_into.txt` |
+| `tcp` | `PUBSUB` | `64` | `미달` | `9.78%` | `perf_go_single_linux_20260518_120037_codex_go_tcp64_pubsub_adopt_recv.txt` |
+| `tcp` | `SPOT` | `64` | `미달` | `29.65%` | `perf_go_single_linux_20260518_115650_codex_go_tcp64_single_recv_into.txt` |
+| `ws` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+| `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+
+### 5.8 Python 상태
+
+| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
+|-----------|---------|---------|--------|--------|------|
+| `tcp` | `MULTI_DEALER_DEALER` | `64` | `미달` | `4.55%` | `perf_python_multi_linux_20260518_115738_codex_python_tcp64_owned_recv.txt` |
+| `tcp` | `MULTI_PUBSUB` | `64` | `미달` | `4.42%` | `perf_python_multi_linux_20260518_115738_codex_python_tcp64_owned_recv.txt` |
+| `tcp` | `MULTI_DEALER_ROUTER` | `64` | `미달` | `9.98%` | `perf_python_multi_linux_20260518_115738_codex_python_tcp64_owned_recv.txt` |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `64` | `미달` | `8.47%` | `perf_python_multi_linux_20260518_115738_codex_python_tcp64_owned_recv.txt` |
+| `tcp` | `MULTI_STREAM` | `64` | `미달` | `0.82%` | `perf_python_multi_linux_20260518_115738_codex_python_tcp64_owned_recv.txt` |
+| `tcp` | `MULTI_SPOT_REQREP` | `64` | `미달` | `0.24%` | `MsgUnit(B)=4096` 불일치 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `64` | `미달` | `3.53%` | `MsgUnit(B)=4096` 불일치 |
+| `tcp` | `MULTI_SPOT` | `64` | `미달` | - | client timeout |
+| `ws` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+| `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미달 때문에 보류 |
+
+## 6. 완료 기준
 
 아래 조건을 모두 만족하면 해당 언어 binding 작업을 완료한다.
 

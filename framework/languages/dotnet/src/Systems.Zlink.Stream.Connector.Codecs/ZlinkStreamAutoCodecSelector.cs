@@ -14,52 +14,52 @@ internal static class ZlinkStreamAutoCodecSelector
     private static readonly ConcurrentDictionary<Type, bool> MessagePackTypes = new();
     private static readonly ConcurrentDictionary<Type, Func<IMessage>> ProtobufFactories = new();
 
-    public static ZlinkStreamEncodedBody Encode<TBody>(TBody body)
+    public static ZlinkStreamEncodedPayload Encode<TPayload>(TPayload payload)
     {
-        ArgumentNullException.ThrowIfNull(body);
+        ArgumentNullException.ThrowIfNull(payload);
 
-        if (body is IMessage protobuf)
+        if (payload is IMessage protobuf)
         {
-            return new ZlinkStreamEncodedBody(
+            return new ZlinkStreamEncodedPayload(
                 ZlinkStreamCodec.Protobuf,
                 protobuf.ToByteArray(),
-                typeof(TBody));
+                typeof(TPayload));
         }
 
-        if (HasMessagePackObjectAttribute(typeof(TBody)))
+        if (HasMessagePackObjectAttribute(typeof(TPayload)))
         {
-            return body.ToMsgPack();
+            return payload.ToMsgPack();
         }
 
-        return body.ToJson();
+        return payload.ToJson();
     }
 
-    public static TBody Decode<TBody>(ZlinkStreamEncodedBody body)
+    public static TPayload Decode<TPayload>(ZlinkStreamEncodedPayload payload)
     {
-        if (typeof(IMessage).IsAssignableFrom(typeof(TBody)))
+        if (typeof(IMessage).IsAssignableFrom(typeof(TPayload)))
         {
-            return DecodeProtobuf<TBody>(body);
+            return DecodeProtobuf<TPayload>(payload);
         }
 
-        if (HasMessagePackObjectAttribute(typeof(TBody)))
+        if (HasMessagePackObjectAttribute(typeof(TPayload)))
         {
-            return body.FromMsgPack<TBody>();
+            return payload.FromMsgPack<TPayload>();
         }
 
-        return body.FromJson<TBody>();
+        return payload.FromJson<TPayload>();
     }
 
-    private static TBody DecodeProtobuf<TBody>(ZlinkStreamEncodedBody body)
+    private static TPayload DecodeProtobuf<TPayload>(ZlinkStreamEncodedPayload payload)
     {
-        if (body.Codec != ZlinkStreamCodec.Protobuf)
+        if (payload.Codec != ZlinkStreamCodec.Protobuf)
         {
-            throw new InvalidOperationException($"Stream body codec is {body.Codec}, not Protobuf.");
+            throw new InvalidOperationException($"Stream payload codec is {payload.Codec}, not Protobuf.");
         }
 
-        var message = ProtobufFactories.GetOrAdd(typeof(TBody), CreateProtobufFactory)();
+        var message = ProtobufFactories.GetOrAdd(typeof(TPayload), CreateProtobufFactory)();
 
-        message.MergeFrom(body.Body.Span);
-        return (TBody)message;
+        message.MergeFrom(payload.Payload.Span);
+        return (TPayload)message;
     }
 
     private static bool HasMessagePackObjectAttribute(Type type)

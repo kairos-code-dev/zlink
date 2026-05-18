@@ -290,14 +290,16 @@ def wait_control_payload(control_sub, predicate, *, timeout_s=None):
     return None
 
 
-def recv_nonblocking(sock, *, method="recv"):
+def recv_nonblocking(sock, *, method="recv", storage=None):
     zlink_mod = _require_zlink()
     if method == "recv":
         recv_method = sock.recv_into
-        storage = zlink_mod.Received()
+        if storage is None:
+            storage = zlink_mod.Received()
     elif method == "subscribe":
         recv_method = sock.subscribe_into
-        storage = zlink_mod.TopicMessage()
+        if storage is None:
+            storage = zlink_mod.TopicMessage()
     else:
         raise ValueError(f"unsupported recv method: {method}")
     try:

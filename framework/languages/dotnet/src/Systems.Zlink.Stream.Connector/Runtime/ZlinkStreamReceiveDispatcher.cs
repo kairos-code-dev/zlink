@@ -41,11 +41,11 @@ internal sealed class ZlinkStreamReceiveDispatcher(
 
         if (header.Kind == ZlinkStreamMessageKind.Error && header.RequestSeq is null)
         {
-            await callbacks.PublishErrorAsync(ParseErrorBody(frame.Body), cancellationToken).ConfigureAwait(false);
+            await callbacks.PublishErrorAsync(ParseErrorBody(frame.Payload), cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        await QueueTypedHandlersAsync(header, frame.Body, cancellationToken).ConfigureAwait(false);
+        await QueueTypedHandlersAsync(header, frame.Payload, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task HandlerPumpAsync()
@@ -59,7 +59,7 @@ internal sealed class ZlinkStreamReceiveDispatcher(
 
     private ValueTask QueueTypedHandlersAsync(
         ZlinkStreamHeader header,
-        ReadOnlyMemory<byte> body,
+        ReadOnlyMemory<byte> wirePayload,
         CancellationToken cancellationToken)
     {
         var handlers = typedHandlers.Snapshot(header.Name);
@@ -68,7 +68,7 @@ internal sealed class ZlinkStreamReceiveDispatcher(
             return ValueTask.CompletedTask;
         }
 
-        var payload = frameSender.DecompressIfNeeded(header, body);
+        var payload = frameSender.DecompressIfNeeded(header, wirePayload);
         if (!handlerQueue.Writer.TryWrite(new ZlinkStreamHandlerWorkItem(header, payload, handlers)))
         {
             return callbacks.PublishErrorAsync(
@@ -89,7 +89,7 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         {
             try
             {
-                var bodyObject = new ZlinkStreamEncodedBody(header.Codec, payload);
+                var bodyObject = new ZlinkStreamEncodedPayload(header.Codec, payload);
                 await handler.Invoke(new ZlinkStreamMessage(header.Name, header.Metadata, bodyObject), bodyObject, cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -103,11 +103,11 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         }
     }
 
-    private static ZlinkStreamError ParseErrorBody(ReadOnlyMemory<byte> body)
+    private static ZlinkStreamError ParseErrorBody(ReadOnlyMemory<byte> payload)
     {
         try
         {
-            var dto = JsonSerializer.Deserialize<WireError>(body.Span, JsonOptions);
+            var dto = JsonSerializer.Deserialize<WireError>(payload.Span, JsonOptions);
             return new ZlinkStreamError(
                 ZlinkStreamErrorCode.RemoteError,
                 dto?.Message ?? "Remote stream error.");
@@ -116,7 +116,7 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         {
             return new ZlinkStreamError(
                 ZlinkStreamErrorCode.FrameDecodeFailed,
-                "Remote stream error body could not be decoded.",
+                "Remote stream error payload could not be decoded.",
                 ex);
         }
     }

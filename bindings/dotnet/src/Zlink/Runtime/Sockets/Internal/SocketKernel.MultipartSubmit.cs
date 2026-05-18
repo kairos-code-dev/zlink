@@ -96,22 +96,35 @@ internal sealed partial class SocketKernel
         try
         {
             PrepareNativeParts(parts, nativeParts, paramName, ref built);
+            byte[]? publishTopicUtf8 = kind == MultipartSubmitKind.Publish
+                ? GetPublishTopicUtf8(topic!)
+                : null;
             for (int i = 0; i < built; i++)
             {
                 NativeMethods.ZlinkPartFlag partFlag = i + 1 < built
                     ? NativeMethods.ZlinkPartFlag.More
                     : NativeMethods.ZlinkPartFlag.Final;
-                int rc = kind switch
+                int rc;
+                if (kind == MultipartSubmitKind.Publish)
                 {
-                    MultipartSubmitKind.Send => NativeMethods.zlink_send_part(
-                        Handle, ref nativeParts[i], flags, partFlag),
-                    MultipartSubmitKind.Publish => NativeMethods.zlink_publish_part(
-                        Handle, topic!, ref nativeParts[i], flags, partFlag),
-                    MultipartSubmitKind.RoutedSend =>
-                        NativeMethods.zlink_send_part_rid(Handle,
-                            ref routingId, ref nativeParts[i], flags, partFlag),
-                    _ => throw new InvalidOperationException()
-                };
+                    fixed (byte* topicPtr = publishTopicUtf8)
+                    {
+                        rc = NativeMethods.zlink_publish_part_utf8(Handle,
+                            topicPtr, ref nativeParts[i], flags, partFlag);
+                    }
+                }
+                else
+                {
+                    rc = kind switch
+                    {
+                        MultipartSubmitKind.Send => NativeMethods.zlink_send_part(
+                            Handle, ref nativeParts[i], flags, partFlag),
+                        MultipartSubmitKind.RoutedSend =>
+                            NativeMethods.zlink_send_part_rid(Handle,
+                                ref routingId, ref nativeParts[i], flags, partFlag),
+                        _ => throw new InvalidOperationException()
+                    };
+                }
                 submitted = i + 1;
                 if (rc == 0)
                     continue;

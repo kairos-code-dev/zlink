@@ -79,21 +79,29 @@ public sealed partial class Spot
                 built++;
             }
 
+            byte[]? publishTopicUtf8 = kind == SpotMultipartSubmitKind.Publish
+                ? GetPublishTopicUtf8(subject)
+                : null;
             for (int i = 0; i < built; i++)
             {
                 NativeMethods.ZlinkPartFlag partFlag = i + 1 < built
                     ? NativeMethods.ZlinkPartFlag.More
                     : NativeMethods.ZlinkPartFlag.Final;
-                int rc = kind switch
+                int rc;
+                if (kind == SpotMultipartSubmitKind.Publish)
                 {
-                    SpotMultipartSubmitKind.Publish =>
-                        NativeMethods.zlink_spot_publish_part(_handle, subject,
-                            ref nativeParts[i], flags, partFlag),
-                    SpotMultipartSubmitKind.SendChannel =>
-                        NativeMethods.zlink_spot_send_channel_part(_handle,
-                            subject, ref nativeParts[i], flags, partFlag),
-                    _ => throw new InvalidOperationException()
-                };
+                    fixed (byte* topicPtr = publishTopicUtf8)
+                    {
+                        rc = NativeMethods.zlink_spot_publish_part_utf8(
+                            _handle, topicPtr, ref nativeParts[i], flags,
+                            partFlag);
+                    }
+                }
+                else
+                {
+                    rc = NativeMethods.zlink_spot_send_channel_part(_handle,
+                        subject, ref nativeParts[i], flags, partFlag);
+                }
                 submitted = i + 1;
                 if (rc == 0)
                     continue;

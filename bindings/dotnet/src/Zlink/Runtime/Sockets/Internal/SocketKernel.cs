@@ -49,6 +49,8 @@ internal sealed partial class SocketKernel : IDisposable
     private NativeMethods.ZlinkSocketMsgHandlerDelegate? _recvHandlerNative;
     private NativeMethods.ZlinkSubscribeHandlerDelegate? _subscribeHandlerNative;
     private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
+    private string? _publishTopicCacheKey;
+    private byte[]? _publishTopicCacheUtf8;
     private bool _streamAttached;
 
     public SocketKernel(Context context, SocketType type)
@@ -1564,14 +1566,17 @@ internal sealed partial class SocketKernel : IDisposable
         }
     }
 
-    private unsafe MultipartMessageCollection? ReceiveSubscribedParts(int flags,
-        byte[] topicBuffer, out byte[]? routingIdBytes, out string topic,
+    private unsafe bool ReceiveSubscribedParts(int flags,
+        byte[] topicBuffer, out RoutingIdSnapshot routingId, out int topicLength,
+        out Message? singlePart, out MultipartMessageCollection? parts,
         bool allowNoData = false)
     {
         ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
         int nativePartCount = 0;
-        routingIdBytes = null;
-        topic = string.Empty;
+        routingId = default;
+        topicLength = 0;
+        singlePart = null;
+        parts = null;
         try
         {
             while (true)
@@ -1584,7 +1589,7 @@ internal sealed partial class SocketKernel : IDisposable
                 bool initialized = true;
                 int rc = NativeMethods.zlink_subscribe_part(Handle,
                     out IntPtr sourceRoutingId, topicBuffer,
-                    (nuint)topicBuffer.Length, out nuint topicLength, ref part,
+                    (nuint)topicBuffer.Length, out nuint nativeTopicLength, ref part,
                     out int hasMore, flags);
                 if (rc != 0)
                 {
@@ -1594,7 +1599,7 @@ internal sealed partial class SocketKernel : IDisposable
                     if (allowNoData && nativePartCount == 0
                         && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
                             or ErrorCode.EBusy) {
-                        return null;
+                        return false;
                     }
                     throw ZlinkException.CreateRecvException(errno);
                 }
@@ -1602,23 +1607,28 @@ internal sealed partial class SocketKernel : IDisposable
                 initialized = false;
                 if (nativePartCount == 0)
                 {
-                    routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
-                    topic = DecodeTopic(topicBuffer, topicLength);
+                    routingId = RoutingIdSnapshot.FromPointer(sourceRoutingId);
+                    topicLength = checked((int)nativeTopicLength);
                 }
                 if (hasMore == 0 && nativePartCount == 0)
-                    return MultipartMessageCollection.FromNativeSingle(ref part);
+                {
+                    singlePart = Message.AdoptNativeFromPool(ref part);
+                    return true;
+                }
 
                 AppendNativePart(ref nativeParts, ref nativePartCount, ref part);
                 if (hasMore == 0)
                     break;
             }
 
-            return MultipartMessageCollection.FromNativeParts(nativeParts,
+            parts = MultipartMessageCollection.FromNativeParts(nativeParts,
                 nativePartCount);
+            return true;
         }
         catch
         {
             CloseNativeParts(nativeParts, nativePartCount);
+            singlePart?.Dispose();
             throw;
         }
     }
@@ -2485,15 +2495,20 @@ internal sealed partial class SocketKernel : IDisposable
     {
         ZlinkMsg nativePart = default;
         bool moved = false;
+        byte[] topicUtf8 = GetPublishTopicUtf8(topic);
         try
         {
             message.MoveTo(ref nativePart);
-            int rc = NativeMethods.zlink_publish_part(Handle, topic,
-                ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
-            moved = true;
-            if (rc != 0)
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
+            fixed (byte* topicPtr = topicUtf8)
+            {
+                int rc = NativeMethods.zlink_publish_part_utf8(Handle,
+                    topicPtr, ref nativePart, flags,
+                    NativeMethods.ZlinkPartFlag.Final);
+                moved = true;
+                if (rc != 0)
+                    throw ZlinkException.CreateSubmitException(
+                        NativeMethods.zlink_errno());
+            }
         }
         catch
         {
@@ -2507,14 +2522,19 @@ internal sealed partial class SocketKernel : IDisposable
     {
         ZlinkMsg nativePart = default;
         bool moved = false;
+        byte[] topicUtf8 = GetPublishTopicUtf8(topic);
         try
         {
             message.MoveTo(ref nativePart);
-            int rc = NativeMethods.zlink_publish_part(Handle, topic,
-                ref nativePart, DontWaitFlag, NativeMethods.ZlinkPartFlag.Final);
-            moved = true;
-            if (rc == 0)
-                return SendResult.Sent;
+            fixed (byte* topicPtr = topicUtf8)
+            {
+                int rc = NativeMethods.zlink_publish_part_utf8(Handle,
+                    topicPtr, ref nativePart, DontWaitFlag,
+                    NativeMethods.ZlinkPartFlag.Final);
+                moved = true;
+                if (rc == 0)
+                    return SendResult.Sent;
+            }
 
             SendResult? sendResult = TryMapSendResultFromErrno();
             if (sendResult == null)
@@ -2528,6 +2548,23 @@ internal sealed partial class SocketKernel : IDisposable
                 message.RestoreFrom(ref nativePart);
             throw;
         }
+    }
+
+    private byte[] GetPublishTopicUtf8(string topic)
+    {
+        byte[]? cached = _publishTopicCacheUtf8;
+        string? cachedKey = _publishTopicCacheKey;
+        if (cached != null
+            && (ReferenceEquals(cachedKey, topic)
+                || string.Equals(cachedKey, topic, StringComparison.Ordinal)))
+        {
+            return cached;
+        }
+
+        byte[] encoded = PublishTopicEncoding.GetNullTerminatedUtf8(topic);
+        _publishTopicCacheKey = topic;
+        _publishTopicCacheUtf8 = encoded;
+        return encoded;
     }
 
     private unsafe void SendSingleCore(ref ZlinkRoutingId routingId,

@@ -5,14 +5,14 @@ internal interface IZlinkStreamConnectorInternal : IZlinkStreamConnector
     ValueTask SendEncodedAsync(
         ZlinkStreamMessageKind kind,
         string name,
-        ZlinkStreamEncodedBody body,
+        ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
         bool compress,
         CancellationToken cancellationToken);
 
-    ValueTask<ZlinkStreamEncodedBody> RequestEncodedAsync(
+    ValueTask<ZlinkStreamEncodedPayload> RequestEncodedAsync(
         string name,
-        ZlinkStreamEncodedBody body,
+        ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
         bool compress,
         TimeSpan timeout,
@@ -20,7 +20,7 @@ internal interface IZlinkStreamConnectorInternal : IZlinkStreamConnector
 
     void RequestEncoded(
         string name,
-        ZlinkStreamEncodedBody body,
+        ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
         bool compress,
         TimeSpan timeout,
@@ -28,9 +28,9 @@ internal interface IZlinkStreamConnectorInternal : IZlinkStreamConnector
 
     void RequestEncoded(
         string name,
-        ZlinkStreamEncodedBody body,
+        ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
         bool compress,
         TimeSpan timeout,
-        Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback);
+        Action<ZlinkStreamResult<ZlinkStreamEncodedPayload>> callback);
 }

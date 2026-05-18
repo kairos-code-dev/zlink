@@ -16,7 +16,7 @@ public interface IZLinkStream
 
     bool Write(
         Message header,
-        Message body,
+        Message payload,
         SendFlags flags = SendFlags.None);
 
     ValueTask CloseAsync(

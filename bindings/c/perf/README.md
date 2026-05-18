@@ -73,16 +73,20 @@ is a shortcut that sets both send and receive socket buffers to the same value;
 `--sndbuf` and `--rcvbuf` are still available when each direction needs a
 different value.
 
-Multi benchmarks set `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` from the current
-message size before each run for raw benchmark sockets:
+Multi benchmarks set the auto-HWM message unit from the current message size
+before each run:
 
 | Socket family | Message unit used by perf |
 |---------------|---------------------------|
 | raw multi perf sockets | `msg_size` |
+| SPOT node internal sockets | `msg_size` |
+| SPOT handle sockets | `msg_size` |
 
-SPOT node and SPOT handle paths do not set this common socket option. The C API
-treats `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` as a raw socket option, so SPOT perf
-uses the core's SPOT defaults instead of writing a per-handle message unit.
+SPOT data and control paths must use the same message unit as the test payload
+size. A visible `MsgUnit(B)=4096` row is only valid for a 4096 byte test case.
+If a 64 byte or 1024 byte run prints `4096`, the run is not a valid comparison
+because the effective slot budget and socket buffers are different from the
+target message size.
 
 All single benchmarks use one context I/O thread by default. SPOT does not have
 a pattern-specific I/O thread default; pass `--io-threads` or set

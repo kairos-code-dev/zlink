@@ -115,15 +115,15 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         await _lifecycle.CloseAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public IZlinkStreamSendCall Send(ZlinkStreamEncodedBody body)
-        => new ZlinkStreamSendBuilder(this, ResolveNameOrDefault(body), body);
+    public IZlinkStreamSendCall Send(ZlinkStreamEncodedPayload payload)
+        => new ZlinkStreamSendBuilder(this, ResolveNameOrDefault(payload), payload);
 
-    public IZlinkStreamRequestCall Request(ZlinkStreamEncodedBody body)
-        => new ZlinkStreamRequestBuilder(this, ResolveNameOrDefault(body), body);
+    public IZlinkStreamRequestCall Request(ZlinkStreamEncodedPayload payload)
+        => new ZlinkStreamRequestBuilder(this, ResolveNameOrDefault(payload), payload);
 
     public IDisposable On(
         string name,
-        Func<ZlinkStreamMessage<ZlinkStreamEncodedBody>, CancellationToken, ValueTask> handler)
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
         ValidateName(name);
@@ -134,19 +134,19 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     async ValueTask IZlinkStreamConnectorInternal.SendEncodedAsync(
         ZlinkStreamMessageKind kind,
         string name,
-        ZlinkStreamEncodedBody body,
+        ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
         bool compress,
         CancellationToken cancellationToken)
     {
-        var frame = _frameSender.BuildOutboundFrame(kind, name, body, metadata, compress, null);
+        var frame = _frameSender.BuildOutboundFrame(kind, name, payload, metadata, compress, null);
         _frameSender.ValidateSendReady(frame.HeaderBytes, frame.BodyBytes);
         await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.BodyBytes, cancellationToken).ConfigureAwait(false);
     }
 
-    async ValueTask<ZlinkStreamEncodedBody> IZlinkStreamConnectorInternal.RequestEncodedAsync(
+    async ValueTask<ZlinkStreamEncodedPayload> IZlinkStreamConnectorInternal.RequestEncodedAsync(
         string name,
-        ZlinkStreamEncodedBody body,
+        ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
         bool compress,
         TimeSpan timeout,
@@ -154,7 +154,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     {
         return await RequestEncodedCoreAsync(
                 name,
-                body,
+                payload,
                 metadata,
                 compress,
                 timeout,
@@ -162,16 +162,16 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             .ConfigureAwait(false);
     }
 
-    private async ValueTask<ZlinkStreamEncodedBody> RequestEncodedCoreAsync(
+    private async ValueTask<ZlinkStreamEncodedPayload> RequestEncodedCoreAsync(
         string name,
-        ZlinkStreamEncodedBody body,
+        ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
         bool compress,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         var pending = _pending.Create();
-        var frame = _frameSender.BuildOutboundFrame(ZlinkStreamMessageKind.Request, name, body, metadata, compress, pending.RequestSeq);
+        var frame = _frameSender.BuildOutboundFrame(ZlinkStreamMessageKind.Request, name, payload, metadata, compress, pending.RequestSeq);
 
         try
         {
@@ -181,8 +181,8 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.BodyBytes, timeoutCts.Token).ConfigureAwait(false);
             var packet = await _pending.WaitAsync(pending, timeout, cancellationToken).ConfigureAwait(false);
             var replyHeader = _headerCodec.Decode(packet.Header);
-            var replyBody = _frameSender.DecompressIfNeeded(replyHeader, packet.Body);
-            return new ZlinkStreamEncodedBody(replyHeader.Codec, replyBody);
+            var replyBody = _frameSender.DecompressIfNeeded(replyHeader, packet.Payload);
+            return new ZlinkStreamEncodedPayload(replyHeader.Codec, replyBody);
         }
         catch
         {
@@ -193,14 +193,14 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
     void IZlinkStreamConnectorInternal.RequestEncoded(
         string name,
-        ZlinkStreamEncodedBody body,
+        ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
         bool compress,
         TimeSpan timeout,
         Action<ZlinkStreamResult> callback)
     {
         _callbacks.QueueRequestCallback(
-            () => RequestEncodedCoreAsync(name, body, metadata, compress, timeout, CancellationToken.None),
+            () => RequestEncodedCoreAsync(name, payload, metadata, compress, timeout, CancellationToken.None),
             reply => ZlinkStreamResult.Success(),
             ZlinkStreamResult.Failure,
             callback);
@@ -208,16 +208,16 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
     void IZlinkStreamConnectorInternal.RequestEncoded(
         string name,
-        ZlinkStreamEncodedBody body,
+        ZlinkStreamEncodedPayload payload,
         ZlinkStreamMetadata metadata,
         bool compress,
         TimeSpan timeout,
-        Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback)
+        Action<ZlinkStreamResult<ZlinkStreamEncodedPayload>> callback)
     {
         _callbacks.QueueRequestCallback(
-            () => RequestEncodedCoreAsync(name, body, metadata, compress, timeout, CancellationToken.None),
-            ZlinkStreamResult<ZlinkStreamEncodedBody>.Success,
-            ZlinkStreamResult<ZlinkStreamEncodedBody>.Failure,
+            () => RequestEncodedCoreAsync(name, payload, metadata, compress, timeout, CancellationToken.None),
+            ZlinkStreamResult<ZlinkStreamEncodedPayload>.Success,
+            ZlinkStreamResult<ZlinkStreamEncodedPayload>.Failure,
             callback);
     }
 
@@ -244,14 +244,14 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         return name;
     }
 
-    private string? ResolveNameOrDefault(ZlinkStreamEncodedBody body)
+    private string? ResolveNameOrDefault(ZlinkStreamEncodedPayload payload)
     {
-        if (body.MessageType is null)
+        if (payload.MessageType is null)
         {
             return null;
         }
 
-        return ResolveName(body.MessageType);
+        return ResolveName(payload.MessageType);
     }
 
     internal static void ValidateName(string name)

@@ -42,9 +42,9 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal async ValueTask SubmitActorAsync(
         IZLinkActor actor,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
-        => await _actors.SubmitActorAsync(actor, header, body, cancellationToken);
+        => await _actors.SubmitActorAsync(actor, header, payload, cancellationToken);
 
     internal async ValueTask<CreateActorResult> CreateLocalActorAsync(
         string actorId,
@@ -55,16 +55,16 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal async ValueTask<byte[]> SubmitActorForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
-        => await _actors.SubmitActorForReplyAsync(actorId, header, body, cancellationToken);
+        => await _actors.SubmitActorForReplyAsync(actorId, header, payload, cancellationToken);
 
     internal async ValueTask SubmitActorByIdAsync(
         string actorId,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
-        => await _actors.SubmitActorByIdAsync(actorId, header, body, cancellationToken);
+        => await _actors.SubmitActorByIdAsync(actorId, header, payload, cancellationToken);
 
     internal ZLinkActorRuntimeState GetOrCreateActorState(string actorId)
         => _actors.GetOrCreateActorState(actorId);

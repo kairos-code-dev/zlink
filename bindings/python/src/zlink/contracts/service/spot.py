@@ -450,7 +450,7 @@ def _make_spot_routed_send_sender(spot, node_rid, spot_rid):
 
 def _payload_parts(payload):
     if isinstance(payload, (list, tuple)):
-        parts = list(payload)
+        parts = payload
     else:
         parts = [payload]
     if not parts:
@@ -532,6 +532,39 @@ def _make_routed_received(
     owner = _make_received_owner(parts_ptr, int(part_count))
     received = Received(
         owner,
+        routing_id=routing_id,
+        request_seq=int(request_seq),
+        spot_rid=spot_routing_id,
+        reply_sender=reply_sender,
+        send_sender=send_sender,
+    )
+    received.source_node_rid = routing_id
+    received.source_spot_rid = received.spot_rid
+    return received
+
+
+def _make_owned_routed_received(
+    source_node_rid,
+    source_spot_rid,
+    request_seq,
+    parts_array,
+    part_count,
+    *,
+    reply_sender=None,
+    send_sender=None,
+):
+    routing_id = (
+        _routing_id_bytes(source_node_rid)
+        if source_node_rid is not None
+        else None
+    )
+    spot_routing_id = (
+        _routing_id_bytes(source_spot_rid)
+        if source_spot_rid is not None
+        else None
+    )
+    received = Received(
+        _ReceivedPartsOwner(parts_array, int(part_count)),
         routing_id=routing_id,
         request_seq=int(request_seq),
         spot_rid=spot_routing_id,
@@ -866,7 +899,7 @@ def _recv_spot_routed(handle, flags, *, reply_sender_factory=None, send_sender_f
     if send_sender_factory is not None:
         send_sender = send_sender_factory(node_rid, spot_rid)
 
-    return _make_routed_received(
+    return _make_owned_routed_received(
         source_node_rid,
         source_spot_rid,
         request_seq,

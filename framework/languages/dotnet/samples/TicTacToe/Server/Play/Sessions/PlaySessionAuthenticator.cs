@@ -12,10 +12,10 @@ internal sealed class PlaySessionAuthenticator(
 
     public async ValueTask<PlayActor> AuthenticateAsync(
         IZLinkSessionContext context,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
-        var authenticate = body.FromJson<AuthenticateReq>(JsonOptions);
+        var authenticate = payload.FromJson<AuthenticateReq>(JsonOptions);
 
         logger.LogInformation(
             "play stream -> api: authenticate requested. sessionId={SessionId}",

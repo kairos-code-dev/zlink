@@ -10,7 +10,7 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
         ZLinkActorRuntimeState state,
         IZLinkActor actor,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
         if (!state.TryResolvePacket(header, out var descriptor) || descriptor is null)
@@ -20,7 +20,7 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
 
         ValidateActorType(descriptor, actor);
 
-        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
+        var message = ZLinkStreamPacketPayloadCodec.Decode(header, payload, descriptor.MessageType);
         var handler = services.GetRequiredService(descriptor.HandlerType);
         var metadata = CreateMessageMetadata(header);
         var arguments = ArrayPool<object?>.Shared.Rent(3);
@@ -45,7 +45,7 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
         ZLinkActorRuntimeState state,
         IZLinkActor actor,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
         if (!state.TryResolveRequest(header.Name, out var descriptor)
@@ -57,7 +57,7 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
 
         ValidateActorType(descriptor, actor);
 
-        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
+        var message = ZLinkStreamPacketPayloadCodec.Decode(header, payload, descriptor.MessageType);
         var handler = services.GetRequiredService(descriptor.HandlerType);
         var metadata = CreateMessageMetadata(header);
         var arguments = ArrayPool<object?>.Shared.Rent(3);

@@ -9,23 +9,23 @@ internal static class ZLinkStreamPacketPayloadCodec
 
     public static object? Decode(
         ZlinkStreamHeader header,
-        Message body,
+        Message payloadMessage,
         Type messageType)
     {
         if (messageType == typeof(Message))
         {
-            return body;
+            return payloadMessage;
         }
 
-        var payload = body.AsReadOnlyMemory();
-        if ((header.Flags & ZlinkStreamHeaderFlags.BodyCompressed) != 0)
+        var payload = payloadMessage.AsReadOnlyMemory();
+        if ((header.Flags & ZlinkStreamHeaderFlags.PayloadCompressed) != 0)
         {
             payload = CompressionCodec.Decompress(payload);
         }
 
-        if (messageType == typeof(ZlinkStreamEncodedBody))
+        if (messageType == typeof(ZlinkStreamEncodedPayload))
         {
-            return new ZlinkStreamEncodedBody(header.Codec, payload);
+            return new ZlinkStreamEncodedPayload(header.Codec, payload);
         }
 
         if (messageType == typeof(ReadOnlyMemory<byte>))
@@ -55,7 +55,7 @@ internal static class ZLinkStreamPacketPayloadCodec
         }
 
         throw new InvalidOperationException(
-            $"Actor packet '{header.Name}' uses codec '{header.Codec}'. Register a ZlinkStreamEncodedBody handler and decode it explicitly.");
+            $"Actor packet '{header.Name}' uses codec '{header.Codec}'. Register a ZlinkStreamEncodedPayload handler and decode it explicitly.");
     }
 
     public static byte[] EncodeJson(object? message, Type messageType)

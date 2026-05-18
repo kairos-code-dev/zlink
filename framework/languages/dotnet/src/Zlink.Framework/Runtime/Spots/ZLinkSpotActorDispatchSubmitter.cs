@@ -9,31 +9,31 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
-        var ownedBody = body.Move();
+        var ownedPayload = payload.Move();
 
         try
         {
             await serial.ExecuteAsync(
                 async static (_, state, ct) =>
                 {
-                    using var currentBody = state.Body;
+                    using var currentPayload = state.Payload;
                     await state.Dispatcher.DispatchActorPacketAsync(
                             state.Actor,
                             state.RuntimeState,
                             state.Header,
-                            currentBody,
+                            currentPayload,
                             ct)
                         .ConfigureAwait(false);
                 },
-                new ActorDispatchState(dispatcher, actor, runtimeState, header, ownedBody),
+                new ActorDispatchState(dispatcher, actor, runtimeState, header, ownedPayload),
                 cancellationToken).ConfigureAwait(false);
         }
         catch
         {
-            ownedBody.Dispose();
+            ownedPayload.Dispose();
             throw;
         }
     }
@@ -42,23 +42,23 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
-        var ownedBody = body.Move();
+        var ownedPayload = payload.Move();
 
         try
         {
-            var state = new ActorReplyDispatchState(dispatcher, actor, runtimeState, header, ownedBody);
+            var state = new ActorReplyDispatchState(dispatcher, actor, runtimeState, header, ownedPayload);
             await serial.ExecuteAsync(
                 async static (_, state, ct) =>
                 {
-                    using var currentBody = state.Body;
+                    using var currentPayload = state.Payload;
                     state.Reply = await state.Dispatcher.DispatchActorPacketForReplyAsync(
                             state.Actor,
                             state.RuntimeState,
                             state.Header,
-                            currentBody,
+                            currentPayload,
                             ct)
                         .ConfigureAwait(false);
                 },
@@ -71,7 +71,7 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         }
         catch
         {
-            ownedBody.Dispose();
+            ownedPayload.Dispose();
             throw;
         }
     }
@@ -81,7 +81,7 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
-        Message body)
+        Message payload)
     {
         public ZLinkSpotActivationDispatcher Dispatcher { get; } = dispatcher;
 
@@ -91,7 +91,7 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
 
         public ZlinkStreamHeader Header { get; } = header;
 
-        public Message Body { get; } = body;
+        public Message Payload { get; } = payload;
     }
 
     private sealed class ActorReplyDispatchState(
@@ -99,7 +99,7 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
-        Message body)
+        Message payload)
     {
         public ZLinkSpotActivationDispatcher Dispatcher { get; } = dispatcher;
 
@@ -109,7 +109,7 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
 
         public ZlinkStreamHeader Header { get; } = header;
 
-        public Message Body { get; } = body;
+        public Message Payload { get; } = payload;
 
         public byte[]? Reply { get; set; }
     }

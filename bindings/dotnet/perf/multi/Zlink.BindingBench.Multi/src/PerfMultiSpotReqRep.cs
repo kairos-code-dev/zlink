@@ -119,6 +119,11 @@ internal static class PerfMultiSpotReqRep
             ConfigureSpotNodeTlsIfNeeded(controlNode, options.Transport);
             ConfigureDataNodeOptions(dataNode, options);
             ConfigureControlNodeOptions(controlNode, readyTimeoutMs);
+            ApplySpotNodeAutoHwmMsgUnit(dataNode, size);
+            ApplySpotNodeAutoHwmMsgUnit(controlNode, size);
+            ApplySpotAutoHwmMsgUnit(replier, size);
+            ApplySpotAutoHwmMsgUnit(controlPub, size);
+            ApplySpotAutoHwmMsgUnit(controlSub, size);
             dataNode.SetRoutingId(config.ServerNodeRoutingId);
             replier.SetRoutingId(config.ServerSpotRoutingId);
             controlSub.SetSubscription(Topic);
@@ -235,6 +240,10 @@ internal static class PerfMultiSpotReqRep
             ConfigureSpotNodeTlsIfNeeded(controlNode, options.Transport);
             ConfigureDataNodeOptions(dataNode, options);
             ConfigureControlNodeOptions(controlNode, readyTimeoutMs);
+            ApplySpotNodeAutoHwmMsgUnit(dataNode, size);
+            ApplySpotNodeAutoHwmMsgUnit(controlNode, size);
+            ApplySpotAutoHwmMsgUnit(controlPub, size);
+            ApplySpotAutoHwmMsgUnit(controlSub, size);
 
             controlSub.SetSubscription(Topic);
             string dataEndpoint = BindSpotNodeWithRetry(dataNode,
@@ -257,6 +266,7 @@ internal static class PerfMultiSpotReqRep
             {
                 var requester = dataNode.CreateSpot();
                 ApplyMultiSpotSocketOptions(requester, options);
+                ApplySpotAutoHwmMsgUnit(requester, size);
                 requester.SetRoutingId(RoutingId.FromBytes(
                     Encoding.ASCII.GetBytes(
                         config.Mode == SpotEchoMode.RequestReply

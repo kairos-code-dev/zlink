@@ -151,6 +151,67 @@ public sealed class test_spot_pubsub_basic
     }
 
     [Fact]
+    public void spot_publish_accepts_managed_payload_message()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var publisher = node.CreateSpot();
+        using var subscriber = node.CreateSpot();
+
+        const string topic = "spot:managed-payload";
+        byte[] payload = "hello-managed-payload"u8.ToArray();
+        subscriber.SetSubscription(topic);
+
+        Message? sent = null;
+        Assert.True(CoreTestSupport.WaitUntil(
+            () =>
+            {
+                sent?.Dispose();
+                sent = Message.FromBytes(payload);
+                try
+                {
+                    return publisher.Publish(topic).Message(sent)
+                        .Flags(SendFlags.DontWait).Submit();
+                }
+                catch (ZlinkSubmitException ex)
+                    when (ex.Result == ZlinkSubmitException.ErrorCode.Backpressured
+                          || ex.Result == ZlinkSubmitException.ErrorCode.NotConnected)
+                {
+                    return false;
+                }
+            },
+            5000));
+
+        Assert.NotNull(sent);
+        Message sentMessage = sent;
+        Assert.Throws<ObjectDisposedException>(() => _ = sentMessage.Size);
+        sentMessage.Dispose();
+
+        using var subscribed = new TopicMessage();
+        Assert.True(CoreTestSupport.WaitUntil(
+            () =>
+            {
+                try
+                {
+                    return subscriber.Subscribe(
+                        subscribed, RecvFlags.DontWait);
+                }
+                catch (ZlinkRecvException ex)
+                    when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
+                {
+                    return false;
+                }
+            },
+            5000));
+
+        Assert.Equal(topic, subscribed.Topic);
+        Assert.Equal(payload, subscribed.SinglePartOrThrow().ToArray());
+    }
+
+    [Fact]
     public void spot_node_create_spot_publishes_to_remote_subscriber_via_discovery_across_contexts()
     {
         if (!CoreTestSupport.IsNativeAvailable())

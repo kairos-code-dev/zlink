@@ -326,6 +326,22 @@ record_failure() {
 IFS=',' read -r -a patterns <<< "$(trim_csv "${PATTERN}")"
 IFS=',' read -r -a msg_sizes <<< "$(trim_csv "${MSG_SIZES}")"
 
+case_timeout_seconds() {
+  local pattern="$1"
+  local value
+  value=$((DURATION * 6 + 15))
+  if [[ "${value}" -lt 30 ]]; then
+    value=30
+  fi
+  if [[ "${pattern}" == "SPOT" ]]; then
+    local spot_value=$((DURATION * 12 + 60))
+    if [[ "${spot_value}" -gt "${value}" ]]; then
+      value="${spot_value}"
+    fi
+  fi
+  printf '%s' "${value}"
+}
+
 # Record the pattern -> transport iteration order so the report emitter can
 # reproduce the canonical C structure (progress lines + cooldown markers)
 # byte-for-byte. C authority: bindings/c/perf/single/run_comparison.py
@@ -360,7 +376,26 @@ for pattern in "${patterns[@]}"; do
           cmd+=(--rcvbuf "${RCVBUF}")
         fi
         cmd+=(--sndtimeo "${SNDTIMEO_MS}" --rcvtimeo "${RCVTIMEO_MS}")
-        if ! output="$("${cmd[@]}" 2>&1)"; then
+        if command -v timeout >/dev/null 2>&1; then
+          timeout_seconds="$(case_timeout_seconds "${pattern}")"
+          output="$(timeout "${timeout_seconds}s" "${cmd[@]}" 2>&1)" || status=$?
+          status="${status:-0}"
+          if [[ "${status}" -ne 0 ]]; then
+            if [[ "${status}" -eq 124 ]]; then
+              record_failure "${pattern}" "${transport}" "${size}" "${run}" \
+                "timeout_after_${timeout_seconds}s"
+              continue
+            fi
+            if printf '%s\n' "${output}" | grep -q '^UNSUPPORTED,'; then
+              expected_result_lines=$((expected_result_lines - 5))
+              continue
+            fi
+            record_failure "${pattern}" "${transport}" "${size}" "${run}" \
+              "$(failure_reason_from_output "${output}")"
+            continue
+          fi
+          unset status
+        elif ! output="$("${cmd[@]}" 2>&1)"; then
           if printf '%s\n' "${output}" | grep -q '^UNSUPPORTED,'; then
             expected_result_lines=$((expected_result_lines - 5))
             continue

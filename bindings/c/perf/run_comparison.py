@@ -3990,6 +3990,16 @@ def build_effective_option_items(args, selected_patterns):
         ),
         ("transports", ",".join(unique_transports) if unique_transports else "none"),
         ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),
+        (
+            "routed_echo_borrow_payload",
+            "tcp"
+            if any(
+                pattern in ("DEALER_ROUTER", "ROUTER_ROUTER")
+                for pattern in selected_patterns
+            )
+            and "tcp" in unique_transports
+            else "none",
+        ),
     ]
 
     if only:

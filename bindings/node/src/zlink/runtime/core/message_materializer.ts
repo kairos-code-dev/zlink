@@ -98,5 +98,15 @@ export function materializeTopicMessage(raw: NativeTopicMessageRaw): TopicMessag
 }
 
 export function adoptTopicMessage(result: TopicMessage, raw: NativeTopicMessageRaw): void {
-  result.adoptFrom(materializeTopicMessage(raw));
+  (result as TopicMessage & {
+    _replace: (
+      topic: string,
+      parts: Message[],
+      routingId: RoutingId | null
+    ) => void;
+  })._replace(
+    raw.topic,
+    raw.parts.map((part) => Message.fromSnapshot(part)),
+    wrapRoutingId(raw.routingId ?? null)
+  );
 }

@@ -148,6 +148,7 @@ void test_router_send_throws_for_closed_socket ()
     expect_runtime_error ([&] {
         router.send (routing_id).message (outbound).submit ();
     });
+    assert (outbound.valid ());
 }
 
 void test_send_throws_on_general_error ()
@@ -160,6 +161,7 @@ void test_send_throws_on_general_error ()
     expect_runtime_error ([&] {
         socket.send ().message (outbound).submit ();
     });
+    assert (outbound.valid ());
 }
 
 void test_publish_throws_on_general_error ()
@@ -173,6 +175,7 @@ void test_publish_throws_on_general_error ()
     expect_runtime_error ([&] {
         socket.publish ("topic:error").message (outbound).submit ();
     });
+    assert (outbound.valid ());
 }
 
 void test_stream_receive_returns_busy_in_packet_callback_mode ()
@@ -237,6 +240,25 @@ void test_routing_id_rejects_null_pointer_for_non_empty_bytes ()
     assert (threw);
 }
 
+void test_routing_id_copy_assignment_preserves_short_value ()
+{
+    const std::string long_bytes (128, 'L');
+    const std::string short_bytes ("rid");
+
+    zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> (long_bytes.data ()),
+      long_bytes.size ());
+    const zlink::routing_id_t short_id = zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> (short_bytes.data ()),
+      short_bytes.size ());
+
+    routing_id = short_id;
+    assert (routing_id.size () == short_bytes.size ());
+    assert (routing_id.to_bytes ()
+            == std::vector<uint8_t> (short_bytes.begin (), short_bytes.end ()));
+    assert (routing_id == short_id);
+}
+
 } // namespace
 
 int main ()
@@ -253,5 +275,6 @@ int main ()
     test_routing_id_accepts_maximum_size ();
     test_routing_id_rejects_oversize_input ();
     test_routing_id_rejects_null_pointer_for_non_empty_bytes ();
+    test_routing_id_copy_assignment_preserves_short_value ();
     std::quick_exit (0);
 }

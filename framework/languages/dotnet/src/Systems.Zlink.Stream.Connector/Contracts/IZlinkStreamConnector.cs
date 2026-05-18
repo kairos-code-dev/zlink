@@ -14,11 +14,11 @@ public interface IZlinkStreamConnector : IAsyncDisposable
 
     ValueTask CloseAsync(CancellationToken cancellationToken = default);
 
-    IZlinkStreamSendCall Send(ZlinkStreamEncodedBody body);
+    IZlinkStreamSendCall Send(ZlinkStreamEncodedPayload payload);
 
-    IZlinkStreamRequestCall Request(ZlinkStreamEncodedBody body);
+    IZlinkStreamRequestCall Request(ZlinkStreamEncodedPayload payload);
 
     IDisposable On(
         string name,
-        Func<ZlinkStreamMessage<ZlinkStreamEncodedBody>, CancellationToken, ValueTask> handler);
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler);
 }

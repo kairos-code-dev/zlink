@@ -37,7 +37,7 @@ inline service::send_op_t router_socket_t::send (
     service::detail::spot_op_state_t state;
     state.kind = service::detail::spot_op_kind_t::raw_routed_send;
     state.raw_socket = handle ();
-    state.first_rid = target_rid_;
+    service::detail::cache_first_rid_native (state, target_rid_);
     return service::send_op_t (std::move (state));
 }
 

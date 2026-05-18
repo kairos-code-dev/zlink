@@ -77,18 +77,18 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     private void OnFramedPacket(
         string routingIdText,
         Message header,
-        Message body)
+        Message payload)
     {
         var routingId = ParsePublicRoutingId(routingIdText);
         if (!_sessions.TryGetOrCreate(routingId, out var session))
         {
             header.Dispose();
-            body.Dispose();
+            payload.Dispose();
             return;
         }
 
         _sessions.ApplyPendingConnectionMetadata(session);
-        session.EnqueuePacket(header, body);
+        session.EnqueuePacket(header, payload);
     }
 
     private void OnMonitorEvent(ZLinkBackendSocketMonitorEvent monitorEvent)

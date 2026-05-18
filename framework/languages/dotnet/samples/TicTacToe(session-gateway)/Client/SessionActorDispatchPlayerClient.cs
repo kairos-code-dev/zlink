@@ -18,12 +18,13 @@ internal sealed class SessionActorDispatchPlayerClient(
         string streamEndpoint,
         CancellationToken cancellationToken)
     {
-        var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
+        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri(streamEndpoint),
             ConnectTimeout = SampleTimings.ConnectTimeout,
             RequestTimeout = SampleTimings.RequestTimeout,
-        }, cancellationToken);
+        });
+        await connector.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
         var inbox = new SessionActorNotificationInbox();
         inbox.Register(connector);

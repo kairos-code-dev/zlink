@@ -8,10 +8,10 @@ internal static class ZLinkStreamFrameWriter
     public static void Write(
         Func<Message, bool> write,
         ZlinkStreamHeader header,
-        ReadOnlySpan<byte> body,
+        ReadOnlySpan<byte> payload,
         string failureMessage)
     {
-        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, body);
+        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, payload);
         using var payloadMessage = Message.FromBytes(frame);
         if (!write(payloadMessage))
         {
@@ -22,18 +22,18 @@ internal static class ZLinkStreamFrameWriter
     public static void Write(
         IZLinkStream stream,
         ZlinkStreamHeader header,
-        ReadOnlyMemory<byte> body,
+        ReadOnlyMemory<byte> payload,
         string failureMessage)
     {
-        Write(message => stream.Write(message), header, body.Span, failureMessage);
+        Write(message => stream.Write(message), header, payload.Span, failureMessage);
     }
 
     public static void Write(
         IZLinkStream stream,
         ZlinkStreamHeader header,
-        ReadOnlySpan<byte> body,
+        ReadOnlySpan<byte> payload,
         string failureMessage)
     {
-        Write(message => stream.Write(message), header, body, failureMessage);
+        Write(message => stream.Write(message), header, payload, failureMessage);
     }
 }

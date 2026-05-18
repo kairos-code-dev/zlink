@@ -97,6 +97,11 @@ class _BaseReceived:
         return len(self.parts)
 
     def to_bytes_list(self):
+        if self._owner is not None:
+            return [
+                _msg_to_bytes(self._owner.msg(index))
+                for index in range(self._owner._part_count)
+            ]
         return [message.to_bytes() for message in self.parts]
 
     def is_single_part(self):
@@ -190,6 +195,29 @@ class ReceivedMultipart(_BaseReceived):
         source._reply_sender = None
         source._send_sender = None
 
+    def _replace(
+        self,
+        owner,
+        routing_id=None,
+        request_seq=None,
+        *,
+        spot_rid=None,
+        reply_sender=None,
+        send_sender=None,
+    ):
+        if self._owner is not None:
+            try:
+                self._owner.close()
+            except Exception:  # noqa: BLE001
+                pass
+        self._owner = owner
+        self.parts = self._build_parts(owner)
+        self.routing_id = routing_id
+        self.spot_rid = spot_rid
+        self.request_seq = request_seq
+        self._reply_sender = reply_sender
+        self._send_sender = send_sender
+
 
 class TopicMessage(_BaseReceived):
     def __init__(
@@ -200,17 +228,32 @@ class TopicMessage(_BaseReceived):
         request_seq=None,
     ):
         if owner is None:
-            self.topic = ""
+            self._topic = ""
+            self._topic_raw = None
             self._owner = None
             self.parts = ()
             self.routing_id = None
             self.request_seq = None
             return
-        self.topic = topic
+        self._topic = topic
+        self._topic_raw = None
         self._owner = owner
         self.parts = self._build_parts(owner)
         self.routing_id = routing_id
         self.request_seq = request_seq
+
+    @property
+    def topic(self):
+        raw = self._topic_raw
+        if raw is not None:
+            self._topic = raw.decode("utf-8", errors="replace")
+            self._topic_raw = None
+        return self._topic
+
+    @topic.setter
+    def topic(self, value):
+        self._topic = value
+        self._topic_raw = None
 
     def _adopt_from(self, source):
         if source is self:
@@ -220,16 +263,39 @@ class TopicMessage(_BaseReceived):
                 self._owner.close()
             except Exception:  # noqa: BLE001
                 pass
-        self.topic = source.topic
+        self._topic = source._topic
+        self._topic_raw = source._topic_raw
         self._owner = source._owner
         self.parts = source.parts
         self.routing_id = source.routing_id
         self.request_seq = source.request_seq
-        source.topic = ""
+        source._topic = ""
+        source._topic_raw = None
         source._owner = None
         source.parts = ()
         source.routing_id = None
         source.request_seq = None
+
+    def _replace(
+        self,
+        owner,
+        *,
+        topic="",
+        topic_raw=None,
+        routing_id=None,
+        request_seq=None,
+    ):
+        if self._owner is not None:
+            try:
+                self._owner.close()
+            except Exception:  # noqa: BLE001
+                pass
+        self._topic = topic
+        self._topic_raw = topic_raw
+        self._owner = owner
+        self.parts = self._build_parts(owner)
+        self.routing_id = routing_id
+        self.request_seq = request_seq
 
 
 class Received(ReceivedMultipart):

@@ -192,7 +192,7 @@ bool initialize_reqrep_server_session(
     apply_benchmark_auto_hwm_msg_unit(
       session->node, ZLINK_SOCKET_DEALER, max_msg_size);
     apply_benchmark_auto_hwm_msg_unit(
-      session->control_node, ZLINK_SOCKET_DEALER, 4096);
+      session->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
 
     session->pub = perf_create_default_spot_handle(session->node);
     session->control_pub =

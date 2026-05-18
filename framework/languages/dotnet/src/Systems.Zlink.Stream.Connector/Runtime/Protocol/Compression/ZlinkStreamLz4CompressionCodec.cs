@@ -6,9 +6,9 @@ internal sealed class ZlinkStreamLz4CompressionCodec : IZlinkStreamCompressionCo
 {
     public ZlinkStreamCompression Compression => ZlinkStreamCompression.Lz4;
 
-    public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> body)
-        => LZ4Pickler.Pickle(body.Span);
+    public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
+        => LZ4Pickler.Pickle(payload.Span);
 
-    public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> body)
-        => LZ4Pickler.Unpickle(body.Span);
+    public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload)
+        => LZ4Pickler.Unpickle(payload.Span);
 }

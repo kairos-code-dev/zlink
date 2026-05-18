@@ -13,7 +13,7 @@ internal sealed class ZLinkSessionStreamTransport(
     public ValueTask SendRawAsync(
         string packetName,
         ZlinkStreamCodec codec,
-        ReadOnlyMemory<byte> body,
+        ReadOnlyMemory<byte> payload,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -24,14 +24,14 @@ internal sealed class ZLinkSessionStreamTransport(
             null,
             packetName,
             ZlinkStreamMetadata.Empty);
-        WriteRawFrame(header, body.Span, "Client stream send failed.");
+        WriteRawFrame(header, payload.Span, "Client stream send failed.");
         return ValueTask.CompletedTask;
     }
 
     public async ValueTask<Message> RequestRawAsync(
         string packetName,
         ZlinkStreamCodec codec,
-        ReadOnlyMemory<byte> body,
+        ReadOnlyMemory<byte> payload,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
@@ -45,7 +45,7 @@ internal sealed class ZLinkSessionStreamTransport(
             pending.RequestSeq,
             packetName,
             ZlinkStreamMetadata.Empty);
-        WriteRawFrame(header, body.Span, "Client stream request send failed.");
+        WriteRawFrame(header, payload.Span, "Client stream request send failed.");
 
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
@@ -61,7 +61,7 @@ internal sealed class ZLinkSessionStreamTransport(
     public ValueTask ReplyRawAsync(
         ZlinkStreamHeader requestHeader,
         ZlinkStreamCodec codec,
-        ReadOnlyMemory<byte> body,
+        ReadOnlyMemory<byte> payload,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -77,7 +77,7 @@ internal sealed class ZLinkSessionStreamTransport(
             requestSeq,
             requestHeader.Name,
             ZlinkStreamMetadata.Empty);
-        WriteRawFrame(header, body.Span, "Client stream reply send failed.");
+        WriteRawFrame(header, payload.Span, "Client stream reply send failed.");
         return ValueTask.CompletedTask;
     }
 
@@ -99,11 +99,11 @@ internal sealed class ZLinkSessionStreamTransport(
             requestSeq,
             requestHeader.Name,
             ZlinkStreamMetadata.Empty);
-        var body = ZLinkEnvelopeCodec.EncodeJsonBytes(
+        var payload = ZLinkEnvelopeCodec.EncodeJsonBytes(
             new ZLinkStreamWireError(
                 exception.GetType().Name,
                 exception.Message));
-        WriteRawFrame(header, body, "Client stream error reply send failed.");
+        WriteRawFrame(header, payload, "Client stream error reply send failed.");
         return ValueTask.CompletedTask;
     }
 
@@ -116,7 +116,7 @@ internal sealed class ZLinkSessionStreamTransport(
         cancellationToken.ThrowIfCancellationRequested();
         using var pending = requests.Start();
 
-        ReadOnlyMemory<byte> body = ZLinkEnvelopeCodec.EncodeJsonBytes(request);
+        ReadOnlyMemory<byte> payload = ZLinkEnvelopeCodec.EncodeJsonBytes(request);
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
             ZlinkStreamCodec.Json,
@@ -124,7 +124,7 @@ internal sealed class ZLinkSessionStreamTransport(
             pending.RequestSeq,
             packetName,
             ZlinkStreamMetadata.Empty);
-        ZLinkStreamFrameWriter.Write(stream, header, body, "Client stream request send failed.");
+        ZLinkStreamFrameWriter.Write(stream, header, payload, "Client stream request send failed.");
 
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
@@ -137,14 +137,14 @@ internal sealed class ZLinkSessionStreamTransport(
         using var reply = await pending.Task.ConfigureAwait(false);
         return ZLinkClientCallCodec.DecodeJsonReply<TReply>(
             reply.AsReadOnlySpan(),
-            "Client stream request reply body is null.");
+            "Client stream request reply payload is null.");
     }
 
     private void WriteRawFrame(
         ZlinkStreamHeader header,
-        ReadOnlySpan<byte> body,
+        ReadOnlySpan<byte> payload,
         string failureMessage)
     {
-        ZLinkStreamFrameWriter.Write(stream, header, body, failureMessage);
+        ZLinkStreamFrameWriter.Write(stream, header, payload, failureMessage);
     }
 }

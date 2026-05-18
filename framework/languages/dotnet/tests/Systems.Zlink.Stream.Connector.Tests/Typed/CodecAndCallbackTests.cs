@@ -23,11 +23,11 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public void JsonExtensionBuildsEncodedBody()
     {
-        var body = StreamJson.ToJson(new Ping("hello"));
+        var payload = StreamJson.ToJson(new Ping("hello"));
 
-        Assert.Equal(ZlinkStreamCodec.Json, body.Codec);
-        Assert.Equal(typeof(Ping), body.MessageType);
-        Assert.Equal("hello", StreamJson.FromJson<Ping>(body).Text);
+        Assert.Equal(ZlinkStreamCodec.Json, payload.Codec);
+        Assert.Equal(typeof(Ping), payload.MessageType);
+        Assert.Equal("hello", StreamJson.FromJson<Ping>(payload).Text);
     }
 
     [Fact]
@@ -46,10 +46,11 @@ public sealed partial class StreamConnectorTests
             Assert.Equal(ZlinkStreamCodec.MessagePack, header.Codec);
         });
 
-        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
+        await connector.ConnectAsync();
 
         await connector.Send(new PackedPing { Text = "hello" })
             .PacketName("packed")
@@ -72,12 +73,12 @@ public sealed partial class StreamConnectorTests
             var header = new ZlinkStreamHeader(
                 ZlinkStreamMessageKind.Send,
                 ZlinkStreamCodec.Json,
-                ZlinkStreamHeaderFlags.BodyCompressed,
+                ZlinkStreamHeaderFlags.PayloadCompressed,
                 null,
                 "pong",
                 ZlinkStreamMetadata.Empty);
-            var body = compressionCodec.Compress(JsonSerializer.SerializeToUtf8Bytes(new Pong("compressed")));
-            await WritePacketAsync(stream, headerCodec.Encode(header).ToArray(), body.ToArray());
+            var payload = compressionCodec.Compress(JsonSerializer.SerializeToUtf8Bytes(new Pong("compressed")));
+            await WritePacketAsync(stream, headerCodec.Encode(header).ToArray(), payload.ToArray());
         });
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
@@ -88,7 +89,7 @@ public sealed partial class StreamConnectorTests
         var received = new TaskCompletionSource<Pong>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var subscription = connector.On<Pong>("pong", (message, _) =>
         {
-            received.SetResult(message.Body);
+            received.SetResult(message.Payload);
             return ValueTask.CompletedTask;
         });
 

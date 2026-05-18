@@ -21,7 +21,7 @@ internal sealed class ZLinkSessionRequestTracker
 
     public bool TryCompleteResponse(
         ZlinkStreamHeader header,
-        Message body)
+        Message payload)
     {
         if (header.Kind != ZlinkStreamMessageKind.Response
             || header.RequestSeq is not { } requestSeq
@@ -30,7 +30,7 @@ internal sealed class ZLinkSessionRequestTracker
             return false;
         }
 
-        pending.Complete(body.Move());
+        pending.Complete(payload.Move());
         return true;
     }
 
@@ -63,9 +63,9 @@ internal sealed class ZLinkPendingSessionRequest(
 
     public Task<Message> Task => _completion.Task;
 
-    public void Complete(Message body)
+    public void Complete(Message payload)
     {
-        _completion.TrySetResult(body);
+        _completion.TrySetResult(payload);
     }
 
     public void Cancel()

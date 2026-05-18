@@ -37,6 +37,7 @@ int main(void)
     CHECK(zlink_msg_copy(&copied, &sized) == ZLINK_CONFIG_OK);
     CHECK(zlink_msg_size(&copied) == 5);
     CHECK(memcmp(zlink_msg_data(&copied), "hello", 5) == 0);
+
     CHECK(zlink_msg_close(&copied) == ZLINK_CONFIG_OK);
     CHECK(zlink_msg_close(&sized) == ZLINK_CONFIG_OK);
 

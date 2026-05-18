@@ -26,6 +26,7 @@ internal static class PerfMultiSpotServer
         using var nodePub = new SpotNode(ctx);
         using var spotPub = nodePub.CreateSpot();
         ApplyMultiSpotSocketOptions(spotPub, options);
+        ApplySpotAutoHwmMsgUnit(spotPub, config.Size);
 
         ConfigureSpotRegistryTlsIfNeeded(registry, config.Transport);
         registry.Bind(config.RegistryPubEndpoint, config.RegistryRouterEndpoint);
@@ -42,14 +43,18 @@ internal static class PerfMultiSpotServer
 
         ConfigureSpotNodeTlsIfNeeded(nodePub, config.Transport);
         ConfigureSpotNodePublisher(nodePub, options, config);
+        ApplySpotNodeAutoHwmMsgUnit(nodePub, config.Size);
         nodePub.Bind(config.DataEndpoint);
         nodePub.AttachDiscovery(discovery);
 
         using var controlNode = new SpotNode(ctx);
         ConfigureSpotNodeTlsIfNeeded(controlNode, config.Transport);
         ConfigureSpotControlNode(controlNode, config.ReadyTimeoutMs);
+        ApplySpotNodeAutoHwmMsgUnit(controlNode, config.Size);
         using var controlPub = controlNode.CreateSpot();
         using var controlSub = controlNode.CreateSpot();
+        ApplySpotAutoHwmMsgUnit(controlPub, config.Size);
+        ApplySpotAutoHwmMsgUnit(controlSub, config.Size);
         controlSub.SetSubscription(ControlTopic);
         controlNode.Bind(config.ControlEndpoint);
         string actualDataEndpoint = nodePub.LastEndpoint;
@@ -176,8 +181,6 @@ internal static class PerfMultiSpotServer
         RunnerControlState controlState, SpotServerConfig config)
     {
         ulong seq = 1;
-        var payload = new byte[Math.Max(config.Size, PerfMetricHeaderSize)];
-        Array.Fill(payload, (byte)'a');
 
         bool latencyOnly = ResolveSpotLatencyOnlyMode();
         long probeIntervalTicks = latencyOnly
@@ -215,9 +218,8 @@ internal static class PerfMultiSpotServer
                 }
             }
 
-            StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Active,
-                config.Size, seq, EpochNs());
-            if (TryPublish(spotPub, config, payload, SendFlags.DontWait))
+            if (TryPublishActive(spotPub, config, seq, SendFlags.DontWait)
+                || TryPublishActive(spotPub, config, seq, SendFlags.None))
             {
                 seq++;
                 if (latencyOnly)
@@ -243,6 +245,26 @@ internal static class PerfMultiSpotServer
     private static void TryPublishStopToken(Spot spotPub, SpotServerConfig config)
     {
         TryPublish(spotPub, config, MultiStopToken, SendFlags.None);
+    }
+
+    private static bool TryPublishActive(Spot spotPub, SpotServerConfig config,
+        ulong seq, SendFlags flags)
+    {
+        try
+        {
+            byte[] payload = new byte[Math.Max(config.Size,
+                PerfMetricHeaderSize)];
+            StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Active,
+                config.Size, seq, EpochNs());
+            using Message message = Message.WrapBytes(payload);
+            return spotPub.Publish(Topic).Message(message).Flags(flags)
+                .Submit();
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                        || IsInterrupted(ex.InternalErrno))
+        {
+            return false;
+        }
     }
 
     private static bool WaitForReadyCount(Spot controlSpot, int size,
@@ -383,9 +405,7 @@ internal static class PerfMultiSpotServer
         try
         {
             using Message message = new(payload.AsSpan());
-            return spotPub.Publish(Topic)
-                .Message(message)
-                .Flags(flags)
+            return spotPub.Publish(Topic).Message(message).Flags(flags)
                 .Submit();
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)

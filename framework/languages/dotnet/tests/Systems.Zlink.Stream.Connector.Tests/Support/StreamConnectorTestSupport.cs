@@ -17,46 +17,46 @@ using Xunit;
 
 public sealed partial class StreamConnectorTests
 {
-    private static async Task<(byte[] Header, byte[] Body)> ReadPacketAsync(global::System.IO.Stream stream)
+    private static async Task<(byte[] Header, byte[] Payload)> ReadPacketAsync(global::System.IO.Stream stream)
     {
         var prefix = new byte[6];
         await stream.ReadExactlyAsync(prefix);
         var headerSize = BinaryPrimitives.ReadUInt16BigEndian(prefix.AsSpan(0, 2));
-        var bodySize = BinaryPrimitives.ReadUInt32BigEndian(prefix.AsSpan(2, 4));
+        var payloadSize = BinaryPrimitives.ReadUInt32BigEndian(prefix.AsSpan(2, 4));
         var header = new byte[headerSize];
-        var body = new byte[bodySize];
+        var payload = new byte[payloadSize];
         await stream.ReadExactlyAsync(header);
-        await stream.ReadExactlyAsync(body);
-        return (header, body);
+        await stream.ReadExactlyAsync(payload);
+        return (header, payload);
     }
 
-    private static async Task WritePacketAsync(global::System.IO.Stream stream, byte[] header, byte[] body)
+    private static async Task WritePacketAsync(global::System.IO.Stream stream, byte[] header, byte[] payload)
     {
         var prefix = new byte[6];
         BinaryPrimitives.WriteUInt16BigEndian(prefix.AsSpan(0, 2), (ushort)header.Length);
-        BinaryPrimitives.WriteUInt32BigEndian(prefix.AsSpan(2, 4), (uint)body.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(prefix.AsSpan(2, 4), (uint)payload.Length);
         await stream.WriteAsync(prefix);
         await stream.WriteAsync(header);
-        await stream.WriteAsync(body);
+        await stream.WriteAsync(payload);
     }
 
-    private static byte[] EncodePacket(byte[] header, byte[] body)
+    private static byte[] EncodePacket(byte[] header, byte[] payload)
     {
-        var frame = new byte[6 + header.Length + body.Length];
+        var frame = new byte[6 + header.Length + payload.Length];
         BinaryPrimitives.WriteUInt16BigEndian(frame.AsSpan(0, 2), (ushort)header.Length);
-        BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(2, 4), (uint)body.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(2, 4), (uint)payload.Length);
         header.CopyTo(frame.AsSpan(6));
-        body.CopyTo(frame.AsSpan(6 + header.Length));
+        payload.CopyTo(frame.AsSpan(6 + header.Length));
         return frame;
     }
 
-    private static (byte[] Header, byte[] Body) DecodePacket(byte[] frame)
+    private static (byte[] Header, byte[] Payload) DecodePacket(byte[] frame)
     {
         var headerSize = BinaryPrimitives.ReadUInt16BigEndian(frame.AsSpan(0, 2));
-        var bodySize = BinaryPrimitives.ReadUInt32BigEndian(frame.AsSpan(2, 4));
+        var payloadSize = BinaryPrimitives.ReadUInt32BigEndian(frame.AsSpan(2, 4));
         var header = frame.AsSpan(6, headerSize).ToArray();
-        var body = frame.AsSpan(6 + headerSize, (int)bodySize).ToArray();
-        return (header, body);
+        var payload = frame.AsSpan(6 + headerSize, (int)payloadSize).ToArray();
+        return (header, payload);
     }
 
     private static async Task<byte[]> ReceiveWebSocketMessageAsync(WebSocket webSocket)

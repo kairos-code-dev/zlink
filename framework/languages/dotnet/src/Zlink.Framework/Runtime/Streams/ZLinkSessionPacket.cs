@@ -4,7 +4,7 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionPacket(
     ZlinkStreamHeader header,
-    Message body) : IZLinkSessionPacket, IDisposable
+    Message payload) : IZLinkSessionPacket, IDisposable
 {
     public string PacketName => header.Name;
 
@@ -17,7 +17,7 @@ internal sealed class ZLinkSessionPacket(
 
     public ZlinkStreamHeader Header => header;
 
-    public Message Body => body;
+    public Message Payload => payload;
 
     public TMessage Decode<TMessage>()
     {
@@ -27,12 +27,12 @@ internal sealed class ZLinkSessionPacket(
                 $"Session packet decode only supports '{ZlinkStreamCodec.Json}', not '{header.Codec}'.");
         }
 
-        return JsonSerializer.Deserialize<TMessage>(body.AsReadOnlySpan(), ZLinkJsonSerializerOptions.Default)
-            ?? throw new InvalidOperationException($"Session packet '{PacketName}' body is null.");
+        return JsonSerializer.Deserialize<TMessage>(payload.AsReadOnlySpan(), ZLinkJsonSerializerOptions.Default)
+            ?? throw new InvalidOperationException($"Session packet '{PacketName}' payload is null.");
     }
 
     public void Dispose()
     {
-        body.Dispose();
+        payload.Dispose();
     }
 }

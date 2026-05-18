@@ -308,26 +308,65 @@ inline received_t recv_router_received (void *router_handle_,
 namespace detail
 {
 
+class recv_part_out_guard_t
+{
+  public:
+    explicit recv_part_out_guard_t (message_t &part_) noexcept
+        : _part (part_), _has_saved (false), _committed (false)
+    {
+        if (_part.valid ()) {
+            move_to_native (_part, &_saved);
+            _has_saved = true;
+        }
+    }
+
+    ~recv_part_out_guard_t ()
+    {
+        if (_committed)
+            return;
+        _part.close ();
+        if (_has_saved)
+            adopt_native_message (_part, &_saved);
+    }
+
+    bool prepare ()
+    {
+        _part.init ();
+        return _part.valid ();
+    }
+
+    void commit () noexcept
+    {
+        if (_has_saved)
+            (void) zlink_msg_close (&_saved);
+        _has_saved = false;
+        _committed = true;
+    }
+
+  private:
+    message_t &_part;
+    zlink_msg_t _saved;
+    bool _has_saved;
+    bool _committed;
+};
+
 inline int recv_single_part_message (void *handle_,
                                      routing_id_t *source_rid_out_,
                                      message_t &part_out_,
                                      recv_flags_t flags_)
 {
-    zlink_msg_t part;
-    if (zlink_msg_init (&part) != 0)
+    recv_part_out_guard_t part_guard (part_out_);
+    if (!part_guard.prepare ())
         return -1;
 
     const zlink_routing_id_t *source_rid = NULL;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     const int rc = zlink_recv_part (
-      handle_, &source_rid, &part, &has_more,
+      handle_, &source_rid, detail::native_handle (part_out_), &has_more,
       static_cast<zlink_recv_flags_t> (flags_));
-    if (rc != 0) {
-        (void) zlink_msg_close (&part);
+    if (rc != 0)
         return rc;
-    }
     if (has_more != ZLINK_PART_FINAL) {
-        (void) zlink_msg_close (&part);
         errno = EMSGSIZE;
         return -1;
     }
@@ -338,8 +377,8 @@ inline int recv_single_part_message (void *handle_,
         else
             *source_rid_out_ = unchecked_empty_routing_id ();
     }
-    adopt_native_message (part_out_, &part);
-    return part_out_.valid () ? 0 : -1;
+    part_guard.commit ();
+    return 0;
 }
 
 inline int recv_single_part_routed_message (void *handle_,
@@ -347,8 +386,8 @@ inline int recv_single_part_routed_message (void *handle_,
                                             message_t &part_out_,
                                             recv_flags_t flags_)
 {
-    zlink_msg_t part;
-    if (zlink_msg_init (&part) != 0)
+    recv_part_out_guard_t part_guard (part_out_);
+    if (!part_guard.prepare ())
         return -1;
 
     const zlink_routing_id_t *source_node_rid = NULL;
@@ -356,23 +395,21 @@ inline int recv_single_part_routed_message (void *handle_,
     uint64_t request_seq = 0;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     const int rc = zlink_router_recv_part (
-      handle_, &source_node_rid, &source_spot_rid, &request_seq, &part,
-      &has_more, static_cast<zlink_recv_flags_t> (flags_));
-    if (rc != 0) {
-        (void) zlink_msg_close (&part);
+      handle_, &source_node_rid, &source_spot_rid, &request_seq,
+      detail::native_handle (part_out_), &has_more,
+      static_cast<zlink_recv_flags_t> (flags_));
+    if (rc != 0)
         return rc;
-    }
     if (has_more != ZLINK_PART_FINAL || request_seq != 0
         || (source_spot_rid && source_spot_rid->size > 0)
         || !source_node_rid || source_node_rid->size == 0) {
-        (void) zlink_msg_close (&part);
         errno = has_more != ZLINK_PART_FINAL ? EMSGSIZE : EPROTO;
         return -1;
     }
 
     assign_routing_id_native (source_rid_out_, *source_node_rid);
-    adopt_native_message (part_out_, &part);
-    return part_out_.valid () ? 0 : -1;
+    part_guard.commit ();
+    return 0;
 }
 
 } // namespace detail

@@ -8,7 +8,7 @@ public interface IZLinkSessionPacket
 
     ZlinkStreamHeader Header { get; }
 
-    Message Body { get; }
+    Message Payload { get; }
 
     TMessage Decode<TMessage>();
 }
@@ -31,16 +31,16 @@ public interface IZLinkSession
         IZLinkSessionPacket packet,
         CancellationToken cancellationToken)
     {
-        return OnDispatchAsync(packet.Header, packet.Body, cancellationToken);
+        return OnDispatchAsync(packet.Header, packet.Payload, cancellationToken);
     }
 
     ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
         _ = header;
-        _ = body;
+        _ = payload;
         _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
@@ -100,13 +100,13 @@ public interface IZLinkSessionActorDispatchContext
 
     ValueTask DispatchToActorAsync(
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default);
 }
 

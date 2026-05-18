@@ -20,7 +20,10 @@ public final class PubSocket extends Socket {
     public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
     public void attachDiscovery(Discovery discovery) { super.attachDiscovery(discovery); }
     public SendOp publish(String topicId) {
-        return SocketOperations.send((parts, flags) ->
+        return SocketOperations.send(
+            (part, flags) -> super.publish(topicId, part,
+                SendFlag.fromValue(flags.value())),
+            (parts, flags) ->
             super.publish(topicId, parts, SendFlag.fromValue(flags.value())));
     }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }

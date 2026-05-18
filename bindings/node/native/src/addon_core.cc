@@ -920,6 +920,17 @@ napi_value create_message_snapshot_value(napi_env env,
                                         const zlink_routing_id_t *routing_id,
                                         zlink_msg_t *msg);
 
+bool message_has_snapshot_properties(const zlink_routing_id_t *routing_id,
+                                     zlink_msg_t *msg)
+{
+    return zlink_msg_gets(msg, "Socket-Type")
+        || zlink_msg_gets(msg, "User-Id")
+        || zlink_msg_gets(msg, "Peer-Address")
+        || zlink_msg_gets(msg, "Routing-Id")
+        || zlink_msg_gets(msg, "Identity")
+        || (routing_id && routing_id->size > 0);
+}
+
 napi_value create_recv_message_value(napi_env env,
                                      const zlink_routing_id_t &routing_id,
                                      zlink_msg_t *parts,
@@ -1100,16 +1111,20 @@ napi_value create_message_snapshot_value(napi_env env,
     const int refcnt = zlink_msg_refcnt(msg, &refcnt_err);
     if (refcnt_err != ZLINK_CONFIG_OK)
         return throw_last_error(env, "message refcnt failed");
-    napi_value ref_count;
-    napi_create_int32(env, refcnt, &ref_count);
-    napi_value props = create_message_properties_snapshot(env, routing_id, msg);
     napi_value data = create_message_data_buffer(env, msg);
     if (!data)
         return NULL;
 
     napi_set_named_property(env, obj, "data", data);
-    napi_set_named_property(env, obj, "refCount", ref_count);
-    napi_set_named_property(env, obj, "properties", props);
+    if (refcnt != 1) {
+        napi_value ref_count;
+        napi_create_int32(env, refcnt, &ref_count);
+        napi_set_named_property(env, obj, "refCount", ref_count);
+    }
+    if (message_has_snapshot_properties(routing_id, msg)) {
+        napi_value props = create_message_properties_snapshot(env, routing_id, msg);
+        napi_set_named_property(env, obj, "properties", props);
+    }
     return obj;
 }
 
@@ -2436,6 +2451,23 @@ std::string get_string(napi_env env, napi_value val)
     return out;
 }
 
+const char *get_c_string_arg(napi_env env,
+                             napi_value val,
+                             char *stack_buf,
+                             size_t stack_buf_size,
+                             std::string *heap_buf)
+{
+    size_t len = 0;
+    napi_get_value_string_utf8(env, val, NULL, 0, &len);
+    if (len + 1 <= stack_buf_size) {
+        napi_get_value_string_utf8(env, val, stack_buf, stack_buf_size, &len);
+        return stack_buf;
+    }
+    heap_buf->assign(len, '\0');
+    napi_get_value_string_utf8(env, val, heap_buf->data(), len + 1, &len);
+    return heap_buf->c_str();
+}
+
 bool get_uint64_like(napi_env env, napi_value value, uint64_t *out);
 
 request_js_state_t *create_request_js_state(napi_env env, napi_value handler)
@@ -2961,9 +2993,14 @@ napi_value socket_publish(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
     napi_get_value_external(env, argv[0], &sock);
-    std::string topic = get_string(env, argv[1]);
+    char topic_stack[256];
+    std::string topic_heap;
+    const char *topic =
+      get_c_string_arg(env, argv[1], topic_stack, sizeof(topic_stack), &topic_heap);
 
     std::vector<zlink_msg_t> parts;
+    zlink_msg_t single_part;
+    bool use_single_part = false;
     bool is_array = false;
     napi_is_array(env, argv[2], &is_array);
     bool is_buf = false;
@@ -2974,9 +3011,9 @@ napi_value socket_publish(napi_env env, napi_callback_info info)
             return NULL;
     } else if ((napi_is_buffer(env, argv[2], &is_buf) == napi_ok && is_buf)
                || payload_type == napi_object) {
-        parts.resize(1);
-        if (!init_msg_from_value(env, argv[2], &parts[0]))
+        if (!init_msg_from_value(env, argv[2], &single_part))
             return throw_last_error(env, "publish failed");
+        use_single_part = true;
     } else if (!build_msg_vector(env, argv[2], &parts)) {
         return NULL;
     }
@@ -2984,12 +3021,16 @@ napi_value socket_publish(napi_env env, napi_callback_info info)
     int32_t flags = 0;
     napi_get_value_int32(env, argv[3], &flags);
     size_t total = 0;
-    for (size_t i = 0; i < parts.size(); ++i)
-        total += zlink_msg_size(&parts[i]);
+    if (use_single_part) {
+        total = zlink_msg_size(&single_part);
+    } else {
+        for (size_t i = 0; i < parts.size(); ++i)
+            total += zlink_msg_size(&parts[i]);
+    }
     int rc = publish_parts(sock,
-                           topic.c_str(),
-                           parts.data(),
-                           parts.size(),
+                           topic,
+                           use_single_part ? &single_part : parts.data(),
+                           use_single_part ? 1 : parts.size(),
                            static_cast<zlink_send_flags_t>(flags));
     if (rc != ZLINK_SUBMIT_OK) {
         return throw_last_error(env, "publish failed");
@@ -3007,9 +3048,14 @@ napi_value socket_try_publish(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
     napi_get_value_external(env, argv[0], &sock);
-    std::string topic = get_string(env, argv[1]);
+    char topic_stack[256];
+    std::string topic_heap;
+    const char *topic =
+      get_c_string_arg(env, argv[1], topic_stack, sizeof(topic_stack), &topic_heap);
 
     std::vector<zlink_msg_t> parts;
+    zlink_msg_t single_part;
+    bool use_single_part = false;
     bool is_array = false;
     napi_is_array(env, argv[2], &is_array);
     bool is_buf = false;
@@ -3020,15 +3066,17 @@ napi_value socket_try_publish(napi_env env, napi_callback_info info)
             return NULL;
     } else if ((napi_is_buffer(env, argv[2], &is_buf) == napi_ok && is_buf)
                || payload_type == napi_object) {
-        parts.resize(1);
-        if (!init_msg_from_value(env, argv[2], &parts[0]))
+        if (!init_msg_from_value(env, argv[2], &single_part))
             return throw_last_error(env, "publishNoWaitResult failed");
+        use_single_part = true;
     } else if (!build_msg_vector(env, argv[2], &parts)) {
         return NULL;
     }
 
     int rc =
-      publish_parts(sock, topic.c_str(), parts.data(), parts.size(),
+      publish_parts(sock, topic,
+                    use_single_part ? &single_part : parts.data(),
+                    use_single_part ? 1 : parts.size(),
                     ZLINK_SEND_FLAGS_DONTWAIT);
     if (rc == ZLINK_SUBMIT_OK) {
         rc = ZLINK_SUBMIT_OK;
@@ -3326,25 +3374,44 @@ napi_value socket_try_subscribe_message(napi_env env, napi_callback_info info)
 
     std::vector<char> topic(256, '\0');
     zlink_routing_id_t routing_id;
-    std::vector<zlink_msg_t> parts;
     size_t topic_len = topic.size();
 
     for (;;) {
         memset(&routing_id, 0, sizeof(routing_id));
-        int rc = subscribe_parts(sock,
-                                 &routing_id,
-                                 topic.data(),
-                                 topic.size(),
-                                 &topic_len,
-                                 &parts,
-                                 ZLINK_RECV_FLAGS_DONTWAIT);
+        const zlink_routing_id_t *source_rid = NULL;
+        zlink_msg_t first_part;
+        if (zlink_msg_init(&first_part) != 0)
+            return throw_last_error(env, "trySubscribe failed");
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        int rc = zlink_subscribe_part(
+          sock,
+          &source_rid,
+          topic.data(),
+          topic.size(),
+          &topic_len,
+          &first_part,
+          &has_more,
+          ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc == ZLINK_RECV_OK) {
-          napi_value out = create_subscribed_value(
-            env, routing_id, topic.data(), topic_len, parts.data(), parts.size());
-          close_msg_vector(parts);
-          return out;
+            copy_routing_id(&routing_id, source_rid);
+            if (!has_more) {
+                napi_value out = create_subscribed_value(
+                  env, routing_id, topic.data(), topic_len, &first_part, 1);
+                zlink_msg_close(&first_part);
+                return out;
+            }
+
+            std::vector<zlink_msg_t> parts;
+            rc = collect_recv_parts(sock, &first_part, has_more, &parts);
+            if (rc == ZLINK_RECV_OK) {
+                napi_value out = create_subscribed_value(
+                  env, routing_id, topic.data(), topic_len, parts.data(), parts.size());
+                close_msg_vector(parts);
+                return out;
+            }
         }
         const int err = zlink_errno();
+        zlink_msg_close(&first_part);
         if (err == EAGAIN) {
             napi_value none;
             napi_get_null(env, &none);

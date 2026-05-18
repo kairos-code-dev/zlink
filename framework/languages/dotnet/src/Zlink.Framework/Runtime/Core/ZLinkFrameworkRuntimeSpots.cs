@@ -46,7 +46,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
         var state = GetOrStartState();
@@ -55,7 +55,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 actor,
                 runtimeState,
                 header,
-                body,
+                payload,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -64,7 +64,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
         var state = GetOrStartState();
@@ -73,7 +73,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 actor,
                 runtimeState,
                 header,
-                body,
+                payload,
                 cancellationToken)
             .ConfigureAwait(false);
     }

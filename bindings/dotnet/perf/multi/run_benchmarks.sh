@@ -1776,6 +1776,7 @@ print_effective_options() {
   print_line "- patterns: ${PATTERN}"
   print_line "- transports: ${TRANSPORTS}"
   print_line "- msg_sizes: ${EFFECTIVE_MSG_SIZES_DISPLAY}"
+  print_line "- routed_echo_borrow_payload: none"
   print_line "- duration_seconds: ${DURATION}"
   print_line "- clients: ${EFFECTIVE_CLIENTS_DISPLAY}"
   print_line "- default_clients: 100"

@@ -67,9 +67,11 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
 
     socket_base_t *sockets[] = {
       runtime_->mesh_pub,
-	      runtime_->local_fanout_xpub,
-	      runtime_->mesh_xsub,
-	      runtime_->external_router};
+      runtime_->local_fanout_xpub,
+      runtime_->mesh_xsub,
+      runtime_->peer_ctrl_pub,
+      runtime_->peer_ctrl_sub,
+      runtime_->external_router};
 
     for (size_t i = 0; i != sizeof (sockets) / sizeof (sockets[0]); ++i) {
         socket_base_t *socket = sockets[i];

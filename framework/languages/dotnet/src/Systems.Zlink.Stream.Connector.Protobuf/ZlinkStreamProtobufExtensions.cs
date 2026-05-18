@@ -5,31 +5,31 @@ namespace Systems.Zlink.Stream.Connector.Protobuf;
 
 public static class ZlinkStreamProtobufExtensions
 {
-    public static T FromProto<T>(this ZlinkStreamEncodedBody body)
+    public static T FromProto<T>(this ZlinkStreamEncodedPayload payload)
         where T : IMessage<T>, new()
     {
-        EnsureProtobuf(body);
+        EnsureProtobuf(payload);
 
         T value = new();
-        value.MergeFrom(body.Body.Span);
+        value.MergeFrom(payload.Payload.Span);
         return value;
     }
 
-    public static ZlinkStreamEncodedBody ToProto<T>(this T value)
+    public static ZlinkStreamEncodedPayload ToProto<T>(this T value)
         where T : IMessage<T>
     {
         ArgumentNullException.ThrowIfNull(value);
-        return new ZlinkStreamEncodedBody(
+        return new ZlinkStreamEncodedPayload(
             ZlinkStreamCodec.Protobuf,
             value.ToByteArray(),
             typeof(T));
     }
 
-    private static void EnsureProtobuf(ZlinkStreamEncodedBody body)
+    private static void EnsureProtobuf(ZlinkStreamEncodedPayload payload)
     {
-        if (body.Codec != ZlinkStreamCodec.Protobuf)
+        if (payload.Codec != ZlinkStreamCodec.Protobuf)
         {
-            throw new InvalidOperationException($"Stream body codec is {body.Codec}, not Protobuf.");
+            throw new InvalidOperationException($"Stream payload codec is {payload.Codec}, not Protobuf.");
         }
     }
 }

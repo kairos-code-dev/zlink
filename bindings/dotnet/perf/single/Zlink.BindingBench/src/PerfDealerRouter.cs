@@ -144,14 +144,12 @@ internal static class PerfDealerRouter
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
 
-        // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: converged one-way
-        // discipline identical to PerfDealerDealer (the previously-passing
-        // sibling). Receiver thread does a blocking first recv per cycle then
-        // a DontWait burst-drain, exiting on the wire-level stop token; the
-        // sender runs on the main thread with a bounded in-flight credit so
-        // the standing queue depth matches C's shallow pipeline. ROUTER recv
-        // is multi-part ([routing-id..., payload]); the payload is the last
-        // part (TryGetPayloadPart). Latency stays recv_now_ns - sent_ts_ns.
+        // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: active phase ends only
+        // when the receiver observes the wire-level stop token. Active sends
+        // use blocking send with transient backpressure retry until the
+        // deadline; no binding-local in-flight cap is applied. ROUTER recv is
+        // multi-part ([routing-id..., payload]); the payload is the last part
+        // (TryGetPayloadPart). Latency stays recv_now_ns - sent_ts_ns.
         bool ProcessBody(ReadOnlySpan<byte> body)
         {
             if (StopToken.IsStopToken(body))
@@ -212,31 +210,17 @@ internal static class PerfDealerRouter
         recvThread.IsBackground = true;
         recvThread.Start();
 
-        long inflightCap = PerfEnv.ReadNonNegative(
-            "PERF_SINGLE_INFLIGHT_CAP", 256);
-
         bool sendFailed = false;
         ulong seq = 1;
-        long sent = 0;
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            if (inflightCap > 0)
-            {
-                while (sent - Interlocked.Read(ref received) >= inflightCap
-                       && Stopwatch.GetTimestamp() < deadlineTicks)
-                {
-                    Thread.SpinWait(1);
-                }
-            }
             StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize,
                 seq, EpochNs());
             seq++;
             try
             {
-                if (!TrySendActiveMessage(sender, payload,
-                        "[single-dealer-router]"))
+                if (PerfSocketIo.Send(sender, payload, SendFlags.None) <= 0)
                     continue;
-                sent++;
             }
             catch (ZlinkException ex)
                 when (PerfShared.IsTransientBackpressure(ex.InternalErrno))

@@ -61,17 +61,17 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
 
         var stream = state.Stream
             ?? throw new InvalidOperationException("Actor does not have an active client stream.");
-        ReadOnlyMemory<byte> body = ZLinkEnvelopeCodec.EncodeJsonBytes(message);
+        ReadOnlyMemory<byte> payload = ZLinkEnvelopeCodec.EncodeJsonBytes(message);
         var flags = ZlinkStreamHeaderFlags.None;
 
         if (_compress)
         {
-            body = CompressionCodec.Compress(body);
-            flags |= ZlinkStreamHeaderFlags.BodyCompressed;
+            payload = CompressionCodec.Compress(payload);
+            flags |= ZlinkStreamHeaderFlags.PayloadCompressed;
         }
 
         var header = CreateHeader(ZlinkStreamCodec.Json, flags, _messageName, _metadata, state.CurrentDispatch);
-        ZLinkStreamFrameWriter.Write(stream, header, body, "Client stream send failed.");
+        ZLinkStreamFrameWriter.Write(stream, header, payload, "Client stream send failed.");
 
         return ValueTask.CompletedTask;
     }

@@ -3,13 +3,13 @@ namespace Systems.Zlink.Stream.Connector.Runtime.Calls;
 internal sealed class ZlinkStreamRequestBuilder : IZlinkStreamRequestCall
 {
     private readonly IZlinkStreamConnectorInternal _connector;
-    private readonly ZlinkStreamEncodedBody _body;
+    private readonly ZlinkStreamEncodedPayload _body;
     private readonly ZlinkStreamCallBuilderState _state;
 
-    internal ZlinkStreamRequestBuilder(IZlinkStreamConnectorInternal connector, string? name, ZlinkStreamEncodedBody body)
+    internal ZlinkStreamRequestBuilder(IZlinkStreamConnectorInternal connector, string? name, ZlinkStreamEncodedPayload payload)
     {
         _connector = connector;
-        _body = body;
+        _body = payload;
         _state = new ZlinkStreamCallBuilderState(name);
     }
 
@@ -43,7 +43,7 @@ internal sealed class ZlinkStreamRequestBuilder : IZlinkStreamRequestCall
         return this;
     }
 
-    public async ValueTask<ZlinkStreamEncodedBody> SubmitAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<ZlinkStreamEncodedPayload> SubmitAsync(CancellationToken cancellationToken = default)
     {
         _state.EnsureNotExecuted();
         return await _connector.RequestEncodedAsync(
@@ -68,7 +68,7 @@ internal sealed class ZlinkStreamRequestBuilder : IZlinkStreamRequestCall
             callback);
     }
 
-    public void Submit(Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback)
+    public void Submit(Action<ZlinkStreamResult<ZlinkStreamEncodedPayload>> callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
         _state.EnsureNotExecuted();

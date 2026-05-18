@@ -27,7 +27,7 @@ internal sealed class SessionActorNotificationInbox
             SampleNames.TurnChangedPacket,
             (message, _) =>
             {
-                _turnChanged.Enqueue(message.Body);
+                _turnChanged.Enqueue(message.Payload);
                 Signal();
                 return ValueTask.CompletedTask;
             });
@@ -35,7 +35,7 @@ internal sealed class SessionActorNotificationInbox
             SampleNames.OpponentJoinedPacket,
             (message, _) =>
             {
-                _opponentJoined.Enqueue(message.Body);
+                _opponentJoined.Enqueue(message.Payload);
                 Signal();
                 return ValueTask.CompletedTask;
             });
@@ -43,7 +43,7 @@ internal sealed class SessionActorNotificationInbox
             SampleNames.GameEndedPacket,
             (message, _) =>
             {
-                _gameEnded.Enqueue(message.Body);
+                _gameEnded.Enqueue(message.Payload);
                 Signal();
                 return ValueTask.CompletedTask;
             });

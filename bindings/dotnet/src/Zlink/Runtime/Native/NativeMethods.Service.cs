@@ -14,10 +14,10 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_destroy(ref IntPtr spot);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_publish_part(IntPtr subject,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId, ref ZlinkMsg part,
-        int flags, ZlinkPartFlag partFlag);
+    [DllImport(LibraryName, EntryPoint = "zlink_publish_part",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe int zlink_publish_part_utf8(IntPtr subject,
+        byte* topicId, ref ZlinkMsg part, int flags, ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_set_subscription(IntPtr handle,
@@ -342,14 +342,21 @@ internal static partial class NativeMethods
         nuint index, IntPtr filterOut, ref nuint filterLength,
         out int isPattern);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_publish_part(IntPtr spot,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId, ref ZlinkMsg part,
-        int flags, ZlinkPartFlag partFlag);
+    [DllImport(LibraryName, EntryPoint = "zlink_spot_publish_part",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe int zlink_spot_publish_part_utf8(IntPtr spot,
+        byte* topicId, ref ZlinkMsg part, int flags, ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_subscribe_part(IntPtr spot,
         out IntPtr sourceRoutingId, byte[] topicIdBuffer,
+        nuint topicIdCapacity, out nuint topicIdLenOut,
+        ref ZlinkMsg part, out int hasMore, int flags);
+
+    [DllImport(LibraryName, EntryPoint = "zlink_spot_subscribe_part",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe int zlink_spot_subscribe_part_buffer(
+        IntPtr spot, out IntPtr sourceRoutingId, byte* topicIdBuffer,
         nuint topicIdCapacity, out nuint topicIdLenOut,
         ref ZlinkMsg part, out int hasMore, int flags);
 

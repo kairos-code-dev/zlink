@@ -30,7 +30,7 @@ class send_ready_op_t
     bool submit () &&;
 
   private:
-    explicit send_ready_op_t (detail::spot_op_state_t state_)
+    explicit send_ready_op_t (detail::spot_op_state_t &&state_) noexcept
         : _state (std::move (state_))
     {
     }
@@ -47,13 +47,14 @@ class send_op_t
 
     send_ready_op_t message (message_t &part_) &&
     {
-        _state.single_part.emplace (std::move (part_));
         _state.single_part_source = &part_;
+        if (!detail::can_borrow_single_send_part (_state.kind))
+            _state.single_part.emplace (std::move (part_));
         return send_ready_op_t (std::move (_state));
     }
 
   private:
-    explicit send_op_t (detail::spot_op_state_t state_)
+    explicit send_op_t (detail::spot_op_state_t &&state_) noexcept
         : _state (std::move (state_))
     {
     }
@@ -96,7 +97,7 @@ class request_ready_op_t
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit request_ready_op_t (detail::spot_op_state_t state_)
+    explicit request_ready_op_t (detail::spot_op_state_t &&state_) noexcept
         : _state (std::move (state_))
     {
     }
@@ -119,7 +120,7 @@ class request_op_t
     }
 
   private:
-    explicit request_op_t (detail::spot_op_state_t state_)
+    explicit request_op_t (detail::spot_op_state_t &&state_) noexcept
         : _state (std::move (state_))
     {
     }
@@ -159,7 +160,7 @@ class request_callback_ready_op_t
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit request_callback_ready_op_t (detail::spot_op_state_t state_)
+    explicit request_callback_ready_op_t (detail::spot_op_state_t &&state_) noexcept
         : _state (std::move (state_))
     {
     }
@@ -189,7 +190,7 @@ class reply_ready_op_t
     void submit () &&;
 
   private:
-    explicit reply_ready_op_t (detail::spot_op_state_t state_)
+    explicit reply_ready_op_t (detail::spot_op_state_t &&state_) noexcept
         : _state (std::move (state_))
     {
     }
@@ -211,7 +212,7 @@ class reply_op_t
     }
 
   private:
-    explicit reply_op_t (detail::spot_op_state_t state_)
+    explicit reply_op_t (detail::spot_op_state_t &&state_) noexcept
         : _state (std::move (state_))
     {
     }

@@ -168,7 +168,7 @@ internal sealed class ZLinkActorClientRequestCall<TRequest>(
                 .ConfigureAwait(false);
             return ZLinkClientCallCodec.DecodeJsonReply<TReply>(
                 reply.Span,
-                "Actor client reply body is null.");
+                "Actor client reply payload is null.");
         }
         catch (TimeoutException ex)
         {

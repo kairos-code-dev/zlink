@@ -45,7 +45,7 @@ internal sealed class SessionRelaySession(
         await handler.HandleAsync(
                 new SessionRelayPacketContext(Context, _state),
                 packet.Header,
-                packet.Body.Move(),
+                packet.Payload.Move(),
                 cancellationToken)
             .ConfigureAwait(false);
     }

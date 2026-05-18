@@ -586,6 +586,9 @@ func submitPreparedMultipart(prepared *preparedMultipart, submit multipartSubmit
 }
 
 func submitMultipartFromClones(parts []*Message, consumeOriginal bool, submit multipartSubmitFunc) error {
+	if consumeOriginal && len(parts) == 1 {
+		return submitSinglePartFromCopy(parts[0], submit)
+	}
 	cloned, err := cloneParts(parts)
 	if err != nil {
 		return err
@@ -606,35 +609,55 @@ func submitMultipartFromClones(parts []*Message, consumeOriginal bool, submit mu
 	return nil
 }
 
+func submitSinglePartFromCopy(part *Message, submit multipartSubmitFunc) error {
+	if part == nil {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	if part.closed {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	var native C.zlink_msg_t
+	if err := configErrorFromResult(C.zlink_msg_init(&native)); err != nil {
+		return err
+	}
+	if err := configErrorFromResult(C.zlink_msg_copy(&native, &part.msg)); err != nil {
+		_ = configErrorFromResult(C.zlink_msg_close(&native))
+		return err
+	}
+	err := submit(&native, C.zlink_part_flag_t(C.ZLINK_PART_FINAL))
+	if err != nil {
+		_ = configErrorFromResult(C.zlink_msg_close(&native))
+		return err
+	}
+	_ = configErrorFromResult(C.zlink_msg_close(&part.msg))
+	part.moved()
+	return nil
+}
+
 func recvMultipart(flags RecvFlags, recv multipartRecvFunc) ([]*Message, error) {
-	native := make([]C.zlink_msg_t, 0, 1)
+	parts := make([]*Message, 0, 1)
 	recvFlags := C.zlink_recv_flags_t(flags)
 	for {
 		var part C.zlink_msg_t
 		if err := configErrorFromResult(C.zlink_msg_init(&part)); err != nil {
-			closeNativeMultipart(native, len(native))
+			closeMessageSlice(parts)
 			return nil, err
 		}
 
 		var hasMore C.zlink_part_flag_t
 		if err := recv(&part, &hasMore, recvFlags); err != nil {
 			_ = configErrorFromResult(C.zlink_msg_close(&part))
-			closeNativeMultipart(native, len(native))
+			closeMessageSlice(parts)
 			return nil, err
 		}
 
-		native = append(native, C.zlink_msg_t{})
-		last := len(native) - 1
-		if err := configErrorFromResult(C.zlink_msg_init(&native[last])); err != nil {
+		msg := &Message{}
+		if err := configErrorFromResult(C.zlink_msg_adopt(&msg.msg, &part)); err != nil {
 			_ = configErrorFromResult(C.zlink_msg_close(&part))
-			closeNativeMultipart(native[:last], last)
+			closeMessageSlice(parts)
 			return nil, err
 		}
-		if err := configErrorFromResult(C.zlink_msg_move(&native[last], &part)); err != nil {
-			_ = configErrorFromResult(C.zlink_msg_close(&part))
-			closeNativeMultipart(native, len(native))
-			return nil, err
-		}
+		parts = append(parts, msg)
 
 		if hasMore == 0 {
 			break
@@ -642,7 +665,7 @@ func recvMultipart(flags RecvFlags, recv multipartRecvFunc) ([]*Message, error) 
 		recvFlags = C.zlink_recv_flags_t(C.ZLINK_DONTWAIT)
 	}
 
-	return takeParts(&native[0], C.size_t(len(native)))
+	return parts, nil
 }
 
 func takeParts(ptr *C.zlink_msg_t, partCount C.size_t) ([]*Message, error) {
@@ -764,32 +787,34 @@ func setTLSClient(handle unsafe.Pointer, caCertPath string, hostname string, tru
 	})
 }
 
-func recvTopicMessage(
+func recvTopicMessageInto(
+	out *TopicMessage,
 	call func(**C.zlink_routing_id_t, *C.char, *C.size_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
-) (*TopicMessage, error) {
+) error {
 	var sourceRID *C.zlink_routing_id_t
-	topicBuf := make([]byte, recvTopicBufferCap)
+	var topicBuf [recvTopicBufferCap]byte
 	topicLen := C.size_t(len(topicBuf))
 	clonedParts, err := recvMultipart(flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return call(&sourceRID, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, part, hasMore, recvFlags)
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &TopicMessage{
-		routingID: routingIDFromCPtr(sourceRID),
-		topic:     string(topicBuf[:int(topicLen)]),
-		parts:     clonedParts,
-	}, nil
+	_ = out.Close()
+	out.routingID = routingIDFromCPtr(sourceRID)
+	out.topic = string(topicBuf[:int(topicLen)])
+	out.parts = clonedParts
+	return nil
 }
 
-func recvSpotTopicMessage(
+func recvSpotTopicMessageInto(
+	out *TopicMessage,
 	call func(**C.zlink_routing_id_t, *C.char, *C.size_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
-) (*TopicMessage, error) {
+) error {
 	var sourceRID *C.zlink_routing_id_t
-	topicBuf := make([]byte, recvTopicBufferCap)
+	var topicBuf [recvTopicBufferCap]byte
 	topicLen := C.size_t(len(topicBuf))
 	clonedParts, err := recvMultipart(flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return call(
@@ -802,13 +827,13 @@ func recvSpotTopicMessage(
 		)
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &TopicMessage{
-		routingID: routingIDFromCPtr(sourceRID),
-		topic:     string(topicBuf[:int(topicLen)]),
-		parts:     clonedParts,
-	}, nil
+	_ = out.Close()
+	out.routingID = routingIDFromCPtr(sourceRID)
+	out.topic = string(topicBuf[:int(topicLen)])
+	out.parts = clonedParts
+	return nil
 }
 
 func recvSubscriptionEvent(
@@ -817,7 +842,7 @@ func recvSubscriptionEvent(
 ) (*SubscriptionEvent, error) {
 	var rid C.zlink_routing_id_t
 	var subscribed C.int
-	topicBuf := make([]byte, recvTopicBufferCap)
+	var topicBuf [recvTopicBufferCap]byte
 	topicLen := C.size_t(len(topicBuf))
 	if err := call(&rid, &subscribed, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, C.zlink_recv_flags_t(flags)); err != nil {
 		return nil, err
@@ -835,7 +860,7 @@ func recvSpotSubscriptionEvent(
 ) (*SubscriptionEvent, error) {
 	var rid C.zlink_routing_id_t
 	var subscribed C.int
-	topicBuf := make([]byte, recvTopicBufferCap)
+	var topicBuf [recvTopicBufferCap]byte
 	topicLen := C.size_t(len(topicBuf))
 	if err := call(&rid, &subscribed, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, C.zlink_recv_flags_t(flags)); err != nil {
 		return nil, err
@@ -1054,11 +1079,7 @@ func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 		}
 		return false, err
 	}
-	fresh := &Received{
-		routingID: routingIDFromCPtr(sourceRID),
-		parts:     clonedParts,
-	}
-	out.AdoptFrom(fresh)
+	out.replace(routingIDFromCPtr(sourceRID), RoutingID{}, clonedParts, 0, false, nil, nil)
 	return true, nil
 }
 
@@ -1237,7 +1258,7 @@ func (s *routedSocket) replyToSpot(destNodeRid, destSpotRid RoutingID, requestSe
 	return submitBackpressureResult(err)
 }
 
-func (s *routedSocket) directRecv(flags RecvFlags) (*Received, error) {
+func (s *routedSocket) recvInto(out *Received, flags RecvFlags) error {
 	recvOnce := func(recvFlags RecvFlags) (*C.zlink_routing_id_t, *C.zlink_routing_id_t, C.uint64_t, []*Message, error) {
 		var nodeRID *C.zlink_routing_id_t
 		var spotRID *C.zlink_routing_id_t
@@ -1265,50 +1286,48 @@ func (s *routedSocket) directRecv(flags RecvFlags) (*Received, error) {
 		} else {
 			var recvErr *RecvError
 			if !errors.As(primedErr, &recvErr) || recvErr.Result != RecvNoData {
-				return nil, primedErr
+				return primedErr
 			}
 			var err error
 			nodeRID, spotRID, requestSeq, parts, err = recvOnce(flags)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 	} else {
 		var err error
 		nodeRID, spotRID, requestSeq, parts, err = recvOnce(flags)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	received := &Received{
-		routingID:     routingIDFromCPtr(nodeRID),
-		spotRID:       routingIDFromCPtr(spotRID),
-		parts:         parts,
-		requestSeq:    uint64(requestSeq),
-		hasRequestSeq: requestSeq != 0,
-	}
-	if received.hasRequestSeq {
-		if received.spotRID.Size() == 0 {
-			received.reply = receivedReplyToRouter(s.reply, received.routingID, received.requestSeq)
+	routingID := routingIDFromCPtr(nodeRID)
+	spotRoutingID := routingIDFromCPtr(spotRID)
+	seq := uint64(requestSeq)
+	hasSeq := requestSeq != 0
+	var reply func(SendFlags, []*Message) error
+	var send func(SendFlags, []*Message) (bool, error)
+	if hasSeq {
+		if spotRoutingID.Size() == 0 {
+			reply = receivedReplyToRouter(s.reply, routingID, seq)
 		} else {
-			received.reply = func(flags SendFlags, parts []*Message) error {
-				_, err := s.replyToSpot(received.routingID, received.spotRID,
-					received.requestSeq, flags, parts...)
+			reply = func(flags SendFlags, parts []*Message) error {
+				_, err := s.replyToSpot(routingID, spotRoutingID, seq, flags, parts...)
 				return err
 			}
 		}
 	}
-	if received.routingID.Size() > 0 {
-		if received.spotRID.Size() == 0 {
-			received.send = receivedSendToRouter(s.submitTo, received.routingID)
+	if routingID.Size() > 0 {
+		if spotRoutingID.Size() == 0 {
+			send = receivedSendToRouter(s.submitTo, routingID)
 		} else {
-			received.send = func(flags SendFlags, parts []*Message) (bool, error) {
-				return s.submitToSpot(received.routingID, received.spotRID,
-					flags, parts...)
+			send = func(flags SendFlags, parts []*Message) (bool, error) {
+				return s.submitToSpot(routingID, spotRoutingID, flags, parts...)
 			}
 		}
 	}
-	return received, nil
+	out.replace(routingID, spotRoutingID, parts, seq, hasSeq, reply, send)
+	return nil
 }
 
 // Recv is the canonical caller-provided storage recv. Returns
@@ -1322,15 +1341,13 @@ func (s *routedSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	if s.recvHandle != 0 {
 		return false, &RecvError{Result: RecvBusy, internalErrno: int(C.EBUSY)}
 	}
-	fresh, err := s.directRecv(flags)
-	if err != nil {
+	if err := s.recvInto(out, flags); err != nil {
 		var recvErr *RecvError
 		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
 			return false, nil
 		}
 		return false, err
 	}
-	out.AdoptFrom(fresh)
 	return true, nil
 }
 
@@ -1392,7 +1409,7 @@ func (s *subscribeSocket) Subscribe(out *TopicMessage, flags RecvFlags) (bool, e
 	if out == nil {
 		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
 	}
-	fresh, err := recvTopicMessage(func(rid **C.zlink_routing_id_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+	err := recvTopicMessageInto(out, func(rid **C.zlink_routing_id_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_subscribe_part(s.raw(), rid, topic, recvTopicBufferCap, topicLen, part, hasMore, recvFlags))
 	}, flags)
 	if err != nil {
@@ -1402,7 +1419,6 @@ func (s *subscribeSocket) Subscribe(out *TopicMessage, flags RecvFlags) (bool, e
 		}
 		return false, err
 	}
-	out.adoptFrom(fresh)
 	return true, nil
 }
 

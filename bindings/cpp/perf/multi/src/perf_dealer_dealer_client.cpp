@@ -385,12 +385,10 @@ class dealer_dealer_client_bench_t
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no
             // timer cap. Outer loop bounds total wall-time via the
             // steady_clock deadline check above.
-            const std::optional<zlink::poll_event_t> poll_event =
-              _poller.wait (std::chrono::milliseconds (-1));
-            if (!poll_event.has_value ())
-                continue;
             _poll_events.clear ();
-            _poll_events.push_back (*poll_event);
+            _poller.wait (_poll_events, 1, std::chrono::milliseconds (-1));
+            if (_poll_events.empty ())
+                continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state =

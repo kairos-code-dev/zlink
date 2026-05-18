@@ -51,7 +51,7 @@ public enum ZlinkStreamHeaderFlags : byte
     None = 0,
     HasRequestSeq = 0x01,
     HasMetadata = 0x02,
-    BodyCompressed = 0x04
+    PayloadCompressed = 0x04
 }
 
 public enum ZlinkStreamErrorCode

@@ -169,7 +169,7 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
 
         return ZLinkClientCallCodec.DecodeJsonReply<TReply>(
             reply.Span,
-            "Session proxy reply body is null.");
+            "Session proxy reply payload is null.");
     }
 
     private async ValueTask<ZLinkActorSessionRoute> ResolveRouteAsync(CancellationToken cancellationToken)

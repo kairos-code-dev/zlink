@@ -373,11 +373,11 @@ internal sealed class FixtureActor(string actorId = "fixture") : IZLinkActor
 
     public ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        global::Systems.Zlink.Message body,
+        global::Systems.Zlink.Message payload,
         CancellationToken cancellationToken)
     {
         _ = header;
-        _ = body;
+        _ = payload;
         _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
@@ -416,9 +416,9 @@ internal sealed class FixtureActorPacketSession(
 
     public ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        global::Systems.Zlink.Message body,
+        global::Systems.Zlink.Message payload,
         CancellationToken cancellationToken)
     {
-        return Context.DispatchToActorAsync(header, body, cancellationToken);
+        return Context.DispatchToActorAsync(header, payload, cancellationToken);
     }
 }

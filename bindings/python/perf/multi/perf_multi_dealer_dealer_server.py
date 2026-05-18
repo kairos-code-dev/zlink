@@ -57,6 +57,7 @@ def main(argv=None):
                     active_deadline = time.perf_counter() + active_duration_s
                     latencies = []
                     count = 0
+                    recv_storage = zlink.Received()
 
                     def drain_ready():
                         # C receive_one_message + drain_non_blocking_messages:
@@ -64,7 +65,7 @@ def main(argv=None):
                         # clock-skew (latency_ns_from_message returns None).
                         nonlocal count
                         while True:
-                            msg = recv_nonblocking(dealer)
+                            msg = recv_nonblocking(dealer, storage=recv_storage)
                             if msg is None:
                                 return
                             with msg:

@@ -5,42 +5,42 @@ namespace Systems.Zlink.Stream.Connector.MessagePack;
 
 public static class ZlinkStreamMessagePackConnectorExtensions
 {
-    public static ZlinkStreamMessagePackSendBuilder Send<TBody>(
+    public static ZlinkStreamMessagePackSendBuilder Send<TPayload>(
         this IZlinkStreamConnector connector,
-        TBody body)
+        TPayload payload)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return new ZlinkStreamMessagePackSendBuilder(connector.Send(body.ToMsgPack()));
+        return new ZlinkStreamMessagePackSendBuilder(connector.Send(payload.ToMsgPack()));
     }
 
-    public static ZlinkStreamMessagePackRequestBuilder Request<TBody>(
+    public static ZlinkStreamMessagePackRequestBuilder Request<TPayload>(
         this IZlinkStreamConnector connector,
-        TBody body)
+        TPayload payload)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return new ZlinkStreamMessagePackRequestBuilder(connector.Request(body.ToMsgPack()));
+        return new ZlinkStreamMessagePackRequestBuilder(connector.Request(payload.ToMsgPack()));
     }
 
-    public static IDisposable On<TBody>(
+    public static IDisposable On<TPayload>(
         this IZlinkStreamConnector connector,
-        Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
+        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(connector);
         var resolver = connector.Options.NameResolver ?? ZlinkStreamDefaultCodecs.PacketNameResolver();
-        return connector.On(resolver.Resolve(typeof(TBody)), handler);
+        return connector.On(resolver.Resolve(typeof(TPayload)), handler);
     }
 
-    public static IDisposable On<TBody>(
+    public static IDisposable On<TPayload>(
         this IZlinkStreamConnector connector,
         string name,
-        Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
+        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler)
     {
         ArgumentNullException.ThrowIfNull(connector);
         ArgumentNullException.ThrowIfNull(handler);
         return connector.On(name, (message, cancellationToken) =>
         {
-            var body = message.Body.FromMsgPack<TBody>();
-            return handler(new ZlinkStreamMessage<TBody>(message.Name, message.Metadata, body), cancellationToken);
+            var payload = message.Payload.FromMsgPack<TPayload>();
+            return handler(new ZlinkStreamMessage<TPayload>(message.Name, message.Metadata, payload), cancellationToken);
         });
     }
 }

@@ -60,10 +60,14 @@ public final class RouterSocket extends Socket {
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
     public RoutingId routingId() { return super.routingId(); }
     public SendOp send(RoutingId rid) {
-        return SocketOperations.send((parts, flags) ->
-            sendInternal(rid, parts, flags));
+        return SocketOperations.send(
+            (part, flags) -> sendInternal(rid, part, flags),
+            (parts, flags) -> sendInternal(rid, parts, flags));
     }
 
+    boolean sendInternal(RoutingId rid, Message part, SendFlags flags) {
+        return super.send(rid, part, SendFlag.fromValue(flags.value()));
+    }
     boolean sendInternal(RoutingId rid, List<Message> parts, SendFlags flags) {
         return super.send(rid, parts, SendFlag.fromValue(flags.value()));
     }

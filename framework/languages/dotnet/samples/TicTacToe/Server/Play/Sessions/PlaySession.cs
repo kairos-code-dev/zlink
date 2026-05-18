@@ -59,7 +59,7 @@ sealed class PlaySession(
 
         if (string.Equals(packet.PacketName, nameof(AuthenticateReq), StringComparison.Ordinal))
         {
-            var actor = await authenticator.AuthenticateAsync(Context, packet.Body, cancellationToken);
+            var actor = await authenticator.AuthenticateAsync(Context, packet.Payload, cancellationToken);
             _actorId = actor.ActorId;
             return;
         }

@@ -218,19 +218,7 @@ func (r *Received) AdoptFrom(source *Received) {
 	if r == nil || source == nil || r == source {
 		return
 	}
-	// Close any prior owned parts.
-	for _, part := range r.parts {
-		if part != nil {
-			part.Close()
-		}
-	}
-	r.routingID = source.routingID
-	r.spotRID = source.spotRID
-	r.parts = source.parts
-	r.requestSeq = source.requestSeq
-	r.hasRequestSeq = source.hasRequestSeq
-	r.reply = source.reply
-	r.send = source.send
+	r.replace(source.routingID, source.spotRID, source.parts, source.requestSeq, source.hasRequestSeq, source.reply, source.send)
 	// Detach source so its lifecycle no-ops.
 	source.routingID = RoutingID{}
 	source.spotRID = RoutingID{}
@@ -239,6 +227,29 @@ func (r *Received) AdoptFrom(source *Received) {
 	source.hasRequestSeq = false
 	source.reply = nil
 	source.send = nil
+}
+
+func (r *Received) replace(
+	routingID RoutingID,
+	spotRID RoutingID,
+	parts []*Message,
+	requestSeq uint64,
+	hasRequestSeq bool,
+	reply func(SendFlags, []*Message) error,
+	send func(SendFlags, []*Message) (bool, error),
+) {
+	for _, part := range r.parts {
+		if part != nil {
+			part.Close()
+		}
+	}
+	r.routingID = routingID
+	r.spotRID = spotRID
+	r.parts = parts
+	r.requestSeq = requestSeq
+	r.hasRequestSeq = hasRequestSeq
+	r.reply = reply
+	r.send = send
 }
 
 func (r *Received) RequestSeq() uint64 {

@@ -356,6 +356,32 @@ internal static partial class PerfRunner
         }
     }
 
+    internal static void ApplySpotNodeAutoHwmMsgUnit(SpotNode node, int msgSize)
+    {
+        if (msgSize <= 0)
+            return;
+        try
+        {
+            node.AutoHwmMessageUnitBytes = msgSize;
+        }
+        catch (ZlinkException)
+        {
+        }
+    }
+
+    internal static void ApplySpotAutoHwmMsgUnit(Spot spot, int msgSize)
+    {
+        if (msgSize <= 0)
+            return;
+        try
+        {
+            spot.AutoHwmMessageUnitBytes = msgSize;
+        }
+        catch (ZlinkException)
+        {
+        }
+    }
+
     internal static void RecalculateAutoHwm(Context ctx)
     {
         try

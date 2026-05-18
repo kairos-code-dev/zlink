@@ -48,6 +48,10 @@ struct spot_op_state_t
     std::string channel_name;
     std::optional<routing_id_t> first_rid;
     std::optional<routing_id_t> second_rid;
+    zlink_routing_id_t first_rid_native_cache {};
+    zlink_routing_id_t second_rid_native_cache {};
+    bool has_first_rid_native_cache = false;
+    bool has_second_rid_native_cache = false;
     uint64_t request_seq = 0;
     std::optional<message_t> single_part;
     message_t *single_part_source = NULL;
@@ -69,20 +73,64 @@ struct spot_op_state_t
     std::string actor_id;
 };
 
+inline void cache_first_rid_native (spot_op_state_t &state_,
+                                    const routing_id_t &rid_) noexcept
+{
+    state_.first_rid_native_cache =
+      *zlink::detail::routing_id_native (rid_);
+    state_.has_first_rid_native_cache = true;
+    state_.first_rid.reset ();
+}
+
+inline void cache_second_rid_native (spot_op_state_t &state_,
+                                     const routing_id_t &rid_) noexcept
+{
+    state_.second_rid_native_cache =
+      *zlink::detail::routing_id_native (rid_);
+    state_.has_second_rid_native_cache = true;
+    state_.second_rid.reset ();
+}
+
+inline const zlink_routing_id_t *
+state_first_rid_native (const spot_op_state_t &state_) noexcept
+{
+    if (state_.has_first_rid_native_cache)
+        return &state_.first_rid_native_cache;
+    if (state_.first_rid.has_value ())
+        return zlink::detail::routing_id_native (*state_.first_rid);
+    return NULL;
+}
+
+inline const zlink_routing_id_t *
+state_second_rid_native (const spot_op_state_t &state_) noexcept
+{
+    if (state_.has_second_rid_native_cache)
+        return &state_.second_rid_native_cache;
+    if (state_.second_rid.has_value ())
+        return zlink::detail::routing_id_native (*state_.second_rid);
+    return NULL;
+}
+
 inline bool has_send_parts (const spot_op_state_t &state_) noexcept
 {
-    return state_.single_part.has_value () || !state_.parts.empty ();
+    return state_.single_part.has_value () || state_.single_part_source
+           || !state_.parts.empty ();
 }
 
 inline size_t send_part_count (const spot_op_state_t &state_) noexcept
 {
-    return state_.single_part.has_value () ? 1u : state_.parts.size ();
+    return state_.single_part.has_value () || state_.single_part_source
+             ? 1u
+             : state_.parts.size ();
 }
 
 inline message_t &send_single_part (spot_op_state_t &state_) noexcept
 {
-    return state_.single_part.has_value () ? *state_.single_part
-                                           : state_.parts.front ();
+    if (state_.single_part.has_value ())
+        return *state_.single_part;
+    if (state_.single_part_source)
+        return *state_.single_part_source;
+    return state_.parts.front ();
 }
 
 inline void append_send_part (spot_op_state_t &state_, message_t &part_)
@@ -91,8 +139,24 @@ inline void append_send_part (spot_op_state_t &state_, message_t &part_)
         state_.parts.push_back (std::move (*state_.single_part));
         state_.single_part.reset ();
         state_.single_part_source = NULL;
+    } else if (state_.single_part_source) {
+        state_.parts.push_back (std::move (*state_.single_part_source));
+        state_.single_part_source = NULL;
     }
     state_.parts.push_back (std::move (part_));
+}
+
+inline bool can_borrow_single_send_part (spot_op_kind_t kind_) noexcept
+{
+    switch (kind_) {
+    case spot_op_kind_t::raw_send:
+    case spot_op_kind_t::raw_routed_send:
+    case spot_op_kind_t::raw_publish:
+    case spot_op_kind_t::raw_router_send_spot:
+        return true;
+    default:
+        return false;
+    }
 }
 
 inline void restore_single_send_part_to_source (spot_op_state_t &state_) noexcept

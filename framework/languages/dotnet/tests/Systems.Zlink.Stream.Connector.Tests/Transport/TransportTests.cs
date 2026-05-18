@@ -32,15 +32,16 @@ public sealed partial class StreamConnectorTests
             var header = headerCodec.Decode(packet.Header);
             Assert.Equal("h", header.Name);
             Assert.Equal(ZlinkStreamCodec.Raw, header.Codec);
-            Assert.Equal("b", Encoding.UTF8.GetString(packet.Body));
+            Assert.Equal("b", Encoding.UTF8.GetString(packet.Payload));
         });
 
-        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}")
         });
+        await connector.ConnectAsync();
 
-        await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
+        await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
             .PacketName("h")
             .Submit();
 
@@ -89,13 +90,13 @@ public sealed partial class StreamConnectorTests
         var second = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.On("h1", (message, _) =>
         {
-            received.Add($"{message.Name}:{Encoding.UTF8.GetString(message.Body.Body.Span)}");
+            received.Add($"{message.Name}:{Encoding.UTF8.GetString(message.Payload.Payload.Span)}");
             first.SetResult();
             return ValueTask.CompletedTask;
         });
         connector.On("h2", (message, _) =>
         {
-            received.Add($"{message.Name}:{Encoding.UTF8.GetString(message.Body.Body.Span)}");
+            received.Add($"{message.Name}:{Encoding.UTF8.GetString(message.Payload.Payload.Span)}");
             second.SetResult();
             return ValueTask.CompletedTask;
         });
@@ -126,15 +127,16 @@ public sealed partial class StreamConnectorTests
             var header = headerCodec.Decode(packet.Header);
             Assert.Equal("wh", header.Name);
             Assert.Equal(ZlinkStreamCodec.Raw, header.Codec);
-            Assert.Equal("wb", Encoding.UTF8.GetString(packet.Body));
+            Assert.Equal("wb", Encoding.UTF8.GetString(packet.Payload));
         });
 
-        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"ws://127.0.0.1:{port}/ws/")
         });
+        await connector.ConnectAsync();
 
-        await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "wb"u8.ToArray()))
+        await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "wb"u8.ToArray()))
             .PacketName("wh")
             .Submit();
 
@@ -158,16 +160,17 @@ public sealed partial class StreamConnectorTests
             var header = headerCodec.Decode(packet.Header);
             Assert.Equal("th", header.Name);
             Assert.Equal(ZlinkStreamCodec.Raw, header.Codec);
-            Assert.Equal("tb", Encoding.UTF8.GetString(packet.Body));
+            Assert.Equal("tb", Encoding.UTF8.GetString(packet.Payload));
         });
 
-        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tls://127.0.0.1:{endpoint.Port}"),
             SkipServerCertificateValidation = true
         });
+        await connector.ConnectAsync();
 
-        await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "tb"u8.ToArray()))
+        await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "tb"u8.ToArray()))
             .PacketName("th")
             .Submit();
 

@@ -100,6 +100,12 @@ public sealed class SpotNode : ISpotNode
         set => PublisherOptions.SendTimeout = value;
     }
 
+    public int AutoHwmMessageUnitBytes
+    {
+        set => SetOption(SpotNodeSocketRole.Node,
+            SocketOptions.AutoHwmMsgUnitBytes, value);
+    }
+
     public int DispatchWorkersMin
     {
         get => GetAdmissionOption(SpotNodeOption.DispatchWorkersMin);
@@ -1090,6 +1096,10 @@ public sealed partial class Spot : ISpot
         OnRoutedReply;
     private static readonly IntPtr RoutedReplyHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(RoutedReplyHandler);
+    private static readonly NativeMethods.ZlinkFreeFnDelegate BorrowedBufferFree =
+        OnBorrowedBufferFree;
+    private static readonly IntPtr BorrowedBufferFreePtr =
+        Marshal.GetFunctionPointerForDelegate(BorrowedBufferFree);
     private const int StackPublishPartLimit = 8;
     private const int TopicBufferSize = 256;
     private const int DontWaitFlag = 1;
@@ -1116,6 +1126,8 @@ public sealed partial class Spot : ISpot
     private NativeMethods.ZlinkSpotDispatchEventHandlerDelegate? _dispatchEventHandlerNative;
     private NativeMethods.ZlinkSpotActorLifecycleHandlerDelegate? _actorJoinHandlerNative;
     private NativeMethods.ZlinkSpotActorLifecycleHandlerDelegate? _actorLeaveHandlerNative;
+    private string? _publishTopicCacheKey;
+    private byte[]? _publishTopicCacheUtf8;
 
     internal IntPtr Handle => _handle;
     internal SpotOptions Options { get; }
@@ -1307,27 +1319,28 @@ public sealed partial class Spot : ISpot
     internal bool Publish(string topic, Message message,
         SendFlags flags = SendFlags.None)
     {
-        ValidateTopicId(topic, nameof(topic));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         EnsureNotDisposed();
+        byte[] topicUtf8 = GetValidatedPublishTopicUtf8(topic,
+            nameof(topic));
         if ((flags & SendFlags.DontWait) != 0)
         {
-            return SocketKernel.TrySendOrThrow(PublishNoWaitResult(topic,
+            return SocketKernel.TrySendOrThrow(PublishNoWaitSingleCore(topicUtf8,
                 message));
         }
 
-        PublishSingleCore(topic, message, (int)flags);
+        PublishSingleCore(topicUtf8, message, (int)flags);
         return true;
     }
 
     internal SendResult PublishNoWaitResult(string topic, Message message)
     {
-        ValidateTopicId(topic, nameof(topic));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         EnsureNotDisposed();
-        return PublishNoWaitSingleCore(topic, message);
+        return PublishNoWaitSingleCore(GetValidatedPublishTopicUtf8(topic,
+            nameof(topic)), message);
     }
 
     internal bool Publish(string topic, IReadOnlyList<Message> parts,
@@ -2067,21 +2080,46 @@ public sealed partial class Spot : ISpot
         _node.UnregisterSpot(this);
     }
 
-    private unsafe void PublishSingleCore(string topic, Message message,
+    private void PublishSingleCore(string topic, Message message,
         int flags)
     {
+        PublishSingleCore(GetPublishTopicUtf8(topic), message, flags);
+    }
+
+    private unsafe void PublishSingleCore(byte[] topicUtf8, Message message,
+        int flags)
+    {
+        if (message.TryPrepareBorrowedSend(out IntPtr data, out int length,
+                out IntPtr hint))
+        {
+            try
+            {
+                PublishBorrowedSingleCore(topicUtf8, data, length, hint, flags);
+                message.DetachAfterPreparedSend();
+                return;
+            }
+            catch
+            {
+                message.CancelBorrowedSendPrepare();
+                throw;
+            }
+        }
+
         ZlinkMsg nativePart = default;
         bool submitted = false;
         try
         {
             message.MoveTo(ref nativePart);
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
-                ref nativePart, (int)flags,
-                NativeMethods.ZlinkPartFlag.Final);
-            submitted = true;
-            if (rc != 0)
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
+            fixed (byte* topicPtr = topicUtf8)
+            {
+                int rc = NativeMethods.zlink_spot_publish_part_utf8(_handle,
+                    topicPtr, ref nativePart, (int)flags,
+                    NativeMethods.ZlinkPartFlag.Final);
+                submitted = true;
+                if (rc != 0)
+                    throw ZlinkException.CreateSubmitException(
+                        NativeMethods.zlink_errno());
+            }
         }
         catch
         {
@@ -2089,6 +2127,57 @@ public sealed partial class Spot : ISpot
                 message.RestoreFrom(ref nativePart);
             throw;
         }
+    }
+
+    private unsafe void PublishBorrowedSingleCore(string topic, IntPtr data,
+        int length, IntPtr hint, int flags)
+    {
+        PublishBorrowedSingleCore(GetPublishTopicUtf8(topic), data, length,
+            hint, flags);
+    }
+
+    private unsafe void PublishBorrowedSingleCore(byte[] topicUtf8, IntPtr data,
+        int length, IntPtr hint, int flags)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        try
+        {
+            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
+                data, (nuint)length, BorrowedBufferFreePtr, hint);
+            ZlinkException.ThrowSubmitIfError(initRc);
+            initialized = true;
+
+            fixed (byte* topicPtr = topicUtf8)
+            {
+                int rc = NativeMethods.zlink_spot_publish_part_utf8(_handle,
+                    topicPtr, ref nativePart, flags,
+                    NativeMethods.ZlinkPartFlag.Final);
+                initialized = false;
+                if (rc != 0)
+                    throw ZlinkException.CreateSubmitException(
+                        NativeMethods.zlink_errno());
+            }
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
+            throw;
+        }
+    }
+
+    private static void OnBorrowedBufferFree(IntPtr data, IntPtr hint)
+    {
+        if (hint == IntPtr.Zero)
+            return;
+        GCHandle handle = GCHandle.FromIntPtr(hint);
+        if (handle.Target is Message)
+        {
+            Message.CompleteBorrowedSend(handle);
+            return;
+        }
+        handle.Free();
     }
 
     private void EnsureNotDisposed()
@@ -2329,6 +2418,38 @@ public sealed partial class Spot : ISpot
     {
         BoundaryValidation.ValidateTopicOrFilterUtf8(value, paramName,
             allowEmpty: false);
+    }
+
+    private byte[] GetPublishTopicUtf8(string topic)
+    {
+        byte[]? cached = _publishTopicCacheUtf8;
+        string? cachedKey = _publishTopicCacheKey;
+        if (cached != null
+            && (ReferenceEquals(cachedKey, topic)
+                || string.Equals(cachedKey, topic, StringComparison.Ordinal)))
+        {
+            return cached;
+        }
+
+        byte[] encoded = PublishTopicEncoding.GetNullTerminatedUtf8(topic);
+        _publishTopicCacheKey = topic;
+        _publishTopicCacheUtf8 = encoded;
+        return encoded;
+    }
+
+    private byte[] GetValidatedPublishTopicUtf8(string topic, string paramName)
+    {
+        byte[]? cached = _publishTopicCacheUtf8;
+        string? cachedKey = _publishTopicCacheKey;
+        if (cached != null
+            && (ReferenceEquals(cachedKey, topic)
+                || string.Equals(cachedKey, topic, StringComparison.Ordinal)))
+        {
+            return cached;
+        }
+
+        ValidateTopicId(topic, paramName);
+        return GetPublishTopicUtf8(topic);
     }
 
     private static void ValidateChannelName(string value, string paramName)

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
@@ -15,7 +16,6 @@ internal static class PerfMultiSpotClient
     private const int SpotSocketTag = 0;
     private const int ControlDeadlineTag = -1;
     private const int ReadyRepeatTag = -2;
-
     internal static int Run(PerfOptions options)
     {
         if (!TryParseSpotEndpoints(options.Endpoint, out string dataEndpoint,
@@ -41,6 +41,7 @@ internal static class PerfMultiSpotClient
         ConfigureSpotDiscoveryTlsIfNeeded(discovery, config.Transport);
         ConfigureSpotNodeTlsIfNeeded(node, config.Transport);
         ApplySpotSubscriberOptions(node, options);
+        ApplySpotNodeAutoHwmMsgUnit(node, config.Size);
         // ITEM 3 fix: tolerate the post-bind EAGAIN connect race (parity
         // with C discovery's connect/retry loop).
         ConnectRegistryWithRetry(discovery, config.RegistryEndpoint,
@@ -66,30 +67,24 @@ internal static class PerfMultiSpotClient
             {
                 var subscriber = node.CreateSpot();
                 ApplyMultiSpotSocketOptions(subscriber, options);
+                ApplySpotAutoHwmMsgUnit(subscriber, config.Size);
                 subscriber.SetSubscription(Topic);
                 var slot = new SpotClientSlot(subscriber,
                     new SpotClientSlotState(config.LatencySampleCap,
-                        config.LatencySampleStride));
-                subscriber.OnDispatchEvent(info =>
-                {
-                    if (info.Event != SpotDispatchEvent.SubscribeReadable)
-                        return;
-                    long deadline = Interlocked.Read(
-                        ref slot.State.ActiveDeadlineTicks);
-                    int active = Volatile.Read(ref slot.State.Active);
-                    int msgSize = Volatile.Read(ref slot.State.ActiveMsgSize);
-                    if (active == 0 || deadline <= 0 || msgSize <= 0)
-                        return;
-                    DrainSlot(slot, msgSize, deadline);
-                });
+                        config.LatencySampleStride,
+                        Math.Max(MultiStopToken.Length,
+                            PerfMetricHeaderSize)));
                 slots.Add(slot);
             }
 
             using var controlNode = new SpotNode(ctx);
             ConfigureSpotNodeTlsIfNeeded(controlNode, config.Transport);
             ConfigureSpotControlNode(controlNode, config.ConnectReadyTimeoutMs);
+            ApplySpotNodeAutoHwmMsgUnit(controlNode, config.Size);
             using var controlPub = controlNode.CreateSpot();
             using var controlSub = controlNode.CreateSpot();
+            ApplySpotAutoHwmMsgUnit(controlPub, config.Size);
+            ApplySpotAutoHwmMsgUnit(controlSub, config.Size);
             controlSub.SetSubscription(ControlTopic);
             string localControlEndpoint = BindSpotNodeWithRetry(controlNode,
                 config.Transport, "multi-spot-ctrl-client", options);
@@ -373,8 +368,16 @@ internal static class PerfMultiSpotClient
             Volatile.Write(ref slots[i].State.Active, 1);
         }
 
-        while (Stopwatch.GetTimestamp() < activeDeadlineTicks)
-            Thread.Sleep(1);
+        List<SpotRecvWorker> workers = StartRecvWorkers(slots);
+        try
+        {
+            while (Stopwatch.GetTimestamp() < activeDeadlineTicks)
+                Thread.Sleep(1);
+        }
+        finally
+        {
+            StopRecvWorkers(workers);
+        }
 
         for (int i = 0; i < slots.Count; i++)
         {
@@ -418,21 +421,137 @@ internal static class PerfMultiSpotClient
         return 0;
     }
 
+    private static List<SpotRecvWorker> StartRecvWorkers(
+        List<SpotClientSlot> slots)
+    {
+        int workerCount = ResolveSpotRecvWorkerCount(slots.Count);
+        var workers = new List<SpotRecvWorker>(workerCount);
+        for (int i = 0; i < workerCount; i++)
+            workers.Add(new SpotRecvWorker());
+
+        for (int i = 0; i < slots.Count; i++)
+            workers[i % workerCount].Slots.Add(slots[i]);
+
+        for (int i = 0; i < workers.Count; i++)
+            workers[i].Start();
+        return workers;
+    }
+
+    private static void StopRecvWorkers(List<SpotRecvWorker> workers)
+    {
+        for (int i = 0; i < workers.Count; i++)
+            Volatile.Write(ref workers[i].StopRequested, 1);
+        for (int i = 0; i < workers.Count; i++)
+            workers[i].Join();
+    }
+
+    private static int ResolveSpotRecvWorkerCount(int slotCount)
+    {
+        if (slotCount <= 0)
+            return 0;
+        int configured = PerfEnv.ReadPositive(
+            "PERF_DOTNET_SPOT_RECV_WORKERS", 0);
+        if (configured > 0)
+            return Math.Min(slotCount, configured);
+        int scaled = Math.Max(3, Math.Min(128, (slotCount + 49) / 50));
+        return Math.Min(slotCount, scaled);
+    }
+
+    private sealed class SpotRecvWorker
+    {
+        private Thread? _thread;
+
+        internal List<SpotClientSlot> Slots { get; } = new();
+        internal int StopRequested;
+
+        internal void Start()
+        {
+            _thread = new Thread(Run)
+            {
+                IsBackground = true,
+                Name = "zlink-dotnet-spot-perf-recv"
+            };
+            _thread.Start();
+        }
+
+        internal void Join()
+        {
+            _thread?.Join();
+        }
+
+        private void Run()
+        {
+            while (Volatile.Read(ref StopRequested) == 0)
+            {
+                bool hasActiveSlot = false;
+                bool progressed = false;
+                for (int i = 0; i < Slots.Count; i++)
+                {
+                    SpotClientSlot slot = Slots[i];
+                    long deadline = Interlocked.Read(
+                        ref slot.State.ActiveDeadlineTicks);
+                    int active = Volatile.Read(ref slot.State.Active);
+                    int msgSize = Volatile.Read(ref slot.State.ActiveMsgSize);
+                    if (active == 0 || deadline <= 0 || msgSize <= 0)
+                        continue;
+                    hasActiveSlot = true;
+                    progressed |= DrainSlot(slot, msgSize, deadline);
+                }
+                if (!progressed)
+                {
+                    if (hasActiveSlot)
+                        Thread.Yield();
+                    else
+                        Thread.Sleep(1);
+                }
+            }
+        }
+    }
+
     private static bool DrainSlot(SpotClientSlot slot, int msgSize,
+        long activeDeadlineTicks)
+    {
+        return DrainSlotTopicMessage(slot, msgSize, activeDeadlineTicks);
+    }
+
+    private static bool TryDecodeExpectedActiveHeader(ReadOnlySpan<byte> payload,
+        int msgSize, out ulong sentTsNs)
+    {
+        sentTsNs = 0;
+        if (payload.Length < PerfMetricHeaderSize)
+            return false;
+        uint magic = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(0, 4));
+        if (magic != PerfShared.PerfMetricMagic)
+            return false;
+        uint runId = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(4, 4));
+        if (runId != ExpectedRunId || payload[8] != (byte)PerfPhase.Active)
+            return false;
+        uint actualMsgSize =
+            BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(9, 4));
+        if (actualMsgSize != (uint)msgSize)
+            return false;
+        sentTsNs = unchecked((ulong)BinaryPrimitives.ReadInt64LittleEndian(
+            payload.Slice(21, 8)));
+        return true;
+    }
+
+    private static bool DrainSlotTopicMessage(SpotClientSlot slot, int msgSize,
         long activeDeadlineTicks)
     {
         try
         {
+            SpotClientSlotState state = slot.State;
+            TopicMessage messageEnvelope = state.MessageEnvelope;
             bool progressed = false;
             while (true)
             {
                 if (Stopwatch.GetTimestamp() >= activeDeadlineTicks)
                     return progressed;
 
-                using var subscribed = new TopicMessage();
                 try
                 {
-                    if (!slot.Subscriber.Subscribe(subscribed, RecvFlags.DontWait))
+                    if (!slot.Subscriber.Subscribe(messageEnvelope,
+                            RecvFlags.DontWait))
                         return progressed;
                 }
                 catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
@@ -440,45 +559,39 @@ internal static class PerfMultiSpotClient
                 {
                     return progressed;
                 }
-                    progressed = true;
-                    ReadOnlySpan<byte> payload =
-                        subscribed.SinglePartOrThrow().AsReadOnlySpan();
-                    if (IsStopTokenPayload(payload))
-                    {
-                        slot.State.CooldownSeen = 1;
-                        return true;
-                    }
 
-                    if (!PerfShared.TryDecodeMetricHeader(payload,
-                            out PerfMetricHeader header))
-                    {
-                        continue;
-                    }
-                    if (header.RunId != ExpectedRunId
-                        || header.MsgSize != (uint)msgSize)
-                    {
-                        continue;
-                    }
-                    if (header.Phase != (uint)PerfPhase.Active
-                        || Stopwatch.GetTimestamp() > activeDeadlineTicks
-                        || !IsWithinSenderWindow(slot.State, header))
-                    {
-                        continue;
-                    }
+                progressed = true;
+                ReadOnlySpan<byte> payload =
+                    messageEnvelope.SinglePartOrThrow().AsReadOnlySpan();
+                if (IsStopTokenPayload(payload))
+                {
+                    state.CooldownSeen = 1;
+                    return true;
+                }
 
-                    slot.State.MeasureCount++;
-                    if (slot.State.MeasureCount % slot.State.LatencySampleStride == 0
-                        && header.SentTsNs > 0)
+                if (!TryDecodeExpectedActiveHeader(payload, msgSize,
+                        out ulong sentTsNs))
+                {
+                    continue;
+                }
+                if (!IsWithinSenderWindow(state, sentTsNs))
+                {
+                    continue;
+                }
+
+                state.MeasureCount++;
+                if (state.MeasureCount % state.LatencySampleStride == 0
+                    && sentTsNs > 0)
+                {
+                    ulong nowNs = EpochNs();
+                    if (nowNs >= sentTsNs)
                     {
-                        ulong nowNs = EpochNs();
-                        if (nowNs >= header.SentTsNs)
-                        {
-                            double sampleLatencyNs = nowNs - header.SentTsNs;
-                            ReservoirSample(slot.State.LatencySamples,
-                                sampleLatencyNs, ref slot.State.SampleSeen,
-                                slot.State.LatencySampleCap, ref slot.State.Rng);
-                        }
+                        double sampleLatencyNs = nowNs - sentTsNs;
+                        ReservoirSample(state.LatencySamples, sampleLatencyNs,
+                            ref state.SampleSeen, state.LatencySampleCap,
+                            ref state.Rng);
                     }
+                }
             }
         }
         catch (Exception ex)
@@ -489,13 +602,13 @@ internal static class PerfMultiSpotClient
     }
 
     private static bool IsWithinSenderWindow(SpotClientSlotState state,
-        PerfMetricHeader header)
+        ulong sentTsNs)
     {
-        if (header.SentTsNs == 0)
+        if (sentTsNs == 0)
             return true;
 
-        long sentNs = unchecked((long)header.SentTsNs);
-        long windowEndNs = Interlocked.Read(ref state.SenderWindowEndNs);
+        long sentNs = unchecked((long)sentTsNs);
+        long windowEndNs = Volatile.Read(ref state.SenderWindowEndNs);
         if (windowEndNs == 0)
         {
             lock (state.SenderWindowLock)
@@ -515,6 +628,15 @@ internal static class PerfMultiSpotClient
         }
 
         return sentNs <= windowEndNs;
+    }
+
+    private static bool IsWithinSenderWindow(SpotClientSlotState state,
+        PerfMetricHeader header)
+    {
+        if (header.SentTsNs == 0)
+            return true;
+
+        return IsWithinSenderWindow(state, header.SentTsNs);
     }
 
     private static void MergeLatencySamples(IReadOnlyList<double> source,
@@ -650,14 +772,18 @@ internal static class PerfMultiSpotClient
     private sealed class SpotClientSlotState : IDisposable
     {
         internal SpotClientSlotState(int latencySampleCap,
-            int latencySampleStride)
+            int latencySampleStride, int payloadBufferSize)
         {
             LatencySampleCap = Math.Max(0, latencySampleCap);
             LatencySampleStride = Math.Max(1, latencySampleStride);
+            PayloadBuffer = new byte[Math.Max(1, payloadBufferSize)];
+            MessageEnvelope = new TopicMessage();
             LatencySamples = new List<double>(LatencySampleCap);
             Rng = 0xC0FFEEu;
         }
 
+        internal byte[] PayloadBuffer { get; }
+        internal TopicMessage MessageEnvelope { get; }
         internal List<double> LatencySamples { get; }
         internal int LatencySampleCap { get; }
         internal int LatencySampleStride { get; }
@@ -676,6 +802,7 @@ internal static class PerfMultiSpotClient
 
         public void Dispose()
         {
+            MessageEnvelope.Dispose();
         }
     }
 }

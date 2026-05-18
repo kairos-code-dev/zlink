@@ -1105,7 +1105,7 @@ func (s *Spot) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error) {
 	if out == nil {
 		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
 	}
-	fresh, err := recvSpotTopicMessage(func(rid **C.zlink_routing_id_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+	err := recvSpotTopicMessageInto(out, func(rid **C.zlink_routing_id_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_spot_subscribe_part(s.raw(), rid, topic, C.size_t(recvTopicBufferCap), topicLen, part, hasMore, recvFlags))
 	}, flags)
 	if err != nil {
@@ -1115,7 +1115,6 @@ func (s *Spot) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error) {
 		}
 		return false, err
 	}
-	out.adoptFrom(fresh)
 	return true, nil
 }
 
@@ -1168,15 +1167,18 @@ func (s *Spot) RecvRouted(out *Received, flags RecvFlags) (bool, error) {
 		}
 		return false, err
 	}
-	out.AdoptFrom(&Received{
-		routingID:     routingIDFromCPtr(sourceRID),
-		spotRID:       routingIDFromCPtr(spotRID),
-		parts:         clonedParts,
-		requestSeq:    uint64(requestSeq),
-		hasRequestSeq: requestSeq != 0,
-		reply:         receivedReplyToSpot(s, routingIDFromCPtr(sourceRID), routingIDFromCPtr(spotRID), uint64(requestSeq)),
-		send:          receivedSendFromSpot(s, routingIDFromCPtr(sourceRID), routingIDFromCPtr(spotRID)),
-	})
+	routingID := routingIDFromCPtr(sourceRID)
+	spotRoutingID := routingIDFromCPtr(spotRID)
+	seq := uint64(requestSeq)
+	out.replace(
+		routingID,
+		spotRoutingID,
+		clonedParts,
+		seq,
+		requestSeq != 0,
+		receivedReplyToSpot(s, routingID, spotRoutingID, seq),
+		receivedSendFromSpot(s, routingID, spotRoutingID),
+	)
 	return true, nil
 }
 

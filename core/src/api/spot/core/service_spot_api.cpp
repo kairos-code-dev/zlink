@@ -444,20 +444,27 @@ zlink_recv_result_t zlink_spot_subscribe_part (
         zlink_routing_id_t source_rid;
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
-        size_t topic_id_len = 65536;
+        const bool use_caller_topic_buf =
+          topic_id_buf_ != NULL && topic_id_capacity_ > 0;
+        size_t topic_id_len = use_caller_topic_buf ? topic_id_capacity_ : 65536;
         std::string topic_id;
-        std::vector<char> topic_id_buf (topic_id_len);
+        std::vector<char> topic_id_storage;
+        char *recv_topic_buf = topic_id_buf_;
+        if (!use_caller_topic_buf) {
+            topic_id_storage.resize (topic_id_len);
+            recv_topic_buf = topic_id_storage.data ();
+        }
         memset (&source_rid, 0, sizeof (source_rid));
 
         const zlink_recv_result_t rc = spot_subscribe_impl (
-          spot_, &source_rid, &parts, &part_count, topic_id_buf.data (),
+          spot_, &source_rid, &parts, &part_count, recv_topic_buf,
           &topic_id_len, flags_);
         if (rc != ZLINK_RECV_OK) {
             zlink::part_helper_internal::abort_recv_step (helper_state);
             return rc;
         }
 
-        topic_id.assign (topic_id_buf.data (), topic_id_len);
+        topic_id.assign (recv_topic_buf, topic_id_len);
 
         bool move_failed = false;
         {

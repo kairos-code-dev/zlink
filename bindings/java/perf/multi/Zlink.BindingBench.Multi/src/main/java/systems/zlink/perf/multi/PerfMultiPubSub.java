@@ -214,11 +214,12 @@ final class PerfMultiPubSub {
     private static boolean drainSubscriber(SubSocket sub, PerfUtil.Config config,
                                            PerfUtil.Metrics metrics,
                                            long activeEnd) {
+        TopicMessage received = new TopicMessage();
         while (true) {
-            try (TopicMessage received = new TopicMessage()) {
-                if (!sub.subscribe(received, RecvFlags.DONT_WAIT)) {
-                    return false;
-                }
+            if (!sub.subscribe(received, RecvFlags.DONT_WAIT)) {
+                return false;
+            }
+            try {
                 if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
                     return true;
                 }
@@ -234,6 +235,8 @@ final class PerfMultiPubSub {
                     && System.nanoTime() < activeEnd) {
                     metrics.recordNanos(header.latencyNanos());
                 }
+            } finally {
+                received.close();
             }
         }
     }

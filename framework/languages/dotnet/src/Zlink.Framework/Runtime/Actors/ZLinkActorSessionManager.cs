@@ -33,30 +33,30 @@ internal sealed partial class ZLinkActorSessionManager(
     public async ValueTask SubmitActorByIdAsync(
         string actorId,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
-        await DispatchRouter.SubmitByIdAsync(actorId, header, body, cancellationToken)
+        await DispatchRouter.SubmitByIdAsync(actorId, header, payload, cancellationToken)
             .ConfigureAwait(false);
     }
 
     public async ValueTask<byte[]> SubmitActorForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
-        return await DispatchRouter.SubmitForReplyAsync(actorId, header, body, cancellationToken)
+        return await DispatchRouter.SubmitForReplyAsync(actorId, header, payload, cancellationToken)
             .ConfigureAwait(false);
     }
 
     public async ValueTask SubmitActorAsync(
         IZLinkActor actor,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
-        await DispatchRouter.SubmitAsync(actor, header, body, cancellationToken)
+        await DispatchRouter.SubmitAsync(actor, header, payload, cancellationToken)
             .ConfigureAwait(false);
     }
 

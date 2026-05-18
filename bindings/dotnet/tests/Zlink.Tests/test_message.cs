@@ -23,6 +23,23 @@ public sealed class test_message
     }
 
     [Fact]
+    public void message_move_transfers_native_message_payload()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var source = new Message("native-move-payload"u8);
+        using Message moved = source.Move();
+
+        Assert.True(moved.AsReadOnlySpan().SequenceEqual(
+            "native-move-payload"u8));
+        Assert.Throws<ObjectDisposedException>(() =>
+        {
+            _ = source.Size;
+        });
+    }
+
+    [Fact]
     public void message_move_on_disposed_source_throws()
     {
         if (!CoreTestSupport.IsNativeAvailable())

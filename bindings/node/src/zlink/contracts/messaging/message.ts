@@ -576,6 +576,20 @@ export class TopicMessage extends MultipartEnvelope {
     source.routingId = null;
     source.topic = '';
   }
+
+  /** @internal */
+  _replace(
+    topic: string,
+    parts: Message[],
+    routingId: RoutingId | null = null
+  ): void {
+    for (const part of this.parts) {
+      try { part.close(); } catch { /* swallow */ }
+    }
+    this.parts = freezeOwnedMessageParts(parts);
+    this.routingId = routingId;
+    this.topic = topic;
+  }
 }
 
 export class SubscriptionEvent {

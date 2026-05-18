@@ -50,6 +50,12 @@ internal static partial class NativeMethods
         [Out] ZlinkPollerEvent[] events, int nEvents, long timeout,
         out int errorOut);
 
+    [DllImport(LibraryName, EntryPoint = "zlink_poller_wait",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe int zlink_poller_wait_pinned(IntPtr poller,
+        ZlinkPollerEvent* events, int nEvents, long timeout,
+        out int errorOut);
+
     [DllImport(LibraryName, EntryPoint = "zlink_poll",
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poll(

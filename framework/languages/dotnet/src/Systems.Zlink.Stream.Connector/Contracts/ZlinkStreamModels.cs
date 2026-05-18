@@ -2,20 +2,20 @@ namespace Systems.Zlink.Stream.Connector.Contracts;
 
 public readonly record struct ZlinkStreamRequestSeq(ulong Value);
 
-public sealed record ZlinkStreamEncodedBody(
+public sealed record ZlinkStreamEncodedPayload(
     ZlinkStreamCodec Codec,
-    ReadOnlyMemory<byte> Body,
+    ReadOnlyMemory<byte> Payload,
     Type? MessageType = null);
 
 public sealed record ZlinkStreamMessage(
     string Name,
     ZlinkStreamMetadata Metadata,
-    object? Body);
+    object? Payload);
 
-public sealed record ZlinkStreamMessage<TBody>(
+public sealed record ZlinkStreamMessage<TPayload>(
     string Name,
     ZlinkStreamMetadata Metadata,
-    TBody Body);
+    TPayload Payload);
 
 public sealed record ZlinkStreamHeader(
     ZlinkStreamMessageKind Kind,
@@ -30,15 +30,9 @@ public sealed record ZlinkStreamError(
     string Message,
     Exception? Exception = null);
 
-public sealed class ZlinkStreamException : Exception
+public sealed class ZlinkStreamException(ZlinkStreamError error) : Exception(error.Message, error.Exception)
 {
-    public ZlinkStreamException(ZlinkStreamError error)
-        : base(error.Message, error.Exception)
-    {
-        Error = error;
-    }
-
-    public ZlinkStreamError Error { get; }
+    public ZlinkStreamError Error { get; } = error;
 }
 
 public readonly struct ZlinkStreamResult

@@ -28,22 +28,22 @@ public sealed class TicTacToeClient
         var playerJoinedNotifications = new ConcurrentQueue<PlayerJoinedNotify>();
         using var xStateHandler = xConnector.On<GameStateNotify>((message, _) =>
         {
-            stateNotifications.Enqueue(message.Body);
+            stateNotifications.Enqueue(message.Payload);
             return ValueTask.CompletedTask;
         });
         using var oStateHandler = oConnector.On<GameStateNotify>((message, _) =>
         {
-            stateNotifications.Enqueue(message.Body);
+            stateNotifications.Enqueue(message.Payload);
             return ValueTask.CompletedTask;
         });
         using var xPlayerJoinedHandler = xConnector.On<PlayerJoinedNotify>((message, _) =>
         {
-            playerJoinedNotifications.Enqueue(message.Body);
+            playerJoinedNotifications.Enqueue(message.Payload);
             return ValueTask.CompletedTask;
         });
         using var oPlayerJoinedHandler = oConnector.On<PlayerJoinedNotify>((message, _) =>
         {
-            playerJoinedNotifications.Enqueue(message.Body);
+            playerJoinedNotifications.Enqueue(message.Payload);
             return ValueTask.CompletedTask;
         });
 
@@ -99,17 +99,19 @@ public sealed class TicTacToeClient
             .SubmitAsync<PlaceMarkRes>(cancellationToken);
     }
 
-    private static ValueTask<IZlinkStreamConnector> ConnectPlayerAsync(
+    private static async ValueTask<IZlinkStreamConnector> ConnectPlayerAsync(
         string playEndpoint,
         TicTacToeClientOptions options,
         CancellationToken cancellationToken)
     {
-        return ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
+        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri(playEndpoint),
             ConnectTimeout = options.StreamTimeout,
             RequestTimeout = options.StreamTimeout,
-        }, cancellationToken);
+        });
+        await connector.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        return connector;
     }
 
     private static async Task<CreateGameHttpRes> CreateGameAsync(

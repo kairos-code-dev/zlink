@@ -9,9 +9,9 @@
 #include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <cstdint>
 #include <deque>
 #include <iostream>
-#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -66,28 +66,6 @@ void debug_log (const std::string &message_)
     if (!perf_debug_enabled ())
         return;
     std::cerr << "router_router server: " << message_ << std::endl;
-}
-
-bool take_router_payload (std::vector<zlink::message_t> &parts,
-                          zlink::message_t &payload)
-{
-    if (parts.empty ()) {
-        payload = zlink::message_t (0);
-        return payload.valid ();
-    }
-
-    if (parts.size () == 1) {
-        payload = std::move (parts[0]);
-        return true;
-    }
-
-    if (parts.size () == 2 && parts[0].size () == 0) {
-        payload = std::move (parts[1]);
-        return true;
-    }
-
-    errno = EPROTO;
-    return false;
 }
 
 } // namespace
@@ -153,6 +131,9 @@ bool perf_router_router_server (const std::string &lib_name,
     std::deque<pending_reply_t> pending_replies;
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
+    zlink::routing_id_t source_rid = zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> ("x"), 1);
+    zlink::message_t part;
     events.reserve (1);
     poller.add (server, zlink::poll_event_flag_t::pollin);
 
@@ -160,9 +141,8 @@ bool perf_router_router_server (const std::string &lib_name,
         while (!pending_replies.empty ()) {
             pending_reply_t &front = pending_replies.front ();
             try {
-                zlink::message_t attempt = front.payload;
                 if (server.send (front.rid)
-                      .message (attempt)
+                      .message (front.payload)
                       .flags (ZLINK_DONTWAIT)
                       .submit ()) {
                     pending_replies.pop_front ();
@@ -234,65 +214,48 @@ bool perf_router_router_server (const std::string &lib_name,
         if (!readable)
             continue;
 
-        // Drain available messages without blocking.
-        while (true) {
-            zlink::received_t received;
+        // Drain available single-part routed messages without blocking. This
+        // mirrors the C relay server's zlink_router_recv_part hot path and
+        // avoids materializing received_t parts for the single-part echo
+        // workload.
+        while (!g_stop_requested.load (std::memory_order_acquire)) {
             const int recv_rc = server.recv (
-              received, zlink::recv_flags_t::dontwait);
-            if (recv_rc < 0) {
+              source_rid, part, zlink::recv_flags_t::dontwait);
+            if (recv_rc != 0) {
                 const int err = errno;
-                if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
+                if (recv_rc == static_cast<int> (zlink::recv_result_t::no_data)
+                    || err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
                     break;
                 debug_log ("recv failed errno=" + std::to_string (err));
                 failed = true;
                 break;
             }
 
-            zlink::message_t moved_part;
-            zlink::message_t *part = NULL;
-            if (received.is_single_part ()) {
-                part = &received.first_part ();
-            } else {
-                if (!take_router_payload (received.parts (), moved_part)) {
-                    debug_log ("recv failed errno=" + std::to_string (errno));
-                    failed = true;
-                    break;
-                }
-                part = &moved_part;
-            }
             // No socket stop-token handling: matches the C reference relay
             // server, which terminates only via stdin STOP/QUIT + signals.
-            if (part->size () == 0)
+            if (part.size () == 0)
                 continue;
-            const std::optional<zlink::routing_id_t> &source_rid =
-              received.routing_id ();
-            if (!source_rid) {
-                debug_log ("recv missing routing id");
-                failed = true;
-                break;
-            }
 
             if (!pending_replies.empty ()) {
                 pending_replies.push_back (pending_reply_t {
-                  *source_rid, std::move (*part) });
+                  source_rid, std::move (part) });
                 continue;
             }
 
             try {
-                zlink::message_t attempt = *part;
-                if (!server.send (*source_rid)
-                       .message (attempt)
+                if (!server.send (source_rid)
+                       .message (part)
                        .flags (ZLINK_DONTWAIT)
                        .submit ()) {
                     pending_replies.push_back (pending_reply_t {
-                      *source_rid, std::move (*part) });
+                      source_rid, std::move (part) });
                 }
             } catch (const zlink::submit_error_t &err) {
                 const int err_no = err.internal_errno ();
                 if (err_no == EINTR || err_no == EHOSTUNREACH
                     || err_no == ENOTCONN) {
                     pending_replies.push_back (pending_reply_t {
-                      *source_rid, std::move (*part) });
+                      source_rid, std::move (part) });
                     continue;
                 }
                 debug_log ("send failed errno=" + std::to_string (err_no));

@@ -18,25 +18,25 @@ public static class ZlinkStreamJsonCodec
 
 public static class ZlinkStreamJsonExtensions
 {
-    public static T FromJson<T>(this ZlinkStreamEncodedBody body)
+    public static T FromJson<T>(this ZlinkStreamEncodedPayload payload)
     {
-        EnsureJson(body);
-        return JsonSerializer.Deserialize<T>(body.Body.Span, ZlinkStreamJsonCodec.SerializerOptions)!;
+        EnsureJson(payload);
+        return JsonSerializer.Deserialize<T>(payload.Payload.Span, ZlinkStreamJsonCodec.SerializerOptions)!;
     }
 
-    public static ZlinkStreamEncodedBody ToJson<T>(this T value)
+    public static ZlinkStreamEncodedPayload ToJson<T>(this T value)
     {
-        return new ZlinkStreamEncodedBody(
+        return new ZlinkStreamEncodedPayload(
             ZlinkStreamCodec.Json,
             JsonSerializer.SerializeToUtf8Bytes(value, ZlinkStreamJsonCodec.SerializerOptions),
             typeof(T));
     }
 
-    private static void EnsureJson(ZlinkStreamEncodedBody body)
+    private static void EnsureJson(ZlinkStreamEncodedPayload payload)
     {
-        if (body.Codec != ZlinkStreamCodec.Json)
+        if (payload.Codec != ZlinkStreamCodec.Json)
         {
-            throw new InvalidOperationException($"Stream body codec is {body.Codec}, not Json.");
+            throw new InvalidOperationException($"Stream payload codec is {payload.Codec}, not Json.");
         }
     }
 }

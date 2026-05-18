@@ -111,18 +111,18 @@ internal sealed class ZLinkSessionContext(
         IZLinkSessionPacket packet,
         CancellationToken cancellationToken = default)
     {
-        return DispatchToActorAsync(packet.Header, packet.Body.Move(), cancellationToken);
+        return DispatchToActorAsync(packet.Header, packet.Payload.Move(), cancellationToken);
     }
 
     public ValueTask DispatchToActorAsync(
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
         var actor = _actor
             ?? throw new InvalidOperationException("No actor is attached to the current session.");
 
-        return _actorRelay.DispatchAttachedAsync(actor, header, body, cancellationToken);
+        return _actorRelay.DispatchAttachedAsync(actor, header, payload, cancellationToken);
     }
 
     public async ValueTask DispatchToActorAsync(
@@ -130,14 +130,14 @@ internal sealed class ZLinkSessionContext(
         IZLinkSessionPacket packet,
         CancellationToken cancellationToken = default)
     {
-        await DispatchToActorAsync(actor, packet.Header, packet.Body.Move(), cancellationToken)
+        await DispatchToActorAsync(actor, packet.Header, packet.Payload.Move(), cancellationToken)
             .ConfigureAwait(false);
     }
 
     public async ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken = default)
     {
         if (actor is not ZLinkActorRef actorRef)
@@ -148,7 +148,7 @@ internal sealed class ZLinkSessionContext(
         await _actorRelay.DispatchRemoteAsync(
                 actorRef,
                 header,
-                body,
+                payload,
                 ReplyRawAsync,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -206,9 +206,9 @@ internal sealed class ZLinkSessionContext(
 
     internal bool TryCompleteResponse(
         ZlinkStreamHeader header,
-        Message body)
+        Message payload)
     {
-        return _requests.TryCompleteResponse(header, body);
+        return _requests.TryCompleteResponse(header, payload);
     }
 
     internal bool Write(Message payload)
@@ -219,30 +219,30 @@ internal sealed class ZLinkSessionContext(
     internal ValueTask SendRawAsync(
         string packetName,
         ZlinkStreamCodec codec,
-        ReadOnlyMemory<byte> body,
+        ReadOnlyMemory<byte> payload,
         CancellationToken cancellationToken)
     {
-        return Transport.SendRawAsync(packetName, codec, body, cancellationToken);
+        return Transport.SendRawAsync(packetName, codec, payload, cancellationToken);
     }
 
     internal async ValueTask<Message> RequestRawAsync(
         string packetName,
         ZlinkStreamCodec codec,
-        ReadOnlyMemory<byte> body,
+        ReadOnlyMemory<byte> payload,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        return await Transport.RequestRawAsync(packetName, codec, body, timeout, cancellationToken)
+        return await Transport.RequestRawAsync(packetName, codec, payload, timeout, cancellationToken)
             .ConfigureAwait(false);
     }
 
     internal ValueTask ReplyRawAsync(
         ZlinkStreamHeader requestHeader,
         ZlinkStreamCodec codec,
-        ReadOnlyMemory<byte> body,
+        ReadOnlyMemory<byte> payload,
         CancellationToken cancellationToken)
     {
-        return Transport.ReplyRawAsync(requestHeader, codec, body, cancellationToken);
+        return Transport.ReplyRawAsync(requestHeader, codec, payload, cancellationToken);
     }
 
     internal ValueTask ReplyErrorAsync(

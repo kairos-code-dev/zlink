@@ -8,6 +8,13 @@ namespace Systems.Zlink;
 
 public sealed class SpotDispatchInfo
 {
+    internal static readonly SpotDispatchInfo SubscribeReadableSpot = new(
+        SpotDispatchEvent.SubscribeReadable,
+        SpotDispatchSubjectKind.Spot,
+        null,
+        IntPtr.Zero,
+        null);
+
     private readonly IntPtr _channelDealerSubject;
     private readonly Action<IntPtr>? _drainChannelReply;
     private int _actorPartIndex;

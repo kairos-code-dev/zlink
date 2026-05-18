@@ -17,6 +17,7 @@ from ..._runtime.core.core import (
     _msg_to_bytes,
     _REPLY_HANDLER,
     _ROUTER_HANDLER,
+    _ReceivedPartsOwner,
     ZlinkRoutingId,
     _is_eagain,
     _raise_result_error,
@@ -51,7 +52,6 @@ from ..._runtime.messaging.request_reply import (
     _ensure_reply_flags_supported,
     _message_list_from_parts,
     _prepare_native_parts,
-    _request_received,
     _timeout_to_ms,
 )
 from ..._runtime.service.spot import (
@@ -376,16 +376,14 @@ class RouterSocket(
                 )
             )
 
-        fresh = _request_received(
-            parts_array,
-            part_count,
+        received._replace(
+            _ReceivedPartsOwner(parts_array, part_count),
             routing_id=routing_id,
             spot_rid=spot_rid,
             request_seq=request_seq_value if request_seq_value != 0 else None,
             send_sender=_make_router_send_op,
             reply_sender=_make_router_reply_op,
         )
-        received._adopt_from(fresh)
         return True
 
     def send_to_spot(self, dest_node_rid, dest_spot_rid):

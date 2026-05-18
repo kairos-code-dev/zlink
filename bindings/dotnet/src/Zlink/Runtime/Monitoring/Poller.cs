@@ -232,8 +232,7 @@ public sealed class Poller : IPoller
             return 0;
 
         EnsureEventCapacity(_items.Count);
-        int ready = NativeMethods.zlink_poller_wait(_handle, _nativeEvents,
-            _items.Count, timeoutMs, out _);
+        int ready = WaitNative(timeoutMs);
         if (ready < 0)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         if (ready == 0)
@@ -269,8 +268,7 @@ public sealed class Poller : IPoller
         }
 
         EnsureEventCapacity(_items.Count);
-        int ready = NativeMethods.zlink_poller_wait(_handle, _nativeEvents,
-            _items.Count, timeoutMs, out _);
+        int ready = WaitNative(timeoutMs);
         if (ready < 0)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         totalReady = ready;
@@ -348,6 +346,15 @@ public sealed class Poller : IPoller
     {
         if (_nativeEvents.Length < count)
             _nativeEvents = new ZlinkPollerEvent[count];
+    }
+
+    private unsafe int WaitNative(int timeoutMs)
+    {
+        fixed (ZlinkPollerEvent* events = _nativeEvents)
+        {
+            return NativeMethods.zlink_poller_wait_pinned(_handle, events,
+                _items.Count, timeoutMs, out _);
+        }
     }
 
     private int FindSocket(IntPtr handle)

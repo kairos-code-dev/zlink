@@ -16,7 +16,7 @@ public interface IZlinkStreamCompressionCodec
 {
     ZlinkStreamCompression Compression { get; }
 
-    ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> body);
+    ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload);
 
-    ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> body);
+    ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload);
 }

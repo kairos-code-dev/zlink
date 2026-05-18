@@ -57,6 +57,7 @@ def main(argv=None):
                     )
 
                 active_deadline = time.perf_counter() + args.duration
+                recv_storage = [zlink.Received() for _ in sockets]
                 with zlink.Poller() as poller:
                     for sock in sockets:
                         poller.add_socket(
@@ -128,7 +129,10 @@ def main(argv=None):
                             if not (ev & int(zlink.PollEventFlag.POLLIN)):
                                 continue
                             while True:
-                                msg = recv_nonblocking(current_sock)
+                                msg = recv_nonblocking(
+                                    current_sock,
+                                    storage=recv_storage[index],
+                                )
                                 if msg is None:
                                     break
                                 with msg:

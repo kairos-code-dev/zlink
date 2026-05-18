@@ -303,10 +303,8 @@ internal static class PerfMultiDealerRouterClient
     private static bool TrySend(DealerRouterClientSlot slot)
     {
         using Message message = new(slot.Payload.AsSpan());
-        return ((DealerSocket)slot.Socket).Send()
-            .Message(message)
-            .Flags(SendFlags.DontWait)
-            .Submit();
+        return ((DealerSocket)slot.Socket).Send().Message(message)
+            .Flags(SendFlags.DontWait).Submit();
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)

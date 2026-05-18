@@ -7,6 +7,8 @@ import (
 	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
+const singlePubSubTopic = "bench"
+
 func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	ctx, err := perfcommon.NewSingleContext()
 	perfcommon.Must(err)
@@ -26,6 +28,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 
 	perfcommon.Must(perfcommon.ConfigureTLSServer(publisher, cfg.transport))
 	perfcommon.Must(perfcommon.ConfigureTLSClient(subscriber, cfg.transport))
+	perfcommon.Must(publisher.SetNoDrop(true))
 	// perf_pubsub.cpp: apply_single_auto_hwm_msg_unit on pub/sub (raw
 	// sockets), then apply_single_hwm (override-gated).
 	perfcommon.ApplySingleAutoHWMMsgUnit(publisher, cfg.msgSize)
@@ -38,7 +41,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.ApplySingleBenchmarkSocketOptions(subscriber, cfg.transport)
 	perfcommon.WaitConnectedWithTimeout(perfcommon.SingleReadyTimeout(), pubMon, subMon)
 
-	perfcommon.Must(subscriber.SetSubscription("bench."))
+	perfcommon.Must(subscriber.SetSubscription(""))
 	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.SinglePubSubRecvTimeout()))
 	perfcommon.PostReadySettle(cfg.pattern)
 	poller := perfcommon.NewSocketPoller(subscriber, perfcommon.ZLinkPollIn)
@@ -51,7 +54,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	go func() {
 		for time.Now().Before(window.StopAt) {
 			perfcommon.StampWindowPayload(payload, window.ActiveAt)
-			_, err := publisher.Publish("bench.topic").Message(perfcommon.NewMessage(payload)).Submit(nil)
+			_, err := publisher.Publish(singlePubSubTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					continue
@@ -134,7 +137,7 @@ func drainSinglePubSubUntilStop(
 // matched the active stream.
 func sendPubSubStopToken(publisher *zlink.PubSocket) {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
-		_, err := publisher.Publish("bench.topic").Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
+		_, err := publisher.Publish(singlePubSubTopic).Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
 		if err == nil {
 			return
 		}

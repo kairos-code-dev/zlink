@@ -53,16 +53,49 @@ public sealed class test_router_multiple_dealers
         string dealer2RoutingId = received.First(kvp => kvp.Value == "from_dealer2").Key;
 
         using Message reply1 = Message.FromString("reply_to_d1");
-        router.Send(RoutingId.FromBytes(Encoding.UTF8.GetBytes(dealer1RoutingId)))
-            .Message(reply1).Submit();
+        Assert.True(router.Send(
+                RoutingId.FromBytes(Encoding.UTF8.GetBytes(dealer1RoutingId)))
+            .Message(reply1).Submit());
 
         using Message reply2 = Message.FromString("reply_to_d2");
-        router.Send(RoutingId.FromBytes(Encoding.UTF8.GetBytes(dealer2RoutingId)))
-            .Message(reply2).Submit();
+        Assert.True(router.Send(
+                RoutingId.FromBytes(Encoding.UTF8.GetBytes(dealer2RoutingId)))
+            .Message(reply2).Submit());
 
         Assert.Equal("reply_to_d1", CoreTestSupport.ReceiveUtf8WithTimeout(dealer1,
             2000));
         Assert.Equal("reply_to_d2", CoreTestSupport.ReceiveUtf8WithTimeout(dealer2,
+            2000));
+    }
+
+    [Fact]
+    public void received_send_single_message_replies_to_routed_source()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var router = new RouterSocket(ctx);
+        using var dealer = new DealerSocket(ctx);
+
+        dealer.SetRoutingId(CoreTestSupport.RoutingIdUtf8("D1"));
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "received-send-routed");
+        router.Bind(endpoint);
+        dealer.Connect(endpoint);
+        Thread.Sleep(100);
+
+        CoreTestSupport.SendWithRetry(dealer, "ping"u8, 2000);
+
+        using var received = new Received();
+        router.Recv(received);
+        Assert.Equal("ping", Encoding.UTF8.GetString(
+            received.SinglePartOrThrow().AsReadOnlySpan()));
+
+        using Message reply = Message.FromString("pong");
+        Assert.True(received.Send().Message(reply).Submit());
+
+        Assert.Equal("pong", CoreTestSupport.ReceiveUtf8WithTimeout(dealer,
             2000));
     }
 

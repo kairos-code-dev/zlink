@@ -1472,6 +1472,53 @@ inline bool send_ready_op_t::submit () &&
     case detail::spot_op_kind_t::received_send: {
         if (!_state.received || !_state.received->has_send_fn ())
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+        if (detail::send_part_count (_state) == 1u
+            && _state.received->_runtime
+            && _state.received->_runtime->_send_context_handle
+            && _state.received->_runtime->_send_context_kind
+                 != received_t::send_context_kind_t::none
+            && _state.received->_routing_id.has_value ()) {
+            message_t &part = detail::send_single_part (_state);
+            if (!part.valid ()) {
+                detail::restore_single_send_part_to_source (_state);
+                throw submit_error_t (
+                  submit_result_t::invalid_argument, EINVAL);
+            }
+
+            zlink_submit_result_t direct_rc = ZLINK_SUBMIT_INVALID_ARGUMENT;
+            if (_state.received->_runtime->_send_context_kind
+                == received_t::send_context_kind_t::socket_rid) {
+                direct_rc = zlink_send_part_rid (
+                  _state.received->_runtime->_send_context_handle,
+                  zlink::detail::routing_id_native (
+                    *_state.received->_routing_id),
+                  zlink::detail::native_handle (part),
+                  static_cast<zlink_send_flags_t> (_state.flags),
+                  ZLINK_PART_FINAL);
+            } else if (_state.received->_spot_rid.has_value ()) {
+                direct_rc = zlink_router_send_spot_part (
+                  _state.received->_runtime->_send_context_handle,
+                  zlink::detail::routing_id_native (
+                    *_state.received->_routing_id),
+                  zlink::detail::routing_id_native (
+                    *_state.received->_spot_rid),
+                  zlink::detail::native_handle (part),
+                  static_cast<zlink_send_flags_t> (_state.flags),
+                  ZLINK_PART_FINAL);
+            }
+
+            const submit_result_t result =
+              static_cast<submit_result_t> (direct_rc);
+            if (result == submit_result_t::ok) {
+                zlink::detail::mark_sent (part);
+                return true;
+            }
+            detail::restore_single_send_part_to_source (_state);
+            if (_state.flags == send_flags_t::dontwait
+                && result == submit_result_t::backpressured)
+                return false;
+            throw submit_error_t (result, zlink_errno ());
+        }
         std::vector<message_t> parts = detail::take_send_parts (_state);
         const bool sent = _state.received->invoke_send_fn (parts, _state.flags);
         if (!sent)

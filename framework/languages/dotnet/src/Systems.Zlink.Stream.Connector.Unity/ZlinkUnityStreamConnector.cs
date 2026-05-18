@@ -106,8 +106,8 @@ public sealed class ZlinkStreamConnectorBehaviour : IAsyncDisposable
             throw new InvalidOperationException("Unity stream connector options are not configured.");
         }
 
-        _connector = await ZlinkStreamConnectorFactory.ConnectAsync(_options.Connector, cancellationToken)
-            .ConfigureAwait(false);
+        _connector = ZlinkStreamConnectorFactory.Create(_options.Connector);
+        await _connector.ConnectAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken = default)

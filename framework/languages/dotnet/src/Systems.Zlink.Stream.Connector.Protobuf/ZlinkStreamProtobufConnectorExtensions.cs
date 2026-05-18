@@ -6,46 +6,46 @@ namespace Systems.Zlink.Stream.Connector.Protobuf;
 
 public static class ZlinkStreamProtobufConnectorExtensions
 {
-    public static ZlinkStreamProtobufSendBuilder Send<TBody>(
+    public static ZlinkStreamProtobufSendBuilder Send<TPayload>(
         this IZlinkStreamConnector connector,
-        TBody body)
-        where TBody : IMessage<TBody>
+        TPayload payload)
+        where TPayload : IMessage<TPayload>
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return new ZlinkStreamProtobufSendBuilder(connector.Send(body.ToProto()));
+        return new ZlinkStreamProtobufSendBuilder(connector.Send(payload.ToProto()));
     }
 
-    public static ZlinkStreamProtobufRequestBuilder Request<TBody>(
+    public static ZlinkStreamProtobufRequestBuilder Request<TPayload>(
         this IZlinkStreamConnector connector,
-        TBody body)
-        where TBody : IMessage<TBody>
+        TPayload payload)
+        where TPayload : IMessage<TPayload>
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return new ZlinkStreamProtobufRequestBuilder(connector.Request(body.ToProto()));
+        return new ZlinkStreamProtobufRequestBuilder(connector.Request(payload.ToProto()));
     }
 
-    public static IDisposable On<TBody>(
+    public static IDisposable On<TPayload>(
         this IZlinkStreamConnector connector,
-        Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
-        where TBody : IMessage<TBody>, new()
+        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler)
+        where TPayload : IMessage<TPayload>, new()
     {
         ArgumentNullException.ThrowIfNull(connector);
         var resolver = connector.Options.NameResolver ?? ZlinkStreamDefaultCodecs.PacketNameResolver();
-        return connector.On(resolver.Resolve(typeof(TBody)), handler);
+        return connector.On(resolver.Resolve(typeof(TPayload)), handler);
     }
 
-    public static IDisposable On<TBody>(
+    public static IDisposable On<TPayload>(
         this IZlinkStreamConnector connector,
         string name,
-        Func<ZlinkStreamMessage<TBody>, CancellationToken, ValueTask> handler)
-        where TBody : IMessage<TBody>, new()
+        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler)
+        where TPayload : IMessage<TPayload>, new()
     {
         ArgumentNullException.ThrowIfNull(connector);
         ArgumentNullException.ThrowIfNull(handler);
         return connector.On(name, (message, cancellationToken) =>
         {
-            var body = message.Body.FromProto<TBody>();
-            return handler(new ZlinkStreamMessage<TBody>(message.Name, message.Metadata, body), cancellationToken);
+            var payload = message.Payload.FromProto<TPayload>();
+            return handler(new ZlinkStreamMessage<TPayload>(message.Name, message.Metadata, payload), cancellationToken);
         });
     }
 }

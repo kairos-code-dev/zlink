@@ -53,6 +53,6 @@ internal sealed class ZlinkStreamCallBuilderState(string? name)
         return Name
             ?? throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.ValidationFailed,
-                "Message name is required when the encoded stream body has no message type.");
+                "Message name is required when the encoded stream payload has no message type.");
     }
 }

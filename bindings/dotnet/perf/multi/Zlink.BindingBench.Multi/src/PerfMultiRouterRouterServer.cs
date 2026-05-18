@@ -80,14 +80,19 @@ internal static class PerfMultiRouterRouterServer
                     break;
                 }
 
+                if (pendingReplies.Count == 0
+                    && receivedBuffer.Send().Message(bodyMessage)
+                        .Flags(SendFlags.DontWait).Submit())
+                {
+                    continue;
+                }
+
                 RoutingId? maybeRoutingId = receivedBuffer.RoutingId;
                 if (maybeRoutingId == null)
                     return 2;
-                RoutingId routingId = maybeRoutingId.Value;
-
                 Message reply = bodyMessage.Move();
-                if (!EnqueueReplyOrSend(server, pendingReplies, routingId,
-                        reply))
+                if (!EnqueueReplyOrSend(server, pendingReplies,
+                        maybeRoutingId.Value, reply, tryImmediate: false))
                 {
                     reply.Dispose();
                     return 2;
@@ -99,12 +104,13 @@ internal static class PerfMultiRouterRouterServer
     }
 
     private static bool EnqueueReplyOrSend(RouterSocket server,
-        Queue<PendingReply> pendingReplies, RoutingId routingId, Message reply)
+        Queue<PendingReply> pendingReplies, RoutingId routingId, Message reply,
+        bool tryImmediate = true)
     {
-        if (pendingReplies.Count == 0)
+        if (tryImmediate && pendingReplies.Count == 0)
         {
             if (server.Send(routingId).Message(reply)
-                .Flags(SendFlags.DontWait).Submit())
+                    .Flags(SendFlags.DontWait).Submit())
             {
                 reply.Dispose();
                 return true;

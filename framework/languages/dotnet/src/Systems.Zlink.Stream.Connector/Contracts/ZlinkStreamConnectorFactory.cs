@@ -6,13 +6,4 @@ public static class ZlinkStreamConnectorFactory
     {
         return new ZlinkStreamConnector(options);
     }
-
-    public static async ValueTask<IZlinkStreamConnector> ConnectAsync(
-        ZlinkStreamConnectorOptions options,
-        CancellationToken cancellationToken = default)
-    {
-        var connector = new ZlinkStreamConnector(options);
-        await connector.ConnectAsync(cancellationToken).ConfigureAwait(false);
-        return connector;
-    }
 }

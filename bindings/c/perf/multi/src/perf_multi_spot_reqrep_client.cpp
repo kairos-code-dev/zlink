@@ -556,7 +556,7 @@ bool create_control_spot(ctx_guard_t &ctx,
         return false;
     }
     apply_benchmark_auto_hwm_msg_unit(
-      state->control_node, ZLINK_SOCKET_DEALER, 4096);
+      state->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
 
     state->control_pub = perf_create_default_spot_handle(state->control_node);
     state->control_sub = perf_create_default_spot_handle(state->control_node);

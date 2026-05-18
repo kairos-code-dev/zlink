@@ -55,13 +55,34 @@ public sealed partial class Spot
     private unsafe void OnNativeDispatchEvent(IntPtr spot,
         ZlinkSpotDispatchInfoNative* info, IntPtr userData)
     {
-        Action<SpotDispatchInfo>? handler = _dispatchEventHandler;
-        if (handler == null || info == null)
+        if (info == null)
             return;
 
         SpotDispatchEvent eventKind = (SpotDispatchEvent)info->Event;
         SpotDispatchSubjectKind subjectKind =
             (SpotDispatchSubjectKind)info->SubjectKind;
+        if (eventKind == SpotDispatchEvent.SubscribeReadable
+            && subjectKind == SpotDispatchSubjectKind.Spot)
+        {
+            Action<SpotDispatchInfo>? dispatchHandler = _dispatchEventHandler;
+            if (dispatchHandler == null)
+                return;
+
+            try
+            {
+                dispatchHandler(SpotDispatchInfo.SubscribeReadableSpot);
+            }
+            catch (Exception ex)
+            {
+                Runtime.ReportUnhandledCallbackException(ex);
+            }
+            return;
+        }
+
+        Action<SpotDispatchInfo>? handler = _dispatchEventHandler;
+        if (handler == null)
+            return;
+
         ActorPart[]? actorParts = eventKind == SpotDispatchEvent.ActorReadable
             && subjectKind == SpotDispatchSubjectKind.Actor
             && info->Subject != IntPtr.Zero

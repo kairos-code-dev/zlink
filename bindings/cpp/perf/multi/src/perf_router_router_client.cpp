@@ -74,9 +74,10 @@ struct socket_state_t
     // loop that pushed routed-echo recv overhead above the C reference
     // baseline (cpp.md round 21).
     zlink::routing_id_t source_rid_scratch;
+    bool borrow_payload;
     bool awaiting_reply;
     bool send_pending;
-    bool pollout_enabled;
+    zlink::poll_event_flag_t poll_events;
 
     socket_state_t ()
         : sock (NULL),
@@ -86,9 +87,10 @@ struct socket_state_t
           reply (),
           source_rid_scratch (zlink::routing_id_t::from_bytes (
             reinterpret_cast<const uint8_t *> ("x"), 1)),
+          borrow_payload (false),
           awaiting_reply (false),
           send_pending (false),
-          pollout_enabled (false)
+          poll_events (zlink::poll_event_flag_t::none)
     {
     }
 };
@@ -109,6 +111,7 @@ class router_router_client_bench_t
           _ctx (),
           _holders (),
           _monitors (),
+          _shared_request_buffer (),
           _socket_states (),
           _poller (),
           _poll_events (),
@@ -172,6 +175,11 @@ class router_router_client_bench_t
     bool setup_sockets ()
     {
         try {
+        const size_t payload_size =
+          std::max<size_t> (_msg_size, perf_metric::header_size ());
+        if (_transport != "tcp")
+            _shared_request_buffer.assign (payload_size, k_payload_fill);
+
         for (size_t i = 0; i < _settings.clients; ++i) {
             _holders.emplace_back (
               new zlink::router_socket_t (_ctx.ctx ()));
@@ -206,10 +214,14 @@ class router_router_client_bench_t
             state.sock = &sock;
             _socket_states.push_back (state);
             socket_state_t &slot = _socket_states.back ();
-            slot.payload_size =
-              std::max<size_t> (_msg_size, perf_metric::header_size ());
-            slot.request_buffer.assign (slot.payload_size, k_payload_fill);
-            _poller.add (sock, zlink::poll_event_flag_t::pollin, &slot);
+            slot.payload_size = payload_size;
+            slot.request_buffer.assign (
+              _transport == "tcp" ? payload_size : 0,
+              k_payload_fill);
+            // Match the C reference: TCP sends can borrow the per-socket
+            // stable payload buffer; framed transports keep the owning copy.
+            slot.borrow_payload = (_transport == "tcp");
+            _poller.add (sock, zlink::poll_event_flag_t::none, &slot);
         }
 
         const bool ready = perf::multi::wait_connect_ready_all (
@@ -254,7 +266,7 @@ class router_router_client_bench_t
             socket_state_t &state = _socket_states[i];
             state.awaiting_reply = false;
             state.send_pending = false;
-            if (!set_pollout (state, false)
+            if (!update_poll_interest (state)
                 || !try_send_request (state, perf_metric::phase_warmup)) {
                 return false;
             }
@@ -318,7 +330,7 @@ class router_router_client_bench_t
 
                     validated[slot_index] = true;
                     --remaining;
-                    if (!set_pollout (*state, false))
+                    if (!update_poll_interest (*state))
                         return false;
                     break;
                 }
@@ -336,19 +348,23 @@ class router_router_client_bench_t
     // (signal-driven). The outer loops keep enforcing the wall-time
     // deadline via steady_clock checks.
 
-    bool set_pollout (socket_state_t &state, bool enabled)
+    bool update_poll_interest (socket_state_t &state)
     {
         if (!state.sock)
             return false;
-        if (state.pollout_enabled == enabled)
+
+        zlink::poll_event_flag_t events = zlink::poll_event_flag_t::none;
+        if (state.awaiting_reply)
+            events = zlink::poll_event_flag_t::pollin;
+        else if (state.send_pending)
+            events = zlink::poll_event_flag_t::pollout;
+
+        if (state.poll_events == events)
             return true;
 
-        const zlink::poll_event_flag_t events =
-          enabled ? (zlink::poll_event_flag_t::pollin | zlink::poll_event_flag_t::pollout)
-                  : zlink::poll_event_flag_t::pollin;
         try {
             _poller.modify (*state.sock, events);
-            state.pollout_enabled = enabled;
+            state.poll_events = events;
             return true;
         }
         catch (const zlink::zlink_error_t &) {
@@ -358,11 +374,13 @@ class router_router_client_bench_t
 
     bool try_send_request (socket_state_t &state, perf_metric::phase_t phase)
     {
-        if (!state.sock || state.request_buffer.empty ())
+        std::vector<char> &request_buffer =
+          state.borrow_payload ? state.request_buffer : _shared_request_buffer;
+        if (!state.sock || request_buffer.empty ())
             return false;
 
         const uint64_t sent_ts_ns = perf_metric::now_ns ();
-        if (!perf_metric::stamp_payload (&state.request_buffer[0],
+        if (!perf_metric::stamp_payload (&request_buffer[0],
                                          state.payload_size,
                                          _run_id,
                                          phase,
@@ -371,37 +389,40 @@ class router_router_client_bench_t
                                          sent_ts_ns)) {
             return false;
         }
-
-        zlink::message_t request = zlink::message_t::from_bytes (
-          state.request_buffer.empty () ? NULL : state.request_buffer.data (),
-          state.request_buffer.size ());
+        zlink::message_t request =
+          state.borrow_payload
+            ? zlink::advanced::external_message_t::adopt (
+                request_buffer.empty () ? NULL : request_buffer.data (),
+                state.payload_size, NULL, NULL)
+            : zlink::message_t::from_bytes (
+                request_buffer.empty () ? NULL : request_buffer.data (),
+                state.payload_size);
         if (!request.valid ()) {
             return false;
         }
 
-        state.request = std::move (request);
-
         try {
             if (std::move (state.sock->send (_server_rid))
-                  .message (state.request)
+                  .message (request)
                   .flags (zlink::send_flags_t::dontwait)
                   .submit ()) {
                 ++_seq;
                 state.awaiting_reply = true;
                 state.send_pending = false;
-                return set_pollout (state, false);
+                return update_poll_interest (state);
             }
-            // dontwait + backpressure → submit() returns false rather than
-            // throwing.
+            // dontwait + backpressure returns false rather than throwing.
+            state.awaiting_reply = false;
             state.send_pending = true;
             errno = EAGAIN;
-            return set_pollout (state, true);
+            return update_poll_interest (state);
         } catch (const zlink::submit_error_t &err) {
             const int err_no = err.internal_errno ();
             if (err_no == EAGAIN || err_no == EWOULDBLOCK) {
+                state.awaiting_reply = false;
                 state.send_pending = true;
                 errno = err_no;
-                return set_pollout (state, true);
+                return update_poll_interest (state);
             }
             errno = err_no;
             return false;
@@ -477,12 +498,10 @@ class router_router_client_bench_t
         }
 
         while (std::chrono::steady_clock::now () < deadline) {
-            const std::optional<zlink::poll_event_t> poll_event =
-              _poller.wait (std::chrono::milliseconds (-1));
-            if (!poll_event.has_value ())
+            _poller.wait (_poll_events, _socket_states.size () + 1,
+                          std::chrono::milliseconds (-1));
+            if (_poll_events.empty ())
                 continue;
-            _poll_events.clear ();
-            _poll_events.push_back (*poll_event);
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state = static_cast<socket_state_t *> (
@@ -583,6 +602,7 @@ class router_router_client_bench_t
     perf::multi::ctx_guard_t _ctx;
     std::vector<std::unique_ptr<zlink::router_socket_t> > _holders;
     std::vector<perf::multi::connect_monitor_t> _monitors;
+    std::vector<char> _shared_request_buffer;
     std::vector<socket_state_t> _socket_states;
     zlink::poller_t _poller;
     std::vector<zlink::poll_event_t> _poll_events;

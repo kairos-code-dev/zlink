@@ -10,7 +10,7 @@ internal sealed class ZLinkSessionActorRelay(
     public ValueTask DispatchAttachedAsync(
         IZLinkActor actor,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         CancellationToken cancellationToken)
     {
         var node = runtime.GetActorSpotNode();
@@ -20,34 +20,34 @@ internal sealed class ZLinkSessionActorRelay(
             && stream is ZLinkManagedStream managedStream)
         {
             using var encodedHeader = Message.FromBytes(HeaderCodec.Encode(header).Span);
-            using (body)
+            using (payload)
             {
-                managedStream.SendBoundActor(actor.ActorId, [encodedHeader, body]);
+                managedStream.SendBoundActor(actor.ActorId, [encodedHeader, payload]);
             }
 
             return ValueTask.CompletedTask;
         }
 
-        return runtime.SubmitActorAsync(actor, header, body, cancellationToken);
+        return runtime.SubmitActorAsync(actor, header, payload, cancellationToken);
     }
 
     public async ValueTask DispatchRemoteAsync(
         ZLinkActorRef actorRef,
         ZlinkStreamHeader header,
-        Message body,
+        Message payload,
         Func<ZlinkStreamHeader, ZlinkStreamCodec, ReadOnlyMemory<byte>, CancellationToken, ValueTask> replyRawAsync,
         CancellationToken cancellationToken)
     {
         var routeClient = runtime.RouteClient as IZLinkMultipartRouteClient
             ?? throw new InvalidOperationException("Route client does not support multipart internal packets.");
 
-        using (body)
+        using (payload)
         {
             var parts = ZLinkInternalMultipartPackets.CreateActorDispatchParts(
                 actorRef.ActorId,
                 actorRef.ActorType,
                 header,
-                body.AsReadOnlySpan());
+                payload.AsReadOnlySpan());
 
             if (header.RequestSeq is not null)
             {

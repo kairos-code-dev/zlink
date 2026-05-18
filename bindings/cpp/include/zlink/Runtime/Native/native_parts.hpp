@@ -133,6 +133,7 @@ struct recv_envelope_t
     routing_id_t source_spot_rid;
     bool has_request_seq;
     uint64_t request_seq;
+    std::optional<message_t> single_part;
     std::vector<message_t> parts;
 
     void reset () noexcept
@@ -141,6 +142,7 @@ struct recv_envelope_t
         source_spot_rid = zlink::detail::unchecked_empty_routing_id ();
         has_request_seq = false;
         request_seq = 0;
+        single_part.reset ();
         parts.clear ();
     }
 
@@ -149,6 +151,7 @@ struct recv_envelope_t
           source_spot_rid (zlink::detail::unchecked_empty_routing_id ()),
           has_request_seq (false),
           request_seq (0),
+          single_part (),
           parts ()
     {
     }
@@ -190,10 +193,18 @@ inline int recv_envelope (void *socket_,
         const zlink_routing_id_t *source_rid = NULL;
         const zlink_routing_id_t *source_spot_rid = NULL;
         uint64_t request_seq = 0;
-        const int rc = recv_router_parts (
-          socket_, flags_, &source_rid, &source_spot_rid, &request_seq,
-          envelope_.parts);
-        if (rc != ZLINK_RECV_OK)
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        message_t first_msg;
+        if (!first_msg.valid ()) {
+            errno = EFAULT;
+            return -1;
+        }
+
+        const int first_rc = zlink_router_recv_part (
+          socket_, &source_rid, &source_spot_rid, &request_seq,
+          detail::native_handle (first_msg), &has_more,
+          static_cast<zlink_recv_flags_t> (flags_));
+        if (first_rc != ZLINK_RECV_OK)
             return -1;
 
         if (source_rid && source_rid->size > 0)
@@ -203,6 +214,33 @@ inline int recv_envelope (void *socket_,
         if (request_seq != 0) {
             envelope_.has_request_seq = true;
             envelope_.request_seq = request_seq;
+        }
+
+        if (has_more == ZLINK_PART_FINAL) {
+            envelope_.single_part.emplace (std::move (first_msg));
+            return 0;
+        }
+
+        envelope_.parts.reserve (2);
+        envelope_.parts.emplace_back (std::move (first_msg));
+        for (;;) {
+            message_t next_msg;
+            if (!next_msg.valid ()) {
+                errno = EFAULT;
+                return -1;
+            }
+
+            has_more = ZLINK_PART_FINAL;
+            const int rc = zlink_router_recv_part (
+              socket_, &source_rid, &source_spot_rid, &request_seq,
+              detail::native_handle (next_msg), &has_more,
+              static_cast<zlink_recv_flags_t> (flags_));
+            if (rc != ZLINK_RECV_OK)
+                return -1;
+
+            envelope_.parts.emplace_back (std::move (next_msg));
+            if (has_more == ZLINK_PART_FINAL)
+                return 0;
         }
     } else {
         const zlink_routing_id_t *source_rid = NULL;
@@ -226,7 +264,7 @@ inline int recv_envelope (void *socket_,
         }
 
         if (has_more == ZLINK_PART_FINAL) {
-            envelope_.parts.emplace_back (std::move (first_msg));
+            envelope_.single_part.emplace (std::move (first_msg));
             if (source_rid && source_rid->size > 0)
                 envelope_.source_rid = zlink::detail::native_routing_id (*source_rid);
             return 0;
@@ -272,7 +310,12 @@ inline int recv_parts (void *socket_,
         else
             *source_rid_out_ = *zlink::detail::routing_id_native (envelope.source_rid);
     }
-    parts_ = std::move (envelope.parts);
+    if (envelope.single_part.has_value ()) {
+        parts_.clear ();
+        parts_.push_back (std::move (*envelope.single_part));
+    } else {
+        parts_ = std::move (envelope.parts);
+    }
     return 0;
 }
 

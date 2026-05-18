@@ -108,6 +108,7 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
       static_cast<size_t> (active_seconds) * 5000000U);
     zlink::message_t part;
     std::vector<zlink::poll_event_t> events;
+    events.reserve (1);
     // PERF_MULTI_TEST_POLICY § 1.3.1: the receive window is bounded purely by
     // an application clock (steady_clock deadline) plus a -1 (signal-driven)
     // poll wait; no poller timer object is used. The client's wire-level stop
@@ -116,7 +117,7 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
     // (bindings/c/perf/multi/src/perf_multi_dealer_dealer_server.cpp:208-301)
     // and its is_stop_token_message handling (lines 113-116).
     while (std::chrono::steady_clock::now () < deadline) {
-        events = poller.wait (1, std::chrono::milliseconds (-1));
+        poller.wait (events, 1, std::chrono::milliseconds (-1));
         if (events.empty ()) {
             if (errno == EINTR)
                 continue;
@@ -143,16 +144,20 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
             // header (matches C reference lines 113-116). The stop token
             // marks active-phase end; the steady_clock deadline still bounds
             // the window.
-            if (perf::multi::is_stop_token (part.data (), part.size ()))
+            if (perf::multi::is_stop_token (part.data (), part.size ())) {
+                part.close ();
                 continue;
+            }
 
             perf_metric::header_t header;
             if (!perf_metric::decode_payload_header (
                   part.data (), part.size (), &header)) {
+                part.close ();
                 continue;
             }
             if (!perf_metric::is_expected (
                   header, 1U, perf_metric::phase_active, msg_size)) {
+                part.close ();
                 continue;
             }
 
@@ -160,6 +165,7 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
             latency.add (
               perf_metric::elapsed_latency_ns (
                 perf_metric::now_ns (), header.sent_ts_ns));
+            part.close ();
         }
         if (failed)
             break;

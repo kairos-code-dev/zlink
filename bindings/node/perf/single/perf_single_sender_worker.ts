@@ -201,6 +201,8 @@ async function main() {
       case 'pubsub':
         socket = new zlink.PubSocket(ctx);
         applySocketPolicy(socket, options);
+        applyAutoHwmMsgUnit(socket, msgSize);
+        ctx.recalculateAutoHwm();
         configureTlsServer(socket, transport);
         socket.bind(endpoint);
         trace('pubsub bound');
@@ -261,6 +263,8 @@ async function main() {
       emitSingleSocketHwmDetail(socket, 'DEALER_DEALER', transport, 'sender', msgSize);
     } else if (kind === 'dealer_router') {
       emitSingleSocketHwmDetail(socket, 'DEALER_ROUTER', transport, 'sender', msgSize);
+    } else if (kind === 'pubsub') {
+      emitSingleSocketHwmDetail(socket, 'PUBSUB', transport, 'publisher', msgSize);
     }
     // C perf_single_one_way.hpp: the sender thread joins after emitting the
     // wire stop token. No `done`/`stop` ack — the worker exits and the

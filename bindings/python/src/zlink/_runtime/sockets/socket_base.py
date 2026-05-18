@@ -113,7 +113,7 @@ def _socket_type_name(socket_type):
 
 def _payload_parts(payload):
     if isinstance(payload, (list, tuple)):
-        parts = list(payload)
+        parts = payload
     else:
         parts = [payload]
     if not parts:
@@ -719,8 +719,7 @@ class _MessageSocket(_Socket):
             if (int(flags) & 1) and ex.result == RecvResult.NO_DATA:
                 return False
             raise
-        fresh = Received(owner, routing)
-        received._adopt_from(fresh)
+        received._replace(owner, routing)
         return True
 
     def _attach_recv_handler(self, handler):
@@ -805,16 +804,35 @@ class _PublisherSocket(_Socket):
 
 
 class _SubscriberSocket(_Socket):
-    def _subscribe_once(self, flags):
+    def _subscribe_parts_owner(self, flags):
         routing_id = ctypes.POINTER(ZlinkRoutingId)()
         topic_buf = ctypes.create_string_buffer(256)
-        parts = []
-        recv_flags = int(flags)
+        topic_len = ctypes.c_size_t()
+        parts_array = (ZlinkMsg * 1)()
+        has_more = ctypes.c_int()
+        rc = lib().zlink_subscribe_part(
+            self._handle,
+            ctypes.byref(routing_id),
+            topic_buf,
+            len(topic_buf),
+            ctypes.byref(topic_len),
+            ctypes.byref(parts_array[0]),
+            ctypes.byref(has_more),
+            int(flags),
+        )
+        if rc != 0:
+            _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+        first_topic_raw = bytes(topic_buf.raw[: topic_len.value])
+
+        if has_more.value == 0:
+            routing = _routing_id_bytes(routing_id.contents) if routing_id else None
+            return first_topic_raw, _ReceivedPartsOwner(parts_array, 1), routing
+
+        parts = [parts_array[0]]
+        recv_flags = 1
         try:
             while True:
-                topic_len = ctypes.c_size_t()
                 native_part = ZlinkMsg()
-                has_more = ctypes.c_int()
                 rc = lib().zlink_subscribe_part(
                     self._handle,
                     ctypes.byref(routing_id),
@@ -830,19 +848,20 @@ class _SubscriberSocket(_Socket):
                 parts.append(native_part)
                 if has_more.value == 0:
                     break
-                recv_flags = 1
         except Exception:
             _close_native_parts(parts)
             raise
 
         part_count = len(parts)
-        parts_array = (ZlinkMsg * part_count)()
+        final_array = (ZlinkMsg * part_count)()
         for index, native_part in enumerate(parts):
-            parts_array[index] = native_part
-        owner = _ReceivedPartsOwner(parts_array, part_count)
-        topic = _decode_topic_text(topic_buf.raw[: topic_len.value])
+            final_array[index] = native_part
         routing = _routing_id_bytes(routing_id.contents) if routing_id else None
-        return TopicMessage(topic, owner, routing)
+        return first_topic_raw, _ReceivedPartsOwner(final_array, part_count), routing
+
+    def _subscribe_once(self, flags):
+        topic_raw, owner, routing = self._subscribe_parts_owner(flags)
+        return TopicMessage(topic_raw.decode("utf-8", errors="replace"), owner, routing)
 
     def _subscribe_allocated(self, *, flags=0):
         try:
@@ -853,15 +872,15 @@ class _SubscriberSocket(_Socket):
             raise
 
     def subscribe_into(self, topic_message, *, flags=0):
-        if topic_message is None or not hasattr(topic_message, "_adopt_from"):
+        if topic_message is None or not hasattr(topic_message, "_replace"):
             raise TypeError("topic_message must be a TopicMessage")
         try:
-            fresh = self._subscribe_once(flags)
+            topic_raw, owner, routing = self._subscribe_parts_owner(flags)
         except RecvError as ex:
             if (int(flags) & 1) and ex.result == RecvResult.NO_DATA:
                 return False
             raise
-        topic_message._adopt_from(fresh)
+        topic_message._replace(owner, topic_raw=topic_raw, routing_id=routing)
         return True
 
     def set_subscription(self, topic):

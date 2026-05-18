@@ -24,7 +24,14 @@ public final class SocketOperations {
     }
 
     public static SendOp send(SendInvoker invoker) {
-        return new SendBuilder(invoker);
+        return new SendBuilder(null, invoker);
+    }
+
+    public static SendOp send(SingleSendInvoker singleInvoker,
+                              SendInvoker invoker) {
+        return new SendBuilder(
+            Objects.requireNonNull(singleInvoker, "singleInvoker"),
+            Objects.requireNonNull(invoker, "invoker"));
     }
 
     public static RequestOp request(RequestAsyncInvoker asyncInvoker,
@@ -39,6 +46,11 @@ public final class SocketOperations {
     @FunctionalInterface
     public interface SendInvoker {
         boolean submit(List<Message> parts, SendFlags flags);
+    }
+
+    @FunctionalInterface
+    public interface SingleSendInvoker {
+        boolean submit(Message part, SendFlags flags);
     }
 
     @FunctionalInterface
@@ -60,19 +72,35 @@ public final class SocketOperations {
     }
 
     private static final class SendBuilder implements SendOp, SendSubmitOp {
+        private final SingleSendInvoker singleInvoker;
         private final SendInvoker invoker;
-        private final MessagePartsBuffer parts = new MessagePartsBuffer();
+        private Message singlePart;
+        private MessagePartsBuffer parts;
+        private int partCount;
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
-        private SendBuilder(SendInvoker invoker) {
+        private SendBuilder(SingleSendInvoker singleInvoker,
+                            SendInvoker invoker) {
+            this.singleInvoker = singleInvoker;
             this.invoker = Objects.requireNonNull(invoker, "invoker");
         }
 
         @Override
         public SendSubmitOp message(Message part) {
             ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
+            Objects.requireNonNull(part, "part");
+            if (partCount == 0) {
+                singlePart = part;
+            } else {
+                if (parts == null) {
+                    parts = new MessagePartsBuffer();
+                    parts.add(singlePart);
+                    singlePart = null;
+                }
+                parts.add(part);
+            }
+            partCount++;
             return this;
         }
 
@@ -86,12 +114,18 @@ public final class SocketOperations {
         @Override
         public boolean submit() {
             markSubmitted();
+            if (partCount == 1) {
+                if (singleInvoker != null) {
+                    return singleInvoker.submit(singlePart, flags);
+                }
+                return invoker.submit(List.of(singlePart), flags);
+            }
             return invoker.submit(parts.asList(), flags);
         }
 
         private void markSubmitted() {
             ensureNotSubmitted();
-            if (parts.isEmpty())
+            if (partCount == 0)
                 throw new IllegalArgumentException("at least one message required");
             submitted = true;
         }

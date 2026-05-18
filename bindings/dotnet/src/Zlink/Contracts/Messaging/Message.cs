@@ -339,10 +339,18 @@ public sealed class Message : IDisposable, IAsyncDisposable
             return movedManaged;
         }
 
-        var moved = new Message(false);
-        MoveTo(ref moved._msg);
-        moved._valid = true;
-        return moved;
+        Message moved = RentFromPool();
+        try
+        {
+            MoveTo(ref moved._msg);
+            moved._valid = true;
+            return moved;
+        }
+        catch
+        {
+            moved.TryReturnToPool();
+            throw;
+        }
     }
 
     public Message Copy()
@@ -682,6 +690,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
             return;
         if (_managedPayload != null)
             return;
+        _pooled = false;
         Message[]? pool = t_pool;
         if (pool == null)
         {

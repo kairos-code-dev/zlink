@@ -110,39 +110,45 @@ internal static class PerfMultiPubSubClient
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
         using var poller = new Poller();
         var events = new PollEvent[activeClients.Count];
+        var subscribedMessages = new TopicMessage[activeClients.Count];
         for (int i = 0; i < activeClients.Count; i++)
-            poller.Add(activeClients[i], PollEventFlags.PollIn, i);
-
-        bool phaseDone = false;
-        while (!phaseDone)
         {
-            int readyCount = WaitForReadReady(poller, events);
-            if (readyCount <= 0)
-                continue;
+            poller.Add(activeClients[i], PollEventFlags.PollIn, i);
+            subscribedMessages[i] = new TopicMessage();
+        }
 
-            for (int readyOffset = 0; readyOffset < readyCount; readyOffset++)
+        try
+        {
+            bool phaseDone = false;
+            while (!phaseDone)
             {
-                if (events[readyOffset].Tag is not int i
-                    || i < 0
-                    || i >= activeClients.Count
-                    || (events[readyOffset].Revents & PollEventFlags.PollIn) == 0)
-                {
+                int readyCount = WaitForReadReady(poller, events);
+                if (readyCount <= 0)
                     continue;
-                }
 
-                while (true)
+                for (int readyOffset = 0; readyOffset < readyCount; readyOffset++)
                 {
-                    using var subscribed = new TopicMessage();
-                    if (!TrySubscribeNoWait((SubSocket)activeClients[i],
-                            subscribed))
-                        break;
+                    if (events[readyOffset].Tag is not int i
+                        || i < 0
+                        || i >= activeClients.Count
+                        || (events[readyOffset].Revents & PollEventFlags.PollIn) == 0)
+                    {
+                        continue;
+                    }
+
+                    TopicMessage subscribed = subscribedMessages[i];
+                    while (true)
+                    {
+                        if (!TrySubscribeNoWait((SubSocket)activeClients[i],
+                                subscribed))
+                            break;
 
                         ReadOnlySpan<byte> body = subscribed.FirstPart()
                             .AsReadOnlySpan();
                         if (IsStopTokenPayload(body))
                         {
                             phaseDone = true;
-                            continue;
+                            break;
                         }
 
                         long recvTicks = Stopwatch.GetTimestamp();
@@ -171,9 +177,16 @@ internal static class PerfMultiPubSubClient
                         else if (header.Phase == (uint)PerfPhase.Cooldown)
                         {
                             phaseDone = true;
+                            break;
                         }
+                    }
                 }
             }
+        }
+        finally
+        {
+            for (int i = 0; i < subscribedMessages.Length; i++)
+                subscribedMessages[i]?.Dispose();
         }
 
         double configuredSeconds = Math.Max(1.0, durationSeconds);

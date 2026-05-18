@@ -41,6 +41,7 @@ def main(argv=None):
                     router,
                     zlink.PollEventFlag.POLLIN | zlink.PollEventFlag.POLLOUT,
                 )
+                recv_storage = zlink.Received()
                 # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. The
                 # echo server has no in-band phase end of its own; the
                 # runner shuts it down via stdin STOP/EOF and SIGTERM.
@@ -53,7 +54,7 @@ def main(argv=None):
                             break
                         pending.popleft()
                     while True:
-                        received = recv_nonblocking(router)
+                        received = recv_nonblocking(router, storage=recv_storage)
                         if received is None:
                             break
                         with received:

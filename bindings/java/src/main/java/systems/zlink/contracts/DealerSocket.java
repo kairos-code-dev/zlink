@@ -43,7 +43,9 @@ public final class DealerSocket extends Socket {
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
     public RoutingId routingId() { return super.routingId(); }
     public SendOp send() {
-        return SocketOperations.send((parts, flags) ->
+        return SocketOperations.send(
+            (part, flags) -> super.send(part, SendFlag.fromValue(flags.value())),
+            (parts, flags) ->
             super.send(parts, SendFlag.fromValue(flags.value())));
     }
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }

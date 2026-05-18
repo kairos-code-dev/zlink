@@ -2,8 +2,10 @@
 
 #include "support.hpp"
 
+#include <any>
 #include <condition_variable>
 #include <mutex>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -191,6 +193,112 @@ void test_socket_monitor_ignore_event_and_poller_size ()
     assert (poller.size () == 0);
 }
 
+void test_poller_wait_vector_preserves_tag_modes ()
+{
+    zlink::context_t ctx;
+    zlink::pair_socket_t left (ctx);
+    zlink::pair_socket_t right (ctx);
+    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
+    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
+
+    const std::string endpoint =
+      zlink_cpp_contract::unique_inproc ("poller-tags");
+    left.bind (endpoint);
+    right.connect (endpoint);
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      left_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      right_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+
+    zlink::poller_t poller;
+    std::vector<zlink::poll_event_t> events (1);
+    poller.add (
+      left, zlink::poll_event_flag_t::pollin, std::string ("any-tag"));
+
+    zlink::message_t first = zlink_cpp_contract::make_message ("first");
+    assert (right.send ().message (first).submit ());
+    assert (poller.wait (events, 1, std::chrono::milliseconds (2000)) == 1);
+    assert (events[0].raw_tag == NULL);
+    assert (events[0].tag.has_value ());
+    assert (std::any_cast<std::string> (events[0].tag) == "any-tag");
+
+    zlink::message_t inbound;
+    assert (left.recv (inbound) == 0);
+    poller.remove (left);
+
+    int raw_marker = 7;
+    poller.add (left, zlink::poll_event_flag_t::pollin, &raw_marker);
+    events[0].tag = std::string ("stale-any");
+    events[0].raw_tag = NULL;
+
+    zlink::message_t second = zlink_cpp_contract::make_message ("second");
+    assert (right.send ().message (second).submit ());
+    assert (poller.wait (events, 1, std::chrono::milliseconds (2000)) == 1);
+    assert (events[0].raw_tag == &raw_marker);
+    assert (!events[0].tag.has_value ());
+
+    assert (left.recv (inbound) == 0);
+}
+
+void test_socket_only_poller_modify_rebuilds_cached_items ()
+{
+    zlink::context_t ctx;
+    zlink::pair_socket_t left (ctx);
+    zlink::pair_socket_t right (ctx);
+    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
+    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
+
+    const std::string endpoint =
+      zlink_cpp_contract::unique_inproc ("poller-socket-cache");
+    left.bind (endpoint);
+    right.connect (endpoint);
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      left_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      right_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+
+    zlink::poller_t poller;
+    int raw_marker = 11;
+    poller.add (left, zlink::poll_event_flag_t::none, &raw_marker);
+
+    std::vector<zlink::poll_event_t> events;
+    zlink::message_t first = zlink_cpp_contract::make_message ("first");
+    assert (right.send ().message (first).submit ());
+    assert (poller.wait (events, 1, std::chrono::milliseconds (50)) == 0);
+
+    poller.modify (left, zlink::poll_event_flag_t::pollin);
+    assert (poller.wait (events, 1, std::chrono::milliseconds (2000)) == 1);
+    assert (events[0].raw_tag == &raw_marker);
+    assert (static_cast<short> (events[0].revents)
+            & static_cast<short> (zlink::poll_event_flag_t::pollin));
+
+    zlink::message_t inbound;
+    assert (left.recv (inbound) == 0);
+    assert (inbound.to_string () == "first");
+
+    zlink::message_t second = zlink_cpp_contract::make_message ("second");
+    assert (right.send ().message (second).submit ());
+    assert (poller.wait (events, 1, std::chrono::milliseconds (2000)) == 1);
+    assert (events[0].raw_tag == &raw_marker);
+    assert (left.recv (inbound) == 0);
+    assert (inbound.to_string () == "second");
+
+    poller.modify (left, zlink::poll_event_flag_t::none);
+    zlink::message_t third = zlink_cpp_contract::make_message ("third");
+    assert (right.send ().message (third).submit ());
+    assert (poller.wait (events, 1, std::chrono::milliseconds (50)) == 0);
+
+    poller.modify (left, zlink::poll_event_flag_t::pollin);
+    assert (poller.wait (events, 1, std::chrono::milliseconds (2000)) == 1);
+    assert (events[0].raw_tag == &raw_marker);
+    assert (left.recv (inbound) == 0);
+    assert (inbound.to_string () == "third");
+}
+
 void test_socket_monitor_on_event_callback ()
 {
     zlink::context_t ctx;
@@ -244,6 +352,8 @@ int main ()
 {
     test_socket_monitor_open_recv_snapshot ();
     test_socket_monitor_ignore_event_and_poller_size ();
+    test_poller_wait_vector_preserves_tag_modes ();
+    test_socket_only_poller_modify_rebuilds_cached_items ();
     test_socket_monitor_on_event_callback ();
     return 0;
 }

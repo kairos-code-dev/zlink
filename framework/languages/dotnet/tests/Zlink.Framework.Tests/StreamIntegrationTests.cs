@@ -190,7 +190,7 @@ public sealed class StreamIntegrationTests
             var reply = ReceiveFrame(network, new ZlinkStreamRequestSeq(1));
             Assert.Equal(ZlinkStreamMessageKind.Response, reply.Header.Kind);
             Assert.Equal(new ZlinkStreamRequestSeq(1), reply.Header.RequestSeq);
-            Assert.Equal("\"pong\"", Encoding.UTF8.GetString(reply.Body));
+            Assert.Equal("\"pong\"", Encoding.UTF8.GetString(reply.Payload));
 
             SendAll(network, BuildStreamPacketFrame(
                 new ZlinkStreamHeader(
@@ -208,7 +208,7 @@ public sealed class StreamIntegrationTests
             var secondReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(2));
             Assert.Equal(ZlinkStreamMessageKind.Response, secondReply.Header.Kind);
             Assert.Equal(new ZlinkStreamRequestSeq(2), secondReply.Header.RequestSeq);
-            Assert.Equal("\"pong\"", Encoding.UTF8.GetString(secondReply.Body));
+            Assert.Equal("\"pong\"", Encoding.UTF8.GetString(secondReply.Payload));
 
             Assert.NotNull(recorder.LastSessionId);
             Assert.NotNull(recorder.LastRoutingId);
@@ -358,7 +358,7 @@ public sealed class StreamIntegrationTests
                 JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("from-client"), JsonOptions)));
 
             var relayReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(101));
-            var relayBody = JsonSerializer.Deserialize<GatewayPong>(relayReply.Body, JsonOptions);
+            var relayBody = JsonSerializer.Deserialize<GatewayPong>(relayReply.Payload, JsonOptions);
             Assert.Equal(ZlinkStreamMessageKind.Response, relayReply.Header.Kind);
             Assert.Equal("play:from-client", relayBody?.Value);
             Assert.Equal(101UL, relayBody?.RequestSeq);
@@ -373,7 +373,7 @@ public sealed class StreamIntegrationTests
                 Assert.Equal(ZlinkStreamMessageKind.Request, request.Header.Kind);
                 Assert.Equal("client.echo", request.Header.Name);
                 Assert.NotNull(request.Header.RequestSeq);
-                var ping = JsonSerializer.Deserialize<GatewayPing>(request.Body, JsonOptions);
+                var ping = JsonSerializer.Deserialize<GatewayPing>(request.Payload, JsonOptions);
                 Assert.Equal("from-play", ping?.Value);
                 SendAll(network, BuildStreamPacketFrame(
                     new ZlinkStreamHeader(
@@ -525,34 +525,34 @@ public sealed class StreamIntegrationTests
 
     private static byte[] BuildStreamPacketFrame(
         ZlinkStreamHeader header,
-        ReadOnlySpan<byte> body)
+        ReadOnlySpan<byte> payload)
     {
         var headerBytes = ZlinkStreamDefaultCodecs.Header().Encode(header).ToArray();
-        var frame = new byte[6 + headerBytes.Length + body.Length];
+        var frame = new byte[6 + headerBytes.Length + payload.Length];
         frame[0] = (byte)(headerBytes.Length >> 8);
         frame[1] = (byte)headerBytes.Length;
-        frame[2] = (byte)(body.Length >> 24);
-        frame[3] = (byte)(body.Length >> 16);
-        frame[4] = (byte)(body.Length >> 8);
-        frame[5] = (byte)body.Length;
+        frame[2] = (byte)(payload.Length >> 24);
+        frame[3] = (byte)(payload.Length >> 16);
+        frame[4] = (byte)(payload.Length >> 8);
+        frame[5] = (byte)payload.Length;
 
         headerBytes.CopyTo(frame.AsSpan(6, headerBytes.Length));
-        body.CopyTo(frame.AsSpan(6 + headerBytes.Length, body.Length));
+        payload.CopyTo(frame.AsSpan(6 + headerBytes.Length, payload.Length));
         return frame;
     }
 
-    private static (ZlinkStreamHeader Header, byte[] Body) ReceiveFrame(NetworkStream stream)
+    private static (ZlinkStreamHeader Header, byte[] Payload) ReceiveFrame(NetworkStream stream)
     {
         var lengths = ReceiveExact(stream, 6);
         var headerLength = (lengths[0] << 8) | lengths[1];
-        var bodyLength = (lengths[2] << 24) | (lengths[3] << 16) | (lengths[4] << 8) | lengths[5];
+        var payloadLength = (lengths[2] << 24) | (lengths[3] << 16) | (lengths[4] << 8) | lengths[5];
         var headerBytes = ReceiveExact(stream, headerLength);
-        var bodyBytes = ReceiveExact(stream, bodyLength);
+        var payloadBytes = ReceiveExact(stream, payloadLength);
         var header = ZlinkStreamDefaultCodecs.Header().Decode(headerBytes);
-        return (header, bodyBytes);
+        return (header, payloadBytes);
     }
 
-    private static (ZlinkStreamHeader Header, byte[] Body) ReceiveFrame(
+    private static (ZlinkStreamHeader Header, byte[] Payload) ReceiveFrame(
         NetworkStream stream,
         ZlinkStreamRequestSeq requestSeq)
     {

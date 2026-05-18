@@ -301,9 +301,7 @@ internal static class PerfMultiRouterRouterClient
     {
         using Message message = new(slot.Payload.AsSpan());
         return ((RouterSocket)slot.Socket).Send(slot.ServerRoutingId)
-            .Message(message)
-            .Flags(SendFlags.DontWait)
-            .Submit();
+            .Message(message).Flags(SendFlags.DontWait).Submit();
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)

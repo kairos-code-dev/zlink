@@ -111,10 +111,11 @@ bool perf_dealer_router_server (const std::string &lib_name,
 
     bool failed = false;
     std::deque<pending_reply_t> pending_replies;
-    int poll_event_mask =
-      static_cast<int> (zlink::poll_event_flag_t::pollin);
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
+    zlink::routing_id_t source_rid = zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> ("x"), 1);
+    zlink::message_t part;
     events.reserve (1);
     poller.add (server, zlink::poll_event_flag_t::pollin);
 
@@ -122,9 +123,8 @@ bool perf_dealer_router_server (const std::string &lib_name,
         while (!pending_replies.empty ()) {
             pending_reply_t &front = pending_replies.front ();
             try {
-                zlink::message_t attempt = front.payload;
                 if (server.send (front.rid)
-                      .message (attempt)
+                      .message (front.payload)
                       .flags (ZLINK_DONTWAIT)
                       .submit ()) {
                     pending_replies.pop_front ();
@@ -147,6 +147,8 @@ bool perf_dealer_router_server (const std::string &lib_name,
     // without depending solely on a SIGTERM interrupting an infinite poll
     // (the C reference uses -1 + SIGTERM; this is the equivalent outcome,
     // just more responsive). 200ms keeps idle wakeups negligible.
+    int poll_event_mask =
+      static_cast<int> (zlink::poll_event_flag_t::pollin);
     const std::chrono::milliseconds poll_timeout (200);
 
     while (!g_stop_requested.load (std::memory_order_acquire)) {
@@ -193,45 +195,37 @@ bool perf_dealer_router_server (const std::string &lib_name,
             break;
         }
 
-        // Drain available messages without blocking.
-        while (true) {
-            zlink::received_t received;
+        // Drain available single-part routed messages without blocking. This
+        // keeps the perf hot path on the public projected API while avoiding
+        // per-message received_t callback state for the single-part echo case.
+        while (!g_stop_requested.load (std::memory_order_acquire)) {
             const int recv_rc = server.recv (
-              received, zlink::recv_flags_t::dontwait);
-            if (recv_rc < 0) {
+              source_rid, part, zlink::recv_flags_t::dontwait);
+            if (recv_rc != 0) {
                 const int err = errno;
-                if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
+                if (recv_rc == static_cast<int> (zlink::recv_result_t::no_data)
+                    || err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
                     break;
                 failed = true;
                 break;
             }
 
-            if (!received.is_single_part ())
-                continue;
-            zlink::message_t &part = received.first_part ();
             // No socket stop-token handling: matches the C reference relay
             // server, which terminates only via stdin STOP/QUIT + signals.
             if (part.size () == 0)
                 continue;
-            const std::optional<zlink::routing_id_t> &source_rid =
-              received.routing_id ();
-            if (!source_rid) {
-                failed = true;
-                break;
-            }
             if (!pending_replies.empty ()) {
                 pending_replies.push_back (pending_reply_t {
-                  *source_rid, std::move (part) });
+                  source_rid, std::move (part) });
                 continue;
             }
             try {
-                zlink::message_t attempt = part;
-                if (!server.send (*source_rid)
-                       .message (attempt)
+                if (!server.send (source_rid)
+                       .message (part)
                        .flags (ZLINK_DONTWAIT)
                        .submit ()) {
                     pending_replies.push_back (pending_reply_t {
-                      *source_rid, std::move (part) });
+                      source_rid, std::move (part) });
                 }
             }
             catch (const zlink::submit_error_t &err) {
@@ -239,7 +233,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
                 if (err_no == EINTR || err_no == EHOSTUNREACH
                     || err_no == ENOTCONN) {
                     pending_replies.push_back (pending_reply_t {
-                      *source_rid, std::move (part) });
+                      source_rid, std::move (part) });
                     continue;
                 }
                 failed = true;

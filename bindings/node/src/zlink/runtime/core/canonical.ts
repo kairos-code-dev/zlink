@@ -326,6 +326,18 @@ function normalizeMessageLikePayload(message: MessageLike | readonly MessageLike
   return scalar instanceof Message ? scalar.toSnapshot() : normalizeBufferLike(scalar, 'message');
 }
 
+function normalizeOperationPayload(parts: MessageLike | readonly MessageLike[]): Buffer | MessageSnapshot | Array<Buffer | MessageSnapshot> {
+  if (!Array.isArray(parts)) {
+    const scalar = parts as MessageLike;
+    return scalar instanceof Message ? scalar.toSnapshot() : normalizeBufferLike(scalar, 'message');
+  }
+  if (parts.length === 1) {
+    const part = parts[0];
+    return part instanceof Message ? part.toSnapshot() : normalizeBufferLike(part, 'message');
+  }
+  return toMessageParts(parts);
+}
+
 function toOwnedMessage(message: MessageLike): Message {
   return message instanceof Message ? message : Message.from(message);
 }
@@ -1526,15 +1538,31 @@ class SendSocket extends ConnectableSocket {
 
 class PublisherSocket extends ConnectableSocket {
   publish(topic: string): SendOp {
-    return new SendOperation((parts, flags) => this.publishDirect(topic, parts, flags));
-  }
-  protected publishDirect(topic: string, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
-    const normalizedTopic = validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER);
-    const normalized = payload.map((part, index) =>
-      part instanceof Message ? part.data() : normalizeBufferLike(part, `parts[${index}]`)
+    return new PublishOperation(
+      this,
+      validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER)
     );
+  }
+  /** @internal */
+  publishDirect(topic: string, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
+    const normalized = normalizeOperationPayload(payload);
+    if ((flags | 0) & (SendFlags.DontWait | 0)) {
+      let result;
+      try {
+        result = requireNative().socketTryPublish(
+          this.nativeHandle(),
+          topic,
+          normalized
+        ) as number;
+      } catch (error) {
+        throw submitNativeError(error, flags, 'publish failed');
+      }
+      if (result === SubmitResult.Ok) return true;
+      if (result === SubmitResult.Backpressured) return false;
+      throw submitErrorFromResult(result as SubmitResult, 'publish failed');
+    }
     try {
-      requireNative().socketPublish(this.nativeHandle(), normalizedTopic, normalized, flags | 0);
+      requireNative().socketPublish(this.nativeHandle(), topic, normalized, flags | 0);
       return true;
     } catch (error) {
       const submitError = submitNativeError(error, flags, 'publish failed');
@@ -2815,6 +2843,55 @@ class SendOperation implements SendOp, SendSubmitOp {
 
   submit(): boolean {
     return this._invoke(this._payload.consume(), this._flags);
+  }
+}
+
+class PublishOperation implements SendOp, SendSubmitOp {
+  private readonly _socket: PublisherSocket;
+  private readonly _topic: string;
+  private _single: MessageLike | null = null;
+  private _parts: MessageLike[] | null = null;
+  private _submitted = false;
+  private _flags: SendFlags = SendFlags.None;
+
+  constructor(socket: PublisherSocket, topic: string) {
+    this._socket = socket;
+    this._topic = topic;
+  }
+
+  message(message: MessageLike): SendSubmitOp {
+    this.ensureOpen();
+    if (this._parts) {
+      this._parts.push(message);
+    } else if (this._single) {
+      this._parts = [this._single, message];
+      this._single = null;
+    } else {
+      this._single = message;
+    }
+    return this;
+  }
+
+  flags(flags: SendFlags): SendSubmitOp {
+    this.ensureOpen();
+    this._flags = flags;
+    return this;
+  }
+
+  submit(): boolean {
+    this.ensureOpen();
+    const payload = this._parts ?? this._single;
+    if (!payload) {
+      throw new TypeError('operation requires at least one message');
+    }
+    this._submitted = true;
+    return this._socket.publishDirect(this._topic, payload, this._flags);
+  }
+
+  private ensureOpen(): void {
+    if (this._submitted) {
+      throw new TypeError('operation has already been submitted');
+    }
   }
 }
 

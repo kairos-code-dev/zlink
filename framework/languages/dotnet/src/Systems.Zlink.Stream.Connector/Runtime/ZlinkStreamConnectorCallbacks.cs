@@ -60,8 +60,8 @@ internal sealed class ZlinkStreamConnectorCallbacks(ZlinkStreamTaskRunner taskRu
     }
 
     public void QueueRequestCallback<TResult>(
-        Func<ValueTask<ZlinkStreamEncodedBody>> request,
-        Func<ZlinkStreamEncodedBody, TResult> success,
+        Func<ValueTask<ZlinkStreamEncodedPayload>> request,
+        Func<ZlinkStreamEncodedPayload, TResult> success,
         Func<ZlinkStreamError, TResult> failure,
         Action<TResult> callback)
     {

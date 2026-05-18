@@ -32,11 +32,12 @@ public sealed partial class StreamConnectorTests
             await Task.Delay(TimeSpan.FromMilliseconds(200));
         });
 
-        await using var connector = await ZlinkStreamConnectorFactory.ConnectAsync(new ZlinkStreamConnectorOptions
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
             RequestTimeout = TimeSpan.FromMilliseconds(50)
         });
+        await connector.ConnectAsync();
 
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
             await connector.Request(new Ping("hello"))
@@ -56,7 +57,7 @@ public sealed partial class StreamConnectorTests
         });
 
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
-            await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
+            await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
                 .PacketName("h")
                 .Submit());
 
@@ -73,7 +74,7 @@ public sealed partial class StreamConnectorTests
         });
 
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
-            await connector.Send(new ZlinkStreamEncodedBody(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
+            await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
                 .PacketName("h")
                 .Submit());
 
@@ -103,7 +104,7 @@ public sealed partial class StreamConnectorTests
         {
             using var tcp = await listener.AcceptTcpClientAsync();
             await using var stream = tcp.GetStream();
-            await WritePacketAsync(stream, "invalid-header"u8.ToArray(), "body"u8.ToArray());
+            await WritePacketAsync(stream, "invalid-header"u8.ToArray(), "payload"u8.ToArray());
         });
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions

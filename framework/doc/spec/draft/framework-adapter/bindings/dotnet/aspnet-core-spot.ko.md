@@ -740,7 +740,7 @@ var reply = await client
         "orders",
         new GetStageStateRequest())
     .Timeout(TimeSpan.FromMilliseconds(200))
-    .Submit<GetStageStateReply>(cancellationToken);
+    .SubmitAsync<GetStageStateReply>(cancellationToken);
 
 await client
     .SendSpot(
@@ -805,7 +805,7 @@ var reply = await spotClient
         "orders",
         new GetStageStateRequest())
     .Timeout(TimeSpan.FromMilliseconds(200))
-    .Submit<GetStageStateReply>(cancellationToken);
+    .SubmitAsync<GetStageStateReply>(cancellationToken);
 
 await spotClient
     .SendSpot(

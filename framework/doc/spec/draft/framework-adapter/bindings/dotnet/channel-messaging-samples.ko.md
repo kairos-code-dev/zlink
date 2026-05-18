@@ -370,7 +370,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .Submit<GetUserReply>(cancellationToken);
+        .SubmitAsync<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -456,7 +456,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .Submit<GetUserReply>(cancellationToken);
+        .SubmitAsync<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -501,7 +501,7 @@ public sealed class UserHandlers
             .Request(
                 "account",
                 new GetAccountRequest { AccountId = request.AccountId })
-            .Submit<GetAccountReply>(cancellationToken);
+            .SubmitAsync<GetAccountReply>(cancellationToken);
 
         return new GetUserReply
         {
@@ -701,7 +701,7 @@ var reply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .Submit<GetUserReply>(cancellationToken);
+    .SubmitAsync<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -710,7 +710,7 @@ var fastReply = await client
         "profile",
         new GetUserRequest { AccountId = accountId })
     .Timeout(TimeSpan.FromMilliseconds(200))
-    .Submit<GetUserReply>(cancellationToken);
+    .SubmitAsync<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -740,7 +740,7 @@ GetUserReply reply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .Submit<GetUserReply>(cancellationToken);
+    .SubmitAsync<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -851,7 +851,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .Submit<GetUserReply>(cancellationToken);
+        .SubmitAsync<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });

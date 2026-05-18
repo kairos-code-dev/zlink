@@ -526,7 +526,7 @@ public sealed class UserHandlers
             .Request(
                 "account",
                 new GetAccountRequest { AccountId = request.AccountId })
-            .Submit<GetAccountReply>(cancellationToken);
+            .SubmitAsync<GetAccountReply>(cancellationToken);
 
         return new UserReply
         {
@@ -704,7 +704,7 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 두 client 모두 `IZLinkClient` 와 같은 fluent builder 결을 따른다. 사용 패턴은 다음과
 같다.
 
-- 호출 chain 의 끝에서, `.Submit(...)` 또는 `.Submit<TReply>(...)` 로 마무리한다.
+- 호출 chain 의 끝에서, `.Submit(...)` 또는 `.SubmitAsync<TReply>(...)` 로 마무리한다.
 - `PacketName`, `Timeout` 같은 변형은, 그 사이에 이어 붙인다.
 
 두 인터페이스의 전체 정의는, [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의
@@ -800,7 +800,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetProfileRequest { AccountId = request.AccountId })
-        .Submit<GetProfileReply>(cancellationToken);
+        .SubmitAsync<GetProfileReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -819,7 +819,7 @@ app.MapPost("/profiles/get", async (
 var reply = await client
     .Request("profile", new GetProfileRequest { AccountId = accountId })
     .Timeout(TimeSpan.FromMilliseconds(200))
-    .Submit<GetProfileReply>(cancellationToken);
+    .SubmitAsync<GetProfileReply>(cancellationToken);
 
 await client
     .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })

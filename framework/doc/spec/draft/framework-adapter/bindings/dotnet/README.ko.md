@@ -108,9 +108,10 @@
 - session actor dispatch[^session-actor-dispatch] 는 단일 gateway feature switch
   하나를 켜고 끄는 형태가 아니다. 대신
   `AddStreamNode(...).AddHeaderSession<TSession>()`, actor factory, actor
-  route resolver, actor-session binding, `IZLinkSessionProxy` 의 조합으로
-  설명한다. 공개 resolver 축은 actor 와 spot 으로 제한하며, session 위치
-  조회를 위한 별도의 public API 는 두지 않는다.
+  route resolver, actor-session binding, actor context 의 `IZLinkSessionProxy`,
+  service 용 `IZLinkActorSessionClient` 의 조합으로 설명한다. 공개 resolver
+  축은 actor 와 spot 으로 제한하며, session 위치 조회를 위한 별도의 public API
+  는 두지 않는다.
 
 ## 2. 문서 구조와 역할 분담
 
@@ -132,8 +133,8 @@
 |------|------------|
 | [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md) | channel 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, lifecycle, middleware / filter |
 | [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish / subscribe, discovery |
-| [aspnet-core-actor.ko.md](./aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkActorClient, IZLinkSessionProxy, session actor dispatch (gateway) 패턴 |
-| [session-actor-dispatch.ko.md](./session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkSessionProxy`, `IZLinkActorClient`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md) 에서 다룬다. |
+| [aspnet-core-actor.ko.md](./aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkActorClient, IZLinkSessionProxy, IZLinkActorSessionClient, session actor dispatch (gateway) 패턴 |
+| [session-actor-dispatch.ko.md](./session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkSessionProxy`, `IZLinkActorSessionClient`, `IZLinkActorClient`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md) 에서 다룬다. |
 | [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
 | [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` / Unity Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신 |
 | [unity-stream-connector.ko.md](./unity-stream-connector.ko.md) | Unity package, `MonoBehaviour` wrapper, main thread callback dispatch, lifecycle |

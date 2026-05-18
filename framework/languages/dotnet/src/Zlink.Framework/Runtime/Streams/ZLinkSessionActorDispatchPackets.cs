@@ -7,6 +7,8 @@ internal static class ZLinkInternalPacketNames
     public const string ActorDisconnected = "ZLink.ActorDisconnected";
 
     public const string SessionProxy = "ZLink.SessionProxy";
+
+    public const string SessionDisconnect = "ZLink.SessionDisconnect";
 }
 
 internal sealed record ZLinkActorDispatchMetadata(
@@ -19,6 +21,10 @@ internal sealed record ZLinkSessionProxyEnvelope(
     string PacketName,
     bool ExpectsReply,
     Dictionary<string, string> Metadata);
+
+internal sealed record ZLinkSessionDisconnectEnvelope(
+    string ActorId,
+    string BindingToken);
 
 internal sealed record ZLinkStreamHeaderSnapshot(
     ZlinkStreamMessageKind Kind,

@@ -6,7 +6,8 @@ internal sealed class ZLinkSessionContext(
     IZLinkClient client,
     IZLinkStream stream,
     IZlinkStreamHeaderCodec headerCodec,
-    Func<CancellationToken, ValueTask> closeAsync)
+    Func<CancellationToken, ValueTask> closeAsync,
+    Func<CancellationToken, ValueTask> closeByProxyAsync)
     : IZLinkSessionContext, IZLinkSessionActorAttachmentContext
 {
     private IZLinkActor? _actor;
@@ -101,6 +102,11 @@ internal sealed class ZLinkSessionContext(
         return closeAsync(cancellationToken);
     }
 
+    internal ValueTask CloseByProxyAsync(CancellationToken cancellationToken = default)
+    {
+        return closeByProxyAsync(cancellationToken);
+    }
+
     public async ValueTask AttachActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
@@ -121,6 +127,21 @@ internal sealed class ZLinkSessionContext(
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
         }
 
+        if (IsLocalActorRoute(actorRef))
+        {
+            using (payload)
+            {
+                await runtime.SubmitActorByIdAsync(
+                        actorRef.ActorId,
+                        header,
+                        payload,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            return;
+        }
+
         await _actorRelay.DispatchRemoteAsync(
                 actorRef,
                 header,
@@ -128,6 +149,11 @@ internal sealed class ZLinkSessionContext(
                 ReplyRawAsync,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private bool IsLocalActorRoute(ZLinkActorRef actor)
+    {
+        return actor.TargetNodeRid.Equals(runtime.ResolveSessionRouterId(actor.RouterChannelId));
     }
 
     private async ValueTask DisconnectActorAsync(

@@ -214,11 +214,16 @@ public static class ServiceCollectionExtensions
             services.AddSingleton(
                 typeof(IZLinkActorSessionBindingStore),
                 provider => provider.GetRequiredService(registration.ActorSessionBindingStoreType));
-            services.AddSingleton<IZLinkSessionProxy, ZLinkSessionProxyService>();
+            services.AddSingleton<ZLinkSessionProxyService>();
+            services.AddSingleton<IZLinkSessionProxyFactory>(
+                provider => provider.GetRequiredService<ZLinkSessionProxyService>());
+            services.AddSingleton<IZLinkActorSessionClient>(
+                provider => provider.GetRequiredService<ZLinkSessionProxyService>());
         }
         else
         {
-            services.AddSingleton<IZLinkSessionProxy, ZLinkMissingSessionProxy>();
+            services.AddSingleton<IZLinkSessionProxyFactory, ZLinkMissingSessionProxyFactory>();
+            services.AddSingleton<IZLinkActorSessionClient, ZLinkMissingSessionProxy>();
         }
 
         return services;

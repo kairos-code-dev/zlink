@@ -1,6 +1,7 @@
 using System.Buffers;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Actors;
 
@@ -70,6 +71,7 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
                 ZLinkEnvelopeCodec.DefaultContentType,
                 null,
                 null,
+                CreateSessionProxy(actor.ActorId),
                 services,
                 cancellationToken,
                 metadata)
@@ -111,9 +113,16 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
             header.Name,
             ZLinkEnvelopeCodec.DefaultContentType,
             null,
+            CreateSessionProxy(actorId),
             services,
             cancellationToken,
             metadata);
+    }
+
+    private IZLinkSessionProxy CreateSessionProxy(string actorId)
+    {
+        return services.GetRequiredService<IZLinkSessionProxyFactory>()
+            .Create(actorId);
     }
 
     private ZLinkMessageMetadata CreateMessageMetadata(ZlinkStreamHeader header)

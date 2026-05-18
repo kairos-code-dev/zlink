@@ -38,7 +38,8 @@
 |----|-------------|
 | session → actor dispatch | `IZLinkSessionContext.CreateAndBindActorAsync(...)`, `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)` |
 | actor handler | `IZLinkEntrySpotActorSendHandler<TActor, TMessage>`, `IZLinkEntrySpotActorRequestHandler<TActor, TRequest, TReply>`, `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
-| actor → client push | `IZLinkSessionProxy.Send(actorId, msg).Submit(...)` / `IZLinkSessionProxy.Request(actorId, req).Submit<TReply>(...)` |
+| actor → own client push | `context.SessionProxy.Send(msg).Submit(...)` / `context.SessionProxy.Request(req).SubmitAsync<TReply>(...)` |
+| actor id → client push | `IZLinkActorSessionClient.Send(actorId, msg).Submit(...)` / `IZLinkActorSessionClient.Request(actorId, req).SubmitAsync<TReply>(...)` |
 | route 해석 | `IZLinkActorPlayRouteResolver`. actor → client push 방향은 framework/core가 가진 actor-session binding[^actor-session-binding]을 사용한다 |
 
 인터페이스 전체 정의는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)
@@ -986,9 +987,9 @@ handler 는 transport raw header 를 직접 받지 않는다. Session route, str
 sequence, binding token 같은 값은 framework runtime 의 metadata 쪽에 남는다.
 
 typed actor context 는 source session 의 `RoutingId` 를 노출하지 않는다.
-handler 가 즉시 client 로 push 를 보내야 하는 경우에도 마찬가지다. 이때도
-`context.SessionProxy.Send(context.ActorId, message)` 처럼 resolver 기반 표면을
-사용해야 한다.
+handler 가 즉시 자기 client 로 push 를 보내야 하는 경우에도 마찬가지다. 이때도
+`context.SessionProxy.Send(message)` 처럼 현재 actor 에 묶인 표면을 사용해야
+한다.
 
 ### 3.2 metadata snapshot
 
@@ -1039,12 +1040,28 @@ public 표면을 정리한다.
 public interface IZLinkSessionProxy
 {
     IZLinkSessionProxySendCall Send<TMessage>(
+        TMessage message);
+
+    IZLinkSessionProxyRequestCall Request<TRequest>(
+        TRequest request);
+
+    ValueTask DisconnectAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorSessionClient
+{
+    IZLinkSessionProxySendCall Send<TMessage>(
         string actorId,
         TMessage message);
 
     IZLinkSessionProxyRequestCall Request<TRequest>(
         string actorId,
         TRequest request);
+
+    ValueTask DisconnectAsync(
+        string actorId,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionProxySendCall
@@ -1069,7 +1086,7 @@ public interface IZLinkSessionProxyRequestCall
 
     IZLinkSessionProxyRequestCall Timeout(TimeSpan timeout);
 
-    ValueTask<TReply> Submit<TReply>(
+    ValueTask<TReply> SubmitAsync<TReply>(
         CancellationToken cancellationToken = default);
 }
 ```
@@ -1078,12 +1095,12 @@ public interface IZLinkSessionProxyRequestCall
 
 ```csharp
 await sessionProxy
-    .Send(actorId, new GameStateChangedMsg(gameId, board))
+    .Send(new GameStateChangedMsg(gameId, board))
     .Submit(cancellationToken);
 
 GamePromptRep prompt = await sessionProxy
-    .Request(actorId, new ChooseMoveReq(gameId, board))
-    .Submit<GamePromptRep>(cancellationToken);
+    .Request(new ChooseMoveReq(gameId, board))
+    .SubmitAsync<GamePromptRep>(cancellationToken);
 ```
 
 기존에 사용하던 `SessionGateway` 라는 이름은 새 public API 에서 제거한다.
@@ -1092,18 +1109,26 @@ GamePromptRep prompt = await sessionProxy
 - session → actor 방향: `CreateAndBindActorAsync(...)`,
   `BindActorHandleAsync(...)`, `DispatchToActorAsync(...)`,
   `IZLinkActorRef.NotifyDisconnectedAsync(...)` 를 사용한다.
-- actor → client 방향: `IZLinkSessionProxy` 를 사용한다.
+- actor → 자기 client 방향: actor context 의 `IZLinkSessionProxy` 를 사용한다.
+- actor id 를 지정해서 다른 actor 의 client session 에 보내야 하는 application
+  service 는 `IZLinkActorSessionClient` 를 사용한다.
 
 `IZLinkSessionProxy.Send(...).Submit(...)` 은 one-way push 다. 이 호출은
 framework route send 제출이 끝났다는 의미일 뿐이다. 즉 client application
 handler 가 메시지를 처리 완료했다는 ack 는 아니다.
+
+`IZLinkSessionProxy.DisconnectAsync(...)` 는 actor 가 현재 actor id 에 묶인
+client stream 을 끊어야 한다고 판단했을 때 호출한다. 이 close 는
+application 이 의도한 동작이므로 session 의 `OnDisconnectedAsync(...)` callback
+을 다시 올리지 않는다. framework 는 stream close 와 actor-session binding
+정리만 수행한다.
 
 stale binding token, 이미 닫힌 stream, 늦게 도착한 push 는 해당 push 하나만
 실패해야 한다. 즉 route receive loop 나 host shutdown 자체를 실패시켜서는 안
 된다.
 
 만약 client 처리 완료가 계약상 필요하다면, one-way push 가 아니라
-`IZLinkSessionProxy.Request(...).Submit<TReply>(...)` 같은 명시적인
+`IZLinkSessionProxy.Request(...).SubmitAsync<TReply>(...)` 같은 명시적인
 request / reply 표면을 써야 한다.
 
 재접속은 actor id 기준으로 idempotent 해야 한다. 같은 actor id 가 새 stream
@@ -1149,7 +1174,7 @@ public interface IZLinkActorClientRequestCall
     IZLinkActorClientRequestCall PacketName(string packetName);
     IZLinkActorClientRequestCall Metadata(string key, string value);
     IZLinkActorClientRequestCall Timeout(TimeSpan timeout);
-    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 ```
 
@@ -1529,6 +1554,8 @@ session actor dispatch 항목은 다음 요소가 하나의 흐름으로 맞물�
 |---------------|-----------|
 | `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고, request sequence를 통해 reply를 되돌린다. |
 | `StreamIntegrationTests.ActorRefNotifyDisconnected_Notifies_Local_Bound_Actor` | `CreateAndBindActorAsync(...)` 로 만든 local actor ref의 disconnect 알림이 actor `OnDisconnectedAsync(...)` 로 전달된다. |
+| `StreamIntegrationTests.SessionProxyDisconnect_FromLocalActor_Closes_Client_Without_Session_Disconnect_Callback` | local actor 가 `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출하면 session binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다. |
+| `StreamIntegrationTests.SessionProxyDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback` | remote actor 가 routed `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다. |
 | `StreamIntegrationTests.SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch` | Session 서버와 Play 서버 사이의 actor dispatch가 route header, actor metadata, stream header, body를 각각 별도 part로 유지한다. |
 | `StreamIntegrationTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 proxy metadata와 body를 별도 part로 유지하고, client에게는 단일 STREAM packet으로 보낸다. |
 | `SpotIntegrationTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot actor packet이 actor별 순서를 지키되, 서로 다른 actor를 전역으로 막지 않는다. |

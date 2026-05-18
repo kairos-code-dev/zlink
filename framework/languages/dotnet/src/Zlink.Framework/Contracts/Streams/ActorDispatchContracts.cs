@@ -44,6 +44,7 @@ public sealed class ZLinkActorSendContext : ZLinkHandlerContext
         string? packetName,
         string? contentType,
         string? correlationId,
+        IZLinkSessionProxy sessionProxy,
         IServiceProvider services,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
@@ -52,7 +53,7 @@ public sealed class ZLinkActorSendContext : ZLinkHandlerContext
         ActorId = actorId;
         RouterChannelId = routerChannelId;
         Metadata = metadata ?? ZLinkMessageMetadata.Empty;
-        SessionProxy = services.GetRequiredService<IZLinkSessionProxy>();
+        SessionProxy = sessionProxy;
     }
 
     public string ActorId { get; }
@@ -73,6 +74,7 @@ public sealed class ZLinkActorRequestContext : ZLinkHandlerContext
         string? contentType,
         string? correlationId,
         DateTimeOffset? deadline,
+        IZLinkSessionProxy sessionProxy,
         IServiceProvider services,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
@@ -81,7 +83,7 @@ public sealed class ZLinkActorRequestContext : ZLinkHandlerContext
         ActorId = actorId;
         RouterChannelId = routerChannelId;
         Metadata = metadata ?? ZLinkMessageMetadata.Empty;
-        SessionProxy = services.GetRequiredService<IZLinkSessionProxy>();
+        SessionProxy = sessionProxy;
         Deadline = deadline;
     }
 

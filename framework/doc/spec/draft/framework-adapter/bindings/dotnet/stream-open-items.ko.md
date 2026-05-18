@@ -73,15 +73,14 @@ serializer 계층은 다음 네 가지 방향으로 잡혀 있다.
 
 요지는 다음과 같다.
 
-- `IZLinkStream.WriteAsync(payload, ct)` 와 `WriteAsync(header, payload, ct)`,
-  이렇게 두 overload 만 둔다.
-- 동기 `bool Write(...)` 표면은 deprecated 다. framework 내부 fast path 에서만
-  쓰고, application 코드는 `WriteAsync(...)` 또는 actor 경로
-  (`IZLinkSessionProxy`) 를 쓴다.
-- 일시적인 backpressure[^backpressure] 는 boolean 반환값으로 노출하지 않는다.
-  framework 내부에서 nonblocking write 와 ready notification 조합으로
-  처리한다. write 대기 한계는 해당 socket / channel 옵션의 `SendTimeout` 을
-  따른다.
+- `IZLinkStream` 은 `bool Write(Message payload, SendFlags flags = None)` 만
+  노출한다. header 는 framework 가 packet 을 만들 때 내부에서 작성하므로
+  application 이 임의로 넘기는 overload 를 두지 않는다.
+- application 이 packet 을 보내야 할 때는 session context 의 `Send(...)`,
+  `Reply(...)` 또는 actor context 의 `IZLinkSessionProxy` 를 쓴다.
+- 일시적인 backpressure[^backpressure] 는 `Write(...)` 의 `false` 반환으로만
+  표현한다. framework 내부의 session/actor 전송 helper 는 이 결과를 명확한
+  실패로 바꿔 호출자에게 전달한다.
 - stream connector 의 public 옵션에는 별도의 `SendTimeout` 을 두지 않는다.
   connector 의 request reply 대기에는 `RequestTimeout` 만 사용한다.
 
@@ -143,9 +142,9 @@ monitor 이벤트를 session callback 으로 어떻게 올릴지는 다음과 �
   framework 가 callback 을 managed task 로 넘긴 뒤에 application callback 을
   호출한다. 이렇게 두는 이유는, transport callback 이 application 의 처리
   시간이나 예외에 직접 묶이지 않게 하기 위해서다.
-- send queue 와 backpressure 는 하부 socket 동작을 따른다. 다만 application 이
-  보는 계약은 `WriteAsync(...)` 의 비동기 완료, timeout, cancellation 만으로
-  표현되도록 유지한다.
+- send queue 와 backpressure 는 하부 socket 동작을 따른다. application 이
+  보는 낮은 수준 계약은 `Write(...)` 의 성공 여부이고, 일반 application 코드는
+  session/actor helper 의 submit API 를 통해 같은 의미를 받는다.
 - `STREAM` session 등록은 attribute 기반으로 열지 않는다. 명시 등록만 지원한다.
 - serializer helper 는 `Message.AsReadOnlySpan()` 을 기반으로 구현한다. 불필요
   한 복사를 줄이려는 의도다.
@@ -156,7 +155,7 @@ monitor 이벤트를 session callback 으로 어떻게 올릴지는 다음과 �
 기준으로 바로 구현에 들어가면 된다.
 
 1. serializer 계층의 책임과 패키지 경계
-2. 동기 `Write(...)` API 표면
+2. `Write(...)` API 표면
 3. monitor event -> session lifecycle 계약
 4. `OnErrorAsync(...)`와 `OnDisconnectedAsync(...)`의 경계
 

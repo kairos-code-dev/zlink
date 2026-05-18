@@ -396,6 +396,8 @@ public sealed class StreamIntegrationTests
             services.AddSingleton(sessionLocations);
             services.AddScoped<GatewayActorFactory>();
             services.AddScoped<GatewayActorHandler>();
+            services.AddScoped<GatewaySessionDisconnectHandler>();
+            services.AddScoped<GatewaySessionDisconnectRequestHandler>();
             services.AddZLinkFramework(options =>
             {
                 options.ConfigureMetadata(metadata =>
@@ -416,6 +418,7 @@ public sealed class StreamIntegrationTests
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
             services.AddSingleton(new ActorPlayRouteStore(playRid));
+            services.AddSingleton(new GatewaySessionRecorder());
             services.AddSingleton(sessionLocations);
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>
@@ -463,7 +466,7 @@ public sealed class StreamIntegrationTests
             Assert.Equal("trace-101", proxyRecorder.LastTraceId);
             Assert.False(proxyRecorder.ForwardedTenantId);
 
-            var sessionProxy = playHost.Services.GetRequiredService<IZLinkSessionProxy>();
+            var sessionProxy = playHost.Services.GetRequiredService<IZLinkActorSessionClient>();
             var clientReplyTask = Task.Run(() =>
             {
                 var request = ReceiveFrame(network);
@@ -528,15 +531,19 @@ public sealed class StreamIntegrationTests
         var routerEndpoint = GetFreeTcpEndpoint();
         var localRid = RoutingId.FromString("0303");
         var recorder = new ActorDispatchRecorder();
+        var sessionRecorder = new GatewaySessionRecorder();
         var sessionLocations = new ActorSessionLocationStore();
         using var callbackCapture = CallbackExceptionCapture.Start();
 
         var host = await CreateHostAsync(routerEndpoint, services =>
         {
             services.AddSingleton(recorder);
+            services.AddSingleton(sessionRecorder);
             services.AddSingleton(sessionLocations);
             services.AddScoped<GatewayActorFactory>();
             services.AddScoped<GatewayActorHandler>();
+            services.AddScoped<GatewaySessionDisconnectHandler>();
+            services.AddScoped<GatewaySessionDisconnectRequestHandler>();
             services.AddScoped<LocalNotifyDisconnectSession>();
             services.AddZLinkFramework(options =>
             {
@@ -585,6 +592,197 @@ public sealed class StreamIntegrationTests
         {
             await host.StopAsync();
             host.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task SessionProxyDisconnect_FromLocalActor_Closes_Client_Without_Session_Disconnect_Callback()
+    {
+        var streamEndpoint = GetFreeTcpEndpoint();
+        var routerEndpoint = GetFreeTcpEndpoint();
+        var localRid = RoutingId.FromString("0404");
+        var actorRecorder = new ActorDispatchRecorder();
+        var sessionRecorder = new GatewaySessionRecorder();
+        var sessionLocations = new ActorSessionLocationStore();
+        using var callbackCapture = CallbackExceptionCapture.Start();
+
+        var host = await CreateHostAsync(routerEndpoint, services =>
+        {
+            services.AddSingleton(new ActorPlayRouteStore(localRid));
+            services.AddSingleton(actorRecorder);
+            services.AddSingleton(sessionRecorder);
+            services.AddSingleton(sessionLocations);
+            services.AddScoped<GatewayActorFactory>();
+            services.AddScoped<GatewayActorHandler>();
+            services.AddScoped<GatewaySessionDisconnectHandler>();
+            services.AddScoped<LocalNotifyDisconnectSession>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddActorSessionBindingStore<ActorSessionLocationStore>();
+                options.AddActorPlayRouteResolver<ActorPlayRouteStore>();
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(routerEndpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
+                    routed.UseManualConnections(connections => connections.Connect(routerEndpoint));
+                });
+                options.AddStreamNode("client.stream", stream =>
+                {
+                    stream.Bind(streamEndpoint);
+                    stream.AddHeaderSession<LocalNotifyDisconnectSession>();
+                });
+            });
+        });
+
+        try
+        {
+            using var client = ConnectRawClient(streamEndpoint);
+            var network = client.GetStream();
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "open",
+                    ZlinkStreamMetadata.Empty),
+                "\"open\""u8));
+            await RetryAsync(
+                () => actorRecorder.CreatedCount == 1
+                    && sessionLocations.HasBinding
+                    && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    "session.disconnect",
+                    ZlinkStreamMetadata.Empty),
+                JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("close-local"), JsonOptions)));
+
+            await RetryAsync(
+                () => actorRecorder.ProxyDisconnectCount == 1
+                    && !sessionLocations.HasBinding
+                    && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+            Assert.Equal(0, sessionRecorder.DisconnectedCount);
+            Assert.Equal(0, actorRecorder.DisconnectedCount);
+            callbackCapture.ThrowIfAny();
+        }
+        finally
+        {
+            await host.StopAsync();
+            host.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task SessionProxyDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback()
+    {
+        var streamEndpoint = GetFreeTcpEndpoint();
+        var sessionRouterEndpoint = GetFreeTcpEndpoint();
+        var playRouterEndpoint = GetFreeTcpEndpoint();
+        var sessionRid = RoutingId.FromString("0505");
+        var playRid = RoutingId.FromString("0606");
+        var actorRecorder = new ActorDispatchRecorder();
+        var sessionRecorder = new GatewaySessionRecorder();
+        var sessionLocations = new ActorSessionLocationStore();
+        using var callbackCapture = CallbackExceptionCapture.Start();
+
+        var playHost = await CreateHostAsync(playRouterEndpoint, services =>
+        {
+            services.AddSingleton(actorRecorder);
+            services.AddSingleton(sessionLocations);
+            services.AddScoped<GatewayActorFactory>();
+            services.AddScoped<GatewayActorHandler>();
+            services.AddScoped<GatewaySessionDisconnectHandler>();
+            services.AddScoped<GatewaySessionDisconnectRequestHandler>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddActorSessionBindingStore<ActorSessionLocationStore>();
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(playRouterEndpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = playRid);
+                    routed.UseManualConnections(connections => connections.Connect(sessionRouterEndpoint));
+                });
+            });
+        });
+
+        var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
+        {
+            services.AddSingleton(new ActorPlayRouteStore(playRid));
+            services.AddSingleton(sessionRecorder);
+            services.AddSingleton(sessionLocations);
+            services.AddScoped<GatewayRelaySession>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorSessionBindingStore<ActorSessionLocationStore>();
+                options.AddActorPlayRouteResolver<ActorPlayRouteStore>();
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(sessionRouterEndpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = sessionRid);
+                    routed.UseManualConnections(connections => connections.Connect(playRouterEndpoint));
+                });
+                options.AddStreamNode("client.stream", stream =>
+                {
+                    stream.Bind(streamEndpoint);
+                    stream.AddHeaderSession<GatewayRelaySession>();
+                });
+            });
+        });
+
+        try
+        {
+            using var client = ConnectRawClient(streamEndpoint);
+            var network = client.GetStream();
+            await Task.Delay(250);
+
+            SendAll(network, BuildStreamPacketFrame(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Request,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    new ZlinkStreamRequestSeq(201),
+                    "relay.echo",
+                    ZlinkStreamMetadata.Empty),
+                JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("bind-remote"), JsonOptions)));
+            var bindReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(201));
+            var bindBody = JsonSerializer.Deserialize<GatewayPong>(bindReply.Payload, JsonOptions);
+            Assert.Equal("play:bind-remote", bindBody?.Value);
+            await RetryAsync(
+                () => actorRecorder.CreatedCount == 1
+                    && sessionLocations.HasBinding
+                    && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+
+            var actorClient = sessionHost.Services.GetRequiredService<IZLinkActorClient>();
+            var disconnectReply = await actorClient.Request(
+                    "player-1",
+                    new GatewayPing("close-remote"))
+                .PacketName("session.disconnect")
+                .Timeout(TimeSpan.FromSeconds(10))
+                .SubmitAsync<GatewayPong>();
+            Assert.Equal("disconnect:close-remote", disconnectReply.Value);
+
+            await RetryAsync(
+                () => actorRecorder.ProxyDisconnectCount == 1
+                    && !sessionLocations.HasBinding
+                    && callbackCapture.IsEmpty,
+                TimeSpan.FromSeconds(5));
+            Assert.Equal(0, sessionRecorder.DisconnectedCount);
+            Assert.Equal(0, actorRecorder.DisconnectedCount);
+            callbackCapture.ThrowIfAny();
+        }
+        finally
+        {
+            await ChannelMessagingTestSupport.StopHostsAsync(sessionHost, playHost);
         }
     }
 
@@ -907,6 +1105,7 @@ public sealed class StreamIntegrationTests
     {
         private int _createdCount;
         private int _disconnectedCount;
+        private int _proxyDisconnectCount;
 
         public string? LastPacketName { get; set; }
 
@@ -918,6 +1117,8 @@ public sealed class StreamIntegrationTests
 
         public int DisconnectedCount => Volatile.Read(ref _disconnectedCount);
 
+        public int ProxyDisconnectCount => Volatile.Read(ref _proxyDisconnectCount);
+
         public void RecordCreated()
         {
             Interlocked.Increment(ref _createdCount);
@@ -927,19 +1128,40 @@ public sealed class StreamIntegrationTests
         {
             Interlocked.Increment(ref _disconnectedCount);
         }
+
+        public void RecordProxyDisconnect()
+        {
+            Interlocked.Increment(ref _proxyDisconnectCount);
+        }
     }
 
     public sealed class ActorSessionLocationStore
         : IZLinkActorSessionBindingStore
     {
+        private readonly object _gate = new();
         private ZLinkActorSessionBinding? _binding;
+
+        public bool HasBinding
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _binding is not null;
+                }
+            }
+        }
 
         public ValueTask BindSessionAsync(
             ZLinkActorSessionBinding binding,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            _binding = binding;
+            lock (_gate)
+            {
+                _binding = binding;
+            }
+
             return ValueTask.CompletedTask;
         }
 
@@ -948,11 +1170,14 @@ public sealed class StreamIntegrationTests
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (_binding is { } current
-                && current.ActorId == binding.ActorId
-                && current.BindingToken == binding.BindingToken)
+            lock (_gate)
             {
-                _binding = null;
+                if (_binding is { } current
+                    && current.ActorId == binding.ActorId
+                    && current.BindingToken == binding.BindingToken)
+                {
+                    _binding = null;
+                }
             }
 
             return ValueTask.CompletedTask;
@@ -963,8 +1188,13 @@ public sealed class StreamIntegrationTests
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var binding = _binding
-                ?? throw new InvalidOperationException("No session binding exists.");
+            ZLinkActorSessionBinding binding;
+            lock (_gate)
+            {
+                binding = _binding
+                    ?? throw new InvalidOperationException("No session binding exists.");
+            }
+
             return ValueTask.FromResult(new ZLinkActorSessionRoute(
                 binding.SessionRouterId,
                 binding.BindingToken));
@@ -982,6 +1212,8 @@ public sealed class StreamIntegrationTests
         public void Configure()
         {
             Context.AddPacket<GatewayActorHandler>("relay.echo");
+            Context.AddPacket<GatewaySessionDisconnectHandler>("session.disconnect");
+            Context.AddPacket<GatewaySessionDisconnectRequestHandler>("session.disconnect");
         }
 
         public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
@@ -1006,7 +1238,13 @@ public sealed class StreamIntegrationTests
 
     public sealed class GatewayRelaySession : IZLinkSession
     {
+        private readonly GatewaySessionRecorder _recorder;
         private IZLinkActorRef? _actor;
+
+        public GatewayRelaySession(GatewaySessionRecorder recorder)
+        {
+            _recorder = recorder;
+        }
 
         public IZLinkSessionContext Context { get; set; } = default!;
 
@@ -1018,6 +1256,7 @@ public sealed class StreamIntegrationTests
 
         public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
+            _recorder.RecordDisconnected();
             var actor = _actor;
             _actor = null;
             if (actor is not null)
@@ -1056,7 +1295,13 @@ public sealed class StreamIntegrationTests
 
     public sealed class LocalNotifyDisconnectSession : IZLinkSession
     {
+        private readonly GatewaySessionRecorder _recorder;
         private IZLinkActorRef? _actor;
+
+        public LocalNotifyDisconnectSession(GatewaySessionRecorder recorder)
+        {
+            _recorder = recorder;
+        }
 
         public IZLinkSessionContext Context { get; set; } = default!;
 
@@ -1068,6 +1313,7 @@ public sealed class StreamIntegrationTests
 
         public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
+            _recorder.RecordDisconnected();
             var actor = _actor;
             _actor = null;
             if (actor is not null)
@@ -1098,6 +1344,17 @@ public sealed class StreamIntegrationTests
                         "player",
                         cancellationToken)
                     .ConfigureAwait(false);
+
+                if (!string.Equals(header.Name, "open", StringComparison.Ordinal))
+                {
+                    using var dispatchPayload = payload.Move();
+                    await Context.DispatchToActorAsync(
+                            _actor,
+                            header,
+                            dispatchPayload,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
         }
     }
@@ -1119,6 +1376,48 @@ public sealed class StreamIntegrationTests
 
             recorder.ForwardedTenantId = context.Metadata.TryGetApplicationValue("tenant-id", out _);
             return ValueTask.FromResult(new GatewayPong($"play:{request.Value}", 101));
+        }
+    }
+
+    public sealed class GatewaySessionDisconnectHandler(ActorDispatchRecorder recorder)
+        : IZLinkActorSendHandler<GatewayPing>
+    {
+        public async ValueTask HandleAsync(
+            GatewayPing message,
+            ZLinkActorSendContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = message;
+            recorder.RecordProxyDisconnect();
+            await context.SessionProxy.DisconnectAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    public sealed class GatewaySessionDisconnectRequestHandler(ActorDispatchRecorder recorder)
+        : IZLinkActorRequestHandler<GatewayPing, GatewayPong>
+    {
+        public async ValueTask<GatewayPong> HandleAsync(
+            GatewayPing request,
+            ZLinkActorRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            recorder.RecordProxyDisconnect();
+            await context.SessionProxy.DisconnectAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return new GatewayPong($"disconnect:{request.Value}", 202);
+        }
+    }
+
+    public sealed class GatewaySessionRecorder
+    {
+        private int _disconnectedCount;
+
+        public int DisconnectedCount => Volatile.Read(ref _disconnectedCount);
+
+        public void RecordDisconnected()
+        {
+            Interlocked.Increment(ref _disconnectedCount);
         }
     }
 

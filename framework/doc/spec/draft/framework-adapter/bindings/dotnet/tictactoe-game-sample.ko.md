@@ -140,7 +140,9 @@ session actor dispatch 샘플의 DTO 는
 - Play actor 는 `JoinMatchReq` 를 처리하는 중에 해당 game room SPOT 에 join
   한다. 이후 들어오는 `PlaceMarkReq` 는 actor 가 join 한 room SPOT 의 상태를
   변경한다.
-- Play 서버가 클라이언트로 push 할 때는 `IZLinkSessionProxy` 를 사용한다.
+- Play actor 가 자기 client 로 push 할 때는 actor context 의
+  `IZLinkSessionProxy` 를 사용한다. 특정 actor id 의 client 로 보내는
+  application service 는 `IZLinkActorSessionClient` 를 사용한다.
 - `OpponentJoinedNotify`, `TurnChangedNotify`, `GameEndedNotify` 는 actor id 를
   기준으로 현재 binding 되어 있는 Session 서버를 찾는다. 그 뒤 해당 서버의
   client stream 을 통해 전달된다.

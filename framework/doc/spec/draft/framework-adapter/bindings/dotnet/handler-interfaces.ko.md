@@ -74,7 +74,8 @@
 | handler | `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | spot에 actor가 join할 때 호출되는 handler | 4.4.1 |
 | client | `IZLinkActorClient` | actor id 기반 actor runtime 호출 | 5.5 |
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
-| client | `IZLinkSessionProxy` | actor id 기반 actor -> client session 호출 | 5.6 |
+| client | `IZLinkSessionProxy` | 현재 actor -> 현재 client session 호출 | 5.6 |
+| client | `IZLinkActorSessionClient` | actor id 기반 actor -> client session 호출 | 5.6 |
 | resolver | `IZLinkActorPlayRouteResolver` | actor id에서 play/runtime route 조회 | 5.7 |
 | resolver | `IZLinkSpotRouteResolver` | spot name/id에서 user Spot route 조회 | 5.7 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
@@ -1129,7 +1130,7 @@ public interface IZLinkSessionRequestCall
 
     IZLinkSessionRequestCall Timeout(TimeSpan timeout);
 
-    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 ```
 
@@ -1148,7 +1149,8 @@ public interface IZLinkSessionRequestCall
 `Context.Reply(...)`, `IZLinkSessionProxy` 같은 framework helper 를 사용한다.
 
 backpressure 는 framework 내부에서 처리한다. actor 가 stream 을 직접 다루는
-패턴이 아니라면, `IZLinkSessionProxy` 를 경유한다(actor-model §10 참고).
+패턴이 아니라면, 현재 actor 의 client 는 `IZLinkSessionProxy`, actor id 를
+지정하는 service 는 `IZLinkActorSessionClient` 를 경유한다(actor-model §10 참고).
 
 `OnErrorAsync(...)` 는 application handler 내부에서 발생한 예외를 받는
 callback 이 아니다.
@@ -1719,7 +1721,7 @@ public interface IZLinkRequestCall
 
     IZLinkRequestCall Timeout(TimeSpan timeout);
 
-    ValueTask<TReply> Submit<TReply>(
+    ValueTask<TReply> SubmitAsync<TReply>(
         CancellationToken cancellationToken = default);
 }
 
@@ -1790,7 +1792,7 @@ timeout 은 request 와 send 간에 다르게 다룬다.
   option 에 설정한 resolved `SendTimeout` 값을 읽는다. 사용자가
   `SendTimeout = null` 로 명시한 경우에 한해, core `-1` 과 같은 무한 대기
   로 본다.
-- `Request(...).Submit<TReply>(...)` 도 마찬가지다. request packet 을
+- `Request(...).SubmitAsync<TReply>(...)` 도 마찬가지다. request packet 을
   내보내는 단계에서는, `Send(...).Submit(...)` 와 동일한 nonblocking
   submit 경로를 사용한다.
 - `Request(...).Timeout(...)` 은 reply 대기 시간만을 결정한다.
@@ -1833,7 +1835,7 @@ pending submit 을 이어서 진행해야 한다.
 var reply = await client
     .Request("profile", new GetProfileRequest { AccountId = accountId })
     .Timeout(TimeSpan.FromMilliseconds(200))
-    .Submit<GetProfileReply>(cancellationToken);
+    .SubmitAsync<GetProfileReply>(cancellationToken);
 
 await client
     .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
@@ -2074,7 +2076,7 @@ public interface IZLinkActorClientRequestCall
 
     IZLinkActorClientRequestCall Timeout(TimeSpan timeout);
 
-    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 ```
 
@@ -2129,7 +2131,7 @@ internal interface IZLinkRouteRequestCall
     IZLinkRouteRequestCall PacketName(string packetName);
     IZLinkRouteRequestCall Metadata(string key, string value);
     IZLinkRouteRequestCall Timeout(TimeSpan timeout);
-    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 ```
 
@@ -2155,12 +2157,28 @@ framework/core 의 actor-session binding 안에만 머문다.
 public interface IZLinkSessionProxy
 {
     IZLinkSessionProxySendCall Send<TMessage>(
+        TMessage message);
+
+    IZLinkSessionProxyRequestCall Request<TRequest>(
+        TRequest request);
+
+    ValueTask DisconnectAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorSessionClient
+{
+    IZLinkSessionProxySendCall Send<TMessage>(
         string actorId,
         TMessage message);
 
     IZLinkSessionProxyRequestCall Request<TRequest>(
         string actorId,
         TRequest request);
+
+    ValueTask DisconnectAsync(
+        string actorId,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionProxySendCall
@@ -2184,7 +2202,7 @@ public interface IZLinkSessionProxyRequestCall
 
     IZLinkSessionProxyRequestCall Timeout(TimeSpan timeout);
 
-    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 ```
 
@@ -2195,9 +2213,13 @@ public resolver 는 두 축으로 제한한다. actor 와 spot 이다.
 - actor resolver: actor id 로부터 actor runtime route 를 조회한다.
 - spot resolver: spot name 이나 spot id 로부터 user Spot route 를 조회한다.
 
-`IZLinkSessionProxy` 가 actor 의 client session 으로 보내는 경로는 또
-다르다. 별도의 public session route resolver 를 호출하지 않고,
-framework/core 가 들고 있는 actor-session binding 상태를 사용한다.
+`IZLinkSessionProxy` 는 actor context 가 현재 actor id 를 알고 있을 때만
+제공한다. 사용자는 actor id 를 다시 넘기지 않고 현재 actor 에 묶인 client
+session 으로 보낸다. actor id 를 지정해서 다른 actor 의 client session 으로
+보내야 하는 application service 는 `IZLinkActorSessionClient` 를 사용한다.
+`DisconnectAsync(...)` 도 현재 actor 의 binding 상태를 사용한다. actor 가
+client 연결을 끊기로 결정한 경우 이 메서드를 호출하며, session callback 으로
+`OnDisconnectedAsync(...)` 를 다시 올리지 않는다.
 
 분산 배포 환경에서는 binding 상태를 Redis 나 registry 에 저장해야 할 수
 있다. 이 경우 `.NET` adapter 는 resolver 를 새로 만드는 방식이 아니라,
@@ -2555,7 +2577,8 @@ public interface IZLinkFrameworkOptions
 - actor-session binding
   - 별도 public registration 함수로 등록하지 않는다. stream session이 actor handle을
     만들거나 actor에 attach되면 framework/core가 binding 상태를 갱신하고,
-    `IZLinkSessionProxy`는 그 상태를 사용해 현재 client stream으로 보낸다.
+    `IZLinkSessionProxy`와 `IZLinkActorSessionClient`는 그 상태를 사용해 client
+    stream으로 보낸다.
 - `AddClientServerChannel(...)`
   - request/send 용 client-server 채널을 등록한다. builder는 `EnableServer(...)`와
     `EnableClient(...)`만 노출한다.
@@ -3160,7 +3183,7 @@ request 메시지 타입에는 framework 전용 marker interface 를 붙이지 �
 ```csharp
 var reply = await client
     .Request("profile", new GetProfileRequest { AccountId = accountId })
-    .Submit<GetProfileReply>(cancellationToken);
+    .SubmitAsync<GetProfileReply>(cancellationToken);
 ```
 
 양쪽 진입점에서의 동작은 다음과 같다.

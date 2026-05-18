@@ -9,7 +9,8 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
     {
         return packetName is ZLinkInternalPacketNames.ActorDispatch
             or ZLinkInternalPacketNames.ActorDisconnected
-            or ZLinkInternalPacketNames.SessionProxy;
+            or ZLinkInternalPacketNames.SessionProxy
+            or ZLinkInternalPacketNames.SessionDisconnect;
     }
 
     public bool CanHandleRequest(string packetName)
@@ -33,6 +34,9 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
                 return;
             case ZLinkInternalPacketNames.SessionProxy:
                 await DispatchSessionProxySendAsync(received, cancellationToken).ConfigureAwait(false);
+                return;
+            case ZLinkInternalPacketNames.SessionDisconnect:
+                await DispatchSessionDisconnectAsync(received, cancellationToken).ConfigureAwait(false);
                 return;
             default:
                 throw new InvalidOperationException($"Internal routed send packet '{header.MessageName}' is not supported.");
@@ -148,11 +152,25 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
             cancellationToken).ConfigureAwait(false);
     }
 
+    private async ValueTask DispatchSessionDisconnectAsync(
+        Received received,
+        CancellationToken cancellationToken)
+    {
+        var envelope = ZLinkInternalMultipartPackets.DecodeSessionDisconnectEnvelope(received);
+        var sessionContext = ResolveSessionContext(envelope.ActorId, envelope.BindingToken);
+        await sessionContext.CloseByProxyAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private ZLinkSessionContext ResolveSessionContext(ZLinkSessionProxyEnvelope envelope)
+        => ResolveSessionContext(envelope.ActorId, envelope.BindingToken);
+
+    private ZLinkSessionContext ResolveSessionContext(
+        string actorId,
+        string bindingToken)
     {
         if (runtime.TryGetSessionActorContext(
-                envelope.ActorId,
-                envelope.BindingToken,
+                actorId,
+                bindingToken,
                 out var sessionContext))
         {
             return sessionContext;
@@ -160,7 +178,7 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
 
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorSessionNotBound,
-            $"No current session binding exists for actor '{envelope.ActorId}'.");
+            $"No current session binding exists for actor '{actorId}'.");
     }
 
     private TimeSpan ResolveInternalTimeout(ZLinkEnvelopeHeader header)

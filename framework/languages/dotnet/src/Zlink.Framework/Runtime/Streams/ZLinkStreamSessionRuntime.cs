@@ -38,7 +38,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             scope.ServiceProvider.GetRequiredService<IZLinkClient>(),
             Stream,
             headerCodec,
-            CloseAsync);
+            CloseAsync,
+            CloseByProxyAsync);
         _handler.Context = _context;
     }
 
@@ -81,6 +82,18 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         }
 
         Enqueue(MarkClosedAsync);
+    }
+
+    public async ValueTask CloseByProxyAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Interlocked.Exchange(ref _disconnected, 1) != 0)
+        {
+            return;
+        }
+
+        await Stream.CloseAsync(cancellationToken);
+        Enqueue(MarkProxyClosedAsync);
     }
 
     private async ValueTask MarkConnectedAsync(string localAddr, string remoteAddr)
@@ -186,6 +199,12 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private async ValueTask MarkClosedAsync()
     {
         await _handler.OnDisconnectedAsync(CancellationToken.None);
+        await _context.CleanupAsync(CancellationToken.None);
+        _removeSession(Stream.SessionId);
+    }
+
+    private async ValueTask MarkProxyClosedAsync()
+    {
         await _context.CleanupAsync(CancellationToken.None);
         _removeSession(Stream.SessionId);
     }

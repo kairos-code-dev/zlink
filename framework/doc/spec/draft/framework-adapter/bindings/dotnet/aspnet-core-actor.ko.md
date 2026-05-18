@@ -580,7 +580,7 @@ public interface IZLinkActorClientRequestCall
     IZLinkActorClientRequestCall PacketName(string packetName);
     IZLinkActorClientRequestCall Metadata(string key, string value);
     IZLinkActorClientRequestCall Timeout(TimeSpan timeout);
-    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 ```
 
@@ -853,9 +853,11 @@ message 를 보낼 때도, 그 stream 을 그대로 타고 push 되어야 한다
 - **`IZLinkSpotRouteResolver`** -- "spot name / id → user Spot routing id" 를
   푼다. actor 가 `JoinSpot(spotName, ...)` 로 node 경계를 넘을 수 있다면 이
   resolver 를 등록한다.
-- **`IZLinkSessionProxy`** -- Play 서버 actor 가 client 에게 push 를 보낼 때
-  쓰는 표면이다. 내부적으로 framework / core actor-session binding 을 읽어
-  routed channel 을 거쳐 Session 서버까지 전달한다.
+- **`IZLinkSessionProxy`** -- Play 서버 actor 가 자기 client 에게 push 를 보낼
+  때 쓰는 표면이다. 현재 actor id 는 framework 가 알고 있으므로 호출자가 다시
+  넘기지 않는다.
+- **`IZLinkActorSessionClient`** -- actor id 를 지정해 다른 actor 의 client
+  session 으로 보내야 하는 application service 용 표면이다.
 
 ### 9.1 전체 흐름
 
@@ -886,8 +888,9 @@ sequenceDiagram
 ```
 
 핵심은 다음과 같다. Play 서버의 actor 는 stream 을 직접 들고 있지 않다. 대신
-**`IZLinkSessionProxy`** 라는 표면 하나에 "이 actor id 앞으로 message
-보내라" 고만 부탁한다.
+actor handler 는 **`IZLinkSessionProxy`** 에 "현재 actor 의 client 로 message
+를 보내라" 고만 부탁한다. 다른 actor id 의 client 로 보내야 하는 service 는
+**`IZLinkActorSessionClient`** 를 사용한다.
 
 이 부탁을 받은 framework 는 다음 순서로 일을 처리한다.
 
@@ -911,24 +914,25 @@ frame 으로 처리한다. 따라서 actor dispatch payload 를 내부 DTO[^dto]
 ```csharp
 public interface IZLinkSessionProxy
 {
-    IZLinkSessionProxySendCall Send<TMessage>(string actorId, TMessage message);
-    IZLinkSessionProxyRequestCall Request<TRequest>(string actorId, TRequest request);
+    IZLinkSessionProxySendCall Send<TMessage>(TMessage message);
+    IZLinkSessionProxyRequestCall Request<TRequest>(TRequest request);
+    ValueTask DisconnectAsync(CancellationToken cancellationToken = default);
 }
 ```
 
-actor handler에서 받아 쓰는 모습은 다음과 같다.
+actor handler 에서 받아 쓰는 모습은 다음과 같다.
 
 ```csharp
-public sealed class JoinMatchHandler(IZLinkSessionProxy clientPush)
-    : IZLinkEntrySpotActorRequestHandler<PlayerActor, JoinMatchReq, JoinMatchRes>
+public sealed class JoinMatchHandler
+    : IZLinkActorRequestHandler<JoinMatchReq, JoinMatchRes>
 {
     public async ValueTask<JoinMatchRes> HandleAsync(
-        PlayerActor actor,
         JoinMatchReq request,
+        ZLinkActorRequestContext context,
         CancellationToken cancellationToken)
     {
-        await clientPush
-            .Send(actor.ActorId, new OpponentJoinedNotify(...))
+        await context.SessionProxy
+            .Send(new OpponentJoinedNotify(...))
             .Submit(cancellationToken);
 
         return new JoinMatchRes(...);
@@ -936,10 +940,16 @@ public sealed class JoinMatchHandler(IZLinkSessionProxy clientPush)
 }
 ```
 
-같은 user Spot 안에서 client push 가 필요하면, user Spot actor handler 의
-생성자에 `IZLinkSessionProxy` 를 주입해서 같은 방식으로 사용한다. actor
-message handler 는 transport raw header 나 session router id 를 직접 받지
-않는다.
+같은 user Spot 안에서 다른 actor id 의 client session 으로 push 가 필요하면
+`IZLinkActorSessionClient` 를 주입해서 actor id 를 명시한다. 현재 actor 자신의
+client session 으로 보내는 actor handler 는 context 의 `IZLinkSessionProxy` 를
+사용한다. actor message handler 는 transport raw header 나 session router id 를
+직접 받지 않는다.
+
+actor 가 client 연결을 끊어야 한다고 판단한 경우에는
+`IZLinkSessionProxy.DisconnectAsync(...)` 를 호출한다. 이 동작은
+application 이 시작한 close 이므로 session 의 `OnDisconnectedAsync(...)` 를
+다시 호출하지 않는다.
 
 ### 9.3 라우팅 record
 
@@ -1020,7 +1030,9 @@ actor-session binding 은 framework / core runtime 내부에서 관리한다. �
 
 - Session 서버는 인증과 `CreateAndBindActorAsync(...)` 또는
   `BindActorHandleAsync(...)` 흐름에서 binding 을 갱신한다.
-- Play 서버는 `IZLinkSessionProxy` 를 통해 현재 binding 을 사용한다.
+- Play actor 는 actor context 의 `IZLinkSessionProxy` 로 자기 client binding 을
+  사용한다. application service 가 actor id 를 기준으로 client binding 을
+  찾아야 하면 `IZLinkActorSessionClient` 를 사용한다.
 
 이 동작을 위해 별도의 public session route API 나 기록 API 를 등록할 필요는
 없다.
@@ -1104,9 +1116,10 @@ public interface IZLinkSpotMeshNodeBuilder
   정보의 저장소를 소유하지 않는다.
 - actor id 는 application identity[^identity] 다. 보통 인증 단계에서
   결정된다. framework 는 actor id 발급에 관여하지 않는다.
-- Play 서버의 actor 가 client 에 push 를 보낼 때는 **반드시
-  `IZLinkSessionProxy`** 를 거친다. actor 가 stream socket 을 직접 들고 있는
-  구조가 아니다.
+- Play 서버의 actor 가 자기 client 에 push 를 보낼 때는 **반드시 actor
+  context 의 `IZLinkSessionProxy`** 를 거친다. 특정 actor id 의 client 로
+  보내는 application service 는 `IZLinkActorSessionClient` 를 사용한다. actor
+  가 stream socket 을 직접 들고 있는 구조가 아니다.
 
 ## 13. 회귀 테스트
 

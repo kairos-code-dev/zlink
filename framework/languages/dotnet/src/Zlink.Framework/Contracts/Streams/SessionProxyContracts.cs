@@ -3,12 +3,28 @@ namespace Zlink.Framework.Contracts.Streams;
 public interface IZLinkSessionProxy
 {
     IZLinkSessionProxySendCall Send<TMessage>(
+        TMessage message);
+
+    IZLinkSessionProxyRequestCall Request<TRequest>(
+        TRequest request);
+
+    ValueTask DisconnectAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorSessionClient
+{
+    IZLinkSessionProxySendCall Send<TMessage>(
         string actorId,
         TMessage message);
 
     IZLinkSessionProxyRequestCall Request<TRequest>(
         string actorId,
         TRequest request);
+
+    ValueTask DisconnectAsync(
+        string actorId,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionProxySendCall

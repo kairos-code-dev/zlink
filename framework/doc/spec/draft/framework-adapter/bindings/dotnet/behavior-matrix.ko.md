@@ -105,12 +105,12 @@
 | actor play route resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
 | 같은 actor id가 새 stream session에서 다시 bind | 허용 | 기존 actor 인스턴스를 재사용하고 session binding token[^binding-token]만 갱신한다 |
 | actor factory가 요청 actor id와 다른 id를 반환 | 비허용 | actor route와 binding id가 갈라지므로 actor 생성 오류 |
-| `SessionProxy.Send(...)`가 오래된 binding이나 이미 닫힌 stream에 도착 | 허용된 실패 | 해당 push만 실패하고, route loop와 host shutdown은 계속 진행한다 |
+| `context.SessionProxy.Send(...)` 또는 `IZLinkActorSessionClient.Send(actorId, ...)` 가 오래된 binding이나 이미 닫힌 stream에 도착 | 허용된 실패 | 해당 push만 실패하고, route loop와 host shutdown은 계속 진행한다 |
 | converter 없는 abstract/interface payload를 reply DTO에 포함 | 비허용 | startup validation 또는 첫 submit 직전에 configuration 오류 |
 | spot route resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
 | `IZLinkActorClient` 사용 + play route resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
 | spot name/id 기반 client 또는 `JoinSpot(...)` 사용 + spot route resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
-| `IZLinkSessionProxy` 사용 + actor-session binding 없음 | 비허용 | 현재 actor에 묶인 session이 없으면 명확한 오류 |
+| `IZLinkSessionProxy` 또는 `IZLinkActorSessionClient` 사용 + actor-session binding 없음 | 비허용 | 대상 actor에 묶인 session이 없으면 명확한 오류 |
 
 ## 6. Monitoring Registration Matrix
 

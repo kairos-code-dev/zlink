@@ -5,7 +5,7 @@ using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 
-internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
+internal sealed class GameNotificationPublisher(IZLinkActorSessionClient sessionClient)
 {
     public async ValueTask PublishAsync(
         IReadOnlyList<TicTacToeGameEvent> events,
@@ -13,18 +13,18 @@ internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
     {
         foreach (var gameEvent in events)
         {
-            await PublishAsync(sessionProxy, gameEvent, cancellationToken).ConfigureAwait(false);
+            await PublishAsync(sessionClient, gameEvent, cancellationToken).ConfigureAwait(false);
         }
     }
 
     private static ValueTask PublishAsync(
-        IZLinkSessionProxy proxy,
+        IZLinkActorSessionClient client,
         TicTacToeGameEvent gameEvent,
         CancellationToken cancellationToken)
     {
         return gameEvent switch
         {
-            { Kind: TicTacToeGameEventKind.OpponentJoined } joined => proxy
+            { Kind: TicTacToeGameEventKind.OpponentJoined } joined => client
                 .Send(
                     joined.RecipientActorId,
                     new OpponentJoinedNotify(
@@ -36,7 +36,7 @@ internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
                         joined.Snapshot.ToContract()))
                 .PacketName(SampleNames.OpponentJoinedPacket)
                 .Submit(cancellationToken),
-            { Kind: TicTacToeGameEventKind.TurnChanged } turn => proxy
+            { Kind: TicTacToeGameEventKind.TurnChanged } turn => client
                 .Send(
                     turn.RecipientActorId,
                     new TurnChangedNotify(
@@ -45,7 +45,7 @@ internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
                         turn.Snapshot.ToContract()))
                 .PacketName(SampleNames.TurnChangedPacket)
                 .Submit(cancellationToken),
-            { Kind: TicTacToeGameEventKind.GameEnded } ended => proxy
+            { Kind: TicTacToeGameEventKind.GameEnded } ended => client
                 .Send(
                     ended.RecipientActorId,
                     new GameEndedNotify(

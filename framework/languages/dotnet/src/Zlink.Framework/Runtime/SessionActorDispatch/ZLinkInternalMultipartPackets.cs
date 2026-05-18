@@ -44,6 +44,15 @@ internal static class ZLinkInternalMultipartPackets
         ];
     }
 
+    public static IReadOnlyList<Message> CreateSessionDisconnectParts(
+        ZLinkSessionDisconnectEnvelope envelope)
+    {
+        return
+        [
+            ZLinkEnvelopeCodec.EncodePart(envelope)
+        ];
+    }
+
     public static IReadOnlyList<Message> CreateActorDisconnectedParts(
         string actorId,
         string actorType)
@@ -82,6 +91,12 @@ internal static class ZLinkInternalMultipartPackets
     {
         EnsurePartCount(received, 3, "session proxy");
         return ZLinkEnvelopeCodec.DecodePart<ZLinkSessionProxyEnvelope>(received.Parts[1]);
+    }
+
+    public static ZLinkSessionDisconnectEnvelope DecodeSessionDisconnectEnvelope(Received received)
+    {
+        EnsurePartCount(received, 2, "session disconnect");
+        return ZLinkEnvelopeCodec.DecodePart<ZLinkSessionDisconnectEnvelope>(received.Parts[1]);
     }
 
     public static ReadOnlyMemory<byte> DecodeSessionProxyBody(Received received)

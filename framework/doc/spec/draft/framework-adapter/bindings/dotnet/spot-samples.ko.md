@@ -704,7 +704,7 @@ app.MapPost("/stage/query", async (
         .Request(
             "orders",
             new SampleGetStateRequest { SpotId = request.StageRid })
-        .Submit<SampleGetStateReply>(cancellationToken);
+        .SubmitAsync<SampleGetStateReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -1096,12 +1096,11 @@ public sealed class SampleSpot(
     public async ValueTask BroadcastChatAsync(
         SampleActor sender,
         SampleSendRoomChatCommand command,
-        IZLinkSessionProxy sessionProxy,
+        IZLinkActorSessionClient sessionClient,
         CancellationToken cancellationToken)
     {
-        // actor가 stream을 직접 들고 broadcast하지 않는다 (actor-model.ko.md §10
-        // 정책: server -> client push는 IZLinkSessionProxy 경유). 같은 room의 모든
-        // actor에게 broadcast 할 때도 actor id마다 SessionProxy로 보낸다.
+        // actor가 stream을 직접 들고 broadcast하지 않는다. 같은 room의 모든 actor에게
+        // 보낼 때는 actor id마다 IZLinkActorSessionClient로 보낸다.
         SampleRoomChatPushed pushed = new()
         {
             FromActorId = sender.ActorId,
@@ -1110,7 +1109,7 @@ public sealed class SampleSpot(
 
         foreach (SampleActor actor in _actors.Values)
         {
-            await sessionProxy
+            await sessionClient
                 .Send(actor.ActorId, pushed)
                 .PacketName("SampleRoomChatPushed")
                 .Submit(cancellationToken);
@@ -1252,7 +1251,7 @@ public sealed class SampleActor : IZLinkActor
     {
         return _context
             .JoinSpot(room.Context.SpotName, request)
-            .Submit<SampleJoinRoomReply>(cancellationToken);
+            .SubmitAsync<SampleJoinRoomReply>(cancellationToken);
     }
 
     public ValueTask ReplyAsync<TMessage>(
@@ -1626,7 +1625,7 @@ public sealed class SampleStateUpdatedHandler
                     ConnectedSessionCount = message.ConnectedSessionCount
                 })
             .Timeout(TimeSpan.FromMilliseconds(200))
-            .Submit<SampleSyncStateReply>(cancellationToken);
+            .SubmitAsync<SampleSyncStateReply>(cancellationToken);
     }
 }
 

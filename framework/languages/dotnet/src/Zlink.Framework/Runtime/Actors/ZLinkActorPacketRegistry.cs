@@ -38,7 +38,7 @@ internal sealed class ZLinkActorPacketRegistry
 
     public bool TryResolve(ZlinkStreamHeader header, out ZLinkActorPacketDescriptor? descriptor)
     {
-        if (!TryGetMessageKind(header.Kind, out var kind))
+        if (!ZLinkStreamActorPacketKind.TryMap(header.Kind, out var kind))
         {
             descriptor = null;
             return false;
@@ -57,24 +57,6 @@ internal sealed class ZLinkActorPacketRegistry
         lock (_gate)
         {
             return _packetsByName.TryGetValue((ZLinkMessageKind.Request, messageName), out descriptor);
-        }
-    }
-
-    private static bool TryGetMessageKind(
-        ZlinkStreamMessageKind streamKind,
-        out ZLinkMessageKind kind)
-    {
-        switch (streamKind)
-        {
-            case ZlinkStreamMessageKind.Send:
-                kind = ZLinkMessageKind.Command;
-                return true;
-            case ZlinkStreamMessageKind.Request:
-                kind = ZLinkMessageKind.Request;
-                return true;
-            default:
-                kind = default;
-                return false;
         }
     }
 }

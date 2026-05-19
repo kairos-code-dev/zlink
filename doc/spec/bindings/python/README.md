@@ -200,6 +200,16 @@ The public package must cover stable user-facing core capabilities.
 Python names may follow Python style, but behavior must match the core
 capability meaning.
 
+## Spot Get-Or-Create
+
+Python exposes `SpotNode.get_or_create_spot(spot_rid)`. It maps directly to
+`zlink_spot_node_spot_get_or_new(...)`; it must not be implemented by composing
+`spot_lookup` and `create_spot`.
+
+The method returns `(spot, created)`. The returned `Spot` is caller-owned and
+must be closed normally. `created` is `True` only for the call that created the
+logical spot.
+
 ## Receive And Subscribe Shape
 
 - Data-plane receive and subscribe APIs must use caller-provided result objects

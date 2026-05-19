@@ -1627,6 +1627,29 @@ impl SpotNode {
         }))
     }
 
+    pub fn get_or_create_spot(&self, spot_rid: &RoutingId) -> Result<(Spot, bool), ConfigError> {
+        let mut spot_handle: *mut c_void = ptr::null_mut();
+        let mut created: u32 = 0;
+        check_config_rc(unsafe {
+            ffi::zlink_spot_node_spot_get_or_new(
+                self.handle,
+                spot_rid.as_raw(),
+                &mut spot_handle,
+                &mut created,
+            )
+        })?;
+        Ok((
+            Spot {
+                handle: spot_handle,
+                node_handle: self.handle,
+                send_ready_cb: None,
+                routed_cb: None,
+                dispatch_cb: None,
+            },
+            created != 0,
+        ))
+    }
+
     pub fn peers_snapshot(&self) -> Result<Vec<SpotNodePeerEntry>, ConfigError> {
         let count = count_entries_config(|count| unsafe {
             ffi::zlink_spot_node_peers_snapshot(self.handle, ptr::null_mut(), count)

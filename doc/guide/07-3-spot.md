@@ -71,6 +71,35 @@ The three mode values are:
 Disabled planes do not create their internal sockets — there is no hidden
 resource cost for features you do not use.
 
+### 2.1 Acquiring a Spot with an application room id
+
+When an application already has a room id or group id, use
+`zlink_spot_node_spot_get_or_new()`. It handles the "get it if it exists,
+otherwise create it" flow inside the `SpotNode`, so application code does not
+need to combine lookup, creation, and routing-id reassignment itself.
+
+```c
+zlink_routing_id_t room_rid;
+memset(&room_rid, 0, sizeof(room_rid));
+room_rid.size = 8;
+memcpy(room_rid.data, "room-001", 8);
+
+void *room = NULL;
+uint32_t created = 0;
+zlink_config_result_t rc =
+  zlink_spot_node_spot_get_or_new(node, &room_rid, &room, &created);
+
+if (rc == ZLINK_CONFIG_OK && created) {
+  /* Only the first creator initializes room state. */
+}
+```
+
+The returned `room` is a normal `Spot` facade and must be closed with
+`zlink_spot_destroy()`. Actor join is still a separate step. Keeping Spot
+acquisition separate from join lets the application distinguish "the room was
+created or found" from "the actor reached the room but was rejected by room
+rules."
+
 ## 3. Bringing a node online
 
 ### 3.1 Manual peer wiring

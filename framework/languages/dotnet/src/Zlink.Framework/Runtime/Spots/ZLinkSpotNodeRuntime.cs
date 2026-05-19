@@ -232,10 +232,23 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
         string spotName,
-        RoutingId? requestedSpotRid,
+        IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
     {
-        return await _spots.CreateAsync(spotName, requestedSpotRid, cancellationToken);
+        return await _spots.CreateAsync(spotName, createParts, cancellationToken);
+    }
+
+    public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
+        string spotName,
+        RoutingId requestedSpotRid,
+        IReadOnlyList<Message> createParts,
+        CancellationToken cancellationToken)
+    {
+        return await _spots.GetOrCreateAsync(
+            spotName,
+            requestedSpotRid,
+            createParts,
+            cancellationToken);
     }
 
     public ValueTask<ZLinkSpotInfo?> GetAsync(

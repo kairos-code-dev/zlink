@@ -431,6 +431,22 @@ spot_node_access_t::lookup_spot_state (spot_node_t *node_,
                  : std::shared_ptr<spot_logical_state_t> ();
 }
 
+std::shared_ptr<spot_logical_state_t>
+spot_node_access_t::get_or_new_spot_state (spot_node_t *node_,
+                                           const zlink_routing_id_t *spot_rid_,
+                                           bool *created_out_)
+{
+    return node_ ? node_->get_or_new_spot_state (spot_rid_, created_out_)
+                 : std::shared_ptr<spot_logical_state_t> ();
+}
+
+void spot_node_access_t::remove_spot_state_if_unfacaded (
+  spot_node_t *node_, const std::shared_ptr<spot_logical_state_t> &state_)
+{
+    if (node_)
+        node_->remove_spot_state_if_unfacaded (state_);
+}
+
 int spot_node_access_t::update_spot_routing_id (spot_node_t *node_,
                                                 spot_handle_t *spot_,
                                                 const void *data_,

@@ -199,6 +199,15 @@ The Go package must cover stable user-facing core capabilities.
 The public Go shape may group or rename APIs idiomatically, but it must not
 change the meaning of core operations.
 
+## Spot Get-Or-Create
+
+Go exposes `SpotNode.GetOrCreateSpot(spotRID RoutingID) (*Spot, bool, error)`.
+It maps directly to `zlink_spot_node_spot_get_or_new(...)`; it must not be
+implemented by composing `SpotLookup` and `CreateSpot`.
+
+The returned `*Spot` is caller-owned and must be closed normally. The boolean
+is `true` only for the call that created the logical spot.
+
 ## Receive And Subscribe Shape
 
 - Data-plane receive and subscribe APIs must use reusable caller-owned result

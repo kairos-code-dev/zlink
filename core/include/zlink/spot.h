@@ -65,6 +65,12 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup (
   const zlink_routing_id_t *spot_rid_,
   void **spot_out_);
 
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_get_or_new (
+  void *node_,
+  const zlink_routing_id_t *spot_rid_,
+  void **spot_out_,
+  uint32_t *created_out_);
+
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_new (
   void *node_,
   const char *actor_id_,

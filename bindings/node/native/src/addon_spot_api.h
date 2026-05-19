@@ -22,6 +22,7 @@ napi_value spot_node_setsockopt(napi_env env, napi_callback_info info);
 napi_value spot_node_getsockopt(napi_env env, napi_callback_info info);
 napi_value spot_node_entry_spot(napi_env env, napi_callback_info info);
 napi_value spot_node_spot_lookup(napi_env env, napi_callback_info info);
+napi_value spot_node_spot_get_or_new(napi_env env, napi_callback_info info);
 napi_value spot_node_status_snapshot(napi_env env, napi_callback_info info);
 napi_value spot_node_peers_snapshot(napi_env env, napi_callback_info info);
 napi_value spot_node_peers_query(napi_env env, napi_callback_info info);

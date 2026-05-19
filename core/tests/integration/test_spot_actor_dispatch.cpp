@@ -689,6 +689,145 @@ bool find_spot_snapshot_row (void *node_,
     return false;
 }
 
+void test_spot_get_or_new_creates_and_reuses_logical_spot ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+
+    zlink_routing_id_t room_rid;
+    set_rid (&room_rid, "room-get-or-new");
+
+    void *first = NULL;
+    uint32_t first_created = 0;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_spot_get_or_new (
+                         node, &room_rid, &first, &first_created));
+    TEST_ASSERT_NOT_NULL (first);
+    TEST_ASSERT_EQUAL_UINT32 (1u, first_created);
+
+    void *second = NULL;
+    uint32_t second_created = 1;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_spot_get_or_new (
+                         node, &room_rid, &second, &second_created));
+    TEST_ASSERT_NOT_NULL (second);
+    TEST_ASSERT_EQUAL_UINT32 (0u, second_created);
+    TEST_ASSERT_NOT_EQUAL (first, second);
+
+    zlink_routing_id_t first_rid;
+    zlink_routing_id_t second_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (first, &first_rid));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (second, &second_rid));
+    assert_same_rid (room_rid, first_rid);
+    assert_same_rid (room_rid, second_rid);
+    TEST_ASSERT_TRUE (find_spot_snapshot_row (node, room_rid, NULL));
+
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&first));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&second));
+    TEST_ASSERT_FALSE (find_spot_snapshot_row (node, room_rid, NULL));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_spot_get_or_new_rejects_invalid_args_and_clears_outputs ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+
+    zlink_routing_id_t room_rid;
+    set_rid (&room_rid, "room-invalid");
+    void *spot = reinterpret_cast<void *> (0x1);
+    uint32_t created = 1;
+
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_HANDLE,
+                       zlink_spot_node_spot_get_or_new (
+                         NULL, &room_rid, &spot, &created));
+    TEST_ASSERT_NULL (spot);
+    TEST_ASSERT_EQUAL_UINT32 (0u, created);
+
+    spot = reinterpret_cast<void *> (0x1);
+    created = 1;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+                       zlink_spot_node_spot_get_or_new (
+                         node, NULL, &spot, &created));
+    TEST_ASSERT_NULL (spot);
+    TEST_ASSERT_EQUAL_UINT32 (0u, created);
+
+    created = 1;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+                       zlink_spot_node_spot_get_or_new (
+                         node, &room_rid, NULL, &created));
+    TEST_ASSERT_EQUAL_UINT32 (0u, created);
+
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_spot_get_or_new_concurrent_callers_create_once ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+
+    zlink_routing_id_t room_rid;
+    set_rid (&room_rid, "room-concurrent");
+    const size_t worker_count = 16;
+    std::vector<void *> spots (worker_count, NULL);
+    std::vector<uint32_t> created (worker_count, 0);
+    std::vector<zlink_config_result_t> results (
+      worker_count, ZLINK_CONFIG_INTERNAL_ERROR);
+    std::mutex start_mutex;
+    std::condition_variable start_cv;
+    bool start = false;
+    std::vector<std::thread> workers;
+    workers.reserve (worker_count);
+
+    for (size_t i = 0; i < worker_count; ++i) {
+        workers.push_back (std::thread ([&, i] () {
+            {
+                std::unique_lock<std::mutex> lock (start_mutex);
+                start_cv.wait (lock, [&] { return start; });
+            }
+            results[i] = zlink_spot_node_spot_get_or_new (
+              node, &room_rid, &spots[i], &created[i]);
+        }));
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (start_mutex);
+        start = true;
+    }
+    start_cv.notify_all ();
+    for (size_t i = 0; i < workers.size (); ++i)
+        workers[i].join ();
+
+    size_t created_count = 0;
+    for (size_t i = 0; i < worker_count; ++i) {
+        TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, results[i]);
+        TEST_ASSERT_NOT_NULL (spots[i]);
+        created_count += created[i] != 0 ? 1u : 0u;
+        zlink_routing_id_t got_rid;
+        TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                           zlink_get_routing_id (spots[i], &got_rid));
+        assert_same_rid (room_rid, got_rid);
+    }
+    TEST_ASSERT_EQUAL_UINT64 (1u, created_count);
+    TEST_ASSERT_TRUE (find_spot_snapshot_row (node, room_rid, NULL));
+
+    for (size_t i = 0; i < worker_count; ++i)
+        TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&spots[i]));
+    TEST_ASSERT_FALSE (find_spot_snapshot_row (node, room_rid, NULL));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 struct actor_probe_t
 {
     actor_probe_t () :
@@ -1254,7 +1393,10 @@ void test_actor_join_bind_relay_and_dispatch_recv ()
         std::unique_lock<std::mutex> lock (probe.mutex);
         TEST_ASSERT_TRUE (probe.cv.wait_for (
           lock, std::chrono::seconds (2),
-          [&] { return probe.join_done || probe.failed; }));
+          [&] {
+              return (probe.join_done && probe.double_reply_checked)
+                     || probe.failed;
+          }));
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, probe.join_result);
         TEST_ASSERT_TRUE (probe.double_reply_checked);
@@ -1952,6 +2094,9 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_entry_spot_facade_lookup_and_rid);
     RUN_TEST (test_spot_lookup_refcount_and_rid_index);
+    RUN_TEST (test_spot_get_or_new_creates_and_reuses_logical_spot);
+    RUN_TEST (test_spot_get_or_new_rejects_invalid_args_and_clears_outputs);
+    RUN_TEST (test_spot_get_or_new_concurrent_callers_create_once);
     RUN_TEST (test_entry_spot_dispatch_receives_bound_actor_message);
     RUN_TEST (test_actor_join_bind_relay_and_dispatch_recv);
     RUN_TEST (test_actor_join_timeout_without_dispatch_handler);

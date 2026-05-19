@@ -511,6 +511,7 @@ class spot_node_t
 
     spot_t create_spot ();
     spot_t entry_spot ();
+    std::pair<spot_t, bool> get_or_create_spot (const routing_id_t &spot_rid_);
     std::optional<spot_t> spot_lookup (const routing_id_t &spot_rid_);
 
     void close ()

@@ -11,10 +11,19 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal async ValueTask<ZLinkSpotCreateResult> CreateSpotAsync(
         string spotName,
-        RoutingId? spotRid,
+        IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
     {
-        return await _spotFacade.CreateAsync(spotName, spotRid, cancellationToken);
+        return await _spotFacade.CreateAsync(spotName, createParts, cancellationToken);
+    }
+
+    internal async ValueTask<ZLinkSpotCreateResult> GetOrCreateSpotAsync(
+        string spotName,
+        RoutingId spotRid,
+        IReadOnlyList<Message> createParts,
+        CancellationToken cancellationToken)
+    {
+        return await _spotFacade.GetOrCreateAsync(spotName, spotRid, createParts, cancellationToken);
     }
 
     internal async ValueTask<ZLinkSpotInfo?> GetSpotAsync(

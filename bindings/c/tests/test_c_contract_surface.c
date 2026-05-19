@@ -12,8 +12,8 @@ int main(void)
 {
     CHECK(ZLINK_VERSION_MAJOR == 6);
     CHECK(ZLINK_VERSION_MINOR == 0);
-    CHECK(ZLINK_VERSION_PATCH == 0);
-    CHECK(ZLINK_VERSION == ZLINK_MAKE_VERSION(6, 0, 0));
+    CHECK(ZLINK_VERSION_PATCH == 1);
+    CHECK(ZLINK_VERSION == ZLINK_MAKE_VERSION(6, 0, 1));
 
     CHECK(ZLINK_SOCKET_PAIR == 0x1001);
     CHECK(ZLINK_SOCKET_STREAM == 0x1008);
@@ -35,5 +35,6 @@ int main(void)
     CHECK(zlink_recv_part != NULL);
     CHECK(zlink_publish_part != NULL);
     CHECK(zlink_subscribe_part != NULL);
+    CHECK(zlink_spot_node_spot_get_or_new != NULL);
     return 0;
 }

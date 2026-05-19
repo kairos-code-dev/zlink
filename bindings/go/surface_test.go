@@ -157,6 +157,9 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "SpotLookup") {
 		t.Fatalf("SpotNode should expose SpotLookup")
 	}
+	if !hasMethod((*zlink.SpotNode)(nil), "GetOrCreateSpot") {
+		t.Fatalf("SpotNode should expose GetOrCreateSpot")
+	}
 	if !hasMethod((*zlink.SpotNode)(nil), "StatusSnapshot") {
 		t.Fatalf("SpotNode should expose StatusSnapshot")
 	}

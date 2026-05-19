@@ -110,6 +110,24 @@ facade다. `Spot`을 닫아도 backing `SpotNode`는 자동으로 닫히지 않�
 facade는 application이 `zlink_spot_node_entry_spot()`으로 얻어서 사용하고,
 `zlink_spot_destroy()`로 닫는다.
 
+### 1.1 logical Spot map과 get-or-new
+
+`SpotNode`는 logical Spot을 routing id index로 관리한다. `Spot` handle은 facade일
+뿐이므로 같은 logical Spot을 가리키는 facade가 여러 개 존재할 수 있다. 이 구조
+때문에 명시적 room id를 가진 Spot 확보는 `lookup -> zlink_spot_new() ->
+zlink_set_routing_id()` 조합으로 만들면 안 된다. 그 순서는 호출자가 내부 index
+변경과 경합 처리를 알아야 하므로 API 경계가 얕아진다.
+
+`zlink_spot_node_spot_get_or_new()`는 같은 `SpotNode`와 같은 Spot routing id에 대해
+logical Spot 생성 여부를 `SpotNode` 내부 lock 아래에서 결정한다. 처음 성공한
+호출만 logical state를 만들고 `created_out = 1`을 받는다. 이후 성공 호출은 같은
+logical state에 대한 새 facade만 만들고 `created_out = 0`을 받는다.
+
+snapshot API는 진단용 facade 관찰도 포함할 수 있다. 따라서 같은 logical Spot에
+대해 여러 facade가 살아 있으면 snapshot row가 둘 이상 보일 수 있다. logical Spot
+생성 여부를 판단해야 하는 코드는 snapshot row 수가 아니라 get-or-new의
+`created_out` 값을 기준으로 삼는다.
+
 ## 2. 내부 소켓 토폴로지
 
 SpotNode는 mode에 필요한 socket 묶음만 만든다.

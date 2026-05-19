@@ -70,6 +70,7 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     void AttachPubIngress(IPubSocket pub);
     ISpot CreateSpot();
     ISpot EntrySpot();
+    ISpot GetOrCreateSpot(RoutingId spotRid, out bool created);
     ISpot? SpotLookup(RoutingId spotRid);
     IActor CreateActor(string actorId);
     ActorRef ActorLookup(string actorId);

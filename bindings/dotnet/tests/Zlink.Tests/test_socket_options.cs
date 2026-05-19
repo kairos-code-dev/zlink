@@ -163,4 +163,23 @@ public sealed class test_socket_options
         Assert.Null(node.SpotLookup(CoreTestSupport.RoutingIdUtf8("missing")));
     }
 
+    [Fact]
+    public void spot_node_get_or_create_spot_reuses_logical_spot()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        var spotRid = CoreTestSupport.RoutingIdUtf8("managed-room");
+
+        using var first = node.GetOrCreateSpot(spotRid, out var firstCreated);
+        using var second = node.GetOrCreateSpot(spotRid, out var secondCreated);
+
+        Assert.True(firstCreated);
+        Assert.False(secondCreated);
+        Assert.Equal(spotRid, first.RoutingId);
+        Assert.Equal(spotRid, second.RoutingId);
+    }
+
 }

@@ -235,3 +235,18 @@ fn spot_reply_with_non_empty_flags_fails_explicitly() {
         .unwrap_err();
     assert_eq!(spot_err.code(), SubmitResult::NotSupported);
 }
+
+#[test]
+fn spot_node_get_or_create_spot_reuses_logical_spot() {
+    let ctx = Context::new().unwrap();
+    let node = SpotNode::new(&ctx).unwrap();
+    let rid = RoutingId::from_bytes(b"rust-room");
+
+    let (first, first_created) = node.get_or_create_spot(&rid).unwrap();
+    let (second, second_created) = node.get_or_create_spot(&rid).unwrap();
+
+    assert!(first_created);
+    assert!(!second_created);
+    assert_eq!(first.routing_id().unwrap(), rid);
+    assert_eq!(second.routing_id().unwrap(), rid);
+}

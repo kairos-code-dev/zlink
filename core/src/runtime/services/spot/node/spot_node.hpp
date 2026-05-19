@@ -79,6 +79,10 @@ class spot_node_t : public discovery_observer_t
     std::shared_ptr<spot_logical_state_t> entry_spot_state ();
     std::shared_ptr<spot_logical_state_t> lookup_spot_state (
       const zlink_routing_id_t *spot_rid_);
+    std::shared_ptr<spot_logical_state_t> get_or_new_spot_state (
+      const zlink_routing_id_t *spot_rid_, bool *created_out_);
+    void remove_spot_state_if_unfacaded (
+      const std::shared_ptr<spot_logical_state_t> &state_);
     void snapshot_spot_states (
       std::vector<std::shared_ptr<spot_logical_state_t> > *out_) const;
     int fanout_local_publish (const zlink_routing_id_t *source_rid_,
@@ -290,7 +294,7 @@ class spot_node_t : public discovery_observer_t
     void refresh_sub_peer_summaries (bool has_active_peers,
                                      bool lost_transition);
     std::shared_ptr<spot_logical_state_t> create_logical_spot_state_locked (
-      bool entry_);
+      bool entry_, const zlink_routing_id_t *spot_rid_ = NULL);
     bool spot_owner_summary_publishable_locked () const;
     void schedule_subscription_ready_refresh ();
     void schedule_pub_delivery_ready_refresh ();

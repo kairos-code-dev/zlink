@@ -434,6 +434,31 @@ func (n *SpotNode) SpotLookup(spotRID RoutingID) (*Spot, error) {
 	return &Spot{core: core}, nil
 }
 
+func (n *SpotNode) GetOrCreateSpot(spotRID RoutingID) (*Spot, bool, error) {
+	if n == nil {
+		return nil, false, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	rid := spotRID.toC()
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.closed || n.closing || n.handle == nil {
+		return nil, false, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	var handle unsafe.Pointer
+	var created C.uint32_t
+	if err := configErrorFromResult(C.zlink_spot_node_spot_get_or_new(
+		n.handle,
+		(*C.zlink_routing_id_t)(unsafe.Pointer(&rid)),
+		&handle,
+		&created,
+	)); err != nil {
+		return nil, false, err
+	}
+	core := &spotCore{handle: handle, owner: n}
+	n.spots[core] = struct{}{}
+	return &Spot{core: core}, created != 0, nil
+}
+
 func (n *SpotNode) Close() error {
 	if n == nil {
 		return nil

@@ -88,6 +88,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertFalse(hasattr(zlink.SpotNode, "destroy_" + "remote_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "join_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "leave_actor"))
+        self.assertTrue(hasattr(zlink.SpotNode, "get_or_create_spot"))
         self.assertTrue(hasattr(zlink.SpotNode, "spots_snapshot"))
         self.assertTrue(hasattr(zlink.SpotNode, "actors_snapshot"))
         self.assertTrue(hasattr(zlink.Spot, "recv_actor_join"))
@@ -283,6 +284,17 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     )
                     spot.set_routing_id(b"spot-1")
                     self.assertEqual(spot.routing_id, zlink.RoutingId.from_bytes(b"spot-1"))
+                    room_rid = zlink.RoutingId.from_bytes(b"py-room")
+                    room_a, created_a = node.get_or_create_spot(room_rid)
+                    room_b, created_b = node.get_or_create_spot(room_rid)
+                    try:
+                        self.assertTrue(created_a)
+                        self.assertFalse(created_b)
+                        self.assertEqual(room_a.routing_id, room_rid)
+                        self.assertEqual(room_b.routing_id, room_rid)
+                    finally:
+                        room_b.close()
+                        room_a.close()
                     self.assertTrue(hasattr(spot, "send_to_spot"))
                     self.assertTrue(hasattr(spot, "request_to_spot"))
                     self.assertTrue(hasattr(spot, "reply_to_spot"))
@@ -368,6 +380,13 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.assertEqual(message.to_bytes(), b"payload")
             self.assertEqual(bytes(message.data), b"payload")
             self.assertEqual(message.ref_count(), message.refCount())
+
+        with zlink.Message.allocate(3) as message:
+            data = message.data
+            data[0] = 0x01
+            data[1] = 0x02
+            data[2] = 0x03
+            self.assertEqual(message.to_bytes(), b"\x01\x02\x03")
 
     def test_c_string_inputs_reject_embedded_nul(self):
         ctx = zlink.Context()

@@ -272,6 +272,16 @@ Raw `*_part` loops, callback userdata, and native handle helpers are internal
 implementation primitives unless the public Java API intentionally exposes a
 typed facade for the same capability.
 
+## Spot Get-Or-Create
+
+Java exposes `SpotNode.getOrCreateSpot(RoutingId)`. It maps directly to
+`zlink_spot_node_spot_get_or_new(...)`; it must not be implemented by composing
+`spotLookup` and `createSpot`.
+
+The method returns a concrete result containing the caller-owned `Spot` facade
+and a `created` boolean. `created` is `true` only for the call that created the
+logical spot.
+
 ## Receive And Subscribe Shape
 
 Java receive APIs should avoid unnecessary allocation while staying idiomatic.

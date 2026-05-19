@@ -65,6 +65,38 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
   before destroy.
 - `zlink_spot_node_destroy()` tears down the node runtime.
 
+### Explicit routing-id Spot acquisition
+
+```c
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_get_or_new(
+  void *node_,
+  const zlink_routing_id_t *spot_rid_,
+  void **spot_out_,
+  uint32_t *created_out_);
+```
+
+- This function obtains the logical Spot identified by `spot_rid_` within the
+  local `SpotNode`.
+- Successful calls with the same `node_` and `spot_rid_` receive new owned
+  facade handles that point to the same logical Spot.
+- If the logical Spot did not exist and this call created it, `created_out_ != NULL`
+  yields `*created_out_ = 1`.
+- If the logical Spot already existed, the call only creates a new facade and
+  `created_out_ != NULL` yields `*created_out_ = 0`.
+- `created_out_ == NULL` is allowed when the caller does not need the creation flag.
+- If `node_ == NULL`, fails with `ZLINK_CONFIG_INVALID_HANDLE` and `errno == EFAULT`.
+- If `spot_rid_ == NULL` or `spot_out_ == NULL`, fails with
+  `ZLINK_CONFIG_INVALID_ARGUMENT` and `errno == EINVAL`.
+- If `spot_rid_` is empty or too large, fails with `ZLINK_CONFIG_INVALID_ARGUMENT`
+  and `errno == EINVAL`.
+- On failure, implementations initialize `*spot_out_ = NULL` and `*created_out_ = 0`
+  when those output pointers are available.
+- The returned facade handle is owned by the caller and must be closed with
+  `zlink_spot_destroy()`.
+- This function does not perform actor join. Joining a room or stage remains a
+  separate join API step.
+- Remote Spot creation or acquisition is outside this function's scope.
+
 ## Entry Spot
 
 When a `SpotNode` is created, it internally creates an `Entry Spot` logical state.

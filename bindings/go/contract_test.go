@@ -162,6 +162,32 @@ func TestSpotNodeEntrySpotAndLookup(t *testing.T) {
 	if !lookupSpotRID.Equal(spotRID) {
 		t.Fatalf("SpotLookup(user spot) returned routing id %s, want %s", lookupSpotRID.Hex(), spotRID.Hex())
 	}
+
+	roomRID := zlink.NewRoutingID([]byte("go-room"))
+	roomA, createdA, err := node.GetOrCreateSpot(roomRID)
+	if err != nil {
+		t.Fatalf("GetOrCreateSpot(first) error = %v", err)
+	}
+	defer roomA.Close()
+	roomB, createdB, err := node.GetOrCreateSpot(roomRID)
+	if err != nil {
+		t.Fatalf("GetOrCreateSpot(second) error = %v", err)
+	}
+	defer roomB.Close()
+	if !createdA || createdB {
+		t.Fatalf("GetOrCreateSpot created flags = %v, %v; want true, false", createdA, createdB)
+	}
+	roomARID, err := roomA.RoutingID()
+	if err != nil {
+		t.Fatalf("roomA RoutingID() error = %v", err)
+	}
+	roomBRID, err := roomB.RoutingID()
+	if err != nil {
+		t.Fatalf("roomB RoutingID() error = %v", err)
+	}
+	if !roomARID.Equal(roomRID) || !roomBRID.Equal(roomRID) {
+		t.Fatalf("GetOrCreateSpot returned unexpected routing ids")
+	}
 }
 
 func TestAttachDiscoveryBlocksManualSocketLifecycleControls(t *testing.T) {

@@ -26,6 +26,7 @@ public sealed class DocumentationRegressionTests
         "spot-samples.ko.md",
         "stream-samples.ko.md",
         "tictactoe-game-sample.ko.md",
+        "bingo-game-sample.ko.md",
     ];
 
     [Fact]

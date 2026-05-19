@@ -19,6 +19,8 @@ public enum ZLinkFrameworkErrorKind
     ActorCreateFailed,
     ActorAlreadyExists,
     ActorTypeMismatch,
+    SpotCreateFailed,
+    SpotTypeMismatch,
     ActorSessionNotBound,
     SessionRouteNotFound,
     SessionLocationUpdateFailed,

@@ -188,6 +188,10 @@ internal static partial class NativeMethods
         ref ZlinkRoutingId spotRid, out IntPtr spot);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_spot_get_or_new(IntPtr node,
+        ref ZlinkRoutingId spotRid, out IntPtr spot, out uint created);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_status_snapshot(IntPtr node,
         out ZlinkSpotNodeStatus status);
 

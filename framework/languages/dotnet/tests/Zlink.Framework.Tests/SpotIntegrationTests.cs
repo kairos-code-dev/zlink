@@ -61,6 +61,66 @@ public sealed class SpotIntegrationTests
     }
 
     [Fact]
+    public async Task SpotManager_CreateAsync_Passes_Empty_CreatePayload_To_OnCreate()
+    {
+        using var host = await CreatePayloadHostAsync(GetFreeTcpEndpoint());
+        var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+        var recorder = host.Services.GetRequiredService<SpotCreatePayloadRecorder>();
+
+        var created = await manager.CreateAsync("payload-stage");
+
+        Assert.True(created.Created);
+        var payload = Assert.Single(recorder.Payloads);
+        Assert.Empty(payload);
+    }
+
+    [Fact]
+    public async Task SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload()
+    {
+        using var host = await CreatePayloadHostAsync(GetFreeTcpEndpoint());
+        var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+        var recorder = host.Services.GetRequiredService<SpotCreatePayloadRecorder>();
+        recorder.BlockCreate();
+        var spotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("payload-room"));
+        using var firstA = Message.FromString("first-a");
+        using var firstB = Message.FromString("first-b");
+        using var second = Message.FromString("second");
+
+        var first = manager.GetOrCreateAsync(
+            "payload-stage",
+            spotRid,
+            [firstA, firstB]).AsTask();
+        await recorder.WaitCreateEnteredAsync();
+        var secondResult = manager.GetOrCreateAsync(
+            "payload-stage",
+            spotRid,
+            [second]).AsTask();
+        recorder.ReleaseCreate();
+
+        var results = await Task.WhenAll(first, secondResult);
+
+        Assert.Single(results, static result => result.Created);
+        Assert.Single(results, static result => !result.Created);
+        Assert.All(results, result => Assert.Equal(spotRid, result.SpotRid));
+        var payload = Assert.Single(recorder.Payloads);
+        Assert.Equal(["first-a", "first-b"], payload);
+    }
+
+    [Fact]
+    public async Task SpotManager_GetOrCreateAsync_Rejects_SpotName_Mismatch()
+    {
+        using var host = await CreatePayloadHostAsync(GetFreeTcpEndpoint());
+        var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+        var spotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("payload-room-2"));
+
+        _ = await manager.GetOrCreateAsync("payload-stage", spotRid);
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            () => manager.GetOrCreateAsync("other-payload-stage", spotRid).AsTask());
+
+        Assert.Equal(ZLinkFrameworkErrorKind.SpotTypeMismatch, error.Kind);
+    }
+
+    [Fact]
     public async Task Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();
@@ -1105,6 +1165,25 @@ public sealed class SpotIntegrationTests
         return host;
     }
 
+    private static async Task<IHost> CreatePayloadHostAsync(string spotNode)
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<SpotCreatePayloadRecorder>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddSpotNode("payload-node", spot =>
+            {
+                spot.Bind(spotNode);
+                spot.AddSpotFactory<CreatePayloadStageSpot>("payload-stage");
+                spot.AddSpotFactory<CreatePayloadStageSpot>("other-payload-stage");
+            });
+        });
+
+        var host = builder.Build();
+        await host.StartAsync();
+        return host;
+    }
+
     private static async Task RetryAsync(Func<bool> predicate, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
@@ -1206,6 +1285,20 @@ public sealed class SpotIntegrationTests
             _ = cancellationToken;
             _events.RecordClosing(Context.SpotRid);
             return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class CreatePayloadStageSpot(
+        IZLinkSpotContext context,
+        SpotCreatePayloadRecorder recorder) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public async ValueTask OnCreateAsync(
+            IReadOnlyList<Message> createParts,
+            CancellationToken cancellationToken)
+        {
+            await recorder.RecordAsync(createParts, cancellationToken);
         }
     }
 
@@ -1883,6 +1976,59 @@ public sealed class SpotIntegrationTests
     public sealed class OrdersRecorder
     {
         public ConcurrentBag<string> ReceivedScopes { get; } = [];
+    }
+
+    public sealed class SpotCreatePayloadRecorder
+    {
+        private readonly object _gate = new();
+        private TaskCompletionSource? _entered;
+        private TaskCompletionSource? _release;
+
+        public ConcurrentBag<IReadOnlyList<string>> Payloads { get; } = [];
+
+        public void BlockCreate()
+        {
+            lock (_gate)
+            {
+                _entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
+        public Task WaitCreateEnteredAsync()
+        {
+            lock (_gate)
+            {
+                return _entered?.Task ?? Task.CompletedTask;
+            }
+        }
+
+        public void ReleaseCreate()
+        {
+            lock (_gate)
+            {
+                _release?.TrySetResult();
+            }
+        }
+
+        public async ValueTask RecordAsync(
+            IReadOnlyList<Message> createParts,
+            CancellationToken cancellationToken)
+        {
+            Task? release;
+            lock (_gate)
+            {
+                _entered?.TrySetResult();
+                release = _release?.Task;
+            }
+
+            if (release is not null)
+            {
+                await release.WaitAsync(cancellationToken);
+            }
+
+            Payloads.Add(createParts.Select(static part => part.GetString()).ToArray());
+        }
     }
 
     public sealed class SpotLifecycleRecorder

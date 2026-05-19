@@ -872,7 +872,8 @@ std::shared_ptr<spot_logical_state_t> spot_node_t::entry_spot_state ()
 }
 
 std::shared_ptr<spot_logical_state_t>
-spot_node_t::create_logical_spot_state_locked (bool entry_)
+spot_node_t::create_logical_spot_state_locked (
+  bool entry_, const zlink_routing_id_t *spot_rid_)
 {
     std::shared_ptr<spot_logical_state_t> state (
       new (std::nothrow) spot_logical_state_t ());
@@ -882,7 +883,10 @@ spot_node_t::create_logical_spot_state_locked (bool entry_)
     }
     state->node = this;
     state->stable_id = _handle_state.next_spot_stable_id++;
-    generate_random_uuid_routing_id (&state->routing_id);
+    if (spot_rid_)
+        state->routing_id = *spot_rid_;
+    else
+        generate_random_uuid_routing_id (&state->routing_id);
     state->entry = entry_;
     state->rid_locked = entry_ && _handle_state.entry_spot_rid_locked;
 
@@ -926,6 +930,67 @@ std::shared_ptr<spot_logical_state_t> spot_node_t::lookup_spot_state (
         return std::shared_ptr<spot_logical_state_t> ();
     }
     return it->second;
+}
+
+std::shared_ptr<spot_logical_state_t> spot_node_t::get_or_new_spot_state (
+  const zlink_routing_id_t *spot_rid_, bool *created_out_)
+{
+    if (created_out_)
+        *created_out_ = false;
+    if (!spot_rid_ || !valid_spot_rid_local (*spot_rid_)) {
+        errno = EINVAL;
+        return std::shared_ptr<spot_logical_state_t> ();
+    }
+
+    bool publish_summary = false;
+    std::shared_ptr<spot_logical_state_t> state;
+    {
+        scoped_lock_t lock (_sync);
+        const std::string key = spot_rid_key_local (*spot_rid_);
+        const std::map<std::string, std::shared_ptr<spot_logical_state_t> >::iterator
+          it = _handle_state.spots_by_rid.find (key);
+        if (it != _handle_state.spots_by_rid.end ()) {
+            state = it->second;
+        } else {
+            state = create_logical_spot_state_locked (false, spot_rid_);
+            if (!state)
+                return std::shared_ptr<spot_logical_state_t> ();
+            if (created_out_)
+                *created_out_ = true;
+            publish_summary = spot_owner_summary_publishable_locked ();
+        }
+    }
+    if (publish_summary)
+        submit_spot_owner_summary (state, ZLINK_TOPOLOGY_STATE_READY, 0);
+    return state;
+}
+
+void spot_node_t::remove_spot_state_if_unfacaded (
+  const std::shared_ptr<spot_logical_state_t> &state_)
+{
+    if (!state_ || state_->entry)
+        return;
+
+    bool removed = false;
+    {
+        scoped_lock_t lock (_sync);
+        for (std::set<spot_handle_t *>::const_iterator it =
+               _handle_state.facades.begin ();
+             it != _handle_state.facades.end (); ++it) {
+            if ((*it)->logical_state == state_)
+                return;
+        }
+
+        const std::string key = spot_rid_key_local (state_->routing_id);
+        std::map<std::string, std::shared_ptr<spot_logical_state_t> >::iterator
+          it = _handle_state.spots_by_rid.find (key);
+        if (it != _handle_state.spots_by_rid.end () && it->second == state_) {
+            _handle_state.spots_by_rid.erase (it);
+            removed = true;
+        }
+    }
+    if (removed)
+        submit_spot_owner_summary (state_, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
 }
 
 void spot_node_t::snapshot_spot_states (

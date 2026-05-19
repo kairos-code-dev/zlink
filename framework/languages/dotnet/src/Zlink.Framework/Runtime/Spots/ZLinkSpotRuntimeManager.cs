@@ -44,14 +44,36 @@ internal sealed class ZLinkSpotRuntimeManager(
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
         ZLinkFrameworkRuntimeState state,
         string spotName,
-        RoutingId? spotRid,
+        IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
     {
         foreach (var node in state.SpotNodes.Values)
         {
             if (node.SpotFactories.ContainsKey(spotName))
             {
-                return await node.CreateAsync(spotName, spotRid, cancellationToken);
+                return await node.CreateAsync(spotName, createParts, cancellationToken);
+            }
+        }
+
+        throw new ZLinkConfigurationException($"SPOT factory '{spotName}' is not registered.");
+    }
+
+    public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
+        ZLinkFrameworkRuntimeState state,
+        string spotName,
+        RoutingId spotRid,
+        IReadOnlyList<Message> createParts,
+        CancellationToken cancellationToken)
+    {
+        foreach (var node in state.SpotNodes.Values)
+        {
+            if (node.SpotFactories.ContainsKey(spotName))
+            {
+                return await node.GetOrCreateAsync(
+                    spotName,
+                    spotRid,
+                    createParts,
+                    cancellationToken);
             }
         }
 

@@ -208,6 +208,15 @@ The public crate must cover stable user-facing core capabilities.
 Rust names and ownership models may differ from C, but behavior must match the
 core capability meaning.
 
+## Spot Get-Or-Create
+
+Rust exposes `SpotNode::get_or_create_spot(&RoutingId) -> Result<(Spot, bool),
+ConfigError>`. It maps directly to `zlink_spot_node_spot_get_or_new(...)`; it
+must not be implemented by composing `spot_lookup` and `create_spot`.
+
+The returned `Spot` is owned by the caller and follows normal `Drop` lifetime
+rules. The boolean is `true` only for the call that created the logical spot.
+
 ## Receive And Subscribe Shape
 
 - Data-plane receive and subscribe APIs must use reusable caller-owned result

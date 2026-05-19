@@ -110,6 +110,24 @@ The `Entry Spot` is one per `SpotNode`, owned by the `SpotNode`. The application
 obtains an `Entry Spot` facade via `zlink_spot_node_entry_spot()` and closes it with
 `zlink_spot_destroy()`.
 
+### 1.1 Logical Spot Map And Get-Or-New
+
+`SpotNode` indexes logical Spots by routing id. `Spot` handles are facades, so
+multiple facade handles can point to the same logical Spot. Because of that,
+explicit room-id acquisition must not be assembled from `lookup ->
+zlink_spot_new() -> zlink_set_routing_id()`. That sequence leaks routing-id index
+and race handling to the caller.
+
+`zlink_spot_node_spot_get_or_new()` decides creation for the same `SpotNode` and
+Spot routing id under the `SpotNode` lock. The first successful caller creates
+the logical state and receives `created_out = 1`. Later successful callers create
+new facades for the same logical state and receive `created_out = 0`.
+
+Snapshot APIs are diagnostic and may include facade observations. If several
+facades are alive for the same logical Spot, snapshot output may contain more
+than one row with the same Spot rid. Code that needs to know whether it created
+the logical Spot must use `created_out`, not the number of snapshot rows.
+
 ## 2. Internal Socket Topology
 
 SpotNode creates only the socket planes required by its mode.

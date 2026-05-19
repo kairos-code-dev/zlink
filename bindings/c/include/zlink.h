@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 6
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 0
+#define ZLINK_VERSION_PATCH 1
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -1273,6 +1273,12 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup (
   void *node_,
   const zlink_routing_id_t *spot_rid_,
   void **spot_out_);
+
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_get_or_new (
+  void *node_,
+  const zlink_routing_id_t *spot_rid_,
+  void **spot_out_,
+  uint32_t *created_out_);
 
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_new (
   void *node_,

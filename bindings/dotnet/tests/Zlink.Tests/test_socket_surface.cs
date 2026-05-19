@@ -142,6 +142,10 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
             nameof(SpotNode.ActorLookup), typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.GetOrCreateSpot),
+            typeof(RoutingId),
+            typeof(bool).MakeByRefType()));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
             nameof(SpotNode.RemoteActorGetRef), typeof(RoutingId),
             typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
@@ -316,6 +320,8 @@ public sealed class test_socket_surface
             typeof(ISpotNode).GetMethod(nameof(ISpotNode.CreateSpot))!.ReturnType);
         Assert.Equal(typeof(ISpot),
             typeof(ISpotNode).GetMethod(nameof(ISpotNode.EntrySpot))!.ReturnType);
+        Assert.Equal(typeof(ISpot),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.GetOrCreateSpot))!.ReturnType);
         Assert.Equal(typeof(ISpot),
             typeof(ISpotNode).GetMethod(nameof(ISpotNode.SpotLookup))!.ReturnType);
         Assert.Equal(typeof(IActor),

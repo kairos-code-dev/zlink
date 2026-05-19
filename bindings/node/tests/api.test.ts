@@ -80,6 +80,15 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(lookedUpSpot.routingId.toBytes().toString(), 'entry-spot-id');
   lookedUpSpot.close();
   entrySpot.close();
+  const roomRid = zlink.RoutingId.fromBytes(Buffer.from('node-room-id'));
+  const firstRoom = node.getOrCreateSpot(roomRid);
+  const secondRoom = node.getOrCreateSpot(roomRid);
+  assert.equal(firstRoom.created, true);
+  assert.equal(secondRoom.created, false);
+  assert.equal(firstRoom.spot.routingId.toBytes().toString(), 'node-room-id');
+  assert.equal(secondRoom.spot.routingId.toBytes().toString(), 'node-room-id');
+  firstRoom.spot.close();
+  secondRoom.spot.close();
   assert.equal(zlink.SpotNodeOption, undefined);
   assert.equal(zlink.SpotNodePubMode, undefined);
   assert.equal(zlink.SpotNodePubQueueFullPolicy, undefined);
@@ -218,6 +227,12 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
   assert.throws(() => node.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
   assert.equal(typeof new zlink.Message(Buffer.from('message')).close, 'function');
   assert.equal(typeof zlink.Message.from(Buffer.from('message')).close, 'function');
+  const allocatedMessage = zlink.Message.alloc(3);
+  allocatedMessage.data()[0] = 0x01;
+  allocatedMessage.data()[1] = 0x02;
+  allocatedMessage.data()[2] = 0x03;
+  assert.deepEqual([...allocatedMessage.data()], [0x01, 0x02, 0x03]);
+  assert.equal(zlink.Message.allocate(0).size(), 0);
 
   node.close();
   discovery.close();

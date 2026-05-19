@@ -5,7 +5,9 @@ internal sealed partial class ZLinkSpotActivation
 {
     public CancellationToken StopToken => _stopSource.Token;
 
-    public async ValueTask InitializeAsync(CancellationToken cancellationToken)
+    public async ValueTask InitializeAsync(
+        IReadOnlyList<Message> createParts,
+        CancellationToken cancellationToken)
     {
         RegisterWithoutSynchronizationContext(() =>
         {
@@ -31,7 +33,12 @@ internal sealed partial class ZLinkSpotActivation
                 ct));
 
         await ExecuteSerializedAsync(
-            static (activation, ct) => activation.Spot.OnInitializeAsync(ct),
+            static async (activation, state, ct) =>
+            {
+                await activation.Spot.OnCreateAsync(state, ct);
+                await activation.Spot.OnInitializeAsync(ct);
+            },
+            createParts,
             cancellationToken);
     }
 

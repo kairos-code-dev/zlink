@@ -121,6 +121,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(typeof spotNode.leaveActor, 'function');
     assert.equal(typeof spotNode.entrySpot, 'function');
     assert.equal(typeof spotNode.spotLookup, 'function');
+    assert.equal(typeof spotNode.getOrCreateSpot, 'function');
     assert.equal(typeof spotNode.spotsSnapshot, 'function');
     assert.equal(typeof spotNode.actorsSnapshot, 'function');
     spotNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('node-surface')));

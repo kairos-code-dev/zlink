@@ -1301,6 +1301,20 @@ class SpotNode:
             return None
         return Spot._wrap_handle(self, spot_handle.value)
 
+    def get_or_create_spot(self, spot_rid):
+        native_rid = _copy_routing_id(spot_rid)
+        spot_handle = ctypes.c_void_p()
+        created = ctypes.c_uint32()
+        rc = lib().zlink_spot_node_spot_get_or_new(
+            self._handle,
+            ctypes.byref(native_rid),
+            ctypes.byref(spot_handle),
+            ctypes.byref(created),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return Spot._wrap_handle(self, spot_handle.value), bool(created.value)
+
     def actor(self, actor_id):
         native = ZlinkActorRef()
         rc = lib().zlink_spot_node_actor_new(

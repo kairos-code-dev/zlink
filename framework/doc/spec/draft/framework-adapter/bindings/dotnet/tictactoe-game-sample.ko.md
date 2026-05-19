@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET STREAM Samples](stream-samples.ko.md) | [다음: ZLink Framework For Java](../java/README.ko.md)
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework .NET STREAM Samples](stream-samples.ko.md) | [다음: Bingo Game Sample 초안](bingo-game-sample.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # TicTacToe Game Sample 초안

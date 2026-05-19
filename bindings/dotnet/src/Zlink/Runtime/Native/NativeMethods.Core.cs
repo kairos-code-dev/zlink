@@ -79,6 +79,7 @@ internal static partial class NativeMethods
         "zlink_spot_node_actor_recv_part",
         "zlink_spot_actor_lifecycle_handler",
         "zlink_spot_node_entry_spot",
+        "zlink_spot_node_spot_get_or_new",
         "zlink_spot_node_spot_lookup",
         "zlink_spot_node_spots_snapshot",
         "zlink_spot_node_actors_snapshot",

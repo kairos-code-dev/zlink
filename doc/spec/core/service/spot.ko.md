@@ -66,6 +66,35 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 - `zlink_spot_node_destroy()`는 node와 내부 runtime 자원을 정리한다.
 - discovery에 attach된 node는 보통 `zlink_discovery_destroy()` 흐름에서 함께 정리된다.
 
+### 명시적 routing id 기반 Spot 확보
+
+```c
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_get_or_new(
+  void *node_,
+  const zlink_routing_id_t *spot_rid_,
+  void **spot_out_,
+  uint32_t *created_out_);
+```
+
+- 이 함수는 local `SpotNode` 안에서 `spot_rid_`로 식별되는 logical Spot을 확보한다.
+- 같은 `SpotNode`와 같은 `spot_rid_`에 대해 성공한 호출은 모두 같은 logical Spot을
+  가리키는 새 owned facade handle을 받는다.
+- logical Spot이 없어서 이번 호출이 새로 만들었으면 `created_out_ != NULL`일 때
+  `*created_out_ = 1`이다.
+- logical Spot이 이미 있으면 새 facade handle만 만들고 `created_out_ != NULL`일 때
+  `*created_out_ = 0`이다.
+- `created_out_ == NULL`은 허용된다. 생성 여부가 필요 없으면 넘기지 않아도 된다.
+- `node_ == NULL`이면 `ZLINK_CONFIG_INVALID_HANDLE`로 실패하고 `errno`는 `EFAULT`다.
+- `spot_rid_ == NULL` 또는 `spot_out_ == NULL`이면 `ZLINK_CONFIG_INVALID_ARGUMENT`로
+  실패하고 `errno`는 `EINVAL`이다.
+- `spot_rid_`가 비어 있거나 최대 길이를 넘으면 `ZLINK_CONFIG_INVALID_ARGUMENT`로
+  실패하고 `errno`는 `EINVAL`이다.
+- 실패하면 가능한 경우 `*spot_out_ = NULL`, `*created_out_ = 0`으로 초기화한다.
+- 반환된 facade handle은 호출자가 소유하며 `zlink_spot_destroy()`로 닫아야 한다.
+- 이 함수는 actor join을 수행하지 않는다. room이나 stage에 actor를 넣는 작업은
+  별도 join API로 처리한다.
+- remote Spot 생성 또는 확보는 이 함수의 범위가 아니다.
+
 ## Entry Spot
 
 `SpotNode`가 생성되면 내부적으로 `Entry Spot`(진입 수신점, 새 Actor가 처음 배정되는 논리적 수신 지점) logical state도 함께 생성된다.

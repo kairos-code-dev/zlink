@@ -162,6 +162,30 @@ core가 aggregate 함수와 `*_part` substrate를 모두 제공하던 시기에�
 - 사용자는 `send(List<Message>)`, `recv()`, `request(...)` 같은 언어 친화적 API를 그대로 쓴다.
 - `*_part` 호출 시퀀스는 binding 내부 구현 세부사항이며, 사용자에게 노출하지 않는다.
 
+## Spot Get-Or-Create Mapping
+
+Core exposes `zlink_spot_node_spot_get_or_new(...)` for the atomic "get a
+local logical Spot by routing id, or create it if absent" contract.
+
+All higher-level bindings must map their public get-or-create SpotNode API
+directly to that C function. They must not compose `spot_lookup()` and
+`create_spot()` to emulate the same behavior, because that loses the core
+atomicity contract and reintroduces the lookup/create race.
+
+The language-level names are:
+
+- C++: `spot_node_t::get_or_create_spot(...)`
+- .NET binding: `SpotNode.GetOrCreateSpot(...)`
+- Java: `SpotNode.getOrCreateSpot(...)`
+- Node: `SpotNode.getOrCreateSpot(...)`
+- Go: `SpotNode.GetOrCreateSpot(...)`
+- Rust: `SpotNode::get_or_create_spot(...)`
+- Python: `SpotNode.get_or_create_spot(...)`
+
+Each wrapper returns both the owned `Spot` facade and whether this call created
+the logical spot. The returned facade follows the normal Spot lifetime rules
+for that language.
+
 ### 준수 확인
 
 구현 리뷰와 검증 단계에서 아래를 확인한다.
@@ -1722,6 +1746,10 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
 - `Spot` 은 독립 생성자로 만들지 않는다. **`SpotNode.createSpot(...)` 등
   factory 메서드로 생성**한다. 이름은 언어 관용구대로 (`spot_node.new_spot`,
   `spotNode.createSpot`, 등).
+- 명시적 Spot routing id를 기준으로 "있으면 가져오고 없으면 만든다"는 흐름은
+  `zlink_spot_node_spot_get_or_new(...)`에 직접 대응하는
+  `SpotNode.getOrCreateSpot(...)` 계열 메서드로 노출한다. 바인딩은 lookup과 create를
+  조합해서 이 의미를 흉내 내면 안 된다.
 - `Spot` 생명은 부모 `SpotNode` 에 바인드된다.
   - `spot.close()` — Spot 만 끝내고 node 는 유지
   - `spotNode.close()` — node 와 그 아래 모든 live Spot 을 함께 정리

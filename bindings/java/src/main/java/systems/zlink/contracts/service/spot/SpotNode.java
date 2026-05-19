@@ -39,6 +39,9 @@ import java.util.concurrent.CompletableFuture;
 
 /** Lifecycle and topology facade for the current unified spot node model. */
 public final class SpotNode implements AutoCloseable {
+    /** Result of atomically getting or creating a local logical spot. */
+    public record SpotGetOrCreateResult(Spot spot, boolean created) {}
+
     private static final int OPT_SNDHWM = 23;
     private static final int OPT_RCVHWM = 24;
     private static final int OPT_ROUTER_HWM_PROFILE = 0x360E;
@@ -304,6 +307,26 @@ public final class SpotNode implements AutoCloseable {
             if (rc != 0)
                 throw new ConfigException(ConfigResult.fromValue(rc));
             return Optional.of(adoptSpot(out.get(ValueLayout.ADDRESS, 0)));
+        }
+    }
+
+    /**
+     * Atomically gets the local logical spot for {@code spotRid}, creating it
+     * when it is absent.
+     */
+    public SpotGetOrCreateResult getOrCreateSpot(RoutingId spotRid) {
+        Objects.requireNonNull(spotRid, "spotRid");
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment created = arena.allocate(ValueLayout.JAVA_INT);
+            int rc = Native.spotNodeSpotGetOrNew(handle,
+              ActorInterop.nativeRoutingId(arena, spotRid), out, created);
+            if (rc != 0)
+                throw new ConfigException(ConfigResult.fromValue(rc));
+            return new SpotGetOrCreateResult(
+              adoptSpot(out.get(ValueLayout.ADDRESS, 0)),
+              created.get(ValueLayout.JAVA_INT, 0) != 0);
         }
     }
 

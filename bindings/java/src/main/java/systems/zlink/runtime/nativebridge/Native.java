@@ -814,6 +814,11 @@ public final class Native {
             "zlink_spot_node_spot_lookup",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_SPOT_GET_OR_NEW = downcall(
+            "zlink_spot_node_spot_get_or_new",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_BIND = downcall("zlink_spot_node_bind",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_CONN_PEER = downcall("zlink_spot_node_connect_peer",
@@ -3237,6 +3242,18 @@ public final class Native {
               spotOut);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_spot_lookup failed", t);
+        }
+    }
+
+    public static int spotNodeSpotGetOrNew(MemorySegment node,
+                                           MemorySegment spotRid,
+                                           MemorySegment spotOut,
+                                           MemorySegment createdOut) {
+        try {
+            return (int) MH_SPOT_NODE_SPOT_GET_OR_NEW.invokeExact(node, spotRid,
+              spotOut, createdOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_spot_get_or_new failed", t);
         }
     }
 

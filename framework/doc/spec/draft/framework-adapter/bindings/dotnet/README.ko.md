@@ -167,6 +167,7 @@
 | [spot-samples.ko.md](./spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록과 handler, channel send / request, publish 를 한 번에 보여 주는 샘플 |
 | [stream-samples.ko.md](./stream-samples.ko.md) | STREAM framework Header 기반 packet session 과 등록 코드를 한 번에 보여 주는 샘플 |
 | [tictactoe-game-sample.ko.md](./tictactoe-game-sample.ko.md) | API 서버, Play 서버, STREAM connector, SPOT actor 를 함께 사용하는 틱택토 게임 샘플 초안(TicTacToe direct + session actor dispatch contract) |
+| [bingo-game-sample.ko.md](./bingo-game-sample.ko.md) | 4인 멀티 빙고 샘플 초안. STREAM session, actor bind, user Spot room, timer, server push 를 함께 보여 준다. |
 
 ### 2.5 범위 원칙
 

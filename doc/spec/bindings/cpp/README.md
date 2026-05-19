@@ -107,6 +107,12 @@ When mapping a new core capability:
    forwards without improving ownership, validation, or shape, keep it
    internal.
 
+For explicit Spot routing-id acquisition, the C++ binding exposes
+`spot_node_t::get_or_create_spot(routing_id_t)` and maps it directly to
+`zlink_spot_node_spot_get_or_new(...)`. It returns the owned `spot_t` facade
+and the creation flag. Do not implement this behavior by composing
+`spot_lookup()` and `create_spot()`.
+
 ## Library Shape
 
 The C++ binding should feel like a small native C++ library over the core C

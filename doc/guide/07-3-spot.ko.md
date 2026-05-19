@@ -73,6 +73,34 @@ void *node = zlink_spot_node_new(ctx, &opts);
 이 예제는 한 프로세스 안에서 SPOT 노드를 만들고 통합 `Spot` 파사드로
 토픽 하나를 발행하는 최소 흐름이다.
 
+### 2.1 room id가 정해진 Spot 확보
+
+게임 방이나 작업 그룹처럼 애플리케이션이 이미 room id를 알고 있는 경우에는
+`zlink_spot_node_spot_get_or_new()`를 사용한다. 이 함수는 "있으면 가져오고,
+없으면 만든다"는 흐름을 `SpotNode` 안에서 처리한다. 사용자 코드가 lookup 후
+새로 만들고 routing id를 다시 설정하는 순서를 직접 작성하지 않아도 된다.
+
+```c
+zlink_routing_id_t room_rid;
+memset(&room_rid, 0, sizeof(room_rid));
+room_rid.size = 8;
+memcpy(room_rid.data, "room-001", 8);
+
+void *room = NULL;
+uint32_t created = 0;
+zlink_config_result_t rc =
+  zlink_spot_node_spot_get_or_new(node, &room_rid, &room, &created);
+
+if (rc == ZLINK_CONFIG_OK && created) {
+  /* 최초 생성자만 방 초기 상태를 구성한다. */
+}
+```
+
+반환된 `room`은 일반 `Spot` facade와 같은 방식으로 사용하고
+`zlink_spot_destroy()`로 닫는다. actor를 방에 참가시키는 작업은 이 함수가
+수행하지 않는다. Spot 확보와 actor join을 분리해야 "방이 없어서 만들었다"와
+"방에는 도달했지만 참가가 거절되었다"를 애플리케이션이 다르게 처리할 수 있다.
+
 ## 3. Node를 네트워크에 올리는 방법
 
 ### 3.1 수동 피어 연결

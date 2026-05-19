@@ -208,8 +208,11 @@ classes and factories.
 - `new Registry(context)`, `new Discovery(context)`, and
   `new SpotNode(context[, mode])` create service-layer implementations.
 - `Spot` handles are obtained through `ISpotNode.CreateSpot()`,
-  `ISpotNode.EntrySpot()`, or `ISpotNode.SpotLookup(...)`; direct `Spot`
-  construction is not public.
+  `ISpotNode.EntrySpot()`, `ISpotNode.GetOrCreateSpot(...)`, or
+  `ISpotNode.SpotLookup(...)`; direct `Spot` construction is not public.
+  `GetOrCreateSpot(...)` maps directly to
+  `zlink_spot_node_spot_get_or_new(...)` and must not be implemented by
+  combining lookup and create in managed code.
 - `Actor` handles are created through `ISpotNode.CreateActor(...)`; direct
   Actor construction is not public.
 - `new Poller()`, `new Timer()`, and `Timer.FromSpot(...)` create monitoring

@@ -2657,6 +2657,15 @@ export class SpotNode extends NativeHandle {
     this._spots.add(spot);
     return spot;
   }
+  getOrCreateSpot(spotRid: RoutingId): { spot: Spot; created: boolean } {
+    const normalizedSpotRid = normalizeRoutingId(spotRid, 'spotRid');
+    const result = configCall('spot node spot get-or-create failed', () =>
+      requireNative().spotNodeSpotGetOrNew(this._native, normalizedSpotRid)
+    ) as { spot: unknown; created: boolean };
+    const spot = Spot.fromNative(this, result.spot);
+    this._spots.add(spot);
+    return { spot, created: !!result.created };
+  }
   createActor(actorId: string): Actor {
     const normalizedActorId = validateCString(actorId, 'actorId', 255);
     return Actor.create(

@@ -110,6 +110,12 @@ struct spot_node_access_t
       spot_node_t *node_);
     static std::shared_ptr<spot_logical_state_t> lookup_spot_state (
       spot_node_t *node_, const zlink_routing_id_t *spot_rid_);
+    static std::shared_ptr<spot_logical_state_t> get_or_new_spot_state (
+      spot_node_t *node_,
+      const zlink_routing_id_t *spot_rid_,
+      bool *created_out_);
+    static void remove_spot_state_if_unfacaded (
+      spot_node_t *node_, const std::shared_ptr<spot_logical_state_t> &state_);
     static int update_spot_routing_id (spot_node_t *node_,
                                        spot_handle_t *spot_,
                                        const void *data_,

@@ -23,6 +23,21 @@ inline spot_t spot_node_t::entry_spot ()
     return spot_t (handle);
 }
 
+inline std::pair<spot_t, bool> spot_node_t::get_or_create_spot (
+  const routing_id_t &spot_rid_)
+{
+    void *handle = NULL;
+    uint32_t created = 0;
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        zlink_spot_node_spot_get_or_new (
+          _node,
+          zlink::detail::routing_id_native (spot_rid_),
+          &handle,
+          &created)));
+    return std::pair<spot_t, bool> (spot_t (handle), created != 0);
+}
+
 inline std::optional<spot_t> spot_node_t::spot_lookup (
   const routing_id_t &spot_rid_)
 {

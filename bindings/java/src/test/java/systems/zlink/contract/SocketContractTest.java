@@ -385,6 +385,8 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(SpotNode.class, "entrySpot"));
         assertTrue(hasPublicMethod(SpotNode.class, "spotLookup",
             RoutingId.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "getOrCreateSpot",
+            RoutingId.class));
         assertFalse(hasPublicMethod(SpotNode.class, "socketSnapshots"));
         assertFalse(hasPublicMethod(SpotNode.class, "socketSnapshots",
             systems.zlink.contracts.service.spot.SpotNodeSocketSnapshotFilter.class));
@@ -618,6 +620,17 @@ public class SocketContractTest {
                   "spot-self".getBytes(StandardCharsets.UTF_8));
                 spot.setRoutingId(spotRid);
                 assertArrayEquals(spotRid.toBytes(), spot.routingId().toBytes());
+            }
+
+            RoutingId roomRid = RoutingId.fromBytes(
+              "java-room".getBytes(StandardCharsets.UTF_8));
+            SpotNode.SpotGetOrCreateResult first = node.getOrCreateSpot(roomRid);
+            SpotNode.SpotGetOrCreateResult second = node.getOrCreateSpot(roomRid);
+            try (Spot firstSpot = first.spot(); Spot secondSpot = second.spot()) {
+                assertTrue(first.created());
+                assertFalse(second.created());
+                assertArrayEquals(roomRid.toBytes(), firstSpot.routingId().toBytes());
+                assertArrayEquals(roomRid.toBytes(), secondSpot.routingId().toBytes());
             }
         }
     }

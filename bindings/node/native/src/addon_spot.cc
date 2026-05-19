@@ -3163,6 +3163,40 @@ napi_value spot_node_spot_lookup(napi_env env, napi_callback_info info)
     return out;
 }
 
+napi_value spot_node_spot_get_or_new(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(env, NULL, "spotNodeSpotGetOrNew expects node, spotRid");
+        return NULL;
+    }
+
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    zlink_routing_id_t spot_rid;
+    if (!parse_routing_id_value(env, argv[1], &spot_rid))
+        return NULL;
+
+    void *spot = NULL;
+    uint32_t created = 0;
+    zlink_config_result_t rc = zlink_spot_node_spot_get_or_new(
+      node, &spot_rid, &spot, &created);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "spotNodeSpotGetOrNew failed");
+
+    napi_value out;
+    napi_create_object(env, &out);
+    napi_value native_spot;
+    napi_create_external(env, spot, NULL, NULL, &native_spot);
+    napi_set_named_property(env, out, "spot", native_spot);
+    napi_value created_value;
+    napi_get_boolean(env, created != 0, &created_value);
+    napi_set_named_property(env, out, "created", created_value);
+    return out;
+}
+
 napi_value spot_set_option(napi_env env, napi_callback_info info)
 {
     napi_value argv[3];

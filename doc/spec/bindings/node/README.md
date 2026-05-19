@@ -214,6 +214,16 @@ The public entrypoint must cover stable user-facing core capabilities.
 The binding may expose synchronous or asynchronous forms where appropriate,
 but it must not change the meaning of core operations.
 
+## Spot Get-Or-Create
+
+Node exposes `SpotNode.getOrCreateSpot(spotRid)`. It maps directly to
+`zlink_spot_node_spot_get_or_new(...)`; it must not be implemented by composing
+`spotLookup` and `createSpot`.
+
+The method returns `{ spot, created }`. The returned `Spot` is caller-owned and
+must be closed normally. `created` is `true` only for the call that created the
+logical spot.
+
 ## Receive And Subscribe Shape
 
 - Data-plane receive and subscribe APIs must use caller-provided result objects

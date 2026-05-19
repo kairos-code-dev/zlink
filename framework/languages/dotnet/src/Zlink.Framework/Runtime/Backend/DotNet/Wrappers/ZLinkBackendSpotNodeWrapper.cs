@@ -37,6 +37,12 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
         return new ZLinkBackendSpotWrapper(nativeSpotNode.CreateSpot());
     }
 
+    public IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created)
+    {
+        return new ZLinkBackendSpotWrapper(
+            nativeSpotNode.GetOrCreateSpot(spotRid, out created));
+    }
+
     public ZLinkSpotNodeStatus StatusSnapshot()
     {
         return nativeSpotNode.StatusSnapshot().ToFramework();

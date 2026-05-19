@@ -58,6 +58,13 @@ public interface IZLinkSpot
     {
     }
 
+    ValueTask OnCreateAsync(
+        IReadOnlyList<Message> createParts,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
+
     ValueTask OnInitializeAsync(CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;

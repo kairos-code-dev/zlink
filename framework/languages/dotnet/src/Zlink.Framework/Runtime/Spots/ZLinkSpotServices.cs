@@ -9,15 +9,24 @@ internal sealed class ZLinkSpotManagerService(ZLinkFrameworkRuntime runtime) : I
         string spotName,
         CancellationToken cancellationToken = default)
     {
-        return runtime.CreateSpotAsync(spotName, null, cancellationToken);
+        return runtime.CreateSpotAsync(spotName, [], cancellationToken);
     }
 
     public ValueTask<ZLinkSpotCreateResult> CreateAsync(
         string spotName,
-        RoutingId spotRid,
+        IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken = default)
     {
-        return runtime.CreateSpotAsync(spotName, spotRid, cancellationToken);
+        return runtime.CreateSpotAsync(spotName, createParts, cancellationToken);
+    }
+
+    public ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
+        string spotName,
+        RoutingId spotRid,
+        IReadOnlyList<Message> createParts,
+        CancellationToken cancellationToken = default)
+    {
+        return runtime.GetOrCreateSpotAsync(spotName, spotRid, createParts, cancellationToken);
     }
 
     public ValueTask<ZLinkSpotInfo?> GetAsync(

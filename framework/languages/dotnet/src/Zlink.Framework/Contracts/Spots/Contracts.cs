@@ -38,15 +38,38 @@ public interface IZLinkSpotManager
 
     ValueTask<ZLinkSpotCreateResult> CreateAsync(
         string spotName,
-        RoutingId spotRid,
+        IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkSpotCreateResult> CreateAsync(
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
+        string spotName,
+        RoutingId spotRid,
+        IReadOnlyList<Message> createParts,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
+        string spotName,
+        ZLinkSpotId spotId,
+        IReadOnlyList<Message> createParts,
+        CancellationToken cancellationToken = default)
+    {
+        return GetOrCreateAsync(spotName, spotId.ToRoutingId(), createParts, cancellationToken);
+    }
+
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
+        string spotName,
+        RoutingId spotRid,
+        CancellationToken cancellationToken = default)
+    {
+        return GetOrCreateAsync(spotName, spotRid, [], cancellationToken);
+    }
+
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
         string spotName,
         ZLinkSpotId spotId,
         CancellationToken cancellationToken = default)
     {
-        return CreateAsync(spotName, spotId.ToRoutingId(), cancellationToken);
+        return GetOrCreateAsync(spotName, spotId.ToRoutingId(), [], cancellationToken);
     }
 
     ValueTask<ZLinkSpotInfo?> GetAsync(

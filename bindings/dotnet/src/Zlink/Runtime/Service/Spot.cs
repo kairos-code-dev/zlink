@@ -304,6 +304,29 @@ public sealed class SpotNode : ISpotNode
         return EntrySpot();
     }
 
+    public Spot GetOrCreateSpot(RoutingId spotRid, out bool created)
+    {
+        EnsureNotDisposed();
+        ZlinkRoutingId nativeRid = spotRid.ToNative();
+        int rc = NativeMethods.zlink_spot_node_spot_get_or_new(_handle,
+            ref nativeRid, out IntPtr spotHandle, out uint createdValue);
+        ZlinkException.ThrowConfigIfError(rc);
+        if (spotHandle == IntPtr.Zero)
+        {
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        }
+
+        created = createdValue != 0;
+        Spot spot = new(this, spotHandle, ownsHandle: true);
+        RegisterSpot(spot);
+        return spot;
+    }
+
+    ISpot ISpotNode.GetOrCreateSpot(RoutingId spotRid, out bool created)
+    {
+        return GetOrCreateSpot(spotRid, out created);
+    }
+
     public Spot? SpotLookup(RoutingId spotRid)
     {
         EnsureNotDisposed();

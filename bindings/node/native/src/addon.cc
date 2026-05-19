@@ -190,6 +190,7 @@ static void define_spot_exports(napi_env env, napi_value exports)
         ZLINK_METHOD("spotNodeGetOption", spot_node_getsockopt),
         ZLINK_METHOD("spotNodeEntrySpot", spot_node_entry_spot),
         ZLINK_METHOD("spotNodeSpotLookup", spot_node_spot_lookup),
+        ZLINK_METHOD("spotNodeSpotGetOrNew", spot_node_spot_get_or_new),
         ZLINK_METHOD("spotNodeStatusSnapshot", spot_node_status_snapshot),
         ZLINK_METHOD("spotNodePeersSnapshot", spot_node_peers_snapshot),
         ZLINK_METHOD("spotNodePeersQuery", spot_node_peers_query),

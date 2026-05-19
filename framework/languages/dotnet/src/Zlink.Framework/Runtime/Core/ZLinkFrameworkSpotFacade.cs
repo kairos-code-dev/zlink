@@ -12,10 +12,19 @@ internal sealed class ZLinkFrameworkSpotFacade(
 
     public ValueTask<ZLinkSpotCreateResult> CreateAsync(
         string spotName,
-        RoutingId? spotRid,
+        IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
     {
-        return spots.CreateAsync(getState(), spotName, spotRid, cancellationToken);
+        return spots.CreateAsync(getState(), spotName, createParts, cancellationToken);
+    }
+
+    public ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
+        string spotName,
+        RoutingId spotRid,
+        IReadOnlyList<Message> createParts,
+        CancellationToken cancellationToken)
+    {
+        return spots.GetOrCreateAsync(getState(), spotName, spotRid, createParts, cancellationToken);
     }
 
     public ValueTask<ZLinkSpotInfo?> GetAsync(

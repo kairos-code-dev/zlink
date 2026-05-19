@@ -16,6 +16,8 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
     IZLinkBackendSpot CreateSpot();
 
+    IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created);
+
     ZLinkSpotNodeStatus StatusSnapshot();
 
     IReadOnlyList<ZLinkSpotNodePeerEntry> PeersSnapshot();

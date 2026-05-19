@@ -74,6 +74,15 @@ test('service objects expose aligned monitor and query surface', () => {
     assert.equal(lookedUpSpot.routingId.toBytes().toString(), 'entry-spot-id');
     lookedUpSpot.close();
     entrySpot.close();
+    const roomRid = zlink.RoutingId.fromBytes(Buffer.from('node-room-id'));
+    const firstRoom = node.getOrCreateSpot(roomRid);
+    const secondRoom = node.getOrCreateSpot(roomRid);
+    assert.equal(firstRoom.created, true);
+    assert.equal(secondRoom.created, false);
+    assert.equal(firstRoom.spot.routingId.toBytes().toString(), 'node-room-id');
+    assert.equal(secondRoom.spot.routingId.toBytes().toString(), 'node-room-id');
+    firstRoom.spot.close();
+    secondRoom.spot.close();
     assert.equal(zlink.SpotNodeOption, undefined);
     assert.equal(zlink.SpotNodePubMode, undefined);
     assert.equal(zlink.SpotNodePubQueueFullPolicy, undefined);

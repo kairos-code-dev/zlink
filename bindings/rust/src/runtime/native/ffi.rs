@@ -1411,6 +1411,12 @@ unsafe extern "C" {
         spot_rid: *const zlink_routing_id_t,
         spot_out: *mut *mut c_void,
     ) -> c_int;
+    pub fn zlink_spot_node_spot_get_or_new(
+        node: *mut c_void,
+        spot_rid: *const zlink_routing_id_t,
+        spot_out: *mut *mut c_void,
+        created_out: *mut u32,
+    ) -> c_int;
     pub fn zlink_spot_node_internal_sockets_snapshot(
         node: *mut c_void,
         filter: *const zlink_spot_node_socket_snapshot_filter_t,

@@ -222,6 +222,51 @@ zlink_config_result_t zlink_spot_node_spot_lookup (
     return ZLINK_CONFIG_OK;
 }
 
+zlink_config_result_t zlink_spot_node_spot_get_or_new (
+  void *node_,
+  const zlink_routing_id_t *spot_rid_,
+  void **spot_out_,
+  uint32_t *created_out_)
+{
+    if (spot_out_)
+        *spot_out_ = NULL;
+    if (created_out_)
+        *created_out_ = 0;
+    if (!node_) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    if (!spot_rid_ || !spot_out_) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+
+    bool created = false;
+    std::shared_ptr<spot_logical_state_t> state =
+      zlink::spot_node_access_t::get_or_new_spot_state (node, spot_rid_,
+                                                        &created);
+    if (!state)
+        return zlink::config_result_internal::from_errno (errno);
+
+    void *spot = create_spot_facade (node, state);
+    if (!spot) {
+        if (created)
+            zlink::spot_node_access_t::remove_spot_state_if_unfacaded (node,
+                                                                       state);
+        return zlink::config_result_internal::from_errno (errno);
+    }
+
+    *spot_out_ = spot;
+    if (created_out_)
+        *created_out_ = created ? 1u : 0u;
+    return ZLINK_CONFIG_OK;
+}
+
 zlink_close_result_t zlink_spot_destroy (void **spot_p_)
 {
     if (!spot_p_ || !*spot_p_) {

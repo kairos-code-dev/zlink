@@ -122,6 +122,17 @@ When a capability exists in `core/include/zlink.h`, the C binding exposes it
 directly through the public header. When a capability is not in that header, it
 is not public C API.
 
+## Spot Get-Or-New
+
+`bindings/c/include/zlink.h` exposes
+`zlink_spot_node_spot_get_or_new(...)` with the same signature and result
+contract as the core public header. The function atomically gets or creates a
+local logical Spot by routing id and returns both a caller-owned `Spot` facade
+handle and the created flag.
+
+This API does not join an actor to the Spot. Join remains a separate service
+operation.
+
 ## Ownership And Lifetime
 
 C callers own memory explicitly. The header must make ownership transfer clear

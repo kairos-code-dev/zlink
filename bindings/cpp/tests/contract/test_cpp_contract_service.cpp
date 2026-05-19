@@ -537,6 +537,28 @@ void test_unified_spot_wrap_node_surface_contract ()
     assert (spot.valid ());
 }
 
+void test_spot_node_get_or_create_spot_contract ()
+{
+    zlink::context_t ctx;
+    zlink::service::spot_node_t node (ctx);
+    const zlink::routing_id_t spot_rid = zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> ("cpp-room"), 8);
+
+    std::pair<zlink::service::spot_t, bool> first =
+      node.get_or_create_spot (spot_rid);
+    std::pair<zlink::service::spot_t, bool> second =
+      node.get_or_create_spot (spot_rid);
+
+    assert (first.first.valid ());
+    assert (second.first.valid ());
+    assert (first.second);
+    assert (!second.second);
+    assert (first.first.routing_id ().to_bytes ()
+            == spot_rid.to_bytes ());
+    assert (second.first.routing_id ().to_bytes ()
+            == spot_rid.to_bytes ());
+}
+
 } // namespace
 
 int main ()
@@ -545,5 +567,6 @@ int main ()
     test_spot_node_snapshot_contract ();
     test_unified_spot_self_delivery_recv_contract ();
     test_unified_spot_wrap_node_surface_contract ();
+    test_spot_node_get_or_create_spot_contract ();
     return 0;
 }

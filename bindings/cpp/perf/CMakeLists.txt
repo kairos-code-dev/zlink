@@ -121,6 +121,16 @@ add_cpp_multi_client_bench(cpp_comp_src_spot_reqrep_client
   "${PERF_ROOT_DIR}/multi/src/perf_spot_reqrep_client.cpp")
 
 if(ZLINK_CPP_REGISTER_CTEST AND UNIX AND NOT WIN32)
+  add_test(NAME perf_cpp_single_spot_runtime_smoke
+    COMMAND /bin/bash -lc
+      "PERF_FAIL_FAST=1 PERF_TIMEOUT_SECONDS=30 ${PERF_ROOT_DIR}/run_binding_single.sh --reuse-build --pattern SPOT --transports tcp --msg-sizes 64 --duration 1 --runs 1 --results-tag ctest_cpp_single_spot_runtime_smoke"
+  )
+  set_tests_properties(perf_cpp_single_spot_runtime_smoke PROPERTIES
+    LABELS "perf-regression"
+    TIMEOUT 120
+    WORKING_DIRECTORY "${ZLINK_REPO_ROOT_DIR}"
+  )
+
   add_test(NAME perf_cpp_multi_dealer_dealer_runtime_smoke
     COMMAND /bin/bash -lc
       "PERF_FAIL_FAST=1 PERF_TIMEOUT_SECONDS=20 ${PERF_ROOT_DIR}/run_binding_multi.sh --reuse-build --pattern DEALER_DEALER --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2 --connect-concurrency 2 --results-tag ctest_cpp_multi_dealer_dealer_runtime_smoke"

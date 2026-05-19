@@ -547,14 +547,6 @@ bool run_pattern_spot (const std::string &transport,
     (void) recv_timeout;
 
     std::thread receiver_thread ([&]() {
-        zlink::poller_t poller;
-        try {
-            poller.add (sub_spot, zlink::poll_event_flag_t::pollin);
-        }
-        catch (const zlink::config_error_t &) {
-            sender_ok.store (false, std::memory_order_release);
-            return;
-        }
         auto collect_header =
           [&] (const perf_single_metric::header_t &header_,
                bool header_ok_) {
@@ -563,39 +555,31 @@ bool run_pattern_spot (const std::string &transport,
                   received.fetch_add (1, std::memory_order_relaxed);
                   const int64_t now_ns = perf_single_metric::now_ns ();
                   latency_builder.add (
-                    perf_single_metric::elapsed_latency_ns (now_ns, header_.sent_ts_ns));
+                    perf_single_metric::elapsed_latency_ns (
+                      now_ns, header_.sent_ts_ns));
               }
           };
         while (true) {
-            try {
-                if (!poller.wait ().has_value ())
-                    continue;
-            }
-            catch (const zlink::recv_error_t &) {
-                sender_ok.store (false, std::memory_order_release);
-                return;
+            perf_single_metric::header_t header = {};
+            bool header_ok = false;
+            bool stop = false;
+            const int recv_rc = recv_spot_header_flags (
+              sub_spot, payload_size, ZLINK_DONTWAIT, &header, &header_ok,
+              &stop);
+            if (recv_rc > 0) {
+                if (stop)
+                    return;
+                collect_header (header, header_ok);
+                continue;
             }
 
-            while (true) {
-                perf_single_metric::header_t header = {};
-                bool header_ok = false;
-                bool stop = false;
-                const int recv_rc = recv_spot_header_flags (
-                  sub_spot, payload_size, ZLINK_DONTWAIT, &header,
-                  &header_ok, &stop);
-                if (recv_rc > 0) {
-                    if (stop)
-                        return;
-                    collect_header (header, header_ok);
-                    continue;
-                }
-
-                if (recv_rc == 0)
-                    break;
-
-                sender_ok.store (false, std::memory_order_release);
-                return;
+            if (recv_rc == 0) {
+                std::this_thread::yield ();
+                continue;
             }
+
+            sender_ok.store (false, std::memory_order_release);
+            return;
         }
     });
 

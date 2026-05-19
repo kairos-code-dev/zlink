@@ -338,7 +338,7 @@ public API 추가 대상으로 분리한다.
 
 | 순서 | 언어 | perf 경로 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-----------|-------------|------------|-----------|
-| 1 | C++ | `bindings/cpp/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
+| 1 | C++ | `bindings/cpp/perf` | `미달 있음` | `미측정` | `tcp` single의 `DEALER_ROUTER` large 미달 원인 분석 |
 | 2 | .NET | `bindings/dotnet/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
 | 3 | Java | `bindings/java/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
 | 4 | Node | `bindings/node/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
@@ -352,12 +352,12 @@ public API 추가 대상으로 분리한다.
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `PAIR` | `통과(102%)` | `통과(99%)` | `통과(120%)` | `통과(100%)` | `통과(100%)` | `통과(100%)` | C: `perf_c_single_linux_20260519_170732_codex_c_tcp_single_compare_20260519.txt`; C++: `perf_cpp_single_linux_20260519_170634_codex_cpp_tcp_single_smoke2_20260519.txt` |
+| `tcp` | `PUBSUB` | `통과(96%)` | `통과(100%)` | `통과(125%)` | `통과(436%)` | `통과(408%)` | `통과(582%)` | C: `perf_c_single_linux_20260519_170732_codex_c_tcp_single_compare_20260519.txt`; C++: `perf_cpp_single_linux_20260519_170634_codex_cpp_tcp_single_smoke2_20260519.txt` |
+| `tcp` | `DEALER_DEALER` | `통과(99%)` | `통과(99%)` | `통과(108%)` | `통과(99%)` | `통과(99%)` | `통과(99%)` | C: `perf_c_single_linux_20260519_170732_codex_c_tcp_single_compare_20260519.txt`; C++: `perf_cpp_single_linux_20260519_170634_codex_cpp_tcp_single_smoke2_20260519.txt` |
+| `tcp` | `DEALER_ROUTER` | `통과(98%)` | `통과(100%)` | `통과(100%)` | `미달(14%)` | `미달(12%)` | `미달(11%)` | C: `perf_c_single_linux_20260519_170732_codex_c_tcp_single_compare_20260519.txt`; C++: `perf_cpp_single_linux_20260519_170634_codex_cpp_tcp_single_smoke2_20260519.txt`. 64KB 이상 large 병목 분석 필요 |
+| `tcp` | `ROUTER_ROUTER` | `통과(83%)` | `통과(103%)` | `통과(105%)` | `통과(101%)` | `통과(97%)` | `통과(89%)` | C: `perf_c_single_linux_20260519_170732_codex_c_tcp_single_compare_20260519.txt`; C++: `perf_cpp_single_linux_20260519_170634_codex_cpp_tcp_single_smoke2_20260519.txt` |
+| `tcp` | `SPOT` | `통과(96%)` | `통과(94%)` | `통과(105%)` | `통과(103%)` | `통과(118%)` | `통과(112%)` | C: `perf_c_single_linux_20260519_170732_codex_c_tcp_single_compare_20260519.txt`; C++: `perf_cpp_single_linux_20260519_170634_codex_cpp_tcp_single_smoke2_20260519.txt`. `SPOT tcp 64B` 실패는 C++ receive loop 수정 후 회귀 통과 |
 | `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
 | `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
 | `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |

@@ -1,6 +1,6 @@
 [스펙 목차](../../spec/README.ko.md)
 
-[Framework Adapter 정책](../../spec/draft/framework-adapter/policy/README.ko.md) | [.NET 초안](../../spec/draft/framework-adapter/bindings/dotnet/README.ko.md)
+[Framework Adapter 정책](../../spec/README.ko.md) | [.NET 초안](../../../languages/dotnet/doc/README.ko.md)
 
 # Framework Adapter 구현 계획
 

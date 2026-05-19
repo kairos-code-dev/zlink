@@ -1,4 +1,4 @@
-[TicTacToe Sample](./README.ko.md) | [일반 버전](./direct.ko.md) | [Session Actor Dispatch Draft](../../draft/framework-adapter/policy/session-gateway-usability.ko.md)
+[TicTacToe Sample](./README.ko.md) | [일반 버전](./direct.ko.md) | [Session Actor Dispatch Draft](../../session-actor-dispatch.ko.md)
 
 # TicTacToe Session Actor Dispatch Sample
 

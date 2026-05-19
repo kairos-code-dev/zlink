@@ -1,4 +1,4 @@
-[계획 목록](./README.ko.md) | [Framework Adapter 정책](../../spec/draft/framework-adapter/policy/README.ko.md) | [.NET 초안](../../spec/draft/framework-adapter/bindings/dotnet/README.ko.md)
+[계획 목록](./README.ko.md) | [Framework Adapter 정책](../../spec/README.ko.md) | [.NET 초안](../../../languages/dotnet/doc/README.ko.md)
 
 # Framework Adapter 전체 구현 및 샘플 완료 계획
 
@@ -34,51 +34,51 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
 사용하고, 이 계획의 완료 조건에는 넣지 않는다.
 
 1. 공통 정책
-   - [policy/README.ko.md](../../spec/draft/framework-adapter/policy/README.ko.md)
-   - [overview.ko.md](../../spec/draft/framework-adapter/policy/overview.ko.md)
-   - [framework-api.ko.md](../../spec/draft/framework-adapter/policy/framework-api.ko.md)
-   - [interaction-model.ko.md](../../spec/draft/framework-adapter/policy/interaction-model.ko.md)
-   - [message-model.ko.md](../../spec/draft/framework-adapter/policy/message-model.ko.md)
-   - [channel-topology.ko.md](../../spec/draft/framework-adapter/policy/channel-topology.ko.md)
-   - [session-gateway.ko.md](../../spec/draft/framework-adapter/policy/session-gateway.ko.md)
+   - [policy/README.ko.md](../../spec/README.ko.md)
+   - [overview.ko.md](../../spec/overview.ko.md)
+   - [framework-api.ko.md](../../spec/framework-api.ko.md)
+   - [interaction-model.ko.md](../../spec/interaction-model.ko.md)
+   - [message-model.ko.md](../../spec/message-model.ko.md)
+   - [channel-topology.ko.md](../../spec/channel-topology.ko.md)
+   - [session-gateway.ko.md](../../spec/archive/session-gateway.ko.md)
 2. `.NET` framework 상세
-   - [README.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/README.ko.md)
-   - [handler-interfaces.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/handler-interfaces.ko.md)
-   - [lifecycle-and-failure-semantics.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/lifecycle-and-failure-semantics.ko.md)
-   - [behavior-matrix.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/behavior-matrix.ko.md)
-   - [regression-test-matrix.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/regression-test-matrix.ko.md)
-   - [backend-dependency-policy.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/backend-dependency-policy.ko.md)
-   - [implementation-scope-and-nongoals.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/implementation-scope-and-nongoals.ko.md)
+   - [README.ko.md](../../../languages/dotnet/doc/README.ko.md)
+   - [handler-interfaces.ko.md](../../../languages/dotnet/doc/spec/handler-interfaces.ko.md)
+   - [lifecycle-and-failure-semantics.ko.md](../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md)
+   - [behavior-matrix.ko.md](../../../languages/dotnet/doc/internals/behavior-matrix.ko.md)
+   - [regression-test-matrix.ko.md](../../../languages/dotnet/doc/internals/regression-test-matrix.ko.md)
+   - [backend-dependency-policy.ko.md](../../../languages/dotnet/doc/internals/backend-dependency-policy.ko.md)
+   - [implementation-scope-and-nongoals.ko.md](../../../languages/dotnet/doc/internals/implementation-scope-and-nongoals.ko.md)
 3. channel, monitoring, registry, SPOT, STREAM, connector
-   - [aspnet-core-channel-messaging.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/aspnet-core-channel-messaging.ko.md)
-   - [channel-messaging-samples.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/channel-messaging-samples.ko.md)
-   - [aspnet-core-monitoring.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/aspnet-core-monitoring.ko.md)
-   - [aspnet-core-registry.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/aspnet-core-registry.ko.md)
-   - [aspnet-core-spot.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/aspnet-core-spot.ko.md)
-   - [spot-samples.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/spot-samples.ko.md)
-   - [stage-wrapper-on-spot.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/stage-wrapper-on-spot.ko.md)
-   - [aspnet-core-stream.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/aspnet-core-stream.ko.md)
-   - [stream-open-items.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/stream-open-items.ko.md)
-   - [stream-samples.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/stream-samples.ko.md)
-   - [streaming-client.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/streaming-client.ko.md)
+   - [aspnet-core-channel-messaging.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-channel-messaging.ko.md)
+   - [channel-messaging-samples.ko.md](../../../languages/dotnet/doc/guide/channel-messaging-samples.ko.md)
+   - [aspnet-core-monitoring.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-monitoring.ko.md)
+   - [aspnet-core-registry.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-registry.ko.md)
+   - [aspnet-core-spot.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-spot.ko.md)
+   - [spot-samples.ko.md](../../../languages/dotnet/doc/guide/spot-samples.ko.md)
+   - [stage-wrapper-on-spot.ko.md](../../../languages/dotnet/doc/spec/stage-wrapper-on-spot.ko.md)
+   - [aspnet-core-stream.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-stream.ko.md)
+   - [stream-open-items.ko.md](../../../languages/dotnet/doc/draft/stream-open-items.ko.md)
+   - [stream-samples.ko.md](../../../languages/dotnet/doc/guide/stream-samples.ko.md)
+   - [streaming-client.ko.md](../../../languages/dotnet/doc/guide/streaming-client.ko.md)
    - [unity-stream-connector.ko.md](../../../../doc/guide/unity-stream-connector.ko.md)
 4. sample spec
-   - [tictactoe-game-sample.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/tictactoe-game-sample.ko.md)
+   - [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md)
    - [README.ko.md](../../spec/sample/tictactoe/README.ko.md)
    - [direct.ko.md](../../spec/sample/tictactoe/direct.ko.md)
    - [session-gateway.ko.md](../../spec/sample/tictactoe/session-gateway.ko.md)
 5. use case validation
-   - [usecase-validation.ko.md](../../spec/draft/framework-adapter/usecase-validation.ko.md)
-   - [use-cases/README.ko.md](../../spec/draft/framework-adapter/use-cases/README.ko.md)
-   - [01-service-to-service-rpc.ko.md](../../spec/draft/framework-adapter/use-cases/01-service-to-service-rpc.ko.md)
-   - [02-playhouse-play-to-api.ko.md](../../spec/draft/framework-adapter/use-cases/02-playhouse-play-to-api.ko.md)
-   - [03-worker-dispatch.ko.md](../../spec/draft/framework-adapter/use-cases/03-worker-dispatch.ko.md)
-   - [04-domain-event-fanout.ko.md](../../spec/draft/framework-adapter/use-cases/04-domain-event-fanout.ko.md)
-   - [05-cache-invalidation-and-config-refresh.ko.md](../../spec/draft/framework-adapter/use-cases/05-cache-invalidation-and-config-refresh.ko.md)
-   - [06-stage-state-sync.ko.md](../../spec/draft/framework-adapter/use-cases/06-stage-state-sync.ko.md)
-   - [07-real-time-notification-fanout.ko.md](../../spec/draft/framework-adapter/use-cases/07-real-time-notification-fanout.ko.md)
-   - [08-scatter-gather-query.ko.md](../../spec/draft/framework-adapter/use-cases/08-scatter-gather-query.ko.md)
-   - [09-workflow-orchestration.ko.md](../../spec/draft/framework-adapter/use-cases/09-workflow-orchestration.ko.md)
+   - [usecase-validation.ko.md](../../spec/usecase-validation.ko.md)
+   - [use-cases/README.ko.md](../../spec/use-cases/README.ko.md)
+   - [01-service-to-service-rpc.ko.md](../../spec/use-cases/01-service-to-service-rpc.ko.md)
+   - [02-playhouse-play-to-api.ko.md](../../spec/use-cases/02-playhouse-play-to-api.ko.md)
+   - [03-worker-dispatch.ko.md](../../spec/use-cases/03-worker-dispatch.ko.md)
+   - [04-domain-event-fanout.ko.md](../../spec/use-cases/04-domain-event-fanout.ko.md)
+   - [05-cache-invalidation-and-config-refresh.ko.md](../../spec/use-cases/05-cache-invalidation-and-config-refresh.ko.md)
+   - [06-stage-state-sync.ko.md](../../spec/use-cases/06-stage-state-sync.ko.md)
+   - [07-real-time-notification-fanout.ko.md](../../spec/use-cases/07-real-time-notification-fanout.ko.md)
+   - [08-scatter-gather-query.ko.md](../../spec/use-cases/08-scatter-gather-query.ko.md)
+   - [09-workflow-orchestration.ko.md](../../spec/use-cases/09-workflow-orchestration.ko.md)
 
 ## 3. 작업 원칙
 
@@ -137,16 +137,16 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
 이 순서의 API 근거는 아래 draft 문서를 우선해서 확인한다.
 
 - send/publish call builder:
-  [handler-interfaces.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/handler-interfaces.ko.md),
-  [lifecycle-and-failure-semantics.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/lifecycle-and-failure-semantics.ko.md)
+  [handler-interfaces.ko.md](../../../languages/dotnet/doc/spec/handler-interfaces.ko.md),
+  [lifecycle-and-failure-semantics.ko.md](../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md)
 - async submit 의미:
-  [framework-api.ko.md](../../spec/draft/framework-adapter/policy/framework-api.ko.md),
-  [interaction-model.ko.md](../../spec/draft/framework-adapter/policy/interaction-model.ko.md),
-  [streaming-client.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/streaming-client.ko.md)
+  [framework-api.ko.md](../../spec/framework-api.ko.md),
+  [interaction-model.ko.md](../../spec/interaction-model.ko.md),
+  [streaming-client.ko.md](../../../languages/dotnet/doc/guide/streaming-client.ko.md)
 - routed channel과 session gateway:
-  [session-gateway.ko.md](../../spec/draft/framework-adapter/policy/session-gateway.ko.md)
+  [session-gateway.ko.md](../../spec/archive/session-gateway.ko.md)
 - TicTacToe sample:
-  [tictactoe-game-sample.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/tictactoe-game-sample.ko.md)
+  [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md)
 
 1. 기존 TicTacToe sample을 보존한다.
    - 경로: `framework/languages/dotnet/samples/TicTacToe`
@@ -270,9 +270,9 @@ find framework/samples -name "*.csproj" 2>/dev/null | sort
 
 근거 draft:
 
-- [handler-interfaces.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/handler-interfaces.ko.md)
-- [lifecycle-and-failure-semantics.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/lifecycle-and-failure-semantics.ko.md)
-- [framework-api.ko.md](../../spec/draft/framework-adapter/policy/framework-api.ko.md)
+- [handler-interfaces.ko.md](../../../languages/dotnet/doc/spec/handler-interfaces.ko.md)
+- [lifecycle-and-failure-semantics.ko.md](../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md)
+- [framework-api.ko.md](../../spec/framework-api.ko.md)
 
 반영 내용:
 
@@ -626,7 +626,7 @@ fi
 1. [direct.ko.md](../../spec/sample/tictactoe/direct.ko.md)를 sample code와 대조한다.
 2. [session-gateway.ko.md](../../spec/sample/tictactoe/session-gateway.ko.md)를 sample
    code와 대조한다.
-3. [tictactoe-game-sample.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/tictactoe-game-sample.ko.md)를
+3. [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md)를
    sample code와 대조한다.
 4. [README.ko.md](../../spec/sample/tictactoe/README.ko.md)를 sample code와 대조한다.
 5. packet suffix, project name, directory ownership, log, smoke scenario를 확인한다.

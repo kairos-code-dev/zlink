@@ -286,10 +286,10 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
    모델로 통합한다. 먼저 기존 channel/spot send, publish, request submit에 적용하고,
    routed send/request가 같은 runtime을 재사용할 수 있게 runtime interface를 숨긴다.
    - 근거 draft:
-     [handler-interfaces.ko.md](../../../spec/draft/framework-adapter/bindings/dotnet/handler-interfaces.ko.md),
-     [lifecycle-and-failure-semantics.ko.md](../../../spec/draft/framework-adapter/bindings/dotnet/lifecycle-and-failure-semantics.ko.md),
-     [interaction-model.ko.md](../../../spec/draft/framework-adapter/policy/interaction-model.ko.md),
-     [framework-api.ko.md](../../../spec/draft/framework-adapter/policy/framework-api.ko.md)
+     [handler-interfaces.ko.md](../../../../languages/dotnet/doc/spec/handler-interfaces.ko.md),
+     [lifecycle-and-failure-semantics.ko.md](../../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md),
+     [interaction-model.ko.md](../../../spec/interaction-model.ko.md),
+     [framework-api.ko.md](../../../spec/framework-api.ko.md)
    - framework `.NET` 구현의 ready drain 시작점은 socket `OnSendReady(...)`
      callback 하나로 고정한다. `zlink_send_ready_handler`와 `ZLINK_POLLOUT`은
      그 아래 native/core 계층의 구현 경로이며, framework가 세 신호를 각각
@@ -319,8 +319,8 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
    - 남은 확인: queue 12에서 전체 build/test/smoke를 다시 실행한다.
 6. `verified`: framework `.NET` routed channel public API를 구현한다.
    - 근거 draft:
-     [session-gateway.ko.md](../../../spec/draft/framework-adapter/policy/session-gateway.ko.md),
-     [handler-interfaces.ko.md](../../../spec/draft/framework-adapter/bindings/dotnet/handler-interfaces.ko.md)
+     [session-gateway.ko.md](../../../spec/archive/session-gateway.ko.md),
+     [handler-interfaces.ko.md](../../../../languages/dotnet/doc/spec/handler-interfaces.ko.md)
    - `AddRoutedChannel(...)`
    - `IZLinkRoutedClient`
    - `IZLinkRoutedSendCall`
@@ -338,8 +338,8 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
      확인했다.
 7. `verified`: framework `.NET` session gateway와 actor relay API를 구현한다.
    - 근거 draft:
-     [session-gateway.ko.md](../../../spec/draft/framework-adapter/policy/session-gateway.ko.md),
-     [framework-api.ko.md](../../../spec/draft/framework-adapter/policy/framework-api.ko.md)
+     [session-gateway.ko.md](../../../spec/archive/session-gateway.ko.md),
+     [framework-api.ko.md](../../../spec/framework-api.ko.md)
    - Session server는 client stream과 `actorId -> stream` binding을 소유한다.
    - API server는 application location store interface를 소유한다.
    - Play server는 actor와 game room을 소유한다.
@@ -361,8 +361,8 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
    `framework/languages/dotnet/samples/TicTacToe(session-gateway)` project로 추가한다.
    이 항목은 5, 6, 7번 framework API가 실제로 동작해야 완료할 수 있다.
    - 근거 draft:
-     [tictactoe-game-sample.ko.md](../../../spec/draft/framework-adapter/bindings/dotnet/tictactoe-game-sample.ko.md),
-     [session-gateway.ko.md](../../../spec/draft/framework-adapter/policy/session-gateway.ko.md)
+     [tictactoe-game-sample.ko.md](../../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md),
+     [session-gateway.ko.md](../../../spec/archive/session-gateway.ko.md)
    - sample 내부 `InMemoryRoutedChannel` 같은 대체 transport를 만들지 않는다.
    - Session server는 client stream과 `actorId -> stream` binding을 사용한다.
    - API server는 application location store interface를 소유한다.

@@ -30,11 +30,11 @@ Run the all-in-one server smoke path:
 dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server
 ```
 
-The standalone client lives in [`Client`](./Client/). Use it when you want to
+The standalone client lives in [`Client`](./Client). Use it when you want to
 read or run just the client side of the flow.
-The request, response, and push DTOs live in [`Shared`](./Shared/) so the
+The request, response, and push DTOs live in [`Shared`](./Shared) so the
 server and client use the same protocol contract. The reusable client flow lives
-in [`Client`](./Client/); the server smoke path references it only to run the
+in [`Client`](./Client); the server smoke path references it only to run the
 all-in-one sample.
 
 The server executable also supports separate roles:

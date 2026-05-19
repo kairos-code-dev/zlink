@@ -32,9 +32,9 @@ public sealed class DocumentationRegressionTests
     [Fact]
     public void DotNetDraftDocuments_AllExposeRegressionTestSection()
     {
-        var directory = GetDotNetDraftDirectory();
+        var directory = GetDotNetDocRoot();
         var actualDocuments = Directory
-            .EnumerateFiles(directory, "*.ko.md")
+            .EnumerateFiles(directory, "*.ko.md", SearchOption.AllDirectories)
             .Select(Path.GetFileName)
             .OfType<string>()
             .Order(StringComparer.Ordinal)
@@ -44,7 +44,7 @@ public sealed class DocumentationRegressionTests
 
         foreach (var document in DotNetDraftDocuments)
         {
-            var path = Path.Combine(directory, document);
+            var path = ResolveDoc(document);
             var text = File.ReadAllText(path);
             var references = ExtractRegressionTestReferences(text).ToArray();
 
@@ -64,8 +64,7 @@ public sealed class DocumentationRegressionTests
     [Fact]
     public void DotNetRegressionMatrix_References_AllDraftDocuments()
     {
-        var directory = GetDotNetDraftDirectory();
-        var matrix = File.ReadAllText(Path.Combine(directory, "regression-test-matrix.ko.md"));
+        var matrix = File.ReadAllText(ResolveDoc("regression-test-matrix.ko.md"));
 
         foreach (var document in DotNetDraftDocuments)
         {
@@ -76,12 +75,11 @@ public sealed class DocumentationRegressionTests
     [Fact]
     public void DotNetDraftRegressionTestReferences_Resolve_ToActiveTestMethods()
     {
-        var directory = GetDotNetDraftDirectory();
         var activeTests = GetActiveTestMethods();
 
         foreach (var document in DotNetDraftDocuments)
         {
-            var path = Path.Combine(directory, document);
+            var path = ResolveDoc(document);
             var text = File.ReadAllText(path);
             var references = ExtractRegressionTestReferences(text).ToArray();
             Assert.NotEmpty(references);
@@ -96,9 +94,7 @@ public sealed class DocumentationRegressionTests
     [Fact]
     public void DotNetRegressionMatrix_Includes_ExecutionSerialization_Guards()
     {
-        var matrix = File.ReadAllText(Path.Combine(
-            GetDotNetDraftDirectory(),
-            "regression-test-matrix.ko.md"));
+        var matrix = File.ReadAllText(ResolveDoc("regression-test-matrix.ko.md"));
 
         Assert.Contains("Entry Spot actor mailbox dispatch", matrix, StringComparison.Ordinal);
         Assert.Contains("local actor mailbox dispatch", matrix, StringComparison.Ordinal);
@@ -114,9 +110,7 @@ public sealed class DocumentationRegressionTests
     [Fact]
     public void DotNetSessionActorDispatch_Documents_ExecutionSerialization_Core_Code()
     {
-        var document = File.ReadAllText(Path.Combine(
-            GetDotNetDraftDirectory(),
-            "session-actor-dispatch.ko.md"));
+        var document = File.ReadAllText(ResolveDoc("session-actor-dispatch.ko.md"));
 
         Assert.Contains("## 2.3 실행 직렬화 핵심 코드", document, StringComparison.Ordinal);
         Assert.Contains("internal sealed class ZLinkSerialWorkItem", document, StringComparison.Ordinal);
@@ -140,7 +134,7 @@ public sealed class DocumentationRegressionTests
         return string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
-    private static string GetDotNetDraftDirectory()
+    private static string GetDotNetDocRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
 
@@ -149,12 +143,9 @@ public sealed class DocumentationRegressionTests
             var candidate = Path.Combine(
                 current.FullName,
                 "framework",
-                "doc",
-                "spec",
-                "draft",
-                "framework-adapter",
-                "bindings",
-                "dotnet");
+                "languages",
+                "dotnet",
+                "doc");
 
             if (Directory.Exists(candidate))
             {
@@ -165,7 +156,24 @@ public sealed class DocumentationRegressionTests
         }
 
         throw new DirectoryNotFoundException(
-            "Could not find framework/doc/spec/draft/framework-adapter/bindings/dotnet from test runtime.");
+            "Could not find framework/languages/dotnet/doc from test runtime.");
+    }
+
+    private static string ResolveDoc(string fileName)
+    {
+        var matches = Directory.EnumerateFiles(
+            GetDotNetDocRoot(),
+            fileName,
+            SearchOption.AllDirectories).ToArray();
+
+        return matches.Length switch
+        {
+            1 => matches[0],
+            0 => throw new FileNotFoundException(
+                $"Could not find '{fileName}' under framework/languages/dotnet/doc."),
+            _ => throw new InvalidOperationException(
+                $"Ambiguous document '{fileName}': {string.Join(", ", matches)}"),
+        };
     }
 
     private static IReadOnlyCollection<string> ExtractRegressionTestReferences(string text)

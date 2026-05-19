@@ -1,6 +1,6 @@
 [스펙 목차](../../spec/README.ko.md)
 
-[계획 목록](./README.ko.md) | [Framework Adapter 정책](../../spec/draft/framework-adapter/policy/README.ko.md) | [.NET 초안](../../spec/draft/framework-adapter/bindings/dotnet/README.ko.md)
+[계획 목록](./README.ko.md) | [Framework Adapter 정책](../../spec/README.ko.md) | [.NET 초안](../../../languages/dotnet/doc/README.ko.md)
 
 # .NET Framework Adapter 구현 실행 계획
 
@@ -29,29 +29,29 @@
 구현 중 판단이 필요하면 아래 순서로 문서를 본다.
 
 1. 공통 정책
-   - [policy/README.ko.md](../../spec/draft/framework-adapter/policy/README.ko.md)
-   - [overview.ko.md](../../spec/draft/framework-adapter/policy/overview.ko.md)
-   - [interaction-model.ko.md](../../spec/draft/framework-adapter/policy/interaction-model.ko.md)
-   - [message-model.ko.md](../../spec/draft/framework-adapter/policy/message-model.ko.md)
-   - [channel-topology.ko.md](../../spec/draft/framework-adapter/policy/channel-topology.ko.md)
-   - [framework-api.ko.md](../../spec/draft/framework-adapter/policy/framework-api.ko.md)
+   - [policy/README.ko.md](../../spec/README.ko.md)
+   - [overview.ko.md](../../spec/overview.ko.md)
+   - [interaction-model.ko.md](../../spec/interaction-model.ko.md)
+   - [message-model.ko.md](../../spec/message-model.ko.md)
+   - [channel-topology.ko.md](../../spec/channel-topology.ko.md)
+   - [framework-api.ko.md](../../spec/framework-api.ko.md)
 2. `.NET` 기준 문서
-   - [handler-interfaces.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/handler-interfaces.ko.md)
-   - [aspnet-core-channel-messaging.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/aspnet-core-channel-messaging.ko.md)
-   - [aspnet-core-spot.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/aspnet-core-spot.ko.md)
-   - [aspnet-core-stream.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/aspnet-core-stream.ko.md)
-   - [aspnet-core-monitoring.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/aspnet-core-monitoring.ko.md)
-   - [aspnet-core-registry.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/aspnet-core-registry.ko.md)
+   - [handler-interfaces.ko.md](../../../languages/dotnet/doc/spec/handler-interfaces.ko.md)
+   - [aspnet-core-channel-messaging.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-channel-messaging.ko.md)
+   - [aspnet-core-spot.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-spot.ko.md)
+   - [aspnet-core-stream.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-stream.ko.md)
+   - [aspnet-core-monitoring.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-monitoring.ko.md)
+   - [aspnet-core-registry.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-registry.ko.md)
 3. 구현 준비 문서
-   - [behavior-matrix.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/behavior-matrix.ko.md)
-   - [lifecycle-and-failure-semantics.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/lifecycle-and-failure-semantics.ko.md)
-   - [regression-test-matrix.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/regression-test-matrix.ko.md)
-   - [implementation-scope-and-nongoals.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/implementation-scope-and-nongoals.ko.md)
-   - [backend-dependency-policy.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/backend-dependency-policy.ko.md)
+   - [behavior-matrix.ko.md](../../../languages/dotnet/doc/internals/behavior-matrix.ko.md)
+   - [lifecycle-and-failure-semantics.ko.md](../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md)
+   - [regression-test-matrix.ko.md](../../../languages/dotnet/doc/internals/regression-test-matrix.ko.md)
+   - [implementation-scope-and-nongoals.ko.md](../../../languages/dotnet/doc/internals/implementation-scope-and-nongoals.ko.md)
+   - [backend-dependency-policy.ko.md](../../../languages/dotnet/doc/internals/backend-dependency-policy.ko.md)
 4. 샘플 문서
-   - [channel-messaging-samples.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/channel-messaging-samples.ko.md)
-   - [spot-samples.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/spot-samples.ko.md)
-   - [stream-samples.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/stream-samples.ko.md)
+   - [channel-messaging-samples.ko.md](../../../languages/dotnet/doc/guide/channel-messaging-samples.ko.md)
+   - [spot-samples.ko.md](../../../languages/dotnet/doc/guide/spot-samples.ko.md)
+   - [stream-samples.ko.md](../../../languages/dotnet/doc/guide/stream-samples.ko.md)
 5. 저장소 공통 설계/리팩토링 기준
    - [doc/spec/bindings/README.md](/home/hep7/project/kairos/zlink/doc/spec/bindings/README.md)
 

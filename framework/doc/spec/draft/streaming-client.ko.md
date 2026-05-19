@@ -1,3 +1,7 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework 공통 스펙 — Draft](./README.ko.md)
+<!-- framework-adapter-nav:end -->
+
 [Framework 초안](./README.ko.md)
 
 # Draft -- ZLink Stream Connector
@@ -32,7 +36,7 @@ WSS transport로 STREAM 서버에 접속할 수 있어야 한다.
 
 현재 언어별 상세 문서:
 
-- [.NET stream connector](./framework-adapter/bindings/dotnet/streaming-client.ko.md)
+- [.NET stream connector](../../../languages/dotnet/doc/guide/streaming-client.ko.md)
 
 ## 3. 메시지 단위
 

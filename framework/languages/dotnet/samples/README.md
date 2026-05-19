@@ -2,7 +2,7 @@
 
 | Sample | Purpose |
 |--------|---------|
-| [TicTacToe](./TicTacToe/) | Tic-tac-toe API server, play server, standalone client, game creation, STREAM authentication, actor game join, move requests, and game-state messages. |
+| [TicTacToe](./TicTacToe) | Tic-tac-toe API server, play server, standalone client, game creation, STREAM authentication, actor game join, move requests, and game-state messages. |
 | [TicTacToe(session-gateway)](./TicTacToe(session-gateway)/) | Session gateway variant with shared contracts, separate client/server projects, routed actor dispatch, reconnect recovery, and SPOT-backed match rooms. |
 
 Run all samples:

@@ -1,4 +1,4 @@
-[계획 목록](./README.ko.md) | [Session Actor Dispatch Usability](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md) | [POSD 리뷰](./worklog/posd-review.md) | [Sample POSD 리뷰](./worklog/sample-posd-review.md)
+[계획 목록](./README.ko.md) | [Session Actor Dispatch Usability](../../spec/session-actor-dispatch.ko.md) | [POSD 리뷰](./worklog/posd-review.md) | [Sample POSD 리뷰](./worklog/sample-posd-review.md)
 
 # Session Actor Dispatch 구현 및 샘플 전환 계획
 
@@ -8,7 +8,7 @@
 
 이 문서는 공개 API 계약이 아니다. 공개 계약의 기준은 항상 아래 draft다.
 
-- [session-gateway-usability.ko.md](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md)
+- [session-gateway-usability.ko.md](../../spec/session-actor-dispatch.ko.md)
 
 ## 1. 사용 방법
 
@@ -43,7 +43,7 @@ POSD 원칙 순서로 판단하고 계속 진행한다.
 - 이 문서를 작업 queue의 단일 진입점으로 삼는다.
 - draft의 내용을 프롬프트에 다시 복사하지 않는다. 각 phase의 링크를 직접 열어 읽는다.
 - 어떤 API 이름이나 sample 구조가 충돌하면 더 최신 기준은
-  [session-gateway-usability.ko.md](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md)로 둔다.
+  [session-gateway-usability.ko.md](../../spec/session-actor-dispatch.ko.md)로 둔다.
 - `session-gateway.ko.md`는 superseded 초안이므로 새 구현 기준으로 쓰지 않는다.
 - worklog의 과거 `SessionGateway` 구현 기록은 이력으로 보존하되, 새 구현 기준으로 쓰지 않는다.
 - 판단이 필요한 경우에는 `draft -> .NET binding draft -> 기존 코드 -> POSD 원칙`
@@ -75,33 +75,33 @@ POSD 원칙 순서로 판단하고 계속 진행한다.
 
 | 주제 | 읽을 draft 위치 |
 |------|-----------------|
-| 문제와 목표 | [§1 목적](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#1-목적), [§2 현재 샘플에서 드러난 문제](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#2-현재-샘플에서-드러난-문제), [§3 설계 목표](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#3-설계-목표), [§4 비목표](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#4-비목표) |
-| POSD 판단 기준 | [§5 POSD 기준 문제 정리](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#5-posd-기준-문제-정리), [§6 대안 검토](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#6-대안-검토), [§22 POSD Review Result](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#22-posd-review-result) |
-| 표면 개요 | [§7 제안 표면 개요](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#7-제안-표면-개요) |
-| handler dispatch | [§8 Actor/Node/Spot Handler Dispatch](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#8-actornodespot-handler-dispatch), [§8.2 제안 handler 모양](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#82-제안-handler-모양), [§8.4 등록 API](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#84-등록-api), [§8.5 낮은 수준 handler와의 관계](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#85-낮은-수준-handler와의-관계) |
-| SessionProxy naming | [§8.2.1 SessionProxy naming](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#821-sessionproxy-naming), [§11 SessionProxy 호출 표면](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#11-sessionproxy-호출-표면), [§11.1 이름 변경 계획](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#111-이름-변경-계획) |
-| metadata | [§8.3 Header Metadata 전달](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#83-header-metadata-전달), [§12 Codec 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#12-codec-정책) |
-| route resolver | [§9 Actor Route Resolvers](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#9-actor-route-resolvers), [§9.2 제안 interface](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#92-제안-interface), [§9.3 resolver가 숨기는 정보](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#93-resolver가-숨기는-정보), [§9.4 실패 의미](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#94-실패-의미) |
-| session location writer | [§9.5 위치 소유와 갱신 책임](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#95-위치-소유와-갱신-책임), [§9.6 registry discovery metadata sample](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#96-registry-discovery-metadata-sample) |
-| session actor helper | [§10 Session Actor Helpers](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#10-session-actor-helpers), [§10.2 제안 session context API](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#102-제안-session-context-api), [§10.2.1 actor create lifecycle](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#1021-actor-create-lifecycle), [§10.3 직접 dispatch 예시](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#103-직접-dispatch-예시) |
-| discovery | [§13 Discovery 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#13-discovery-정책) |
-| spot direct target | [§14 SPOT direct target API 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#14-spot-direct-target-api-정책) |
-| timeout/retry | [§15 Timeout과 retry 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#15-timeout과-retry-정책) |
-| before/after | [§16 Before / After](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#16-before--after) |
-| error | [§17 Error 의미](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#17-error-의미) |
-| breaking change | [§18 Breaking Change](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#18-breaking-change) |
-| test 기준 | [§19 테스트 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#19-테스트-기준) |
-| 구현 순서와 완료 기준 | [§20 구현 순서](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#20-구현-순서), [§21 완료 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#21-완료-기준) |
+| 문제와 목표 | [§1 목적](../../spec/session-actor-dispatch.ko.md#1-목적), [§2 현재 샘플에서 드러난 문제](../../spec/session-actor-dispatch.ko.md#2-현재-샘플에서-드러난-문제), [§3 설계 목표](../../spec/session-actor-dispatch.ko.md#3-설계-목표), [§4 비목표](../../spec/session-actor-dispatch.ko.md#4-비목표) |
+| POSD 판단 기준 | [§5 POSD 기준 문제 정리](../../spec/session-actor-dispatch.ko.md#5-posd-기준-문제-정리), [§6 대안 검토](../../spec/session-actor-dispatch.ko.md#6-대안-검토), [§22 POSD Review Result](../../spec/session-actor-dispatch.ko.md#22-posd-review-result) |
+| 표면 개요 | [§7 제안 표면 개요](../../spec/session-actor-dispatch.ko.md#7-제안-표면-개요) |
+| handler dispatch | [§8 Actor/Node/Spot Handler Dispatch](../../spec/session-actor-dispatch.ko.md#8-actornodespot-handler-dispatch), [§8.2 제안 handler 모양](../../spec/session-actor-dispatch.ko.md#82-제안-handler-모양), [§8.4 등록 API](../../spec/session-actor-dispatch.ko.md#84-등록-api), [§8.5 낮은 수준 handler와의 관계](../../spec/session-actor-dispatch.ko.md#85-낮은-수준-handler와의-관계) |
+| SessionProxy naming | [§8.2.1 SessionProxy naming](../../spec/session-actor-dispatch.ko.md#821-sessionproxy-naming), [§11 SessionProxy 호출 표면](../../spec/session-actor-dispatch.ko.md#11-sessionproxy-호출-표면), [§11.1 이름 변경 계획](../../spec/session-actor-dispatch.ko.md#111-이름-변경-계획) |
+| metadata | [§8.3 Header Metadata 전달](../../spec/session-actor-dispatch.ko.md#83-header-metadata-전달), [§12 Codec 정책](../../spec/session-actor-dispatch.ko.md#12-codec-정책) |
+| route resolver | [§9 Actor Route Resolvers](../../spec/session-actor-dispatch.ko.md#9-actor-route-resolvers), [§9.2 제안 interface](../../spec/session-actor-dispatch.ko.md#92-제안-interface), [§9.3 resolver가 숨기는 정보](../../spec/session-actor-dispatch.ko.md#93-resolver가-숨기는-정보), [§9.4 실패 의미](../../spec/session-actor-dispatch.ko.md#94-실패-의미) |
+| session location writer | [§9.5 위치 소유와 갱신 책임](../../spec/session-actor-dispatch.ko.md#95-위치-소유와-갱신-책임), [§9.6 registry discovery metadata sample](../../spec/session-actor-dispatch.ko.md#96-registry-discovery-metadata-sample) |
+| session actor helper | [§10 Session Actor Helpers](../../spec/session-actor-dispatch.ko.md#10-session-actor-helpers), [§10.2 제안 session context API](../../spec/session-actor-dispatch.ko.md#102-제안-session-context-api), [§10.2.1 actor create lifecycle](../../spec/session-actor-dispatch.ko.md#1021-actor-create-lifecycle), [§10.3 직접 dispatch 예시](../../spec/session-actor-dispatch.ko.md#103-직접-dispatch-예시) |
+| discovery | [§13 Discovery 정책](../../spec/session-actor-dispatch.ko.md#13-discovery-정책) |
+| spot direct target | [§14 SPOT direct target API 정책](../../spec/session-actor-dispatch.ko.md#14-spot-direct-target-api-정책) |
+| timeout/retry | [§15 Timeout과 retry 정책](../../spec/session-actor-dispatch.ko.md#15-timeout과-retry-정책) |
+| before/after | [§16 Before / After](../../spec/session-actor-dispatch.ko.md#16-before--after) |
+| error | [§17 Error 의미](../../spec/session-actor-dispatch.ko.md#17-error-의미) |
+| breaking change | [§18 Breaking Change](../../spec/session-actor-dispatch.ko.md#18-breaking-change) |
+| test 기준 | [§19 테스트 기준](../../spec/session-actor-dispatch.ko.md#19-테스트-기준) |
+| 구현 순서와 완료 기준 | [§20 구현 순서](../../spec/session-actor-dispatch.ko.md#20-구현-순서), [§21 완료 기준](../../spec/session-actor-dispatch.ko.md#21-완료-기준) |
 
 보조 문서는 필요할 때만 직접 읽는다.
 
-- [framework-api.ko.md](../../spec/draft/framework-adapter/policy/framework-api.ko.md)
-- [interaction-model.ko.md](../../spec/draft/framework-adapter/policy/interaction-model.ko.md)
-- [session-gateway.ko.md](../../spec/draft/framework-adapter/policy/session-gateway.ko.md)
-- [handler-interfaces.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/handler-interfaces.ko.md)
-- [lifecycle-and-failure-semantics.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/lifecycle-and-failure-semantics.ko.md)
-- [streaming-client.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/streaming-client.ko.md)
-- [tictactoe-game-sample.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/tictactoe-game-sample.ko.md)
+- [framework-api.ko.md](../../spec/framework-api.ko.md)
+- [interaction-model.ko.md](../../spec/interaction-model.ko.md)
+- [session-gateway.ko.md](../../spec/archive/session-gateway.ko.md)
+- [handler-interfaces.ko.md](../../../languages/dotnet/doc/spec/handler-interfaces.ko.md)
+- [lifecycle-and-failure-semantics.ko.md](../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md)
+- [streaming-client.ko.md](../../../languages/dotnet/doc/guide/streaming-client.ko.md)
+- [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md)
 
 ## 3. 공통 완료 규칙
 
@@ -119,9 +119,9 @@ POSD 원칙 순서로 판단하고 계속 진행한다.
 
 읽을 draft 위치:
 
-- [§18 Breaking Change](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#18-breaking-change)
-- [§19 테스트 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#19-테스트-기준)
-- [§21 완료 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#21-완료-기준)
+- [§18 Breaking Change](../../spec/session-actor-dispatch.ko.md#18-breaking-change)
+- [§19 테스트 기준](../../spec/session-actor-dispatch.ko.md#19-테스트-기준)
+- [§21 완료 기준](../../spec/session-actor-dispatch.ko.md#21-완료-기준)
 
 작업:
 
@@ -141,13 +141,13 @@ rg -n "InMemoryRoutedChannel|UseManualConnections|Retry|Warmup|Task\\.Delay|Samp
 
 읽을 draft 위치:
 
-- [§7 제안 표면 개요](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#7-제안-표면-개요)
-- [§8 Actor/Node/Spot Handler Dispatch](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#8-actornodespot-handler-dispatch)
-- [§9 Actor Route Resolvers](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#9-actor-route-resolvers)
-- [§10 Session Actor Helpers](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#10-session-actor-helpers)
-- [§11 SessionProxy 호출 표면](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#11-sessionproxy-호출-표면)
-- [§14 SPOT direct target API 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#14-spot-direct-target-api-정책)
-- [§17 Error 의미](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#17-error-의미)
+- [§7 제안 표면 개요](../../spec/session-actor-dispatch.ko.md#7-제안-표면-개요)
+- [§8 Actor/Node/Spot Handler Dispatch](../../spec/session-actor-dispatch.ko.md#8-actornodespot-handler-dispatch)
+- [§9 Actor Route Resolvers](../../spec/session-actor-dispatch.ko.md#9-actor-route-resolvers)
+- [§10 Session Actor Helpers](../../spec/session-actor-dispatch.ko.md#10-session-actor-helpers)
+- [§11 SessionProxy 호출 표면](../../spec/session-actor-dispatch.ko.md#11-sessionproxy-호출-표면)
+- [§14 SPOT direct target API 정책](../../spec/session-actor-dispatch.ko.md#14-spot-direct-target-api-정책)
+- [§17 Error 의미](../../spec/session-actor-dispatch.ko.md#17-error-의미)
 
 작업:
 
@@ -167,8 +167,8 @@ rg -n "InMemoryRoutedChannel|UseManualConnections|Retry|Warmup|Task\\.Delay|Samp
 
 읽을 draft 위치:
 
-- [§20 구현 순서](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#20-구현-순서)
-- [§21 완료 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#21-완료-기준)
+- [§20 구현 순서](../../spec/session-actor-dispatch.ko.md#20-구현-순서)
+- [§21 완료 기준](../../spec/session-actor-dispatch.ko.md#21-완료-기준)
 
 반복 절차:
 
@@ -187,9 +187,9 @@ rg -n "InMemoryRoutedChannel|UseManualConnections|Retry|Warmup|Task\\.Delay|Samp
 
 읽을 draft 위치:
 
-- [§5 POSD 기준 문제 정리](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#5-posd-기준-문제-정리)
-- [§6 대안 검토](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#6-대안-검토)
-- [§22 POSD Review Result](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#22-posd-review-result)
+- [§5 POSD 기준 문제 정리](../../spec/session-actor-dispatch.ko.md#5-posd-기준-문제-정리)
+- [§6 대안 검토](../../spec/session-actor-dispatch.ko.md#6-대안-검토)
+- [§22 POSD Review Result](../../spec/session-actor-dispatch.ko.md#22-posd-review-result)
 
 반복 절차:
 
@@ -209,12 +209,12 @@ rg -n "InMemoryRoutedChannel|UseManualConnections|Retry|Warmup|Task\\.Delay|Samp
 
 읽을 draft 위치:
 
-- [§10.3 직접 dispatch 예시](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#103-직접-dispatch-예시)
-- [§11 SessionProxy 호출 표면](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#11-sessionproxy-호출-표면)
-- [§13 Discovery 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#13-discovery-정책)
-- [§16 Before / After](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#16-before--after)
-- [§19 테스트 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#19-테스트-기준)
-- [§21 완료 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#21-완료-기준)
+- [§10.3 직접 dispatch 예시](../../spec/session-actor-dispatch.ko.md#103-직접-dispatch-예시)
+- [§11 SessionProxy 호출 표면](../../spec/session-actor-dispatch.ko.md#11-sessionproxy-호출-표면)
+- [§13 Discovery 정책](../../spec/session-actor-dispatch.ko.md#13-discovery-정책)
+- [§16 Before / After](../../spec/session-actor-dispatch.ko.md#16-before--after)
+- [§19 테스트 기준](../../spec/session-actor-dispatch.ko.md#19-테스트-기준)
+- [§21 완료 기준](../../spec/session-actor-dispatch.ko.md#21-완료-기준)
 
 작업:
 
@@ -223,7 +223,7 @@ rg -n "InMemoryRoutedChannel|UseManualConnections|Retry|Warmup|Task\\.Delay|Samp
    `framework/languages/dotnet/samples/TicTacToe(session-gateway)`를 유지한다.
 3. 새 sample의 설명과 code는 draft의 새 public 모델을 따른다.
 4. registry discovery metadata 기반 writer/resolver sample은
-   [§9.6](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#96-registry-discovery-metadata-sample)을 직접 읽고 구현한다.
+   [§9.6](../../spec/session-actor-dispatch.ko.md#96-registry-discovery-metadata-sample)을 직접 읽고 구현한다.
 5. sample smoke는 실제 stream connector, routed channel, discovery를 사용한다.
 
 완료 조건:
@@ -236,10 +236,10 @@ rg -n "InMemoryRoutedChannel|UseManualConnections|Retry|Warmup|Task\\.Delay|Samp
 
 읽을 draft 위치:
 
-- [§2 현재 샘플에서 드러난 문제](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#2-현재-샘플에서-드러난-문제)
-- [§16 Before / After](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#16-before--after)
-- [§19 테스트 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#19-테스트-기준)
-- [§21 완료 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#21-완료-기준)
+- [§2 현재 샘플에서 드러난 문제](../../spec/session-actor-dispatch.ko.md#2-현재-샘플에서-드러난-문제)
+- [§16 Before / After](../../spec/session-actor-dispatch.ko.md#16-before--after)
+- [§19 테스트 기준](../../spec/session-actor-dispatch.ko.md#19-테스트-기준)
+- [§21 완료 기준](../../spec/session-actor-dispatch.ko.md#21-완료-기준)
 
 반복 절차:
 
@@ -264,8 +264,8 @@ rg -n "RoutingId|\\.SendAsync\\(|ExecAsync|WithDontWait|\\.Sync\\(" "framework/l
 
 읽을 draft 위치:
 
-- [§5 POSD 기준 문제 정리](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#5-posd-기준-문제-정리)
-- [§22 POSD Review Result](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#22-posd-review-result)
+- [§5 POSD 기준 문제 정리](../../spec/session-actor-dispatch.ko.md#5-posd-기준-문제-정리)
+- [§22 POSD Review Result](../../spec/session-actor-dispatch.ko.md#22-posd-review-result)
 
 반복 절차:
 
@@ -285,8 +285,8 @@ rg -n "RoutingId|\\.SendAsync\\(|ExecAsync|WithDontWait|\\.Sync\\(" "framework/l
 
 읽을 draft 위치:
 
-- [§19 테스트 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#19-테스트-기준)
-- [§21 완료 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#21-완료-기준)
+- [§19 테스트 기준](../../spec/session-actor-dispatch.ko.md#19-테스트-기준)
+- [§21 완료 기준](../../spec/session-actor-dispatch.ko.md#21-완료-기준)
 
 필수 명령:
 
@@ -316,22 +316,22 @@ Phase 7까지 완료된 뒤에만 수행한다. 구현 전 초안의 내용을 �
 
 읽을 draft 위치:
 
-- [Session Actor Dispatch Usability](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md)
-- [§18 Breaking Change](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#18-breaking-change)
-- [§19 테스트 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#19-테스트-기준)
-- [§21 완료 기준](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#21-완료-기준)
+- [Session Actor Dispatch Usability](../../spec/session-actor-dispatch.ko.md)
+- [§18 Breaking Change](../../spec/session-actor-dispatch.ko.md#18-breaking-change)
+- [§19 테스트 기준](../../spec/session-actor-dispatch.ko.md#19-테스트-기준)
+- [§21 완료 기준](../../spec/session-actor-dispatch.ko.md#21-완료-기준)
 
 반영 대상 후보:
 
 | 정식 또는 기존 spec 문서 | 반영 내용 |
 |--------------------------|-----------|
-| [framework-api.ko.md](../../spec/draft/framework-adapter/policy/framework-api.ko.md) | public builder, 제거된 old API, error surface |
-| [interaction-model.ko.md](../../spec/draft/framework-adapter/policy/interaction-model.ko.md) | request sequence, timeout, retry 금지 의미 |
-| [session-gateway.ko.md](../../spec/draft/framework-adapter/policy/session-gateway.ko.md) | 새 session actor dispatch와 `SessionProxy` 모델로 갱신 또는 대체 |
-| [handler-interfaces.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/handler-interfaces.ko.md) | typed handler, actor context, call builder |
-| [lifecycle-and-failure-semantics.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/lifecycle-and-failure-semantics.ko.md) | actor create, writer bind/unbind, stale binding, framework exception |
-| [regression-test-matrix.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/regression-test-matrix.ko.md) | 확정된 회귀 테스트 항목 |
-| [tictactoe-game-sample.ko.md](../../spec/draft/framework-adapter/bindings/dotnet/tictactoe-game-sample.ko.md) | 최종 sample 구조와 smoke 기준 |
+| [framework-api.ko.md](../../spec/framework-api.ko.md) | public builder, 제거된 old API, error surface |
+| [interaction-model.ko.md](../../spec/interaction-model.ko.md) | request sequence, timeout, retry 금지 의미 |
+| [session-gateway.ko.md](../../spec/archive/session-gateway.ko.md) | 새 session actor dispatch와 `SessionProxy` 모델로 갱신 또는 대체 |
+| [handler-interfaces.ko.md](../../../languages/dotnet/doc/spec/handler-interfaces.ko.md) | typed handler, actor context, call builder |
+| [lifecycle-and-failure-semantics.ko.md](../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md) | actor create, writer bind/unbind, stale binding, framework exception |
+| [regression-test-matrix.ko.md](../../../languages/dotnet/doc/internals/regression-test-matrix.ko.md) | 확정된 회귀 테스트 항목 |
+| [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md) | 최종 sample 구조와 smoke 기준 |
 
 작업:
 

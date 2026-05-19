@@ -1278,10 +1278,7 @@ public sealed class StreamIntegrationTests
 
     private static string GetFreeTcpEndpoint()
     {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var endpoint = (IPEndPoint)listener.LocalEndpoint;
-        return $"tcp://127.0.0.1:{endpoint.Port}";
+        return ChannelMessagingTestSupport.GetTcpEndpoint();
     }
 
     private static ZlinkStreamHeader CreateStreamHeader(

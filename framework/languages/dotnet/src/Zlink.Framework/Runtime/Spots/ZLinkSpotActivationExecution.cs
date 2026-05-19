@@ -112,8 +112,8 @@ internal sealed partial class ZLinkSpotActivation
         _stopSource.Cancel();
         await _subscriptionPump.StopAsync();
 
-        await _serial.DisposeAsync();
         await _timers.DisposeAsync();
+        await _serial.DisposeAsync();
         await _outbound.DisposeAsync();
         await NativeSpot.DisposeAsync();
         _stopSource.Dispose();

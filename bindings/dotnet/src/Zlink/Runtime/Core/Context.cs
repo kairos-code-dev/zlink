@@ -102,7 +102,16 @@ public sealed class Context : IContext
 
     ~Context()
     {
-        Dispose();
+        if (_handle == IntPtr.Zero)
+            return;
+
+        try
+        {
+            _ = NativeMethods.zlink_ctx_shutdown(_handle);
+        }
+        catch
+        {
+        }
     }
 
     private void EnsureNotDisposed()

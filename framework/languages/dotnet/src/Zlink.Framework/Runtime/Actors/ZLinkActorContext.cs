@@ -8,15 +8,11 @@ internal sealed class ZLinkActorContext(
 
     public string? SessionId => state.SessionId;
 
-    public string? SpotName => state.Activation is { IsDisposed: false } activation
-        ? activation.SpotName
-        : null;
+    public string? SpotName => state.SpotName;
 
-    public RoutingId? SpotRid => state.Activation is { IsDisposed: false } activation
-        ? activation.SpotRid
-        : null;
+    public RoutingId? SpotRid => state.SpotRid;
 
-    public bool IsJoined => state.Activation is not null && !state.Activation.IsDisposed;
+    public bool IsJoined => state.IsJoined;
 
     public void AddPacket<THandler>()
         where THandler : class
@@ -37,9 +33,7 @@ internal sealed class ZLinkActorContext(
 
     public IZLinkSpot GetSpot()
     {
-        return state.Activation is { IsDisposed: false } activation
-            ? activation.Spot
-            : throw new InvalidOperationException("Actor has not joined a SPOT.");
+        return state.GetJoinedSpot();
     }
 
     public TSpot GetSpot<TSpot>()
@@ -140,7 +134,7 @@ internal sealed class ZLinkActorChannelSendCall<TMessage>(
 
     public ValueTask Submit(CancellationToken cancellationToken = default)
     {
-        IZLinkSendCall inner = state.Activation is { IsDisposed: false } activation
+        IZLinkSendCall inner = state.LiveActivation is { } activation
             ? new ZLinkCurrentSpotSendCall<TMessage>(activation, channelName, message)
             : new ZLinkSendCall(runtime, runtime.Registration, channelName, message);
 
@@ -178,7 +172,7 @@ internal sealed class ZLinkActorChannelRequestCall<TRequest>(
 
     public ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
     {
-        IZLinkRequestCall inner = state.Activation is { IsDisposed: false } activation
+        IZLinkRequestCall inner = state.LiveActivation is { } activation
             ? new ZLinkCurrentSpotRequestCall<TRequest>(activation, channelName, request)
             : new ZLinkRequestCall<TRequest>(runtime, runtime.Registration, channelName, request);
 

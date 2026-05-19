@@ -80,8 +80,6 @@ public sealed class LifecycleHostedServiceTests
 
     private static int GetEphemeralPort()
     {
-        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        listener.Start();
-        return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        return ChannelMessagingTestSupport.GetEphemeralPort();
     }
 }

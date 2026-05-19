@@ -1,11 +1,14 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace Systems.Zlink.Tests;
 
 public sealed class test_system
 {
+    private static PairSocket? s_socketThatOutlivesContext;
+
     [Fact]
     public void version_matches_core_header()
     {
@@ -32,6 +35,28 @@ public sealed class test_system
         var probe = new Received();
         Assert.False(socket.Recv(probe, RecvFlags.DontWait));
         Assert.True(Zlink.Has("tcp") || !Zlink.Has("tcp"));
+    }
+
+    [Fact]
+    public async Task context_finalizer_does_not_block_when_socket_outlives_context()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        CreateContextForFinalizerTest();
+        Task finalizers = Task.Run(() =>
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        });
+        Task completed = await Task.WhenAny(
+            finalizers,
+            Task.Delay(TimeSpan.FromSeconds(3)));
+
+        s_socketThatOutlivesContext?.Dispose();
+        s_socketThatOutlivesContext = null;
+
+        Assert.Same(finalizers, completed);
     }
 
     [Fact]
@@ -125,5 +150,11 @@ public sealed class test_system
 
         Assert.True(fired.Wait(20000));
         Assert.Equal(1UL, observed);
+    }
+
+    private static void CreateContextForFinalizerTest()
+    {
+        var ctx = new Context();
+        s_socketThatOutlivesContext = new PairSocket(ctx);
     }
 }

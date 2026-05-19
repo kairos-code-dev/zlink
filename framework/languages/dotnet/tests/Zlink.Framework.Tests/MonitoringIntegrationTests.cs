@@ -207,10 +207,7 @@ public sealed class MonitoringIntegrationTests
 
     private static string GetFreeTcpEndpoint()
     {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var endpoint = (IPEndPoint)listener.LocalEndpoint;
-        return $"tcp://127.0.0.1:{endpoint.Port}";
+        return ChannelMessagingTestSupport.GetTcpEndpoint();
     }
 
     public sealed class RegistryMonitorProbe : IZLinkRuntimeEventHandler<ZLinkRegistryEvent>

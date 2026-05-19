@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
@@ -13,9 +12,17 @@ internal sealed class ZLinkSpotNodeCatalog(
     Func<string, ZLinkSpotAttachedChannelBundle> getOrCreateAttachedChannelBundle,
     Action connectDiscoveredPubSubPeers) : IAsyncDisposable
 {
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _gate = new();
     private readonly Dictionary<RoutingId, ZLinkSpotActivation> _spots = [];
     private readonly Dictionary<RoutingId, PendingSpotCreation> _pending = [];
+    private readonly ZLinkSpotActivationFactory _activationFactory = new(
+        services,
+        runtime,
+        frameworkRegistration,
+        registration,
+        node,
+        spotChannelName,
+        connectDiscoveredPubSubPeers);
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => SnapshotActivations();
 
@@ -26,35 +33,27 @@ internal sealed class ZLinkSpotNodeCatalog(
     {
         ArgumentNullException.ThrowIfNull(createParts);
         Type spotType;
-        await _gate.WaitAsync(cancellationToken);
-        try
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
         {
             spotType = PrepareCreationLocked(spotName);
-        }
-        finally
-        {
-            _gate.Release();
         }
 
         var nativeSpot = node.CreateSpot();
         ZLinkSpotActivation? activation = null;
         try
         {
-            activation = await CreateActivationAsync(
+            activation = await _activationFactory.CreateAsync(
                 spotName,
                 spotType,
                 nativeSpot,
                 createParts,
                 cancellationToken);
 
-            await _gate.WaitAsync(cancellationToken);
-            try
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
             {
                 _spots.Add(activation.SpotRid, activation);
-            }
-            finally
-            {
-                _gate.Release();
             }
 
             return new ZLinkSpotCreateResult(activation.SpotRid, spotName, true);
@@ -84,8 +83,8 @@ internal sealed class ZLinkSpotNodeCatalog(
         Type spotType;
         PendingSpotCreation pending;
         var owner = false;
-        await _gate.WaitAsync(cancellationToken);
-        try
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
         {
             spotType = PrepareCreationLocked(spotName);
 
@@ -105,10 +104,6 @@ internal sealed class ZLinkSpotNodeCatalog(
                 _pending.Add(requestedSpotRid, pending);
                 owner = true;
             }
-        }
-        finally
-        {
-            _gate.Release();
         }
 
         if (!owner)
@@ -130,23 +125,19 @@ internal sealed class ZLinkSpotNodeCatalog(
                     $"SPOT routing id '{requestedSpotRid}' already exists in core but no framework SPOT is registered.");
             }
 
-            activation = await CreateActivationAsync(
+            activation = await _activationFactory.CreateAsync(
                 spotName,
                 spotType,
                 nativeSpot,
                 createParts,
                 cancellationToken);
 
-            await _gate.WaitAsync(cancellationToken);
-            try
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
             {
                 _pending.Remove(requestedSpotRid);
                 _spots.Add(activation.SpotRid, activation);
                 pending.Complete(activation);
-            }
-            finally
-            {
-                _gate.Release();
             }
 
             return new ZLinkSpotCreateResult(activation.SpotRid, spotName, true);
@@ -154,15 +145,10 @@ internal sealed class ZLinkSpotNodeCatalog(
         catch (Exception error)
         {
             var wrapped = WrapSpotCreateFailed(spotName, error);
-            await _gate.WaitAsync(CancellationToken.None);
-            try
+            lock (_gate)
             {
                 _pending.Remove(requestedSpotRid);
                 pending.Fail(wrapped);
-            }
-            finally
-            {
-                _gate.Release();
             }
 
             if (activation is null && nativeSpot is not null)
@@ -182,32 +168,24 @@ internal sealed class ZLinkSpotNodeCatalog(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken);
-        try
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
         {
             return _spots.TryGetValue(spotRid, out var activation)
                 ? new ZLinkSpotInfo(activation.SpotRid, activation.SpotName)
                 : null;
         }
-        finally
-        {
-            _gate.Release();
-        }
     }
 
     public async ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken);
-        try
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
         {
             return _spots.Values
                 .Select(static activation => new ZLinkSpotInfo(activation.SpotRid, activation.SpotName))
                 .OrderBy(static item => item.SpotName, StringComparer.Ordinal)
                 .ToArray();
-        }
-        finally
-        {
-            _gate.Release();
         }
     }
 
@@ -216,17 +194,13 @@ internal sealed class ZLinkSpotNodeCatalog(
         CancellationToken cancellationToken)
     {
         ZLinkSpotActivation? activation;
-        await _gate.WaitAsync(cancellationToken);
-        try
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
         {
             if (!_spots.Remove(spotRid, out activation))
             {
                 return false;
             }
-        }
-        finally
-        {
-            _gate.Release();
         }
 
         await activation.CloseAsync(cancellationToken);
@@ -237,35 +211,23 @@ internal sealed class ZLinkSpotNodeCatalog(
     public async ValueTask DisposeAsync()
     {
         ZLinkSpotActivation[] activations;
-        _gate.Wait();
-        try
+        lock (_gate)
         {
             activations = _spots.Values.ToArray();
             _spots.Clear();
-        }
-        finally
-        {
-            _gate.Release();
         }
 
         foreach (var activation in activations)
         {
             await activation.DisposeAsync();
         }
-
-        _gate.Dispose();
     }
 
     private IReadOnlyCollection<ZLinkSpotActivation> SnapshotActivations()
     {
-        _gate.Wait();
-        try
+        lock (_gate)
         {
             return _spots.Values.ToArray();
-        }
-        finally
-        {
-            _gate.Release();
         }
     }
 
@@ -283,56 +245,6 @@ internal sealed class ZLinkSpotNodeCatalog(
         }
 
         return spotType;
-    }
-
-    private async ValueTask<ZLinkSpotActivation> CreateActivationAsync(
-        string spotName,
-        Type spotType,
-        IZLinkBackendSpot nativeSpot,
-        IReadOnlyList<Message> createParts,
-        CancellationToken cancellationToken)
-    {
-        connectDiscoveredPubSubPeers();
-        var spotScope = services.CreateAsyncScope();
-        ZLinkSpotActivation? activation = null;
-        try
-        {
-            activation = new ZLinkSpotActivation(
-                runtime,
-                spotScope,
-                nativeSpot,
-                node.RoutingId,
-                registration.SpotNodeName,
-                spotName,
-                spotChannelName,
-                frameworkRegistration.DefaultTimeout,
-                registration.Router?.SocketConfig.SendTimeout
-                    ?? TimeSpan.FromMilliseconds(200));
-
-            var spot = (IZLinkSpot)ActivatorUtilities.CreateInstance(
-                spotScope.ServiceProvider,
-                spotType,
-                activation);
-
-            activation.AttachSpot(spot);
-            spot.Configure();
-            activation.BindDescriptors();
-            await activation.InitializeAsync(createParts, cancellationToken);
-            return activation;
-        }
-        catch
-        {
-            if (activation is null)
-            {
-                await spotScope.DisposeAsync();
-            }
-            else
-            {
-                await activation.DisposeAsync();
-            }
-
-            throw;
-        }
     }
 
     private static async ValueTask<ZLinkSpotCreateResult> AwaitPendingAsync(

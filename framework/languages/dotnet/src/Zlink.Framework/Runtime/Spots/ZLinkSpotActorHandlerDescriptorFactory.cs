@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkSpotActorHandlerDescriptorFactory
@@ -142,26 +140,30 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
 
     private static ZLinkHandlerMethodInvoker CreateInvoker(Type handlerType)
     {
-        var method = handlerType.GetMethod("HandleAsync", BindingFlags.Instance | BindingFlags.Public)
-            ?? throw new InvalidOperationException($"Handler '{handlerType}' does not expose HandleAsync.");
-        return ZLinkHandlerMethodInvokerFactory.Create(method);
+        return ZLinkHandlerContractDescriptorSupport.CreateHandleAsyncInvoker(handlerType, "Handler");
     }
 
     private static void ValidateSpotType(Type handlerType, Type? expectedSpotType, Type actualSpotType)
     {
-        if (expectedSpotType is null || actualSpotType != expectedSpotType)
+        if (expectedSpotType is null)
         {
             throw new InvalidOperationException(
                 $"SPOT actor handler '{handlerType}' targets SPOT '{actualSpotType}', but registration expects '{expectedSpotType}'.");
         }
+
+        ZLinkHandlerContractDescriptorSupport.RequireExactType(
+            handlerType,
+            expectedSpotType,
+            actualSpotType,
+            "SPOT actor handler");
     }
 
     private static void ValidateActorType(Type handlerType, Type expectedActorType, Type actualActorType)
     {
-        if (!actualActorType.IsAssignableFrom(expectedActorType))
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor handler '{handlerType}' targets actor '{actualActorType}', but registration expects '{expectedActorType}'.");
-        }
+        ZLinkHandlerContractDescriptorSupport.RequireAssignableFrom(
+            handlerType,
+            expectedActorType,
+            actualActorType,
+            "SPOT actor handler");
     }
 }

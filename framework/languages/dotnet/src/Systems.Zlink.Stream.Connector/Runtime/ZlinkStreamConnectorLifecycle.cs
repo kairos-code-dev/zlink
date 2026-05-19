@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Security.Authentication;
 
 namespace Systems.Zlink.Stream.Connector.Runtime;
@@ -12,6 +11,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
 {
     private readonly object _gate = new();
     private readonly CancellationTokenSource _closeCts = new();
+    private readonly ZlinkStreamHeartbeatMonitor _heartbeat = new(options.Heartbeat);
     private IZlinkStreamConnection? _connection;
     private CancellationTokenSource? _sessionCts;
     private Task? _receiveTask;
@@ -20,8 +20,6 @@ internal sealed class ZlinkStreamConnectorLifecycle(
     private Func<CancellationToken, Task>? _runReceiveLoop;
     private Func<CancellationToken, ValueTask>? _sendHeartbeatPing;
     private ZlinkStreamConnectionState _state = ZlinkStreamConnectionState.Created;
-    private long _lastInboundTicks;
-    private long _lastPingTicks;
 
     public IZlinkStreamConnection? Connection
     {
@@ -136,8 +134,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
 
     public void RecordInbound()
     {
-        var now = Stopwatch.GetTimestamp();
-        Interlocked.Exchange(ref _lastInboundTicks, now);
+        _heartbeat.RecordInbound();
     }
 
     public async ValueTask HandleTransportErrorAsync(ZlinkStreamError error, CancellationToken cancellationToken = default)
@@ -262,9 +259,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         var runReceiveLoop = _runReceiveLoop
             ?? throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.ConfigurationError, "Receive loop is not configured.");
         var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(_closeCts.Token);
-        var now = Stopwatch.GetTimestamp();
-        Interlocked.Exchange(ref _lastInboundTicks, now);
-        Interlocked.Exchange(ref _lastPingTicks, now);
+        _heartbeat.RecordSessionStart();
 
         LifecycleSnapshot oldSnapshot;
         ZlinkStreamConnectionStateChanged? change;
@@ -335,47 +330,11 @@ internal sealed class ZlinkStreamConnectorLifecycle(
     }
 
     private async Task RunHeartbeatLoopAsync(CancellationToken cancellationToken)
-    {
-        var heartbeat = options.Heartbeat;
-        var sendHeartbeatPing = _sendHeartbeatPing;
-        if (!heartbeat.Enabled || sendHeartbeatPing is null)
-        {
-            return;
-        }
-
-        try
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                await Task.Delay(heartbeat.Interval, cancellationToken).ConfigureAwait(false);
-
-                var now = Stopwatch.GetTimestamp();
-                if (Elapsed(now, Interlocked.Read(ref _lastInboundTicks)) >= heartbeat.Timeout)
-                {
-                    await HandleTransportErrorAsync(
-                        new ZlinkStreamError(ZlinkStreamErrorCode.Disconnected, "Heartbeat timed out."),
-                        CancellationToken.None).ConfigureAwait(false);
-                    return;
-                }
-
-                if (Elapsed(now, Interlocked.Read(ref _lastPingTicks)) >= heartbeat.Interval)
-                {
-                    await sendHeartbeatPing(cancellationToken).ConfigureAwait(false);
-                    Interlocked.Exchange(ref _lastPingTicks, Stopwatch.GetTimestamp());
-                }
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (Exception ex)
-        {
-            var error = ex is ZlinkStreamException streamException
-                ? streamException.Error
-                : new ZlinkStreamError(ZlinkStreamErrorCode.SendFailed, "Heartbeat send failed.", ex);
-            await HandleTransportErrorAsync(error, CancellationToken.None).ConfigureAwait(false);
-        }
-    }
+        => await _heartbeat.RunAsync(
+                _sendHeartbeatPing,
+                HandleTransportErrorAsync,
+                cancellationToken)
+            .ConfigureAwait(false);
 
     private async ValueTask HandleDisconnectAsync(ZlinkStreamError error, CancellationToken cancellationToken)
     {
@@ -537,9 +496,6 @@ internal sealed class ZlinkStreamConnectorLifecycle(
 
         return TimeSpan.FromMilliseconds(nextMilliseconds);
     }
-
-    private static TimeSpan Elapsed(long nowTicks, long previousTicks)
-        => TimeSpan.FromSeconds((double)(nowTicks - previousTicks) / Stopwatch.Frequency);
 
     private static ZlinkStreamError GetPendingDisconnectError(ZlinkStreamError cause)
         => cause.Code == ZlinkStreamErrorCode.Disconnected

@@ -23,8 +23,8 @@ internal sealed class ZLinkStreamSessionSerialExecutor : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await _queue.DisposeAsync().ConfigureAwait(false);
         _stopSource.Cancel();
+        await _queue.DisposeAsync().ConfigureAwait(false);
         _stopSource.Dispose();
     }
 }

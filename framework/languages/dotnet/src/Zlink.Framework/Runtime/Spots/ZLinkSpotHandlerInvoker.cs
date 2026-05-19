@@ -1,6 +1,3 @@
-using System.Buffers;
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object spot)
@@ -142,10 +139,16 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         object? arg0,
         object? arg1)
     {
-        var arguments = ArrayPool<object?>.Shared.Rent(2);
-        arguments[0] = arg0;
-        arguments[1] = arg1;
-        return InvokePooledAsync(handlerType, invoker, arguments, 2);
+        return ZLinkHandlerInvocationEngine.InvokeAsync(
+            services,
+            handlerType,
+            invoker,
+            2,
+            arguments =>
+            {
+                arguments[0] = arg0;
+                arguments[1] = arg1;
+            });
     }
 
     private ValueTask<object?> InvokeAsync(
@@ -155,11 +158,17 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         object? arg1,
         object? arg2)
     {
-        var arguments = ArrayPool<object?>.Shared.Rent(3);
-        arguments[0] = arg0;
-        arguments[1] = arg1;
-        arguments[2] = arg2;
-        return InvokePooledAsync(handlerType, invoker, arguments, 3);
+        return ZLinkHandlerInvocationEngine.InvokeAsync(
+            services,
+            handlerType,
+            invoker,
+            3,
+            arguments =>
+            {
+                arguments[0] = arg0;
+                arguments[1] = arg1;
+                arguments[2] = arg2;
+            });
     }
 
     private ValueTask<object?> InvokeAsync(
@@ -170,33 +179,18 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         object? arg2,
         object? arg3)
     {
-        var arguments = ArrayPool<object?>.Shared.Rent(4);
-        arguments[0] = arg0;
-        arguments[1] = arg1;
-        arguments[2] = arg2;
-        arguments[3] = arg3;
-        return InvokePooledAsync(handlerType, invoker, arguments, 4);
-    }
-
-    private async ValueTask<object?> InvokePooledAsync(
-        Type handlerType,
-        ZLinkHandlerMethodInvoker invoker,
-        object?[] arguments,
-        int argumentCount)
-    {
-        try
-        {
-            var handler = ActivatorUtilities.GetServiceOrCreateInstance(
-                services,
-                handlerType);
-            var result = invoker(handler, arguments);
-            return await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
-        }
-        finally
-        {
-            Array.Clear(arguments, 0, argumentCount);
-            ArrayPool<object?>.Shared.Return(arguments);
-        }
+        return ZLinkHandlerInvocationEngine.InvokeAsync(
+            services,
+            handlerType,
+            invoker,
+            4,
+            arguments =>
+            {
+                arguments[0] = arg0;
+                arguments[1] = arg1;
+                arguments[2] = arg2;
+                arguments[3] = arg3;
+            });
     }
 
 }

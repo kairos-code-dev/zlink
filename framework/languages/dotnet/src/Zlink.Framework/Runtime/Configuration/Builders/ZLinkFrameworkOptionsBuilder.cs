@@ -47,15 +47,12 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     public void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory
     {
-        if (string.IsNullOrWhiteSpace(actorType))
-        {
-            throw new ZLinkConfigurationException("Actor factory name must not be empty.");
-        }
-
-        if (!_registration.ActorFactories.TryAdd(actorType, typeof(TFactory)))
-        {
-            throw new ZLinkConfigurationException($"Duplicate actor factory '{actorType}'.");
-        }
+        ZLinkRegistrationBuilderGuard.AddUnique(
+            _registration.ActorFactories,
+            actorType,
+            typeof(TFactory),
+            "Actor factory name must not be empty.",
+            $"Duplicate actor factory '{actorType}'.");
     }
 
     public void AddActorPlayRouteResolver<TResolver>()
@@ -135,19 +132,14 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         string channelName,
         Action<IZLinkRouteMeshChannelBuilder> configure)
     {
-        if (string.IsNullOrWhiteSpace(channelName))
-        {
-            throw new ZLinkConfigurationException("Route mesh channel name must not be empty.");
-        }
+        var routeChannel = ZLinkRegistrationBuilderGuard.AddUnique(
+            _registration.RouteChannels,
+            channelName,
+            () => new ZLinkRouteChannelRegistration { RouterChannelId = channelName },
+            "Route mesh channel name must not be empty.",
+            $"Duplicate route mesh channel name '{channelName}'.");
 
-        if (!_registration.RouteChannels.TryAdd(
-                channelName,
-                new ZLinkRouteChannelRegistration { RouterChannelId = channelName }))
-        {
-            throw new ZLinkConfigurationException($"Duplicate route mesh channel name '{channelName}'.");
-        }
-
-        configure(new ZLinkRouteChannelBuilder(_registration.RouteChannels[channelName]));
+        configure(new ZLinkRouteChannelBuilder(routeChannel));
     }
 
     public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure)
@@ -201,19 +193,14 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         string streamNodeName,
         Action<IZLinkStreamNodeBuilder> configure)
     {
-        if (string.IsNullOrWhiteSpace(streamNodeName))
-        {
-            throw new ZLinkConfigurationException("STREAM node name must not be empty.");
-        }
+        var streamNode = ZLinkRegistrationBuilderGuard.AddUnique(
+            _registration.StreamNodes,
+            streamNodeName,
+            () => new ZLinkStreamNodeRegistration { StreamNodeName = streamNodeName },
+            "STREAM node name must not be empty.",
+            $"Duplicate stream node name '{streamNodeName}'.");
 
-        if (!_registration.StreamNodes.TryAdd(
-                streamNodeName,
-                new ZLinkStreamNodeRegistration { StreamNodeName = streamNodeName }))
-        {
-            throw new ZLinkConfigurationException($"Duplicate stream node name '{streamNodeName}'.");
-        }
-
-        configure(new ZLinkStreamNodeBuilder(_registration.StreamNodes[streamNodeName]));
+        configure(new ZLinkStreamNodeBuilder(streamNode));
     }
 
     public void AddSpotNode(
@@ -251,23 +238,16 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         string channelName,
         ZLinkAutoConnectType autoConnectType)
     {
-        if (string.IsNullOrWhiteSpace(channelName))
-        {
-            throw new ZLinkConfigurationException("Channel name must not be empty.");
-        }
-
-        if (!_registration.Channels.TryAdd(
-                channelName,
-                new ZLinkChannelRegistration
-                {
-                    ChannelName = channelName,
-                    AutoConnectType = autoConnectType,
-                }))
-        {
-            throw new ZLinkConfigurationException($"Duplicate channel name '{channelName}'.");
-        }
-
-        return _registration.Channels[channelName];
+        return ZLinkRegistrationBuilderGuard.AddUnique(
+            _registration.Channels,
+            channelName,
+            () => new ZLinkChannelRegistration
+            {
+                ChannelName = channelName,
+                AutoConnectType = autoConnectType,
+            },
+            "Channel name must not be empty.",
+            $"Duplicate channel name '{channelName}'.");
     }
 
     private static ZLinkAutoConnectType InferCompatibilityAutoConnectType(
@@ -300,19 +280,14 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         string spotNodeName,
         Action<ZLinkSpotNodeBuilder> configure)
     {
-        if (string.IsNullOrWhiteSpace(spotNodeName))
-        {
-            throw new ZLinkConfigurationException("SPOT node name must not be empty.");
-        }
+        var spotNode = ZLinkRegistrationBuilderGuard.AddUnique(
+            _registration.SpotNodes,
+            spotNodeName,
+            () => new ZLinkSpotNodeRegistration { SpotNodeName = spotNodeName },
+            "SPOT node name must not be empty.",
+            $"Duplicate spot node name '{spotNodeName}'.");
 
-        if (!_registration.SpotNodes.TryAdd(
-                spotNodeName,
-                new ZLinkSpotNodeRegistration { SpotNodeName = spotNodeName }))
-        {
-            throw new ZLinkConfigurationException($"Duplicate spot node name '{spotNodeName}'.");
-        }
-
-        configure(new ZLinkSpotNodeBuilder(_registration.SpotNodes[spotNodeName]));
+        configure(new ZLinkSpotNodeBuilder(spotNode));
     }
 }
 
@@ -331,19 +306,48 @@ internal sealed class ZLinkSpotMeshBuilder(
         string spotNodeName,
         Action<IZLinkSpotMeshNodeBuilder> configure)
     {
-        if (string.IsNullOrWhiteSpace(spotNodeName))
+        var spotNode = ZLinkRegistrationBuilderGuard.AddUnique(
+            registration.SpotNodes,
+            spotNodeName,
+            () => new ZLinkSpotNodeRegistration { SpotNodeName = spotNodeName },
+            "SPOT node name must not be empty.",
+            $"Duplicate spot node name '{spotNodeName}'.");
+
+        configure(new ZLinkSpotNodeBuilder(spotNode));
+    }
+}
+
+internal static class ZLinkRegistrationBuilderGuard
+{
+    public static void AddUnique<TValue>(
+        Dictionary<string, TValue> registrations,
+        string name,
+        TValue value,
+        string emptyMessage,
+        string duplicateMessage)
+    {
+        AddUnique(registrations, name, () => value, emptyMessage, duplicateMessage);
+    }
+
+    public static TValue AddUnique<TValue>(
+        Dictionary<string, TValue> registrations,
+        string name,
+        Func<TValue> create,
+        string emptyMessage,
+        string duplicateMessage)
+    {
+        if (string.IsNullOrWhiteSpace(name))
         {
-            throw new ZLinkConfigurationException("SPOT node name must not be empty.");
+            throw new ZLinkConfigurationException(emptyMessage);
         }
 
-        if (!registration.SpotNodes.TryAdd(
-                spotNodeName,
-                new ZLinkSpotNodeRegistration { SpotNodeName = spotNodeName }))
+        var value = create();
+        if (!registrations.TryAdd(name, value))
         {
-            throw new ZLinkConfigurationException($"Duplicate spot node name '{spotNodeName}'.");
+            throw new ZLinkConfigurationException(duplicateMessage);
         }
 
-        configure(new ZLinkSpotNodeBuilder(registration.SpotNodes[spotNodeName]));
+        return value;
     }
 }
 

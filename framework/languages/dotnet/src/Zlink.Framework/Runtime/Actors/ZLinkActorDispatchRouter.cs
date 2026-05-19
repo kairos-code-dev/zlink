@@ -104,23 +104,11 @@ internal sealed class ZLinkActorDispatchRouter(
         Message payload,
         CancellationToken cancellationToken)
     {
-        var activation = await state.ExecuteLockedAsync(
-            () =>
-            {
-                var currentActivation = state.Activation;
-                var prune = false;
-                if (currentActivation is not null && currentActivation.IsDisposed)
-                {
-                    state.Activation = null;
-                    currentActivation = null;
-                    prune = state.SessionId is null;
-                }
-
-                return (currentActivation, prune);
-            },
+        var placement = await state.ExecuteLockedAsync(
+            () => state.SelectPlacementLocked(pruneWhenSessionless: true),
             cancellationToken).ConfigureAwait(false);
 
-        if (activation.currentActivation is null)
+        if (placement.Activation is null)
         {
             if (await runtime.TrySubmitEntrySpotActorAsync(
                     actor,
@@ -130,17 +118,17 @@ internal sealed class ZLinkActorDispatchRouter(
                     cancellationToken)
                 .ConfigureAwait(false))
             {
-                return activation.prune;
+                return placement.Prune;
             }
 
             await _packetDispatcher.DispatchAsync(state, actor, header, payload, cancellationToken)
                 .ConfigureAwait(false);
-            return activation.prune;
+            return placement.Prune;
         }
 
-        await activation.currentActivation.SubmitActorAsync(actor, state, header, payload, cancellationToken)
+        await placement.Activation.SubmitActorAsync(actor, state, header, payload, cancellationToken)
             .ConfigureAwait(false);
-        return activation.prune;
+        return placement.Prune;
     }
 
     private async ValueTask<byte[]> SubmitByCurrentLocationForReplyAsync(
@@ -150,23 +138,13 @@ internal sealed class ZLinkActorDispatchRouter(
         Message payload,
         CancellationToken cancellationToken)
     {
-        var activation = await state.ExecuteLockedAsync(
-            () =>
-            {
-                var currentActivation = state.Activation;
-                if (currentActivation is not null && currentActivation.IsDisposed)
-                {
-                    state.Activation = null;
-                    currentActivation = null;
-                }
-
-                return currentActivation;
-            },
+        var placement = await state.ExecuteLockedAsync(
+            () => state.SelectPlacementLocked(pruneWhenSessionless: false),
             cancellationToken).ConfigureAwait(false);
 
-        if (activation is not null)
+        if (placement.Activation is not null)
         {
-            return await activation.SubmitActorForReplyAsync(
+            return await placement.Activation.SubmitActorForReplyAsync(
                     actor,
                     state,
                     header,
@@ -209,23 +187,13 @@ internal sealed class ZLinkActorDispatchRouter(
         ZLinkActorRuntimeState state,
         CancellationToken cancellationToken)
     {
-        var activation = await state.ExecuteLockedAsync(
-            () =>
-            {
-                var currentActivation = state.Activation;
-                if (currentActivation is not null && currentActivation.IsDisposed)
-                {
-                    state.Activation = null;
-                    currentActivation = null;
-                }
-
-                return currentActivation;
-            },
+        var placement = await state.ExecuteLockedAsync(
+            () => state.SelectPlacementLocked(pruneWhenSessionless: false),
             cancellationToken).ConfigureAwait(false);
 
-        if (activation is not null)
+        if (placement.Activation is not null)
         {
-            await activation.NotifyActorDisconnectedAsync(actor, cancellationToken)
+            await placement.Activation.NotifyActorDisconnectedAsync(actor, cancellationToken)
                 .ConfigureAwait(false);
             return;
         }

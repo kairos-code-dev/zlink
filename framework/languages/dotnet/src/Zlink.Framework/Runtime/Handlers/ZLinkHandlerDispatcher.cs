@@ -1,4 +1,3 @@
-using System.Buffers;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Zlink.Framework.Runtime.Handlers;
@@ -56,18 +55,12 @@ internal sealed class ZLinkHandlerDispatcher(
         CancellationToken cancellationToken)
     {
         var handler = services.GetRequiredService(endpoint.DeclaringType);
-        var args = ArrayPool<object?>.Shared.Rent(endpoint.ArgumentPlan.Count);
-        try
-        {
-            BuildArguments(endpoint, message, context, cancellationToken, args);
-            var result = endpoint.Invoker(handler, args);
-            return await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
-        }
-        finally
-        {
-            Array.Clear(args, 0, endpoint.ArgumentPlan.Count);
-            ArrayPool<object?>.Shared.Return(args);
-        }
+        return await ZLinkHandlerInvocationEngine.InvokeAsync(
+                handler,
+                endpoint.Invoker,
+                endpoint.ArgumentPlan.Count,
+                args => BuildArguments(endpoint, message, context, cancellationToken, args))
+            .ConfigureAwait(false);
     }
 
     private static void BuildArguments(

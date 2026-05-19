@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace Zlink.Framework.Runtime.Actors;
 
 internal static class ZLinkActorPacketDescriptorFactory
@@ -18,11 +16,7 @@ internal static class ZLinkActorPacketDescriptorFactory
                 continue;
             }
 
-            if (!arguments[0].IsAssignableFrom(expectedActorType))
-            {
-                throw new InvalidOperationException(
-                    $"Actor packet handler '{handlerType}' targets '{arguments[0]}', but the runtime actor type is '{expectedActorType}'.");
-            }
+            ValidateActorType(handlerType, expectedActorType, arguments[0]);
 
             return new ZLinkActorPacketDescriptor
             {
@@ -43,11 +37,7 @@ internal static class ZLinkActorPacketDescriptorFactory
                 continue;
             }
 
-            if (!arguments[0].IsAssignableFrom(expectedActorType))
-            {
-                throw new InvalidOperationException(
-                    $"Actor request handler '{handlerType}' targets '{arguments[0]}', but the runtime actor type is '{expectedActorType}'.");
-            }
+            ValidateActorType(handlerType, expectedActorType, arguments[0]);
 
             return new ZLinkActorPacketDescriptor
             {
@@ -105,8 +95,17 @@ internal static class ZLinkActorPacketDescriptorFactory
 
     private static ZLinkHandlerMethodInvoker CreateInvoker(Type handlerType)
     {
-        var method = handlerType.GetMethod("HandleAsync", BindingFlags.Instance | BindingFlags.Public)
-            ?? throw new InvalidOperationException($"Actor packet handler '{handlerType}' does not expose HandleAsync.");
-        return ZLinkHandlerMethodInvokerFactory.Create(method);
+        return ZLinkHandlerContractDescriptorSupport.CreateHandleAsyncInvoker(
+            handlerType,
+            "Actor packet handler");
+    }
+
+    private static void ValidateActorType(Type handlerType, Type expectedActorType, Type actualActorType)
+    {
+        ZLinkHandlerContractDescriptorSupport.RequireAssignableFrom(
+            handlerType,
+            expectedActorType,
+            actualActorType,
+            "Actor packet handler");
     }
 }

@@ -27,6 +27,35 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public bool IsConfigured { get; set; }
 
+    public ZLinkSpotActivation? LiveActivation
+        => Activation is { IsDisposed: false } activation ? activation : null;
+
+    public string? SpotName => LiveActivation?.SpotName;
+
+    public RoutingId? SpotRid => LiveActivation?.SpotRid;
+
+    public bool IsJoined => LiveActivation is not null;
+
+    public IZLinkSpot GetJoinedSpot()
+    {
+        return LiveActivation?.Spot
+            ?? throw new InvalidOperationException("Actor has not joined a SPOT.");
+    }
+
+    public ZLinkActorPlacementSelection SelectPlacementLocked(bool pruneWhenSessionless)
+    {
+        var currentActivation = Activation;
+        var prune = false;
+        if (currentActivation is not null && currentActivation.IsDisposed)
+        {
+            Activation = null;
+            currentActivation = null;
+            prune = pruneWhenSessionless && SessionId is null;
+        }
+
+        return new ZLinkActorPlacementSelection(currentActivation, prune);
+    }
+
     public async ValueTask<ZLinkActorCreationOperation> GetOrStartActorCreationAsync(
         string actorType,
         bool failIfExists,
@@ -254,3 +283,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 internal readonly record struct ZLinkActorCreationOperation(
     Task<IZLinkActor> Task,
     bool Created);
+
+internal readonly record struct ZLinkActorPlacementSelection(
+    ZLinkSpotActivation? Activation,
+    bool Prune);

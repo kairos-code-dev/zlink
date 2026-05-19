@@ -26,4 +26,35 @@ public sealed class test_attach_discovery_contract
 
         Assert.Throws<ZlinkCloseException>(() => dealer.Close());
     }
+
+    [Fact]
+    public void dispose_releases_attached_socket_wrapper_without_public_close()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var discovery = new Discovery(ctx, AutoConnectType.ClientServer,
+            "attach-discovery-dispose");
+        var dealer = new DealerSocket(ctx);
+
+        dealer.AttachDiscovery(discovery);
+        dealer.Dispose();
+    }
+
+    [Fact]
+    public void discovery_destroy_then_socket_dispose_does_not_double_close_attached_socket()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        var discovery = new Discovery(ctx, AutoConnectType.ClientServer,
+            "attach-discovery-double-close");
+        var dealer = new DealerSocket(ctx);
+
+        dealer.AttachDiscovery(discovery);
+        discovery.Dispose();
+        dealer.Dispose();
+    }
 }

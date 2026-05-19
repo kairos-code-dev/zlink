@@ -52,6 +52,7 @@ internal sealed partial class SocketKernel : IDisposable
     private string? _publishTopicCacheKey;
     private byte[]? _publishTopicCacheUtf8;
     private bool _streamAttached;
+    private bool _discoveryAttached;
 
     public SocketKernel(Context context, SocketType type)
     {
@@ -122,6 +123,7 @@ internal sealed partial class SocketKernel : IDisposable
         int rc = NativeMethods.zlink_socket_attach_discovery(Handle,
             discovery.Handle);
         ZlinkException.ThrowConfigIfError(rc);
+        _discoveryAttached = true;
     }
 
     public void AttachStreamRaw(StreamRawPacketHandler handler)
@@ -991,6 +993,16 @@ internal sealed partial class SocketKernel : IDisposable
 
     public void Dispose()
     {
+        Dispose(closeNativeSocket: !_discoveryAttached);
+    }
+
+    public void Close()
+    {
+        Dispose(closeNativeSocket: true);
+    }
+
+    private void Dispose(bool closeNativeSocket)
+    {
         if (_streamAttached)
         {
             try
@@ -1012,7 +1024,10 @@ internal sealed partial class SocketKernel : IDisposable
             _streamPacketContext = null;
         }
 
-        _handle.Dispose();
+        if (closeNativeSocket)
+            _handle.Dispose();
+        else
+            _handle.ReleaseWithoutClose();
         _recvHandler = null;
         _recvHandlerContext = null;
         _subscribeHandler = null;

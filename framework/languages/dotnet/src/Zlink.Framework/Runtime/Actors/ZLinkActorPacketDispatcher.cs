@@ -1,4 +1,3 @@
-using System.Buffers;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Streams;
@@ -26,22 +25,19 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
             services,
             descriptor.HandlerType);
         var metadata = CreateMessageMetadata(header);
-        var arguments = ArrayPool<object?>.Shared.Rent(3);
-        arguments[0] = descriptor.ActorType is null ? message : actor;
-        arguments[1] = descriptor.ActorType is null
-            ? CreateSendContext(actor.ActorId, header, metadata, cancellationToken)
-            : message;
-        arguments[2] = cancellationToken;
-        try
-        {
-            var result = descriptor.Invoker(handler, arguments);
-            await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
-        }
-        finally
-        {
-            Array.Clear(arguments, 0, 3);
-            ArrayPool<object?>.Shared.Return(arguments);
-        }
+        await ZLinkHandlerInvocationEngine.InvokeAsync(
+                handler,
+                descriptor.Invoker,
+                3,
+                arguments =>
+                {
+                    arguments[0] = descriptor.ActorType is null ? message : actor;
+                    arguments[1] = descriptor.ActorType is null
+                        ? CreateSendContext(actor.ActorId, header, metadata, cancellationToken)
+                        : message;
+                    arguments[2] = cancellationToken;
+                })
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<byte[]> DispatchForReplyAsync(
@@ -65,33 +61,30 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
             services,
             descriptor.HandlerType);
         var metadata = CreateMessageMetadata(header);
-        var arguments = ArrayPool<object?>.Shared.Rent(3);
-        arguments[0] = descriptor.ActorType is null ? message! : actor;
-        arguments[1] = descriptor.ActorType is null
-            ? new ZLinkActorRequestContext(
-                actor.ActorId,
-                string.Empty,
-                header.Name,
-                ZLinkEnvelopeCodec.DefaultContentType,
-                null,
-                null,
-                CreateSessionProxy(actor.ActorId),
-                services,
-                cancellationToken,
-                metadata)
-            : message!;
-        arguments[2] = cancellationToken;
-        try
-        {
-            var result = descriptor.Invoker(handler, arguments);
-            var reply = await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
-            return ZLinkStreamPacketPayloadCodec.EncodeJson(reply, descriptor.ReplyType);
-        }
-        finally
-        {
-            Array.Clear(arguments, 0, 3);
-            ArrayPool<object?>.Shared.Return(arguments);
-        }
+        var reply = await ZLinkHandlerInvocationEngine.InvokeAsync(
+                handler,
+                descriptor.Invoker,
+                3,
+                arguments =>
+                {
+                    arguments[0] = descriptor.ActorType is null ? message! : actor;
+                    arguments[1] = descriptor.ActorType is null
+                        ? new ZLinkActorRequestContext(
+                            actor.ActorId,
+                            string.Empty,
+                            header.Name,
+                            ZLinkEnvelopeCodec.DefaultContentType,
+                            null,
+                            null,
+                            CreateSessionProxy(actor.ActorId),
+                            services,
+                            cancellationToken,
+                            metadata)
+                        : message!;
+                    arguments[2] = cancellationToken;
+                })
+            .ConfigureAwait(false);
+        return ZLinkStreamPacketPayloadCodec.EncodeJson(reply, descriptor.ReplyType);
     }
 
     private static void ValidateActorType(

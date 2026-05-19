@@ -71,7 +71,23 @@ public sealed class test_message
     }
 
     [Fact]
-    public void message_copy_increments_ref_count_for_shared_storage()
+    public void native_message_copy_increments_ref_count_for_shared_storage()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        byte[] payload = new byte[512];
+        new Random(1234).NextBytes(payload);
+        using var source = new Message((ReadOnlySpan<byte>)payload);
+        using Message copy = source.Copy();
+
+        Assert.True(source.RefCount >= 2);
+        Assert.True(copy.RefCount >= 2);
+        Assert.True(copy.AsReadOnlySpan().SequenceEqual(source.AsReadOnlySpan()));
+    }
+
+    [Fact]
+    public void from_bytes_copy_preserves_managed_snapshot_storage()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -79,11 +95,14 @@ public sealed class test_message
         byte[] payload = new byte[512];
         new Random(1234).NextBytes(payload);
         using var source = Message.FromBytes(payload);
+        payload[0] ^= 0xFF;
+
         using Message copy = source.Copy();
 
-        Assert.True(source.RefCount >= 2);
-        Assert.True(copy.RefCount >= 2);
+        Assert.Equal(1, source.RefCount);
+        Assert.Equal(1, copy.RefCount);
         Assert.True(copy.AsReadOnlySpan().SequenceEqual(source.AsReadOnlySpan()));
+        Assert.NotEqual(payload[0], source.AsReadOnlySpan()[0]);
     }
 
     [Fact]

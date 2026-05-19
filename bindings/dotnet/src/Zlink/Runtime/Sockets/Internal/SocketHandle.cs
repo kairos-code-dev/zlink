@@ -67,6 +67,12 @@ internal sealed class SocketHandle : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    public void ReleaseWithoutClose()
+    {
+        _handle = IntPtr.Zero;
+        GC.SuppressFinalize(this);
+    }
+
     ~SocketHandle()
     {
         try

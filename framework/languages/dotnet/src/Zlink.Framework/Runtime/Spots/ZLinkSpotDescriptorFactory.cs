@@ -135,26 +135,24 @@ internal static class ZLinkSpotDescriptorFactory
 
     private static void ValidateSpotType(Type handlerType, Type expectedSpotType, Type actualSpotType)
     {
-        if (actualSpotType != expectedSpotType)
-        {
-            throw new InvalidOperationException(
-                $"SPOT handler '{handlerType}' targets '{actualSpotType}', but the runtime spot type is '{expectedSpotType}'.");
-        }
+        ZLinkHandlerContractDescriptorSupport.RequireExactType(
+            handlerType,
+            expectedSpotType,
+            actualSpotType,
+            "SPOT handler");
     }
 
     private static void ValidateActorType(Type handlerType, Type expectedActorType, Type actualActorType)
     {
-        if (actualActorType != expectedActorType)
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor join handler '{handlerType}' targets actor '{actualActorType}', but registration expects '{expectedActorType}'.");
-        }
+        ZLinkHandlerContractDescriptorSupport.RequireExactType(
+            handlerType,
+            expectedActorType,
+            actualActorType,
+            "SPOT actor join handler");
     }
 
     private static ZLinkHandlerMethodInvoker CreateInvoker(Type handlerType)
     {
-        var method = handlerType.GetMethod("HandleAsync")
-            ?? throw new InvalidOperationException($"Handler '{handlerType}' does not expose HandleAsync.");
-        return ZLinkHandlerMethodInvokerFactory.Create(method);
+        return ZLinkHandlerContractDescriptorSupport.CreateHandleAsyncInvoker(handlerType, "Handler");
     }
 }

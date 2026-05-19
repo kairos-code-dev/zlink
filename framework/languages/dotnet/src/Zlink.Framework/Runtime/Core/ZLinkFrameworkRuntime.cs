@@ -35,34 +35,24 @@ internal sealed partial class ZLinkFrameworkRuntime
         _services = services;
         _registration = registration;
         _registryRuntime = registryRuntime;
-        _channels = new ZLinkChannelRuntimeManager(
+        var components = ZLinkFrameworkRuntimeComponentFactory.Create(
+            this,
             services,
             backendAdapterFactory,
             registration,
-            new ZLinkChannelMessagePump(handlerRegistry, dispatcher, registration));
-        _streams = new ZLinkStreamRuntimeManager(services, backendAdapterFactory, registration);
-        _spots = new ZLinkSpotRuntimeManager(services, this, backendAdapterFactory, registration);
-        _stateFactory = new ZLinkFrameworkRuntimeStateFactory(
-            backendAdapterFactory,
-            registration,
-            _channels,
-            _streams,
-            _spots);
-        _actorSessionManager = new ZLinkActorSessionManager(this, services, GetActorSpotNode);
-        _actors = new ZLinkFrameworkActorFacade(
-            registration,
-            _spots,
-            _actorSessionManager,
+            handlerRegistry,
+            dispatcher,
             GetOrStartState,
+            GetStartedStateAsync,
             GetActorSpotNode);
-        _channelFacade = new ZLinkFrameworkChannelFacade(
-            _channels,
-            GetOrStartState,
-            GetStartedStateAsync);
-        _spotFacade = new ZLinkFrameworkSpotFacade(
-            _spots,
-            GetOrStartState,
-            GetStartedStateAsync);
+        _channels = components.Channels;
+        _streams = components.Streams;
+        _spots = components.Spots;
+        _stateFactory = components.StateFactory;
+        _actorSessionManager = components.ActorSessionManager;
+        _actors = components.Actors;
+        _channelFacade = components.ChannelFacade;
+        _spotFacade = components.SpotFacade;
     }
 
     public IZLinkBackendContext? Context => _state?.Context;

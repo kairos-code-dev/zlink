@@ -187,6 +187,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         }
 
         await _submitter.DisposeAsync();
+
         if (_discovery is not null)
         {
             await _discovery.DisposeAsync();

@@ -124,7 +124,7 @@ public abstract class SocketBase : ISocket, ISocketOptionEndpoint
 
     public void Close()
     {
-        Dispose();
+        _kernel.Close();
     }
 
     [EditorBrowsable(EditorBrowsableState.Never)]

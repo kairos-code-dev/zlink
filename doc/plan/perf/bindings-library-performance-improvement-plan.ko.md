@@ -26,8 +26,8 @@ C binding 라이브러리의 일반적인 성능이다. 기준으로 삼는 C �
 | 2 | .NET | `bindings/dotnet/perf` |
 | 3 | Java | `bindings/java/perf` |
 | 4 | Node | `bindings/node/perf` |
-| 5 | Rust | `bindings/rust/perf` |
-| 6 | Go | `bindings/go/perf` |
+| 5 | Go | `bindings/go/perf` |
+| 6 | Rust | `bindings/rust/perf` |
 | 7 | Python | `bindings/python/perf` |
 
 목표 비율은 size 하나로만 정하지 않는다. 최근 C++ full 비교에서는 size보다
@@ -180,8 +180,8 @@ single과 multi는 같은 원칙으로 반복한다. 한 번에 전체 matrix를
 `ws`, `wss`, `tls` 측정으로 넘어가지 않는다. `tcp`가 통과한 뒤 다음 transport로
 넘어갈 때도 한 번에 하나의 transport만 선택해서 C 기준과 대상 binding을 비교한다.
 
-언어별 작업은 한 번에 한 언어만 진행한다. 진행 순서는 C++, .NET, Java, Node, Rust,
-Go, Python이다. 현재 언어의 모든 대상 transport, pattern, size가 `통과` 또는 `보류`
+언어별 작업은 한 번에 한 언어만 진행한다. 진행 순서는 C++, .NET, Java, Node, Go,
+Rust, Python이다. 현재 언어의 모든 대상 transport, pattern, size가 `통과` 또는 `보류`
 상태가 되기 전에는 다음 언어로 넘어가지 않는다. `미달` 또는 `미측정` 항목이 하나라도
 남아 있으면 현재 언어 작업을 계속한다.
 
@@ -275,516 +275,546 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 버그, 목표 기준의 모호함이 모두 사라질 때까지 해당 항목을 `통과`나 `보류`로 표시하지
 않는다.
 
-## 5. Public API 추가/수정 대상
+## 5. Public API 확인 기준
 
-아래 목록은 두 그룹으로 나눈다. 첫 번째 그룹은 SPOT `MsgUnit(B)=4096` 불일치를 풀기
-위해 새 context-level C API와 binding context option을 추가하고, 기존 binding socket별
-message unit API를 제거하는 항목이다. 두 번째 그룹은 C API의 `_part`/`zlink_msg_t` 계열
-공개 계약과 같은 의미를 각 언어 public API로 표현할 수 있는지 언어별로 확인해야 하는
-항목이다. 각 항목은 회귀/API 테스트를 먼저 작성하고 구현한다.
+이 섹션은 새 측정 라운드에서 public API 문제를 판정하는 기준만 둔다. 이미 코드에
+반영된 작업은 추가/수정 대상 목록에서 제거한다. 상태표의 `미측정` 칸을 채우다가 병목이
+나오면 먼저 같은 조건의 C perf와 비교하고, 내부 구현이나 perf 사용 경로를 고친 뒤에도
+C 공개 계약과 같은 의미를 binding public API로 표현할 수 없을 때만 새 public API 항목으로
+기록한다.
 
-### 5.1 Context auto-HWM message unit rollout
+### 5.1 이미 반영된 항목
 
-SPOT `MsgUnit(B)=4096` 불일치는 SpotNode나 Spot handle별 typed facade를 추가해서 풀지
-않는다. 별도 계획 문서
-`doc/plan/monitoring/context-auto-hwm-msg-unit-rollout-plan.ko.md`를 기준으로 core/C API에
-context-level message unit option을 추가하고, binding public API도 context option만 노출한다.
-기존 binding socket/SpotNode/Spot별 message unit public API는 제거한다. C API의
-handle-level common option은 저수준 계약으로 유지하지만, 언어 binding에서는 context
-option이 유일한 일반 사용 경로다.
-socket별 message unit public API 제거는 breaking change로 처리하며, 호환 별칭은 추가하지
-않는다.
+context-level auto-HWM message unit option은 현재 코드에 반영된 항목이다. 따라서 이
+문서에서는 더 이상 별도 rollout 작업으로 추적하지 않는다.
 
-기존 C API 기준은 handle-level common option이다.
+현재 확인해야 하는 기준은 아래와 같다.
 
-```c
-int32_t value = msg_size;
-zlink_set_option(handle, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-                 &value, sizeof(value));
-zlink_get_option(handle, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-                 &value, &value_size);
-```
+- core/C에는 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES = 18`과
+  `ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT = 0`이 존재한다.
+- binding의 일반 사용 경로는 context option이다. 각 언어 perf는 socket별 message unit
+  facade가 아니라 context option으로 size별 message unit을 설정해야 한다.
+- socket/SpotNode/Spot별 message unit facade를 되살리지 않는다. 새 측정에서
+  `MsgUnit(B)` 불일치가 다시 나오면 새 API rollout이 아니라 회귀나 perf 사용 경로 문제로
+  먼저 다룬다.
+- `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034`는 C handle-level 저수준 계약으로 남는다.
+  이 값이 남아 있다는 이유만으로 binding의 일반 사용 surface에 socket별 facade를 다시
+  추가하지 않는다.
 
-새 방향의 C API 기준은 아래 context option이다.
+새 측정에서 이 기준이 깨진 언어가 있으면 해당 언어 상태표의 해당 칸을 `미달`로 표시하고,
+결과 파일 / 메모 칸에 빠진 API 또는 잘못된 perf 사용 경로를 적는다.
 
-```c
-typedef enum zlink_ctx_option_t
-{
-    /* existing values */
-    ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17,
-    ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES = 18
-} zlink_ctx_option_t;
+### 5.2 새 측정 중 확인할 항목
 
-/* core/include/zlink/core.h; bindings/c/include/zlink.h after sync */
-#define ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT 0
-
-/* existing public C API, no new function */
-ZLINK_EXPORT zlink_config_result_t zlink_ctx_set (
-  void *context_,
-  zlink_ctx_option_t option_,
-  int optval_);
-
-ZLINK_EXPORT int zlink_ctx_get (
-  void *context_,
-  zlink_ctx_option_t option_,
-  zlink_config_result_t *error_out_);
-
-ZLINK_EXPORT zlink_config_result_t zlink_ctx_auto_hwm_recalculate (
-  void *context_);
-```
-
-`zlink_option_t`의 기존 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034`는 삭제하지 않는다.
-이 값은 C handle-level 저수준 계약으로 남기고, binding public API에서는 context option만
-노출한다.
-context option 값 `0`은 context-level override 해제다. 이 값에서는 기존 socket-type 기본
-message unit을 유지한다. non-STREAM 기본값은 `4096`이고 STREAM 기본값은 `1024`다.
-
-작업 순서는 아래처럼 고정한다.
-
-1. core에 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`와 default macro를 추가한다.
-2. core 회귀테스트와 `cmake --build core/build`를 통과시킨다.
-3. `/home/hep7/project/kairos/zlink/bindings/dev_sync_local_core_libs.sh`를 실행해 bindings
-   local core library와 vendored C header를 갱신한다.
-4. 그 다음 각 언어 binding의 context option 추가와 socket별 message unit API 제거를
-   진행한다.
-
-회귀테스트는 아래 항목을 포함해야 한다.
-
-- `zlink_ctx_set/get`이 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES = 18`을 public option으로
-  받아들이는지 확인한다.
-- context option 기본값이 `0`이고, 이 상태에서 기존 socket-type 기본 message unit이
-  유지되는지 확인한다.
-- context option을 양수 값에서 `0`으로 되돌린 뒤 recalc하면 기존 socket-type 기본 message
-  unit으로 돌아가는지 확인한다.
-- 음수 값이나 `sizeof(int)`가 아닌 byte buffer 설정이 실패하고 기존 context option 값이
-  유지되는지 확인한다.
-- context option 값을 바꾼 뒤 recalc하면 일반 socket과 SPOT internal socket의
-  `MsgUnit(B)`가 새 context option 값으로 바뀌는지 확인한다.
-- per-handle `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 설정한 socket은 context option 값 변경
-  뒤에도 자기 값을 유지하는지 확인한다.
-- per-handle `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0`은 explicit override 해제로 고정하고,
-  이후 recalc에서 context option 값을 따르는지 확인한다.
-- context option도 `0`이고 per-handle override도 해제된 socket은 socket-type 기본 message
-  unit을 따르는지 확인한다.
-- sync 스크립트 실행 뒤 `bindings/c/include/zlink_enum.h`와 `bindings/c/include/zlink.h`가
-  core header와 같은 enum/default macro를 갖는지 확인한다.
-- 각 binding surface test에서 context option이 추가되고 socket/SpotNode/Spot별 message
-  unit public API가 제거되었는지 확인한다.
-- 각 binding perf smoke에서 삭제된 socket별 API를 쓰지 않고 context option만으로 SPOT 계열
-  모든 size의 `MsgUnit(B)`가 message size와 같은지 확인한다.
-
-언어별 public API 추가/수정 대상은 아래와 같다. SpotNode/Spot별 message unit public API는
-추가하지 않고, 기존 socket별 message unit public API도 제거한다.
-
-| 언어 | 추가/수정할 public interface | 삭제할 socket별 public interface |
-|------|------------------------------|--------------------------------|
-| C | `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`, `ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT` | 삭제 없음. `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 저수준 계약으로 유지 |
-| C++ | `zlink::context_options_t::auto_hwm_msg_unit_bytes(zlink::byte_size_t value)`, `zlink::context_options_t::auto_hwm_msg_unit_bytes() const` | socket/service option의 `auto_hwm_msg_unit_bytes(...)` facade 중 socket별 설정 경로 |
-| .NET | `IContextOptions.AutoHwmMessageUnitBytes { get; set; }` | socket option의 `AutoHwmMessageUnitBytes`, `ISpotNode.AutoHwmMessageUnitBytes`, `ISpot.AutoHwmMessageUnitBytes` |
-| Java | `ContextOptions.autoHwmMessageUnitBytes()`, `ContextOptions.autoHwmMessageUnitBytes(int value)` | socket option의 `autoHwmMessageUnitBytes(...)`, perf 전용 SpotNode native option helper |
-| Node | `ctx.options.autoHwmMsgUnitBytes` getter/setter | `socket.options.autoHwmMsgUnitBytes` |
-| Rust | `ContextOptions::set_auto_hwm_msg_unit_bytes(i32)`, `ContextOptions::auto_hwm_msg_unit_bytes()` | socket/common option의 `set_auto_hwm_msg_unit_bytes`, `auto_hwm_msg_unit_bytes` |
-| Go | `ContextOptions.SetAutoHwmMsgUnitBytes(int)`, `ContextOptions.AutoHwmMsgUnitBytes()` | socket/common option의 `SetAutoHwmMsgUnitBytes`, `AutoHwmMsgUnitBytes` |
-| Python | `ContextOptions.auto_hwm_msg_unit_bytes` property | `SocketOptions.auto_hwm_msg_unit_bytes` |
-
-### 5.2 C API 공개 primitive가 있으나 언어별 surface 확인이 필요한 항목
-
-아래 항목은 전부 "지금 바로 새 의미를 만든다"가 아니다. C API의 공개 primitive는
+아래 항목은 "지금 바로 새 의미를 만든다"는 뜻이 아니다. C API의 공개 primitive는
 존재하지만, 해당 언어 public API가 이미 같은 의미를 제공하는지 먼저 확인한다. 이미
-제공하면 perf 사용 경로를 고치고, 제공하지 않으면 아래 형태로 public API를 추가한다.
+제공하면 perf 사용 경로만 고치고, 제공하지 않으면 회귀/API 테스트를 먼저 작성한 뒤
+public API 추가 대상으로 분리한다.
 
-| 항목 | C API 기준 | 언어별 추가 후보 |
-|------|------------|------------------|
-| writable/owned message | `zlink_msg_init_size`, `zlink_msg_data`, `zlink_msg_size`, `zlink_msg_close`, `zlink_msg_init_data` | .NET: `Message.Allocate(int size)` 또는 `OwnedMessage`로 `Span<byte>` 쓰기 후 send. Node: `Message.alloc(size)` 또는 `WritableMessage`로 `Buffer` 쓰기 후 send. Java: 기존 public 정책에서 `wrapDirect`가 금지되어 있으므로 `Message.allocate(int size)`와 `ByteBuffer data()`를 검토한다. C++은 `message_t(size)`가 이미 있으므로 새 API 대상이 아니다. |
-| routed single-part send/recv | `zlink_send_part_rid`, `zlink_router_request_part`, `zlink_router_reply_part`, `zlink_router_recv_part`, `zlink_spot_recv_part`, `zlink_router_send_spot_part` | Node: `RouterSocket.sendFrom(routingId, buffer, flags?)`, `Received.replyFrom(buffer, flags?)`. .NET: `IRouterSocket.Send(RoutingId, ReadOnlySpan<byte>, SendFlags)`와 `Received.Reply(ReadOnlySpan<byte>, SendFlags)`. Java: `RouterSocket.send(RoutingId, ByteBuffer, SendFlags)`와 `Received.reply(ByteBuffer, SendFlags)`가 public surface에 이미 있는지 확인 후 없으면 추가한다. |
-| single-part subscribe receive | `zlink_subscribe_part`, `zlink_spot_subscribe_part` | Node: `SubscriberSocket.subscribePart(result, flags?)`와 `Spot.subscribePart(result, flags?)`처럼 caller가 재사용하는 result 객체에 topic과 single part를 받는다. .NET/Java/Python/Go는 현재 `TopicMessage` 재사용이 C의 `zlink_msg_t` 재사용과 같은 의미인지 확인하고, 부족하면 single-part receive facade를 추가한다. |
-| stream frame send | `zlink_stream_send_bound_actor_part`, `zlink_stream_packet_handler` | Node `MULTI_STREAM` 병목은 C API gap인지 아직 확정하지 않는다. stream public surface와 C stream callback/part 계약을 먼저 대조한 뒤, C와 같은 의미가 빠졌을 때만 borrowed frame API를 추가한다. |
+| 항목 | C API 기준 | 확인 방식 |
+|------|------------|-----------|
+| writable/owned message | `zlink_msg_init_size`, `zlink_msg_data`, `zlink_msg_size`, `zlink_msg_close`, `zlink_msg_init_data` | 반복 송신 경로가 매번 불필요한 복사나 할당을 하는지 확인한다. C++처럼 이미 writable message가 있으면 새 API 대상이 아니다. .NET, Java, Node는 writable buffer를 public API로 안전하게 노출하는 경로가 있는지 먼저 확인한다. |
+| routed single-part send/recv | `zlink_send_part_rid`, `zlink_router_request_part`, `zlink_router_reply_part`, `zlink_router_recv_part`, `zlink_spot_recv_part`, `zlink_router_send_spot_part` | ROUTER/DEALER/SPOT routed 경로에서 multi-part wrapper 없이 single part를 보내고 받을 수 있는지 확인한다. 같은 의미의 public API가 있으면 perf만 그 경로로 고친다. |
+| single-part subscribe receive | `zlink_subscribe_part`, `zlink_spot_subscribe_part` | PUBSUB/SPOT receive 경로에서 caller가 결과 객체나 message buffer를 재사용할 수 있는지 확인한다. 재사용 의미가 C의 `zlink_msg_t` 재사용과 다르면 API gap으로 기록한다. |
+| stream frame send | `zlink_stream_send_bound_actor_part`, `zlink_stream_packet_handler` | `MULTI_STREAM` 병목이 C stream callback/part 계약 누락인지 먼저 대조한다. 언어 binding이 이미 같은 의미를 제공하면 새 API를 만들지 않고 perf 사용 경로를 고친다. |
 
-## 6. 현재 상태 표
+## 6. 신규 측정 상태 표
 
-이 표는 최신 판정만 유지한다. 상세 측정 기록은 `doc/plan/perf/log/` 아래에 둔다.
-언어별 상태 표는 모두 `Transport`, `Pattern`, `Size(B)`, `Status`, `C 대비`, `결과`
-열을 사용한다. `결과` 칸에는 근거, 다음 분석 대상, 결과 파일만 적고, 진행 순서 때문에
-아직 실행하지 못한 항목을 `보류`처럼 표현하지 않는다. 아직 같은 조건으로 비교하지
-않았으면 `미측정`, 유효 수치가 목표보다 낮으면 `미달`로 둔다.
+이 표는 기존 측정 기록을 판정 근거로 재사용하지 않고, 새 측정을 시작하기 위한 상태표다. 이전 결과 파일은 참고 자료일 뿐이며, 아래 칸은 새 라운드에서 같은 조건의 C 기준과 대상 binding 결과를 다시 비교하기 전까지 모두 `미측정`으로 둔다.
+
+표 구조는 모든 언어에서 같다. 행은 transport와 pattern을 고정하고, 열은 message size를 고정한다. 각 size 칸은 해당 transport/pattern/size 조합의 상태를 뜻한다. `MULTI_STREAM`은 정책상 `64,256,1024,65536`만 측정하므로 `131072`, `262144`는 `해당 없음`으로 둔다.
+
+상태 칸에는 `미측정`, `통과`, `미달`, `보류`, `해당 없음`만 쓴다. 새 측정 뒤에는 같은 칸에 상태를 바꾸고, 오른쪽 `결과 파일 / 메모` 칸에 결과 파일과 필요한 근거를 적는다. 크기별 결과 파일이나 사유가 다르면 행을 size별로 쪼개도 되지만, 쪼갠 뒤에도 transport/pattern/size 조합이 빠지면 안 된다.
 
 ### 6.1 언어 진행 상태
 
-| 순서 | 언어 | 현재 transport | 전체 상태 | 다음 작업 |
-|------|------|----------------|-----------|-----------|
-| 1 | C++ | 전체 | 보류 있음 | 내부 구현 후보는 소진. 단일 part routed send context와 context auto-HWM message unit option은 public API 추가/수정 필요 |
-| 2 | .NET | 전체 | 보류 있음 | small one-way, routed echo, PUBSUB/SPOT publish-subscribe는 public API 추가/수정 필요 |
-| 3 | Java | 전체 | 보류 있음 | SPOT publish-subscribe와 일부 WSS/TLS large `SPOT_SENDSEND`는 public API 추가/수정 필요 |
-| 4 | Node | `wss` | 보류 있음 | `wss` 측정 완료. 다음은 `tls` smoke-first 측정 |
-| 5 | Rust | `tcp` | 진행 대기, 미측정 있음 | Node의 `미달`/`미측정` 해소 후 `tcp`부터 시작 |
-| 6 | Go | `tcp` | 진행 대기, 미달/미측정 있음 | Rust의 `미달`/`미측정` 해소 후 `tcp` 미달 조합부터 시작 |
-| 7 | Python | `tcp` | 진행 대기, 미달/미측정 있음 | Go의 `미달`/`미측정` 해소 후 `tcp` 미달 조합부터 시작 |
+| 순서 | 언어 | perf 경로 | Single 상태 | Multi 상태 | 다음 작업 |
+|------|------|-----------|-------------|------------|-----------|
+| 1 | C++ | `bindings/cpp/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
+| 2 | .NET | `bindings/dotnet/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
+| 3 | Java | `bindings/java/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
+| 4 | Node | `bindings/node/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
+| 5 | Go | `bindings/go/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
+| 6 | Rust | `bindings/rust/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
+| 7 | Python | `bindings/python/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
 
 ### 6.2 C++ 상태
 
-| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
-|-----------|---------|---------|--------|--------|------|
-| `tcp` | `MULTI_ROUTER_ROUTER` | `65536` | `보류` | `52.8%` | public API 내부 후보를 추가 확인했지만 모두 악화되어 원복. 단일 part routed send context 또는 source routing id materialization 생략 API 추가/수정 필요 |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `131072` | `통과` | `66.8%` | `perf_cpp_multi_linux_20260518_112701_codex_cpp_tcp_rr_large_local_send_msg.txt` |
-| `ws` | `MULTI_DEALER_DEALER` | `64` | `보류` | `76.5%` | 재사용 wait overload와 명시 close 후보를 확인했지만 목표를 넘지 못했다. 반복 전송용 owned message builder 추가/수정 필요 |
-| `ws` | `MULTI_DEALER_DEALER` | `256` | `통과` | `96.4%` | C current 기준 |
-| `ws` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `93.5%` | C current 기준 |
-| `ws` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `94.8%` | C current 기준 |
-| `ws` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `101.6%` | C current 기준 |
-| `ws` | `MULTI_DEALER_DEALER` | `262144` | `보류` | `78.8%` | 재사용 wait overload와 명시 close 후보를 확인했지만 목표를 넘지 못했다. 반복 전송용 owned message builder 추가/수정 필요 |
-| `ws` | `MULTI_DEALER_ROUTER` | `64` | `통과` | `88.1%` | C current 기준 |
-| `ws` | `MULTI_DEALER_ROUTER` | `256` | `통과` | `87.7%` | C current 기준 |
-| `ws` | `MULTI_DEALER_ROUTER` | `1024` | `통과` | `92.6%` | C current 기준 |
-| `ws` | `MULTI_DEALER_ROUTER` | `65536` | `보류` | `59.0%` | framed transport 공유 payload 정렬과 직접 stamp 후보를 확인했지만 안정 통과 수치가 없었다. routed echo/send context API 추가/수정 필요 |
-| `ws` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `70.9%` | C current 기준 |
-| `ws` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `66.0%` | C current 기준 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `64` | `통과` | `95.6%` | C current 기준 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `256` | `통과` | `94.7%` | C current 기준 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `1024` | `통과` | `93.1%` | C current 기준 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `65536` | `보류` | `60.3%` | framed transport 공유 payload 정렬과 직접 stamp 후보를 확인했지만 안정 통과 수치가 없었다. routed echo/send context API 추가/수정 필요 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `131072` | `보류` | `60.8%` | framed transport 공유 payload 정렬과 직접 stamp 후보를 확인했지만 안정 통과 수치가 없었다. routed echo/send context API 추가/수정 필요 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `100.6%` | C current 기준 |
-| `ws` | `MULTI_PUBSUB` | `64` | `통과` | `95.8%` | C current 기준 |
-| `ws` | `MULTI_PUBSUB` | `256` | `통과` | `98.2%` | C current 기준 |
-| `ws` | `MULTI_PUBSUB` | `1024` | `통과` | `92.6%` | `perf_cpp_multi_linux_20260518_124911_codex_cpp_ws_pubsub_1024_debug.txt` |
-| `ws` | `MULTI_PUBSUB` | `65536,131072,262144` | `통과` | `87.6%~113.9%` | `perf_cpp_multi_linux_20260518_124924_codex_cpp_ws_pubsub_large_recheck.txt` |
-| `ws` | `MULTI_SPOT` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `ws` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `ws` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `ws` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `80.3%~98.9%` | `perf_cpp_multi_linux_20260518_124314_codex_cpp_ws_full_status.txt` |
-| `wss` | `MULTI_DEALER_DEALER` | `64` | `보류` | `73.7%` | 재사용 wait overload와 명시 close 후보를 확인했지만 목표를 넘지 못했다. 반복 전송용 owned message builder 추가/수정 필요 |
-| `wss` | `MULTI_DEALER_DEALER` | `256` | `통과` | `99.7%` | 제한 C: `perf_c_multi_linux_20260518_133226_codex_c_wss_dd_recheck_compare.txt` |
-| `wss` | `MULTI_DEALER_DEALER` | `1024,65536` | `통과` | `83.7%~88.2%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
-| `wss` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `92.6%` | 제한 C: `perf_c_multi_linux_20260518_133226_codex_c_wss_dd_recheck_compare.txt` |
-| `wss` | `MULTI_DEALER_DEALER` | `262144` | `통과` | - | stop token round-robin 종료 수정 후 complete: `perf_cpp_multi_linux_20260518_201313_codex_cpp_wss_dd262144_stop_roundrobin.txt` |
-| `wss` | `MULTI_DEALER_ROUTER` | `64,256,1024,65536,131072,262144` | `통과` | `84.4%~95.5%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
-| `wss` | `MULTI_ROUTER_ROUTER` | `64,256,1024,65536,131072,262144` | `통과` | `83.0%~93.5%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
-| `wss` | `MULTI_PUBSUB` | `64,1024` | `통과` | `89.4%~104.3%` | 제한 C: `perf_c_multi_linux_20260518_133255_codex_c_wss_pubsub_recheck_compare.txt` |
-| `wss` | `MULTI_PUBSUB` | `256` | `보류` | `78.3%` | public API 내부 subscribe hot path 후보를 확인했지만 목표를 넘지 못했다. 추가 개선은 public API 추가/수정 필요 |
-| `wss` | `MULTI_PUBSUB` | `65536` | `보류` | `67.2%` | public API 내부 subscribe hot path 후보를 확인했지만 목표를 넘지 못했다. 추가 개선은 public API 추가/수정 필요 |
-| `wss` | `MULTI_PUBSUB` | `131072,262144` | `통과` | - | client active deadline 종료 수정 후 complete: `perf_cpp_multi_linux_20260518_201950_codex_cpp_wss_pubsub_large_deadline_exit.txt` |
-| `wss` | `MULTI_SPOT` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `wss` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `wss` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `wss` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `90.0%~100.1%` | `perf_cpp_multi_linux_20260518_132049_codex_cpp_wss_full_status.txt` |
-| `tls` | `MULTI_DEALER_DEALER` | `64` | `보류` | `75.5%` | 재사용 wait overload와 명시 close 후보를 확인했지만 목표를 넘지 못했다. 반복 전송용 owned message builder 추가/수정 필요 |
-| `tls` | `MULTI_DEALER_DEALER` | `256,1024,65536` | `통과` | `83.4%~88.4%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
-| `tls` | `MULTI_DEALER_DEALER` | `131072` | `보류` | `51.6%` | 재사용 wait overload와 명시 close 후보를 확인했지만 목표를 넘지 못했다. 반복 전송용 owned message builder 추가/수정 필요 |
-| `tls` | `MULTI_DEALER_DEALER` | `262144` | `통과` | - | stop token round-robin 종료 수정 후 complete: `perf_cpp_multi_linux_20260518_201325_codex_cpp_tls_dd262144_stop_roundrobin.txt` |
-| `tls` | `MULTI_DEALER_ROUTER` | `64,256,1024,65536,131072` | `통과` | `83.6%~89.1%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
-| `tls` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `88.2%` | 제한 C: `perf_c_multi_linux_20260518_141339_codex_c_tls_dr_262_recheck_compare.txt` |
-| `tls` | `MULTI_ROUTER_ROUTER` | `64,256,1024,65536,131072` | `통과` | `89.3%~94.8%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
-| `tls` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `112.5%` | 제한 C: `perf_c_multi_linux_20260518_141403_codex_c_tls_rr_262_recheck_compare.txt` |
-| `tls` | `MULTI_PUBSUB` | `64,256,1024` | `통과` | `80.2%~85.5%` | 제한 C와 full 기준 |
-| `tls` | `MULTI_PUBSUB` | `65536` | `보류` | `70.2%` | public API 내부 subscribe hot path 후보를 확인했지만 목표를 넘지 못했다. 추가 개선은 public API 추가/수정 필요 |
-| `tls` | `MULTI_PUBSUB` | `131072` | `통과` | `97.8%` | 제한 C: `perf_c_multi_linux_20260518_140850_codex_c_tls_pubsub_recheck_compare.txt` |
-| `tls` | `MULTI_PUBSUB` | `262144` | `통과` | - | client active deadline 종료 수정 후 complete: `perf_cpp_multi_linux_20260518_202011_codex_cpp_tls_pubsub262144_deadline_exit.txt` |
-| `tls` | `MULTI_SPOT` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `tls` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `tls` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `tls` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `94.8%~103.2%` | `perf_cpp_multi_linux_20260518_133640_codex_cpp_tls_full_status.txt` |
+#### 6.2.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+
+#### 6.2.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
 
 ### 6.3 .NET 상태
 
-| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
-|-----------|---------|---------|--------|--------|------|
-| `tcp` | `MULTI_DEALER_DEALER` | `64` | `보류` | `55.1%` | managed-copy ctor와 `WrapBytes` 후보가 abort/악화되어 원복. payload header 직접 stamp용 writable/owned message builder 추가/수정 필요 |
-| `tcp` | `MULTI_DEALER_DEALER` | `256` | `보류` | `60.2%` | managed-copy ctor와 `WrapBytes` 후보가 abort/악화되어 원복. payload header 직접 stamp용 writable/owned message builder 추가/수정 필요 |
-| `tcp` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `77.6%` | 제한 재측정 |
-| `tcp` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `105.4%` | full tcp |
-| `tcp` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `94.9%` | full tcp |
-| `tcp` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `83.2%` | full tcp |
-| `tcp` | `MULTI_DEALER_ROUTER` | `64` | `통과` | `62.5%` | `routed_echo_borrow_payload=tcp` 정렬 |
-| `tcp` | `MULTI_DEALER_ROUTER` | `256` | `통과` | `64.8%` | `routed_echo_borrow_payload=tcp` 정렬 |
-| `tcp` | `MULTI_DEALER_ROUTER` | `1024` | `통과` | `65.8%` | `routed_echo_borrow_payload=tcp` 정렬 |
-| `tcp` | `MULTI_DEALER_ROUTER` | `65536` | `통과` | `80.6%` | `routed_echo_borrow_payload=tcp` 정렬 |
-| `tcp` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `103.6%` | `routed_echo_borrow_payload=tcp` 정렬 |
-| `tcp` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `130.6%` | `routed_echo_borrow_payload=tcp` 정렬 |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `64` | `통과` | `54.9%` | 상대 기준 허용 범위 |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `256` | `통과` | `56.0%` | 상대 기준 허용 범위 |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `1024` | `통과` | `56.9%` | 제한 재측정, 상대 기준 허용 범위 |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `65536` | `통과` | `73.9%` | 상대 기준 허용 범위 |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `131072` | `통과` | `93.1%` | 상대 기준 허용 범위 |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `145.7%` | 상대 기준 허용 범위 |
-| `tcp` | `MULTI_PUBSUB` | `64` | `통과` | `67.0%` | builder inline 후보 후 통과 |
-| `tcp` | `MULTI_PUBSUB` | `256` | `통과` | `71.7%` | 제한 재측정 |
-| `tcp` | `MULTI_PUBSUB` | `1024` | `통과` | `103.4%` | 제한 재측정 |
-| `tcp` | `MULTI_PUBSUB` | `65536` | `통과` | `84.5%` | full tcp |
-| `tcp` | `MULTI_PUBSUB` | `131072` | `통과` | `91.2%` | full tcp |
-| `tcp` | `MULTI_PUBSUB` | `262144` | `통과` | `172.5%` | timeout 재현 후 재측정 complete: `perf_dotnet_multi_linux_20260518_185545_codex_dotnet_pubsub262144_recheck.txt` |
-| `tcp` | `MULTI_SPOT` | `64` | `보류` | `51.5%` | native-message publish 후보가 목표 미달/64B 악화로 원복. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
-| `tcp` | `MULTI_SPOT` | `256` | `보류` | `38.4%` | native-message publish 후보도 `50.3%`로 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
-| `tcp` | `MULTI_SPOT` | `1024` | `보류` | `49.9%` | native-message publish 후보도 `52.7%`로 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
-| `tcp` | `MULTI_SPOT` | `65536` | `보류` | `35.8%` | publish/subscribe public API 내부 후보로 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
-| `tcp` | `MULTI_SPOT` | `131072` | `보류` | `30.0%` | publish/subscribe public API 내부 후보로 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
-| `tcp` | `MULTI_SPOT` | `262144` | `보류` | `23.3%` | publish/subscribe public API 내부 후보로 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
-| `tcp` | `MULTI_SPOT_REQREP` | `64` | `통과` | `70.6%` | direct callback, progress pump keepalive, `WrapBytes`: `perf_dotnet_multi_linux_20260518_192515_codex_dotnet_reqrep_wrapbytes_small_recheck.txt` |
-| `tcp` | `MULTI_SPOT_REQREP` | `256` | `통과` | `63.6%` | direct callback, progress pump keepalive, `WrapBytes` |
-| `tcp` | `MULTI_SPOT_REQREP` | `1024` | `통과` | `64.1%` | callback fallback scan 제거 후 통과: `perf_dotnet_multi_linux_20260518_194125_codex_dotnet_reqrep1024_no_fallback_scan.txt` |
-| `tcp` | `MULTI_SPOT_REQREP` | `65536` | `통과` | `64.7%` | HWM 안정 active slot과 blocking reply 정렬: `perf_dotnet_multi_linux_20260518_192658_codex_dotnet_reqrep_wrapbytes_large_final.txt` |
-| `tcp` | `MULTI_SPOT_REQREP` | `131072` | `통과` | `103.4%` | HWM cap active slot 적용 후 complete |
-| `tcp` | `MULTI_SPOT_REQREP` | `262144` | `통과` | `117.1%` | HWM cap active slot 적용 후 complete |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `64` | `통과` | `69.5%` | 제한 재측정 |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `256` | `통과` | `72.7%` | 제한 재측정 |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `1024` | `통과` | `72.9%` | 제한 재측정 |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `93.1%` | in-flight HWM 정렬 후 timeout 해소: `perf_dotnet_multi_linux_20260518_185532_codex_dotnet_sendsend65536_half_hwm_slots.txt` |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `131072` | `통과` | `91.3%` | full tcp |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `262144` | `통과` | `156.3%` | full tcp와 제한 재측정 기준 통과 |
-| `tcp` | `MULTI_STREAM` | `64` | `통과` | `91.8%` | full tcp |
-| `tcp` | `MULTI_STREAM` | `256` | `통과` | `86.4%` | full tcp |
-| `tcp` | `MULTI_STREAM` | `1024` | `통과` | `84.0%` | full tcp |
-| `tcp` | `MULTI_STREAM` | `65536` | `통과` | `104.1%` | full tcp |
-| `ws` | `MULTI_DEALER_DEALER` | `64` | `보류` | `46.5%` | public operation builder 경유 one-way hot path에서 내부 후보만으로 목표 미달. 직접 no-wait send 또는 반복 전송용 owned message builder API 추가/수정 필요 |
-| `ws` | `MULTI_DEALER_DEALER` | `256` | `통과` | `67.0%` | 최신 full ws: `perf_dotnet_multi_linux_20260519_135221_codex_dotnet_ws_all_sizes_after_dotnet_fastpaths_full.txt` |
-| `ws` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `76.3%` | 최신 full ws |
-| `ws` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `103.8%` | 최신 full ws |
-| `ws` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `119.7%` | 최신 full ws |
-| `ws` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `185.7%` | 최신 full ws |
-| `ws` | `MULTI_DEALER_ROUTER` | `64` | `통과` | `67.1%` | 최신 full ws |
-| `ws` | `MULTI_DEALER_ROUTER` | `256` | `통과` | `65.0%` | 최신 full ws |
-| `ws` | `MULTI_DEALER_ROUTER` | `1024` | `통과` | `67.9%` | 최신 full ws |
-| `ws` | `MULTI_DEALER_ROUTER` | `65536` | `통과` | `72.5%` | 최신 full ws |
-| `ws` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `83.1%` | 최신 full ws |
-| `ws` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `115.6%` | 최신 full ws |
-| `ws` | `MULTI_ROUTER_ROUTER` | `64` | `통과` | `52.9%` | 절대 목표 기준 통과 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `256` | `통과` | `51.4%` | 절대 목표 기준 통과 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `1024` | `통과` | `50.1%` | 절대 목표 기준 통과 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `65536` | `보류` | `45.0%` | routed echo dispatch와 payload 경로의 추가 개선은 단일 part routed send context 또는 raw recv facade 추가/수정 필요 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `131072` | `통과` | `83.7%` | 최신 full ws |
-| `ws` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `124.1%` | 최신 full ws |
-| `ws` | `MULTI_PUBSUB` | `64` | `통과` | `74.3%` | 최신 full ws |
-| `ws` | `MULTI_PUBSUB` | `256` | `통과` | `86.7%` | 최신 full ws |
-| `ws` | `MULTI_PUBSUB` | `1024` | `통과` | `82.0%` | 최신 full ws |
-| `ws` | `MULTI_PUBSUB` | `65536` | `통과` | `155.6%` | 최신 full ws |
-| `ws` | `MULTI_PUBSUB` | `131072` | `통과` | `181.7%` | 최신 full ws |
-| `ws` | `MULTI_PUBSUB` | `262144` | `통과` | `243.6%` | 최신 full ws |
-| `ws` | `MULTI_SPOT` | `64` | `통과` | `114.8%` | worker 증가 crash 회귀 수정 후 최신 full ws |
-| `ws` | `MULTI_SPOT` | `256` | `통과` | `148.0%` | worker 증가 crash 회귀 수정 후 최신 full ws |
-| `ws` | `MULTI_SPOT` | `1024` | `통과` | `112.6%` | worker 증가 crash 회귀 수정 후 최신 full ws |
-| `ws` | `MULTI_SPOT` | `65536` | `통과` | `109.9%` | worker 증가 crash 회귀 수정 후 최신 full ws |
-| `ws` | `MULTI_SPOT` | `131072` | `통과` | `106.0%` | worker 증가 crash 회귀 수정 후 최신 full ws |
-| `ws` | `MULTI_SPOT` | `262144` | `통과` | `98.1%` | worker 증가 crash 회귀 수정 후 최신 full ws |
-| `ws` | `MULTI_SPOT_REQREP` | `64` | `통과` | `62.9%` | 최신 full ws |
-| `ws` | `MULTI_SPOT_REQREP` | `256` | `통과` | `79.7%` | 최신 full ws |
-| `ws` | `MULTI_SPOT_REQREP` | `1024` | `통과` | `64.6%` | 최신 full ws |
-| `ws` | `MULTI_SPOT_REQREP` | `65536` | `통과` | `85.9%` | 최신 full ws |
-| `ws` | `MULTI_SPOT_REQREP` | `131072` | `보류` | `37.5%` | 단일 request borrowed-submit 후보는 목표 미달/악화로 원복. received owned-part reply fast path는 public 계약 추가/수정 필요 |
-| `ws` | `MULTI_SPOT_REQREP` | `262144` | `보류` | `38.9%` | 단일 request borrowed-submit 후보는 목표 미달/악화로 원복. received owned-part reply fast path는 public 계약 추가/수정 필요 |
-| `ws` | `MULTI_SPOT_SENDSEND` | `64` | `통과` | `62.8%` | 최신 full ws |
-| `ws` | `MULTI_SPOT_SENDSEND` | `256` | `통과` | `63.2%` | 최신 full ws |
-| `ws` | `MULTI_SPOT_SENDSEND` | `1024` | `통과` | `67.5%` | 최신 full ws |
-| `ws` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `94.6%` | 최신 full ws |
-| `ws` | `MULTI_SPOT_SENDSEND` | `131072` | `보류` | `36.2%` | clone-preserving single send fast path 이후에도 목표 미달. received owned-part routed send fast path는 public 계약 추가/수정 필요 |
-| `ws` | `MULTI_SPOT_SENDSEND` | `262144` | `보류` | `40.9%` | clone-preserving single send fast path 이후에도 목표 미달. received owned-part routed send fast path는 public 계약 추가/수정 필요 |
-| `ws` | `MULTI_STREAM` | `64` | `통과` | `91.9%` | 최신 full ws |
-| `ws` | `MULTI_STREAM` | `256` | `통과` | `92.2%` | 최신 full ws |
-| `ws` | `MULTI_STREAM` | `1024` | `통과` | `91.5%` | 최신 full ws |
-| `ws` | `MULTI_STREAM` | `65536` | `통과` | `122.7%` | 최신 full ws |
-| `wss` | `MULTI_DEALER_DEALER` | `64` | `보류` | `43.7%` | 최신 full wss: `perf_dotnet_multi_linux_20260519_150448_codex_dotnet_wss_all_sizes_after_spot_exit_fix_full_retry.txt` |
-| `wss` | `MULTI_DEALER_DEALER` | `256` | `통과` | `65.9%` | 최신 full wss |
-| `wss` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `77.8%` | 최신 full wss |
-| `wss` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `97.5%` | 최신 full wss |
-| `wss` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `106.3%` | 최신 full wss |
-| `wss` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `102.4%` | 최신 full wss |
-| `wss` | `MULTI_DEALER_ROUTER` | `64` | `통과` | `69.3%` | 최신 full wss |
-| `wss` | `MULTI_DEALER_ROUTER` | `256` | `통과` | `64.0%` | 최신 full wss |
-| `wss` | `MULTI_DEALER_ROUTER` | `1024` | `통과` | `62.6%` | 최신 full wss |
-| `wss` | `MULTI_DEALER_ROUTER` | `65536` | `통과` | `96.3%` | 최신 full wss |
-| `wss` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `97.9%` | 최신 full wss |
-| `wss` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `95.7%` | 최신 full wss |
-| `wss` | `MULTI_ROUTER_ROUTER` | `64` | `통과` | `56.5%` | 최신 full wss |
-| `wss` | `MULTI_ROUTER_ROUTER` | `256` | `통과` | `55.1%` | 최신 full wss |
-| `wss` | `MULTI_ROUTER_ROUTER` | `1024` | `통과` | `52.0%` | 최신 full wss |
-| `wss` | `MULTI_ROUTER_ROUTER` | `65536` | `통과` | `95.7%` | 최신 full wss |
-| `wss` | `MULTI_ROUTER_ROUTER` | `131072` | `통과` | `96.3%` | 최신 full wss |
-| `wss` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `94.0%` | 최신 full wss |
-| `wss` | `MULTI_PUBSUB` | `64` | `통과` | `70.6%` | 최신 full wss |
-| `wss` | `MULTI_PUBSUB` | `256` | `통과` | `67.1%` | 최신 full wss |
-| `wss` | `MULTI_PUBSUB` | `1024` | `통과` | `80.3%` | 최신 full wss |
-| `wss` | `MULTI_PUBSUB` | `65536` | `통과` | `89.7%` | 최신 full wss |
-| `wss` | `MULTI_PUBSUB` | `131072` | `통과` | `97.6%` | 최신 full wss |
-| `wss` | `MULTI_PUBSUB` | `262144` | `통과` | `115.2%` | 최신 full wss |
-| `wss` | `MULTI_SPOT` | `64` | `통과` | `107.2%` | discovery WSS canonical bootstrap dealer 종료 회귀 수정 후 최신 full wss |
-| `wss` | `MULTI_SPOT` | `256` | `보류` | `47.4%` | SPOT publish/subscribe 경로는 추가 개선 필요 |
-| `wss` | `MULTI_SPOT` | `1024` | `통과` | `50.0%` | 절대 목표 기준 통과 |
-| `wss` | `MULTI_SPOT` | `65536` | `통과` | `101.1%` | 최신 full wss |
-| `wss` | `MULTI_SPOT` | `131072` | `통과` | `67.4%` | 최신 full wss |
-| `wss` | `MULTI_SPOT` | `262144` | `통과` | `78.4%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_REQREP` | `64` | `통과` | `54.9%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_REQREP` | `256` | `통과` | `56.0%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_REQREP` | `1024` | `통과` | `56.7%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_REQREP` | `65536` | `통과` | `94.1%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_REQREP` | `131072` | `통과` | `69.0%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_REQREP` | `262144` | `통과` | `66.5%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_SENDSEND` | `64` | `통과` | `58.1%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_SENDSEND` | `256` | `통과` | `61.5%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_SENDSEND` | `1024` | `통과` | `70.5%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `93.5%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_SENDSEND` | `131072` | `통과` | `65.9%` | 최신 full wss |
-| `wss` | `MULTI_SPOT_SENDSEND` | `262144` | `통과` | `53.2%` | 최신 full wss |
-| `wss` | `MULTI_STREAM` | `64` | `통과` | `86.3%` | 최신 full wss |
-| `wss` | `MULTI_STREAM` | `256` | `통과` | `86.0%` | 최신 full wss |
-| `wss` | `MULTI_STREAM` | `1024` | `통과` | `90.9%` | 최신 full wss |
-| `wss` | `MULTI_STREAM` | `65536` | `통과` | `94.2%` | 최신 full wss |
-| `tls` | `MULTI_DEALER_DEALER` | `64` | `보류` | `45.6%` | 최신 full tls. small one-way 추가 개선 필요 |
-| `tls` | `MULTI_DEALER_DEALER` | `256` | `통과` | `61.5%` | 최신 full tls |
-| `tls` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `73.0%` | 최신 full tls |
-| `tls` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `94.7%` | 최신 full tls |
-| `tls` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `96.7%` | 최신 full tls |
-| `tls` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `96.5%` | 최신 full tls |
-| `tls` | `MULTI_DEALER_ROUTER` | `64` | `통과` | `65.9%` | 최신 full tls |
-| `tls` | `MULTI_DEALER_ROUTER` | `256` | `통과` | `62.1%` | 최신 full tls |
-| `tls` | `MULTI_DEALER_ROUTER` | `1024` | `통과` | `66.1%` | 최신 full tls |
-| `tls` | `MULTI_DEALER_ROUTER` | `65536` | `통과` | `89.2%` | 최신 full tls |
-| `tls` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `94.4%` | 최신 full tls |
-| `tls` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `105.6%` | 최신 full tls |
-| `tls` | `MULTI_ROUTER_ROUTER` | `64` | `통과` | `53.9%` | 최신 full tls |
-| `tls` | `MULTI_ROUTER_ROUTER` | `256` | `통과` | `54.6%` | 최신 full tls |
-| `tls` | `MULTI_ROUTER_ROUTER` | `1024` | `통과` | `56.2%` | 최신 full tls |
-| `tls` | `MULTI_ROUTER_ROUTER` | `65536` | `통과` | `83.3%` | 최신 full tls |
-| `tls` | `MULTI_ROUTER_ROUTER` | `131072` | `통과` | `98.4%` | 최신 full tls |
-| `tls` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `101.2%` | 최신 full tls |
-| `tls` | `MULTI_PUBSUB` | `64` | `통과` | `68.5%` | 최신 full tls |
-| `tls` | `MULTI_PUBSUB` | `256` | `통과` | `65.9%` | 최신 full tls |
-| `tls` | `MULTI_PUBSUB` | `1024` | `통과` | `78.8%` | 최신 full tls |
-| `tls` | `MULTI_PUBSUB` | `65536` | `통과` | `82.2%` | 최신 full tls |
-| `tls` | `MULTI_PUBSUB` | `131072` | `통과` | `100.1%` | 최신 full tls |
-| `tls` | `MULTI_PUBSUB` | `262144` | `통과` | `55.7%` | 최신 full tls |
-| `tls` | `MULTI_SPOT` | `64` | `통과` | `54.6%` | 최신 full tls |
-| `tls` | `MULTI_SPOT` | `256` | `보류` | `49.1%` | 최신 full tls. SPOT publish/subscribe 경로 추가 개선 필요 |
-| `tls` | `MULTI_SPOT` | `1024` | `통과` | `76.4%` | 최신 full tls |
-| `tls` | `MULTI_SPOT` | `65536` | `통과` | `60.9%` | 최신 full tls |
-| `tls` | `MULTI_SPOT` | `131072` | `통과` | `52.4%` | 최신 full tls |
-| `tls` | `MULTI_SPOT` | `262144` | `보류` | `43.8%` | 최신 full tls. large SPOT 경로 추가 개선 필요 |
-| `tls` | `MULTI_SPOT_REQREP` | `64` | `통과` | `54.4%` | active deadline 종료 수정 후 최신 full tls |
-| `tls` | `MULTI_SPOT_REQREP` | `256` | `통과` | `50.9%` | active deadline 종료 수정 후 최신 full tls |
-| `tls` | `MULTI_SPOT_REQREP` | `1024` | `보류` | `49.8%` | active deadline 종료 수정 후 최신 full tls. routed request/reply 경로 추가 개선 필요 |
-| `tls` | `MULTI_SPOT_REQREP` | `65536` | `통과` | `78.6%` | active deadline 종료 수정 후 최신 full tls |
-| `tls` | `MULTI_SPOT_REQREP` | `131072` | `통과` | `56.9%` | active deadline 종료 수정 후 최신 full tls |
-| `tls` | `MULTI_SPOT_REQREP` | `262144` | `통과` | `55.3%` | active deadline 종료 수정 후 최신 full tls |
-| `tls` | `MULTI_SPOT_SENDSEND` | `64` | `통과` | `56.6%` | active deadline과 reply payload 수명 수정 후 최신 full tls |
-| `tls` | `MULTI_SPOT_SENDSEND` | `256` | `통과` | `59.5%` | active deadline과 reply payload 수명 수정 후 최신 full tls |
-| `tls` | `MULTI_SPOT_SENDSEND` | `1024` | `통과` | `58.3%` | active deadline과 reply payload 수명 수정 후 최신 full tls |
-| `tls` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `68.5%` | active deadline과 reply payload 수명 수정 후 최신 full tls |
-| `tls` | `MULTI_SPOT_SENDSEND` | `131072` | `보류` | `27.3%` | active deadline과 reply payload 수명 수정 후 no-result 해소. large routed echo 추가 개선 필요 |
-| `tls` | `MULTI_SPOT_SENDSEND` | `262144` | `보류` | `25.7%` | active deadline과 reply payload 수명 수정 후 no-result 해소. large routed echo 추가 개선 필요 |
-| `tls` | `MULTI_STREAM` | `64` | `통과` | `87.2%` | 최신 full tls |
-| `tls` | `MULTI_STREAM` | `256` | `통과` | `87.7%` | 최신 full tls |
-| `tls` | `MULTI_STREAM` | `1024` | `통과` | `89.8%` | 최신 full tls |
-| `tls` | `MULTI_STREAM` | `65536` | `통과` | `88.9%` | 최신 full tls |
+#### 6.3.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+
+#### 6.3.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
 
 ### 6.4 Java 상태
 
-| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
-|-----------|---------|---------|--------|--------|------|
-| `tcp` | `MULTI_DEALER_DEALER` | 전체 대상 | `통과` | `68.2%~92.7%` | `perf_java_multi_linux_20260518_160351_codex_java_tcp_full_status.txt` |
-| `tcp` | `MULTI_DEALER_ROUTER` | 전체 대상 | `통과` | `55.3%~87.0%` | 1024 timeout 재현 없음: `perf_java_multi_linux_20260518_195221_codex_java_dealer_router_small_after_spot_internal.txt` |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `64,256,1024` | `통과` | `62.9%~64.3%` | 절대 목표 기준 통과 |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `65536,131072,262144` | `통과` | `54.5%~106.6%` | 상대 기준 허용 범위 |
-| `tcp` | `MULTI_PUBSUB` | 전체 대상 | `통과` | `90.6%~256.7%` | 최신 full tcp |
-| `tcp` | `MULTI_SPOT` | `64,256,1024,65536,131072,262144` | `보류` | `32.8%~51.4%` | single-part builder, scratch native message, direct message 후보를 확인했지만 목표 미달. publish payload direct 구성 또는 raw/typed subscribed receive facade 추가/수정 필요 |
-| `tcp` | `MULTI_SPOT_REQREP` | `64,256,1024` | `통과` | `67.3%~84.9%` | progress pump 재사용과 단일 submit loop 후 통과 |
-| `tcp` | `MULTI_SPOT_REQREP` | `65536,131072,262144` | `통과` | `77.3%~107.7%` | 최신 full tcp 기준 timeout 없이 통과 |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `64,256,1024` | `통과` | `75.6%~80.9%` | 단일 poll loop와 `MsgUnit(B)` 정렬 후 제한 C 기준 통과 |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `65536,131072,262144` | `통과` | `81.1%~131.3%` | HWM 기반 in-flight 제한과 active stop count 정렬 후 complete |
-| `tcp` | `MULTI_STREAM` | 전체 대상 | `통과` | `102.5%~135.1%` | 최신 full tcp |
-| `ws` | `MULTI_SPOT_SENDSEND` | `65536,262144` | `통과` | `72.0%~95.3%` | copy 제거, `System.nanoTime()` 적용, active slot HWM 정렬. C 제한: `perf_c_multi_linux_20260518_205954_codex_c_ws_sendsend_large_java_compare.txt`, Java: `perf_java_multi_linux_20260518_210350_codex_java_ws_sendsend_large_final_nano.txt` |
-| `ws` | `MULTI_SPOT_SENDSEND` | `131072` | `통과` | `68.5%` | size 단독 제한 측정 기준: `perf_java_multi_linux_20260518_210336_codex_java_ws_sendsend131072_nano_time.txt` |
-| `ws` | 그 외 미출력 조합 | 해당 size | `통과` | - | 제한 재측정 complete: `perf_java_multi_linux_20260518_203045_codex_java_ws_dd1024_isolate_before_fix.txt`, `perf_java_multi_linux_20260518_203142_codex_java_ws_pubsub262144_deadline_exit.txt`, `perf_java_multi_linux_20260518_203213_codex_java_ws_reqrep64_debug.txt` |
-| `wss` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `87.6%` | `perf_java_multi_linux_20260518_210512_codex_java_wss_sendsend65536_final_nano.txt` |
-| `wss` | `MULTI_SPOT_SENDSEND` | `131072` | `보류` | `43.6%` | stdin reader, active slot, public `wrapDirect` 후보 확인 후 목표 미달. WSS large routed send/reply payload API 추가/수정 필요 |
-| `wss` | `MULTI_SPOT_SENDSEND` | `262144` | `통과` | `60.4%` | 최신 단독 제한 측정: C `perf_c_multi_linux_20260518_223446_codex_c_wss_sendsend262144_java_compare.txt`, Java `perf_java_multi_linux_20260518_223449_codex_java_wss_sendsend262144_single_recheck.txt` |
-| `wss` | 그 외 미출력 조합 | 해당 size | `통과` | - | 제한 재측정 complete: `perf_java_multi_linux_20260518_204413_codex_java_wss_pubsub131072_isolate.txt`, `perf_java_multi_linux_20260518_204422_codex_java_wss_sendsend_small_isolate.txt`, `perf_java_multi_linux_20260518_204519_codex_java_wss_sendsend1024_recheck_after_debug.txt` |
-| `tls` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `86.8%` | `perf_java_multi_linux_20260518_210940_codex_java_tls_sendsend65536_final_nano.txt` |
-| `tls` | `MULTI_SPOT_SENDSEND` | `131072,262144` | `보류` | `11.1%~17.6%` | active slot, public `wrapDirect`, `System.nanoTime()` 후보 확인 후 목표 미달. TLS large routed send/reply payload API 추가/수정 필요 |
-| `tls` | `MULTI_ROUTER_ROUTER` | `131072,262144` | `통과` | - | server active deadline 종료 수정 후 complete: `perf_java_multi_linux_20260518_205313_codex_java_tls_rr_large_deadline_exit.txt` |
-| `tls` | 그 외 대상 | 해당 size | `통과` | - | full tls와 제한 재측정 기준 timeout/no-result 없음 |
+#### 6.4.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+
+#### 6.4.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
 
 ### 6.5 Node 상태
 
-| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
-|-----------|---------|---------|--------|--------|------|
-| `tcp` | `PUBSUB` | `64` | `통과` | `37.06%` | `perf_node_single_linux_20260518_111604.txt` |
-| `tcp` | `PUBSUB` | `256` | `통과` | `36.30%` | `perf_node_single_linux_20260518_111503.txt` |
-| `tcp` | `MULTI_DEALER_DEALER` | `64,256,1024,65536,131072` | `통과` | `56.4%~83.2%` | public `sendFrom` fast path와 public `recvInto` receiver 적용 후 `perf_node_multi_linux_20260518_230350_codex_node_tcp_dd_full_recvinto_final.txt` |
-| `tcp` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `38.8%` | EPIPE 종료 수정 후 단독 재측정: `perf_node_multi_linux_20260518_230538_codex_node_tcp_dd262144_recvinto_epipe_fix_recheck.txt` |
-| `tcp` | `MULTI_DEALER_ROUTER` | `64,256,1024` | `통과` | `34.5%~55.9%` | public `sendFrom` fast path 반영 후 `perf_node_multi_linux_20260518_230906_codex_node_tcp_routed_full_sendfrom_current.txt` |
-| `tcp` | `MULTI_DEALER_ROUTER` | `65536,131072,262144` | `보류` | `14.7%~27.6%` | non-routed `sendFrom` 후보만으로 목표 미달. routed reply/send payload fast path는 public routed raw send/borrowed send context 추가/수정 필요 |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `64,256` | `통과` | `31.2%~39.5%` | public `sendFrom` fast path 반영 후 `perf_node_multi_linux_20260518_230906_codex_node_tcp_routed_full_sendfrom_current.txt` |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `1024,65536,131072,262144` | `보류` | `13.9%~29.2%` | routed 양쪽 send가 builder/context 경로에 묶인다. public routed raw send/borrowed send context 추가/수정 필요 |
-| `tcp` | `MULTI_PUBSUB` | `1024` | `통과` | `40.3%` | caller-provided `TopicMessage` 재사용 후 `perf_node_multi_linux_20260518_230630_codex_node_tcp_pubsub_full_topic_storage_reuse.txt` |
-| `tcp` | `MULTI_PUBSUB` | `64,256,65536,131072,262144` | `보류` | `16.8%~25.8%` | `TopicMessage` 재사용 후보만으로 목표 미달. public raw/typed subscribed receive facade 추가/수정 필요 |
-| `tcp` | `MULTI_STREAM` | `65536` | `통과` | `43.1%` | `perf_node_multi_linux_20260518_230942_codex_node_tcp_stream_full_current.txt` |
-| `tcp` | `MULTI_STREAM` | `64,256,1024` | `보류` | `16.7%~19.0%` | stream echo가 frame 재구성 Buffer와 stream send builder 경로에 묶인다. public stream raw send/borrowed frame API 추가/수정 필요 |
-| `tcp` | `MULTI_SPOT` | 전체 대상 | `보류` | - | deadline inner-check 수정으로 종료는 complete. `Auto-HWM spotnode`의 `MsgUnit(B)=4096` 불일치가 남아 context auto-HWM message unit option 추가/수정 필요 |
-| `tcp` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | `65536B` 단독은 complete지만 SPOT-family 전체가 `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `tcp` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | smoke complete이나 `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `ws` | `MULTI_DEALER_DEALER` | 전체 대상 | `통과` | `59.9%~100.1%` | full 중 `64B` outlier는 단독 재측정으로 통과: `perf_node_multi_linux_20260518_232722_codex_node_ws_dd64_full_outlier_recheck.txt`, 나머지는 `perf_node_multi_linux_20260518_232616_codex_node_ws_multi_full_status.txt` |
-| `ws` | `MULTI_DEALER_ROUTER` | `64,256,1024,131072,262144` | `통과` | `33.8%~42.7%` | `perf_node_multi_linux_20260518_232616_codex_node_ws_multi_full_status.txt` |
-| `ws` | `MULTI_DEALER_ROUTER` | `65536` | `보류` | `22.5%` | tcp large routed echo와 같은 병목. public routed raw send/borrowed send context 추가/수정 필요 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `64,256,1024,131072,262144` | `통과` | `30.2%~38.8%` | `perf_node_multi_linux_20260518_232616_codex_node_ws_multi_full_status.txt` |
-| `ws` | `MULTI_ROUTER_ROUTER` | `65536` | `보류` | `24.5%` | routed 양쪽 send가 builder/context 경로에 묶인다. public routed raw send/borrowed send context 추가/수정 필요 |
-| `ws` | `MULTI_PUBSUB` | `262144` | `통과` | `35.2%` | `perf_node_multi_linux_20260518_232616_codex_node_ws_multi_full_status.txt` |
-| `ws` | `MULTI_PUBSUB` | `64,256,1024,65536,131072` | `보류` | `21.3%~33.3%` | `TopicMessage` 재사용 후보만으로 목표 미달. public raw/typed subscribed receive facade 추가/수정 필요 |
-| `ws` | `MULTI_SPOT` | 전체 대상 | `보류` | - | full은 complete지만 `Auto-HWM spotnode`의 `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `ws` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | 수치는 `37.2%~76.5%`이나 SPOT-family `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `ws` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | 수치는 일부 통과/일부 미달이나 SPOT-family `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `ws` | `MULTI_STREAM` | `65536` | `통과` | `90.5%` | `perf_node_multi_linux_20260518_232616_codex_node_ws_multi_full_status.txt` |
-| `ws` | `MULTI_STREAM` | `64,256,1024` | `보류` | `13.4%~14.2%` | `1024B` full crash는 단독 재측정 complete: `perf_node_multi_linux_20260518_232633_codex_node_ws_stream1024_double_free_repro.txt`. stream raw send/borrowed frame API 추가/수정 필요 |
-| `wss` | `MULTI_DEALER_DEALER` | 전체 대상 | `통과` | `49.8%~57.0%` | full의 `256B` outlier는 전체 재측정으로 정상화: `perf_node_multi_linux_20260518_235652_codex_node_wss_dd_all_sizes_anomaly_check.txt` |
-| `wss` | `MULTI_DEALER_ROUTER` | 전체 대상 | `통과` | `33.4%~40.8%` | Node `perf_node_multi_linux_20260518_234522_codex_node_wss_multi_full_status.txt`, C `perf_c_multi_linux_20260518_234546_codex_c_wss_multi_full_node_compare.txt` |
-| `wss` | `MULTI_ROUTER_ROUTER` | 전체 대상 | `통과` | `30.7%~41.0%` | `1024B`는 단독 C/Node 재측정 기준 통과: Node `perf_node_multi_linux_20260518_235711_codex_node_wss_rr1024_threshold_recheck.txt`, C `perf_c_multi_linux_20260518_235723_codex_c_wss_rr1024_node_compare.txt` |
-| `wss` | `MULTI_PUBSUB` | `262144` | `통과` | `36.4%` | `perf_node_multi_linux_20260518_234522_codex_node_wss_multi_full_status.txt` |
-| `wss` | `MULTI_PUBSUB` | `64,256,1024,65536,131072` | `보류` | `17.0%~32.7%` | `TopicMessage` 재사용 후보만으로 목표 미달. public raw/typed subscribed receive facade 추가/수정 필요 |
-| `wss` | `MULTI_SPOT` | 전체 대상 | `보류` | - | full은 complete지만 `Auto-HWM spotnode`의 `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `wss` | `MULTI_SPOT_REQREP` | 전체 대상 | `보류` | - | 수치는 `38.5%~92.0%`이나 SPOT-family `MsgUnit(B)=4096` 불일치. context auto-HWM message unit option 추가/수정 필요 |
-| `wss` | `MULTI_SPOT_SENDSEND` | 전체 대상 | `보류` | - | 수치는 `21.0%~59.3%`이고 SPOT-family `MsgUnit(B)=4096` 불일치가 남아 context auto-HWM message unit option 추가/수정 필요 |
-| `wss` | `MULTI_STREAM` | `65536` | `통과` | `92.9%` | `perf_node_multi_linux_20260518_234522_codex_node_wss_multi_full_status.txt` |
-| `wss` | `MULTI_STREAM` | `64,256,1024` | `보류` | `20.8%~21.9%` | stream echo가 frame 재구성 Buffer와 stream send builder 경로에 묶인다. public stream raw send/borrowed frame API 추가/수정 필요 |
-| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `wss` 미측정/미달 해소 후 측정 |
+#### 6.5.1 Single suite
 
-### 6.6 Rust 상태
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
 
-| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
-|-----------|---------|---------|--------|--------|------|
-| `tcp` | 전체 대상 | 전체 대상 | `미측정` | - | 진행 순서 도달 후 `tcp`에서 먼저 측정 |
-| `ws` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미측정/미달 해소 후 측정 |
-| `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `ws` 미측정/미달 해소 후 측정 |
-| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `wss` 미측정/미달 해소 후 측정 |
+#### 6.5.2 Multi suite
 
-### 6.7 Go 상태
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
 
-| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
-|-----------|---------|---------|--------|--------|------|
-| `tcp` | `PAIR` | `64` | `통과` | `79.80%` | `perf_go_single_linux_20260518_115650_codex_go_tcp64_single_recv_into.txt` |
-| `tcp` | `DEALER_DEALER` | `64` | `통과` | `78.05%` | `perf_go_single_linux_20260518_115650_codex_go_tcp64_single_recv_into.txt` |
-| `tcp` | `DEALER_ROUTER` | `64` | `미달` | `45.12%` | `perf_go_single_linux_20260518_115650_codex_go_tcp64_single_recv_into.txt` |
-| `tcp` | `ROUTER_ROUTER` | `64` | `통과` | `50.49%` | `perf_go_single_linux_20260518_115650_codex_go_tcp64_single_recv_into.txt` |
-| `tcp` | `PUBSUB` | `64` | `미달` | `9.78%` | `perf_go_single_linux_20260518_120037_codex_go_tcp64_pubsub_adopt_recv.txt` |
-| `tcp` | `SPOT` | `64` | `미달` | `29.65%` | `perf_go_single_linux_20260518_115650_codex_go_tcp64_single_recv_into.txt` |
-| `tcp` | 그 외 대상 | 전체 대상 | `미측정` | - | 진행 순서 도달 후 `tcp` 미달 조합과 함께 측정 |
-| `ws` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미측정/미달 해소 후 측정 |
-| `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `ws` 미측정/미달 해소 후 측정 |
-| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `wss` 미측정/미달 해소 후 측정 |
+### 6.6 Go 상태
+
+#### 6.6.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+
+#### 6.6.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+
+### 6.7 Rust 상태
+
+#### 6.7.1 Single suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+
+#### 6.7.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
 
 ### 6.8 Python 상태
 
-| Transport | Pattern | Size(B) | Status | C 대비 | 결과 |
-|-----------|---------|---------|--------|--------|------|
-| `tcp` | `MULTI_DEALER_DEALER` | `64` | `미달` | `4.55%` | `perf_python_multi_linux_20260518_115738_codex_python_tcp64_owned_recv.txt` |
-| `tcp` | `MULTI_PUBSUB` | `64` | `미달` | `4.42%` | `perf_python_multi_linux_20260518_115738_codex_python_tcp64_owned_recv.txt` |
-| `tcp` | `MULTI_DEALER_ROUTER` | `64` | `미달` | `9.98%` | `perf_python_multi_linux_20260518_115738_codex_python_tcp64_owned_recv.txt` |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `64` | `미달` | `8.47%` | `perf_python_multi_linux_20260518_115738_codex_python_tcp64_owned_recv.txt` |
-| `tcp` | `MULTI_STREAM` | `64` | `미달` | `0.82%` | `perf_python_multi_linux_20260518_115738_codex_python_tcp64_owned_recv.txt` |
-| `tcp` | `MULTI_SPOT_REQREP` | `64` | `미달` | `0.24%` | `MsgUnit(B)=4096` 불일치 |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `64` | `미달` | `3.53%` | `MsgUnit(B)=4096` 불일치 |
-| `tcp` | `MULTI_SPOT` | `64` | `미달` | - | client timeout |
-| `tcp` | 그 외 대상 | 전체 대상 | `미측정` | - | 진행 순서 도달 후 `tcp` 미달 조합과 함께 측정 |
-| `ws` | 전체 대상 | 전체 대상 | `미측정` | - | `tcp` 미측정/미달 해소 후 측정 |
-| `wss` | 전체 대상 | 전체 대상 | `미측정` | - | `ws` 미측정/미달 해소 후 측정 |
-| `tls` | 전체 대상 | 전체 대상 | `미측정` | - | `wss` 미측정/미달 해소 후 측정 |
+#### 6.8.1 Single suite
 
-## 6. 완료 기준
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+
+#### 6.8.2 Multi suite
+
+| Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+
+## 7. 완료 기준
 
 아래 조건을 모두 만족하면 해당 언어 binding 작업을 완료한다.
 
@@ -797,5 +827,4 @@ message unit을 유지한다. non-STREAM 기본값은 `4096`이고 STREAM 기본
 - 이 문서가 실제 실행 절차와 판단 기준을 최신 상태로 반영한다.
 - 결과 파일 경로와 C 대비 비율 요약이 최종 보고에 포함된다.
 
-모든 대상 언어가 완료되면 최종 요약에는 언어별 최저 비율, 남은 예외, 수정한 파일,
-실행한 perf 명령을 함께 기록한다.
+모든 대상 언어가 완료되면 최종 요약에는 언어별 최저 비율, 남은 예외, 수정한 파일, 실행한 perf 명령을 함께 기록한다.

@@ -83,8 +83,6 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDis
 
     public RoutingId SpotRid => NativeSpot.RoutingId;
 
-    public ZLinkSpotId SpotId => ZLinkSpotId.FromRoutingId(SpotRid);
-
     public RoutingId NodeRid { get; }
 
     public int SubscriptionMessageCount => _subscriptions.MessageCount;

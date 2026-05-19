@@ -7,11 +7,11 @@ public interface IZLinkSpotRouteResolver
         CancellationToken cancellationToken);
 
     ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
-        ZLinkSpotId spotId,
+        RoutingId spotRid,
         CancellationToken cancellationToken);
 }
 
 public readonly record struct ZLinkSpotRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid,
-    ZLinkSpotId SpotId);
+    RoutingId SpotRid);

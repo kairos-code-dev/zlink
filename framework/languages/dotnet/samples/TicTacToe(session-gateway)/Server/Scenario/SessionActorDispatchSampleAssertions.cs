@@ -21,7 +21,7 @@ internal static class SessionActorDispatchSampleAssertions
         CancellationToken cancellationToken)
     {
         var rooms = await spots.ListAsync(cancellationToken).ConfigureAwait(false);
-        if (!rooms.Any(room => string.Equals(room.SpotId.Value, matchId, StringComparison.Ordinal)))
+        if (!rooms.Any(room => string.Equals(room.SpotRid.ToHex(), matchId, StringComparison.Ordinal)))
         {
             throw new InvalidOperationException($"Created game room SPOT was not found. matchId={matchId}");
         }

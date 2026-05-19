@@ -12,13 +12,13 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
             message);
     }
 
-    public IZLinkSendCall SendSpot<TMessage>(ZLinkSpotId spotId, TMessage message)
+    public IZLinkSendCall SendSpot<TMessage>(RoutingId spotRid, TMessage message)
     {
         return new ZLinkRoutedSpotSendCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
             RequireRouteResolver(),
             null,
-            spotId,
+            spotRid,
             message);
     }
 
@@ -32,13 +32,13 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
             request);
     }
 
-    public IZLinkRequestCall RequestSpot<TMessage>(ZLinkSpotId spotId, TMessage request)
+    public IZLinkRequestCall RequestSpot<TMessage>(RoutingId spotRid, TMessage request)
     {
         return new ZLinkRoutedSpotRequestCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
             RequireRouteResolver(),
             null,
-            spotId,
+            spotRid,
             request);
     }
 
@@ -78,7 +78,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
     ZLinkSpotActivation activation,
     IZLinkSpotRouteResolver resolver,
     string? spotName,
-    ZLinkSpotId? spotId,
+    RoutingId? spotRid,
     TMessage message) : IZLinkSendCall
 {
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
@@ -102,13 +102,13 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
         {
             if (!activation.SendToSpot(
                     route.TargetNodeRid,
-                    route.SpotId.ToRoutingId(),
+                    route.SpotRid,
                     parts,
                     SendFlags.DontWait))
             {
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    $"SPOT send target route was not available for '{route.SpotId}'.");
+                    $"SPOT send target route was not available for '{route.SpotRid}'.");
             }
         }
         finally
@@ -119,8 +119,8 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
 
     private ValueTask<ZLinkSpotRoute> ResolveRouteAsync(CancellationToken cancellationToken)
     {
-        return spotId is { } id
-            ? resolver.ResolveSpotRouteAsync(id, cancellationToken)
+        return spotRid is { } rid
+            ? resolver.ResolveSpotRouteAsync(rid, cancellationToken)
             : resolver.ResolveSpotRouteAsync(
                 spotName ?? throw new InvalidOperationException("SPOT name is required."),
                 cancellationToken);
@@ -131,7 +131,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
     ZLinkSpotActivation activation,
     IZLinkSpotRouteResolver resolver,
     string? spotName,
-    ZLinkSpotId? spotId,
+    RoutingId? spotRid,
     TRequest request) : IZLinkRequestCall
 {
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
@@ -161,7 +161,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
         var reply = await activation.RequestSpotAsync(
             route.TargetNodeRid,
-            route.SpotId.ToRoutingId(),
+            route.SpotRid,
             parts,
             timeout,
             cancellationToken).ConfigureAwait(false);
@@ -183,8 +183,8 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
 
     private ValueTask<ZLinkSpotRoute> ResolveRouteAsync(CancellationToken cancellationToken)
     {
-        return spotId is { } id
-            ? resolver.ResolveSpotRouteAsync(id, cancellationToken)
+        return spotRid is { } rid
+            ? resolver.ResolveSpotRouteAsync(rid, cancellationToken)
             : resolver.ResolveSpotRouteAsync(
                 spotName ?? throw new InvalidOperationException("SPOT name is required."),
                 cancellationToken);

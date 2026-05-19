@@ -56,20 +56,27 @@ public sealed class RegistryPlayRouteStore(
         return ReadPlayRoute(entry);
     }
 
-    public async ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+    async ValueTask<ZLinkSpotRoute> IZLinkSpotRouteResolver.ResolveSpotRouteAsync(
         string spotName,
         CancellationToken cancellationToken)
     {
-        return await ResolveSpotRouteAsync(
-            ZLinkSpotId.FromRoutingId(RoutingId.FromString(spotName)),
+        return await ResolveFrameworkSpotRouteAsync(
+            RoutingId.FromString(spotName),
             cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
-        ZLinkSpotId spotId,
+    async ValueTask<ZLinkSpotRoute> IZLinkSpotRouteResolver.ResolveSpotRouteAsync(
+        RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        var spotRid = spotId.ToRoutingId();
+        return await ResolveFrameworkSpotRouteAsync(spotRid, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<ZLinkSpotRoute> ResolveFrameworkSpotRouteAsync(
+        RoutingId spotRid,
+        CancellationToken cancellationToken)
+    {
         var entry = await registry.GetRequiredAsync(
             SpotKey(spotRid),
             cancellationToken).ConfigureAwait(false);
@@ -77,7 +84,7 @@ public sealed class RegistryPlayRouteStore(
         return new ZLinkSpotRoute(
             actorRoute.RouterChannelId,
             actorRoute.TargetNodeRid,
-            spotId);
+            spotRid);
     }
 
     private string ActorPlayKey(string actorId)

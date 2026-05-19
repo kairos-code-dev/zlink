@@ -3,32 +3,11 @@ namespace Zlink.Framework.Contracts.Spots;
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
     string SpotName,
-    bool Created)
-{
-    public ZLinkSpotCreateResult(
-        ZLinkSpotId spotId,
-        string spotName,
-        bool created)
-        : this(spotId.ToRoutingId(), spotName, created)
-    {
-    }
-
-    public ZLinkSpotId SpotId => ZLinkSpotId.FromRoutingId(SpotRid);
-}
+    bool Created);
 
 public readonly record struct ZLinkSpotInfo(
     RoutingId SpotRid,
-    string SpotName)
-{
-    public ZLinkSpotInfo(
-        ZLinkSpotId spotId,
-        string spotName)
-        : this(spotId.ToRoutingId(), spotName)
-    {
-    }
-
-    public ZLinkSpotId SpotId => ZLinkSpotId.FromRoutingId(SpotRid);
-}
+    string SpotName);
 
 public interface IZLinkSpotManager
 {
@@ -49,39 +28,15 @@ public interface IZLinkSpotManager
 
     ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
         string spotName,
-        ZLinkSpotId spotId,
-        IReadOnlyList<Message> createParts,
-        CancellationToken cancellationToken = default)
-    {
-        return GetOrCreateAsync(spotName, spotId.ToRoutingId(), createParts, cancellationToken);
-    }
-
-    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
-        string spotName,
         RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
         return GetOrCreateAsync(spotName, spotRid, [], cancellationToken);
     }
 
-    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
-        string spotName,
-        ZLinkSpotId spotId,
-        CancellationToken cancellationToken = default)
-    {
-        return GetOrCreateAsync(spotName, spotId.ToRoutingId(), [], cancellationToken);
-    }
-
     ValueTask<ZLinkSpotInfo?> GetAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkSpotInfo?> GetAsync(
-        ZLinkSpotId spotId,
-        CancellationToken cancellationToken = default)
-    {
-        return GetAsync(spotId.ToRoutingId(), cancellationToken);
-    }
 
     ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
         CancellationToken cancellationToken = default);
@@ -89,13 +44,6 @@ public interface IZLinkSpotManager
     ValueTask<bool> RemoveAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
-
-    ValueTask<bool> RemoveAsync(
-        ZLinkSpotId spotId,
-        CancellationToken cancellationToken = default)
-    {
-        return RemoveAsync(spotId.ToRoutingId(), cancellationToken);
-    }
 }
 
 public interface IZLinkSpotClient
@@ -105,7 +53,7 @@ public interface IZLinkSpotClient
         TMessage message);
 
     IZLinkSendCall SendSpot<TMessage>(
-        ZLinkSpotId spotId,
+        RoutingId spotRid,
         TMessage message);
 
     IZLinkRequestCall RequestSpot<TMessage>(
@@ -113,7 +61,7 @@ public interface IZLinkSpotClient
         TMessage request);
 
     IZLinkRequestCall RequestSpot<TMessage>(
-        ZLinkSpotId spotId,
+        RoutingId spotRid,
         TMessage request);
 
     IZLinkSendCall SendChannel<TMessage>(

@@ -22,6 +22,6 @@ internal sealed class CreateMatchRoomHandler(
             .ConfigureAwait(false);
         await routes.BindSpotRouteAsync(room.SpotRid, cancellationToken)
             .ConfigureAwait(false);
-        return new CreateMatchRoomRes(room.SpotId.Value);
+        return new CreateMatchRoomRes(room.SpotRid.ToHex());
     }
 }

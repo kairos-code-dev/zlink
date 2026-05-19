@@ -216,7 +216,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
         var x = _players.Values.FirstOrDefault(static player => player.Mark == "X");
         var o = _players.Values.FirstOrDefault(static player => player.Mark == "O");
         return new GameState(
-            Context.SpotId.Value,
+            Context.SpotRid.ToHex(),
             new string(_board),
             _status,
             _winner,

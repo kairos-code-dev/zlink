@@ -28,10 +28,6 @@ public interface IZLinkActorContext
         TRequest request);
 
     IZLinkActorJoinSpotCall JoinSpot<TRequest>(
-        ZLinkSpotId spotId,
-        TRequest request);
-
-    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
         RoutingId spotRid,
         TRequest request);
 
@@ -47,11 +43,6 @@ public interface IZLinkActorContext
 
     ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
         string spotName,
-        TRequest request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
-        ZLinkSpotId spotId,
         TRequest request,
         CancellationToken cancellationToken = default);
 

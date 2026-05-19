@@ -6,7 +6,7 @@ namespace TicTacToe.SessionGateway.Play;
 
 internal sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
 {
-    private readonly TicTacToeMatchRoom _room = new(context.SpotId.Value);
+    private readonly TicTacToeMatchRoom _room = new(context.SpotRid.ToHex());
 
     public IZLinkSpotContext Context { get; } = context;
 

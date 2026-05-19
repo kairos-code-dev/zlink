@@ -695,19 +695,19 @@ public sealed class RegistrationValidationTests
             _ = spotName;
             cancellationToken.ThrowIfCancellationRequested();
             return ResolveSpotRouteAsync(
-                ZLinkSpotId.FromRoutingId(global::Systems.Zlink.RoutingId.FromString("02")),
+                global::Systems.Zlink.RoutingId.FromString("02"),
                 cancellationToken);
         }
 
         public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
-            ZLinkSpotId spotId,
+            global::Systems.Zlink.RoutingId spotRid,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(new ZLinkSpotRoute(
                 "spots",
                 global::Systems.Zlink.RoutingId.FromString("03"),
-                spotId));
+                spotRid));
         }
     }
 

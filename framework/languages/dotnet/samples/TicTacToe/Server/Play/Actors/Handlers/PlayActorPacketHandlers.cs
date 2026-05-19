@@ -19,7 +19,7 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
 
         var spotRid = RoutingId.FromString(message.GameId);
         var joined = await actor.Context.JoinSpot(
-                ZLinkSpotId.FromRoutingId(spotRid),
+                spotRid,
                 new TicTacToeGameJoinReq(message.GameId, actor.ActorId))
             .Timeout(SampleTimeouts.Request)
             .SubmitAsync<TicTacToeGameJoinRes>(cancellationToken);

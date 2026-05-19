@@ -5,6 +5,7 @@ sealed record SampleSettings(
     string ApiPublicUrl,
     string ApiChannelEndpoint,
     string PlayChannelEndpoint,
+    string PlayRouterEndpoint,
     string PlayEndpoint,
     string SpotEndpoint,
     string LogDirectory)
@@ -15,6 +16,7 @@ sealed record SampleSettings(
         string? apiUrl = null;
         string? apiChannel = null;
         string? playChannel = null;
+        string? playRouter = null;
         string? play = null;
         string? spot = null;
         string? logDirectory = null;
@@ -46,6 +48,9 @@ sealed record SampleSettings(
                 case "--play-channel-endpoint":
                     playChannel = ReadValue();
                     break;
+                case "--play-router-endpoint":
+                    playRouter = ReadValue();
+                    break;
                 case "--play-endpoint":
                     play = ReadValue();
                     break;
@@ -63,6 +68,7 @@ sealed record SampleSettings(
             apiUrl ?? apiBind ?? "http://127.0.0.1:18080",
             apiChannel ?? "tcp://127.0.0.1:18081",
             playChannel ?? "tcp://127.0.0.1:18082",
+            playRouter ?? "tcp://127.0.0.1:18085",
             play ?? "tcp://127.0.0.1:18083",
             spot ?? "tcp://127.0.0.1:18084",
             logDirectory ?? Path.Combine("logs", "tictactoe"));
@@ -77,6 +83,7 @@ sealed record SampleSettings(
             ApiPublicUrl = $"http://127.0.0.1:{apiPort}",
             ApiChannelEndpoint = $"tcp://127.0.0.1:{SamplePorts.Reserve()}",
             PlayChannelEndpoint = $"tcp://127.0.0.1:{SamplePorts.Reserve()}",
+            PlayRouterEndpoint = $"tcp://127.0.0.1:{SamplePorts.Reserve()}",
             PlayEndpoint = $"tcp://127.0.0.1:{SamplePorts.Reserve()}",
             SpotEndpoint = $"tcp://127.0.0.1:{SamplePorts.Reserve()}",
         };

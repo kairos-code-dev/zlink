@@ -5,7 +5,9 @@ using TicTacToe.Server.Play.Actors.Handlers;
 
 namespace TicTacToe.Server.Play.Games;
 
-sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
+sealed class TicTacToeGame(
+    IZLinkSpotContext context,
+    IZLinkActorSessionClient sessionClient) : IZLinkSpot
 {
     private static readonly TimeSpan GameTickPeriod = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan TurnTimeout = TimeSpan.FromSeconds(15);
@@ -60,7 +62,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
             await NotifyPlayerJoinedAsync(actor, slot, state, cancellationToken);
         }
 
-        await BroadcastAsync(state, cancellationToken);
+        await BroadcastAsync(state, actor.ActorId, cancellationToken);
         return new TicTacToeGameJoinRes(state);
     }
 
@@ -100,7 +102,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
         AdvanceAfterMove(slot);
 
         var state = Snapshot();
-        await BroadcastAsync(state, cancellationToken);
+        await BroadcastAsync(state, actor.ActorId, cancellationToken);
         return new PlaceMarkRes(state);
     }
 
@@ -123,7 +125,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
         _lastMoveCell = null;
         _turnDeadline = null;
 
-        await BroadcastAsync(Snapshot(), cancellationToken);
+        await BroadcastAsync(Snapshot(), null, cancellationToken);
     }
 
     private (PlayerSlot Slot, bool IsNewPlayer) GetOrAddPlayer(PlayActor actor)
@@ -227,36 +229,66 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
             _lastMoveCell);
     }
 
-    private async ValueTask BroadcastAsync(GameState state, CancellationToken cancellationToken)
+    private ValueTask BroadcastAsync(
+        GameState state,
+        string? excludedActorId,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var message = new GameStateNotify(state);
-        foreach (var player in _players.Values)
-        {
-            await player.Actor.Context.Send(message).Submit(cancellationToken);
-        }
+        var recipients = _players.Values
+            .Select(static player => player.Actor.ActorId)
+            .Where(actorId => !string.Equals(actorId, excludedActorId, StringComparison.Ordinal))
+            .ToArray();
+        QueueSessionPush(recipients, actorId => sessionClient.Send(actorId, message).Submit());
+        return ValueTask.CompletedTask;
     }
 
-    private async ValueTask NotifyPlayerJoinedAsync(
+    private ValueTask NotifyPlayerJoinedAsync(
         PlayActor joinedActor,
         PlayerSlot joinedSlot,
         GameState state,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var message = new PlayerJoinedNotify(
             state.GameId,
             joinedActor.ActorId,
             joinedSlot.Mark,
             state);
 
-        foreach (var player in _players.Values)
-        {
-            if (string.Equals(player.Actor.ActorId, joinedActor.ActorId, StringComparison.Ordinal))
-            {
-                continue;
-            }
+        var recipients = _players.Values
+            .Select(static player => player.Actor.ActorId)
+            .Where(actorId => !string.Equals(actorId, joinedActor.ActorId, StringComparison.Ordinal))
+            .ToArray();
+        QueueSessionPush(recipients, actorId => sessionClient.Send(actorId, message).Submit());
+        return ValueTask.CompletedTask;
+    }
 
-            await player.Actor.Context.Send(message).Submit(cancellationToken);
+    private static void QueueSessionPush(
+        IReadOnlyList<string> recipients,
+        Func<string, ValueTask> sendAsync)
+    {
+        if (recipients.Count == 0)
+        {
+            return;
         }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Yield();
+                foreach (var actorId in recipients)
+                {
+                    await sendAsync(actorId).ConfigureAwait(false);
+                }
+            }
+            catch
+            {
+                // The direct sample treats push as best-effort progress output.
+            }
+        });
     }
 
     private sealed class PlayerSlot(PlayActor actor, string mark)

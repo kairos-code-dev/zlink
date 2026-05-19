@@ -4,12 +4,16 @@ internal static class SampleChannels
 {
     public const string Api = "Api";
     public const string Play = "Play";
+
+    public const string Router = "Gateway";
 }
 
 internal static class SampleTypes
 {
     public const string PlayerActor = "player";
     public const string GameSpot = "tictactoe-game";
+
+    public const string PlayRouterId = "1001";
 }
 
 internal static class SampleDefaults

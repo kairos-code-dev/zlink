@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Hosting;
+using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using TicTacToe.Server.Play.Actors;
 using TicTacToe.Server.Play.Sessions;
@@ -36,6 +37,14 @@ internal sealed class PlayServer(SampleSettings settings)
                 {
                     server.Bind(settings.PlayChannelEndpoint);
                 });
+            });
+
+            options.AddActorSessionBindingStore<InMemoryActorSessionBindingStore>();
+            options.AddRouteMeshChannel(SampleChannels.Router, routed =>
+            {
+                routed.Bind(settings.PlayRouterEndpoint);
+                routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.FromString(SampleTypes.PlayRouterId));
+                routed.UseManualConnections(connections => connections.Connect(settings.PlayRouterEndpoint));
             });
 
             options.AddStreamNode(SampleNodes.ClientStream, stream =>

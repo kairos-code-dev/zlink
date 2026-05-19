@@ -77,7 +77,7 @@ public sealed class TicTacToeClient
                 $"Unexpected final game state: board={moves[^1].State.Board}, status={moves[^1].State.Status}, winner={moves[^1].State.Winner ?? "-"}");
         }
 
-        await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
+        await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
         return new TicTacToeClientResult(
             game,
             xAuthentication,

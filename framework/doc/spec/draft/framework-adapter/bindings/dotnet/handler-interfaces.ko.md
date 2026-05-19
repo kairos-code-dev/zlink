@@ -327,6 +327,13 @@ public interface IZLinkSpot
     {
     }
 
+    ValueTask OnCreateAsync(
+        IReadOnlyList<Message> createParts,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
+
     ValueTask OnInitializeAsync(
         CancellationToken cancellationToken)
     {
@@ -564,6 +571,18 @@ public sealed record ZLinkSpotActorLifecycleInfo(
     bool CurrentIsEntrySpot,
     ulong CommitEpoch);
 ```
+
+`OnCreateAsync(...)` 는 생성 요청이 넘긴 multipart payload를 spot 상태로
+해석하는 단계다. framework가 새 spot 인스턴스를 만든 경우에만 호출된다.
+`OnInitializeAsync(...)` 는 payload와 무관한 lifecycle 준비 단계다. timer 등록처럼
+생성 메시지와 직접 관련 없는 준비 작업은 이 callback에서 수행한다.
+
+새 spot을 만드는 경우 호출 순서는 `Configure()`, descriptor binding,
+`OnCreateAsync(createParts, ...)`, `OnInitializeAsync(...)` 순서다.
+`GetOrCreateAsync(...)`가 이미 ready 상태인 spot을 반환하는 경우에는 새
+`OnCreateAsync(...)`나 `OnInitializeAsync(...)`를 호출하지 않는다.
+`CreateAsync(spotName)`처럼 create payload가 없는 편의 overload도 빈 multipart
+payload로 `OnCreateAsync(...)`를 한 번 호출한다.
 
 `Configure()` 는 호출 시점이 정해져 있다. SPOT 이 생성된 직후, descriptor
 를 바인딩하기 전 시점에 단 한 번 호출된다.
@@ -2766,7 +2785,13 @@ public interface IZLinkSpotManager
 
     ValueTask<ZLinkSpotCreateResult> CreateAsync(
         string spotName,
+        IReadOnlyList<Message> createParts,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
+        string spotName,
         ZLinkSpotId spotId,
+        IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken = default);
 
     ValueTask<ZLinkSpotInfo?> GetAsync(
@@ -2782,19 +2807,44 @@ public interface IZLinkSpotManager
 }
 ```
 
-두 가지 `CreateAsync` 오버로드는 각각 다음 상황에 대응한다.
+`CreateAsync` 와 `GetOrCreateAsync` 는 각각 다음 상황에 대응한다.
 
 - `spotName`만 받는 생성
   - 등록된 이름으로 factory를 선택하고, runtime이 새 `spotId`를 발급한다.
-- `spotName + ZLinkSpotId spotId`
+- `spotName + createParts`
+  - runtime이 새 `spotId`를 발급하고, multipart create payload를
+    `IZLinkSpot.OnCreateAsync(...)`에 전달한다.
+- `spotName + ZLinkSpotId spotId + createParts`
   - 등록된 이름으로 factory를 선택하되, 호출자가 특정 logical spot id를 직접
-    지정한다.
+    지정한다. 이미 같은 `spotId`가 있으면 기존 spot을 반환하고 새
+    `createParts`는 전달하지 않는다.
 
 반환값은 세 가지를 묶어서 돌려준다. `spotId`, `spotName`, 그리고 새로
 생성된 인스턴스인지 여부다.
 
 장기적으로 들고 다닐 instance handle 이 아니라, 생성 결과만 돌려주는
 형태라는 점에 주의한다.
+
+`OnCreateAsync(...)` 는 spot 생성 요청의 multipart payload를 받는 lifecycle
+callback이다. framework는 caller가 넘긴 part 수와 순서를 유지해서 전달해야 하고,
+여러 part를 하나의 serialized envelope로 합치면 안 된다. `CreateAsync(spotName)`
+처럼 create payload가 없는 overload는 빈 list를 넘긴 것과 같다. `createParts`
+인자 자체는 `null`이면 안 된다. 같은 `spotId`에 대해 동시에
+`GetOrCreateAsync(...)`가 들어오면 처음 생성에 사용된 payload만
+`OnCreateAsync(...)`로 전달된다. 나중 caller의 payload는 재전달하지 않는다.
+
+`spotName`은 생성 요청의 framework type discriminator다. framework는 이 이름으로
+등록된 factory를 선택한다. CLR type name이나 assembly-qualified type name은 요청
+계약에 포함하지 않는다. 같은 `spotId`에 대해 기존 entry의 `spotName`과 다른
+`spotName`으로 `GetOrCreateAsync(...)`를 호출하면 `SpotTypeMismatch`로 실패해야
+한다.
+
+remote 생성 요청도 같은 구조를 따른다. framework metadata에는 `spotName`과
+선택적인 `spotId`가 들어가고, metadata 뒤의 message part들이 create payload가
+된다. `spotId`는 `GetOrCreateAsync(...)`처럼 명시적 logical spot을 확보하는
+요청에서는 required이고, 수신 node가 새 id를 발급하는 create 요청에서는 optional이다.
+`spotName`은 payload 안에 넣지 않는다. payload codec을 해석하기 전에도 factory를
+선택할 수 있어야 하기 때문이다.
 
 `GetAsync(...)` 와 `ListAsync(...)` 는 조회 표면이다. runtime 이 보유한
 `spotId -> spotName` 매핑을, 운영 코드에서 다시 들여다볼 수 있게 해 준다.
@@ -3024,7 +3074,8 @@ public interface IZLinkSpotMeshNodeBuilder
   - 이 node가 생성하고 소유할 spot factory를 이름과 함께 등록한다.
   - 같은 `SpotNode` 안에서는 `spotName`이 비어 있으면 안 된다.
   - 이미 등록된 `spotName`을 다시 등록하면 기존 값을 덮어쓰지 않고 예외를 던진다.
-  - `CreateAsync(spotName, ...)`는 이 이름과 정확히 일치하는 factory를 고른다.
+  - `CreateAsync(spotName, ...)`와 `GetOrCreateAsync(spotName, ...)`는 이 이름과
+    정확히 일치하는 factory를 고른다.
 - `AddEntrySpot<TEntrySpot>()`
   - 이 node의 자동 Entry Spot에 붙일 application registry를 등록한다.
   - 등록하지 않으면 framework는 빈 Entry Spot registry를 사용한다. 이 경우 Entry Spot에
@@ -3684,9 +3735,10 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 - 즉 `Context.AddPacket<THandler>()`, `Context.AddTimer<THandler>(...)`
   같은 표면은 service locator 가 아니다. "이 타입을 spot scope 에서 사용해
   달라" 는 등록 선언으로 읽는 편이 맞다.
-- `OnInitializeAsync(...)` 도 마찬가지다. `IServiceProvider` 를 직접 받지
-  않고, spot 자체의 constructor injection 과 cached dependency 를 사용하는
-  편이 좋다. 그래야 hot path 와의 경계가 더 분명해진다.
+- `OnCreateAsync(...)` 와 `OnInitializeAsync(...)` 도 마찬가지다.
+  `IServiceProvider` 를 직접 받지 않고, spot 자체의 constructor injection 과
+  cached dependency 를 사용하는 편이 좋다. 그래야 hot path 와의 경계가 더
+  분명해진다.
 
 ### 13.1 public service DI 등록 조건
 

@@ -650,14 +650,41 @@ request, publish, subscribe 를 처리할 뿐이다.
 이 표면은 다음 상황을 함께 설명한다.
 
 - `spotName`으로 factory를 고르고 runtime이 새 `spotId`를 발급하는 생성
-- `spotName`으로 factory를 고른 뒤, 호출자가 특정 `spotId`를 함께 지정해서
-  생성하는 경우
+- 생성 요청이 넘긴 multipart payload를 `OnCreateAsync(...)`로 전달하는 경우
 - 이미 존재하는 `spotId`라면 그대로 얻어 오는 `get-or-create` 성격의 동작
 
 여기서 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle 이
 아니라는 사실이다. 생성 결과는 `spotId`, `spotName`, `Created` 정도면
 충분하다. 이후 메시징은 현재 channel publish 또는 attach 된 channel client 를
 통한 send / request 로 푸는 쪽이, 지금의 topology 초안과 더 잘 맞는다.
+
+생성 요청의 payload는 multipart로 받을 수 있어야 한다. framework는 caller가
+넘긴 part 경계를 보존해서 `IZLinkSpot.OnCreateAsync(createParts, ...)`에 한 번
+전달한다. 이 payload는 방 설정, seed, 접근 정책처럼 spot이 처음 만들어질 때만
+해석해야 하는 값에 사용한다.
+`CreateAsync(spotName)`처럼 payload가 없는 편의 overload는 빈 multipart payload를
+넘긴 것과 같다. 새 spot이 만들어지면 `OnCreateAsync(...)`는 빈 list를 받아 한 번
+실행된다.
+
+생성 요청에는 어떤 spot factory를 사용할지도 함께 들어가야 한다. framework
+표면에서는 이 값을 `spotName`으로 표현한다. `spotName`은 등록된 factory key이므로
+remote framework node가 같은 이름으로 등록된 factory를 선택할 수 있다. 반대로
+CLR class name이나 assembly-qualified type name은 wire 계약에 싣지 않는다. 그런
+구현 타입명은 배포 형태와 언어에 묶이므로 공개 요청 계약으로 쓰기 어렵다.
+
+명시적 `spotId`가 필요한 경우 public surface는
+`CreateAsync(spotName, spotId, ...)`가 아니라
+`GetOrCreateAsync(spotName, spotId, createParts, ...)`로 표현한다. 이미 같은
+`spotId`의 framework spot이 ready 상태면 `Created = false`를 반환하고, 새
+요청의 `createParts`는 `OnCreateAsync(...)`로 전달하지 않는다. initializing
+상태면 첫 생성 요청의 `OnCreateAsync(...)` 완료를 기다린다. 다만 기존 entry의
+`spotName`이 요청의 `spotName`과 다르면 같은 logical spot을 다른 framework type으로
+해석하려는 시도이므로 `SpotTypeMismatch`로 실패해야 한다.
+
+remote framework node에 생성 요청을 relay하는 경우도 같은 구조를 유지한다.
+metadata에는 `spotName`과 선택적인 `spotId`를 넣고, metadata 뒤의 message part들을
+create payload로 보낸다. 이렇게 해야 payload codec을 열기 전에도 수신 node가
+factory를 결정할 수 있다.
 
 여러 factory 를 같은 `SpotNode` 에 등록할 수 있다면, 운영 코드에서
 `spotId -> spotName` 매핑을 다시 볼 수 있어야 한다. 그래서 `GetAsync(...)` 와
@@ -689,10 +716,11 @@ var spotInfo = await spotManager.GetAsync(stage.SpotId, cancellationToken);
 처럼 사용하면 된다. 생성된 `Spot` 인스턴스를 응용이 직접 오래 관리하는 모델은
 현재 방향에서는 다루지 않는다.
 
-초기 metadata 를 함께 넘기는 create 표면은 `Stage wrapper` 같은 상위 계층에서는
-유용할 수 있다. 다만 현재 하부 C API 의 공개 계약에서 바로 읽히는 내용은
-아니다. 따라서 framework 기본 계약처럼 적지 않고, wrapper 확장 후보로 따로
-다루는 편이 맞다.
+초기 payload 를 함께 넘기는 create 표면은 framework 기본 계약에 포함한다.
+다만 core C API는 payload를 해석하지 않는다. core는 logical spot 확보의 원자성만
+보장하고, payload 전달과 typed 초기화는 framework lifecycle의 책임이다.
+factory resolve, activation, `OnCreateAsync(...)`, `OnInitializeAsync(...)` 실패는
+`SpotCreateFailed` 계열로 분류한다.
 
 ## 5. SPOT outbound 모델 초안
 

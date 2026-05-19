@@ -1465,6 +1465,8 @@ public enum ZLinkFrameworkErrorKind
     ActorCreateFailed,
     ActorAlreadyExists,
     ActorTypeMismatch,
+    SpotCreateFailed,
+    SpotTypeMismatch,
     ActorSessionNotBound,
     SessionProxyTimeout,
     ActorDispatchTimeout,
@@ -1479,6 +1481,8 @@ public enum ZLinkFrameworkErrorKind
 
 `ActorCreateFailed`, `ActorAlreadyExists`, `ActorTypeMismatch` 는
 `IZLinkActorManager` 로 local actor 를 준비할 때 사용한다.
+`SpotCreateFailed`, `SpotTypeMismatch` 는 `IZLinkSpotManager` 로 local 또는
+framework-routed spot 을 만들거나 확보할 때 사용한다.
 `BindActorHandleAsync(...)` 와 routed actor dispatch 수신 경로는 actor 를
 생성하지 않고, remote node 를 직접 지정하지도 않는다. actor 가 없으면 dispatch
 는 `ActorRouteNotFound` 로 실패한다. 현재 actor 에 bound 된 session 이 없어서

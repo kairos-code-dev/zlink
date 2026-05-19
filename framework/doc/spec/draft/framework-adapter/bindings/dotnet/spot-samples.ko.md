@@ -1817,6 +1817,11 @@ protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
 
 - 새 spot 인스턴스를 만들고 싶다
   - `IZLinkSpotManager.CreateAsync("stage", ...)`
+- 새 spot 인스턴스를 만들면서 초기 설정을 넘기고 싶다
+  - `IZLinkSpotManager.CreateAsync("stage", createParts, ...)`를 사용하고,
+    spot의 `OnCreateAsync(...)`에서 multipart create payload를 해석한다.
+- 명시적 `spotId`가 있고 없으면 만들고 있으면 가져오고 싶다
+  - `IZLinkSpotManager.GetOrCreateAsync("stage", spotId, createParts, ...)`
 - attach된 다른 channel로 send packet을 보내고 싶다
   - `SendChannel(...).Submit(...)`
 - attach된 다른 channel로 request packet을 보내고 싶다

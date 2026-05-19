@@ -118,6 +118,12 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | standalone `AddSpotNode(...)` + local-only spot factory | `integration-single-process` | discovery mesh 없이 단일 local SpotNode runtime을 시작한다 |
 | `AddSpotNode(...)` + 별도 `UseSpotDiscovery(channel, ...)` 분리 호출 | `integration-single-process` | 호환 경로로만 유지하며, 새 샘플은 `AddSpotMesh(...)`를 사용한다 |
 | `CreateAsync(spotName)` | `integration-single-process` | `SpotId`, `SpotName`, `Created` 값이 일관되게 유지된다 |
+| `CreateAsync(spotName)` empty create payload | `integration-single-process` | payload 없는 생성도 빈 multipart payload로 `IZLinkSpot.OnCreateAsync(...)`를 한 번 호출한다 |
+| `CreateAsync(spotName, createParts)` multipart | `integration-single-process` | create payload part 수와 순서가 유지되어 `IZLinkSpot.OnCreateAsync(...)`로 한 번 전달된다 |
+| `GetOrCreateAsync(spotName, spotId, createParts)` existing | `integration-single-process` | 같은 `spotId`가 이미 ready 상태면 `Created = false`이고 새 `createParts`는 `OnCreateAsync(...)`로 전달되지 않는다 |
+| `GetOrCreateAsync(...)` concurrent create payload | `integration-single-process` | 같은 `spotId` 동시 생성에서는 첫 생성 요청의 multipart payload만 `OnCreateAsync(...)`로 전달되고 callback은 한 번만 실행된다 |
+| `GetOrCreateAsync(...)` spotName mismatch | `integration-single-process` | 같은 `spotId`에 서로 다른 `spotName`을 사용하면 `SpotTypeMismatch`로 실패하고 새 `OnCreateAsync(...)`를 호출하지 않는다 |
+| spot create lifecycle failure | `integration-single-process` | `OnCreateAsync(...)` 또는 `OnInitializeAsync(...)` 실패는 `SpotCreateFailed`로 전파되고 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
 | `GetAsync(...)`, `ListAsync(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |
 | `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddActorPacket(...)`, `Context.AddActorJoined(...)`, `Context.AddActorLeft(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등의 등록이 descriptor에 반영된다 |
 | Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.AddActorPacket(...)`, `AddActorJoined(...)`, `AddActorLeft(...)`가 Entry Spot registry에 반영된다 |
@@ -235,6 +241,7 @@ backend gate 와 별도로 유지한다.
 - `spot-samples.ko.md`
 - `stream-samples.ko.md`
 - `tictactoe-game-sample.ko.md`
+- `bingo-game-sample.ko.md`
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^regression]: regression(회귀) 은 이전 버전에서 잘 동작하던 기능이 새 변경 때문에 다시 깨지는 현상을 가리킨다. regression test 는 그런 일을 막기 위해 항상 돌리는 테스트 묶음이다.

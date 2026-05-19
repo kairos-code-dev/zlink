@@ -19,6 +19,7 @@
 #include "utils/mutex.hpp"
 
 #include <atomic>
+#include <condition_variable>
 #include <map>
 #include <deque>
 #include <stddef.h>
@@ -81,6 +82,10 @@ class spot_node_t : public discovery_observer_t
       const zlink_routing_id_t *spot_rid_);
     std::shared_ptr<spot_logical_state_t> get_or_new_spot_state (
       const zlink_routing_id_t *spot_rid_, bool *created_out_);
+    bool publish_get_or_new_spot_state (
+      const std::shared_ptr<spot_logical_state_t> &state_);
+    void cancel_get_or_new_spot_state (
+      const std::shared_ptr<spot_logical_state_t> &state_);
     void remove_spot_state_if_unfacaded (
       const std::shared_ptr<spot_logical_state_t> &state_);
     void snapshot_spot_states (
@@ -294,7 +299,9 @@ class spot_node_t : public discovery_observer_t
     void refresh_sub_peer_summaries (bool has_active_peers,
                                      bool lost_transition);
     std::shared_ptr<spot_logical_state_t> create_logical_spot_state_locked (
-      bool entry_, const zlink_routing_id_t *spot_rid_ = NULL);
+      bool entry_,
+      const zlink_routing_id_t *spot_rid_ = NULL,
+      bool publish_ = true);
     bool spot_owner_summary_publishable_locked () const;
     void schedule_subscription_ready_refresh ();
     void schedule_pub_delivery_ready_refresh ();
@@ -365,6 +372,7 @@ class spot_node_t : public discovery_observer_t
     uint32_t _tag;
 
     mutable mutex_t _sync;
+    std::condition_variable_any _spot_creation_cv;
 
     spot_runtime_t *_runtime;
     zlink_spot_node_mode_t _spot_node_mode;

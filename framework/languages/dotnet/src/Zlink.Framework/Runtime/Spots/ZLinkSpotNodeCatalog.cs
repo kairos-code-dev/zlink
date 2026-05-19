@@ -17,7 +17,7 @@ internal sealed class ZLinkSpotNodeCatalog(
     private readonly Dictionary<RoutingId, ZLinkSpotActivation> _spots = [];
     private readonly Dictionary<RoutingId, PendingSpotCreation> _pending = [];
 
-    public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Values;
+    public IReadOnlyCollection<ZLinkSpotActivation> Spots => SnapshotActivations();
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
         string spotName,
@@ -178,46 +178,16 @@ internal sealed class ZLinkSpotNodeCatalog(
         }
     }
 
-    public ValueTask<ZLinkSpotInfo?> GetAsync(
-        RoutingId spotRid,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (_spots.TryGetValue(spotRid, out var activation))
-        {
-            return ValueTask.FromResult<ZLinkSpotInfo?>(
-                new ZLinkSpotInfo(activation.SpotRid, activation.SpotName));
-        }
-
-        return ValueTask.FromResult<ZLinkSpotInfo?>(null);
-    }
-
-    public ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        IReadOnlyList<ZLinkSpotInfo> items = _spots.Values
-            .Select(static activation => new ZLinkSpotInfo(activation.SpotRid, activation.SpotName))
-            .OrderBy(static item => item.SpotName, StringComparer.Ordinal)
-            .ToArray();
-        return ValueTask.FromResult(items);
-    }
-
-    public async ValueTask<bool> RemoveAsync(
+    public async ValueTask<ZLinkSpotInfo?> GetAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            if (!_spots.Remove(spotRid, out var activation))
-            {
-                return false;
-            }
-
-            await activation.CloseAsync(cancellationToken);
-            await activation.DisposeAsync();
-            return true;
+            return _spots.TryGetValue(spotRid, out var activation)
+                ? new ZLinkSpotInfo(activation.SpotRid, activation.SpotName)
+                : null;
         }
         finally
         {
@@ -225,14 +195,78 @@ internal sealed class ZLinkSpotNodeCatalog(
         }
     }
 
+    public async ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return _spots.Values
+                .Select(static activation => new ZLinkSpotInfo(activation.SpotRid, activation.SpotName))
+                .OrderBy(static item => item.SpotName, StringComparer.Ordinal)
+                .ToArray();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async ValueTask<bool> RemoveAsync(
+        RoutingId spotRid,
+        CancellationToken cancellationToken)
+    {
+        ZLinkSpotActivation? activation;
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!_spots.Remove(spotRid, out activation))
+            {
+                return false;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        await activation.CloseAsync(cancellationToken);
+        await activation.DisposeAsync();
+        return true;
+    }
+
     public async ValueTask DisposeAsync()
     {
-        foreach (var activation in _spots.Values.ToArray())
+        ZLinkSpotActivation[] activations;
+        _gate.Wait();
+        try
+        {
+            activations = _spots.Values.ToArray();
+            _spots.Clear();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        foreach (var activation in activations)
         {
             await activation.DisposeAsync();
         }
 
         _gate.Dispose();
+    }
+
+    private IReadOnlyCollection<ZLinkSpotActivation> SnapshotActivations()
+    {
+        _gate.Wait();
+        try
+        {
+            return _spots.Values.ToArray();
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     private Type PrepareCreationLocked(string spotName)

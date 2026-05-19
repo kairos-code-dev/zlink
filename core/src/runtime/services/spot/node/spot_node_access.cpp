@@ -440,6 +440,19 @@ spot_node_access_t::get_or_new_spot_state (spot_node_t *node_,
                  : std::shared_ptr<spot_logical_state_t> ();
 }
 
+bool spot_node_access_t::publish_get_or_new_spot_state (
+  spot_node_t *node_, const std::shared_ptr<spot_logical_state_t> &state_)
+{
+    return node_ ? node_->publish_get_or_new_spot_state (state_) : false;
+}
+
+void spot_node_access_t::cancel_get_or_new_spot_state (
+  spot_node_t *node_, const std::shared_ptr<spot_logical_state_t> &state_)
+{
+    if (node_)
+        node_->cancel_get_or_new_spot_state (state_);
+}
+
 void spot_node_access_t::remove_spot_state_if_unfacaded (
   spot_node_t *node_, const std::shared_ptr<spot_logical_state_t> &state_)
 {

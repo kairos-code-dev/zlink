@@ -256,9 +256,23 @@ zlink_config_result_t zlink_spot_node_spot_get_or_new (
     void *spot = create_spot_facade (node, state);
     if (!spot) {
         if (created)
-            zlink::spot_node_access_t::remove_spot_state_if_unfacaded (node,
-                                                                       state);
+            zlink::spot_node_access_t::cancel_get_or_new_spot_state (node,
+                                                                     state);
         return zlink::config_result_internal::from_errno (errno);
+    }
+
+    if (created
+        && !zlink::spot_node_access_t::publish_get_or_new_spot_state (node,
+                                                                      state)) {
+        zlink_spot_destroy (&spot);
+        std::shared_ptr<spot_logical_state_t> existing =
+          zlink::spot_node_access_t::lookup_spot_state (node, spot_rid_);
+        if (!existing)
+            return zlink::config_result_internal::from_errno (errno);
+        spot = create_spot_facade (node, existing);
+        if (!spot)
+            return zlink::config_result_internal::from_errno (errno);
+        created = false;
     }
 
     *spot_out_ = spot;

@@ -873,7 +873,7 @@ std::shared_ptr<spot_logical_state_t> spot_node_t::entry_spot_state ()
 
 std::shared_ptr<spot_logical_state_t>
 spot_node_t::create_logical_spot_state_locked (
-  bool entry_, const zlink_routing_id_t *spot_rid_)
+  bool entry_, const zlink_routing_id_t *spot_rid_, bool publish_)
 {
     std::shared_ptr<spot_logical_state_t> state (
       new (std::nothrow) spot_logical_state_t ());
@@ -895,9 +895,11 @@ spot_node_t::create_logical_spot_state_locked (
         errno = EFAULT;
         return std::shared_ptr<spot_logical_state_t> ();
     }
-    if (entry_)
-        _handle_state.entry_spot = state;
-    _handle_state.spots_by_rid[key] = state;
+    if (publish_) {
+        if (entry_)
+            _handle_state.entry_spot = state;
+        _handle_state.spots_by_rid[key] = state;
+    }
     return state;
 }
 
@@ -942,27 +944,73 @@ std::shared_ptr<spot_logical_state_t> spot_node_t::get_or_new_spot_state (
         return std::shared_ptr<spot_logical_state_t> ();
     }
 
-    bool publish_summary = false;
     std::shared_ptr<spot_logical_state_t> state;
-    {
-        scoped_lock_t lock (_sync);
-        const std::string key = spot_rid_key_local (*spot_rid_);
+    const std::string key = spot_rid_key_local (*spot_rid_);
+    std::unique_lock<mutex_t> lock (_sync);
+    for (;;) {
         const std::map<std::string, std::shared_ptr<spot_logical_state_t> >::iterator
           it = _handle_state.spots_by_rid.find (key);
         if (it != _handle_state.spots_by_rid.end ()) {
             state = it->second;
-        } else {
-            state = create_logical_spot_state_locked (false, spot_rid_);
-            if (!state)
+            return state;
+        }
+
+        if (_handle_state.pending_spot_creations.insert (key).second) {
+            state = create_logical_spot_state_locked (false, spot_rid_, false);
+            if (!state) {
+                _handle_state.pending_spot_creations.erase (key);
+                lock.unlock ();
+                _spot_creation_cv.notify_all ();
                 return std::shared_ptr<spot_logical_state_t> ();
+            }
             if (created_out_)
                 *created_out_ = true;
+            return state;
+        }
+
+        _spot_creation_cv.wait (lock);
+    }
+}
+
+bool spot_node_t::publish_get_or_new_spot_state (
+  const std::shared_ptr<spot_logical_state_t> &state_)
+{
+    if (!state_)
+        return false;
+
+    bool publish_summary = false;
+    bool published = false;
+    const std::string key = spot_rid_key_local (state_->routing_id);
+    {
+        scoped_lock_t lock (_sync);
+        std::map<std::string, std::shared_ptr<spot_logical_state_t> >::iterator
+          it = _handle_state.spots_by_rid.find (key);
+        if (it == _handle_state.spots_by_rid.end ()) {
+            _handle_state.spots_by_rid[key] = state_;
+            published = true;
             publish_summary = spot_owner_summary_publishable_locked ();
         }
+        _handle_state.pending_spot_creations.erase (key);
     }
-    if (publish_summary)
-        submit_spot_owner_summary (state, ZLINK_TOPOLOGY_STATE_READY, 0);
-    return state;
+    _spot_creation_cv.notify_all ();
+
+    if (published && publish_summary)
+        submit_spot_owner_summary (state_, ZLINK_TOPOLOGY_STATE_READY, 0);
+    return published;
+}
+
+void spot_node_t::cancel_get_or_new_spot_state (
+  const std::shared_ptr<spot_logical_state_t> &state_)
+{
+    if (!state_)
+        return;
+
+    const std::string key = spot_rid_key_local (state_->routing_id);
+    {
+        scoped_lock_t lock (_sync);
+        _handle_state.pending_spot_creations.erase (key);
+    }
+    _spot_creation_cv.notify_all ();
 }
 
 void spot_node_t::remove_spot_state_if_unfacaded (
@@ -1179,6 +1227,11 @@ int spot_node_t::update_spot_routing_id (spot_handle_t *spot_,
         if (existing != _handle_state.spots_by_rid.end ()
             && existing->second != spot_->logical_state) {
             errno = EADDRINUSE;
+            return -1;
+        }
+        if (new_key != old_key
+            && _handle_state.pending_spot_creations.count (new_key) != 0) {
+            errno = EBUSY;
             return -1;
         }
 

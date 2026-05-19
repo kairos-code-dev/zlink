@@ -5,6 +5,7 @@ global using Zlink.Framework.Contracts.Handlers;
 global using Zlink.Framework.Runtime.Core;
 global using Zlink.Framework.Contracts.Spots;
 global using Zlink.Framework.Contracts.Streams;
+global using Zlink.Framework.Contracts.Timers;
 global using Systems.Zlink.Codecs.Json;
 global using TicTacToe.Shared.Contracts;
 global using TicTacToe.Server.Api;

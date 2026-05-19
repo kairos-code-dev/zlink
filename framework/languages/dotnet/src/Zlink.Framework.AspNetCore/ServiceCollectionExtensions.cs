@@ -117,6 +117,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(registration);
         services.TryAddSingleton<IZLinkBackendAdapterFactory, ZLinkDotNetBackendAdapterFactory>();
         services.TryAddSingleton<ZLinkRuntimeEventDispatcher>();
+        services.TryAddSingleton<IZLinkRuntimeEventPublisher>(static provider =>
+            provider.GetRequiredService<ZLinkRuntimeEventDispatcher>());
         services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService>(static provider =>
             new ZLinkMonitoringHostedService(
                 provider,

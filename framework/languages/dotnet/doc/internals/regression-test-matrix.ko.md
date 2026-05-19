@@ -127,6 +127,11 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | `OnInitializeAsync(...)` handler resolve | `integration-single-process` | spot마다 분리된 DI scope가 정상 동작한다 |
 | `OnClosingAsync(...)` 정상 remove callback | `integration-single-process` | `RemoveAsync(...)` 호출 시 spot 실행 문맥에서 한 번 호출된다 |
 | local spot publish | `integration-single-process` | subscriber가 정상 수신한다 |
+| SPOT timer metadata | `integration-single-process` | timer handler가 callback 번호, 예정/시작 시각, 지연, skip metadata를 받는다 |
+| SPOT timer overrun policy | `integration-single-process` | `SkipLateTicks`, `CatchUpBounded`, `DelayNextTick` 정책이 각각 skip, bounded catch-up, fixed-delay 의미를 지킨다 |
+| SPOT timer exception policy | `integration-single-process` | handler 예외가 monitoring event로 기록되고, `StopOnUnhandledException`이 켜진 timer는 중단된다 |
+| Entry Spot timer execution context | `integration-single-process` | Entry Spot timer는 전체 Entry Spot callback을 전역으로 막지 않고, 같은 timer callback은 겹쳐 실행하지 않는다 |
+| SPOT timer cancel | `integration-single-process` | `CancelAsync()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다 |
 | outbound 전용 외부 publish client | `integration-multi-process` | target SPOT[^spot] channel에 publish가 성공한다 |
 | spot 제거 후 scope 정리 | `integration-single-process` | 이후 callback이 발생하지 않고 dispose도 정상 완료된다 |
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 handler가 join된 `Spot` 실행 문맥에서 실행된다 |
@@ -217,6 +222,7 @@ backend gate 와 별도로 유지한다.
 대상 문서는 다음과 같다.
 
 - `README.ko.md`
+- `spot-timer-policy.ko.md`
 - `handler-interfaces.ko.md`
 - `aspnet-core-channel-messaging.ko.md`
 - `aspnet-core-spot.ko.md`

@@ -594,8 +594,12 @@ builder.Services.AddZLinkFramework(options =>
   context 안에서 처리된다.
 - timer는 native timer를 직접 노출하지 않고, framework runtime이 만든 managed
   `.NET` timer를 사용한다.
-- managed timer tick 역시 routed, subscribe, channel reply와 동일한 직렬 실행
-  경로로 들어온다.
+- managed timer tick 은 user Spot 에서는 routed, subscribe, channel reply와
+  동일한 직렬 실행 경로로 들어온다.
+- Entry Spot timer callback 은 Entry Spot 전체 직렬 실행 줄에 묶지 않는다.
+  Entry Spot 은 여러 actor 가 공유하는 입구이므로 timer 하나가 관계없는 Entry
+  Spot callback 을 전역으로 막으면 안 된다. 단일 timer instance 안에서는 이전
+  callback 이 끝나기 전에 다음 callback 을 겹쳐 실행하지 않는다.
 
 여기서 핵심은 channel reply completion 과 timer callback 이 모두 같은 spot
 실행 계약 안에 포함된다는 점이다.
@@ -623,8 +627,9 @@ dispatch event 종류와 drain 대상은 아래처럼 정리된다.
 | `ChannelReplyReadable` | `ChannelDealer` | `DrainChannelReplyFrom(subject)` |
 
 timer 는 이 low-level dispatch table 에 직접 기대지 않는다. 대신 framework
-runtime 이 만든 managed `.NET` timer tick 을 같은 spot 문맥으로 enqueue 해서
-처리한다.
+runtime 이 만든 managed `.NET` timer tick 을 user Spot 문맥에서는 같은 spot
+queue 로 enqueue 해서 처리한다. Entry Spot timer 는 같은 등록 표면을 쓰지만
+Entry Spot 전체 queue 로 enqueue 하지 않는다.
 
 즉 framework 문서에서 "같은 spot 문맥" 이라고 설명하는 부분은 새 semantics 를
 정의하는 작업이 아니다. 기존 core 계약과 framework 가 소유한 timer dispatch 를
@@ -917,6 +922,10 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
         _heartbeat = await Context.AddTimer<StageHeartbeatHandler>(
             "heartbeat",
             TimeSpan.FromSeconds(1),
+            new ZLinkTimerOptions
+            {
+                OverrunPolicy = ZLinkTimerOverrunPolicy.DelayNextTick
+            },
             cancellationToken);
     }
 }
@@ -930,11 +939,35 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 - `json`을 쓰면 `msgId`는 CLR class 이름이 된다.
 - `Context.AddSubscribe<THandler>(...)`는 topic consumer 등록이다.
 - `Context.AddTimer<THandler>(...)`는 현재 spot lifecycle 안에 timer를 등록한다.
+  세 번째 인자인 `ZLinkTimerOptions` 로 overrun 정책과 handler 예외 정책을 정한다.
 - handler는 별도의 class로 두고, `StageSpot` 안에는 코어 로직만 남길 수 있다.
 - handler가 다른 서버나 다른 spot으로 outbound 호출을 해야 한다면 `IZLinkClient`
   또는 `IZLinkSpotClient`를 constructor injection으로 받는 쪽이 더 자연스럽다.
 - framework는 per-spot scope[^per-spot-scope]를 만들고, 등록된 handler 타입을 그
   scope에서 자동으로 resolve하는 방식을 기본으로 본다.
+
+timer handler 는 아래처럼 tick metadata 를 받는다.
+
+```csharp
+public sealed class StageHeartbeatHandler
+    : IZLinkSpotTimerHandler<StageSpot>
+{
+    public ValueTask HandleAsync(
+        StageSpot spot,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+`ZLinkTimerTick` 은 callback 번호, fixed-rate 시간표의 tick 번호, 예정 시각,
+시작 시각, 지연, 건너뛴 tick 수를 포함한다. `SkipLateTicks`와 `CatchUpBounded`는
+fixed-rate 기준 시각을 유지하고, `DelayNextTick`은 handler 완료 뒤 period 를 다시
+기다리는 fixed-delay 정책이다. timer handler 예외는 runtime monitoring 에
+`TimerHandlerFailed` event 로 기록된다. `StopOnUnhandledException` 이 켜져 있으면
+timer 를 중단하고 `TimerStoppedAfterUnhandledException` event 를 기록한다.
 
 ### 7.1 room 계열 사용과 핫패스 원칙
 
@@ -1065,10 +1098,22 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 | `RegistrationValidationTests.AddZLinkFramework_Throws_WhenSpotMeshHasNoUseDiscovery` | Discovery 없는 mesh 구성은 시작 전에 실패한다. |
 | `SpotIntegrationTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | `CreateAsync`, `GetAsync`, `ListAsync`, `RemoveAsync`와 scope 정리가 일관된다. |
 | `SpotIntegrationTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | timer와 publish callback이 spot lifecycle 안에서 돌고, 제거 뒤에는 멈춘다. |
+| `SpotIntegrationTests.SpotTimer_Provides_Tick_Metadata` | timer handler가 callback 번호, 예정/시작 시각, 지연, skip metadata를 받는다. |
+| `SpotIntegrationTests.SpotTimer_Skips_Late_Ticks_When_Configured` | `SkipLateTicks` 정책은 늦은 tick을 무제한 전달하지 않고 `SkippedTicks`로 드러낸다. |
+| `SpotIntegrationTests.SpotTimer_Catches_Up_Within_Configured_Limit` | `CatchUpBounded` 정책은 `MaxCatchUpTicks` 상한 안에서만 연속 실행한다. |
+| `SpotIntegrationTests.SpotTimer_DelayNextTick_Waits_After_Handler_Completion` | `DelayNextTick` 정책은 handler 완료 뒤 period를 다시 기다린다. |
+| `SpotIntegrationTests.SpotTimer_NonCatchUpPolicy_Ignores_MaxCatchUpTicks` | `CatchUpBounded`가 아닌 정책에서는 `MaxCatchUpTicks`가 scheduling 의미를 바꾸지 않는다. |
+| `SpotIntegrationTests.SpotTimer_CatchUpPolicy_Rejects_Invalid_MaxCatchUpTicks` | `CatchUpBounded` 정책에서 `MaxCatchUpTicks <= 0`은 설정 오류다. |
+| `SpotIntegrationTests.SpotTimer_Rejects_Unknown_OverrunPolicy` | 알 수 없는 overrun 정책 값은 설정 오류다. |
+| `SpotIntegrationTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | handler 예외가 runtime monitoring의 timer failure event로 기록된다. |
+| `SpotIntegrationTests.SpotTimer_StopOnUnhandledException_Stops_Timer` | `StopOnUnhandledException`이 켜진 timer는 첫 handler 예외 뒤 중단된다. |
+| `SpotIntegrationTests.SpotTimer_CancelAsync_Stops_Managed_Timer_Loop` | `CancelAsync()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다. |
 | `SpotIntegrationTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 publisher client가 target SPOT channel로 publish한다. |
 | `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join, 이동, packet dispatch가 현재 spot 실행 문맥에서 실행된다. |
 | `SpotIntegrationTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot actor packet이 Entry Spot 전체 실행 줄에 막히지 않고 actor별 순서를 지킨다. |
 | `SpotIntegrationTests.EntrySpot_PacketHandlers_Are_Dispatched_Without_EntrySpot_Serialization` | Entry Spot 일반 packet handler가 user Spot과 같은 방식으로 등록되며 Entry Spot 전체 직렬 실행 줄에 묶이지 않는다. |
+| `SpotIntegrationTests.EntrySpotTimer_Does_Not_Block_EntrySpot_Callbacks_Globally` | 긴 Entry Spot timer callback이 다른 Entry Spot callback을 전역으로 막지 않는다. |
+| `SpotIntegrationTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer는 전역 queue에 묶이지 않아도 같은 timer callback을 겹쳐 실행하지 않는다. |
 | `SpotIntegrationTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel` | native `ActorReadable` batch 안에서도 서로 다른 Entry Spot actor packet이 병렬로 진행된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

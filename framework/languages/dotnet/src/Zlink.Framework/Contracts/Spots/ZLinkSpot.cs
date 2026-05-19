@@ -134,6 +134,7 @@ public interface IZLinkSpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutbou
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
+        ZLinkTimerOptions? options = null,
         CancellationToken cancellationToken = default)
         where THandler : class;
 }
@@ -180,6 +181,7 @@ public interface IZLinkEntrySpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotO
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
+        ZLinkTimerOptions? options = null,
         CancellationToken cancellationToken = default)
         where THandler : class;
 }

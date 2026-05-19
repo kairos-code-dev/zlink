@@ -100,6 +100,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
                 entrySpot,
                 _registration.EntrySpotType,
                 Node.RoutingId,
+                _registration.SpotNodeName,
                 _frameworkRegistration.SpotDiscovery?.ChannelName ?? _registration.SpotNodeName,
                 _frameworkRegistration.DefaultTimeout,
                 _registration.Router?.SocketConfig.SendTimeout

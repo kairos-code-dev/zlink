@@ -33,6 +33,7 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
         IZLinkBackendSpot nativeSpot,
         Type entrySpotType,
         RoutingId nodeRid,
+        string spotNodeName,
         string channelName,
         TimeSpan defaultTimeout,
         TimeSpan? sendTimeout)
@@ -40,6 +41,7 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
         _runtime = runtime;
         _nativeSpot = nativeSpot;
         NodeRid = nodeRid;
+        SpotNodeName = spotNodeName;
         ChannelName = channelName;
         _defaultTimeout = defaultTimeout;
         _scope = services.CreateAsyncScope();
@@ -78,6 +80,10 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
     public IZLinkEntrySpot EntrySpot { get; }
 
     public string ChannelName { get; }
+
+    public string SpotNodeName { get; }
+
+    public string SpotName => "entry";
 
     public TimeSpan DefaultTimeout => _defaultTimeout;
 

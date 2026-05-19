@@ -34,9 +34,10 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
 
     public async ValueTask InvokeTimerAsync(
         ZLinkSpotTimerDescriptor descriptor,
+        ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {
-        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, cancellationToken)
+        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, tick, cancellationToken)
             .ConfigureAwait(false);
     }
 

@@ -68,6 +68,7 @@ internal static class ZLinkSpotDescriptorFactory
 
     public static ZLinkSpotTimerDescriptor CreateTimerDescriptor(
         string name,
+        TimeSpan period,
         Type handlerType,
         Type expectedSpotType)
     {
@@ -82,7 +83,7 @@ internal static class ZLinkSpotDescriptorFactory
             return new ZLinkSpotTimerDescriptor
             {
                 Name = name,
-                Period = TimeSpan.Zero,
+                Period = period,
                 HandlerType = handlerType,
                 SpotType = arguments[0],
                 Invoker = CreateInvoker(handlerType),

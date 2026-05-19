@@ -193,6 +193,7 @@ actor packet dispatch는 **actor 상태**와 **Spot 상태** 중 무엇을 보�
 | --- | --- | --- |
 | STREAM session에서 Entry/local actor로 전달되는 packet | actor별 순서 보존 뒤 현재 actor 위치로 dispatch | 같은 actor의 packet 순서는 지키되, 최종 handler 실행 위치는 Entry Spot 또는 local actor registry가 결정한다 |
 | Entry Spot packet / actor packet | packet dispatch 또는 actor별 mailbox | Entry Spot은 여러 actor가 공유하는 입구이므로 전역 직렬화하면 병목이 된다 |
+| Entry Spot timer | 독립 runtime task | Entry Spot 전체 queue에 묶지 않는다. 같은 timer instance callback은 겹치지 않는다 |
 | user Spot 안의 actor packet | user Spot 실행 queue | room, game, stage 같은 Spot 상태를 actor handler가 함께 다루므로 handler는 Spot 단위 순서를 지킨다 |
 | user Spot packet / timer / subscription | user Spot 실행 queue | 같은 Spot 인스턴스의 상태를 한 번에 하나의 callback만 변경하게 한다 |
 | Entry Spot lifecycle / join / leave callback | Entry Spot 실행 문맥 | Entry Spot registry와 lifecycle 상태를 일관되게 다룬다 |
@@ -210,6 +211,8 @@ Entry Spot은 user Spot처럼 room 상태를 소유하는 곳이 아니라 actor
 공용 입구다. 따라서 Entry Spot packet과 actor packet은 Entry Spot 전체 queue에 쌓지
 않는다. Entry Spot 자체의 초기화, 종료, lifecycle callback처럼 Entry Spot registry
 상태를 다루는 작업만 Entry Spot 실행 문맥에서 직렬화한다.
+Entry Spot timer도 전역 queue에 쌓지 않는다. timer에서 room, stage, match 상태를
+직접 바꿔야 한다면 그 상태를 소유하는 user Spot으로 옮겨야 한다.
 
 ### 5.3 lifecycle callback 공개 방식
 

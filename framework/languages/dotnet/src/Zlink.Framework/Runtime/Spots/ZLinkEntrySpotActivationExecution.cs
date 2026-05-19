@@ -110,20 +110,43 @@ internal sealed partial class ZLinkEntrySpotActivation
     public ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
-        CancellationToken cancellationToken)
+        ZLinkTimerOptions? options = null,
+        CancellationToken cancellationToken = default)
         where THandler : class
     {
         return _timers.AddAsync(
             name,
             period,
+            options,
             typeof(THandler),
             EntrySpot.GetType(),
             _stopSource.Token,
-            async (descriptor, ct) =>
+            async (descriptor, tick, ct) =>
             {
                 using var _ = ZLinkSpotAmbientContext.Push(this);
-                await _invoker.InvokeTimerAsync(descriptor, ct).ConfigureAwait(false);
+                await _invoker.InvokeTimerAsync(descriptor, tick, ct).ConfigureAwait(false);
             },
+            PublishTimerFailureAsync,
+            cancellationToken);
+    }
+
+    private ValueTask PublishTimerFailureAsync(
+        ZLinkSpotTimerDescriptor descriptor,
+        ZLinkTimerTick tick,
+        Exception exception,
+        bool stopped,
+        CancellationToken cancellationToken)
+    {
+        return _runtime.PublishRuntimeEventAsync(
+            ZLinkSpotTimerFailureEventFactory.Create(
+                SpotNodeName,
+                SpotName,
+                SpotRid,
+                isEntrySpot: true,
+                descriptor,
+                tick,
+                exception,
+                stopped),
             cancellationToken);
     }
 

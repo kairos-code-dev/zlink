@@ -146,6 +146,11 @@ actor 또는 `Spot` callback 안에서 task 기반 request를 `await`하면 현�
 `Spot`의 다음 dispatch, join, timer, subscription 처리는 현재 callback task가 끝난
 뒤에 실행된다. 명시 timeout이 없으면 framework default timeout을 사용한다.
 
+이 직렬화 규칙은 user Spot 에 대한 규칙이다. Entry Spot 은 여러 actor 가 공유하는
+입구이므로 Entry Spot timer callback 을 Entry Spot 전체 queue 에 묶지 않는다.
+다만 같은 timer instance 의 callback 은 겹쳐 실행하지 않는다. room, stage, match
+같은 권위 상태를 바꾸는 주기 작업은 user Spot timer 로 등록해야 한다.
+
 ### 3.5 worker-dispatch
 
 - 의미상으로는 command 또는 request-response의 변형이지만, 사용자 기대가

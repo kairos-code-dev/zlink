@@ -73,6 +73,17 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal IZLinkRouteClient RouteClient => _services.GetRequiredService<IZLinkRouteClient>();
 
+    internal ValueTask PublishRuntimeEventAsync<TEvent>(
+        TEvent @event,
+        CancellationToken cancellationToken)
+        where TEvent : IZLinkRuntimeEvent
+    {
+        var publisher = _services.GetService<IZLinkRuntimeEventPublisher>();
+        return publisher is null
+            ? ValueTask.CompletedTask
+            : publisher.PublishAsync(@event, cancellationToken);
+    }
+
     public bool IsStarted => _state is not null;
 
     public async ValueTask StartAsync(CancellationToken cancellationToken)

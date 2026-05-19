@@ -24,6 +24,7 @@ global using Zlink.Framework.Runtime.Actors;
 global using Zlink.Framework.Runtime.Registry;
 global using Zlink.Framework.Runtime.Spots;
 global using Zlink.Framework.Runtime.Streams;
+global using Zlink.Framework.Runtime.Timers;
 global using Zlink.Framework.Contracts.Spots;
 global using Zlink.Framework.Contracts.Streams;
 global using Zlink.Framework.Contracts.Timers;

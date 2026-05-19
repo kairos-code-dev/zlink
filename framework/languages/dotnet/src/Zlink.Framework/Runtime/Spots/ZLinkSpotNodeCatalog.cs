@@ -302,6 +302,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 spotScope,
                 nativeSpot,
                 node.RoutingId,
+                registration.SpotNodeName,
                 spotName,
                 spotChannelName,
                 frameworkRegistration.DefaultTimeout,

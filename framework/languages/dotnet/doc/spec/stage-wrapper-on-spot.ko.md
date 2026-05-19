@@ -267,6 +267,7 @@ public interface IZLinkSpotContext
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
+        ZLinkTimerOptions? options = null,
         CancellationToken cancellationToken = default);
 }
 ```
@@ -274,13 +275,14 @@ public interface IZLinkSpotContext
 하부 `.NET` 바인딩 자체는 이미 다음과 같은 timer 표면을 제공한다.
 
 ```csharp
-public sealed class Timer : IDisposable, IAsyncDisposable
+public sealed class Timer : IZlinkTimer
 {
     public static Timer FromSpot(Spot spot);
-    public void Start(ulong intervalNs, ulong repeatCount);
+    public void Start(TimeSpan interval, ulong repeatCount);
     public void Stop();
-    public ulong Recv(int flags = 0);
-    public void OnFire(Action<Timer, ulong> handler);
+    public ulong? Recv(RecvFlags flags = RecvFlags.None);
+    public void OnFire(Action<IZlinkTimer, ulong> handler);
+    public void Close();
 }
 ```
 
@@ -288,8 +290,9 @@ public sealed class Timer : IDisposable, IAsyncDisposable
 그대로 드러내는 표면이 아니다. framework runtime 이 만든 managed `.NET` timer
 를 spot lifecycle / DI 모델에 붙여 주는 wrapper 로 읽는 편이 맞다.
 
-timer tick 이 발생하면 framework 가 그 tick 을 같은 spot execution context 안으로
-enqueue 한다. 그 뒤 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
+timer tick 이 발생하면 framework 가 그 tick 을 user Spot 의 같은 spot execution
+context 안으로 enqueue 한다. Entry Spot timer 는 Entry Spot 전체 queue 에 묶지
+않는다. 그 뒤 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
 `IZLinkTimer.CancelAsync()` 는 이 managed timer loop 를 멈추고 정리하는 고수준
 timer handle 이다.
 
@@ -307,8 +310,14 @@ framework 가 만든 per-spot scope[^per-spot-scope] 에서 resolve 한다. 사�
 "어떤 타입을 등록하는가" 만 보이도록 두는 편이 더 낫다.
 
 여기서 더 중요한 것은 timer handler 가 어느 실행 문맥에서 도는가다.
-`Context.AddTimer<THandler>(...)` 로 등록한 timer handler 는 가능하면 같은 spot
-실행 문맥에서 도는 쪽이 `Stage wrapper` 에 자연스럽다.
+`Context.AddTimer<THandler>(...)` 로 등록한 user Spot timer handler 는 같은 spot
+실행 문맥에서 돈다. room, stage, match 상태처럼 권위 상태를 바꾸는 작업은 이
+직렬 실행 문맥 안에서 처리해야 한다.
+
+timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간표의 tick
+번호, 예정 시각, 시작 시각, 지연, 건너뛴 tick 수를 볼 수 있다. `ZLinkTimerOptions`
+의 overrun 정책으로 늦은 tick 을 건너뛸지, 제한된 수만 catch-up 할지, handler 완료
+뒤 period 를 다시 기다릴지 정한다.
 
 따라서 wrapper 사용자는 low-level timer handle 을 직접 알 필요가 없다.
 `Context.AddTimer<THandler>(...)` 만 보고, framework 가 같은 `Spot` 실행 계약
@@ -419,9 +428,8 @@ public interface IStageSpotManager
 
 이 절은 이 문서 다음에 이어질 작업 순서를 정리한다.
 
-1. `IZLinkSpotContext.AddTimer<THandler>(...)` timer 초안 정리
-2. `IZLinkSpotManager` metadata 확장을 wrapper 후보로 따로 정리
-3. `Stage wrapper` 전용 문서에서 membership, broadcast, directory를 별도 정의
+1. `IZLinkSpotManager` metadata 확장을 wrapper 후보로 따로 정리
+2. `Stage wrapper` 전용 문서에서 membership, broadcast, directory를 별도 정의
 
 ## 7. 회귀 테스트
 

@@ -9,10 +9,12 @@ internal sealed class ZLinkSpotTimerRegistry : IAsyncDisposable
     public ValueTask<IZLinkTimer> AddAsync(
         string name,
         TimeSpan period,
+        ZLinkTimerOptions? options,
         Type handlerType,
         Type spotType,
         CancellationToken stopToken,
-        Func<ZLinkSpotTimerDescriptor, CancellationToken, ValueTask> dispatchAsync,
+        Func<ZLinkSpotTimerDescriptor, ZLinkTimerTick, CancellationToken, ValueTask> dispatchAsync,
+        Func<ZLinkSpotTimerDescriptor, ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> reportFailureAsync,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -27,11 +29,26 @@ internal sealed class ZLinkSpotTimerRegistry : IAsyncDisposable
             throw new ZLinkConfigurationException("SPOT timer period must be greater than zero.");
         }
 
-        var descriptor = ZLinkSpotDescriptorFactory.CreateTimerDescriptor(name, handlerType, spotType);
+        var timerOptions = options ?? new ZLinkTimerOptions();
+        if (!Enum.IsDefined(timerOptions.OverrunPolicy))
+        {
+            throw new ZLinkConfigurationException("SPOT timer overrun policy is not supported.");
+        }
+
+        if (timerOptions.OverrunPolicy == ZLinkTimerOverrunPolicy.CatchUpBounded
+            && timerOptions.MaxCatchUpTicks <= 0)
+        {
+            throw new ZLinkConfigurationException("SPOT timer MaxCatchUpTicks must be greater than zero.");
+        }
+
+        var descriptor = ZLinkSpotDescriptorFactory.CreateTimerDescriptor(name, period, handlerType, spotType);
         var timer = new ZLinkTimer(
+            name,
             period,
+            timerOptions,
             stopToken,
-            ct => dispatchAsync(descriptor, ct));
+            (tick, ct) => dispatchAsync(descriptor, tick, ct),
+            (tick, exception, stopped, ct) => reportFailureAsync(descriptor, tick, exception, stopped, ct));
         _timers.Add(timer);
         return ValueTask.FromResult<IZLinkTimer>(timer);
     }

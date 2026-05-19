@@ -79,7 +79,13 @@ internal static class FixtureSamples
                     spot.Bind("tcp://127.0.0.1:7301");
                     spot.EnableRouter();
                     spot.EnablePubSub();
-                    spot.AttachClientServerChannelClient("orders");
+                    spot.AttachClientServerChannelClient("orders", client =>
+                    {
+                        client.UseManualConnections(connections =>
+                        {
+                            connections.Connect("tcp://127.0.0.1:7201");
+                        });
+                    });
                     spot.AttachSpotMeshPublisherClient("game.stage");
                     spot.AddSpotFactory<FixtureStageSpot>("stage");
                 });
@@ -207,15 +213,19 @@ internal sealed class FixtureStageSpot(IZLinkSpotContext context) : IZLinkSpot
         _ = await Context.AddTimer<FixtureSpotTimerHandler>(
             "heartbeat",
             TimeSpan.FromSeconds(1),
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 }
 
 internal sealed class FixtureSpotTimerHandler(IZLinkSpotClient spotClient)
     : IZLinkSpotTimerHandler<FixtureStageSpot>
 {
-    public async ValueTask HandleAsync(FixtureStageSpot spot, CancellationToken cancellationToken)
+    public async ValueTask HandleAsync(
+        FixtureStageSpot spot,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
     {
+        _ = tick;
         await spotClient.Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
             .Submit(cancellationToken);
     }

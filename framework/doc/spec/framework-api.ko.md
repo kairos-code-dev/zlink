@@ -323,6 +323,12 @@ request도 reply를 기다리는 async 호출로 설명한다. 다만 request pa
 - `SpotNode`는 router, pub/sub, attach된 외부 호출 capability를 가진다.
 - local spot 인스턴스는 등록 이름으로 만들고, lifecycle 안에서 packet, subscribe,
   timer를 등록한다.
+- spot timer 는 framework 가 만든 managed scheduler 를 사용한다. user Spot timer 는
+  같은 user Spot 실행 queue 에서 직렬화하고, Entry Spot timer 는 Entry Spot 전체
+  실행 줄에 묶지 않는다. 같은 timer instance 의 callback 은 겹쳐 실행하지 않는다.
+- timer handler 는 callback 번호, 예정 시각, 시작 시각, 지연, 건너뛴 tick 수를
+  담은 metadata 를 받는다. 늦은 tick 은 skip, bounded catch-up, fixed-delay 중
+  하나의 정책으로 처리한다. hard realtime 보장은 제공하지 않는다.
 - local spot이 없는 외부 노드용 publish 표면은 별도 client로 분리할 수 있다.
 - actor/session 모델을 지원하는 binding에서는 actor가 `Spot`에 attach된 뒤의
   actor dispatch를 반드시 해당 `Spot` 실행 문맥에서 처리한다. stream session은
@@ -383,6 +389,9 @@ user Spot 에서는 두 이벤트를 spot serial executor를 통해 직렬화된
 Entry Spot 은 같은 handler/callback 등록 표면을 제공하지만 공용 입구이므로 packet
 callback 을 Entry Spot 전체 실행 줄에 묶지 않는다. Entry Spot 에서 직렬화되는 것은
 초기화, 종료, lifecycle callback 처럼 Entry Spot 자체 상태를 다루는 callback 이다.
+Entry Spot timer callback 도 전체 실행 줄에 묶지 않는다. user Spot timer callback 은
+packet, subscription, channel reply, actor packet 과 같은 user Spot queue 에서
+처리한다.
 
 ##### framework가 직접 관리하지 않는 것
 

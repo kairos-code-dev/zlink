@@ -143,7 +143,8 @@ public interface IZLinkSpotContext
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
-        CancellationToken cancellationToken)
+        ZLinkTimerOptions? options = null,
+        CancellationToken cancellationToken = default)
         where THandler : class
     {
         return ValueTask.FromResult<IZLinkTimer>(default!);
@@ -182,21 +183,24 @@ public interface IZLinkSpotTimerHandler<TSpot>
 {
     ValueTask HandleAsync(
         TSpot spot,
+        ZLinkTimerTick tick,
         CancellationToken cancellationToken);
 }
 
 // Low-level Zlink binding basis
-public sealed class Timer : IDisposable, IAsyncDisposable
+public sealed class Timer : IZlinkTimer
 {
     public static Timer FromSpot(Spot spot);
 
-    public void Start(ulong intervalNs, ulong repeatCount);
+    public void Start(TimeSpan interval, ulong repeatCount);
 
     public void Stop();
 
-    public ulong Recv(int flags = 0);
+    public ulong? Recv(RecvFlags flags = RecvFlags.None);
 
-    public void OnFire(Action<Timer, ulong> handler);
+    public void OnFire(Action<IZlinkTimer, ulong> handler);
+
+    public void Close();
 }
 
 public readonly record struct ZLinkSpotCreateResult(
@@ -822,7 +826,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
         _sessionTimeoutSweep = await Context.AddTimer<SampleSessionTimeoutSweepHandler>(
             "session-timeout-sweep",
             TimeSpan.FromSeconds(1),
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     public void ApplyReportedState(SampleReportStateCommand command)
@@ -1043,7 +1047,7 @@ public sealed class SampleSpot(
         _sessionTimeoutSweep = await Context.AddTimer<SampleSessionTimeoutSweepHandler>(
             "session-timeout-sweep",
             TimeSpan.FromSeconds(1),
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     internal async ValueTask<SampleJoinRoomReply> JoinActorAsync(
@@ -1629,8 +1633,10 @@ public sealed class SampleSessionTimeoutSweepHandler
 {
     public ValueTask HandleAsync(
         SampleSpot spot,
+        ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {
+        _ = tick;
         return spot.SweepInactiveActorsAsync(
             TimeSpan.FromSeconds(10),
             TimeSpan.FromMinutes(1),
@@ -1642,9 +1648,12 @@ public sealed class SampleSessionTimeoutSweepHandler
 이 high-level timer handler 는 framework runtime 이 만들어 둔 managed `.NET`
 timer 위에 얹는 wrapper 로 읽어야 한다. 즉 다음 모델이 자연스럽다.
 
-- runtime 은 `PeriodicTimer` 같은 managed timer 로부터 tick 을 받는다.
-- 그 tick 을 같은 spot execution context[^execution-context] 안으로 넘긴다.
+- runtime 은 policy-aware managed timer 로부터 tick 을 받는다.
+- user Spot timer 는 그 tick 을 같은 spot execution context[^execution-context]
+  안으로 넘긴다. Entry Spot timer 는 Entry Spot 전체 queue 에 묶지 않는다.
 - 그 안에서 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
+- handler 는 `ZLinkTimerTick` 을 받아 callback 번호, 예정 시각, 실제 시작 시각,
+  지연, 건너뛴 tick 수를 확인할 수 있다.
 
 이 샘플에서 timer 가 하는 일은 상태 publish 가 아니라 sweep 이다. 즉
 `LastSeenAt` 을 기준으로 오랫동안 조용했던 actor 를 찾아 정리하는 역할이다.
@@ -1655,6 +1664,24 @@ timer 위에 얹는 wrapper 로 읽어야 한다. 즉 다음 모델이 자연스
 
 이때 framework 가 제공하는 `IZLinkTimer.CancelAsync()` 는 단순한 cancel 이
 아니다. managed timer loop 정리까지 함께 담는 고수준 handle 에 가깝다.
+
+room server tick 처럼 짧은 주기를 쓰는 경우에는 `ZLinkTimerOptions` 로 overrun
+정책을 명시한다.
+
+```csharp
+_gameLoop = await Context.AddTimer<GameLoopTimerHandler>(
+    "game-loop",
+    TimeSpan.FromMilliseconds(1000.0 / 60.0),
+    new ZLinkTimerOptions
+    {
+        OverrunPolicy = ZLinkTimerOverrunPolicy.SkipLateTicks
+    },
+    cancellationToken);
+```
+
+`SkipLateTicks` 는 늦은 tick 을 모두 callback 으로 밀어 넣지 않고 `SkippedTicks`
+로 드러낸다. application 은 `SkippedTicks + 1` 을 보고 현재 callback 이 대표하는
+server tick 수를 계산할 수 있다.
 
 ### 3.4 protobuf packet 타입
 

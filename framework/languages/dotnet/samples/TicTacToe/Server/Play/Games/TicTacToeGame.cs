@@ -33,7 +33,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
         _gameTick = await Context.AddTimer<TicTacToeGameTimerHandler>(
             "game-tick",
             GameTickPeriod,
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     public async ValueTask OnClosingAsync(CancellationToken cancellationToken)

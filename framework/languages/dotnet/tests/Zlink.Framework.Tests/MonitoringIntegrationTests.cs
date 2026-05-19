@@ -48,6 +48,7 @@ public sealed class MonitoringIntegrationTests
     public async Task SpotMonitoring_Emits_SubjectsChanged_When_SpotIsCreated()
     {
         var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var spotChannel = $"game.stage.monitor.{Guid.NewGuid():N}";
         var builder = Host.CreateApplicationBuilder();
 
         builder.Services.AddSingleton<SpotMonitorProbe>();
@@ -56,7 +57,7 @@ public sealed class MonitoringIntegrationTests
         builder.Services.AddScoped<StageSubscriptionHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", _ => { });
+            options.UseSpotDiscovery(spotChannel, _ => { });
             options.AddSpotNode("stage-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
@@ -141,6 +142,7 @@ public sealed class MonitoringIntegrationTests
         var registryRouterEndpoint = GetFreeTcpEndpoint();
         var firstNodeEndpoint = GetFreeTcpEndpoint();
         var secondNodeEndpoint = GetFreeTcpEndpoint();
+        var spotChannel = $"game.stage.monitor.{Guid.NewGuid():N}";
 
         var registryBuilder = Host.CreateApplicationBuilder();
         registryBuilder.Services.AddZLinkRegistry(options =>
@@ -155,7 +157,7 @@ public sealed class MonitoringIntegrationTests
             provider.GetRequiredService<SpotPeerProbe>());
         firstBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", discovery =>
+            options.UseSpotDiscovery(spotChannel, discovery =>
             {
                 discovery.Add(registryRouterEndpoint);
             });
@@ -173,7 +175,7 @@ public sealed class MonitoringIntegrationTests
         var secondBuilder = Host.CreateApplicationBuilder();
         secondBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", discovery =>
+            options.UseSpotDiscovery(spotChannel, discovery =>
             {
                 discovery.Add(registryRouterEndpoint);
             });

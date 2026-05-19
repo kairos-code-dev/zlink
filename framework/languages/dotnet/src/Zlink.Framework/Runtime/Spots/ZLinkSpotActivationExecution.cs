@@ -45,22 +45,25 @@ internal sealed partial class ZLinkSpotActivation
     public ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
-        CancellationToken cancellationToken)
+        ZLinkTimerOptions? options = null,
+        CancellationToken cancellationToken = default)
         where THandler : class
     {
         return _timers.AddAsync(
             name,
             period,
+            options,
             typeof(THandler),
             Spot.GetType(),
             StopToken,
-            (descriptor, ct) => ExecuteSerializedAsync(
+            (descriptor, tick, ct) => ExecuteSerializedAsync(
                 async static (activation, state, innerCt) =>
                 {
-                    await activation.InvokeTimerAsync(state, innerCt);
+                    await activation.InvokeTimerAsync(state.Descriptor, state.Tick, innerCt);
                 },
-                descriptor,
+                (Descriptor: descriptor, Tick: tick),
                 ct),
+            PublishTimerFailureAsync,
             cancellationToken);
     }
 
@@ -155,9 +158,30 @@ internal sealed partial class ZLinkSpotActivation
 
     private async ValueTask InvokeTimerAsync(
         ZLinkSpotTimerDescriptor descriptor,
+        ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {
-        await HandlerInvoker.InvokeTimerAsync(descriptor, cancellationToken).ConfigureAwait(false);
+        await HandlerInvoker.InvokeTimerAsync(descriptor, tick, cancellationToken).ConfigureAwait(false);
+    }
+
+    private ValueTask PublishTimerFailureAsync(
+        ZLinkSpotTimerDescriptor descriptor,
+        ZLinkTimerTick tick,
+        Exception exception,
+        bool stopped,
+        CancellationToken cancellationToken)
+    {
+        return _runtime.PublishRuntimeEventAsync(
+            ZLinkSpotTimerFailureEventFactory.Create(
+                SpotNodeName,
+                SpotName,
+                SpotRid,
+                isEntrySpot: false,
+                descriptor,
+                tick,
+                exception,
+                stopped),
+            cancellationToken);
     }
 
     private static T RegisterWithoutSynchronizationContext<T>(Func<T> action)

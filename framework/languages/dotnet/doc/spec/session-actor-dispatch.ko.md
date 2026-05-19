@@ -873,6 +873,11 @@ internal sealed class ZLinkEntrySpotRuntime
 이 queue 에는 Entry Spot actor packet 을 넣지 않는다. Entry Spot actor packet
 은 `ZLinkActorDispatchRuntime` 의 actor 별 queue 를 사용한다.
 
+Entry Spot timer 도 이 lifecycle queue 에 넣지 않는다. Entry Spot 은 여러 actor 가
+처음 거쳐 가는 공용 입구이므로, 긴 timer callback 이 관계없는 Entry Spot packet
+이나 actor packet 을 전역으로 막으면 안 된다. 다만 같은 timer instance 안에서는
+이전 callback 이 끝나기 전에 다음 callback 을 겹쳐 실행하지 않는다.
+
 ### 2.3.9 독립 node message task
 
 이 절은 어떤 Spot 이나 actor 에도 묶이지 않는 node 단위 message 를 어떻게
@@ -920,6 +925,9 @@ Stream frame
 
 Entry Spot lifecycle
   -> Entry Spot lifecycle queue
+
+Entry Spot timer
+  -> Independent runtime task
 
 Node message
   -> Independent runtime task

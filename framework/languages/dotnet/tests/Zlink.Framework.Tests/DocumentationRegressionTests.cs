@@ -5,6 +5,7 @@ public sealed class DocumentationRegressionTests
     private static readonly string[] DotNetDraftDocuments =
     [
         "README.ko.md",
+        "spot-timer-policy.ko.md",
         "handler-interfaces.ko.md",
         "aspnet-core-channel-messaging.ko.md",
         "aspnet-core-spot.ko.md",

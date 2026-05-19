@@ -152,6 +152,7 @@ public interface IZLinkSpotTimerHandler<TSpot>
 {
     ValueTask HandleAsync(
         TSpot spot,
+        ZLinkTimerTick tick,
         CancellationToken cancellationToken);
 }
 

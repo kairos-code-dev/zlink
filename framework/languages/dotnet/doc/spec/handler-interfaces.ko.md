@@ -399,6 +399,7 @@ public interface IZLinkSpotContext : IZLinkActorHandlerRegistry
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
+        ZLinkTimerOptions? options = null,
         CancellationToken cancellationToken = default)
         where THandler : class;
 }
@@ -465,6 +466,7 @@ public interface IZLinkSpotTimerHandler<TSpot>
 {
     ValueTask HandleAsync(
         TSpot spot,
+        ZLinkTimerTick tick,
         CancellationToken cancellationToken);
 }
 
@@ -851,17 +853,19 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     public void DrainChannelReplyFrom(object dealerSubject);
 }
 
-public sealed class Timer : IDisposable, IAsyncDisposable
+public sealed class Timer : IZlinkTimer
 {
     public static Timer FromSpot(Spot spot);
 
-    public void Start(ulong intervalNs, ulong repeatCount);
+    public void Start(TimeSpan interval, ulong repeatCount);
 
     public void Stop();
 
-    public ulong Recv(int flags = 0);
+    public ulong? Recv(RecvFlags flags = RecvFlags.None);
 
-    public void OnFire(Action<Timer, ulong> handler);
+    public void OnFire(Action<IZlinkTimer, ulong> handler);
+
+    public void Close();
 }
 ```
 
@@ -919,8 +923,9 @@ spot.OnDispatchEvent((s, info) =>
 
 framework timer 는 이 dispatch enum 에 직접 묶이지 않는다. 동작 흐름은
 다음과 같다. runtime 이 생성한 managed `.NET` timer 가 tick 을 만들고,
-그 tick 을 같은 spot execution context 안으로 enqueue 해서 timer handler 를
-호출하는 구조다.
+user Spot timer 는 그 tick 을 같은 spot execution context 안으로 enqueue 해서
+timer handler 를 호출한다. Entry Spot timer 는 Entry Spot 전체 queue 에 묶지
+않고 별도 task 흐름에서 호출한다.
 
 `RequestChannelAsync(...)` 의 completion 은 **항상 같은 spot execution
 context 안에서** 실행된다. 즉 임의의 thread 에서 promise 를 직접 완료하지
@@ -932,10 +937,10 @@ spot state 와 동일한 실행 규칙을 따르게 된다.
 framework 의 `Context.AddTimer<THandler>(...)` 는 low-level native timer 를
 직접 노출하는 표면이 아니다.
 
-현재 잡혀 있는 방향은 다음과 같다. framework runtime 이 `.NET` 이 제공하는
-`PeriodicTimer` 같은 managed timer 를 만든다. 그 tick 을 **같은 spot
-execution context** 안으로 enqueue 해서
-`IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
+현재 잡혀 있는 방향은 다음과 같다. framework runtime 이 policy-aware managed
+timer 를 만든다. user Spot timer 는 그 tick 을 **같은 spot execution context**
+안으로 enqueue 해서 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
+Entry Spot timer 는 전역 Entry Spot queue 에 enqueue 하지 않는다.
 
 `IZLinkTimer.CancelAsync()` 는 이 managed timer loop 를 중단하고 정리하는
 고수준 handle 로 이해하면 된다.
@@ -3178,15 +3183,66 @@ public interface IZLinkTimer : IAsyncDisposable
     ValueTask CancelAsync(
         CancellationToken cancellationToken = default);
 }
+
+public sealed record ZLinkTimerOptions
+{
+    public ZLinkTimerOverrunPolicy OverrunPolicy { get; init; } =
+        ZLinkTimerOverrunPolicy.SkipLateTicks;
+
+    public int MaxCatchUpTicks { get; init; } = 1;
+
+    public bool StopOnUnhandledException { get; init; }
+}
+
+public enum ZLinkTimerOverrunPolicy
+{
+    SkipLateTicks = 1,
+    CatchUpBounded = 2,
+    DelayNextTick = 3
+}
+
+public readonly record struct ZLinkTimerTick(
+    string Name,
+    ulong DeliveryIndex,
+    ulong ScheduledIndex,
+    TimeSpan Period,
+    DateTimeOffset ScheduledAt,
+    DateTimeOffset StartedAt,
+    TimeSpan ScheduledElapsed,
+    TimeSpan StartedElapsed,
+    TimeSpan Delay,
+    ulong SkippedTicks);
 ```
 
 framework 의 timer abstraction 은 low-level `.NET` binding 의 native
 timer 를 그대로 노출하지 않는다.
 
 동작 흐름은 다음과 같다. framework runtime 이 managed timer 를 만든 뒤,
-각 tick 을 spot 직렬 실행 경로 (`ExecuteSerializedAsync(...)` 같은 것) 로
-넘긴다. 그곳에서 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를
-호출한다.
+각 tick 을 handler 실행 문맥으로 넘긴다. user Spot timer 는 spot 직렬 실행
+경로 (`ExecuteSerializedAsync(...)` 같은 것) 로 들어가고, Entry Spot timer 는
+Entry Spot 전체 직렬 실행 줄에 묶이지 않는다. 그곳에서
+`IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
+
+`ZLinkTimerTick` 은 timer 이름, handler 에 실제 전달된 callback 번호
+(`DeliveryIndex`), fixed-rate 시간표의 tick 번호 (`ScheduledIndex`), 예정 시각,
+시작 시각, 지연, 건너뛴 tick 수를 담는다. 지연과 skip 계산은 monotonic clock
+기준으로 한다. `DateTimeOffset` 값은 로그와 운영 관찰을 위한 wall-clock 값이다.
+
+`ZLinkTimerOverrunPolicy` 의 의미는 다음과 같다.
+
+- `SkipLateTicks` 는 늦은 tick 을 합쳐서 건너뛰고 최신 예정 시각 기준으로 이어 간다.
+- `CatchUpBounded` 는 밀린 tick 을 `MaxCatchUpTicks` 개 callback 까지만 연속 실행한다.
+- `DelayNextTick` 은 fixed-rate 가 아니라 handler 완료 뒤 다시 period 를 기다리는
+  fixed-delay 정책이다.
+
+`MaxCatchUpTicks` 는 `CatchUpBounded` 에서만 의미가 있으며 `0`보다 커야 한다.
+다른 정책에서는 framework 가 이 값을 scheduling 에 사용하지 않는다. 알 수 없는
+`ZLinkTimerOverrunPolicy` 값은 설정 오류로 처리한다.
+
+handler 예외는 기본적으로 runtime monitoring 의 `TimerHandlerFailed` event 로
+기록하고 timer 는 계속 실행한다. `StopOnUnhandledException` 이 `true` 이면 첫 번째
+처리되지 않은 예외 뒤 timer 를 중단하고 `TimerStoppedAfterUnhandledException` event
+를 기록한다.
 
 따라서 `IZLinkTimer.CancelAsync()` 는 native `Timer.Stop()` 을 감싸는
 wrapper 가 아니다. framework 가 만든 managed timer loop 를 중단하는
@@ -3195,10 +3251,10 @@ wrapper 가 아니다. framework 가 만든 managed timer loop 를 중단하는
 timer 가 어떤 실행 문맥에서 callback 을 호출하는지가 핵심이다.
 
 - 현재 방향에서는 timer 를 별도의 client scheduler 로 두지 않는다.
-- spot timer 는 framework 가 만든 managed timer 를 사용한다. 다만 실제
-  handler 호출은 동일한 spot 실행 문맥 안에서 직렬화한다.
+- spot timer 는 framework 가 만든 managed timer 를 사용한다.
+- user Spot timer handler 호출은 동일한 spot 실행 문맥 안에서 직렬화한다.
 - packet, subscribe, channel reply callback, timer callback 은 모두 같은
-  spot execution context 규칙을 따른다.
+  user Spot execution context 규칙을 따른다.
 - user Spot 안의 actor packet 도 마찬가지다. 먼저 actor 별 mailbox 에서
   해당 actor 의 순서를 지킨다. 최종 handler 실행은 동일한 spot 실행 문맥
   에서 진행된다.
@@ -3206,6 +3262,9 @@ timer 가 어떤 실행 문맥에서 callback 을 호출하는지가 핵심이�
   session 에서 actor 로 relay 되는 packet 은 두 단계로 처리된다. 먼저
   actor 별 순서를 보존한 뒤, 현재 actor 위치에 맞는 Entry Spot handler
   또는 user Spot 실행 queue 로 넘긴다.
+- Entry Spot timer callback 도 Entry Spot 전체 실행 줄에 묶지 않는다. 다만
+  같은 timer instance 안에서는 이전 callback 이 끝나기 전에 다음 callback 을
+  겹쳐 실행하지 않는다.
 
 ## 8. Handler Filter
 
@@ -3397,6 +3456,14 @@ public interface IZLinkRuntimeEventHandler<in TEvent>
         TEvent @event,
         CancellationToken cancellationToken);
 }
+
+public interface IZLinkRuntimeEventPublisher
+{
+    ValueTask PublishAsync<TEvent>(
+        TEvent @event,
+        CancellationToken cancellationToken)
+        where TEvent : IZLinkRuntimeEvent;
+}
 ```
 
 event 표면은 두 단계로 나누어 둔다. event kind 는 enum 으로, 실제
@@ -3413,6 +3480,11 @@ native monitor enum 과 raw status 값에 대해서도 비슷한 원칙을 적�
 `AddSocketEvents(...)` 에서 event 목록을 비워 두면 어떻게 해석할까. 해당
 source 가 발생시킬 수 있는 모든 logical event kind 를 구독한다는 의미로
 해석한다.
+
+application 이 직접 구현하는 쪽은 보통 `IZLinkRuntimeEventHandler<TEvent>` 이다.
+`IZLinkRuntimeEventPublisher` 는 framework runtime 이 즉시 발생 event 를 monitoring
+dispatcher 로 넘길 때 쓰는 public contract 다. `AddZLinkMonitoring(...)` 이 구성된
+host 에서만 기본 publisher 가 등록된다.
 
 ```csharp
 public enum ZLinkSocketEventKind
@@ -3459,8 +3531,21 @@ public enum ZLinkSpotEventKind
 {
     StatusChanged = 0,
     PeersChanged,
-    SubjectsChanged
+    SubjectsChanged,
+    TimerHandlerFailed,
+    TimerStoppedAfterUnhandledException
 }
+
+public readonly record struct ZLinkSpotTimerDiagnostic(
+    RoutingId SpotRid,
+    string SpotName,
+    bool IsEntrySpot,
+    string TimerName,
+    string HandlerType,
+    ulong DeliveryIndex,
+    ulong ScheduledIndex,
+    string ExceptionType,
+    string ExceptionMessage);
 
 public readonly record struct ZLinkSpotEvent(
     string SourceName,
@@ -3468,9 +3553,15 @@ public readonly record struct ZLinkSpotEvent(
     ZLinkSpotEventKind Event,
     ZLinkSpotNodeStatus? Status,
     IReadOnlyList<ZLinkSpotNodePeerEntry>? Peers,
-    IReadOnlyList<ZLinkSpotNodeSubjectEntry>? Subjects)
+    IReadOnlyList<ZLinkSpotNodeSubjectEntry>? Subjects,
+    ZLinkSpotTimerDiagnostic? TimerDiagnostic = null)
     : IZLinkRuntimeEvent;
 ```
+
+`TimerHandlerFailed` 와 `TimerStoppedAfterUnhandledException` 은 polling interval 을
+기다리는 snapshot diff event 가 아니다. timer handler 에서 처리되지 않은 예외가
+발생한 시점에 즉시 발행된다. exception 객체 자체는 public payload 에 넣지 않고,
+`ZLinkSpotTimerDiagnostic` 에 직렬화 가능한 요약 정보를 담는다.
 
 `ZLinkSpotNodeStatus` 와 `ZLinkSpotNodePeerEntry` 의 첫 번째 필드는
 `ChannelName` 이다.

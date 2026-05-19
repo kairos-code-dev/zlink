@@ -29,6 +29,7 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCur
         AsyncServiceScope scope,
         IZLinkBackendSpot nativeSpot,
         RoutingId nodeRid,
+        string spotNodeName,
         string spotName,
         string channelName,
         TimeSpan defaultTimeout,
@@ -38,6 +39,7 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCur
         _scope = scope;
         NativeSpot = nativeSpot;
         NodeRid = nodeRid;
+        SpotNodeName = spotNodeName;
         SpotName = spotName;
         ChannelName = channelName;
         _defaultTimeout = defaultTimeout;
@@ -76,6 +78,8 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCur
     public IZLinkBackendSpot NativeSpot { get; }
 
     public string SpotName { get; }
+
+    public string SpotNodeName { get; }
 
     public string ChannelName { get; }
 

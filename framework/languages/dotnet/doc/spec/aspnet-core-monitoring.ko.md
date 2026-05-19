@@ -27,11 +27,14 @@ framework 표면에서 함께 받을 수 있어야 한다.
 - discovery: runtime event로 노출하지 않는다. 운영 조회는 registry snapshot/query로 처리한다.
 - registry: snapshot/query만 제공한다.
 - spot: status/peer/subject snapshot만 제공한다.
+- timer handler failure: 하부 snapshot 이 아니라 framework timer loop 안에서
+  직접 관찰한다.
 
 그래서 framework 는 source 마다 표면을 달리 둔다.
 
 - socket 은 raw monitor[^raw-monitor] 기반 event 로 올린다.
 - registry / spot 은 snapshot diff[^snapshot-diff] 기반 event 로 올린다.
+- timer handler failure 는 발생 시점에 point-in-time event 로 올린다.
 - discovery 자체는 별도 runtime event 로 만들지 않는다. registry 의 topology /
   service / member snapshot 을 조회해서 현재 provider 상태를 확인한다.
 
@@ -45,6 +48,7 @@ framework 표면에서 함께 받을 수 있어야 한다.
 - 실제 callback payload 는 record struct 로 둔다.
 - socket 은 하부 monitor 를 그대로 감싼다.
 - registry / spot 은 polling[^polling] 과 snapshot diff 로 event 를 합성한다.
+- timer handler failure 는 polling interval 을 기다리지 않고 즉시 발행한다.
 - discovery 상태는 registry snapshot / query 결과로 조회한다.
 - application 은 `IZLinkRuntimeEventHandler<TEvent>` 를 구현해서 이벤트를 받는다.
 
@@ -300,6 +304,16 @@ public sealed class StageNodeMonitor
                     @event.SourceName,
                     @event.Subjects?.Count ?? 0);
                 break;
+
+            case ZLinkSpotEventKind.TimerHandlerFailed:
+            case ZLinkSpotEventKind.TimerStoppedAfterUnhandledException:
+                _logger.LogError(
+                    "spot timer failed: {Source} {Timer} {Handler} {Exception}",
+                    @event.SourceName,
+                    @event.TimerDiagnostic?.TimerName,
+                    @event.TimerDiagnostic?.HandlerType,
+                    @event.TimerDiagnostic?.ExceptionType);
+                break;
         }
 
         return ValueTask.CompletedTask;
@@ -311,10 +325,21 @@ spot 도 registry 와 같은 이유로, raw monitor 보다 snapshot diff 표면�
 맞는다. 즉 `StatusSnapshot()`, `PeersSnapshot()`, `SubjectsSnapshot()` 를
 주기적으로 읽고, 변화가 있을 때 typed event 로 올리는 방향을 기본으로 본다.
 
+timer handler failure 는 snapshot diff 가 아니다. `TimerHandlerFailed` 와
+`TimerStoppedAfterUnhandledException` 은 timer callback 에서 처리되지 않은 예외가
+발생한 시점에 즉시 발행된다. `AddSpotEvents(sourceName, interval)` 의 `interval`
+은 status / peer / subject snapshot diff 에만 적용하고, timer failure event 를
+지연시키지 않는다.
+
 `ZLinkSpotEvent` payload 에 노출되는 `ZLinkSpotNodeStatus` 와
 `ZLinkSpotNodePeerEntry` 는 첫 필드가 `ChannelName` 이다. spot node 에서 채널
 이름은 `AddSpotMesh(...)` 에 넘긴 mesh 이름(예: `"game.stage"`) 이 그대로
 들어간다.
+
+timer failure event 의 세부 정보는 `ZLinkSpotTimerDiagnostic` 에 담는다. 이 payload
+에는 `SpotRid`, `SpotName`, Entry Spot 여부, timer 이름, handler 타입, callback
+번호, fixed-rate 시간표의 tick 번호, exception 타입과 메시지가 들어간다. exception
+객체 자체는 public event payload 로 노출하지 않는다.
 
 framework 내부에서 위 두 record 를 묶는 `ZLinkSpotMonitoringSnapshot` 은
 internal 타입이다. 따라서 application 코드에서 직접 다루지 않는다.
@@ -331,8 +356,10 @@ internal 타입이다. 따라서 application 코드에서 직접 다루지 않�
 
 - socket
   - raw monitor 기반
-- registry/spot
+- registry/spot 상태
   - snapshot diff 기반
+- spot timer failure
+  - timer loop 에서 즉시 발행하는 point-in-time event
 - discovery
   - registry snapshot/query 기반 조회
 - application
@@ -350,12 +377,12 @@ internal 타입이다. 따라서 application 코드에서 직접 다루지 않�
   있게 하는 편을 기본으로 본다.
 - registry event 종류는 `StatusChanged`, `TopologyChanged`,
   `ServiceSummaryChanged` 세 가지로 고정한다.
-- spot event 종류는 `StatusChanged`, `PeersChanged`, `SubjectsChanged` 세 가지로
-  고정한다.
+- spot event 종류는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
+  `TimerHandlerFailed`, `TimerStoppedAfterUnhandledException` 다.
 - socket event payload 는 raw native enum 과 상태 코드를 함께 노출한다. 반면
-  registry / spot event 는 snapshot diff 기반의 합성 event 다. 그래서 별도의
-  native enum 필드를 두지 않는다. discovery 는 runtime event 자체가 아니므로
-  별도 event payload 를 두지 않는다.
+  registry event 와 spot 상태 event 는 snapshot diff 기반의 합성 event 다. timer
+  failure event 는 framework timer loop 에서 즉시 만든다. discovery 는 runtime
+  event 자체가 아니므로 별도 event payload 를 두지 않는다.
 
 ## 8. 회귀 테스트
 
@@ -365,6 +392,7 @@ Monitoring 문서의 항목은 다음을 확인한다.
 
 - 등록한 source 이름이 실제 runtime capability 와 맞는지
 - Registry 와 SPOT 상태 변화가 typed event 와 snapshot 으로 관찰되는지
+- timer handler failure 가 polling interval 을 기다리지 않고 typed event 로 관찰되는지
 - raw monitor event 를 그대로 외부로 새어 보내지 않는다는 정책이 public surface
   테스트에서도 유지되는지
 
@@ -375,6 +403,7 @@ Monitoring 문서의 항목은 다음을 확인한다.
 | `MonitoringIntegrationTests.RegistryMonitoring_Emits_Topology_And_ServiceSummary_When_FrameworkHostRegisters` | framework host 등록 후 topology와 service summary event가 발생한다. |
 | `MonitoringIntegrationTests.SpotMonitoring_Emits_SubjectsChanged_When_SpotIsCreated` | spot 생성 후 subject 변화 event가 발생한다. |
 | `MonitoringIntegrationTests.SpotMonitoring_Emits_PeersChanged_When_RemoteNodeAppears` | remote spot node가 나타나면 peer 변화 event가 발생한다. |
+| `SpotIntegrationTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | timer handler 예외가 `TimerHandlerFailed` event와 `ZLinkSpotTimerDiagnostic` payload로 발생한다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^handshake]: handshake는 연결 초기에 양쪽이 프로토콜 버전이나 인증 정보를 주고받아 통신 조건을 맞추는 절차다.

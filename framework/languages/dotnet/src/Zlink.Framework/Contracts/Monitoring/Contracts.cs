@@ -30,6 +30,14 @@ public interface IZLinkRuntimeEventHandler<in TEvent>
         CancellationToken cancellationToken);
 }
 
+public interface IZLinkRuntimeEventPublisher
+{
+    ValueTask PublishAsync<TEvent>(
+        TEvent @event,
+        CancellationToken cancellationToken)
+        where TEvent : IZLinkRuntimeEvent;
+}
+
 public enum ZLinkSocketEventKind
 {
     Connected = 0,
@@ -94,7 +102,20 @@ public enum ZLinkSpotEventKind
     StatusChanged = 0,
     PeersChanged = 1,
     SubjectsChanged = 2,
+    TimerHandlerFailed = 3,
+    TimerStoppedAfterUnhandledException = 4,
 }
+
+public readonly record struct ZLinkSpotTimerDiagnostic(
+    RoutingId SpotRid,
+    string SpotName,
+    bool IsEntrySpot,
+    string TimerName,
+    string HandlerType,
+    ulong DeliveryIndex,
+    ulong ScheduledIndex,
+    string ExceptionType,
+    string ExceptionMessage);
 
 public readonly record struct ZLinkSpotEvent(
     string SourceName,
@@ -102,4 +123,5 @@ public readonly record struct ZLinkSpotEvent(
     ZLinkSpotEventKind Event,
     ZLinkSpotNodeStatus? Status,
     IReadOnlyList<ZLinkSpotNodePeerEntry>? Peers,
-    IReadOnlyList<ZLinkSpotNodeSubjectEntry>? Subjects) : IZLinkRuntimeEvent;
+    IReadOnlyList<ZLinkSpotNodeSubjectEntry>? Subjects,
+    ZLinkSpotTimerDiagnostic? TimerDiagnostic = null) : IZLinkRuntimeEvent;

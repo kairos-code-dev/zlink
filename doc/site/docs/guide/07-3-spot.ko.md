@@ -1,4 +1,4 @@
-[English](07-3-spot.md) | [한국어](07-3-spot.ko.md)
+[English](./07-3-spot.md) | [한국어](./07-3-spot.ko.md)
 
 # SPOT 사용 가이드
 
@@ -390,7 +390,7 @@ for (;;) {
 ## 7. Actor로 세션 메시지 분배하기
 
 Actor 생성, Spot join/leave, 종료, STREAM session bind, C sample은
-[SPOT Actor 가이드](07-4-actor.ko.md)를 본다.
+[SPOT Actor 가이드](./07-4-actor.ko.md)를 본다.
 
 ## 8. 공개 폴러와의 관계, Spot 타이머
 
@@ -575,4 +575,4 @@ if (rc == ZLINK_CONFIG_OK) {
 
 ## 14. Actor C sample
 
-[SPOT Actor 가이드](07-4-actor.ko.md#5-actor-c-sample)를 본다.
+[SPOT Actor 가이드](./07-4-actor.ko.md#5-actor-c-sample)를 본다.

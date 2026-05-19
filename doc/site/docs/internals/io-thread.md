@@ -1,4 +1,4 @@
-English | [한국어](io-thread.ko.md)
+English | [한국어](./io-thread.ko.md)
 
 # I/O Thread Internals
 
@@ -6,7 +6,7 @@ This document describes what I/O threads do inside a zlink context,
 how they are created, and how work is distributed across them.
 
 For the high-level threading model (application threads, reaper thread,
-inter-thread communication), see [Threading Model](threading-model.md).
+inter-thread communication), see [Threading Model](./threading-model.md).
 
 ## 1. Overview
 
@@ -143,4 +143,4 @@ context-switch overhead. Profile with the
 | `core/src/core/mailbox.hpp` | Lock-free command queue with signaler |
 
 ---
-[← Threading Model](threading-model.md)
+[← Threading Model](./threading-model.md)

@@ -1,4 +1,4 @@
-[English](peer-disconnect-rid.md) | [한국어](peer-disconnect-rid.ko.md)
+[English](./peer-disconnect-rid.md) | [한국어](./peer-disconnect-rid.ko.md)
 
 # Peer Disconnect by Routing ID 내부 구조
 

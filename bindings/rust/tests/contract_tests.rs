@@ -72,6 +72,13 @@ fn message_with_size() {
 }
 
 #[test]
+fn message_allocate_writable_payload() {
+    let mut msg = Message::allocate(3).unwrap();
+    msg.data_mut().copy_from_slice(&[0x01, 0x02, 0x03]);
+    assert_eq!(msg.as_bytes(), &[0x01, 0x02, 0x03]);
+}
+
+#[test]
 fn message_as_str() {
     let msg = Message::copy_from(b"hello").unwrap();
     assert_eq!(msg.as_str().unwrap(), "hello");

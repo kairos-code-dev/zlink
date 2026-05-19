@@ -1,4 +1,4 @@
-[English](README.md) | [한국어](README.ko.md)
+[English](./README.md) | [한국어](./README.ko.md)
 
 [스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md)
 
@@ -12,11 +12,11 @@ Registry, Discovery는 각각 다른 공개 API를 가지지만, 세 문서는 �
 
 ## 문서별 역할
 
-- [spot.ko.md](spot.ko.md): SPOT publish/subscribe, channel send/request, routed
+- [spot.ko.md](./spot.ko.md): SPOT publish/subscribe, channel send/request, routed
   send/request/reply 함수 계약
-- [registry.ko.md](registry.ko.md): 어떤 `SpotNode`가 어떤 `spot_rid`를 현재 맡고
+- [registry.ko.md](./registry.ko.md): 어떤 `SpotNode`가 어떤 `spot_rid`를 현재 맡고
   있는지에 대한 최종 기준, 등록/해제, 덮어쓰기, 만료 규칙
-- [discovery.ko.md](discovery.ko.md): Registry 기준 정보를 가까운 곳에 저장해 두고
+- [discovery.ko.md](./discovery.ko.md): Registry 기준 정보를 가까운 곳에 저장해 두고
   빠르게 조회하는 방법, 갱신 방법, 대규모 환경 가정
 
 이렇게 나누는 이유는 SPOT 문서가 메시지를 보내고 받는 함수 자체에 집중하고,
@@ -102,12 +102,12 @@ Discovery에 붙은 서비스는 현재 Discovery의 `service_name`을 자동 �
 - 수동 connect/disconnect와 Discovery 자동 연결은 섞지 않습니다.
 - SPOT Node mesh와 raw socket family 자동 연결은 모두 이 서비스 범위를 공유합니다.
 - raw socket family의 역할별 자동 연결 규칙과 DEALER 정책은
-  [discovery.ko.md](discovery.ko.md)에서 정의합니다.
+  [discovery.ko.md](./discovery.ko.md)에서 정의합니다.
 
 ## 읽는 순서
 
-1. SPOT API 계약을 보려면 [spot.ko.md](spot.ko.md)
+1. SPOT API 계약을 보려면 [spot.ko.md](./spot.ko.md)
 2. `spot_rid -> owner_node_rid` 주소 관리 규칙을 보려면
-   [registry.ko.md](registry.ko.md)
+   [registry.ko.md](./registry.ko.md)
 3. Discovery가 이 결과를 어떻게 조회하고 갱신하는지 보려면
-   [discovery.ko.md](discovery.ko.md)
+   [discovery.ko.md](./discovery.ko.md)

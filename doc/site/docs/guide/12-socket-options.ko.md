@@ -1,4 +1,4 @@
-[English](12-socket-options.md) | [한국어](12-socket-options.ko.md)
+[English](./12-socket-options.md) | [한국어](./12-socket-options.ko.md)
 
 # 소켓 옵션 상세 가이드
 
@@ -559,4 +559,4 @@ zlink_socket_get_channel_name(socket, buf, sizeof(buf), &len);
 소켓을 Discovery에 등록한 이후에는 채널 이름 변경이 지원되지 않는다.
 
 ---
-[← 스레드 안전성](11-thread-safety.ko.md)
+[← 스레드 안전성](./11-thread-safety.ko.md)

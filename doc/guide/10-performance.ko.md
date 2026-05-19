@@ -1,4 +1,4 @@
-[English](10-performance.md) | [한국어](10-performance.ko.md)
+[English](./10-performance.md) | [한국어](./10-performance.ko.md)
 
 # 성능 특성 및 튜닝 가이드
 
@@ -315,7 +315,7 @@ void on_message(const zlink_routing_id_t *rid,
 ```
 
 > 스레드 안전 작업 큐 패턴은
-> [스레드 안전성 가이드](11-thread-safety.ko.md) 섹션 6을 참고.
+> [스레드 안전성 가이드](./11-thread-safety.ko.md) 섹션 6을 참고.
 
 ### 4.4 콜백 vs 풀 수신 모드
 
@@ -522,4 +522,4 @@ void on_pong(const zlink_routing_id_t *source_rid,
 > Speculative I/O, Gather Write 등 내부 최적화 메커니즘의 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
 
 ---
-[← Message API](09-message-api.ko.md) | [스레드 안전성 →](11-thread-safety.ko.md)
+[← Message API](./09-message-api.ko.md) | [스레드 안전성 →](./11-thread-safety.ko.md)

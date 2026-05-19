@@ -1,4 +1,4 @@
-English | [한국어](01-overview.ko.md)
+English | [한국어](./01-overview.ko.md)
 
 # zlink Overview and Getting Started
 
@@ -157,10 +157,10 @@ int main(void) {
 
 ## 7. Next Steps
 
-- [Core API Details](02-core-api.md)
-- [Socket Pattern Usage](03-0-socket-patterns.md)
-- [Transport Guide](04-transports.md)
-- [TLS Security Configuration](05-tls-security.md)
+- [Core API Details](./02-core-api.md)
+- [Socket Pattern Usage](./03-0-socket-patterns.md)
+- [Transport Guide](./04-transports.md)
+- [TLS Security Configuration](./05-tls-security.md)
 
 ---
-[Core API →](02-core-api.md)
+[Core API →](./02-core-api.md)

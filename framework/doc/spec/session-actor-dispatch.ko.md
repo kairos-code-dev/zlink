@@ -306,7 +306,7 @@ stream session에서 actor dispatch로 넘어갈 때 framework는 아래 규칙�
 기본 metadata policy는 application metadata를 전달하지 않는다. sample에서
 trace id 같은 값을 보여 주려면 framework 등록 단계에서 명시 허용 목록을 둔다.
 이 설정은 handler route를 고르는 데 쓰지 않는다. message dispatch key는 packet name과
-message kind이고, route resolver 입력은 `actorId` 또는 `spotId`로 제한한다.
+message kind이고, route resolver 입력은 `actorId` 또는 `spotRid`로 제한한다.
 
 구체 .NET 시그니처(`ZLinkMessageMetadata`, `IZLinkMessageMetadataPolicy`,
 `options.ConfigureMetadata(...)`)는
@@ -388,7 +388,7 @@ target으로 바꾸는 경계를 제공하지 않기 때문이다.
 
 session server가 client packet을 play server로 보내려면 `actorId` 또는 request payload의
 domain key에서 actor node `RoutingId`를 찾아야 한다. actor가 user Spot에 들어갈 때는
-`spotName` 또는 `spotId`에서 target Spot 위치를 찾아야 한다.
+`spotName` 또는 `spotRid`에서 target Spot 위치를 찾아야 한다.
 
 이 해석은 application 정책이지만, resolver 입력은 좁게 유지해야 한다. resolver가
 metadata나 raw message를 받으면 transport 위치 조회가 작은 dispatcher로 변한다.
@@ -401,12 +401,12 @@ framework는 resolver가 어떤 저장소를 쓰는지 알지 않는다. 공개 
 
 - **actor route resolver** -- `actorId` → "이 actor가 사는 actor/play node와 routed channel".
   routing result에는 `RouterChannelId`와 target node 식별값이 들어간다.
-- **spot route resolver** -- `spotName` 또는 `spotId` → "이 user Spot이 있는 node와
-  spot id". actor의 `JoinSpot(...)` 같은 표면에서 transport 위치값을 숨긴다.
+- **spot route resolver** -- `spotName` 또는 `spotRid` → "이 user Spot이 있는 node와
+  spot rid". actor의 `JoinSpot(...)` 같은 표면에서 transport 위치값을 숨긴다.
 
 actor resolver 입력은 `actorId` 하나로 유지한다. spot resolver 입력은 spot domain key
 하나로 유지한다. metadata, packet name, raw message, application payload는 resolver에
-넘기지 않는다. game 단위 배치가 필요하면 `gameId` 자체를 actor id 또는 spot id로
+넘기지 않는다. game 단위 배치가 필요하면 `gameId` 자체를 actor id 또는 spot rid로
 설계하거나, session의 domain placement code에서 actor/spot 대상을 먼저 결정한다.
 resolver가 raw message 객체나 packet switch를 직접 보지 않게 해야 resolver가 작은
 dispatcher가 되지 않는다.
@@ -775,22 +775,22 @@ discovery member, local routed channel state를 보여 주는 역할만 한다. 
 
 ## 14. SPOT direct target API 정책
 
-actor route와 같은 문제가 `Spot` 호출에도 있다. 사용자가 `SpotId`만으로는 메시지를
+actor route와 같은 문제가 `Spot` 호출에도 있다. 사용자가 `SpotRid`만으로는 메시지를
 보낼 수 없고 `SpotNodeId`나 node `RoutingId`까지 알아야 한다면, transport 위치 정보가
 application 코드에 새어 나온다.
 
-framework public surface는 spot name 또는 spot id 기반 호출이 node 경계를 넘을 때
+framework public surface는 spot name 또는 spot rid 기반 호출이 node 경계를 넘을 때
 spot route resolver를 사용한다. session-gateway sample에서 game room이 같은 Play
 서버 안에만 있으면 resolver 호출이 드러나지 않을 수 있지만, 문서의 cross-node 계약은
 spot resolver를 포함해야 한다. 멀티게임 sample의 game room은 도메인 핵심 실행 문맥이므로
 Play 서버 안에서는 `IZLinkSpotManager`로 room SPOT을 만든다. client는 match id나 room
-name을 지정하지 않는다. `MatchId`는 생성된 room의 `SpotId` hex이며, actor가 join한
+name을 지정하지 않는다. `MatchId`는 생성된 room의 `SpotRid` hex이며, actor가 join한
 room 안에서 `PlaceMarkReq`가 처리된다. registry metadata는 actor play route sample,
 spot route sample, actor-session binding 보조 상태를 각각 분리해서 관리해야 한다.
 
-`SpotId` 기반 public 호출에서 resolver 입력은 request 객체가 아니라
-`ZLinkSpotId spotId` 하나로 제한해야 한다. metadata가 필요해 보인다면 resolver가 route
-조회 이외의 정책을 함께 하려는 신호다. 그런 정책은 spot id를 정하는 caller나 domain
+`SpotRid` 기반 public 호출에서 resolver 입력은 request 객체가 아니라
+`RoutingId spotRid` 하나로 제한해야 한다. metadata가 필요해 보인다면 resolver가 route
+조회 이외의 정책을 함께 하려는 신호다. 그런 정책은 spot rid를 정하는 caller나 domain
 placement code에 둔다.
 
 direct target API는 public application 표면에서 기본으로 노출하지 않는다.
@@ -798,14 +798,14 @@ direct target API는 public application 표면에서 기본으로 노출하지 �
 ```csharp
 // 일반 application 표면으로 권장하지 않는다.
 await spotClient
-    .SendTo(spotNodeRid, spotId, message)
+    .SendTo(spotNodeRid, spotRid, message)
     .Submit(cancellationToken);
 ```
 
 `SpotNodeId`나 `RoutingId`를 알아야만 호출할 수 있는 API가 public 문서와 sample에
 함께 있으면 두 가지 사용법이 경쟁한다. 그러면 사용자는 resolver를 써야 하는지,
 직접 target을 넘겨야 하는지 계속 판단해야 한다. framework의 사용성 목표가 transport
-위치값 노출 제거라면, application public API는 `SpotId` 기반으로 통일해야 한다.
+위치값 노출 제거라면, application public API는 `SpotRid` 기반으로 통일해야 한다.
 
 향후 구현 내부에는 resolved route를 받는 transport helper가 필요할 수 있다. 그 helper는
 public application API가 아니라 runtime/internal service로 두며, 정식 public 계약에

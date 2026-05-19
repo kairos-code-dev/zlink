@@ -71,7 +71,7 @@
   를 호출한다.
 - 공통 supervisor는 guide / master plan / logs / gate label만 주입받는 제너릭
   루프이고, bindings 전용 정책은 이 guide와 메인 플랜이 결정한다.
-- 기본 로그 디렉터리는 [`logs/`](./logs/) 이다.
+- 기본 로그 디렉터리는 [`logs/`](./logs) 이다.
 - 실행 wrapper 자체는 별도 `lock`을 두지 않는다.
   같은 작업을 병렬 실행해야 하면 `--logs-dir` 또는 `--gate-label`을 분리해서
   상태 파일 충돌을 피한다.

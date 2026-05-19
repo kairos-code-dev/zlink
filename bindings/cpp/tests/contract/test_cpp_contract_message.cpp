@@ -28,6 +28,21 @@ void test_bytes_roundtrip ()
     assert (out == bytes);
 }
 
+void test_allocate_exposes_writable_owned_payload ()
+{
+    zlink::message_t msg = zlink::message_t::allocate (3);
+    assert (msg.valid ());
+    assert (msg.size () == 3);
+
+    std::span<std::byte> bytes = msg.bytes ();
+    bytes[0] = std::byte {0x01};
+    bytes[1] = std::byte {0x02};
+    bytes[2] = std::byte {0x03};
+
+    const std::vector<uint8_t> out = msg.to_bytes ();
+    assert ((out == std::vector<uint8_t> {0x01, 0x02, 0x03}));
+}
+
 void test_copy_and_move_preserve_payload ()
 {
     const std::string payload (1024, 'c');
@@ -85,6 +100,7 @@ int main ()
 {
     test_string_roundtrip ();
     test_bytes_roundtrip ();
+    test_allocate_exposes_writable_owned_payload ();
     test_copy_and_move_preserve_payload ();
     test_diagnostic_surface_uses_canonical_names ();
     test_routing_id_from_string_parses_hex ();

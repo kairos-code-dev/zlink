@@ -651,6 +651,43 @@ terminate_pid() {
   wait "${pid}" 2>/dev/null || true
 }
 
+wait_for_pid_exit_zero() {
+  local pid="$1"
+  local timeout_seconds="$2"
+  local label="${3:-process}"
+  if ! wait_for_pid "${pid}" "${timeout_seconds}"; then
+    echo "${label} did not exit within ${timeout_seconds}s" >&2
+    terminate_pid "${pid}"
+    return 124
+  fi
+
+  local rc=0
+  wait "${pid}" 2>/dev/null || rc=$?
+  if [[ "${rc}" -ne 0 ]]; then
+    echo "${label} exited with status ${rc}" >&2
+    return "${rc}"
+  fi
+  return 0
+}
+
+terminate_running_pid_or_fail_if_exited() {
+  local pid="$1"
+  local timeout_seconds="$2"
+  local label="${3:-process}"
+  if ! wait_for_pid "${pid}" "${timeout_seconds}"; then
+    terminate_pid "${pid}"
+    return 0
+  fi
+
+  local rc=0
+  wait "${pid}" 2>/dev/null || rc=$?
+  if [[ "${rc}" -ne 0 ]]; then
+    echo "${label} exited with status ${rc}" >&2
+    return "${rc}"
+  fi
+  return 0
+}
+
 shutdown_timeout_seconds() {
   printf '%s' "$(( (SERVER_SHUTDOWN_TIMEOUT_MS + 999) / 1000 ))"
 }
@@ -1715,14 +1752,12 @@ run_spot_clean_latency_pass() {
   [[ -n "${cl_client_fd}" ]] && write_control_line "${cl_client_fd}" 'STOP\n'
   [[ -n "${cl_server_fd}" ]] && write_control_line "${cl_server_fd}" 'STOP\n'
   if [[ "${cl_client_pid}" -ne 0 ]]; then
-    wait_for_pid "${cl_client_pid}" "$(shutdown_timeout_seconds)" \
-      || terminate_pid "${cl_client_pid}"
-    wait "${cl_client_pid}" 2>/dev/null || true
+    wait_for_pid_exit_zero "${cl_client_pid}" "$(shutdown_timeout_seconds)" \
+      "SPOT clean latency client" || rc=1
   fi
   if [[ "${cl_server_pid}" -ne 0 ]]; then
-    wait_for_pid "${cl_server_pid}" "$(shutdown_timeout_seconds)" \
-      || terminate_pid "${cl_server_pid}"
-    wait "${cl_server_pid}" 2>/dev/null || true
+    wait_for_pid_exit_zero "${cl_server_pid}" "$(shutdown_timeout_seconds)" \
+      "SPOT clean latency server" || rc=1
   fi
   [[ -n "${cl_client_fd}" ]] && exec {cl_client_fd}>&-
   [[ -n "${cl_server_fd}" ]] && exec {cl_server_fd}>&-
@@ -1945,15 +1980,22 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         if [[ "${pattern}" == "MULTI_STREAM" ]]; then
           if run_external_stream_client "${server_endpoint}"; then
             write_control_line "${server_control_fd}" 'STOP\n'
-            if ! wait_for_pid "${server_pid}" "$(shutdown_timeout_seconds)"; then
-              terminate_pid "${server_pid}"
-            else
-              wait "${server_pid}" || true
+            server_shutdown_ok=1
+            if ! wait_for_pid_exit_zero "${server_pid}" "$(shutdown_timeout_seconds)" "${pattern} server"; then
+              server_shutdown_ok=0
             fi
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
               unsupported_count=$((unsupported_count + 1))
               expected_result_lines=$((expected_result_lines - 5))
+              exec {server_control_fd}>&-
+              continue
+            fi
+            if [[ "${server_shutdown_ok}" -ne 1 ]]; then
+              cat "${server_log}" >&2 || true
+              cat "${client_log}" >&2 || true
+              record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "process_exit_nonzero"
+              status=1
               exec {server_control_fd}>&-
               continue
             fi
@@ -2096,20 +2138,28 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
             continue
           fi
 
-          if ! wait_for_pid "${client_pid}" "$(shutdown_timeout_seconds)"; then
-            terminate_pid "${client_pid}"
-          else
-            wait "${client_pid}" || true
+          write_control_line "${server_control_fd}" 'STOP\n'
+          write_control_line "${client_control_fd}" 'STOP\n'
+          process_shutdown_ok=1
+          if ! wait_for_pid_exit_zero "${client_pid}" "$(shutdown_timeout_seconds)" "${pattern} client"; then
+            process_shutdown_ok=0
           fi
-          if ! wait_for_pid "${server_pid}" "$(shutdown_timeout_seconds)"; then
-            terminate_pid "${server_pid}"
-          else
-            wait "${server_pid}" || true
+          if ! wait_for_pid_exit_zero "${server_pid}" "$(shutdown_timeout_seconds)" "${pattern} server"; then
+            process_shutdown_ok=0
           fi
           if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
              print_line "${unsupported_line}"
               unsupported_count=$((unsupported_count + 1))
               expected_result_lines=$((expected_result_lines - 5))
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
+            continue
+          fi
+          if [[ "${process_shutdown_ok}" -ne 1 ]]; then
+            cat "${server_log}" >&2 || true
+            cat "${client_log}" >&2 || true
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "process_exit_nonzero"
+            status=1
             exec {server_control_fd}>&-
             exec {client_control_fd}>&-
             continue
@@ -2185,20 +2235,26 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
 
           write_control_line "${server_control_fd}" 'STOP\n'
           write_control_line "${client_control_fd}" 'STOP\n'
-          if ! wait_for_pid "${client_pid}" "$(shutdown_timeout_seconds)"; then
-            terminate_pid "${client_pid}"
-          else
-            wait "${client_pid}" || true
+          process_shutdown_ok=1
+          if ! wait_for_pid_exit_zero "${client_pid}" "$(shutdown_timeout_seconds)" "${pattern} client"; then
+            process_shutdown_ok=0
           fi
-          if ! wait_for_pid "${server_pid}" "$(shutdown_timeout_seconds)"; then
-            terminate_pid "${server_pid}"
-          else
-            wait "${server_pid}" || true
+          if ! wait_for_pid_exit_zero "${server_pid}" "$(shutdown_timeout_seconds)" "${pattern} server"; then
+            process_shutdown_ok=0
           fi
           if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
              print_line "${unsupported_line}"
               unsupported_count=$((unsupported_count + 1))
               expected_result_lines=$((expected_result_lines - 5))
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
+            continue
+          fi
+          if [[ "${process_shutdown_ok}" -ne 1 ]]; then
+            cat "${server_log}" >&2 || true
+            cat "${client_log}" >&2 || true
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "process_exit_nonzero"
+            status=1
             exec {server_control_fd}>&-
             exec {client_control_fd}>&-
             continue
@@ -2214,15 +2270,22 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           exec {client_control_fd}>&-
         else
           if run_multi_process "client" "${client_log}" "${server_endpoint}" "" 0; then
-            if ! wait_for_pid "${server_pid}" "$(shutdown_timeout_seconds)"; then
-              terminate_pid "${server_pid}"
-            else
-              wait "${server_pid}" || true
+            server_shutdown_ok=1
+            if ! terminate_running_pid_or_fail_if_exited \
+                "${server_pid}" "$(shutdown_timeout_seconds)" "${pattern} server"; then
+              server_shutdown_ok=0
             fi
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
            print_line "${unsupported_line}"
             unsupported_count=$((unsupported_count + 1))
             expected_result_lines=$((expected_result_lines - 5))
+              continue
+            fi
+            if [[ "${server_shutdown_ok}" -ne 1 ]]; then
+              cat "${server_log}" >&2 || true
+              cat "${client_log}" >&2 || true
+              record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "process_exit_nonzero"
+              status=1
               continue
             fi
             if ! extracted="$(extract_results_from_logs "${client_log}" "${server_log}" "${pattern}" "${transport}" "${size}")"; then

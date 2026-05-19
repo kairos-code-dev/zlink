@@ -12,7 +12,7 @@ Connector 계층은 core socket API를 그대로 노출하는 바인딩이 아�
 
 | 문서 | 내용 |
 |------|------|
-| [dotnet-stream-connector-lifecycle.ko.md](dotnet-stream-connector-lifecycle.ko.md) | .NET Stream Connector의 생성, 연결, heartbeat, reconnect, 종료 계약 초안. reconnect 알고리즘은 언어별 Connector 공통 기준으로 사용한다 |
+| [dotnet-stream-connector-lifecycle.ko.md](./dotnet-stream-connector-lifecycle.ko.md) | .NET Stream Connector의 생성, 연결, heartbeat, reconnect, 종료 계약 초안. reconnect 알고리즘은 언어별 Connector 공통 기준으로 사용한다 |
 
 ## 작성 기준
 

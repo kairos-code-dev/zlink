@@ -1,4 +1,4 @@
-[English](03-6-proxy.md) | [한국어](03-6-proxy.ko.md)
+[English](./03-6-proxy.md) | [한국어](./03-6-proxy.ko.md)
 
 # 프록시 패턴
 
@@ -195,4 +195,4 @@ flowchart LR
 | **모니터링** | capture 소켓으로 통과 메시지 기록 |
 
 ---
-[← STREAM](03-5-stream.ko.md) | [Transport →](04-transports.ko.md)
+[← STREAM](./03-5-stream.ko.md) | [Transport →](./04-transports.ko.md)

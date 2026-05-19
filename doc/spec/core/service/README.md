@@ -1,4 +1,4 @@
-[English](README.md) | [한국어](README.ko.md)
+[English](./README.md) | [한국어](./README.ko.md)
 
 [Spec Index](../../README.md) · [Core Index](../README.md)
 
@@ -13,11 +13,11 @@ how a caller can start from only `spot_rid` and obtain the destination
 
 ## Document Roles
 
-- [spot.md](spot.md): SPOT publish/subscribe, channel send/request, and routed
+- [spot.md](./spot.md): SPOT publish/subscribe, channel send/request, and routed
   send/request/reply function contracts
-- [registry.md](registry.md): the final rule for which `SpotNode` currently owns
+- [registry.md](./registry.md): the final rule for which `SpotNode` currently owns
   a `spot_rid`, plus register/unregister, overwrite, and expiration rules
-- [discovery.md](discovery.md): how cached lookup works close to the caller,
+- [discovery.md](./discovery.md): how cached lookup works close to the caller,
   how it refreshes, and what scale assumptions it must support
 
 This split keeps the SPOT document focused on message send/receive contracts,
@@ -106,11 +106,11 @@ boundary.
 - SPOT Node mesh and raw socket family auto-connect both share this service
   boundary.
 - The role-specific raw socket auto-connect rules, including DEALER policy, are
-  defined in [discovery.md](discovery.md).
+  defined in [discovery.md](./discovery.md).
 
 ## Reading Order
 
-1. For the SPOT API contract, read [spot.md](spot.md)
+1. For the SPOT API contract, read [spot.md](./spot.md)
 2. For `spot_rid -> owner_node_rid` ownership rules, read
-   [registry.md](registry.md)
-3. For ownership cache and resolve flow, read [discovery.md](discovery.md)
+   [registry.md](./registry.md)
+3. For ownership cache and resolve flow, read [discovery.md](./discovery.md)

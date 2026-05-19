@@ -1,13 +1,13 @@
-[English](README.md) | [한국어](README.ko.md)
+[English](./README.md) | [한국어](./README.ko.md)
 
 # zlink
 
 > [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 메시징 라이브러리 — 핵심 패턴에 집중하고, Boost.Asio 기반 I/O와 개발 친화적 API를 제공합니다.
 
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](./LICENSE)
 
-[공식 사이트](https://zlink.systems/) · [사용자 가이드](doc/guide/01-overview.ko.md) · [스펙](doc/spec/README.ko.md) · [바인딩](doc/bindings/overview.ko.md) · [내부 구조](doc/internals/architecture.ko.md) · [빌드](doc/building/build-guide.ko.md)
+[공식 사이트](https://zlink.systems/) · [사용자 가이드](./doc/guide/01-overview.ko.md) · [스펙](./doc/spec/README.ko.md) · [바인딩](doc/bindings/overview.ko.md) · [내부 구조](./doc/internals/architecture.ko.md) · [빌드](./doc/building/build-guide.ko.md)
 
 ---
 
@@ -98,7 +98,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 - **Reaper Thread**: 종료된 소켓/세션의 자원 정리
 - Thread 간 통신은 Lock-free YPipe + Mailbox 시스템으로 처리
 
-> 상세한 내부 아키텍처는 [Architecture Document](doc/internals/architecture.ko.md)를 참고하세요.
+> 상세한 내부 아키텍처는 [Architecture Document](./doc/internals/architecture.ko.md)를 참고하세요.
 
 ---
 
@@ -121,9 +121,9 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 
 | 서비스 | 설명 | 가이드 |
 |--------|------|:------:|
-| **Discovery** | Registry 클러스터 HA, Heartbeat 기반 생존 확인, Client-side 서비스 캐시 | [Discovery](doc/guide/07-1-discovery.ko.md) |
+| **Discovery** | Registry 클러스터 HA, Heartbeat 기반 생존 확인, Client-side 서비스 캐시 | [Discovery](./doc/guide/07-1-discovery.ko.md) |
 | **Gateway** | Discovery 기반 위치투명 요청/응답, 자동 로드밸런싱, Thread-safe 전송 | [Gateway](doc/guide/07-2-gateway.ko.md) |
-| **SPOT** | 위치투명 토픽 PUB/SUB, Discovery 기반 자동 Mesh 구성 | [SPOT](doc/guide/07-3-spot.ko.md) |
+| **SPOT** | 위치투명 토픽 PUB/SUB, Discovery 기반 자동 Mesh 구성 | [SPOT](./doc/guide/07-3-spot.ko.md) |
 
 > 전체 기능 로드맵과 의존성 그래프는 [Feature Roadmap](doc/plan/feature-roadmap.ko.md)을 참고하세요.
 
@@ -133,8 +133,8 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 
 | 기능 | 설명 | 가이드 |
 |------|------|:------:|
-| **Routing ID** | `zlink_routing_id_t` 표준 타입, own 16B UUID / peer 4B uint32 | [Routing ID](doc/guide/08-routing-id.ko.md) |
-| **모니터링** | Routing-ID 기반 이벤트 식별, Polling 방식 모니터 API | [Monitoring](doc/guide/06-monitoring.ko.md) |
+| **Routing ID** | `zlink_routing_id_t` 표준 타입, own 16B UUID / peer 4B uint32 | [Routing ID](./doc/guide/08-routing-id.ko.md) |
+| **모니터링** | Routing-ID 기반 이벤트 식별, Polling 방식 모니터 API | [Monitoring](./doc/guide/06-monitoring.ko.md) |
 
 ---
 
@@ -231,7 +231,7 @@ libzmq 대비 64바이트 메시지 TCP 처리량 비교:
 | ROUTER↔ROUTER (poll) | 4,405 Kmsg/s | 5,249 Kmsg/s | **+19.2%** |
 | STREAM | 1,786 Kmsg/s | 5,216 Kmsg/s | **+192%** |
 
-> 상세 분석은 [성능 리포트](doc/report/benchmark-2026-02-11.ko.md) 및 [성능 가이드](doc/guide/10-performance.ko.md)를 참고하세요.
+> 상세 분석은 [성능 리포트](doc/report/benchmark-2026-02-11.ko.md) 및 [성능 가이드](./doc/guide/10-performance.ko.md)를 참고하세요.
 
 ---
 
@@ -239,21 +239,21 @@ libzmq 대비 64바이트 메시지 TCP 처리량 비교:
 
 | 문서 | 설명 |
 |------|------|
-| [문서 네비게이션](doc/README.ko.md) | 전체 문서 목차 및 독자별 경로 |
-| [라이브러리 스펙](doc/spec/README.ko.md) | zlink 라이브러리 스펙 (코어 + 바인딩) |
-| [사용자 가이드](doc/guide/01-overview.ko.md) | zlink API 가이드 (12편) |
+| [문서 네비게이션](./doc/README.ko.md) | 전체 문서 목차 및 독자별 경로 |
+| [라이브러리 스펙](./doc/spec/README.ko.md) | zlink 라이브러리 스펙 (코어 + 바인딩) |
+| [사용자 가이드](./doc/guide/01-overview.ko.md) | zlink API 가이드 (12편) |
 | [바인딩 가이드](doc/bindings/overview.ko.md) | C++/Java/.NET/Node.js/Python 바인딩 |
-| [내부 아키텍처](doc/internals/architecture.ko.md) | 시스템 아키텍처 및 내부 구현 |
-| [빌드 가이드](doc/building/build-guide.ko.md) | 빌드, 테스트, 패키징 |
+| [내부 아키텍처](./doc/internals/architecture.ko.md) | 시스템 아키텍처 및 내부 구현 |
+| [빌드 가이드](./doc/building/build-guide.ko.md) | 빌드, 테스트, 패키징 |
 | [Feature Roadmap](doc/plan/feature-roadmap.ko.md) | 기능 로드맵과 의존성 그래프 |
 
 ---
 
 ## 라이선스
 
-[Mozilla Public License 2.0](LICENSE)
+[Mozilla Public License 2.0](./LICENSE)
 
 서드파티 구성요소 및 바이너리 재배포 관련 고지는
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 참고하세요.
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)를 참고하세요.
 
 [libzmq](https://github.com/zeromq/libzmq) 기반 — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.

@@ -33,8 +33,14 @@ public sealed class DocumentationRegressionTests
     public void DotNetDraftDocuments_AllExposeRegressionTestSection()
     {
         var directory = GetDotNetDocRoot();
+        // Narrative guide docs (guide/*.ko.md, not guide/samples/) are onboarding
+        // prose, not contract docs: they are exempt from the regression-section
+        // requirement. Samples remain contract-bound and stay in the strict set.
+        var guideRoot = Path.Combine(directory, "guide");
         var actualDocuments = Directory
             .EnumerateFiles(directory, "*.ko.md", SearchOption.AllDirectories)
+            .Where(path => !string.Equals(
+                Path.GetDirectoryName(path), guideRoot, StringComparison.Ordinal))
             .Select(Path.GetFileName)
             .OfType<string>()
             .Order(StringComparer.Ordinal)
@@ -58,6 +64,36 @@ public sealed class DocumentationRegressionTests
                 .GroupBy(static reference => reference, StringComparer.Ordinal)
                 .Where(static group => group.Count() > 1)
                 .Select(static group => group.Key));
+        }
+    }
+
+    private static readonly string[] GuideNarrativeDocuments =
+    [
+        "01-overview.ko.md",
+        "02-getting-started.ko.md",
+        "03-concepts.ko.md",
+        "04-feature-map.ko.md",
+    ];
+
+    [Fact]
+    public void DotNetGuideNarrative_DocumentsExist_AndAreWellFormed()
+    {
+        var guideRoot = Path.Combine(GetDotNetDocRoot(), "guide");
+
+        var actual = Directory
+            .EnumerateFiles(guideRoot, "*.ko.md", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(GuideNarrativeDocuments.Order(StringComparer.Ordinal), actual);
+
+        foreach (var document in GuideNarrativeDocuments)
+        {
+            var text = File.ReadAllText(Path.Combine(guideRoot, document));
+            Assert.Contains("<!-- framework-adapter-nav:start -->", text, StringComparison.Ordinal);
+            Assert.Matches(@"(?m)^# .+", text);
         }
     }
 

@@ -1,7 +1,7 @@
-[English](router.md) | [한국어](router.ko.md)
+[English](./router.md) | [한국어](./router.ko.md)
 
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md)
+[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](./README.ko.md)
 
 # 소켓 -- ROUTER
 

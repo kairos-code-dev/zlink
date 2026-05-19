@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Channel Messaging Samples](./channel-messaging-samples.ko.md) | [다음: ZLink Framework .NET STREAM Samples](./stream-samples.ko.md)
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Channel Messaging Samples](./channel-messaging-samples.ko.md) | [다음: ZLink Framework .NET STREAM Samples](./stream-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../../doc/spec/draft/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [SPOT](../spec/aspnet-core-spot.ko.md) | [Stage wrapper](../spec/stage-wrapper-on-spot.ko.md) | [channel](../spec/aspnet-core-channel-messaging.ko.md)
+[.NET 묶음](../../README.ko.md) | [인터페이스](../../spec/handler-interfaces.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Stage wrapper](../../spec/stage-wrapper-on-spot.ko.md) | [channel](../../spec/aspnet-core-channel-messaging.ko.md)
 
 # ZLink Framework .NET SPOT Samples
 
@@ -33,7 +33,7 @@
 - 3.2.1 의 actor[^actor] / session[^session] membership 예시는 stage wrapper
   같은 상위 확장 아이디어를 메모해 둔 부분이다. 아직 framework core 의 public
   surface 는 아니다.
-- `targetRid + spotId` 형태의 direct routed[^direct-routed] 호출은 framework
+- `targetRid + spotRid` 형태의 direct routed[^direct-routed] 호출은 framework
   public surface 에 포함하지 않는다. spot name / id 기반 호출은 모두
   `IZLinkSpotClient` 가 resolver[^resolver] 를 거쳐 처리한다.
 
@@ -42,7 +42,7 @@
 이 절은 샘플이 전제로 삼는 인터페이스 초안을 한 자리에 모아 둔다. 아래는
 샘플 구현이 의존하는 최소한의 표면 정의다.
 
-> **주의**: 아래 정의는 [handler-interfaces.ko.md](../spec/handler-interfaces.ko.md)의
+> **주의**: 아래 정의는 [handler-interfaces.ko.md](../../spec/handler-interfaces.ko.md)의
 > 해당 섹션과 동일하다. 인터페이스가 바뀌면 두 문서를 함께 갱신해야 하며,
 > 최신 계약은 언제나 `handler-interfaces.ko.md`를 기준으로 본다.
 
@@ -68,14 +68,14 @@ public interface IZLinkSpot
     }
 }
 
-public readonly record struct ZLinkSpotId(string Value)
+public readonly record struct RoutingId(string Value)
 {
     public override string ToString() => Value;
 }
 
 public interface IZLinkSpotContext
 {
-    ZLinkSpotId SpotId { get; }
+    RoutingId SpotRid { get; }
     RoutingId NodeRid { get; }
     string SpotName { get; }
 
@@ -151,7 +151,7 @@ public interface IZLinkSpotContext
 }
 
 public interface IZLinkSpotPacketHandler<TSpot, in TMessage>
-    where TSpot : IZLinkSpot
+    where TSpot : class
 {
     ValueTask HandleAsync(
         TSpot spot,
@@ -160,7 +160,7 @@ public interface IZLinkSpotPacketHandler<TSpot, in TMessage>
 }
 
 public interface IZLinkSpotRequestHandler<TSpot, in TRequest, TReply>
-    where TSpot : IZLinkSpot
+    where TSpot : class
 {
     ValueTask<TReply> HandleAsync(
         TSpot spot,
@@ -169,7 +169,7 @@ public interface IZLinkSpotRequestHandler<TSpot, in TRequest, TReply>
 }
 
 public interface IZLinkSpotSubscriptionHandler<TSpot, in TEvent>
-    where TSpot : IZLinkSpot
+    where TSpot : class
 {
     ValueTask HandleAsync(
         TSpot spot,
@@ -178,7 +178,7 @@ public interface IZLinkSpotSubscriptionHandler<TSpot, in TEvent>
 }
 
 public interface IZLinkSpotTimerHandler<TSpot>
-    where TSpot : IZLinkSpot
+    where TSpot : class
 {
     ValueTask HandleAsync(
         TSpot spot,
@@ -200,12 +200,12 @@ public sealed class Timer : IDisposable, IAsyncDisposable
 }
 
 public readonly record struct ZLinkSpotCreateResult(
-    ZLinkSpotId SpotId,
+    RoutingId SpotRid,
     string SpotName,
     bool Created);
 
 public readonly record struct ZLinkSpotInfo(
-    ZLinkSpotId SpotId,
+    RoutingId SpotRid,
     string SpotName);
 
 // IZLinkSpotManager is defined in handler-interfaces.ko.md section 6.3.
@@ -228,7 +228,7 @@ public interface IZLinkSpotClient
         TMessage message);
 
     IZLinkSendCall SendSpot<TMessage>(
-        ZLinkSpotId spotId,
+        RoutingId spotRid,
         TMessage message);
 
     IZLinkRequestCall RequestSpot<TMessage>(
@@ -236,7 +236,7 @@ public interface IZLinkSpotClient
         TMessage request);
 
     IZLinkRequestCall RequestSpot<TMessage>(
-        ZLinkSpotId spotId,
+        RoutingId spotRid,
         TMessage request);
 
     IZLinkSendCall SendChannel<TMessage>(
@@ -644,11 +644,11 @@ app.MapPost("/stage/create", async (
     CancellationToken cancellationToken) =>
 {
     var created = await spotManager.CreateAsync("stage", cancellationToken);
-    var spotInfo = await spotManager.GetAsync(created.SpotId, cancellationToken);
+    var spotInfo = await spotManager.GetAsync(created.SpotRid, cancellationToken);
 
     return Results.Ok(new
     {
-        created.SpotId,
+        created.SpotRid,
         created.SpotName,
         created.Created,
         LookupName = spotInfo?.SpotName
@@ -657,7 +657,7 @@ app.MapPost("/stage/create", async (
 ```
 
 여기서 `SpotName` 은 생성 결과와 조회 표면 양쪽 모두에서 다시 보인다. 덕분에
-운영 코드가 `spotId` 만 들고 있어도, 그 인스턴스가 어떤 등록 이름으로 만들어진
+운영 코드가 `spotRid` 만 들고 있어도, 그 인스턴스가 어떤 등록 이름으로 만들어진
 것인지 다시 확인할 수 있다.
 
 ### 3.1.3 outbound-only SPOT-aware 앱
@@ -704,7 +704,7 @@ app.MapPost("/stage/query", async (
     var reply = await client
         .Request(
             "orders",
-            new SampleGetStateRequest { SpotId = request.StageRid })
+            new SampleGetStateRequest { SpotRid = request.StageRid })
         .SubmitAsync<SampleGetStateReply>(cancellationToken);
 
     return Results.Ok(reply);
@@ -777,7 +777,7 @@ app.MapPost("/stage/publish", async (
             "sample.state.updated",
             new SampleStateUpdatedEvent
             {
-                SpotId = request.StageRid,
+                SpotRid = request.StageRid,
                 ActorCount = request.UserCount,
                 ConnectedSessionCount = request.UserCount
             })
@@ -1020,7 +1020,7 @@ public sealed class SampleSpot(
     public IZLinkSpotContext Context { get; } = context;
     public IZLinkSpotActorMembership Membership { get; } = membership;
 
-    public string RoomId => Context.SpotId.ToString();
+    public string RoomId => Context.SpotRid.ToString();
 
     public int ActorCount => _actors.Count;
 
@@ -1126,7 +1126,7 @@ public sealed class SampleSpot(
             "sample.state.updated",
             new SampleStateUpdatedEvent
             {
-                SpotId = Context.SpotId.ToString(),
+                SpotRid = Context.SpotRid.ToString(),
                 ActorCount = ActorCount,
                 ConnectedSessionCount = ConnectedSessionCount
             })
@@ -1554,13 +1554,13 @@ framework 는 decode 된 header와 payload를 내부 dispatch 경로로 같은 `
                 "orders",
                 new SampleReportStateQueryCommand
                 {
-                    SpotId = spot.Context.SpotId.ToString()
+                    SpotRid = spot.Context.SpotRid.ToString()
                 })
             .Submit(cancellationToken);
 
         return new SampleGetStateReply
         {
-            SpotId = spot.Context.SpotId,
+            SpotRid = spot.Context.SpotRid,
             ActorCount = spot.ActorCount,
             ConnectedSessionCount = spot.ConnectedSessionCount
         };
@@ -1589,7 +1589,7 @@ public sealed class SampleReportStateHandler
                 "orders",
                 new SampleReportStateQueryCommand
                 {
-                    SpotId = spot.Context.SpotId.ToString()
+                    SpotRid = spot.Context.SpotRid.ToString()
                 })
             .Submit(cancellationToken);
     }
@@ -1615,7 +1615,7 @@ public sealed class SampleStateUpdatedHandler
                 "orders",
                 new SampleSyncStateRequest
                 {
-                    SpotId = spot.Context.SpotId.ToString(),
+                    SpotRid = spot.Context.SpotRid.ToString(),
                     ActorCount = message.ActorCount,
                     ConnectedSessionCount = message.ConnectedSessionCount
                 })
@@ -1684,7 +1684,7 @@ timer 위에 얹는 wrapper 로 읽어야 한다. 즉 다음 모델이 자연스
   channel mesh 의 범위를 정한다.
 - `SampleSpot` 은 단순한 handler 클래스가 아니라 실제 spot 객체다.
 - `SampleSpot` 은 `IZLinkSpot` 을 상속받는다. 그리고 자신의
-  `Context.SpotId`, `Context.NodeRid` 를 상태로 가진다.
+  `Context.SpotRid`, `Context.NodeRid` 를 상태로 가진다.
 - `SampleSpot` 안에는 상태와 코어 로직만 두고, packet 처리는 별도 handler
   클래스로 분리해도 된다.
 - handler 는 `IZLinkSpotClient` 를 constructor injection 으로 주입받을 수
@@ -1709,8 +1709,8 @@ timer 위에 얹는 wrapper 로 읽어야 한다. 즉 다음 모델이 자연스
 
 이 샘플에서 핵심은 두 가지로 요약된다.
 
-1. `SampleSpot` 은 이미 생성된 spot 객체다. 따라서 spot id 를 요청 scope 에서
-   따로 꺼내는 값으로 다루지 않고, `SampleSpot.Context.SpotId` 속성에서 바로
+1. `SampleSpot` 은 이미 생성된 spot 객체다. 따라서 spot rid 를 요청 scope 에서
+   따로 꺼내는 값으로 다루지 않고, `SampleSpot.Context.SpotRid` 속성에서 바로
    읽는다.
 2. subscribe handler, packet handler, timer handler, channel reply callback 은
    물론 room 에 join 된 actor 의 client packet 과 disconnect 처리까지 같은
@@ -1757,7 +1757,7 @@ handler 가 다른 서버나 다른 spot 으로 outbound 호출을 보내야 한
 
 이 샘플 기준으로 `SampleSpot` 안에 남는 요소는 대략 다음 정도다.
 
-- `Context.SpotId`, `Context.NodeRid` 같은 자기 identity
+- `Context.SpotRid`, `Context.NodeRid` 같은 자기 identity
 - `ActorCount`, `ConnectedSessionCount` 같은 현재 상태
 - `SweepInactiveActorsAsync(...)` 같은 liveness 관리 메서드
 - `ApplyReportedState(...)` 같은 순수 도메인 메서드
@@ -1816,20 +1816,20 @@ protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
 - 새 spot 인스턴스를 만들면서 초기 설정을 넘기고 싶다
   - `IZLinkSpotManager.CreateAsync("stage", createParts, ...)`를 사용하고,
     spot의 `OnCreateAsync(...)`에서 multipart create payload를 해석한다.
-- 명시적 `spotId`가 있고 없으면 만들고 있으면 가져오고 싶다
-  - `IZLinkSpotManager.GetOrCreateAsync("stage", spotId, createParts, ...)`
+- 명시적 `spotRid`가 있고 없으면 만들고 있으면 가져오고 싶다
+  - `IZLinkSpotManager.GetOrCreateAsync("stage", spotRid, createParts, ...)`
 - attach된 다른 channel로 send packet을 보내고 싶다
   - `SendChannel(...).Submit(...)`
 - attach된 다른 channel로 request packet을 보내고 싶다
   - `RequestChannel(...).Timeout(...).Submit(...)`
 - 다른 SPOT 인스턴스로 routed 호출을 보내고 싶다
   - 현재 framework core 기본 표면에는 RID 기반의 direct 표면이 없다. 대신
-    `SendSpot(...)` / `RequestSpot(...)`처럼 spot name 또는 `ZLinkSpotId`를 받는
+    `SendSpot(...)` / `RequestSpot(...)`처럼 spot name 또는 `RoutingId`를 받는
     표면을 사용한다.
 - 현재 spot 자신의 id를 알고 싶다
-  - `SampleSpot.Context.SpotId`
-- 특정 `spotId`가 어떤 이름으로 생성됐는지 다시 확인하고 싶다
-  - `IZLinkSpotManager.GetAsync(spotId)` 또는 `ListAsync()`
+  - `SampleSpot.Context.SpotRid`
+- 특정 `spotRid`가 어떤 이름으로 생성됐는지 다시 확인하고 싶다
+  - `IZLinkSpotManager.GetAsync(spotRid)` 또는 `ListAsync()`
 - stage 안에서 fan-out 하고 싶다
   - `Publish(topic, ...).Submit(...)`
 - local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish하고 싶다
@@ -1917,8 +1917,8 @@ SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표�
 |---------------|-----------|
 | `SpotIntegrationTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | spot 생성과 조회, 제거, callback scope 정리가 동작한다. |
 | `SpotIntegrationTests.SpotManager_CreateAsync_Passes_Empty_CreatePayload_To_OnCreate` | payload 없는 생성이 빈 multipart payload로 `OnCreateAsync(...)`를 호출한다. |
-| `SpotIntegrationTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 `spotId` 동시 확보에서 첫 create payload만 `OnCreateAsync(...)`로 전달된다. |
-| `SpotIntegrationTests.SpotManager_GetOrCreateAsync_Rejects_SpotName_Mismatch` | 같은 `spotId`를 다른 `spotName`으로 확보하려 하면 `SpotTypeMismatch`로 실패한다. |
+| `SpotIntegrationTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 `spotRid` 동시 확보에서 첫 create payload만 `OnCreateAsync(...)`로 전달된다. |
+| `SpotIntegrationTests.SpotManager_GetOrCreateAsync_Rejects_SpotName_Mismatch` | 같은 `spotRid`를 다른 `spotName`으로 확보하려 하면 `SpotTypeMismatch`로 실패한다. |
 | `SpotIntegrationTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 노드 publish 샘플이 target SPOT channel에 도달한다. |
 | `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 room 역할의 spot에 join한 뒤, 해당 문맥에서 dispatch된다. |
 | `SpotIntegrationTests.ActorContext_RequestChannel_Uses_Global_Client_Before_Join_And_Spot_Client_After_Join` | actor context에서 channel request를 보내는 샘플 경로가 유지된다. |
@@ -1930,7 +1930,7 @@ SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표�
 [^channel]: channel 은 이름을 키로 삼아 메시지를 주고받는 논리적 통신 경로다. request / send 양방향과 publish / subscribe 양방향이 모두 channel 단위로 묶인다.
 [^actor]: actor 는 계정이나 식별자 단위로 살아 있는 논리 객체로, 상태와 행동을 함께 들고 있는 도메인 단위다.
 [^session]: session 은 한 client 연결을 framework 안에서 다루기 위한 논리 단위이며, 인증과 packet dispatch의 첫 진입점이 된다.
-[^direct-routed]: direct routed 호출은 routing id 와 spot id 를 명시적으로 묶어 특정 인스턴스로 바로 보내는 방식이다.
+[^direct-routed]: direct routed 호출은 routing id 와 spot rid 를 명시적으로 묶어 특정 인스턴스로 바로 보내는 방식이다.
 [^resolver]: resolver 는 이름이나 id 같은 논리 식별자를 받아 실제 transport 위치(주소, routing id 등)로 변환해 주는 컴포넌트다.
 [^capability]: capability 는 어떤 노드(channel, spot 등)가 외부에 노출하는 역할이나 기능 단위(예: server, subscriber, publisher)를 가리킨다.
 [^typed-facade]: typed facade 는 native 옵션 키를 직접 노출하지 않고, 타입과 속성으로 감싸 IDE 자동완성과 컴파일 검증을 받게 하는 wrapper 인터페이스다.

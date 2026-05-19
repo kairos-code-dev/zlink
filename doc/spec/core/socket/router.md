@@ -1,4 +1,4 @@
-[Spec Index](../../README.md) · [Core Index](../README.md) · [Socket Common](README.md)
+[Spec Index](../../README.md) · [Core Index](../README.md) · [Socket Common](./README.md)
 
 # Socket — ROUTER
 

@@ -1,4 +1,4 @@
-[English](07-4-registry.md) | [한국어](07-4-registry.ko.md)
+[English](./07-4-registry.md) | [한국어](./07-4-registry.ko.md)
 
 # Registry (Central Service Directory)
 
@@ -627,9 +627,9 @@ Recommended workflow:
 
 ## 9. Next Steps
 
-- [Service Discovery](07-1-discovery.md) -- Foundation infrastructure
-- [SPOT PUB/SUB](07-3-spot.md) -- Location-transparent publish/subscribe
+- [Service Discovery](./07-1-discovery.md) -- Foundation infrastructure
+- [SPOT PUB/SUB](./07-3-spot.md) -- Location-transparent publish/subscribe
 - [Registry API Reference](../api/registry.md) -- Complete API documentation
 
 ---
-[← SPOT](07-3-spot.md) | [Routing ID →](08-routing-id.md)
+[← SPOT](./07-3-spot.md) | [Routing ID →](./08-routing-id.md)

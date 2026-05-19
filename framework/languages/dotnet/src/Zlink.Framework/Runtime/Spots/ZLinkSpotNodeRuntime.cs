@@ -95,9 +95,15 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
         if (_registration.EntrySpotType is not null)
         {
             _entrySpotActivation = new ZLinkEntrySpotActivation(
+                _runtime,
                 _services,
+                entrySpot,
                 _registration.EntrySpotType,
-                Node.RoutingId);
+                Node.RoutingId,
+                _frameworkRegistration.SpotDiscovery?.ChannelName ?? _registration.SpotNodeName,
+                _frameworkRegistration.DefaultTimeout,
+                _registration.Router?.SocketConfig.SendTimeout
+                    ?? TimeSpan.FromMilliseconds(200));
             _entrySpotActivation.Configure();
             await _entrySpotActivation.InitializeAsync(_stopSource.Token)
                 .ConfigureAwait(false);
@@ -193,6 +199,32 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             actor,
             info,
             cancellationToken);
+    }
+
+    public ValueTask InvokeEntrySpotActorJoinedCallbackAsync(
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        if (_entrySpotActivation is null)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        return _entrySpotActivation.InvokeActorJoinedCallbackAsync(actor, info, cancellationToken);
+    }
+
+    public ValueTask InvokeEntrySpotActorLeftCallbackAsync(
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        if (_entrySpotActivation is null)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        return _entrySpotActivation.InvokeActorLeftCallbackAsync(actor, info, cancellationToken);
     }
 
     public void StartDiscoveryPeerReconciliation()

@@ -104,6 +104,22 @@ class poller_t
         return static_cast<int> (_items.size ());
     }
 
+    void add (service::spot_t &spot_,
+              poll_event_flag_t events_,
+              std::any tag_ = {})
+    {
+        add_native_poller_socket_impl (
+          detail::native_handle (spot_), events_, std::move (tag_), NULL, false);
+    }
+
+    void add (service::spot_t &spot_,
+              poll_event_flag_t events_,
+              void *raw_tag_)
+    {
+        add_native_poller_socket_impl (
+          detail::native_handle (spot_), events_, {}, raw_tag_, true);
+    }
+
     template<typename SocketLike>
     void add (SocketLike &socket_,
               poll_event_flag_t events_,
@@ -198,8 +214,12 @@ class poller_t
           zlink_poller_remove (_poller, detail::native_handle (socket_)));
         detail::throw_if_failed<config_error_t> (rc);
 
+        const bool native_poller_only =
+          _items[static_cast<size_t> (index)]->native_poller_only;
         _items.erase (_items.begin () + index);
         rebuild_socket_item_indexes ();
+        if (native_poller_only)
+            --_non_socket_item_count;
         _socket_poll_items_dirty = true;
         return true;
     }
@@ -416,6 +436,7 @@ class poller_t
         poll_event_flag_t events;
         void *raw_tag;
         std::any tag;
+        bool native_poller_only;
     };
 
     void ensure_addable () const
@@ -457,12 +478,43 @@ class poller_t
         item->events = events_;
         item->raw_tag = use_raw_tag_ ? raw_tag_ : NULL;
         item->tag = use_raw_tag_ ? std::any () : std::move (tag_);
+        item->native_poller_only = false;
 
         item_t *raw_item = item.get ();
         const config_result_t rc = static_cast<config_result_t> (
           zlink_poller_add (
             _poller, socket_handle, raw_item, static_cast<short> (events_)));
         commit_added_item (std::move (item), rc);
+    }
+
+    void add_native_poller_socket_impl (void *socket_handle_,
+                                        poll_event_flag_t events_,
+                                        std::any tag_,
+                                        void *raw_tag_,
+                                        bool use_raw_tag_)
+    {
+        ensure_addable ();
+        sync_socket_native_events_if_needed ();
+        if (find_socket (socket_handle_) >= 0)
+            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+
+        std::unique_ptr<item_t> item (new item_t ());
+        item->socket_handle = socket_handle_;
+        item->fd = 0;
+        item->timer_handle = NULL;
+        item->timer = NULL;
+        item->source_kind = poll_source_kind_t::socket;
+        item->events = events_;
+        item->raw_tag = use_raw_tag_ ? raw_tag_ : NULL;
+        item->tag = use_raw_tag_ ? std::any () : std::move (tag_);
+        item->native_poller_only = true;
+
+        item_t *raw_item = item.get ();
+        const config_result_t rc = static_cast<config_result_t> (
+          zlink_poller_add (
+            _poller, socket_handle_, raw_item, static_cast<short> (events_)));
+        commit_added_item (std::move (item), rc);
+        ++_non_socket_item_count;
     }
 
     void add_fd_impl (zlink_fd_t fd_,
@@ -485,6 +537,7 @@ class poller_t
         item->events = events_;
         item->raw_tag = use_raw_tag_ ? raw_tag_ : NULL;
         item->tag = use_raw_tag_ ? std::any () : std::move (tag_);
+        item->native_poller_only = false;
 
         item_t *raw_item = item.get ();
         const config_result_t rc = static_cast<config_result_t> (
@@ -514,6 +567,7 @@ class poller_t
         item->events = poll_event_flag_t::pollin;
         item->raw_tag = use_raw_tag_ ? raw_tag_ : NULL;
         item->tag = use_raw_tag_ ? std::any () : std::move (tag_);
+        item->native_poller_only = false;
 
         item_t *raw_item = item.get ();
         const config_result_t rc = static_cast<config_result_t> (
@@ -731,6 +785,9 @@ class poller_t
 
         for (size_t i = 0; i < _items.size (); ++i) {
             const item_t &item = *_items[i];
+            if (item.source_kind != poll_source_kind_t::socket
+                || item.native_poller_only)
+                continue;
             const short events = static_cast<short> (item.events);
             if (events == 0)
                 continue;

@@ -43,7 +43,8 @@ internal static class PerfMultiSpotServer
 
         ConfigureSpotNodeTlsIfNeeded(nodePub, config.Transport);
         ConfigureSpotNodePublisher(nodePub, options, config);
-        nodePub.Bind(config.DataEndpoint);
+        string actualDataEndpoint = BindSpotNodeWithRetry(nodePub,
+            config.Transport, "multi-spot-data", options);
         nodePub.AttachDiscovery(discovery);
 
         using var controlNode = new SpotNode(ctx);
@@ -52,9 +53,8 @@ internal static class PerfMultiSpotServer
         using var controlPub = controlNode.CreateSpot();
         using var controlSub = controlNode.CreateSpot();
         controlSub.SetSubscription(ControlTopic);
-        controlNode.Bind(config.ControlEndpoint);
-        string actualDataEndpoint = nodePub.LastEndpoint;
-        string actualControlEndpoint = controlNode.LastEndpoint;
+        string actualControlEndpoint = BindSpotNodeWithRetry(controlNode,
+            config.Transport, "multi-spot-control", options);
 
         RecalculateAutoHwm(ctx);
         PrintSpotNodeAutoHwmSnapshot(nodePub, "spotnode_data_pub",
@@ -248,11 +248,10 @@ internal static class PerfMultiSpotServer
     {
         try
         {
-            byte[] payload = new byte[Math.Max(config.Size,
-                PerfMetricHeaderSize)];
-            StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Active,
+            using Message message = Message.Allocate(Math.Max(config.Size,
+                PerfMetricHeaderSize));
+            StampMetricHeader(message.AsSpan(), RunId, PerfPhase.Active,
                 config.Size, seq, EpochNs());
-            using Message message = Message.WrapBytes(payload);
             return spotPub.Publish(Topic).Message(message).Flags(flags)
                 .Submit();
         }

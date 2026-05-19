@@ -97,10 +97,10 @@ type (
 	XPubSocket                   = root.XPubSocket
 	XSubSocket                   = root.XSubSocket
 	StreamSocket                 = root.StreamSocket
-	PollEventFlag              = root.PollEventFlag
-	PollSourceKind             = root.PollSourceKind
+	PollEventFlag                = root.PollEventFlag
+	PollSourceKind               = root.PollSourceKind
 	PollItem                     = root.PollItem
-	PollEvent                  = root.PollEvent
+	PollEvent                    = root.PollEvent
 	Poller                       = root.Poller
 	Timer                        = root.Timer
 	ZlinkError                   = root.ZlinkError
@@ -316,6 +316,7 @@ var (
 	ParseRoutingIDString   = root.ParseRoutingIDString
 	NewMessage             = root.NewMessage
 	NewMessageFromBytes    = root.NewMessageFromBytes
+	NewMessageWithSize     = root.NewMessageWithSize
 	RemoteActorRef         = root.RemoteActorRef
 	RuntimeVersion         = root.RuntimeVersion
 	NewContext             = root.NewContext

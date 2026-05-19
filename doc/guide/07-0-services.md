@@ -1,4 +1,4 @@
-[English](07-0-services.md) | [한국어](07-0-services.ko.md)
+[English](./07-0-services.md) | [한국어](./07-0-services.ko.md)
 
 # Service Layer Overview
 
@@ -66,7 +66,7 @@ A service registration/discovery system based on a Registry cluster. When a serv
 - Client-side service list caching
 - Internal modules: `discovery_access` (API seam) · `discovery_bootstrap` · `discovery_state` · `discovery_update` · `discovery_uplink` · `discovery_registry_client`
 
-See the [Service Discovery Guide](07-1-discovery.md) and the [Registry Guide](07-4-registry.md) for details.
+See the [Service Discovery Guide](./07-1-discovery.md) and the [Registry Guide](./07-4-registry.md) for details.
 
 ### 3.2 SPOT -- Channel-Based Routed + PUB/SUB Hub
 
@@ -101,7 +101,7 @@ channel send/request, peer routed communication, and publish/subscribe.
   session disconnect. Actors own no socket or inproc endpoint; they are
   identified by `zlink_actor_ref_t`.
 
-See the [SPOT Guide](07-3-spot.md) and [SPOT Actor Guide](07-4-actor.md) for details.
+See the [SPOT Guide](./07-3-spot.md) and [SPOT Actor Guide](./07-4-actor.md) for details.
 
 ### 3.3 Socket Family -- Discovery-Managed Raw Sockets
 
@@ -115,7 +115,7 @@ at the socket level without the SPOT abstraction.
 - Lifecycle delegation -- Discovery owns the attached socket
 - Internal modules: `socket_discovery_attachment` (socket-side integration) · `discovery_owned_service` (registration convenience API)
 
-See the [Service Discovery Guide](07-1-discovery.md) for details.
+See the [Service Discovery Guide](./07-1-discovery.md) for details.
 
 ### 3.4 Registry -- Central Service Registry
 
@@ -123,7 +123,7 @@ Central store that registers and manages service entries. Handles SPOT node/sock
 
 - Internal modules: `registry_access` (API seam) · `registry_query_access` (remote query seam)
 
-See the [Registry Guide](07-4-registry.md) for details.
+See the [Registry Guide](./07-4-registry.md) for details.
 
 ## 4. Service Access Layer Pattern
 
@@ -218,4 +218,4 @@ flowchart TB
 - All services operate independently and can share the same Registry cluster.
 
 ---
-[← Monitoring](06-monitoring.md) | [Discovery →](07-1-discovery.md)
+[← Monitoring](./06-monitoring.md) | [Discovery →](./07-1-discovery.md)

@@ -1,4 +1,4 @@
-[English](discovery-internals.md) | [한국어](discovery-internals.ko.md)
+[English](./discovery-internals.md) | [한국어](./discovery-internals.ko.md)
 
 # Discovery Service Internal Architecture
 

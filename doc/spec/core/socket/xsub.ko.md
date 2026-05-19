@@ -1,7 +1,7 @@
-[English](xsub.md) | [한국어](xsub.ko.md)
+[English](./xsub.md) | [한국어](./xsub.ko.md)
 
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md)
+[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](./README.ko.md)
 
 # 소켓 -- XSUB
 

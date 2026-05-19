@@ -1,4 +1,4 @@
-[English](11-thread-safety.md) | [한국어](11-thread-safety.ko.md)
+[English](./11-thread-safety.md) | [한국어](./11-thread-safety.ko.md)
 
 # 스레드 안전성 가이드
 
@@ -356,4 +356,4 @@ void *control(void *arg)
 > [Thread-Safety Internals](../internals/thread-safety.ko.md)를 참고.
 
 ---
-[← 성능](10-performance.ko.md) | [소켓 옵션 →](12-socket-options.ko.md)
+[← 성능](./10-performance.ko.md) | [소켓 옵션 →](./12-socket-options.ko.md)

@@ -33,7 +33,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         _registrations.Add(new ZLinkSpotSubscriptionRegistration(topic, handlerType));
     }
 
-    public void Bind(IZLinkSpot spot, IZLinkBackendSpot nativeSpot)
+    public void Bind(object spot, IZLinkBackendSpot nativeSpot)
     {
         foreach (var subscription in _registrations)
         {

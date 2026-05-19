@@ -4190,14 +4190,14 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 
 | 바인딩 | API Spec |
 |--------|----------|
-| C | [`c/README.md`](c/README.md) |
-| C++ | [`cpp/README.md`](cpp/README.md) |
-| Java | [`java/README.md`](java/README.md) |
-| .NET | [`dotnet/README.md`](dotnet/README.md) |
-| Node.js | [`node/README.md`](node/README.md) |
-| Python | [`python/README.md`](python/README.md) |
-| Go | [`go/README.md`](go/README.md) |
-| Rust | [`rust/README.md`](rust/README.md) |
+| C | [`c/README.md`](./c/README.md) |
+| C++ | [`cpp/README.md`](./cpp/README.md) |
+| Java | [`java/README.md`](./java/README.md) |
+| .NET | [`dotnet/README.md`](./dotnet/README.md) |
+| Node.js | [`node/README.md`](./node/README.md) |
+| Python | [`python/README.md`](./python/README.md) |
+| Go | [`go/README.md`](./go/README.md) |
+| Rust | [`rust/README.md`](./rust/README.md) |
 
 ### Perf Review Checklist
 

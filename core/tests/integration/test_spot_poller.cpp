@@ -635,6 +635,61 @@ void test_spot_poller_accepts_pollin_or_pollout_combined ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+// Regression: zlink_poller_modify must accept the same combined
+// POLLIN|POLLOUT readiness mask that zlink_poller_add accepts for a
+// spot. Large SPOT perf runs start with POLLIN and switch to
+// POLLIN|POLLOUT when send backpressure appears; rejecting that modify
+// path leaves the active window unable to wait for backpressure
+// recovery.
+void test_spot_poller_modify_accepts_combined_readiness ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *spot = zlink_spot_new (node);
+    void *poller = zlink_poller_new ();
+    int user_tag = 93;
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (spot);
+    TEST_ASSERT_NOT_NULL (poller);
+
+    set_routing_id_text (node, "ssbm-spot-node");
+    set_routing_id_text (spot, "ssbm-spot");
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, spot, &user_tag, ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_modify (
+      poller, spot, static_cast<short> (ZLINK_POLLIN | ZLINK_POLLOUT)));
+
+    zlink_poller_event_t events[4];
+    const auto wait_start = std::chrono::steady_clock::now ();
+    const int rc = zlink_poller_wait (
+      poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])),
+      5000, NULL);
+    const long long elapsed_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds> (
+        std::chrono::steady_clock::now () - wait_start)
+        .count ();
+    TEST_ASSERT_TRUE (rc >= 1);
+    TEST_ASSERT_TRUE (elapsed_ms < 500);
+    bool saw_pollout = false;
+    for (int i = 0; i < rc; ++i) {
+        if (events[i].socket == spot
+            && events[i].user_data == &user_tag
+            && (events[i].events & ZLINK_POLLOUT) != 0) {
+            saw_pollout = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE (saw_pollout);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 // Regression: sustained spot request/reply round trips must let
 // zlink_poller_wait return after every reply, not just the first. The
 // single-event variant previously looped back into wait() after firing
@@ -858,6 +913,7 @@ int main (void)
     RUN_TEST (test_spot_poller_wait_returns_promptly_after_reply);
     RUN_TEST (test_spot_poller_wait_returns_promptly_after_spot_to_spot_send);
     RUN_TEST (test_spot_poller_accepts_pollin_or_pollout_combined);
+    RUN_TEST (test_spot_poller_modify_accepts_combined_readiness);
     RUN_TEST (
       test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop);
     RUN_TEST (test_completion_only_spot_registration_has_no_public_recv_event);

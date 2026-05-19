@@ -109,6 +109,7 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
     zlink::message_t part;
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
+    size_t stop_count = 0;
     // PERF_MULTI_TEST_POLICY § 1.3.1: the receive window is bounded purely by
     // an application clock (steady_clock deadline) plus a -1 (signal-driven)
     // poll wait; no poller timer object is used. The client's wire-level stop
@@ -129,13 +130,30 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
         }
 
         for (;;) {
-            const int rc = server.recv (
-              part, zlink::recv_flags_t::dontwait);
+            part.init ();
+            const zlink_routing_id_t *source_rid = NULL;
+            zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+            const int rc = zlink_recv_part (
+              zlink::detail::native_handle (server),
+              &source_rid,
+              zlink::detail::native_handle (part),
+              &has_more,
+              ZLINK_RECV_FLAGS_DONTWAIT);
             if (rc != 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK)
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    part.close ();
                     break;
-                if (errno == EINTR)
+                }
+                if (errno == EINTR) {
+                    part.close ();
                     continue;
+                }
+                part.close ();
+                failed = true;
+                break;
+            }
+            if (source_rid || has_more != ZLINK_PART_FINAL) {
+                part.close ();
                 failed = true;
                 break;
             }
@@ -146,6 +164,11 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
             // the window.
             if (perf::multi::is_stop_token (part.data (), part.size ())) {
                 part.close ();
+                ++stop_count;
+                if (stop_count >= settings.clients)
+                    break;
+                if (std::chrono::steady_clock::now () >= deadline)
+                    break;
                 continue;
             }
 
@@ -168,6 +191,8 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
             part.close ();
         }
         if (failed)
+            break;
+        if (stop_count >= settings.clients)
             break;
         if (std::chrono::steady_clock::now () >= deadline)
             break;

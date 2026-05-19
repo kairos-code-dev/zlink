@@ -87,6 +87,39 @@ public sealed class Message : IDisposable, IAsyncDisposable
         }
     }
 
+    public static Message Allocate(int size)
+    {
+        if (size < 0)
+            throw new ArgumentOutOfRangeException(nameof(size));
+        Message message = RentFromPool();
+        try
+        {
+            message.InitSize(size);
+            return message;
+        }
+        catch
+        {
+            message.TryReturnToPool();
+            throw;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe Span<byte> AsSpan()
+    {
+        EnsureValid();
+        ManagedPayloadState? managed = _managedPayload;
+        if (managed != null)
+            return managed.Bytes.AsSpan(0, managed.Length);
+        nuint size = NativeMethods.zlink_msg_size(ref _msg);
+        if (size == 0)
+            return Span<byte>.Empty;
+        IntPtr data = NativeMethods.zlink_msg_data(ref _msg);
+        if (data == IntPtr.Zero)
+            return Span<byte>.Empty;
+        return new Span<byte>((void*)data, (int)size);
+    }
+
     public byte[] ToArray()
     {
         return AsReadOnlySpan().ToArray();
@@ -310,7 +343,19 @@ public sealed class Message : IDisposable, IAsyncDisposable
     {
         if (_valid)
             return;
-            int rc = NativeMethods.zlink_msg_init(ref _msg);
+        int rc = NativeMethods.zlink_msg_init(ref _msg);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        _valid = true;
+    }
+
+    internal void InitSize(int size)
+    {
+        if (_valid)
+            return;
+        if (size < 0)
+            throw new ArgumentOutOfRangeException(nameof(size));
+        int rc = NativeMethods.zlink_msg_init_size(ref _msg, (nuint)size);
         if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         _valid = true;
@@ -356,8 +401,14 @@ public sealed class Message : IDisposable, IAsyncDisposable
     public Message Copy()
     {
         EnsureValid();
-        if (_managedPayload != null)
-            MaterializeManagedBytes();
+        ManagedPayloadState? managed = _managedPayload;
+        if (managed != null)
+        {
+            var managedCopy = new Message(false);
+            managedCopy.InitializeManagedCopy(
+                managed.Bytes.AsSpan(0, managed.Length));
+            return managedCopy;
+        }
         var copy = new Message(false);
         CopyTo(ref copy._msg);
         copy._valid = true;

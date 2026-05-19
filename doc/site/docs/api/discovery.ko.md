@@ -1,6 +1,6 @@
-[English](discovery.md) | [한국어](discovery.ko.md)
+[English](./discovery.md) | [한국어](./discovery.ko.md)
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [서비스 공통](README.ko.md)
+[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [서비스 공통](./README.ko.md)
 
 # 디스커버리
 
@@ -18,9 +18,9 @@ Discovery는 Registry가 알려 주는 서비스 목록을 받아서, 응용이 
 가까운 곳에 잠시 보관해 두었다가, send 경로에서 빠르게 꺼내 쓰는 역할을 맡습니다.
 
 - Registry가 `spot_rid` 담당 노드를 어떻게 결정하는지:
-  [registry.ko.md](registry.ko.md)
+  [registry.ko.md](./registry.ko.md)
 - SPOT send/request/reply 함수 자체의 계약:
-  [spot.ko.md](spot.ko.md)
+  [spot.ko.md](./spot.ko.md)
 
 응용이 Discovery에 기대하는 핵심 역할은 단순합니다. "현재 Discovery가 보고
 있는 `channel_name` 안에서 `spot_rid` 하나를 주면, 지금 이 이름을 맡고 있는

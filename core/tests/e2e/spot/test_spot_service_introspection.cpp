@@ -218,6 +218,29 @@ static int publish_text (void *subject_,
     return rc;
 }
 
+static int publish_text_with_flags (void *subject_,
+                                    const char *topic_,
+                                    const char *payload_,
+                                    zlink_send_flags_t flags_)
+{
+    if (!as_spot_handle (subject_))
+        subject_ = node_spot_handle (subject_);
+    zlink_msg_t part;
+    const size_t size = payload_ ? strlen (payload_) : 0;
+    if (zlink_msg_init_size (&part, size) != 0)
+        return -1;
+    if (size > 0)
+        memcpy (zlink_msg_data (&part), payload_, size);
+
+    const int rc = zlink_publish (subject_, topic_, &part, 1, flags_);
+    if (rc != 0) {
+        const int err = zlink_errno ();
+        zlink_msg_close (&part);
+        errno = err;
+    }
+    return rc;
+}
+
 static void assert_recv_text (void *spot_,
                               const char *expected_topic_,
                               const char *expected_payload_)
@@ -384,6 +407,146 @@ static void test_spot_recv_model_receive_regression ()
       zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len,
                        static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+    destroy_node_and_spot_handle (&sub_node);
+    destroy_node_and_spot_handle (&pub_node);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_subscribe_empty_logical_queue_concurrent_no_crash ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = create_node (ctx, "spot-empty-concurrent");
+    void *sub_node = create_node (ctx, "spot-empty-concurrent");
+    void *pub = zlink_spot_new (pub_node);
+    TEST_ASSERT_NOT_NULL (pub);
+    set_linger_zero (pub);
+
+    const int worker_count = 16;
+    const int iterations_per_worker = 1000;
+    std::vector<void *> subs;
+    subs.reserve (worker_count);
+    for (int worker = 0; worker < worker_count; ++worker) {
+        void *sub = zlink_spot_new (sub_node);
+        TEST_ASSERT_NOT_NULL (sub);
+        set_linger_zero (sub);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "topic.empty"));
+        subs.push_back (sub);
+    }
+
+    char endpoint[MAX_SOCKET_STRING];
+    int port_seed = next_port_seed ();
+    TEST_ASSERT_SUCCESS_ERRNO (bind_node (pub_node, &port_seed, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer (sub_node, endpoint));
+    TEST_ASSERT_TRUE (wait_for_spot_node_subject_ready (sub_node, 3000));
+
+    std::atomic<bool> start (false);
+    std::atomic<int> ready (0);
+    std::atomic<int> failures (0);
+    std::vector<std::thread> workers;
+    workers.reserve (worker_count);
+
+    for (int worker = 0; worker < worker_count; ++worker) {
+        void *worker_sub = subs[worker];
+        workers.push_back (std::thread ([&, worker_sub]() {
+            ready.fetch_add (1);
+            while (!start.load ())
+                std::this_thread::yield ();
+
+            for (int i = 0; i < iterations_per_worker; ++i) {
+                zlink_routing_id_t source_rid;
+                zlink_msg_t *parts = NULL;
+                size_t part_count = 0;
+                char topic[64] = {0};
+                size_t topic_len = sizeof (topic);
+                errno = 0;
+                const int rc = zlink_spot_subscribe (
+                  worker_sub, &source_rid, &parts, &part_count, topic, &topic_len,
+                  static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
+                const int err = zlink_errno ();
+                if (rc == ZLINK_RECV_OK) {
+                    zlink_multipart_close (parts, part_count);
+                    failures.fetch_add (1);
+                } else if (rc != ZLINK_RECV_NO_DATA || err != EAGAIN) {
+                    failures.fetch_add (1);
+                }
+            }
+        }));
+    }
+
+    while (ready.load () != worker_count)
+        std::this_thread::yield ();
+    start.store (true);
+
+    for (size_t i = 0; i < workers.size (); ++i)
+        workers[i].join ();
+
+    TEST_ASSERT_EQUAL_INT (0, failures.load ());
+
+    for (size_t i = 0; i < subs.size (); ++i)
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&subs[i]));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+    destroy_node_and_spot_handle (&sub_node);
+    destroy_node_and_spot_handle (&pub_node);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_subscription_mutation_does_not_race_dispatch_filter ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = create_node (ctx, "spot-sub-race");
+    void *sub_node = create_node (ctx, "spot-sub-race");
+    void *pub = zlink_spot_new (pub_node);
+    void *sub = zlink_spot_new (sub_node);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
+    set_linger_zero (pub);
+    set_linger_zero (sub);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int port_seed = next_port_seed ();
+    TEST_ASSERT_SUCCESS_ERRNO (bind_node (pub_node, &port_seed, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer (sub_node, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "race.topic.0"));
+    TEST_ASSERT_TRUE (wait_for_spot_node_subject_ready (sub_node, 3000));
+
+    std::atomic<bool> stop (false);
+    std::atomic<int> failures (0);
+    std::thread publisher ([&]() {
+        for (int i = 0; i < 4000 && !stop.load (); ++i) {
+            char topic[32];
+            snprintf (topic, sizeof (topic), "race.topic.%d", i % 16);
+            const int rc = publish_text_with_flags (
+              pub, topic, "payload",
+              static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT));
+            if (rc != 0) {
+                const int err = zlink_errno ();
+                if (err != EAGAIN && err != EINTR)
+                    failures.fetch_add (1);
+            }
+        }
+    });
+
+    for (int i = 0; i < 4000; ++i) {
+        char topic[32];
+        snprintf (topic, sizeof (topic), "race.topic.%d", i % 16);
+        if (zlink_set_subscription (sub, topic) != ZLINK_CONFIG_OK)
+            failures.fetch_add (1);
+        if (zlink_unset_subscription (sub, topic) != ZLINK_CONFIG_OK)
+            failures.fetch_add (1);
+    }
+    stop.store (true);
+    publisher.join ();
+
+    TEST_ASSERT_EQUAL_INT (0, failures.load ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
@@ -719,6 +882,8 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_pub_sub_options_and_routing_ids);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_callback_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_recv_model_receive_regression);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_subscribe_empty_logical_queue_concurrent_no_crash);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_subscription_mutation_does_not_race_dispatch_filter);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_default_handle_owner_keeps_defaults_private);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_basic);
     RUN_SPOT_INTROSPECTION_TEST (test_queue_pub_local_fanout_shared_block);

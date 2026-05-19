@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../doc/README.ko.md) | [다음: ZLink Framework .NET Interface Catalog](./spec/handler-interfaces.ko.md)
+[문서 목록](../../../doc/README.ko.md) | [다음: ZLink Framework for .NET — 개요와 시작](./guide/01-overview.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Framework 문서](../../../doc/README.ko.md) | [공통 스펙](../../../doc/spec/README.ko.md)
 
-[공통 스펙](../../../doc/spec/README.ko.md) | [인터페이스](./spec/handler-interfaces.ko.md) | [channel](./spec/aspnet-core-channel-messaging.ko.md) | [SPOT](./spec/aspnet-core-spot.ko.md) | [Stage wrapper](./spec/stage-wrapper-on-spot.ko.md) | [STREAM](./spec/aspnet-core-stream.ko.md) | [Actor](./spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](./spec/session-actor-dispatch.ko.md) | [Stream Connector](./guide/streaming-client.ko.md) | [Unity 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | [STREAM Decisions](./draft/stream-open-items.ko.md) | [Monitoring](./spec/aspnet-core-monitoring.ko.md) | [Registry](./spec/aspnet-core-registry.ko.md) | [Behavior Matrix](./internals/behavior-matrix.ko.md) | [DI Capability](./internals/di-capability-exposure-policy.ko.md) | [Regression Matrix](./internals/regression-test-matrix.ko.md) | [Lifecycle](./internals/lifecycle-and-failure-semantics.ko.md) | [Scope](./internals/implementation-scope-and-nongoals.ko.md) | [Backend Policy](./internals/backend-dependency-policy.ko.md) | [channel 샘플](./guide/channel-messaging-samples.ko.md) | [SPOT 샘플](./guide/spot-samples.ko.md) | [STREAM 샘플](./guide/stream-samples.ko.md)
+[공통 스펙](../../../doc/spec/README.ko.md) | [인터페이스](./spec/handler-interfaces.ko.md) | [channel](./spec/aspnet-core-channel-messaging.ko.md) | [SPOT](./spec/aspnet-core-spot.ko.md) | [Stage wrapper](./spec/stage-wrapper-on-spot.ko.md) | [STREAM](./spec/aspnet-core-stream.ko.md) | [Actor](./spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](./spec/session-actor-dispatch.ko.md) | [Stream Connector](./guide/samples/streaming-client.ko.md) | [Unity 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | [STREAM Decisions](./draft/stream-open-items.ko.md) | [Monitoring](./spec/aspnet-core-monitoring.ko.md) | [Registry](./spec/aspnet-core-registry.ko.md) | [Behavior Matrix](./internals/behavior-matrix.ko.md) | [DI Capability](./internals/di-capability-exposure-policy.ko.md) | [Regression Matrix](./internals/regression-test-matrix.ko.md) | [Lifecycle](./internals/lifecycle-and-failure-semantics.ko.md) | [Scope](./internals/implementation-scope-and-nongoals.ko.md) | [Backend Policy](./internals/backend-dependency-policy.ko.md) | [channel 샘플](./guide/samples/channel-messaging-samples.ko.md) | [SPOT 샘플](./guide/samples/spot-samples.ko.md) | [STREAM 샘플](./guide/samples/stream-samples.ko.md)
 
 # ZLink Framework for .NET
 
@@ -114,7 +114,22 @@
 
 ## 2. 문서 구조와 역할 분담
 
-문서는 **기준 문서**, **주제 문서**, **샘플 문서** 세 가지로 나눈다.
+문서는 **가이드**, **기준 문서**, **주제 문서**, **샘플 문서** 네 가지로 나눈다.
+처음 접한다면 가이드부터 읽는다. 정식 계약은 기준/주제 문서가, 실행 코드는
+샘플 문서가 소유한다.
+
+### 2.0 가이드 (시작하기)
+
+`guide/`는 개념 정의를 새로 하지 않는다. 공통 스펙과 spec 문서를 링크로
+가리키며, `.NET` 개발자 관점의 진입 경로만 제공한다. 실행 가능한 샘플은
+`guide/samples/`에 격리되어 있다(샘플은 정리 중).
+
+| 문서 | 역할 |
+|------|------|
+| [guide/01-overview.ko.md](./guide/01-overview.ko.md) | 무엇/왜/누구를 위한 것, 기존 방식 대비 체감 난이도, 4축 |
+| [guide/02-getting-started.ko.md](./guide/02-getting-started.ko.md) | 패키지부터 최소 예제 동작 확인까지 |
+| [guide/03-concepts.ko.md](./guide/03-concepts.ko.md) | `.NET` 표면 멘탈 모델과 공통 스펙 매핑 |
+| [guide/04-feature-map.ko.md](./guide/04-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
 
 ### 2.1 기준 문서 (interface catalog)
 
@@ -135,7 +150,7 @@
 | [aspnet-core-actor.ko.md](./spec/aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkSessionProxy, IZLinkActorSessionClient, session actor dispatch (gateway) 패턴 |
 | [session-actor-dispatch.ko.md](./spec/session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkSessionProxy`, `IZLinkActorSessionClient`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../../doc/spec/session-actor-dispatch.ko.md) 에서 다룬다. |
 | [aspnet-core-stream.ko.md](./spec/aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
-| [streaming-client.ko.md](./guide/streaming-client.ko.md) | `.NET` Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신, manual dispatch |
+| [streaming-client.ko.md](./guide/samples/streaming-client.ko.md) | `.NET` Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신, manual dispatch |
 | [Unity Stream Connector 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | Unity `MonoBehaviour`에서 공통 connector의 `DispatchAsync()`를 호출하는 사용법 |
 | [stream-open-items.ko.md](./draft/stream-open-items.ko.md) | STREAM serializer, write, monitor-event mapping 의 결정 기준 |
 | [aspnet-core-monitoring.ko.md](./spec/aspnet-core-monitoring.ko.md) | socket / registry / spot runtime monitoring 이벤트와 snapshot 조회 모델 |
@@ -164,11 +179,11 @@
 
 | 문서 | 다루는 범위 |
 |------|------------|
-| [channel-messaging-samples.ko.md](./guide/channel-messaging-samples.ko.md) | channel 등록, handler, HTTP handler, outbound client 를 한 번에 보여 주는 샘플 |
-| [spot-samples.ko.md](./guide/spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록과 handler, channel send / request, publish 를 한 번에 보여 주는 샘플 |
-| [stream-samples.ko.md](./guide/stream-samples.ko.md) | STREAM framework Header 기반 packet session 과 등록 코드를 한 번에 보여 주는 샘플 |
-| [tictactoe-game-sample.ko.md](./guide/tictactoe-game-sample.ko.md) | API 서버, Play 서버, STREAM connector, SPOT actor 를 함께 사용하는 틱택토 게임 샘플 초안(TicTacToe direct + session actor dispatch contract) |
-| [bingo-game-sample.ko.md](./guide/bingo-game-sample.ko.md) | 4인 멀티 빙고 샘플 초안. STREAM session, actor bind, user Spot room, timer, server push 를 함께 보여 준다. |
+| [channel-messaging-samples.ko.md](./guide/samples/channel-messaging-samples.ko.md) | channel 등록, handler, HTTP handler, outbound client 를 한 번에 보여 주는 샘플 |
+| [spot-samples.ko.md](./guide/samples/spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록과 handler, channel send / request, publish 를 한 번에 보여 주는 샘플 |
+| [stream-samples.ko.md](./guide/samples/stream-samples.ko.md) | STREAM framework Header 기반 packet session 과 등록 코드를 한 번에 보여 주는 샘플 |
+| [tictactoe-game-sample.ko.md](./guide/samples/tictactoe-game-sample.ko.md) | API 서버, Play 서버, STREAM connector, SPOT actor 를 함께 사용하는 틱택토 게임 샘플 초안(TicTacToe direct + session actor dispatch contract) |
+| [bingo-game-sample.ko.md](./guide/samples/bingo-game-sample.ko.md) | matching room 기반 빙고 샘플 설계 노트. Session 서버, API 서버, Play 서버, Entry Spot lobby, room host 시작, timer 진행을 함께 보여 준다. |
 
 ### 2.5 범위 원칙
 

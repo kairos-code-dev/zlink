@@ -954,7 +954,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TActor, in TRequest, TReply>
 }
 
 public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TReply>
-    where TSpot : IZLinkSpot
+    where TSpot : class
     where TActor : IZLinkActor
 {
     ValueTask<TReply> HandleAsync(
@@ -1196,14 +1196,14 @@ public interface IZLinkSpotRouteResolver
         CancellationToken cancellationToken);
 
     ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
-        ZLinkSpotId spotId,
+        RoutingId spotRid,
         CancellationToken cancellationToken);
 }
 
 public readonly record struct ZLinkSpotRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid,
-    ZLinkSpotId SpotId);
+    RoutingId SpotRid);
 ```
 
 DI 등록 (Session 서버):
@@ -1516,7 +1516,7 @@ retry helper 와는 성격이 다르다. diagnostic helper 가 보여 주는 것
 - actor 라이프사이클과 actor handler 모델 →
   [aspnet-core-actor.ko.md](./aspnet-core-actor.ko.md)
 - TicTacToe sample contract →
-  [tictactoe-game-sample.ko.md](../guide/tictactoe-game-sample.ko.md)
+  [tictactoe-game-sample.ko.md](../guide/samples/tictactoe-game-sample.ko.md)
 - STREAM session 라이프사이클 →
   [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md)
 

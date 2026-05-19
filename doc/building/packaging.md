@@ -1,4 +1,4 @@
-[English](packaging.md) | [한국어](packaging.ko.md)
+[English](./packaging.md) | [한국어](./packaging.ko.md)
 
 # Packaging and Release (Core / Bindings Separation)
 
@@ -43,7 +43,7 @@ Core version (`VERSION`) and binding versions are managed independently.
   - Create GitHub Release if needed
   - Publish to npm/PyPI/NuGet/Maven if needed
 
-Required accounts/secrets: [release-accounts.md](release-accounts.md)
+Required accounts/secrets: [release-accounts.md](./release-accounts.md)
 
 ## 4. Conan
 

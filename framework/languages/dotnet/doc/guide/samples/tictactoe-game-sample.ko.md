@@ -1,14 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Stream Connector For .NET](./streaming-client.ko.md) | [다음: Bingo Game Sample 초안](./bingo-game-sample.ko.md)
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Stream Connector For .NET](./streaming-client.ko.md) | [다음: Bingo Game Sample](./bingo-game-sample.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# TicTacToe Game Sample 초안
+# TicTacToe Game Sample
 
-> 이 문서는 **구현 전 초안**이다.
-> 즉 아직 공개 계약[^public-contract]이 아니며, `.NET` framework adapter 와
-> stream connector를 함께 보여 주는 TicTacToe 샘플의 구현 기준을 정리한다.
-
-[.NET 묶음](../README.ko.md) | [STREAM](../spec/aspnet-core-stream.ko.md) | [SPOT](../spec/aspnet-core-spot.ko.md) | [Session Actor Dispatch](../../../../doc/spec/session-actor-dispatch.ko.md)
+[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Session Actor Dispatch](../../../../../doc/spec/session-actor-dispatch.ko.md)
 
 ## 1. 목적
 

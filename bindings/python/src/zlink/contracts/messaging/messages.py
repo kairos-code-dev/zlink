@@ -342,10 +342,16 @@ class Message:
         if size is None:
             rc = lib().zlink_msg_init(ctypes.byref(self._msg))
         else:
+            if size < 0:
+                raise ValueError("size must be >= 0")
             rc = lib().zlink_msg_init_size(ctypes.byref(self._msg), size)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         self._valid = True
+
+    @classmethod
+    def allocate(cls, size: int):
+        return cls(size)
 
     @classmethod
     def copy_from(cls, data):
@@ -389,7 +395,7 @@ class Message:
         cache = getattr(self, "_data_view_cache", None)
         if cache is not None and cache[0] == ptr and cache[1] == size:
             return cache[2]
-        view = memoryview((ctypes.c_ubyte * size).from_address(ptr))
+        view = memoryview((ctypes.c_ubyte * size).from_address(ptr)).cast("B")
         self._data_view_cache = (ptr, size, view)
         return view
 

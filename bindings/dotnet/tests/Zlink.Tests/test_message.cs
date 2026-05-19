@@ -100,6 +100,21 @@ public sealed class test_message
     }
 
     [Fact]
+    public void message_allocate_exposes_writable_owned_payload()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using Message message = Message.Allocate(3);
+        Span<byte> span = message.AsSpan();
+        span[0] = 0x01;
+        span[1] = 0x02;
+        span[2] = 0x03;
+
+        Assert.Equal(new byte[] { 0x01, 0x02, 0x03 }, message.ToArray());
+    }
+
+    [Fact]
     public void message_property_accessor_uses_canonical_name()
     {
         if (!CoreTestSupport.IsNativeAvailable())

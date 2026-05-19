@@ -4,7 +4,7 @@ using Zlink.Framework.Runtime.Backend.Contracts;
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
-    ZLinkSpotActivation activation,
+    IZLinkCurrentSpotActivation activation,
     string topic,
     TEvent message) : IZLinkPublishCall
 {

@@ -242,8 +242,9 @@ internal static partial class PerfRunner
 
         public void Dispose()
         {
-            _startSignal.Dispose();
-            _controlConnectedSignal.Dispose();
+            Volatile.Write(ref _stopRequested, 1);
+            TrySet(_startSignal);
+            TrySet(_controlConnectedSignal);
         }
 
         private void ReadLoop()
@@ -258,8 +259,8 @@ internal static partial class PerfRunner
                 if (line == null)
                 {
                     Volatile.Write(ref _stopRequested, 1);
-                    _startSignal.Set();
-                    _controlConnectedSignal.Set();
+                    TrySet(_startSignal);
+                    TrySet(_controlConnectedSignal);
                     return;
                 }
 
@@ -275,8 +276,8 @@ internal static partial class PerfRunner
                         StringComparison.OrdinalIgnoreCase))
                 {
                     Volatile.Write(ref _stopRequested, 1);
-                    _startSignal.Set();
-                    _controlConnectedSignal.Set();
+                    TrySet(_startSignal);
+                    TrySet(_controlConnectedSignal);
                     return;
                 }
 
@@ -294,7 +295,7 @@ internal static partial class PerfRunner
                 if (command.StartsWith(controlConnectedPrefix,
                         StringComparison.Ordinal))
                 {
-                    _controlConnectedSignal.Set();
+                    TrySet(_controlConnectedSignal);
                     continue;
                 }
 
@@ -304,8 +305,19 @@ internal static partial class PerfRunner
                     if (_debug)
                         Console.Error.WriteLine($"control_debug:start:{command}");
                     Volatile.Write(ref _startRequested, 1);
-                    _startSignal.Set();
+                    TrySet(_startSignal);
                 }
+            }
+        }
+
+        private static void TrySet(ManualResetEventSlim signal)
+        {
+            try
+            {
+                signal.Set();
+            }
+            catch (ObjectDisposedException)
+            {
             }
         }
     }

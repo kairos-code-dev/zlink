@@ -8,6 +8,7 @@ internal sealed partial class ZLinkEntrySpotActivation
     {
         if (ReferenceEquals(Current.Value, this))
         {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
             await operation(this, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -17,6 +18,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         Current.Value = this;
         try
         {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
             await operation(this, cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -33,6 +35,7 @@ internal sealed partial class ZLinkEntrySpotActivation
     {
         if (ReferenceEquals(Current.Value, this))
         {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
             await operation(this, state, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -42,6 +45,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         Current.Value = this;
         try
         {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
             await operation(this, state, cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -62,6 +66,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         Current.Value = this;
         try
         {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
             await _handlerExecutor.InvokeActorPacketAsync(
                     descriptor,
                     actor,
@@ -87,6 +92,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         Current.Value = this;
         try
         {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
             return await _handlerExecutor.InvokeActorPacketForReplyAsync(
                     descriptor,
                     actor,
@@ -98,6 +104,93 @@ internal sealed partial class ZLinkEntrySpotActivation
         finally
         {
             Current.Value = previous;
+        }
+    }
+
+    public ValueTask<IZLinkTimer> AddTimer<THandler>(
+        string name,
+        TimeSpan period,
+        CancellationToken cancellationToken)
+        where THandler : class
+    {
+        return _timers.AddAsync(
+            name,
+            period,
+            typeof(THandler),
+            EntrySpot.GetType(),
+            _stopSource.Token,
+            async (descriptor, ct) =>
+            {
+                using var _ = ZLinkSpotAmbientContext.Push(this);
+                await _invoker.InvokeTimerAsync(descriptor, ct).ConfigureAwait(false);
+            },
+            cancellationToken);
+    }
+
+    public async ValueTask DispatchRouteDrainAsync(CancellationToken cancellationToken)
+    {
+        if (!await _routeDrainGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            return;
+        }
+
+        var dispatchTasks = new List<Task>();
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var received = new Received();
+                if (!_nativeSpot.RecvRoute(received, RecvFlags.DontWait))
+                {
+                    received.Dispose();
+                    break;
+                }
+
+                dispatchTasks.Add(DispatchRouteAsync(received, cancellationToken).AsTask());
+            }
+
+        }
+        finally
+        {
+            _routeDrainGate.Release();
+        }
+
+        await Task.WhenAll(dispatchTasks).ConfigureAwait(false);
+    }
+
+    public async ValueTask DispatchActorJoinDrainAsync(CancellationToken cancellationToken)
+    {
+        if (!await _actorJoinDrainGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            return;
+        }
+
+        try
+        {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
+            await _dispatcher.DispatchActorJoinDrainAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _actorJoinDrainGate.Release();
+        }
+    }
+
+    public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)
+    {
+        using var _ = ZLinkSpotAmbientContext.Push(this);
+        await _dispatcher
+            .DispatchSubscriptionsAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask DispatchRouteAsync(
+        Received received,
+        CancellationToken cancellationToken)
+    {
+        using (ZLinkSpotAmbientContext.Push(this))
+        {
+            await _dispatcher.DispatchRouteAsync(received, cancellationToken).ConfigureAwait(false);
         }
     }
 }

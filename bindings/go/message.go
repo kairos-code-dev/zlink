@@ -140,6 +140,17 @@ func NewMessage(data []byte) (*Message, error) {
 	return m, nil
 }
 
+func NewMessageWithSize(size int) (*Message, error) {
+	if size < 0 {
+		return nil, validationError("message size must be >= 0")
+	}
+	m := &Message{}
+	if err := configErrorFromResult(ConfigResult(C.zlink_msg_init_size(&m.msg, C.size_t(size)))); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // NewMessageFromBytes creates a message from a byte slice. The current Go
 // binding uses the owned-message path; the helper exists so codec extensions
 // can target a stable constructor.

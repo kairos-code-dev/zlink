@@ -35,6 +35,8 @@ struct start_gate_t
 };
 
 std::atomic<bool> g_stop (false);
+std::atomic<int> g_server_debug_recv_logs (0);
+std::atomic<int> g_server_debug_send_logs (0);
 start_gate_t g_start_gate;
 
 zlink::routing_id_t text_rid (const char *text)
@@ -137,14 +139,38 @@ bool echo_one (zlink::service::spot_t &spot)
                 .message (parts.front ())
                 .flags (ZLINK_DONTWAIT)
                 .submit ();
-            if (!sent)
+            if (!sent) {
+                if (bench_debug_enabled ()
+                    && g_server_debug_send_logs.fetch_add (
+                         1, std::memory_order_acq_rel)
+                         < 8) {
+                    std::cerr << "[cpp-spot-sendsend-server] echo blocked"
+                              << std::endl;
+                }
                 return true;
+            }
+            if (bench_debug_enabled ()
+                && g_server_debug_send_logs.fetch_add (
+                     1, std::memory_order_acq_rel)
+                     < 8) {
+                std::cerr << "[cpp-spot-sendsend-server] echo ok"
+                          << std::endl;
+            }
         }
         catch (const zlink::submit_error_t &err) {
             if (err.result () == zlink::submit_result_t::backpressured
                 || err.result () == zlink::submit_result_t::not_connected
-                || err.result () == zlink::submit_result_t::not_found)
+                || err.result () == zlink::submit_result_t::not_found) {
+                if (bench_debug_enabled ()
+                    && g_server_debug_send_logs.fetch_add (
+                         1, std::memory_order_acq_rel)
+                         < 8) {
+                    std::cerr << "[cpp-spot-sendsend-server] echo transient rc="
+                              << static_cast<int> (err.result ())
+                              << " err=" << err.internal_errno () << std::endl;
+                }
                 return true;
+            }
             errno = err.internal_errno ();
             return false;
         }
@@ -286,6 +312,13 @@ bool run_server (const std::string &lib_name,
                     break;
                 }
                 progressed = true;
+                if (bench_debug_enabled ()
+                    && g_server_debug_recv_logs.fetch_add (
+                         1, std::memory_order_acq_rel)
+                         < 8) {
+                    std::cerr << "[cpp-spot-sendsend-server] recv request"
+                              << std::endl;
+                }
                 std::vector<zlink::message_t> parts =
                   std::move (probe.parts ());
                 try {

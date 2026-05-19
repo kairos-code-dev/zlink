@@ -1,4 +1,4 @@
-[English](platforms.md) | [한국어](platforms.ko.md)
+[English](./platforms.md) | [한국어](./platforms.ko.md)
 
 # Supported Platforms and Compilers
 

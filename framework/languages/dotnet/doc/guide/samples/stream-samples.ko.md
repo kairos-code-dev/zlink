@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET SPOT Samples](./spot-samples.ko.md) | [다음: ZLink Stream Connector For .NET](./streaming-client.ko.md)
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Framework .NET SPOT Samples](./spot-samples.ko.md) | [다음: ZLink Stream Connector For .NET](./streaming-client.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../../doc/spec/draft/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [STREAM](../spec/aspnet-core-stream.ko.md) | [STREAM Decisions](../draft/stream-open-items.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md)
+[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [STREAM Decisions](../../draft/stream-open-items.ko.md) | [인터페이스](../../spec/handler-interfaces.ko.md)
 
 # ZLink Framework .NET STREAM Samples
 
@@ -28,7 +28,7 @@ recv 방식을 사용하는 샘플은 이 문서에 포함하지 않는다.
 
 `STREAM` 샘플이 전제로 삼는 최소 인터페이스는 대략 아래와 같다.
 
-> **주의**: 아래 정의는 [handler-interfaces.ko.md](../spec/handler-interfaces.ko.md)의
+> **주의**: 아래 정의는 [handler-interfaces.ko.md](../../spec/handler-interfaces.ko.md)의
 > 해당 섹션과 같다. 인터페이스가 바뀌면 두 문서를 반드시 함께 갱신해야 한다.
 > 최신 계약의 기준은 언제나 `handler-interfaces.ko.md`다.
 

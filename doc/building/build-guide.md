@@ -1,4 +1,4 @@
-[English](build-guide.md) | [한국어](build-guide.ko.md)
+[English](./build-guide.md) | [한국어](./build-guide.ko.md)
 
 # Build Guide
 
@@ -79,4 +79,4 @@ vcpkg install openssl:x64-windows
 
 ## 7. CMake Options
 
-For detailed options, see [cmake-options.md](cmake-options.md).
+For detailed options, see [cmake-options.md](./cmake-options.md).

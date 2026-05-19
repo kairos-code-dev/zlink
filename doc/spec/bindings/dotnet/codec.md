@@ -1,4 +1,4 @@
-[.NET Binding Specification](README.md) · [Bindings Policy](../README.md)
+[.NET Binding Specification](./README.md) · [Bindings Policy](../README.md)
 
 # .NET Codec Extension Specification
 

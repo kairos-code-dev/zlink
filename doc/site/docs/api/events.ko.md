@@ -1,13 +1,13 @@
-[English](events.md) | [한국어](events.ko.md)
+[English](./events.md) | [한국어](./events.ko.md)
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+[스펙 목차](../README.ko.md) · [코어 목차](./README.ko.md)
 
 # 이벤트 카탈로그
 
 이 문서는 raw socket monitor 이벤트의 canonical catalog입니다.
 
 사용 기준:
-- [monitoring.ko.md](monitoring.ko.md): monitor API와 peer inspection API
+- [monitoring.ko.md](./monitoring.ko.md): monitor API와 peer inspection API
 - 이 문서: 이벤트 의미, payload 필드, 권장 gate
 - [socket-family-monitor-contract-spec.ko.md](../../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md):
   패밀리별 제어 가능 범위와 회귀 테스트 기준

@@ -1,4 +1,4 @@
-[English](03-5-stream.md) | [한국어](03-5-stream.ko.md)
+[English](./03-5-stream.md) | [한국어](./03-5-stream.ko.md)
 
 # STREAM Socket
 
@@ -130,7 +130,7 @@ zlink_recv_handler(stream, on_message, NULL);
 
 > When the send queue is full (HWM), `zlink_send_rid()` blocks
 > (default) or returns `ZLINK_SUBMIT_BACKPRESSURED` with `ZLINK_DONTWAIT`. For advanced
-> backpressure patterns, see [Performance Guide](10-performance.md).
+> backpressure patterns, see [Performance Guide](./10-performance.md).
 
 - Only one callback can be attached at a time; calling attach while a
   callback is already attached returns `ZLINK_HANDLER_BUSY`.
@@ -266,4 +266,4 @@ Defaults currently used by STREAM internals:
 These tests use STREAM server + raw client paths.
 
 ---
-[← ROUTER](03-4-router.md) | [Proxy →](03-6-proxy.md) | [Transport →](04-transports.md)
+[← ROUTER](./03-4-router.md) | [Proxy →](./03-6-proxy.md) | [Transport →](./04-transports.md)

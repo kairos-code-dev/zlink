@@ -1,13 +1,13 @@
-[English](README.md) | [한국어](README.ko.md)
+[English](./README.md) | [한국어](./README.ko.md)
 
 # zlink
 
 > A modern messaging library built on [libzmq](https://github.com/zeromq/libzmq) v4.3.5 — focused on the essential patterns, with Boost.Asio-powered I/O and a developer-friendly API.
 
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](./LICENSE)
 
-[Website](https://zlink.systems/) · [User Guide](doc/guide/01-overview.md) · [Spec](doc/spec/README.md) · [Bindings](doc/bindings/overview.md) · [Internals](doc/internals/architecture.md) · [Build](doc/building/build-guide.md)
+[Website](https://zlink.systems/) · [User Guide](./doc/guide/01-overview.md) · [Spec](./doc/spec/README.md) · [Bindings](doc/bindings/overview.md) · [Internals](./doc/internals/architecture.md) · [Build](./doc/building/build-guide.md)
 
 ---
 
@@ -98,7 +98,7 @@ zlink is composed of five clearly separated layers:
 - **Reaper Thread**: Cleans up resources from terminated sockets/sessions
 - Inter-thread communication is handled through the Lock-free YPipe + Mailbox system
 
-> For a detailed look at the internal architecture, see the [Architecture Document](doc/internals/architecture.md).
+> For a detailed look at the internal architecture, see the [Architecture Document](./doc/internals/architecture.md).
 
 ---
 
@@ -121,9 +121,9 @@ Built on top of the core socket layer, zlink provides a **high-level service lay
 
 | Service | Description | Guide |
 |---------|-------------|:-----:|
-| **Discovery** | Registry cluster with HA, heartbeat-based health check, client-side service cache | [Discovery](doc/guide/07-1-discovery.md) |
+| **Discovery** | Registry cluster with HA, heartbeat-based health check, client-side service cache | [Discovery](./doc/guide/07-1-discovery.md) |
 | **Gateway** | Location-transparent request/response with automatic load balancing, thread-safe send | [Gateway](doc/guide/07-2-gateway.md) |
-| **SPOT** | Location-transparent topic PUB/SUB with Discovery-based automatic mesh | [SPOT](doc/guide/07-3-spot.md) |
+| **SPOT** | Location-transparent topic PUB/SUB with Discovery-based automatic mesh | [SPOT](./doc/guide/07-3-spot.md) |
 
 > For the full feature roadmap and dependency graph, see the [Feature Roadmap](doc/plan/feature-roadmap.md).
 
@@ -133,8 +133,8 @@ Built on top of the core socket layer, zlink provides a **high-level service lay
 
 | Feature | Description | Guide |
 |---------|-------------|:-----:|
-| **Routing ID** | `zlink_routing_id_t` standard type, own 16B UUID / peer 4B uint32 | [Routing ID](doc/guide/08-routing-id.md) |
-| **Monitoring** | Routing-ID-based event identification, polling-style monitor API | [Monitoring](doc/guide/06-monitoring.md) |
+| **Routing ID** | `zlink_routing_id_t` standard type, own 16B UUID / peer 4B uint32 | [Routing ID](./doc/guide/08-routing-id.md) |
+| **Monitoring** | Routing-ID-based event identification, polling-style monitor API | [Monitoring](./doc/guide/06-monitoring.md) |
 
 ---
 
@@ -232,7 +232,7 @@ Throughput comparison with libzmq on 64-byte messages over TCP:
 | ROUTER↔ROUTER (poll) | 4,405 Kmsg/s | 5,249 Kmsg/s | **+19.2%** |
 | STREAM | 1,786 Kmsg/s | 5,216 Kmsg/s | **+192%** |
 
-> For detailed analysis, see the [Performance Report](doc/report/benchmark-2026-02-11.md) and the [Performance Guide](doc/guide/10-performance.md).
+> For detailed analysis, see the [Performance Report](doc/report/benchmark-2026-02-11.md) and the [Performance Guide](./doc/guide/10-performance.md).
 
 ---
 
@@ -240,21 +240,21 @@ Throughput comparison with libzmq on 64-byte messages over TCP:
 
 | Document | Description |
 |----------|-------------|
-| [Documentation Index](doc/README.md) | Full table of contents and reader-specific paths |
-| [Library Spec](doc/spec/README.md) | zlink library specification (core + bindings) |
-| [User Guide](doc/guide/01-overview.md) | zlink API guide (12 chapters) |
+| [Documentation Index](./doc/README.md) | Full table of contents and reader-specific paths |
+| [Library Spec](./doc/spec/README.md) | zlink library specification (core + bindings) |
+| [User Guide](./doc/guide/01-overview.md) | zlink API guide (12 chapters) |
 | [Bindings Guide](doc/bindings/overview.md) | C++/Java/.NET/Node.js/Python bindings |
-| [Internal Architecture](doc/internals/architecture.md) | System architecture and internals |
-| [Build Guide](doc/building/build-guide.md) | Building, testing, and packaging |
+| [Internal Architecture](./doc/internals/architecture.md) | System architecture and internals |
+| [Build Guide](./doc/building/build-guide.md) | Building, testing, and packaging |
 | [Feature Roadmap](doc/plan/feature-roadmap.md) | Feature roadmap and dependency graph |
 
 ---
 
 ## License
 
-[Mozilla Public License 2.0](LICENSE)
+[Mozilla Public License 2.0](./LICENSE)
 
 For third-party component notices and binary redistribution information,
-see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
 Built on [libzmq](https://github.com/zeromq/libzmq) — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.

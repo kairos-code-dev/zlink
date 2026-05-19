@@ -1,4 +1,4 @@
-[English](03-1-pair.md) | [한국어](03-1-pair.ko.md)
+[English](./03-1-pair.md) | [한국어](./03-1-pair.ko.md)
 
 # PAIR 소켓
 
@@ -105,7 +105,7 @@ if (rc == ZLINK_RECV_OK) {
 
 > HWM(High-Water Mark, 큐 최대 허용 메시지 수) 도달 시 `zlink_send()`는 대기(기본) 또는 `ZLINK_DONTWAIT`로
 > `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 배압(backpressure) 패턴은
-> [성능 가이드](10-performance.ko.md)를 참고.
+> [성능 가이드](./10-performance.ko.md)를 참고.
 
 ??? example "Full Sample Code"
 
@@ -130,7 +130,7 @@ Multipart frame:  [frame1][frame2]...[frameN]
 ```
 
 > `source_rid` 등 공통 수신 인터페이스는
-> [소켓 패턴 개요](03-0-socket-patterns.ko.md#7-공통-수신-인터페이스)를 참고.
+> [소켓 패턴 개요](./03-0-socket-patterns.ko.md#7-공통-수신-인터페이스)를 참고.
 
 멀티파트 전송:
 
@@ -286,4 +286,4 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```
 
 ---
-[← 소켓 패턴](03-0-socket-patterns.ko.md) | [PUB/SUB →](03-2-pubsub.ko.md)
+[← 소켓 패턴](./03-0-socket-patterns.ko.md) | [PUB/SUB →](./03-2-pubsub.ko.md)

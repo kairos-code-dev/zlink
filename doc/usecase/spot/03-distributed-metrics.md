@@ -1,4 +1,4 @@
-[← 시세 분배](02-realtime-quote.md) | [목록](README.md) | [이벤트 전파 →](04-microservice-event.md)
+[← 시세 분배](./02-realtime-quote.md) | [목록](./README.md) | [이벤트 전파 →](./04-microservice-event.md)
 
 # 분산 메트릭/이벤트 수집
 

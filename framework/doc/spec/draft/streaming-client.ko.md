@@ -36,7 +36,7 @@ WSS transport로 STREAM 서버에 접속할 수 있어야 한다.
 
 현재 언어별 상세 문서:
 
-- [.NET stream connector](../../../languages/dotnet/doc/guide/streaming-client.ko.md)
+- [.NET stream connector](../../../languages/dotnet/doc/guide/samples/streaming-client.ko.md)
 
 ## 3. 메시지 단위
 

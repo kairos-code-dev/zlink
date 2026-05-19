@@ -23,7 +23,6 @@ namespace {
 
 static const char *k_pattern_env = "DEALER_DEALER";
 static const char *k_pattern_result = "MULTI_DEALER_DEALER";
-static const char k_payload_fill = 'd';
 
 bool perf_debug_enabled ()
 {
@@ -54,14 +53,14 @@ struct bench_result_t
 struct socket_state_t
 {
     zlink::dealer_socket_t *sock;
-    std::vector<char> payload;
+    size_t payload_size;
     zlink::message_t message;
     bool pollout_enabled;
     bool pending;
 
     socket_state_t ()
         : sock (NULL),
-          payload (),
+          payload_size (0),
           message (),
           pollout_enabled (false),
           pending (false)
@@ -159,9 +158,8 @@ class dealer_dealer_client_bench_t
 
             socket_state_t state;
             state.sock = &sock;
-            const size_t payload_size =
+            state.payload_size =
               std::max<size_t> (_msg_size, perf_metric::header_size ());
-            state.payload.assign (payload_size, k_payload_fill);
             _socket_states.push_back (state);
             (void) _poller.add (
               sock, zlink::poll_event_flag_t::pollout,
@@ -227,12 +225,21 @@ class dealer_dealer_client_bench_t
         const auto t0 = collect_latency ? std::chrono::steady_clock::now ()
                                         : std::chrono::steady_clock::time_point ();
         bool sent = false;
-        const size_t payload_size = state.payload.size ();
+        const size_t payload_size = state.payload_size;
         if (payload_size == 0) {
             debug_log ("payload size empty");
             return false;
         }
-        char *const payload = state.payload.data ();
+        state.message.init (payload_size);
+        if (!state.message.valid ()) {
+            debug_log ("message allocate failed");
+            return false;
+        }
+        char *const payload = static_cast<char *> (state.message.data ());
+        if (!payload) {
+            debug_log ("message data missing");
+            return false;
+        }
         const uint64_t sent_ts_ns = perf_metric::now_ns ();
         if (!perf_metric::stamp_payload (payload,
                                          payload_size,
@@ -244,21 +251,22 @@ class dealer_dealer_client_bench_t
             debug_log ("stamp payload failed");
             return false;
         }
-        state.message =
-          zlink::message_t::from_bytes (state.payload.data (), state.payload.size ());
-        if (!state.message.valid ()) {
-            debug_log ("message adopt failed");
-            return false;
-        }
-        try {
-            sent = std::move (state.sock->send ())
-                     .message (state.message)
-                     .flags (zlink::send_flags_t::dontwait)
-                     .submit ();
-        }
-        catch (const zlink::submit_error_t &) {
-            debug_log ("send failed errno=" + std::to_string (errno));
-            return false;
+        const int send_rc = zlink_send_part (
+          zlink::detail::native_handle (*state.sock),
+          zlink::detail::native_handle (state.message),
+          ZLINK_DONTWAIT,
+          ZLINK_PART_FINAL);
+        if (send_rc == 0) {
+            zlink::detail::mark_sent (state.message);
+            sent = true;
+        } else {
+            const int err = errno;
+            if (err != EAGAIN && err != EWOULDBLOCK && err != EINTR) {
+                debug_log ("send failed errno=" + std::to_string (err));
+                errno = err;
+                return false;
+            }
+            errno = err;
         }
         if (sent) {
             ++_seq;
@@ -319,12 +327,20 @@ class dealer_dealer_client_bench_t
         const int wait_ms = std::max (1, _settings.sndtimeo_ms);
         const auto deadline =
           std::chrono::steady_clock::now () + std::chrono::milliseconds (wait_ms);
+        std::vector<uint8_t> sent (_socket_states.size (), 0);
+        size_t sent_count = 0;
 
         do {
             for (size_t i = 0; i < _socket_states.size (); ++i) {
-                if (try_send_stop_token (_socket_states[i]))
-                    return true;
+                if (sent[i])
+                    continue;
+                if (try_send_stop_token (_socket_states[i])) {
+                    sent[i] = 1;
+                    ++sent_count;
+                }
             }
+            if (sent_count == _socket_states.size ())
+                return true;
             std::this_thread::yield ();
         } while (std::chrono::steady_clock::now () < deadline);
 

@@ -43,10 +43,9 @@ internal static class PerfMultiPubSubServer
 
         const uint runId = 1;
         ulong seq = 1;
-        var payload = new byte[Math.Max(size, PerfMetricHeaderSize)];
-        Array.Fill(payload, (byte)'a');
+        int payloadSize = Math.Max(size, PerfMetricHeaderSize);
 
-        if (!RunPublishPhase(server, payload, runId, size, ref seq,
+        if (!RunPublishPhase(server, payloadSize, runId, size, ref seq,
                 PerfPhase.Active, durationSeconds, controlState)
             || !PublishStopToken(server, controlState))
         {
@@ -56,11 +55,10 @@ internal static class PerfMultiPubSubServer
         return 0;
     }
 
-    private static bool PublishNoWait(PubSocket server, ReadOnlySpan<byte> payload)
+    private static bool PublishNoWait(PubSocket server, Message message)
     {
         try
         {
-            using Message message = new(payload);
             return server.Publish(Topic).Message(message)
                 .Flags(SendFlags.DontWait).Submit();
         }
@@ -74,6 +72,11 @@ internal static class PerfMultiPubSubServer
     private static bool PublishStopToken(PubSocket server,
         RunnerControlState controlState)
     {
+        bool sent = false;
+        // The active phase uses the same lossy PUB path as C. After the
+        // measured window, keep the wire stop token flowing until the runner
+        // observes the client result and sends STOP; otherwise a fast managed
+        // publisher can drop the single shutdown token behind saturated pipes.
         while (!controlState.StopRequested)
         {
             try
@@ -81,7 +84,10 @@ internal static class PerfMultiPubSubServer
                 using Message message = new(MultiStopToken.AsSpan());
                 if (server.Publish(Topic).Message(message)
                         .Flags(SendFlags.None).Submit())
-                    return true;
+                {
+                    sent = true;
+                    continue;
+                }
             }
             catch (ZlinkException ex) when (IsTransientStopPublishErrno(
                                                 ex.InternalErrno))
@@ -89,7 +95,7 @@ internal static class PerfMultiPubSubServer
             }
         }
 
-        return controlState.StopRequested;
+        return controlState.StopRequested || sent;
     }
 
     private static bool IsTransientStopPublishErrno(int errno)
@@ -97,7 +103,7 @@ internal static class PerfMultiPubSubServer
         return IsWouldBlock(errno) || IsInterrupted(errno) || errno == 110;
     }
 
-    private static bool RunPublishPhase(PubSocket server, byte[] payload,
+    private static bool RunPublishPhase(PubSocket server, int payloadSize,
         uint runId, int size, ref ulong seq, PerfPhase phase, int durationSeconds,
         RunnerControlState controlState)
     {
@@ -106,9 +112,10 @@ internal static class PerfMultiPubSubServer
         while (!controlState.StopRequested
                && Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            StampMetricHeader(payload.AsSpan(), runId, phase, size, seq,
+            using Message message = Message.Allocate(payloadSize);
+            StampMetricHeader(message.AsSpan(), runId, phase, size, seq,
                 EpochNs());
-            if (PublishNoWait(server, payload.AsSpan()))
+            if (PublishNoWait(server, message))
             {
                 seq++;
                 continue;

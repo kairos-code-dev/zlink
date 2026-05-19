@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework ASP.NET Core Monitoring](./aspnet-core-monitoring.ko.md) | [다음: ZLink Framework .NET Channel Messaging Samples](../guide/channel-messaging-samples.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework ASP.NET Core Monitoring](./aspnet-core-monitoring.ko.md) | [다음: ZLink Framework .NET Channel Messaging Samples](../guide/samples/channel-messaging-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)

@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET STREAM Samples](./stream-samples.ko.md) | [다음: TicTacToe Game Sample 초안](./tictactoe-game-sample.ko.md)
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Framework .NET STREAM Samples](./stream-samples.ko.md) | [다음: TicTacToe Game Sample](./tictactoe-game-sample.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../../doc/spec/draft/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [STREAM](../spec/aspnet-core-stream.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Unity 가이드](../../../../../doc/guide/unity-stream-connector.ko.md) | [공통 Stream Connector](../../../../doc/spec/draft/streaming-client.ko.md)
+[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Unity 가이드](../../../../../../doc/guide/unity-stream-connector.ko.md) | [공통 Stream Connector](../../../../../doc/spec/draft/streaming-client.ko.md)
 
 # ZLink Stream Connector For .NET
 
@@ -17,7 +17,7 @@
 
 이 절에서는 이 문서가 무엇을 다루는지, 그리고 어디까지가 client 표면의 책임인지 짧게 정리한다.
 
-이 문서는 [공통 stream connector 초안](../../../../doc/spec/draft/streaming-client.ko.md) 을 `.NET` 표면으로
+이 문서는 [공통 stream connector 초안](../../../../../doc/spec/draft/streaming-client.ko.md) 을 `.NET` 표면으로
 내려 풀어 쓴 버전이다. 핵심 목표는 한 가지다. 서버 framework 의 STREAM packet[^packet] 모델과
 같은 메시지를, `.NET` client 에서도 똑같이 주고받을 수 있게 하는 것이다.
 
@@ -954,7 +954,7 @@ core를 그대로 사용하고, `MonoBehaviour.Update()`에서 `DispatchAsync()`
 수신 handler와 lifecycle event가 Unity main thread에서 실행된다.
 
 Unity 사용 예제와 lifecycle 처리 방식은
-[Unity Stream Connector 가이드](../../../../../doc/guide/unity-stream-connector.ko.md)
+[Unity Stream Connector 가이드](../../../../../../doc/guide/unity-stream-connector.ko.md)
 에서 다룬다. 이 가이드는 사용법 문서이며, 별도의 wire protocol이나 별도 public API 계약을
 정의하지 않는다.
 

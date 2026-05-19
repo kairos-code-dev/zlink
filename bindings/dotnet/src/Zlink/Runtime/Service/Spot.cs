@@ -1684,7 +1684,34 @@ public sealed partial class Spot : ISpot
 
     internal bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         Message message, SendFlags flags = SendFlags.None)
-        => SendToSpot(destNodeRid, destSpotRid, new[] { message }, flags);
+    {
+        if (message == null)
+            throw new ArgumentNullException(nameof(message));
+        EnsureNotDisposed();
+        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
+        ZlinkRoutingId spotRid = destSpotRid.ToNative();
+        Message cloned = RequestReplySupport.CloneMessage(message);
+        try
+        {
+            int rc = SubmitClonedSpotSendSingle(ref nodeRid, ref spotRid,
+                cloned, (int)flags);
+            if (rc == 0)
+                return true;
+            throw ZlinkException.CreateSubmitException(NativeMethods.zlink_errno());
+        }
+        catch (ZlinkException ex) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(ex)
+                == SendResult.Backpressured)
+        {
+            cloned.Dispose();
+            return false;
+        }
+        catch
+        {
+            cloned.Dispose();
+            throw;
+        }
+    }
 
     internal unsafe bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
@@ -1714,6 +1741,66 @@ public sealed partial class Spot : ISpot
         {
             RequestReplySupport.DisposeParts(cloned);
             throw;
+        }
+    }
+
+    private unsafe int SubmitClonedSpotSendSingle(
+        ref ZlinkRoutingId nodeRid, ref ZlinkRoutingId spotRid, Message cloned,
+        int flags)
+    {
+        if (cloned.TryPrepareBorrowedSend(out IntPtr data, out int length,
+                out IntPtr hint))
+        {
+            int borrowedRc = SubmitBorrowedSpotSendSingle(ref nodeRid,
+                ref spotRid, data, length, hint, flags);
+            if (borrowedRc == 0)
+                cloned.DetachAfterPreparedSend();
+            else
+                cloned.CancelBorrowedSendPrepare();
+            return borrowedRc;
+        }
+
+        ZlinkMsg nativePart = default;
+        cloned.MoveTo(ref nativePart);
+        bool submitted = false;
+        try
+        {
+            int rc = NativeMethods.zlink_spot_send_spot_part(_handle,
+                ref nodeRid, ref spotRid, ref nativePart, flags,
+                NativeMethods.ZlinkPartFlag.Final);
+            submitted = true;
+            return rc;
+        }
+        finally
+        {
+            if (!submitted)
+                NativeMethods.zlink_msg_close(ref nativePart);
+        }
+    }
+
+    private unsafe int SubmitBorrowedSpotSendSingle(
+        ref ZlinkRoutingId nodeRid, ref ZlinkRoutingId spotRid, IntPtr data,
+        int length, IntPtr hint, int flags)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        try
+        {
+            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
+                data, (nuint)length, BorrowedBufferFreePtr, hint);
+            ZlinkException.ThrowSubmitIfError(initRc);
+            initialized = true;
+
+            int rc = NativeMethods.zlink_spot_send_spot_part(_handle,
+                ref nodeRid, ref spotRid, ref nativePart, flags,
+                NativeMethods.ZlinkPartFlag.Final);
+            initialized = false;
+            return rc;
+        }
+        finally
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
         }
     }
 
@@ -2297,8 +2384,8 @@ public sealed partial class Spot : ISpot
         EnsureParts(parts, nameof(parts));
         ZlinkRoutingId nodeRid = destNodeRid.ToNative();
         ZlinkRoutingId spotRid = destSpotRid.ToNative();
-        Message[] cloned = RequestReplySupport.CloneParts(parts);
         uint timeoutMs = NormalizeTimeout(timeout);
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
         GCHandle handle = default;
         SpotRequestCallbackState? state = null;
 
@@ -2307,6 +2394,13 @@ public sealed partial class Spot : ISpot
             state = new SpotRequestCallbackState(callback,
                 RequestProgressPump.AttachSpotCallback(_handle));
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
+            if (timeoutMs > 0)
+            {
+                state.SetTimeoutTimer(new System.Threading.Timer(static userdata =>
+                {
+                    SpotRequestCallbackState.TimeoutFromUserData(userdata);
+                }, handle, (int)timeoutMs, Timeout.Infinite));
+            }
 
             for (int i = 0; i < cloned.Length; i++)
             {
@@ -2436,6 +2530,7 @@ public sealed partial class Spot : ISpot
     {
         private readonly Action<RequestResult, IReadOnlyList<Message>> _callback;
         private readonly RequestProgressPump.ProgressLease _progress;
+        private System.Threading.Timer? _timeoutTimer;
         private int _completed;
 
         internal SpotRequestCallbackState(
@@ -2454,6 +2549,11 @@ public sealed partial class Spot : ISpot
             return true;
         }
 
+        internal void SetTimeoutTimer(System.Threading.Timer timeoutTimer)
+        {
+            _timeoutTimer = timeoutTimer;
+        }
+
         internal void Invoke(RequestResult result,
             IReadOnlyList<Message> payload)
         {
@@ -2469,7 +2569,26 @@ public sealed partial class Spot : ISpot
 
         internal void DisposeProgress()
         {
+            _timeoutTimer?.Dispose();
             _progress.Dispose();
+        }
+
+        internal static void TimeoutFromUserData(object? userdata)
+        {
+            if (userdata is not GCHandle handle || !handle.IsAllocated)
+                return;
+            SpotRequestCallbackState? state;
+            try
+            {
+                state = handle.Target as SpotRequestCallbackState;
+            }
+            catch (InvalidOperationException)
+            {
+                return;
+            }
+            if (state == null || !state.TryStartCompletion())
+                return;
+            state.Invoke(RequestResult.TimedOut, Array.Empty<Message>());
         }
     }
 

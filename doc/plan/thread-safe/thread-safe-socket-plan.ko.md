@@ -13,9 +13,9 @@
 ## 1. 목적
 
 이 문서는 현재 진행 중인
-[`direct-callback-recv-interface-review.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md)
+[`direct-callback-recv-interface-review.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md)
 와
-[`direct-callback-recv-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md)
+[`direct-callback-recv-rewrite-spec.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md)
 를 전제로, raw socket / `gateway` / `spot` / `discovery` / monitor handle의
 공개 동시성 계약을 성능 우선 관점으로 다시 고정한다.
 
@@ -92,11 +92,11 @@ operational 수준 검토 체크리스트는 14절에서 별도로 정의한다.
 직접 기준은 다음이다.
 
 - 인터페이스 기준:
-  [`direct-callback-recv-interface-review.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md)
+  [`direct-callback-recv-interface-review.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md)
 - recv/callback 실행 모델 기준:
-  [`direct-callback-recv-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md)
+  [`direct-callback-recv-rewrite-spec.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md)
 - 현재 공개 헤더 기준:
-  [`zlink.h`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/include/zlink.h)
+  [`zlink.h`](../../../../zlink-direct-callback-rewrite/core/include/zlink.h)
 
 우선순위는 다음과 같다.
 

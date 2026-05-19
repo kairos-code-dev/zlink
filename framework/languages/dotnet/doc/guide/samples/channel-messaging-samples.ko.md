@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework ASP.NET Core Registry Integration](../spec/aspnet-core-registry.ko.md) | [다음: ZLink Framework .NET SPOT Samples](./spot-samples.ko.md)
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Framework ASP.NET Core Registry Integration](../../spec/aspnet-core-registry.ko.md) | [다음: ZLink Framework .NET SPOT Samples](./spot-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../../doc/spec/draft/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/aspnet-core-channel-messaging.ko.md) | [SPOT](../spec/aspnet-core-spot.ko.md) | [STREAM](../spec/aspnet-core-stream.ko.md)
+[.NET 묶음](../../README.ko.md) | [인터페이스](../../spec/handler-interfaces.ko.md) | [channel](../../spec/aspnet-core-channel-messaging.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md)
 
 # ZLink Framework .NET Channel Messaging Samples
 
@@ -663,7 +663,7 @@ public sealed class UserCacheRefreshedEvent
 - `IZLinkClient`
 - `IZLinkEventPublisher`
 
-전체 정의는 [handler-interfaces.ko.md](../spec/handler-interfaces.ko.md) 의 section 5 를
+전체 정의는 [handler-interfaces.ko.md](../../spec/handler-interfaces.ko.md) 의 section 5 를
 참고한다. request 의 reply 타입은 메시지 타입에 붙이지 않는다. 대신 `Async<TReply>(...)`
 쪽에서 명시한다.
 

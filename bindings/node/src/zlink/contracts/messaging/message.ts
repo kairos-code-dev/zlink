@@ -240,6 +240,17 @@ export class Message {
     return new Message(buffer);
   }
 
+  static alloc(size: number): Message {
+    if (!Number.isSafeInteger(size) || size < 0) {
+      throw new RangeError('size must be a non-negative safe integer');
+    }
+    return Message.fromSnapshot({ data: Buffer.allocUnsafe(size) });
+  }
+
+  static allocate(size: number): Message {
+    return Message.alloc(size);
+  }
+
   /** @internal */
   static fromSnapshot(snapshot: MessageSnapshot): Message {
     const message = Object.create(Message.prototype) as Message;

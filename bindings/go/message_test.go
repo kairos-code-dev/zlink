@@ -1,6 +1,10 @@
 package zlink_test
 
-import "testing"
+import (
+	"testing"
+
+	"zlink.systems/zlink"
+)
 
 func TestMessageDiagnosticAPI(t *testing.T) {
 	msg := newMessage(t, "diagnostic")
@@ -19,5 +23,22 @@ func TestMessageDiagnosticAPI(t *testing.T) {
 	}
 	if value != "" {
 		t.Fatalf("GetProperty() value = %q, want empty string for missing property", value)
+	}
+}
+
+func TestNewMessageWithSizeExposesWritablePayload(t *testing.T) {
+	msg, err := zlink.NewMessageWithSize(3)
+	if err != nil {
+		t.Fatalf("NewMessageWithSize() error = %v", err)
+	}
+	defer msg.Close()
+
+	data := msg.Data()
+	data[0] = 0x01
+	data[1] = 0x02
+	data[2] = 0x03
+
+	if got := msg.Bytes(); string(got) != string([]byte{0x01, 0x02, 0x03}) {
+		t.Fatalf("Bytes() = %v, want [1 2 3]", got)
 	}
 }

@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [STREAM](../spec/aspnet-core-stream.ko.md) | [STREAM 샘플](../guide/stream-samples.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md)
+[.NET 묶음](../README.ko.md) | [STREAM](../spec/aspnet-core-stream.ko.md) | [STREAM 샘플](../guide/samples/stream-samples.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md)
 
 # Draft -- ZLink Framework .NET STREAM Decisions
 

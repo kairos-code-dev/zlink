@@ -133,14 +133,22 @@ internal sealed class ZLinkSpotActivationDispatcher(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            using var received = new Received();
+            var received = new Received();
             if (!nativeSpot.RecvRoute(received, RecvFlags.DontWait))
             {
+                received.Dispose();
                 return;
             }
 
             await _routeDispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    public async ValueTask DispatchRouteAsync(
+        Received received,
+        CancellationToken cancellationToken)
+    {
+        await _routeDispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)

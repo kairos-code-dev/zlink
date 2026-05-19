@@ -1,6 +1,6 @@
-[English](registry.md) | [한국어](registry.ko.md)
+[English](./registry.md) | [한국어](./registry.ko.md)
 
-[Spec Index](../../README.md) · [Core Index](../README.md) · [Service Common](README.md)
+[Spec Index](../../README.md) · [Core Index](../README.md) · [Service Common](./README.md)
 
 # Registry
 
@@ -33,8 +33,8 @@ and removed.
   from this information.
 - Discovery may keep nearby cached copies, but it is not the final authority.
 
-The SPOT routed public API itself is defined in [spot.md](spot.md). Discovery
-cache and resolve flow are defined in [discovery.md](discovery.md).
+The SPOT routed public API itself is defined in [spot.md](./spot.md). Discovery
+cache and resolve flow are defined in [discovery.md](./discovery.md).
 
 Applications normally use `zlink_discovery_resolve_spot()` for lookup. Registry
 manages the backing data that makes that answer correct.
@@ -139,7 +139,7 @@ spots per node, or similarly large logical `spot_rid` populations.
   total spot count.
 
 For aggregated liveness maintenance and cache-side scale-out rules, see
-[discovery.md](discovery.md).
+[discovery.md](./discovery.md).
 
 ## Constants
 

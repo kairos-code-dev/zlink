@@ -549,20 +549,20 @@ internal sealed partial class SocketKernel : IDisposable
     public void Publish(string topic, Message message, SendFlags flags = SendFlags.None)
     {
         EnsureSupports(nameof(Publish), SocketTypePolicy.SocketCapability.Publish);
-        BoundaryValidation.ValidateTopicOrFilterUtf8(topic, nameof(topic));
+        byte[] topicUtf8 = GetValidatedPublishTopicUtf8(topic, nameof(topic));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
-        PublishSingleCore(topic, message, (int)flags);
+        PublishSingleCore(topicUtf8, message, (int)flags);
     }
 
     internal SendResult PublishNoWaitResult(string topic, Message message)
     {
         EnsureSupports(nameof(PublishNoWaitResult),
             SocketTypePolicy.SocketCapability.Publish);
-        BoundaryValidation.ValidateTopicOrFilterUtf8(topic, nameof(topic));
+        byte[] topicUtf8 = GetValidatedPublishTopicUtf8(topic, nameof(topic));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
-        return PublishNoWaitSingleCore(topic, message);
+        return PublishNoWaitSingleCore(topicUtf8, message);
     }
 
     public void Publish(string topic, IReadOnlyList<Message> parts,
@@ -1909,7 +1909,11 @@ internal sealed partial class SocketKernel : IDisposable
 
     private static SendResult? TryMapSendResultFromErrno()
     {
-        int errno = NativeMethods.zlink_errno();
+        return TryMapSendResultFromErrno(NativeMethods.zlink_errno());
+    }
+
+    private static SendResult? TryMapSendResultFromErrno(int errno)
+    {
         return errno switch
         {
             ErrnoEAgain => SendResult.Backpressured,
@@ -2095,8 +2099,11 @@ internal sealed partial class SocketKernel : IDisposable
             headerMsg = Message.MoveFromNativeSingle(header);
             bodyMsg = Message.MoveFromNativeSingle(body);
             delivered = true;
-            CallbackDelivery.Post(context,
-                () => packetHandler(routingIdText, headerMsg, bodyMsg));
+            if (context == null)
+                packetHandler(routingIdText, headerMsg, bodyMsg);
+            else
+                CallbackDelivery.Post(context,
+                    () => packetHandler(routingIdText, headerMsg, bodyMsg));
         }
         catch (Exception ex)
         {
@@ -2157,8 +2164,11 @@ internal sealed partial class SocketKernel : IDisposable
             headerMsg = Message.MoveFromNativeSingle(header);
             bodyMsg = Message.MoveFromNativeSingle(body);
             delivered = true;
-            CallbackDelivery.Post(context,
-                () => packetHandler(routingIdValue, headerMsg, bodyMsg));
+            if (context == null)
+                packetHandler(routingIdValue, headerMsg, bodyMsg);
+            else
+                CallbackDelivery.Post(context,
+                    () => packetHandler(routingIdValue, headerMsg, bodyMsg));
         }
         catch (Exception ex)
         {
@@ -2493,26 +2503,37 @@ internal sealed partial class SocketKernel : IDisposable
     private unsafe void PublishSingleCore(string topic, Message message,
         int flags)
     {
+        PublishSingleCore(GetPublishTopicUtf8(topic), message, flags);
+    }
+
+    private unsafe void PublishSingleCore(byte[] topicUtf8, Message message,
+        int flags)
+    {
         ZlinkMsg nativePart = default;
-        bool moved = false;
-        byte[] topicUtf8 = GetPublishTopicUtf8(topic);
+        bool shouldRestore = false;
         try
         {
             message.MoveTo(ref nativePart);
+            shouldRestore = true;
             fixed (byte* topicPtr = topicUtf8)
             {
                 int rc = NativeMethods.zlink_publish_part_utf8(Handle,
                     topicPtr, ref nativePart, flags,
                     NativeMethods.ZlinkPartFlag.Final);
-                moved = true;
-                if (rc != 0)
-                    throw ZlinkException.CreateSubmitException(
-                        NativeMethods.zlink_errno());
+                if (rc == 0)
+                {
+                    shouldRestore = false;
+                    return;
+                }
+                int errno = NativeMethods.zlink_errno();
+                message.RestoreFrom(ref nativePart);
+                shouldRestore = false;
+                throw ZlinkException.CreateSubmitException(errno);
             }
         }
         catch
         {
-            if (!moved)
+            if (shouldRestore)
                 message.RestoreFrom(ref nativePart);
             throw;
         }
@@ -2520,31 +2541,41 @@ internal sealed partial class SocketKernel : IDisposable
 
     private unsafe SendResult PublishNoWaitSingleCore(string topic, Message message)
     {
+        return PublishNoWaitSingleCore(GetPublishTopicUtf8(topic), message);
+    }
+
+    private unsafe SendResult PublishNoWaitSingleCore(byte[] topicUtf8,
+        Message message)
+    {
         ZlinkMsg nativePart = default;
-        bool moved = false;
-        byte[] topicUtf8 = GetPublishTopicUtf8(topic);
+        bool shouldRestore = false;
         try
         {
             message.MoveTo(ref nativePart);
+            shouldRestore = true;
             fixed (byte* topicPtr = topicUtf8)
             {
                 int rc = NativeMethods.zlink_publish_part_utf8(Handle,
                     topicPtr, ref nativePart, DontWaitFlag,
                     NativeMethods.ZlinkPartFlag.Final);
-                moved = true;
                 if (rc == 0)
+                {
+                    shouldRestore = false;
                     return SendResult.Sent;
+                }
             }
 
-            SendResult? sendResult = TryMapSendResultFromErrno();
+            int errno = NativeMethods.zlink_errno();
+            message.RestoreFrom(ref nativePart);
+            shouldRestore = false;
+            SendResult? sendResult = TryMapSendResultFromErrno(errno);
             if (sendResult == null)
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
+                throw ZlinkException.CreateSubmitException(errno);
             return sendResult.Value;
         }
         catch
         {
-            if (!moved)
+            if (shouldRestore)
                 message.RestoreFrom(ref nativePart);
             throw;
         }
@@ -2561,6 +2592,24 @@ internal sealed partial class SocketKernel : IDisposable
             return cached;
         }
 
+        byte[] encoded = PublishTopicEncoding.GetNullTerminatedUtf8(topic);
+        _publishTopicCacheKey = topic;
+        _publishTopicCacheUtf8 = encoded;
+        return encoded;
+    }
+
+    private byte[] GetValidatedPublishTopicUtf8(string topic, string paramName)
+    {
+        byte[]? cached = _publishTopicCacheUtf8;
+        string? cachedKey = _publishTopicCacheKey;
+        if (cached != null
+            && (ReferenceEquals(cachedKey, topic)
+                || string.Equals(cachedKey, topic, StringComparison.Ordinal)))
+        {
+            return cached;
+        }
+
+        BoundaryValidation.ValidateTopicOrFilterUtf8(topic, paramName);
         byte[] encoded = PublishTopicEncoding.GetNullTerminatedUtf8(topic);
         _publishTopicCacheKey = topic;
         _publishTopicCacheUtf8 = encoded;

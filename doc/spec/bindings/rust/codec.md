@@ -1,4 +1,4 @@
-[Rust Binding Specification](README.md) · [Bindings Policy](../README.md)
+[Rust Binding Specification](./README.md) · [Bindings Policy](../README.md)
 
 # Rust Codec Extension Specification
 

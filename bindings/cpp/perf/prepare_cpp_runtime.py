@@ -59,39 +59,6 @@ def make_symlink(path: Path, target: Path) -> None:
     path.symlink_to(target)
 
 
-def server_wrapper(target: Path) -> str:
-    return f"""#!/usr/bin/env bash
-set -euo pipefail
-if [[ $# -lt 2 ]]; then
-  echo \"usage: <lib> <transport>\" >&2
-  exit 1
-fi
-lib=\"$1\"
-transport=\"$2\"
-size_csv=\"${{PERF_MSG_SIZES:-64}}\"
-size=\"${{size_csv%%,*}}\"
-if [[ -z \"${{size}}\" ]]; then
-  size=64
-fi
-exec \"{target}\" \"$lib\" \"$transport\" \"$size\"
-"""
-
-
-def client_wrapper(target: Path) -> str:
-    return f"""#!/usr/bin/env bash
-set -euo pipefail
-if [[ $# -lt 3 ]]; then
-  echo \"usage: <lib> <transport> <size> [args...]\" >&2
-  exit 1
-fi
-lib=\"$1\"
-transport=\"$2\"
-size=\"$3\"
-shift 3
-exec \"{target}\" \"$lib\" \"$transport\" \"$size\" \"$@\"
-"""
-
-
 def prepare_single(runtime_bin: Path) -> None:
     for name, target in SINGLE_MAP.items():
         make_symlink(runtime_bin / name, target)
@@ -99,9 +66,11 @@ def prepare_single(runtime_bin: Path) -> None:
 
 def prepare_multi(runtime_bin: Path) -> None:
     for name, target in MULTI_SERVER_MAP.items():
-        write_executable(runtime_bin / name, server_wrapper(target))
+        make_symlink(runtime_bin / name, target)
+        make_symlink(runtime_bin / target.name, target)
     for name, target in MULTI_CLIENT_MAP.items():
-        write_executable(runtime_bin / name, client_wrapper(target))
+        make_symlink(runtime_bin / name, target)
+        make_symlink(runtime_bin / target.name, target)
     make_symlink(runtime_bin / "perf_stream_client", C_STREAM_CLIENT)
 
 

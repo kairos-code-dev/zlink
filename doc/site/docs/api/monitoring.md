@@ -1,10 +1,10 @@
-[English](monitoring.md) | [한국어](monitoring.ko.md)
+[English](./monitoring.md) | [한국어](./monitoring.ko.md)
 
-[Spec Index](../README.md) · [Core Index](README.md)
+[Spec Index](../README.md) · [Core Index](./README.md)
 
 # Monitoring API Reference
 
-The canonical event catalog lives in [events.md](events.md). This file
+The canonical event catalog lives in [events.md](./events.md). This file
 focuses on monitor APIs, callbacks, and monitor snapshots.
 
 ## API Structure

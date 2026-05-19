@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
+internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCurrentSpotActivation, IAsyncDisposable
 {
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly AsyncServiceScope _scope;

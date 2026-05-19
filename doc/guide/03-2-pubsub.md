@@ -1,4 +1,4 @@
-[English](03-2-pubsub.md) | [한국어](03-2-pubsub.ko.md)
+[English](./03-2-pubsub.md) | [한국어](./03-2-pubsub.ko.md)
 
 # PUB/SUB/XPUB/XSUB Publish-Subscribe
 
@@ -149,7 +149,7 @@ SUB / XSUB are recv-only types. The intended pattern is to observe
 > When PUB's send queue is full (HWM), the default
 > (`ZLINK_PUB_OPT_NODROP=1`) makes `zlink_publish()` return
 > `ZLINK_SUBMIT_BACKPRESSURED` instead of silently dropping. For details,
-> see [Performance Guide](10-performance.md).
+> see [Performance Guide](./10-performance.md).
 
 ## 3. Topic Filtering
 
@@ -468,7 +468,7 @@ flowchart LR
 
 > Proxy patterns (built-in `zlink_proxy()`, manual proxy construction,
 > ROUTER/DEALER broker) are covered in the
-> [Proxy Guide](03-6-proxy.md).
+> [Proxy Guide](./03-6-proxy.md).
 
 ## 9. Subscription Frame Format
 
@@ -657,4 +657,4 @@ When multiple SUBs subscribe to the same topic, the XPUB subscription is maintai
 > Reference: `core/tests/integration/test_xpub_manual.cpp` -- `test_missing_subscriptions()`: processing two subscribers sequentially to prevent omissions
 
 ---
-[← PAIR](03-1-pair.md) | [DEALER →](03-3-dealer.md)
+[← PAIR](./03-1-pair.md) | [DEALER →](./03-3-dealer.md)

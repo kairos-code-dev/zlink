@@ -41,6 +41,10 @@ impl Message {
         }
     }
 
+    pub fn allocate(size: usize) -> Result<Self, ConfigError> {
+        Self::with_size(size)
+    }
+
     /// Create a message by copying the given byte slice.
     pub fn copy_from(data: &[u8]) -> Result<Self, ConfigError> {
         let mut msg = Self::with_size(data.len())?;

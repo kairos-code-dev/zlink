@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel 샘플](../guide/channel-messaging-samples.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Registry](./aspnet-core-registry.ko.md)
+[.NET 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel 샘플](../guide/samples/channel-messaging-samples.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Registry](./aspnet-core-registry.ko.md)
 
 # ZLink Framework ASP.NET Core Channel Messaging
 
@@ -31,7 +31,7 @@
 `AddZLinkFramework(...)`, `IZLinkClient`, handler 등록 정도가 그 표면이다.
 
 등록부터 handler, HTTP endpoint, outbound 호출까지 흐름을 한 번에 보고 싶다면,
-[channel-messaging-samples.ko.md](../guide/channel-messaging-samples.ko.md) 를 참고한다.
+[channel-messaging-samples.ko.md](../guide/samples/channel-messaging-samples.ko.md) 를 참고한다.
 
 ## 2. 기반이 되는 .NET binding
 

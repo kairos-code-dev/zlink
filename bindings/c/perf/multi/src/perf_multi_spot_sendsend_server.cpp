@@ -454,29 +454,21 @@ bool wait_for_ready_barrier(spot_reqrep_server_state_t *state,
     return false;
 }
 
-bool idle_until_server_stop(const std::chrono::steady_clock::time_point &deadline,
-                            const spot_reqrep_server_state_t *state)
+bool idle_until_runner_stop(const spot_reqrep_server_state_t *state)
 {
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (perf_stop_requested().load(std::memory_order_acquire)
-            || (state
-                && state->fatal_errno.load(std::memory_order_acquire) != 0)) {
+    for (;;) {
+        if (state && state->fatal_errno.load(std::memory_order_acquire) != 0) {
             errno = EIO;
             return false;
         }
 
-        const long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               deadline - std::chrono::steady_clock::now())
-                               .count();
-        if (wait_ms <= 0)
-            break;
-        if (perf_socket_poll(NULL, 0, std::min<long>(wait_ms, 10)) < 0
-            && zlink_errno() != EINTR) {
+        if (perf_stop_requested().load(std::memory_order_acquire))
+            return true;
+
+        if (perf_socket_poll(NULL, 0, 10) < 0 && zlink_errno() != EINTR) {
             return false;
         }
     }
-
-    return !(state && state->fatal_errno.load(std::memory_order_acquire) != 0);
 }
 
 bool run_server_loop(spot_reqrep_server_state_t *state,
@@ -533,12 +525,9 @@ bool run_server_loop(spot_reqrep_server_state_t *state,
             return false;
         }
 
-        const auto deadline =
-          std::chrono::steady_clock::now()
-          + std::chrono::seconds(std::max(1, settings.duration_seconds));
-        if (!idle_until_server_stop(deadline, state)) {
+        if (!idle_until_runner_stop(state)) {
             if (bench_debug_enabled())
-                std::cerr << "[multi-spot-reqrep-server] active wait failed size="
+                std::cerr << "[multi-spot-reqrep-server] stop wait failed size="
                           << msg_size << " err=" << zlink_errno() << std::endl;
             return false;
         }

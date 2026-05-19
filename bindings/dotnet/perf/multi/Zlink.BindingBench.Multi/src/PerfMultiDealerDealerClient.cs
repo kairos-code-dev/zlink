@@ -85,8 +85,7 @@ internal static class PerfMultiDealerDealerClient
     {
         const uint runId = 1;
         ulong seq = 1;
-        var payload = new byte[Math.Max(msgSize, PerfMetricHeaderSize)];
-        Array.Fill(payload, (byte)'a');
+        int payloadSize = Math.Max(msgSize, PerfMetricHeaderSize);
         long activeDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
         using var activeTimer = new Systems.Zlink.Timer();
@@ -114,9 +113,10 @@ internal static class PerfMultiDealerDealerClient
                 while (!controlState.StopRequested
                        && Stopwatch.GetTimestamp() < activeDeadlineTicks)
                 {
-                    StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Active,
-                        msgSize, seq, EpochNs());
-                    if (!TrySendNoWait(socket, payload.AsSpan()))
+                    using Message message = Message.Allocate(payloadSize);
+                    StampMetricHeader(message.AsSpan(), runId,
+                        PerfPhase.Active, msgSize, seq, EpochNs());
+                    if (!TrySendNoWait(socket, message))
                     {
                         pending[i] = true;
                         pendingCount++;
@@ -187,11 +187,10 @@ internal static class PerfMultiDealerDealerClient
         return true;
     }
 
-    private static bool TrySendNoWait(DealerSocket socket, ReadOnlySpan<byte> payload)
+    private static bool TrySendNoWait(DealerSocket socket, Message message)
     {
         try
         {
-            using Message message = new(payload);
             return socket.Send().Message(message).Flags(SendFlags.DontWait)
                 .Submit();
         }

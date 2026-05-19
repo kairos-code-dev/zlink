@@ -489,7 +489,7 @@ room 이나 stage 의 상태는 spot 에서 읽고, player 나 entity 의 상태
 
 ```csharp
 public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
-    where TSpot : IZLinkSpot
+    where TSpot : class
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
@@ -500,7 +500,7 @@ public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
 }
 
 public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TReply>
-    where TSpot : IZLinkSpot
+    where TSpot : class
     where TActor : IZLinkActor
 {
     ValueTask<TReply> HandleAsync(
@@ -550,7 +550,7 @@ public interface IZLinkActorContext
     bool IsJoined { get; }
 
     IZLinkSpot GetSpot();
-    TSpot GetSpot<TSpot>() where TSpot : IZLinkSpot;
+    TSpot GetSpot<TSpot>() where TSpot : class;
 
     // 사용자에게 보이는 표면은 domain spot 이름(string). RoutingId는 framework 내부에서만.
     IZLinkActorJoinSpotCall<TReply> JoinSpot<TReply, TRequest>(
@@ -764,7 +764,7 @@ public interface IZLinkActorRef
 session callback 에서 unbound standalone actor 를 만드는 표면은 두지 않는다.
 standalone actor 가 필요하다면 actor node 측에서 별도의 등록 표면을 쓴다 (예:
 actor factory 와 actor node 가 직접 호출하는 create helper). 정책 기준은
-[policy/actor-model.ko.md](../../../../doc/spec/actor-model.ko.md) §4 lifecycle 표를
+[공통 actor 모델](../../../../doc/spec/actor-model.ko.md) §4 lifecycle 표를
 참고한다.
 
 ### 8.2 session 안에서의 흐름
@@ -1043,7 +1043,7 @@ public interface IZLinkSpotMeshNodeBuilder
         where TEntrySpot : IZLinkEntrySpot;
 
     void AddSpotFactory<TSpot>(string spotName)
-        where TSpot : IZLinkSpot;
+        where TSpot : class;
 }
 ```
 
@@ -1070,7 +1070,7 @@ public interface IZLinkSpotMeshNodeBuilder
 - session actor dispatch 정책 문서 (구현 전 초안):
   [session-gateway-usability.ko.md](../../../../doc/spec/session-actor-dispatch.ko.md)
 - TicTacToe sample에서 모든 표면이 함께 쓰이는 예시:
-  [tictactoe-game-sample.ko.md](../guide/tictactoe-game-sample.ko.md)
+  [tictactoe-game-sample.ko.md](../guide/samples/tictactoe-game-sample.ko.md)
 
 ## 12. 결정된 기준
 

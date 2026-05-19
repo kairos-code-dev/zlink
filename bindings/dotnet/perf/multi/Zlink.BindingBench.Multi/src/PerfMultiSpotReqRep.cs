@@ -15,9 +15,9 @@ internal static class PerfMultiSpotReqRep
     private const uint RunId = 1;
     private const int SpotSocketTag = 0;
     private const int ControlDeadlineTag = -1;
-    private const int ActiveDeadlineTag = -2;
     private const int ReadyRepeatTag = -3;
     private const int ActiveWakeTag = -4;
+    private const int ActiveDeadlineTag = -5;
     private static int s_debugClientSendLogs;
     private static int s_debugClientReplyLogs;
     private static int s_debugClientHeaderLogs;
@@ -114,6 +114,7 @@ internal static class PerfMultiSpotReqRep
         using var controlNode = new SpotNode(ctx);
         using var controlPub = controlNode.CreateSpot();
         using var controlSub = controlNode.CreateSpot();
+        var serverStop = new ServerStopFlag();
 
         try
         {
@@ -158,8 +159,9 @@ internal static class PerfMultiSpotReqRep
 
             replier.OnDispatchEvent(info =>
             {
-                if (info.Event == SpotDispatchEvent.RoutedReadable)
-                    DrainRoutedMessages(replier, config.Mode);
+                if (info.Event == SpotDispatchEvent.RoutedReadable
+                    && !serverStop.IsSet)
+                    DrainRoutedMessages(replier, config.Mode, serverStop);
             });
 
             WriteStdoutLine($"READY,{dataEndpoint}");
@@ -207,6 +209,10 @@ internal static class PerfMultiSpotReqRep
             Console.Error.WriteLine(
                 $"multi_server_error:{ex.GetType().Name}:{ex.Message}");
             return 2;
+        }
+        finally
+        {
+            serverStop.Set();
         }
     }
 
@@ -610,9 +616,10 @@ internal static class PerfMultiSpotReqRep
         return false;
     }
 
-    private static void DrainRoutedMessages(Spot replier, SpotEchoMode mode)
+    private static void DrainRoutedMessages(Spot replier, SpotEchoMode mode,
+        ServerStopFlag serverStop)
     {
-        while (true)
+        while (!serverStop.IsSet)
         {
             using var received = new Received();
             try
@@ -625,7 +632,10 @@ internal static class PerfMultiSpotReqRep
                 Message reply = received.FirstPart();
                 if (mode == SpotEchoMode.RequestReply)
                 {
-                    received.Reply().Message(reply).Submit();
+                    received.Reply()
+                        .Message(reply)
+                        .Flags(SendFlags.DontWait)
+                        .Submit();
                     DebugLogLimited(ref s_debugServerReplyLogs,
                         "spot_reqrep_server: reply ok");
                 }
@@ -635,9 +645,11 @@ internal static class PerfMultiSpotReqRep
                     RoutingId? sourceSpot = received.SpotRid;
                     if (sourceNode.HasValue && sourceSpot.HasValue)
                     {
+                        using Message replyCopy =
+                            Message.FromBytes(reply.AsReadOnlySpan());
                         _ = replier.SendToSpot(sourceNode.Value,
                                 sourceSpot.Value)
-                            .Message(reply)
+                            .Message(replyCopy)
                             .Flags(SendFlags.DontWait)
                             .Submit();
                     }
@@ -667,16 +679,17 @@ internal static class PerfMultiSpotReqRep
         }
 
         int activeSlots = ActiveSpotSlotLimit(slots.Count, size);
-        using var activeTimer = new Systems.Zlink.Timer();
         using PollWake? wake =
             config.Mode == SpotEchoMode.RequestReply ? new PollWake() : null;
+        using var activeTimer = new Systems.Zlink.Timer();
         using var sendPoller = new Poller();
-        var sendEvents = new PollEvent[Math.Max(1, activeSlots + 2)];
+        var sendEvents = new PollEvent[Math.Max(1, activeSlots * 4 + 3)];
         for (int i = 0; i < activeSlots; i++)
         {
             if (config.Mode == SpotEchoMode.SendSend)
             {
-                sendPoller.Add(slots[i].Requester, PollEventFlags.PollIn, i);
+                sendPoller.Add(slots[i].Requester,
+                    PollEventFlags.PollIn | PollEventFlags.PollOut, i);
                 slots[i].PollRegistered = true;
             }
             else
@@ -687,11 +700,10 @@ internal static class PerfMultiSpotReqRep
                 slots[i].PollRegistered = true;
             }
         }
-        sendPoller.Add(activeTimer, ActiveDeadlineTag);
         if (wake != null)
             sendPoller.AddFd(wake.ReadFd, PollEventFlags.PollIn, ActiveWakeTag);
-        activeTimer.Start(TimeSpan.FromSeconds(Math.Max(1, durationSeconds)),
-            1);
+        sendPoller.Add(activeTimer, ActiveDeadlineTag);
+        activeTimer.Start(TimeSpan.FromSeconds(Math.Max(1, durationSeconds)), 1);
 
         while (Stopwatch.GetTimestamp() < activeDeadlineTicks)
         {
@@ -701,9 +713,7 @@ internal static class PerfMultiSpotReqRep
             {
                 ClientSlot slot = slots[i];
                 if (Volatile.Read(ref slot.WaitingReply) != 0)
-                {
                     continue;
-                }
                 if (Volatile.Read(ref slot.SendPending) != 0)
                 {
                     canSend = true;
@@ -720,8 +730,8 @@ internal static class PerfMultiSpotReqRep
                         sendProgress = true;
                     else if (result == SendResult.Blocked)
                     {
-                        Volatile.Write(ref slot.SendPending, 1);
-                        EnablePollOut(sendPoller, slot, i, config);
+                        if (config.Mode == SpotEchoMode.SendSend)
+                            Volatile.Write(ref slot.SendPending, 1);
                     }
                     else if (result == SendResult.Fatal)
                         return false;
@@ -729,6 +739,8 @@ internal static class PerfMultiSpotReqRep
                 catch (Exception ex)
                 {
                     Interlocked.CompareExchange(ref failure, ex, null);
+                    Console.Error.WriteLine(
+                        $"multi_client_error:{ex.GetType().Name}:{ex.Message}");
                     return false;
                 }
             }
@@ -794,13 +806,25 @@ internal static class PerfMultiSpotReqRep
         byte[] payloadBytes = slot.PreparePayload(size, seq);
         using var payload = Message.WrapBytes(payloadBytes);
         Volatile.Write(ref slot.WaitingReply, 1);
-        bool submitted = slot.Requester
-            .RequestToSpot(config.ServerNodeRoutingId, config.ServerSpotRoutingId)
-            .Message(payload)
-            .Timeout(TimeSpan.FromMilliseconds(Math.Max(1, requestTimeoutMs)))
-            .Flags(SendFlags.DontWait)
-            .Submit((result, parts) =>
-                OnRequestReply(slot, result, parts, size));
+        bool submitted;
+        try
+        {
+            submitted = slot.Requester
+                .RequestToSpot(config.ServerNodeRoutingId,
+                    config.ServerSpotRoutingId)
+                .Message(payload)
+                .Timeout(TimeSpan.FromMilliseconds(Math.Max(1, requestTimeoutMs)))
+                .Flags(SendFlags.DontWait)
+                .Submit((result, parts) =>
+                    OnRequestReply(slot, result, parts, size));
+        }
+        catch (ZlinkSubmitException ex)
+            when (ex.Result == ZlinkSubmitException.ErrorCode.NotConnected)
+        {
+            Volatile.Write(ref slot.WaitingReply, 0);
+            Volatile.Write(ref slot.SendPending, 0);
+            return SendResult.NotConnected;
+        }
         if (submitted)
         {
             DebugLogLimited(ref s_debugClientSendLogs,
@@ -830,11 +854,23 @@ internal static class PerfMultiSpotReqRep
         byte[] payloadBytes = slot.PreparePayload(size, seq);
         using var payload = Message.WrapBytes(payloadBytes);
         Volatile.Write(ref slot.WaitingReply, 1);
-        bool submitted = slot.Requester
-            .SendToSpot(config.ServerNodeRoutingId, config.ServerSpotRoutingId)
-            .Message(payload)
-            .Flags(SendFlags.DontWait)
-            .Submit();
+        bool submitted;
+        try
+        {
+            submitted = slot.Requester
+                .SendToSpot(config.ServerNodeRoutingId,
+                    config.ServerSpotRoutingId)
+                .Message(payload)
+                .Flags(SendFlags.DontWait)
+                .Submit();
+        }
+        catch (ZlinkSubmitException ex)
+            when (ex.Result == ZlinkSubmitException.ErrorCode.NotConnected)
+        {
+            Volatile.Write(ref slot.WaitingReply, 0);
+            Volatile.Write(ref slot.SendPending, 0);
+            return SendResult.NotConnected;
+        }
         if (submitted)
         {
             Volatile.Write(ref slot.SendPending, 0);
@@ -858,29 +894,28 @@ internal static class PerfMultiSpotReqRep
 
             try
             {
-                // PERF_MULTI_TEST_POLICY § 1.3.1 / PERF_POLICY § 1.1.2-1.1.3:
-                // signal-driven (-1) poller wait, no timer fallback and no
-                // sleep in the wait path. Matches C
-                // perf_multi_spot_reqrep_client.cpp run_active_phase's
-                // zlink_poller_wait(..., -1, NULL). The active deadline is a
-                // poller-registered timer (ActiveDeadlineTag), so the wait is
-                // still woken when the duration elapses.
+                // Keep the wait signal-driven: socket readiness, callback wake,
+                // or the active deadline timer must wake the poller.
                 int written = poller.Wait(events, Timeout.InfiniteTimeSpan,
-                    out _);
+                    out int totalReady);
+                _ = totalReady;
+                if (written == 0 && config.Mode == SpotEchoMode.RequestReply)
+                    return true;
                 bool progressed = false;
                 for (int i = 0; i < written; i++)
                 {
-                    if (events[i].Tag is int tag && tag == ActiveDeadlineTag)
-                    {
-                        _ = events[i].Timer?.Recv();
-                        return false;
-                    }
-
                     if (events[i].Tag is int wakeTag && wakeTag == ActiveWakeTag)
                     {
                         wake?.Drain();
                         progressed = true;
                         continue;
+                    }
+
+                    if (events[i].Tag is int deadlineTag
+                        && deadlineTag == ActiveDeadlineTag)
+                    {
+                        _ = events[i].Timer?.Recv();
+                        return false;
                     }
 
                     if (events[i].Tag is not int slotIndex
@@ -909,7 +944,6 @@ internal static class PerfMultiSpotReqRep
                         != 0)
                     {
                         Volatile.Write(ref slots[slotIndex].SendPending, 0);
-                        DisablePollOut(poller, slots[slotIndex], config);
                         progressed = true;
                     }
                 }
@@ -1040,38 +1074,11 @@ internal static class PerfMultiSpotReqRep
 
     private static int ActiveSpotSlotLimit(int totalSlots, int msgSize)
     {
-        int hwmSlots = Math.Max(1, 1_048_576 / Math.Max(1, msgSize));
         if (msgSize >= 131072)
-            return Math.Min(totalSlots, Math.Min(8, hwmSlots));
+            return Math.Min(totalSlots, 8);
         if (msgSize >= 65536)
-            return Math.Min(totalSlots, Math.Max(1, Math.Min(32, hwmSlots) / 2));
+            return Math.Min(totalSlots, 32);
         return totalSlots;
-    }
-
-    private static void EnablePollOut(Poller poller, ClientSlot slot,
-        int slotIndex, SpotEchoConfig config)
-    {
-        if (config.Mode == SpotEchoMode.SendSend)
-        {
-            poller.Modify(slot.Requester,
-                PollEventFlags.PollIn | PollEventFlags.PollOut);
-            return;
-        }
-
-        poller.Modify(slot.Requester,
-            PollEventFlags.PollIn | PollEventFlags.PollOut);
-    }
-
-    private static void DisablePollOut(Poller poller, ClientSlot slot,
-        SpotEchoConfig config)
-    {
-        if (config.Mode == SpotEchoMode.SendSend)
-        {
-            poller.Modify(slot.Requester, PollEventFlags.PollIn);
-            return;
-        }
-
-        poller.Modify(slot.Requester, PollEventFlags.PollIn);
     }
 
     private static void WaitForPendingReplies(List<ClientSlot> slots,
@@ -1185,6 +1192,18 @@ internal static class PerfMultiSpotReqRep
         internal int ReadyCount { get; set; }
         internal int DataPeerCount { get; set; }
         internal bool ControlConnected { get; set; }
+    }
+
+    private sealed class ServerStopFlag
+    {
+        private int _stopRequested;
+
+        internal bool IsSet => Volatile.Read(ref _stopRequested) != 0;
+
+        internal void Set()
+        {
+            Volatile.Write(ref _stopRequested, 1);
+        }
     }
 
     private sealed class ClientSlot : IDisposable

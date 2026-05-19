@@ -727,6 +727,49 @@ void test_stream_nonblocking_send_preserves_message_for_retry ()
 #endif
 }
 
+void test_stream_part_nonblocking_backpressure_preserves_message ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    char endpoint[MAX_SOCKET_STRING];
+    memset (endpoint, 0, sizeof (endpoint));
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    const int raw_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT (0, raw_fd);
+    set_raw_timeout (raw_fd, 200);
+
+    zlink_routing_id_t rid;
+    establish_stream_route (server, raw_fd, &rid);
+    fill_stream_send_queue_until_hwm (server, &rid);
+
+    zlink_msg_t msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&msg, kPayloadSize));
+    memset (zlink_msg_data (&msg), 0x73, kPayloadSize);
+
+    const zlink_submit_result_t send_rc =
+      zlink_send_part_rid (server, &rid, &msg, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED, send_rc);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+    TEST_ASSERT_EQUAL_UINT64 (kPayloadSize, zlink_msg_size (&msg));
+
+    const unsigned char *msg_data =
+      static_cast<const unsigned char *> (zlink_msg_data (&msg));
+    TEST_ASSERT_NOT_NULL (msg_data);
+    for (size_t i = 0; i < kPayloadSize; ++i)
+        TEST_ASSERT_EQUAL_UINT8 (0x73, msg_data[i]);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
+    close_raw_fd (raw_fd);
+    test_context_socket_close (server);
+#endif
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -737,5 +780,6 @@ int main ()
     RUN_TEST (test_stream_pollout_only_observes_recovery_readiness);
     RUN_TEST (test_stream_blocking_send_times_out_without_peer_reads);
     RUN_TEST (test_stream_nonblocking_send_preserves_message_for_retry);
+    RUN_TEST (test_stream_part_nonblocking_backpressure_preserves_message);
     return UNITY_END ();
 }

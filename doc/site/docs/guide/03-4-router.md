@@ -1,4 +1,4 @@
-[English](03-4-router.md) | [한국어](03-4-router.ko.md)
+[English](./03-4-router.md) | [한국어](./03-4-router.ko.md)
 
 # ROUTER Socket
 
@@ -85,7 +85,7 @@ zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 > `ROUTER_MANDATORY=1` ROUTER returns `ZLINK_SUBMIT_NOT_CONNECTED`. If the
 > caller explicitly sets `ROUTER_MANDATORY=0`, the message is silently
 > dropped. For advanced backpressure patterns, see
-> [Performance Guide](10-performance.md).
+> [Performance Guide](./10-performance.md).
 
 ??? example "Full Sample Code"
 
@@ -252,7 +252,7 @@ if (rc != ZLINK_SUBMIT_OK) { /* handle submit failure */ }
 on a separate completion-callback axis and are not mixed with data-plane
 receive. `zlink_router_recv()` also carries SPOT-originated routed
 traffic; when `source_spot_rid` is populated, reply with
-`zlink_router_reply_spot()`. See [SPOT Guide](07-3-spot.md).
+`zlink_router_reply_spot()`. See [SPOT Guide](./07-3-spot.md).
 
 ## 5. Usage Patterns
 
@@ -394,7 +394,7 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 
 If two DEALERs with the same routing_id connect simultaneously, the second connection is rejected by default. Set `ZLINK_OPT_RID_DUPLICATE_POLICY` to `ZLINK_RID_DUPLICATE_HANDOVER` to replace the existing connection instead.
 
-> For a detailed explanation of routing_id concepts, see [08-routing-id.md](08-routing-id.md).
+> For a detailed explanation of routing_id concepts, see [08-routing-id.md](./08-routing-id.md).
 
 ### Weight for graceful maintenance
 
@@ -447,7 +447,7 @@ Typical maintenance pattern:
 
 Weight transitions on connected peers surface on the socket monitor
 as `ZLINK_EVENT_PEER_WEIGHT_CHANGED`; see
-[monitoring guide](06-monitoring.md#peer-weight-changes) for the
+[monitoring guide](./06-monitoring.md#peer-weight-changes) for the
 event shape.
 
 > For the full contract, see
@@ -456,4 +456,4 @@ event shape.
 > in the ROUTER spec.
 
 ---
-[← DEALER](03-3-dealer.md) | [STREAM →](03-5-stream.md)
+[← DEALER](./03-3-dealer.md) | [STREAM →](./03-5-stream.md)

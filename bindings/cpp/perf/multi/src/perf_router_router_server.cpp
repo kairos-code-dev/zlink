@@ -122,7 +122,7 @@ bool perf_router_router_server (const std::string &lib_name,
 
     struct pending_reply_t
     {
-        zlink::routing_id_t rid;
+        zlink_routing_id_t rid;
         zlink::message_t payload;
     };
 
@@ -130,31 +130,48 @@ bool perf_router_router_server (const std::string &lib_name,
     std::deque<pending_reply_t> pending_replies;
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
-    zlink::routing_id_t source_rid = zlink::routing_id_t::from_bytes (
-      reinterpret_cast<const uint8_t *> ("x"), 1);
     zlink::message_t part;
     events.reserve (1);
     poller.add (server, zlink::poll_event_flag_t::pollin);
 
+    auto try_send_native_rid =
+      [&] (const zlink_routing_id_t *rid, zlink::message_t &payload,
+           bool *would_block) -> bool {
+        if (would_block)
+            *would_block = false;
+        const int send_rc = zlink_send_part_rid (
+          zlink::detail::native_handle (server),
+          rid,
+          zlink::detail::native_handle (payload),
+          ZLINK_DONTWAIT,
+          ZLINK_PART_FINAL);
+        if (send_rc == 0) {
+            zlink::detail::mark_sent (payload);
+            return true;
+        }
+
+        const int err_no = errno;
+        if (err_no == EAGAIN || err_no == EWOULDBLOCK || err_no == EINTR
+            || err_no == EHOSTUNREACH || err_no == ENOTCONN) {
+            if (would_block)
+                *would_block = true;
+            errno = err_no;
+            return false;
+        }
+
+        errno = err_no;
+        return false;
+      };
+
     auto flush_pending = [&] () -> bool {
         while (!pending_replies.empty ()) {
             pending_reply_t &front = pending_replies.front ();
-            try {
-                if (server.send (front.rid)
-                      .message (front.payload)
-                      .flags (ZLINK_DONTWAIT)
-                      .submit ()) {
-                    pending_replies.pop_front ();
-                    continue;
-                }
-                return true; // backpressured
-            } catch (const zlink::submit_error_t &err) {
-                const int err_no = err.internal_errno ();
-                if (err_no == EINTR || err_no == EHOSTUNREACH
-                    || err_no == ENOTCONN)
-                    return true;
-                return false;
+            bool would_block = false;
+            if (try_send_native_rid (&front.rid, front.payload, &would_block)) {
+                pending_replies.pop_front ();
+                continue;
             }
+            return would_block;
         }
         return true;
     };
@@ -218,46 +235,57 @@ bool perf_router_router_server (const std::string &lib_name,
         // avoids materializing received_t parts for the single-part echo
         // workload.
         while (!g_stop_requested.load (std::memory_order_acquire)) {
-            const int recv_rc = server.recv (
-              source_rid, part, zlink::recv_flags_t::dontwait);
+            part.init ();
+            const zlink_routing_id_t *source_rid = NULL;
+            const zlink_routing_id_t *source_spot_rid = NULL;
+            uint64_t request_seq = 0;
+            zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+            const int recv_rc = zlink_router_recv_part (
+              zlink::detail::native_handle (server),
+              &source_rid,
+              &source_spot_rid,
+              &request_seq,
+              zlink::detail::native_handle (part),
+              &has_more,
+              ZLINK_RECV_FLAGS_DONTWAIT);
             if (recv_rc != 0) {
                 const int err = errno;
-                if (recv_rc == static_cast<int> (zlink::recv_result_t::no_data)
-                    || err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
+                part.close ();
+                if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
                     break;
                 debug_log ("recv failed errno=" + std::to_string (err));
+                failed = true;
+                break;
+            }
+            if (!source_rid || source_rid->size == 0
+                || (source_spot_rid && source_spot_rid->size != 0)
+                || request_seq != 0 || has_more != ZLINK_PART_FINAL) {
+                part.close ();
                 failed = true;
                 break;
             }
 
             // No socket stop-token handling: matches the C reference relay
             // server, which terminates only via stdin STOP/QUIT + signals.
-            if (part.size () == 0)
-                continue;
-
-            if (!pending_replies.empty ()) {
-                pending_replies.push_back (pending_reply_t {
-                  source_rid, std::move (part) });
+            if (part.size () == 0) {
+                part.close ();
                 continue;
             }
 
-            try {
-                if (!server.send (source_rid)
-                       .message (part)
-                       .flags (ZLINK_DONTWAIT)
-                       .submit ()) {
+            if (!pending_replies.empty ()) {
+                pending_replies.push_back (pending_reply_t {
+                  *source_rid, std::move (part) });
+                continue;
+            }
+
+            bool would_block = false;
+            if (!try_send_native_rid (source_rid, part, &would_block)) {
+                if (would_block) {
                     pending_replies.push_back (pending_reply_t {
-                      source_rid, std::move (part) });
-                }
-            } catch (const zlink::submit_error_t &err) {
-                const int err_no = err.internal_errno ();
-                if (err_no == EINTR || err_no == EHOSTUNREACH
-                    || err_no == ENOTCONN) {
-                    pending_replies.push_back (pending_reply_t {
-                      source_rid, std::move (part) });
+                      *source_rid, std::move (part) });
                     continue;
                 }
-                debug_log ("send failed errno=" + std::to_string (err_no));
+                debug_log ("send failed errno=" + std::to_string (errno));
                 failed = true;
                 break;
             }

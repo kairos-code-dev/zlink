@@ -20,7 +20,7 @@ internal sealed class ZLinkSpotActorJoinRegistry
             replyType));
     }
 
-    public void Bind(IZLinkSpot spot)
+    public void Bind(object spot)
     {
         foreach (var actorJoin in _registrations)
         {

@@ -9,10 +9,10 @@
 #include "core/options.hpp"
 #include "utils/err.hpp"
 
-void zlink::socket_base_t::finish_close_handoff ()
+void zlink::socket_base_t::finish_close_handoff (int handoff_timeout_ms_)
 {
     lifecycle_coordinator ().complete_deferred_close_handoff (
-      static_cast<mailbox_t *> (_mailbox), 2000);
+      static_cast<mailbox_t *> (_mailbox), handoff_timeout_ms_);
 
     _tag = 0xdeadbeef;
     send_reap (this);
@@ -92,9 +92,11 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
         get_ctx ()->schedule_auto_hwm_recalculate ();
 
     if (is_terminating ()) {
-        register_term_acks (1);
-        ++_term_pipe_acks_registered;
-        pipe_->terminate (false);
+        if (_term_pipes.insert (pipe_).second) {
+            register_term_acks (1);
+            ++_term_pipe_acks_registered;
+            pipe_->terminate (false);
+        }
     }
 }
 
@@ -326,6 +328,9 @@ void zlink::socket_base_t::hiccuped (pipe_t *pipe_)
 
 void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
 {
+    const bool term_pipe_ack_expected =
+      is_terminating () && _term_pipes.erase (pipe_) != 0;
+
     endpoint_uri_pair_t endpoint_pair;
     std::vector<unsigned char> routing_id_copy;
     if (pipe_) {
@@ -369,7 +374,7 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
         }
     }
 
-    if (is_terminating ()) {
+    if (term_pipe_ack_expected) {
         ++_term_pipe_acks_received;
         unregister_term_ack ();
     }

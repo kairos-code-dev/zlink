@@ -1,9 +1,9 @@
-[English](07-4-actor.md) | [한국어](07-4-actor.ko.md)
+[English](./07-4-actor.md) | [한국어](./07-4-actor.ko.md)
 
 # SPOT Actor 사용 가이드
 
 이 문서는 Actor 생성, Spot join/leave, 종료, 세션 바인딩 흐름을 설명한다.
-SPOT 기본 설정과 디스패치 핸들러 등록은 [SPOT 가이드](07-3-spot.ko.md)를 본다.
+SPOT 기본 설정과 디스패치 핸들러 등록은 [SPOT 가이드](./07-3-spot.ko.md)를 본다.
 정확한 함수 계약은 [SPOT spec](../spec/core/service/spot.ko.md)를 본다.
 
 ## 1. Actor로 세션 메시지 분배하기

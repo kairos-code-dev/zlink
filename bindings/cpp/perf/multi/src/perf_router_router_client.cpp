@@ -69,11 +69,6 @@ struct socket_state_t
     size_t payload_size;
     zlink::message_t request;
     zlink::message_t reply;
-    // Reusable source routing id scratch for recv_reply. Avoids the
-    // per-call routing_id_from_ascii("x") allocation in the hot recv
-    // loop that pushed routed-echo recv overhead above the C reference
-    // baseline (cpp.md round 21).
-    zlink::routing_id_t source_rid_scratch;
     bool borrow_payload;
     bool awaiting_reply;
     bool send_pending;
@@ -85,8 +80,6 @@ struct socket_state_t
           payload_size (0),
           request (),
           reply (),
-          source_rid_scratch (zlink::routing_id_t::from_bytes (
-            reinterpret_cast<const uint8_t *> ("x"), 1)),
           borrow_payload (false),
           awaiting_reply (false),
           send_pending (false),
@@ -437,11 +430,30 @@ class router_router_client_bench_t
             return -1;
         }
 
-        const int rc = state.sock->recv (
-          state.source_rid_scratch, state.reply,
-          zlink::recv_flags_t::dontwait);
-        if (rc != 0)
+        state.reply.init ();
+        const zlink_routing_id_t *source_node_rid = NULL;
+        const zlink_routing_id_t *source_spot_rid = NULL;
+        uint64_t request_seq = 0;
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        const int rc = zlink_router_recv_part (
+          zlink::detail::native_handle (*state.sock),
+          &source_node_rid,
+          &source_spot_rid,
+          &request_seq,
+          zlink::detail::native_handle (state.reply),
+          &has_more,
+          ZLINK_RECV_FLAGS_DONTWAIT);
+        if (rc != 0) {
+            state.reply.close ();
             return -1;
+        }
+        if (!source_node_rid || source_node_rid->size == 0
+            || (source_spot_rid && source_spot_rid->size != 0)
+            || request_seq != 0 || has_more != ZLINK_PART_FINAL) {
+            state.reply.close ();
+            errno = EPROTO;
+            return -1;
+        }
 
         if (!state.reply.valid ()) {
             errno = EPROTO;

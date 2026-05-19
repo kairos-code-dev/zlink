@@ -310,7 +310,7 @@ request도 reply를 기다리는 async 호출로 설명한다. 다만 request pa
 정해진 batch budget 안에서 queue를 drain한다. 이렇게 해야 thread blocking 없이도
 높은 처리량을 유지할 수 있다.
 
-보다 자세한 `.NET` 초안은 [../bindings/dotnet/README.ko.md](../../languages/dotnet/doc/README.ko.md)를 참고한다.
+보다 자세한 `.NET` 초안은 [.NET 문서](../../languages/dotnet/doc/README.ko.md)를 참고한다.
 
 ### 3.3 ASP.NET Core의 SPOT 방향
 
@@ -378,7 +378,11 @@ framework는 이 두 이벤트를 아래와 같이 처리한다.
 
 ##### 실행 문맥 보장
 
-두 이벤트 모두 spot serial executor를 통해 직렬화된 실행 문맥 안에서 처리되므로, actor join handler와 actor packet handler 사이에 동시성 경합이 없다.
+user Spot 에서는 두 이벤트를 spot serial executor를 통해 직렬화된 실행 문맥 안에서
+처리하므로, actor join handler와 actor packet handler 사이에 동시성 경합이 없다.
+Entry Spot 은 같은 handler/callback 등록 표면을 제공하지만 공용 입구이므로 packet
+callback 을 Entry Spot 전체 실행 줄에 묶지 않는다. Entry Spot 에서 직렬화되는 것은
+초기화, 종료, lifecycle callback 처럼 Entry Spot 자체 상태를 다루는 callback 이다.
 
 ##### framework가 직접 관리하지 않는 것
 

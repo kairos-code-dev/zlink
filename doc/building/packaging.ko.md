@@ -1,4 +1,4 @@
-[English](packaging.md) | [한국어](packaging.ko.md)
+[English](./packaging.md) | [한국어](./packaging.ko.md)
 
 # 패키징 및 릴리즈 (Core / Bindings 분리)
 

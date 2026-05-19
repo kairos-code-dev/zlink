@@ -173,11 +173,13 @@ binding별 실제 이름은 언어 관례에 맞게 정하되, 의미상 아래 
 | actor packet | Entry Spot context에서 actor type과 handler를 묶는다 | Spot context에서 actor type과 handler를 묶는다 |
 | actor joined lifecycle | Entry Spot context에서 actor type과 joined handler를 묶는다 | Spot context에서 actor type과 joined handler를 묶는다 |
 | actor left lifecycle | Entry Spot context에서 actor type과 left handler를 묶는다 | Spot context에서 actor type과 left handler를 묶는다 |
-| handler 실행 인자 | actor + payload 또는 actor + lifecycle info | spot + actor + payload 또는 spot + actor + lifecycle info |
+| handler 실행 인자 | entry spot + actor + payload 또는 entry spot + actor + lifecycle info | spot + actor + payload 또는 spot + actor + lifecycle info |
 
-Entry Spot은 user Spot 객체가 아니므로 Entry Spot actor handler에 user Spot 인스턴스를
-넘기지 않는다. 반대로 user Spot actor handler는 spot 상태와 actor 상태를 함께 볼 수
-있어야 하므로 spot 인스턴스와 actor 인스턴스를 모두 받는다.
+Entry Spot과 user Spot은 기능 표면을 맞춘다. 따라서 Entry Spot handler도 Entry
+Spot 인스턴스를 받을 수 있다. 차이는 상태 보호 방식이다. user Spot은 room, game,
+stage 같은 상태를 소유하므로 같은 spot 실행 queue에서 callback을 직렬화한다. Entry
+Spot은 여러 actor가 공유하는 입구이므로 서로 관계없는 packet callback을 Entry Spot
+전체 실행 queue에 묶지 않는다.
 
 ### 5.2 실행 순서 모델
 
@@ -190,7 +192,7 @@ actor packet dispatch는 **actor 상태**와 **Spot 상태** 중 무엇을 보�
 | 입력 경로 | 실행 줄 | 이유 |
 | --- | --- | --- |
 | STREAM session에서 Entry/local actor로 전달되는 packet | actor별 순서 보존 뒤 현재 actor 위치로 dispatch | 같은 actor의 packet 순서는 지키되, 최종 handler 실행 위치는 Entry Spot 또는 local actor registry가 결정한다 |
-| Entry Spot actor packet | actor별 mailbox | Entry Spot은 여러 actor가 공유하는 입구이므로 전역 직렬화하면 병목이 된다 |
+| Entry Spot packet / actor packet | packet dispatch 또는 actor별 mailbox | Entry Spot은 여러 actor가 공유하는 입구이므로 전역 직렬화하면 병목이 된다 |
 | user Spot 안의 actor packet | user Spot 실행 queue | room, game, stage 같은 Spot 상태를 actor handler가 함께 다루므로 handler는 Spot 단위 순서를 지킨다 |
 | user Spot packet / timer / subscription | user Spot 실행 queue | 같은 Spot 인스턴스의 상태를 한 번에 하나의 callback만 변경하게 한다 |
 | Entry Spot lifecycle / join / leave callback | Entry Spot 실행 문맥 | Entry Spot registry와 lifecycle 상태를 일관되게 다룬다 |
@@ -205,9 +207,9 @@ user Spot 실행 queue는 Spot 인스턴스 하나의 상태를 보호한다. �
 Spot queue에서 순서대로 실행되어야 한다.
 
 Entry Spot은 user Spot처럼 room 상태를 소유하는 곳이 아니라 actor가 처음 지나가는
-공용 입구다. 따라서 Entry Spot actor packet은 Entry Spot 전체 queue에 쌓지 않고,
-대상 actor의 mailbox로 보내야 한다. Entry Spot 자체의 초기화, 종료, lifecycle callback
-처럼 Entry Spot registry 상태를 다루는 작업만 Entry Spot 실행 문맥에서 직렬화한다.
+공용 입구다. 따라서 Entry Spot packet과 actor packet은 Entry Spot 전체 queue에 쌓지
+않는다. Entry Spot 자체의 초기화, 종료, lifecycle callback처럼 Entry Spot registry
+상태를 다루는 작업만 Entry Spot 실행 문맥에서 직렬화한다.
 
 ### 5.3 lifecycle callback 공개 방식
 

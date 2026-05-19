@@ -534,50 +534,144 @@ message unit을 유지한다. non-STREAM 기본값은 `4096`이고 STREAM 기본
 | `tcp` | `MULTI_STREAM` | `256` | `통과` | `86.4%` | full tcp |
 | `tcp` | `MULTI_STREAM` | `1024` | `통과` | `84.0%` | full tcp |
 | `tcp` | `MULTI_STREAM` | `65536` | `통과` | `104.1%` | full tcp |
-| `ws` | `MULTI_DEALER_DEALER` | `64` | `보류` | `59.8%` | tcp small one-way 후보가 abort/악화. framed transport도 writable/owned message builder 추가/수정 필요 |
-| `ws` | `MULTI_DEALER_DEALER` | `256` | `보류` | `55.7%` | tcp small one-way 후보가 abort/악화. framed transport도 writable/owned message builder 추가/수정 필요 |
-| `ws` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `67.5%` | full ws |
-| `ws` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `85.5%` | full ws |
-| `ws` | `MULTI_DEALER_DEALER` | `131072` | `보류` | `57.0%` | size별 buffer/backpressure 내부 후보만으로 안정 통과 없음. 반복 전송용 writable/owned message builder 추가/수정 필요 |
-| `ws` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `80.5%` | full ws |
-| `ws` | `MULTI_DEALER_ROUTER` | `64,256,1024,65536,131072,262144` | `통과` | `51.1%~95.3%` | full ws |
-| `ws` | `MULTI_ROUTER_ROUTER` | `64,256,1024,65536` | `보류` | `47.1%~48.3%` | routed echo dispatch와 payload 경로의 추가 개선은 단일 part routed send context 또는 raw recv facade 추가/수정 필요 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `131072,262144` | `통과` | `66.1%~82.8%` | full ws |
-| `ws` | `MULTI_PUBSUB` | `64,256,1024` | `보류` | `42.9%~56.9%` | PUBSUB subscribe callback/receive allocation 경로의 추가 개선은 raw/typed subscribed receive facade 추가/수정 필요 |
-| `ws` | `MULTI_PUBSUB` | `65536,131072,262144` | `통과` | `64.7%~73.8%` | full ws |
-| `ws` | `MULTI_SPOT` | `64,256,1024,65536,131072,262144` | `보류` | `33.7%~51.6%` | SPOT publish native-message 후보가 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
-| `ws` | `MULTI_SPOT_REQREP` | `64,256,1024,131072` | `통과` | `73.9%~98.5%` | 제한 C 기준 |
-| `ws` | `MULTI_SPOT_REQREP` | `65536,262144` | `통과` | `66.6%~79.2%` | timeout 원인 해소 후 complete: `perf_dotnet_multi_linux_20260518_202052_codex_dotnet_ws_reqrep_large_nooutput_recheck.txt` |
-| `ws` | `MULTI_SPOT_SENDSEND` | `64,256,1024,131072` | `통과` | `63.5%~94.4%` | 제한 C 기준 |
-| `ws` | `MULTI_SPOT_SENDSEND` | `65536,262144` | `통과` | `70.8%~88.0%` | timeout 원인 해소 후 complete, 262144는 제한 C 재측정 기준: `perf_dotnet_multi_linux_20260518_202112_codex_dotnet_ws_sendsend_large_nooutput_recheck.txt` |
-| `ws` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `89.2%~96.7%` | full ws |
-| `wss` | `MULTI_DEALER_DEALER` | `64,256` | `보류` | `55.7%~60.4%` | tcp small one-way 후보가 abort/악화. WSS도 writable/owned message builder 추가/수정 필요 |
-| `wss` | `MULTI_DEALER_DEALER` | `1024,65536,131072,262144` | `통과` | `73.1%~93.8%` | full wss |
-| `wss` | `MULTI_DEALER_ROUTER` | 전체 대상 | `통과` | `54.8%~95.4%` | full wss |
-| `wss` | `MULTI_ROUTER_ROUTER` | 전체 대상 | `통과` | `50.4%~93.6%` | full wss, 상대 기준 허용 범위 |
-| `wss` | `MULTI_PUBSUB` | `64,256,1024` | `보류` | `42.8%~61.4%` | PUBSUB subscribe callback/receive allocation 경로의 추가 개선은 raw/typed subscribed receive facade 추가/수정 필요 |
-| `wss` | `MULTI_PUBSUB` | `65536,131072,262144` | `통과` | `73.7%~92.8%` | full wss |
-| `wss` | `MULTI_SPOT` | `64,262144` | `보류` | `47.2%~48.4%` | SPOT publish native-message 후보가 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
-| `wss` | `MULTI_SPOT` | `256,1024,65536,131072` | `통과` | `103.5%~303.9%` | 제한 C 기준 |
-| `wss` | `MULTI_SPOT_REQREP` | `64,256,1024,131072,262144` | `통과` | `70.2%~96.0%` | 제한 C 기준 |
-| `wss` | `MULTI_SPOT_REQREP` | `65536` | `통과` | `93.2%` | timeout 원인 해소 후 complete: `perf_dotnet_multi_linux_20260518_202129_codex_dotnet_wss_reqrep65536_nooutput_recheck.txt` |
-| `wss` | `MULTI_SPOT_SENDSEND` | `64,256,1024` | `통과` | `64.5%~69.2%` | 제한 C 기준 |
-| `wss` | `MULTI_SPOT_SENDSEND` | `65536,131072,262144` | `통과` | `90.8%~91.1%` | timeout 원인 해소 후 complete: `perf_dotnet_multi_linux_20260518_202141_codex_dotnet_wss_sendsend_large_nooutput_recheck.txt` |
-| `wss` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `86.7%~91.9%` | full wss |
-| `tls` | `MULTI_DEALER_DEALER` | `64,256` | `보류` | `54.1%~60.2%` | tcp small one-way 후보가 abort/악화. TLS도 writable/owned message builder 추가/수정 필요 |
-| `tls` | `MULTI_DEALER_DEALER` | `1024,65536,131072,262144` | `통과` | `67.2%~85.3%` | full tls |
-| `tls` | `MULTI_DEALER_ROUTER` | 전체 대상 | `통과` | `53.7%~91.6%` | full tls |
-| `tls` | `MULTI_ROUTER_ROUTER` | `64,256,1024` | `보류` | `45.9%~48.8%` | routed echo dispatch와 payload 경로의 추가 개선은 단일 part routed send context 또는 raw recv facade 추가/수정 필요 |
-| `tls` | `MULTI_ROUTER_ROUTER` | `65536,131072,262144` | `통과` | `86.8%~96.1%` | full tls |
-| `tls` | `MULTI_PUBSUB` | `64,256,1024,65536,262144` | `보류` | `38.7%~62.4%` | PUBSUB subscribe callback/receive allocation 경로의 추가 개선은 raw/typed subscribed receive facade 추가/수정 필요 |
-| `tls` | `MULTI_PUBSUB` | `131072` | `통과` | `85.7%` | full tls |
-| `tls` | `MULTI_SPOT` | `64,65536,131072,262144` | `보류` | `43.2%~48.9%` | SPOT publish native-message 후보가 목표 미달. writable message builder 또는 raw/typed subscribed receive facade 추가/수정 필요 |
-| `tls` | `MULTI_SPOT` | `256,1024` | `통과` | `61.6%~77.4%` | 제한 C 기준 |
-| `tls` | `MULTI_SPOT_REQREP` | `64,256,1024,262144` | `통과` | `63.5%~96.7%` | 제한 C 기준 |
-| `tls` | `MULTI_SPOT_REQREP` | `65536,131072` | `통과` | `87.4%~92.2%` | timeout 원인 해소 후 complete: `perf_dotnet_multi_linux_20260518_202204_codex_dotnet_tls_reqrep_large_nooutput_recheck.txt` |
-| `tls` | `MULTI_SPOT_SENDSEND` | `64,256,1024,131072,262144` | `통과` | `63.1%~295.0%` | 제한 C 기준 |
-| `tls` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `85.2%` | timeout 원인 해소 후 complete: `perf_dotnet_multi_linux_20260518_202221_codex_dotnet_tls_sendsend65536_nooutput_recheck.txt` |
-| `tls` | `MULTI_STREAM` | `64,256,1024,65536` | `통과` | `83.5%~94.9%` | 제한 tail 측정 |
+| `ws` | `MULTI_DEALER_DEALER` | `64` | `보류` | `46.5%` | public operation builder 경유 one-way hot path에서 내부 후보만으로 목표 미달. 직접 no-wait send 또는 반복 전송용 owned message builder API 추가/수정 필요 |
+| `ws` | `MULTI_DEALER_DEALER` | `256` | `통과` | `67.0%` | 최신 full ws: `perf_dotnet_multi_linux_20260519_135221_codex_dotnet_ws_all_sizes_after_dotnet_fastpaths_full.txt` |
+| `ws` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `76.3%` | 최신 full ws |
+| `ws` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `103.8%` | 최신 full ws |
+| `ws` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `119.7%` | 최신 full ws |
+| `ws` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `185.7%` | 최신 full ws |
+| `ws` | `MULTI_DEALER_ROUTER` | `64` | `통과` | `67.1%` | 최신 full ws |
+| `ws` | `MULTI_DEALER_ROUTER` | `256` | `통과` | `65.0%` | 최신 full ws |
+| `ws` | `MULTI_DEALER_ROUTER` | `1024` | `통과` | `67.9%` | 최신 full ws |
+| `ws` | `MULTI_DEALER_ROUTER` | `65536` | `통과` | `72.5%` | 최신 full ws |
+| `ws` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `83.1%` | 최신 full ws |
+| `ws` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `115.6%` | 최신 full ws |
+| `ws` | `MULTI_ROUTER_ROUTER` | `64` | `통과` | `52.9%` | 절대 목표 기준 통과 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `256` | `통과` | `51.4%` | 절대 목표 기준 통과 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `1024` | `통과` | `50.1%` | 절대 목표 기준 통과 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `65536` | `보류` | `45.0%` | routed echo dispatch와 payload 경로의 추가 개선은 단일 part routed send context 또는 raw recv facade 추가/수정 필요 |
+| `ws` | `MULTI_ROUTER_ROUTER` | `131072` | `통과` | `83.7%` | 최신 full ws |
+| `ws` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `124.1%` | 최신 full ws |
+| `ws` | `MULTI_PUBSUB` | `64` | `통과` | `74.3%` | 최신 full ws |
+| `ws` | `MULTI_PUBSUB` | `256` | `통과` | `86.7%` | 최신 full ws |
+| `ws` | `MULTI_PUBSUB` | `1024` | `통과` | `82.0%` | 최신 full ws |
+| `ws` | `MULTI_PUBSUB` | `65536` | `통과` | `155.6%` | 최신 full ws |
+| `ws` | `MULTI_PUBSUB` | `131072` | `통과` | `181.7%` | 최신 full ws |
+| `ws` | `MULTI_PUBSUB` | `262144` | `통과` | `243.6%` | 최신 full ws |
+| `ws` | `MULTI_SPOT` | `64` | `통과` | `114.8%` | worker 증가 crash 회귀 수정 후 최신 full ws |
+| `ws` | `MULTI_SPOT` | `256` | `통과` | `148.0%` | worker 증가 crash 회귀 수정 후 최신 full ws |
+| `ws` | `MULTI_SPOT` | `1024` | `통과` | `112.6%` | worker 증가 crash 회귀 수정 후 최신 full ws |
+| `ws` | `MULTI_SPOT` | `65536` | `통과` | `109.9%` | worker 증가 crash 회귀 수정 후 최신 full ws |
+| `ws` | `MULTI_SPOT` | `131072` | `통과` | `106.0%` | worker 증가 crash 회귀 수정 후 최신 full ws |
+| `ws` | `MULTI_SPOT` | `262144` | `통과` | `98.1%` | worker 증가 crash 회귀 수정 후 최신 full ws |
+| `ws` | `MULTI_SPOT_REQREP` | `64` | `통과` | `62.9%` | 최신 full ws |
+| `ws` | `MULTI_SPOT_REQREP` | `256` | `통과` | `79.7%` | 최신 full ws |
+| `ws` | `MULTI_SPOT_REQREP` | `1024` | `통과` | `64.6%` | 최신 full ws |
+| `ws` | `MULTI_SPOT_REQREP` | `65536` | `통과` | `85.9%` | 최신 full ws |
+| `ws` | `MULTI_SPOT_REQREP` | `131072` | `보류` | `37.5%` | 단일 request borrowed-submit 후보는 목표 미달/악화로 원복. received owned-part reply fast path는 public 계약 추가/수정 필요 |
+| `ws` | `MULTI_SPOT_REQREP` | `262144` | `보류` | `38.9%` | 단일 request borrowed-submit 후보는 목표 미달/악화로 원복. received owned-part reply fast path는 public 계약 추가/수정 필요 |
+| `ws` | `MULTI_SPOT_SENDSEND` | `64` | `통과` | `62.8%` | 최신 full ws |
+| `ws` | `MULTI_SPOT_SENDSEND` | `256` | `통과` | `63.2%` | 최신 full ws |
+| `ws` | `MULTI_SPOT_SENDSEND` | `1024` | `통과` | `67.5%` | 최신 full ws |
+| `ws` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `94.6%` | 최신 full ws |
+| `ws` | `MULTI_SPOT_SENDSEND` | `131072` | `보류` | `36.2%` | clone-preserving single send fast path 이후에도 목표 미달. received owned-part routed send fast path는 public 계약 추가/수정 필요 |
+| `ws` | `MULTI_SPOT_SENDSEND` | `262144` | `보류` | `40.9%` | clone-preserving single send fast path 이후에도 목표 미달. received owned-part routed send fast path는 public 계약 추가/수정 필요 |
+| `ws` | `MULTI_STREAM` | `64` | `통과` | `91.9%` | 최신 full ws |
+| `ws` | `MULTI_STREAM` | `256` | `통과` | `92.2%` | 최신 full ws |
+| `ws` | `MULTI_STREAM` | `1024` | `통과` | `91.5%` | 최신 full ws |
+| `ws` | `MULTI_STREAM` | `65536` | `통과` | `122.7%` | 최신 full ws |
+| `wss` | `MULTI_DEALER_DEALER` | `64` | `보류` | `43.7%` | 최신 full wss: `perf_dotnet_multi_linux_20260519_150448_codex_dotnet_wss_all_sizes_after_spot_exit_fix_full_retry.txt` |
+| `wss` | `MULTI_DEALER_DEALER` | `256` | `통과` | `65.9%` | 최신 full wss |
+| `wss` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `77.8%` | 최신 full wss |
+| `wss` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `97.5%` | 최신 full wss |
+| `wss` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `106.3%` | 최신 full wss |
+| `wss` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `102.4%` | 최신 full wss |
+| `wss` | `MULTI_DEALER_ROUTER` | `64` | `통과` | `69.3%` | 최신 full wss |
+| `wss` | `MULTI_DEALER_ROUTER` | `256` | `통과` | `64.0%` | 최신 full wss |
+| `wss` | `MULTI_DEALER_ROUTER` | `1024` | `통과` | `62.6%` | 최신 full wss |
+| `wss` | `MULTI_DEALER_ROUTER` | `65536` | `통과` | `96.3%` | 최신 full wss |
+| `wss` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `97.9%` | 최신 full wss |
+| `wss` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `95.7%` | 최신 full wss |
+| `wss` | `MULTI_ROUTER_ROUTER` | `64` | `통과` | `56.5%` | 최신 full wss |
+| `wss` | `MULTI_ROUTER_ROUTER` | `256` | `통과` | `55.1%` | 최신 full wss |
+| `wss` | `MULTI_ROUTER_ROUTER` | `1024` | `통과` | `52.0%` | 최신 full wss |
+| `wss` | `MULTI_ROUTER_ROUTER` | `65536` | `통과` | `95.7%` | 최신 full wss |
+| `wss` | `MULTI_ROUTER_ROUTER` | `131072` | `통과` | `96.3%` | 최신 full wss |
+| `wss` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `94.0%` | 최신 full wss |
+| `wss` | `MULTI_PUBSUB` | `64` | `통과` | `70.6%` | 최신 full wss |
+| `wss` | `MULTI_PUBSUB` | `256` | `통과` | `67.1%` | 최신 full wss |
+| `wss` | `MULTI_PUBSUB` | `1024` | `통과` | `80.3%` | 최신 full wss |
+| `wss` | `MULTI_PUBSUB` | `65536` | `통과` | `89.7%` | 최신 full wss |
+| `wss` | `MULTI_PUBSUB` | `131072` | `통과` | `97.6%` | 최신 full wss |
+| `wss` | `MULTI_PUBSUB` | `262144` | `통과` | `115.2%` | 최신 full wss |
+| `wss` | `MULTI_SPOT` | `64` | `통과` | `107.2%` | discovery WSS canonical bootstrap dealer 종료 회귀 수정 후 최신 full wss |
+| `wss` | `MULTI_SPOT` | `256` | `보류` | `47.4%` | SPOT publish/subscribe 경로는 추가 개선 필요 |
+| `wss` | `MULTI_SPOT` | `1024` | `통과` | `50.0%` | 절대 목표 기준 통과 |
+| `wss` | `MULTI_SPOT` | `65536` | `통과` | `101.1%` | 최신 full wss |
+| `wss` | `MULTI_SPOT` | `131072` | `통과` | `67.4%` | 최신 full wss |
+| `wss` | `MULTI_SPOT` | `262144` | `통과` | `78.4%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_REQREP` | `64` | `통과` | `54.9%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_REQREP` | `256` | `통과` | `56.0%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_REQREP` | `1024` | `통과` | `56.7%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_REQREP` | `65536` | `통과` | `94.1%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_REQREP` | `131072` | `통과` | `69.0%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_REQREP` | `262144` | `통과` | `66.5%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_SENDSEND` | `64` | `통과` | `58.1%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_SENDSEND` | `256` | `통과` | `61.5%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_SENDSEND` | `1024` | `통과` | `70.5%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `93.5%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_SENDSEND` | `131072` | `통과` | `65.9%` | 최신 full wss |
+| `wss` | `MULTI_SPOT_SENDSEND` | `262144` | `통과` | `53.2%` | 최신 full wss |
+| `wss` | `MULTI_STREAM` | `64` | `통과` | `86.3%` | 최신 full wss |
+| `wss` | `MULTI_STREAM` | `256` | `통과` | `86.0%` | 최신 full wss |
+| `wss` | `MULTI_STREAM` | `1024` | `통과` | `90.9%` | 최신 full wss |
+| `wss` | `MULTI_STREAM` | `65536` | `통과` | `94.2%` | 최신 full wss |
+| `tls` | `MULTI_DEALER_DEALER` | `64` | `보류` | `45.6%` | 최신 full tls. small one-way 추가 개선 필요 |
+| `tls` | `MULTI_DEALER_DEALER` | `256` | `통과` | `61.5%` | 최신 full tls |
+| `tls` | `MULTI_DEALER_DEALER` | `1024` | `통과` | `73.0%` | 최신 full tls |
+| `tls` | `MULTI_DEALER_DEALER` | `65536` | `통과` | `94.7%` | 최신 full tls |
+| `tls` | `MULTI_DEALER_DEALER` | `131072` | `통과` | `96.7%` | 최신 full tls |
+| `tls` | `MULTI_DEALER_DEALER` | `262144` | `통과` | `96.5%` | 최신 full tls |
+| `tls` | `MULTI_DEALER_ROUTER` | `64` | `통과` | `65.9%` | 최신 full tls |
+| `tls` | `MULTI_DEALER_ROUTER` | `256` | `통과` | `62.1%` | 최신 full tls |
+| `tls` | `MULTI_DEALER_ROUTER` | `1024` | `통과` | `66.1%` | 최신 full tls |
+| `tls` | `MULTI_DEALER_ROUTER` | `65536` | `통과` | `89.2%` | 최신 full tls |
+| `tls` | `MULTI_DEALER_ROUTER` | `131072` | `통과` | `94.4%` | 최신 full tls |
+| `tls` | `MULTI_DEALER_ROUTER` | `262144` | `통과` | `105.6%` | 최신 full tls |
+| `tls` | `MULTI_ROUTER_ROUTER` | `64` | `통과` | `53.9%` | 최신 full tls |
+| `tls` | `MULTI_ROUTER_ROUTER` | `256` | `통과` | `54.6%` | 최신 full tls |
+| `tls` | `MULTI_ROUTER_ROUTER` | `1024` | `통과` | `56.2%` | 최신 full tls |
+| `tls` | `MULTI_ROUTER_ROUTER` | `65536` | `통과` | `83.3%` | 최신 full tls |
+| `tls` | `MULTI_ROUTER_ROUTER` | `131072` | `통과` | `98.4%` | 최신 full tls |
+| `tls` | `MULTI_ROUTER_ROUTER` | `262144` | `통과` | `101.2%` | 최신 full tls |
+| `tls` | `MULTI_PUBSUB` | `64` | `통과` | `68.5%` | 최신 full tls |
+| `tls` | `MULTI_PUBSUB` | `256` | `통과` | `65.9%` | 최신 full tls |
+| `tls` | `MULTI_PUBSUB` | `1024` | `통과` | `78.8%` | 최신 full tls |
+| `tls` | `MULTI_PUBSUB` | `65536` | `통과` | `82.2%` | 최신 full tls |
+| `tls` | `MULTI_PUBSUB` | `131072` | `통과` | `100.1%` | 최신 full tls |
+| `tls` | `MULTI_PUBSUB` | `262144` | `통과` | `55.7%` | 최신 full tls |
+| `tls` | `MULTI_SPOT` | `64` | `통과` | `54.6%` | 최신 full tls |
+| `tls` | `MULTI_SPOT` | `256` | `보류` | `49.1%` | 최신 full tls. SPOT publish/subscribe 경로 추가 개선 필요 |
+| `tls` | `MULTI_SPOT` | `1024` | `통과` | `76.4%` | 최신 full tls |
+| `tls` | `MULTI_SPOT` | `65536` | `통과` | `60.9%` | 최신 full tls |
+| `tls` | `MULTI_SPOT` | `131072` | `통과` | `52.4%` | 최신 full tls |
+| `tls` | `MULTI_SPOT` | `262144` | `보류` | `43.8%` | 최신 full tls. large SPOT 경로 추가 개선 필요 |
+| `tls` | `MULTI_SPOT_REQREP` | `64` | `통과` | `54.4%` | active deadline 종료 수정 후 최신 full tls |
+| `tls` | `MULTI_SPOT_REQREP` | `256` | `통과` | `50.9%` | active deadline 종료 수정 후 최신 full tls |
+| `tls` | `MULTI_SPOT_REQREP` | `1024` | `보류` | `49.8%` | active deadline 종료 수정 후 최신 full tls. routed request/reply 경로 추가 개선 필요 |
+| `tls` | `MULTI_SPOT_REQREP` | `65536` | `통과` | `78.6%` | active deadline 종료 수정 후 최신 full tls |
+| `tls` | `MULTI_SPOT_REQREP` | `131072` | `통과` | `56.9%` | active deadline 종료 수정 후 최신 full tls |
+| `tls` | `MULTI_SPOT_REQREP` | `262144` | `통과` | `55.3%` | active deadline 종료 수정 후 최신 full tls |
+| `tls` | `MULTI_SPOT_SENDSEND` | `64` | `통과` | `56.6%` | active deadline과 reply payload 수명 수정 후 최신 full tls |
+| `tls` | `MULTI_SPOT_SENDSEND` | `256` | `통과` | `59.5%` | active deadline과 reply payload 수명 수정 후 최신 full tls |
+| `tls` | `MULTI_SPOT_SENDSEND` | `1024` | `통과` | `58.3%` | active deadline과 reply payload 수명 수정 후 최신 full tls |
+| `tls` | `MULTI_SPOT_SENDSEND` | `65536` | `통과` | `68.5%` | active deadline과 reply payload 수명 수정 후 최신 full tls |
+| `tls` | `MULTI_SPOT_SENDSEND` | `131072` | `보류` | `27.3%` | active deadline과 reply payload 수명 수정 후 no-result 해소. large routed echo 추가 개선 필요 |
+| `tls` | `MULTI_SPOT_SENDSEND` | `262144` | `보류` | `25.7%` | active deadline과 reply payload 수명 수정 후 no-result 해소. large routed echo 추가 개선 필요 |
+| `tls` | `MULTI_STREAM` | `64` | `통과` | `87.2%` | 최신 full tls |
+| `tls` | `MULTI_STREAM` | `256` | `통과` | `87.7%` | 최신 full tls |
+| `tls` | `MULTI_STREAM` | `1024` | `통과` | `89.8%` | 최신 full tls |
+| `tls` | `MULTI_STREAM` | `65536` | `통과` | `88.9%` | 최신 full tls |
 
 ### 6.4 Java 상태
 

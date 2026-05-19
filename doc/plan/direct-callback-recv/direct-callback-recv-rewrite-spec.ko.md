@@ -14,10 +14,10 @@
 
 관련 문서 관계:
 
-- [`spot-node-direct-facade-plan.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-node-direct-facade-plan.ko.md)
+- [`spot-node-direct-facade-plan.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-node-direct-facade-plan.ko.md)
   는 `spot_node + default pub/sub facade` 확장 계획이었고,
   본 문서는 그 구조를 바꾸지 않은 채 recv-side callback 모델을 추가하는 구현 스펙이다.
-- [`spot-proxy-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-proxy-rewrite-spec.ko.md)
+- [`spot-proxy-rewrite-spec.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-proxy-rewrite-spec.ko.md)
   의 data plane worker / mesh / XPUB subscription propagation 구조는
   본 문서와 충돌하지 않으며, 현재 `spot_node` / `spot` 구현의 내부 기반으로 그대로 재사용할 수 있다.
 
@@ -102,7 +102,7 @@ network -> decoder -> session->push_msg -> pipe/fq/inproc queue -> recv()
 최신 public contract는 recv 재작성 문서만으로 결정하지 않는다.
 
 - thread-safety canonical 기준은
-  [`thread-safe-socket-plan.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/thread-safe/thread-safe-socket-plan.ko.md)
+  [`thread-safe-socket-plan.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/thread-safe/thread-safe-socket-plan.ko.md)
   와 `core/include/zlink.h`를 따른다.
 - recv-capable raw socket, `discovery`, `gateway`, `spot` 계열, monitor handle은
   모두 thread-safe only public handle로 본다.
@@ -946,7 +946,7 @@ socket/service는 다음을 담당한다.
 
 ### 7.2.5 SPOT data plane
 
-- `SPOT`은 [`spot-proxy-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-proxy-rewrite-spec.ko.md)
+- `SPOT`은 [`spot-proxy-rewrite-spec.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-proxy-rewrite-spec.ko.md)
   의 data plane worker 구조를 내부 기반으로 유지할 수 있다.
 - 즉 `_local_pub_ingress_sub`, `_mesh_xsub`, `_local_fanout_xpub`, `_mesh_pub`
   같은 worker-owned socket topology를 곧바로 버릴 필요는 없다.
@@ -1496,7 +1496,7 @@ transport-local inproc handoff primitive와 protocol decoder partial buffer,
 
 이 장은 별도 문서로 분리한다.
 
-- [`direct-callback-recv-interface-review.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md)
+- [`direct-callback-recv-interface-review.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-interface-review.ko.md)
 
 분리 이유:
 

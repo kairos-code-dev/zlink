@@ -97,6 +97,7 @@ class xsub_t : public socket_base_t
 #else
     trie_with_size_t _subscriptions;
 #endif
+    mutable std::mutex _subscriptions_mu;
 
     // If true, send all unsubscription messages upstream, not just
     // unique ones
@@ -121,7 +122,7 @@ class xsub_t : public socket_base_t
 
     //  Bench-aligned SUB steady state subscribes to the empty prefix. In that
     //  state every first frame matches, so we can skip trie lookup on recv.
-    bool _has_empty_subscription;
+    std::atomic<bool> _has_empty_subscription;
 
     std::atomic<bool> _dispatch_active;
     std::atomic<spot_sub_io_handler_fn> _dispatch_callback;

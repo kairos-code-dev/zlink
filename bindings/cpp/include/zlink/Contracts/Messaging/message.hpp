@@ -130,6 +130,8 @@ class message_t
      */
     bool valid () const noexcept { return _valid; }
 
+    static message_t allocate (size_t size_) { return message_t (size_); }
+
     static message_t from_bytes (const void *data_, size_t size_)
     {
         message_t msg (size_);

@@ -685,7 +685,7 @@ zlink_submit_result_t zlink_send_part_rid (void *s_,
         socket_handle_t handle = make_socket_handle (socket);
         const int rc = send_stream_message (handle, target_rid_, part_, flags_);
         const int saved_errno = errno;
-        if (rc != 0) {
+        if (rc != 0 && saved_errno != EAGAIN) {
             zlink::part_helper_internal::consume_send_part (part_);
             errno = saved_errno;
         }

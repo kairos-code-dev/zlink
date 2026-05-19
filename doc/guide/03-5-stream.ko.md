@@ -1,4 +1,4 @@
-[English](03-5-stream.md) | [한국어](03-5-stream.ko.md)
+[English](./03-5-stream.md) | [한국어](./03-5-stream.ko.md)
 
 # STREAM 소켓
 
@@ -130,7 +130,7 @@ zlink_recv_handler(stream, on_message, NULL);
 
 > 송신 큐가 가득 차면(HWM, 고수위 표시) `zlink_send_rid()`는 블록(기본) 또는
 > `ZLINK_DONTWAIT` 로 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
-> 배압(backpressure) 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
+> 배압(backpressure) 패턴은 [성능 가이드](./10-performance.ko.md)를 참고.
 
 - 수신 콜백은 한 번에 하나만 등록할 수 있으며, 이미 등록된 상태에서 attach를
   호출하면 `errno=EBUSY`와 함께 `-1`을 반환한다.
@@ -272,4 +272,4 @@ recv(fd, body, body_len, MSG_WAITALL);
 위 테스트들은 STREAM 서버 + raw client 경로를 기준으로 동작한다.
 
 ---
-[← ROUTER](03-4-router.ko.md) | [Proxy →](03-6-proxy.ko.md) | [Transport →](04-transports.ko.md)
+[← ROUTER](./03-4-router.ko.md) | [Proxy →](./03-6-proxy.ko.md) | [Transport →](./04-transports.ko.md)

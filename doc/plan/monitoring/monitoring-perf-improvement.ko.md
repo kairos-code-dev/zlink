@@ -27,19 +27,19 @@
 
 ### 2.1 Socket monitor
 
-- socket monitor는 [`core/src/sockets/socket_base.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp)에서 관리된다.
-- event 발생 시 [`socket_base.cpp#L2358`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp#L2358) `socket_base_t::event()`가 `_monitor_sync`를 잡고 monitor 대상 여부를 확인한다.
-- monitor 대상이면 [`socket_base.cpp#L2373`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp#L2373) `monitor_event()`가 multipart 메시지를 monitor socket으로 직접 전송한다.
-- monitor socket은 [`socket_base.cpp#L2165`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp#L2165) `monitor()`에서 생성된다.
+- socket monitor는 [`core/src/sockets/socket_base.cpp`](../../../../zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp)에서 관리된다.
+- event 발생 시 [`socket_base.cpp#L2358`](../../../../zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp#L2358) `socket_base_t::event()`가 `_monitor_sync`를 잡고 monitor 대상 여부를 확인한다.
+- monitor 대상이면 [`socket_base.cpp#L2373`](../../../../zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp#L2373) `monitor_event()`가 multipart 메시지를 monitor socket으로 직접 전송한다.
+- monitor socket은 [`socket_base.cpp#L2165`](../../../../zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp#L2165) `monitor()`에서 생성된다.
 
 ### 2.2 Service monitor
 
-- service monitor fanout은 [`core/src/services/common/service_monitor.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common/service_monitor.cpp)에서 수행된다.
-- [`service_monitor.cpp#L178`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common/service_monitor.cpp#L178) `service_monitor_hub_t::emit()`가 `_sync` lock 안에서 watcher를 순회하며 각 watcher socket으로 `send(DONTWAIT)`를 수행한다.
+- service monitor fanout은 [`core/src/services/common/service_monitor.cpp`](../../../../zlink-direct-callback-rewrite/core/src/services/common/service_monitor.cpp)에서 수행된다.
+- [`service_monitor.cpp#L178`](../../../../zlink-direct-callback-rewrite/core/src/services/common/service_monitor.cpp#L178) `service_monitor_hub_t::emit()`가 `_sync` lock 안에서 watcher를 순회하며 각 watcher socket으로 `send(DONTWAIT)`를 수행한다.
 
 ### 2.3 Monitor callback worker
 
-- direct callback 방식은 [`core/src/api/zlink.cpp#L419`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/api/zlink.cpp#L419) `monitor_handler_worker()`가 별도 thread에서 monitor socket을 drain하면서 handler를 호출한다.
+- direct callback 방식은 [`core/src/api/zlink.cpp#L419`](../../../../zlink-direct-callback-rewrite/core/src/api/zlink.cpp#L419) `monitor_handler_worker()`가 별도 thread에서 monitor socket을 drain하면서 handler를 호출한다.
 - 이 worker 자체는 message send/recv thread와 분리되어 있다는 점은 장점이다.
 - 다만 producer 쪽 전송이 이미 동기식이면 consumer worker의 분리는 producer 보호를 완전히 보장하지 못한다.
 
@@ -51,8 +51,8 @@
 
 ### 위치
 
-- [`core/src/sockets/socket_base.cpp#L2358`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp#L2358)
-- [`core/src/sockets/socket_base.cpp#L2373`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp#L2373)
+- [`core/src/sockets/socket_base.cpp#L2358`](../../../../zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp#L2358)
+- [`core/src/sockets/socket_base.cpp#L2373`](../../../../zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp#L2373)
 
 ### 현재 동작
 
@@ -88,7 +88,7 @@
 
 ### 위치
 
-- [`core/src/services/common/service_monitor.cpp#L178`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common/service_monitor.cpp#L178)
+- [`core/src/services/common/service_monitor.cpp#L178`](../../../../zlink-direct-callback-rewrite/core/src/services/common/service_monitor.cpp#L178)
 
 ### 현재 동작
 
@@ -119,9 +119,9 @@
 
 ### 위치
 
-- [`core/src/sockets/stream.cpp#L578`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/stream.cpp#L578)
-- [`core/src/sockets/stream.cpp#L636`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/stream.cpp#L636)
-- [`core/src/sockets/stream.cpp#L694`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/stream.cpp#L694)
+- [`core/src/sockets/stream.cpp#L578`](../../../../zlink-direct-callback-rewrite/core/src/sockets/stream.cpp#L578)
+- [`core/src/sockets/stream.cpp#L636`](../../../../zlink-direct-callback-rewrite/core/src/sockets/stream.cpp#L636)
+- [`core/src/sockets/stream.cpp#L694`](../../../../zlink-direct-callback-rewrite/core/src/sockets/stream.cpp#L694)
 
 ### 현재 동작
 
@@ -151,8 +151,8 @@
 
 ### 위치
 
-- [`core/src/services/spot/spot_pub.cpp#L156`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_pub.cpp#L156)
-- [`core/src/services/spot/spot_sub.cpp#L247`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L247)
+- [`core/src/services/spot/spot_pub.cpp#L156`](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_pub.cpp#L156)
+- [`core/src/services/spot/spot_sub.cpp#L247`](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L247)
 
 ### 현재 동작
 
@@ -181,8 +181,8 @@
 
 ### 위치
 
-- [`core/src/services/spot/spot_pub.cpp#L538`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_pub.cpp#L538)
-- [`core/src/services/spot/spot_sub.cpp#L1356`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L1356)
+- [`core/src/services/spot/spot_pub.cpp#L538`](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_pub.cpp#L538)
+- [`core/src/services/spot/spot_sub.cpp#L1356`](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L1356)
 
 ### 현재 동작
 
@@ -210,8 +210,8 @@
 
 ### 위치
 
-- [`core/src/services/gateway/gateway.cpp#L1756`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/gateway/gateway.cpp#L1756)
-- [`core/src/services/gateway/gateway.cpp#L2128`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/gateway/gateway.cpp#L2128)
+- [`core/src/services/gateway/gateway.cpp#L1756`](../../../../zlink-direct-callback-rewrite/core/src/services/gateway/gateway.cpp#L1756)
+- [`core/src/services/gateway/gateway.cpp#L2128`](../../../../zlink-direct-callback-rewrite/core/src/services/gateway/gateway.cpp#L2128)
 
 ### 현재 동작
 
@@ -237,7 +237,7 @@
 
 ### 위치
 
-- [`core/src/api/zlink.cpp#L419`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/api/zlink.cpp#L419)
+- [`core/src/api/zlink.cpp#L419`](../../../../zlink-direct-callback-rewrite/core/src/api/zlink.cpp#L419)
 
 ### 현재 동작
 
@@ -327,7 +327,7 @@
 
 ### 주의
 
-- [`core/src/services/common/monitor_decode.hpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common/monitor_decode.hpp) 및 API layer decode 경로를 같이 바꿔야 한다.
+- [`core/src/services/common/monitor_decode.hpp`](../../../../zlink-direct-callback-rewrite/core/src/services/common/monitor_decode.hpp) 및 API layer decode 경로를 같이 바꿔야 한다.
 - wire format 변경 성격이 있으므로 별도 단계로 분리하는 것이 맞다.
 
 ---

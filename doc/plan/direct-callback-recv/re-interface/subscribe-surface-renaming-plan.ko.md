@@ -2,7 +2,7 @@
 
 > 상태: 계획 초안.
 > 선행 문서: 이 문서는
-> [`pubsub-public-surface-renaming-plan.ko.md`](pubsub-public-surface-renaming-plan.ko.md)에서
+> [`pubsub-public-surface-renaming-plan.ko.md`](./pubsub-public-surface-renaming-plan.ko.md)에서
 > 확정한 subscribe 관련 naming을 후속 재편한다.
 > 범위: `core/include/zlink.h` public C API 이름 변경을 다룬다.
 > 내부 구현 구조 변경은 이 문서 범위가 아니다. 다만 public option 상수 제거에

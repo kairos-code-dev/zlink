@@ -849,6 +849,63 @@ public sealed class SpotIntegrationTests
     }
 
     [Fact]
+    public async Task EntrySpot_PacketHandlers_Are_Dispatched_Without_EntrySpot_Serialization()
+    {
+        var spotNode = GetFreeTcpEndpoint();
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<EntrySpotCallbackRecorder>();
+        builder.Services.AddScoped<GeneralEntrySpot>();
+        builder.Services.AddScoped<EntrySpotGeneralBlockingHandler>();
+        builder.Services.AddScoped<EntrySpotGeneralRecordingHandler>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.UseSpotDiscovery("game.entry-general", _ => { });
+            options.AddSpotNode("entry-general-node", spot =>
+            {
+                spot.Bind(spotNode);
+                spot.AddEntrySpot<GeneralEntrySpot>();
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var recorder = host.Services.GetRequiredService<EntrySpotCallbackRecorder>();
+        var nodeRuntime = GetSpotNodeRuntime(runtime, "entry-general-node");
+        var activation = nodeRuntime.EntrySpotActivation
+            ?? throw new InvalidOperationException("Entry Spot activation was not created.");
+        var blocking = new EntrySpotGeneralBlockingCommand("block");
+        var blockingHeader = CreateEntrySpotEnvelopeHeader("game.entry-general", blocking);
+        Assert.True(activation.TryResolvePacket(blockingHeader, out var blockingDescriptor));
+        var blockingDispatch = activation
+            .InvokePacketAsync(blockingDescriptor!, blocking, CancellationToken.None)
+            .AsTask();
+        await recorder.BlockingStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var record = new EntrySpotGeneralRecordCommand("record");
+        var recordHeader = CreateEntrySpotEnvelopeHeader("game.entry-general", record);
+        Assert.True(activation.TryResolvePacket(recordHeader, out var recordDescriptor));
+        var recordDispatch = activation
+            .InvokePacketAsync(recordDescriptor!, record, CancellationToken.None)
+            .AsTask();
+
+        await RetryAsync(
+            () => recorder.Events.Contains($"record:record:{activation.SpotRid.ToHex()}"),
+            TimeSpan.FromSeconds(5));
+        Assert.DoesNotContain("block-end:block", recorder.Events);
+
+        recorder.ReleaseBlocking.TrySetResult();
+        await Task.WhenAll(blockingDispatch, recordDispatch).WaitAsync(TimeSpan.FromSeconds(5));
+        await RetryAsync(
+            () => recorder.Events.Contains("block-end:block"),
+            TimeSpan.FromSeconds(5));
+
+        await host.StopAsync();
+    }
+
+    [Fact]
     public async Task EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel()
     {
         var spotNode = GetFreeTcpEndpoint();
@@ -1554,6 +1611,62 @@ public sealed class SpotIntegrationTests
         }
     }
 
+    public sealed class GeneralEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
+    {
+        public IZLinkEntrySpotContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.AddPacket<EntrySpotGeneralBlockingHandler>();
+            Context.AddPacket<EntrySpotGeneralRecordingHandler>();
+        }
+    }
+
+    public sealed record EntrySpotGeneralBlockingCommand(string Value);
+
+    public sealed record EntrySpotGeneralRecordCommand(string Value);
+
+    public sealed class EntrySpotGeneralBlockingHandler(EntrySpotCallbackRecorder recorder)
+        : IZLinkSpotPacketHandler<GeneralEntrySpot, EntrySpotGeneralBlockingCommand>
+    {
+        public async ValueTask HandleAsync(
+            GeneralEntrySpot spot,
+            EntrySpotGeneralBlockingCommand message,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            recorder.Events.Enqueue($"block-start:{message.Value}");
+            recorder.BlockingStarted.TrySetResult();
+            await recorder.ReleaseBlocking.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            recorder.Events.Enqueue($"block-end:{message.Value}");
+        }
+    }
+
+    public sealed class EntrySpotGeneralRecordingHandler(EntrySpotCallbackRecorder recorder)
+        : IZLinkSpotPacketHandler<GeneralEntrySpot, EntrySpotGeneralRecordCommand>
+    {
+        public ValueTask HandleAsync(
+            GeneralEntrySpot spot,
+            EntrySpotGeneralRecordCommand message,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.Events.Enqueue($"record:{message.Value}:{spot.Context.SpotRid.ToHex()}");
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class EntrySpotCallbackRecorder
+    {
+        public ConcurrentQueue<string> Events { get; } = new();
+
+        public TaskCompletionSource BlockingStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource ReleaseBlocking { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
     public sealed class RegistryStageSpot(IZLinkSpotContext context)
         : IZLinkSpot
     {
@@ -2192,6 +2305,23 @@ public sealed class SpotIntegrationTests
                     ZlinkStreamMetadata.Empty),
                 body)
             .ConfigureAwait(false);
+    }
+
+    private static ZLinkEnvelopeHeader CreateEntrySpotEnvelopeHeader<TMessage>(
+        string channelName,
+        TMessage message)
+    {
+        return new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Command,
+            channelName,
+            ZLinkMessageNameResolver.ResolveFromMessage(message)
+                ?? throw new InvalidOperationException("Message name is required."),
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null,
+            null,
+            null,
+            null,
+            null);
     }
 
     private static ZLinkBackendActorPart CreateEntryActorHeaderPart(

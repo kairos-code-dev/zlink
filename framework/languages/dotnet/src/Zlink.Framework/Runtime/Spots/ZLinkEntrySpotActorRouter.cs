@@ -87,6 +87,7 @@ internal sealed class ZLinkEntrySpotActorRouter
             info,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.TryResolveEntrySpotActorJoined(actorType, out descriptor),
+            static (node, actor, info, ct) => node.InvokeEntrySpotActorJoinedCallbackAsync(actor, info, ct),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -102,6 +103,7 @@ internal sealed class ZLinkEntrySpotActorRouter
             info,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.TryResolveEntrySpotActorLeft(actorType, out descriptor),
+            static (node, actor, info, ct) => node.InvokeEntrySpotActorLeftCallbackAsync(actor, info, ct),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -110,24 +112,25 @@ internal sealed class ZLinkEntrySpotActorRouter
         IZLinkActor actor,
         ZLinkSpotActorLifecycleInfo info,
         TryResolveLifecycle resolve,
+        Func<ZLinkSpotNodeRuntime, IZLinkActor, ZLinkSpotActorLifecycleInfo, CancellationToken, ValueTask> callback,
         CancellationToken cancellationToken)
     {
         foreach (var node in state.SpotNodes.Values)
         {
-            if (!resolve(node, actor.GetType(), out var descriptor)
-                || descriptor is null)
-            {
-                continue;
-            }
-
             try
             {
-                await node.InvokeEntrySpotActorLifecycleAsync(
-                        descriptor,
-                        actor,
-                        info,
-                        cancellationToken)
+                await callback(node, actor, info, cancellationToken)
                     .ConfigureAwait(false);
+                if (resolve(node, actor.GetType(), out var descriptor)
+                    && descriptor is not null)
+                {
+                    await node.InvokeEntrySpotActorLifecycleAsync(
+                            descriptor,
+                            actor,
+                            info,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

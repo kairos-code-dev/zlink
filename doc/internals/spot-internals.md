@@ -1,4 +1,4 @@
-[English](spot-internals.md) | [한국어](spot-internals.ko.md)
+[English](./spot-internals.md) | [한국어](./spot-internals.ko.md)
 
 # SPOT / SpotNode Internals
 

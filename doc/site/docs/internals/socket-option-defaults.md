@@ -1,4 +1,4 @@
-[English](socket-option-defaults.md) | [한국어](socket-option-defaults.ko.md)
+[English](./socket-option-defaults.md) | [한국어](./socket-option-defaults.ko.md)
 
 # Socket Option Defaults (Code Source)
 

@@ -1,4 +1,4 @@
-English | [한국어](02-core-api.ko.md)
+English | [한국어](./02-core-api.ko.md)
 
 # Core C API Detailed Guide
 
@@ -38,7 +38,7 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 Public socket handle APIs are thread-safe by default. Multiple threads
 can share the same socket handle to call send/recv/bind/connect, etc.
 
-> For detailed threading rules, see [Thread-Safety Guide](11-thread-safety.md).
+> For detailed threading rules, see [Thread-Safety Guide](./11-thread-safety.md).
 
 ### 2.1 Socket Creation and Closing
 
@@ -108,7 +108,7 @@ By contrast, most tuning knobs such as HWM, timeouts, and TLS settings
 are usually closer to initial configuration.
 
 For detailed option categories and the full option reference, see
-[Socket Options Guide](12-socket-options.md).
+[Socket Options Guide](./12-socket-options.md).
 
 ## 3. Sending and Receiving Messages
 
@@ -134,7 +134,7 @@ By default `zlink_send()` blocks when the send queue is full (HWM reached).
 Pass `ZLINK_DONTWAIT` to return `ZLINK_SUBMIT_BACKPRESSURED` immediately
 instead of blocking.
 For advanced backpressure patterns, see
-[Performance Guide](10-performance.md).
+[Performance Guide](./10-performance.md).
 
 #### Logical Multipart Send
 
@@ -215,7 +215,7 @@ zlink_recv_handler(socket, on_message, NULL);
 ```
 
 > For a comparison of the two modes and advanced patterns, see
-> [Performance Guide](10-performance.md).
+> [Performance Guide](./10-performance.md).
 
 ### 3.3 Send Flags
 
@@ -392,4 +392,4 @@ int main(void) {
 ```
 
 ---
-[← Overview](01-overview.md) | [Socket Patterns →](03-0-socket-patterns.md)
+[← Overview](./01-overview.md) | [Socket Patterns →](./03-0-socket-patterns.md)

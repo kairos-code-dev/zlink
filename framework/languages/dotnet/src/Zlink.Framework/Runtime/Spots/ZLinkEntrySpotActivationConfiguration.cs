@@ -2,6 +2,32 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkEntrySpotActivation
 {
+    public void AddPacket<THandler>()
+        where THandler : class
+    {
+        EnsureConfigurationOpen();
+        _packets.Add(typeof(THandler));
+    }
+
+    public void AddSubscribe<THandler>(string topic)
+        where THandler : class
+    {
+        EnsureConfigurationOpen();
+        _subscriptions.Add(topic, typeof(THandler));
+    }
+
+    public void AddActorJoin<THandler, TActor, TRequest, TReply>()
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        EnsureConfigurationOpen();
+        _actorJoins.Add(
+            typeof(THandler),
+            typeof(TActor),
+            typeof(TRequest),
+            typeof(TReply));
+    }
+
     public void AddActorPacket<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor

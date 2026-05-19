@@ -1,4 +1,4 @@
-[English](05-tls-security.md) | [한국어](05-tls-security.ko.md)
+[English](./05-tls-security.md) | [한국어](./05-tls-security.ko.md)
 
 # TLS/SSL 설정 및 보안 가이드
 
@@ -308,4 +308,4 @@ zlink_ctx_term(ctx);
 ```
 
 ---
-[← Transport](04-transports.ko.md) | [모니터링 →](06-monitoring.ko.md)
+[← Transport](./04-transports.ko.md) | [모니터링 →](./06-monitoring.ko.md)

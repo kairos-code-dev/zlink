@@ -1,4 +1,4 @@
-[English](posd-module-structure.md) | [한국어](posd-module-structure.ko.md)
+[English](./posd-module-structure.md) | [한국어](./posd-module-structure.ko.md)
 
 # zlink POSD 모듈 구조
 

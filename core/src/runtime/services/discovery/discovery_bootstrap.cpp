@@ -411,27 +411,33 @@ void discovery_bootstrap_runtime_t::commit_bootstrap_success (
     if (adopted_report_dealer_out_)
         *adopted_report_dealer_out_ = NULL;
 
-    scoped_lock_t lock (discovery_access_t::sync (owner_));
-    _request_state.registry_pub_endpoints.insert (pub_endpoint_);
-    _request_state.bootstrapped_registry_endpoints.insert (registry_endpoint_);
-    if (heartbeat_interval_ms_ > 0)
-        _request_state.heartbeat_interval_ms = heartbeat_interval_ms_;
+    socket_base_t *close_dealer = NULL;
+    {
+        scoped_lock_t lock (discovery_access_t::sync (owner_));
+        _request_state.registry_pub_endpoints.insert (pub_endpoint_);
+        _request_state.bootstrapped_registry_endpoints.insert (registry_endpoint_);
+        if (heartbeat_interval_ms_ > 0)
+            _request_state.heartbeat_interval_ms = heartbeat_interval_ms_;
 
-    std::map<std::string, bootstrap_state_t>::iterator it =
-      _request_state.bootstrap_states.find (registry_endpoint_);
-    if (it == _request_state.bootstrap_states.end ())
-        return;
+        std::map<std::string, bootstrap_state_t>::iterator it =
+          _request_state.bootstrap_states.find (registry_endpoint_);
+        if (it == _request_state.bootstrap_states.end ())
+            return;
 
-    if (adopted_report_dealer_out_ && it->second.dealer
-        && uplink_endpoint_ == registry_endpoint_) {
-        *adopted_report_dealer_out_ = it->second.dealer;
-        it->second.dealer = NULL;
+        if (adopted_report_dealer_out_ && it->second.dealer
+            && uplink_endpoint_ == registry_endpoint_) {
+            *adopted_report_dealer_out_ = it->second.dealer;
+            it->second.dealer = NULL;
+        }
+        if (it->second.dealer) {
+            close_dealer = it->second.dealer;
+            it->second.dealer = NULL;
+        }
+        _request_state.bootstrap_states.erase (it);
     }
-    if (it->second.dealer) {
-        it->second.dealer->close ();
-        it->second.dealer = NULL;
-    }
-    _request_state.bootstrap_states.erase (it);
+    if (close_dealer)
+        (void) discovery_access_t::close_tracked_socket (owner_, close_dealer,
+                                                         1000);
 }
 
 int discovery_bootstrap_runtime_t::bootstrap_registry (

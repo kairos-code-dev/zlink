@@ -1,4 +1,4 @@
-[English](07-4-registry.md) | [한국어](07-4-registry.ko.md)
+[English](./07-4-registry.md) | [한국어](./07-4-registry.ko.md)
 
 # Registry (중앙 서비스 디렉토리)
 
@@ -617,9 +617,9 @@ Registry와 로컬 서비스 모니터는 다른 목적을 가진다:
 
 ## 9. 다음 단계
 
-- [Service Discovery](07-1-discovery.ko.md) -- 기반 인프라
-- [SPOT PUB/SUB](07-3-spot.ko.md) -- 위치투명 발행/구독
+- [Service Discovery](./07-1-discovery.ko.md) -- 기반 인프라
+- [SPOT PUB/SUB](./07-3-spot.ko.md) -- 위치투명 발행/구독
 - [Registry API 레퍼런스](../api/registry.ko.md) -- 전체 API 문서
 
 ---
-[← SPOT](07-3-spot.ko.md) | [Routing ID →](08-routing-id.ko.md)
+[← SPOT](./07-3-spot.ko.md) | [Routing ID →](./08-routing-id.ko.md)

@@ -1,6 +1,6 @@
-[English](errors.md) | [한국어](errors.ko.md)
+[English](./errors.md) | [한국어](./errors.ko.md)
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+[스펙 목차](../README.ko.md) · [코어 목차](./README.ko.md)
 
 # 에러 처리 & 버전
 

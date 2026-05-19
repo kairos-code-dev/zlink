@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Systems.Zlink.Native;
@@ -140,32 +141,38 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_close(IntPtr socket);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_errno();
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_errno();
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_strerror(int errnum);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_init(ref ZlinkMsg msg);
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_msg_init(ref ZlinkMsg msg);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_init_size(ref ZlinkMsg msg,
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_msg_init_size(ref ZlinkMsg msg,
         nuint size);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_init_data(ref ZlinkMsg msg,
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_msg_init_data(ref ZlinkMsg msg,
         IntPtr data, nuint size, IntPtr freeFn, IntPtr hint);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_close(ref ZlinkMsg msg);
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_msg_close(ref ZlinkMsg msg);
 
     [DllImport(LibraryName, EntryPoint = "zlink_msg_close",
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_msg_close(IntPtr msg);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_move(ref ZlinkMsg dest,
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_msg_move(ref ZlinkMsg dest,
         ref ZlinkMsg src);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -176,15 +183,17 @@ internal static partial class NativeMethods
     internal static extern int zlink_msg_adopt(ref ZlinkMsg dest,
         IntPtr src);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_msg_data(ref ZlinkMsg msg);
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial IntPtr zlink_msg_data(ref ZlinkMsg msg);
 
     [DllImport(LibraryName, EntryPoint = "zlink_msg_data",
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_msg_data(IntPtr msg);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern nuint zlink_msg_size(ref ZlinkMsg msg);
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial nuint zlink_msg_size(ref ZlinkMsg msg);
 
     [DllImport(LibraryName, EntryPoint = "zlink_msg_size",
         CallingConvention = CallingConvention.Cdecl)]
@@ -262,20 +271,23 @@ internal static partial class NativeMethods
         ref ZlinkRoutingId destSpotRoutingId, ulong requestSeq,
         ref ZlinkMsg part, ZlinkPartFlag partFlag);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_router_send_spot_part(IntPtr router,
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_router_send_spot_part(IntPtr router,
         ref ZlinkRoutingId destNodeRoutingId,
         ref ZlinkRoutingId destSpotRoutingId, ref ZlinkMsg part, int flags,
         ZlinkPartFlag partFlag);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_send_spot_part(IntPtr spot,
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_spot_send_spot_part(IntPtr spot,
         ref ZlinkRoutingId destNodeRoutingId,
         ref ZlinkRoutingId destSpotRoutingId, ref ZlinkMsg part, int flags,
         ZlinkPartFlag partFlag);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_request_spot_part(IntPtr spot,
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_spot_request_spot_part(IntPtr spot,
         ref ZlinkRoutingId destNodeRoutingId,
         ref ZlinkRoutingId destSpotRoutingId, ref ZlinkMsg part,
         IntPtr handler, IntPtr userData, int flags,

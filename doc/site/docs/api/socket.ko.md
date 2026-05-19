@@ -1,6 +1,6 @@
 [스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md)
 
-[English](README.md) | [한국어](README.ko.md)
+[English](./README.md) | [한국어](./README.ko.md)
 
 # 소켓 -- 공통 명세
 

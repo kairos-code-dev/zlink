@@ -336,6 +336,159 @@ int add_spot_combined_readiness_registration (
     return 0;
 }
 
+bool spot_registration_exists (poller_handle_t *poller_,
+                               void *spot_or_node_,
+                               poller_subject_kind_t kind_)
+{
+    return poller_find_registration_index (poller_, spot_or_node_, kind_) >= 0;
+}
+
+int remove_spot_registration_kind_if_present (
+  poller_handle_t *poller_,
+  void *spot_or_node_,
+  poller_subject_kind_t kind_)
+{
+    while (true) {
+        const int index =
+          poller_find_registration_index (poller_, spot_or_node_, kind_);
+        if (index < 0)
+            return 0;
+        if (poller_remove_registration_at (poller_, index) != 0)
+            return -1;
+    }
+}
+
+void *spot_readiness_user_data (poller_handle_t *poller_,
+                                void *spot_or_node_)
+{
+    const poller_subject_kind_t pub_kind =
+      poller_spot_pub_kind_for_subject (spot_or_node_);
+    int index =
+      poller_find_registration_index (poller_, spot_or_node_, pub_kind);
+    if (index >= 0)
+        return poller_->registrations[static_cast<size_t> (index)].user_data;
+
+    const poller_subject_kind_t sub_kind =
+      poller_spot_sub_kind_for_subject (spot_or_node_);
+    index = poller_find_registration_index (poller_, spot_or_node_, sub_kind);
+    if (index >= 0)
+        return poller_->registrations[static_cast<size_t> (index)].user_data;
+
+    return NULL;
+}
+
+int ensure_spot_pub_ready_registration (poller_handle_t *poller_,
+                                        void *spot_or_node_,
+                                        void *user_data_)
+{
+    const poller_subject_kind_t pub_kind =
+      poller_spot_pub_kind_for_subject (spot_or_node_);
+    if (spot_registration_exists (poller_, spot_or_node_, pub_kind))
+        return 0;
+
+    spot_subject_ref_guard_t refs (spot_or_node_);
+    if (refs.acquire_pub () != 0)
+        return -1;
+    if (add_spot_pub_ready_registration (poller_, spot_or_node_, user_data_,
+                                         pub_kind)
+        != 0)
+        return -1;
+    refs.commit_pub ();
+    return 0;
+}
+
+int ensure_spot_sub_ready_registration (
+  poller_handle_t *poller_,
+  void *spot_or_node_,
+  void *user_data_,
+  const zlink::service_handle_resolution_t &resolved_)
+{
+    const poller_subject_kind_t sub_kind =
+      poller_spot_sub_kind_for_subject (spot_or_node_);
+    if (spot_registration_exists (poller_, spot_or_node_, sub_kind))
+        return 0;
+
+    spot_subject_ref_guard_t refs (spot_or_node_);
+    if (refs.acquire_sub () != 0)
+        return -1;
+    if (add_spot_sub_ready_registration (poller_, spot_or_node_, user_data_,
+                                         sub_kind, resolved_.kind)
+        != 0)
+        return -1;
+    refs.commit_sub ();
+
+    if (resolved_.kind == zlink::service_handle_spot
+        && add_spot_request_reply_registrations (
+             poller_, spot_or_node_, user_data_)
+             != 0) {
+        const int err = errno ? errno : EFAULT;
+        (void) remove_spot_registration_kind_if_present (poller_,
+                                                         spot_or_node_,
+                                                         sub_kind);
+        errno = err;
+        return -1;
+    }
+    return 0;
+}
+
+int modify_spot_combined_readiness_registration (
+  poller_handle_t *poller_,
+  void *spot_or_node_,
+  const zlink::service_handle_resolution_t &resolved_,
+  bool want_pub_,
+  bool want_sub_)
+{
+    const poller_subject_kind_t pub_kind =
+      poller_spot_pub_kind_for_subject (spot_or_node_);
+    const poller_subject_kind_t sub_kind =
+      poller_spot_sub_kind_for_subject (spot_or_node_);
+    const bool has_pub =
+      spot_registration_exists (poller_, spot_or_node_, pub_kind);
+    const bool has_sub =
+      spot_registration_exists (poller_, spot_or_node_, sub_kind);
+    if (!has_pub && !has_sub) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    void *user_data = spot_readiness_user_data (poller_, spot_or_node_);
+    if (want_pub_
+        && ensure_spot_pub_ready_registration (poller_, spot_or_node_,
+                                               user_data)
+             != 0)
+        return -1;
+    if (want_sub_
+        && ensure_spot_sub_ready_registration (poller_, spot_or_node_,
+                                               user_data, resolved_)
+             != 0)
+        return -1;
+
+    if (!want_pub_
+        && remove_spot_registration_kind_if_present (poller_, spot_or_node_,
+                                                    pub_kind)
+             != 0)
+        return -1;
+    if (!want_sub_) {
+        if (resolved_.kind == zlink::service_handle_spot) {
+            if (remove_spot_registration_kind_if_present (
+                  poller_, spot_or_node_, poller_subject_spot_routed)
+                  != 0
+                || remove_spot_registration_kind_if_present (
+                     poller_, spot_or_node_,
+                     poller_subject_spot_request_completion)
+                     != 0)
+                return -1;
+        }
+        if (remove_spot_registration_kind_if_present (poller_, spot_or_node_,
+                                                     sub_kind)
+            != 0)
+            return -1;
+    }
+
+    errno = 0;
+    return 0;
+}
+
 int zlink_service_poller_add_internal (poller_handle_t *poller_,
                                        void *socket_,
                                        void *user_data_,
@@ -445,47 +598,13 @@ int zlink_service_poller_modify_internal (poller_handle_t *poller_,
             errno = EINVAL;
             return -1;
         }
-        bool is_pub = false;
-        if (validate_spot_generic_poller_events (events_, &is_pub) != 0)
+        bool want_pub = false;
+        bool want_sub = false;
+        if (parse_spot_combined_poller_events (events_, &want_pub, &want_sub)
+            != 0)
             return -1;
-        const int index = poller_find_registration_index (
-          poller_, socket_,
-          is_pub ? poller_spot_pub_kind_for_subject (socket_)
-                 : poller_spot_sub_kind_for_subject (socket_));
-        if (index < 0) {
-            errno = EINVAL;
-            return -1;
-        }
-        if (increment_spot_subject_poller_ref (socket_, events_) != 0)
-            return -1;
-        const short old_events = poller_->registrations[index].events;
-        const poller_registration_t &registration =
-          poller_->registrations[index];
-        const int modify_rc =
-          registration.socket
-            ? poller_->poller.modify (
-                static_cast<zlink::socket_base_t *> (registration.socket),
-                events_)
-            : poller_->poller.modify_fd (registration.fd, events_);
-        if (modify_rc != 0) {
-            poller_registration_t failed_registration;
-            failed_registration.subject = socket_;
-            failed_registration.subject_kind =
-              is_pub ? poller_spot_pub_kind_for_subject (socket_)
-                     : poller_spot_sub_kind_for_subject (socket_);
-            failed_registration.events = events_;
-            release_poller_registration (failed_registration);
-            return -1;
-        }
-        poller_registration_t old_registration;
-        old_registration.subject = socket_;
-        old_registration.subject_kind =
-          is_pub ? poller_spot_pub_kind_for_subject (socket_)
-                 : poller_spot_sub_kind_for_subject (socket_);
-        old_registration.events = old_events;
-        release_poller_registration (old_registration);
-        poller_->registrations[index].events = events_;
-        return 0;
+        return modify_spot_combined_readiness_registration (
+          poller_, socket_, resolved, want_pub, want_sub);
     }
 
     errno = EFAULT;

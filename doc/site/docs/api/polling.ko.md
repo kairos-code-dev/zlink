@@ -1,6 +1,6 @@
-[English](polling.md) | [한국어](polling.ko.md)
+[English](./polling.md) | [한국어](./polling.ko.md)
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+[스펙 목차](../README.ko.md) · [코어 목차](./README.ko.md)
 
 # 폴링, 프록시 & 기능 확인
 

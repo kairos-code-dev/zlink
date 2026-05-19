@@ -75,7 +75,7 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
 }
 
 internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
-    ZLinkSpotActivation activation,
+    IZLinkCurrentSpotActivation activation,
     IZLinkSpotRouteResolver resolver,
     string? spotName,
     RoutingId? spotRid,
@@ -128,7 +128,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
 }
 
 internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
-    ZLinkSpotActivation activation,
+    IZLinkCurrentSpotActivation activation,
     IZLinkSpotRouteResolver resolver,
     string? spotName,
     RoutingId? spotRid,
@@ -192,7 +192,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
 }
 
 internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
-    ZLinkSpotActivation activation,
+    IZLinkCurrentSpotActivation activation,
     string channelName,
     TMessage message) : IZLinkSendCall
 {
@@ -217,7 +217,7 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
 }
 
 internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
-    ZLinkSpotActivation activation,
+    IZLinkCurrentSpotActivation activation,
     string channelName,
     TMessage request) : IZLinkRequestCall
 {

@@ -121,7 +121,7 @@ public interface IZLinkSpotConnectionManager
 }
 
 public interface IZLinkSpotPacketHandler<TSpot, in TMessage>
-    where TSpot : IZLinkSpot
+    where TSpot : class
 {
     ValueTask HandleAsync(
         TSpot spot,
@@ -130,7 +130,7 @@ public interface IZLinkSpotPacketHandler<TSpot, in TMessage>
 }
 
 public interface IZLinkSpotRequestHandler<TSpot, in TRequest, TReply>
-    where TSpot : IZLinkSpot
+    where TSpot : class
 {
     ValueTask<TReply> HandleAsync(
         TSpot spot,
@@ -139,7 +139,7 @@ public interface IZLinkSpotRequestHandler<TSpot, in TRequest, TReply>
 }
 
 public interface IZLinkSpotSubscriptionHandler<TSpot, in TEvent>
-    where TSpot : IZLinkSpot
+    where TSpot : class
 {
     ValueTask HandleAsync(
         TSpot spot,
@@ -148,7 +148,7 @@ public interface IZLinkSpotSubscriptionHandler<TSpot, in TEvent>
 }
 
 public interface IZLinkSpotTimerHandler<TSpot>
-    where TSpot : IZLinkSpot
+    where TSpot : class
 {
     ValueTask HandleAsync(
         TSpot spot,
@@ -156,7 +156,7 @@ public interface IZLinkSpotTimerHandler<TSpot>
 }
 
 public interface IZLinkSpotActorJoinHandler<TSpot, in TActor, in TRequest, TReply>
-    where TSpot : IZLinkSpot
+    where TSpot : class
     where TActor : IZLinkActor
 {
     ValueTask<TReply> HandleAsync(

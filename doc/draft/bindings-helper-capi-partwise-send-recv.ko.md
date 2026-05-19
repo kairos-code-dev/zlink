@@ -33,7 +33,7 @@
 
 관련 문서:
 - C binding 계층 계획은
-  [c-binding-layer-plan.ko.md](c-binding-layer-plan.ko.md) 에서 별도로 다룬다.
+  [c-binding-layer-plan.ko.md](./c-binding-layer-plan.ko.md) 에서 별도로 다룬다.
 
 ## 2. 배경
 
@@ -671,7 +671,7 @@ fuzz는 후순위로 둔다.
 1. `core/include/zlink.h`에 `*_part` helper를 추가한다.
 2. 내부 aggregate recv/send 구현을 helper 위로 다시 정리한다.
 3. C binding 계층 계획 문서인
-   [c-binding-layer-plan.ko.md](c-binding-layer-plan.ko.md)를 기준으로 C binding
+   [c-binding-layer-plan.ko.md](./c-binding-layer-plan.ko.md)를 기준으로 C binding
    표면을 정의한다.
 4. bindings 작업에 들어가기 전에, 각 언어 binding의 native 디렉토리에 들어 있는
    core 라이브러리를 helper C API가 반영된 최신 산출물로 먼저 갱신한다.
@@ -740,7 +740,7 @@ send/recv helper 자체의 기본 계약은 이 문서로 충분하다고 본다
 1. `core/include/zlink.h`에 `*_part` helper 선언을 추가한다.
 2. core 내부에서 aggregate send/recv 구현을 helper 기반으로 다시 정리한다.
 3. helper 계약에 맞춰 필요한 errno/result/ownership 테스트를 추가한다.
-4. [c-binding-layer-plan.ko.md](c-binding-layer-plan.ko.md)를 기준으로 C binding
+4. [c-binding-layer-plan.ko.md](./c-binding-layer-plan.ko.md)를 기준으로 C binding
    계층을 정리한다.
 5. bindings 작업에 들어가기 전에, 각 언어 binding의 native 디렉토리에서 사용하는
    core 라이브러리를 최신 helper 구현 기준으로 갱신한다.

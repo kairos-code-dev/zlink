@@ -38,15 +38,15 @@ destroy 한 뒤에도 `spot_node_destroy()`가 `ETIMEDOUT`로 실패하던 문�
 
 ## Affected Area
 
-- [`spot_data_plane.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_data_plane.cpp)
-- [`spot_node.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_node.cpp)
-- [`service_runtime_base.hpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common/service_runtime_base.hpp)
-- [`pipe.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/core/pipe.cpp)
-- [`socket_base.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp)
-- [`socket_base.hpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.hpp)
-- [`zlink.h`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/include/zlink.h)
+- [`spot_data_plane.cpp`](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_data_plane.cpp)
+- [`spot_node.cpp`](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_node.cpp)
+- [`service_runtime_base.hpp`](../../../../zlink-direct-callback-rewrite/core/src/services/common/service_runtime_base.hpp)
+- [`pipe.cpp`](../../../../zlink-direct-callback-rewrite/core/src/core/pipe.cpp)
+- [`socket_base.cpp`](../../../../zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp)
+- [`socket_base.hpp`](../../../../zlink-direct-callback-rewrite/core/src/sockets/socket_base.hpp)
+- [`zlink.h`](../../../../zlink-direct-callback-rewrite/core/include/zlink.h)
 - 재현 테스트:
-  [`test_thread_safe_scaling_contract.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/tests/integration/test_thread_safe_scaling_contract.cpp)
+  [`test_thread_safe_scaling_contract.cpp`](../../../../zlink-direct-callback-rewrite/core/tests/integration/test_thread_safe_scaling_contract.cpp)
 
 ## User-Visible Impact
 
@@ -187,7 +187,7 @@ thread-safe scaling 계약을 안정적으로 실행하려면 함께 정리해�
 
 ### 1. `spot` peer control connection ownership 수정
 
-[`spot_data_plane.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_data_plane.cpp)
+[`spot_data_plane.cpp`](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_data_plane.cpp)
 에서 `connect_peer_pub()`는 더 이상 local `node_id` 기반으로
 `peer_ctrl_pub`를 즉시 connect 하지 않는다.
 
@@ -213,7 +213,7 @@ thread-safe scaling 계약을 안정적으로 실행하려면 함께 정리해�
 
 ### 3. pipe termination 즉시 ack 경로 보강
 
-[`pipe.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/core/pipe.cpp)
+[`pipe.cpp`](../../../../zlink-direct-callback-rewrite/core/src/core/pipe.cpp)
 에서 다음을 수정했다.
 
 - `set_nodelay()`가 이미 `waiting_for_delimiter` 상태인 pipe에도
@@ -223,7 +223,7 @@ thread-safe scaling 계약을 안정적으로 실행하려면 함께 정리해�
 
 ### 4. inproc pipe erase semantics 정합성 수정
 
-[`socket_base.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp)
+[`socket_base.cpp`](../../../../zlink-direct-callback-rewrite/core/src/sockets/socket_base.cpp)
 에서 `inproc` endpoint teardown 시 `_inprocs.erase_pipes()`가
 지연 종료 성격으로 남지 않도록 `terminate(false)` 기준으로 정리했다.
 
@@ -232,7 +232,7 @@ thread-safe scaling 계약을 안정적으로 실행하려면 함께 정리해�
 
 ### 5. `spot` attachment/control teardown tightening
 
-[`spot_node.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_node.cpp)
+[`spot_node.cpp`](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_node.cpp)
 에서 attachment destroy 시:
 
 - endpoint 기억
@@ -247,7 +247,7 @@ thread-safe scaling 계약을 안정적으로 실행하려면 함께 정리해�
 
 ### 6. lifecycle drain semantics 보강
 
-[`service_runtime_base.hpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/common/service_runtime_base.hpp)
+[`service_runtime_base.hpp`](../../../../zlink-direct-callback-rewrite/core/src/services/common/service_runtime_base.hpp)
 에서 drain 경로를 단일 socket fail-fast 성격에서
 전체 closing socket을 polling하는 방식으로 보강했다.
 
@@ -256,7 +256,7 @@ teardown diagnostics와 drain completeness를 개선했다.
 
 ### 7. default socket cap 상향
 
-[`zlink.h`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/include/zlink.h)
+[`zlink.h`](../../../../zlink-direct-callback-rewrite/core/include/zlink.h)
 에서:
 
 ```c

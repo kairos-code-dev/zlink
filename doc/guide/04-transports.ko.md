@@ -1,4 +1,4 @@
-[English](04-transports.md) | [한국어](04-transports.ko.md)
+[English](./04-transports.md) | [한국어](./04-transports.ko.md)
 
 # Transport 가이드
 
@@ -252,7 +252,7 @@ zlink_set_tls_client(socket, "/path/to/ca.pem", NULL, 1);
 zlink_connect(socket, "tls://server:5555");
 ```
 
-상세 TLS 설정은 [TLS 보안 가이드](05-tls-security.ko.md)를 참고.
+상세 TLS 설정은 [TLS 보안 가이드](./05-tls-security.ko.md)를 참고.
 
 ## 8. Transport 제약사항
 
@@ -311,7 +311,7 @@ zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 printf("Bound endpoint: %s\n", endpoint);
 ```
 
-성능 비교는 [성능 가이드](10-performance.ko.md)를 참고.
+성능 비교는 [성능 가이드](./10-performance.ko.md)를 참고.
 
 ---
-[← STREAM](03-5-stream.ko.md) | [TLS 보안 →](05-tls-security.ko.md)
+[← STREAM](./03-5-stream.ko.md) | [TLS 보안 →](./05-tls-security.ko.md)

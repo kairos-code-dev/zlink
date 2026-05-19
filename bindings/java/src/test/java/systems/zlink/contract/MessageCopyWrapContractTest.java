@@ -32,6 +32,20 @@ public class MessageCopyWrapContractTest {
     }
 
     @Test
+    public void allocateExposesWritableOwnedPayload() {
+        TestSupport.assumeNative();
+
+        try (Message msg = Message.allocate(3)) {
+            ByteBuffer data = msg.mutableDataBuffer();
+            data.put(0, (byte) 0x01);
+            data.put(1, (byte) 0x02);
+            data.put(2, (byte) 0x03);
+
+            assertArrayEquals(new byte[] {0x01, 0x02, 0x03}, msg.toByteArray());
+        }
+    }
+
+    @Test
     public void wrapDirectByteBufferIsNotPublic() {
         assertFalse(hasPublicMethod(Message.class, "wrapDirect", ByteBuffer.class));
     }

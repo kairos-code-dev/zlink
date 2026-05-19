@@ -1,6 +1,6 @@
 [스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md)
 
-[English](README.md) | [한국어](README.ko.md)
+[English](./README.md) | [한국어](./README.ko.md)
 
 # 소켓 -- 공통 명세
 
@@ -10,14 +10,14 @@
 
 | 소켓 타입 | 명세 |
 |-----------|------|
-| PAIR | [pair.ko.md](pair.ko.md) |
-| DEALER | [dealer.ko.md](dealer.ko.md) |
-| ROUTER | [router.ko.md](router.ko.md) |
-| PUB | [pub.ko.md](pub.ko.md) |
-| SUB | [sub.ko.md](sub.ko.md) |
-| XPUB | [xpub.ko.md](xpub.ko.md) |
-| XSUB | [xsub.ko.md](xsub.ko.md) |
-| STREAM | [stream.ko.md](stream.ko.md) |
+| PAIR | [pair.ko.md](./pair.ko.md) |
+| DEALER | [dealer.ko.md](./dealer.ko.md) |
+| ROUTER | [router.ko.md](./router.ko.md) |
+| PUB | [pub.ko.md](./pub.ko.md) |
+| SUB | [sub.ko.md](./sub.ko.md) |
+| XPUB | [xpub.ko.md](./xpub.ko.md) |
+| XSUB | [xsub.ko.md](./xsub.ko.md) |
+| STREAM | [stream.ko.md](./stream.ko.md) |
 
 ## 스레드 안전성 요약
 

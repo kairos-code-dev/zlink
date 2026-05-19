@@ -30,7 +30,7 @@ timeout 45s env PERF_SINGLE_DURATION_SECONDS=2 \
 
 ## 현재 perf 측 조건
 
-현재 [perf_spot.cpp](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/perf/single/src/perf_spot.cpp#L699) 경로는 아래 순서만 사용한다.
+현재 [perf_spot.cpp](../../../../zlink-direct-callback-rewrite/core/perf/single/src/perf_spot.cpp#L699) 경로는 아래 순서만 사용한다.
 
 1. `zlink_spot_monitor_open(... ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_SUBSCRIPTION_READY ...)`
 2. `zlink_spot_node_bind()`
@@ -95,9 +95,9 @@ transport 종류와 무관하게 subscriber까지 도달해야 한다.
 
 ## suspect 영역
 
-- [spot_sub.cpp](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L580)
+- [spot_sub.cpp](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L580)
   - `ZLINK_EVENT_CONNECTION_READY` 시점에 `emit_subscription_ready_event()`를 내보내는 로직
-- [spot_sub.cpp](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L373)
+- [spot_sub.cpp](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L373)
   - `emit_subscription_ready_event()`
 - `spot` control/data plane 사이 subscription forwarding 완료 시점
 - WSS handshake 완료와 `SUBSCRIPTION_READY` publish 가능 시점의 ordering

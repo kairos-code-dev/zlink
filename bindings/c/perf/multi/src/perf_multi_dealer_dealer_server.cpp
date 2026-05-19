@@ -410,11 +410,15 @@ inline bool run_one_size_benchmark (
     // This server process is reused across size cases. Drain the tail of the
     // just-finished active phase so stale messages do not spill into the next
     // run and keep later sizes permanently behind old backlog.
+    const double drain_wait_s =
+      msg_size >= 65536
+        ? std::max (10.0, active_s * 2.0)
+        : std::max (2.0, active_s);
     if (!drain_phase_until_idle (server,
                                  msg_size,
                                  run_id,
                                  perf_multi_metric::phase_active,
-                                 2.0,
+                                 drain_wait_s,
                                  50)) {
         if (bench_transition_debug_enabled ()) {
             std::cerr << "[multi-dealer-dealer-server] drain failed size="

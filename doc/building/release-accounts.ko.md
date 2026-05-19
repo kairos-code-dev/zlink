@@ -1,4 +1,4 @@
-[English](release-accounts.md) | [한국어](release-accounts.ko.md)
+[English](./release-accounts.md) | [한국어](./release-accounts.ko.md)
 
 # 공식 배포 계정/시크릿 체크리스트
 

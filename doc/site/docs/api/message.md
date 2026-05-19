@@ -1,6 +1,6 @@
-[English](message.md) | [한국어](message.ko.md)
+[English](./message.md) | [한국어](./message.ko.md)
 
-[Spec Index](../README.md) · [Core Index](README.md)
+[Spec Index](../README.md) · [Core Index](./README.md)
 
 # Message API Reference
 

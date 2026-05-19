@@ -148,14 +148,18 @@ void zlink::socket_base_t::process_term (int linger_)
 
     //  Ask all attached pipes to terminate.
     const size_t attached_pipe_count = endpoint_runtime ().attached_pipe_count ();
+    int term_pipe_count = 0;
     for (size_t i = 0; i != attached_pipe_count; ++i) {
         //  Only inprocs might have a disconnect message set
         pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
+        if (!_term_pipes.insert (pipe).second)
+            continue;
         pipe->send_disconnect_msg ();
         pipe->terminate (false);
+        ++term_pipe_count;
     }
-    register_term_acks (static_cast<int> (attached_pipe_count));
-    _term_pipe_acks_registered = static_cast<int> (attached_pipe_count);
+    register_term_acks (term_pipe_count);
+    _term_pipe_acks_registered = term_pipe_count;
     _term_pipe_acks_received = 0;
 
     //  Continue the termination process immediately.

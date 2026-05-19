@@ -1,4 +1,4 @@
-[English](release-accounts.md) | [한국어](release-accounts.ko.md)
+[English](./release-accounts.md) | [한국어](./release-accounts.ko.md)
 
 # Official Release Accounts/Secrets Checklist
 

@@ -1,4 +1,4 @@
-[English](08-routing-id.md) | [한국어](08-routing-id.ko.md)
+[English](./08-routing-id.md) | [한국어](./08-routing-id.ko.md)
 
 # Routing ID 개념 및 사용법
 
@@ -331,4 +331,4 @@ if (rid_size == 2 && memcmp(rid, "D1", 2) == 0) {
 ```
 
 ---
-[← SPOT](07-3-spot.ko.md) | [Message API →](09-message-api.ko.md)
+[← SPOT](./07-3-spot.ko.md) | [Message API →](./09-message-api.ko.md)

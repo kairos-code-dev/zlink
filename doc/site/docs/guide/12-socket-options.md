@@ -1,4 +1,4 @@
-[English](12-socket-options.md) | [한국어](12-socket-options.ko.md)
+[English](./12-socket-options.md) | [한국어](./12-socket-options.ko.md)
 
 # Socket Options Detailed Guide
 
@@ -554,4 +554,4 @@ Changing the channel name after a socket is attached to a Discovery is not
 supported.
 
 ---
-[← Thread Safety](11-thread-safety.md)
+[← Thread Safety](./11-thread-safety.md)

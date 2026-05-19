@@ -2,25 +2,46 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext, IAsyncDisposable
+internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext, IZLinkCurrentSpotActivation, IAsyncDisposable
 {
     private static readonly AsyncLocal<ZLinkEntrySpotActivation?> Current = new();
+    private readonly ZLinkFrameworkRuntime _runtime;
     private readonly AsyncServiceScope _scope;
-    private readonly ZLinkSpotActorHandlerRegistry _actorHandlers =
-        new(ZLinkSpotActorHandlerSurface.EntrySpot);
+    private readonly IZLinkBackendSpot _nativeSpot;
+    private readonly ZLinkSpotPacketRegistry _packets = new();
+    private readonly ZLinkSpotActorJoinRegistry _actorJoins = new();
+    private readonly ZLinkSpotActorMembership _actors = new();
+    private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
+    private readonly ZLinkSpotTimerRegistry _timers = new();
+    private readonly ZLinkSpotActorHandlerRegistry _actorHandlers;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly SemaphoreSlim _routeDrainGate = new(1, 1);
+    private readonly SemaphoreSlim _actorJoinDrainGate = new(1, 1);
     private readonly CancellationTokenSource _stopSource = new();
+    private readonly ZLinkSpotOutboundTransport _outbound;
     private readonly ZLinkSpotHandlerInvoker _invoker;
+    private readonly ZLinkSpotActivationDispatcher _dispatcher;
     private readonly ZLinkEntrySpotHandlerExecutor _handlerExecutor;
+    private readonly ZLinkSpotSubscriptionPump _subscriptionPump = new();
+    private readonly TimeSpan _defaultTimeout;
     private bool _configurationOpen = true;
     private int _disposed;
 
     public ZLinkEntrySpotActivation(
+        ZLinkFrameworkRuntime runtime,
         IServiceProvider services,
+        IZLinkBackendSpot nativeSpot,
         Type entrySpotType,
-        RoutingId nodeRid)
+        RoutingId nodeRid,
+        string channelName,
+        TimeSpan defaultTimeout,
+        TimeSpan? sendTimeout)
     {
+        _runtime = runtime;
+        _nativeSpot = nativeSpot;
         NodeRid = nodeRid;
+        ChannelName = channelName;
+        _defaultTimeout = defaultTimeout;
         _scope = services.CreateAsyncScope();
         EntrySpot = (IZLinkEntrySpot)ActivatorUtilities.CreateInstance(
             _scope.ServiceProvider,
@@ -34,9 +55,33 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
 
         _invoker = new ZLinkSpotHandlerInvoker(_scope.ServiceProvider, EntrySpot);
         _handlerExecutor = new ZLinkEntrySpotHandlerExecutor(services, EntrySpot);
+        _actorHandlers = new ZLinkSpotActorHandlerRegistry(
+            ZLinkSpotActorHandlerSurface.EntrySpot,
+            EntrySpot.GetType());
+        _outbound = new ZLinkSpotOutboundTransport(
+            nativeSpot,
+            defaultTimeout,
+            sendTimeout,
+            _stopSource.Token);
+        _dispatcher = new ZLinkSpotActivationDispatcher(
+            runtime,
+            nativeSpot,
+            channelName,
+            _packets,
+            _actorJoins,
+            _actors,
+            _subscriptions,
+            () => _actorHandlers,
+            () => _invoker);
     }
 
     public IZLinkEntrySpot EntrySpot { get; }
+
+    public string ChannelName { get; }
+
+    public TimeSpan DefaultTimeout => _defaultTimeout;
+
+    public RoutingId SpotRid => _nativeSpot.RoutingId;
 
     public RoutingId NodeRid { get; }
 
@@ -44,11 +89,19 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
     {
         EntrySpot.Configure();
         _configurationOpen = false;
+        _packets.Bind(EntrySpot);
+        _subscriptions.Bind(EntrySpot, _nativeSpot);
+        _actorJoins.Bind(EntrySpot);
         _actorHandlers.Bind();
     }
 
     public async ValueTask InitializeAsync(CancellationToken cancellationToken)
     {
+        _subscriptionPump.StartIfNeeded(
+            _subscriptions.HasSubscriptions,
+            _stopSource.Token,
+            DispatchSubscriptionsAsync);
+
         await ExecuteAsync(
             static (activation, ct) => activation.EntrySpot.OnInitializeAsync(ct),
             cancellationToken).ConfigureAwait(false);
@@ -67,6 +120,23 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
         out ZLinkSpotActorPacketDescriptor? descriptor)
     {
         return _actorHandlers.TryResolve(actorType, header, out descriptor);
+    }
+
+    public bool TryResolvePacket(
+        ZLinkEnvelopeHeader header,
+        out ZLinkSpotDescriptor? descriptor)
+    {
+        return _packets.TryResolve(header, out descriptor);
+    }
+
+    public async ValueTask InvokePacketAsync(
+        ZLinkSpotDescriptor descriptor,
+        object? message,
+        CancellationToken cancellationToken)
+    {
+        using var _ = ZLinkSpotAmbientContext.Push(this);
+        await _invoker.InvokePacketAsync(descriptor, message, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public bool TryResolveActorJoined(
@@ -132,6 +202,30 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
                     state.Info,
                     ct),
             new ActorLifecycleState(descriptor, actor, info),
+                cancellationToken);
+    }
+
+    public ValueTask InvokeActorJoinedCallbackAsync(
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        return InvokeActorLifecycleCallbackAsync(
+            actor,
+            info,
+            static (activation, state, ct) => activation.EntrySpot.OnActorJoinedAsync(state.Info, ct),
+            cancellationToken);
+    }
+
+    public ValueTask InvokeActorLeftCallbackAsync(
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        return InvokeActorLifecycleCallbackAsync(
+            actor,
+            info,
+            static (activation, state, ct) => activation.EntrySpot.OnActorLeftAsync(state.Info, ct),
             cancellationToken);
     }
 
@@ -143,7 +237,12 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
         }
 
         _stopSource.Cancel();
+        await _subscriptionPump.StopAsync();
+        await _timers.DisposeAsync().ConfigureAwait(false);
+        await _outbound.DisposeAsync().ConfigureAwait(false);
         _gate.Dispose();
+        _routeDrainGate.Dispose();
+        _actorJoinDrainGate.Dispose();
         _stopSource.Dispose();
         await _scope.DisposeAsync().ConfigureAwait(false);
     }
@@ -152,4 +251,20 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
         ZLinkSpotActorLifecycleDescriptor Descriptor,
         IZLinkActor Actor,
         ZLinkSpotActorLifecycleInfo Info);
+
+    private sealed record ActorLifecycleCallbackState(
+        ZLinkSpotActorLifecycleInfo Info);
+
+    private ValueTask InvokeActorLifecycleCallbackAsync(
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        Func<ZLinkEntrySpotActivation, ActorLifecycleCallbackState, CancellationToken, ValueTask> callback,
+        CancellationToken cancellationToken)
+    {
+        _ = actor;
+        return ExecuteAsync(
+            callback,
+            new ActorLifecycleCallbackState(info),
+            cancellationToken);
+    }
 }

@@ -51,19 +51,19 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
    - [implementation-scope-and-nongoals.ko.md](../../../languages/dotnet/doc/internals/implementation-scope-and-nongoals.ko.md)
 3. channel, monitoring, registry, SPOT, STREAM, connector
    - [aspnet-core-channel-messaging.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-channel-messaging.ko.md)
-   - [channel-messaging-samples.ko.md](../../../languages/dotnet/doc/guide/channel-messaging-samples.ko.md)
+   - [channel-messaging-samples.ko.md](../../../languages/dotnet/doc/guide/samples/channel-messaging-samples.ko.md)
    - [aspnet-core-monitoring.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-monitoring.ko.md)
    - [aspnet-core-registry.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-registry.ko.md)
    - [aspnet-core-spot.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-spot.ko.md)
-   - [spot-samples.ko.md](../../../languages/dotnet/doc/guide/spot-samples.ko.md)
+   - [spot-samples.ko.md](../../../languages/dotnet/doc/guide/samples/spot-samples.ko.md)
    - [stage-wrapper-on-spot.ko.md](../../../languages/dotnet/doc/spec/stage-wrapper-on-spot.ko.md)
    - [aspnet-core-stream.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-stream.ko.md)
    - [stream-open-items.ko.md](../../../languages/dotnet/doc/draft/stream-open-items.ko.md)
-   - [stream-samples.ko.md](../../../languages/dotnet/doc/guide/stream-samples.ko.md)
-   - [streaming-client.ko.md](../../../languages/dotnet/doc/guide/streaming-client.ko.md)
+   - [stream-samples.ko.md](../../../languages/dotnet/doc/guide/samples/stream-samples.ko.md)
+   - [streaming-client.ko.md](../../../languages/dotnet/doc/guide/samples/streaming-client.ko.md)
    - [unity-stream-connector.ko.md](../../../../doc/guide/unity-stream-connector.ko.md)
 4. sample spec
-   - [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md)
+   - [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/samples/tictactoe-game-sample.ko.md)
    - [README.ko.md](../../spec/sample/tictactoe/README.ko.md)
    - [direct.ko.md](../../spec/sample/tictactoe/direct.ko.md)
    - [session-gateway.ko.md](../../spec/sample/tictactoe/session-gateway.ko.md)
@@ -142,11 +142,11 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
 - async submit 의미:
   [framework-api.ko.md](../../spec/framework-api.ko.md),
   [interaction-model.ko.md](../../spec/interaction-model.ko.md),
-  [streaming-client.ko.md](../../../languages/dotnet/doc/guide/streaming-client.ko.md)
+  [streaming-client.ko.md](../../../languages/dotnet/doc/guide/samples/streaming-client.ko.md)
 - routed channel과 session gateway:
   [session-gateway.ko.md](../../spec/archive/session-gateway.ko.md)
 - TicTacToe sample:
-  [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md)
+  [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/samples/tictactoe-game-sample.ko.md)
 
 1. 기존 TicTacToe sample을 보존한다.
    - 경로: `framework/languages/dotnet/samples/TicTacToe`
@@ -626,7 +626,7 @@ fi
 1. [direct.ko.md](../../spec/sample/tictactoe/direct.ko.md)를 sample code와 대조한다.
 2. [session-gateway.ko.md](../../spec/sample/tictactoe/session-gateway.ko.md)를 sample
    code와 대조한다.
-3. [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md)를
+3. [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/samples/tictactoe-game-sample.ko.md)를
    sample code와 대조한다.
 4. [README.ko.md](../../spec/sample/tictactoe/README.ko.md)를 sample code와 대조한다.
 5. packet suffix, project name, directory ownership, log, smoke scenario를 확인한다.

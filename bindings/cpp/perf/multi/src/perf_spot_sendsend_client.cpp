@@ -49,6 +49,8 @@ struct client_slot_t
 };
 
 std::atomic<bool> g_stop (false);
+std::atomic<int> g_client_debug_send_logs (0);
+std::atomic<int> g_client_debug_recv_logs (0);
 start_gate_t g_start_gate;
 
 zlink::routing_id_t text_rid (const char *text)
@@ -244,17 +246,41 @@ bool submit_request (client_slot_t &slot,
                             .message (slot.message)
                             .flags (ZLINK_DONTWAIT)
                             .submit ();
-        if (!sent)
+        if (!sent) {
+            if (bench_debug_enabled ()
+                && g_client_debug_send_logs.fetch_add (
+                     1, std::memory_order_acq_rel)
+                     < 8) {
+                std::cerr << "[cpp-spot-sendsend-client] send blocked seq="
+                          << slot.next_seq << std::endl;
+            }
             return true;
+        }
         slot.waiting_reply = true;
+        if (bench_debug_enabled ()
+            && g_client_debug_send_logs.fetch_add (
+                 1, std::memory_order_acq_rel)
+                 < 8) {
+            std::cerr << "[cpp-spot-sendsend-client] send ok seq="
+                      << slot.next_seq << std::endl;
+        }
         ++slot.next_seq;
         return true;
     }
     catch (const zlink::submit_error_t &err) {
         if (err.result () == zlink::submit_result_t::backpressured
             || err.result () == zlink::submit_result_t::not_connected
-            || err.result () == zlink::submit_result_t::not_found)
+            || err.result () == zlink::submit_result_t::not_found) {
+            if (bench_debug_enabled ()
+                && g_client_debug_send_logs.fetch_add (
+                     1, std::memory_order_acq_rel)
+                     < 8) {
+                std::cerr << "[cpp-spot-sendsend-client] send transient rc="
+                          << static_cast<int> (err.result ())
+                          << " err=" << err.internal_errno () << std::endl;
+            }
             return true;
+        }
         errno = err.internal_errno ();
         return false;
     }
@@ -300,6 +326,13 @@ bool drain_reply (client_slot_t &slot,
               perf_metric::elapsed_latency_ns (now_ns, header.sent_ts_ns)
               / 2.0);
             ++reply_count;
+            if (bench_debug_enabled ()
+                && g_client_debug_recv_logs.fetch_add (
+                     1, std::memory_order_acq_rel)
+                     < 8) {
+                std::cerr << "[cpp-spot-sendsend-client] recv reply seq="
+                          << header.seq << std::endl;
+            }
         }
         return true;
     }
@@ -351,11 +384,10 @@ bool run_active_window (std::vector<client_slot_t> &slots,
     }
 
     // PERF_MULTI_TEST_POLICY § 1.3.1: the active request/reply window is
-    // bounded purely by an application clock (steady_clock deadline) plus a
-    // -1 (signal-driven) poll wait; no poller timer object is used. Reply
-    // traffic keeps waking the -1 wait, and the deadline check terminates the
-    // loop. Matches the C reference
-    // (bindings/c/perf/multi/src/perf_multi_spot_sendsend_client.cpp:1017-1054).
+    // bounded purely by an application clock (steady_clock deadline); no
+    // poller timer object is used. Wait slices are capped by the remaining
+    // deadline so a dropped tail reply cannot block the runner after the
+    // window has elapsed.
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::seconds (
                             std::max (1, settings.duration_seconds));
@@ -367,6 +399,7 @@ bool run_active_window (std::vector<client_slot_t> &slots,
     while (!g_stop.load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < deadline) {
         bool has_waiting = false;
+        bool send_progress = false;
         const size_t active_slots =
           active_spot_slot_limit (slots.size (), msg_size);
         for (size_t i = 0; i < active_slots; ++i) {
@@ -374,15 +407,32 @@ bool run_active_window (std::vector<client_slot_t> &slots,
             if (!drain_reply (
                   slot, run_id, msg_size, deadline_ns, reply_count, latency))
                 return false;
+            const bool waiting_before_submit = slot.waiting_reply;
             if (!submit_request (
                   slot, server_node_rid, server_spot_rid, run_id, msg_size))
                 return false;
+            if (!waiting_before_submit && slot.waiting_reply)
+                send_progress = true;
             has_waiting = has_waiting || slot.waiting_reply;
         }
 
+        if (send_progress)
+            continue;
+
         if (has_waiting) {
+            const auto now = std::chrono::steady_clock::now ();
+            if (now >= deadline)
+                break;
+            const long remaining_ms =
+              static_cast<long> (
+                std::chrono::duration_cast<std::chrono::milliseconds> (
+                  deadline - now)
+                  .count ());
+            if (remaining_ms <= 0)
+                break;
+            const long wait_ms = std::min<long> (remaining_ms, 10);
             const std::optional<zlink::poll_event_t> event =
-              poller.wait (std::chrono::milliseconds (-1));
+              poller.wait (std::chrono::milliseconds (wait_ms));
             if (event.has_value ()
                 && !drain_event_reply (slots,
                                        *event,

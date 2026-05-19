@@ -1,7 +1,7 @@
 # Direct Callback Recv 인터페이스 재검토
 
 이 문서는
-[`direct-callback-recv-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md)
+[`direct-callback-recv-rewrite-spec.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md)
 의 본문과 분리된 인터페이스 재검토 노트다.
 
 목적:
@@ -15,9 +15,9 @@
 
 - 이 문서는 direct-callback-recv 재작성 범위의 canonical 인터페이스 문서다.
 - 구현, 리팩토링, 테스트, 후속 계획 문서 정리는 이 문서를 기준으로 수행한다.
-- [`direct-callback-recv-rewrite-spec.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md),
-  [`service-option-surface-plan.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/service-option-surface-plan.ko.md),
-  [`spot-node-direct-facade-plan.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-node-direct-facade-plan.ko.md)
+- [`direct-callback-recv-rewrite-spec.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/direct-callback-recv-rewrite-spec.ko.md),
+  [`service-option-surface-plan.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/service-option-surface-plan.ko.md),
+  [`spot-node-direct-facade-plan.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/direct-callback-recv/spot-node-direct-facade-plan.ko.md)
   를 포함한 다른 계획 문서는 참고 문서이며, 충돌 시 이 문서를 우선한다.
 - 이 문서에 나오는 구체 숫자 값(`0x2101`, `0x1001`, `0x3001` 등)은
   이 문서 기준 canonical 값이다.
@@ -1097,7 +1097,7 @@ int zlink_spot_send_ready_handler (void *spot,
 - `set_send_ready_handler()`도 callback setter family와 동일하게 replace-only surface로 본다.
   `NULL` 제거 API는 두지 않는다.
 - latest public contract는
-  [`thread-safe-socket-plan.ko.md`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/doc/plan/thread-safe/thread-safe-socket-plan.ko.md)
+  [`thread-safe-socket-plan.ko.md`](../../../../zlink-direct-callback-rewrite/doc/plan/thread-safe/thread-safe-socket-plan.ko.md)
   기준 thread-safe only다.
   same-handle operational API는 thread-safe이며, `close` / `destroy`는 더 보수적이다.
 - `set_send_ready_handler()`를 동일 handle의 send-ready callback 안에서 다시 호출하면

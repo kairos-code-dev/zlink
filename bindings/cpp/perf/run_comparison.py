@@ -84,13 +84,13 @@ SINGLE_COMPARISONS = [
     ("perf_spot", "SPOT"),
 ]
 MULTI_COMPARISONS = [
-    ("comp_src_dealer_dealer_client", "DEALER_DEALER"),
-    ("comp_src_dealer_router_client", "DEALER_ROUTER"),
-    ("comp_src_router_router_client", "ROUTER_ROUTER"),
-    ("comp_src_pubsub_client", "PUBSUB"),
-    ("comp_src_spot_client", "SPOT"),
-    ("comp_src_spot_reqrep_client", "SPOT_REQREP"),
-    ("comp_src_spot_sendsend_client", "SPOT_SENDSEND"),
+    ("cpp_comp_src_dealer_dealer_client", "DEALER_DEALER"),
+    ("cpp_comp_src_dealer_router_client", "DEALER_ROUTER"),
+    ("cpp_comp_src_router_router_client", "ROUTER_ROUTER"),
+    ("cpp_comp_src_pubsub_client", "PUBSUB"),
+    ("cpp_comp_src_spot_client", "SPOT"),
+    ("cpp_comp_src_spot_reqrep_client", "SPOT_REQREP"),
+    ("cpp_comp_src_spot_sendsend_client", "SPOT_SENDSEND"),
     ("perf_stream_client", "STREAM"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
@@ -253,8 +253,8 @@ def resolve_split_required_binaries(pattern_name):
     if not suffix:
         return []
     return [
-        f"comp_src_{suffix}_server",
-        f"comp_src_{suffix}_client",
+        f"cpp_comp_src_{suffix}_server",
+        f"cpp_comp_src_{suffix}_client",
     ]
 
 
@@ -1525,8 +1525,8 @@ def resolve_binary_names(pattern_name):
     if not suffix:
         return None
     return {
-        "server": f"comp_src_{suffix}_server",
-        "client": f"comp_src_{suffix}_client",
+        "server": f"cpp_comp_src_{suffix}_server",
+        "client": f"cpp_comp_src_{suffix}_client",
     }
 
 
@@ -2393,7 +2393,9 @@ def run_sizes_test_split(
     set_env_pair(env, "PERF_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
     set_env_pair(env, "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
     set_env_pair(env, "PERF_SERVER_BIND_PORT", bind_port)
-    server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
+    server_cmd = build_bench_cmd(
+        server_binary_path, [lib_name, transport, str(fallback_size)]
+    )
     client_cmd = build_bench_cmd(
         client_binary_path, [lib_name, transport, str(fallback_size)]
     )

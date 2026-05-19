@@ -108,6 +108,7 @@ bool zlink::xsub_t::compute_delivery_ready_state () const
 
 uint32_t zlink::xsub_t::compute_delivery_ready_count () const
 {
+    std::lock_guard<std::mutex> subscriptions_lock (_subscriptions_mu);
 #ifdef ZLINK_USE_RADIX_TREE
     const bool has_filters = _subscriptions.size () > 0;
 #else
@@ -146,6 +147,7 @@ void zlink::xsub_t::snapshot_subscriptions (
         return;
 
     xsub_snapshot_arg_t arg (out_);
+    std::lock_guard<std::mutex> subscriptions_lock (_subscriptions_mu);
     _subscriptions.apply (&snapshot_subscription, &arg);
 }
 
@@ -165,7 +167,16 @@ void zlink::xsub_t::xattach_pipe (pipe_t *pipe_,
     _dist.attach (pipe_);
 
     //  Send all the cached subscriptions to the new upstream peer.
-    _subscriptions.apply (send_subscription, pipe_);
+    std::vector<subscription_descriptor_t> subscriptions;
+    snapshot_subscriptions (&subscriptions);
+    for (size_t i = 0; i < subscriptions.size (); ++i) {
+        unsigned char *data = subscriptions[i].filter.empty ()
+                                ? NULL
+                                : reinterpret_cast<unsigned char *> (
+                                    &subscriptions[i].filter[0]);
+        send_subscription (
+          data, subscriptions[i].filter.size (), pipe_);
+    }
     pipe_->flush ();
     refresh_delivery_ready_state (pipe_->get_endpoint_pair ());
 }
@@ -196,7 +207,16 @@ void zlink::xsub_t::xpipe_terminated (pipe_t *pipe_)
 void zlink::xsub_t::xhiccuped (pipe_t *pipe_)
 {
     //  Send all the cached subscriptions to the hiccuped pipe.
-    _subscriptions.apply (send_subscription, pipe_);
+    std::vector<subscription_descriptor_t> subscriptions;
+    snapshot_subscriptions (&subscriptions);
+    for (size_t i = 0; i < subscriptions.size (); ++i) {
+        unsigned char *data = subscriptions[i].filter.empty ()
+                                ? NULL
+                                : reinterpret_cast<unsigned char *> (
+                                    &subscriptions[i].filter[0]);
+        send_subscription (
+          data, subscriptions[i].filter.size (), pipe_);
+    }
     pipe_->flush ();
 }
 
@@ -213,6 +233,7 @@ int zlink::xsub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
     if (option_ == ZLINK_INTERNAL_OPT_TOPICS_COUNT) {
         // make sure to use a multi-thread safe function to avoid race conditions with I/O threads
         // where subscriptions are processed:
+        std::lock_guard<std::mutex> subscriptions_lock (_subscriptions_mu);
 #ifdef ZLINK_USE_RADIX_TREE
         uint64_t num_subscriptions = _subscriptions.size ();
 #else
@@ -254,9 +275,14 @@ int zlink::xsub_t::xsend (msg_t *msg_)
             data = data + 1;
             size = size - 1;
         }
-        _subscriptions.add (data, size);
-        if (size == 0)
-            _has_empty_subscription = true;
+        {
+            std::lock_guard<std::mutex> subscriptions_lock (
+              _subscriptions_mu);
+            _subscriptions.add (data, size);
+            if (size == 0)
+                _has_empty_subscription.store (true,
+                                               std::memory_order_release);
+        }
         _process_subscribe = true;
         const int rc = _dist.send_to_all (msg_);
         refresh_delivery_ready_state (endpoint_uri_pair_t ());
@@ -269,9 +295,15 @@ int zlink::xsub_t::xsend (msg_t *msg_)
             size = size - 1;
         }
         _process_subscribe = true;
-        const bool rm_result = _subscriptions.rm (data, size);
-        if (size == 0 && rm_result)
-            _has_empty_subscription = false;
+        bool rm_result = false;
+        {
+            std::lock_guard<std::mutex> subscriptions_lock (
+              _subscriptions_mu);
+            rm_result = _subscriptions.rm (data, size);
+            if (size == 0 && rm_result)
+                _has_empty_subscription.store (false,
+                                               std::memory_order_release);
+        }
         if (rm_result || _verbose_unsubs) {
             const int rc = _dist.send_to_all (msg_);
             refresh_delivery_ready_state (endpoint_uri_pair_t ());
@@ -656,7 +688,13 @@ int zlink::xsub_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
 
 bool zlink::xsub_t::match (msg_t *msg_)
 {
-    if (!options.invert_matching && _has_empty_subscription)
+    if (!options.invert_matching
+        && _has_empty_subscription.load (std::memory_order_acquire))
+        return true;
+
+    std::lock_guard<std::mutex> subscriptions_lock (_subscriptions_mu);
+    if (!options.invert_matching
+        && _has_empty_subscription.load (std::memory_order_relaxed))
         return true;
 
     const bool matching = _subscriptions.check (

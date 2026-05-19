@@ -1,4 +1,4 @@
-[English](threading-model.md) | [한국어](threading-model.ko.md)
+[English](./threading-model.md) | [한국어](./threading-model.ko.md)
 
 # Threading and Concurrency Model
 
@@ -71,4 +71,4 @@ sequenceDiagram
 - Context: Thread-safe (sockets can be created from multiple threads)
 - pipe_t: Lock-free (CAS-based YPipe)
 - Cache line optimization, visibility guaranteed through memory barriers
-- For the full concurrency contract implementation, see [Thread-Safety Internals](thread-safety.md)
+- For the full concurrency contract implementation, see [Thread-Safety Internals](./thread-safety.md)

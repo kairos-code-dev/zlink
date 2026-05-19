@@ -430,7 +430,7 @@ dotnet test /home/hep7/project/kairos/zlink/bindings/dotnet/tests/Zlink.Tests/Zl
 
 ## 10. 로그와 운영 규칙
 
-- 기본 로그 디렉터리는 [`logs/`](./logs/) 다.
+- 기본 로그 디렉터리는 [`logs/`](./logs) 다.
 - 실행 wrapper는 별도 실행 lock을 두지 않는다.
 - 병렬 실행이 필요하면 `--logs-dir` 와 `--gate-label` 을 분리한다.
 - commit / push는 사용자 지시가 있을 때만 수행한다.

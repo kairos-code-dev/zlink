@@ -1,4 +1,4 @@
-[English](07-3-spot.md) | [한국어](07-3-spot.ko.md)
+[English](./07-3-spot.md) | [한국어](./07-3-spot.ko.md)
 
 # SPOT Guide
 
@@ -346,7 +346,7 @@ Use the same drain-until-EAGAIN pattern for `zlink_spot_subscribe()` and
 ## 7. Distributing session messages with Actors
 
 For Actor creation, Spot join/leave, teardown, STREAM session binding, and C
-samples, see the [SPOT Actor Guide](07-4-actor.md).
+samples, see the [SPOT Actor Guide](./07-4-actor.md).
 
 ## 8. Poller relationship and Spot timers
 
@@ -515,4 +515,4 @@ The underlying `SpotNode` is not affected.
 
 ## 14. Actor C samples
 
-See the [SPOT Actor Guide](07-4-actor.md#5-actor-c-samples).
+See the [SPOT Actor Guide](./07-4-actor.md#5-actor-c-samples).

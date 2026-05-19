@@ -1,6 +1,6 @@
-[English](errors.md) | [한국어](errors.ko.md)
+[English](./errors.md) | [한국어](./errors.ko.md)
 
-[Spec Index](../README.md) · [Core Index](README.md)
+[Spec Index](../README.md) · [Core Index](./README.md)
 
 # Error Handling & Version
 

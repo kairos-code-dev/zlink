@@ -65,6 +65,11 @@ uint32_t zlink::socket_base_t::local_peer_weight () const
 
 int zlink::socket_base_t::close ()
 {
+    return close (2000);
+}
+
+int zlink::socket_base_t::close (int handoff_timeout_ms_)
+{
     if (_service_attachment && _service_attachment->on_public_close () != 0)
         return -1;
 
@@ -75,7 +80,7 @@ int zlink::socket_base_t::close ()
     if (from_self_callback)
         return 0;
 
-    finish_close_handoff ();
+    finish_close_handoff (handoff_timeout_ms_);
     return 0;
 }
 

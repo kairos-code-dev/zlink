@@ -27,6 +27,22 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
                 return CreatePacketDescriptor(surface, handlerType, null, arguments[0], arguments[1], arguments[2], packetName);
             }
 
+            if (surface == ZLinkSpotActorHandlerSurface.EntrySpot
+                && definition == typeof(IZLinkSpotActorSendHandler<,,>))
+            {
+                ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
+                ValidateActorType(handlerType, expectedActorType, arguments[1]);
+                return CreatePacketDescriptor(surface, handlerType, arguments[0], arguments[1], arguments[2], null, packetName);
+            }
+
+            if (surface == ZLinkSpotActorHandlerSurface.EntrySpot
+                && definition == typeof(IZLinkSpotActorRequestHandler<,,,>))
+            {
+                ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
+                ValidateActorType(handlerType, expectedActorType, arguments[1]);
+                return CreatePacketDescriptor(surface, handlerType, arguments[0], arguments[1], arguments[2], arguments[3], packetName);
+            }
+
             if (surface == ZLinkSpotActorHandlerSurface.UserSpot
                 && definition == typeof(IZLinkSpotActorSendHandler<,,>))
             {
@@ -55,22 +71,20 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         Type expectedActorType,
         bool joined)
     {
-        var expectedDefinition = surface switch
-        {
-            ZLinkSpotActorHandlerSurface.EntrySpot when joined => typeof(IZLinkEntrySpotActorJoinedHandler<>),
-            ZLinkSpotActorHandlerSurface.EntrySpot => typeof(IZLinkEntrySpotActorLeftHandler<>),
-            ZLinkSpotActorHandlerSurface.UserSpot when joined => typeof(IZLinkSpotActorJoinedHandler<,>),
-            _ => typeof(IZLinkSpotActorLeftHandler<,>)
-        };
+        var entrySpotDefinition = joined
+            ? typeof(IZLinkEntrySpotActorJoinedHandler<>)
+            : typeof(IZLinkEntrySpotActorLeftHandler<>);
+        var spotDefinition = joined
+            ? typeof(IZLinkSpotActorJoinedHandler<,>)
+            : typeof(IZLinkSpotActorLeftHandler<,>);
+        var expectedDefinition = surface == ZLinkSpotActorHandlerSurface.EntrySpot
+            ? $"{entrySpotDefinition} or {spotDefinition}"
+            : spotDefinition.ToString();
 
         foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (definition != expectedDefinition)
-            {
-                continue;
-            }
-
-            if (surface == ZLinkSpotActorHandlerSurface.EntrySpot)
+            if (surface == ZLinkSpotActorHandlerSurface.EntrySpot
+                && definition == entrySpotDefinition)
             {
                 ValidateActorType(handlerType, expectedActorType, arguments[0]);
                 return new ZLinkSpotActorLifecycleDescriptor
@@ -80,6 +94,11 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
                     Invoker = CreateInvoker(handlerType),
                     Surface = surface
                 };
+            }
+
+            if (definition != spotDefinition)
+            {
+                continue;
             }
 
             ValidateSpotType(handlerType, expectedSpotType, arguments[0]);

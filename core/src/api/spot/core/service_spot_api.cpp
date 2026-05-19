@@ -380,6 +380,10 @@ zlink_recv_result_t spot_subscribe_impl (void *spot_,
         topic_id_len_out_);
     if (logical_recv != ZLINK_RECV_NO_DATA)
         return logical_recv;
+    if (spot->logical_state) {
+        errno = EAGAIN;
+        return ZLINK_RECV_NO_DATA;
+    }
 
     const zlink_recv_result_t dispatch_recv =
       zlink::recv_result_internal::from_rc (

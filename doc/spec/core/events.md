@@ -1,13 +1,13 @@
-[English](events.md) | [한국어](events.ko.md)
+[English](./events.md) | [한국어](./events.ko.md)
 
-[Spec Index](../README.md) · [Core Index](README.md)
+[Spec Index](../README.md) · [Core Index](./README.md)
 
 # Event Catalog
 
 This document is the canonical catalog for raw socket monitor events.
 
 Use:
-- [monitoring.md](monitoring.md) for monitor APIs and peer-inspection APIs
+- [monitoring.md](./monitoring.md) for monitor APIs and peer-inspection APIs
 - this document for event semantics, payload fields, and recommended gates
 
 ## Semantic Levels

@@ -70,7 +70,8 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         }
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
-        if (descriptor.Surface == ZLinkSpotActorHandlerSurface.EntrySpot)
+        if (descriptor.Surface == ZLinkSpotActorHandlerSurface.EntrySpot
+            && descriptor.SpotType is null)
         {
             await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, message, cancellationToken)
                 .ConfigureAwait(false);
@@ -102,6 +103,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
         var reply = descriptor.Surface == ZLinkSpotActorHandlerSurface.EntrySpot
+            && descriptor.SpotType is null
             ? await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, message, cancellationToken)
                 .ConfigureAwait(false)
             : await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, message, cancellationToken)
@@ -121,7 +123,8 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
                 $"SPOT actor lifecycle handler '{descriptor.HandlerType}' expects actor '{descriptor.ActorType}', but received '{actor.GetType()}'.");
         }
 
-        if (descriptor.Surface == ZLinkSpotActorHandlerSurface.EntrySpot)
+        if (descriptor.Surface == ZLinkSpotActorHandlerSurface.EntrySpot
+            && descriptor.SpotType is null)
         {
             await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, info, cancellationToken)
                 .ConfigureAwait(false);

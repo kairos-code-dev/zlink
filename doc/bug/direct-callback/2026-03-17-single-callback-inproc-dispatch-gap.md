@@ -77,7 +77,7 @@
 - `/home/hep7/project/kairos/zlink-direct-callback-rewrite`의 `single perf`는
   당시 `recv` 기반이었다.
 - 예를 들어
-  [`perf_pubsub.cpp`](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/perf/single/src/perf_pubsub.cpp)
+  [`perf_pubsub.cpp`](../../../../zlink-direct-callback-rewrite/core/perf/single/src/perf_pubsub.cpp)
   는 `receiver_thread + zlink_msg_recv()` 모델이다.
 - 따라서 그 브랜치에서 `single perf`가 통과했다는 사실은
   - `recv` 경로가 동작했다

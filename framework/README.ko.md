@@ -22,6 +22,8 @@
 
 문서 진입점:
 
-- [ZLink Framework Spec](./doc/spec/README.ko.md)
+- [ZLink Framework 문서](./doc/README.ko.md) — 전체 진입점
+- [공통 스펙](./doc/spec/README.ko.md) — 언어 중립 정식 계약
+- [언어별 문서](./languages) — `.NET`은 정식, 그 외는 초안
 
-현재 문서는 초안 단계이며, 정식 공개 계약이 아니다.
+`.NET`은 정식 문서로 승격되었고, 그 외 언어 문서는 아직 초안 단계다.

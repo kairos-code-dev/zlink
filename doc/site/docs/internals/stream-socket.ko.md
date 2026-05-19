@@ -1,4 +1,4 @@
-[English](stream-socket.md) | [한국어](stream-socket.ko.md)
+[English](./stream-socket.md) | [한국어](./stream-socket.ko.md)
 
 # STREAM 소켓 WS/WSS 최적화
 
@@ -190,7 +190,7 @@ zlink_stream_packet_handler_fn(stream,
 
 STREAM 은 transport 전반에 공통된 기본 성능 프로파일을 사용한다.
 STREAM 외 공통 소켓 기본값은
-[socket-option-defaults.ko.md](socket-option-defaults.ko.md)를 참고한다.
+[socket-option-defaults.ko.md](./socket-option-defaults.ko.md)를 참고한다.
 
 ### 7.1 내부 상수 고정 항목
 

@@ -149,7 +149,7 @@
 
 원칙 전문은 아래 문서에 있다:
 
-**[`doc/principal/software-design-principles.md`](doc/principal/software-design-principles.md)**
+**[`doc/principal/software-design-principles.md`](./doc/principal/software-design-principles.md)**
 
 에이전트는 코드 작성·수정·리뷰 시 이 문서를 판단 기준으로 사용한다.
 단순히 "동작하는 코드"를 만드는 것이 목표가 아니라, **복잡성을 줄이는 설계**가 목표임을 항상 염두에 둔다.

@@ -65,6 +65,65 @@ bool allocate_loopback_tcp_endpoint_local (char *endpoint_out_,
     return false;
 }
 
+bool allocate_loopback_endpoint_local (const char *transport_,
+                                       char *endpoint_out_,
+                                       size_t endpoint_size_)
+{
+    char tcp_endpoint[MAX_SOCKET_STRING];
+    if (!allocate_loopback_tcp_endpoint_local (tcp_endpoint,
+                                               sizeof (tcp_endpoint)))
+        return false;
+
+    const char tcp_prefix[] = "tcp://";
+    if (strncmp (tcp_endpoint, tcp_prefix, strlen (tcp_prefix)) != 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    const int written =
+      snprintf (endpoint_out_, endpoint_size_, "%s://%s", transport_,
+                tcp_endpoint + strlen (tcp_prefix));
+    if (written < 0 || static_cast<size_t> (written) >= endpoint_size_) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
+    return true;
+}
+
+bool rewrite_endpoint_host_local (const char *endpoint_,
+                                  const char *host_,
+                                  char *endpoint_out_,
+                                  size_t endpoint_size_)
+{
+    if (!endpoint_ || !host_ || !endpoint_out_ || endpoint_size_ == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    const char *scheme_end = strstr (endpoint_, "://");
+    if (!scheme_end) {
+        errno = EINVAL;
+        return false;
+    }
+
+    const char *authority = scheme_end + 3;
+    const char *port = strchr (authority, ':');
+    if (!port) {
+        errno = EINVAL;
+        return false;
+    }
+
+    const size_t scheme_len = static_cast<size_t> (authority - endpoint_);
+    const int written =
+      snprintf (endpoint_out_, endpoint_size_, "%.*s%s%s",
+                static_cast<int> (scheme_len), endpoint_, host_, port);
+    if (written < 0 || static_cast<size_t> (written) >= endpoint_size_) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
+    return true;
+}
+
 bool bind_registry_test_endpoints_local (void *registry_,
                                          int base_port_,
                                          char *pub_out_,
@@ -83,6 +142,35 @@ bool bind_registry_test_endpoints_local (void *registry_,
     for (int i = 0; i < 256; ++i) {
         if (!allocate_loopback_tcp_endpoint_local (pub_out_, pub_size_)
             || !allocate_loopback_tcp_endpoint_local (router_out_, router_size_)
+            || strcmp (pub_out_, router_out_) == 0) {
+            continue;
+        }
+        if (zlink_registry_bind (registry_, pub_out_, router_out_)
+            == ZLINK_BIND_OK)
+            return true;
+    }
+
+    errno = EADDRINUSE;
+    return false;
+}
+
+bool bind_registry_test_endpoints_transport_local (void *registry_,
+                                                  const char *transport_,
+                                                  char *pub_out_,
+                                                  size_t pub_size_,
+                                                  char *router_out_,
+                                                  size_t router_size_)
+{
+    if (!registry_ || !transport_ || !pub_out_ || !router_out_
+        || pub_size_ == 0 || router_size_ == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    for (int i = 0; i < 256; ++i) {
+        if (!allocate_loopback_endpoint_local (transport_, pub_out_, pub_size_)
+            || !allocate_loopback_endpoint_local (transport_, router_out_,
+                                                  router_size_)
             || strcmp (pub_out_, router_out_) == 0) {
             continue;
         }
@@ -1082,6 +1170,63 @@ void test_registry_peer_sync_conflict_keeps_deterministic_winner_projection ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_wss_discovery_destroy_releases_canonicalized_bootstrap_dealer ()
+{
+#if defined ZLINK_HAVE_WS && defined ZLINK_HAVE_WSS
+    if (!zlink_has ("wss")) {
+        TEST_IGNORE_MESSAGE ("WSS not available");
+        return;
+    }
+
+    const tls_test_files_t files = make_tls_test_files ();
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_server (
+      registry, files.server_cert.c_str (), files.server_key.c_str (), 0));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_transport_local (
+      registry, "wss", registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router)));
+
+    char localhost_router[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (rewrite_endpoint_host_local (
+      registry_router, "localhost", localhost_router, sizeof (localhost_router)));
+
+    void *discovery = zlink_discovery_new (
+      ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "wss-canonical-bootstrap");
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_tls_client (discovery, files.ca_cert.c_str (), "localhost", 0));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      discovery, localhost_router, 5000));
+
+    const std::chrono::steady_clock::time_point before =
+      std::chrono::steady_clock::now ();
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    const std::chrono::steady_clock::time_point after =
+      std::chrono::steady_clock::now ();
+    const long elapsed_ms =
+      static_cast<long> (std::chrono::duration_cast<std::chrono::milliseconds> (
+                           after - before)
+                           .count ());
+    TEST_ASSERT_LESS_THAN (3000, elapsed_ms);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+    cleanup_tls_test_files (files);
+#else
+    TEST_IGNORE_MESSAGE ("WSS not enabled");
+#endif
+}
+
 void test_discovery_route_binding_follows_owner_provider_lifecycle ()
 {
     TEST_IGNORE_MESSAGE ("generic discovery route API was removed");
@@ -1107,6 +1252,7 @@ int main ()
     RUN_TEST (test_endpointless_client_server_dealer_is_not_member_but_reports_connect_intent);
     RUN_TEST (test_fanout_sub_connects_pub_and_endpointless_sub_is_not_member);
     RUN_TEST (test_registry_peer_sync_conflict_keeps_deterministic_winner_projection);
+    RUN_TEST (test_wss_discovery_destroy_releases_canonicalized_bootstrap_dealer);
     RUN_TEST (test_discovery_route_binding_follows_owner_provider_lifecycle);
     RUN_TEST (test_registry_peer_sync_propagates_route_binding_snapshot);
     return UNITY_END ();

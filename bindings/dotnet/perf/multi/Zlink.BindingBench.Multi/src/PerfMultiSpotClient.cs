@@ -147,11 +147,24 @@ internal static class PerfMultiSpotClient
                 return 2;
             }
 
-            return RunActivePhase(slots, controlState, config);
+            try
+            {
+                return RunActivePhase(slots, controlState, config);
+            }
+            finally
+            {
+                TryDisconnectPeer(controlNode, config.ServerControlEndpoint);
+                TryDisconnectPeer(node, config.DataEndpoint);
+                controlSub.Close();
+                controlPub.Close();
+                controlNode.Close();
+            }
         }
         finally
         {
             DisposeSlots(slots);
+            node.Close();
+            discovery.Close();
         }
     }
 
@@ -327,6 +340,22 @@ internal static class PerfMultiSpotClient
         return false;
     }
 
+    private static void TryDisconnectPeer(SpotNode node, string peerEndpoint)
+    {
+        if (string.IsNullOrWhiteSpace(peerEndpoint))
+            return;
+        try
+        {
+            node.DisconnectPeer(peerEndpoint);
+        }
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                        || IsWouldBlock(ex.InternalErrno)
+                                        || PerfShared.IsTransientNetworkError(
+                                            ex.InternalErrno))
+        {
+        }
+    }
+
     private static SpotClientConfig BuildConfig(PerfOptions options,
         string dataEndpoint, string registryEndpoint, string channelName)
     {
@@ -377,8 +406,8 @@ internal static class PerfMultiSpotClient
 
         for (int i = 0; i < slots.Count; i++)
         {
+            DrainActiveSlot(slots[i]);
             Volatile.Write(ref slots[i].State.Active, 0);
-            DrainSlot(slots[i], config.Size, activeDeadlineTicks);
         }
 
         long measureCount = 0;
@@ -453,6 +482,28 @@ internal static class PerfMultiSpotClient
         return Math.Min(slotCount, scaled);
     }
 
+    private static bool DrainActiveSlot(SpotClientSlot slot)
+    {
+        SpotClientSlotState state = slot.State;
+        long deadline = Interlocked.Read(ref state.ActiveDeadlineTicks);
+        int active = Volatile.Read(ref state.Active);
+        int msgSize = Volatile.Read(ref state.ActiveMsgSize);
+        if (active == 0 || deadline <= 0 || msgSize <= 0)
+            return false;
+
+        if (Interlocked.CompareExchange(ref state.Draining, 1, 0) != 0)
+            return false;
+
+        try
+        {
+            return DrainSlot(slot, msgSize, deadline, null);
+        }
+        finally
+        {
+            Volatile.Write(ref state.Draining, 0);
+        }
+    }
+
     private sealed class SpotRecvWorker
     {
         private Thread? _thread;
@@ -491,7 +542,7 @@ internal static class PerfMultiSpotClient
                     if (active == 0 || deadline <= 0 || msgSize <= 0)
                         continue;
                     hasActiveSlot = true;
-                    progressed |= DrainSlot(slot, msgSize, deadline);
+                    progressed |= DrainActiveSlot(slot, this);
                 }
                 if (!progressed)
                 {
@@ -504,10 +555,34 @@ internal static class PerfMultiSpotClient
         }
     }
 
-    private static bool DrainSlot(SpotClientSlot slot, int msgSize,
-        long activeDeadlineTicks)
+    private static bool DrainActiveSlot(SpotClientSlot slot,
+        SpotRecvWorker worker)
     {
-        return DrainSlotTopicMessage(slot, msgSize, activeDeadlineTicks);
+        SpotClientSlotState state = slot.State;
+        long deadline = Interlocked.Read(ref state.ActiveDeadlineTicks);
+        int active = Volatile.Read(ref state.Active);
+        int msgSize = Volatile.Read(ref state.ActiveMsgSize);
+        if (active == 0 || deadline <= 0 || msgSize <= 0)
+            return false;
+
+        if (Interlocked.CompareExchange(ref state.Draining, 1, 0) != 0)
+            return false;
+
+        try
+        {
+            return DrainSlot(slot, msgSize, deadline, worker);
+        }
+        finally
+        {
+            Volatile.Write(ref state.Draining, 0);
+        }
+    }
+
+    private static bool DrainSlot(SpotClientSlot slot, int msgSize,
+        long activeDeadlineTicks, SpotRecvWorker? worker)
+    {
+        return DrainSlotTopicMessage(slot, msgSize, activeDeadlineTicks,
+            worker);
     }
 
     private static bool TryDecodeExpectedActiveHeader(ReadOnlySpan<byte> payload,
@@ -532,7 +607,7 @@ internal static class PerfMultiSpotClient
     }
 
     private static bool DrainSlotTopicMessage(SpotClientSlot slot, int msgSize,
-        long activeDeadlineTicks)
+        long activeDeadlineTicks, SpotRecvWorker? worker)
     {
         try
         {
@@ -543,6 +618,12 @@ internal static class PerfMultiSpotClient
             {
                 if (Stopwatch.GetTimestamp() >= activeDeadlineTicks)
                     return progressed;
+
+                if (worker != null
+                    && Volatile.Read(ref worker.StopRequested) != 0)
+                {
+                    return progressed;
+                }
 
                 try
                 {
@@ -761,6 +842,16 @@ internal static class PerfMultiSpotClient
         public void Dispose()
         {
             State.Dispose();
+            try
+            {
+                Subscriber.UnsetSubscription(Topic);
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno)
+                                            || PerfShared.IsTransientNetworkError(
+                                                ex.InternalErrno))
+            {
+            }
             Subscriber.Dispose();
         }
     }
@@ -788,6 +879,7 @@ internal static class PerfMultiSpotClient
         internal long MeasureCount;
         internal int CooldownSeen;
         internal int Active;
+        internal int Draining;
         internal int ActiveMsgSize;
         internal long ActiveDeadlineTicks;
         internal long ActiveDurationNs;

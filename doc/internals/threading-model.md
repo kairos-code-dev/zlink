@@ -1,11 +1,11 @@
-[English](threading-model.md) | [한국어](threading-model.ko.md)
+[English](./threading-model.md) | [한국어](./threading-model.ko.md)
 
 # Threading and Concurrency Model
 
 This document explains the internal threading architecture of zlink: which
 threads exist, what each one does, how they communicate, and how work is
 scheduled. The public API safety contract lives in
-[Thread-Safety Internals](thread-safety.md).
+[Thread-Safety Internals](./thread-safety.md).
 
 ## 1. Thread Structure
 
@@ -286,7 +286,7 @@ accesses.
 ## 8. Concurrent Access Patterns
 
 The threading model makes the following concurrent patterns safe and
-well-defined (see [Thread-Safety Internals](thread-safety.md) for the full
+well-defined (see [Thread-Safety Internals](./thread-safety.md) for the full
 contract). Hot paths such as `send`/`publish`/`send_rid` are admitted through
 the lightweight data-plane gate; control paths serialize for correctness.
 
@@ -354,4 +354,4 @@ calling it.
 | Spot dispatch callback thread | Dispatch worker thread (not the data-plane thread) |
 
 ---
-[← Architecture](architecture.md) | [Thread-Safety →](thread-safety.md)
+[← Architecture](./architecture.md) | [Thread-Safety →](./thread-safety.md)

@@ -1,4 +1,4 @@
-[English](03-6-proxy.md) | [한국어](03-6-proxy.ko.md)
+[English](./03-6-proxy.md) | [한국어](./03-6-proxy.ko.md)
 
 # Proxy Pattern
 
@@ -196,4 +196,4 @@ flowchart LR
 | **Monitoring** | Capture socket records all passing messages |
 
 ---
-[← STREAM](03-5-stream.md) | [Transport →](04-transports.md)
+[← STREAM](./03-5-stream.md) | [Transport →](./04-transports.md)

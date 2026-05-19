@@ -1,4 +1,4 @@
-[English](03-3-dealer.md) | [한국어](03-3-dealer.ko.md)
+[English](./03-3-dealer.md) | [한국어](./03-3-dealer.ko.md)
 
 # DEALER Socket
 
@@ -91,7 +91,7 @@ if (rc == ZLINK_RECV_OK) {
 
 > When HWM is reached, `zlink_send()` blocks (default) or returns
 > `ZLINK_SUBMIT_BACKPRESSURED` with `ZLINK_DONTWAIT`. For advanced
-> backpressure patterns, see [Performance Guide](10-performance.md).
+> backpressure patterns, see [Performance Guide](./10-performance.md).
 
 ??? example "Full Sample Code -- Recv"
 
@@ -395,4 +395,4 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
 ```
 
 ---
-[← PUB/SUB](03-2-pubsub.md) | [ROUTER →](03-4-router.md)
+[← PUB/SUB](./03-2-pubsub.md) | [ROUTER →](./03-4-router.md)

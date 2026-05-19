@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Bingo Game Sample 초안](../guide/bingo-game-sample.ko.md) | [다음: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Bingo Game Sample](../guide/samples/bingo-game-sample.ko.md) | [다음: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)

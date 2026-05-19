@@ -1,4 +1,4 @@
-[English](07-0-services.md) | [한국어](07-0-services.ko.md)
+[English](./07-0-services.md) | [한국어](./07-0-services.ko.md)
 
 # 서비스 계층 개요
 
@@ -73,8 +73,8 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템. 서비스가 
   - `discovery_update` · `discovery_uplink`
   - `discovery_registry_client`
 
-자세한 내용은 [Service Discovery 가이드](07-1-discovery.ko.md) 및
-[Registry 가이드](07-4-registry.ko.md)를 참고.
+자세한 내용은 [Service Discovery 가이드](./07-1-discovery.ko.md) 및
+[Registry 가이드](./07-4-registry.ko.md)를 참고.
 
 ### 3.2 SPOT — channel 기반 routed + PUB/SUB 허브
 
@@ -108,7 +108,7 @@ publish/subscribe를 함께 수행한다.
   자동으로 `Entry Spot`으로 복귀한다. Actor는 소켓이나 inproc(프로세스 내부) 엔드포인트를 소유하지 않고
   `zlink_actor_ref_t`로 식별한다.
 
-자세한 내용은 [SPOT 가이드](07-3-spot.ko.md)와 [SPOT Actor 가이드](07-4-actor.ko.md)를 참고.
+자세한 내용은 [SPOT 가이드](./07-3-spot.ko.md)와 [SPOT Actor 가이드](./07-4-actor.ko.md)를 참고.
 
 ### 3.3 소켓 패밀리 — Discovery 관리 raw 소켓
 
@@ -122,7 +122,7 @@ raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(자동 연결 타입
 - Lifecycle 위임 — Discovery가 연결된 소켓을 소유
 - 내부 모듈: `socket_discovery_attachment` (소켓 측 통합) · `discovery_owned_service` (등록 편의 API)
 
-자세한 내용은 [Service Discovery 가이드](07-1-discovery.ko.md)를 참고.
+자세한 내용은 [Service Discovery 가이드](./07-1-discovery.ko.md)를 참고.
 
 ### 3.4 Registry — 중앙 서비스 등록소
 
@@ -130,7 +130,7 @@ raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(자동 연결 타입
 
 - 내부 모듈: `registry_access` (API 접합 지점) · `registry_query_access` (원격 조회 접합 지점)
 
-자세한 내용은 [Registry 가이드](07-4-registry.ko.md)를 참고.
+자세한 내용은 [Registry 가이드](./07-4-registry.ko.md)를 참고.
 
 ## 4. Service Access Layer 패턴
 
@@ -221,4 +221,4 @@ flowchart TB
 - 모든 서비스는 독립적으로 동작하며, 동일한 Registry 클러스터를 공유할 수 있다.
 
 ---
-[← 모니터링](06-monitoring.ko.md) | [Discovery →](07-1-discovery.ko.md)
+[← 모니터링](./06-monitoring.ko.md) | [Discovery →](./07-1-discovery.ko.md)

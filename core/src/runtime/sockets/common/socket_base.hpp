@@ -153,6 +153,7 @@ class socket_base_t : public own_t,
                      zlink_routing_id_t *source_rid_out_,
                      int flags_);
     int close ();
+    int close (int handoff_timeout_ms_);
     int socket_msg_dispatch_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     int peer_command_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     int socket_set_msg_handler (zlink_socket_msg_handler_fn handler_);
@@ -602,7 +603,7 @@ class socket_base_t : public own_t,
 
     std::string resolve_tcp_addr (std::string endpoint_uri_,
                                   const char *tcp_address_);
-    void finish_close_handoff ();
+    void finish_close_handoff (int handoff_timeout_ms_ = 2000);
 
     //  Socket's mailbox object.
     i_mailbox *_mailbox;
@@ -611,6 +612,7 @@ class socket_base_t : public own_t,
     //  across translation units compiled with different debug settings.
     int _term_pipe_acks_registered;
     int _term_pipe_acks_received;
+    std::set<pipe_t *> _term_pipes;
 
     //  Improves efficiency of time measurement.
     clock_t _clock;

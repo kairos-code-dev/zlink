@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Systems.Zlink;
 
@@ -318,14 +320,14 @@ public static class PerfShared
         if (payload.Length < PerfMetricHeaderSize)
             return false;
 
-        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(0, 4),
-            PerfMetricMagic);
-        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(4, 4), runId);
-        payload[8] = checked((byte)phase);
-        BinaryPrimitives.WriteUInt32LittleEndian(payload.Slice(9, 4),
+        ref byte head = ref MemoryMarshal.GetReference(payload);
+        Unsafe.WriteUnaligned(ref head, PerfMetricMagic);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref head, 4), runId);
+        Unsafe.Add(ref head, 8) = checked((byte)phase);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref head, 9),
             (uint)Math.Max(0, msgSize));
-        BinaryPrimitives.WriteUInt64LittleEndian(payload.Slice(13, 8), seq);
-        BinaryPrimitives.WriteInt64LittleEndian(payload.Slice(21, 8),
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref head, 13), seq);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref head, 21),
             checked((long)sentTsNs));
         return true;
     }
@@ -337,13 +339,14 @@ public static class PerfShared
         if (payload.Length < PerfMetricHeaderSize)
             return false;
 
-        uint magic = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(0, 4));
-        uint runId = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(4, 4));
-        uint phase = payload[8];
-        uint msgSize = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(9, 4));
-        ulong seq = BinaryPrimitives.ReadUInt64LittleEndian(payload.Slice(13, 8));
-        ulong sentTsNs = checked((ulong)BinaryPrimitives.ReadInt64LittleEndian(
-            payload.Slice(21, 8)));
+        ref byte head = ref MemoryMarshal.GetReference(payload);
+        uint magic = Unsafe.ReadUnaligned<uint>(ref head);
+        uint runId = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref head, 4));
+        uint phase = Unsafe.Add(ref head, 8);
+        uint msgSize = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref head, 9));
+        ulong seq = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref head, 13));
+        ulong sentTsNs = checked((ulong)Unsafe.ReadUnaligned<long>(
+            ref Unsafe.Add(ref head, 21)));
 
         header = new PerfMetricHeader(magic, runId, phase, msgSize, seq,
             sentTsNs);

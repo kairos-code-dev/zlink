@@ -54,6 +54,23 @@ internal sealed partial class SocketKernel
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool SubscribeIntoSubscriber(TopicMessage result, int flags)
+    {
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+        try
+        {
+            return SubscribeInto(result, flags);
+        }
+        catch (ZlinkException ex) when ((flags & DontWaitFlag) != 0
+            && ZlinkException.MapErrorCode(ex.InternalErrno) is ErrorCode.EAgain
+                or ErrorCode.EBusy)
+        {
+            return false;
+        }
+    }
+
     private unsafe byte[][] ReceiveRawSubscribedFramesCore(int flags)
     {
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);

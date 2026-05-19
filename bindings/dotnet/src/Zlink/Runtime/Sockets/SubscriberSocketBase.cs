@@ -35,11 +35,11 @@ public abstract class SubscriberSocketBase : ConnectableSocketBase, ISubscriberS
 
     public bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None)
     {
-        return Kernel.Subscribe(result, flags);
+        return Kernel.SubscribeIntoSubscriber(result, (int)flags);
     }
 
     internal bool SubscribeNoWait(TopicMessage result)
     {
-        return Kernel.Subscribe(result, RecvFlags.DontWait);
+        return Kernel.SubscribeIntoSubscriber(result, (int)RecvFlags.DontWait);
     }
 }

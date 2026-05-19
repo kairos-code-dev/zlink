@@ -49,9 +49,9 @@
    - [implementation-scope-and-nongoals.ko.md](../../../languages/dotnet/doc/internals/implementation-scope-and-nongoals.ko.md)
    - [backend-dependency-policy.ko.md](../../../languages/dotnet/doc/internals/backend-dependency-policy.ko.md)
 4. 샘플 문서
-   - [channel-messaging-samples.ko.md](../../../languages/dotnet/doc/guide/channel-messaging-samples.ko.md)
-   - [spot-samples.ko.md](../../../languages/dotnet/doc/guide/spot-samples.ko.md)
-   - [stream-samples.ko.md](../../../languages/dotnet/doc/guide/stream-samples.ko.md)
+   - [channel-messaging-samples.ko.md](../../../languages/dotnet/doc/guide/samples/channel-messaging-samples.ko.md)
+   - [spot-samples.ko.md](../../../languages/dotnet/doc/guide/samples/spot-samples.ko.md)
+   - [stream-samples.ko.md](../../../languages/dotnet/doc/guide/samples/stream-samples.ko.md)
 5. 저장소 공통 설계/리팩토링 기준
    - [doc/spec/bindings/README.md](/home/hep7/project/kairos/zlink/doc/spec/bindings/README.md)
 

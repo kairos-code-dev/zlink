@@ -4,9 +4,9 @@
 > 이 문서는 현재 작업에서 구현 기준으로 쓰는 작업 스펙이다.
 > 구현과 테스트를 마치면 공개 API 기준은 `doc/spec/core` 문서에 반영한다.
 > **관련 문서**:
-> [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
-> [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md) — request-reply protocol envelope
-> [`SPOT_ROUTED_MESSAGE_SPEC.md`](SPOT_ROUTED_MESSAGE_SPEC.md) — SPOT 직접 전달 상위 설계
+> [`ZMP_PROTOCOL_OVERVIEW.md`](./ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
+> [`ZMP_REQUEST_REPLY_PROTOCOL.md`](./ZMP_REQUEST_REPLY_PROTOCOL.md) — request-reply protocol envelope
+> [`SPOT_ROUTED_MESSAGE_SPEC.md`](./SPOT_ROUTED_MESSAGE_SPEC.md) — SPOT 직접 전달 상위 설계
 
 ---
 
@@ -31,7 +31,7 @@
 - recv queue, callback thread, dispatcher 정책
 
 이런 동작은
-[`SPOT_ROUTED_MESSAGE_SPEC.md`](SPOT_ROUTED_MESSAGE_SPEC.md)
+[`SPOT_ROUTED_MESSAGE_SPEC.md`](./SPOT_ROUTED_MESSAGE_SPEC.md)
 가 다룬다.
 
 ---
@@ -40,7 +40,7 @@
 
 - SPOT 직접 전달 정보는 `message` 레벨이 아니라 protocol 레벨에서 정의한다
 - 공통 transport 형식은
-  [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) 를 따른다
+  [`ZMP_PROTOCOL_OVERVIEW.md`](./ZMP_PROTOCOL_OVERVIEW.md) 를 따른다
 - transport `routing_id` 와 SPOT source/destination 주소는 다른 계층이다
 - payload 는 protocol envelope 뒤에 온다
 - request-reply 가 함께 쓰일 때는 SPOT routed envelope 뒤에 request-reply envelope 가 온다

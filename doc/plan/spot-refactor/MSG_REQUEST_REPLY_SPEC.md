@@ -1,13 +1,13 @@
 # Message Request-Reply 필드 — Core C API Spec
 
 > **상태**: Historical Draft
-> **소비자**: [`bindings/README.md`](../../../doc/spec/bindings/README.md) (Request-Reply Policy 섹션),
-> [`bindings/lang/*.md`](../../../doc/spec/bindings/) (언어별 인터페이스)
+> **소비자**: [`bindings/README.md`](../../spec/bindings/README.md) (Request-Reply Policy 섹션),
+> [`bindings/lang/*.md`](../../spec/bindings) (언어별 인터페이스)
 > **관련 문서**:
-> [`MSG_METADATA_SPEC.md`](MSG_METADATA_SPEC.md) — 범용 per-message metadata,
-> [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식,
-> [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md) — 현재 request-reply 기준안,
-> [`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md) — socket 레벨 request-reply API
+> [`MSG_METADATA_SPEC.md`](./MSG_METADATA_SPEC.md) — 범용 per-message metadata,
+> [`ZMP_PROTOCOL_OVERVIEW.md`](./ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식,
+> [`ZMP_REQUEST_REPLY_PROTOCOL.md`](./ZMP_REQUEST_REPLY_PROTOCOL.md) — 현재 request-reply 기준안,
+> [`SOCKET_REQUEST_REPLY_API_SPEC.md`](./SOCKET_REQUEST_REPLY_API_SPEC.md) — socket 레벨 request-reply API
 >
 > 이 문서의 설계안은 현재 채택하지 않았다.
 > 현재 기준은 message-level field 가 아니라
@@ -195,7 +195,7 @@ flags byte (기존):
 
 extended header에는 request-reply envelope, per-message metadata 등
 여러 확장이 함께 들어갈 수 있다. 자세한 내용은
-[`MSG_METADATA_SPEC.md`](MSG_METADATA_SPEC.md) 참조.
+[`MSG_METADATA_SPEC.md`](./MSG_METADATA_SPEC.md) 참조.
 
 ### 6.3 역직렬화 규칙
 
@@ -383,7 +383,7 @@ extended header 내부의 request-reply envelope encoding:
 
 즉 이 문서는 "기존 검토안 기록"으로 유지하고,
 실제 구현 기준은
-[`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md)
+[`ZMP_REQUEST_REPLY_PROTOCOL.md`](./ZMP_REQUEST_REPLY_PROTOCOL.md)
 와
-[`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md)
+[`SOCKET_REQUEST_REPLY_API_SPEC.md`](./SOCKET_REQUEST_REPLY_API_SPEC.md)
 에서 다시 정리한다.

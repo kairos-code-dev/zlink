@@ -1,4 +1,4 @@
-[English](10-performance.md) | [한국어](10-performance.ko.md)
+[English](./10-performance.md) | [한국어](./10-performance.ko.md)
 
 # Performance Characteristics and Tuning Guide
 
@@ -319,7 +319,7 @@ void on_message(const zlink_routing_id_t *rid,
 ```
 
 > For thread-safe work queue patterns, see
-> [Thread-Safety Guide](11-thread-safety.md) section 6.
+> [Thread-Safety Guide](./11-thread-safety.md) section 6.
 
 ### 4.4 Callback vs Pull Mode
 
@@ -526,4 +526,4 @@ void on_pong(const zlink_routing_id_t *source_rid,
 > For details on internal optimization mechanisms such as speculative I/O and gather write, see [architecture.md](../internals/architecture.md).
 
 ---
-[← Message API](09-message-api.md) | [Thread-Safety →](11-thread-safety.md)
+[← Message API](./09-message-api.md) | [Thread-Safety →](./11-thread-safety.md)

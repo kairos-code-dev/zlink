@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [SPOT 샘플](../guide/spot-samples.ko.md) | [인터페이스](./handler-interfaces.ko.md)
+[.NET 묶음](../README.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [SPOT 샘플](../guide/samples/spot-samples.ko.md) | [인터페이스](./handler-interfaces.ko.md)
 
 # Stage Wrapper On SPOT
 
@@ -15,7 +15,7 @@
 현재 `SPOT` 초안은 다음 기능을 중심으로 잡혀 있다.
 
 - `SpotNode`[^spot-node] 등록
-- `spotId` 생성과 삭제
+- `spotRid` 생성과 삭제
 - current channel publish/subscribe
 - attach된 channel client 기반 send/request
 - topic publish/subscribe
@@ -46,7 +46,7 @@
 - `Spot`은 특정 service가 아니라 `SpotNode`에 종속된다는 점
 - attach된 SPOT `Discovery`가 `SpotNode`의 active channel view를 정한다는 점
 - 다른 channel 호출을 attach된 channel client 경로로 풀어준다는 점
-- `spotId`와 topic publish를 구분해서 설명하는 점
+- `spotRid`와 topic publish를 구분해서 설명하는 점
 - `IZLinkSpotManager`로 spot 생성 lifecycle을 따로 분리해 둔 점
 
 이 방향은 `playhouse` 의 `Stage` 를 `SPOT` 으로 통째로 대체하는 것이 아니다.
@@ -59,7 +59,7 @@
 기본 `zlink framework` 가 직접 맡는 범위는 보통 다음 정도다.
 
 - `SpotNode` 등록과 lifecycle[^lifecycle]
-- `spotId` 생성과 삭제
+- `spotRid` 생성과 삭제
 - current channel publish/subscribe
 - attach된 channel client 기반 send/request
 - publish/subscribe
@@ -98,7 +98,7 @@
 
 `Stage` wrapper 를 올리려면 최소한 다음 질문에 대한 답이 정리되어 있어야 한다.
 
-- 같은 `spotId`로 들어오는 handler가 직렬로 실행되는가?
+- 같은 `spotRid`로 들어오는 handler가 직렬로 실행되는가?
 - timer handler도 같은 실행 문맥으로 들어오는가?
 - publish subscription callback도 같은 문맥으로 들어오는가?
 - **channel reply callback도 같은 문맥으로 들어오는가?**
@@ -148,7 +148,7 @@ loop 를 직접 다루지 않고, 등록 표면만 본다.
 - stream session callback 은 `StageSpot` state 를 직접 만지지 않는다. session
   callback 은 actor dispatch 나 spot 호출을 제출하기만 한다. 실제 `StageSpot`
   state 변경은 user Spot 실행 문맥 안에서 일어난다.
-- 단, `Stage` wrapper 바깥에서 `SpotId` 를 받아 state 를 직접 건드리려 하는
+- 단, `Stage` wrapper 바깥에서 `SpotRid` 를 받아 state 를 직접 건드리려 하는
   경우는 다르다. 그 접근은 같은 실행 계약 바깥이므로 별도 동기화가 필요하다.
 
 #### 4.1.1 actor join 이후의 내부 처리 모델
@@ -319,7 +319,7 @@ framework 가 만든 per-spot scope[^per-spot-scope] 에서 resolve 한다. 사�
 이 절은 `Stage` 생성 시점에 초기 payload 를 함께 받는 표면이 왜 따로 필요한지를
 정리한다.
 
-현재 `IZLinkSpotManager` 는 `spotId` 의 생성과 삭제를 설명하기에는 충분하다.
+현재 `IZLinkSpotManager` 는 `spotRid` 의 생성과 삭제를 설명하기에는 충분하다.
 하지만 `Stage` 생성처럼 초기 payload 를 함께 받는 모델을 설명하기에는 부족하다.
 
 예를 들면 `playhouse` 의 stage 생성은 보통 다음 정보를 함께 들고 들어간다.
@@ -331,12 +331,12 @@ framework 가 만든 per-spot scope[^per-spot-scope] 에서 resolve 한다. 사�
 
 현재 `IZLinkSpotManager` 의 기본 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 section 6.3 을 따른다.
-즉 현재 framework 기본 계약은 `spotName` 만 받는 생성과, `spotName + spotId` 까지를
+즉 현재 framework 기본 계약은 `spotName` 만 받는 생성과, `spotName + spotRid` 까지를
 다루는 수준이다.
 
 `Stage wrapper` 를 만들려면 최소한 다음 중 하나가 더 필요하다.
 
-- `spotName + spotId + metadata`
+- `spotName + spotRid + metadata`
 - create payload 를 handler 초기화 단계에 전달하는 별도의 contract
 
 다만 이 부분은 현재 하부 C API 의 공개 계약에서 바로 읽히는 내용이 아니다. 따라서
@@ -348,7 +348,7 @@ public interface IStageSpotManager
 {
     ValueTask<ZLinkSpotCreateResult> CreateAsync<TMetadata>(
         string spotName,
-        ZLinkSpotId spotId,
+        RoutingId spotRid,
         TMetadata metadata,
         CancellationToken cancellationToken = default);
 }

@@ -211,12 +211,16 @@ counter.close();
 
 const diagnosticMessage = zlink.Message.from(Buffer.from('diagnostic'));
 const constructedMessage = new zlink.Message(Buffer.from('constructed'));
+const allocatedMessage = zlink.Message.alloc(16);
+const allocatedMessageAlias = zlink.Message.allocate(16);
 diagnosticMessage.data();
 diagnosticMessage.size();
 diagnosticMessage.getProperty('Socket-Type');
 diagnosticMessage.refCount();
 diagnosticMessage.close();
 constructedMessage.data();
+allocatedMessage.data().fill(0);
+allocatedMessageAlias.data().fill(0);
 constructedMessage.close();
 
 // @ts-expect-error stream recv requires caller-provided output storage.

@@ -1,4 +1,4 @@
-[English](thread-safety.md) | [한국어](thread-safety.ko.md)
+[English](./thread-safety.md) | [한국어](./thread-safety.ko.md)
 
 # Thread-Safety Internals
 

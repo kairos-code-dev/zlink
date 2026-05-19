@@ -494,7 +494,7 @@ int discovery_t::destroy ()
             zlink_disconnect (sub_socket, it->c_str ());
         socket_base_t *sub = static_cast<socket_base_t *> (sub_socket);
         sub->set_all_pipes_nodelay ();
-        (void) _lifecycle.close_socket_and_wait (sub, 1000);
+        (void) _lifecycle.close_socket (sub, 1000);
     }
 
     for (size_t i = 0; i < bootstrap_dealers.size (); ++i) {
@@ -505,8 +505,9 @@ int discovery_t::destroy ()
                               bootstrap_dealers[i].first.c_str ());
         }
         bootstrap_dealers[i].second->set_all_pipes_nodelay ();
-        (void) _lifecycle.close_socket_and_wait (bootstrap_dealers[i].second,
-                                                 1000);
+        socket_base_t *socket = bootstrap_dealers[i].second;
+        (void) _lifecycle.close_socket (socket, 1000);
+        bootstrap_dealers[i].second = NULL;
     }
     for (size_t i = 0; i < report_dealers.size (); ++i) {
         if (!report_dealers[i].second)
@@ -515,7 +516,9 @@ int discovery_t::destroy ()
             zlink_disconnect (report_dealers[i].second,
                               report_dealers[i].first.c_str ());
         report_dealers[i].second->set_all_pipes_nodelay ();
-        (void) _lifecycle.close_socket_and_wait (report_dealers[i].second, 1000);
+        socket_base_t *socket = report_dealers[i].second;
+        (void) _lifecycle.close_socket (socket, 1000);
+        report_dealers[i].second = NULL;
     }
     for (size_t i = 0; i < control_dealers.size (); ++i) {
         if (!control_dealers[i].second)
@@ -524,10 +527,11 @@ int discovery_t::destroy ()
             zlink_disconnect (control_dealers[i].second,
                               control_dealers[i].first.c_str ());
         control_dealers[i].second->set_all_pipes_nodelay ();
-        (void) _lifecycle.close_socket_and_wait (control_dealers[i].second,
-                                                 1000);
+        socket_base_t *socket = control_dealers[i].second;
+        (void) _lifecycle.close_socket (socket, 1000);
+        control_dealers[i].second = NULL;
     }
-    (void) _lifecycle.wait_drained (10000);
+    (void) _lifecycle.wait_drained (1000);
 
     for (size_t i = 0; i < observers.size (); ++i) {
         if (observers[i])

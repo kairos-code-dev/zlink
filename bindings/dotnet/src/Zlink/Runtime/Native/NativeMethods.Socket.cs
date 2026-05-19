@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Systems.Zlink.Native;
@@ -48,27 +49,29 @@ internal static partial class NativeMethods
     internal static extern int zlink_disconnect_rid(IntPtr socket,
         ref ZlinkRoutingId peerRoutingId);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_send_part(IntPtr socket, ref ZlinkMsg part,
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_send_part(IntPtr socket, ref ZlinkMsg part,
         int flags, ZlinkPartFlag partFlag);
 
     // DONT_WAIT-only variant: same C function, kept as a separate entry point
     // so managed code can choose the non-blocking path explicitly.
-    [DllImport(LibraryName, EntryPoint = "zlink_send_part",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_send_part_nowait(IntPtr socket,
+    [LibraryImport(LibraryName, EntryPoint = "zlink_send_part")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_send_part_nowait(IntPtr socket,
         ref ZlinkMsg part, int flags, ZlinkPartFlag partFlag);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_recv_part(IntPtr socket,
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_recv_part(IntPtr socket,
         out IntPtr sourceRoutingId, ref ZlinkMsg part, out int hasMore,
         int flags);
 
     // DONT_WAIT-only variant: same C function, kept as a separate entry point
     // so managed code can choose the non-blocking path explicitly.
-    [DllImport(LibraryName, EntryPoint = "zlink_recv_part",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_recv_part_nowait(IntPtr socket,
+    [LibraryImport(LibraryName, EntryPoint = "zlink_recv_part")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_recv_part_nowait(IntPtr socket,
         out IntPtr sourceRoutingId, ref ZlinkMsg part, out int hasMore,
         int flags);
 
@@ -109,15 +112,16 @@ internal static partial class NativeMethods
     internal static extern int zlink_send_ready_handler(IntPtr subject,
         ZlinkSendReadyHandlerDelegate handler, IntPtr userData);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_send_part_rid(IntPtr handle,
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_send_part_rid(IntPtr handle,
         ref ZlinkRoutingId targetRoutingId, ref ZlinkMsg part, int flags,
         ZlinkPartFlag partFlag);
 
     // DONT_WAIT-only fast variant.
-    [DllImport(LibraryName, EntryPoint = "zlink_send_part_rid",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_send_part_rid_nowait(IntPtr handle,
+    [LibraryImport(LibraryName, EntryPoint = "zlink_send_part_rid")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_send_part_rid_nowait(IntPtr handle,
         ref ZlinkRoutingId targetRoutingId, ref ZlinkMsg part, int flags,
         ZlinkPartFlag partFlag);
 

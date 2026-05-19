@@ -108,6 +108,8 @@ public final class Message implements AutoCloseable {
 
     public Message(int size) {
         this(true);
+        if (size < 0)
+            throw new IllegalArgumentException("size must be >= 0");
         int rc = NativeMsg.msgInitSize(msg, size);
         if (rc != 0) {
             releaseOwnedResources();
@@ -117,6 +119,10 @@ public final class Message implements AutoCloseable {
         recvArmed = false;
         more = false;
         cachePayload(size);
+    }
+
+    public static Message allocate(int size) {
+        return new Message(size);
     }
 
     /** Copies the full byte array into a new message-owned frame. */
@@ -415,6 +421,13 @@ public final class Message implements AutoCloseable {
         return seg.asByteBuffer().asReadOnlyBuffer();
     }
 
+    public ByteBuffer mutableDataBuffer() {
+        MemorySegment seg = dataSegment();
+        if (seg.address() == 0)
+            return ByteBuffer.allocate(0);
+        return seg.asByteBuffer();
+    }
+
     public byte[] toByteArray() {
         return data();
     }
@@ -573,7 +586,7 @@ public final class Message implements AutoCloseable {
         UNSAFE.putInt(null, cachedAddress + offset, encoded);
     }
 
-    int copyFrom(byte[] source, int sourceOffset, int destinationOffset,
+    public int copyFrom(byte[] source, int sourceOffset, int destinationOffset,
                         int length) {
         Objects.requireNonNull(source, "source");
         validateRange(source.length, sourceOffset, length, "source");

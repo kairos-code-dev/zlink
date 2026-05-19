@@ -1,4 +1,4 @@
-[C Binding Specification](README.md) · [Bindings Policy](../README.md)
+[C Binding Specification](./README.md) · [Bindings Policy](../README.md)
 
 # C Codec Extension Specification
 

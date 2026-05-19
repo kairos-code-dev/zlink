@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Systems.Zlink.Native;
@@ -14,9 +15,9 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_destroy(ref IntPtr spot);
 
-    [DllImport(LibraryName, EntryPoint = "zlink_publish_part",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static extern unsafe int zlink_publish_part_utf8(IntPtr subject,
+    [LibraryImport(LibraryName, EntryPoint = "zlink_publish_part")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static unsafe partial int zlink_publish_part_utf8(IntPtr subject,
         byte* topicId, ref ZlinkMsg part, int flags, ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -27,8 +28,9 @@ internal static partial class NativeMethods
     internal static extern int zlink_unset_subscription(IntPtr handle,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string filter);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_subscribe_part(IntPtr subject,
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    internal static partial int zlink_subscribe_part(IntPtr subject,
         out IntPtr sourceRoutingId, byte[] topicIdBuffer, nuint topicIdCapacity,
         out nuint topicIdLenOut, ref ZlinkMsg part, out int hasMore, int flags);
 

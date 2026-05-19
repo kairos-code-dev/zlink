@@ -200,6 +200,15 @@ void wait_for_settle_ms (int settle_ms)
         std::this_thread::sleep_for (std::chrono::milliseconds (settle_ms));
 }
 
+size_t active_spot_slot_limit (size_t total_slots, size_t msg_size)
+{
+    if (msg_size >= 131072)
+        return std::min (total_slots, static_cast<size_t> (8));
+    if (msg_size >= 65536)
+        return std::min (total_slots, static_cast<size_t> (32));
+    return total_slots;
+}
+
 zlink::routing_id_t make_text_rid (const char *text_)
 {
     return zlink::routing_id_t::from_bytes (
@@ -502,7 +511,9 @@ class spot_reqrep_client_bench_t
 
         while (std::chrono::steady_clock::now () < deadline) {
             bool submitted_any = false;
-            for (size_t i = 0; i < _slots.size (); ++i) {
+            const size_t active_slots =
+              active_spot_slot_limit (_slots.size (), _msg_size);
+            for (size_t i = 0; i < active_slots; ++i) {
                 if (_slots[i]->waiting_reply.load (
                       std::memory_order_acquire))
                     continue;

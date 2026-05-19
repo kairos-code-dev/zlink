@@ -12,7 +12,7 @@
 
 | # | 파일 | 역할 |
 | --- | --- | --- |
-| 00 | [stream-socket-performance-improvement-plan.ko.md](stream-socket-performance-improvement-plan.ko.md) | `STREAM` 소켓 성능개선 기준선, 병목 판단, 구현 단계, 수용 기준 |
+| 00 | [stream-socket-performance-improvement-plan.ko.md](./stream-socket-performance-improvement-plan.ko.md) | `STREAM` 소켓 성능개선 기준선, 병목 판단, 구현 단계, 수용 기준 |
 
 ## 산출물 원칙
 

@@ -14,7 +14,7 @@ internal sealed class ZLinkSpotPacketRegistry
         _registrations.Add(new ZLinkSpotPacketRegistration(handlerType));
     }
 
-    public void Bind(IZLinkSpot spot)
+    public void Bind(object spot)
     {
         foreach (var packet in _registrations)
         {

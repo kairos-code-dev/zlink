@@ -1,4 +1,4 @@
-[English](cmake-options.md) | [한국어](cmake-options.ko.md)
+[English](./cmake-options.md) | [한국어](./cmake-options.ko.md)
 
 # CMake Options Reference
 

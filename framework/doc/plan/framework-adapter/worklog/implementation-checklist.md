@@ -361,7 +361,7 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
    `framework/languages/dotnet/samples/TicTacToe(session-gateway)` project로 추가한다.
    이 항목은 5, 6, 7번 framework API가 실제로 동작해야 완료할 수 있다.
    - 근거 draft:
-     [tictactoe-game-sample.ko.md](../../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md),
+     [tictactoe-game-sample.ko.md](../../../../languages/dotnet/doc/guide/samples/tictactoe-game-sample.ko.md),
      [session-gateway.ko.md](../../../spec/archive/session-gateway.ko.md)
    - sample 내부 `InMemoryRoutedChannel` 같은 대체 transport를 만들지 않는다.
    - Session server는 client stream과 `actorId -> stream` binding을 사용한다.

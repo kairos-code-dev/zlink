@@ -34,7 +34,7 @@ done
 
 ## Current perf gate
 
-현재 [perf_spot.cpp](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/perf/single/src/perf_spot.cpp)
+현재 [perf_spot.cpp](../../../../zlink-direct-callback-rewrite/core/perf/single/src/perf_spot.cpp)
 는 아래만 사용한다.
 
 1. sub monitor open
@@ -106,7 +106,7 @@ wrapper 재현도 동일하다.
 
 ## Suspect area
 
-[spot_sub.cpp](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp)
+[spot_sub.cpp](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp)
 에서 subject ready를 기록하는 즉시 아래를 같이 내보낸다.
 
 - `ZLINK_SPOT_SUB_SUBSCRIPTION_READY`
@@ -114,8 +114,8 @@ wrapper 재현도 동일하다.
 
 관련 지점:
 
-- [spot_sub.cpp](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L560)
-- [spot_sub.cpp](/home/hep7/project/kairos/zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L482)
+- [spot_sub.cpp](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L560)
+- [spot_sub.cpp](../../../../zlink-direct-callback-rewrite/core/src/services/spot/spot_sub.cpp#L482)
 
 현재 관측상 `ready_subject_keys` 삽입 시점이 실제 first-delivery 가능 시점보다
 앞설 가능성이 있다.

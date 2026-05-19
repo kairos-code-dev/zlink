@@ -188,6 +188,11 @@ int zlink::service_runtime_base_t::wait_drained (int timeout_ms_)
 
         if (owned_count == 0 && closing.empty ())
             return 0;
+        if (closing.empty ()) {
+            errno = ETIMEDOUT;
+            _sockets.debug_dump ("[service-drain] owned sockets remain");
+            return -1;
+        }
 
         if (wait_for_closing_sockets (
               _ctx, &_sockets, closing, timeout_ms_, deadline_ms,

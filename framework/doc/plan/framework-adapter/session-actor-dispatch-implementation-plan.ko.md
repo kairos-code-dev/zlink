@@ -100,8 +100,8 @@ POSD 원칙 순서로 판단하고 계속 진행한다.
 - [session-gateway.ko.md](../../spec/archive/session-gateway.ko.md)
 - [handler-interfaces.ko.md](../../../languages/dotnet/doc/spec/handler-interfaces.ko.md)
 - [lifecycle-and-failure-semantics.ko.md](../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md)
-- [streaming-client.ko.md](../../../languages/dotnet/doc/guide/streaming-client.ko.md)
-- [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md)
+- [streaming-client.ko.md](../../../languages/dotnet/doc/guide/samples/streaming-client.ko.md)
+- [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/samples/tictactoe-game-sample.ko.md)
 
 ## 3. 공통 완료 규칙
 
@@ -331,7 +331,7 @@ Phase 7까지 완료된 뒤에만 수행한다. 구현 전 초안의 내용을 �
 | [handler-interfaces.ko.md](../../../languages/dotnet/doc/spec/handler-interfaces.ko.md) | typed handler, actor context, call builder |
 | [lifecycle-and-failure-semantics.ko.md](../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md) | actor create, writer bind/unbind, stale binding, framework exception |
 | [regression-test-matrix.ko.md](../../../languages/dotnet/doc/internals/regression-test-matrix.ko.md) | 확정된 회귀 테스트 항목 |
-| [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/tictactoe-game-sample.ko.md) | 최종 sample 구조와 smoke 기준 |
+| [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/samples/tictactoe-game-sample.ko.md) | 최종 sample 구조와 smoke 기준 |
 
 작업:
 

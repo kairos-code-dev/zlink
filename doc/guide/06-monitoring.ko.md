@@ -1,4 +1,4 @@
-[English](06-monitoring.md) | [한국어](06-monitoring.ko.md)
+[English](./06-monitoring.md) | [한국어](./06-monitoring.ko.md)
 
 # 모니터링 API 사용법
 
@@ -700,4 +700,4 @@ if (items[0].revents & ZMQ_POLLIN)
 루프에는 Poller API를 사용한다.
 
 ---
-[← TLS 보안](05-tls-security.ko.md) | [서비스 개요 →](07-0-services.ko.md)
+[← TLS 보안](./05-tls-security.ko.md) | [서비스 개요 →](./07-0-services.ko.md)

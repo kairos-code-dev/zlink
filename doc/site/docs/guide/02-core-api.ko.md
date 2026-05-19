@@ -1,4 +1,4 @@
-[English](02-core-api.md) | [한국어](02-core-api.ko.md)
+[English](./02-core-api.md) | [한국어](./02-core-api.ko.md)
 
 # Core C API 상세 가이드
 
@@ -39,7 +39,7 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 공개 소켓 핸들 API는 기본적으로 스레드 안전(thread-safe)하다. 여러 스레드에서
 같은 소켓 핸들을 공유하여 send/recv/bind/connect 등을 호출할 수 있다.
 
-> 세부 threading 규칙은 [Thread Safety 가이드](11-thread-safety.ko.md)를 참고.
+> 세부 threading 규칙은 [Thread Safety 가이드](./11-thread-safety.ko.md)를 참고.
 
 ### 2.1 Socket 생성 및 닫기
 
@@ -93,7 +93,7 @@ zlink_get_option(socket, ZLINK_OPT_SNDHWM, &value, &len);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | 자동 | 활성 auto-HWM 프로파일(`balanced` 기본), 소켓 역할, message unit에서 산출. 컨텍스트에 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`로 프로파일을 전역 변경하거나 소켓별로 수동 지정할 수 있다. 프로파일 값 및 소켓별 설정은 [소켓 옵션 가이드](12-socket-options.ko.md)를 참고 |
+| `ZLINK_OPT_SNDHWM` | int | 자동 | 활성 auto-HWM 프로파일(`balanced` 기본), 소켓 역할, message unit에서 산출. 컨텍스트에 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`로 프로파일을 전역 변경하거나 소켓별로 수동 지정할 수 있다. 프로파일 값 및 소켓별 설정은 [소켓 옵션 가이드](./12-socket-options.ko.md)를 참고 |
 | `ZLINK_OPT_RCVHWM` | int | 자동 | `SNDHWM`과 동일: 수동 설정이 없으면 프로파일 기반으로 결정 |
 | `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms, -1: 무제한) |
 | `ZLINK_OPT_RCVTIMEO` | int | -1 | Recv timeout (ms, -1: 무제한) |
@@ -108,7 +108,7 @@ runtime 중간에도 보통 사용한다. 반면 HWM, timeout, TLS 같은 대부
 tuning option은 초기 설정 단계에서 사용한다.
 
 상세 option 카테고리와 전체 option 레퍼런스는
-[소켓 옵션 가이드](12-socket-options.ko.md)를 참고.
+[소켓 옵션 가이드](./12-socket-options.ko.md)를 참고.
 
 ## 3. Message Send/Recv
 
@@ -134,7 +134,7 @@ zlink_send(socket, parts, 2, 0);
 `ZLINK_DONTWAIT` 플래그를 사용하면 대기 없이 즉시
 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
 고급 배압(backpressure, 수신 측이 처리를 따라오지 못할 때 송신 측에 전달되는 흐름 제어 신호) 패턴은
-[Performance 가이드](10-performance.ko.md)를 참고.
+[Performance 가이드](./10-performance.ko.md)를 참고.
 
 #### Logical Multipart Send
 
@@ -213,7 +213,7 @@ zlink_recv_handler(socket, on_message, NULL);
 ```
 
 > 두 mode의 비교와 고급 pattern은
-> [Performance 가이드](10-performance.ko.md)를 참고.
+> [Performance 가이드](./10-performance.ko.md)를 참고.
 
 ### 3.3 Send Flag
 
@@ -399,4 +399,4 @@ int main(void) {
 ```
 
 ---
-[← 개요](01-overview.ko.md) | [Socket Pattern →](03-0-socket-patterns.ko.md)
+[← 개요](./01-overview.ko.md) | [Socket Pattern →](./03-0-socket-patterns.ko.md)

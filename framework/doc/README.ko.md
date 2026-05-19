@@ -38,6 +38,9 @@
 
 공통 스펙 영역의 미확정 초안은 [spec/draft/](./spec/draft/README.ko.md)에 둔다.
 
+언어 중립 샘플 설계는 [spec/sample/tictactoe/](./spec/sample/tictactoe/README.ko.md)에
+둔다. 일반(stream 직결)과 session actor dispatch 두 구성을 같은 게임 규칙으로 비교한다.
+
 ## 3. 언어별 문서
 
 | 언어 | 상태 | 진입점 |
@@ -60,4 +63,4 @@
 - 언어별 문서는 공통 의미를 해당 언어의 시그니처와 샘플로만 구체화한다.
 - 새 문서를 추가하면 이 목록과 해당 디렉토리 `README.ko.md`를 함께 갱신한다.
 - 아직 닫히지 않은 항목은 정식 문서에 섞지 않고 해당 `draft/`로 분리한다.
-- 구현 계획과 worklog는 [plan/](./plan/)에 둔다.
+- 구현 계획과 worklog는 [plan/](./plan)에 둔다.

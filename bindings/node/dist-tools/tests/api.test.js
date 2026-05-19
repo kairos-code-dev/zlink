@@ -207,6 +207,12 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
     assert.throws(() => node.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
     assert.equal(typeof new zlink.Message(Buffer.from('message')).close, 'function');
     assert.equal(typeof zlink.Message.from(Buffer.from('message')).close, 'function');
+    const allocatedMessage = zlink.Message.alloc(3);
+    allocatedMessage.data()[0] = 0x01;
+    allocatedMessage.data()[1] = 0x02;
+    allocatedMessage.data()[2] = 0x03;
+    assert.deepEqual([...allocatedMessage.data()], [0x01, 0x02, 0x03]);
+    assert.equal(zlink.Message.allocate(0).size(), 0);
     node.close();
     discovery.close();
     registry.close();

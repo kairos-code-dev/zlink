@@ -1,10 +1,10 @@
-[English](monitoring.md) | [한국어](monitoring.ko.md)
+[English](./monitoring.md) | [한국어](./monitoring.ko.md)
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+[스펙 목차](../README.ko.md) · [코어 목차](./README.ko.md)
 
 # 모니터링 API 레퍼런스
 
-canonical 이벤트 카탈로그는 [events.ko.md](events.ko.md)에 정리합니다.
+canonical 이벤트 카탈로그는 [events.ko.md](./events.ko.md)에 정리합니다.
 이 문서는 monitor API, callback, monitor snapshot 중심으로 봅니다.
 
 ## API 구조

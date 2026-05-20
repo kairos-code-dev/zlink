@@ -156,6 +156,11 @@ internal sealed class ZLinkSpotNodeInitializer(
 
     private static RoutingId CreateNodeRoutingId(ZLinkSpotNodeRegistration registration)
     {
+        if (registration.Router?.RoutingConfig.RoutingId.Size > 0)
+        {
+            return registration.Router.RoutingConfig.RoutingId;
+        }
+
         var bytes = RandomNumberGenerator.GetBytes(16);
         bytes[0] = registration.AttachedSpotPublisherClients.Count switch
         {

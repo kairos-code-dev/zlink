@@ -29,7 +29,38 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
 
     public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)
     {
-        nativeSpot.OnDispatchEvent(info => handler(info.ToFramework()));
+        nativeSpot.OnDispatchEvent(info =>
+        {
+            var frameworkInfo = info.ToFramework();
+            if (info.Event == SpotDispatchEvent.RoutedReadable)
+            {
+                frameworkInfo = frameworkInfo with
+                {
+                    RoutedMessages = DrainRoutedMessages()
+                };
+            }
+
+            handler(frameworkInfo);
+        });
+    }
+
+    private IReadOnlyList<Received> DrainRoutedMessages()
+    {
+        List<Received>? receivedMessages = null;
+        while (true)
+        {
+            var received = new Received();
+            if (!nativeSpot.RecvRouted(received, RecvFlags.DontWait))
+            {
+                received.Dispose();
+                break;
+            }
+
+            receivedMessages ??= [];
+            receivedMessages.Add(received);
+        }
+
+        return receivedMessages ?? [];
     }
 
     public void OnActorLifecycle(

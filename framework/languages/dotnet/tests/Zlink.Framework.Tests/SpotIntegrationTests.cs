@@ -451,6 +451,149 @@ public sealed partial class SpotIntegrationTests
     }
 
     [Fact]
+    public async Task AddSpotNode_AcceptSpotRoutesFromChannel_ClientServer_AllowsRouterSendToSpot()
+    {
+        await VerifyAcceptedRouteChannelSendToSpotAsync(
+            SpotRouteTransportKind.ClientServer,
+            "api");
+    }
+
+    [Fact]
+    public async Task AddSpotNode_AcceptSpotRoutesFromChannel_RouteMesh_AllowsRouterSendToSpot()
+    {
+        await VerifyAcceptedRouteChannelSendToSpotAsync(
+            SpotRouteTransportKind.RouteMesh,
+            "play");
+    }
+
+    [Fact]
+    public void AcceptSpotRoutesFromChannel_DiscoveryConnections_AreApplied()
+    {
+        var channelEndpoint = GetFreeTcpEndpoint();
+        var spotNodeEndpoint = GetFreeTcpEndpoint();
+
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery =>
+            {
+                discovery.Add("tcp://127.0.0.1:5551");
+            });
+            options.UseSpotDiscovery("spot.route.discovery", _ => { });
+            options.AddClientServerChannel("api", channel =>
+            {
+                channel.EnableServer(server =>
+                {
+                    server.Bind(channelEndpoint);
+                    server.ConfigureRouting(routing =>
+                    {
+                        routing.RoutingId = RoutingId.FromString("aabbcc03");
+                    });
+                });
+            });
+            options.AddSpotNode("route-target-node", spot =>
+            {
+                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter();
+                spot.AcceptSpotRoutesFromChannel("api");
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        var node = registration.SpotNodes["route-target-node"];
+        var acceptance = Assert.Single(node.AcceptedSpotRouteChannels.Values);
+
+        Assert.Equal("api", acceptance.ChannelName);
+        Assert.Empty(acceptance.ManualConnections);
+        Assert.Contains("tcp://127.0.0.1:5551", registration.Discovery?.Endpoints ?? []);
+    }
+
+    [Fact]
+    public async Task SendSpot_UsesRouterChannelIdTransport()
+    {
+        var channelEndpoint = GetFreeTcpEndpoint();
+        var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var host = await CreateSpotRouteTransportHostAsync(
+            SpotRouteTransportKind.ClientServer,
+            "api",
+            channelEndpoint,
+            spotNodeEndpoint);
+        try
+        {
+            var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+            var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+            var resolver = host.Services.GetRequiredService<FixedSpotRouteResolver>();
+            var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
+            var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
+            var target = await manager.GetOrCreateAsync(
+                "route-target",
+                RoutingId.FromBytes(Encoding.UTF8.GetBytes("spotapi1")));
+            await WaitForAcceptedRoutePeerAsync(nodeRuntime, "api");
+            resolver.Configure("api", nodeRuntime.Node.RoutingId, target.SpotRid);
+
+            await RetryAsync(
+                async () =>
+                {
+                    await InvokeEntrySpotPacketAsync(
+                        runtime,
+                        "route-target-node",
+                        "api",
+                        new SpotRouteSendCallerCommand("send-via-api"));
+                    return recorder.Commands.Contains("send-via-api");
+                },
+                static result => result,
+                TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            await StopAndDisposeHostAsync(host);
+        }
+    }
+
+    [Fact]
+    public async Task RequestSpot_UsesRouterChannelIdTransport()
+    {
+        var routeEndpoint = GetFreeTcpEndpoint();
+        var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var host = await CreateSpotRouteTransportHostAsync(
+            SpotRouteTransportKind.ClientServer,
+            "api",
+            routeEndpoint,
+            spotNodeEndpoint);
+        try
+        {
+            var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+            var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+            var resolver = host.Services.GetRequiredService<FixedSpotRouteResolver>();
+            var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
+            var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
+            var target = await manager.GetOrCreateAsync(
+                "route-target",
+                RoutingId.FromBytes(Encoding.UTF8.GetBytes("spotapi2")));
+            await WaitForAcceptedRoutePeerAsync(nodeRuntime, "api");
+            resolver.Configure("api", nodeRuntime.Node.RoutingId, target.SpotRid);
+
+            await RetryAsync(
+                async () =>
+                {
+                    await InvokeEntrySpotPacketAsync(
+                        runtime,
+                        "route-target-node",
+                        "api",
+                        new SpotRouteRequestCallerCommand("request-via-api"));
+                    return recorder.Replies.Contains("reply:request-via-api");
+                },
+                static result => result,
+                TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            await StopAndDisposeHostAsync(host);
+        }
+    }
+
+    [Fact]
     public async Task RegistryActorSessionBindings_Preserve_Reconnected_Binding_On_Stale_Unbind()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();
@@ -1553,6 +1696,153 @@ public sealed partial class SpotIntegrationTests
         return host;
     }
 
+    private static async Task<IHost> CreateSpotRouteTransportHostAsync(
+        SpotRouteTransportKind transportKind,
+        string routerChannelId,
+        string channelEndpoint,
+        string spotNodeEndpoint)
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<SpotRouteTransportRecorder>();
+        builder.Services.AddSingleton<FixedSpotRouteResolver>();
+        builder.Services.AddSingleton<IZLinkSpotRouteResolver>(
+            services => services.GetRequiredService<FixedSpotRouteResolver>());
+        builder.Services.AddScoped<SpotRouteTargetCommandHandler>();
+        builder.Services.AddScoped<SpotRouteTargetRequestHandler>();
+        builder.Services.AddScoped<SpotRouteSendCallerHandler>();
+        builder.Services.AddScoped<SpotRouteRequestCallerHandler>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            AddRouterChannel(options, transportKind, routerChannelId, channelEndpoint);
+            options.UseSpotDiscovery("spot.route.transport", _ => { });
+            options.AddSpotNode("route-target-node", spot =>
+            {
+                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter(router =>
+                {
+                    router.ConfigureRouting(routing =>
+                    {
+                        routing.RoutingId = RoutingId.FromBytes(
+                            Encoding.UTF8.GetBytes("target-node"));
+                    });
+                });
+                spot.AcceptSpotRoutesFromChannel(
+                    routerChannelId,
+                    routes => routes.UseManualConnections(
+                        peers => peers.Connect(channelEndpoint)));
+                spot.AddEntrySpot<SpotRouteCallerEntrySpot>();
+                spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+            });
+        });
+
+        var host = builder.Build();
+        await host.StartAsync();
+        return host;
+    }
+
+    private static void AddRouterChannel(
+        IZLinkFrameworkOptions options,
+        SpotRouteTransportKind transportKind,
+        string routerChannelId,
+        string channelEndpoint)
+    {
+        switch (transportKind)
+        {
+            case SpotRouteTransportKind.ClientServer:
+                options.AddClientServerChannel(routerChannelId, channel =>
+                {
+                    channel.EnableServer(server =>
+                    {
+                        server.Bind(channelEndpoint);
+                        server.ConfigureRouting(routing =>
+                        {
+                            routing.RoutingId = RoutingId.FromString("aabbcc10");
+                        });
+                    });
+                });
+                break;
+
+            case SpotRouteTransportKind.RouteMesh:
+                options.AddRouteMeshChannel(routerChannelId, route =>
+                {
+                    route.Bind(channelEndpoint);
+                    route.ConfigureRouting(routing =>
+                    {
+                        routing.RoutingId = RoutingId.FromString("aabbcc11");
+                    });
+                });
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(transportKind), transportKind, null);
+        }
+    }
+
+    private static async Task InvokeEntrySpotPacketAsync<TMessage>(
+        ZLinkFrameworkRuntime runtime,
+        string spotNodeName,
+        string channelName,
+        TMessage message)
+    {
+        var activation = runtime.GetSpotNodeRuntime(spotNodeName).EntrySpotActivation
+            ?? throw new InvalidOperationException("Entry Spot activation was not created.");
+        var header = CreateEntrySpotEnvelopeHeader(channelName, message);
+        Assert.True(activation.TryResolvePacket(header, out var descriptor));
+        await activation.InvokePacketAsync(descriptor!, message, CancellationToken.None)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task VerifyAcceptedRouteChannelSendToSpotAsync(
+        SpotRouteTransportKind transportKind,
+        string routerChannelId)
+    {
+        var channelEndpoint = GetFreeTcpEndpoint();
+        var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var host = await CreateSpotRouteTransportHostAsync(
+            transportKind,
+            routerChannelId,
+            channelEndpoint,
+            spotNodeEndpoint);
+        try
+        {
+            var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+            var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+            var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
+            var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
+            var target = await manager.GetOrCreateAsync(
+                "route-target",
+                RoutingId.FromBytes(Encoding.UTF8.GetBytes($"spot{routerChannelId}")));
+            await WaitForAcceptedRoutePeerAsync(nodeRuntime, routerChannelId);
+
+            await RetryAsync(
+                async () =>
+                {
+                    var header = ZLinkClientCallCodec.CreateEnvelope(
+                        ZLinkMessageKind.Command,
+                        routerChannelId,
+                        ZLinkMessageNameResolver.ResolveFromType(typeof(SpotRouteTargetCommand))
+                            ?? throw new InvalidOperationException("Message name is required."));
+                    var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
+                        header,
+                        new SpotRouteTargetCommand($"direct:{routerChannelId}"));
+                    await runtime.SendSpotViaRouterChannelAsync(
+                            routerChannelId,
+                            nodeRuntime.Node.RoutingId,
+                            target.SpotRid,
+                            parts,
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                    return recorder.Commands.Contains($"direct:{routerChannelId}");
+                },
+                static result => result,
+                TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            await StopAndDisposeHostAsync(host);
+        }
+    }
+
     private static async Task RetryAsync(Func<bool> predicate, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
@@ -2453,6 +2743,154 @@ public sealed partial class SpotIntegrationTests
     }
 
     public sealed record StageBootCommand(string ScopeId);
+
+    private enum SpotRouteTransportKind
+    {
+        ClientServer,
+        RouteMesh
+    }
+
+    public sealed record SpotRouteTargetCommand(string Value);
+
+    public sealed record SpotRouteTargetRequest(string Value);
+
+    public sealed record SpotRouteTargetReply(string Value);
+
+    public sealed record SpotRouteSendCallerCommand(string Value);
+
+    public sealed record SpotRouteRequestCallerCommand(string Value);
+
+    public sealed class SpotRouteTargetSpot(IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.AddPacket<SpotRouteTargetCommandHandler>();
+            Context.AddPacket<SpotRouteTargetRequestHandler>();
+        }
+    }
+
+    public sealed class SpotRouteCallerEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
+    {
+        public IZLinkEntrySpotContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.AddPacket<SpotRouteSendCallerHandler>();
+            Context.AddPacket<SpotRouteRequestCallerHandler>();
+        }
+    }
+
+    public sealed class SpotRouteTargetCommandHandler(SpotRouteTransportRecorder recorder)
+        : IZLinkSpotPacketHandler<SpotRouteTargetSpot, SpotRouteTargetCommand>
+    {
+        public ValueTask HandleAsync(
+            SpotRouteTargetSpot spot,
+            SpotRouteTargetCommand message,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            _ = cancellationToken;
+            recorder.Commands.Enqueue(message.Value);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class SpotRouteTargetRequestHandler(SpotRouteTransportRecorder recorder)
+        : IZLinkSpotRequestHandler<SpotRouteTargetSpot, SpotRouteTargetRequest, SpotRouteTargetReply>
+    {
+        public ValueTask<SpotRouteTargetReply> HandleAsync(
+            SpotRouteTargetSpot spot,
+            SpotRouteTargetRequest request,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            _ = cancellationToken;
+            recorder.Requests.Enqueue(request.Value);
+            return ValueTask.FromResult(new SpotRouteTargetReply($"reply:{request.Value}"));
+        }
+    }
+
+    public sealed class SpotRouteSendCallerHandler(IZLinkSpotClient spotClient)
+        : IZLinkSpotPacketHandler<SpotRouteCallerEntrySpot, SpotRouteSendCallerCommand>
+    {
+        public async ValueTask HandleAsync(
+            SpotRouteCallerEntrySpot spot,
+            SpotRouteSendCallerCommand message,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            await spotClient.SendSpot("route-target", new SpotRouteTargetCommand(message.Value))
+                .Submit(cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    public sealed class SpotRouteRequestCallerHandler(
+        IZLinkSpotClient spotClient,
+        SpotRouteTransportRecorder recorder)
+        : IZLinkSpotPacketHandler<SpotRouteCallerEntrySpot, SpotRouteRequestCallerCommand>
+    {
+        public async ValueTask HandleAsync(
+            SpotRouteCallerEntrySpot spot,
+            SpotRouteRequestCallerCommand message,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            var reply = await spotClient
+                .RequestSpot("route-target", new SpotRouteTargetRequest(message.Value))
+                .Timeout(TimeSpan.FromMilliseconds(500))
+                .SubmitAsync<SpotRouteTargetReply>(cancellationToken)
+                .ConfigureAwait(false);
+            recorder.Replies.Enqueue(reply.Value);
+        }
+    }
+
+    public sealed class FixedSpotRouteResolver : IZLinkSpotRouteResolver
+    {
+        private ZLinkSpotRoute? _route;
+
+        public void Configure(
+            string routerChannelId,
+            RoutingId targetNodeRid,
+            RoutingId spotRid)
+        {
+            _route = new ZLinkSpotRoute(routerChannelId, targetNodeRid, spotRid);
+        }
+
+        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+            string spotName,
+            CancellationToken cancellationToken)
+        {
+            _ = spotName;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(RequireRoute());
+        }
+
+        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+            RoutingId spotRid,
+            CancellationToken cancellationToken)
+        {
+            _ = spotRid;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(RequireRoute());
+        }
+
+        private ZLinkSpotRoute RequireRoute()
+        {
+            return _route ?? throw new InvalidOperationException("SPOT route is not configured.");
+        }
+    }
+
+    public sealed class SpotRouteTransportRecorder
+    {
+        public ConcurrentQueue<string> Commands { get; } = new();
+
+        public ConcurrentQueue<string> Requests { get; } = new();
+
+        public ConcurrentQueue<string> Replies { get; } = new();
+    }
 
     public sealed record ActorContextChannelReq(string Value);
 

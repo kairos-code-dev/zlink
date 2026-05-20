@@ -297,13 +297,13 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
                 {
                     int rc = NativeMethods.zlink_router_request_spot_part(Handle,
                         ref nodeRid, ref spotRid, ref nativePart,
-                        i + 1 < cloned.Length ? IntPtr.Zero : SpotReplyHandlerPtr,
-                        i + 1 < cloned.Length ? IntPtr.Zero : GCHandle.ToIntPtr(handle),
+                        SpotReplyHandlerPtr,
+                        GCHandle.ToIntPtr(handle),
                         flags,
                         i + 1 < cloned.Length
                             ? NativeMethods.ZlinkPartFlag.More
                             : NativeMethods.ZlinkPartFlag.Final,
-                        i + 1 < cloned.Length ? 0u : timeoutMs);
+                        timeoutMs);
                     submitted = true;
                     if (rc != 0)
                         throw ZlinkException.CreateSubmitException(

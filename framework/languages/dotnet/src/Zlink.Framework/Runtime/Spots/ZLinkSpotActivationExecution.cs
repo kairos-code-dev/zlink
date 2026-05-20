@@ -13,8 +13,22 @@ internal sealed partial class ZLinkSpotActivation
         {
             ZLinkSpotNativeDispatchRouter.Attach(
                 NativeSpot,
-                routeReadable: () => QueueSerialized(
-                    static (activation, ct) => activation._dispatcher.DispatchRouteDrainAsync(ct)),
+                routeReadable: receivedMessages =>
+                {
+                    if (receivedMessages.Count == 0)
+                    {
+                        QueueSerialized(
+                            static (activation, ct) => activation._dispatcher.DispatchRouteDrainAsync(ct));
+                        return;
+                    }
+
+                    foreach (var received in receivedMessages)
+                    {
+                        QueueSerialized(
+                            static (activation, state, ct) => activation._dispatcher.DispatchRouteAsync(state, ct),
+                            received);
+                    }
+                },
                 channelReplyReadable: drain => drain?.Invoke(),
                 actorJoinReadable: () => QueueSerialized(
                     static (activation, ct) => activation._dispatcher.DispatchActorJoinDrainAsync(ct)),
@@ -31,7 +45,6 @@ internal sealed partial class ZLinkSpotActivation
             ct => ExecuteSerializedAsync(
                 static (activation, innerCt) => activation.DispatchSubscriptionsAsync(innerCt),
                 ct));
-
         await ExecuteSerializedAsync(
             static async (activation, state, ct) =>
             {

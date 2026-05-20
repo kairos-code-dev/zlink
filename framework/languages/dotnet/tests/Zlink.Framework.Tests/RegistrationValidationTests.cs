@@ -121,6 +121,28 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void AcceptSpotRoutesFromChannel_RejectsUnknownChannel()
+    {
+        var services = new ServiceCollection();
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.UseSpotDiscovery("spot.mesh", _ => { });
+                options.AddSpotNode("stage-node", node =>
+                {
+                    node.Bind("tcp://127.0.0.1:9000");
+                    node.EnableRouter();
+                    node.AcceptSpotRoutesFromChannel(
+                        "missing",
+                        routes => routes.UseManualConnections(
+                            peers => peers.Connect("tcp://127.0.0.1:7104")));
+                });
+            }));
+
+        Assert.Contains("is not registered", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AcceptSpotRoutesFromChannel_RequiresEnableRouter()
     {
         var services = new ServiceCollection();

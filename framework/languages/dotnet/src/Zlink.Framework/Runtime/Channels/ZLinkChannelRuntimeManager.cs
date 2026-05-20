@@ -85,6 +85,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                     ct => new ValueTask(channelMessagePump.RunServerLoopAsync(
                         channelName,
                         (IZLinkBackendRouterSocket)bundle.Socket,
+                        bundle.ReceiveGate,
                         ct))));
             }
 

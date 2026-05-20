@@ -18,6 +18,8 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public ZLinkAsyncSubmitter? Submitter { get; }
 
+    public SemaphoreSlim ReceiveGate { get; } = new(1, 1);
+
     public IZLinkBackendDiscovery? Discovery { get; set; }
 
     public bool TryAddManualConnection(string endpoint)
@@ -65,5 +67,6 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
         }
 
         await Socket.DisposeAsync();
+        ReceiveGate.Dispose();
     }
 }

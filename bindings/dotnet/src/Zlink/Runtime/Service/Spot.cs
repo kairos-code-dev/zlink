@@ -2061,12 +2061,7 @@ public sealed partial class Spot : ISpot
         RoutingIdSnapshot spotRidSnapshot = RoutingIdSnapshot.FromBytes(spotRidBytes);
         ReceivedReplyHandler? replyHandler = requestSeq == 0
             ? null
-            : (replyParts, sendFlags) => ReplyToSpot(
-                nodeRid ?? throw new ZlinkSubmitException(
-                    SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
-                spotRid ?? throw new ZlinkSubmitException(
-                    SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
-                requestSeq, replyParts, sendFlags);
+            : CreateRoutedReplyHandler(nodeRid, spotRid, requestSeq);
         result.PopulateRoutedMultipart(parts, nodeRidSnapshot, spotRidSnapshot,
             requestSeq == 0 ? null : requestSeq, replyHandler,
             CreateRoutedSendHandler(nodeRid, spotRid));

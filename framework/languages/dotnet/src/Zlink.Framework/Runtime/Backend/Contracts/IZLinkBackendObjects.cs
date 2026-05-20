@@ -62,7 +62,8 @@ internal sealed record ZLinkBackendActorJoinRequest(
 internal readonly record struct ZLinkBackendSpotDispatchInfo(
     ZLinkBackendSpotDispatchEvent Event,
     Action? DrainChannelReply = null,
-    IReadOnlyList<ZLinkBackendActorPart>? ActorParts = null);
+    IReadOnlyList<ZLinkBackendActorPart>? ActorParts = null,
+    IReadOnlyList<Received>? RoutedMessages = null);
 
 internal readonly record struct ZLinkBackendSocketMonitorEvent(
     ZLinkSocketNativeEventType NativeEvent,

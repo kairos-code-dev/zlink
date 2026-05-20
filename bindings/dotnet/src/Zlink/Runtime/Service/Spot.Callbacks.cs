@@ -31,14 +31,30 @@ public sealed partial class Spot
         Received received = requestSeq == 0
             ? Received.Create(nodeRid, managedParts, spotRid: spotRid)
             : Received.Create(nodeRid, managedParts, requestSeq, spotRid,
-                (replyParts, sendFlags) => ReplyToSpot(
-                    nodeRid ?? throw new ZlinkSubmitException(
-                        SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
-                    spotRid ?? throw new ZlinkSubmitException(
-                        SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
-                    requestSeq, replyParts, sendFlags));
+                CreateRoutedReplyHandler(nodeRid, spotRid, requestSeq));
         received.SetSendHandler(CreateRoutedSendHandler(nodeRid, spotRid));
         CallbackDelivery.Post(_routedReceiveHandlerContext, () => handler(received));
+    }
+
+    private ReceivedReplyHandler CreateRoutedReplyHandler(
+        RoutingId? nodeRid,
+        RoutingId? spotRid,
+        ulong requestSeq)
+    {
+        RoutingId targetNode = nodeRid ?? throw new ZlinkSubmitException(
+            SubmitResult.InvalidArgument, (int)ErrorCode.EInval);
+        return spotRid.HasValue
+            ? (replyParts, sendFlags) => ReplyToSpot(
+                targetNode,
+                spotRid.Value,
+                requestSeq,
+                replyParts,
+                sendFlags)
+            : (replyParts, sendFlags) => ReplyToRouter(
+                targetNode,
+                requestSeq,
+                replyParts,
+                sendFlags);
     }
 
     private ReceivedSendHandler? CreateRoutedSendHandler(RoutingId? nodeRid,

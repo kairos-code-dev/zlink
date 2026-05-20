@@ -91,6 +91,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             return await RequestSpotViaServerRouterAsync(
                 routerChannelId,
                 router,
+                serverBundle.ReceiveGate,
                 targetNodeRid,
                 targetSpotRid,
                 parts,
@@ -105,6 +106,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     private static async ValueTask<IReadOnlyList<Message>> RequestSpotViaServerRouterAsync(
         string routerChannelId,
         IZLinkBackendRouterSocket router,
+        SemaphoreSlim receiveGate,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
@@ -114,36 +116,44 @@ internal sealed partial class ZLinkFrameworkRuntime
         var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
+        await receiveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!router.RequestToSpot(
-                    targetNodeRid,
-                    targetSpotRid,
-                    parts,
-                    (result, reply) => CompleteSpotReply(
-                        routerChannelId,
-                        result,
-                        reply,
-                        completion),
-                    SendFlags.None,
-                    timeout))
+            try
             {
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    $"Router channel '{routerChannelId}' is not ready for SPOT request.");
+                if (!router.RequestToSpot(
+                        targetNodeRid,
+                        targetSpotRid,
+                        parts,
+                        (result, reply) => CompleteSpotReply(
+                            routerChannelId,
+                            result,
+                            reply,
+                            completion),
+                        SendFlags.None,
+                        timeout))
+                {
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        $"Router channel '{routerChannelId}' is not ready for SPOT request.");
+                }
             }
+            finally
+            {
+                ZLinkMessageParts.DisposeAll(parts);
+            }
+
+            using var _ = cancellationToken.Register(
+                static state => ((TaskCompletionSource<IReadOnlyList<Message>>)state!)
+                    .TrySetCanceled(),
+                completion);
+
+            return await completion.Task.ConfigureAwait(false);
         }
         finally
         {
-            ZLinkMessageParts.DisposeAll(parts);
+            receiveGate.Release();
         }
-
-        using var _ = cancellationToken.Register(
-            static state => ((TaskCompletionSource<IReadOnlyList<Message>>)state!)
-                .TrySetCanceled(),
-            completion);
-
-        return await completion.Task.ConfigureAwait(false);
     }
 
     private static void CompleteSpotReply(

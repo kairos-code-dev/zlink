@@ -694,18 +694,21 @@ binding 작업을 시작하기 전에 이 단계는 필수 gate로 둔다.
 
 ## 11. 구현 순서 체크리스트
 
-- [ ] 이 draft의 API 이름이 구현 패치에 그대로 반영됐는지 확인한다.
-- [ ] `AddChannel(...)` / `AddRouteChannel(...)` 삭제 패치를 반영한다.
-- [ ] core regression test를 먼저 추가한다.
-- [ ] core C API를 구현한다.
-- [ ] core internals status snapshot에 router channel peer 구분을 반영한다.
-- [ ] `cmake --build core/build`를 통과시킨다.
-- [ ] core regression test를 통과시킨다.
-- [ ] `bindings/dev_sync_local_core_libs.sh`를 실행한다.
-- [ ] C binding public API와 test를 반영한다.
-- [ ] 나머지 binding public API와 test를 반영한다.
-- [ ] .NET framework binding adapter가 public API만 쓰는지 확인한다.
-- [ ] framework registration/runtime/test를 반영한다.
-- [ ] Bingo sample에 router-to-spot 흐름을 반영한다.
-- [ ] 정식 docs와 guide를 반영한다.
-- [ ] 문서 회귀 테스트를 통과시킨다.
+아래 항목은 이 draft를 정식 구현과 문서로 옮길 때 빠뜨리면 안 되는 완료 조건이다.
+현재 구현은 이 목록을 기준으로 반영됐다.
+
+- [x] 이 draft의 API 이름이 구현 패치에 그대로 반영됐는지 확인한다.
+- [x] `AddChannel(...)` / `AddRouteChannel(...)` 삭제 패치를 반영한다.
+- [x] core regression test를 먼저 추가한다.
+- [x] core C API를 구현한다.
+- [x] core internals status snapshot에 router channel peer 구분을 반영한다.
+- [x] `cmake --build core/build`를 통과시킨다.
+- [x] core regression test를 통과시킨다.
+- [x] `bindings/dev_sync_local_core_libs.sh`를 실행한다.
+- [x] C binding public API와 test를 반영한다.
+- [x] 나머지 binding public API와 test를 반영한다.
+- [x] .NET framework binding adapter가 public API만 쓰는지 확인한다.
+- [x] framework registration/runtime/test를 반영한다.
+- [x] Bingo sample에 router-to-spot 흐름을 반영한다.
+- [x] 정식 docs와 guide를 반영한다.
+- [x] 문서 회귀 테스트를 통과시킨다.

@@ -25,6 +25,7 @@ internal interface IZLinkCurrentSpotActivation
         CancellationToken cancellationToken);
 
     ValueTask<IReadOnlyList<Message>> RequestSpotAsync(
+        string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
@@ -41,9 +42,10 @@ internal interface IZLinkCurrentSpotActivation
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken);
 
-    bool SendToSpot(
-        RoutingId targetRid,
-        RoutingId spotRid,
+    ValueTask SendSpotAsync(
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
-        SendFlags flags);
+        CancellationToken cancellationToken);
 }

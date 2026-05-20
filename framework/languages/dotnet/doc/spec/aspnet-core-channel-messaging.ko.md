@@ -201,7 +201,7 @@ channel 별 연결 방식은, capability 빌더가 `UseManualConnections(...)` �
 수동 `connect`, `disconnect`, `unbind`, `close` 를 받지 않는다. 따라서 framework 역시
 같은 channel runtime 안에서 두 방식을 섞는 모델로 설명할 수 없다.
 
-> route channel (`AddRouteChannel(...)`) 은 일반 channel 과 정책이 다르다. 같은 routed
+> route channel (`AddRouteMeshChannel(...)`) 은 일반 channel 과 정책이 다르다. 같은 routed
 > channel 안에서 전역 Discovery 와 수동 연결이 동시에 있으면, startup validation
 > 단계에서 차단된다. 일반 client / subscriber 는 "수동이 있으면 수동 우선" 정책으로
 > 둘이 공존해도 받아들인다.
@@ -755,8 +755,8 @@ app.MapPost("/profiles/refresh", async (
 
 ### 5.4 routed channel transport helper
 
-`AddRouteChannel(...)` 와 `AddRouteMeshChannel(...)` 로 선언한 routed channel 의 위치는
-다르다. 이쪽은 actor, spot, session actor dispatch[^session-actor-dispatch] 같은
+`AddRouteMeshChannel(...)` 로 선언한 routed channel 의 위치는 actor, spot,
+session actor dispatch[^session-actor-dispatch] 같은
 framework 기능이 내부 transport 로 쓴다.
 
 이 경로는 `routerChannelId + targetNodeRid` 를 알아야 동작한다. 따라서 application 의

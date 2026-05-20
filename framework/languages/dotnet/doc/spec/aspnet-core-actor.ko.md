@@ -1160,8 +1160,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
     주고받는 방식이다. request / send는 요청-응답과 단방향 전달을, event
     messaging은 publish / subscribe 형태의 이벤트 전달을 가리킨다.
 
-[^routed]: **routed channel**은 `AddRouteChannel(...)` /
-    `AddRouteMeshChannel(...)`로 선언하는 양방향 채널이다. 일반 client-server
+[^routed]: **routed channel**은 `AddRouteMeshChannel(...)`로 선언하는 양방향 채널이다. 일반 client-server
     채널과 달리 호출 시점에 목적지 노드의 `RoutingId`를 직접 지정한다. 자세한
     내용은
     [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md)

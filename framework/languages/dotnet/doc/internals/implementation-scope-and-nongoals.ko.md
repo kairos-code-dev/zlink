@@ -24,8 +24,7 @@
   (`EnableServer(...)`, `EnableClient(...)`, `EnablePublisher(...)`,
   `EnableSubscriber(...)` 빌더)
 - 채널 등록의 형태별 분기 — `AddClientServerChannel(...)`,
-  `AddFanoutChannel(...)`, `AddDealerMeshChannel(...)`, `AddRouteChannel(...)`,
-  `AddRouteMeshChannel(...)`
+  `AddFanoutChannel(...)`, `AddDealerMeshChannel(...)`, `AddRouteMeshChannel(...)`
 - 전역 `UseDiscovery(...)` 설정
 - channel 의 manual connection manager (`UseManualConnections(...)`,
   `IZLinkChannelConnectionManager`, `IZLinkEndpointConnections`)

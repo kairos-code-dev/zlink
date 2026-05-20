@@ -157,6 +157,48 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
+    public ValueTask SubmitSpotSendPartsAsync(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken)
+    {
+        return _submitter.SubmitAsync(
+            parts,
+            pending => _router.SendToSpot(
+                targetNodeRid,
+                targetSpotRid,
+                pending,
+                SendFlags.DontWait),
+            cancellationToken);
+    }
+
+    public async ValueTask<IReadOnlyList<Message>> RequestSpotPartsAsync(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        IReadOnlyList<Message> parts,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        return await _submitter
+            .SubmitRequestAsync<IReadOnlyList<Message>>(
+                parts,
+                (pending, complete, fail) => _router.RequestToSpot(
+                    targetNodeRid,
+                    targetSpotRid,
+                    pending,
+                    (result, reply) => CompleteRawReply(
+                        result,
+                        reply,
+                        complete,
+                        fail,
+                        $"SPOT routed request failed with result '{result}'."),
+                    SendFlags.DontWait,
+                    timeout),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private static IReadOnlyList<Message> PrependHeader(
         ZLinkEnvelopeHeader header,
         IReadOnlyList<Message> payloadParts)
@@ -169,6 +211,27 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         }
 
         return parts;
+    }
+
+    private static void CompleteRawReply(
+        RequestResult result,
+        IReadOnlyList<Message> reply,
+        Action<IReadOnlyList<Message>> complete,
+        Action<Exception> fail,
+        string failureMessage)
+    {
+        if (result == RequestResult.Ok)
+        {
+            complete(reply);
+            return;
+        }
+
+        foreach (var replyPart in reply)
+        {
+            replyPart.Dispose();
+        }
+
+        fail(new TimeoutException(failureMessage));
     }
 
     public async ValueTask DisposeAsync()

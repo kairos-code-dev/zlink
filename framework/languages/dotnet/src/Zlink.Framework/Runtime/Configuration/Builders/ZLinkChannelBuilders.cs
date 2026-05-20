@@ -1,32 +1,5 @@
 namespace Zlink.Framework.Runtime.Configuration.Builders;
 
-internal sealed class ZLinkChannelBuilder(ZLinkChannelRegistration registration) : IZLinkChannelBuilder
-{
-    public void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null)
-    {
-        registration.Server ??= new ZLinkChannelServerCapabilityRegistration();
-        configure?.Invoke(new ZLinkChannelServerCapabilityBuilder(registration.Server));
-    }
-
-    public void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null)
-    {
-        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        configure?.Invoke(new ZLinkChannelClientCapabilityBuilder(registration.Client));
-    }
-
-    public void EnablePublisher(Action<IChannelPublisherCapabilityBuilder>? configure = null)
-    {
-        registration.Publisher ??= new ZLinkChannelPublisherCapabilityRegistration();
-        configure?.Invoke(new ZLinkChannelPublisherCapabilityBuilder(registration.Publisher));
-    }
-
-    public void EnableSubscriber(Action<IChannelSubscriberCapabilityBuilder>? configure = null)
-    {
-        registration.Subscriber ??= new ZLinkChannelSubscriberCapabilityRegistration();
-        configure?.Invoke(new ZLinkChannelSubscriberCapabilityBuilder(registration.Subscriber));
-    }
-}
-
 internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration registration)
     : IZLinkClientServerChannelBuilder
 {

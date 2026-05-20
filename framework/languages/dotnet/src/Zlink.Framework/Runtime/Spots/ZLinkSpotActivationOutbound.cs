@@ -70,17 +70,19 @@ internal sealed partial class ZLinkSpotActivation
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestSpotAsync(
+        string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        return await _outbound.RequestSpotAsync(
+        return await _runtime.RequestSpotViaRouterChannelAsync(
+                routerChannelId,
                 targetNodeRid,
                 targetSpotRid,
                 parts,
-                timeout,
+                timeout ?? DefaultTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -117,5 +119,20 @@ internal sealed partial class ZLinkSpotActivation
         SendFlags flags)
     {
         return _outbound.SendToSpot(targetRid, spotRid, parts, flags);
+    }
+
+    public ValueTask SendSpotAsync(
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken)
+    {
+        return _runtime.SendSpotViaRouterChannelAsync(
+            routerChannelId,
+            targetNodeRid,
+            targetSpotRid,
+            parts,
+            cancellationToken);
     }
 }

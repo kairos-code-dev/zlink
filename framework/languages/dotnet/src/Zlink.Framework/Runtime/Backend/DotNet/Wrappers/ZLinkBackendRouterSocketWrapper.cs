@@ -111,6 +111,38 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
         return operation.Flags(flags).Submit(callback);
     }
 
+    public bool SendToSpot(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        return nativeSocket.SendToSpot(targetNodeRid, targetSpotRid)
+            .Messages(parts)
+            .Flags(flags)
+            .Submit();
+    }
+
+    public bool RequestToSpot(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout)
+    {
+        var operation = nativeSocket.RequestToSpot(targetNodeRid, targetSpotRid)
+            .Messages(parts)
+            .Flags(flags);
+
+        if (timeout is { } value)
+        {
+            operation = operation.Timeout(value);
+        }
+
+        return operation.Submit(callback);
+    }
+
     public void Reply(
         RoutingId routingId,
         ulong requestSeq,

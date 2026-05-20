@@ -230,7 +230,7 @@ interface 기반 등록을 모두 지원한다.
 
 ### 4.2.1 routed channel handler
 
-routed channel(`AddRouteChannel(...)`, `AddRouteMeshChannel(...)`) 이 수신하는
+routed channel(`AddRouteMeshChannel(...)`) 이 수신하는
 메시지를 처리하는 handler 다.
 
 일반 channel handler 와 한 가지 차이가 있다. source `RoutingId` 를 포함한
@@ -2135,8 +2135,7 @@ actor id 를 routed channel 과 대상 노드의 `RoutingId` 로 풀어 낸다. 
 route transport helper 는 application 의 public surface 가 아니다.
 internal transport helper 다.
 
-사용처는 다음과 같다. routed channel (`AddRouteChannel(...)`,
-`AddRouteMeshChannel(...)`) 을 통해 특정 노드의 `RoutingId` 로 direct
+사용처는 다음과 같다. routed channel (`AddRouteMeshChannel(...)`) 을 통해 특정 노드의 `RoutingId` 로 direct
 send/request 를 보내야 하는 framework backend, 또는 별도의 adapter
 package 가 사용한다.
 
@@ -2584,10 +2583,6 @@ public interface IZLinkFrameworkOptions
         string channelName,
         Action<IZLinkDealerMeshChannelBuilder> configure);
 
-    void AddRouteChannel(
-        string routerChannelId,
-        Action<IZLinkRouteChannelBuilder> configure);
-
     void AddRouteMeshChannel(
         string channelName,
         Action<IZLinkRouteMeshChannelBuilder> configure);
@@ -2654,8 +2649,6 @@ public interface IZLinkFrameworkOptions
   - DEALER mesh 채널을 등록한다. mesh client는 자신을 식별할 local bind endpoint를
     가져야 하므로 `IDealerMeshChannelClientCapabilityBuilder`에 `Bind(...)`가
     추가로 노출된다.
-- `AddRouteChannel(...)`
-  - session actor dispatch와 직접 routed handler가 사용할 routed channel mesh를 등록한다.
 - `AddRouteMeshChannel(...)`
   - route mesh 채널을 등록한다. bind endpoint, socket option, routing option,
     manual connection을 한 builder 안에서 함께 설정한다.

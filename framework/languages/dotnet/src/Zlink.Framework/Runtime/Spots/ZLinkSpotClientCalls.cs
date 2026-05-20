@@ -98,23 +98,12 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
             route.RouterChannelId,
             _messageName ?? throw new InvalidOperationException("Message name is required."));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message);
-        try
-        {
-            if (!activation.SendToSpot(
-                    route.TargetNodeRid,
-                    route.SpotRid,
-                    parts,
-                    SendFlags.DontWait))
-            {
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    $"SPOT send target route was not available for '{route.SpotRid}'.");
-            }
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(parts);
-        }
+        await activation.SendSpotAsync(
+            route.RouterChannelId,
+            route.TargetNodeRid,
+            route.SpotRid,
+            parts,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private ValueTask<ZLinkSpotRoute> ResolveRouteAsync(CancellationToken cancellationToken)
@@ -160,6 +149,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
             timeout);
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
         var reply = await activation.RequestSpotAsync(
+            route.RouterChannelId,
             route.TargetNodeRid,
             route.SpotRid,
             parts,

@@ -91,9 +91,9 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `AddRouteChannel(...)` + 전역 `UseDiscovery(...)` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
-| `AddRouteChannel(...)` + `UseManualConnections(...)` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
-| `AddRouteChannel(...)` + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
+| `AddRouteMeshChannel(...)` + 전역 `UseDiscovery(...)` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
+| `AddRouteMeshChannel(...)` + `UseManualConnections(...)` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
+| `AddRouteMeshChannel(...)` + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | routed channel bind endpoint 없음 | 비허용 | startup validation 오류 |
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 같은 actor type factory 중복 등록 | 비허용 | builder 등록 시점에 오류 |
@@ -166,7 +166,6 @@ runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenCompatibilityChannelMixesAutoConnectTypes` | client/server와 fanout capability를 호환 등록 경로에서 잘못 섞으면 실패한다. |
 | `RegistrationValidationTests.AddZLinkFramework_Throws_WhenRouteChannelMixesDiscoveryAndManualConnections` | 같은 routed capability에서 Discovery와 manual 연결을 섞으면 실패한다. |
 | `RegistrationValidationTests.AddZLinkFramework_Throws_WhenServerHasNoBindEndpoint` | server capability에 bind endpoint가 없으면 실패한다. |
 | `RegistrationValidationTests.AddZLinkFramework_Throws_WhenPublisherHasNoBindEndpoint` | publisher capability에 bind endpoint가 없으면 실패한다. |

@@ -116,17 +116,6 @@ public interface IZLinkStreamNodeBuilder
         where TSession : class, IZLinkSession;
 }
 
-public interface IZLinkChannelBuilder
-{
-    void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null);
-
-    void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null);
-
-    void EnablePublisher(Action<IChannelPublisherCapabilityBuilder>? configure = null);
-
-    void EnableSubscriber(Action<IChannelSubscriberCapabilityBuilder>? configure = null);
-}
-
 public interface IZLinkClientServerChannelBuilder
 {
     void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null);
@@ -258,10 +247,6 @@ public interface IZLinkFrameworkOptions
 
     void UseRegistryActorSessionBindings(string namespaceName);
 
-    void AddChannel(
-        string channelName,
-        Action<IZLinkChannelBuilder> configure);
-
     void AddClientServerChannel(
         string channelName,
         Action<IZLinkClientServerChannelBuilder> configure);
@@ -273,10 +258,6 @@ public interface IZLinkFrameworkOptions
     void AddDealerMeshChannel(
         string channelName,
         Action<IZLinkDealerMeshChannelBuilder> configure);
-
-    void AddRouteChannel(
-        string routerChannelId,
-        Action<IZLinkRouteChannelBuilder> configure);
 
     void AddRouteMeshChannel(
         string channelName,

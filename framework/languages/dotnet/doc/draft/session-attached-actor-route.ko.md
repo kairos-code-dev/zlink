@@ -81,9 +81,10 @@ resolver 를 호출하지 않는다. route 가 없으면 framework 는
 resolver 를 호출하면 안 된다.
 
 actor node rid 가 바뀌면 route 변경을 아는 runtime 또는 backend adapter 가 session
-binding 쪽에 route update 를 전달한다. session 은 새 generation 이 현재 generation
-보다 클 때만 attached actor route 를 교체한다. 이전 update 가 늦게 도착해도 새 route
-를 되돌리지 않기 위해서다.
+binding 쪽에 route update 를 전달한다. framework 는 update 의 expected actor
+generation 이 현재 attached actor generation 과 일치할 때만 target node rid 와 actor
+generation 을 교체한다. expected 값이 다르면 늦게 도착한 stale update 로 보고
+무시한다.
 
 ## 4. `IZLinkActorPlayRouteResolver` 의 사용 범위
 
@@ -97,7 +98,7 @@ resolver 가 아니다.
 바꾼다.
 
 이 resolver 도 `ZLinkActorRoute` 를 반환하므로 actor generation 을 함께 돌려줘야 한다.
-backend actor messaging 은 이 generation 으로 오래된 route 결과와 새 route update 를
+backend actor messaging 은 이 actor generation 으로 오래된 route 결과와 새 route update 를
 구분할 수 있다. session relay 는 같은 타입을 route snapshot 값으로 받을 수 있지만,
 그 값을 resolver 에서 직접 조회하지 않는다. resolver 가 반환하는 `ActorGeneration` 도
 `0` 이면 안 된다.
@@ -146,8 +147,8 @@ public 값이 아니므로 여기에 포함하지 않는다.
 
 `ZLinkActorRoute` 의 생성자는 `ActorGeneration` 을 필수로 받는다. 따라서 구현 단계에서는
 모든 resolver 구현체, sample route store, test double 의 `new ZLinkActorRoute(...)`
-호출을 함께 갱신해야 한다. resolver 가 generation 을 모르면 session attach 용 route 를
-반환할 수 없다.
+호출을 함께 갱신해야 한다. resolver 가 `ActorGeneration` 값을 모르면 session attach 용
+route 를 반환할 수 없다.
 
 route 를 받는 `BindActorHandleAsync(...)` overload 는 `route.ActorGeneration == 0` 이면
 `ZLinkFrameworkErrorKind.ActorRouteNotFound` 로 실패한다. 의미상 unchecked route 거부에
@@ -224,8 +225,8 @@ generation 에 붙은 session ref 들은 같은 최신 route 를 공유해야 �
 - 현재 actor generation 이 `expectedActorGeneration` 과 다르면 stale update 로 무시한다.
 - 현재 route 가 이미 같은 target node rid 와 `newActorGeneration` 을 가리키면 idempotent
   하게 성공한다.
-- 같은 expected generation 에서 서로 다른 target node rid 나 new generation 으로 가는
-  update 가 동시에 들어오면 충돌로 보고 하나만 적용한다.
+- 같은 expected actor generation 에서 서로 다른 target node rid 나 new actor generation 으로
+  가는 update 가 동시에 들어오면 충돌로 보고 하나만 적용한다.
 - route 교체는 relay 가 읽는 snapshot 기준으로 atomic 해야 한다.
 
 `IZLinkActorRef` public surface 는 단순하게 유지한다. 내부 구현은 actor ref 를 새 객체로
@@ -277,7 +278,7 @@ actor 가 다른 node 로 이동하거나 runtime route 가 바뀌면 route owne
 | `StreamIntegrationTests.SessionActorRouteUpdate_Changes_Attached_TargetNodeRid` | route update 후 같은 `IZLinkActorRef` relay 가 새 target node rid 로 전송된다. |
 | `StreamIntegrationTests.SessionActorRouteUpdate_Ignores_Stale_ExpectedActorGeneration` | expected actor generation 이 현재 attached ref 와 다르면 route 를 바꾸지 않는다. |
 | `StreamIntegrationTests.SessionActorRouteUpdate_Allows_Idempotent_Same_Target` | 같은 target node rid 와 actor generation 을 가리키는 update 는 중복 도착해도 성공한다. |
-| `StreamIntegrationTests.SessionActorRouteUpdate_Rejects_Conflicting_Target_For_Same_ExpectedGeneration` | 같은 expected actor generation 에서 서로 다른 target node rid 나 new generation 으로 가는 update 가 동시에 들어오면 하나만 적용한다. |
+| `StreamIntegrationTests.SessionActorRouteUpdate_Rejects_Conflicting_Target_For_Same_ExpectedGeneration` | 같은 expected actor generation 에서 서로 다른 target node rid 나 new actor generation 으로 가는 update 가 동시에 들어오면 하나만 적용한다. |
 | `StreamIntegrationTests.SessionActorRelay_Fails_When_Bound_Route_Is_Missing` | attach route 없이 relay 를 시도하면 resolver fallback 없이 명확한 오류가 난다. |
 | `RegistrationValidationTests.SessionActorDispatch_Does_Not_Require_ActorPlayRouteResolver` | session actor dispatch 구성은 `IZLinkActorPlayRouteResolver` 등록을 요구하지 않는다. |
 | `SampleRegressionTests.Bingo_SessionHandlers_Do_Not_Inject_ActorPlayRouteResolver` | Bingo session handler 에 `IZLinkActorPlayRouteResolver` 주입과 직접 route resolve 호출이 없다. |
@@ -310,7 +311,7 @@ actor 가 다른 node 로 이동하거나 runtime route 가 바뀌면 route owne
 | 공통 문서 | 반영 내용 |
 |-----------|-----------|
 | `doc/spec/draft/framework-route-resolvers.ko.md` | actor route resolver 는 backend service -> actor messaging 처럼 attached session actor ref 가 없는 호출에서만 actor id 를 node rid 로 바꾸는 역할로 정리한다. session gateway hot path 의 route 조회 수단으로 설명하지 않는다. |
-| `doc/spec/draft/spot-actor-dispatch.ko.md` | actor route row 의 node rid, generation, route sync 의미를 session-attached actor route update 의 source 로 연결한다. session relay 는 actor id resolve 가 아니라 attached route snapshot 을 사용한다는 점을 반영한다. |
+| `doc/spec/draft/spot-actor-dispatch.ko.md` | actor route row 의 node rid, actor generation, route sync 의미를 session-attached actor route update 의 source 로 연결한다. session relay 는 actor id resolve 가 아니라 attached route snapshot 을 사용한다는 점을 반영한다. |
 | `doc/spec/draft/discovery-owner-bound-routes.ko.md` | actor generation 과 owner-bound 갱신이 stale update 를 막는 기준이 되는지 확인하고, 필요한 경우 actor route update 전파 의미를 추가한다. |
 | `doc/spec/core/service/discovery.ko.md` | `ResolveActor` 계열 계약이 backend actor messaging 용 route 조회라는 점을 분명히 하고, session relay 의 필수 조회 경로처럼 읽히지 않게 정리한다. |
 | `doc/spec/core/socket/stream.ko.md` | stream actor bind 성공 뒤 active route sync 가 켜질 때 생성되는 actor route 가 attached session route update 의 입력이 될 수 있음을 설명한다. |
@@ -345,4 +346,4 @@ actor lifecycle 과 route sync 의 결과로 attached actor route 가 갱신된�
 
 [^public-contract]: 공개 계약은 구현과 테스트가 끝난 뒤 정식 spec 문서에 반영된 API 의미다.
 [^hot-path]: hot path 는 요청이 자주 지나가는 실행 경로다. 이 경로에는 불필요한 외부 조회를 넣지 않는다.
-[^route-snapshot]: route snapshot 은 특정 시점의 router channel id, target node rid, generation 을 묶은 값이다.
+[^route-snapshot]: route snapshot 은 특정 시점의 router channel id, target node rid, actor generation 을 묶은 값이다.

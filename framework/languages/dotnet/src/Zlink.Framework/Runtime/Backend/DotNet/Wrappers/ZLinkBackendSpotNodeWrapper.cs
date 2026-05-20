@@ -32,6 +32,28 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
         nativeSpotNode.DisconnectPeer(endpoint);
     }
 
+    public void ConnectRouterChannelPeer(string channelName, string endpoint)
+    {
+        nativeSpotNode.ConnectRouterChannelPeer(channelName, endpoint);
+    }
+
+    public void DisconnectRouterChannelPeer(string channelName, string endpoint)
+    {
+        nativeSpotNode.DisconnectRouterChannelPeer(channelName, endpoint);
+    }
+
+    public void DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid)
+    {
+        nativeSpotNode.DisconnectRouterChannelPeerRid(channelName, peerRid);
+    }
+
+    public void AttachSpotRouteChannelDiscovery(string channelName, IZLinkBackendDiscovery discovery)
+    {
+        nativeSpotNode.AttachSpotRouteChannelDiscovery(
+            channelName,
+            discovery.RequireNative<Discovery>());
+    }
+
     public IZLinkBackendSpot CreateSpot()
     {
         return new ZLinkBackendSpotWrapper(nativeSpotNode.CreateSpot());

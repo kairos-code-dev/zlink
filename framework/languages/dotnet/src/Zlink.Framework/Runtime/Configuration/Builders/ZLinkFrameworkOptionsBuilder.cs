@@ -155,15 +155,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         };
     }
 
-    public void AddChannel(
-        string channelName,
-        Action<IZLinkChannelBuilder> configure)
-    {
-        var channel = AddChannelRegistration(channelName, ZLinkAutoConnectType.Invalid);
-        configure(new ZLinkChannelBuilder(channel));
-        channel.AutoConnectType = InferCompatibilityAutoConnectType(channel);
-    }
-
     public void AddClientServerChannel(
         string channelName,
         Action<IZLinkClientServerChannelBuilder> configure)
@@ -186,13 +177,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     {
         var channel = AddChannelRegistration(channelName, ZLinkAutoConnectType.DealerMesh);
         configure(new ZLinkDealerMeshChannelBuilder(channel));
-    }
-
-    public void AddRouteChannel(
-        string routerChannelId,
-        Action<IZLinkRouteChannelBuilder> configure)
-    {
-        AddRouteMeshChannel(routerChannelId, configure);
     }
 
     public void AddRouteMeshChannel(
@@ -315,32 +299,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             },
             "Channel name must not be empty.",
             $"Duplicate channel name '{channelName}'.");
-    }
-
-    private static ZLinkAutoConnectType InferCompatibilityAutoConnectType(
-        ZLinkChannelRegistration channel)
-    {
-        var hasClientServerCapabilities = channel.Server is not null || channel.Client is not null;
-        var hasFanoutCapabilities = channel.Publisher is not null || channel.Subscriber is not null;
-
-        if (hasClientServerCapabilities && hasFanoutCapabilities)
-        {
-            throw new ZLinkConfigurationException(
-                $"Channel '{channel.ChannelName}' mixes client/server and fanout capabilities. Use AddClientServerChannel(...) and AddFanoutChannel(...) with separate channel names.");
-        }
-
-        if (hasClientServerCapabilities)
-        {
-            return ZLinkAutoConnectType.ClientServer;
-        }
-
-        if (hasFanoutCapabilities)
-        {
-            return ZLinkAutoConnectType.Fanout;
-        }
-
-        throw new ZLinkConfigurationException(
-            $"Channel '{channel.ChannelName}' must enable at least one capability.");
     }
 
     private static string ValidateRegistryNamespace(string namespaceName)

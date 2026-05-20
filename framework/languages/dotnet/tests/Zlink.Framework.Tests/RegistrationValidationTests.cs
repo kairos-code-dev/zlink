@@ -29,24 +29,6 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenCompatibilityChannelMixesAutoConnectTypes()
-    {
-        var services = new ServiceCollection();
-
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
-            {
-                options.AddChannel("profile", channel =>
-                {
-                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
-                    channel.EnablePublisher(publisher => publisher.Bind("tcp://127.0.0.1:7102"));
-                });
-            }));
-
-        Assert.Contains("mixes client/server and fanout capabilities", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void AddZLinkFramework_AllowsChannelClientManualConnections_WhenDiscoveryIsConfigured()
     {
         var services = new ServiceCollection();

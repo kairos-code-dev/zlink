@@ -38,6 +38,7 @@ internal sealed class ZLinkSpotNodeInitializer(
 
             AttachDiscoveryIfConfigured(state, channelAdapter, spotNodeRegistration, node, nodeRuntime);
             ConnectManualPeers(spotNodeRegistration, nodeRuntime);
+            AttachAcceptedSpotRouteChannels(state, channelAdapter, spotNodeRegistration, node);
             InitializePublisherBundles(spotNodeRegistration, nodeRuntime);
 
             await nodeRuntime.InitializeEntrySpotAsync().ConfigureAwait(false);
@@ -93,6 +94,54 @@ internal sealed class ZLinkSpotNodeInitializer(
         {
             _ = nodeRuntime.ConnectPubSubAsync(endpoint, CancellationToken.None);
         }
+    }
+
+    private void AttachAcceptedSpotRouteChannels(
+        ZLinkFrameworkRuntimeState state,
+        IZLinkChannelBackendAdapter channelAdapter,
+        ZLinkSpotNodeRegistration spotNodeRegistration,
+        IZLinkBackendSpotNode node)
+    {
+        foreach (var acceptance in spotNodeRegistration.AcceptedSpotRouteChannels.Values)
+        {
+            if (acceptance.ManualConnections.Count > 0)
+            {
+                foreach (var endpoint in acceptance.ManualConnections)
+                {
+                    node.ConnectRouterChannelPeer(acceptance.ChannelName, endpoint);
+                }
+
+                continue;
+            }
+
+            var discovery = ZLinkBackendDiscoveryFactory.Create(
+                channelAdapter,
+                state.Context,
+                acceptance.ChannelName,
+                ResolveSpotRouteChannelAutoConnectType(acceptance.ChannelName),
+                registration.Discovery?.Endpoints ?? []);
+            node.AttachSpotRouteChannelDiscovery(acceptance.ChannelName, discovery);
+            state.SpotDiscoveries.Add(
+                $"{spotNodeRegistration.SpotNodeName}.route.{acceptance.ChannelName}.discovery",
+                discovery);
+        }
+    }
+
+    private ZLinkAutoConnectType ResolveSpotRouteChannelAutoConnectType(string channelName)
+    {
+        if (registration.RouteChannels.ContainsKey(channelName))
+        {
+            return ZLinkAutoConnectType.RouteMesh;
+        }
+
+        if (registration.Channels.TryGetValue(channelName, out var channel)
+            && channel.AutoConnectType == ZLinkAutoConnectType.ClientServer)
+        {
+            return ZLinkAutoConnectType.ClientServer;
+        }
+
+        throw new ZLinkConfigurationException(
+            $"Accepted SPOT route channel '{channelName}' is not router-capable.");
     }
 
     private static void InitializePublisherBundles(

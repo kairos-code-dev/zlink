@@ -216,6 +216,11 @@ DEALER-to-ROUTER channel은 Discovery 생성 시 `ZLINK_AUTO_CONNECT_CLIENT_SERV
 - Actor active route 조회에는 `zlink_discovery_resolve_actor()`를 사용합니다.
   이 조회는 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가 켜진 Actor owner
   `SpotNode`에서 bind가 성공한 뒤에만 성공할 수 있습니다.
+- framework adapter 처럼 route key/value 를 직접 관리해야 하는 계층은
+  `zlink_discovery_bind_route()`, `zlink_discovery_unbind_route()`,
+  `zlink_discovery_resolve_route()`를 사용합니다. 이 API 는 Registry row 를
+  임의 key-value 저장소처럼 노출하는 것이 아니라 현재 Discovery service
+  registration 이 소유한 owner-bound route 를 다룹니다.
 - 전역 요약 상태는 registry topology snapshot/query API로 조회합니다.
 - Discovery는 `zlink_set_option(discovery, ZLINK_OPT_*, ...)`을 지원하며,
   내부 관리 소켓 세트 전체에 같은 값이 퍼져 적용됩니다.
@@ -274,6 +279,25 @@ typedef enum zlink_service_role_t
 SPOT은 고정 역할을 가집니다. 소켓 패밀리 서비스는 attach된 소켓 타입에서 role을
 얻습니다. 자동 연결은 Discovery 생성 시 정한 `zlink_auto_connect_type_t` 계약을
 따릅니다.
+
+### route kind
+
+```c
+typedef uint32_t zlink_route_kind_t;
+
+#define ZLINK_ROUTE_KIND_INVALID       0u
+#define ZLINK_ROUTE_KIND_ACTOR         1u
+#define ZLINK_ROUTE_KIND_SPOT_NAME     2u
+#define ZLINK_ROUTE_KIND_ACTOR_SESSION 3u
+```
+
+| 상수 | 설명 |
+|------|------|
+| `ZLINK_ROUTE_KIND_ACTOR` | actor active route sync 가 사용하는 actor route |
+| `ZLINK_ROUTE_KIND_SPOT_NAME` | framework adapter 가 Spot name 을 Spot RID 로 찾기 위한 route |
+| `ZLINK_ROUTE_KIND_ACTOR_SESSION` | framework adapter 가 actor-session binding 을 찾기 위한 route |
+
+`ZLINK_ROUTE_KIND_INVALID`는 bind, unbind, resolve 에 사용할 수 없습니다.
 
 ## 함수
 
@@ -374,6 +398,70 @@ errno 는 `zlink_errno()`에서 조회할 수 있습니다.
 있습니다. 일반 조회 API처럼 다른 Discovery 작업과 함께 호출할 수 있습니다.
 
 **참고:** `zlink_router_send_spot`, `zlink_router_request_spot`
+
+---
+
+### zlink_discovery_bind_route
+
+현재 Discovery service registration 이 소유하는 route row 를 Registry 에 등록합니다.
+
+```c
+zlink_config_result_t zlink_discovery_bind_route (
+  void *discovery,
+  zlink_route_kind_t kind,
+  const void *key,
+  size_t key_size,
+  const void *value,
+  size_t value_size);
+```
+
+route 는 `kind + key` 로 식별되고, `value` 는 호출 계층이 해석하는 byte payload 입니다.
+Registry 는 payload 를 해석하지 않습니다. owner 는 이 Discovery handle 에 attach 되어
+Registry 에 등록된 service participant 입니다. owner registration 이 사라지거나 새
+generation 으로 교체되면 그 owner 가 등록한 route row 도 정리됩니다.
+
+**반환값:** 성공 시 `ZLINK_CONFIG_OK` 를 반환합니다. invalid kind, key 크기 초과,
+Registry 연결 오류, live owner registration 부재는 실패할 수 있습니다.
+
+---
+
+### zlink_discovery_unbind_route
+
+현재 Discovery service registration 이 소유한 route row 를 제거합니다.
+
+```c
+zlink_config_result_t zlink_discovery_unbind_route (
+  void *discovery,
+  zlink_route_kind_t kind,
+  const void *key,
+  size_t key_size);
+```
+
+unbind 는 같은 owner generation 이 claim 한 row 에만 적용됩니다. 오래된 owner generation
+또는 다른 owner 가 같은 `kind + key` 로 만든 route 를 제거하지 않습니다.
+
+---
+
+### zlink_discovery_resolve_route
+
+Registry 가 materialize 한 현재 route winner 를 조회합니다.
+
+```c
+zlink_config_result_t zlink_discovery_resolve_route (
+  void *discovery,
+  zlink_route_kind_t kind,
+  const void *key,
+  size_t key_size,
+  zlink_routing_id_t *owner_rid_out,
+  zlink_msg_t *value_out);
+```
+
+성공하면 `owner_rid_out`에는 route owner 의 routing id 가, `value_out`에는 route value 가
+채워집니다. 호출자는 `value_out`을 다 쓴 뒤 `zlink_msg_close()`로 닫아야 합니다.
+
+route 를 찾지 못하면 실패하고 errno 로 원인을 조회할 수 있습니다. payload 형식은 core
+계약이 아니므로, 상위 framework adapter 는 자신이 정한 versioned payload 를 decode 한 뒤
+맞지 않는 row 를 not found 로 처리할 수 있습니다.
 
 ---
 

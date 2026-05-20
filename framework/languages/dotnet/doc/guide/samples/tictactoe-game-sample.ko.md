@@ -119,6 +119,12 @@ session actor dispatch 샘플의 DTO 는
 `mesh.UseDiscovery(...)` 를 호출해 같은 registry 에 붙는다. 샘플 코드에는
 `UseManualConnections(...)` 를 두지 않는다.
 
+Registry 기반 route 도 framework 기본 구현을 사용한다. Play 서버와 Session 서버는
+`UseRegistryActorRoutes("tictactoe")`, `UseRegistrySpotRoutes("tictactoe")`,
+`UseRegistryActorSessionBindings("tictactoe")` 로 actor route, Spot route,
+actor-session binding 을 켠다. 샘플은 별도 파일 metadata store 나 route publisher 를
+구현하지 않는다.
+
 핵심 계약은 다음과 같다.
 
 - `AuthenticateReq.ActorId` 가 인증 요청의 actor identity 역할을 한다.
@@ -150,6 +156,8 @@ session actor dispatch 샘플의 DTO 는
 - 샘플 spec과 코드 모두에서 actor 식별용 public field는 `ActorId`만 사용한다.
 - session actor dispatch 샘플은 수동 연결을 사용하지 않고, discovery 기반 자동
   연결만 사용한다.
+- session actor dispatch 샘플은 Registry 기반 route/session 기본 구현을 사용하고,
+  자체 metadata store 를 두지 않는다.
 - session actor dispatch 샘플은 Play 서버에 game room SPOT을 만들고, scenario
   단계에서 생성된 `MatchId`가 실제 SPOT room으로 존재하는지 확인한다.
 - direct 샘플의 수동 연결 설명은 direct 샘플 범위 안으로만 한정한다.
@@ -171,6 +179,7 @@ framework 표면만 사용하는지 확인한다. 샘플을 수정할 때는 다
 | `SpotIntegrationTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot[^entry-spot]과 room Spot actor handler가 각각 정상 동작한다. |
 | `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | match room으로 이동한 뒤에는 이전 room으로 stale dispatch가 발생하지 않는다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | 게임 클라이언트 역할의 connector request/reply 계약이 그대로 유지된다. |
+| `SampleRegressionTests.TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | session gateway 샘플이 sample-only registry metadata store 없이 Registry 기본 API 를 사용한다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^stream]: `STREAM` 은 클라이언트와 서버 사이에 지속 연결을 유지하면서 framework Header 기반 packet 을 주고받는 세션형 통신 추상이다.

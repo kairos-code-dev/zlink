@@ -943,23 +943,28 @@ route record마다 TTL을 두지 않고, 그 route를 등록한 provider registr
 
 ### kind 값
 
-`kind`는 공개 enum이 아니다. zlink core는 어떤 값이 Actor, Session, Framework
-route인지 알지 않는다. Framework도 core 관점에서는 사용자이므로 core에 Framework용
-예약 값을 두지 않는다.
+`kind`는 public C API 에서 `zlink_route_kind_t`로 노출한다. core는 route value의
+payload 의미를 해석하지 않지만, core/framework가 함께 쓰는 route identity 충돌을 막기
+위해 기본 route kind 값은 공개 상수로 예약한다.
 
 ```c
 typedef uint32_t zlink_route_kind_t;
 
-#define ZLINK_ROUTE_KIND_INVALID 0u
+#define ZLINK_ROUTE_KIND_INVALID       0u
+#define ZLINK_ROUTE_KIND_ACTOR         1u
+#define ZLINK_ROUTE_KIND_SPOT_NAME     2u
+#define ZLINK_ROUTE_KIND_ACTOR_SESSION 3u
 ```
 
 계약은 다음과 같다.
 
 - `0`은 invalid 값이다.
-- `1`부터 `UINT32_MAX`까지는 모두 사용자 정의 값이다.
-- zlink core는 `kind`의 의미를 해석하지 않는다.
+- `ZLINK_ROUTE_KIND_ACTOR`는 actor active route sync 가 사용한다.
+- `ZLINK_ROUTE_KIND_SPOT_NAME`은 framework Spot name directory 가 사용한다.
+- `ZLINK_ROUTE_KIND_ACTOR_SESSION`은 framework actor-session binding 이 사용한다.
+- core는 route value payload 의미를 해석하지 않는다.
 - 같은 `channel_name` 안에서 `kind + key`가 route identity가 된다.
-- kind 충돌을 피하는 책임은 같은 channel을 공유하는 응용 또는 Framework에 있다.
+- 새 public route kind 를 추가할 때는 공개 header, binding, spec 을 함께 갱신한다.
 
 ### 크기 제한
 
@@ -1016,7 +1021,10 @@ zlink_config_result_t zlink_discovery_member_peer_metadata(
 ```c
 typedef uint32_t zlink_route_kind_t;
 
-#define ZLINK_ROUTE_KIND_INVALID 0u
+#define ZLINK_ROUTE_KIND_INVALID       0u
+#define ZLINK_ROUTE_KIND_ACTOR         1u
+#define ZLINK_ROUTE_KIND_SPOT_NAME     2u
+#define ZLINK_ROUTE_KIND_ACTOR_SESSION 3u
 
 zlink_config_result_t zlink_discovery_bind_route(
   void *discovery,
@@ -1041,8 +1049,8 @@ zlink_config_result_t zlink_discovery_resolve_route(
   zlink_msg_t *value_out);
 ```
 
-`value_out == NULL`이면 value는 반환하지 않는다. 호출자가 owner provider routing id만
-필요한 경우 이 형태를 사용한다.
+성공 시 `value_out`은 bind 시 저장한 value frame 으로 초기화된다. 호출자는 사용 후
+`zlink_msg_close()`로 닫아야 한다.
 
 이 세 API는 Discovery handle의 `channel_name`을 route namespace로 사용한다. 별도
 `channel_name` 인자는 받지 않는다. 다른 channel의 route를 조회하려면 그 channel을

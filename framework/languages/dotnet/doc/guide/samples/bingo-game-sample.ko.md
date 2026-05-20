@@ -37,6 +37,12 @@
 | `BingoEntrySpot` | actor 가 특정 room 에 들어가기 전 머무는 lobby 역할을 한다. |
 | `BingoRoomSpot` | 매칭된 한 room 의 참가자, host, 게임 상태, timer, 승리 판정을 소유한다. |
 
+서버 사이의 route 와 session binding 은 Registry 기반 framework 기본 구현을 사용한다.
+샘플 서버는 `UseRegistryActorRoutes("bingo")`, `UseRegistrySpotRoutes("bingo")`,
+`UseRegistryActorSessionBindings("bingo")` 를 등록한다. Bingo 샘플은 Registry 를
+일반 파일 metadata store 처럼 직접 구현하지 않고, room 배정과 게임 상태 같은 domain
+logic 만 샘플 코드에 남긴다.
+
 direct 샘플은 첫 범위에서 제외한다. session 과 spot 을 한 인스턴스에 둘 때는
 웹 서버나 API 서버가 lobby 역할을 맡기 쉬워 Entry Spot 의 필요성이 잘 드러나지
 않는다. 이 샘플은 Session 서버, API 서버, Play 서버를 분리해 Entry Spot 이
@@ -310,6 +316,8 @@ matching 흐름은 다음과 같다.
   를 사용하지 않는다.
 - client 로 가는 push 는 actor session binding 을 통해 전달된다.
 - 샘플의 public DTO 에서 player identity 필드는 `ActorId` 로 통일한다.
+- 샘플은 Registry 기반 route/session 기본 구현을 사용하고, 자체 metadata store 를
+  두지 않는다.
 
 ## 11. 회귀 테스트
 
@@ -325,5 +333,6 @@ matching 흐름은 다음과 같다.
 | `SpotIntegrationTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot actor handler 와 user Spot actor handler 가 각각 등록되어 dispatch 된다. |
 | `SpotIntegrationTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | room timer 기반 진행과 spot lifecycle 정리가 framework timer 계약과 맞는다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | client connector request/reply correlation 이 유지된다. |
+| `SampleRegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo 샘플이 sample-only registry metadata store 없이 Registry 기본 API 를 사용한다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

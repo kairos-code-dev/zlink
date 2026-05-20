@@ -151,6 +151,14 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | session actor reconnect 재사용 | `integration-single-process` | 같은 actor id가 새 stream session에서 다시 bind되면 기존 actor 인스턴스와 spot membership을 유지하고, session binding token[^binding-token]만 갱신된다 |
 | session actor binding rollback | `integration-single-process` | actor-session binding 갱신이 실패하면 helper도 실패하고, local binding table의 같은 token entry도 제거된다 |
 | stale session binding token guard | `integration-single-process` | 이전 stream에서 늦게 도착한 unbind나 stale `SessionProxy` 메시지가 새 binding을 지우거나 사용하지 못한다 |
+| Registry actor route 기본 resolver 등록 | `unit` | `UseRegistryActorRoutes(...)` 가 custom resolver 없이 기본 `IZLinkActorPlayRouteResolver` 를 등록한다 |
+| Registry Spot route 기본 resolver 등록 | `unit` | `UseRegistrySpotRoutes(...)` 가 custom resolver 없이 기본 `IZLinkSpotRouteResolver` 와 Spot name directory 를 등록한다 |
+| Registry actor-session binding 기본 store 등록 | `unit` | `UseRegistryActorSessionBindings(...)` 가 기본 `IZLinkActorSessionBindingStore`, session proxy, actor session client 를 등록한다 |
+| Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver/store 를 함께 등록하면 startup validation 오류가 난다 |
+| Registry route 기본 구현 discovery validation | `unit` | `UseDiscovery(...)` 없이 Registry 기본 route/store 를 켜면 startup validation 오류가 난다 |
+| Registry Spot name route | `integration-single-process` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다 |
+| Registry actor-session stale unbind guard | `integration-single-process` | Registry actor-session binding 기본 store 가 새 binding 이후 도착한 이전 binding unbind 를 무시한다 |
+| sample-only registry metadata store 제거 | `unit` | Bingo 와 TicTacToe session gateway 샘플이 자체 metadata store 없이 Registry 기본 API 를 사용한다 |
 | stale session proxy send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
 | session proxy wire multipart | `integration-single-process` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 route header, proxy metadata, payload를 별도 part로 유지하면서, client STREAM에는 단일 stream packet으로 쓴다 |
 | session proxy disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |

@@ -776,3 +776,30 @@ Discovery 인스턴스가 알고 있는 모든 멤버 피어 항목을 `entries`
 SPOT owner와 Actor active route 조회는 Registry가 아니라 Discovery 공개 API로
 제공합니다. `zlink_discovery_resolve_spot()`과
 `zlink_discovery_resolve_actor()` 계약은 Discovery spec을 참고합니다.
+
+## Owner-Bound Route Row
+
+Registry 는 service/provider row 뿐 아니라 owner-bound route row 도 materialize 합니다.
+이 row 는 일반 key-value 저장소가 아닙니다. route 의 관찰값은 다음 identity 로 구분됩니다.
+
+- route kind
+- route key
+- owner registration id
+- owner registration generation
+- advertising registry
+
+Discovery 가 `zlink_discovery_bind_route()`를 호출하면 Registry 는 현재 Discovery service
+registration 을 owner 로 삼아 route observation 을 저장합니다. 같은 `kind + key`에 여러
+owner observation 이 있으면 Registry 는 live owner generation 만 후보로 두고 현재 winner 를
+materialize 합니다.
+
+owner registration 이 heartbeat timeout, explicit unregister, 새 generation 등록 등으로
+사라지면 그 owner 가 claim 한 route row 도 함께 정리됩니다. 따라서 framework adapter 는
+Spot name route 나 actor-session binding 을 Registry 에 저장할 수 있지만, 이를 별도
+metadata table 처럼 직접 관리한다고 설명하면 안 됩니다. route row 의 생존 기간은 owner
+service registration 과 묶여 있습니다.
+
+route 조회와 bind/unbind 의 public surface 는 Discovery spec 의
+`zlink_discovery_bind_route()`, `zlink_discovery_unbind_route()`,
+`zlink_discovery_resolve_route()`를 따릅니다. Registry 문서는 row 의 저장과 cleanup 의미를
+설명하고, application 이 Registry 내부 row 형식에 직접 의존하는 계약은 만들지 않습니다.

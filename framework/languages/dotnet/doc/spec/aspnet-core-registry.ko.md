@@ -474,6 +474,41 @@ app.MapGet("/admin/topology", async (IZLinkRegistryQueryClient query) =>
 app.Run();
 ```
 
+### 8.4 Registry 기반 route 기본 구현 사용
+
+Registry 를 사용하는 actor/Spot/session 샘플은 별도 파일 metadata store 를 만들지 않고
+framework 의 Registry 기반 기본 구현을 사용한다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.UseDiscovery(discovery =>
+    {
+        discovery.Add("tcp://127.0.0.1:5551");
+    });
+
+    options.AddRouteMeshChannel("play", channel =>
+    {
+        channel.Bind("tcp://0.0.0.0:7201");
+    });
+
+    options.UseRegistryActorRoutes("game");
+    options.UseRegistrySpotRoutes("game");
+    options.UseRegistryActorSessionBindings("game");
+});
+```
+
+`UseRegistryActorRoutes(...)` 는 actor id 를 play node route 로 바꾸는 기본 resolver 를
+등록한다. `UseRegistrySpotRoutes(...)` 는 Spot owner 조회와 Spot name directory 를 함께
+등록한다. `UseRegistryActorSessionBindings(...)` 는 actor id 와 현재 client session route 의
+binding 을 Registry owner-bound route 로 저장한다.
+
+이 API 들은 Registry 를 일반 key-value 저장소처럼 노출하지 않는다. framework 는
+Discovery 가 제공하는 owner-bound route/topology 를 사용하고, application 은 route key 나
+payload 형식을 알 필요가 없다. Redis 나 database 같은 별도 저장소가 필요한 경우에만
+`AddActorPlayRouteResolver<T>()`, `AddSpotRouteResolver<T>()`,
+`AddActorSessionBindingStore<T>()` 로 custom 구현을 등록한다.
+
 ## 9. 결정된 기준
 
 이 절은 Registry 표면이 따르는 고정된 결정 사항을 모아둔 것이다.
@@ -487,6 +522,9 @@ app.Run();
 - embedded 구성이라 해도 `UseDiscovery(...)` 가 같은 프로세스의 Registry 를
   자동으로 찾아 주지는 않는다. Discovery endpoint 는 문서와 설정에 분명히
   드러나도록 명시적으로 적는다.
+- Registry 기반 route 기본 구현은 `UseDiscovery(...)` 와 별개로 명시적으로 켠다.
+  `UseDiscovery(...)` 만으로 actor route resolver, Spot route resolver,
+  actor-session binding store 가 자동 등록되지는 않는다.
 - `IZLinkRegistryQuery` 와 `IZLinkRegistryQueryClient` 는 하나로 묶지 않는다.
 - topology 변경 알림은 `IObservable` 보다 framework 의 일반 handler / callback
   표면 위로 올리는 쪽을 기본 방향으로 본다.

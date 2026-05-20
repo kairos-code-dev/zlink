@@ -92,11 +92,13 @@ winner 를 만든다. owner 가 사라지거나 registration generation 이 바�
 claim 한 route 도 함께 정리된다.
 
 따라서 `.NET` framework 기본 구현은 "Registry 에 문자열 key 를 넣고 지운다"는 모양으로
-설계하지 않는다. framework 가 의존할 수 있는 것은 다음 두 종류다.
+설계하지 않는다. framework 가 의존할 수 있는 것은 다음 세 종류다.
 
 - native discovery 가 이미 제공하는 owner-bound route/topology 조회
-- actor-session binding 처럼 아직 public API 가 부족한 경우, 새 owner-bound route
-  contract 를 core/binding 에 먼저 추가한 뒤 그 위에 올리는 기본 구현
+- core 내부 route protocol 이 이미 갖고 있지만 public C/binding API 로는 아직 노출하지
+  않는 bind/unbind/resolve 기능
+- Spot name route, actor-session binding 처럼 새 route kind 가 필요한 경우, route kind 와
+  owner identity 계약을 core/binding 에 먼저 추가한 뒤 그 위에 올리는 기본 구현
 
 샘플은 이 차이를 숨기면 안 된다. 사용자가 샘플을 그대로 가져가도 실제 서비스의 기본
 경로와 같은 설계를 쓰게 해야 한다.
@@ -176,6 +178,13 @@ binding capability 가 아직 없는데도 성공한 것처럼 동작하면 안 
 binding 의 `ActorRouteSyncEnabled`, `SpotOwnerSyncEnabled`, `ResolveActor(...)`,
 `ResolveSpot(...)` 이 필요하다.
 
+core 도 주의가 필요하다. 현재 route kind 는 public header 가 아니라
+`core/src/runtime/services/discovery/route_limits_internal.hpp` 의 내부 상수로만 존재하고,
+공개 C API 는 `zlink_discovery_resolve_actor(...)` 와
+`zlink_discovery_resolve_spot(...)` 만 제공한다. 따라서 framework 전용 route 를 추가할 때
+내부 상수만 늘리는 것으로 끝내면 안 된다. 정식 구현은 public C 계약, .NET binding 계약,
+framework 내부 wrapper 를 같은 순서로 열어야 한다.
+
 구현은 다음 원칙을 따른다.
 
 - framework 는 binding public API 를 직접 감싸는 backend wrapper 메서드를 추가한다.
@@ -218,7 +227,66 @@ bootstrap endpoint 에서 pub/uplink endpoint 를 배우므로, 기본 구현도
 의 endpoint 목록을 따른다. 별도 endpoint override 는 실제 구현에서 필요한 근거가 확인될
 때만 추가한다.
 
-### 3.7 Spot name directory 를 기본 구현에 포함한다
+### 3.7 값 형식은 versioned framework payload 로 둔다
+
+framework 가 새 route kind 를 추가할 때 route value 는 versioned payload 로 인코딩한다.
+Registry 는 byte value 를 저장할 뿐이고 application 은 이 payload 를 직접 읽거나 쓰지
+않는다.
+
+초기 payload 는 다음 정보를 담는다.
+
+| route kind | payload |
+|------------|---------|
+| Spot name route | format version, namespace, spot name, spot RID |
+| actor-session binding route | format version, namespace, actor id, session router id, session routing id, binding token |
+
+format version 이 맞지 않거나 payload decode 에 실패하면 route resolver/store 는 해당 row 를
+사용하지 않고 route not found 로 처리한다. 잘못된 payload 를 application 예외로 그대로
+노출하지 않는다. 이 규칙은 Registry 내부 형식 변경이 application 코드로 새어 나가지 않게
+하기 위한 것이다.
+
+namespace 는 비어 있으면 안 되고, 앞뒤 공백을 허용하지 않는다. namespace 는 route identity
+의 일부이므로 runtime 중 변경하지 않는다.
+
+### 3.8 route resolve 오류 의미를 고정한다
+
+Registry/discovery 는 heartbeat, flooding, owner cleanup 주기에 따라 잠시 오래된 결과나
+빈 결과를 줄 수 있다. 기본 구현은 이를 강한 일관성으로 포장하지 않는다.
+
+오류 의미는 다음과 같이 둔다.
+
+| 상황 | framework 오류 |
+|------|----------------|
+| actor route 를 찾지 못함 | `ZLinkFrameworkErrorKind.ActorRouteNotFound` |
+| Spot name directory 에서 Spot RID 를 찾지 못함 | `ZLinkFrameworkErrorKind.SpotRouteNotFound` 를 추가해서 사용한다 |
+| Spot owner RID 를 찾지 못함 | `ZLinkFrameworkErrorKind.SpotRouteNotFound` 를 추가해서 사용한다 |
+| route payload decode 실패 | route not found 로 처리하고 runtime event 또는 debug log 로 남긴다 |
+| Registry/discovery transport 오류 | 원인을 보존하는 framework 예외로 감싼다 |
+
+호출자가 재시도 정책을 선택할 수 있도록 not found 와 transport 오류를 구분한다. 기본
+resolver/store 는 무한 재시도를 하지 않는다.
+
+현재 코드 일부는 Spot route 실패를 `ActorRouteNotFound` 로 감싼다. Registry 기반 Spot
+route 기본 구현을 추가할 때는 이 오류 종류를 분리해 정식 spec 에 반영한다.
+
+### 3.9 DI lifetime 과 노출 규칙
+
+Registry 기본 resolver/store 는 framework runtime 과 같은 host scope 에서 singleton 으로
+등록한다. discovery handle 과 route cache 는 host lifecycle 에 묶이며 request scope 에
+묶지 않는다.
+
+DI 노출 규칙은 기존 조건부 노출 정책을 따른다.
+
+- `UseRegistryActorRoutes(...)` 는 `IZLinkActorPlayRouteResolver` 를 등록한다.
+- `UseRegistrySpotRoutes(...)` 는 `IZLinkSpotRouteResolver` 를 등록한다.
+- `UseRegistryActorSessionBindings(...)` 는 `IZLinkActorSessionBindingStore` 를 등록한다.
+- `IZLinkSessionProxyFactory` 와 `IZLinkActorSessionClient` 는 actor-session binding store 와
+  route mesh channel 이 있을 때만 노출한다.
+
+custom resolver/store 와 Registry 기본 구현을 함께 등록하면 startup validation 오류다.
+`TryAdd...` 로 조용히 무시하지 않는다.
+
+### 3.10 Spot name directory 를 기본 구현에 포함한다
 
 현재 `IZLinkSpotRouteResolver` 는 `ResolveSpotRouteAsync(string, ...)` 과
 `ResolveSpotRouteAsync(RoutingId, ...)` 를 모두 요구한다. 따라서 RID overload 만 동작하고
@@ -238,7 +306,11 @@ Spot name directory 는 framework 관리 상태다. native `ResolveSpot(spotRid)
 `IZLinkSpotManager.CreateAsync(string)` 은 native Spot RID 를 생성하므로, 이름에서 RID 를
 추론하는 규칙은 기존 생성 흐름과 맞지 않는다.
 
-### 3.8 stale unbind guard 는 owner-bound route 의미로 해결한다
+Spot name route 는 actor route 와 다른 route kind 를 사용한다. actor route kind 에
+문자열 prefix 를 섞어 재사용하지 않는다. route kind 가 분리되어야 actor id 와 spot name 이
+같아도 서로의 route 를 덮어쓰지 않고, 문서와 테스트가 충돌 조건을 명확히 검증할 수 있다.
+
+### 3.11 stale unbind guard 는 owner-bound route 의미로 해결한다
 
 actor-session binding 은 reconnect 와 disconnect 순서가 엇갈릴 수 있다.
 이전 stream 의 늦은 disconnect 가 새 stream 의 binding 을 지우면 안 된다.
@@ -252,7 +324,18 @@ generation 이 만든 binding 을 지우면 안 된다.
 framework 안에서 파일 store 나 별도 metadata store 로 우회하지 않는다. 먼저
 core/binding public API 를 추가한다.
 
-### 3.9 route publish 는 샘플 코드가 아니라 runtime 흐름에 붙인다
+현재 STREAM node 는 discovery 에 service owner 로 등록되지 않는다. 그러므로
+actor-session binding route 의 owner identity 를 stream/session 으로 삼으려면 둘 중
+하나를 먼저 구현해야 한다.
+
+- STREAM node 를 discovery owned service 로 등록하고 그 registration id 를 owner identity 로
+  사용한다.
+- 또는 route bind API 가 framework 에서 명시 owner identity 를 전달할 수 있게 한다.
+
+이 owner identity 없이 session route 를 Registry 에 쓰면 owner cleanup 이 동작하지 않아
+끊어진 session 의 binding 이 남을 수 있다. 이 상태는 기본 구현으로 인정하지 않는다.
+
+### 3.12 route publish 는 샘플 코드가 아니라 runtime 흐름에 붙인다
 
 play 서버가 actor 를 만들거나 actor 가 Spot 에 join 할 때 route 상태가 Registry 에
 갱신되어야 한다. 이 작업은 샘플 handler 가 직접 `RegistryPlayRoutePublisher` 를 호출하는
@@ -334,6 +417,14 @@ Bingo 와 TicTacToe session gateway 샘플은 구현 후 다음 방향으로 바
 - `Server/Infrastructure/RegistryPlayRouteStore.cs`
 - `Server/Infrastructure/RegistryPlayRoutePublisher.cs`
 - 샘플 runtime 의 metadata directory 설정
+
+현재 checkout 의 샘플 경로는 다음과 같다.
+
+- `framework/languages/dotnet/samples/Bingo/`
+- `framework/languages/dotnet/samples/TicTacToe.SessionGateway/`
+
+두 샘플 모두 아직 위 임시 store 를 포함한다. 이 draft 의 구현이 완료됐다고 판단하려면
+두 경로에서 위 파일과 `RegistryPlayRoutePublisher` 호출이 사라져야 한다.
 
 샘플에 남길 것은 domain logic 이다. 예를 들어 Bingo 에서는 room, player actor,
 match flow, notification 만 남는다.
@@ -440,20 +531,24 @@ remote channel client 는 이미 `EnableClient()` 와 discovery 기반 연결로
    확인한다.
 2. 부족한 wrapper/API 가 있으면 binding public API 를 직접 사용하도록 framework 내부
    abstraction 을 추가한다. 리플렉션이나 internal 접근은 사용하지 않는다.
-3. Spot name directory 를 위한 owner-bound route kind 와 public bind/unbind/resolve API
+3. route kind 를 public C/binding 계약으로 승격하거나 새 public route API 를 추가한다.
+   내부 `route_limits_internal.hpp` 상수만 늘리는 방식은 사용하지 않는다.
+4. Spot name directory 를 위한 owner-bound route kind 와 public bind/unbind/resolve API
    를 core/binding 에 추가한다. 이 API 가 없으면 `UseRegistrySpotRoutes(...)` 를
    공개하지 않는다.
-4. actor route resolver 와 Spot route resolver 기본 구현을 추가한다. Spot route resolver 는
+5. actor route resolver 와 Spot route resolver 기본 구현을 추가한다. Spot route resolver 는
    RID overload 와 string overload 를 모두 구현한다.
-5. `UseRegistryActorRoutes(...)`, `UseRegistrySpotRoutes(...)` registration
+6. `UseRegistryActorRoutes(...)`, `UseRegistrySpotRoutes(...)` registration
    API 와 중복 등록 validation 을 추가한다.
-6. actor-session binding 을 Registry 로 옮기려면 core/binding 에 owner-bound
+7. actor-session binding 을 Registry 로 옮기려면 core/binding 에 owner-bound
    actor-session route kind 와 public bind/unbind/resolve API 를 먼저 설계한다.
-7. 새 session route API 가 준비된 뒤 `UseRegistryActorSessionBindings(...)` 를 구현한다.
-8. Bingo 샘플을 기본 resolver 로 바꾼다. session binding 은 구현된 capability 만 사용한다.
-9. TicTacToe session gateway 샘플도 같은 구조로 맞춘다.
-10. 회귀 테스트를 추가하고, 샘플에 sample-only metadata store 가 남지 않았는지 검사한다.
-11. 정식 spec, guide, internals, 공통 문서를 §8 계획대로 갱신한다.
+8. STREAM node owner identity 를 discovery registration 으로 만들지, 명시 owner route API 로
+   만들지 결정하고 구현한다.
+9. 새 session route API 가 준비된 뒤 `UseRegistryActorSessionBindings(...)` 를 구현한다.
+10. Bingo 샘플을 기본 resolver 로 바꾼다. session binding 은 구현된 capability 만 사용한다.
+11. TicTacToe session gateway 샘플도 같은 구조로 맞춘다.
+12. 회귀 테스트를 추가하고, 샘플에 sample-only metadata store 가 남지 않았는지 검사한다.
+13. 정식 spec, guide, internals, 공통 문서를 §8 계획대로 갱신한다.
 
 ## 10. 구현 규칙
 
@@ -466,8 +561,9 @@ remote channel client 는 이미 `EnableClient()` 와 discovery 기반 연결로
   명시적으로 제거되면 framework runtime 이 name route 를 unbind 한다. owner node 가 죽으면
   Registry owner cleanup 이 name route 를 정리한다.
 - actor-session binding route 의 key 는 `namespace + actor id` 이고 value 는 session
-  router id, session routing id, binding token 을 담는다. owner identity 는 stream/session
-  owner registration 으로 잡아 늦은 unbind 가 새 binding 을 지우지 못하게 한다.
+  router id, session routing id, binding token 을 담는다. owner identity 는 discovery 에
+  등록된 STREAM owner 또는 명시 owner route API 로 잡아 늦은 unbind 가 새 binding 을
+  지우지 못하게 한다.
 - 첫 구현에서는 capability 별 API 인 `UseRegistryActorRoutes(...)`,
   `UseRegistrySpotRoutes(...)`, `UseRegistryActorSessionBindings(...)` 만 정식 후보로 둔다.
   `UseRegistryBackedActorRouting(...)` convenience API 는 세 capability 구현과 테스트가 모두

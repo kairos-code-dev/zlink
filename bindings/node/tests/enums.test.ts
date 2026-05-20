@@ -25,6 +25,7 @@ test('public flag and result enums stay frozen', () => {
   assert.equal(zlink.ServiceKind.SpotPub, 4);
   assert.equal(zlink.SpotRole.Pub, 1);
   assert.equal(zlink.SpotPeerSource.Manual, 1);
+  assert.equal(zlink.SpotPeerKind.RouterChannel, 2);
   assert.equal(zlink.SpotPeerState.Connected, 3);
   assert.equal(zlink.SpotNodeState.Ready, 4);
   assert.equal(zlink.RegistryState.Active, 2);
@@ -43,6 +44,7 @@ test('public flag and result enums stay frozen', () => {
   assert.ok(Object.isFrozen(zlink.ServiceKind));
   assert.ok(Object.isFrozen(zlink.SpotRole));
   assert.ok(Object.isFrozen(zlink.SpotPeerSource));
+  assert.ok(Object.isFrozen(zlink.SpotPeerKind));
   assert.ok(Object.isFrozen(zlink.SpotPeerState));
   assert.ok(Object.isFrozen(zlink.SpotNodeState));
   assert.ok(Object.isFrozen(zlink.RegistryState));

@@ -387,6 +387,14 @@ public class SocketContractTest {
             RoutingId.class));
         assertTrue(hasPublicMethod(SpotNode.class, "getOrCreateSpot",
             RoutingId.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "connectRouterChannelPeer",
+            String.class, String.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "disconnectRouterChannelPeer",
+            String.class, String.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "disconnectRouterChannelPeerRid",
+            String.class, RoutingId.class));
+        assertTrue(hasPublicMethod(SpotNode.class,
+            "attachSpotRouteChannelDiscovery", String.class, Discovery.class));
         assertFalse(hasPublicMethod(SpotNode.class, "socketSnapshots"));
         assertFalse(hasPublicMethod(SpotNode.class, "socketSnapshots",
             systems.zlink.contracts.service.spot.SpotNodeSocketSnapshotFilter.class));

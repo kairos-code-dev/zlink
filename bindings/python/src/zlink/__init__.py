@@ -128,6 +128,7 @@ __all__ = [
     "SpotNodeSocketOwner",
     "SpotNodeOption",
     "SpotNodeState",
+    "SpotPeerKind",
     "SpotPeerSource",
     "SpotPeerState",
     "SpotDispatchEvent",

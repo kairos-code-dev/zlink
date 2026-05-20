@@ -347,6 +347,11 @@ class SpotPeerSource(IntEnum):
     MIXED = 3
 
 
+class SpotPeerKind(IntEnum):
+    SPOT_MESH = 1
+    ROUTER_CHANNEL = 2
+
+
 class SpotPeerState(IntEnum):
     CONFIGURED = 1
     CONNECTING = 2

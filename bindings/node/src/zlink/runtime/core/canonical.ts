@@ -81,6 +81,7 @@ import {
   ServiceKind,
   SpotRole,
   SpotPeerSource,
+  SpotPeerKind,
   SpotPeerState,
   SpotNodeState,
   SpotNodeMode,
@@ -100,6 +101,7 @@ import {
   type ServiceKindValue,
   type SpotRoleValue,
   type SpotPeerSourceValue,
+  type SpotPeerKindValue,
   type SpotPeerStateValue,
   type SpotNodeStateValue,
   type SpotNodeSocketOwnerValue,
@@ -178,6 +180,7 @@ export {
   ServiceKind,
   SpotRole,
   SpotPeerSource,
+  SpotPeerKind,
   SpotPeerState,
   SpotNodeState,
   SpotNodeMode,
@@ -194,6 +197,7 @@ export type {
   ServiceKindValue,
   SpotRoleValue,
   SpotPeerSourceValue,
+  SpotPeerKindValue,
   SpotPeerStateValue,
   SpotNodeStateValue,
   SpotNodeSocketOwnerValue,
@@ -529,6 +533,7 @@ function mapSpotNodePeerEntry(entry: {
   localEndpoint: string;
   peerEndpoint: string;
   source: number;
+  kind: number;
   state: number;
   weight: number;
   connectedSinceMs: number | bigint;
@@ -539,6 +544,7 @@ function mapSpotNodePeerEntry(entry: {
     localEndpoint: entry.localEndpoint,
     peerEndpoint: entry.peerEndpoint,
     source: entry.source as SpotPeerSourceValue,
+    kind: entry.kind as SpotPeerKindValue,
     state: entry.state as SpotPeerStateValue,
     weight: entry.weight,
     connectedSinceMs: BigInt(entry.connectedSinceMs),
@@ -2545,6 +2551,39 @@ export class SpotNode extends NativeHandle {
       );
     });
   }
+  connectRouterChannelPeer(channelName: string, endpoint: string): void {
+    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
+    connectCall('spot node router channel peer connect failed', () => {
+      requireNative().spotNodeConnectRouterChannelPeer(
+        this._native,
+        normalizedChannelName,
+        normalizedEndpoint
+      );
+    });
+  }
+  disconnectRouterChannelPeer(channelName: string, endpoint: string): void {
+    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
+    connectCall('spot node router channel peer disconnect failed', () => {
+      requireNative().spotNodeDisconnectRouterChannelPeer(
+        this._native,
+        normalizedChannelName,
+        normalizedEndpoint
+      );
+    });
+  }
+  disconnectRouterChannelPeerRid(channelName: string, peerRid: RoutingId): void {
+    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedPeerRid = normalizeRoutingId(peerRid);
+    connectCall('spot node router channel peer disconnect by routing id failed', () => {
+      requireNative().spotNodeDisconnectRouterChannelPeerRid(
+        this._native,
+        normalizedChannelName,
+        normalizedPeerRid
+      );
+    });
+  }
   attachChannelDealer(discovery: Discovery, dealer: DealerSocket): void {
     configCall('spot node channel dealer attachment failed', () => {
       requireNative().spotNodeAttachChannelDealer(
@@ -2573,6 +2612,16 @@ export class SpotNode extends NativeHandle {
   attachDiscovery(discovery: Discovery): void {
     configCall('spot node discovery attachment failed', () => {
       requireNative().spotNodeSetDiscovery(this._native, discovery.nativeHandle());
+    });
+  }
+  attachSpotRouteChannelDiscovery(channelName: string, discovery: Discovery): void {
+    const normalizedChannelName = validateCString(channelName, 'channelName');
+    configCall('spot node router channel discovery attachment failed', () => {
+      requireNative().spotNodeAttachRouterChannelDiscovery(
+        this._native,
+        normalizedChannelName,
+        discovery.nativeHandle()
+      );
     });
   }
   setRoutingId(routingId: RoutingId): void {

@@ -140,6 +140,49 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
+    /** Connects this node's routed router to a router-capable channel peer. */
+    public void connectRouterChannelPeer(String channelName, String endpoint) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeConnectRouterChannelPeer(handle,
+              NativeHelpers.toCString(arena, requireChannelName(channelName)),
+              NativeHelpers.toCString(arena, endpoint));
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_spot_node_connect_router_channel_peer");
+            }
+        }
+    }
+
+    /** Disconnects one manually connected router-capable channel peer. */
+    public void disconnectRouterChannelPeer(String channelName,
+                                            String endpoint) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeDisconnectRouterChannelPeer(handle,
+              NativeHelpers.toCString(arena, requireChannelName(channelName)),
+              NativeHelpers.toCString(arena, endpoint));
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_spot_node_disconnect_router_channel_peer");
+            }
+        }
+    }
+
+    /** Disconnects the router-capable channel peer identified by routing id. */
+    public void disconnectRouterChannelPeerRid(String channelName,
+                                               RoutingId peerRid) {
+        Objects.requireNonNull(peerRid, "peerRid");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeRid = nativeRoutingId(arena, peerRid);
+            int rc = Native.spotNodeDisconnectRouterChannelPeerRid(handle,
+              NativeHelpers.toCString(arena, requireChannelName(channelName)),
+              nativeRid);
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_spot_node_disconnect_router_channel_peer_rid");
+            }
+        }
+    }
+
     /** Attaches a fixed-service discovery view to the node. */
     public void attachDiscovery(Discovery discovery) {
         Objects.requireNonNull(discovery, "discovery");
@@ -148,6 +191,21 @@ public final class SpotNode implements AutoCloseable {
         if (rc != 0) {
             throw InternalAccess.zlinkExceptionFromLastError(
               "zlink_spot_node_attach_discovery");
+        }
+    }
+
+    /** Attaches a discovery view for SPOT routes accepted from a channel. */
+    public void attachSpotRouteChannelDiscovery(String channelName,
+                                                Discovery discovery) {
+        Objects.requireNonNull(discovery, "discovery");
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeAttachRouterChannelDiscovery(handle,
+              NativeHelpers.toCString(arena, requireChannelName(channelName)),
+              InternalAccess.discoveryHandle(discovery));
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_spot_node_attach_router_channel_discovery");
+            }
         }
     }
 

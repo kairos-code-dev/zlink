@@ -84,6 +84,13 @@ const (
 	SpotPeerSourceMixed     SpotPeerSource = SpotPeerSource(C.ZLINK_SPOT_PEER_SOURCE_MIXED)
 )
 
+type SpotPeerKind uint32
+
+const (
+	SpotPeerKindSpotMesh      SpotPeerKind = SpotPeerKind(C.ZLINK_SPOT_PEER_KIND_SPOT_MESH)
+	SpotPeerKindRouterChannel SpotPeerKind = SpotPeerKind(C.ZLINK_SPOT_PEER_KIND_ROUTER_CHANNEL)
+)
+
 type SpotPeerState uint32
 
 const (
@@ -156,6 +163,7 @@ type SpotNodePeerEntry struct {
 	LocalEndpoint    string
 	PeerEndpoint     string
 	Source           SpotPeerSource
+	Kind             SpotPeerKind
 	State            SpotPeerState
 	Weight           uint32
 	ConnectedSinceMs uint64
@@ -979,6 +987,7 @@ func spotNodePeerEntryFromC(raw C.zlink_spot_node_peer_entry_t) SpotNodePeerEntr
 		LocalEndpoint:    C.GoString(&raw.local_endpoint[0]),
 		PeerEndpoint:     C.GoString(&raw.peer_endpoint[0]),
 		Source:           SpotPeerSource(raw.source),
+		Kind:             SpotPeerKind(raw.kind),
 		State:            SpotPeerState(raw.state),
 		Weight:           uint32(raw.weight),
 		ConnectedSinceMs: uint64(raw.connected_since_ms),

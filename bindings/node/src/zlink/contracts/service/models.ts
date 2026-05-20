@@ -203,6 +203,8 @@ export const SpotRole = Object.freeze({ Pub: 1, Sub: 2 } as const);
 export type SpotRoleValue = typeof SpotRole[keyof typeof SpotRole];
 export const SpotPeerSource = Object.freeze({ Manual: 1, Discovery: 2, Mixed: 3 } as const);
 export type SpotPeerSourceValue = typeof SpotPeerSource[keyof typeof SpotPeerSource];
+export const SpotPeerKind = Object.freeze({ SpotMesh: 1, RouterChannel: 2 } as const);
+export type SpotPeerKindValue = typeof SpotPeerKind[keyof typeof SpotPeerKind];
 export const SpotPeerState = Object.freeze({ Configured: 1, Connecting: 2, Connected: 3 } as const);
 export type SpotPeerStateValue = typeof SpotPeerState[keyof typeof SpotPeerState];
 export const SpotNodeState = Object.freeze({ Idle: 1, Connecting: 2, PartialReady: 3, Ready: 4, Error: 5 } as const);
@@ -300,6 +302,7 @@ export interface SpotNodePeerEntry {
   readonly localEndpoint: string;
   readonly peerEndpoint: string;
   readonly source: SpotPeerSourceValue;
+  readonly kind: SpotPeerKindValue;
   readonly state: SpotPeerStateValue;
   readonly weight: number;
   readonly connectedSinceMs: bigint;

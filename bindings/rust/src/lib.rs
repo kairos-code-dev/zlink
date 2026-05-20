@@ -78,8 +78,8 @@ pub use service::{
     SpotDispatchSubject, SpotDispatchSubjectKind, SpotNode, SpotNodeActorEntry, SpotNodeMode,
     SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketOwner,
     SpotNodeSocketSnapshotEntry, SpotNodeSocketSnapshotFilter, SpotNodeSpotEntry, SpotNodeState,
-    SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter, SpotPeerSource, SpotPeerState,
-    SpotRole, SpotServiceAttachmentRole, SubjectKind, TopologySource, TopologyState,
+    SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter, SpotPeerKind, SpotPeerSource,
+    SpotPeerState, SpotRole, SpotServiceAttachmentRole, SubjectKind, TopologySource, TopologyState,
 };
 pub use socket::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, SendHandle, StreamSocket, SubSocket,

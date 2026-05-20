@@ -692,6 +692,13 @@ pub enum zlink_spot_peer_source_t {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_spot_peer_kind_t {
+    ZLINK_SPOT_PEER_KIND_SPOT_MESH = 1,
+    ZLINK_SPOT_PEER_KIND_ROUTER_CHANNEL = 2,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum zlink_spot_peer_state_t {
     ZLINK_SPOT_PEER_STATE_CONFIGURED = 1,
     ZLINK_SPOT_PEER_STATE_CONNECTING = 2,
@@ -705,6 +712,7 @@ pub struct zlink_spot_node_peer_entry_t {
     pub local_endpoint: [c_char; 256],
     pub peer_endpoint: [c_char; 256],
     pub source: zlink_spot_peer_source_t,
+    pub kind: zlink_spot_peer_kind_t,
     pub state: zlink_spot_peer_state_t,
     pub weight: u32,
     pub connected_since_ms: u64,
@@ -1381,7 +1389,27 @@ unsafe extern "C" {
         node: *mut c_void,
         target_node_rid: *const zlink_routing_id_t,
     ) -> c_int;
+    pub fn zlink_spot_node_connect_router_channel_peer(
+        node: *mut c_void,
+        channel_name: *const c_char,
+        endpoint: *const c_char,
+    ) -> c_int;
+    pub fn zlink_spot_node_disconnect_router_channel_peer(
+        node: *mut c_void,
+        channel_name: *const c_char,
+        endpoint: *const c_char,
+    ) -> c_int;
+    pub fn zlink_spot_node_disconnect_router_channel_peer_rid(
+        node: *mut c_void,
+        channel_name: *const c_char,
+        peer_rid: *const zlink_routing_id_t,
+    ) -> c_int;
     pub fn zlink_spot_node_attach_discovery(node: *mut c_void, discovery: *mut c_void) -> c_int;
+    pub fn zlink_spot_node_attach_router_channel_discovery(
+        node: *mut c_void,
+        channel_name: *const c_char,
+        discovery: *mut c_void,
+    ) -> c_int;
     pub fn zlink_spot_node_attach_channel_dealer(
         node: *mut c_void,
         discovery: *mut c_void,

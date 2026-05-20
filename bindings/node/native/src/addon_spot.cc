@@ -2921,6 +2921,59 @@ napi_value spot_node_disconnect_peer_rid(napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_node_connect_router_channel_peer(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    std::string channel = get_string(env, argv[1]);
+    std::string ep = get_string(env, argv[2]);
+    int rc = zlink_spot_node_connect_router_channel_peer(node, channel.c_str(), ep.c_str());
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_connect_router_channel_peer failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_node_disconnect_router_channel_peer(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    std::string channel = get_string(env, argv[1]);
+    std::string ep = get_string(env, argv[2]);
+    int rc = zlink_spot_node_disconnect_router_channel_peer(node, channel.c_str(), ep.c_str());
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_disconnect_router_channel_peer failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_node_disconnect_router_channel_peer_rid(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    std::string channel = get_string(env, argv[1]);
+    zlink_routing_id_t rid;
+    if (!parse_routing_id_value(env, argv[2], &rid))
+        return NULL;
+    int rc = zlink_spot_node_disconnect_router_channel_peer_rid(node, channel.c_str(), &rid);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_disconnect_router_channel_peer_rid failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 napi_value spot_node_register(napi_env env, napi_callback_info info)
 {
     (void) info;
@@ -2947,6 +3000,24 @@ napi_value spot_node_set_discovery(napi_env env, napi_callback_info info)
     int rc = zlink_spot_node_attach_discovery(node, discovery);
     if (rc != 0)
         return throw_last_error(env, "spot_node_attach_discovery failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_node_attach_router_channel_discovery(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    void *discovery = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    std::string channel = get_string(env, argv[1]);
+    napi_get_value_external(env, argv[2], &discovery);
+    int rc = zlink_spot_node_attach_router_channel_discovery(node, channel.c_str(), discovery);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_attach_router_channel_discovery failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
@@ -3324,6 +3395,7 @@ napi_value spot_node_peers_snapshot(napi_env env, napi_callback_info info)
         set_string_property(env, obj, "localEndpoint", entries[i].local_endpoint);
         set_string_property(env, obj, "peerEndpoint", entries[i].peer_endpoint);
         set_uint32_property(env, obj, "source", static_cast<uint32_t>(entries[i].source));
+        set_uint32_property(env, obj, "kind", static_cast<uint32_t>(entries[i].kind));
         set_uint32_property(env, obj, "state", static_cast<uint32_t>(entries[i].state));
         set_uint32_property(env, obj, "weight",
                             static_cast<uint32_t>(entries[i].weight));
@@ -3369,6 +3441,7 @@ napi_value spot_node_peers_query(napi_env env, napi_callback_info info)
         set_string_property(env, obj, "localEndpoint", entries[i].local_endpoint);
         set_string_property(env, obj, "peerEndpoint", entries[i].peer_endpoint);
         set_uint32_property(env, obj, "source", static_cast<uint32_t>(entries[i].source));
+        set_uint32_property(env, obj, "kind", static_cast<uint32_t>(entries[i].kind));
         set_uint32_property(env, obj, "state", static_cast<uint32_t>(entries[i].state));
         set_uint32_property(env, obj, "weight",
                             static_cast<uint32_t>(entries[i].weight));

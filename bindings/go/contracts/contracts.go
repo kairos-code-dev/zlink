@@ -67,6 +67,7 @@ type (
 	SpotRole                     = root.SpotRole
 	SpotNodeState                = root.SpotNodeState
 	SpotPeerSource               = root.SpotPeerSource
+	SpotPeerKind                 = root.SpotPeerKind
 	SpotPeerState                = root.SpotPeerState
 	RegistryState                = root.RegistryState
 	TopologySource               = root.TopologySource
@@ -199,6 +200,8 @@ const (
 	SpotPeerSourceManual                  = root.SpotPeerSourceManual
 	SpotPeerSourceDiscovery               = root.SpotPeerSourceDiscovery
 	SpotPeerSourceMixed                   = root.SpotPeerSourceMixed
+	SpotPeerKindSpotMesh                  = root.SpotPeerKindSpotMesh
+	SpotPeerKindRouterChannel             = root.SpotPeerKindRouterChannel
 	SpotPeerStateConfigured               = root.SpotPeerStateConfigured
 	SpotPeerStateConnecting               = root.SpotPeerStateConnecting
 	SpotPeerStateConnected                = root.SpotPeerStateConnected

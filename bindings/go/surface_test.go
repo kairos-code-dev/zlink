@@ -166,6 +166,18 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "AttachDiscovery") {
 		t.Fatalf("SpotNode should expose AttachDiscovery")
 	}
+	if !hasMethod((*zlink.SpotNode)(nil), "ConnectRouterChannelPeer") {
+		t.Fatalf("SpotNode should expose ConnectRouterChannelPeer")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "DisconnectRouterChannelPeer") {
+		t.Fatalf("SpotNode should expose DisconnectRouterChannelPeer")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "DisconnectRouterChannelPeerRID") {
+		t.Fatalf("SpotNode should expose DisconnectRouterChannelPeerRID")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "AttachSpotRouteChannelDiscovery") {
+		t.Fatalf("SpotNode should expose AttachSpotRouteChannelDiscovery")
+	}
 	if !hasMethod((*zlink.SpotNode)(nil), "AttachChannelDealer") {
 		t.Fatalf("SpotNode should expose AttachChannelDealer")
 	}

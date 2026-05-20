@@ -827,6 +827,18 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_DISC_PEER_RID = downcall("zlink_spot_node_disconnect_peer_rid",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_CONN_ROUTER_CHANNEL_PEER = downcall(
+            "zlink_spot_node_connect_router_channel_peer",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_DISC_ROUTER_CHANNEL_PEER = downcall(
+            "zlink_spot_node_disconnect_router_channel_peer",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_DISC_ROUTER_CHANNEL_PEER_RID = downcall(
+            "zlink_spot_node_disconnect_router_channel_peer_rid",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_ACTOR_NEW = downcall(
             "zlink_spot_node_actor_new",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -880,6 +892,10 @@ public final class Native {
             "zlink_spot_node_attach_discovery",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_ATTACH_ROUTER_CHANNEL_DISCOVERY = downcall(
+            "zlink_spot_node_attach_router_channel_discovery",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_ATTACH_CHANNEL_DEALER = downcall(
             "zlink_spot_node_attach_channel_dealer",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -3290,6 +3306,42 @@ public final class Native {
         }
     }
 
+    public static int spotNodeConnectRouterChannelPeer(MemorySegment node,
+                                                       MemorySegment channelName,
+                                                       MemorySegment endpoint) {
+        try {
+            return (int) MH_SPOT_NODE_CONN_ROUTER_CHANNEL_PEER.invokeExact(
+              node, channelName, endpoint);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_node_connect_router_channel_peer failed", t);
+        }
+    }
+
+    public static int spotNodeDisconnectRouterChannelPeer(MemorySegment node,
+                                                          MemorySegment channelName,
+                                                          MemorySegment endpoint) {
+        try {
+            return (int) MH_SPOT_NODE_DISC_ROUTER_CHANNEL_PEER.invokeExact(
+              node, channelName, endpoint);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_node_disconnect_router_channel_peer failed", t);
+        }
+    }
+
+    public static int spotNodeDisconnectRouterChannelPeerRid(MemorySegment node,
+                                                             MemorySegment channelName,
+                                                             MemorySegment rid) {
+        try {
+            return (int) MH_SPOT_NODE_DISC_ROUTER_CHANNEL_PEER_RID.invokeExact(
+              node, channelName, rid);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_node_disconnect_router_channel_peer_rid failed", t);
+        }
+    }
+
     public static int spotNodeActorNew(MemorySegment node,
                                        MemorySegment actorId,
                                        MemorySegment out) {
@@ -3500,6 +3552,18 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_attach_discovery failed",
               t);
+        }
+    }
+
+    public static int spotNodeAttachRouterChannelDiscovery(MemorySegment node,
+                                                           MemorySegment channelName,
+                                                           MemorySegment discovery) {
+        try {
+            return (int) MH_SPOT_NODE_ATTACH_ROUTER_CHANNEL_DISCOVERY.invokeExact(
+              node, channelName, discovery);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_node_attach_router_channel_discovery failed", t);
         }
     }
 

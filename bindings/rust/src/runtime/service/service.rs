@@ -389,6 +389,22 @@ impl SpotPeerSource {
     }
 }
 
+/// Kind of SPOT peer entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpotPeerKind {
+    SpotMesh,
+    RouterChannel,
+}
+
+impl SpotPeerKind {
+    fn from_raw(raw: ffi::zlink_spot_peer_kind_t) -> Self {
+        match raw {
+            ffi::zlink_spot_peer_kind_t::ZLINK_SPOT_PEER_KIND_SPOT_MESH => Self::SpotMesh,
+            ffi::zlink_spot_peer_kind_t::ZLINK_SPOT_PEER_KIND_ROUTER_CHANNEL => Self::RouterChannel,
+        }
+    }
+}
+
 /// Connection state of one SPOT peer entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpotPeerState {
@@ -539,6 +555,7 @@ pub struct SpotNodePeerEntry {
     pub local_endpoint: String,
     pub peer_endpoint: String,
     pub source: SpotPeerSource,
+    pub kind: SpotPeerKind,
     pub state: SpotPeerState,
     pub weight: u32,
     pub connected_since_ms: u64,
@@ -552,6 +569,7 @@ impl SpotNodePeerEntry {
             local_endpoint: fixed_cstr_to_string(&raw.local_endpoint),
             peer_endpoint: fixed_cstr_to_string(&raw.peer_endpoint),
             source: SpotPeerSource::from_raw(raw.source),
+            kind: SpotPeerKind::from_raw(raw.kind),
             state: SpotPeerState::from_raw(raw.state),
             weight: raw.weight,
             connected_since_ms: raw.connected_since_ms,
@@ -1255,9 +1273,83 @@ impl SpotNode {
         })
     }
 
+    pub fn connect_router_channel_peer(
+        &self,
+        channel_name: &str,
+        endpoint: &str,
+    ) -> Result<(), ConnectError> {
+        let channel = CString::new(channel_name).map_err(|_| {
+            ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
+        })?;
+        let ep = CString::new(endpoint).map_err(|_| {
+            ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
+        })?;
+        check_connect_rc(unsafe {
+            ffi::zlink_spot_node_connect_router_channel_peer(
+                self.handle,
+                channel.as_ptr(),
+                ep.as_ptr(),
+            )
+        })
+    }
+
+    pub fn disconnect_router_channel_peer(
+        &self,
+        channel_name: &str,
+        endpoint: &str,
+    ) -> Result<(), ConnectError> {
+        let channel = CString::new(channel_name).map_err(|_| {
+            ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
+        })?;
+        let ep = CString::new(endpoint).map_err(|_| {
+            ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
+        })?;
+        check_connect_rc(unsafe {
+            ffi::zlink_spot_node_disconnect_router_channel_peer(
+                self.handle,
+                channel.as_ptr(),
+                ep.as_ptr(),
+            )
+        })
+    }
+
+    pub fn disconnect_router_channel_peer_rid(
+        &self,
+        channel_name: &str,
+        peer_rid: &RoutingId,
+    ) -> Result<(), ConnectError> {
+        let channel = CString::new(channel_name).map_err(|_| {
+            ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
+        })?;
+        check_connect_rc(unsafe {
+            ffi::zlink_spot_node_disconnect_router_channel_peer_rid(
+                self.handle,
+                channel.as_ptr(),
+                peer_rid.as_raw(),
+            )
+        })
+    }
+
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
         check_config_rc(unsafe {
             ffi::zlink_spot_node_attach_discovery(self.handle, discovery.raw())
+        })
+    }
+
+    pub fn attach_spot_route_channel_discovery(
+        &self,
+        channel_name: &str,
+        discovery: &Discovery,
+    ) -> Result<(), ConfigError> {
+        let channel = CString::new(channel_name).map_err(|_| {
+            ConfigError::new(crate::error::ConfigResult::InvalidArgument, libc::EINVAL)
+        })?;
+        check_config_rc(unsafe {
+            ffi::zlink_spot_node_attach_router_channel_discovery(
+                self.handle,
+                channel.as_ptr(),
+                discovery.raw(),
+            )
         })
     }
 

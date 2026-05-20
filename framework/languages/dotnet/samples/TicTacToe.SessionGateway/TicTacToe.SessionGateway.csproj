@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12.0</LangVersion>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>TicTacToe.SessionGateway</AssemblyName>
+    <RootNamespace>TicTacToe.SessionGateway</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="Shared\TicTacToe.SessionGateway.Shared.csproj" />
+    <ProjectReference Include="Client\TicTacToe.SessionGateway.Client.csproj" />
+    <ProjectReference Include="Server\Api\TicTacToe.SessionGateway.Api.csproj" />
+    <ProjectReference Include="Server\Play\TicTacToe.SessionGateway.Play.csproj" />
+    <ProjectReference Include="Server\Registry\TicTacToe.SessionGateway.Registry.csproj" />
+    <ProjectReference Include="Server\Session\TicTacToe.SessionGateway.Session.csproj" />
+  </ItemGroup>
+</Project>

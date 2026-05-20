@@ -16,14 +16,13 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         IZLinkBackendStreamSocket socket,
         IZLinkBackendSocketMonitor monitor,
         Type? headerSessionType,
-        IZlinkStreamHeaderCodec headerCodec,
         ZLinkRuntimeTaskRunner taskRunner)
     {
         NodeName = nodeName;
         Socket = socket;
         Monitor = monitor;
         _taskRunner = taskRunner;
-        _sessions = new ZLinkStreamSessionTable(services, socket, headerSessionType, headerCodec);
+        _sessions = new ZLinkStreamSessionTable(services, socket, headerSessionType);
     }
 
     public string NodeName { get; }

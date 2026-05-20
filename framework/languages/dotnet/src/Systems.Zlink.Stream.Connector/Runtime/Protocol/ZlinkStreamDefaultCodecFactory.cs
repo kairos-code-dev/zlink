@@ -2,7 +2,7 @@ namespace Systems.Zlink.Stream.Connector.Runtime.Protocol;
 
 internal static class ZlinkStreamDefaultCodecFactory
 {
-    public static IZlinkStreamHeaderCodec Header()
+    internal static ZlinkStreamHeaderCodec Header()
         => new ZlinkStreamHeaderCodec();
 
     public static IZlinkStreamPacketNameResolver PacketNameResolver()

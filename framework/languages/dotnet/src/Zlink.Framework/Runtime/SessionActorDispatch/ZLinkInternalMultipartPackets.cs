@@ -2,8 +2,6 @@ namespace Zlink.Framework.Runtime.SessionActorDispatch;
 
 internal static class ZLinkInternalMultipartPackets
 {
-    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZLinkStreamProtocolDefaults.HeaderCodec;
-
     public static IReadOnlyList<Message> CreateActorDispatchParts(
         string actorId,
         string actorType,
@@ -13,7 +11,7 @@ internal static class ZLinkInternalMultipartPackets
         return
         [
             ZLinkEnvelopeCodec.EncodePart(new ZLinkActorDispatchMetadata(actorId, actorType)),
-            Message.FromBytes(HeaderCodec.Encode(streamHeader).Span),
+            Message.FromBytes(ZLinkStreamProtocolDefaults.EncodeHeader(streamHeader).Span),
             Message.FromBytes(body)
         ];
     }
@@ -72,7 +70,7 @@ internal static class ZLinkInternalMultipartPackets
     public static ZlinkStreamHeader DecodeActorDispatchStreamHeader(Received received)
     {
         EnsurePartCount(received, 4, "actor dispatch");
-        return HeaderCodec.Decode(received.Parts[2].AsReadOnlyMemory());
+        return ZLinkStreamProtocolDefaults.DecodeHeader(received.Parts[2].AsReadOnlyMemory());
     }
 
     public static Message DecodeActorDispatchBody(Received received)

@@ -137,8 +137,6 @@ public sealed class ZlinkStreamConnectorOptions
 
     public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
 
-    public IZlinkStreamHeaderCodec HeaderCodec { get; init; }
-
     public IZlinkStreamPacketNameResolver NameResolver { get; init; }
 }
 
@@ -197,11 +195,9 @@ send 경로의 segmented write 는 공개 option 으로 노출하지 않는다. 
 header, payload 를 나누어 쓸 수 있으면 connector 가 내부에서 자동으로 사용한다. 지원하지
 않는 transport 에서는 하나의 frame buffer 로 합쳐서 보낸다.
 
-`HeaderCodec` 은 helper header 의 binary 표현을 바꾸는 확장 지점이다. 값을 지정하지
-않으면 connector 가 제공하는 내부 기본 codec 을 사용한다. 기본 codec 을 생성하는 별도
-public factory 는 공개하지 않는다. custom header codec 을 쓰면 서버 framework 의 STREAM
-node 에도 같은 codec 을 등록해야 한다. 별도 negotiation 은 없으므로 client 와 server 의
-codec 이 다르면 header decode error 로 실패한다.
+helper header 의 binary 형식은 connector 와 framework 가 공유하는 내부 프로토콜이다.
+application 은 이 형식을 바꾸지 않는다. 이 경계를 고정해야 client 와 server 가 별도
+negotiation 없이 같은 frame 을 해석할 수 있다.
 
 `NameResolver` 는 payload 타입에서 packet 이름을 고르는 정책이다. 값을 지정하지 않으면
 connector 가 제공하는 내부 기본 resolver 를 사용한다. 기본 resolver 는 namespace 를 제외한
@@ -315,13 +311,6 @@ public sealed record ZlinkStreamHeader(
     ZlinkStreamRequestSeq? RequestSeq,
     string Name,
     ZlinkStreamMetadata Metadata);
-
-public interface IZlinkStreamHeaderCodec
-{
-    ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header);
-
-    ZlinkStreamHeader Decode(ReadOnlyMemory<byte> header);
-}
 ```
 
 `request_seq` 는 `u64` 형식의 correlation sequence 다. request, response, error response

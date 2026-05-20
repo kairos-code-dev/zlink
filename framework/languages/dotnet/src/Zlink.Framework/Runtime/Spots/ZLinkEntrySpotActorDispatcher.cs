@@ -3,7 +3,6 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkEntrySpotActorDispatcher
 {
-    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZLinkStreamProtocolDefaults.HeaderCodec;
     private static readonly int MaxConcurrentDispatches = Math.Max(1, Environment.ProcessorCount);
 
     public static async Task DispatchAsync(
@@ -31,7 +30,7 @@ internal static class ZLinkEntrySpotActorDispatcher
 
             if (!headerPart.More)
             {
-                var header = HeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
+                var header = ZLinkStreamProtocolDefaults.DecodeHeader(headerPart.Message.AsReadOnlyMemory());
                 headerPart.Message.Dispose();
                 var emptyBody = Message.FromBytes(ReadOnlySpan<byte>.Empty);
                 await dispatchTasks.AddAsync(
@@ -54,7 +53,7 @@ internal static class ZLinkEntrySpotActorDispatcher
             }
 
             var bodyPart = parts[i++];
-            var streamHeader = HeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
+            var streamHeader = ZLinkStreamProtocolDefaults.DecodeHeader(headerPart.Message.AsReadOnlyMemory());
             headerPart.Message.Dispose();
             await dispatchTasks.AddAsync(
                     DispatchPacketAndDisposeBodyAsync(

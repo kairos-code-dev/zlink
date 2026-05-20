@@ -172,7 +172,7 @@ STREAM open item 은 이미 결정이 끝난 항목과 아직 남아 있는 항�
 |---------------|-----------|
 | `StreamIntegrationTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session의 write/reply와 lifecycle 매핑이 현재 결정과 일치한다. |
 | `StreamIntegrationTests.StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints` | callback dispatch 정책이 transport 직접 호출로 다시 되돌아가지 않는다. |
-| `StreamConnectorTests.HeaderCodecRoundTripsMetadataAndRequestSeq` | header metadata와 request sequence encoding이 round-trip된다. |
+| `StreamConnectorTests.HeaderProtocolRoundTripsMetadataAndRequestSeq` | 내부 header protocol 이 metadata와 request sequence를 round-trip한다. |
 | `TopologyMultiProcessTests.StreamRawSession_OnConnected_Emits_Metadata_Once_From_TestHostProcess` | 실제 프로세스 경계에서 connection ready가 session connected metadata로 한 번 매핑된다. |
 | `TopologyMultiProcessTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | 실제 프로세스 경계에서 disconnect가 transport error callback으로 매핑된다. |
 

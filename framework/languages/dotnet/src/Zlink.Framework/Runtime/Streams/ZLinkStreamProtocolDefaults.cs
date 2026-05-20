@@ -8,9 +8,13 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal static class ZLinkStreamProtocolDefaults
 {
-    public static IZlinkStreamHeaderCodec HeaderCodec { get; } = new DefaultHeaderCodec();
-
     public static IZlinkStreamPacketNameResolver PacketNameResolver { get; } = new DefaultPacketNameResolver();
+
+    public static ReadOnlyMemory<byte> EncodeHeader(ZlinkStreamHeader header)
+        => DefaultHeaderCodec.Encode(header);
+
+    public static ZlinkStreamHeader DecodeHeader(ReadOnlyMemory<byte> header)
+        => DefaultHeaderCodec.Decode(header);
 
     public static ReadOnlyMemory<byte> Lz4Compress(ReadOnlyMemory<byte> payload)
         => LZ4Pickler.Pickle(payload.Span);
@@ -18,14 +22,14 @@ internal static class ZLinkStreamProtocolDefaults
     public static ReadOnlyMemory<byte> Lz4Decompress(ReadOnlyMemory<byte> payload)
         => LZ4Pickler.Unpickle(payload.Span);
 
-    private sealed class DefaultHeaderCodec : IZlinkStreamHeaderCodec
+    private static class DefaultHeaderCodec
     {
         private const ZlinkStreamHeaderFlags KnownFlags =
             ZlinkStreamHeaderFlags.HasRequestSeq |
             ZlinkStreamHeaderFlags.HasMetadata |
             ZlinkStreamHeaderFlags.PayloadCompressed;
 
-        public ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header)
+        public static ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header)
         {
             ValidateName(header.Name, allowReserved: header.Kind == ZlinkStreamMessageKind.Control);
             ValidateEnum(header.Kind, header.Codec, header.Flags);
@@ -72,7 +76,7 @@ internal static class ZLinkStreamProtocolDefaults
             return buffer;
         }
 
-        public ZlinkStreamHeader Decode(ReadOnlyMemory<byte> header)
+        public static ZlinkStreamHeader Decode(ReadOnlyMemory<byte> header)
         {
             var span = header.Span;
             if (span.Length < 4)

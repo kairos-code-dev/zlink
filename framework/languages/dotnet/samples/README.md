@@ -3,8 +3,8 @@
 | Sample | Purpose |
 |--------|---------|
 | [TicTacToe](./TicTacToe) | Tic-tac-toe API server, play server, standalone client, game creation, STREAM authentication, actor game join, move requests, and game-state messages. |
-| [TicTacToe(session-gateway)](./TicTacToe(session-gateway)/) | Session gateway variant with shared contracts, separate client/server projects, routed actor dispatch, reconnect recovery, and SPOT-backed match rooms. |
-| [Bingo(session-gateway)](./Bingo(session-gateway)/) | Matching room sample with four authenticated clients, Entry Spot admission, host-start checks, timer draws, automatic marks, same-sequence winners, and bound-session push notifications. |
+| [TicTacToe.SessionGateway](./TicTacToe.SessionGateway/) | Session gateway variant with shared contracts, separate client/server projects, routed actor dispatch, reconnect recovery, and SPOT-backed match rooms. |
+| [Bingo](./Bingo/) | Matching room sample with four authenticated clients, Entry Spot admission, host-start checks, timer draws, automatic marks, same-sequence winners, and bound-session push notifications. |
 
 Run all samples:
 

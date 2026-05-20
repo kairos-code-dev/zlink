@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal sealed class ZlinkStreamReceiveDispatcher(
-    IZlinkStreamHeaderCodec headerCodec,
+    ZlinkStreamHeaderCodec headerCodec,
     ZlinkStreamPendingRequests pending,
     ZlinkStreamTypedHandlerRegistry typedHandlers,
     ZlinkStreamFrameSender frameSender,

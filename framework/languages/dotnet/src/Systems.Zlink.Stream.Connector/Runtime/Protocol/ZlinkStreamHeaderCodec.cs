@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Systems.Zlink.Stream.Connector.Runtime.Protocol;
 
-internal sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
+internal sealed class ZlinkStreamHeaderCodec
 {
     private const ZlinkStreamHeaderFlags KnownFlags =
         ZlinkStreamHeaderFlags.HasRequestSeq |

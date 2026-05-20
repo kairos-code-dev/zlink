@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Zlink.Framework.Runtime.Backend.Contracts;
 using System.Reflection;
 
 namespace Zlink.Framework.AspNetCore;

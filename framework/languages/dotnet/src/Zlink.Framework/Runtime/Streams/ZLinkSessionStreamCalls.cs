@@ -54,7 +54,7 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
         }
 
         var header = CreateHeader(ZlinkStreamCodec.Json, flags, _messageName, _metadata, context.CurrentDispatchHeader);
-        ZLinkStreamFrameWriter.Write(context.Write, context.HeaderCodec, header, payload.Span, "Client stream send failed.");
+        ZLinkStreamFrameWriter.Write(context.Write, header, payload.Span, "Client stream send failed.");
 
         return ValueTask.CompletedTask;
     }

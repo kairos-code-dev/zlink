@@ -5,12 +5,11 @@ internal static class ZLinkStreamFrameWriter
 {
     public static void Write(
         Func<Message, bool> write,
-        IZlinkStreamHeaderCodec headerCodec,
         ZlinkStreamHeader header,
         ReadOnlySpan<byte> payload,
         string failureMessage)
     {
-        var frame = ZLinkStreamFrameCodec.Encode(headerCodec.Encode(header).Span, payload);
+        var frame = ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span, payload);
         using var payloadMessage = Message.FromBytes(frame);
         if (!write(payloadMessage))
         {
@@ -24,7 +23,7 @@ internal static class ZLinkStreamFrameWriter
         ReadOnlyMemory<byte> payload,
         string failureMessage)
     {
-        Write(message => stream.Write(message), ResolveHeaderCodec(stream), header, payload.Span, failureMessage);
+        Write(message => stream.Write(message), header, payload.Span, failureMessage);
     }
 
     public static void Write(
@@ -33,11 +32,6 @@ internal static class ZLinkStreamFrameWriter
         ReadOnlySpan<byte> payload,
         string failureMessage)
     {
-        Write(message => stream.Write(message), ResolveHeaderCodec(stream), header, payload, failureMessage);
+        Write(message => stream.Write(message), header, payload, failureMessage);
     }
-
-    private static IZlinkStreamHeaderCodec ResolveHeaderCodec(IZLinkStream stream)
-        => stream is ZLinkManagedStream managedStream
-            ? managedStream.HeaderCodec
-            : ZLinkStreamProtocolDefaults.HeaderCodec;
 }

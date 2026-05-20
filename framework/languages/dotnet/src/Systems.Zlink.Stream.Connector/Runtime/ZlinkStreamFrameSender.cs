@@ -4,7 +4,7 @@ namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal sealed class ZlinkStreamFrameSender(
     ZlinkStreamConnectorOptions options,
-    IZlinkStreamHeaderCodec headerCodec,
+    ZlinkStreamHeaderCodec headerCodec,
     IZlinkStreamCompressionCodec? compressionCodec,
     SemaphoreSlim sendGate,
     Func<IZlinkStreamConnection?> connectionProvider)

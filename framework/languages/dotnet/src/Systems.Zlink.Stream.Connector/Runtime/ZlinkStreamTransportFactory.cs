@@ -16,13 +16,6 @@ internal static class ZlinkStreamTransportFactory
 
         _ = ResolveTransport(options);
 
-        if (options.HeaderCodec is null)
-        {
-            throw ZlinkStreamConnector.Error(
-                ZlinkStreamErrorCode.ValidationFailed,
-                "HeaderCodec is required.");
-        }
-
         if (options.NameResolver is null)
         {
             throw ZlinkStreamConnector.Error(

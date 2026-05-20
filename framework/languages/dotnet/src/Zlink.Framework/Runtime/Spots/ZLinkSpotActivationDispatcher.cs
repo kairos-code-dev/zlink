@@ -13,7 +13,6 @@ internal sealed class ZLinkSpotActivationDispatcher(
     Func<ZLinkSpotActorHandlerRegistry?> actorHandlers,
     Func<ZLinkSpotHandlerInvoker> handlerInvoker)
 {
-    private static readonly IZlinkStreamHeaderCodec HeaderCodec = ZLinkStreamProtocolDefaults.HeaderCodec;
     private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher =
         new(runtime, actorHandlers, handlerInvoker);
     private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher =
@@ -75,7 +74,7 @@ internal sealed class ZLinkSpotActivationDispatcher(
                 await DispatchActorStreamPartAsync(
                     actor,
                     headerPart.Actor.ActorId,
-                    HeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory()),
+                    ZLinkStreamProtocolDefaults.DecodeHeader(headerPart.Message.AsReadOnlyMemory()),
                     Message.FromBytes(ReadOnlySpan<byte>.Empty),
                     cancellationToken).ConfigureAwait(false);
                 headerPart.Message.Dispose();
@@ -89,7 +88,7 @@ internal sealed class ZLinkSpotActivationDispatcher(
             }
 
             var bodyPart = parts[i++];
-            var streamHeader = HeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
+            var streamHeader = ZLinkStreamProtocolDefaults.DecodeHeader(headerPart.Message.AsReadOnlyMemory());
             headerPart.Message.Dispose();
             using var body = bodyPart.Message;
             await DispatchActorStreamPartAsync(actor, headerPart.Actor.ActorId, streamHeader, body, cancellationToken)

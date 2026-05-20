@@ -111,7 +111,7 @@ session actor dispatch 샘플의 자동 discovery 정책과 혼동하지 않도�
 ## 3. Session Actor Dispatch 샘플 구성
 
 session actor dispatch 샘플의 DTO 는
-`framework/languages/dotnet/samples/TicTacToe(session-gateway)/Contracts/Messages.cs`
+`framework/languages/dotnet/samples/TicTacToe.SessionGateway/Contracts/Messages.cs`
 를 따른다.
 
 이 샘플은 service channel 과 routed channel 모두 전역 `UseDiscovery(...)`

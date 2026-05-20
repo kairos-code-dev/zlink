@@ -17,7 +17,7 @@ using Xunit;
 public sealed partial class StreamConnectorTests
 {
     [Fact]
-    public void HeaderCodecRoundTripsMetadataAndRequestSeq()
+    public void HeaderProtocolRoundTripsMetadataAndRequestSeq()
     {
         var codec = ZlinkStreamDefaultCodecFactory.Header();
         var source = new ZlinkStreamHeader(
@@ -38,7 +38,7 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public void HeaderCodecRejectsUnknownFlag()
+    public void HeaderProtocolRejectsUnknownFlag()
     {
         var codec = ZlinkStreamDefaultCodecFactory.Header();
         var bytes = new byte[] { 1, 1, 0x80, 1, (byte)'x' };
@@ -49,7 +49,7 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public void HeaderCodecRejectsInvalidRequestSeqAndErrorCodecCombinations()
+    public void HeaderProtocolRejectsInvalidRequestSeqAndErrorCodecCombinations()
     {
         var codec = ZlinkStreamDefaultCodecFactory.Header();
 
@@ -86,7 +86,7 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public void HeaderCodecEnforcesControlPacketContract()
+    public void HeaderProtocolEnforcesControlPacketContract()
     {
         var codec = ZlinkStreamDefaultCodecFactory.Header();
 

@@ -22,8 +22,6 @@ public sealed class ZlinkStreamConnectorOptions
 
     public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
 
-    public IZlinkStreamHeaderCodec HeaderCodec { get; init; } = ZlinkStreamDefaultCodecFactory.Header();
-
     public IZlinkStreamPacketNameResolver NameResolver { get; init; } = ZlinkStreamDefaultCodecFactory.PacketNameResolver();
 }
 

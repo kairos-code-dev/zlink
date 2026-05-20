@@ -2448,7 +2448,6 @@ public sealed partial class SpotIntegrationTests
         IZLinkActor actor,
         string packetName)
     {
-        var codec = ZLinkStreamProtocolDefaults.HeaderCodec;
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Send,
             ZlinkStreamCodec.Raw,
@@ -2461,7 +2460,7 @@ public sealed partial class SpotIntegrationTests
             new ZLinkBackendActorRef(RoutingId.FromString("01"), actor.ActorId, 0),
             RoutingId.FromString("02"),
             RoutingId.FromString("03"),
-            Message.FromBytes(codec.Encode(header).Span),
+            Message.FromBytes(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
             More: true);
     }
 

@@ -14,7 +14,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     private readonly CancellationTokenSource _lifetimeCts = new();
     private readonly ZlinkStreamTaskRunner _taskRunner;
     private readonly ZlinkStreamConnectorCallbacks _callbacks;
-    private readonly IZlinkStreamHeaderCodec _headerCodec;
+    private readonly ZlinkStreamHeaderCodec _headerCodec;
     private readonly IZlinkStreamCompressionCodec? _compressionCodec;
     private readonly IZlinkStreamPacketNameResolver _nameResolver;
     private readonly ZlinkStreamConnectorLifecycle _lifecycle;
@@ -30,7 +30,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         _taskRunner = new ZlinkStreamTaskRunner(_lifetimeCts.Token);
         _callbacks = new ZlinkStreamConnectorCallbacks(_taskRunner, options.DispatchMode);
 
-        _headerCodec = options.HeaderCodec;
+        _headerCodec = ZlinkStreamDefaultCodecFactory.Header();
         _compressionCodec = CreateCompressionCodec(options.Compression);
 
         _nameResolver = options.NameResolver;

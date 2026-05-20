@@ -427,6 +427,26 @@ bool actor_in_user_spot_locked (const actor_handle_t *actor_)
            && !actor_->joined_spot_state->entry;
 }
 
+zlink_spot_kind_t spot_kind_for_state (
+  const std::shared_ptr<spot_logical_state_t> &state_)
+{
+    if (!state_)
+        return ZLINK_SPOT_KIND_INVALID;
+    return state_->entry ? ZLINK_SPOT_KIND_ENTRY : ZLINK_SPOT_KIND_USER;
+}
+
+bool actor_route_is_current_location (const zlink_actor_route_t &route_,
+                                      const char *actor_id_)
+{
+    if (!actor_id_ || route_.actor.node_rid.size == 0
+        || route_.current_spot_rid.size == 0
+        || (route_.current_spot_kind != ZLINK_SPOT_KIND_ENTRY
+            && route_.current_spot_kind != ZLINK_SPOT_KIND_USER)) {
+        return false;
+    }
+    return strncmp (route_.actor.actor_id, actor_id_, ZLINK_ACTOR_ID_MAX) == 0;
+}
+
 bool actor_has_pending_join_locked (const actor_handle_t *actor_)
 {
     if (!actor_)
@@ -1138,9 +1158,11 @@ void publish_active_route_locked (actor_handle_t *actor_, bool create_)
     zlink_actor_route_t route;
     memset (&route, 0, sizeof (route));
     fill_ref (actor_, &route.actor);
-    route.joined = actor_->joined_spot_state ? 1u : 0u;
-    if (actor_->joined_spot_state)
-        route.joined_spot_rid = actor_->joined_spot_state->routing_id;
+    if (actor_->joined_spot_state) {
+        route.current_spot_rid = actor_->joined_spot_state->routing_id;
+        route.current_spot_kind =
+          spot_kind_for_state (actor_->joined_spot_state);
+    }
     actor_runtime().routes.active[actor_->actor_id] = route;
     (void) actor_->node->bind_actor_route (actor_->actor_id.c_str (),
                                            &route, sizeof (route));
@@ -3166,25 +3188,32 @@ extern "C" zlink_config_result_t zlink_discovery_resolve_actor (
         != 0) {
         {
             std::lock_guard<std::timed_mutex> lock (actor_runtime().mutex);
-            if (find_active_route_locked (actor_id_, route_out_))
+            if (find_active_route_locked (actor_id_, route_out_)
+                && actor_route_is_current_location (*route_out_, actor_id_))
                 return ZLINK_CONFIG_OK;
         }
         errno = ENOENT;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
+        return ZLINK_CONFIG_NOT_FOUND;
     }
 
     if (zlink_msg_size (&value) != sizeof (*route_out_)) {
         (void) zlink_msg_close (&value);
         {
             std::lock_guard<std::timed_mutex> lock (actor_runtime().mutex);
-            if (find_active_route_locked (actor_id_, route_out_))
+            if (find_active_route_locked (actor_id_, route_out_)
+                && actor_route_is_current_location (*route_out_, actor_id_))
                 return ZLINK_CONFIG_OK;
         }
         errno = ENOENT;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
+        return ZLINK_CONFIG_NOT_FOUND;
     }
     memcpy (route_out_, zlink_msg_data (&value), sizeof (*route_out_));
     (void) zlink_msg_close (&value);
+    if (!actor_route_is_current_location (*route_out_, actor_id_)) {
+        memset (route_out_, 0, sizeof (*route_out_));
+        errno = ENOENT;
+        return ZLINK_CONFIG_NOT_FOUND;
+    }
     return ZLINK_CONFIG_OK;
 }
 
@@ -3235,6 +3264,7 @@ extern "C" zlink_config_result_t zlink_spot_node_spots_snapshot (
         entries_[i].spot_rid =
           spots[i].state ? spots[i].state->routing_id
                          : spots[i].facade->spot_routing_id;
+        entries_[i].spot_kind = spot_kind_for_state (spots[i].state);
         entries_[i].dispatch_handler_attached =
           spots[i].facade && spot_dispatch_handler_attached (spots[i].facade)
             ? 1u
@@ -3283,10 +3313,12 @@ extern "C" zlink_config_result_t zlink_spot_node_actors_snapshot (
     for (size_t i = 0; i != limit; ++i) {
         memset (&entries_[i], 0, sizeof (entries_[i]));
         fill_ref (actors[i], &entries_[i].actor);
-        entries_[i].joined = actors[i]->joined_spot_state ? 1u : 0u;
-        if (actors[i]->joined_spot_state)
-            entries_[i].joined_spot_rid =
+        if (actors[i]->joined_spot_state) {
+            entries_[i].current_spot_rid =
               actors[i]->joined_spot_state->routing_id;
+            entries_[i].current_spot_kind =
+              spot_kind_for_state (actors[i]->joined_spot_state);
+        }
         entries_[i].route_synced =
           active_route_matches_locked (actors[i]) ? 1u : 0u;
         entries_[i].pending_message_count =

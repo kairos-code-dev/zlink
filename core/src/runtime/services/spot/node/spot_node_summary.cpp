@@ -232,6 +232,7 @@ static int append_socket_snapshot_row (
 static zlink_registry_topology_entry_t make_topology_summary_entry (
   const zlink_routing_id_t &rid_,
   zlink_service_kind_t service_kind_,
+  zlink_spot_kind_t spot_kind_,
   const char *channel_name_,
   const char *endpoint_,
   discovery_t *discovery_,
@@ -248,6 +249,7 @@ static zlink_registry_topology_entry_t make_topology_summary_entry (
     }
     entry.service_kind = service_kind_;
     entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
+    entry.spot_kind = spot_kind_;
     copy_fixed_c_string_from_cstr (entry.channel_name,
                                    sizeof (entry.channel_name),
                                    channel_name_);
@@ -315,8 +317,9 @@ void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
 
     zlink_registry_topology_entry_t entry =
       make_topology_summary_entry (rid, ZLINK_SERVICE_KIND_SPOT_PUB,
-                                   channel_name.c_str (), endpoint.c_str (),
-                                   discovery, state_, error_code_);
+                                   ZLINK_SPOT_KIND_INVALID, channel_name.c_str (),
+                                   endpoint.c_str (), discovery, state_,
+                                   error_code_);
     discovery_access_t::upsert_service_summary (discovery, entry);
 }
 
@@ -343,13 +346,16 @@ void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
 
     zlink_registry_topology_entry_t entry =
       make_topology_summary_entry (rid, ZLINK_SERVICE_KIND_SPOT_SUB,
-                                   channel_name.c_str (), NULL, discovery,
-                                   state_, error_code_);
+                                   ZLINK_SPOT_KIND_INVALID, channel_name.c_str (),
+                                   NULL, discovery, state_, error_code_);
     discovery_access_t::upsert_service_summary (discovery, entry);
 }
 
 void spot_node_t::submit_spot_owner_summary_for_rid (
-  const zlink_routing_id_t &rid_, uint16_t state_, int error_code_)
+  const zlink_routing_id_t &rid_,
+  zlink_spot_kind_t spot_kind_,
+  uint16_t state_,
+  int error_code_)
 {
     if (rid_.size == 0)
         return;
@@ -371,8 +377,9 @@ void spot_node_t::submit_spot_owner_summary_for_rid (
 
     zlink_registry_topology_entry_t entry =
       make_topology_summary_entry (rid_, ZLINK_SERVICE_KIND_SPOT_PUB,
-                                   channel_name.c_str (), endpoint.c_str (),
-                                   discovery, state_, error_code_);
+                                   spot_kind_, channel_name.c_str (),
+                                   endpoint.c_str (), discovery, state_,
+                                   error_code_);
     discovery_access_t::upsert_service_summary (discovery, entry);
 }
 
@@ -382,7 +389,10 @@ void spot_node_t::submit_spot_owner_summary (
 {
     if (!state_)
         return;
-    submit_spot_owner_summary_for_rid (state_->routing_id, state, error_code_);
+    submit_spot_owner_summary_for_rid (
+      state_->routing_id,
+      state_->entry ? ZLINK_SPOT_KIND_ENTRY : ZLINK_SPOT_KIND_USER, state,
+      error_code_);
 }
 
 void spot_node_t::submit_stopped_summaries ()

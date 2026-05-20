@@ -57,7 +57,7 @@ class discovery_t
     int set_value (int64_t value_);
     int get_value (int64_t *value_out_) const;
     int resolve_spot (const zlink_routing_id_t *spot_rid_,
-                      zlink_routing_id_t *owner_node_rid_out_);
+                      zlink_spot_route_t *route_out_);
     int bind_route (zlink_route_kind_t kind_,
                     const void *key_,
                     size_t key_size_,
@@ -192,7 +192,7 @@ class discovery_t
     bool try_resolve_spot_from_cache_locked (
       const topology_key_t &key_,
       uint64_t now_ms_,
-      zlink_routing_id_t *owner_node_rid_out_) const;
+      zlink_spot_route_t *route_out_) const;
     int query_spot_owner_entries_from_registry (
       const zlink_routing_id_t *spot_rid_,
       std::vector<zlink_registry_topology_entry_t> *entries_out_);

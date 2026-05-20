@@ -305,6 +305,7 @@ typedef struct zlink_spot_node_socket_snapshot_entry_t
 typedef struct zlink_spot_node_spot_entry_t
 {
     zlink_routing_id_t spot_rid;
+    zlink_spot_kind_t spot_kind;
     uint32_t dispatch_handler_attached;
     uint32_t joined_actor_count;
     uint32_t pending_actor_join_count;
@@ -315,8 +316,8 @@ typedef struct zlink_spot_node_spot_entry_t
 typedef struct zlink_spot_node_actor_entry_t
 {
     zlink_actor_ref_t actor;
-    uint32_t joined;
-    zlink_routing_id_t joined_spot_rid;
+    zlink_routing_id_t current_spot_rid;
+    zlink_spot_kind_t current_spot_kind;
     uint32_t route_synced;
     uint32_t pending_message_count;
     uint64_t last_changed_ms;

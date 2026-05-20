@@ -50,7 +50,7 @@ struct discovery_access_t
     static int get_value (discovery_t *discovery_, int64_t *value_out_);
     static int resolve_spot (discovery_t *discovery_,
                              const zlink_routing_id_t *spot_rid_,
-                             zlink_routing_id_t *owner_node_rid_out_);
+                             zlink_spot_route_t *route_out_);
     static int bind_route (discovery_t *discovery_,
                            zlink_route_kind_t kind_,
                            const void *key_,

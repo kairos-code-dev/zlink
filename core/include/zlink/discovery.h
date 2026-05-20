@@ -61,14 +61,21 @@ ZLINK_EXPORT zlink_connect_result_t zlink_discovery_connect_registry (
  *
  * @param discovery_          Discovery handle.
  * @param spot_rid_           Logical SPOT routing id to resolve.
- * @param owner_node_rid_out_ Output buffer for the current owner node id.
+ * @param route_out_ Output buffer for the current owner node id and Spot kind.
  * @return `ZLINK_CONFIG_OK` on success, or another
  *         `zlink_config_result_t` value on failure (`zlink_errno()` is set).
  */
+typedef struct zlink_spot_route_t
+{
+    zlink_routing_id_t spot_rid;
+    zlink_routing_id_t owner_node_rid;
+    zlink_spot_kind_t spot_kind;
+} zlink_spot_route_t;
+
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_spot (
   void *discovery_,
   const zlink_routing_id_t *spot_rid_,
-  zlink_routing_id_t *owner_node_rid_out_);
+  zlink_spot_route_t *route_out_);
 
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_actor (
   void *discovery_,

@@ -25,6 +25,11 @@ static bool topology_state_is_resolvable_local (zlink_topology_state_t state_)
     return state_ == ZLINK_TOPOLOGY_STATE_READY;
 }
 
+static bool spot_kind_is_resolvable_local (zlink_spot_kind_t kind_)
+{
+    return kind_ == ZLINK_SPOT_KIND_ENTRY || kind_ == ZLINK_SPOT_KIND_USER;
+}
+
 static const uint64_t resolve_spot_cache_ttl_ms = 250;
 
 static bool valid_route_request_local (zlink_route_kind_t kind_,
@@ -57,12 +62,12 @@ static bool valid_route_request_local (zlink_route_kind_t kind_,
 }
 
 int discovery_t::resolve_spot (const zlink_routing_id_t *spot_rid_,
-                               zlink_routing_id_t *owner_node_rid_out_)
+                               zlink_spot_route_t *route_out_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
-    if (!spot_rid_ || spot_rid_->size == 0 || !owner_node_rid_out_) {
+    if (!spot_rid_ || spot_rid_->size == 0 || !route_out_) {
         errno = EINVAL;
         return -1;
     }
@@ -71,15 +76,14 @@ int discovery_t::resolve_spot (const zlink_routing_id_t *spot_rid_,
         return -1;
     }
 
-    memset (owner_node_rid_out_, 0, sizeof (*owner_node_rid_out_));
+    memset (route_out_, 0, sizeof (*route_out_));
 
     const topology_key_t key = make_spot_topology_key (*spot_rid_);
 
     const uint64_t now_ms = zlink::clock_t ().now_ms ();
     {
         scoped_lock_t lock (_sync);
-        if (try_resolve_spot_from_cache_locked (key, now_ms,
-                                                owner_node_rid_out_)) {
+        if (try_resolve_spot_from_cache_locked (key, now_ms, route_out_)) {
             return 0;
         }
     }
@@ -91,8 +95,7 @@ int discovery_t::resolve_spot (const zlink_routing_id_t *spot_rid_,
     {
         scoped_lock_t lock (_sync);
         refresh_spot_owner_cache_locked (key, entries);
-        if (try_resolve_spot_from_cache_locked (key, now_ms,
-                                                owner_node_rid_out_)) {
+        if (try_resolve_spot_from_cache_locked (key, now_ms, route_out_)) {
             return 0;
         }
     }
@@ -131,13 +134,16 @@ bool discovery_t::resolve_owner_node_from_endpoint_locked (
 bool discovery_t::try_resolve_spot_from_cache_locked (
   const topology_key_t &key_,
   uint64_t now_ms_,
-  zlink_routing_id_t *owner_node_rid_out_) const
+  zlink_spot_route_t *route_out_) const
 {
+    if (!route_out_)
+        return false;
     std::map<topology_key_t, topology_summary_t>::const_iterator it =
       _summary_store.find (key_);
     if (it == _summary_store.end ()
         || !topology_state_is_resolvable_local (it->second.entry.state)
-        || it->second.entry.endpoint[0] == '\0') {
+        || it->second.entry.endpoint[0] == '\0'
+        || !spot_kind_is_resolvable_local (it->second.entry.spot_kind)) {
         return false;
     }
 
@@ -152,8 +158,19 @@ bool discovery_t::try_resolve_spot_from_cache_locked (
         return false;
     }
 
-    return resolve_owner_node_from_endpoint_locked (it->second.entry.endpoint,
-                                                    owner_node_rid_out_);
+    zlink_routing_id_t owner_node_rid;
+    memset (&owner_node_rid, 0, sizeof (owner_node_rid));
+    if (!resolve_owner_node_from_endpoint_locked (it->second.entry.endpoint,
+                                                  &owner_node_rid)
+        || owner_node_rid.size == 0) {
+        return false;
+    }
+
+    memset (route_out_, 0, sizeof (*route_out_));
+    route_out_->spot_rid = it->second.entry.routing_id;
+    route_out_->owner_node_rid = owner_node_rid;
+    route_out_->spot_kind = it->second.entry.spot_kind;
+    return true;
 }
 
 int discovery_t::query_spot_owner_entries_from_registry (

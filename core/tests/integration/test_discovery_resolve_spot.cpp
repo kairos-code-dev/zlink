@@ -137,9 +137,11 @@ bool wait_for_resolve_spot_local (void *discovery_,
                                   int timeout_ms_)
 {
     return zlink_test_wait_until (timeout_ms_, [=] {
-        if (zlink_discovery_resolve_spot (discovery_, spot_rid_,
-                                          owner_node_rid_out_)
-            == ZLINK_CONFIG_OK) {
+        zlink_spot_route_t route;
+        memset (&route, 0, sizeof (route));
+        if (zlink_discovery_resolve_spot (discovery_, spot_rid_, &route)
+            == ZLINK_CONFIG_OK && owner_node_rid_out_) {
+            *owner_node_rid_out_ = route.owner_node_rid;
             return true;
         }
         return false;
@@ -154,14 +156,16 @@ bool wait_for_resolve_owner_local (void *discovery_,
     zlink_routing_id_t resolved_owner;
     memset (&resolved_owner, 0, sizeof (resolved_owner));
     return zlink_test_wait_until (timeout_ms_, [=, &resolved_owner] {
-        if (zlink_discovery_resolve_spot (discovery_, spot_rid_,
-                                          &resolved_owner)
+        zlink_spot_route_t route;
+        memset (&route, 0, sizeof (route));
+        if (zlink_discovery_resolve_spot (discovery_, spot_rid_, &route)
               == ZLINK_CONFIG_OK
             && expected_owner_
-            && resolved_owner.size == expected_owner_->size
-            && memcmp (resolved_owner.data, expected_owner_->data,
+            && route.owner_node_rid.size == expected_owner_->size
+            && memcmp (route.owner_node_rid.data, expected_owner_->data,
                        expected_owner_->size)
                  == 0) {
+            resolved_owner = route.owner_node_rid;
             return true;
         }
         return false;
@@ -173,12 +177,11 @@ bool wait_for_resolve_spot_errno_local (void *discovery_,
                                         int expected_errno_,
                                         int timeout_ms_)
 {
-    zlink_routing_id_t owner_node_rid;
-    memset (&owner_node_rid, 0, sizeof (owner_node_rid));
-    return zlink_test_wait_until (timeout_ms_, [=, &owner_node_rid] {
+    return zlink_test_wait_until (timeout_ms_, [=] {
+        zlink_spot_route_t route;
+        memset (&route, 0, sizeof (route));
         errno = 0;
-        if (zlink_discovery_resolve_spot (discovery_, spot_rid_,
-                                          &owner_node_rid)
+        if (zlink_discovery_resolve_spot (discovery_, spot_rid_, &route)
             != ZLINK_CONFIG_OK
             && errno == expected_errno_) {
             return true;
@@ -284,11 +287,17 @@ void test_discovery_resolve_spot_returns_owner_node_rid ()
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
+    void *entry_spot = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_entry_spot (node, &entry_spot));
+    TEST_ASSERT_NOT_NULL (entry_spot);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (node, "resolve-node-a", 14));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (spot, "resolve-spot-a", 14));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (entry_spot, "resolve-entry-a", 15));
     TEST_ASSERT_TRUE (bind_spot_test_endpoint_local (node, &node_endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_discovery (node, discovery));
 
@@ -306,6 +315,34 @@ void test_discovery_resolve_spot_returns_owner_node_rid ()
     TEST_ASSERT_EQUAL_UINT8 (node_rid.size, resolved_node_rid.size);
     TEST_ASSERT_EQUAL_MEMORY (node_rid.data, resolved_node_rid.data,
                               node_rid.size);
+    zlink_spot_route_t resolved_route;
+    memset (&resolved_route, 0, sizeof (resolved_route));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_discovery_resolve_spot (discovery, &spot_rid,
+                                                     &resolved_route));
+    TEST_ASSERT_EQUAL_UINT8 (spot_rid.size, resolved_route.spot_rid.size);
+    TEST_ASSERT_EQUAL_MEMORY (spot_rid.data, resolved_route.spot_rid.data,
+                              spot_rid.size);
+    TEST_ASSERT_EQUAL_UINT8 (node_rid.size,
+                             resolved_route.owner_node_rid.size);
+    TEST_ASSERT_EQUAL_MEMORY (node_rid.data,
+                              resolved_route.owner_node_rid.data,
+                              node_rid.size);
+    TEST_ASSERT_EQUAL (ZLINK_SPOT_KIND_USER, resolved_route.spot_kind);
+
+    zlink_routing_id_t entry_spot_rid;
+    memset (&entry_spot_rid, 0, sizeof (entry_spot_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (entry_spot, &entry_spot_rid));
+    memset (&resolved_route, 0, sizeof (resolved_route));
+    TEST_ASSERT_TRUE (zlink_test_wait_until (5000, [&] {
+        return zlink_discovery_resolve_spot (discovery, &entry_spot_rid,
+                                             &resolved_route)
+                 == ZLINK_CONFIG_OK
+               && resolved_route.spot_kind == ZLINK_SPOT_KIND_ENTRY;
+    }));
+    TEST_ASSERT_EQUAL_UINT8 (entry_spot_rid.size, resolved_route.spot_rid.size);
+    TEST_ASSERT_EQUAL_MEMORY (entry_spot_rid.data, resolved_route.spot_rid.data,
+                              entry_spot_rid.size);
 
     zlink_routing_id_t missing_spot_rid;
     memset (&missing_spot_rid, 0, sizeof (missing_spot_rid));
@@ -315,10 +352,11 @@ void test_discovery_resolve_spot_returns_owner_node_rid ()
     TEST_ASSERT_NOT_EQUAL (
       ZLINK_CONFIG_OK,
       zlink_discovery_resolve_spot (discovery, &missing_spot_rid,
-                                    &resolved_node_rid));
+                                    &resolved_route));
     TEST_ASSERT_EQUAL_INT (ENOENT, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&entry_spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));

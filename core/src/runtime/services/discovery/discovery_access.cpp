@@ -231,10 +231,10 @@ int discovery_access_t::get_value (discovery_t *discovery_, int64_t *value_out_)
 
 int discovery_access_t::resolve_spot (discovery_t *discovery_,
                                       const zlink_routing_id_t *spot_rid_,
-                                      zlink_routing_id_t *owner_node_rid_out_)
+                                      zlink_spot_route_t *route_out_)
 {
     return discovery_
-             ? discovery_->resolve_spot (spot_rid_, owner_node_rid_out_)
+             ? discovery_->resolve_spot (spot_rid_, route_out_)
              : -1;
 }
 

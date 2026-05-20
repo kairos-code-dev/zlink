@@ -76,7 +76,7 @@ zlink_config_result_t zlink_discovery_get_value (void *discovery_, int64_t *valu
 zlink_config_result_t zlink_discovery_resolve_spot (
   void *discovery_,
   const zlink_routing_id_t *spot_rid_,
-  zlink_routing_id_t *owner_node_rid_out_)
+  zlink_spot_route_t *route_out_)
 {
     zlink::discovery_t *discovery =
       zlink::discovery_access_t::from_handle (discovery_);
@@ -85,8 +85,8 @@ zlink_config_result_t zlink_discovery_resolve_spot (
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::discovery_access_t::resolve_spot (
-        discovery, spot_rid_, owner_node_rid_out_));
+      zlink::discovery_access_t::resolve_spot (discovery, spot_rid_,
+                                               route_out_));
 }
 
 zlink_config_result_t zlink_discovery_bind_route (

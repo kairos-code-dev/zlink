@@ -1519,8 +1519,11 @@ int spot_node_t::update_spot_routing_id (spot_handle_t *spot_,
                           && !_endpoint_state.bound_endpoint.empty ();
     }
     if (publish_summary) {
-        submit_spot_owner_summary_for_rid (old_rid, ZLINK_TOPOLOGY_STATE_STOPPED,
-                                           0);
+        submit_spot_owner_summary_for_rid (
+          old_rid,
+          spot_->logical_state->entry ? ZLINK_SPOT_KIND_ENTRY
+                                      : ZLINK_SPOT_KIND_USER,
+          ZLINK_TOPOLOGY_STATE_STOPPED, 0);
         submit_spot_owner_summary (spot_->logical_state,
                                    ZLINK_TOPOLOGY_STATE_READY, 0);
     }

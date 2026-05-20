@@ -133,6 +133,7 @@ typedef struct zlink_registry_topology_entry_t
     uint32_t ready_count;
     uint32_t error_code;
     uint64_t last_reported_ms;
+    zlink_spot_kind_t spot_kind;
 } zlink_registry_topology_entry_t;
 
 typedef struct zlink_registry_topology_filter_t

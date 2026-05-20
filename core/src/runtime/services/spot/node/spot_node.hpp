@@ -301,7 +301,10 @@ class spot_node_t : public discovery_observer_t
       const std::shared_ptr<spot_logical_state_t> &state_,
       uint16_t state, int error_code_);
     void submit_spot_owner_summary_for_rid (
-      const zlink_routing_id_t &rid_, uint16_t state_, int error_code_);
+      const zlink_routing_id_t &rid_,
+      zlink_spot_kind_t spot_kind_,
+      uint16_t state_,
+      int error_code_);
     void submit_stopped_summaries ();
     void refresh_existing_summaries ();
     void refresh_sub_peer_summaries (bool has_active_peers,

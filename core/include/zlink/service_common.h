@@ -21,6 +21,13 @@ typedef struct zlink_member_peer_entry_t
     int64_t value;
 } zlink_member_peer_entry_t;
 
+typedef enum zlink_spot_kind_t
+{
+    ZLINK_SPOT_KIND_INVALID = 0,
+    ZLINK_SPOT_KIND_ENTRY = 1,
+    ZLINK_SPOT_KIND_USER = 2
+} zlink_spot_kind_t;
+
 #ifdef __cplusplus
 }
 #endif

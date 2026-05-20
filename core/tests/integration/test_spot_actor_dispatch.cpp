@@ -516,6 +516,22 @@ void test_entry_spot_facade_lookup_and_rid ()
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
                        zlink_spot_node_spots_snapshot (node, NULL, &count));
     TEST_ASSERT_TRUE (count >= 1);
+    std::vector<zlink_spot_node_spot_entry_t> spot_rows (count);
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_spots_snapshot (
+                         node, spot_rows.data (), &count));
+    bool found_entry_row = false;
+    for (size_t i = 0; i < count; ++i) {
+        if (spot_rows[i].spot_rid.size == entry_b_rid.size
+            && memcmp (spot_rows[i].spot_rid.data, entry_b_rid.data,
+                       entry_b_rid.size)
+                 == 0) {
+            TEST_ASSERT_EQUAL (ZLINK_SPOT_KIND_ENTRY,
+                               spot_rows[i].spot_kind);
+            found_entry_row = true;
+        }
+    }
+    TEST_ASSERT_TRUE (found_entry_row);
 
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry_a));
     TEST_ASSERT_NULL (entry_a);
@@ -1603,6 +1619,7 @@ void test_spot_snapshot_destroy_joined_and_pending_counts ()
 
     zlink_spot_node_spot_entry_t row;
     TEST_ASSERT_TRUE (find_spot_snapshot_row (node, joined_spot_rid, &row));
+    TEST_ASSERT_EQUAL (ZLINK_SPOT_KIND_USER, row.spot_kind);
     TEST_ASSERT_EQUAL_UINT32 (1, row.joined_actor_count);
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_BUSY, zlink_spot_destroy (&joined_spot));
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
@@ -1639,6 +1656,7 @@ void test_spot_snapshot_destroy_joined_and_pending_counts ()
                                               &pending_probe, ZLINK_DONTWAIT,
                                               5000));
     TEST_ASSERT_TRUE (find_spot_snapshot_row (node, pending_spot_rid, &row));
+    TEST_ASSERT_EQUAL (ZLINK_SPOT_KIND_USER, row.spot_kind);
     TEST_ASSERT_EQUAL_UINT32 (1, row.pending_actor_join_count);
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_BUSY, zlink_spot_destroy (&pending_spot));
     zlink_actor_join_info_t pending_info;
@@ -1802,12 +1820,22 @@ void test_stream_multipart_selector_and_unbound_relay ()
     for (size_t i = 0; i < 2; ++i) {
         if (strncmp (rows[i].actor.actor_id, "multi-a",
                      ZLINK_ACTOR_ID_MAX)
-            == 0)
+            == 0) {
             pending_a = rows[i].pending_message_count;
+            TEST_ASSERT_TRUE (rows[i].current_spot_rid.size > 0);
+            TEST_ASSERT_TRUE (rows[i].current_spot_kind == ZLINK_SPOT_KIND_ENTRY
+                              || rows[i].current_spot_kind
+                                   == ZLINK_SPOT_KIND_USER);
+        }
         if (strncmp (rows[i].actor.actor_id, "multi-b",
                      ZLINK_ACTOR_ID_MAX)
-            == 0)
+            == 0) {
             pending_b = rows[i].pending_message_count;
+            TEST_ASSERT_TRUE (rows[i].current_spot_rid.size > 0);
+            TEST_ASSERT_TRUE (rows[i].current_spot_kind == ZLINK_SPOT_KIND_ENTRY
+                              || rows[i].current_spot_kind
+                                   == ZLINK_SPOT_KIND_USER);
+        }
     }
     TEST_ASSERT_EQUAL_UINT32 (2, pending_a);
     TEST_ASSERT_EQUAL_UINT32 (0, pending_b);
@@ -2023,7 +2051,7 @@ void test_actor_route_move_joined_publish_and_provider_cleanup ()
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor_b, &ref_b));
 
     zlink_actor_route_t route;
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
                        zlink_discovery_resolve_actor (
                          discovery_a, "route-move", &route));
     TEST_ASSERT_EQUAL (ENOENT, zlink_errno ());
@@ -2050,7 +2078,9 @@ void test_actor_route_move_joined_publish_and_provider_cleanup ()
                        zlink_discovery_resolve_actor (
                          discovery_a, "route-move", &route));
     TEST_ASSERT_EQUAL_UINT64 (ref_a.generation, route.actor.generation);
-    TEST_ASSERT_EQUAL_UINT32 (1, route.joined);
+    TEST_ASSERT_TRUE (route.current_spot_kind == ZLINK_SPOT_KIND_ENTRY
+                      || route.current_spot_kind == ZLINK_SPOT_KIND_USER);
+    TEST_ASSERT_TRUE (route.current_spot_rid.size > 0);
 
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
                        wait_stream_bind_actor (node_a, stream, &session_b,
@@ -2059,7 +2089,13 @@ void test_actor_route_move_joined_publish_and_provider_cleanup ()
                        zlink_discovery_resolve_actor (
                          discovery_a, "route-move", &route));
     TEST_ASSERT_EQUAL_UINT64 (ref_b.generation, route.actor.generation);
-    TEST_ASSERT_EQUAL_UINT32 (1, route.joined);
+    zlink_routing_id_t spot_b_rid;
+    memset (&spot_b_rid, 0, sizeof (spot_b_rid));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_get_routing_id (spot_b, &spot_b_rid));
+    TEST_ASSERT_EQUAL (ZLINK_SPOT_KIND_USER, route.current_spot_kind);
+    TEST_ASSERT_EQUAL_UINT8 (spot_b_rid.size, route.current_spot_rid.size);
+    TEST_ASSERT_EQUAL_MEMORY (spot_b_rid.data, route.current_spot_rid.data,
+                              spot_b_rid.size);
 
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor_a, 0));
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
@@ -2071,11 +2107,12 @@ void test_actor_route_move_joined_publish_and_provider_cleanup ()
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
                        zlink_discovery_resolve_actor (
                          discovery_a, "route-move", &route));
-    TEST_ASSERT_EQUAL_UINT32 (1, route.joined);
+    TEST_ASSERT_EQUAL (ZLINK_SPOT_KIND_ENTRY, route.current_spot_kind);
+    TEST_ASSERT_TRUE (route.current_spot_rid.size > 0);
 
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot_b));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node_b));
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
                        zlink_discovery_resolve_actor (
                          discovery_a, "route-move", &route));
     TEST_ASSERT_EQUAL (ENOENT, zlink_errno ());

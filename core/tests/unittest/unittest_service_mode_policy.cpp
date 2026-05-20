@@ -919,17 +919,17 @@ void test_discovery_resolve_spot_rejects_invalid_arguments ()
 
     zlink_routing_id_t spot_rid;
     memset (&spot_rid, 0, sizeof (spot_rid));
-    zlink_routing_id_t owner_node_rid;
-    memset (&owner_node_rid, 0, sizeof (owner_node_rid));
+    zlink_spot_route_t route;
+    memset (&route, 0, sizeof (route));
 
     TEST_ASSERT_NOT_EQUAL (
       ZLINK_CONFIG_OK,
-      zlink_discovery_resolve_spot (discovery, NULL, &owner_node_rid));
+      zlink_discovery_resolve_spot (discovery, NULL, &route));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     TEST_ASSERT_NOT_EQUAL (
       ZLINK_CONFIG_OK,
-      zlink_discovery_resolve_spot (discovery, &spot_rid, &owner_node_rid));
+      zlink_discovery_resolve_spot (discovery, &spot_rid, &route));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     spot_rid.size = 4;
@@ -957,12 +957,12 @@ void test_discovery_resolve_spot_rejects_socket_service_view ()
     spot_rid.size = 4;
     memcpy (spot_rid.data, "spot", 4);
 
-    zlink_routing_id_t owner_node_rid;
-    memset (&owner_node_rid, 0, sizeof (owner_node_rid));
+    zlink_spot_route_t route;
+    memset (&route, 0, sizeof (route));
 
     TEST_ASSERT_NOT_EQUAL (
       ZLINK_CONFIG_OK,
-      zlink_discovery_resolve_spot (discovery, &spot_rid, &owner_node_rid));
+      zlink_discovery_resolve_spot (discovery, &spot_rid, &route));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));

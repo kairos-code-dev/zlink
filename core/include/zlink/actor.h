@@ -5,6 +5,7 @@
 
 #include <zlink/common.h>
 #include <zlink/message.h>
+#include <zlink/service_common.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,8 +45,8 @@ typedef struct zlink_actor_join_info_t
 typedef struct zlink_actor_route_t
 {
     zlink_actor_ref_t actor;
-    uint32_t joined;
-    zlink_routing_id_t joined_spot_rid;
+    zlink_routing_id_t current_spot_rid;
+    zlink_spot_kind_t current_spot_kind;
 } zlink_actor_route_t;
 
 typedef struct zlink_actor_join_result_t

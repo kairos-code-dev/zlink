@@ -117,6 +117,48 @@ void recv_router_until_message (void *router_,
 
 SETUP_TEARDOWN_TESTCONTEXT
 
+void test_public_socket_timeout_defaults_and_override ()
+{
+    void *socket = test_context_socket (ZLINK_SOCKET_PAIR);
+    TEST_ASSERT_NOT_NULL (socket);
+
+    int timeout = 0;
+    size_t timeout_size = sizeof (timeout);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (socket, ZLINK_OPT_SNDTIMEO, &timeout, &timeout_size));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (sizeof (timeout)),
+                           static_cast<int> (timeout_size));
+    TEST_ASSERT_EQUAL_INT (1000, timeout);
+
+    timeout = 0;
+    timeout_size = sizeof (timeout);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (socket, ZLINK_OPT_RCVTIMEO, &timeout, &timeout_size));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (sizeof (timeout)),
+                           static_cast<int> (timeout_size));
+    TEST_ASSERT_EQUAL_INT (1000, timeout);
+
+    const int override_timeout = 77;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket, ZLINK_OPT_SNDTIMEO, &override_timeout,
+                        sizeof (override_timeout)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket, ZLINK_OPT_RCVTIMEO, &override_timeout,
+                        sizeof (override_timeout)));
+
+    timeout = 0;
+    timeout_size = sizeof (timeout);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (socket, ZLINK_OPT_SNDTIMEO, &timeout, &timeout_size));
+    TEST_ASSERT_EQUAL_INT (override_timeout, timeout);
+
+    timeout = 0;
+    timeout_size = sizeof (timeout);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (socket, ZLINK_OPT_RCVTIMEO, &timeout, &timeout_size));
+    TEST_ASSERT_EQUAL_INT (override_timeout, timeout);
+}
+
 void test_public_inproc_pair_send_single_part ()
 {
     void *left = test_context_socket (ZLINK_SOCKET_PAIR);
@@ -862,6 +904,7 @@ int main (void)
     setup_test_environment ();
 
     UNITY_BEGIN ();
+    RUN_TEST (test_public_socket_timeout_defaults_and_override);
     RUN_TEST (test_public_inproc_pair_send_single_part);
     RUN_TEST (test_public_inproc_pair_send_multipart_blocking);
     RUN_TEST (test_public_inproc_pair_recv_single_after_multipart_reset);

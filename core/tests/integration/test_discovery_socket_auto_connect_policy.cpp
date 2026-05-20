@@ -581,6 +581,7 @@ void test_socket_discovery_default_dealer_mode_targets_router ()
     TEST_ASSERT_TRUE (wait_for_topology_entry_local (
       registry, &dealer_filter, &dealer_entry, 1, 60000));
     TEST_ASSERT_EQUAL_UINT32 (1u, dealer_entry.desired_count);
+    TEST_ASSERT_EQUAL (ZLINK_SPOT_KIND_INVALID, dealer_entry.spot_kind);
 
     zlink_registry_topology_filter_t router_filter;
     init_socket_topology_filter_local (&router_filter, "socket-auto-router",
@@ -590,6 +591,7 @@ void test_socket_discovery_default_dealer_mode_targets_router ()
     TEST_ASSERT_TRUE (wait_for_topology_entry_local (
       registry, &router_filter, &router_entry, 0, 60000));
     TEST_ASSERT_EQUAL_UINT32 (0u, router_entry.desired_count);
+    TEST_ASSERT_EQUAL (ZLINK_SPOT_KIND_INVALID, router_entry.spot_kind);
 
     TEST_ASSERT_TRUE (
       destroy_discovery_with_retry_local (&dealer_discovery, 3000));

@@ -9,7 +9,6 @@ using Zlink.Framework.Contracts.Streams;
 namespace TicTacToe.SessionActorDispatch.Session;
 
 internal sealed class AuthenticateSessionPacketHandler(
-    IZLinkActorPlayRouteResolver playRoutes,
     SessionActorRouteCache actorRoutes)
     : ISessionRelayPacketHandler
 {
@@ -37,15 +36,17 @@ internal sealed class AuthenticateSessionPacketHandler(
             }
 
             context.State.ActorId = authenticated.ActorId;
-            await context.Stream.RequestChannel(
+            var ensured = await context.Stream.RequestChannel(
                     SampleNames.PlayChannel,
                     new EnsurePlayerActorReq(authenticated.ActorId))
                 .Timeout(SampleTimings.RequestTimeout)
                 .SubmitAsync<EnsurePlayerActorRes>(cancellationToken)
                 .ConfigureAwait(false);
 
-            var route = await playRoutes.ResolvePlayRouteAsync(authenticated.ActorId, cancellationToken)
-                .ConfigureAwait(false);
+            var route = new ZLinkActorRoute(
+                ensured.Route.RouterChannelId,
+                RoutingId.FromBytes(ensured.Route.TargetNodeRid));
+            context.State.ActorId = ensured.ActorId;
             await actorRoutes.EnsureRouteAsync(
                     context.Stream,
                     context.State,
@@ -53,7 +54,7 @@ internal sealed class AuthenticateSessionPacketHandler(
                     cancellationToken)
                 .ConfigureAwait(false);
 
-            await context.Stream.Reply(new AuthenticateRes(authenticated.ActorId))
+            await context.Stream.Reply(new AuthenticateRes(ensured.ActorId))
                 .Submit(cancellationToken)
                 .ConfigureAwait(false);
         }

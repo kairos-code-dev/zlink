@@ -62,6 +62,12 @@ public interface IZLinkSessionActorDispatchContext
         string actorType,
         CancellationToken cancellationToken = default);
 
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        string actorId,
+        string actorType,
+        ZLinkActorRoute route,
+        CancellationToken cancellationToken = default);
+
     ValueTask RelayToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,

@@ -10,6 +10,7 @@ public sealed class SampleRegressionTests
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
         AssertSampleUsesRegistryDefaults(sampleRoot, "bingo");
+        AssertSessionHandlersDoNotResolveActorPlayRoutes(sampleRoot);
     }
 
     [Fact]
@@ -20,6 +21,7 @@ public sealed class SampleRegressionTests
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
         AssertSampleUsesRegistryDefaults(sampleRoot, "tictactoe");
+        AssertSessionHandlersDoNotResolveActorPlayRoutes(sampleRoot);
     }
 
     private static void AssertNoSampleRouteStore(string sampleRoot)
@@ -76,6 +78,23 @@ public sealed class SampleRegressionTests
         Assert.Contains($"UseRegistryActorRoutes(\"{namespaceName}\")", allText, StringComparison.Ordinal);
         Assert.Contains($"UseRegistrySpotRoutes(\"{namespaceName}\")", allText, StringComparison.Ordinal);
         Assert.Contains($"UseRegistryActorSessionBindings(\"{namespaceName}\")", allText, StringComparison.Ordinal);
+    }
+
+    private static void AssertSessionHandlersDoNotResolveActorPlayRoutes(string sampleRoot)
+    {
+        var sessionRoot = Path.Combine(sampleRoot, "Server", "Session");
+        var sourceFiles = EnumerateSourceFiles(sessionRoot)
+            .Where(static file => file.EndsWith("PacketHandler.cs", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.NotEmpty(sourceFiles);
+
+        foreach (var file in sourceFiles)
+        {
+            var text = File.ReadAllText(file);
+            Assert.DoesNotContain("IZLinkActorPlayRouteResolver", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("ResolvePlayRouteAsync", text, StringComparison.Ordinal);
+        }
     }
 
     private static IEnumerable<string> EnumerateSourceFiles(string root)

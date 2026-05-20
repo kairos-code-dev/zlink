@@ -629,7 +629,7 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
-    public void RegistryRouteResolvers_Require_Discovery()
+    public void RegistrySpotRoutes_Require_SpotDiscovery()
     {
         var services = new ServiceCollection();
 
@@ -644,6 +644,24 @@ public sealed class RegistrationValidationTests
             }));
 
         Assert.Contains("requires AddSpotMesh", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RegistryActorRoutes_Require_Discovery()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddRouteMeshChannel("play", routed =>
+                {
+                    routed.Bind("tcp://127.0.0.1:6202");
+                });
+                options.UseRegistryActorRoutes("bingo");
+            }));
+
+        Assert.Contains("requires UseDiscovery", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

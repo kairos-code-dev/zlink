@@ -5,7 +5,9 @@ using Zlink.Framework.Contracts.Handlers;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 
-internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
+internal sealed class EnsurePlayerActorHandler(
+    IZLinkActorManager actors,
+    IZLinkActorPlayRouteResolver playRoutes)
 {
     [ZLinkRequest]
     public async ValueTask<EnsurePlayerActorRes> EnsurePlayerActor(
@@ -25,6 +27,11 @@ internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
                 SampleNames.PlayerActorType,
                 cancellationToken)
             .ConfigureAwait(false);
-        return new EnsurePlayerActorRes(actorId);
+
+        var route = await playRoutes.ResolvePlayRouteAsync(actorId, cancellationToken)
+            .ConfigureAwait(false);
+        return new EnsurePlayerActorRes(
+            actorId,
+            new ActorRouteSnapshot(route.RouterChannelId, route.TargetNodeRid.ToBytes().ToArray()));
     }
 }

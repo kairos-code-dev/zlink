@@ -300,6 +300,52 @@ public sealed class StreamIntegrationTests
     }
 
     [Fact]
+    public async Task SessionActorBind_Uses_Explicit_Route_Without_Resolver()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var localRid = RoutingId.FromString("1201");
+        var remoteRid = RoutingId.FromString("1202");
+        var store = new ActorSessionLocationStore();
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton(store);
+            services.AddSingleton<IZLinkActorSessionBindingStore>(store);
+            services.AddSingleton<IZLinkActorPlayRouteResolver, ThrowingActorPlayRouteResolver>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(endpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
+                    routed.UseManualConnections(connections => connections.Connect(endpoint));
+                });
+            });
+        });
+
+        try
+        {
+            var context = new ZLinkSessionContext(
+                host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
+                host.Services.GetRequiredService<IZLinkClient>(),
+                new SpotIntegrationTests.TestStream("explicit-route-session"),
+                static _ => ValueTask.CompletedTask,
+                static _ => ValueTask.CompletedTask);
+
+            var actor = await context.BindActorHandleAsync(
+                "remote-player",
+                "player",
+                new ZLinkActorRoute("gateway", remoteRid));
+
+            Assert.Equal("remote-player", actor.ActorId);
+            Assert.True(store.HasBinding);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
     public void SessionProxy_Uses_Multipart_Routed_Client_Push()
     {
         var routeHeader = new ZLinkEnvelopeHeader(
@@ -592,14 +638,13 @@ public sealed class StreamIntegrationTests
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new ActorPlayRouteStore(playRid));
+            services.AddSingleton(new TestActorRouteSnapshot(new ZLinkActorRoute("gateway", playRid)));
             services.AddSingleton(new GatewaySessionRecorder());
             services.AddSingleton(sessionLocations);
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>
             {
                 options.AddActorSessionBindingStore<ActorSessionLocationStore>();
-                options.AddActorPlayRouteResolver<ActorPlayRouteStore>();
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(sessionRouterEndpoint);
@@ -829,14 +874,13 @@ public sealed class StreamIntegrationTests
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new ActorPlayRouteStore(playRid));
+            services.AddSingleton(new TestActorRouteSnapshot(new ZLinkActorRoute("gateway", playRid)));
             services.AddSingleton(new GatewaySessionRecorder());
             services.AddSingleton(sessionLocations);
             services.AddScoped<MissingRemoteActorRelaySession>();
             services.AddZLinkFramework(options =>
             {
                 options.AddActorSessionBindingStore<ActorSessionLocationStore>();
-                options.AddActorPlayRouteResolver<ActorPlayRouteStore>();
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(sessionRouterEndpoint);
@@ -967,7 +1011,6 @@ public sealed class StreamIntegrationTests
 
         var host = await CreateHostAsync(routerEndpoint, services =>
         {
-            services.AddSingleton(new ActorPlayRouteStore(localRid));
             services.AddSingleton(actorRecorder);
             services.AddSingleton(sessionRecorder);
             services.AddSingleton(sessionLocations);
@@ -979,7 +1022,6 @@ public sealed class StreamIntegrationTests
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddActorSessionBindingStore<ActorSessionLocationStore>();
-                options.AddActorPlayRouteResolver<ActorPlayRouteStore>();
                 options.AddSpotNode("actor-node", spot =>
                 {
                     spot.Bind(spotEndpoint);
@@ -1086,14 +1128,13 @@ public sealed class StreamIntegrationTests
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new ActorPlayRouteStore(playRid));
+            services.AddSingleton(new TestActorRouteSnapshot(new ZLinkActorRoute("gateway", playRid)));
             services.AddSingleton(sessionRecorder);
             services.AddSingleton(sessionLocations);
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>
             {
                 options.AddActorSessionBindingStore<ActorSessionLocationStore>();
-                options.AddActorPlayRouteResolver<ActorPlayRouteStore>();
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(sessionRouterEndpoint);
@@ -1489,15 +1530,17 @@ public sealed class StreamIntegrationTests
 
     public sealed record GatewayPong(string Value, ulong RequestSeq);
 
-    public sealed class ActorPlayRouteStore(RoutingId playRid) : IZLinkActorPlayRouteResolver
+    public sealed record TestActorRouteSnapshot(ZLinkActorRoute Route);
+
+    public sealed class ThrowingActorPlayRouteResolver : IZLinkActorPlayRouteResolver
     {
         public ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
             string actorId,
             CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             _ = actorId;
-            return ValueTask.FromResult(new ZLinkActorRoute("gateway", playRid));
+            _ = cancellationToken;
+            throw new InvalidOperationException("Session actor bind must use the explicit route.");
         }
     }
 
@@ -1769,6 +1812,7 @@ public sealed class StreamIntegrationTests
 
     public sealed class GatewayRelaySession(
         GatewaySessionRecorder recorder,
+        IEnumerable<TestActorRouteSnapshot> actorRoutes,
         IZLinkSessionContext context) : IZLinkSession
     {
         private IZLinkActorRef? _actor;
@@ -1806,10 +1850,22 @@ public sealed class StreamIntegrationTests
             Message payload,
             CancellationToken cancellationToken)
         {
-            _actor ??= await Context.BindActorHandleAsync(
-                "player-1",
-                "player",
-                cancellationToken);
+            if (_actor is null)
+            {
+                var actorRoute = actorRoutes.SingleOrDefault();
+                _actor = actorRoute is null
+                    ? await Context.BindActorHandleAsync(
+                            "player-1",
+                            "player",
+                            cancellationToken)
+                        .ConfigureAwait(false)
+                    : await Context.BindActorHandleAsync(
+                            "player-1",
+                            "player",
+                            actorRoute.Route,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+            }
 
             await Context.RelayToActorAsync(
                     _actor ?? throw new InvalidOperationException("Actor was not created."),
@@ -1820,7 +1876,9 @@ public sealed class StreamIntegrationTests
         }
     }
 
-    public sealed class MissingRemoteActorRelaySession(IZLinkSessionContext context) : IZLinkSession
+    public sealed class MissingRemoteActorRelaySession(
+        TestActorRouteSnapshot actorRoute,
+        IZLinkSessionContext context) : IZLinkSession
     {
         private IZLinkActorRef? _actor;
 
@@ -1856,6 +1914,7 @@ public sealed class StreamIntegrationTests
             _actor ??= await Context.BindActorHandleAsync(
                 "player-1",
                 "player",
+                actorRoute.Route,
                 cancellationToken);
 
             await Context.RelayToActorAsync(

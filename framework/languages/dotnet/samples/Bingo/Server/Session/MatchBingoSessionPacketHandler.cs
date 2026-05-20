@@ -3,9 +3,7 @@ using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace Bingo.Server.Session;
 
-internal sealed class MatchBingoSessionPacketHandler(
-    IZLinkActorPlayRouteResolver playRoutes,
-    SessionActorRouteCache actorRoutes)
+internal sealed class MatchBingoSessionPacketHandler(SessionActorRouteCache actorRoutes)
     : ISessionRelayPacketHandler
 {
     public string PacketName => nameof(MatchBingoReq);
@@ -16,10 +14,8 @@ internal sealed class MatchBingoSessionPacketHandler(
         Message payload,
         CancellationToken cancellationToken)
     {
-        var actorId = context.State.RequireActorId("matching bingo");
-        var route = await playRoutes.ResolvePlayRouteAsync(actorId, cancellationToken)
-            .ConfigureAwait(false);
-        var actor = await actorRoutes.EnsureRouteAsync(context.Stream, context.State, route, cancellationToken)
+        _ = context.State.RequireActorId("matching bingo");
+        var actor = await actorRoutes.EnsureRouteAsync(context.Stream, context.State, cancellationToken)
             .ConfigureAwait(false);
         await context.Stream.RelayToActorAsync(actor, header, payload, cancellationToken)
             .ConfigureAwait(false);

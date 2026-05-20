@@ -18,7 +18,13 @@ public sealed record EnsurePlayerActorReq(
     string ActorId,
     string DisplayName);
 
-public sealed record EnsurePlayerActorRes(string ActorId);
+public sealed record ActorRouteSnapshot(
+    string RouterChannelId,
+    byte[] TargetNodeRid);
+
+public sealed record EnsurePlayerActorRes(
+    string ActorId,
+    ActorRouteSnapshot Route);
 
 public sealed record MatchBingoReq(string Mode);
 

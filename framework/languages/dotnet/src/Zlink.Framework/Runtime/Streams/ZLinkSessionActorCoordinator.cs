@@ -14,8 +14,25 @@ internal sealed class ZLinkSessionActorCoordinator(
         string actorType,
         CancellationToken cancellationToken)
     {
-        var route = await ResolveActorRouteAsync(actorId, cancellationToken)
+        var route = runtime.ResolveLocalActorRoute();
+        EnsureLocalActorExists(actorId, actorType);
+
+        return await BindHandleAsync(
+                context,
+                actorId,
+                actorType,
+                route,
+                cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public async ValueTask<IZLinkActorRef> BindHandleAsync(
+        ZLinkSessionContext context,
+        string actorId,
+        string actorType,
+        ZLinkActorRoute route,
+        CancellationToken cancellationToken)
+    {
         var isLocalRoute = IsLocalRoute(route.RouterChannelId, route.TargetNodeRid);
         if (isLocalRoute)
         {
@@ -135,20 +152,6 @@ internal sealed class ZLinkSessionActorCoordinator(
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorRouteNotFound,
             $"Actor '{actorId}' is not created on the local actor runtime.");
-    }
-
-    private async ValueTask<ZLinkActorRoute> ResolveActorRouteAsync(
-        string actorId,
-        CancellationToken cancellationToken)
-    {
-        if (runtime.Services.GetService(typeof(IZLinkActorPlayRouteResolver))
-            is IZLinkActorPlayRouteResolver resolver)
-        {
-            return await resolver.ResolvePlayRouteAsync(actorId, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        return runtime.ResolveLocalActorRoute();
     }
 
     private async ValueTask NotifyLocalActorDisconnectedAsync(

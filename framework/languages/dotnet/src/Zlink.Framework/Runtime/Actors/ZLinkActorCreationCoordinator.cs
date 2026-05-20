@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Registry;
 
 namespace Zlink.Framework.Runtime.Actors;
 
@@ -77,6 +78,13 @@ internal sealed class ZLinkActorCreationCoordinator(
             var existingRef = node.ActorLookup(actor.ActorId);
             state.NativeActorRef = existingRef ?? node.CreateActor(actor.ActorId);
         }
+
+        await ZLinkRegistryActorRouteResolver.PublishActorRouteAsync(
+                runtime,
+                runtime.Registration,
+                actor.ActorId,
+                cancellationToken)
+            .ConfigureAwait(false);
 
         return actor;
     }

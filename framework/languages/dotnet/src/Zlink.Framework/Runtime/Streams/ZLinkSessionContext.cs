@@ -57,6 +57,15 @@ internal sealed class ZLinkSessionContext(
         return _actors.BindHandleAsync(this, actorId, actorType, cancellationToken);
     }
 
+    public ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        string actorId,
+        string actorType,
+        ZLinkActorRoute route,
+        CancellationToken cancellationToken = default)
+    {
+        return _actors.BindHandleAsync(this, actorId, actorType, route, cancellationToken);
+    }
+
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)
     {
         return closeAsync(cancellationToken);

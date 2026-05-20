@@ -1,9 +1,12 @@
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
+using Zlink.Framework.Contracts.Actors;
 
 namespace Bingo.Server.Play;
 
-internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
+internal sealed class EnsurePlayerActorHandler(
+    IZLinkActorManager actors,
+    IZLinkActorPlayRouteResolver playRoutes)
 {
     [ZLinkRequest]
     public async ValueTask<EnsurePlayerActorRes> EnsurePlayerActor(
@@ -22,6 +25,10 @@ internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
             player.SetDisplayName(request.DisplayName);
         }
 
-        return new EnsurePlayerActorRes(request.ActorId);
+        var route = await playRoutes.ResolvePlayRouteAsync(request.ActorId, cancellationToken)
+            .ConfigureAwait(false);
+        return new EnsurePlayerActorRes(
+            request.ActorId,
+            new ActorRouteSnapshot(route.RouterChannelId, route.TargetNodeRid.ToBytes().ToArray()));
     }
 }

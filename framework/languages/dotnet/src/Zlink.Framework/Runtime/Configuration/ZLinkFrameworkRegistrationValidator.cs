@@ -50,8 +50,15 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 "Registry route resolver requires AddRouteMeshChannel(...).");
         }
 
-        if ((registration.RegistryActorRoutes is not null
-                || registration.RegistrySpotRoutes is not null)
+        if (registration.RegistryActorRoutes is not null
+            && (registration.Discovery is null
+                || registration.Discovery.Endpoints.Count == 0))
+        {
+            throw new ZLinkConfigurationException(
+                "Registry actor route resolver requires UseDiscovery(...).");
+        }
+
+        if (registration.RegistrySpotRoutes is not null
             && (registration.SpotDiscovery is null
                 || registration.SpotDiscovery.Endpoints.Count == 0))
         {

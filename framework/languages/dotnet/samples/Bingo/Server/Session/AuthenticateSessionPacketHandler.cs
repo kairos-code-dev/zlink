@@ -1,12 +1,13 @@
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
+using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Contracts.Actors;
 
 namespace Bingo.Server.Session;
 
 internal sealed class AuthenticateSessionPacketHandler(
-    IZLinkActorPlayRouteResolver playRoutes,
     SessionActorRouteCache actorRoutes)
     : ISessionRelayPacketHandler
 {
@@ -36,19 +37,21 @@ internal sealed class AuthenticateSessionPacketHandler(
             }
 
             context.State.ActorId = authenticated.ActorId;
-            await context.Stream.RequestChannel(
+            var ensured = await context.Stream.RequestChannel(
                     SampleNames.PlayChannel,
                     new EnsurePlayerActorReq(authenticated.ActorId, authenticated.DisplayName))
                 .Timeout(SampleTimings.RequestTimeout)
                 .SubmitAsync<EnsurePlayerActorRes>(cancellationToken)
                 .ConfigureAwait(false);
 
-            var route = await playRoutes.ResolvePlayRouteAsync(authenticated.ActorId, cancellationToken)
-                .ConfigureAwait(false);
+            var route = new ZLinkActorRoute(
+                ensured.Route.RouterChannelId,
+                RoutingId.FromBytes(ensured.Route.TargetNodeRid));
+            context.State.ActorId = ensured.ActorId;
             await actorRoutes.EnsureRouteAsync(context.Stream, context.State, route, cancellationToken)
                 .ConfigureAwait(false);
 
-            await context.Stream.Reply(new AuthenticateRes(authenticated.ActorId, authenticated.DisplayName))
+            await context.Stream.Reply(new AuthenticateRes(ensured.ActorId, authenticated.DisplayName))
                 .Submit(cancellationToken)
                 .ConfigureAwait(false);
         }

@@ -6,9 +6,7 @@ using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
 
-internal sealed class PlaceMarkSessionPacketHandler(
-    IZLinkActorPlayRouteResolver playRoutes,
-    SessionActorRouteCache actorRoutes)
+internal sealed class PlaceMarkSessionPacketHandler(SessionActorRouteCache actorRoutes)
     : ISessionRelayPacketHandler
 {
     public string PacketName => nameof(PlaceMarkReq);
@@ -19,13 +17,10 @@ internal sealed class PlaceMarkSessionPacketHandler(
         Message payload,
         CancellationToken cancellationToken)
     {
-        var actorId = context.State.RequireActorId("sending game packets");
-        var route = await playRoutes.ResolvePlayRouteAsync(actorId, cancellationToken)
-            .ConfigureAwait(false);
+        _ = context.State.RequireActorId("sending game packets");
         var actor = await actorRoutes.EnsureRouteAsync(
                 context.Stream,
                 context.State,
-                route,
                 cancellationToken)
             .ConfigureAwait(false);
         await context.Stream.RelayToActorAsync(actor, header, payload, cancellationToken)

@@ -82,7 +82,8 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     public void AddActorSessionBindingStore<TStore>()
         where TStore : class, IZLinkActorSessionBindingStore
     {
-        if (_registration.ActorSessionBindingStoreType is not null)
+        if (_registration.ActorSessionBindingStoreType is not null
+            || _registration.RegistryActorSessionBindings is not null)
         {
             throw new ZLinkConfigurationException("Actor session binding store is already configured.");
         }
@@ -112,6 +113,20 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         {
             Namespace = ValidateRegistryNamespace(namespaceName),
             RouterChannelId = NormalizeOptionalName(options.RouterChannelId, nameof(options.RouterChannelId)),
+        };
+    }
+
+    public void UseRegistryActorSessionBindings(string namespaceName)
+    {
+        if (_registration.ActorSessionBindingStoreType is not null
+            || _registration.RegistryActorSessionBindings is not null)
+        {
+            throw new ZLinkConfigurationException("Actor session binding store is already configured.");
+        }
+
+        _registration.RegistryActorSessionBindings = new ZLinkRegistryActorSessionBindingsRegistration
+        {
+            Namespace = ValidateRegistryNamespace(namespaceName),
         };
     }
 

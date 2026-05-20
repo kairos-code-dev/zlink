@@ -1219,8 +1219,12 @@ DI 등록 (Session 서버):
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
-    options.AddSpotRouteResolver<RegistrySpotRouteStore>();
+    options.UseSpotDiscovery("game.rooms", discovery =>
+    {
+        discovery.Add("tcp://registry1:5551");
+    });
+    options.UseRegistryActorRoutes("game");
+    options.UseRegistrySpotRoutes("game");
     // STREAM session 등록 + routed channel 등록 (별도 문서 참고)
 });
 ```
@@ -1231,8 +1235,8 @@ DI 등록 (Play 서버):
 builder.Services.AddZLinkFramework(options =>
 {
     options.AddActorFactory<PlayerActorFactory>("player");
-    options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
-    options.AddSpotRouteResolver<RegistrySpotRouteStore>();
+    options.UseRegistryActorRoutes("game");
+    options.UseRegistrySpotRoutes("game");
     // routed channel 등록 + spot mesh 등록 (별도 문서 참고)
 });
 ```
@@ -1249,20 +1253,16 @@ session binding 은 다음 흐름에서 framework / core 가 갱신해 두는 �
 - stream attach
 - stream disconnect
 
-분산 배포에서 이 상태를 외부 저장소에 두어야 한다면, `.NET` adapter 는
-`IZLinkActorSessionBindingStore` 를 등록한다. 이 store 는 resolver 가 아니다.
-bind / unbind 동작과 `SessionProxy` 조회를 함께 가진 저장소 계약이다.
+분산 배포에서 Registry 를 기본 저장소로 쓸 때는
+`UseRegistryActorSessionBindings(...)` 를 등록한다. 이 기본 구현은 actor id 를
+owner-bound route key 로 쓰고, route value 에 session router id 와 binding token 을
+담는다. unbind 는 binding token 을 확인한 뒤 수행하므로, 같은 Session 서버 안에서
+이전 stream 의 늦은 unbind 가 새 binding 을 지우지 못한다. 다른 Session 서버가 새
+binding 을 claim 한 경우에는 Registry owner generation 이 stale unbind 를 막는다.
 
-`IRegistryDiscoveryMetadata` 같은 registry / discovery metadata adapter 는
-sample code 에서 쓸 수 있다. 다만 framework public contract 는 아니다.
-session binding 을 registry 에 저장하는 샘플을 만들더라도, 그 adapter 는
-`IZLinkActorSessionBindingStore` 구현 내부에 머물러야 한다. 별도의 public
-session route resolver 를 도입하지 않는다.
-
-`DeleteIfAsync(...)` 는 저장된 `sessionId` 와 `bindingToken` 이 모두 일치할
-때만 key 를 삭제해야 한다. registry metadata API 가 조건부 삭제나
-compare-and-swap 을 제공하지 않는다면, sample adapter 는 read 후 delete 로
-흉내 내서는 안 된다.
+custom 저장소가 필요하면 `IZLinkActorSessionBindingStore` 를 직접 등록한다. 이 store 는
+resolver 가 아니다. bind / unbind 동작과 `SessionProxy` 조회를 함께 가진 저장소
+계약이다. 별도의 public session route resolver 를 도입하지 않는다.
 
 ## 7. 등록 표면 (host 측)
 

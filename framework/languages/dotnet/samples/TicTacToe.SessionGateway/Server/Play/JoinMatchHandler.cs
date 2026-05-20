@@ -1,4 +1,3 @@
-using TicTacToe.SessionActorDispatch.Infrastructure;
 using TicTacToe.SessionGateway.Play;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
@@ -6,9 +5,7 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 
-internal sealed class JoinMatchHandler(
-    RegistryPlayRoutePublisher routes,
-    GameNotificationPublisher notifications)
+internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
     : IZLinkEntrySpotActorRequestHandler<PlayerActor, JoinMatchReq, JoinMatchRes>
 {
     public async ValueTask<JoinMatchRes> HandleAsync(
@@ -20,8 +17,6 @@ internal sealed class JoinMatchHandler(
             .JoinSpot(request.MatchId, request)
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<JoinMatchSpotResult>(cancellationToken)
-            .ConfigureAwait(false);
-        await routes.BindActorPlayAsync(actor.ActorId, cancellationToken)
             .ConfigureAwait(false);
         await notifications.PublishAsync(result.Events, cancellationToken)
             .ConfigureAwait(false);

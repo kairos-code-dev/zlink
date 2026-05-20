@@ -9,18 +9,10 @@ namespace Bingo.Server.Play;
 
 public static class PlayServerHostFactory
 {
-    public static IHost Build(
-        SampleTopology topology,
-        RegistryActorSessionLocationStore sessionLocations,
-        RegistryPlayRouteStore playRoutes)
+    public static IHost Build(SampleTopology topology)
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(topology);
-        builder.Services.AddSingleton(sessionLocations);
-        builder.Services.AddSingleton(playRoutes);
-        builder.Services.AddSingleton<ISpotRouteResolver>(playRoutes);
-        builder.Services.AddSingleton<ISpotRouteWriter>(playRoutes);
-        builder.Services.AddSingleton<RegistryPlayRoutePublisher>();
         builder.Services.AddSingleton<BingoRoomDirectory>();
         builder.Services.AddSingleton<BingoNotificationPublisher>();
         builder.Services.AddScoped<PlayerActorFactory>();
@@ -46,9 +38,9 @@ public static class PlayServerHostFactory
                 channel.EnableClient();
             });
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
-            options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
-            options.AddActorSessionBindingStore<RegistryActorSessionLocationStore>();
-            options.AddSpotRouteResolver<RegistryPlayRouteStore>();
+            options.UseRegistryActorRoutes("bingo");
+            options.UseRegistrySpotRoutes("bingo");
+            options.UseRegistryActorSessionBindings("bingo");
             options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
             {
                 routed.Bind(topology.PlayRouterEndpoint);

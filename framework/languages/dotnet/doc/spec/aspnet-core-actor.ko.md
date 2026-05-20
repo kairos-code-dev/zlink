@@ -454,9 +454,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TActor, in TRequest, TReply>
 샘플은 다음과 같다.
 
 ```csharp
-internal sealed class JoinMatchHandler(
-    RegistryPlayRoutePublisher routes,
-    GameNotificationPublisher notifications)
+internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
     : IZLinkEntrySpotActorRequestHandler<PlayerActor, JoinMatchReq, JoinMatchRes>
 {
     public async ValueTask<JoinMatchRes> HandleAsync(
@@ -472,7 +470,6 @@ internal sealed class JoinMatchHandler(
             .Submit(cancellationToken)
             .ConfigureAwait(false);
 
-        await routes.BindActorPlayAsync(actor.ActorId, cancellationToken);
         await notifications.PublishAsync(result.Events, cancellationToken);
 
         return new JoinMatchRes(result.MatchId, result.ActorId, ...);
@@ -609,16 +606,16 @@ public readonly record struct ZLinkActorRoute(
 ```
 
 resolver 의 실제 저장소는 application 이 원하는 곳 어디든 채울 수 있다. 예를
-들어 in-memory 캐시, Redis, Registry 기반 lookup 등이 모두 가능하다. framework
-는 그 저장소를 소유하지 않는다.
+들어 in-memory 캐시, Redis, Registry 기반 lookup 등이 모두 가능하다. Registry 를
+기본 경로로 쓰는 application 은 framework 가 제공하는 기본 resolver 를 사용하고,
+직접 resolver 를 등록하는 방식은 custom 저장소가 필요할 때만 사용한다.
 
-등록 예시는 다음과 같다.
+Registry 기반 기본 resolver 등록 예시는 다음과 같다.
 
 ```csharp
-builder.Services.AddSingleton<RegistryPlayRouteStore>();
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
+    options.UseRegistryActorRoutes("game");
 });
 ```
 
@@ -943,12 +940,14 @@ public readonly record struct ZLinkActorRoute(
 Session 서버는 다음과 같이 등록한다.
 
 ```csharp
-builder.Services.AddSingleton<RegistryPlayRouteStore>();
-builder.Services.AddSingleton<RegistrySpotRouteStore>();
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
-    options.AddSpotRouteResolver<RegistrySpotRouteStore>();
+    options.UseSpotDiscovery("game.stage", discovery =>
+    {
+        discovery.Add("tcp://registry1:5551");
+    });
+    options.UseRegistryActorRoutes("game");
+    options.UseRegistrySpotRoutes("game");
     // STREAM session 등록 + routed channel 등록 (별도 문서 참고)
 });
 ```
@@ -959,8 +958,8 @@ Play 서버는 다음과 같이 등록한다.
 builder.Services.AddZLinkFramework(options =>
 {
     options.AddActorFactory<PlayerActorFactory>("player");
-    options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
-    options.AddSpotRouteResolver<RegistrySpotRouteStore>();
+    options.UseRegistryActorRoutes("game");
+    options.UseRegistrySpotRoutes("game");
 
     options.AddSpotMesh("game.stage", mesh =>
     {
@@ -981,7 +980,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-`AddActorPlayRouteResolver` 는 **양쪽 모두** 에 등록해야 한다. 이유는 다음과
+Registry actor route resolver 는 **양쪽 모두** 에 등록해야 한다. 이유는 다음과
 같다.
 
 - session 서버는 client packet 을 어느 play 노드로 보낼지 알아야 한다.

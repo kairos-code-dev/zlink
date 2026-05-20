@@ -1,15 +1,15 @@
 using Systems.Zlink.Stream.Connector.Contracts;
-using TicTacToe.SessionActorDispatch.Infrastructure;
-using TicTacToe.SessionGateway.Infrastructure;
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
 using TicTacToe.SessionGateway.Shared.Contracts;
+using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
 
 internal sealed class JoinMatchSessionPacketHandler(
-    ISpotRouteResolver spotRoutes,
+    IZLinkSpotRouteResolver spotRoutes,
     SessionActorRouteCache actorRoutes)
     : ISessionRelayPacketHandler
 {
@@ -23,8 +23,11 @@ internal sealed class JoinMatchSessionPacketHandler(
     {
         var request = SessionRelayJson.Decode<JoinMatchReq>(payload);
         var spotRid = RoutingId.FromString(request.MatchId);
-        var route = await spotRoutes.ResolveSpotRouteAsync(spotRid, cancellationToken)
+        var spotRoute = await spotRoutes.ResolveSpotRouteAsync(spotRid, cancellationToken)
             .ConfigureAwait(false);
+        var route = new ZLinkActorRoute(
+            spotRoute.RouterChannelId,
+            spotRoute.TargetNodeRid);
         var actor = await actorRoutes.EnsureRouteAsync(
                 context.Stream,
                 context.State,

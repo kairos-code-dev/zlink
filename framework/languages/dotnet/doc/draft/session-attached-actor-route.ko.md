@@ -55,14 +55,30 @@ session 은 actor 에 attach 할 때 다음 값을 route snapshot 으로 저장�
 - route generation
 - session binding token
 
+여기서 route snapshot 은 framework 내부에 저장되는 attached actor 상태다.
+`ZLinkActorRoute` 는 그중 router channel id, target node rid, route generation 만 담는다.
+session binding token 은 actor-session binding cleanup 과 stale disconnect 방어용으로
+별도 저장한다. 이 token 을 application 이 만들거나 route 값에 넣지 않는다.
+
+session 에 attach 되는 route 는 concrete route 여야 한다. `RouteGeneration == 0` 은
+unchecked route 이므로 session attach 입력과 route update 입력에서 거부한다. session 이
+unchecked route 를 받아들이면 stale route 를 구분할 수 없고, actor 재생성이나 이동 뒤
+이전 route 로 relay 할 수 있기 때문이다.
+
+`RouteGeneration` 은 attached route 의 version 이다. actor 가 다른 node 로 이동하거나
+같은 actor id 의 live route 가 새 target node rid 를 가리키게 되면 반드시 증가해야 한다.
+같은 generation 에 다른 target node rid 가 들어오면 framework 는 같은 route 의 갱신이
+아니라 충돌로 본다.
+
 초기 route snapshot 은 actor 를 생성하거나 확인한 쪽에서 session 으로 돌려준다. 예를
 들어 session 이 Play 서버에 `EnsurePlayerActor` 요청을 보내면, 응답은 actor id 와 함께
 현재 actor route snapshot 을 포함해야 한다. session 은 이 값을 attach 입력으로 넘길
 뿐이고, actor id 로 route 를 다시 조회하지 않는다.
 
 `RelayToActorAsync(...)` 는 저장된 actor ref 의 route snapshot 을 사용한다. 이 호출은
-resolver 를 호출하지 않는다. route 가 없으면 framework 는 명확한 오류를 내야 한다.
-숨은 fallback 으로 resolver 를 호출하면 안 된다.
+resolver 를 호출하지 않는다. route 가 없으면 framework 는
+`ZLinkFrameworkErrorKind.ActorRouteNotFound` 로 실패해야 한다. 숨은 fallback 으로
+resolver 를 호출하면 안 된다.
 
 actor node rid 가 바뀌면 route 변경을 아는 runtime 또는 backend adapter 가 session
 binding 쪽에 route update 를 전달한다. session 은 새 generation 이 현재 generation
@@ -79,6 +95,12 @@ resolver 가 아니다.
 따라서 backend service 는 actor id 만 알고 있고, actor runtime 이 어느 node 에 있는지
 찾아야 한다. 이때 `IZLinkActorPlayRouteResolver` 가 actor id 를 play/runtime route 로
 바꾼다.
+
+이 resolver 도 `ZLinkActorRoute` 를 반환하므로 route generation 을 함께 돌려줘야 한다.
+backend actor messaging 은 이 generation 으로 오래된 route 결과와 새 route update 를
+구분할 수 있다. session relay 는 같은 타입을 route snapshot 값으로 받을 수 있지만,
+그 값을 resolver 에서 직접 조회하지 않는다. resolver 가 반환하는 `RouteGeneration` 도
+`0` 이면 안 된다.
 
 정리하면 역할은 다음과 같이 나뉜다.
 
@@ -98,28 +120,38 @@ resolver 가 아니다.
 호출자에게 보이지 않는다. 구현이 resolver 를 내부에서 호출하면 session hot path 에
 route 조회가 다시 들어온다.
 
-구현 단계에서는 session attach 표면을 다음 이름과 형태로 추가한다. attach 입력은 route
-snapshot 을 명시적으로 받아야 한다.
+구현 단계에서는 `ZLinkActorRoute` 에 route generation 을 추가하고, session attach
+표면에는 route 를 받는 `BindActorHandleAsync(...)` overload 를 추가한다. attach 입력은
+route snapshot 을 명시적으로 받아야 한다.
 
 ```csharp
-public readonly record struct ZLinkAttachedActorRoute(
+public readonly record struct ZLinkActorRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid,
     ulong RouteGeneration);
 ```
 
 ```csharp
-ValueTask<IZLinkActorRef> AttachActorHandleAsync(
+ValueTask<IZLinkActorRef> BindActorHandleAsync(
     string actorId,
     string actorType,
-    ZLinkAttachedActorRoute route,
+    ZLinkActorRoute route,
     CancellationToken cancellationToken = default);
 ```
 
-`ZLinkAttachedActorRoute` 는 session attach 에 필요한 public 값이다. session handler 가
-이 값을 직접 계산한다는 뜻은 아니다. 보통은 actor 를 생성하거나 확인하는 Play/API 서버
-응답에서 받은 값을 그대로 넘긴다. route update 기능은 public 값이 아니므로 여기에
-포함하지 않는다.
+`ZLinkActorRoute` 는 actor id 나 session binding token 이 아니라 실제 relay 위치를 담는
+public 값이다. session handler 가 이 값을 직접 계산한다는 뜻은 아니다. 보통은 actor 를
+생성하거나 확인하는 Play/API 서버 응답에서 받은 값을 그대로 넘긴다. route update 기능은
+public 값이 아니므로 여기에 포함하지 않는다.
+
+`ZLinkActorRoute` 의 생성자는 `RouteGeneration` 을 필수로 받는다. 따라서 구현 단계에서는
+모든 resolver 구현체, sample route store, test double 의 `new ZLinkActorRoute(...)`
+호출을 함께 갱신해야 한다. resolver 가 generation 을 모르면 session attach 용 route 를
+반환할 수 없다.
+
+route 를 받는 `BindActorHandleAsync(...)` overload 는 `route.RouteGeneration == 0` 이면
+`ZLinkFrameworkErrorKind.ActorRouteNotFound` 로 실패한다. unchecked route 로 actor ref 를
+만들면 이후 stale update guard 가 동작하지 않기 때문이다.
 
 `IZLinkActorRef` 는 public 으로 route 를 노출하지 않는다. framework 내부 구현은 actor ref
 가 mutable route state 를 참조하게 만들고, `RelayToActorAsync(...)` 는 매 호출마다 그
@@ -132,10 +164,13 @@ state 의 최신 snapshot 을 읽는다. 이렇게 하면 session handler 는 �
 기존 `BindActorHandleAsync(actorId, actorType, ...)` 는 호환성 경로로만 남긴다.
 이 경로는 local actor bind 에만 쓸 수 있고, remote actor route 를 resolver 로 찾지
 않는다. local actor 가 없으면 `ActorRouteNotFound` 로 실패해야 한다.
+local actor 가 있으면 framework 는 local runtime 이 가진 concrete actor generation 으로
+route state 를 만든다. local compatibility 경로도 `RouteGeneration == 0` actor ref 를
+만들면 안 된다.
 
 구현 순서는 다음으로 고정한다.
 
-1. 새 attach API 를 추가하고 sample 을 새 API 로 옮긴다.
+1. route 를 받는 `BindActorHandleAsync(...)` overload 를 추가하고 sample 을 새 overload 로 옮긴다.
 2. 기존 API 는 local-only compatibility 경로로 제한한다.
 3. 기존 API 안에서 `IZLinkActorPlayRouteResolver` 를 호출하는 코드를 제거한다.
 4. 정식 spec 에서 session actor dispatch 의 기본 API 를 새 attach 표면으로 바꾼다.
@@ -151,6 +186,9 @@ route update 는 다음 정보를 가져야 한다.
 - router channel id
 - 새 target node rid
 - 새 route generation
+
+`routeGeneration == 0` update 는 거부한다. route update 는 concrete actor route 로만
+적용한다.
 
 session binding 쪽 내부 기능은 다음 의미를 가져야 한다.
 
@@ -168,8 +206,15 @@ framework runtime 또는 backend adapter 가 내부에서 호출한다. session 
 application service 는 이 기능을 몰라도 된다. 기본 원칙은 route update 가
 actor-session binding 을 소유한 framework 내부 한 곳으로 모이는 것이다.
 
+적용 범위는 actor id 기준이다. 같은 framework runtime 안에서 해당 actor id 에 attach 된
+모든 live `IZLinkActorRef` 의 route state 를 갱신한다. session binding token 은 cleanup
+과 stale disconnect 방어에 계속 쓰지만, route update 대상을 하나의 session token 으로
+좁히지 않는다. actor 위치는 actor 단위 상태이므로 같은 actor 에 붙은 session ref 들은
+같은 최신 route 를 공유해야 한다.
+
 동시성 규칙은 다음과 같다.
 
+- `routeGeneration == 0` update 는 실패한다.
 - 현재 generation 보다 큰 update 만 적용한다.
 - 같은 generation 의 같은 route 는 idempotent 하게 성공한다.
 - 같은 generation 의 다른 route 는 충돌로 보고 오류를 기록한다.
@@ -218,17 +263,20 @@ actor 가 다른 node 로 이동하거나 runtime route 가 바뀌면 route owne
 
 | 예정 항목 | 확인 기준 |
 |-----------|-----------|
-| `StreamIntegrationTests.SessionActorAttach_Does_Not_Resolve_PlayRoute` | session attach 와 relay 중 `IZLinkActorPlayRouteResolver` 가 호출되지 않는다. resolver 를 등록해도 call count 는 0 이다. |
-| `StreamIntegrationTests.SessionActorRelay_Reuses_Attached_Route_For_Multiple_Messages` | 같은 session 에서 여러 packet 을 relay 해도 attached actor ref 의 route snapshot 을 재사용한다. |
+| `StreamIntegrationTests.SessionActorBind_Does_Not_Resolve_PlayRoute` | session attach 와 relay 중 `IZLinkActorPlayRouteResolver` 가 호출되지 않는다. resolver 를 등록해도 call count 는 0 이다. |
+| `StreamIntegrationTests.SessionActorBind_Rejects_Unchecked_RouteGeneration` | route 를 받는 bind overload 에 `RouteGeneration == 0` 을 넘기면 `ActorRouteNotFound` 로 실패한다. |
+| `StreamIntegrationTests.SessionActorBind_WithoutRoute_Is_LocalOnly` | 기존 `BindActorHandleAsync(actorId, actorType, ...)` 는 local actor 가 있을 때만 성공하고 remote resolver 를 호출하지 않는다. |
+| `StreamIntegrationTests.SessionActorRelay_Reuses_Bound_Route_For_Multiple_Messages` | 같은 session 에서 여러 packet 을 relay 해도 attached actor ref 의 route snapshot 을 재사용한다. |
 | `StreamIntegrationTests.SessionActorRouteUpdate_Changes_Attached_TargetNodeRid` | route update 후 같은 `IZLinkActorRef` relay 가 새 target node rid 로 전송된다. |
 | `StreamIntegrationTests.SessionActorRouteUpdate_Ignores_Stale_Generation` | 낮은 generation update 가 늦게 도착해도 현재 route 를 되돌리지 않는다. |
 | `StreamIntegrationTests.SessionActorRouteUpdate_Allows_Idempotent_Same_Generation` | 같은 generation, 같은 route update 는 중복 도착해도 성공한다. |
 | `StreamIntegrationTests.SessionActorRouteUpdate_Rejects_Conflicting_Same_Generation` | 같은 generation 에 다른 target node rid 가 들어오면 충돌로 기록되고 route 를 바꾸지 않는다. |
-| `StreamIntegrationTests.SessionActorRelay_Fails_When_Attached_Route_Is_Missing` | attach route 없이 relay 를 시도하면 resolver fallback 없이 명확한 오류가 난다. |
+| `StreamIntegrationTests.SessionActorRelay_Fails_When_Bound_Route_Is_Missing` | attach route 없이 relay 를 시도하면 resolver fallback 없이 명확한 오류가 난다. |
 | `RegistrationValidationTests.SessionActorDispatch_Does_Not_Require_ActorPlayRouteResolver` | session actor dispatch 구성은 `IZLinkActorPlayRouteResolver` 등록을 요구하지 않는다. |
 | `SampleRegressionTests.Bingo_SessionHandlers_Do_Not_Inject_ActorPlayRouteResolver` | Bingo session handler 에 `IZLinkActorPlayRouteResolver` 주입과 직접 route resolve 호출이 없다. |
 | `SampleRegressionTests.TicTacToe_SessionHandlers_Do_Not_Inject_ActorPlayRouteResolver` | TicTacToe session gateway session handler 에도 같은 회귀가 없다. |
 | `BackendMessagingTests.BackendActorMessaging_Uses_ActorPlayRouteResolver` | backend -> actor messaging 기능이 추가된 뒤 resolver 사용 위치가 backend messaging 경로로 제한된다. |
+| `BackendMessagingTests.BackendActorMessaging_Rejects_Unchecked_Resolved_Route` | resolver 가 `RouteGeneration == 0` route 를 반환하면 backend -> actor messaging 은 전송하지 않고 실패한다. |
 
 ## 10. Framework 문서 반영 계획
 
@@ -236,9 +284,9 @@ actor 가 다른 node 로 이동하거나 runtime route 가 바뀌면 route owne
 
 | 문서 | 반영 내용 |
 |------|-----------|
-| `framework/languages/dotnet/doc/spec/session-actor-dispatch.ko.md` | session relay 는 attached route snapshot 을 사용하고 `IZLinkActorPlayRouteResolver` 를 호출하지 않는다는 계약, 새 attach API, 내부 route update 규칙 |
+| `framework/languages/dotnet/doc/spec/session-actor-dispatch.ko.md` | session relay 는 attached route snapshot 을 사용하고 `IZLinkActorPlayRouteResolver` 를 호출하지 않는다는 계약, route 를 받는 `BindActorHandleAsync(...)` overload, 내부 route update 규칙 |
 | `framework/languages/dotnet/doc/spec/aspnet-core-actor.ko.md` | actor lifecycle 에서 session attach 와 actor route update 를 분리해서 설명하고, resolver 의 backend messaging 용도를 명시 |
-| `framework/languages/dotnet/doc/spec/handler-interfaces.ko.md` | 새 attach route record 가 공개 표면이 될 경우에만 인터페이스 기준 문서에 반영. 내부 route update 기능은 public interface 로 싣지 않는다. |
+| `framework/languages/dotnet/doc/spec/handler-interfaces.ko.md` | `ZLinkActorRoute.RouteGeneration` 과 route 를 받는 `BindActorHandleAsync(...)` overload 를 인터페이스 기준 문서에 반영. 내부 route update 기능은 public interface 로 싣지 않는다. |
 | `framework/languages/dotnet/doc/spec/aspnet-core-stream.ko.md` | stream session context 가 actor route 를 저장한 handle 을 통해 relay 한다는 설명 |
 | `framework/languages/dotnet/doc/internals/behavior-matrix.ko.md` | resolver 미등록 session actor dispatch, route update, stale generation, missing route 오류의 허용 / 비허용 동작 |
 | `framework/languages/dotnet/doc/internals/regression-test-matrix.ko.md` | §8 의 유지 테스트와 §9 의 신규 테스트 계획을 release gate 에 추가 |
@@ -269,13 +317,14 @@ actor lifecycle 과 route sync 의 결과로 attached actor route 가 갱신된�
 
 1. 현재 session actor dispatch 에서 `ResolvePlayRouteAsync(...)` 호출 지점을 제거할
    위치를 먼저 고정한다.
-2. `ZLinkAttachedActorRoute` 와 session attach API 를 추가한다.
+2. `ZLinkActorRoute.RouteGeneration` 과 route 를 받는 `BindActorHandleAsync(...)` overload 를 추가한다.
 3. `ZLinkActorRef` 내부가 mutable route state 를 참조하고 relay 시점에 최신 snapshot 을 읽도록 바꾼다.
 4. route update 를 actor-session binding 내부 한 곳으로 모으는 internal 기능을 추가한다.
 5. generation 기반 stale update guard 를 추가한다.
-6. Bingo 와 TicTacToe sample 의 ensure actor 응답에 attach route snapshot 을 포함하고, session handler 에서 resolver 주입을 제거한다.
-7. §9 의 회귀 테스트를 추가하고 `Zlink.Framework.sln` 기준으로 검증한다.
-8. §10 과 §11 의 정식 spec, guide, internals 문서를 실제 구현과 맞춰 갱신한다.
+6. 기존 `new ZLinkActorRoute(...)` 호출 지점 전체를 `RouteGeneration` 포함 형태로 갱신한다.
+7. Bingo 와 TicTacToe sample 의 ensure actor 응답에 attach route snapshot 을 포함하고, session handler 에서 resolver 주입을 제거한다.
+8. §9 의 회귀 테스트를 추가하고 `Zlink.Framework.sln` 기준으로 검증한다.
+9. §10 과 §11 의 정식 spec, guide, internals 문서를 실제 구현과 맞춰 갱신한다.
 
 ## 13. 구현 시 고정할 세부 선택
 
@@ -285,7 +334,7 @@ actor lifecycle 과 route sync 의 결과로 attached actor route 가 갱신된�
 - actor migration 이 아직 없다면 테스트에서는 internal test double 로 route update 를
   발생시킨다. 테스트 double 도 public package 표면에 노출하지 않는다.
 - 기존 `BindActorHandleAsync(...)` 는 local-only compatibility 경로로 제한한다.
-- remote actor 에 붙는 session handler 와 sample 은 새 attach API 만 사용한다.
+- remote actor 에 붙는 session handler 와 sample 은 route 를 받는 `BindActorHandleAsync(...)` overload 만 사용한다.
 
 [^public-contract]: 공개 계약은 구현과 테스트가 끝난 뒤 정식 spec 문서에 반영된 API 의미다.
 [^hot-path]: hot path 는 요청이 자주 지나가는 실행 경로다. 이 경로에는 불필요한 외부 조회를 넣지 않는다.

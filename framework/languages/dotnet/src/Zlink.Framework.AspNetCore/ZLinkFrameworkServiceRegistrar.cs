@@ -128,6 +128,17 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<IZLinkActorSessionClient>(
                 provider => provider.GetRequiredService<ZLinkSessionProxyService>());
         }
+        else if (registration.RegistryActorSessionBindings is not null)
+        {
+            services.AddSingleton<ZLinkRegistryActorSessionBindingStore>();
+            services.AddSingleton<IZLinkActorSessionBindingStore>(
+                static provider => provider.GetRequiredService<ZLinkRegistryActorSessionBindingStore>());
+            services.AddSingleton<ZLinkSessionProxyService>();
+            services.AddSingleton<IZLinkSessionProxyFactory>(
+                provider => provider.GetRequiredService<ZLinkSessionProxyService>());
+            services.AddSingleton<IZLinkActorSessionClient>(
+                provider => provider.GetRequiredService<ZLinkSessionProxyService>());
+        }
 
         return services;
     }

@@ -1,11 +1,8 @@
 using Bingo.Shared.Configuration;
-using Bingo.Server.Infrastructure;
 
 namespace Bingo.Server.Play;
 
-internal sealed class BingoRoomDirectory(
-    IZLinkSpotManager spots,
-    RegistryPlayRoutePublisher routes)
+internal sealed class BingoRoomDirectory(IZLinkSpotManager spots)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string? _currentRoomId;
@@ -27,7 +24,6 @@ internal sealed class BingoRoomDirectory(
             {
                 var room = await spots.CreateAsync(SampleNames.RoomSpotType, cancellationToken)
                     .ConfigureAwait(false);
-                await routes.BindSpotRouteAsync(room.SpotRid, cancellationToken).ConfigureAwait(false);
                 _currentRoomId = room.SpotRid.ToHex();
                 _reservedSeats = 0;
             }

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionActorDispatch.Infrastructure;
 using TicTacToe.SessionActorDispatch.Play;
 using TicTacToe.SessionGateway.Infrastructure;
 using TicTacToe.SessionGateway.Infrastructure.Configuration;
@@ -11,18 +10,10 @@ namespace TicTacToe.SessionGateway.Play;
 
 public static class PlayServerHostFactory
 {
-    public static IHost Build(
-        SampleTopology topology,
-        RegistryActorSessionLocationStore sessionLocations,
-        RegistryPlayRouteStore playRoutes)
+    public static IHost Build(SampleTopology topology)
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(topology);
-        builder.Services.AddSingleton(sessionLocations);
-        builder.Services.AddSingleton(playRoutes);
-        builder.Services.AddSingleton<ISpotRouteResolver>(playRoutes);
-        builder.Services.AddSingleton<ISpotRouteWriter>(playRoutes);
-        builder.Services.AddSingleton<RegistryPlayRoutePublisher>();
         builder.Services.AddSingleton<GameNotificationPublisher>();
         builder.Services.AddScoped<PlayerActorFactory>();
         builder.Services.AddScoped<TicTacToeEntrySpot>();
@@ -44,9 +35,9 @@ public static class PlayServerHostFactory
                 });
             });
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
-            options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
-            options.AddSpotRouteResolver<RegistryPlayRouteStore>();
-            options.AddActorSessionBindingStore<RegistryActorSessionLocationStore>();
+            options.UseRegistryActorRoutes("tictactoe");
+            options.UseRegistrySpotRoutes("tictactoe");
+            options.UseRegistryActorSessionBindings("tictactoe");
             options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
             {
                 routed.Bind(topology.PlayRouterEndpoint);

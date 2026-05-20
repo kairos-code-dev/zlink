@@ -134,10 +134,7 @@ builder.Services.AddZLinkFramework(options =>
 
     options.UseRegistryActorRoutes("bingo");
     options.UseRegistrySpotRoutes("bingo");
-
-    // actor-session binding 은 core/binding 에 owner-bound session route
-    // contract 가 추가된 뒤 기본 구현으로 켠다.
-    // options.UseRegistryActorSessionBindings("bingo");
+    options.UseRegistryActorSessionBindings("bingo");
 
     // 기존 extension point 는 custom 구현을 붙일 때만 사용한다.
     // options.AddActorPlayRouteResolver<MyResolver>();
@@ -398,9 +395,11 @@ channel 이 없거나 둘 이상이면 사용자가 명시해야 한다. 조용�
 등록까지 포함한다. 이 API 를 정식으로 공개하려면 core/binding public API 가 framework
 Spot name route 의 bind/unbind/resolve 를 지원해야 한다.
 
-`UseRegistryActorSessionBindings(...)` 는 현재 초안에만 둔다. 구현 전에는 core/binding 이
-actor-session binding route 를 public API 로 제공하는지 확인해야 한다. 충분한 API 가
-없으면 이 메서드는 정식 공개 API 에 올리지 않는다.
+`UseRegistryActorSessionBindings(...)` 는 actor-session binding 을 Registry owner-bound
+route 로 저장하는 기본 구현을 켠다. 첫 구현은 route mesh channel 이 정확히 하나인 host 를
+대상으로 한다. route row 의 owner 는 discovery 가 붙은 route mesh channel registration 이며,
+binding token 을 payload 에 넣어 같은 host 안에서 늦게 도착한 unbind 가 새 binding 을
+지우지 못하게 한다.
 
 ## 5. 샘플 반영 계획
 
@@ -423,11 +422,9 @@ Bingo 와 TicTacToe session gateway 샘플은 구현 후 다음 방향으로 바
 - `framework/languages/dotnet/samples/Bingo/`
 - `framework/languages/dotnet/samples/TicTacToe.SessionGateway/`
 
-두 샘플 모두 아직 위 임시 store 를 포함한다. 이 draft 의 구현이 완료됐다고 판단하려면
-두 경로에서 위 파일과 `RegistryPlayRoutePublisher` 호출이 사라져야 한다.
-
-샘플에 남길 것은 domain logic 이다. 예를 들어 Bingo 에서는 room, player actor,
-match flow, notification 만 남는다.
+두 샘플 모두 위 임시 store 와 `RegistryPlayRoutePublisher` 호출을 제거했다. 샘플에 남길
+것은 domain logic 이다. 예를 들어 Bingo 에서는 room, player actor, match flow,
+notification 만 남는다.
 
 ### 5.2 샘플 설정 모양
 
@@ -439,11 +436,9 @@ builder.Services.AddZLinkFramework(options =>
     options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
     options.UseRegistryActorRoutes("bingo");
     options.UseRegistrySpotRoutes("bingo");
+    options.UseRegistryActorSessionBindings("bingo");
 });
 ```
-
-actor-session binding 기본 구현은 owner-bound session route contract 가 구현된 뒤
-추가한다.
 
 Play 서버처럼 SpotNode 를 소유하는 host 는 기존처럼 `AddSpotMesh(...).UseDiscovery(...)`
 도 설정한다. Registry route 기본 API 는 route publish/resolve 기본 구현을 켜는 것이지,
@@ -465,12 +460,18 @@ remote channel client 는 이미 `EnableClient()` 와 discovery 기반 연결로
 | `RegistrationValidationTests.AddZLinkFramework_Allows_SpotRouteResolver_Without_SpotNode` | Spot route resolver 는 SpotNode 가 없는 route 제공 서버에서도 등록할 수 있다. |
 | `RegistrationValidationTests.RegistryActorRoutes_Registers_Default_Service` | `UseRegistryActorRoutes(...)` 가 custom resolver 없이 기본 `IZLinkActorPlayRouteResolver` 를 등록한다. |
 | `RegistrationValidationTests.RegistrySpotRoutes_Registers_Default_Service` | `UseRegistrySpotRoutes(...)` 가 custom resolver 없이 기본 `IZLinkSpotRouteResolver` 와 Spot name directory 를 등록한다. |
+| `RegistrationValidationTests.RegistryActorSessionBindings_Registers_Default_Service` | `UseRegistryActorSessionBindings(...)` 가 custom store 없이 기본 `IZLinkActorSessionBindingStore`, session proxy, actor session client 를 등록한다. |
 | `RegistrationValidationTests.RegistryRouteResolvers_Require_Discovery` | `UseSpotDiscovery(...)` 없이 Registry route resolver 를 켜면 startup validation 오류가 난다. |
 | `RegistrationValidationTests.RegistryRouteResolvers_Reject_Custom_Duplicate` | 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다. |
 | `RegistrationValidationTests.RegistryRouteResolvers_Require_Explicit_RouterChannel_When_Ambiguous` | route channel 이 둘 이상이면 `RouterChannelId` 를 명시하지 않은 Registry resolver 설정이 startup validation 오류가 된다. |
+| `RegistrationValidationTests.RegistryActorSessionBindings_Reject_Custom_Duplicate` | Registry 기본 actor-session binding store 와 custom store 를 함께 등록하면 startup validation 오류가 난다. |
+| `RegistrationValidationTests.RegistryActorSessionBindings_Require_Discovery` | `UseDiscovery(...)` 없이 Registry actor-session binding store 를 켜면 startup validation 오류가 난다. |
 | `StreamIntegrationTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | actor -> client session push 가 routed multipart packet 을 사용한다. |
 | `SpotIntegrationTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | 이전 stream 의 늦은 disconnect 가 현재 actor-session 연결을 끊지 않는다. |
 | `SpotIntegrationTests.RegistrySpotRoutes_Resolves_Created_Spot_By_Name` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다. |
+| `SpotIntegrationTests.RegistryActorSessionBindings_Preserve_Reconnected_Binding_On_Stale_Unbind` | Registry actor-session binding 기본 store 가 새 binding 이후 도착한 이전 binding unbind 를 무시한다. |
+| `SampleRegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo 샘플에 sample-only registry metadata store, play/Spot route store, route publisher 가 없고 Registry 기본 API 를 사용한다. |
+| `SampleRegressionTests.TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | TicTacToe session gateway 샘플도 sample-only registry metadata store 없이 Registry 기본 API 를 사용한다. |
 
 ## 7. 추가 회귀 테스트 계획
 
@@ -482,11 +483,8 @@ remote channel client 는 이미 `EnableClient()` 와 discovery 기반 연결로
 | `DiscoveryIntegrationTests.RegistrySpotRoutes_Enables_SpotOwnerSync` | owner 쪽 discovery 의 `SpotOwnerSyncEnabled` 가 켜지고 `ResolveSpot(spotRid)` 로 owner node RID 를 찾는다. |
 | `DiscoveryIntegrationTests.RegistrySpotRoutes_RequestSend_By_Name` | string overload 로 찾은 Spot route 로 request/send 가 성공한다. |
 | `StreamIntegrationTests.RegistryActorRoutes_Relays_Stream_Request_To_Remote_Actor` | session 서버가 native actor route resolve 결과를 통해 play 서버 actor 로 request 를 보낸다. |
-| `StreamIntegrationTests.RegistryActorSessionBindings_Routes_Actor_Push_To_Current_Stream` | actor-session binding route kind 가 추가된 뒤 actor 가 현재 stream 에 push 한다. |
-| `StreamIntegrationTests.RegistryActorSessionBindings_Stale_Unbind_Does_Not_Remove_Reconnected_Stream` | owner-bound unbind 가 이전 stream 의 늦은 unbind 로 새 binding 을 지우지 않는다. |
+| `StreamIntegrationTests.RegistryActorSessionBindings_Routes_Actor_Push_To_Current_Stream` | actor-session binding route kind 로 actor 가 현재 stream 에 push 한다. |
 | `SpotIntegrationTests.RegistrySpotRoutes_Resolves_Created_Spot_By_Rid` | 생성된 Spot 의 RID 를 기본 resolver 로 찾고 request/send 가 성공한다. |
-| `SampleRegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo 샘플에 sample-only registry metadata store 와 manual remote client 연결이 없다 |
-| `SampleRegressionTests.TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | TicTacToe session gateway 샘플도 같은 기준을 만족한다 |
 
 추가 테스트들은 단순히 빌드 성공을 보는 것이 아니다. 샘플이 다시
 `FileRegistryDiscoveryMetadata` 같은 자체 저장소를 들고 오지 못하게 막는 역할을
@@ -523,33 +521,27 @@ remote channel client 는 이미 `EnableClient()` 와 discovery 기반 연결로
 정식 spec 에는 이 draft 의 문제 제기 문장을 그대로 옮기지 않는다. 정식 문서는
 공개 계약과 사용 규칙만 담고, 샘플 실수의 배경은 이 draft 에 남긴다.
 
-## 9. 구현 순서
+## 9. 구현 상태
 
-구현은 다음 순서로 진행한다.
+이번 변경은 아래 범위까지 구현한다.
 
-1. `.NET` framework 의 backend discovery wrapper 가 `ActorRouteSyncEnabled`,
-   `SpotOwnerSyncEnabled`, `ResolveActor`, `ResolveSpot` 을 공개 API 로 다룰 수 있는지
-   확인한다.
-2. 부족한 wrapper/API 가 있으면 binding public API 를 직접 사용하도록 framework 내부
-   abstraction 을 추가한다. 리플렉션이나 internal 접근은 사용하지 않는다.
-3. route kind 를 public C/binding 계약으로 승격하거나 새 public route API 를 추가한다.
-   내부 `route_limits_internal.hpp` 상수만 늘리는 방식은 사용하지 않는다.
-4. Spot name directory 를 위한 owner-bound route kind 와 public bind/unbind/resolve API
-   를 core/binding 에 추가한다. 이 API 가 없으면 `UseRegistrySpotRoutes(...)` 를
-   공개하지 않는다.
-5. actor route resolver 와 Spot route resolver 기본 구현을 추가한다. Spot route resolver 는
-   RID overload 와 string overload 를 모두 구현한다.
-6. `UseRegistryActorRoutes(...)`, `UseRegistrySpotRoutes(...)` registration
-   API 와 중복 등록 validation 을 추가한다.
-7. actor-session binding 을 Registry 로 옮기려면 core/binding 에 owner-bound
-   actor-session route kind 와 public bind/unbind/resolve API 를 먼저 설계한다.
-8. STREAM node owner identity 를 discovery registration 으로 만들지, 명시 owner route API 로
-   만들지 결정하고 구현한다.
-9. 새 session route API 가 준비된 뒤 `UseRegistryActorSessionBindings(...)` 를 구현한다.
-10. Bingo 샘플을 기본 resolver 로 바꾼다. session binding 은 구현된 capability 만 사용한다.
-11. TicTacToe session gateway 샘플도 같은 구조로 맞춘다.
-12. 회귀 테스트를 추가하고, 샘플에 sample-only metadata store 가 남지 않았는지 검사한다.
-13. 정식 spec, guide, internals, 공통 문서를 §8 계획대로 갱신한다.
+1. `.NET` framework 의 backend discovery wrapper 는 route bind/unbind/resolve 를
+   binding 의 public API 로 호출한다. 리플렉션이나 internal 접근은 사용하지 않는다.
+2. core/binding 에 owner-bound route public API 와 `Actor`, `SpotName`,
+   `ActorSession` route kind 를 둔다.
+3. framework 는 `UseRegistryActorRoutes(...)`, `UseRegistrySpotRoutes(...)`,
+   `UseRegistryActorSessionBindings(...)` registration API 와 중복 등록 validation 을
+   제공한다.
+4. actor route resolver, Spot route resolver, actor-session binding store 기본 구현은
+   Registry route API 를 사용한다. Spot route resolver 는 RID overload 와 string overload 를
+   모두 처리한다.
+5. Bingo 와 TicTacToe session gateway 샘플은 sample-only metadata store 와 manual route
+   publisher 없이 registry-backed 기본 구현을 사용한다.
+6. 회귀 테스트는 기본 서비스 등록, 중복 등록 거부, discovery/route channel validation,
+   Spot name resolve, actor-session stale unbind 방어, 샘플 임시 저장소 제거를 검사한다.
+
+남은 후속 작업은 §8 의 정식 문서 반영 계획에 따라 공통 spec/internals 문서를 더 넓게
+정리하는 것이다. 이 초안은 구현 배경과 샘플 전환 이유를 보존하기 위해 유지한다.
 
 ## 10. 구현 규칙
 
@@ -561,10 +553,11 @@ remote channel client 는 이미 `EnableClient()` 와 discovery 기반 연결로
 - Spot name route 의 owner identity 는 Spot owner node registration 을 따른다. Spot 이
   명시적으로 제거되면 framework runtime 이 name route 를 unbind 한다. owner node 가 죽으면
   Registry owner cleanup 이 name route 를 정리한다.
-- actor-session binding route 의 key 는 `namespace + actor id` 이고 value 는 session
-  router id, session routing id, binding token 을 담는다. owner identity 는 discovery 에
-  등록된 STREAM owner 또는 명시 owner route API 로 잡아 늦은 unbind 가 새 binding 을
-  지우지 못하게 한다.
+- actor-session binding route 의 key 는 `namespace + actor id` 이고 value 는 namespace,
+  actor id, session router RID, binding token 을 담는 versioned payload 다. route owner 는
+  route mesh channel 의 discovery registration 을 따른다. 같은 process 안에서는 unbind 전에
+  현재 payload 의 binding token 을 다시 확인해서 늦은 unbind 가 새 binding 을 지우지 못하게
+  한다. 다른 owner 에서 온 늦은 unbind 는 Registry 의 owner generation 규칙으로 막는다.
 - 첫 구현에서는 capability 별 API 인 `UseRegistryActorRoutes(...)`,
   `UseRegistrySpotRoutes(...)`, `UseRegistryActorSessionBindings(...)` 만 정식 후보로 둔다.
   `UseRegistryBackedActorRouting(...)` convenience API 는 세 capability 구현과 테스트가 모두

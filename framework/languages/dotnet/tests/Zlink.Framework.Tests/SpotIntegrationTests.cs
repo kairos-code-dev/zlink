@@ -299,6 +299,74 @@ public sealed partial class SpotIntegrationTests
     }
 
     [Fact]
+    public async Task RegistryActorSessionBindings_Preserve_Reconnected_Binding_On_Stale_Unbind()
+    {
+        var registryPubEndpoint = GetFreeTcpEndpoint();
+        var registryRouterEndpoint = GetFreeTcpEndpoint();
+        var routeChannelEndpoint = GetFreeTcpEndpoint();
+        var sessionRid = RoutingId.FromString(Guid.NewGuid().ToString("N")[..16]);
+
+        var registryBuilder = Host.CreateApplicationBuilder();
+        registryBuilder.Services.AddZLinkRegistry(options =>
+        {
+            options.PubEndpoint = registryPubEndpoint;
+            options.RouterEndpoint = registryRouterEndpoint;
+        });
+
+        var frameworkBuilder = Host.CreateApplicationBuilder();
+        frameworkBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+            options.AddRouteMeshChannel("session", routed =>
+            {
+                routed.Bind(routeChannelEndpoint);
+                routed.ConfigureRouting(routing => routing.RoutingId = sessionRid);
+            });
+            options.UseRegistryActorSessionBindings("registry-session");
+        });
+
+        using var registryHost = registryBuilder.Build();
+        using var frameworkHost = frameworkBuilder.Build();
+
+        await registryHost.StartAsync();
+        await frameworkHost.StartAsync();
+
+        var store = frameworkHost.Services.GetRequiredService<IZLinkActorSessionBindingStore>();
+        var actorId = $"actor-{Guid.NewGuid():N}";
+        var first = new ZLinkActorSessionBinding(actorId, sessionRid, "old-token");
+        var second = new ZLinkActorSessionBinding(actorId, sessionRid, "new-token");
+
+        await RetryAsync(
+            async () =>
+            {
+                await store.BindSessionAsync(first, CancellationToken.None);
+                return true;
+            },
+            static result => result,
+            TimeSpan.FromSeconds(5));
+        await store.BindSessionAsync(second, CancellationToken.None);
+        await store.UnbindSessionAsync(
+            new ZLinkActorSessionUnbind(actorId, first.BindingToken),
+            CancellationToken.None);
+
+        var route = await store.FindSessionAsync(actorId, CancellationToken.None);
+        Assert.Equal(second.BindingToken, route.BindingToken);
+        Assert.Equal(second.SessionRouterId, route.SessionRouterId);
+
+        await store.UnbindSessionAsync(
+            new ZLinkActorSessionUnbind(actorId, second.BindingToken),
+            CancellationToken.None);
+        await Assert.ThrowsAsync<ZLinkFrameworkException>(() =>
+            store.FindSessionAsync(actorId, CancellationToken.None).AsTask());
+
+        await frameworkHost.StopAsync();
+        await registryHost.StopAsync();
+    }
+
+    [Fact]
     public async Task OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();

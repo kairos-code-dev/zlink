@@ -137,7 +137,7 @@ builder.Services.AddZLinkFramework(options =>
         });
     });
 
-    options.AddSpotRouteResolver<RegistrySpotRouteStore>();
+    options.UseRegistrySpotRoutes("game");
 });
 ```
 
@@ -153,8 +153,8 @@ builder.Services.AddZLinkFramework(options =>
 - 다른 channel 호출용 client attach
 - 필요하다면 외부 노드용 spot publish client attach
 - 자동 Entry Spot에 붙일 application registry 등록
-- spot name/id 기반 호출 또는 actor `JoinSpot(...)` 경로에서 사용할 spot route
-  resolver 등록
+- spot name/id 기반 호출 또는 actor `JoinSpot(...)` 경로에서 사용할 Registry 기반
+  spot route resolver 등록
 - host shutdown 시 lifecycle 정리
 
 `AddSpotMesh(...)` 는 같은 channel 에 속하는 여러 `SpotNode` 를 하나의 묶음으로

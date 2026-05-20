@@ -459,6 +459,28 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void RegistryActorSessionBindings_Registers_Default_Service()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.AddRouteMeshChannel("session", routed =>
+            {
+                routed.Bind("tcp://127.0.0.1:6202");
+            });
+            options.UseRegistryActorSessionBindings("bingo");
+        });
+
+        using var provider = services.BuildServiceProvider();
+        Assert.IsType<ZLinkRegistryActorSessionBindingStore>(
+            provider.GetRequiredService<IZLinkActorSessionBindingStore>());
+        Assert.NotNull(provider.GetRequiredService<IZLinkSessionProxyFactory>());
+        Assert.NotNull(provider.GetRequiredService<IZLinkActorSessionClient>());
+    }
+
+    [Fact]
     public void RegistryRouteResolvers_Require_Discovery()
     {
         var services = new ServiceCollection();
@@ -489,6 +511,39 @@ public sealed class RegistrationValidationTests
             }));
 
         Assert.Contains("already configured", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RegistryActorSessionBindings_Reject_Custom_Duplicate()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.UseRegistryActorSessionBindings("bingo");
+                options.AddActorSessionBindingStore<TestActorSessionBindingStore>();
+            }));
+
+        Assert.Contains("already configured", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RegistryActorSessionBindings_Require_Discovery()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddRouteMeshChannel("session", routed =>
+                {
+                    routed.Bind("tcp://127.0.0.1:6202");
+                });
+                options.UseRegistryActorSessionBindings("bingo");
+            }));
+
+        Assert.Contains("requires UseDiscovery", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

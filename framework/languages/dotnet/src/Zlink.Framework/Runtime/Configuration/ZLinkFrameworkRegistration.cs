@@ -28,6 +28,8 @@ internal sealed class ZLinkFrameworkRegistration
 
     public ZLinkRegistrySpotRoutesRegistration? RegistrySpotRoutes { get; set; }
 
+    public ZLinkRegistryActorSessionBindingsRegistration? RegistryActorSessionBindings { get; set; }
+
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkRouteChannelRegistration> RouteChannels { get; } = new(StringComparer.Ordinal);
@@ -53,6 +55,11 @@ internal sealed class ZLinkRegistrySpotRoutesRegistration
     public required string Namespace { get; init; }
 
     public string? RouterChannelId { get; set; }
+}
+
+internal sealed class ZLinkRegistryActorSessionBindingsRegistration
+{
+    public required string Namespace { get; init; }
 }
 
 internal class ZLinkDiscoveryRegistration

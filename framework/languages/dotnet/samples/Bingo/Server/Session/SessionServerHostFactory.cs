@@ -11,14 +11,10 @@ public static class SessionServerHostFactory
 {
     public static IHost Build(
         SampleTopology topology,
-        SampleSessionNode session,
-        RegistryActorSessionLocationStore sessionLocations,
-        RegistryPlayRouteStore playRoutes)
+        SampleSessionNode session)
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(topology);
-        builder.Services.AddSingleton(sessionLocations);
-        builder.Services.AddSingleton(playRoutes);
         builder.Services.AddSingleton<SessionActorRouteCache>();
         builder.Services.AddScoped<ISessionRelayPacketHandler, AuthenticateSessionPacketHandler>();
         builder.Services.AddScoped<ISessionRelayPacketHandler, MatchBingoSessionPacketHandler>();
@@ -29,8 +25,12 @@ public static class SessionServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.AddJson();
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
-            options.AddActorSessionBindingStore<RegistryActorSessionLocationStore>();
-            options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
+            options.UseSpotDiscovery(SampleNames.RoomSpotDiscovery, discovery =>
+            {
+                discovery.Add(topology.RegistryRouterEndpoint);
+            });
+            options.UseRegistryActorSessionBindings("bingo");
+            options.UseRegistryActorRoutes("bingo");
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableClient();

@@ -242,6 +242,8 @@ public interface IZLinkFrameworkOptions
         string namespaceName,
         Action<IZLinkRegistrySpotRoutesOptions> configure);
 
+    void UseRegistryActorSessionBindings(string namespaceName);
+
     void AddChannel(
         string channelName,
         Action<IZLinkChannelBuilder> configure);

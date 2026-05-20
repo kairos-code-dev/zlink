@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionActorDispatch.Infrastructure;
 using TicTacToe.SessionGateway.Infrastructure;
 using TicTacToe.SessionGateway.Infrastructure.Configuration;
 using TicTacToe.SessionGateway.Shared.Configuration;
@@ -13,15 +12,9 @@ public static class SessionServerHostFactory
 {
     public static IHost Build(
         SampleTopology topology,
-        SampleSessionNode sessionNode,
-        RegistryActorSessionLocationStore sessionLocations,
-        RegistryPlayRouteStore playRoutes)
+        SampleSessionNode sessionNode)
     {
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddSingleton(sessionLocations);
-        builder.Services.AddSingleton(playRoutes);
-        builder.Services.AddSingleton<ISpotRouteResolver>(playRoutes);
-        builder.Services.AddSingleton<ISpotRouteWriter>(playRoutes);
         builder.Services.AddSingleton<SessionActorRouteCache>();
         builder.Services.AddScoped<ISessionRelayPacketHandler, AuthenticateSessionPacketHandler>();
         builder.Services.AddScoped<ISessionRelayPacketHandler, CreateMatchSessionPacketHandler>();
@@ -32,8 +25,13 @@ public static class SessionServerHostFactory
         {
             options.Codecs.AddJson();
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
-            options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
-            options.AddActorSessionBindingStore<RegistryActorSessionLocationStore>();
+            options.UseSpotDiscovery(SampleNames.GameSpotDiscovery, discovery =>
+            {
+                discovery.Add(topology.RegistryRouterEndpoint);
+            });
+            options.UseRegistryActorRoutes("tictactoe");
+            options.UseRegistrySpotRoutes("tictactoe");
+            options.UseRegistryActorSessionBindings("tictactoe");
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableClient();

@@ -1,4 +1,3 @@
-using TicTacToe.SessionActorDispatch.Infrastructure;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Contracts.Handlers;
@@ -6,9 +5,7 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 
-internal sealed class CreateMatchRoomHandler(
-    IZLinkSpotManager spots,
-    RegistryPlayRoutePublisher routes)
+internal sealed class CreateMatchRoomHandler(IZLinkSpotManager spots)
 {
     [ZLinkRequest]
     public async ValueTask<CreateMatchRoomRes> CreateMatchRoom(
@@ -19,8 +16,6 @@ internal sealed class CreateMatchRoomHandler(
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         var room = await spots.CreateAsync(SampleNames.GameSpotType, cancellationToken)
-            .ConfigureAwait(false);
-        await routes.BindSpotRouteAsync(room.SpotRid, cancellationToken)
             .ConfigureAwait(false);
         return new CreateMatchRoomRes(room.SpotRid.ToHex());
     }

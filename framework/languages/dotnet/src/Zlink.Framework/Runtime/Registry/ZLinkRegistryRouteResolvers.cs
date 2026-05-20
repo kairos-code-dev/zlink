@@ -1,5 +1,6 @@
 using System.Text;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 
 namespace Zlink.Framework.Runtime.Registry;
 
@@ -248,6 +249,263 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
         => new(
             ZLinkFrameworkErrorKind.SpotRouteNotFound,
             $"SPOT route was not found for '{identity}'.",
+            isRetriable: true,
+            innerException: inner);
+}
+
+internal sealed class ZLinkRegistryActorSessionBindingStore(
+    ZLinkFrameworkRuntime runtime,
+    ZLinkFrameworkRegistration registration) : IZLinkActorSessionBindingStore
+{
+    private const byte ActorSessionRoutePayloadVersion = 1;
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _actorGates = new(StringComparer.Ordinal);
+
+    public async ValueTask BindSessionAsync(
+        ZLinkActorSessionBinding binding,
+        CancellationToken cancellationToken)
+    {
+        var options = registration.RegistryActorSessionBindings
+            ?? throw new ZLinkConfigurationException("Registry actor-session bindings are not configured.");
+        var gate = GateFor(binding.ActorId);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
+                .ConfigureAwait(false);
+            var discovery = ResolveRouteChannelDiscovery(state);
+            var key = BuildActorSessionRouteKey(options.Namespace, binding.ActorId);
+            var value = EncodeActorSessionRouteValue(
+                options.Namespace,
+                binding.ActorId,
+                binding.SessionRouterId,
+                binding.BindingToken);
+            discovery.BindRoute(DiscoveryRouteKind.ActorSession, key, value);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async ValueTask UnbindSessionAsync(
+        ZLinkActorSessionUnbind binding,
+        CancellationToken cancellationToken)
+    {
+        var options = registration.RegistryActorSessionBindings
+            ?? throw new ZLinkConfigurationException("Registry actor-session bindings are not configured.");
+        var gate = GateFor(binding.ActorId);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
+                .ConfigureAwait(false);
+            var discovery = ResolveRouteChannelDiscovery(state);
+            var key = BuildActorSessionRouteKey(options.Namespace, binding.ActorId);
+
+            try
+            {
+                using var route = discovery.ResolveRoute(DiscoveryRouteKind.ActorSession, key);
+                var current = DecodeActorSessionRouteValue(
+                    route.Value,
+                    options.Namespace,
+                    binding.ActorId);
+                if (!string.Equals(current.BindingToken, binding.BindingToken, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                discovery.UnbindRoute(DiscoveryRouteKind.ActorSession, key);
+            }
+            catch (ZlinkConfigException error) when (error.InternalErrno == 2)
+            {
+            }
+            catch (FormatException)
+            {
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async ValueTask<ZLinkActorSessionRoute> FindSessionAsync(
+        string actorId,
+        CancellationToken cancellationToken)
+    {
+        var options = registration.RegistryActorSessionBindings
+            ?? throw new ZLinkConfigurationException("Registry actor-session bindings are not configured.");
+        var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var discovery = ResolveRouteChannelDiscovery(state);
+        var key = BuildActorSessionRouteKey(options.Namespace, actorId);
+
+        try
+        {
+            using var route = discovery.ResolveRoute(DiscoveryRouteKind.ActorSession, key);
+            return DecodeActorSessionRouteValue(
+                route.Value,
+                options.Namespace,
+                actorId);
+        }
+        catch (ZlinkConfigException error) when (error.InternalErrno == 2)
+        {
+            throw NotFound(actorId, error);
+        }
+        catch (FormatException error)
+        {
+            throw NotFound(actorId, error);
+        }
+    }
+
+    internal static byte[] BuildActorSessionRouteKey(string namespaceName, string actorId)
+    {
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SessionRouteNotFound,
+                "Actor-session route requires a non-empty actor id.",
+                isRetriable: false);
+        }
+
+        return Encoding.UTF8.GetBytes($"{namespaceName}\0{actorId}");
+    }
+
+    internal static byte[] EncodeActorSessionRouteValue(
+        string namespaceName,
+        string actorId,
+        RoutingId sessionRouterId,
+        string bindingToken)
+    {
+        var namespaceBytes = Encoding.UTF8.GetBytes(namespaceName);
+        var actorIdBytes = Encoding.UTF8.GetBytes(actorId);
+        var routerRidBytes = sessionRouterId.ToBytes();
+        var tokenBytes = Encoding.UTF8.GetBytes(bindingToken);
+        if (namespaceBytes.Length > ushort.MaxValue
+            || actorIdBytes.Length > ushort.MaxValue
+            || routerRidBytes.Length > byte.MaxValue
+            || tokenBytes.Length > ushort.MaxValue)
+        {
+            throw new ZLinkConfigurationException("Actor-session route payload is too large.");
+        }
+
+        var value = new byte[
+            1
+            + sizeof(ushort) + namespaceBytes.Length
+            + sizeof(ushort) + actorIdBytes.Length
+            + 1 + routerRidBytes.Length
+            + sizeof(ushort) + tokenBytes.Length];
+        var span = value.AsSpan();
+        span[0] = ActorSessionRoutePayloadVersion;
+        var offset = 1;
+        BinaryPrimitives.WriteUInt16BigEndian(
+            span.Slice(offset, sizeof(ushort)),
+            (ushort)namespaceBytes.Length);
+        offset += sizeof(ushort);
+        namespaceBytes.CopyTo(span[offset..]);
+        offset += namespaceBytes.Length;
+        BinaryPrimitives.WriteUInt16BigEndian(
+            span.Slice(offset, sizeof(ushort)),
+            (ushort)actorIdBytes.Length);
+        offset += sizeof(ushort);
+        actorIdBytes.CopyTo(span[offset..]);
+        offset += actorIdBytes.Length;
+        span[offset++] = (byte)routerRidBytes.Length;
+        routerRidBytes.CopyTo(span[offset..]);
+        offset += routerRidBytes.Length;
+        BinaryPrimitives.WriteUInt16BigEndian(
+            span.Slice(offset, sizeof(ushort)),
+            (ushort)tokenBytes.Length);
+        offset += sizeof(ushort);
+        tokenBytes.CopyTo(span[offset..]);
+        return value;
+    }
+
+    private static ZLinkActorSessionRoute DecodeActorSessionRouteValue(
+        Message value,
+        string expectedNamespace,
+        string expectedActorId)
+    {
+        var bytes = value.AsReadOnlySpan();
+        if (bytes.Length < 8 || bytes[0] != ActorSessionRoutePayloadVersion)
+        {
+            throw new FormatException("Invalid actor-session route payload.");
+        }
+
+        var offset = 1;
+        var namespaceLength = ReadUInt16(bytes, ref offset);
+        EnsureAvailable(bytes, offset, namespaceLength + sizeof(ushort));
+        var namespaceName = Encoding.UTF8.GetString(bytes.Slice(offset, namespaceLength));
+        offset += namespaceLength;
+
+        var actorIdLength = ReadUInt16(bytes, ref offset);
+        EnsureAvailable(bytes, offset, actorIdLength + 1);
+        var actorId = Encoding.UTF8.GetString(bytes.Slice(offset, actorIdLength));
+        offset += actorIdLength;
+
+        var routerRidLength = bytes[offset++];
+        EnsureAvailable(bytes, offset, routerRidLength + sizeof(ushort));
+        var sessionRouterId = RoutingId.FromBytes(bytes.Slice(offset, routerRidLength));
+        offset += routerRidLength;
+
+        var tokenLength = ReadUInt16(bytes, ref offset);
+        EnsureAvailable(bytes, offset, tokenLength);
+        if (bytes.Length != offset + tokenLength)
+        {
+            throw new FormatException("Invalid actor-session route payload.");
+        }
+
+        var bindingToken = Encoding.UTF8.GetString(bytes.Slice(offset, tokenLength));
+        if (!string.Equals(namespaceName, expectedNamespace, StringComparison.Ordinal)
+            || !string.Equals(actorId, expectedActorId, StringComparison.Ordinal))
+        {
+            throw new FormatException("Actor-session route payload identity mismatch.");
+        }
+
+        return new ZLinkActorSessionRoute(sessionRouterId, bindingToken);
+    }
+
+    private static ushort ReadUInt16(ReadOnlySpan<byte> bytes, ref int offset)
+    {
+        EnsureAvailable(bytes, offset, sizeof(ushort));
+        var value = BinaryPrimitives.ReadUInt16BigEndian(
+            bytes.Slice(offset, sizeof(ushort)));
+        offset += sizeof(ushort);
+        return value;
+    }
+
+    private static void EnsureAvailable(ReadOnlySpan<byte> bytes, int offset, int length)
+    {
+        if (offset < 0 || length < 0 || bytes.Length < offset + length)
+        {
+            throw new FormatException("Invalid actor-session route payload.");
+        }
+    }
+
+    private static IZLinkBackendDiscovery ResolveRouteChannelDiscovery(
+        ZLinkFrameworkRuntimeState state)
+    {
+        if (state.RouteChannels.Count != 1)
+        {
+            throw new ZLinkConfigurationException(
+                "Registry actor-session binding store requires exactly one route mesh channel.");
+        }
+
+        var discovery = state.RouteChannels.Values.Single().Discovery;
+        return discovery
+            ?? throw new ZLinkConfigurationException(
+                "Registry actor-session binding store requires a discovery-attached route mesh channel.");
+    }
+
+    private SemaphoreSlim GateFor(string actorId)
+        => _actorGates.GetOrAdd(actorId, static _ => new SemaphoreSlim(1, 1));
+
+    private static ZLinkFrameworkException NotFound(
+        string actorId,
+        Exception? inner = null)
+        => new(
+            ZLinkFrameworkErrorKind.SessionRouteNotFound,
+            $"Session route for actor '{actorId}' was not found.",
             isRetriable: true,
             innerException: inner);
 }

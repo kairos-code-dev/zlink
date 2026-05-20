@@ -174,6 +174,10 @@ public interface IZLinkSpotNodeBuilder
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
 
+    void AcceptSpotRoutesFromChannel(
+        string channelName,
+        Action<IZLinkSpotRouteChannelAcceptanceBuilder>? configure = null);
+
     void AddSpotFactory<TSpot>(string spotName)
         where TSpot : IZLinkSpot;
 
@@ -183,6 +187,16 @@ public interface IZLinkSpotNodeBuilder
 
 public interface IZLinkSpotMeshNodeBuilder : IZLinkSpotNodeBuilder
 {
+}
+
+public interface IZLinkSpotRouteChannelAcceptanceBuilder
+{
+    void UseManualConnections(Action<ISpotRouterChannelConnections> configure);
+}
+
+public interface ISpotRouterChannelConnections
+{
+    void Connect(string endpoint);
 }
 
 public interface IZLinkSpotMeshBuilder

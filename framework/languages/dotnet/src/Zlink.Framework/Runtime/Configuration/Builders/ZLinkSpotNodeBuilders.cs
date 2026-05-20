@@ -75,6 +75,27 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         configure?.Invoke(new ZLinkSpotPublisherClientCapabilityBuilder(attached));
     }
 
+    public void AcceptSpotRoutesFromChannel(
+        string channelName,
+        Action<IZLinkSpotRouteChannelAcceptanceBuilder>? configure = null)
+    {
+        if (string.IsNullOrWhiteSpace(channelName))
+        {
+            throw new ZLinkConfigurationException("Accepted SPOT route channel name must not be empty.");
+        }
+
+        if (!registration.AcceptedSpotRouteChannels.TryAdd(
+                channelName,
+                new ZLinkSpotRouteChannelAcceptanceRegistration { ChannelName = channelName }))
+        {
+            throw new ZLinkConfigurationException(
+                $"Duplicate accepted SPOT route channel '{channelName}' on node '{registration.SpotNodeName}'.");
+        }
+
+        configure?.Invoke(new ZLinkSpotRouteChannelAcceptanceBuilder(
+            registration.AcceptedSpotRouteChannels[channelName]));
+    }
+
     public void AddSpotFactory<TSpot>(string spotName)
         where TSpot : IZLinkSpot
     {
@@ -100,6 +121,30 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         }
 
         registration.EntrySpotType = typeof(TEntrySpot);
+    }
+}
+
+internal sealed class ZLinkSpotRouteChannelAcceptanceBuilder(
+    ZLinkSpotRouteChannelAcceptanceRegistration registration)
+    : IZLinkSpotRouteChannelAcceptanceBuilder
+{
+    public void UseManualConnections(Action<ISpotRouterChannelConnections> configure)
+    {
+        configure(new ZLinkSpotRouteChannelConnections(registration.ManualConnections));
+    }
+}
+
+internal sealed class ZLinkSpotRouteChannelConnections(ICollection<string> endpoints)
+    : ISpotRouterChannelConnections
+{
+    public void Connect(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            throw new ZLinkConfigurationException("Manual SPOT route channel endpoint must not be empty.");
+        }
+
+        endpoints.Add(endpoint);
     }
 }
 

@@ -181,9 +181,18 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public Dictionary<string, ZLinkSpotPublisherClientRegistration> AttachedSpotPublisherClients { get; } = new(StringComparer.Ordinal);
 
+    public Dictionary<string, ZLinkSpotRouteChannelAcceptanceRegistration> AcceptedSpotRouteChannels { get; } = new(StringComparer.Ordinal);
+
     public Dictionary<string, Type> SpotFactories { get; } = new(StringComparer.Ordinal);
 
     public Type? EntrySpotType { get; set; }
+}
+
+internal sealed class ZLinkSpotRouteChannelAcceptanceRegistration
+{
+    public required string ChannelName { get; init; }
+
+    public List<string> ManualConnections { get; } = [];
 }
 
 internal sealed class ZLinkSpotRouterCapabilityRegistration

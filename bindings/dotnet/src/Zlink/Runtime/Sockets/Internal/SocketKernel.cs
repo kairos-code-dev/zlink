@@ -288,6 +288,8 @@ internal sealed partial class SocketKernel : IDisposable
     {
         if (message == null)
             throw new ArgumentNullException(nameof(message));
+        if ((flags & DontWaitFlag) != 0)
+            return SendSingleNoWaitResultCore(message);
         return SendSingleResultCore(message, flags);
     }
 
@@ -2389,6 +2391,7 @@ internal sealed partial class SocketKernel : IDisposable
         return mappedResult.Value;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private unsafe SendResult SendSingleNoWaitResultCore(Message message)
     {
         if (message.TryPrepareBorrowedSend(out IntPtr data, out int length,

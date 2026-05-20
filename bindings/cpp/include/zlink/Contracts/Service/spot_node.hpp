@@ -102,11 +102,78 @@ class spot_node_t
             zlink_spot_node_disconnect_peer_rid (_node, &native)));
     }
 
+    void connect_router_channel_peer (const std::string &channel_name_,
+                                      const std::string &endpoint_)
+    {
+        zlink::detail::validate_bounded_c_string (channel_name_, 255u,
+                                                  "channel_name");
+        zlink::detail::validate_bounded_c_string (endpoint_, 255u,
+                                                  "endpoint");
+        if (channel_name_.empty ()) {
+            errno = EINVAL;
+            throw connect_error_t (connect_result_t::invalid_argument, EINVAL);
+        }
+        detail::throw_if_failed<connect_error_t> (
+          static_cast<connect_result_t> (
+            zlink_spot_node_connect_router_channel_peer (
+              _node, channel_name_.c_str (), endpoint_.c_str ())));
+    }
+
+    void disconnect_router_channel_peer (const std::string &channel_name_,
+                                         const std::string &endpoint_)
+    {
+        zlink::detail::validate_bounded_c_string (channel_name_, 255u,
+                                                  "channel_name");
+        zlink::detail::validate_bounded_c_string (endpoint_, 255u,
+                                                  "endpoint");
+        if (channel_name_.empty ()) {
+            errno = EINVAL;
+            throw connect_error_t (connect_result_t::invalid_argument, EINVAL);
+        }
+        detail::throw_if_failed<connect_error_t> (
+          static_cast<connect_result_t> (
+            zlink_spot_node_disconnect_router_channel_peer (
+              _node, channel_name_.c_str (), endpoint_.c_str ())));
+    }
+
+    void disconnect_router_channel_peer_rid (
+      const std::string &channel_name_, const routing_id_t &peer_rid_)
+    {
+        zlink::detail::validate_bounded_c_string (channel_name_, 255u,
+                                                  "channel_name");
+        if (channel_name_.empty ()) {
+            errno = EINVAL;
+            throw connect_error_t (connect_result_t::invalid_argument, EINVAL);
+        }
+        const zlink_routing_id_t native =
+          *zlink::detail::routing_id_native (peer_rid_);
+        detail::throw_if_failed<connect_error_t> (
+          static_cast<connect_result_t> (
+            zlink_spot_node_disconnect_router_channel_peer_rid (
+              _node, channel_name_.c_str (), &native)));
+    }
+
     void attach_discovery (discovery_t &discovery_)
     {
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
             zlink_spot_node_attach_discovery (_node, zlink::detail::native_handle (discovery_))));
+    }
+
+    void attach_spot_route_channel_discovery (
+      const std::string &channel_name_, discovery_t &discovery_)
+    {
+        zlink::detail::validate_bounded_c_string (channel_name_, 255u,
+                                                  "channel_name");
+        if (channel_name_.empty ()) {
+            errno = EINVAL;
+            throw config_error_t (config_result_t::invalid_argument, EINVAL);
+        }
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_spot_node_attach_router_channel_discovery (
+              _node, channel_name_.c_str (),
+              zlink::detail::native_handle (discovery_))));
     }
 
     template<typename DealerT>

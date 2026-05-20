@@ -148,6 +148,7 @@ struct spot_node_router_channel_peer_state_t
 {
     std::set<std::string> manual_endpoints;
     std::set<std::string> active_endpoints;
+    std::map<std::string, zlink_routing_id_t> peer_rids_by_endpoint;
     discovery_t *discovery;
 
     spot_node_router_channel_peer_state_t () : discovery (NULL)

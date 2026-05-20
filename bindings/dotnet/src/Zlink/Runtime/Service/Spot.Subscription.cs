@@ -53,6 +53,52 @@ public sealed partial class Spot
         return true;
     }
 
+    private unsafe bool SubscribePartInto(Message result, Span<byte> topicBuffer,
+        out int topicLength, out bool hasMore, int flags)
+    {
+        topicLength = 0;
+        hasMore = false;
+        ZlinkMsg part = default;
+        int initRc = NativeMethods.zlink_msg_init(ref part);
+        if (initRc != 0)
+            throw ZlinkException.CreateRecvException(
+                NativeMethods.zlink_errno());
+
+        bool initialized = true;
+        try
+        {
+            fixed (byte* topicPtr = topicBuffer)
+            {
+                int rc = NativeMethods.zlink_spot_subscribe_part_buffer(
+                    _handle, out _, topicPtr, (nuint)topicBuffer.Length,
+                    out nuint nativeTopicLength, ref part,
+                    out int nativeHasMore, flags);
+                if (rc != 0)
+                {
+                    int errno = NativeMethods.zlink_errno();
+                    if ((flags & DontWaitFlag) != 0
+                        && ZlinkException.MapErrorCode(errno)
+                            is ErrorCode.EAgain or ErrorCode.EBusy)
+                    {
+                        return false;
+                    }
+                    throw ZlinkException.CreateRecvException(errno);
+                }
+
+                topicLength = checked((int)nativeTopicLength);
+                hasMore = nativeHasMore != 0;
+                result.ReplaceNativeOwned(ref part);
+                initialized = false;
+                return true;
+            }
+        }
+        finally
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref part);
+        }
+    }
+
     private unsafe SubscriptionEvent ReceiveSubscriptionEventCore(int flags)
     {
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);

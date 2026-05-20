@@ -29,6 +29,15 @@ public abstract class MessageSocketBase : ConnectableSocketBase, IMessageSocket
         return new MessageSocketSendOperation(this);
     }
 
+    /// <summary>
+    /// Send a single message part directly.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool Send(Message message, SendFlags flags = SendFlags.None)
+    {
+        return SendCore(message, flags);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool SendCore(Message message, SendFlags flags = SendFlags.None)
     {
@@ -68,6 +77,26 @@ public abstract class MessageSocketBase : ConnectableSocketBase, IMessageSocket
     internal void OnReceive(SocketRecvHandler handler)
     {
         Kernel.RecvHandler(handler);
+    }
+
+    /// <summary>
+    /// Receive one wire part into <paramref name="result"/>. This exposes the
+    /// single-part receive primitive directly; when <paramref name="hasMore"/>
+    /// is true, call again to read the remaining parts of the same message.
+    /// </summary>
+    /// <param name="result">Reusable message storage that is overwritten on
+    /// success. With <see cref="RecvFlags.DontWait"/>, it is left unchanged
+    /// when no part is available.</param>
+    /// <param name="hasMore">True when more parts remain for the current
+    /// message.</param>
+    /// <param name="flags">Receive flags.</param>
+    /// <returns>true on success, false when DontWait is set and no data is
+    /// available.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool RecvPart(Message result, out bool hasMore,
+        RecvFlags flags = RecvFlags.None)
+    {
+        return Kernel.ReceivePartInto(result, out hasMore, (int)flags);
     }
 
     /// <summary>

@@ -253,6 +253,7 @@ typedef struct zlink_spot_node_peer_entry_t
     char local_endpoint[256];
     char peer_endpoint[256];
     zlink_spot_peer_source_t source;
+    zlink_spot_peer_kind_t kind;
     zlink_spot_peer_state_t state;
     uint32_t weight;
     uint64_t connected_since_ms;

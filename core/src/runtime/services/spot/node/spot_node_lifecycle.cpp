@@ -433,6 +433,7 @@ int spot_node_t::disconnect_router_channel_peer (const char *channel_name_,
     if (it != _service_attachment_state.router_channel_peers.end ()) {
         it->second.manual_endpoints.erase (endpoint);
         it->second.active_endpoints.erase (endpoint);
+        it->second.peer_rids_by_endpoint.erase (endpoint);
         if (it->second.manual_endpoints.empty ()
             && it->second.active_endpoints.empty () && !it->second.discovery)
             _service_attachment_state.router_channel_peers.erase (it);
@@ -444,15 +445,83 @@ int spot_node_t::disconnect_router_channel_peer (const char *channel_name_,
 int spot_node_t::disconnect_router_channel_peer_rid (
   const char *channel_name_, const zlink_routing_id_t *peer_rid_)
 {
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
     if (!valid_channel_name_local (channel_name_) || !peer_rid_
         || peer_rid_->size == 0 || peer_rid_->size > sizeof (peer_rid_->data)) {
         errno = EINVAL;
         return -1;
     }
+    if (!routed_enabled ()) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (ensure_healthy () != 0)
+        return -1;
 
     const std::string peer (
       reinterpret_cast<const char *> (peer_rid_->data), peer_rid_->size);
-    return disconnect_router_channel_peer (channel_name_, peer.c_str ());
+    std::vector<std::string> endpoints;
+    {
+        scoped_lock_t lock (_sync);
+        std::map<std::string, spot_node_router_channel_peer_state_t>::const_iterator
+          it = _service_attachment_state.router_channel_peers.find (
+            channel_name_);
+        if (it == _service_attachment_state.router_channel_peers.end ()) {
+            errno = ENOENT;
+            return -1;
+        }
+        for (std::map<std::string, zlink_routing_id_t>::const_iterator rid_it =
+               it->second.peer_rids_by_endpoint.begin ();
+             rid_it != it->second.peer_rids_by_endpoint.end (); ++rid_it) {
+            const zlink_routing_id_t &rid = rid_it->second;
+            if (rid.size == peer_rid_->size
+                && memcmp (rid.data, peer_rid_->data, peer_rid_->size) == 0) {
+                endpoints.push_back (rid_it->first);
+            }
+        }
+        if (endpoints.empty () && it->second.manual_endpoints.count (peer) != 0)
+            endpoints.push_back (peer);
+        if (endpoints.empty ()) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+
+    bool any_disconnected = false;
+    const std::string channel_name (channel_name_);
+    for (size_t i = 0; i < endpoints.size (); ++i) {
+        const std::string arg =
+          router_channel_peer_arg_local (channel_name, endpoints[i]);
+        if (send_data_plane_command (
+              spot_control_protocol::cmd_disconnect_router_channel_peer,
+              arg.c_str ())
+            == 0) {
+            any_disconnected = true;
+            scoped_lock_t lock (_sync);
+            std::map<std::string, spot_node_router_channel_peer_state_t>::iterator
+              it = _service_attachment_state.router_channel_peers.find (
+                channel_name);
+            if (it != _service_attachment_state.router_channel_peers.end ()) {
+                it->second.manual_endpoints.erase (endpoints[i]);
+                it->second.active_endpoints.erase (endpoints[i]);
+                it->second.peer_rids_by_endpoint.erase (endpoints[i]);
+                if (it->second.manual_endpoints.empty ()
+                    && it->second.active_endpoints.empty ()
+                    && !it->second.discovery)
+                    _service_attachment_state.router_channel_peers.erase (it);
+            }
+            _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
+        }
+    }
+
+    if (!any_disconnected) {
+        errno = ENOENT;
+        return -1;
+    }
+    return 0;
 }
 
 int spot_node_t::ensure_registered ()
@@ -1507,6 +1576,7 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
                 router_channel_disconnects.push_back (
                   std::make_pair (it->first, *eit));
             }
+            it->second.peer_rids_by_endpoint.clear ();
             _service_attachment_state.pending_router_channel_refreshes.erase (
               it->first);
             it = _service_attachment_state.router_channel_peers.erase (it);

@@ -825,6 +825,7 @@ int spot_node_t::snapshot_peers (
             entry.source = ZLINK_SPOT_PEER_SOURCE_MANUAL;
         else
             entry.source = ZLINK_SPOT_PEER_SOURCE_DISCOVERY;
+        entry.kind = ZLINK_SPOT_PEER_KIND_SPOT_MESH;
         std::map<std::string, uint32_t>::const_iterator ait =
           weight_by_endpoint.find (*it);
         entry.weight =
@@ -866,6 +867,7 @@ int spot_node_t::snapshot_peers (
                                         sizeof (entry.peer_endpoint), it->data (),
                                         it->size ());
         entry.source = ZLINK_SPOT_PEER_SOURCE_DISCOVERY;
+        entry.kind = ZLINK_SPOT_PEER_KIND_SPOT_MESH;
         std::map<std::string, uint32_t>::const_iterator ait =
           weight_by_endpoint.find (*it);
         entry.weight =
@@ -909,6 +911,7 @@ int spot_node_t::snapshot_peers (
             entry.source = channel_it->second.discovery
                              ? ZLINK_SPOT_PEER_SOURCE_DISCOVERY
                              : ZLINK_SPOT_PEER_SOURCE_MANUAL;
+            entry.kind = ZLINK_SPOT_PEER_KIND_ROUTER_CHANNEL;
             entry.state =
               channel_it->second.active_endpoints.count (*it) != 0
                 ? ZLINK_SPOT_PEER_STATE_CONNECTING

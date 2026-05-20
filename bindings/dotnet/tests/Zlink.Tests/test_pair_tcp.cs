@@ -303,6 +303,83 @@ public sealed class test_pair_tcp
     }
 
     [Fact]
+    public void recv_part_reuses_message_storage_and_reports_multipart_boundary()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "pair-recv-part-reuse");
+
+        sender.Bind(endpoint);
+        receiver.Connect(endpoint);
+        Thread.Sleep(50);
+
+        using Message first = Message.FromBytes("first"u8.ToArray());
+        using Message second = Message.FromBytes("second"u8.ToArray());
+        Assert.True(sender.Send().Message(first).Message(second).Submit());
+
+        using var received = new Message();
+        Assert.True(CoreTestSupport.WaitUntil(
+            () => receiver.RecvPart(received, out bool hasMore,
+                RecvFlags.DontWait) && hasMore,
+            5000,
+            10));
+        Assert.Equal("first",
+            System.Text.Encoding.UTF8.GetString(received.AsReadOnlySpan()));
+
+        Assert.True(receiver.RecvPart(received, out bool lastHasMore,
+            RecvFlags.DontWait));
+        Assert.False(lastHasMore);
+        Assert.Equal("second",
+            System.Text.Encoding.UTF8.GetString(received.AsReadOnlySpan()));
+
+        Assert.False(receiver.RecvPart(received, out bool noDataHasMore,
+            RecvFlags.DontWait));
+        Assert.False(noDataHasMore);
+        Assert.Equal("second",
+            System.Text.Encoding.UTF8.GetString(received.AsReadOnlySpan()));
+    }
+
+    [Fact]
+    public void from_bytes_nonblocking_send_completes_borrowed_lifetime()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "pair-from-bytes-borrowed-lifetime");
+
+        sender.Options.SendHighWaterMark = 4096;
+        receiver.Options.ReceiveHighWaterMark = 4096;
+        sender.Bind(endpoint);
+        receiver.Connect(endpoint);
+        Thread.Sleep(50);
+
+        byte[] payloadBytes = new byte[64];
+        using var received = new Message();
+        for (int i = 0; i < 2048; i++)
+        {
+            payloadBytes[0] = unchecked((byte)i);
+            bool sent = false;
+            while (!sent)
+            {
+                using Message payload = Message.FromBytes(payloadBytes);
+                sent = sender.Send(payload, SendFlags.DontWait);
+                while (receiver.RecvPart(received, out _, RecvFlags.DontWait))
+                {
+                }
+            }
+        }
+    }
+
+    [Fact]
     public void send_nonblocking_returns_false_only_for_backpressured_pair_queue()
     {
         if (!CoreTestSupport.IsNativeAvailable())

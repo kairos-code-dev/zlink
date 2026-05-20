@@ -196,6 +196,37 @@ public sealed class SpotNode : ISpotNode
         ZlinkException.ThrowConnectIfError(rc);
     }
 
+    public void ConnectRouterChannelPeer(string channelName, string endpoint)
+    {
+        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
+        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_spot_node_connect_router_channel_peer(
+            _handle, channelName, endpoint);
+        ZlinkException.ThrowConnectIfError(rc);
+    }
+
+    public void DisconnectRouterChannelPeer(string channelName, string endpoint)
+    {
+        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
+        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_spot_node_disconnect_router_channel_peer(
+            _handle, channelName, endpoint);
+        ZlinkException.ThrowConnectIfError(rc);
+    }
+
+    public void DisconnectRouterChannelPeerRid(string channelName,
+        RoutingId peerRid)
+    {
+        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
+        EnsureNotDisposed();
+        ZlinkRoutingId nativeRid = peerRid.ToNative();
+        int rc = NativeMethods.zlink_spot_node_disconnect_router_channel_peer_rid(
+            _handle, channelName, ref nativeRid);
+        ZlinkException.ThrowConnectIfError(rc);
+    }
+
     /// <summary>
     /// Attaches this SPOT node to a discovery-owned service lifecycle.
     /// </summary>
@@ -217,6 +248,25 @@ public sealed class SpotNode : ISpotNode
     {
         AttachDiscovery(SocketInterop.RequireDiscovery(discovery,
             nameof(discovery)));
+    }
+
+    public void AttachSpotRouteChannelDiscovery(string channelName,
+        Discovery discovery)
+    {
+        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
+        EnsureNotDisposed();
+        if (discovery == null)
+            throw new ArgumentNullException(nameof(discovery));
+        int rc = NativeMethods.zlink_spot_node_attach_router_channel_discovery(
+            _handle, channelName, discovery.Handle);
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    void ISpotNode.AttachSpotRouteChannelDiscovery(string channelName,
+        IDiscovery discovery)
+    {
+        AttachSpotRouteChannelDiscovery(channelName,
+            SocketInterop.RequireDiscovery(discovery, nameof(discovery)));
     }
 
     public void AttachChannelDealer(Discovery discovery, DealerSocket dealer)
@@ -1331,7 +1381,7 @@ public sealed partial class Spot : ISpot
         => new SpotReplyOperation(this, SpotOperationKind.ReplyToRouter,
             peerRid: peerRid, requestSeq: requestSeq);
 
-    internal bool Publish(string topic, Message message,
+    public bool Publish(string topic, Message message,
         SendFlags flags = SendFlags.None)
     {
         if (message == null)
@@ -1571,6 +1621,20 @@ public sealed partial class Spot : ISpot
         return SubscriptionIntrospection.At(_handle, index);
     }
 
+    public bool SubscribePart(Message result, Span<byte> topicBuffer,
+        out int topicLength, out bool hasMore,
+        RecvFlags flags = RecvFlags.None)
+    {
+        EnsureNotDisposed();
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+        if (topicBuffer.IsEmpty)
+            throw new ArgumentException("Topic buffer must not be empty.",
+                nameof(topicBuffer));
+        return SubscribePartInto(result, topicBuffer, out topicLength,
+            out hasMore, (int)flags);
+    }
+
     public bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
@@ -1682,7 +1746,7 @@ public sealed partial class Spot : ISpot
         }
     }
 
-    internal bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    public bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         Message message, SendFlags flags = SendFlags.None)
     {
         if (message == null)
@@ -1902,6 +1966,64 @@ public sealed partial class Spot : ISpot
         catch
         {
             RequestReplySupport.DisposeParts(cloned);
+            throw;
+        }
+    }
+
+    public unsafe bool RecvRoutedPart(Message result, out RoutingId? routingId,
+        out RoutingId? spotRid, out ulong? requestSeq, out bool hasMore,
+        RecvFlags flags = RecvFlags.None)
+    {
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+        EnsureNotDisposed();
+
+        routingId = null;
+        spotRid = null;
+        requestSeq = null;
+        hasMore = false;
+
+        ZlinkMsg part = default;
+        int initRc = NativeMethods.zlink_msg_init(ref part);
+        if (initRc != 0)
+            throw ZlinkException.CreateRecvException(
+                NativeMethods.zlink_errno());
+
+        bool initialized = true;
+        try
+        {
+            int rc = NativeMethods.zlink_spot_recv_part(_handle,
+                out IntPtr sourceRoutingId, out IntPtr sourceSpotRid,
+                out ulong nativeRequestSeq, ref part, out int more,
+                (int)flags);
+            if (rc != 0)
+            {
+                NativeMethods.zlink_msg_close(ref part);
+                initialized = false;
+                int errno = NativeMethods.zlink_errno();
+                if ((flags & RecvFlags.DontWait) != 0
+                    && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                        or ErrorCode.EBusy)
+                {
+                    return false;
+                }
+
+                throw ZlinkException.CreateRecvException(errno);
+            }
+
+            initialized = false;
+            result.ReplaceNativeOwned(ref part);
+            routingId = RoutingIdSnapshot.FromPointer(sourceRoutingId)
+                .ToRoutingId();
+            spotRid = RoutingIdSnapshot.FromPointer(sourceSpotRid).ToRoutingId();
+            requestSeq = nativeRequestSeq == 0 ? null : nativeRequestSeq;
+            hasMore = more != 0;
+            return true;
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref part);
             throw;
         }
     }

@@ -46,6 +46,12 @@ public enum SpotPeerSource
     Mixed = 3
 }
 
+public enum SpotPeerKind
+{
+    SpotMesh = 1,
+    RouterChannel = 2
+}
+
 public enum SpotPeerState
 {
     Configured = 1,
@@ -180,6 +186,7 @@ public sealed record SpotNodePeerEntry(
     string LocalEndpoint,
     string PeerEndpoint,
     SpotPeerSource Source,
+    SpotPeerKind Kind,
     SpotPeerState State,
     uint Weight,
     ulong ConnectedSinceMs,

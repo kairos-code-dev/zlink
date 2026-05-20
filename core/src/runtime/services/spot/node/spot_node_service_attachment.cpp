@@ -216,11 +216,14 @@ void spot_node_t::refresh_router_channel_discovery_peers ()
         discovery->snapshot_providers (channel_name, &providers);
 
         std::set<std::string> desired;
+        std::map<std::string, zlink_routing_id_t> desired_rids;
         for (size_t j = 0; j < providers.size (); ++j) {
             const provider_info_t &provider = providers[j];
             if (!provider.endpoint.empty ()
                 && provider.service_role == discovery_protocol::service_role_router) {
                 desired.insert (provider.endpoint);
+                if (provider.routing_id.size > 0)
+                    desired_rids[provider.endpoint] = provider.routing_id;
             }
         }
 
@@ -252,8 +255,13 @@ void spot_node_t::refresh_router_channel_discovery_peers ()
             scoped_lock_t lock (_sync);
             spot_node_router_channel_peer_state_t &state =
               _service_attachment_state.router_channel_peers[channel_name];
-            if (state.discovery == discovery)
+            if (state.discovery == discovery) {
                 state.active_endpoints.insert (*it);
+                std::map<std::string, zlink_routing_id_t>::const_iterator rid_it =
+                  desired_rids.find (*it);
+                if (rid_it != desired_rids.end ())
+                    state.peer_rids_by_endpoint[*it] = rid_it->second;
+            }
         }
 
         for (std::set<std::string>::const_iterator it = active.begin ();
@@ -274,8 +282,28 @@ void spot_node_t::refresh_router_channel_discovery_peers ()
               state_it = _service_attachment_state.router_channel_peers.find (
                 channel_name);
             if (state_it != _service_attachment_state.router_channel_peers.end ()
-                && state_it->second.discovery == discovery)
+                && state_it->second.discovery == discovery) {
                 state_it->second.active_endpoints.erase (*it);
+                state_it->second.peer_rids_by_endpoint.erase (*it);
+            }
+        }
+
+        {
+            scoped_lock_t lock (_sync);
+            std::map<std::string, spot_node_router_channel_peer_state_t>::iterator
+              state_it = _service_attachment_state.router_channel_peers.find (
+                channel_name);
+            if (state_it != _service_attachment_state.router_channel_peers.end ()
+                && state_it->second.discovery == discovery) {
+                for (std::map<std::string, zlink_routing_id_t>::const_iterator
+                       rid_it = desired_rids.begin ();
+                     rid_it != desired_rids.end (); ++rid_it) {
+                    if (state_it->second.active_endpoints.count (rid_it->first)
+                        != 0)
+                        state_it->second.peer_rids_by_endpoint[rid_it->first] =
+                          rid_it->second;
+                }
+            }
         }
 
         scoped_lock_t lock (_sync);

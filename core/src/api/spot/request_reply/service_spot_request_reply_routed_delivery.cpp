@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdio>
 #include <mutex>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -318,6 +319,19 @@ int dispatch_router_socket_spot_delivery (void *router_,
       static_cast<zlink_send_flags_t> (flags_ | ZLINK_DONTWAIT));
 }
 
+bool router_has_transport_endpoint (void *router_)
+{
+    socket_handle_t handle = as_socket_handle (router_);
+    if (!handle.socket
+        || handle.socket->socket_type () != ZLINK_CORE_SOCKET_ROUTER)
+        return false;
+    if (handle.socket->socket_has_manual_connect_endpoints ())
+        return true;
+    std::set<std::string> bound_endpoints;
+    handle.socket->socket_bound_endpoints (&bound_endpoints);
+    return !bound_endpoints.empty ();
+}
+
 int process_routed_send_entry_on_data_plane (
   zlink::spot_runtime_t *runtime_,
   zlink_send_flags_t flags_,
@@ -455,7 +469,8 @@ int zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
 
     int rc = dispatch_router_socket_spot_delivery (
       router_, destination_node_rid_, flags_, combined_);
-    if (rc != 0
+    const bool has_router_transport = router_has_transport_endpoint (router_);
+    if (rc != 0 && !has_router_transport
         && (errno == ENOTCONN || errno == EHOSTUNREACH || errno == EAGAIN
             || errno == EINVAL || errno == EFAULT)) {
         zlink::spot_runtime_t *runtime =
@@ -465,7 +480,7 @@ int zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
                                                     sndtimeo_ms_)
                      : dispatch_local_router_spot_delivery (kind_, combined_);
     }
-    if (rc != 0
+    if (rc != 0 && !has_router_transport
         && errno != ENOTCONN && errno != EHOSTUNREACH && errno != EAGAIN) {
         rc = dispatch_local_router_spot_delivery (kind_, combined_);
     }

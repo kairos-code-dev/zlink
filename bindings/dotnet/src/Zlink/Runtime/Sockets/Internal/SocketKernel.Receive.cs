@@ -235,6 +235,130 @@ internal sealed partial class SocketKernel
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal unsafe bool ReceivePartInto(Message result, out bool hasMore,
+        int flags)
+    {
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+
+        ZlinkMsg part = default;
+        int initRc = NativeMethods.zlink_msg_init(ref part);
+        if (initRc != 0)
+            throw ZlinkException.CreateRecvException(
+                NativeMethods.zlink_errno());
+
+        bool initialized = true;
+        try
+        {
+            int rc = (flags & DontWaitFlag) != 0
+                ? NativeMethods.zlink_recv_part_nowait(Handle,
+                    out IntPtr sourceRoutingId, ref part, out int more,
+                    flags)
+                : NativeMethods.zlink_recv_part(Handle,
+                    out sourceRoutingId, ref part, out more, flags);
+
+            if (rc != 0)
+            {
+                NativeMethods.zlink_msg_close(ref part);
+                initialized = false;
+                int errno = NativeMethods.zlink_errno();
+                if ((flags & DontWaitFlag) != 0
+                    && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                        or ErrorCode.EBusy)
+                {
+                    hasMore = false;
+                    return false;
+                }
+
+                throw ZlinkException.CreateRecvException(errno);
+            }
+
+            initialized = false;
+            hasMore = more != 0;
+            result.ReplaceNativeOwned(ref part);
+            return true;
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref part);
+            throw;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal unsafe bool ReceiveRoutedPartInto(Message result,
+        out RoutingId? routingId, out bool hasMore, int flags)
+    {
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+
+        routingId = null;
+        ZlinkMsg part = default;
+        int initRc = NativeMethods.zlink_msg_init(ref part);
+        if (initRc != 0)
+            throw ZlinkException.CreateRecvException(
+                NativeMethods.zlink_errno());
+
+        bool initialized = true;
+        try
+        {
+            int rc;
+            int more;
+            IntPtr sourceRoutingId;
+            if (Type == SocketType.Router)
+            {
+                IntPtr sourceSpotRid;
+                ulong requestSeq;
+                rc = (flags & DontWaitFlag) != 0
+                    ? NativeMethods.zlink_router_recv_part_nowait(Handle,
+                        out sourceRoutingId, out sourceSpotRid,
+                        out requestSeq, ref part, out more, flags)
+                    : NativeMethods.zlink_router_recv_part(Handle,
+                        out sourceRoutingId, out sourceSpotRid,
+                        out requestSeq, ref part, out more, flags);
+            }
+            else
+            {
+                rc = (flags & DontWaitFlag) != 0
+                    ? NativeMethods.zlink_recv_part_nowait(Handle,
+                        out sourceRoutingId, ref part, out more, flags)
+                    : NativeMethods.zlink_recv_part(Handle,
+                        out sourceRoutingId, ref part, out more, flags);
+            }
+            hasMore = more != 0;
+
+            if (rc != 0)
+            {
+                NativeMethods.zlink_msg_close(ref part);
+                initialized = false;
+                int errno = NativeMethods.zlink_errno();
+                if ((flags & DontWaitFlag) != 0
+                    && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                        or ErrorCode.EBusy)
+                {
+                    hasMore = false;
+                    return false;
+                }
+
+                throw ZlinkException.CreateRecvException(errno);
+            }
+
+            initialized = false;
+            routingId = RoutingIdSnapshot.FromPointer(sourceRoutingId)
+                .ToRoutingId();
+            result.ReplaceNativeOwned(ref part);
+            return true;
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref part);
+            throw;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool ReceiveRoutedInto(Received result, int flags)
     {
         if (result == null)

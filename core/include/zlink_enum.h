@@ -394,6 +394,12 @@ typedef enum zlink_spot_peer_source_t
     ZLINK_SPOT_PEER_SOURCE_MIXED = 3
 } zlink_spot_peer_source_t;
 
+typedef enum zlink_spot_peer_kind_t
+{
+    ZLINK_SPOT_PEER_KIND_SPOT_MESH = 1,
+    ZLINK_SPOT_PEER_KIND_ROUTER_CHANNEL = 2
+} zlink_spot_peer_kind_t;
+
 typedef enum zlink_spot_peer_state_t
 {
     ZLINK_SPOT_PEER_STATE_CONFIGURED = 1,

@@ -36,5 +36,13 @@ int main(void)
     CHECK(zlink_publish_part != NULL);
     CHECK(zlink_subscribe_part != NULL);
     CHECK(zlink_spot_node_spot_get_or_new != NULL);
+    CHECK(zlink_spot_node_connect_router_channel_peer != NULL);
+    CHECK(zlink_spot_node_disconnect_router_channel_peer != NULL);
+    CHECK(zlink_spot_node_disconnect_router_channel_peer_rid != NULL);
+    CHECK(zlink_spot_node_attach_router_channel_discovery != NULL);
+    CHECK(ZLINK_SPOT_PEER_KIND_SPOT_MESH == 1);
+    CHECK(ZLINK_SPOT_PEER_KIND_ROUTER_CHANNEL == 2);
+    CHECK(offsetof(zlink_spot_node_peer_entry_t, kind) >
+          offsetof(zlink_spot_node_peer_entry_t, source));
     return 0;
 }

@@ -1396,6 +1396,21 @@ ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer (
 ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer_rid (
   void *node, const zlink_routing_id_t *target_node_rid);
 
+ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_router_channel_peer (
+  void *node,
+  const char *channel_name,
+  const char *endpoint);
+ZLINK_EXPORT zlink_connect_result_t
+zlink_spot_node_disconnect_router_channel_peer (
+  void *node,
+  const char *channel_name,
+  const char *endpoint);
+ZLINK_EXPORT zlink_connect_result_t
+zlink_spot_node_disconnect_router_channel_peer_rid (
+  void *node,
+  const char *channel_name,
+  const zlink_routing_id_t *peer_rid);
+
 /**
  * @brief Attach a Discovery instance for discovery-owned SPOT peer connection.
  *
@@ -1405,6 +1420,11 @@ ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer_rid (
  */
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_discovery (void *node,
                                                    void *discovery);
+ZLINK_EXPORT zlink_config_result_t
+zlink_spot_node_attach_router_channel_discovery (
+  void *node,
+  const char *channel_name,
+  void *discovery);
 
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_channel_dealer (
   void *node_,
@@ -1443,6 +1463,7 @@ typedef struct zlink_spot_node_peer_entry_t
     char local_endpoint[256];
     char peer_endpoint[256];
     zlink_spot_peer_source_t source;
+    zlink_spot_peer_kind_t kind;
     zlink_spot_peer_state_t state;
     uint32_t weight;
     uint64_t connected_since_ms;

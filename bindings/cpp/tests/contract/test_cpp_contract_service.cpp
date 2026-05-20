@@ -447,6 +447,9 @@ void test_spot_node_snapshot_contract ()
     const std::vector<zlink::spot_node_peer_entry_t> peers =
       node.peers_snapshot ();
     assert (peers.size () >= 0);
+    if (!peers.empty ())
+        assert (peers[0].kind () == zlink::spot_peer_kind::spot_mesh
+                || peers[0].kind () == zlink::spot_peer_kind::router_channel);
 
     const std::vector<zlink::spot_node_subject_entry_t> subjects =
       node.subjects_snapshot ();
@@ -459,6 +462,15 @@ void test_spot_node_snapshot_contract ()
     assert (node.routing_id ().to_bytes ()
             == std::vector<uint8_t> ({'s', 'p', 'o', 't', '-', 'n', 'o',
                                       'd', 'e', '-', 'r', 'i', 'd'}));
+
+    bool rejected_empty_channel = false;
+    try {
+        node.connect_router_channel_peer ("", "tcp://127.0.0.1:1");
+    } catch (const zlink::connect_error_t &err) {
+        rejected_empty_channel =
+          err.result () == zlink::connect_result_t::invalid_argument;
+    }
+    assert (rejected_empty_channel);
 
     node.router_admission_hwm (zlink::message_count_t::value (2));
     node.pubsub_admission_hwm (zlink::message_count_t::value (3));

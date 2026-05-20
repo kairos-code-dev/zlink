@@ -99,4 +99,45 @@ public sealed class test_router_multiple_dealers
             2000));
     }
 
+    [Fact]
+    public void routed_direct_send_and_recv_part_roundtrip()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var router = new RouterSocket(ctx);
+        using var dealer = new DealerSocket(ctx);
+
+        RoutingId dealerRid = CoreTestSupport.RoutingIdUtf8("D1");
+        dealer.SetRoutingId(dealerRid);
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "routed-direct-part");
+        router.Bind(endpoint);
+        dealer.Connect(endpoint);
+        Thread.Sleep(100);
+
+        using Message outbound = Message.FromString("ping");
+        Assert.True(dealer.Send(outbound));
+
+        using var inbound = new Message();
+        Assert.True(router.RecvPart(inbound, out RoutingId? sourceRid,
+            out bool hasMore));
+        Assert.False(hasMore);
+        Assert.True(sourceRid.HasValue);
+        RoutingId actualSourceRid = sourceRid.GetValueOrDefault();
+        Assert.Equal(dealerRid, actualSourceRid);
+        Assert.Equal("ping", Encoding.UTF8.GetString(
+            inbound.AsReadOnlySpan()));
+
+        using Message reply = Message.FromString("pong");
+        Assert.True(router.Send(actualSourceRid, reply));
+
+        using var dealerInbound = new Message();
+        Assert.True(dealer.RecvPart(dealerInbound, out bool dealerHasMore));
+        Assert.False(dealerHasMore);
+        Assert.Equal("pong", Encoding.UTF8.GetString(
+            dealerInbound.AsReadOnlySpan()));
+    }
+
 }

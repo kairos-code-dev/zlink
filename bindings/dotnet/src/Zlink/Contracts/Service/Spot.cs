@@ -64,7 +64,11 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     void ConnectPeer(string peerEndpoint);
     void DisconnectPeer(string peerEndpoint);
     void DisconnectPeerRid(RoutingId targetNodeRid);
+    void ConnectRouterChannelPeer(string channelName, string endpoint);
+    void DisconnectRouterChannelPeer(string channelName, string endpoint);
+    void DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid);
     void AttachDiscovery(IDiscovery discovery);
+    void AttachSpotRouteChannelDiscovery(string channelName, IDiscovery discovery);
     void AttachChannelDealer(IDiscovery discovery, IDealerSocket dealer);
     void AttachChannelDealerManual(string channelName, IDealerSocket dealer);
     void AttachPubIngress(IPubSocket pub);
@@ -104,9 +108,12 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
 
     void SetRoutingId(RoutingId routingId);
     SendOperation Publish(string topic);
+    bool Publish(string topic, Message message, SendFlags flags = SendFlags.None);
     SendOperation SendChannel(string channelName);
     RequestOperation RequestChannel(string channelName);
     SendOperation SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
+    bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+        Message message, SendFlags flags = SendFlags.None);
     RequestOperation RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
     RequestOperation RequestToRouter(RoutingId peerRid);
     ReplyOperation ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid, ulong requestSeq);
@@ -114,9 +121,15 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
     void SetSubscription(string topicOrPattern);
     void UnsetSubscription(string topicOrPattern);
     SubscriptionEntry? SubscriptionAt(int index);
+    bool SubscribePart(Message result, Span<byte> topicBuffer,
+        out int topicLength, out bool hasMore,
+        RecvFlags flags = RecvFlags.None);
     bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None);
     bool ReceiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags = RecvFlags.None);
     void OnSendReady(Action handler);
+    bool RecvRoutedPart(Message result, out RoutingId? routingId,
+        out RoutingId? spotRid, out ulong? requestSeq, out bool hasMore,
+        RecvFlags flags = RecvFlags.None);
     bool RecvRouted(Received result, RecvFlags flags = RecvFlags.None);
     ActorJoinRequest? RecvActorJoin(RecvFlags flags = RecvFlags.None);
     ActorJoinReplyOperation ReplyActorJoin(ActorJoinRequest request, bool accepted);

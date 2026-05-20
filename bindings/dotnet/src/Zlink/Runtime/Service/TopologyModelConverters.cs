@@ -101,7 +101,8 @@ internal static class TopologyModelConverters
                 NativeHelpers.ReadFixedString(channelName, 256),
                 NativeHelpers.ReadFixedString(local, 256),
                 NativeHelpers.ReadFixedString(peer, 256),
-                (SpotPeerSource)native.Source, (SpotPeerState)native.State,
+                (SpotPeerSource)native.Source, (SpotPeerKind)native.Kind,
+                (SpotPeerState)native.State,
                 native.Weight,
                 native.ConnectedSinceMs, native.LastChangedMs);
         }

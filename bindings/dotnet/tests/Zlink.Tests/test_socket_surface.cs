@@ -57,10 +57,15 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(XSubSocket), "OnSendReady"));
         Assert.False(HasPublicInstanceMethod(typeof(RouterSocket), "Send",
             typeof(Message)));
+        Assert.True(HasPublicInstanceMethod(typeof(RouterSocket), "Send",
+            typeof(RoutingId), typeof(Message), typeof(SendFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Send",
             typeof(Message)));
         Assert.True(HasPublicInstanceMethod(typeof(RouterSocket), "Recv",
             typeof(Received), typeof(RecvFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(RouterSocket),
+            "RecvPart", typeof(Message), typeof(RoutingId?).MakeByRefType(),
+            typeof(bool).MakeByRefType(), typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(StreamSocket), "Recv",
             typeof(Received), typeof(RecvFlags)));
 
@@ -138,6 +143,18 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "DisconnectPeerRid",
             typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.ConnectRouterChannelPeer), typeof(string),
+            typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.DisconnectRouterChannelPeer), typeof(string),
+            typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.DisconnectRouterChannelPeerRid), typeof(string),
+            typeof(RoutingId)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.AttachSpotRouteChannelDiscovery), typeof(string),
+            typeof(Discovery)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
             nameof(SpotNode.CreateActor), typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
             nameof(SpotNode.ActorLookup), typeof(string)));
@@ -208,10 +225,18 @@ public sealed class test_socket_surface
             BindingFlags.Instance | BindingFlags.Public));
 
         Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send"));
-        Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
-            typeof(Message)));
+        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
+            typeof(Message), typeof(SendFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
             typeof(IReadOnlyList<Message>)));
+        Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase),
+            "Send", typeof(RoutingId), typeof(Message), typeof(SendFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase),
+            "RecvPart", typeof(Message), typeof(RoutingId?).MakeByRefType(),
+            typeof(bool).MakeByRefType(), typeof(RecvFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase),
+            "RecvPart", typeof(Message), typeof(bool).MakeByRefType(),
+            typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Recv",
             typeof(Received), typeof(RecvFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "TrySend",
@@ -329,6 +354,9 @@ public sealed class test_socket_surface
         Assert.Equal(typeof(IDiscovery),
             typeof(ISpotNode).GetMethod(nameof(ISpotNode.AttachDiscovery))!
                 .GetParameters()[0].ParameterType);
+        Assert.Equal(typeof(IDiscovery),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.AttachSpotRouteChannelDiscovery))!
+                .GetParameters()[1].ParameterType);
         Assert.Equal(typeof(IDiscovery),
             typeof(ISpotNode).GetMethod(nameof(ISpotNode.AttachChannelDealer))!
                 .GetParameters()[0].ParameterType);
@@ -470,6 +498,8 @@ public sealed class test_socket_surface
             typeof(DealerSocket).FullName!,
             typeof(DealerSocketOptions).FullName!,
             typeof(Discovery).FullName!,
+            typeof(DiscoveryRoute).FullName!,
+            typeof(DiscoveryRouteKind).FullName!,
             typeof(IActor).FullName!,
             typeof(IAtomicCounter).FullName!,
             typeof(IConnectableRoutedMessageSocket).FullName!,
@@ -566,6 +596,7 @@ public sealed class test_socket_surface
             typeof(SpotNodeStatus).FullName!,
             typeof(SpotNodeSubjectEntry).FullName!,
             typeof(SpotNodeSubjectFilter).FullName!,
+            typeof(SpotPeerKind).FullName!,
             typeof(SpotPeerSource).FullName!,
             typeof(SpotPeerState).FullName!,
             typeof(SpotRole).FullName!,
@@ -644,14 +675,22 @@ public sealed class test_socket_surface
                 .PropertyType);
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachChannelDealer",
             typeof(Discovery), typeof(DealerSocket)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            "AttachSpotRouteChannelDiscovery", typeof(string),
+            typeof(Discovery)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachChannelDealerManual",
             typeof(string), typeof(DealerSocket)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachPubIngress",
             typeof(PubSocket)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.Publish),
             typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.Publish),
+            typeof(string), typeof(Message), typeof(SendFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.SendChannel),
             typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.SendToSpot),
+            typeof(RoutingId), typeof(RoutingId), typeof(Message),
+            typeof(SendFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.RequestChannel), typeof(string)));
         Assert.False(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.Publish),
@@ -666,6 +705,16 @@ public sealed class test_socket_surface
             typeof(SendFlags), typeof(TimeSpan?)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.ReceiveSubscriptionEvent), typeof(SubscriptionEvent),
+            typeof(RecvFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.RecvRoutedPart), typeof(Message),
+            typeof(RoutingId?).MakeByRefType(),
+            typeof(RoutingId?).MakeByRefType(),
+            typeof(ulong?).MakeByRefType(), typeof(bool).MakeByRefType(),
+            typeof(RecvFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.SubscribePart), typeof(Message), typeof(Span<byte>),
+            typeof(int).MakeByRefType(), typeof(bool).MakeByRefType(),
             typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(SubscriberSocketBase),
             nameof(SubscriberSocketBase.SubscriptionAt), typeof(int)));
@@ -761,9 +810,11 @@ public sealed class test_socket_surface
         Assert.Equal(typeof(bool),
             typeof(Discovery).GetProperty(nameof(Discovery.ActorRouteSyncEnabled))!
                 .PropertyType);
-        Assert.False(HasPublicInstanceMethod(typeof(Discovery), "BindRoute",
+        Assert.True(HasPublicInstanceMethod(typeof(Discovery), "BindRoute",
             typeof(uint), typeof(ReadOnlySpan<byte>), typeof(ReadOnlySpan<byte>)));
-        Assert.False(HasPublicInstanceMethod(typeof(Discovery), "ResolveRoute",
+        Assert.True(HasPublicInstanceMethod(typeof(Discovery), "UnbindRoute",
+            typeof(uint), typeof(ReadOnlySpan<byte>)));
+        Assert.True(HasPublicInstanceMethod(typeof(Discovery), "ResolveRoute",
             typeof(uint), typeof(ReadOnlySpan<byte>)));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery),
             "SetDealerPeerMode"));

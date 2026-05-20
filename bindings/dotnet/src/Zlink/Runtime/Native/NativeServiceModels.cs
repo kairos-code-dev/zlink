@@ -65,6 +65,7 @@ internal unsafe struct ZlinkSpotNodePeerEntry
     public fixed byte LocalEndpoint[256];
     public fixed byte PeerEndpoint[256];
     public int Source;
+    public int Kind;
     public int State;
     public uint Weight;
     public ulong ConnectedSinceMs;

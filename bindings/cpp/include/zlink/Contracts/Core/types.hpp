@@ -1684,6 +1684,7 @@ class topic_message_t
     std::string _topic;
     mutable std::optional<message_t> _single_part;
     mutable std::vector<message_t> _parts;
+    friend class base_socket_t;
     friend class service::spot_t;
 };
 
@@ -2028,6 +2029,12 @@ enum class spot_peer_source : int
     mixed = ZLINK_SPOT_PEER_SOURCE_MIXED
 };
 
+enum class spot_peer_kind : int
+{
+    spot_mesh = ZLINK_SPOT_PEER_KIND_SPOT_MESH,
+    router_channel = ZLINK_SPOT_PEER_KIND_ROUTER_CHANNEL
+};
+
 enum class spot_peer_state : int
 {
     configured = ZLINK_SPOT_PEER_STATE_CONFIGURED,
@@ -2082,6 +2089,7 @@ using spot_node_state_t = spot_node_state;
 using spot_node_mode_t = spot_node_mode;
 using spot_node_socket_owner_t = spot_node_socket_owner;
 using spot_peer_source_t = spot_peer_source;
+using spot_peer_kind_t = spot_peer_kind;
 using spot_peer_state_t = spot_peer_state;
 using registry_state_t = registry_state;
 using topology_source_t = topology_source;
@@ -2504,8 +2512,10 @@ class spot_node_peer_entry_t
   public:
     spot_node_peer_entry_t ()
         : channel_name_ (), local_endpoint_ (), peer_endpoint_ (),
-          source_ (spot_peer_source::manual), state_ (spot_peer_state::configured),
-          weight_ (0), connected_since_ms_ (0),
+          source_ (spot_peer_source::manual),
+          kind_ (spot_peer_kind::spot_mesh),
+          state_ (spot_peer_state::configured), weight_ (0),
+          connected_since_ms_ (0),
           last_changed_ms_ (0)
     {
     }
@@ -2515,6 +2525,7 @@ class spot_node_peer_entry_t
           local_endpoint_ (fixed_string_to_string (entry_.local_endpoint)),
           peer_endpoint_ (fixed_string_to_string (entry_.peer_endpoint)),
           source_ (static_cast<spot_peer_source> (entry_.source)),
+          kind_ (static_cast<spot_peer_kind> (entry_.kind)),
           state_ (static_cast<spot_peer_state> (entry_.state)),
           weight_ (entry_.weight),
           connected_since_ms_ (entry_.connected_since_ms),
@@ -2529,6 +2540,8 @@ class spot_node_peer_entry_t
     const std::string &peer_endpoint () const noexcept { return peer_endpoint_; }
 
     spot_peer_source_t source () const noexcept { return source_; }
+
+    spot_peer_kind_t kind () const noexcept { return kind_; }
 
     spot_peer_state_t state () const noexcept { return state_; }
 
@@ -2550,6 +2563,7 @@ class spot_node_peer_entry_t
     std::string local_endpoint_;
     std::string peer_endpoint_;
     spot_peer_source source_;
+    spot_peer_kind kind_;
     spot_peer_state state_;
     uint32_t weight_;
     uint64_t connected_since_ms_;

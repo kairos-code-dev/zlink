@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Threading;
 using Xunit;
 
@@ -173,8 +174,7 @@ public sealed class test_spot_pubsub_basic
                 sent = Message.FromBytes(payload);
                 try
                 {
-                    return publisher.Publish(topic).Message(sent)
-                        .Flags(SendFlags.DontWait).Submit();
+                    return publisher.Publish(topic, sent, SendFlags.DontWait);
                 }
                 catch (ZlinkSubmitException ex)
                     when (ex.Result == ZlinkSubmitException.ErrorCode.Backpressured
@@ -190,14 +190,17 @@ public sealed class test_spot_pubsub_basic
         Assert.Throws<ObjectDisposedException>(() => _ = sentMessage.Size);
         sentMessage.Dispose();
 
-        using var subscribed = new TopicMessage();
+        using var subscribed = new Message();
+        byte[] topicBuffer = new byte[64];
+        int topicLength = 0;
+        bool hasMore = true;
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
                 try
                 {
-                    return subscriber.Subscribe(
-                        subscribed, RecvFlags.DontWait);
+                    return subscriber.SubscribePart(subscribed, topicBuffer,
+                        out topicLength, out hasMore, RecvFlags.DontWait);
                 }
                 catch (ZlinkRecvException ex)
                     when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
@@ -207,8 +210,34 @@ public sealed class test_spot_pubsub_basic
             },
             5000));
 
-        Assert.Equal(topic, subscribed.Topic);
-        Assert.Equal(payload, subscribed.SinglePartOrThrow().ToArray());
+        Assert.False(hasMore);
+        Assert.Equal(topic, Encoding.UTF8.GetString(topicBuffer, 0,
+            topicLength));
+        Assert.Equal(payload, subscribed.ToArray());
+    }
+
+    [Fact]
+    public void spot_send_to_spot_direct_payload_preserves_message_on_submit_failure()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var sender = node.CreateSpot();
+
+        RoutingId missingNodeRid = CoreTestSupport.RoutingIdUtf8(
+            "spot-direct-send-missing-node");
+        RoutingId missingSpotRid = CoreTestSupport.RoutingIdUtf8(
+            "spot-direct-send-missing-spot");
+        byte[] payload = "hello-direct-spot-send"u8.ToArray();
+
+        using Message sent = Message.FromBytes(payload);
+        Assert.Throws<ZlinkSubmitException>(() =>
+            sender.SendToSpot(missingNodeRid, missingSpotRid, sent,
+                SendFlags.DontWait));
+        Assert.Equal(payload.Length, sent.Size);
+        Assert.Equal(payload, sent.ToArray());
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-namespace Bingo.SessionGateway;
+namespace Bingo.SessionGateway.Shared.Contracts;
 
 public sealed record AuthenticateReq(string AccessToken);
 
@@ -9,8 +9,16 @@ public sealed record AuthenticateRes(
 public sealed record AuthenticatePlayerReq(string AccessToken);
 
 public sealed record AuthenticatePlayerRes(
+    bool Accepted,
+    string? ActorId,
+    string? DisplayName,
+    string? Reason);
+
+public sealed record EnsurePlayerActorReq(
     string ActorId,
     string DisplayName);
+
+public sealed record EnsurePlayerActorRes(string ActorId);
 
 public sealed record MatchBingoReq(string Mode);
 
@@ -18,14 +26,16 @@ public sealed record MatchBingoRes(
     string RoomId,
     BingoRoomState State);
 
-public sealed record AllocateBingoRoomReq(
+public sealed record MatchBingoApiReq(
     string ActorId,
     string DisplayName,
     string Mode);
 
-public sealed record AllocateBingoRoomRes(
-    string RoomId,
-    BingoRoomState State);
+public sealed record MatchBingoApiRes(string RoomId);
+
+public sealed record AllocateBingoRoomReq(string Mode);
+
+public sealed record AllocateBingoRoomRes(string RoomId);
 
 public sealed record BingoRoomJoinReq(
     string RoomId,

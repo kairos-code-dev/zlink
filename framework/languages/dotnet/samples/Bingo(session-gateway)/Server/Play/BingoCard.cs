@@ -1,4 +1,4 @@
-namespace Bingo.SessionGateway;
+namespace Bingo.SessionGateway.Play;
 
 internal sealed class BingoCard
 {
@@ -15,14 +15,10 @@ internal sealed class BingoCard
         _marks = marks;
     }
 
-    public static BingoCard CreateForSeat(int seat)
+    public static BingoCard Create()
     {
-        _ = seat;
-        var numbers = Enumerable.Range(1, 75)
-            .Take(CellCount)
-            .ToArray();
+        var numbers = Enumerable.Range(1, 75).Take(CellCount).ToArray();
         numbers[FreeCellIndex] = 0;
-
         var marks = new bool[CellCount];
         marks[FreeCellIndex] = true;
         return new BingoCard(numbers, marks);
@@ -34,19 +30,15 @@ internal sealed class BingoCard
 
     public bool[] MarksSnapshot() => (bool[])_marks.Clone();
 
-    public bool MarkDrawnNumber(int number)
+    public void MarkDrawnNumber(int number)
     {
-        var marked = false;
         for (var i = 0; i < _numbers.Length; i++)
         {
-            if (_numbers[i] == number && !_marks[i])
+            if (_numbers[i] == number)
             {
                 _marks[i] = true;
-                marked = true;
             }
         }
-
-        return marked;
     }
 
     private int CountCompletedLines()
@@ -54,30 +46,16 @@ internal sealed class BingoCard
         var completed = 0;
         for (var row = 0; row < Size; row++)
         {
-            if (IsRowComplete(row))
-            {
-                completed++;
-            }
+            completed += IsRowComplete(row) ? 1 : 0;
         }
 
         for (var column = 0; column < Size; column++)
         {
-            if (IsColumnComplete(column))
-            {
-                completed++;
-            }
+            completed += IsColumnComplete(column) ? 1 : 0;
         }
 
-        if (IsDiagonalComplete(0, Size + 1))
-        {
-            completed++;
-        }
-
-        if (IsDiagonalComplete(Size - 1, Size - 1))
-        {
-            completed++;
-        }
-
+        completed += IsDiagonalComplete(0, Size + 1) ? 1 : 0;
+        completed += IsDiagonalComplete(Size - 1, Size - 1) ? 1 : 0;
         return completed;
     }
 

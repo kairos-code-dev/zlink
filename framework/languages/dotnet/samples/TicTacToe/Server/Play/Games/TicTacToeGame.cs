@@ -269,26 +269,8 @@ sealed class TicTacToeGame(
         IReadOnlyList<string> recipients,
         Func<string, ValueTask> sendAsync)
     {
-        if (recipients.Count == 0)
-        {
-            return;
-        }
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Yield();
-                foreach (var actorId in recipients)
-                {
-                    await sendAsync(actorId).ConfigureAwait(false);
-                }
-            }
-            catch
-            {
-                // The direct sample treats push as best-effort progress output.
-            }
-        });
+        _ = recipients;
+        _ = sendAsync;
     }
 
     private sealed class PlayerSlot(PlayActor actor, string mark)

@@ -202,37 +202,41 @@ internal sealed class ZLinkFrameworkActorFacade(
         }
 
         var (joinResult, replyParts) = await tcs.Task.ConfigureAwait(false);
+        return DecodeNativeJoinReply<TRequest, TReply>(
+            joinResult,
+            replyParts,
+            actor.ActorId,
+            activation.SpotName);
+    }
 
-        if (joinResult != RequestResult.Ok)
-        {
-            foreach (var part in replyParts)
-            {
-                part.Dispose();
-            }
-
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor join was rejected for '{actor.ActorId}' to SPOT '{activation.SpotName}'.");
-        }
-
-        if (replyParts.Count == 0)
-        {
-            throw new InvalidOperationException(
-                $"Actor join reply for '{typeof(TRequest)}' was empty.");
-        }
-
+    private static TReply DecodeNativeJoinReply<TRequest, TReply>(
+        RequestResult result,
+        IReadOnlyList<Message> replyParts,
+        string actorId,
+        string spotName)
+    {
         try
         {
+            if (result != RequestResult.Ok)
+            {
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    $"Actor join was rejected for '{actorId}' to SPOT '{spotName}'.");
+            }
+
+            if (replyParts.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Actor join reply for '{typeof(TRequest)}' was empty.");
+            }
+
             var replyObj = ZLinkEnvelopeCodec.DecodeBody(replyParts, typeof(TReply));
             return (TReply?)replyObj
                 ?? throw new InvalidOperationException($"Actor join reply for '{typeof(TRequest)}' was null.");
         }
         finally
         {
-            foreach (var part in replyParts)
-            {
-                part.Dispose();
-            }
+            ZLinkMessageParts.DisposeAll(replyParts);
         }
     }
 }

@@ -155,20 +155,10 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
             parts,
             timeout,
             cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return ZLinkClientCallCodec.DecodeEnvelopeReply<TReply>(
-                reply,
-                "SPOT request reply is empty.",
-                "SPOT request failed.");
-        }
-        finally
-        {
-            foreach (var item in reply)
-            {
-                item.Dispose();
-            }
-        }
+        return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
+            reply,
+            "SPOT request reply is empty.",
+            "SPOT request failed.");
     }
 
     private ValueTask<ZLinkSpotRoute> ResolveRouteAsync(CancellationToken cancellationToken)
@@ -236,19 +226,9 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
             timeout);
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
         var reply = await activation.RequestChannelAsync(channelName, parts, timeout, cancellationToken);
-        try
-        {
-            return ZLinkClientCallCodec.DecodeEnvelopeReply<TReply>(
-                reply,
-                "SPOT channel request reply is empty.",
-                "SPOT channel request failed.");
-        }
-        finally
-        {
-            foreach (var item in reply)
-            {
-                item.Dispose();
-            }
-        }
+        return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
+            reply,
+            "SPOT channel request reply is empty.",
+            "SPOT channel request failed.");
     }
 }

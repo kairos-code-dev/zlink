@@ -55,6 +55,21 @@ internal static class ZLinkClientCallCodec
             ?? throw new InvalidOperationException("Reply body is null.");
     }
 
+    public static TReply DecodeEnvelopeReplyAndDispose<TReply>(
+        IReadOnlyList<Message> reply,
+        string emptyMessage,
+        string errorMessage)
+    {
+        try
+        {
+            return DecodeEnvelopeReply<TReply>(reply, emptyMessage, errorMessage);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(reply);
+        }
+    }
+
     public static TReply DecodeJsonReply<TReply>(
         ReadOnlySpan<byte> reply,
         string nullMessage)

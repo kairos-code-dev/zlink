@@ -32,20 +32,10 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(message);
         ArgumentNullException.ThrowIfNull(trySubmit);
 
-        cancellationToken.ThrowIfCancellationRequested();
-        _stopToken.ThrowIfCancellationRequested();
-
-        if (TrySubmitNow(message, trySubmit))
-        {
-            message.Dispose();
-            return ValueTask.CompletedTask;
-        }
-
-        var pending = _operationFactory.CreateCommand(
+        return SubmitCommandAsync(
             new SingleMessageParts(message),
-            parts => trySubmit(parts[0]));
-        EnqueuePending(pending, cancellationToken);
-        return new ValueTask(pending.Task);
+            parts => trySubmit(parts[0]),
+            cancellationToken);
     }
 
     public ValueTask SubmitAsync(
@@ -57,6 +47,59 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(trySubmit);
         EnsureNotEmpty(parts);
 
+        return SubmitCommandAsync(parts, trySubmit, cancellationToken);
+    }
+
+    public ValueTask<T> SubmitRequestAsync<T>(
+        Message message,
+        Func<Message, Action<T>, Action<Exception>, bool> trySubmit,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ArgumentNullException.ThrowIfNull(trySubmit);
+
+        return SubmitRequestCoreAsync<T>(
+            new SingleMessageParts(message),
+            (parts, onResult, onError) => trySubmit(parts[0], onResult, onError),
+            cancellationToken);
+    }
+
+    public ValueTask<T> SubmitRequestAsync<T>(
+        IReadOnlyList<Message> parts,
+        Func<IReadOnlyList<Message>, Action<T>, Action<Exception>, bool> trySubmit,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(parts);
+        ArgumentNullException.ThrowIfNull(trySubmit);
+        EnsureNotEmpty(parts);
+
+        return SubmitRequestCoreAsync(parts, trySubmit, cancellationToken);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        var remaining = _pending.DisposeAll();
+
+        foreach (var item in remaining)
+        {
+            try
+            {
+                item.TryFail(new ObjectDisposedException(nameof(ZLinkAsyncSubmitter)));
+            }
+            finally
+            {
+                item.Dispose();
+            }
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask SubmitCommandAsync(
+        IReadOnlyList<Message> parts,
+        Func<IReadOnlyList<Message>, bool> trySubmit,
+        CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         _stopToken.ThrowIfCancellationRequested();
 
@@ -71,50 +114,11 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         return new ValueTask(pending.Task);
     }
 
-    public ValueTask<T> SubmitRequestAsync<T>(
-        Message message,
-        Func<Message, Action<T>, Action<Exception>, bool> trySubmit,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(message);
-        ArgumentNullException.ThrowIfNull(trySubmit);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        _stopToken.ThrowIfCancellationRequested();
-
-        var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        bool Submit(Message pending)
-        {
-            return trySubmit(
-                pending,
-                result => completion.TrySetResult(result),
-                exception => completion.TrySetException(exception));
-        }
-
-        if (TrySubmitNow(message, Submit))
-        {
-            message.Dispose();
-            return AwaitResultAsync<T>(completion.Task);
-        }
-
-        var parts = new SingleMessageParts(message);
-        var pendingSubmit = _operationFactory.CreateRequest(
-            parts,
-            pending => Submit(pending[0]),
-            completion);
-        EnqueuePending(pendingSubmit, cancellationToken);
-        return AwaitResultAsync<T>(pendingSubmit.Task);
-    }
-
-    public ValueTask<T> SubmitRequestAsync<T>(
+    private ValueTask<T> SubmitRequestCoreAsync<T>(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, Action<T>, Action<Exception>, bool> trySubmit,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(parts);
-        ArgumentNullException.ThrowIfNull(trySubmit);
-        EnsureNotEmpty(parts);
-
         cancellationToken.ThrowIfCancellationRequested();
         _stopToken.ThrowIfCancellationRequested();
 
@@ -136,25 +140,6 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         var pendingSubmit = _operationFactory.CreateRequest(parts, Submit, completion);
         EnqueuePending(pendingSubmit, cancellationToken);
         return AwaitResultAsync<T>(pendingSubmit.Task);
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        var remaining = _pending.DisposeAll();
-
-        foreach (var item in remaining)
-        {
-            try
-            {
-                item.TryFail(new ObjectDisposedException(nameof(ZLinkAsyncSubmitter)));
-            }
-            finally
-            {
-                item.Dispose();
-            }
-        }
-
-        return ValueTask.CompletedTask;
     }
 
     private void OnSendReady()
@@ -244,18 +229,6 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         try
         {
             return trySubmit(parts);
-        }
-        catch (ZlinkException error) when (IsRetryableSubmitFailure(error))
-        {
-            return false;
-        }
-    }
-
-    private bool TrySubmitNow(Message message, Func<Message, bool> trySubmit)
-    {
-        try
-        {
-            return trySubmit(message);
         }
         catch (ZlinkException error) when (IsRetryableSubmitFailure(error))
         {

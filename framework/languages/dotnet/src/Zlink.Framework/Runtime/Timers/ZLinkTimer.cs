@@ -20,9 +20,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
         _pump = RunAsync(
             name,
             period,
-            options,
-            onTickAsync,
-            onUnhandledExceptionAsync,
+            new ZLinkTimerCallbacks(options, onTickAsync, onUnhandledExceptionAsync),
             _stopSource.Token);
     }
 
@@ -59,34 +57,26 @@ internal sealed class ZLinkTimer : IZLinkTimer
     private static Task RunAsync(
         string name,
         TimeSpan period,
-        ZLinkTimerOptions options,
-        Func<ZLinkTimerTick, CancellationToken, ValueTask> onTickAsync,
-        Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync,
+        ZLinkTimerCallbacks callbacks,
         CancellationToken cancellationToken)
     {
-        return options.OverrunPolicy == ZLinkTimerOverrunPolicy.DelayNextTick
+        return callbacks.Options.OverrunPolicy == ZLinkTimerOverrunPolicy.DelayNextTick
             ? RunDelayNextTickAsync(
                 name,
                 period,
-                options,
-                onTickAsync,
-                onUnhandledExceptionAsync,
+                callbacks,
                 cancellationToken)
             : RunFixedRateAsync(
                 name,
                 period,
-                options,
-                onTickAsync,
-                onUnhandledExceptionAsync,
+                callbacks,
                 cancellationToken);
     }
 
     private static async Task RunDelayNextTickAsync(
         string name,
         TimeSpan period,
-        ZLinkTimerOptions options,
-        Func<ZLinkTimerTick, CancellationToken, ValueTask> onTickAsync,
-        Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync,
+        ZLinkTimerCallbacks callbacks,
         CancellationToken cancellationToken)
     {
         var clock = ZLinkTimerClock.Start();
@@ -108,12 +98,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
                 started,
                 skippedTicks: 0);
 
-            if (!await DispatchTickAsync(
-                    tick,
-                    options,
-                    onTickAsync,
-                    onUnhandledExceptionAsync,
-                    cancellationToken).ConfigureAwait(false))
+            if (!await callbacks.DispatchTickAsync(tick, cancellationToken).ConfigureAwait(false))
             {
                 return;
             }
@@ -123,9 +108,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
     private static async Task RunFixedRateAsync(
         string name,
         TimeSpan period,
-        ZLinkTimerOptions options,
-        Func<ZLinkTimerTick, CancellationToken, ValueTask> onTickAsync,
-        Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync,
+        ZLinkTimerCallbacks callbacks,
         CancellationToken cancellationToken)
     {
         var clock = ZLinkTimerClock.Start();
@@ -147,7 +130,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
                 ScheduledIndexAt(startedStopwatchTicks, periodStopwatchTicks));
 
             var scheduledIndex = SelectScheduledIndex(
-                options,
+                callbacks.Options,
                 lastScheduledIndex,
                 dueScheduledIndex);
             var skippedTicks = scheduledIndex - lastScheduledIndex - 1;
@@ -166,50 +149,12 @@ internal sealed class ZLinkTimer : IZLinkTimer
                 startedElapsed,
                 skippedTicks);
 
-            if (!await DispatchTickAsync(
-                    tick,
-                    options,
-                    onTickAsync,
-                    onUnhandledExceptionAsync,
-                    cancellationToken).ConfigureAwait(false))
+            if (!await callbacks.DispatchTickAsync(tick, cancellationToken).ConfigureAwait(false))
             {
                 return;
             }
 
             lastScheduledIndex = scheduledIndex;
-        }
-    }
-
-    private static async ValueTask<bool> DispatchTickAsync(
-        ZLinkTimerTick tick,
-        ZLinkTimerOptions options,
-        Func<ZLinkTimerTick, CancellationToken, ValueTask> onTickAsync,
-        Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await onTickAsync(tick, cancellationToken).ConfigureAwait(false);
-            return true;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            var stopped = options.StopOnUnhandledException;
-            try
-            {
-                await onUnhandledExceptionAsync(tick, ex, stopped, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch
-            {
-                // Monitoring failures must not change the timer exception policy.
-            }
-
-            return !stopped;
         }
     }
 
@@ -248,6 +193,44 @@ internal sealed class ZLinkTimer : IZLinkTimer
     private static long StopwatchTicksFromTimeSpan(TimeSpan period)
     {
         return Math.Max(1, (long)Math.Round(period.TotalSeconds * Stopwatch.Frequency));
+    }
+
+    private readonly struct ZLinkTimerCallbacks(
+        ZLinkTimerOptions options,
+        Func<ZLinkTimerTick, CancellationToken, ValueTask> onTickAsync,
+        Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync)
+    {
+        public ZLinkTimerOptions Options => options;
+
+        public async ValueTask<bool> DispatchTickAsync(
+            ZLinkTimerTick tick,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await onTickAsync(tick, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var stopped = options.StopOnUnhandledException;
+                try
+                {
+                    await onUnhandledExceptionAsync(tick, ex, stopped, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Monitoring failures must not change the timer exception policy.
+                }
+
+                return !stopped;
+            }
+        }
     }
 
     private readonly struct ZLinkTimerClock

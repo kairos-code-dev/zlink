@@ -1,4 +1,5 @@
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -75,21 +76,13 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         TMessage message,
         CancellationToken cancellationToken)
     {
-        var header = new ZLinkEnvelopeHeader(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             RouterChannelId,
             packetName,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            Guid.NewGuid().ToString("N"),
-            null,
-            null,
-            null,
             null);
         var parts = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType() ?? typeof(TMessage));
-        return _submitter.SubmitAsync(
-            parts,
-            pending => _router.Send(targetNodeRid, pending, SendFlags.DontWait),
-            cancellationToken);
+        return SubmitRouteSendPartsAsync(targetNodeRid, parts, cancellationToken);
     }
 
     public ValueTask SubmitSendPartsAsync(
@@ -99,10 +92,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var parts = PrependHeader(header, payloadParts);
-        return _submitter.SubmitAsync(
-            parts,
-            pending => _router.Send(targetNodeRid, pending, SendFlags.DontWait),
-            cancellationToken);
+        return SubmitRouteSendPartsAsync(targetNodeRid, parts, cancellationToken);
     }
 
     public async ValueTask<TReply> RequestAsync<TRequest, TReply>(
@@ -112,26 +102,16 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var header = new ZLinkEnvelopeHeader(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             RouterChannelId,
             packetName,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            Guid.NewGuid().ToString("N"),
-            DateTimeOffset.UtcNow.Add(timeout),
-            null,
-            null,
-            null);
+            timeout);
         var parts = ZLinkEnvelopeCodec.EncodeParts(header, request, request?.GetType() ?? typeof(TRequest));
-        return await _submitter
-            .SubmitRequestAsync<TReply>(
+        return await SubmitRouteRequestPartsAsync<TReply>(
+                targetNodeRid,
                 parts,
-                (pending, complete, fail) => _router.Request(
-                    targetNodeRid,
-                    pending,
-                    (result, reply) => ZLinkRouteReplyCompletion.Complete(result, reply, complete, fail),
-                    SendFlags.DontWait,
-                    timeout),
+                timeout,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -144,15 +124,10 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var parts = PrependHeader(header, payloadParts);
-        return await _submitter
-            .SubmitRequestAsync<TReply>(
+        return await SubmitRouteRequestPartsAsync<TReply>(
+                targetNodeRid,
                 parts,
-                (pending, complete, fail) => _router.Request(
-                    targetNodeRid,
-                    pending,
-                    (result, reply) => ZLinkRouteReplyCompletion.Complete(result, reply, complete, fail),
-                    SendFlags.DontWait,
-                    timeout),
+                timeout,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -187,7 +162,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                     targetNodeRid,
                     targetSpotRid,
                     pending,
-                    (result, reply) => CompleteRawReply(
+                    (result, reply) => ZLinkRawReplyCompletion.Complete(
                         result,
                         reply,
                         complete,
@@ -213,25 +188,39 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         return parts;
     }
 
-    private static void CompleteRawReply(
-        RequestResult result,
-        IReadOnlyList<Message> reply,
-        Action<IReadOnlyList<Message>> complete,
-        Action<Exception> fail,
-        string failureMessage)
+    private ValueTask SubmitRouteSendPartsAsync(
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken)
     {
-        if (result == RequestResult.Ok)
-        {
-            complete(reply);
-            return;
-        }
+        return _submitter.SubmitAsync(
+            parts,
+            pending => _router.Send(targetNodeRid, pending, SendFlags.DontWait),
+            cancellationToken);
+    }
 
-        foreach (var replyPart in reply)
-        {
-            replyPart.Dispose();
-        }
-
-        fail(new TimeoutException(failureMessage));
+    private async ValueTask<TReply> SubmitRouteRequestPartsAsync<TReply>(
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        return await _submitter
+            .SubmitRequestAsync<TReply>(
+                parts,
+                (pending, complete, fail) => _router.Request(
+                    targetNodeRid,
+                    pending,
+                    (result, reply) => ZLinkEnvelopeReplyCompletion.Complete(
+                        result,
+                        reply,
+                        complete,
+                        fail,
+                        "ZLink routed request"),
+                    SendFlags.DontWait,
+                    timeout),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()

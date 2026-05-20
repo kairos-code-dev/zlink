@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Messaging;
+
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkSendCall : IZLinkSendCall
@@ -31,16 +33,10 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
-        var header = new ZLinkEnvelopeHeader(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             _channelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."),
-            ZLinkEnvelopeCodec.DefaultContentType,
-            Guid.NewGuid().ToString("N"),
-            null,
-            null,
-            null,
-            null);
+            _messageName ?? throw new InvalidOperationException("Message name is required."));
 
         var message = ZLinkEnvelopeCodec.EncodeParts(header, _message, _message?.GetType());
         return (bundle.Submitter
@@ -78,74 +74,29 @@ internal sealed class ZLinkRequestCall<TMessage>(
     {
         var bundle = runtime.GetOrCreateClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
-        var correlationId = Guid.NewGuid().ToString("N");
         var timeout = _timeout ?? registration.DefaultTimeout;
-        var deadline = DateTimeOffset.UtcNow.Add(timeout);
-        var header = new ZLinkEnvelopeHeader(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
-            ZLinkEnvelopeCodec.DefaultContentType,
-            correlationId,
-            deadline,
-            null,
-            null,
-            null);
-        var message = ZLinkEnvelopeCodec.EncodeParts(header, request, request?.GetType() ?? typeof(TMessage));
+            timeout);
+        var message = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
         return await (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
             .SubmitRequestAsync<TReply>(
                 message,
                 (pending, complete, fail) => dealer.Request(
                     pending,
-                    (result, reply) => CompleteReply(result, reply, complete, fail),
+                    (result, reply) => ZLinkEnvelopeReplyCompletion.Complete(
+                        result,
+                        reply,
+                        complete,
+                        fail,
+                        "ZLink request"),
                     SendFlags.DontWait,
                     timeout),
                 cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private static void CompleteReply<TReply>(
-        RequestResult result,
-        IReadOnlyList<Message> reply,
-        Action<TReply> complete,
-        Action<Exception> fail)
-    {
-        try
-        {
-            if (result != RequestResult.Ok)
-            {
-                fail(new TimeoutException($"ZLink request failed with result '{result}'."));
-                return;
-            }
-
-            if (reply.Count == 0)
-            {
-                fail(new InvalidOperationException("ZLink request reply is empty."));
-                return;
-            }
-
-            var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
-            if (replyHeader.Kind == ZLinkMessageKind.Error)
-            {
-                fail(new InvalidOperationException(replyHeader.ErrorMessage ?? "ZLink request failed."));
-                return;
-            }
-
-            complete((TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply))
-                ?? throw new InvalidOperationException("ZLink request reply body is null."));
-        }
-        catch (Exception exception)
-        {
-            fail(exception);
-        }
-        finally
-        {
-            foreach (var replyPart in reply)
-            {
-                replyPart.Dispose();
-            }
-        }
     }
 }
 
@@ -169,17 +120,12 @@ internal sealed class ZLinkPublishCall(
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetOrCreatePublisherBundle(channelName);
         var publisher = (IZLinkBackendPublisherSocket)bundle.Socket;
-        var header = new ZLinkEnvelopeHeader(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Publish,
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
-            ZLinkEnvelopeCodec.DefaultContentType,
-            Guid.NewGuid().ToString("N"),
-            null,
-            topic,
-            null,
-            null,
-            Source: channelName);
+            topic: topic,
+            source: channelName);
         var envelopedMsg = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType());
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink publish submitter is not initialized."))

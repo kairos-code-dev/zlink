@@ -19,18 +19,11 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
     public ValueTask Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var header = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Publish,
+        var parts = ZLinkSpotPublishEnvelope.EncodeParts(
             activation.ChannelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
-            ZLinkEnvelopeCodec.DefaultContentType,
-            null,
-            null,
             topic,
-            null,
-            null,
-            Source: activation.ChannelName);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType() ?? typeof(TEvent));
+            message);
         return activation.PublishCurrentAsync(topic, parts, cancellationToken);
     }
 }
@@ -62,10 +55,32 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);
+        var parts = ZLinkSpotPublishEnvelope.EncodeParts(
+            channelName,
+            _messageName ?? throw new InvalidOperationException("Message name is required."),
+            topic,
+            message);
+        return (bundle.Submitter
+                ?? throw new InvalidOperationException("External SPOT publish submitter is not initialized."))
+            .SubmitAsync(
+                parts,
+                pending => bundle.Spot.Publish(topic, pending, SendFlags.DontWait),
+                cancellationToken);
+    }
+}
+
+internal static class ZLinkSpotPublishEnvelope
+{
+    public static IReadOnlyList<Message> EncodeParts<TEvent>(
+        string channelName,
+        string messageName,
+        string topic,
+        TEvent message)
+    {
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Publish,
             channelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."),
+            messageName,
             ZLinkEnvelopeCodec.DefaultContentType,
             null,
             null,
@@ -73,12 +88,9 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
             null,
             null,
             Source: channelName);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType() ?? typeof(TEvent));
-        return (bundle.Submitter
-                ?? throw new InvalidOperationException("External SPOT publish submitter is not initialized."))
-            .SubmitAsync(
-                parts,
-                pending => bundle.Spot.Publish(topic, pending, SendFlags.DontWait),
-                cancellationToken);
+        return ZLinkEnvelopeCodec.EncodeParts(
+            header,
+            message,
+            message?.GetType() ?? typeof(TEvent));
     }
 }

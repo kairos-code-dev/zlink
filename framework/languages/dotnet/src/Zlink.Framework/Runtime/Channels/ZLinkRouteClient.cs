@@ -43,11 +43,10 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
         IReadOnlyList<Message> payloadParts,
         CancellationToken cancellationToken)
     {
-        var header = CreateHeader(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             routerChannelId,
-            packetName,
-            deadline: null);
+            packetName);
         return runtime.GetRouteChannel(routerChannelId)
             .SubmitSendPartsAsync(targetNodeRid, header, payloadParts, cancellationToken);
     }
@@ -60,11 +59,11 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var header = CreateHeader(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             routerChannelId,
             packetName,
-            DateTimeOffset.UtcNow.Add(timeout));
+            timeout);
         return runtime.GetRouteChannel(routerChannelId)
             .RequestPartsAsync<TReply>(
                 targetNodeRid,
@@ -72,24 +71,6 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
                 payloadParts,
                 timeout,
                 cancellationToken);
-    }
-
-    private static ZLinkEnvelopeHeader CreateHeader(
-        ZLinkMessageKind kind,
-        string routerChannelId,
-        string packetName,
-        DateTimeOffset? deadline)
-    {
-        return new ZLinkEnvelopeHeader(
-            kind,
-            routerChannelId,
-            packetName,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            Guid.NewGuid().ToString("N"),
-            deadline,
-            null,
-            null,
-            null);
     }
 }
 

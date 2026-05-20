@@ -1,4 +1,5 @@
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -26,7 +27,7 @@ internal sealed class ZLinkSpotOutboundTransport(
                 (pending, complete, fail) => nativeSpot.RequestChannel(
                     channelName,
                     pending,
-                    (result, reply) => CompleteReply(
+                    (result, reply) => ZLinkRawReplyCompletion.Complete(
                         result,
                         reply,
                         complete,
@@ -51,7 +52,7 @@ internal sealed class ZLinkSpotOutboundTransport(
                 (pending, complete, fail) => nativeSpot.RequestChannel(
                     channelName,
                     pending,
-                    (result, reply) => CompleteReply(
+                    (result, reply) => ZLinkRawReplyCompletion.Complete(
                         result,
                         reply,
                         complete,
@@ -100,7 +101,7 @@ internal sealed class ZLinkSpotOutboundTransport(
                     targetNodeRid,
                     targetSpotRid,
                     pending,
-                    (result, reply) => CompleteReply(
+                    (result, reply) => ZLinkRawReplyCompletion.Complete(
                         result,
                         reply,
                         complete,
@@ -127,7 +128,7 @@ internal sealed class ZLinkSpotOutboundTransport(
                     targetNodeRid,
                     targetSpotRid,
                     pending,
-                    (result, reply) => CompleteReply(
+                    (result, reply) => ZLinkRawReplyCompletion.Complete(
                         result,
                         reply,
                         complete,
@@ -184,24 +185,4 @@ internal sealed class ZLinkSpotOutboundTransport(
         return _submitter.DisposeAsync();
     }
 
-    private static void CompleteReply(
-        RequestResult result,
-        IReadOnlyList<Message> reply,
-        Action<IReadOnlyList<Message>> complete,
-        Action<Exception> fail,
-        string failureMessage)
-    {
-        if (result == RequestResult.Ok)
-        {
-            complete(reply);
-            return;
-        }
-
-        foreach (var replyPart in reply)
-        {
-            replyPart.Dispose();
-        }
-
-        fail(new TimeoutException(failureMessage));
-    }
 }

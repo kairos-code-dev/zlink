@@ -43,6 +43,35 @@ internal sealed class ZLinkRuntimeConnections(
     Func<CancellationToken, ValueTask<IReadOnlyList<string>>> list)
     : IZLinkEndpointConnections
 {
+    public static ZLinkRuntimeConnections CreateManual<TBundle>(
+        Func<TBundle> getBundle,
+        Func<TBundle, IZLinkBackendConnectableSocket> getSocket,
+        Func<TBundle, string, bool> tryAddManualConnection,
+        Action<TBundle, string> removeManualConnection,
+        Func<TBundle, IReadOnlyList<string>> listManualConnections)
+    {
+        return new ZLinkRuntimeConnections(
+            (endpoint, _) =>
+            {
+                var bundle = getBundle();
+                if (!tryAddManualConnection(bundle, endpoint))
+                {
+                    return ValueTask.FromResult(false);
+                }
+
+                getSocket(bundle).Connect(endpoint);
+                return ValueTask.FromResult(true);
+            },
+            (endpoint, _) =>
+            {
+                var bundle = getBundle();
+                getSocket(bundle).Disconnect(endpoint);
+                removeManualConnection(bundle, endpoint);
+                return ValueTask.CompletedTask;
+            },
+            _ => ValueTask.FromResult(listManualConnections(getBundle())));
+    }
+
     public ValueTask<bool> ConnectAsync(
         string endpoint,
         CancellationToken cancellationToken = default)

@@ -1,38 +1,39 @@
 using Zlink.Framework.Runtime.Backend.Contracts;
 
-namespace Zlink.Framework.Runtime.Channels;
+namespace Zlink.Framework.Runtime.Messaging;
 
-internal static class ZLinkRouteReplyCompletion
+internal static class ZLinkEnvelopeReplyCompletion
 {
     public static void Complete<TReply>(
         RequestResult result,
         IReadOnlyList<Message> reply,
         Action<TReply> complete,
-        Action<Exception> fail)
+        Action<Exception> fail,
+        string operationName)
     {
         try
         {
             if (result != RequestResult.Ok)
             {
-                fail(new TimeoutException($"ZLink routed request failed with result '{result}'."));
+                fail(new TimeoutException($"{operationName} failed with result '{result}'."));
                 return;
             }
 
             if (reply.Count == 0)
             {
-                fail(new InvalidOperationException("ZLink routed request reply is empty."));
+                fail(new InvalidOperationException($"{operationName} reply is empty."));
                 return;
             }
 
             var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
             if (replyHeader.Kind == ZLinkMessageKind.Error)
             {
-                fail(new InvalidOperationException(replyHeader.ErrorMessage ?? "ZLink routed request failed."));
+                fail(new InvalidOperationException(replyHeader.ErrorMessage ?? $"{operationName} failed."));
                 return;
             }
 
             complete((TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply))
-                ?? throw new InvalidOperationException("ZLink routed request reply body is null."));
+                ?? throw new InvalidOperationException($"{operationName} reply body is null."));
         }
         catch (Exception exception)
         {
@@ -40,10 +41,7 @@ internal static class ZLinkRouteReplyCompletion
         }
         finally
         {
-            foreach (var replyPart in reply)
-            {
-                replyPart.Dispose();
-            }
+            ZLinkMessageParts.DisposeAll(reply);
         }
     }
 }

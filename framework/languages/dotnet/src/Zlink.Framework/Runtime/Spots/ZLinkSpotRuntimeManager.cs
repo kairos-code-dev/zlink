@@ -240,24 +240,12 @@ internal sealed class ZLinkSpotRuntimeManager(
             bundle = node.GetOrCreateAttachedChannelBundle(channelName);
         }
 
-        return new ZLinkRuntimeConnections(
-            (endpoint, _) =>
-            {
-                if (!bundle.TryAddManualConnection(endpoint))
-                {
-                    return ValueTask.FromResult(false);
-                }
-
-                bundle.Socket.Connect(endpoint);
-                return ValueTask.FromResult(true);
-            },
-            (endpoint, _) =>
-            {
-                bundle.Socket.Disconnect(endpoint);
-                bundle.RemoveManualConnection(endpoint);
-                return ValueTask.CompletedTask;
-            },
-            _ => ValueTask.FromResult<IReadOnlyList<string>>(bundle.ListManualConnections()));
+        return ZLinkRuntimeConnections.CreateManual(
+            () => bundle,
+            static current => current.Socket,
+            static (current, endpoint) => current.TryAddManualConnection(endpoint),
+            static (current, endpoint) => current.RemoveManualConnection(endpoint),
+            static current => current.ListManualConnections());
     }
 
     public IZLinkEndpointConnections GetPublisherConnections(

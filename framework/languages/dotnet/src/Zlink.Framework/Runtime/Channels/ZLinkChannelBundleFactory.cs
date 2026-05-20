@@ -31,22 +31,18 @@ internal sealed class ZLinkChannelBundleFactory(
         {
             if (channel.Client.ManualConnections.Count > 0)
             {
-                foreach (var endpoint in channel.Client.ManualConnections)
-                {
-                    dealer.Connect(endpoint);
-                    _ = bundle.TryAddManualConnection(endpoint);
-                }
+                AttachManualConnections(bundle, dealer, channel.Client.ManualConnections);
             }
             else
             {
-                var discovery = ZLinkBackendDiscoveryFactory.Create(
+                AttachDiscovery(
+                    bundle,
                     adapter,
                     state.Context,
                     channelName,
                     ResolveClientAutoConnectType(channel),
-                    registration.Discovery?.Endpoints ?? []);
-                dealer.AttachDiscovery(discovery);
-                bundle.Discovery = discovery;
+                    registration.Discovery?.Endpoints ?? [],
+                    dealer.AttachDiscovery);
             }
 
             return bundle;
@@ -76,14 +72,14 @@ internal sealed class ZLinkChannelBundleFactory(
 
         if (registration.Discovery is not null)
         {
-            var discovery = ZLinkBackendDiscoveryFactory.Create(
+            AttachDiscovery(
+                bundle,
                 adapter,
                 state.Context,
                 channelName,
                 ZLinkAutoConnectType.ClientServer,
-                registration.Discovery.Endpoints);
-            router.AttachDiscovery(discovery);
-            bundle.Discovery = discovery;
+                registration.Discovery.Endpoints,
+                router.AttachDiscovery);
         }
 
         return bundle;
@@ -102,22 +98,18 @@ internal sealed class ZLinkChannelBundleFactory(
 
         if (channel.Subscriber!.ManualConnections.Count > 0)
         {
-            foreach (var endpoint in channel.Subscriber.ManualConnections)
-            {
-                subscriber.Connect(endpoint);
-                _ = bundle.TryAddManualConnection(endpoint);
-            }
+            AttachManualConnections(bundle, subscriber, channel.Subscriber.ManualConnections);
         }
         else
         {
-            var discovery = ZLinkBackendDiscoveryFactory.Create(
+            AttachDiscovery(
+                bundle,
                 adapter,
                 state.Context,
                 channelName,
                 ZLinkAutoConnectType.Fanout,
-                registration.Discovery?.Endpoints ?? []);
-            subscriber.AttachDiscovery(discovery);
-            bundle.Discovery = discovery;
+                registration.Discovery?.Endpoints ?? [],
+                subscriber.AttachDiscovery);
         }
 
         return bundle;
@@ -142,14 +134,14 @@ internal sealed class ZLinkChannelBundleFactory(
 
         if (registration.Discovery is not null)
         {
-            var discovery = ZLinkBackendDiscoveryFactory.Create(
+            AttachDiscovery(
+                bundle,
                 adapter,
                 state.Context,
                 channelName,
                 ZLinkAutoConnectType.Fanout,
-                registration.Discovery.Endpoints);
-            publisher.AttachDiscovery(discovery);
-            bundle.Discovery = discovery;
+                registration.Discovery.Endpoints,
+                publisher.AttachDiscovery);
         }
 
         return bundle;
@@ -160,6 +152,37 @@ internal sealed class ZLinkChannelBundleFactory(
         return channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh
             ? ZLinkAutoConnectType.DealerMesh
             : ZLinkAutoConnectType.ClientServer;
+    }
+
+    private static void AttachManualConnections(
+        ZLinkChannelRuntimeBundle bundle,
+        IZLinkBackendConnectableSocket socket,
+        IReadOnlyList<string> endpoints)
+    {
+        foreach (var endpoint in endpoints)
+        {
+            socket.Connect(endpoint);
+            _ = bundle.TryAddManualConnection(endpoint);
+        }
+    }
+
+    private static void AttachDiscovery(
+        ZLinkChannelRuntimeBundle bundle,
+        IZLinkChannelBackendAdapter adapter,
+        IZLinkBackendContext context,
+        string channelName,
+        ZLinkAutoConnectType autoConnectType,
+        IReadOnlyList<string> endpoints,
+        Action<IZLinkBackendDiscovery> attachDiscovery)
+    {
+        var discovery = ZLinkBackendDiscoveryFactory.Create(
+            adapter,
+            context,
+            channelName,
+            autoConnectType,
+            endpoints);
+        attachDiscovery(discovery);
+        bundle.Discovery = discovery;
     }
 
     private static async ValueTask DisposeFailedBundleAsync(ZLinkChannelRuntimeBundle bundle)

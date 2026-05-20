@@ -35,17 +35,12 @@ internal sealed class ZLinkSpotRouteDispatcher(
             var reply = await handlerInvoker()
                 .InvokeRequestAsync(descriptor, message, cancellationToken)
                 .ConfigureAwait(false);
-            var replyHeader = new ZLinkEnvelopeHeader(
-                ZLinkMessageKind.Response,
+            var replyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
                 channelName,
                 descriptor.MessageName,
-                ZLinkEnvelopeCodec.DefaultContentType,
                 header.CorrelationId,
-                null,
-                null,
-                null,
-                null);
-            var replyParts = ZLinkEnvelopeCodec.EncodeParts(replyHeader, reply, descriptor.ReplyType);
+                reply,
+                descriptor.ReplyType);
             try
             {
                 received.Reply()

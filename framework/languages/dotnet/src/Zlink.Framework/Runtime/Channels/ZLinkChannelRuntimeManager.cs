@@ -148,27 +148,12 @@ internal sealed class ZLinkChannelRuntimeManager(
             throw new ZLinkConfigurationException($"Channel client '{channelName}' is not registered.");
         }
 
-        return new ZLinkRuntimeConnections(
-            (endpoint, _) =>
-            {
-                var bundle = GetOrCreateClientBundle(state, channelName);
-                if (!bundle.TryAddManualConnection(endpoint))
-                {
-                    return ValueTask.FromResult(false);
-                }
-
-                ((IZLinkBackendDealerSocket)bundle.Socket).Connect(endpoint);
-                return ValueTask.FromResult(true);
-            },
-            (endpoint, _) =>
-            {
-                var bundle = GetOrCreateClientBundle(state, channelName);
-                ((IZLinkBackendDealerSocket)bundle.Socket).Disconnect(endpoint);
-                bundle.RemoveManualConnection(endpoint);
-                return ValueTask.CompletedTask;
-            },
-            _ => ValueTask.FromResult<IReadOnlyList<string>>(
-                GetOrCreateClientBundle(state, channelName).ListManualConnections()));
+        return ZLinkRuntimeConnections.CreateManual(
+            () => GetOrCreateClientBundle(state, channelName),
+            bundle => (IZLinkBackendDealerSocket)bundle.Socket,
+            static (bundle, endpoint) => bundle.TryAddManualConnection(endpoint),
+            static (bundle, endpoint) => bundle.RemoveManualConnection(endpoint),
+            static bundle => bundle.ListManualConnections());
     }
 
     public IZLinkEndpointConnections GetSubscriberConnections(
@@ -180,24 +165,12 @@ internal sealed class ZLinkChannelRuntimeManager(
             throw new ZLinkConfigurationException($"Channel subscriber '{channelName}' is not registered.");
         }
 
-        return new ZLinkRuntimeConnections(
-            (endpoint, _) =>
-            {
-                if (!bundle.TryAddManualConnection(endpoint))
-                {
-                    return ValueTask.FromResult(false);
-                }
-
-                ((IZLinkBackendSubscriberSocket)bundle.Socket).Connect(endpoint);
-                return ValueTask.FromResult(true);
-            },
-            (endpoint, _) =>
-            {
-                ((IZLinkBackendSubscriberSocket)bundle.Socket).Disconnect(endpoint);
-                bundle.RemoveManualConnection(endpoint);
-                return ValueTask.CompletedTask;
-            },
-            _ => ValueTask.FromResult<IReadOnlyList<string>>(bundle.ListManualConnections()));
+        return ZLinkRuntimeConnections.CreateManual(
+            () => bundle,
+            current => (IZLinkBackendSubscriberSocket)current.Socket,
+            static (current, endpoint) => current.TryAddManualConnection(endpoint),
+            static (current, endpoint) => current.RemoveManualConnection(endpoint),
+            static current => current.ListManualConnections());
     }
 
     public IZLinkBackendSocket GetMonitoringSocket(

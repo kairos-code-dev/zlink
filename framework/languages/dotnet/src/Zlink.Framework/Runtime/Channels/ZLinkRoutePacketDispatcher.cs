@@ -120,25 +120,16 @@ internal sealed class ZLinkRoutePacketDispatcher(
         object? reply,
         Type? replyType)
     {
-        var replyHeader = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Response,
-            routerChannelId,
-            requestHeader.MessageName,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            requestHeader.CorrelationId,
-            null,
-            null,
-            null,
-            null);
-        var replyParts = ZLinkEnvelopeCodec.EncodeParts(replyHeader, reply, replyType);
-        try
-        {
-            router.Reply(sourceRid, requestSeq ?? 0UL, replyParts);
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(replyParts);
-        }
+        ZLinkChannelReplyWriter.ReplyEnvelope(
+            router,
+            sourceRid,
+            requestSeq,
+            ZLinkChannelReplyWriter.CreateReplyHeader(
+                ZLinkMessageKind.Response,
+                routerChannelId,
+                requestHeader),
+            reply,
+            replyType);
     }
 
     private void ReplyRaw(
@@ -147,25 +138,15 @@ internal sealed class ZLinkRoutePacketDispatcher(
         ZLinkEnvelopeHeader requestHeader,
         Message reply)
     {
-        var replyHeader = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Response,
-            routerChannelId,
-            requestHeader.MessageName,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            requestHeader.CorrelationId,
-            null,
-            null,
-            null,
-            null);
-        var replyParts = ZLinkEnvelopeCodec.EncodeRawBodyParts(replyHeader, reply);
-        try
-        {
-            router.Reply(sourceRid, requestSeq ?? 0UL, replyParts);
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(replyParts);
-        }
+        ZLinkChannelReplyWriter.ReplyRawEnvelope(
+            router,
+            sourceRid,
+            requestSeq,
+            ZLinkChannelReplyWriter.CreateReplyHeader(
+                ZLinkMessageKind.Response,
+                routerChannelId,
+                requestHeader),
+            reply);
     }
 
     private void ReplyError(
@@ -174,24 +155,12 @@ internal sealed class ZLinkRoutePacketDispatcher(
         ZLinkEnvelopeHeader requestHeader,
         Exception exception)
     {
-        var errorHeader = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Error,
-            routerChannelId,
-            requestHeader.MessageName,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            requestHeader.CorrelationId,
+        ZLinkChannelReplyWriter.ReplyEnvelope(
+            router,
+            sourceRid,
+            requestSeq,
+            ZLinkChannelReplyWriter.CreateErrorHeader(routerChannelId, requestHeader, exception),
             null,
-            null,
-            exception.GetType().Name,
-            exception.Message);
-        var replyParts = ZLinkEnvelopeCodec.EncodeParts(errorHeader, null, null);
-        try
-        {
-            router.Reply(sourceRid, requestSeq ?? 0UL, replyParts);
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(replyParts);
-        }
+            null);
     }
 }

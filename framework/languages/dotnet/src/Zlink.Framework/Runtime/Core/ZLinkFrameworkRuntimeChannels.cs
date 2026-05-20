@@ -125,11 +125,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                         targetNodeRid,
                         targetSpotRid,
                         parts,
-                        (result, reply) => CompleteSpotReply(
-                            routerChannelId,
+                        (result, reply) => ZLinkRawReplyCompletion.Complete(
                             result,
                             reply,
-                            completion),
+                            completion,
+                            $"Router channel '{routerChannelId}' SPOT request failed with result '{result}'."),
                         SendFlags.None,
                         timeout))
                 {
@@ -154,23 +154,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             receiveGate.Release();
         }
-    }
-
-    private static void CompleteSpotReply(
-        string routerChannelId,
-        RequestResult result,
-        IReadOnlyList<Message> reply,
-        TaskCompletionSource<IReadOnlyList<Message>> completion)
-    {
-        if (result == RequestResult.Ok)
-        {
-            completion.TrySetResult(reply);
-            return;
-        }
-
-        ZLinkMessageParts.DisposeAll(reply);
-        completion.TrySetException(new TimeoutException(
-            $"Router channel '{routerChannelId}' SPOT request failed with result '{result}'."));
     }
 
     internal async ValueTask<IZLinkEndpointConnections> GetClientConnectionsAsync(

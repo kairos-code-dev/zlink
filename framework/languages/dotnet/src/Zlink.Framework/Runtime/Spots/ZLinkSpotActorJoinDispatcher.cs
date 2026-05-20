@@ -37,13 +37,12 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             .InvokeActorJoinAsync(descriptor, actor, requestObj, cancellationToken)
             .ConfigureAwait(false);
 
-        var replyEnvelopeHeader = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Response,
+        var replyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
             channelName,
             descriptor.MessageName,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            null, null, null, null, null);
-        var replyParts = ZLinkEnvelopeCodec.EncodeParts(replyEnvelopeHeader, replyObj, descriptor.ReplyType);
+            null,
+            replyObj,
+            descriptor.ReplyType);
         try
         {
             nativeSpot.ReplyActorJoin(joinRequest, accepted: true, replyParts);

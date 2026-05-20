@@ -222,6 +222,7 @@ backend gate 와 별도로 유지한다.
 대상 문서는 다음과 같다.
 
 - `README.ko.md`
+- `registry-backed-routing-defaults.ko.md`
 - `spot-timer-policy.ko.md`
 - `handler-interfaces.ko.md`
 - `aspnet-core-channel-messaging.ko.md`

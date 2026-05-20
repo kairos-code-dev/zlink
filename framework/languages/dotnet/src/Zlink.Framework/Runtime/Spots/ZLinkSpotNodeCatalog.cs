@@ -66,22 +66,8 @@ internal sealed class ZLinkSpotNodeCatalog(
         }
         catch (Exception error)
         {
-            if (activation is not null)
-            {
-                lock (_gate)
-                {
-                    _spots.Remove(activation.SpotRid);
-                }
-            }
-
-            if (activation is null)
-            {
-                await nativeSpot.DisposeAsync();
-            }
-            else
-            {
-                await activation.DisposeAsync();
-            }
+            RemoveActivation(activation);
+            await DisposeFailedCreationAsync(nativeSpot, activation);
 
             throw WrapSpotCreateFailed(spotName, error);
         }
@@ -171,22 +157,12 @@ internal sealed class ZLinkSpotNodeCatalog(
             lock (_gate)
             {
                 _pending.Remove(requestedSpotRid);
-                if (activation is not null)
-                {
-                    _spots.Remove(activation.SpotRid);
-                }
+                RemoveActivationLocked(activation);
 
                 pending.Fail(wrapped);
             }
 
-            if (activation is null && nativeSpot is not null)
-            {
-                await nativeSpot.DisposeAsync();
-            }
-            else if (activation is not null)
-            {
-                await activation.DisposeAsync();
-            }
+            await DisposeFailedCreationAsync(nativeSpot, activation);
 
             throw wrapped;
         }
@@ -259,6 +235,43 @@ internal sealed class ZLinkSpotNodeCatalog(
         lock (_gate)
         {
             return _spots.Values.ToArray();
+        }
+    }
+
+    private void RemoveActivation(ZLinkSpotActivation? activation)
+    {
+        if (activation is null)
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            RemoveActivationLocked(activation);
+        }
+    }
+
+    private void RemoveActivationLocked(ZLinkSpotActivation? activation)
+    {
+        if (activation is not null)
+        {
+            _spots.Remove(activation.SpotRid);
+        }
+    }
+
+    private static async ValueTask DisposeFailedCreationAsync(
+        IZLinkBackendSpot? nativeSpot,
+        ZLinkSpotActivation? activation)
+    {
+        if (activation is not null)
+        {
+            await activation.DisposeAsync();
+            return;
+        }
+
+        if (nativeSpot is not null)
+        {
+            await nativeSpot.DisposeAsync();
         }
     }
 

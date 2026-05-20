@@ -193,23 +193,17 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
     private async ValueTask MarkDisconnectedAsync(ZLinkStreamError error)
     {
-        await _handler.OnErrorAsync(error, CancellationToken.None);
-        await _handler.OnDisconnectedAsync(CancellationToken.None);
-        await _context.CleanupAsync(CancellationToken.None);
-        _removeSession(Stream.SessionId);
+        await CompleteSessionAsync(error, notifyDisconnected: true);
     }
 
     private async ValueTask MarkClosedAsync()
     {
-        await _handler.OnDisconnectedAsync(CancellationToken.None);
-        await _context.CleanupAsync(CancellationToken.None);
-        _removeSession(Stream.SessionId);
+        await CompleteSessionAsync(error: null, notifyDisconnected: true);
     }
 
     private async ValueTask MarkProxyClosedAsync()
     {
-        await _context.CleanupAsync(CancellationToken.None);
-        _removeSession(Stream.SessionId);
+        await CompleteSessionAsync(error: null, notifyDisconnected: false);
     }
 
     public async ValueTask DisposeAsync()
@@ -227,13 +221,35 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 await _handler.OnDisconnectedAsync(CancellationToken.None);
             }
 
-            await _context.CleanupAsync(CancellationToken.None);
-            _removeSession(Stream.SessionId);
+            await CleanupSessionAsync();
         }
         finally
         {
             await _scope.DisposeAsync();
         }
+    }
+
+    private async ValueTask CompleteSessionAsync(
+        ZLinkStreamError? error,
+        bool notifyDisconnected)
+    {
+        if (error is { } streamError)
+        {
+            await _handler.OnErrorAsync(streamError, CancellationToken.None);
+        }
+
+        if (notifyDisconnected)
+        {
+            await _handler.OnDisconnectedAsync(CancellationToken.None);
+        }
+
+        await CleanupSessionAsync();
+    }
+
+    private async ValueTask CleanupSessionAsync()
+    {
+        await _context.CleanupAsync(CancellationToken.None);
+        _removeSession(Stream.SessionId);
     }
 
     private void Enqueue(Func<ValueTask> work, Action? onRejected = null)

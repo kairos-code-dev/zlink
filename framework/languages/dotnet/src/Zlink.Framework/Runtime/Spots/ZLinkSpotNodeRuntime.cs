@@ -93,27 +93,11 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         _entrySpot = Node.EntrySpot();
         var entrySpot = _entrySpot;
-        if (_registration.EntrySpotType is not null)
-        {
-            _entrySpotActivation = new ZLinkEntrySpotActivation(
-                _runtime,
-                _services,
-                entrySpot,
-                _registration.EntrySpotType,
-                Node.RoutingId,
-                _registration.SpotNodeName,
-                _frameworkRegistration.SpotDiscovery?.ChannelName ?? _registration.SpotNodeName,
-                _frameworkRegistration.DefaultTimeout,
-                _registration.Router?.SocketConfig.SendTimeout
-                    ?? TimeSpan.FromMilliseconds(200));
-            _entrySpotActivation.Configure();
-            await _entrySpotActivation.InitializeAsync(_stopSource.Token)
-                .ConfigureAwait(false);
-        }
 
-        var runtime = _runtime;
-        var activation = _entrySpotActivation;
-        new ZLinkEntrySpotDispatchPump(runtime, activation, _taskRunner)
+        _entrySpotActivation = await CreateEntrySpotActivationAsync(entrySpot)
+            .ConfigureAwait(false);
+
+        new ZLinkEntrySpotDispatchPump(_runtime, _entrySpotActivation, _taskRunner)
             .Attach(entrySpot);
     }
 
@@ -134,12 +118,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
         Message body,
         CancellationToken cancellationToken)
     {
-        if (_entrySpotActivation is null)
-        {
-            throw new InvalidOperationException($"SPOT node '{Name}' does not have an Entry Spot.");
-        }
-
-        return _entrySpotActivation.InvokeActorPacketAsync(
+        return RequireEntrySpotActivation().InvokeActorPacketAsync(
             descriptor,
             actor,
             header,
@@ -154,12 +133,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
         Message body,
         CancellationToken cancellationToken)
     {
-        if (_entrySpotActivation is null)
-        {
-            throw new InvalidOperationException($"SPOT node '{Name}' does not have an Entry Spot.");
-        }
-
-        return _entrySpotActivation.InvokeActorPacketForReplyAsync(
+        return RequireEntrySpotActivation().InvokeActorPacketForReplyAsync(
             descriptor,
             actor,
             header,
@@ -191,12 +165,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken)
     {
-        if (_entrySpotActivation is null)
-        {
-            throw new InvalidOperationException($"SPOT node '{Name}' does not have an Entry Spot.");
-        }
-
-        return _entrySpotActivation.InvokeActorLifecycleAsync(
+        return RequireEntrySpotActivation().InvokeActorLifecycleAsync(
             descriptor,
             actor,
             info,
@@ -349,19 +318,57 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
 
         await _bundles.DisposeAsync();
 
-        if (_entrySpot is not null)
-        {
-            if (_entrySpotActivation is not null)
-            {
-                await _entrySpotActivation.CloseAsync(CancellationToken.None).ConfigureAwait(false);
-                await _entrySpotActivation.DisposeAsync().ConfigureAwait(false);
-            }
-
-            await _entrySpot.DisposeAsync();
-        }
+        await DisposeEntrySpotAsync().ConfigureAwait(false);
 
         await Node.DisposeAsync();
         _stopSource.Dispose();
+    }
+
+    private async ValueTask<ZLinkEntrySpotActivation?> CreateEntrySpotActivationAsync(
+        IZLinkBackendSpot entrySpot)
+    {
+        if (_registration.EntrySpotType is null)
+        {
+            return null;
+        }
+
+        var activation = new ZLinkEntrySpotActivation(
+            _runtime,
+            _services,
+            entrySpot,
+            _registration.EntrySpotType,
+            Node.RoutingId,
+            _registration.SpotNodeName,
+            _frameworkRegistration.SpotDiscovery?.ChannelName ?? _registration.SpotNodeName,
+            _frameworkRegistration.DefaultTimeout,
+            _registration.Router?.SocketConfig.SendTimeout
+                ?? TimeSpan.FromMilliseconds(200));
+        activation.Configure();
+        await activation.InitializeAsync(_stopSource.Token)
+            .ConfigureAwait(false);
+        return activation;
+    }
+
+    private ZLinkEntrySpotActivation RequireEntrySpotActivation()
+    {
+        return _entrySpotActivation
+            ?? throw new InvalidOperationException($"SPOT node '{Name}' does not have an Entry Spot.");
+    }
+
+    private async ValueTask DisposeEntrySpotAsync()
+    {
+        if (_entrySpot is null)
+        {
+            return;
+        }
+
+        if (_entrySpotActivation is not null)
+        {
+            await _entrySpotActivation.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+            await _entrySpotActivation.DisposeAsync().ConfigureAwait(false);
+        }
+
+        await _entrySpot.DisposeAsync();
     }
 
 }

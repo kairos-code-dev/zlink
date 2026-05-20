@@ -171,17 +171,6 @@ internal sealed class ZLinkActorDispatchRouter(
             .ConfigureAwait(false);
     }
 
-    private async ValueTask DispatchLocalAsync(
-        IZLinkActor actor,
-        ZLinkActorRuntimeState state,
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken)
-    {
-        await _packetDispatcher.DispatchAsync(state, actor, header, payload, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     private async ValueTask NotifyDisconnectedByCurrentLocationAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState state,

@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Text;
 
@@ -109,7 +108,11 @@ internal sealed class ZLinkRegistryActorRouteResolver(
         RoutingId targetNodeRid,
         ulong actorGeneration)
     {
-        var identity = EncodeActorRouteIdentity(namespaceName, actorId);
+        var identity = ZLinkRegistryRoutePayloadCodec.EncodeIdentity(
+            ActorRoutePayloadVersion,
+            namespaceName,
+            actorId,
+            "Actor route payload is too large.");
         var targetNodeRidBytes = targetNodeRid.ToBytes();
         if (targetNodeRidBytes.Length > byte.MaxValue)
         {
@@ -128,9 +131,7 @@ internal sealed class ZLinkRegistryActorRouteResolver(
         span[offset++] = (byte)targetNodeRidBytes.Length;
         targetNodeRidBytes.CopyTo(span[offset..]);
         offset += targetNodeRidBytes.Length;
-        BinaryPrimitives.WriteUInt64BigEndian(
-            span.Slice(offset, sizeof(ulong)),
-            actorGeneration);
+        ZLinkRegistryRoutePayloadCodec.WriteUInt64(span, ref offset, actorGeneration);
         return value;
     }
 
@@ -140,39 +141,34 @@ internal sealed class ZLinkRegistryActorRouteResolver(
         string expectedActorId)
     {
         var bytes = value.AsReadOnlySpan();
-        if (bytes.Length < 6 || bytes[0] != ActorRoutePayloadVersion)
-        {
-            throw new FormatException("Invalid actor route payload.");
-        }
+        var identity = ZLinkRegistryRoutePayloadCodec.DecodeIdentity(
+            bytes,
+            ActorRoutePayloadVersion,
+            "Invalid actor route payload.");
 
-        var offset = 1;
-        var namespaceLength = ReadUInt16(bytes, ref offset);
-        EnsureAvailable(bytes, offset, namespaceLength + sizeof(ushort));
-        var namespaceName = Encoding.UTF8.GetString(
-            bytes.Slice(offset, namespaceLength));
-        offset += namespaceLength;
-
-        var actorIdLength = ReadUInt16(bytes, ref offset);
-        EnsureAvailable(bytes, offset, actorIdLength + 1);
-        var actorId = Encoding.UTF8.GetString(bytes.Slice(offset, actorIdLength));
-        offset += actorIdLength;
-
-        var targetNodeRidLength = bytes[offset++];
-        if (bytes.Length != offset + targetNodeRidLength + sizeof(ulong))
-        {
-            throw new FormatException("Invalid actor route payload.");
-        }
-
-        if (!string.Equals(namespaceName, expectedNamespace, StringComparison.Ordinal)
-            || !string.Equals(actorId, expectedActorId, StringComparison.Ordinal))
+        if (!identity.Matches(expectedNamespace, expectedActorId))
         {
             throw new FormatException("Actor route payload identity mismatch.");
         }
 
-        var targetNodeRid = RoutingId.FromBytes(bytes.Slice(offset, targetNodeRidLength));
-        offset += targetNodeRidLength;
-        var actorGeneration = BinaryPrimitives.ReadUInt64BigEndian(
-            bytes.Slice(offset, sizeof(ulong)));
+        var offset = identity.Offset;
+        var targetNodeRid = ZLinkRegistryRoutePayloadCodec.ReadRoutingId(
+            bytes,
+            ref offset,
+            "Invalid actor route payload.");
+        ZLinkRegistryRoutePayloadCodec.EnsureRemaining(
+            bytes,
+            offset,
+            sizeof(ulong),
+            "Invalid actor route payload.");
+        var actorGeneration = ZLinkRegistryRoutePayloadCodec.ReadUInt64(
+            bytes,
+            ref offset,
+            "Invalid actor route payload.");
+        ZLinkRegistryRoutePayloadCodec.EnsureFullyRead(
+            bytes,
+            offset,
+            "Invalid actor route payload.");
         return (targetNodeRid, actorGeneration);
     }
 
@@ -246,50 +242,11 @@ internal sealed class ZLinkRegistryActorRouteResolver(
         string namespaceName,
         string actorId)
     {
-        var namespaceBytes = Encoding.UTF8.GetBytes(namespaceName);
-        var actorIdBytes = Encoding.UTF8.GetBytes(actorId);
-        if (namespaceBytes.Length > ushort.MaxValue
-            || actorIdBytes.Length > ushort.MaxValue)
-        {
-            throw new ZLinkConfigurationException("Actor route payload is too large.");
-        }
-
-        var value = new byte[
-            1
-            + sizeof(ushort) + namespaceBytes.Length
-            + sizeof(ushort) + actorIdBytes.Length];
-        var span = value.AsSpan();
-        span[0] = ActorRoutePayloadVersion;
-        var offset = 1;
-        BinaryPrimitives.WriteUInt16BigEndian(
-            span.Slice(offset, sizeof(ushort)),
-            (ushort)namespaceBytes.Length);
-        offset += sizeof(ushort);
-        namespaceBytes.CopyTo(span[offset..]);
-        offset += namespaceBytes.Length;
-        BinaryPrimitives.WriteUInt16BigEndian(
-            span.Slice(offset, sizeof(ushort)),
-            (ushort)actorIdBytes.Length);
-        offset += sizeof(ushort);
-        actorIdBytes.CopyTo(span[offset..]);
-        return value;
-    }
-
-    private static ushort ReadUInt16(ReadOnlySpan<byte> bytes, ref int offset)
-    {
-        EnsureAvailable(bytes, offset, sizeof(ushort));
-        var value = BinaryPrimitives.ReadUInt16BigEndian(
-            bytes.Slice(offset, sizeof(ushort)));
-        offset += sizeof(ushort);
-        return value;
-    }
-
-    private static void EnsureAvailable(ReadOnlySpan<byte> bytes, int offset, int length)
-    {
-        if (offset < 0 || length < 0 || bytes.Length < offset + length)
-        {
-            throw new FormatException("Invalid actor route payload.");
-        }
+        return ZLinkRegistryRoutePayloadCodec.EncodeIdentity(
+            ActorRoutePayloadVersion,
+            namespaceName,
+            actorId,
+            "Actor route payload is too large.");
     }
 
     internal static string ResolveRouterChannelId(
@@ -415,36 +372,21 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
         string spotName,
         RoutingId spotRid)
     {
-        var namespaceBytes = Encoding.UTF8.GetBytes(namespaceName);
-        var spotNameBytes = Encoding.UTF8.GetBytes(spotName);
+        var identity = ZLinkRegistryRoutePayloadCodec.EncodeIdentity(
+            SpotNameRoutePayloadVersion,
+            namespaceName,
+            spotName,
+            "SPOT name route payload is too large.");
         var spotRidBytes = spotRid.ToBytes();
-        if (namespaceBytes.Length > ushort.MaxValue
-            || spotNameBytes.Length > ushort.MaxValue
-            || spotRidBytes.Length > byte.MaxValue)
+        if (spotRidBytes.Length > byte.MaxValue)
         {
             throw new ZLinkConfigurationException("SPOT name route payload is too large.");
         }
 
-        var value = new byte[
-            1
-            + sizeof(ushort) + namespaceBytes.Length
-            + sizeof(ushort) + spotNameBytes.Length
-            + 1 + spotRidBytes.Length];
+        var value = new byte[identity.Length + 1 + spotRidBytes.Length];
         var span = value.AsSpan();
-        span[0] = SpotNameRoutePayloadVersion;
-        var offset = 1;
-        BinaryPrimitives.WriteUInt16BigEndian(
-            span.Slice(offset, sizeof(ushort)),
-            (ushort)namespaceBytes.Length);
-        offset += sizeof(ushort);
-        namespaceBytes.CopyTo(span[offset..]);
-        offset += namespaceBytes.Length;
-        BinaryPrimitives.WriteUInt16BigEndian(
-            span.Slice(offset, sizeof(ushort)),
-            (ushort)spotNameBytes.Length);
-        offset += sizeof(ushort);
-        spotNameBytes.CopyTo(span[offset..]);
-        offset += spotNameBytes.Length;
+        identity.CopyTo(span);
+        var offset = identity.Length;
         span[offset++] = (byte)spotRidBytes.Length;
         spotRidBytes.CopyTo(span[offset..]);
         return value;
@@ -456,46 +398,26 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
         string expectedSpotName)
     {
         var bytes = value.AsReadOnlySpan();
-        if (bytes.Length < 6 || bytes[0] != SpotNameRoutePayloadVersion)
-        {
-            throw new FormatException("Invalid SPOT name route payload.");
-        }
+        var identity = ZLinkRegistryRoutePayloadCodec.DecodeIdentity(
+            bytes,
+            SpotNameRoutePayloadVersion,
+            "Invalid SPOT name route payload.");
 
-        var offset = 1;
-        var namespaceLength = BinaryPrimitives.ReadUInt16BigEndian(
-            bytes.Slice(offset, sizeof(ushort)));
-        offset += sizeof(ushort);
-        if (bytes.Length < offset + namespaceLength + sizeof(ushort))
-        {
-            throw new FormatException("Invalid SPOT name route payload.");
-        }
-
-        var namespaceName = Encoding.UTF8.GetString(
-            bytes.Slice(offset, namespaceLength));
-        offset += namespaceLength;
-        var spotNameLength = BinaryPrimitives.ReadUInt16BigEndian(
-            bytes.Slice(offset, sizeof(ushort)));
-        offset += sizeof(ushort);
-        if (bytes.Length < offset + spotNameLength + 1)
-        {
-            throw new FormatException("Invalid SPOT name route payload.");
-        }
-
-        var spotName = Encoding.UTF8.GetString(bytes.Slice(offset, spotNameLength));
-        offset += spotNameLength;
-        var ridLength = bytes[offset++];
-        if (bytes.Length != offset + ridLength)
-        {
-            throw new FormatException("Invalid SPOT name route payload.");
-        }
-
-        if (!string.Equals(namespaceName, expectedNamespace, StringComparison.Ordinal)
-            || !string.Equals(spotName, expectedSpotName, StringComparison.Ordinal))
+        if (!identity.Matches(expectedNamespace, expectedSpotName))
         {
             throw new FormatException("SPOT name route payload identity mismatch.");
         }
 
-        return RoutingId.FromBytes(bytes.Slice(offset, ridLength));
+        var offset = identity.Offset;
+        var spotRid = ZLinkRegistryRoutePayloadCodec.ReadRoutingId(
+            bytes,
+            ref offset,
+            "Invalid SPOT name route payload.");
+        ZLinkRegistryRoutePayloadCodec.EnsureFullyRead(
+            bytes,
+            offset,
+            "Invalid SPOT name route payload.");
+        return spotRid;
     }
 
     private static ZLinkFrameworkException NotFound(
@@ -632,46 +554,30 @@ internal sealed class ZLinkRegistryActorSessionBindingStore(
         RoutingId sessionRouterId,
         string bindingToken)
     {
-        var namespaceBytes = Encoding.UTF8.GetBytes(namespaceName);
-        var actorIdBytes = Encoding.UTF8.GetBytes(actorId);
+        var identity = ZLinkRegistryRoutePayloadCodec.EncodeIdentity(
+            ActorSessionRoutePayloadVersion,
+            namespaceName,
+            actorId,
+            "Actor-session route payload is too large.");
         var routerRidBytes = sessionRouterId.ToBytes();
         var tokenBytes = Encoding.UTF8.GetBytes(bindingToken);
-        if (namespaceBytes.Length > ushort.MaxValue
-            || actorIdBytes.Length > ushort.MaxValue
-            || routerRidBytes.Length > byte.MaxValue
+        if (routerRidBytes.Length > byte.MaxValue
             || tokenBytes.Length > ushort.MaxValue)
         {
             throw new ZLinkConfigurationException("Actor-session route payload is too large.");
         }
 
         var value = new byte[
-            1
-            + sizeof(ushort) + namespaceBytes.Length
-            + sizeof(ushort) + actorIdBytes.Length
+            identity.Length
             + 1 + routerRidBytes.Length
             + sizeof(ushort) + tokenBytes.Length];
         var span = value.AsSpan();
-        span[0] = ActorSessionRoutePayloadVersion;
-        var offset = 1;
-        BinaryPrimitives.WriteUInt16BigEndian(
-            span.Slice(offset, sizeof(ushort)),
-            (ushort)namespaceBytes.Length);
-        offset += sizeof(ushort);
-        namespaceBytes.CopyTo(span[offset..]);
-        offset += namespaceBytes.Length;
-        BinaryPrimitives.WriteUInt16BigEndian(
-            span.Slice(offset, sizeof(ushort)),
-            (ushort)actorIdBytes.Length);
-        offset += sizeof(ushort);
-        actorIdBytes.CopyTo(span[offset..]);
-        offset += actorIdBytes.Length;
+        identity.CopyTo(span);
+        var offset = identity.Length;
         span[offset++] = (byte)routerRidBytes.Length;
         routerRidBytes.CopyTo(span[offset..]);
         offset += routerRidBytes.Length;
-        BinaryPrimitives.WriteUInt16BigEndian(
-            span.Slice(offset, sizeof(ushort)),
-            (ushort)tokenBytes.Length);
-        offset += sizeof(ushort);
+        ZLinkRegistryRoutePayloadCodec.WriteUInt16(span, ref offset, tokenBytes.Length);
         tokenBytes.CopyTo(span[offset..]);
         return value;
     }
@@ -682,59 +588,30 @@ internal sealed class ZLinkRegistryActorSessionBindingStore(
         string expectedActorId)
     {
         var bytes = value.AsReadOnlySpan();
-        if (bytes.Length < 8 || bytes[0] != ActorSessionRoutePayloadVersion)
-        {
-            throw new FormatException("Invalid actor-session route payload.");
-        }
+        var identity = ZLinkRegistryRoutePayloadCodec.DecodeIdentity(
+            bytes,
+            ActorSessionRoutePayloadVersion,
+            "Invalid actor-session route payload.");
 
-        var offset = 1;
-        var namespaceLength = ReadUInt16(bytes, ref offset);
-        EnsureAvailable(bytes, offset, namespaceLength + sizeof(ushort));
-        var namespaceName = Encoding.UTF8.GetString(bytes.Slice(offset, namespaceLength));
-        offset += namespaceLength;
-
-        var actorIdLength = ReadUInt16(bytes, ref offset);
-        EnsureAvailable(bytes, offset, actorIdLength + 1);
-        var actorId = Encoding.UTF8.GetString(bytes.Slice(offset, actorIdLength));
-        offset += actorIdLength;
-
-        var routerRidLength = bytes[offset++];
-        EnsureAvailable(bytes, offset, routerRidLength + sizeof(ushort));
-        var sessionRouterId = RoutingId.FromBytes(bytes.Slice(offset, routerRidLength));
-        offset += routerRidLength;
-
-        var tokenLength = ReadUInt16(bytes, ref offset);
-        EnsureAvailable(bytes, offset, tokenLength);
-        if (bytes.Length != offset + tokenLength)
-        {
-            throw new FormatException("Invalid actor-session route payload.");
-        }
-
-        var bindingToken = Encoding.UTF8.GetString(bytes.Slice(offset, tokenLength));
-        if (!string.Equals(namespaceName, expectedNamespace, StringComparison.Ordinal)
-            || !string.Equals(actorId, expectedActorId, StringComparison.Ordinal))
+        if (!identity.Matches(expectedNamespace, expectedActorId))
         {
             throw new FormatException("Actor-session route payload identity mismatch.");
         }
 
+        var offset = identity.Offset;
+        var sessionRouterId = ZLinkRegistryRoutePayloadCodec.ReadRoutingId(
+            bytes,
+            ref offset,
+            "Invalid actor-session route payload.");
+        var bindingToken = ZLinkRegistryRoutePayloadCodec.ReadString(
+            bytes,
+            ref offset,
+            "Invalid actor-session route payload.");
+        ZLinkRegistryRoutePayloadCodec.EnsureFullyRead(
+            bytes,
+            offset,
+            "Invalid actor-session route payload.");
         return new ZLinkActorSessionRoute(sessionRouterId, bindingToken);
-    }
-
-    private static ushort ReadUInt16(ReadOnlySpan<byte> bytes, ref int offset)
-    {
-        EnsureAvailable(bytes, offset, sizeof(ushort));
-        var value = BinaryPrimitives.ReadUInt16BigEndian(
-            bytes.Slice(offset, sizeof(ushort)));
-        offset += sizeof(ushort);
-        return value;
-    }
-
-    private static void EnsureAvailable(ReadOnlySpan<byte> bytes, int offset, int length)
-    {
-        if (offset < 0 || length < 0 || bytes.Length < offset + length)
-        {
-            throw new FormatException("Invalid actor-session route payload.");
-        }
     }
 
     private static IZLinkBackendDiscovery ResolveRouteChannelDiscovery(

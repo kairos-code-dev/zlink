@@ -1,5 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed partial class ZLinkActorSessionManager(
@@ -64,21 +62,12 @@ internal sealed partial class ZLinkActorSessionManager(
         out IZLinkActor actor)
     {
         actor = null!;
-        if (!_actorSessions.TryGet(actorId, out var state)
-            || state.Actor is not { } existing)
+        if (!TryGetCreatedActorState(actorId, actorType, out var state))
         {
             return false;
         }
 
-        if (state.ActorType is not null
-            && !string.Equals(state.ActorType, actorType, StringComparison.Ordinal))
-        {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorTypeMismatch,
-                $"Actor '{actorId}' already uses actor type '{state.ActorType}', not '{actorType}'.");
-        }
-
-        actor = existing;
+        actor = state.Actor!;
         return true;
     }
 

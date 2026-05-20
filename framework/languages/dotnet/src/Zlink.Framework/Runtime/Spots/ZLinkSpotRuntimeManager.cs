@@ -47,15 +47,8 @@ internal sealed class ZLinkSpotRuntimeManager(
         IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
     {
-        foreach (var node in state.SpotNodes.Values)
-        {
-            if (node.SpotFactories.ContainsKey(spotName))
-            {
-                return await node.CreateAsync(spotName, createParts, cancellationToken);
-            }
-        }
-
-        throw new ZLinkConfigurationException($"SPOT factory '{spotName}' is not registered.");
+        var node = GetNodeForSpotFactory(state, spotName);
+        return await node.CreateAsync(spotName, createParts, cancellationToken);
     }
 
     public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
@@ -65,19 +58,12 @@ internal sealed class ZLinkSpotRuntimeManager(
         IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
     {
-        foreach (var node in state.SpotNodes.Values)
-        {
-            if (node.SpotFactories.ContainsKey(spotName))
-            {
-                return await node.GetOrCreateAsync(
-                    spotName,
-                    spotRid,
-                    createParts,
-                    cancellationToken);
-            }
-        }
-
-        throw new ZLinkConfigurationException($"SPOT factory '{spotName}' is not registered.");
+        var node = GetNodeForSpotFactory(state, spotName);
+        return await node.GetOrCreateAsync(
+            spotName,
+            spotRid,
+            createParts,
+            cancellationToken);
     }
 
     public async ValueTask<ZLinkSpotInfo?> GetAsync(
@@ -311,6 +297,21 @@ internal sealed class ZLinkSpotRuntimeManager(
         return state.SpotNodes.TryGetValue(spotNodeName, out var node)
             ? node
             : throw new ZLinkConfigurationException($"SPOT node '{spotNodeName}' is not registered.");
+    }
+
+    private static ZLinkSpotNodeRuntime GetNodeForSpotFactory(
+        ZLinkFrameworkRuntimeState state,
+        string spotName)
+    {
+        foreach (var node in state.SpotNodes.Values)
+        {
+            if (node.SpotFactories.ContainsKey(spotName))
+            {
+                return node;
+            }
+        }
+
+        throw new ZLinkConfigurationException($"SPOT factory '{spotName}' is not registered.");
     }
 
     public ZLinkSpotActivation? GetActivationBySpotRid(

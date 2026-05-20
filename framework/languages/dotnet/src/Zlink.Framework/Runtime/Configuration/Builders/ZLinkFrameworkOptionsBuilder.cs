@@ -58,36 +58,21 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     public void AddActorPlayRouteResolver<TResolver>()
         where TResolver : class, IZLinkActorPlayRouteResolver
     {
-        if (_registration.ActorPlayRouteResolverType is not null
-            || _registration.RegistryActorRoutes is not null)
-        {
-            throw new ZLinkConfigurationException("Actor play route resolver is already configured.");
-        }
-
+        EnsureActorPlayRouteResolverAvailable();
         _registration.ActorPlayRouteResolverType = typeof(TResolver);
     }
 
     public void AddSpotRouteResolver<TResolver>()
         where TResolver : class, IZLinkSpotRouteResolver
     {
-        if (_registration.SpotRouteResolverType is not null
-            || _registration.RegistrySpotRoutes is not null)
-        {
-            throw new ZLinkConfigurationException("SPOT route resolver is already registered.");
-        }
-
+        EnsureSpotRouteResolverAvailable();
         _registration.SpotRouteResolverType = typeof(TResolver);
     }
 
     public void AddActorSessionBindingStore<TStore>()
         where TStore : class, IZLinkActorSessionBindingStore
     {
-        if (_registration.ActorSessionBindingStoreType is not null
-            || _registration.RegistryActorSessionBindings is not null)
-        {
-            throw new ZLinkConfigurationException("Actor session binding store is already configured.");
-        }
-
+        EnsureActorSessionBindingStoreAvailable();
         _registration.ActorSessionBindingStoreType = typeof(TStore);
     }
 
@@ -101,11 +86,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         Action<IZLinkRegistryActorRoutesOptions> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
-        if (_registration.ActorPlayRouteResolverType is not null
-            || _registration.RegistryActorRoutes is not null)
-        {
-            throw new ZLinkConfigurationException("Actor play route resolver is already configured.");
-        }
+        EnsureActorPlayRouteResolverAvailable();
 
         var options = new ZLinkRegistryActorRoutesOptions();
         configure(options);
@@ -118,11 +99,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
 
     public void UseRegistryActorSessionBindings(string namespaceName)
     {
-        if (_registration.ActorSessionBindingStoreType is not null
-            || _registration.RegistryActorSessionBindings is not null)
-        {
-            throw new ZLinkConfigurationException("Actor session binding store is already configured.");
-        }
+        EnsureActorSessionBindingStoreAvailable();
 
         _registration.RegistryActorSessionBindings = new ZLinkRegistryActorSessionBindingsRegistration
         {
@@ -140,11 +117,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         Action<IZLinkRegistrySpotRoutesOptions> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
-        if (_registration.SpotRouteResolverType is not null
-            || _registration.RegistrySpotRoutes is not null)
-        {
-            throw new ZLinkConfigurationException("SPOT route resolver is already registered.");
-        }
+        EnsureSpotRouteResolverAvailable();
 
         var options = new ZLinkRegistrySpotRoutesOptions();
         configure(options);
@@ -299,6 +272,33 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             },
             "Channel name must not be empty.",
             $"Duplicate channel name '{channelName}'.");
+    }
+
+    private void EnsureActorPlayRouteResolverAvailable()
+    {
+        if (_registration.ActorPlayRouteResolverType is not null
+            || _registration.RegistryActorRoutes is not null)
+        {
+            throw new ZLinkConfigurationException("Actor play route resolver is already configured.");
+        }
+    }
+
+    private void EnsureSpotRouteResolverAvailable()
+    {
+        if (_registration.SpotRouteResolverType is not null
+            || _registration.RegistrySpotRoutes is not null)
+        {
+            throw new ZLinkConfigurationException("SPOT route resolver is already registered.");
+        }
+    }
+
+    private void EnsureActorSessionBindingStoreAvailable()
+    {
+        if (_registration.ActorSessionBindingStoreType is not null
+            || _registration.RegistryActorSessionBindings is not null)
+        {
+            throw new ZLinkConfigurationException("Actor session binding store is already configured.");
+        }
     }
 
     private static string ValidateRegistryNamespace(string namespaceName)

@@ -253,3 +253,13 @@ is `true` only for the call that created the logical spot.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.
 - Perf, samples, and tests use only exported package APIs.
+
+## SpotNode Router Channel Peers
+
+Go exposes router channel peer wiring as public `SpotNode` methods:
+`ConnectRouterChannelPeer(channelName string, endpoint string) error`,
+`DisconnectRouterChannelPeer(channelName string, endpoint string) error`,
+`DisconnectRouterChannelPeerRID(channelName string, peerRID RoutingID) error`,
+and `AttachSpotRouteChannelDiscovery(channelName string, discovery *Discovery) error`.
+These methods call the matching core C APIs and use the established Go error
+mapping.

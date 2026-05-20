@@ -133,6 +133,9 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | Entry Spot timer execution context | `integration-single-process` | Entry Spot timer는 전체 Entry Spot callback을 전역으로 막지 않고, 같은 timer callback은 겹쳐 실행하지 않는다 |
 | SPOT timer cancel | `integration-single-process` | `CancelAsync()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다 |
 | outbound 전용 외부 publish client | `integration-multi-process` | target SPOT[^spot] channel에 publish가 성공한다 |
+| Spot route channel acceptance | `unit` | fanout/dealer mesh/ambiguous/missing router/missing peer source 구성을 startup validation에서 거부한다 |
+| Spot route channel manual connect | `integration-single-process` | `AcceptSpotRoutesFromChannel(...)` 수동 endpoint가 binding public API를 통해 router channel peer로 적용된다 |
+| Spot route channel transport | `integration-single-process` | `RouterChannelId`가 가리키는 router-capable channel의 `ROUTER`가 target Spot으로 routed send/request를 보낸다 |
 | spot 제거 후 scope 정리 | `integration-single-process` | 이후 callback이 발생하지 않고 dispose도 정상 완료된다 |
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 handler가 join된 `Spot` 실행 문맥에서 실행된다 |
 | Entry Spot actor mailbox dispatch | `integration-single-process` | Entry Spot actor packet이 Entry Spot 전체 실행 큐에 막히지 않고, actor별 mailbox 순서를 따른다 |

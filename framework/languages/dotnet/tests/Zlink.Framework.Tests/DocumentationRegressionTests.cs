@@ -101,6 +101,43 @@ public sealed class DocumentationRegressionTests
     }
 
     [Fact]
+    public void DotNetDocs_SpotRouteChannelAcceptance_RulesStayDocumented()
+    {
+        var docRoot = GetDotNetDocRoot();
+        var guideRoot = Path.Combine(docRoot, "guide");
+        var guideAndSampleDocs = Directory
+            .EnumerateFiles(guideRoot, "*.ko.md", SearchOption.AllDirectories)
+            .ToArray();
+
+        foreach (var path in guideAndSampleDocs)
+        {
+            var text = File.ReadAllText(path);
+            Assert.DoesNotContain("AddChannel(", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddRouteChannel(", text, StringComparison.Ordinal);
+        }
+
+        var spotSpec = File.ReadAllText(ResolveDoc("aspnet-core-spot.ko.md"));
+        var channelSpec = File.ReadAllText(
+            ResolveDoc("aspnet-core-channel-messaging.ko.md"));
+        var spotSamples = File.ReadAllText(ResolveDoc("spot-samples.ko.md"));
+        var combined = string.Join(
+            Environment.NewLine,
+            spotSpec,
+            channelSpec,
+            spotSamples);
+
+        Assert.Contains("AcceptSpotRoutesFromChannel", combined,
+            StringComparison.Ordinal);
+        Assert.Contains("AddClientServerChannel", combined,
+            StringComparison.Ordinal);
+        Assert.Contains("AddRouteMeshChannel", combined,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("NonPublic", combined, StringComparison.Ordinal);
+        Assert.DoesNotContain("internal/private", combined,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DotNetRegressionMatrix_References_AllDraftDocuments()
     {
         var matrix = File.ReadAllText(ResolveDoc("regression-test-matrix.ko.md"));

@@ -302,6 +302,52 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
   discovery만 받는다.
 - node에는 한 번에 하나의 active SPOT discovery view만 둘 수 있다.
 
+### Router channel peer 연결
+
+```c
+zlink_connect_result_t zlink_spot_node_connect_router_channel_peer(
+  void *node,
+  const char *channel_name,
+  const char *endpoint);
+
+zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer(
+  void *node,
+  const char *channel_name,
+  const char *endpoint);
+
+zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer_rid(
+  void *node,
+  const char *channel_name,
+  const zlink_routing_id_t *peer_rid);
+
+zlink_config_result_t zlink_spot_node_attach_router_channel_discovery(
+  void *node,
+  const char *channel_name,
+  void *discovery);
+```
+
+이 API들은 `SpotNode`의 routed router를 router capability가 있는 channel의
+`ROUTER` peer에 연결한다. 연결된 router channel은
+`zlink_router_send_spot_part()` 또는 `zlink_router_request_spot_part()`로
+target node routing id와 target spot routing id를 지정해 local `Spot`으로
+메시지를 보낼 수 있다.
+
+- `channel_name`은 router channel peer 집합을 구분하는 이름이다. `NULL`이나
+  빈 문자열은 `EINVAL`이다.
+- `endpoint`는 router channel의 공개 `ROUTER` endpoint다. 호출자는 내부 endpoint
+  파생 규칙을 알 필요가 없고, 파생 endpoint를 넘겨서는 안 된다.
+- routed mode가 없는 node에서는 `ENOTSUP`으로 실패한다.
+- 같은 `(channel_name, endpoint)` 수동 connect는 성공 no-op이다.
+- discovery가 붙은 같은 channel에 수동 peer를 추가하려 하면 `EBUSY`다.
+- 없는 수동 endpoint를 disconnect하면 `ENOENT`다.
+- `zlink_spot_node_attach_router_channel_discovery()`는 route mesh 또는
+  client/server router channel view를 제공하는 discovery만 받는다. channel 이름이
+  discovery의 channel view와 다르면 `EINVAL`이다.
+- 같은 channel에서 수동 peer와 discovery peer source는 섞을 수 없다.
+- `zlink_spot_node_disconnect_router_channel_peer_rid()`는 router channel peer의
+  routing id로 연결을 끊는다. SPOT mesh peer와 router channel peer는 별도 peer
+  종류로 조회된다.
+
 ### Channel 호출용 socket 등록
 
 ```c

@@ -295,6 +295,22 @@ routing id를 가리킵니다.
 
 ---
 
+### ROUTER에서 SPOT으로 보내기
+
+`zlink_router_send_spot_part()`와 `zlink_router_request_spot_part()`는
+router channel의 `ROUTER`에서 target `Spot`으로 routed 메시지를 보낸다.
+target node가 해당 router channel peer로 연결되어 있어야 하며, 이 연결은
+`zlink_spot_node_connect_router_channel_peer()` 또는
+`zlink_spot_node_attach_router_channel_discovery()`로 만든다.
+
+호출자는 target node routing id와 target spot routing id를 모두 제공해야 한다.
+router channel peer가 없거나 아직 route가 준비되지 않은 target으로 보내면 일반
+ROUTER not-connected 계열 오류와 같은 방식으로 실패하거나 전송되지 않을 수 있다.
+따라서 상위 framework는 channel id를 resolver metadata로만 보관하지 말고 실제
+router-capable channel의 `ROUTER` socket을 transport로 선택해야 한다.
+
+---
+
 ### zlink_recv
 
 ROUTER가 아닌 소켓에서 멀티파트 메시지를 수신합니다.

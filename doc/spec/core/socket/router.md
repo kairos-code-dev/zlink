@@ -299,6 +299,23 @@ through `zlink_errno()` for diagnostics.
 
 ---
 
+### Sending from ROUTER to SPOT
+
+`zlink_router_send_spot_part()` and `zlink_router_request_spot_part()` send
+routed messages from a router channel `ROUTER` to a target `Spot`. The target
+node must be connected as a router channel peer through
+`zlink_spot_node_connect_router_channel_peer()` or
+`zlink_spot_node_attach_router_channel_discovery()`.
+
+Callers must provide both the target node routing id and target spot routing
+id. Sending to a target without a router channel peer, or before the route is
+ready, follows the normal ROUTER not-connected behavior and may fail or not be
+delivered. A higher-level framework must therefore use the resolver's channel
+id to select the actual router-capable channel `ROUTER` socket, not only store
+the channel id as metadata.
+
+---
+
 ### zlink_recv
 
 Receive a multipart message from a non-ROUTER socket.

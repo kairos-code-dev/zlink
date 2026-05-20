@@ -601,6 +601,22 @@ if (rc == ZLINK_CONFIG_OK) {
 반환된 파사드는 borrow 관계다. 사용 후 `zlink_spot_destroy()`로 닫는다.
 기저 `SpotNode`는 영향받지 않는다.
 
-## 14. Actor C sample
+## 14. Router channel에서 Spot으로 받기
+
+일반 SPOT mesh 외에도, router capability가 있는 channel의 `ROUTER`가 특정
+`Spot`으로 메시지를 보낼 수 있다. 이때 `SpotNode`는 그 router channel의 route를
+받겠다고 명시해야 한다.
+
+framework에서는 `AcceptSpotRoutesFromChannel(...)`을 사용한다. 같은 표면으로
+client/server channel의 server `ROUTER`와 route mesh channel의 `ROUTER`를 모두
+지정할 수 있다. fanout channel과 dealer mesh channel은 router capability가 없으므로
+이 용도에 맞지 않는다.
+
+core API를 직접 사용할 때는 `zlink_spot_node_connect_router_channel_peer()`로
+수동 endpoint에 연결하거나, router channel discovery view를
+`zlink_spot_node_attach_router_channel_discovery()`로 붙인다. 내부 routed endpoint나
+포트 파생 규칙은 application이 알 필요가 없다.
+
+## 15. Actor C sample
 
 [SPOT Actor 가이드](./07-4-actor.ko.md#5-actor-c-sample)를 본다.

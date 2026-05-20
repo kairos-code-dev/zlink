@@ -2316,6 +2316,11 @@ public readonly record struct ZLinkSpotRoute(
     RoutingId SpotRid);
 ```
 
+`RouterChannelId`는 실제 router-capable channel 이름이다. 이 값이 가리키는 channel은
+`AddClientServerChannel(...)`의 server `ROUTER`이거나 `AddRouteMeshChannel(...)`의
+route mesh `ROUTER`여야 한다. target `SpotNode`는 같은 이름을
+`AcceptSpotRoutesFromChannel(...)`로 수락해야 하며, resolver는 연결을 만들지 않는다.
+
 ```csharp
 namespace Zlink.Framework.Contracts.Streams;
 

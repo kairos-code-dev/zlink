@@ -328,3 +328,13 @@ Java receive APIs should avoid unnecessary allocation while staying idiomatic.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.
 - Perf measurement meaning matches `bindings/c/perf`.
+
+## SpotNode Router Channel Peers
+
+Java exposes router channel peer wiring on the public SpotNode contract:
+`connectRouterChannelPeer(channelName, endpoint)`,
+`disconnectRouterChannelPeer(channelName, endpoint)`,
+`disconnectRouterChannelPeerRid(channelName, peerRid)`, and
+`attachSpotRouteChannelDiscovery(channelName, discovery)`. The implementation
+maps these methods to the matching native core APIs and uses the established
+Java exception mapping.

@@ -71,6 +71,14 @@ direct 샘플은 첫 범위에서 제외한다. session 과 spot 을 한 인스�
 15. 승자가 나오면 room status 를 `Finished` 로 바꾸고 모든 참가자에게 종료
     이벤트를 push 한다.
 
+`ApiServer` 에서 `PlayServer` 의 `BingoRoomSpot` 으로 보내는 room 생성/배정 요청은
+router channel에서 SPOT으로 들어가는 routed request 예시다. `ApiServer` 쪽
+client/server channel의 server `ROUTER` 또는 별도 route mesh `ROUTER`가 transport가
+되고, `PlayServer`의 `SpotNode`는 `AcceptSpotRoutesFromChannel(...)`로 그 channel의
+SPOT route 수신을 허용한다. route resolver는 room spot이 어느 `SpotNode`와 spot rid에
+있는지만 알려 주고, 실제 전송은 `RouterChannelId`가 가리키는 router-capable channel을
+통해 수행된다.
+
 ## 4. Entry Spot 역할
 
 `BingoEntrySpot` 은 match room 에 들어가기 전의 lobby 역할을 한다. actor 는

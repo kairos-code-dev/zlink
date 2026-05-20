@@ -392,6 +392,48 @@ void test_spot_node_router_channel_manual_send_spot ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_spot_node_router_channel_manual_send_spot_part ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *spot = zlink_spot_new (node);
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (spot);
+    TEST_ASSERT_NOT_NULL (router);
+
+    set_routing_id_text (node, "spot-route-part-node");
+    set_routing_id_text (spot, "spot-route-part-target");
+    set_routing_id_text (router, "spot-route-part-router");
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_router (router, endpoint, sizeof (endpoint));
+
+    TEST_ASSERT_EQUAL (
+      ZLINK_CONNECT_OK,
+      zlink_spot_node_connect_router_channel_peer (node, "api", endpoint));
+    msleep (SETTLE_TIME);
+
+    const zlink_routing_id_t node_rid = get_routing_id_value (node);
+    const zlink_routing_id_t spot_rid = get_routing_id_value (spot);
+    zlink_msg_t part;
+    init_string_part (&part, "router-channel-part-payload");
+    TEST_ASSERT_EQUAL (
+      ZLINK_SUBMIT_OK,
+      zlink_router_send_spot_part (router, &node_rid, &spot_rid, &part,
+                                   ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
+
+    std::string payload;
+    TEST_ASSERT_TRUE (recv_spot_payload (spot, &payload));
+    TEST_ASSERT_EQUAL_STRING ("router-channel-part-payload", payload.c_str ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_spot_node_router_channel_duplicate_manual_connect_is_idempotent ()
 {
     void *ctx = zlink_ctx_new ();
@@ -686,6 +728,7 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_spot_node_router_channel_manual_send_spot);
+    RUN_TEST (test_spot_node_router_channel_manual_send_spot_part);
     RUN_TEST (test_spot_node_router_channel_duplicate_manual_connect_is_idempotent);
     RUN_TEST (test_spot_node_router_channel_manual_request_spot);
     RUN_TEST (test_spot_node_router_channel_disconnect_blocks_delivery);

@@ -341,6 +341,8 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
+            node.AcceptSpotRoutesFromChannel("play");
+
             node.EnablePubSub(pubsub =>
             {
                 pubsub.ConfigurePublisherOptions(pubOpt =>
@@ -403,6 +405,10 @@ app.Run();
 - `EnableRouter()`
   - 같은 SPOT channel에 속한 다른 `SpotNode`와 routed packet을 주고받기 위한
     local router를 켠다.
+- `AcceptSpotRoutesFromChannel("play")`
+  - `play` client/server channel의 server `ROUTER`에서 이 node의 user Spot으로
+    routed send/request를 보낼 수 있게 한다.
+  - 같은 표면은 `AddRouteMeshChannel(...)`의 route mesh `ROUTER`에도 사용할 수 있다.
 - `EnablePubSub()`
   - local spot 문맥에서 `IZLinkSpotClient.Publish(...)`를 호출할 수 있게 한다.
 - `AttachSpotMeshPublisherClient("game.stage")`

@@ -4610,3 +4610,20 @@ raw default `0`, and negative values fail with `EINVAL`.
 Actor create and join payloads use aggregate multipart payloads. Public binding APIs accept a message collection for remote actor create, actor join, actor join receive, and actor join reply. A single-message convenience path may remain, but it must call the multipart path internally so empty payload and one empty message stay distinguishable. Admission handlers receive a borrowed payload view that is valid only during the callback.
 
 Registry scalar configuration uses the registry option surface as the canonical API. Bindings expose typed options for registry id, heartbeat interval, heartbeat timeout, and broadcast interval. Existing named setters may remain as compatibility aliases and must delegate to the option API.
+
+## SpotNode Router Channel Peer APIs
+
+Bindings must expose public `SpotNode` APIs for router channel peer wiring:
+connect by channel name and endpoint, disconnect by channel name and endpoint,
+disconnect by channel name and peer routing id where the language exposes
+routing-id disconnect helpers, and attach a router channel discovery view by
+channel name.
+
+These APIs map to `zlink_spot_node_connect_router_channel_peer()`,
+`zlink_spot_node_disconnect_router_channel_peer()`,
+`zlink_spot_node_disconnect_router_channel_peer_rid()`, and
+`zlink_spot_node_attach_router_channel_discovery()`. Bindings must reject empty
+channel names and endpoints before or through core error mapping. Manual peers
+and discovery peers must not be mixed for the same channel. Framework adapters
+must call these public APIs directly; they must not use reflection, private
+members, or friend visibility to reach binding internals.

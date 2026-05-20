@@ -1084,7 +1084,40 @@ framework 의 기본 계약이 아니다. 이 항목들은
 [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) 에서 다루는 상위
 wrapper 축으로 본다.
 
-## 11. 회귀 테스트
+## 11. Router channel route 수신
+
+`ZLinkSpotRoute.RouterChannelId`는 resolver가 반환한 위치 정보 중 하나다. 이 값은
+metadata로만 남으면 안 되고, 실제 transport로 사용할 router-capable channel을
+가리켜야 한다. `SpotNode`가 그 channel에서 오는 SPOT route를 받으려면 node builder에
+다음 구성을 둔다.
+
+```csharp
+node.EnableRouter();
+node.AcceptSpotRoutesFromChannel("api");
+```
+
+`AcceptSpotRoutesFromChannel(...)`은 두 channel 종류를 router-capable 대상으로 본다.
+
+- `AddClientServerChannel(...)`의 server `ROUTER`
+- `AddRouteMeshChannel(...)`의 route mesh `ROUTER`
+
+수동 endpoint를 써야 하면 같은 표면 아래에서 명시한다.
+
+```csharp
+node.AcceptSpotRoutesFromChannel("api", routes =>
+{
+    routes.UseManualConnections(peers =>
+    {
+        peers.Connect("tcp://10.0.0.20:7000");
+    });
+});
+```
+
+수동 endpoint가 없으면 framework discovery view를 통해 자동 연결한다. 같은 route
+수신 관계에서 수동 연결과 discovery 연결을 섞으면 startup validation 오류다.
+fanout channel과 dealer mesh channel은 router capability가 없으므로 지정할 수 없다.
+
+## 12. 회귀 테스트
 
 이 절은 SPOT 문서가 다룬 항목들을 어떤 테스트로 검증하는지 한꺼번에 본다.
 

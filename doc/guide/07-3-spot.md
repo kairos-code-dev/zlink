@@ -575,6 +575,23 @@ if (rc == ZLINK_CONFIG_OK) {
 The returned facade is borrowed; close it with `zlink_spot_destroy()` when done.
 The underlying `SpotNode` is not affected.
 
-## 14. Actor C samples
+## 14. Receiving From Router Channels
+
+In addition to the regular SPOT mesh, a router-capable channel's `ROUTER` can
+send messages to a target `Spot`. The `SpotNode` must explicitly accept routes
+from that router channel.
+
+In the framework, use `AcceptSpotRoutesFromChannel(...)`. The same surface
+covers a client/server channel's server `ROUTER` and a route mesh channel's
+`ROUTER`. Fanout channels and dealer mesh channels do not have the router
+capability needed for this path.
+
+When using the core API directly, connect a manual endpoint with
+`zlink_spot_node_connect_router_channel_peer()` or attach a router channel
+discovery view with `zlink_spot_node_attach_router_channel_discovery()`.
+Applications do not need to know internal routed endpoints or port derivation
+rules.
+
+## 15. Actor C samples
 
 See the [SPOT Actor Guide](./07-4-actor.md#5-actor-c-samples).

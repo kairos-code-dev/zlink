@@ -199,6 +199,40 @@ been removed. Their staging role is replaced by `publish_ingress_queue` and
 `routed_send_queue`. `zlink_spot_node_internal_sockets_snapshot()` no longer returns
 rows for those four sockets. The perf `Auto-HWM spotnode` table is updated accordingly.
 
+### 2.2 Router Channel Peer
+
+A router channel peer is a different connection kind from a SPOT mesh peer. A
+SPOT mesh peer is the normal node-to-node mesh path for topic and routed SPOT
+traffic. A router channel peer gives an external router-capable channel's
+`ROUTER` an ingress path to a specific `Spot`.
+
+```mermaid
+flowchart LR
+    subgraph Channel["Router Channel"]
+        ch_router["ROUTER socket"]
+    end
+
+    subgraph Node["SpotNode"]
+        routed_router["routed router"]
+        target_spot["target Spot"]
+    end
+
+    ch_router <--> routed_router
+    routed_router --> target_spot
+```
+
+Manual wiring stores endpoint strings in `manual_endpoints` and
+`active_endpoints`. Discovery wiring stores one discovery pointer per channel
+name and derives the active endpoint set from that discovery view. Manual
+endpoints and a discovery pointer cannot coexist for the same channel because
+the connection owner must stay unambiguous.
+
+`zlink_spot_node_peers_snapshot()` distinguishes SPOT mesh peers from router
+channel peers. A router channel peer row includes channel name, peer endpoint,
+source (manual or discovery), kind (router channel), and state. Operators use
+that split to diagnose "the mesh is down" separately from "router channel
+ingress is not ready yet."
+
 ## 3. Topic Plane
 
 The topic plane relies on native socket subscription filters for both local and

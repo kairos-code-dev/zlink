@@ -198,6 +198,39 @@ flowchart LR
 대체한다. `zlink_spot_node_internal_sockets_snapshot()`은 이 4개의 row를 더 이상
 반환하지 않는다. perf의 `Auto-HWM spotnode` 표도 이에 맞게 갱신되었다.
 
+### 2.2 Router channel peer
+
+router channel peer는 SPOT mesh peer와 다른 연결 종류다. SPOT mesh peer는
+SpotNode끼리 topic과 routed 메시지를 주고받는 기본 mesh 연결이고, router channel
+peer는 외부 router-capable channel의 `ROUTER`가 특정 `Spot`으로 들어오는 ingress
+경로를 갖도록 만드는 연결이다.
+
+```mermaid
+flowchart LR
+    subgraph Channel["Router Channel"]
+        ch_router["ROUTER socket"]
+    end
+
+    subgraph Node["SpotNode"]
+        routed_router["routed router"]
+        target_spot["target Spot"]
+    end
+
+    ch_router <--> routed_router
+    routed_router --> target_spot
+```
+
+수동 연결은 `manual_endpoints`와 `active_endpoints`에 endpoint 문자열로 저장된다.
+discovery 연결은 channel 이름별 discovery pointer와 discovery가 알려 준 active
+endpoint set으로 관리된다. 같은 channel 안에서 수동 endpoint와 discovery pointer를
+동시에 둘 수 없게 한 이유는 연결 소유자를 하나로 유지하기 위해서다.
+
+`zlink_spot_node_peers_snapshot()`은 SPOT mesh peer와 router channel peer를
+구분한다. router channel peer row는 channel name, peer endpoint, source(manual
+또는 discovery), kind(router channel), state를 함께 보여 준다. 운영 도구는 이
+구분을 사용해 "mesh가 끊어진 것"과 "router channel ingress가 아직 준비되지 않은
+것"을 따로 진단할 수 있다.
+
 ## 3. Topic plane
 
 topic plane은 local과 remote 모두 socket의 기본 subscription filter를 사용한다.

@@ -264,3 +264,12 @@ Before declaring the C++ binding aligned:
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.
 - Perf tests use the same measurement meaning as C perf.
+
+## SpotNode Router Channel Peers
+
+C++ exposes router channel peer wiring as public `spot_node_t` methods:
+`connect_router_channel_peer(channel_name, endpoint)`,
+`disconnect_router_channel_peer(channel_name, endpoint)`,
+`disconnect_router_channel_peer_rid(channel_name, peer_rid)`, and
+`attach_spot_route_channel_discovery(channel_name, discovery)`. The methods map
+directly to the matching core C APIs and preserve the core error categories.

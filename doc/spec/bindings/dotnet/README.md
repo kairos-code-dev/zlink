@@ -323,3 +323,14 @@ Before declaring the .NET binding aligned:
   from data-plane caller-provided storage.
 - Perf semantics match `bindings/c/perf`; private runtime shortcuts are not
   used to change measurement meaning.
+
+## SpotNode Router Channel Peers
+
+`.NET` exposes router channel peer wiring on the public `SpotNode` and
+`ISpotNode` surface: `ConnectRouterChannelPeer(string channelName, string endpoint)`,
+`DisconnectRouterChannelPeer(string channelName, string endpoint)`,
+`DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid)`, and
+`AttachSpotRouteChannelDiscovery(string channelName, IDiscovery discovery)`.
+The default runtime maps these methods directly to the core C APIs. Framework
+code must call these public methods only; reflection, `NonPublic` lookup, and
+extra `InternalsVisibleTo` access are not allowed for this integration.

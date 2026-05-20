@@ -270,3 +270,13 @@ logical spot.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.
 - Perf meaning matches `bindings/c/perf`.
+
+## SpotNode Router Channel Peers
+
+Node exposes router channel peer wiring on the public `SpotNode` object:
+`connectRouterChannelPeer(channelName, endpoint)`,
+`disconnectRouterChannelPeer(channelName, endpoint)`,
+`disconnectRouterChannelPeerRid(channelName, peerRid)`, and
+`attachSpotRouteChannelDiscovery(channelName, discovery)`. These methods call
+the matching core C APIs through the native addon and use the existing Node
+error mapping.

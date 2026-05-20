@@ -183,3 +183,13 @@ Before declaring the C binding aligned:
   private C helpers.
 - Perf output prints the runtime library path and does not run against a stale
   `core/build` runtime.
+
+## SpotNode Router Channel Peers
+
+The C binding exposes the core router channel peer functions without renaming:
+`zlink_spot_node_connect_router_channel_peer()`,
+`zlink_spot_node_disconnect_router_channel_peer()`,
+`zlink_spot_node_disconnect_router_channel_peer_rid()`, and
+`zlink_spot_node_attach_router_channel_discovery()`. The result and errno
+mapping is the core contract. These functions are topology APIs, not perf-only
+helpers.

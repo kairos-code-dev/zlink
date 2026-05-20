@@ -206,6 +206,21 @@ channel 별 연결 방식은, capability 빌더가 `UseManualConnections(...)` �
 > 단계에서 차단된다. 일반 client / subscriber 는 "수동이 있으면 수동 우선" 정책으로
 > 둘이 공존해도 받아들인다.
 
+#### SPOT route 수신과 router-capable channel
+
+SPOT으로 들어오는 routed 메시지는 `ROUTER` capability가 필요하다. 따라서
+`SpotNode`가 특정 channel에서 오는 SPOT route를 받으려면
+`AcceptSpotRoutesFromChannel(channelName)`을 사용한다.
+
+대상 channel은 두 종류다.
+
+- `AddClientServerChannel(...)`의 server `ROUTER`
+- `AddRouteMeshChannel(...)`의 route mesh `ROUTER`
+
+`AddFanoutChannel(...)`과 `AddDealerMeshChannel(...)`은 router capability가 없으므로
+SPOT route 수신 대상이 아니다. `ClientServerChannel`의 server `ROUTER`에서도
+SPOT으로 보낼 수 있으므로, 이 기능은 `RouteMeshChannel` 전용으로 제한하지 않는다.
+
 #### 수동 연결은 channel이 아니라 capability 단위다
 
 또 하나 짚어 둘 점이 있다. 수동 연결은 **channel 전체 설정이 아니라 capability 별

@@ -149,6 +149,8 @@ zlink_recv_result_t zlink_recv (
   표면 — `zlink_router_recv()` — 를 사용하며, `source_node_rid`,
   `source_spot_rid`, `request_seq` 를 함께 반환한다. 이 하나의 표면이 일반
   ROUTER 트래픽과 SPOT 에서 시작된 routed 트래픽을 모두 전달한다.
+  반대로 router capability가 있는 channel의 ROUTER에서 SPOT으로 보내려면
+  target `SpotNode`가 그 router channel의 peer로 연결되어 있어야 한다.
   request의 reply는 별도 완료 콜백으로 받는다. 자세한 내용은
   [03-4-router.ko.md](./03-4-router.ko.md).
 - **SUB / XSUB**: `zlink_subscribe()`로 수신한다. recv-only이며, 직접

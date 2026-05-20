@@ -310,6 +310,53 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
   a SPOT channel view.
 - A node may have only one active SPOT discovery view at a time.
 
+### Router channel peer wiring
+
+```c
+zlink_connect_result_t zlink_spot_node_connect_router_channel_peer(
+  void *node,
+  const char *channel_name,
+  const char *endpoint);
+
+zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer(
+  void *node,
+  const char *channel_name,
+  const char *endpoint);
+
+zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer_rid(
+  void *node,
+  const char *channel_name,
+  const zlink_routing_id_t *peer_rid);
+
+zlink_config_result_t zlink_spot_node_attach_router_channel_discovery(
+  void *node,
+  const char *channel_name,
+  void *discovery);
+```
+
+These APIs connect the `SpotNode` routed router to a router-capable channel's
+`ROUTER` peer. Once connected, that router channel can target a local `Spot`
+with `zlink_router_send_spot_part()` or `zlink_router_request_spot_part()` by
+using the target node routing id and target spot routing id.
+
+- `channel_name` names the router channel peer set. `NULL` and empty strings
+  fail with `EINVAL`.
+- `endpoint` is the public `ROUTER` endpoint of the router channel. Callers do
+  not need internal endpoint derivation rules and must not pass derived
+  endpoints.
+- Nodes without routed mode fail with `ENOTSUP`.
+- Repeating the same manual `(channel_name, endpoint)` connect is a successful
+  no-op.
+- Adding a manual peer to a discovery-owned channel fails with `EBUSY`.
+- Disconnecting an unknown manual endpoint fails with `ENOENT`.
+- `zlink_spot_node_attach_router_channel_discovery()` accepts only discovery
+  views for route mesh or client/server router channels. A channel name that
+  does not match the discovery view fails with `EINVAL`.
+- Manual peers and discovery peers cannot be mixed in the same channel.
+- `zlink_spot_node_disconnect_router_channel_peer_rid()` disconnects by router
+  channel peer routing id. SPOT mesh peers and router channel peers are exposed
+  as distinct peer kinds in snapshots.
+
 ### Channel-call socket registration
 
 ```c

@@ -153,7 +153,9 @@ zlink_recv_result_t zlink_recv (
   `ZLINK_RECV_NOT_SUPPORTED`. ROUTER uses a single unified typed surface —
   `zlink_router_recv()` — that returns `source_node_rid`,
   `source_spot_rid`, and `request_seq`. This one surface carries plain
-  ROUTER traffic and SPOT-originated routed traffic. Request replies are
+  ROUTER traffic and SPOT-originated routed traffic. In the opposite direction,
+  a router-capable channel's ROUTER can send to SPOT only after the target
+  `SpotNode` is connected as that router channel's peer. Request replies are
   delivered through a separate completion callback. See
   [03-4-router.md](./03-4-router.md).
 - **SUB / XSUB**: use `zlink_subscribe()`. They are recv-only; no direct

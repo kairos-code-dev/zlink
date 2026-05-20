@@ -450,9 +450,29 @@ as `ZLINK_EVENT_PEER_WEIGHT_CHANGED`; see
 [monitoring guide](./06-monitoring.md#peer-weight-changes) for the
 event shape.
 
+## 8. Sending From ROUTER To SPOT
+
+A ROUTER socket can be used not only for regular DEALER/ROUTER peers but also
+as ingress into the SPOT routed plane. In that case, the target `SpotNode` must
+be connected as a peer of that router channel. The target node accepts this
+relationship; the router channel does not implicitly pull in every SpotNode.
+
+The user-facing rule is simple.
+
+- A client/server channel's server `ROUTER` can send to a target `Spot`.
+- A route mesh channel's `ROUTER` can send to a target `Spot`.
+- PUB/SUB fanout channels and DEALER mesh channels are not SPOT routed-send
+  anchors.
+
+When using the framework, configure this with
+`AcceptSpotRoutesFromChannel(...)`. When using the raw core API directly,
+connect the `SpotNode` to the router channel peer with
+`zlink_spot_node_connect_router_channel_peer()` or the discovery attach API.
+
 > For the full contract, see
-> [Peer weight](../spec/core/socket/router.md#peer-weight) and
-> [Peer outbound from ROUTER](../spec/core/socket/router.md#peer-outbound-from-router)
+> [Peer weight](../spec/core/socket/router.md#peer-weight),
+> [Peer outbound from ROUTER](../spec/core/socket/router.md#peer-outbound-from-router),
+> and [Sending from ROUTER to SPOT](../spec/core/socket/router.md#sending-from-router-to-spot)
 > in the ROUTER spec.
 
 ---

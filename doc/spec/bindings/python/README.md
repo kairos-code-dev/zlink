@@ -257,3 +257,12 @@ logical spot.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.
 - Perf meaning matches `bindings/c/perf`.
+
+## SpotNode Router Channel Peers
+
+Python exposes router channel peer wiring on the public `SpotNode` object:
+`connect_router_channel_peer(channel_name, endpoint)`,
+`disconnect_router_channel_peer(channel_name, endpoint)`,
+`disconnect_router_channel_peer_rid(channel_name, peer_rid)`, and
+`attach_spot_route_channel_discovery(channel_name, discovery)`. These methods
+call the matching core C APIs and use the existing Python error mapping.

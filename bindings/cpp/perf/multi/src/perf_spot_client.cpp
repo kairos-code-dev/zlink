@@ -110,6 +110,20 @@ uint64_t resolve_spot_drain_grace_ns (uint64_t active_duration_ns_,
     return active_duration_ns_ * static_cast<uint64_t> (multiplier);
 }
 
+unsigned int resolve_spot_latency_sample_stride ()
+{
+    return static_cast<unsigned int> (
+      perf::multi::parse_positive_env (
+        "PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", 32));
+}
+
+bool should_sample_spot_latency (unsigned long long sample_index_)
+{
+    static const unsigned int stride = resolve_spot_latency_sample_stride ();
+    return stride <= 1 || sample_index_ == 1
+           || (sample_index_ % static_cast<unsigned long long> (stride)) == 0;
+}
+
 int resolve_spot_phase_timeout_ms (
   const perf::multi::multi_bench_settings_t &settings_, size_t msg_size_)
 {
@@ -226,6 +240,7 @@ struct client_slot_t
     class spot_client_bench_t *owner;
     std::unique_ptr<zlink::service::spot_t> spot;
     std::atomic<bool> synced;
+    std::mutex recv_mutex;
 
     client_slot_t () : owner (NULL), spot (), synced (false) {}
 };
@@ -328,6 +343,8 @@ class spot_client_bench_t
               if (!wait_for_spot_settle_ms (resolve_spot_ready_settle_ms ()))
                   return false;
               debug_log("ready settle complete size=" + std::to_string(msg_size));
+              if (!drain_stale_messages ())
+                  return false;
               debug_log("publishing ready count size=" + std::to_string(msg_size)
                         + " count=" + std::to_string(_slots.size()));
               if (!publish_control_ready_count(
@@ -559,6 +576,7 @@ class spot_client_bench_t
 
     bool drain_recv (client_slot_t &slot_, bool sync_only_, bool *progressed_out_)
     {
+        std::lock_guard<std::mutex> recv_lock (slot_.recv_mutex);
         for (;;) {
             zlink::topic_message_t subscribed;
             try {
@@ -650,19 +668,37 @@ class spot_client_bench_t
 
             ++metrics->active_received;
             ++metrics->sample_index;
-            const double latency_ns =
-              perf_metric::elapsed_latency_ns (
-                received_ts_ns, header.sent_ts_ns);
-            {
-                // Uncontended per-thread mutex; only collect_recv_thread_metrics
-                // ever contends it. Without this lock the vector reallocation
-                // inside add() races with merge_from() in collect → SEGV.
-                std::lock_guard<std::mutex> lock (metrics->latency_mutex);
-                metrics->latency.add (latency_ns);
+            if (should_sample_spot_latency (metrics->sample_index)) {
+                const double latency_ns =
+                  perf_metric::elapsed_latency_ns (
+                    received_ts_ns, header.sent_ts_ns);
+                {
+                    // Uncontended per-thread mutex; only
+                    // collect_recv_thread_metrics ever contends it. Without
+                    // this lock the vector reallocation inside add() races
+                    // with merge_from() in collect.
+                    std::lock_guard<std::mutex> lock (metrics->latency_mutex);
+                    metrics->latency.add (latency_ns);
+                }
             }
 
             if (notify_phase)
                 _phase_cv.notify_all ();
+        }
+    }
+
+    bool drain_stale_messages ()
+    {
+        for (;;) {
+            bool progressed = false;
+            for (size_t i = 0; i < _slots.size (); ++i) {
+                if (!_slots[i])
+                    continue;
+                if (!drain_recv (*_slots[i], true, &progressed))
+                    return false;
+            }
+            if (!progressed)
+                return true;
         }
     }
 
@@ -701,39 +737,22 @@ class spot_client_bench_t
         spot_client_bench_t *bench = first_slot->owner;
 
         while (!bench->_recv_stop.load (std::memory_order_acquire)) {
-            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. Each
-            // worker owns its own poller registered with the slot spots,
-            // so it wakes promptly on incoming reply. _recv_stop and
-            // shutdown are handled by signaling those spots' wire path
-            // (stop tokens / peer close); the outer benchmark loop joins
-            // these threads via stop_recv_workers().
-            worker_->events =
-              worker_->poller.wait (0, std::chrono::milliseconds (-1));
-        const int poll_rc = static_cast<int> (worker_->events.size ());
-            if (poll_rc < 0) {
-                if (bench->_recv_stop.load (std::memory_order_acquire))
-                    break;
-                if (errno == EINTR || errno == EAGAIN)
-                    continue;
-                bench->_recv_fatal.store (true, std::memory_order_release);
-                return;
-            }
-
-            for (int i = 0; i < poll_rc; ++i) {
-                if ((static_cast<short> (worker_->events[static_cast<size_t> (i)].revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
-                    == 0) {
+            bool progressed = false;
+            for (size_t i = 0; i < worker_->slots.size (); ++i) {
+                client_slot_t *slot = worker_->slots[i];
+                if (!slot || !slot->owner
+                    || bench->_recv_stop.load (std::memory_order_acquire)) {
                     continue;
                 }
-
-                client_slot_t *slot = static_cast<client_slot_t *> (
-                  worker_->events[static_cast<size_t> (i)].raw_tag);
-                if (!slot || !slot->owner)
-                    continue;
-                if (!slot->owner->drain_recv (*slot, false, 0)) {
+                if (!slot->owner->drain_recv (*slot, false, &progressed)) {
                     slot->owner->_recv_fatal.store (true,
                                                     std::memory_order_release);
                     return;
                 }
+            }
+            if (!progressed && perf_idle_wait_ms (1) < 0) {
+                bench->_recv_fatal.store (true, std::memory_order_release);
+                return;
             }
         }
     }
@@ -755,23 +774,6 @@ class spot_client_bench_t
                 debug_log ("recv worker slot missing");
                 return false;
             }
-            try {
-                worker.poller.add (
-                  *slot->spot, zlink::poll_event_flag_t::pollin,
-                  slot);
-            }
-            catch (const zlink::config_error_t &err) {
-                debug_log ("recv worker poller add failed result="
-                           + std::to_string (static_cast<int> (err.result ()))
-                           + " errno="
-                           + std::to_string (err.internal_errno ()));
-                return false;
-            }
-            catch (const zlink::zlink_error_t &err) {
-                debug_log ("recv worker poller add failed errno="
-                           + std::to_string (err.internal_errno ()));
-                return false;
-            }
             worker.slots.push_back (slot);
         }
 
@@ -779,7 +781,6 @@ class spot_client_bench_t
             recv_worker_t &worker = _recv_workers[i];
             if (worker.slots.empty ())
                 continue;
-            worker.events.resize (worker.slots.size ());
             worker.thread = std::thread (&spot_client_bench_t::recv_worker_loop,
                                          &worker);
         }

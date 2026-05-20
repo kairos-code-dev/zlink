@@ -6,7 +6,7 @@ import {
   createPayload,
   createRunId,
   currentEpochNs,
-  decodeMetricHeaderFromParts,
+  decodeMetricHeader,
   HEADER_SIZE,
   sleepImmediate,
   summarizeMetrics,
@@ -14,27 +14,24 @@ import {
 } from '../common/perf_metrics';
 import {
   applyContextPolicy,
+  applyAutoHwmMsgUnit,
   applySpotNodeAdmission,
   benchmarkEndpoint,
   configureTlsClient,
   configureTlsServer,
-  emitSingleSocketHwmDetail,
+  emitSpotNodeHwmDetail,
   parseSingleBinaryArgs,
   waitForPostReadySettle
 } from './perf_single_common';
 import {
   STOP_TOKEN_BYTES,
-  isStopTokenParts
 } from '../perf_stop_token';
 
 const TOPIC = 'bench';
 
 function trySpotPublish(spot: any, payload: Buffer, flags = zlink.SendFlags.DontWait): boolean {
   try {
-    return spot.publish(TOPIC)
-      .message(payload)
-      .flags(flags)
-      .submit();
+    return spot.publishFrom(TOPIC, payload, flags);
   } catch (error: any) {
     if (error instanceof zlink.SubmitError &&
         (error.result === zlink.SubmitResult.Backpressured ||
@@ -54,13 +51,12 @@ function trySpotPublish(spot: any, payload: Buffer, flags = zlink.SendFlags.Dont
 async function publishStopToken(spot: any) {
   // PERF_SINGLE_TEST_POLICY § 1.4: emit the wire-level stop token. Spot
   // stop delivery is a required phase-end signal, so failure is surfaced.
-  spot.publish(TOPIC).message(STOP_TOKEN_BYTES).flags(zlink.SendFlags.None).submit();
+  spot.publishFrom(TOPIC, STOP_TOKEN_BYTES, zlink.SendFlags.None);
 }
 
-function trySpotSubscribe(spot: any) {
+function trySpotSubscribePayloadInto(spot: any, buffer: Buffer) {
   try {
-    const received = new zlink.TopicMessage();
-    return spot.subscribe(received, zlink.RecvFlags.DontWait) ? received : null;
+    return spot.subscribePayloadInto(buffer, zlink.RecvFlags.DontWait);
   } catch (error: any) {
     if (error instanceof zlink.RecvError &&
         (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {
@@ -70,19 +66,15 @@ function trySpotSubscribe(spot: any) {
   }
 }
 
-function drainSpot(spot: any, onMessage: (received: any) => void): boolean {
+function drainSpot(spot: any, buffer: Buffer, onMessage: (received: any) => void): boolean {
   let processed = false;
   while (true) {
-    const received = trySpotSubscribe(spot);
+    const received = trySpotSubscribePayloadInto(spot, buffer);
     if (!received) {
       return processed;
     }
-    try {
-      onMessage(received);
-      processed = true;
-    } finally {
-      received.close();
-    }
+    onMessage(received);
+    processed = true;
   }
 }
 
@@ -98,6 +90,7 @@ async function runSpotBenchmark(msgSize: number, options: any) {
   try {
     const publisherEndpoint = await benchmarkEndpoint(options.transport, `spot-publisher-${msgSize}`);
 
+    applyAutoHwmMsgUnit(ctx, msgSize);
     publisher = publisherNode.createSpot();
     subscriber = subscriberNode.createSpot();
     stopPublisher = subscriberNode.createSpot();
@@ -121,6 +114,7 @@ async function runSpotBenchmark(msgSize: number, options: any) {
     const runId = createRunId(options.runId ?? 1);
     const payload = createPayload(msgSize);
     const payloadSize = Math.max(msgSize, HEADER_SIZE);
+    const recvBuffer = Buffer.allocUnsafe(Math.max(HEADER_SIZE, STOP_TOKEN_BYTES.length));
     let seq = 1n;
     let probeReady = false;
     let stopReceived = false;
@@ -128,15 +122,19 @@ async function runSpotBenchmark(msgSize: number, options: any) {
     const latenciesNs: number[] = [];
     let accepted = 0;
     const collectReadable = (countActive: boolean) => {
-      return drainSpot(subscriber, (received) => {
+      return drainSpot(subscriber, recvBuffer, (received) => {
         // PERF_SINGLE_TEST_POLICY § 1.4: wire-level stop token terminates
         // the receiver loop. Returning here lets the outer loop observe
         // `stopReceived` without recording the sentinel as a payload.
-        if (isStopTokenParts(received.parts)) {
+        if (received.size === STOP_TOKEN_BYTES.length
+            && recvBuffer.subarray(0, received.size).equals(STOP_TOKEN_BYTES)) {
           stopReceived = true;
           return;
         }
-        const header = decodeMetricHeaderFromParts(received.parts, payloadSize);
+        if (received.size !== payloadSize) {
+          return;
+        }
+        const header = decodeMetricHeader(recvBuffer);
         if (!header) {
           return;
         }
@@ -246,8 +244,8 @@ async function runSpotBenchmark(msgSize: number, options: any) {
     if (accepted <= 0) {
       throw new Error('spot benchmark produced no measured messages');
     }
-    emitSingleSocketHwmDetail(publisherNode, 'SPOT', options.transport, 'publisher_node', msgSize);
-    emitSingleSocketHwmDetail(subscriberNode, 'SPOT', options.transport, 'subscriber_node', msgSize);
+    emitSpotNodeHwmDetail(publisherNode, 'SPOT', options.transport, 'publisher_node', msgSize);
+    emitSpotNodeHwmDetail(subscriberNode, 'SPOT', options.transport, 'subscriber_node', msgSize);
 
     return {
       latenciesNs,

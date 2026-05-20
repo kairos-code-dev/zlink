@@ -19,6 +19,18 @@ func runSingleOneWay(
 	receiver recvSocket,
 	send func([]byte) error,
 ) perfcommon.Result {
+	return runSingleOneWayWithTransient(cfg, receiver, send, perfcommon.IsTransient)
+}
+
+func runSingleOneWayWithTransient(
+	cfg benchmarkConfig,
+	receiver recvSocket,
+	send func([]byte) error,
+	isTransient func(error) bool,
+) perfcommon.Result {
+	if isTransient == nil {
+		isTransient = perfcommon.IsTransient
+	}
 	stats := perfcommon.NewStats()
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	payload := perfcommon.PreparePayload(cfg.msgSize)
@@ -30,7 +42,7 @@ func runSingleOneWay(
 			perfcommon.StampWindowPayload(payload, window.ActiveAt)
 			err := send(payload)
 			if err != nil {
-				if perfcommon.IsTransient(err) {
+				if isTransient(err) {
 					continue
 				}
 				if os.Getenv("PERF_DEBUG") != "" {
@@ -42,7 +54,7 @@ func runSingleOneWay(
 		// PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
 		// stop token. Blocking send uses bounded transient-backpressure attempts
 		// so the receiver always observes the terminator.
-		sendStopTokenSingle(send)
+		sendStopTokenSingle(send, isTransient)
 	}()
 
 	// PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait (-1 ms). The loop
@@ -138,13 +150,16 @@ func drainSingleOneWayProbe(receiver recvSocket) bool {
 // connection. The send is bounded: each transient backpressure /
 // EAGAIN response yields for `StopTokenSendBackoff`, capped by
 // `StopTokenSendAttempts`. A non-transient error is fatal.
-func sendStopTokenSingle(send func([]byte) error) {
+func sendStopTokenSingle(send func([]byte) error, isTransient func(error) bool) {
+	if isTransient == nil {
+		isTransient = perfcommon.IsTransient
+	}
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		err := send(perfcommon.StopToken)
 		if err == nil {
 			return
 		}
-		if !perfcommon.IsTransient(err) {
+		if !isTransient(err) {
 			if os.Getenv("PERF_DEBUG") != "" {
 				fmt.Fprintf(os.Stderr, "single stop token send error: %v\n", err)
 			}

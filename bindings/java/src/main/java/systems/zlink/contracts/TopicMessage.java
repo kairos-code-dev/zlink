@@ -18,6 +18,7 @@ public final class TopicMessage implements AutoCloseable {
     // immutable List per message (parity with Received.populateRoutedSinglePart
     // zero-realloc reuse).
     private ArrayList<Message> reusableSingle;
+    private Message reusableSinglePart;
 
     public TopicMessage() {
         this(null, "", null);
@@ -33,10 +34,7 @@ public final class TopicMessage implements AutoCloseable {
     // intermediate fresh TopicMessage + Message[] + List.of allocations that
     // adoptFrom(subscribe(...)) incurs per message.
     void adoptSingle(RoutingId routingId, String topicId, Message part) {
-        // Close the previous payload without discarding the reusable list.
-        if (!closed && parts != null && !parts.isEmpty()) {
-            Message.closeAll(parts);
-        }
+        closePartsExcept(part);
         ArrayList<Message> slot = reusableSingle;
         if (slot == null) {
             slot = new ArrayList<>(1);
@@ -49,6 +47,29 @@ public final class TopicMessage implements AutoCloseable {
         this.topic = topicId == null ? "" : topicId;
         this.parts = slot;
         this.closed = false;
+    }
+
+    Message prepareReusableSinglePart() {
+        Message part = reusableSinglePart;
+        if (part == null || !part.isReusable()) {
+            part = new Message();
+            reusableSinglePart = part;
+            return part;
+        }
+        part.resetForReuse();
+        return part;
+    }
+
+    private void closePartsExcept(Message keep) {
+        if (closed || parts == null || parts.isEmpty()) {
+            return;
+        }
+        for (Message part : parts) {
+            if (part == keep) {
+                continue;
+            }
+            part.close();
+        }
     }
 
     public void adoptFrom(TopicMessage source) {
@@ -104,5 +125,9 @@ public final class TopicMessage implements AutoCloseable {
             return;
         closed = true;
         Message.closeAll(parts);
+        if (reusableSinglePart != null
+            && (parts == null || !parts.contains(reusableSinglePart))) {
+            reusableSinglePart.close();
+        }
     }
 }

@@ -284,7 +284,10 @@ async function runSingleCase(scriptName, transport, msgSize, options) {
   let stdoutBuffer = '';
   let stderrBuffer = '';
   let timedOut = false;
-  const timeoutMs = resolveSingleTimeoutSeconds(options.duration) * 1000;
+  const timeoutSeconds = Number.isFinite(options.timeoutSeconds)
+    ? options.timeoutSeconds
+    : resolveSingleTimeoutSeconds(options.duration);
+  const timeoutMs = timeoutSeconds * 1000;
   const timeout = setTimeout(() => {
     timedOut = true;
     child.kill('SIGTERM');
@@ -395,6 +398,7 @@ async function main() {
   if (Number.isFinite(timeoutOverride) && timeoutOverride > 0) {
     timeoutSeconds = Math.trunc(timeoutOverride);
   }
+  options.timeoutSeconds = timeoutSeconds;
 
   const optionItems = buildSingleOptionItems({
     runs: options.runs,

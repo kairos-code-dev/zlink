@@ -884,6 +884,39 @@ void reset_active_slot(spot_reqrep_client_slot_t *slot)
     slot->payload.clear();
 }
 
+int poll_timeout_until(const std::chrono::steady_clock::time_point &deadline,
+                       int max_wait_ms)
+{
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline)
+        return 0;
+    const long remaining_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
+        .count();
+    if (remaining_ms <= 0)
+        return 1;
+    return static_cast<int>(
+      std::min<long>(remaining_ms, std::max(1, max_wait_ms)));
+}
+
+bool any_waiting_reply(const spot_reqrep_client_state_t *state,
+                       size_t active_slots)
+{
+    if (!state)
+        return false;
+    const size_t count = std::min(active_slots, state->slots.size());
+    for (size_t i = 0; i < count; ++i) {
+        if (state->slots[i].waiting_reply.load(std::memory_order_acquire)
+            || state->slots[i].send_pending.load(std::memory_order_acquire)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool handle_sendsend_ready_events(spot_reqrep_client_state_t *state,
+                                  int event_count);
+
 bool reset_sendsend_poller(spot_reqrep_client_state_t *state)
 {
     if (!state || !state->poller) {
@@ -902,6 +935,43 @@ bool reset_sendsend_poller(spot_reqrep_client_state_t *state)
         }
     }
 
+    return true;
+}
+
+bool drain_pending_replies(spot_reqrep_client_state_t *state,
+                           size_t active_slots)
+{
+    if (!state || !state->poller) {
+        errno = EINVAL;
+        return false;
+    }
+
+    const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+    while (any_waiting_reply(state, active_slots)
+           && std::chrono::steady_clock::now() < deadline) {
+        const int wait_ms = poll_timeout_until(deadline, 50);
+        const int event_count = zlink_poller_wait(
+          state->poller,
+          state->events.empty() ? NULL : &state->events[0],
+          static_cast<int>(state->events.size()),
+          wait_ms,
+          NULL);
+        if (event_count < 0) {
+            if (zlink_errno() == EINTR)
+                continue;
+            if (bench_debug_enabled()) {
+                std::cerr
+                  << "[multi-spot-sendsend-client] drain poller wait failed err="
+                  << zlink_errno() << std::endl;
+            }
+            return false;
+        }
+        if (event_count == 0)
+            continue;
+        if (!handle_sendsend_ready_events(state, event_count))
+            return false;
+    }
     return true;
 }
 
@@ -1027,6 +1097,8 @@ bool run_active_window(spot_reqrep_client_state_t *state,
     const auto deadline =
       std::chrono::steady_clock::now()
       + std::chrono::seconds(std::max(1, settings.duration_seconds));
+    const size_t active_slots =
+      active_spot_slot_limit(state->slots.size(), msg_size);
     while (std::chrono::steady_clock::now() < deadline) {
         bool send_progress = false;
         bool has_waiting_reply = false;
@@ -1041,11 +1113,14 @@ bool run_active_window(spot_reqrep_client_state_t *state,
         if (send_progress)
             continue;
 
+        const int wait_ms = poll_timeout_until(deadline, 50);
+        if (wait_ms <= 0)
+            break;
         const int event_count = zlink_poller_wait(
           state->poller,
           state->events.empty() ? NULL : &state->events[0],
           static_cast<int>(state->events.size()),
-          -1,
+          wait_ms,
           NULL);
         if (event_count < 0) {
             if (zlink_errno() == EINTR)
@@ -1062,6 +1137,8 @@ bool run_active_window(spot_reqrep_client_state_t *state,
         if (!handle_sendsend_ready_events(state, event_count))
             return false;
     }
+    if (!drain_pending_replies(state, active_slots))
+        return false;
 
     {
         std::lock_guard<std::mutex> lock(state->mutex);

@@ -60,7 +60,7 @@ async function runPairBenchmark(msgSize, options) {
         const recvTask = drainRecvSocket(server, (received) => {
             const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
             collector.record(header, currentEpochNs());
-        });
+        }, { recordUntilNs: activeStopNs });
         await Promise.race([
             recvTask,
             workerError.then((message) => Promise.reject(new Error(message.message)))

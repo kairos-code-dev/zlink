@@ -61,6 +61,7 @@ struct spot_client_slot_t
     std::atomic<bool> stop;
     std::atomic<size_t> phase_trace_msg_size;
     std::atomic<uint64_t> first_active_ns;
+    std::mutex recv_mutex;
 };
 
 struct spot_recv_worker_t;
@@ -813,6 +814,7 @@ bool drain_spot_client_slot(spot_client_slot_t *slot,
     if (!slot)
         return false;
 
+    std::lock_guard<std::mutex> lock(slot->recv_mutex);
     bool first_attempt = true;
     while (!slot->stop.load(std::memory_order_acquire)) {
         bool received = false;

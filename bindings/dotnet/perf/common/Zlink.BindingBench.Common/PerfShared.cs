@@ -33,11 +33,13 @@ public static class PerfShared
         return (long)(ts * (1_000_000_000.0 / Stopwatch.Frequency));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong EpochNs()
     {
-        return EpochNsFromTimestamp(Stopwatch.GetTimestamp());
+        return (ulong)(DateTime.UtcNow.Ticks * 100L);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong EpochNsFromTimestamp(long timestamp)
     {
         long deltaTicks = timestamp - EpochBaseTimestamp;
@@ -67,6 +69,7 @@ public static class PerfShared
         return deltaTicks / (double)Stopwatch.Frequency;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ReservoirSample(List<double> samples, double value,
         ref long seenCount, int cap, ref uint rngState)
     {
@@ -314,6 +317,7 @@ public static class PerfShared
         Console.Out.Flush();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool StampMetricHeader(Span<byte> payload, uint runId,
         uint phase, int msgSize, ulong seq, ulong sentTsNs)
     {
@@ -332,6 +336,7 @@ public static class PerfShared
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryDecodeMetricHeader(ReadOnlySpan<byte> payload,
         out PerfMetricHeader header)
     {

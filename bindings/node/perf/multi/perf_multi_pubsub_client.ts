@@ -7,7 +7,7 @@ const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
   createRunId,
-  decodeMetricHeaderFromParts,
+  decodeMetricHeader,
   currentEpochNs,
   HEADER_SIZE,
   summarizeMetrics
@@ -21,17 +21,16 @@ const {
   applySocketPolicy,
   emitMultiSocketHwmDetail,
   pollEvents,
-  subscribeNoWaitInto,
   waitForConnectionReady
 } = require('./perf_multi_runtime');
-const { isStopTokenParts } = require('../perf_stop_token');
+const { isStopToken } = require('../perf_stop_token');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   applyContextPolicy(ctx, 'client', 'MULTI_PUBSUB');
   const subs = [];
-  const receivedBuffers = [];
+  const payloadBuffers = [];
   let rl = null;
   let collector = null;
 
@@ -44,7 +43,7 @@ async function main() {
       await waitForConnectionReady(sub, () => sub.connect(options.endpoint));
       applyAutoHwmMsgUnit(ctx, options.msgSize);
       subs.push(sub);
-      receivedBuffers.push(new zlink.TopicMessage());
+      payloadBuffers.push(Buffer.allocUnsafe(Math.max(options.msgSize, HEADER_SIZE)));
     }
     ctx.recalculateAutoHwm();
     for (const sub of subs) {
@@ -90,17 +89,19 @@ async function main() {
               if (!Number.isInteger(index)) {
                 continue;
               }
-              const received = receivedBuffers[index];
+              const payload = payloadBuffers[index];
               while (true) {
-                if (!subscribeNoWaitInto(subs[index], received)) {
+                const received = subs[index].subscribePayloadInto(payload, zlink.RecvFlags.DontWait);
+                if (!received) {
                   break;
                 }
-                if (isStopTokenParts(received.parts)) {
+                const body = payload.subarray(0, received.size);
+                if (isStopToken(body)) {
                   stopReceived = true;
                   continue;
                 }
                 collector.record(
-                  decodeMetricHeaderFromParts(received.parts, payloadSize),
+                  decodeMetricHeader(body.subarray(0, payloadSize)),
                   currentEpochNs()
                 );
               }
@@ -128,9 +129,6 @@ async function main() {
     console.log(`CLIENT_DONE,${options.msgSize}`);
   } finally {
     rl?.close();
-    for (const received of receivedBuffers) {
-      received.close();
-    }
     for (const sub of subs) {
       sub.close();
     }

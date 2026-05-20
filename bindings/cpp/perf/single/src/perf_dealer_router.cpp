@@ -13,6 +13,105 @@ bool perf_debug_enabled ()
     return std::getenv ("PERF_DEBUG") != NULL;
 }
 
+bool wait_dealer_router_monitor_event (
+  zlink::monitor_handle_t &monitor_,
+  perf::single::perf_socket_t *activity_socket_,
+  uint64_t success_event_,
+  int timeout_ms_)
+{
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
+
+    zlink::poller_t poller;
+    void *const monitor_tag = reinterpret_cast<void *> (1);
+    void *const activity_tag = reinterpret_cast<void *> (2);
+    try {
+        poller.add (monitor_, zlink::poll_event_flag_t::pollin, monitor_tag);
+        if (activity_socket_)
+            activity_socket_->poller_add (
+              poller, zlink::poll_event_flag_t::pollin, activity_tag);
+    }
+    catch (const zlink::zlink_error_t &) {
+        return false;
+    }
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        long wait_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            deadline - std::chrono::steady_clock::now ())
+            .count ();
+        if (wait_ms < 1)
+            wait_ms = 1;
+
+        const std::optional<zlink::poll_event_t> poll_event =
+          poller.wait (std::chrono::milliseconds (wait_ms));
+        if (!poll_event)
+            continue;
+        if (poll_event->raw_tag != monitor_tag)
+            continue;
+
+        for (;;) {
+            const std::optional<zlink::monitor_event_t> event =
+              monitor_.recv (ZLINK_DONTWAIT);
+            if (!event)
+                break;
+            if (static_cast<uint64_t> (event->event) == success_event_)
+                return true;
+        }
+    }
+    return false;
+}
+
+bool setup_dealer_router_session (perf::single::perf_socket_t &router_,
+                                  perf::single::perf_socket_t &dealer_,
+                                  const std::string &transport_,
+                                  const std::string &id_)
+{
+    if (!perf::setup_tls_server (router_, transport_)
+        || !perf::setup_tls_client (dealer_, transport_)) {
+        return false;
+    }
+
+    perf::single::apply_single_hwm (router_);
+    perf::single::apply_single_hwm (dealer_);
+
+    const std::string endpoint =
+      perf::single::bind_and_resolve_endpoint (router_, transport_, id_);
+    if (endpoint.empty ())
+        return false;
+
+    zlink::monitor_handle_t router_monitor =
+      router_.monitor_handle (zlink::monitor_event::connection_ready);
+    zlink::monitor_handle_t dealer_monitor =
+      dealer_.monitor_handle (zlink::monitor_event::connection_ready);
+    if (!router_monitor.valid () || !dealer_monitor.valid ())
+        return false;
+
+    try {
+        dealer_.connect (endpoint);
+    }
+    catch (const zlink::zlink_error_t &) {
+        return false;
+    }
+
+    perf::single::apply_single_benchmark_socket_options (router_, transport_);
+    perf::single::apply_single_benchmark_socket_options (dealer_, transport_);
+
+    const int ready_timeout_ms =
+      perf::single::resolve_single_connect_ready_timeout_ms ();
+    return wait_dealer_router_monitor_event (
+             router_monitor,
+             &router_,
+             static_cast<uint64_t> (zlink::monitor_event::connection_ready),
+             ready_timeout_ms)
+           && wait_dealer_router_monitor_event (
+             dealer_monitor,
+             NULL,
+             static_cast<uint64_t> (zlink::monitor_event::connection_ready),
+             ready_timeout_ms);
+}
+
 } // namespace
 
 bool run_pattern_dealer_router (const std::string &transport,
@@ -36,15 +135,14 @@ bool run_pattern_dealer_router (const std::string &transport,
         return false;
     }
 
-    (void) dealer.sock ().set_routing_id (std::string ("CLIENT"));
     if (!perf::single::apply_single_auto_hwm_msg_unit (ctx, msg_size)
         || !perf::single::recalculate_single_auto_hwm (ctx)) {
         return false;
     }
-    if (!perf::single::setup_connected_pair (router.sock (),
-                                             dealer.sock (),
-                                             transport,
-                                             lib_name + "_dealer_router")) {
+    if (!setup_dealer_router_session (router.sock (),
+                                      dealer.sock (),
+                                      transport,
+                                      lib_name + "_dealer_router")) {
         return false;
     }
 
@@ -139,13 +237,11 @@ bool run_pattern_dealer_router (const std::string &transport,
                   header, run_id, perf_single_metric::phase_active,
                   msg_size))
                 continue;
-            if (std::chrono::steady_clock::now () < active_deadline) {
-                received_count.fetch_add (1, std::memory_order_release);
-                const uint64_t now = perf_single_metric::now_ns ();
-                latency_builder.add (
-                  perf_single_metric::elapsed_latency_ns (
-                    now, header.sent_ts_ns));
-            }
+            received_count.fetch_add (1, std::memory_order_release);
+            const uint64_t now = perf_single_metric::now_ns ();
+            latency_builder.add (
+              perf_single_metric::elapsed_latency_ns (
+                now, header.sent_ts_ns));
         }
     }
 

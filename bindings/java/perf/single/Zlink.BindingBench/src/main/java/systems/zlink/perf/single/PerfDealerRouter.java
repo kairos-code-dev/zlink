@@ -108,9 +108,23 @@ final class PerfDealerRouter {
             }, "single-dealer-router-receiver");
             receiverThread.start();
 
-            try (var probe = PerfUtil.payload(config.size(),
-                     (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                sender.send().message(probe).submit();
+            long probeDeadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+            while (System.nanoTime() < probeDeadline && routed.getCount() != 0) {
+                try (var probe = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
+                    if (!trySendActive(sender, probe)) {
+                        Thread.onSpinWait();
+                    }
+                }
+                try {
+                    if (routed.await(10, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        break;
+                    }
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(
+                        "dealer/router self-check interrupted", ex);
+                }
             }
             PerfUtil.await(routed, "dealer/router self-check",
                 Duration.ofSeconds(10));
@@ -121,8 +135,9 @@ final class PerfDealerRouter {
                         while (System.nanoTime() < activeEnd) {
                             PerfUtil.resetAndWritePayload(active, config.size(),
                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                            try (Message outbound = Message.copyOf(active)) {
-                                sender.send().message(outbound).submit();
+                            while (System.nanoTime() < activeEnd
+                                && !trySendBlocking(sender, active)) {
+                                Thread.onSpinWait();
                             }
                         }
                     }
@@ -136,7 +151,7 @@ final class PerfDealerRouter {
                         try (Message stop = PerfStopToken.newMessage()) {
                             return sender.send()
                                 .message(stop)
-                                .flags(SendFlags.DONT_WAIT)
+                                .flags(SendFlags.NONE)
                                 .submit();
                         }
                     }, "dealer/router");
@@ -160,6 +175,49 @@ final class PerfDealerRouter {
             PerfUtil.printSingleMonitorAutoHwm(config, senderMonitor, "sender",
                 SocketType.DEALER);
             return metrics.finishSingle(config);
+        }
+    }
+
+    private static boolean trySendActive(DealerSocket sender, Message active) {
+        try (Message outbound = Message.copyOf(active)) {
+            return sender.send()
+                .message(outbound)
+                .flags(SendFlags.DONT_WAIT)
+                .submit();
+        } catch (systems.zlink.contracts.SubmitException ex) {
+            if (ex.getResult()
+                == systems.zlink.contracts.SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        } catch (systems.zlink.contracts.ZlinkException ex) {
+            int errno = ex.getInternalErrno();
+            if (errno == 11 || errno == 4 || errno == 10035) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    private static boolean trySendBlocking(DealerSocket sender, Message active) {
+        try (Message outbound = Message.copyOf(active)) {
+            return sender.send()
+                .message(outbound)
+                .flags(SendFlags.NONE)
+                .submit();
+        } catch (systems.zlink.contracts.SubmitException ex) {
+            if (ex.getResult()
+                == systems.zlink.contracts.SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        } catch (systems.zlink.contracts.ZlinkException ex) {
+            int errno = ex.getInternalErrno();
+            if (errno == 11 || errno == 4 || errno == 10035
+                || errno == 110) {
+                return false;
+            }
+            throw ex;
         }
     }
 }

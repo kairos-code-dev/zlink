@@ -168,4 +168,44 @@ if(ZLINK_C_REGISTER_CTEST AND Python3_Interpreter_FOUND AND UNIX AND NOT APPLE)
         perf_multi_spot_reqrep_size_sweep_regression SPOT_REQREP)
     add_perf_multi_spot_size_sweep_regression(
         perf_multi_spot_sendsend_size_sweep_regression SPOT_SENDSEND)
+    add_test(
+        NAME perf_multi_spot_clean_latency_size_regression
+        COMMAND ${CMAKE_COMMAND} -E env
+            "PERF_ALLOW_MULTI=1"
+            "PERF_FAIL_FAST=1"
+            "PERF_TRANSPORTS=tcp"
+            "PERF_MSG_SIZES=64,256,1024"
+            "PERF_DURATION_SECONDS=5"
+            "PERF_CTX_AUTO_HWM_ENABLE=1"
+            "LD_LIBRARY_PATH=${ZLINK_C_CORE_RUNTIME_DIR}:$ENV{LD_LIBRARY_PATH}"
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/run_comparison.py"
+            "SPOT"
+            "--build-dir" "${CMAKE_BINARY_DIR}"
+            "--result-file"
+            "${CMAKE_CURRENT_BINARY_DIR}/perf_multi_spot_clean_latency_size_regression.txt")
+    set_tests_properties(
+        perf_multi_spot_clean_latency_size_regression PROPERTIES
+        LABELS "perf;regression"
+        TIMEOUT 75)
+    add_test(
+        NAME perf_multi_spot_reqrep_sendsend_transition_regression
+        COMMAND ${CMAKE_COMMAND} -E env
+            "PERF_ALLOW_MULTI=1"
+            "PERF_FAIL_FAST=1"
+            "PERF_TRANSPORTS=tcp"
+            "PERF_MSG_SIZES=64,256,1024"
+            "PERF_DURATION_SECONDS=5"
+            "PERF_CTX_AUTO_HWM_ENABLE=1"
+            "LD_LIBRARY_PATH=${ZLINK_C_CORE_RUNTIME_DIR}:$ENV{LD_LIBRARY_PATH}"
+            ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/run_comparison.py"
+            "SPOT_REQREP,SPOT_SENDSEND"
+            "--build-dir" "${CMAKE_BINARY_DIR}"
+            "--result-file"
+            "${CMAKE_CURRENT_BINARY_DIR}/perf_multi_spot_reqrep_sendsend_transition_regression.txt")
+    set_tests_properties(
+        perf_multi_spot_reqrep_sendsend_transition_regression PROPERTIES
+        LABELS "perf;regression"
+        TIMEOUT 75)
 endif()

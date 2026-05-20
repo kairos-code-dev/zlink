@@ -542,7 +542,8 @@ fi
   echo
   python3 "${PERF_REPORT_PY}" single-auto-hwm \
     --patterns "${EFFECTIVE_PATTERNS_CSV}" \
-    --msg-sizes "${MSG_SIZES}"
+    --msg-sizes "${MSG_SIZES}" \
+    --raw-results "${RAW_RESULTS_FILE}"
 } >> "${RESULTS_FILE}"
 
 expected_result_lines=$((expected_cases * 5))

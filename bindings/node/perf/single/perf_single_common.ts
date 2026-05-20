@@ -15,6 +15,7 @@ const {
   createPayload,
   createRunId,
   currentEpochNs,
+  decodeMetricHeader,
   decodeMetricHeaderFromParts,
   HEADER_SIZE,
   MIN_MSG_SIZE,
@@ -186,6 +187,43 @@ function emitSingleSocketHwmDetail(socket, pattern, transport, component, msgSiz
   }
 }
 
+function emitSpotNodeHwmDetail(node, pattern, transport, component, msgSize) {
+  if (!node || typeof node.internalSocketsSnapshot !== 'function') {
+    return;
+  }
+  try {
+    const entries = node.internalSocketsSnapshot();
+    let index = 0;
+    for (const entry of entries) {
+      const snapshot = entry.snapshot;
+      if (!entry.autoHwmVisible || !singleAutoHwmSnapshotVisible(snapshot)) {
+        continue;
+      }
+      console.log(
+        'AUTO_HWM_DETAIL'
+        + `,pattern=${pattern}`
+        + `,transport=${transport}`
+        + `,component=${component}`
+        + `,msg_size=${msgSize}`
+        + `,owner=${entry.ownerName || 'node'}`
+        + `,owner_id=${entry.ownerId ?? index}`
+        + `,socket=${entry.socketName || component}`
+        + `,socket_type=${entry.socketType}`
+        + `,role=${autoHwmRoleName(snapshot.autoHwmRole)}`
+        + `,sndhwm=${snapshot.autoHwmAppliedSndHwm}`
+        + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwm}`
+        + `,effective_message_bytes=${snapshot.autoHwmEffectiveMessageBytes}`
+        + `,effective_sndbuf=${snapshot.autoHwmEffectiveSndBuf}`
+        + `,effective_rcvbuf=${snapshot.autoHwmEffectiveRcvBuf}`
+        + `,socket_message_slots=${snapshot.autoHwmSocketMessageSlots}`
+      );
+      index += 1;
+    }
+  } catch (err) {
+    // Diagnostic only.
+  }
+}
+
 function applyContextPolicy(ctx) {
   const ioThreads = integerEnv('PERF_IO_THREADS', 0);
   if (ioThreads > 0) {
@@ -201,10 +239,9 @@ function applyContextPolicy(ctx) {
   applyAutoHwmProfile(ctx, zlink);
 }
 
-function recvNoWait(socket) {
-  const received = new zlink.Received();
+function recvNoWait(socket, received = new zlink.Received(), flags = RecvFlags.DontWait) {
   try {
-    return socket.recv(received, RecvFlags.DontWait) ? received : null;
+    return socket.recv(received, flags) ? received : null;
   } catch (error) {
     if (error instanceof zlink.RecvError && error.result === RecvResult.NoData) {
       return null;
@@ -213,10 +250,9 @@ function recvNoWait(socket) {
   }
 }
 
-function subscribeNoWait(socket) {
-  const received = new zlink.TopicMessage();
+function subscribeNoWait(socket, received = new zlink.TopicMessage(), flags = RecvFlags.DontWait) {
   try {
-    return socket.subscribe(received, RecvFlags.DontWait) ? received : null;
+    return socket.subscribe(received, flags) ? received : null;
   } catch (error) {
     if (error instanceof zlink.RecvError && error.result === RecvResult.NoData) {
       return null;
@@ -304,60 +340,117 @@ async function waitForPostReadySettle(timeoutMs) {
 // error channel can then never settle, hard-hanging the case to the
 // harness timeout. The RCVTIMEO-bounded wakeup mirrors C's EAGAIN cycle so
 // the loop (and the error race) always makes progress, while the
-// `await sleepImmediate()` yields once per cycle so queued Worker
-// postMessages and the error channel are delivered.
-async function drainRecvSocket(socket, onMessage) {
-  const poller = new zlink.Poller();
-  poller.add(socket, pollEvents(POLLIN));
+// An occasional `await sleepImmediate()` lets queued Worker postMessages and
+// the error channel run without turning every receive cycle into a scheduler
+// round trip.
+async function drainRecvSocket(socket, onMessage, options = {}) {
   const useSubscribe = typeof socket.subscribe === 'function';
   const recvTimeoutMs = Math.max(
     1,
     integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200)
   );
+  const recordUntilNs = options.recordUntilNs === undefined
+    ? null
+    : BigInt(options.recordUntilNs);
 
-  try {
-    let stopReceived = false;
-    let iterCount = 0;
-    let totalReceived = 0;
-    if (process.env.PERF_NODE_TRACE === '1') {
-      console.error(`[drainRecvSocket] entry`);
+  let stopReceived = false;
+  let iterCount = 0;
+  let totalReceived = 0;
+  let recordingActive = true;
+  const reusableReceived = useSubscribe
+    ? new zlink.TopicMessage()
+    : new zlink.Received();
+  if (process.env.PERF_NODE_TRACE === '1') {
+    console.error(`[drainRecvSocket] entry`);
+  }
+  while (!stopReceived) {
+    iterCount += 1;
+    if (process.env.PERF_NODE_TRACE === '1' && (iterCount === 1 || iterCount % 100 === 0)) {
+      console.error(`[drainRecvSocket] iter=${iterCount} totalReceived=${totalReceived}`);
     }
-    while (!stopReceived) {
-      iterCount += 1;
-      if (process.env.PERF_NODE_TRACE === '1' && (iterCount === 1 || iterCount % 100 === 0)) {
-        console.error(`[drainRecvSocket] iter=${iterCount} totalReceived=${totalReceived}`);
-      }
+    if ((iterCount & 0x3f) === 0) {
       await sleepImmediate();
-      let ready = [];
-      try {
-        ready = poller.waitMany(Math.max(1, poller.size), recvTimeoutMs);
-      } catch (error) {
-        const text = String(error && error.message ? error.message : error);
-        if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
-          continue;
-        }
-        throw error;
+    }
+    let first = true;
+    while (true) {
+      const received = useSubscribe
+        ? subscribeNoWait(socket, reusableReceived, first ? RecvFlags.None : RecvFlags.DontWait)
+        : recvNoWait(socket, reusableReceived, first ? RecvFlags.None : RecvFlags.DontWait);
+      if (!received) {
+        break;
       }
-      if (ready.length === 0) {
-        // RCVTIMEO elapsed with no data — C's recv EAGAIN-on-idle
-        // (perf_single_one_way.hpp ~269-326): keep cycling. The loop exits
-        // only on the wire stop token or a real error.
+      first = false;
+      if (isStopTokenParts(received.parts)) {
+        stopReceived = true;
+        if (process.env.PERF_NODE_TRACE === '1') {
+          console.error(`[drainRecvSocket] stop totalReceived=${totalReceived}`);
+        }
+        break;
+      }
+      totalReceived += 1;
+      if (process.env.PERF_NODE_TRACE === '1' && (totalReceived % 100000) === 0) {
+        console.error(`[drainRecvSocket] received=${totalReceived}`);
+      }
+      if (recordUntilNs !== null && recordingActive) {
+        recordingActive = currentEpochNs() <= recordUntilNs;
+      }
+      if (recordUntilNs !== null && !recordingActive) {
         continue;
       }
-      while (true) {
-        const received = useSubscribe ? subscribeNoWait(socket) : recvNoWait(socket);
-        if (!received) {
-          break;
-        }
-        if (isStopTokenParts(received.parts)) {
-          stopReceived = true;
-          break;
-        }
-        onMessage(received);
-      }
+      onMessage(received);
     }
-  } finally {
-    poller.close();
+  }
+}
+
+async function drainRouterRecvInto(router, msgSize, onHeader, options = {}) {
+  const payloadSize = Math.max(msgSize, HEADER_SIZE);
+  const buffer = Buffer.allocUnsafe(Math.max(HEADER_SIZE, STOP_TOKEN_BYTES.length));
+  const recordUntilNs = options.recordUntilNs === undefined
+    ? null
+    : BigInt(options.recordUntilNs);
+  let stopReceived = false;
+  let iterCount = 0;
+  let totalReceived = 0;
+  let recordingActive = true;
+  if (process.env.PERF_NODE_TRACE === '1') {
+    console.error(`[drainRouterRecvInto] entry`);
+  }
+  while (!stopReceived) {
+    iterCount += 1;
+    if (process.env.PERF_NODE_TRACE === '1' && (iterCount === 1 || iterCount % 100 === 0)) {
+      console.error(`[drainRouterRecvInto] iter=${iterCount} totalReceived=${totalReceived}`);
+    }
+    let first = true;
+    while (true) {
+      const receivedSize = router.recvPayloadInto(buffer, first ? RecvFlags.None : RecvFlags.DontWait);
+      if (receivedSize === null) {
+        break;
+      }
+      first = false;
+      if (receivedSize === STOP_TOKEN_BYTES.length
+          && buffer.subarray(0, receivedSize).equals(STOP_TOKEN_BYTES)) {
+        stopReceived = true;
+        if (process.env.PERF_NODE_TRACE === '1') {
+          console.error(`[drainRouterRecvInto] stop totalReceived=${totalReceived}`);
+        }
+        break;
+      }
+      totalReceived += 1;
+      if (process.env.PERF_NODE_TRACE === '1' && (totalReceived % 100000) === 0) {
+        console.error(`[drainRouterRecvInto] received=${totalReceived}`);
+      }
+      if (recordUntilNs !== null && recordingActive) {
+        recordingActive = currentEpochNs() <= recordUntilNs;
+      }
+      if (recordUntilNs !== null && !recordingActive) {
+        continue;
+      }
+      if (receivedSize !== payloadSize) {
+        onHeader(null);
+        continue;
+      }
+      onHeader(decodeMetricHeader(buffer));
+    }
   }
 }
 
@@ -386,6 +479,20 @@ function sendSocketNoWait(socket, payload, flags = zlink.SendFlags.DontWait) {
 
 function sendSocketRequired(socket, payload, flags = zlink.SendFlags.None) {
   socket.send().message(payload).flags(flags).submit();
+}
+
+function sendSocketStopWithRetry(socket) {
+  for (let retry = 0; retry < 100; retry += 1) {
+    try {
+      sendSocketRequired(socket, STOP_TOKEN_BYTES);
+      return;
+    } catch (error) {
+      if (!isTransientSubmit(error)) {
+        throw error;
+      }
+    }
+  }
+  throw new Error('stop token send retry budget exhausted');
 }
 
 function drainRecvSocketNoWaitUntilIdle(socket, collector, payloadSize, viaSubscribe = false) {
@@ -522,12 +629,12 @@ async function runLocalSocketOneWayBenchmark({
       seq += 1n;
       drainOnce();
     }
-    stampPayload(payload, { phase: 2, runId, msgSize, seq });
-    sendActiveBlocking(payload);
+    // C single sends active samples until the deadline and then sends only
+    // the wire stop token. There is no post-active phase-2 payload.
     if (typeof sendStop === 'function') {
       sendStop(sender, activeRoutingId);
     } else {
-      sendSocketRequired(sender, STOP_TOKEN_BYTES);
+      sendSocketStopWithRetry(sender);
     }
     while (!drainOnce()) {
       // Drain until the wire-level stop token arrives.
@@ -683,8 +790,10 @@ module.exports = {
   configureTlsClient,
   configureTlsServer,
   emitSingleSocketHwmDetail,
+  emitSpotNodeHwmDetail,
   benchmarkEndpoint,
   closeSenderWorker,
+  drainRouterRecvInto,
   drainRecvSocket,
   parseSingleBinaryArgs,
   runLocalSocketOneWayBenchmark,

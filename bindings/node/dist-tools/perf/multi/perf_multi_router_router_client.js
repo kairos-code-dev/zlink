@@ -2,12 +2,24 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { requireNative } = require('../../dist/zlink/runtime/native/native');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, HEADER_SIZE, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, sendStopTokenOnce, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
 const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
+function tryBorrowedRoutingSend(socket, routingIdBytes, payload, length) {
+    const result = requireNative().socketSendRoutingBorrowedNoWaitResult(socket.nativeHandle(), routingIdBytes, payload, length | 0);
+    if (result === zlink.SubmitResult.Ok) {
+        return true;
+    }
+    if (result === zlink.SubmitResult.Backpressured ||
+        result === zlink.SubmitResult.NotConnected) {
+        return false;
+    }
+    throw new zlink.SubmitError(result, 0, 'borrowed routed send failed');
+}
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -15,6 +27,7 @@ async function main() {
     const routers = [];
     const payloads = [];
     const replyBuffers = [];
+    const replyMessages = [];
     const waiting = [];
     const sendPending = [];
     const poller = new zlink.Poller();
@@ -26,7 +39,8 @@ async function main() {
             router.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`multi-router-client-${i}`, 'ascii')));
             routers.push(router);
             payloads.push(createPayload(options.msgSize));
-            replyBuffers.push(new zlink.Received());
+            replyBuffers.push(Buffer.allocUnsafe(HEADER_SIZE));
+            replyMessages.push(new zlink.Received());
             waiting.push(false);
             sendPending.push(false);
         }
@@ -53,12 +67,23 @@ async function main() {
         const drainReply = (index) => {
             let progressed = false;
             while (true) {
-                const echoed = replyBuffers[index];
-                if (!recvNoWaitInto(routers[index], echoed)) {
-                    break;
+                if (options.msgSize >= 65536) {
+                    const echoed = replyBuffers[index];
+                    const received = routers[index].recvPayloadInto(echoed, zlink.RecvFlags.DontWait);
+                    if (received === null) {
+                        break;
+                    }
+                    waiting[index] = false;
+                    collector.record(decodeMetricHeader(echoed.subarray(0, Math.min(received, echoed.length))), currentEpochNs());
                 }
-                waiting[index] = false;
-                collector.record(decodeMetricHeader(echoed.parts[0].data()), currentEpochNs());
+                else {
+                    const echoed = replyMessages[index];
+                    if (!recvNoWaitInto(routers[index], echoed)) {
+                        break;
+                    }
+                    waiting[index] = false;
+                    collector.record(decodeMetricHeader(echoed.parts[0].data()), currentEpochNs());
+                }
                 progressed = true;
             }
             return progressed;
@@ -70,7 +95,10 @@ async function main() {
                     continue;
                 }
                 stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-                if (!trySocketSend(routers[i], SERVER_ROUTING_ID, payloads[i])) {
+                const sent = options.transport === 'tcp'
+                    ? tryBorrowedRoutingSend(routers[i], SERVER_ID, payloads[i], options.msgSize)
+                    : trySocketSend(routers[i], SERVER_ROUTING_ID, payloads[i]);
+                if (!sent) {
                     sendPending[i] = true;
                     continue;
                 }
@@ -111,7 +139,7 @@ async function main() {
     }
     finally {
         poller.close();
-        for (const reply of replyBuffers) {
+        for (const reply of replyMessages) {
             reply.close();
         }
         for (const router of routers) {

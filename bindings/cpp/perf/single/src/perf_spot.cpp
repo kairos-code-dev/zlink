@@ -6,7 +6,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <cstring>
 #include <cstdlib>
 #include <iostream>
 #include <mutex>
@@ -25,12 +24,6 @@
 namespace {
 
 const std::string k_topic = "bench";
-
-zlink::routing_id_t routing_id_from_ascii (const char *value_)
-{
-    return zlink::routing_id_t::from_bytes (
-      reinterpret_cast<const uint8_t *> (value_), std::strlen (value_));
-}
 
 unsigned current_process_id ()
 {
@@ -182,10 +175,12 @@ int recv_spot_header_flags (zlink::service::spot_t &subscriber_,
             return 0;
         if (rc != static_cast<int> (zlink::recv_result_t::ok))
             return -1;
-        if (stop_out_ && message.parts ().size () == 1
-            && perf::single::is_stop_token_message (message.parts ()[0])) {
-            *stop_out_ = true;
-            return 1;
+        if (stop_out_ && message.is_single_part ()) {
+            zlink::message_t &part = message.first_part ();
+            if (perf::single::is_stop_token_message (part)) {
+                *stop_out_ = true;
+                return 1;
+            }
         }
         bool header_ok =
           decode_spot_header (message, payload_size_, header_out_);
@@ -474,16 +469,6 @@ bool run_pattern_spot (const std::string &transport,
         return false;
     }
     try {
-        pub_node.set_routing_id (
-          routing_id_from_ascii ("z-cpp-perf-spot-publisher"));
-        sub_node.set_routing_id (
-          routing_id_from_ascii ("a-cpp-perf-spot-subscriber"));
-        pub_spot.set_routing_id (
-          routing_id_from_ascii ("z-cpp-perf-spot-publisher-spot"));
-        stop_spot.set_routing_id (
-          routing_id_from_ascii ("a-cpp-perf-spot-stop-spot"));
-        sub_spot.set_routing_id (
-          routing_id_from_ascii ("a-cpp-perf-spot-subscriber-spot"));
         if (perf::single::single_manual_socket_overrides_enabled ()) {
             const int pubsub_hwm =
               perf::single::resolve_single_socket_hwm (true);

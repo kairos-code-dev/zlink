@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -71,7 +72,7 @@ final class PerfMultiSpot {
                     PerfUtil.resetAndWritePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     if (!publishWhenWritableUntil(publisher, active,
-                            activeEnd)) {
+                            activeEnd, config.transport())) {
                         break;
                     }
                     if (latencyOnly) {
@@ -167,9 +168,14 @@ final class PerfMultiSpot {
     // unbounded, terminated by the active deadline.
     private static boolean publishWhenWritableUntil(Spot publisher,
                                                     Message message,
-                                                    long deadlineNanos) {
+                                                    long deadlineNanos,
+                                                    String transport) {
         while (System.nanoTime() < deadlineNanos) {
             if (tryPublish(publisher, message, SendFlags.DONT_WAIT)) {
+                return true;
+            }
+            if ("tcp".equals(transport)
+                && tryPublish(publisher, message, SendFlags.NONE)) {
                 return true;
             }
             java.util.concurrent.locks.LockSupport.parkNanos(200_000L);
@@ -179,12 +185,9 @@ final class PerfMultiSpot {
 
     private static boolean tryPublish(Spot publisher, Message message,
                                       SendFlags flags) {
-        // zlink consumes the submitted message, so a fresh frame is required
-        // per attempt; the payload buffer itself is reused via the caller's
-        // resetAndWritePayload (no per-message template reallocation).
-        try (Message outbound = Message.copyOf(message)) {
+        try {
             return publisher.publish(TOPIC)
-                .message(outbound)
+                .message(message)
                 .flags(flags)
                 .submit();
         } catch (SubmitException ex) {
@@ -229,10 +232,17 @@ final class PerfMultiSpot {
             PerfControl.emitClientReady(config.size());
             PerfControl.awaitStart(config.size(), "spot client");
             control.waitStart(config.size(), config.connectReadyTimeoutMs());
-            long activeEnd = System.nanoTime()
-                + Duration.ofSeconds(config.durationSeconds()).toNanos();
-            long finishDeadline = activeEnd
-                + Duration.ofMillis(postPhaseSettleMs()).toNanos();
+            long activeDurationNanos =
+                Duration.ofSeconds(config.durationSeconds()).toNanos();
+            long drainGraceNanos = drainGraceNanos(activeDurationNanos,
+                config.size());
+            long postSettleNanos =
+                Duration.ofMillis(postPhaseSettleMs(config.size())).toNanos();
+            long initialDeadline = System.nanoTime() + activeDurationNanos
+                + drainGraceNanos + postSettleNanos;
+            AtomicBoolean stopWorkers = new AtomicBoolean(false);
+            AtomicLong senderWindowEndNanos = new AtomicLong();
+            AtomicLong collectionDeadlineNanos = new AtomicLong(initialDeadline);
 
             // C parity: perf_multi_spot_client.cpp start_spot_recv_workers
             // (~853-889) + spot_client_recv_worker_loop (~832-851). A pool of
@@ -246,8 +256,11 @@ final class PerfMultiSpot {
                 final int workerId = w;
                 workers[w] = new Thread(() -> {
                     TopicMessage reusable = new TopicMessage();
+                    LatencySampler sampler = new LatencySampler();
                     try {
-                        while (System.nanoTime() < finishDeadline
+                        while (System.nanoTime()
+                            < collectionDeadlineNanos.get()
+                            && !stopWorkers.get()
                             && failure.get() == null) {
                             boolean progressed = false;
                             for (int i = workerId; i < n; i += workerCount) {
@@ -255,8 +268,13 @@ final class PerfMultiSpot {
                                     continue;
                                 }
                                 if (drainSubscriber(subscribers.get(i),
-                                        metrics, config.size(), activeEnd,
-                                        cooldownSeen, i, reusable)) {
+                                        metrics, config.size(),
+                                        activeDurationNanos,
+                                        senderWindowEndNanos,
+                                        collectionDeadlineNanos,
+                                        drainGraceNanos,
+                                        postSettleNanos,
+                                        cooldownSeen, i, reusable, sampler)) {
                                     progressed = true;
                                 }
                             }
@@ -283,9 +301,21 @@ final class PerfMultiSpot {
             }
             for (Thread t : workers) {
                 long remainingMs = Math.max(1L,
-                    Duration.ofNanos(finishDeadline - System.nanoTime())
+                    Duration.ofNanos(collectionDeadlineNanos.get()
+                        - System.nanoTime())
                         .toMillis() + 1000L);
                 t.join(remainingMs);
+            }
+            stopWorkers.set(true);
+            for (Thread t : workers) {
+                if (t.isAlive()) {
+                    t.interrupt();
+                }
+            }
+            for (Thread t : workers) {
+                if (t.isAlive()) {
+                    t.join(1000L);
+                }
             }
             Throwable ex = failure.get();
             if (ex != null) {
@@ -303,10 +333,15 @@ final class PerfMultiSpot {
     private static boolean drainSubscriber(Spot subscriber,
                                         PerfUtil.Metrics metrics,
                                         int expectedSize,
-                                        long activeEnd,
+                                        long activeDurationNanos,
+                                        AtomicLong senderWindowEndNanos,
+                                        AtomicLong collectionDeadlineNanos,
+                                        long drainGraceNanos,
+                                        long postSettleNanos,
                                         boolean[] cooldownSeen,
                                         int index,
-                                        TopicMessage received) {
+                                        TopicMessage received,
+                                        LatencySampler sampler) {
         boolean progressed = false;
         // C parity (perf_multi_spot_client.cpp drain_spot_client_slot): drain
         // until the recv would block (EAGAIN) with no fixed per-wake cap.
@@ -314,16 +349,14 @@ final class PerfMultiSpot {
             if (!subscribeNoWait(subscriber, received)) {
                 return progressed;
             }
-            try {
-                progressed = true;
-                int phase = handleDelivery(received, metrics, expectedSize,
-                    activeEnd);
-                if (phase == PerfUtil.PHASE_COOLDOWN) {
-                    cooldownSeen[index] = true;
-                    return progressed;
-                }
-            } finally {
-                received.close();
+            progressed = true;
+            int phase = handleDelivery(received, metrics, expectedSize,
+                activeDurationNanos, senderWindowEndNanos,
+                collectionDeadlineNanos, drainGraceNanos, postSettleNanos,
+                sampler);
+            if (phase == PerfUtil.PHASE_COOLDOWN) {
+                cooldownSeen[index] = true;
+                return progressed;
             }
         }
     }
@@ -369,7 +402,12 @@ final class PerfMultiSpot {
     private static int handleDelivery(TopicMessage received,
                                       PerfUtil.Metrics metrics,
                                       int expectedSize,
-                                      long activeEnd) {
+                                      long activeDurationNanos,
+                                      AtomicLong senderWindowEndNanos,
+                                      AtomicLong collectionDeadlineNanos,
+                                      long drainGraceNanos,
+                                      long postSettleNanos,
+                                      LatencySampler sampler) {
         if (received == null || received.parts().isEmpty()) {
             return PerfUtil.PHASE_UNKNOWN;
         }
@@ -385,16 +423,67 @@ final class PerfMultiSpot {
             return PerfUtil.PHASE_UNKNOWN;
         }
         if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-            if (System.nanoTime() <= activeEnd) {
-                metrics.recordNanos(header.latencyNanos());
+            long senderWindowEnd = senderWindowEndNanos.get();
+            if (senderWindowEnd == 0L) {
+                long windowStart = header.sentTsNanos() > 0L
+                    ? header.sentTsNanos()
+                    : System.nanoTime();
+                long candidateEnd = windowStart + activeDurationNanos;
+                if (senderWindowEndNanos.compareAndSet(0L, candidateEnd)) {
+                    senderWindowEnd = candidateEnd;
+                    collectionDeadlineNanos.updateAndGet(current ->
+                        Math.max(current, candidateEnd + drainGraceNanos
+                            + postSettleNanos));
+                } else {
+                    senderWindowEnd = senderWindowEndNanos.get();
+                }
+            }
+            if (header.sentTsNanos() <= 0L
+                || header.sentTsNanos() <= senderWindowEnd) {
+                metrics.recordEvent();
+                if (sampler.shouldSample()) {
+                    metrics.recordLatencySampleNanos(header.latencyNanos());
+                }
             }
             return PerfUtil.PHASE_ACTIVE;
         }
         return header.phase();
     }
 
-    private static int postPhaseSettleMs() {
-        return PerfUtil.intEnv("PERF_MULTI_SPOT_POST_PHASE_SETTLE_MS", 0);
+    private static final class LatencySampler {
+        private final int stride = latencySampleStride();
+        private long sampleIndex;
+
+        boolean shouldSample() {
+            sampleIndex++;
+            return stride <= 1 || sampleIndex == 1 || sampleIndex % stride == 0;
+        }
+    }
+
+    private static int latencySampleStride() {
+        return Math.max(1,
+            PerfUtil.intEnv("PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", 32));
+    }
+
+    private static long drainGraceNanos(long activeDurationNanos, int msgSize) {
+        int multiplier = 1;
+        if (msgSize >= 262144) {
+            multiplier = 4;
+        } else if (msgSize >= 131072) {
+            multiplier = 2;
+        }
+        return activeDurationNanos * multiplier;
+    }
+
+    private static int postPhaseSettleMs(int msgSize) {
+        int defaultMs = 0;
+        if (msgSize >= 262144) {
+            defaultMs = 2000;
+        } else if (msgSize >= 131072) {
+            defaultMs = 1500;
+        }
+        return PerfUtil.intEnv("PERF_MULTI_SPOT_POST_PHASE_SETTLE_MS",
+            defaultMs);
     }
 
     private static boolean latencyOnlyMode() {

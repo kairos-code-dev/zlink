@@ -33,6 +33,10 @@ final class PerfMultiPubSub {
     private static final String TOPIC = "perf.topic";
     private static final MonitorEventType READY_EVENT =
         MonitorEventType.CONNECTION_READY;
+    private static final long STOP_DRAIN_GRACE_NANOS =
+        Duration.ofMillis(500).toNanos();
+    private static final long STOP_PUBLISH_GRACE_NANOS =
+        Duration.ofSeconds(2).toNanos();
 
     private PerfMultiPubSub() {
     }
@@ -132,23 +136,24 @@ final class PerfMultiPubSub {
                 pollSockets, PollEventFlag.POLLIN)) {
                 long activeEnd = System.nanoTime()
                     + config.durationSeconds() * 1_000_000_000L;
-                // The active deadline is authoritative for measurement. The
-                // server stop token still ends the phase early when delivered,
-                // but a lost stop token must not leave the client blocked in
-                // poll after the measured window has elapsed.
+                // The active deadline is authoritative for measurement. After
+                // it expires, briefly drain for the stop token so normal
+                // teardown completes, but do not let a large PUB/SUB backlog
+                // turn the control terminator into an unbounded test hang.
                 boolean phaseDone = false;
                 while (!phaseDone) {
                     long remainingNs = activeEnd - System.nanoTime();
-                    if (remainingNs <= 0L) {
+                    if (remainingNs <= -STOP_DRAIN_GRACE_NANOS) {
                         break;
                     }
+                    long pollBudgetNs = remainingNs > 0L
+                        ? remainingNs
+                        : Math.max(1L,
+                            STOP_DRAIN_GRACE_NANOS + remainingNs);
                     int waitMs = (int) Math.min(Integer.MAX_VALUE,
-                        Math.max(1L, remainingNs / 1_000_000L));
+                        Math.max(1L, pollBudgetNs / 1_000_000L));
                     int readyCount = pollSet.poll(waitMs);
                     if (readyCount <= 0) {
-                        if (System.nanoTime() >= activeEnd) {
-                            break;
-                        }
                         continue;
                     }
                     for (int readyOffset = 0; readyOffset < readyCount; readyOffset++) {
@@ -246,10 +251,12 @@ final class PerfMultiPubSub {
         }
     }
 
-    // C parity (perf_multi_pubsub_server.cpp publish_stop_token): publish the
-    // stop token on the topic with blocking semantics, retrying through
-    // transient backpressure so the subscriber always observes the terminator.
+    // Publish the stop token on the topic with blocking semantics, retrying
+    // through transient backpressure. The retry is bounded because the Java
+    // client records a fixed active window and may already be draining a large
+    // backlog; teardown must not outlive the measured case.
     private static void publishStopToken(PubSocket pub) {
+        long deadline = System.nanoTime() + STOP_PUBLISH_GRACE_NANOS;
         while (true) {
             try (Message stop = PerfStopToken.newMessage()) {
                 if (pub.publish(TOPIC)
@@ -262,6 +269,12 @@ final class PerfMultiPubSub {
                 if (!isTransientSubmit(ex)) {
                     throw ex;
                 }
+                if (System.nanoTime() >= deadline) {
+                    return;
+                }
+            }
+            if (System.nanoTime() >= deadline) {
+                return;
             }
         }
     }

@@ -136,6 +136,21 @@ class spot_t
                   message_t &part_,
                   send_flags_t flags_ = send_flags_t::none)
     {
+        if (flags_ == send_flags_t::dontwait) {
+            send_result_t result = send_result_t::sent;
+            if (publish_no_wait_result_impl (
+                  result, topic_.c_str (), part_)
+                != 0) {
+                const int err = zlink_errno ();
+                throw submit_error_t (
+                  zlink::detail::submit_result_from_errno (err), err);
+            }
+            if (result == send_result_t::not_ready)
+                throw submit_error_t (
+                  submit_result_t::not_connected, zlink_errno ());
+            return result == send_result_t::sent;
+        }
+
         const int rc = publish_impl (topic_.c_str (), part_, flags_);
         if (rc != 0)
         {

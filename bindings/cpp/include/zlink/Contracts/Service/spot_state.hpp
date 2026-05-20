@@ -153,6 +153,7 @@ inline bool can_borrow_single_send_part (spot_op_kind_t kind_) noexcept
     case spot_op_kind_t::raw_routed_send:
     case spot_op_kind_t::raw_publish:
     case spot_op_kind_t::raw_router_send_spot:
+    case spot_op_kind_t::publish:
         return true;
     default:
         return false;

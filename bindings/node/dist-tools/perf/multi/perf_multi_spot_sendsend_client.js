@@ -2,50 +2,29 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeaderFromParts, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { requireNative } = require('../../dist/zlink/runtime/native/native');
+const { createPayload, createRunId, sleepImmediate, summarizeMetrics, } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii'));
+function activeSpotSlotLimit(totalSlots, msgSize) {
+    if (msgSize >= 131072) {
+        return Math.min(totalSlots, 8);
+    }
+    if (msgSize >= 65536) {
+        return Math.min(totalSlots, 32);
+    }
+    return totalSlots;
+}
 function closeQuietly(resource) {
     try {
         resource?.close();
     }
     catch (err) {
         console.error(`[multi-spot-sendsend-client] close failed: ${err}`);
-    }
-}
-function tryRecvRouted(spot, received) {
-    try {
-        return spot.recvRouted(received, zlink.RecvFlags.DontWait);
-    }
-    catch (error) {
-        if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
-            return false;
-        }
-        throw error;
-    }
-}
-function trySpotSend(spot, payload) {
-    try {
-        return spot.sendToSpot(SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID)
-            .message(payload)
-            .flags(zlink.SendFlags.DontWait)
-            .submit();
-    }
-    catch (error) {
-        if (error instanceof zlink.SubmitError &&
-            error.result === zlink.SubmitResult.Backpressured) {
-            return false;
-        }
-        const text = String(error && error.message ? error.message : error);
-        if ((error && error.code === 'EAGAIN') ||
-            /Resource temporarily unavailable|temporarily unavailable|would block/i.test(text)) {
-            return false;
-        }
-        throw error;
     }
 }
 async function main() {
@@ -79,9 +58,7 @@ async function main() {
             spot.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`PERF_SPOT_SENDSEND_CLIENT_SPOT_${i}`, 'ascii')));
             slots.push({
                 spot,
-                payload: createPayload(options.msgSize),
-                inflight: false,
-                received: new zlink.Received()
+                payload: createPayload(options.msgSize)
             });
         }
         ctx.recalculateAutoHwm();
@@ -120,68 +97,8 @@ async function main() {
             await Promise.race([startFromRunner, startFromControl, sleepImmediate()]);
         }
         const runId = createRunId(1);
-        const activeStartNs = currentEpochNs();
-        const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
-        const collector = createMetricCollector({
-            runId,
-            msgSize: options.msgSize,
-            activeStartNs,
-            activeStopNs,
-            roundTrip: true,
-        });
-        let seq = 1n;
-        const poller = new zlink.Poller();
-        for (let i = 0; i < slots.length; i += 1) {
-            poller.add(slots[i].spot, [POLLIN, POLLOUT], i);
-        }
-        const drainReplies = () => {
-            let progressed = false;
-            for (const slot of slots) {
-                while (true) {
-                    const hasReceived = tryRecvRouted(slot.spot, slot.received);
-                    if (!hasReceived) {
-                        break;
-                    }
-                    try {
-                        slot.inflight = false;
-                        collector.record(decodeMetricHeaderFromParts(slot.received.parts), currentEpochNs());
-                        progressed = true;
-                    }
-                    finally {
-                        slot.received.close();
-                    }
-                }
-            }
-            return progressed;
-        };
-        try {
-            while (currentEpochNs() < activeStopNs) {
-                let progressed = drainReplies();
-                for (const slot of slots) {
-                    if (slot.inflight) {
-                        continue;
-                    }
-                    stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-                    if (trySpotSend(slot.spot, slot.payload)) {
-                        slot.inflight = true;
-                        seq += 1n;
-                        progressed = true;
-                    }
-                }
-                if (!progressed) {
-                    poller.waitMany(Math.max(1, poller.size), -1);
-                }
-            }
-            while (slots.some((slot) => slot.inflight)) {
-                if (!drainReplies()) {
-                    poller.waitMany(Math.max(1, poller.size), -1);
-                }
-            }
-        }
-        finally {
-            poller.close();
-        }
-        const result = await collector.finish();
+        const activeSlots = slots.slice(0, activeSpotSlotLimit(slots.length, options.msgSize));
+        const result = requireNative().spotPerfSendSendLoop(activeSlots.map((slot) => slot.spot.nativeHandle()), SERVER_NODE_ROUTING_ID.toBytes(), SERVER_SPOT_ROUTING_ID.toBytes(), activeSlots.map((slot) => slot.payload), options.msgSize, options.duration, runId);
         for (const metricLine of summarizeMetrics('MULTI_SPOT_SENDSEND', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
             console.log(metricLine);
         }

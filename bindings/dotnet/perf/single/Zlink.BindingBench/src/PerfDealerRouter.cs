@@ -7,8 +7,6 @@ using static PerfRunner;
 
 internal static class PerfDealerRouter
 {
-    private static readonly RoutingId ClientRoutingId =
-        RoutingId.FromBytes("CLIENT"u8);
     private const uint RunId = 1;
     private const uint ActivePhase = 1;
 
@@ -50,8 +48,6 @@ internal static class PerfDealerRouter
         ApplySingleContextOptions(ctx);
         using var receiver = new RouterSocket(ctx);
         using var sender = new DealerSocket(ctx);
-        ApplySingleSocketOptions(receiver);
-        ApplySingleSocketOptions(sender);
         ApplySingleAutoHwmMsgUnit(ctx, size);
         RecalculateSingleAutoHwm(ctx);
         ConfigureTlsServerIfNeeded(receiver, transport);
@@ -62,13 +58,13 @@ internal static class PerfDealerRouter
 
         try
         {
-            receiverMonitor = receiver.MonitorOpen(SocketEvent.ConnectionReady);
-            senderMonitor = sender.MonitorOpen(SocketEvent.ConnectionReady);
-
-            sender.SetRoutingId(ClientRoutingId);
             receiver.Bind(endpoint);
             endpoint = receiver.Options.LastEndpoint;
+            receiverMonitor = receiver.MonitorOpen(SocketEvent.ConnectionReady);
+            senderMonitor = sender.MonitorOpen(SocketEvent.ConnectionReady);
             sender.Connect(endpoint);
+            ApplySingleSocketOptions(receiver);
+            ApplySingleSocketOptions(sender);
             if (!(WaitForConnectionReady(receiverMonitor, readyTimeoutMs)
                 && WaitForConnectionReady(senderMonitor, readyTimeoutMs)))
             {
@@ -138,10 +134,12 @@ internal static class PerfDealerRouter
         long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
 
         long received = 0;
-        Exception? recvError = null;
+        Exception? sendError = null;
         var samples = new List<double>(Math.Max(0, latencyCap));
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
+        ulong seq = 1;
+        bool stopReceived = false;
 
         // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: active phase ends only
         // when the receiver observes the wire-level stop token. Active sends
@@ -153,12 +151,10 @@ internal static class PerfDealerRouter
         {
             if (StopToken.IsStopToken(body))
                 return true;
-            long recvTicks = Stopwatch.GetTimestamp();
             if (TryDecodeExpectedSingleHeader(body, msgSize, ActivePhase,
-                    out var header, RunId)
-                && recvTicks <= deadlineTicks)
+                    out var header, RunId))
             {
-                Interlocked.Increment(ref received);
+                received++;
                 ulong nowNs = EpochNs();
                 if (nowNs >= header.SentTsNs)
                 {
@@ -170,82 +166,104 @@ internal static class PerfDealerRouter
             return false;
         }
 
-        var recvThread = new Thread(() =>
+        var senderThread = new Thread(() =>
         {
-            using var maybe = new Received();
             try
             {
                 while (true)
                 {
+                    long nowTicks = Stopwatch.GetTimestamp();
+                    if (nowTicks >= deadlineTicks)
+                        break;
+                    StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize,
+                        seq, EpochNsFromTimestamp(nowTicks));
+                    seq++;
                     try
                     {
-                        if (!receiver.Recv(maybe, RecvFlags.None))
+                        if (PerfSocketIo.Send(sender, payload, SendFlags.None) <= 0)
                             continue;
                     }
                     catch (ZlinkException ex)
-                        when (IsInterrupted(ex.InternalErrno)
-                              || IsWouldBlock(ex.InternalErrno))
+                        when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
                     {
                         continue;
                     }
-
-                    bool drain = true;
-                    while (drain)
-                    {
-                        if (TryGetPayloadPart(maybe, out Message payloadPart))
-                        {
-                            if (ProcessBody(payloadPart.AsReadOnlySpan()))
-                                return;
-                        }
-                        drain = receiver.Recv(maybe, RecvFlags.DontWait);
-                    }
                 }
             }
-            catch (Exception ex)
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {
-                recvError = ex;
-            }
-        });
-        recvThread.IsBackground = true;
-        recvThread.Start();
-
-        bool sendFailed = false;
-        ulong seq = 1;
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize,
-                seq, EpochNs());
-            seq++;
-            try
-            {
-                if (PerfSocketIo.Send(sender, payload, SendFlags.None) <= 0)
-                    continue;
-            }
-            catch (ZlinkException ex)
-                when (PerfShared.IsTransientBackpressure(ex.InternalErrno))
-            {
-                continue;
+                sendError = ex;
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"[single-dealer-router] send failed: {ex.Message}");
-                sendFailed = true;
-                break;
+                sendError = ex;
+            }
+            finally
+            {
+                SendStopTokenBlocking(sender, "[single-dealer-router]");
+            }
+        });
+        senderThread.IsBackground = true;
+        senderThread.Start();
+
+        using var poller = new Poller();
+        var events = new PollEvent[1];
+        poller.Add(receiver, PollEventFlags.PollIn);
+        using var maybe = new Received();
+        try
+        {
+            while (!stopReceived)
+            {
+                if (!WaitForInputSignalDriven(poller, events))
+                    continue;
+
+                while (TryReceive(receiver, maybe))
+                {
+                    if (TryGetPayloadPart(maybe, out Message payloadPart))
+                    {
+                        if (ProcessBody(payloadPart.AsReadOnlySpan()))
+                        {
+                            stopReceived = true;
+                            break;
+                        }
+                    }
+                }
             }
         }
+        catch (Exception ex)
+        {
+            sendError ??= ex;
+        }
 
-        SendStopTokenBlocking(sender, "[single-dealer-router]");
-        recvThread.Join();
+        senderThread.Join();
 
         latencySamples = samples;
         receivedOut = received;
-        if (sendFailed || recvError != null)
+        if (sendError != null)
         {
             DebugLog("single_dealer_router_error:active_failed");
             return false;
         }
 
         return received > 0 && latencySamples.Count > 0;
+    }
+
+    private static bool TryReceive(RouterSocket receiver, Received result)
+    {
+        try
+        {
+            return receiver.Recv(result, RecvFlags.DontWait);
+        }
+        catch (ZlinkRecvException)
+        {
+            return false;
+        }
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                        || IsWouldBlock(ex.InternalErrno))
+        {
+            return false;
+        }
     }
 
     private static bool TryReceiveBlocking(RouterSocket receiver, Received result)

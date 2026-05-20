@@ -42,7 +42,45 @@ def parse_csv(value):
     return [item.strip() for item in (value or "").split(",") if item.strip()]
 
 
-def single_auto_hwm_detail_lines(patterns, msg_sizes):
+def parse_auto_hwm_detail_line(line):
+    stripped = (line or "").strip()
+    if not stripped.startswith("AUTO_HWM_DETAIL,"):
+        return None
+    fields = {}
+    for item in stripped.split(",")[1:]:
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        fields[key.strip()] = value.strip()
+    return fields or None
+
+
+def auto_hwm_bytes_to_kb_display(value):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return "?"
+    if parsed <= 0:
+        return "0"
+    if parsed % 1024 == 0:
+        return str(parsed // 1024)
+    return f"{parsed / 1024.0:.1f}"
+
+
+def load_auto_hwm_detail_rows(path):
+    if not path:
+        return []
+    rows = []
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            parsed = parse_auto_hwm_detail_line(line)
+            if parsed:
+                rows.append(parsed)
+    return rows
+
+
+def single_auto_hwm_detail_lines(patterns, msg_sizes, rows=None):
+    rows = rows or []
     yield "## Auto-HWM Detail"
     for pattern in patterns:
         yield f"- pattern: {pattern}"
@@ -54,6 +92,52 @@ def single_auto_hwm_detail_lines(patterns, msg_sizes):
             "|---------|-----------|-------|--------|------|------|--------|--------|"
             "-----------|-----------|------------|-------|"
         )
+        display_rows = []
+        seen = set()
+        for row in rows:
+            if row.get("pattern", "").upper() != pattern.upper():
+                continue
+            display = dict(row)
+            display["sndbuf_kb"] = auto_hwm_bytes_to_kb_display(row.get("effective_sndbuf", ""))
+            display["rcvbuf_kb"] = auto_hwm_bytes_to_kb_display(row.get("effective_rcvbuf", ""))
+            key = (
+                display.get("msg_size", ""),
+                display.get("component", ""),
+                display.get("owner", ""),
+                display.get("socket", ""),
+                display.get("socket_type", ""),
+                display.get("role", ""),
+                display.get("sndhwm", ""),
+                display.get("rcvhwm", ""),
+                display.get("sndbuf_kb", ""),
+                display.get("rcvbuf_kb", ""),
+                display.get("effective_message_bytes", ""),
+                display.get("socket_message_slots", ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            display_rows.append(display)
+        display_rows.sort(
+            key=lambda row: (
+                int(row.get("msg_size", "0") or "0"),
+                row.get("component", ""),
+                row.get("owner", ""),
+                row.get("socket", ""),
+            )
+        )
+        if display_rows:
+            for row in display_rows:
+                yield (
+                    f"| {row.get('msg_size', '?')} | {row.get('component', '?')} | "
+                    f"{row.get('owner', '?')} | {row.get('socket', '?')} | "
+                    f"{row.get('socket_type', '?')} | {row.get('role', '?')} | "
+                    f"{row.get('sndhwm', '?')} | {row.get('rcvhwm', '?')} | "
+                    f"{row.get('sndbuf_kb', '?')} | {row.get('rcvbuf_kb', '?')} | "
+                    f"{row.get('effective_message_bytes', '?')} | "
+                    f"{row.get('socket_message_slots', '?')} |"
+                )
+            continue
         for msg_size in msg_sizes:
             yield (
                 f"| {msg_size} | unavailable | binding | n/a | n/a | n/a | "
@@ -707,6 +791,7 @@ def main(argv=None):
     single = subparsers.add_parser("single-auto-hwm")
     single.add_argument("--patterns", required=True)
     single.add_argument("--msg-sizes", required=True)
+    single.add_argument("--raw-results", default="")
 
     multi = subparsers.add_parser("multi-auto-hwm")
     multi.add_argument("--pattern", required=True)
@@ -751,7 +836,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == "single-auto-hwm":
         for line in single_auto_hwm_detail_lines(
-            parse_csv(args.patterns), parse_csv(args.msg_sizes)
+            parse_csv(args.patterns),
+            parse_csv(args.msg_sizes),
+            load_auto_hwm_detail_rows(args.raw_results),
         ):
             print(line)
         return

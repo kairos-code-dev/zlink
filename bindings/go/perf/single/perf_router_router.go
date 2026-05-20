@@ -1,8 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"syscall"
+	"time"
 	zlink "zlink.systems/zlink/contracts"
 	"zlink.systems/zlink/perf/internal/perfcommon"
 )
@@ -45,6 +48,8 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(server.SetRoutingID(serverID))
 	debugf("router/router set client routing id")
 	perfcommon.Must(client.SetRoutingID(clientID))
+	perfcommon.Must(server.SetMandatory(true))
+	perfcommon.Must(client.SetMandatory(true))
 	debugf("router/router set connect routing id")
 	perfcommon.Must(client.SetConnectRoutingID(serverID))
 	debugf("router/router connect %s", endpoint)
@@ -55,13 +60,116 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 	debugf("router/router wait connected")
 	perfcommon.WaitConnectedWithTimeout(perfcommon.SingleReadyTimeout(), serverMon, clientMon)
 	debugf("router/router wait route ready")
-	waitSingleRouteReady("router/router perf endpoint", func(payload []byte) error {
-		_, err := client.SendTo(serverID).Message(perfcommon.NewMessage(payload)).Submit(nil)
-		return err
-	}, server)
+	targetID := waitRouterRouterRouteReady(server, client, serverID)
 
-	return runSingleOneWay(cfg, server, func(payload []byte) error {
-		_, err := client.SendTo(serverID).Message(perfcommon.NewMessage(payload)).Submit(nil)
+	result := runSingleOneWayWithTransient(cfg, server, func(payload []byte) error {
+		_, err := client.SendTo(targetID).Message(perfcommon.NewMessage(payload)).Submit(nil)
 		return err
-	})
+	}, isRouterRouterSendTransient)
+	perfcommon.PrintSingleAutoHWMDetail(serverMon, cfg.pattern, cfg.transport, "receiver", zlink.SocketTypeRouter, cfg.msgSize)
+	perfcommon.PrintSingleAutoHWMDetail(clientMon, cfg.pattern, cfg.transport, "sender", zlink.SocketTypeRouter, cfg.msgSize)
+	return result
+}
+
+func isRouterRouterSendTransient(err error) bool {
+	if perfcommon.IsTransient(err) {
+		return true
+	}
+	var zerr zlink.ZlinkError
+	if !errors.As(err, &zerr) {
+		return false
+	}
+	switch zerr.InternalErrno() {
+	case int(syscall.EHOSTUNREACH), int(syscall.ENOTCONN):
+		return true
+	default:
+		return false
+	}
+}
+
+func waitRouterRouterRouteReady(
+	server *zlink.RouterSocket,
+	client *zlink.RouterSocket,
+	serverID zlink.RoutingID,
+) zlink.RoutingID {
+	deadline := perfcommon.SingleReadyTimeout()
+	ping := []byte("PING")
+	pong := []byte("PONG")
+	stopAt := time.Now().Add(deadline)
+	serverPoller := perfcommon.NewSocketPoller(server, perfcommon.ZLinkPollIn)
+	defer serverPoller.Close()
+	clientPoller := perfcommon.NewSocketPoller(client, perfcommon.ZLinkPollIn)
+	defer clientPoller.Close()
+
+	for time.Now().Before(stopAt) {
+		_, sendErr := client.SendTo(serverID).Message(perfcommon.NewMessage(ping)).Submit(nil)
+		if sendErr != nil && !perfcommon.IsTransient(sendErr) {
+			perfcommon.Must(sendErr)
+		}
+		event, waitErr := serverPoller.Wait(time.Until(stopAt))
+		if waitErr != nil {
+			if perfcommon.IsTransient(waitErr) {
+				continue
+			}
+			perfcommon.Must(waitErr)
+		}
+		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+			continue
+		}
+		var received zlink.Received
+		var clientID zlink.RoutingID
+		for {
+			ok, recvErr := server.Recv(&received, zlink.RecvFlagsDontWait)
+			if recvErr != nil {
+				if perfcommon.IsTransient(recvErr) {
+					break
+				}
+				perfcommon.Must(recvErr)
+			}
+			if !ok {
+				break
+			}
+			part, partErr := received.SinglePartOrError()
+			if partErr == nil && string(part.Data()) == string(ping) && received.HasRoutingID() {
+				clientID = received.RoutingID()
+			}
+			_ = received.Close()
+		}
+		if clientID.Size() == 0 {
+			continue
+		}
+		_, err := server.SendTo(clientID).Message(perfcommon.NewMessage(pong)).Submit(nil)
+		perfcommon.Must(err)
+		clientEvent, clientWaitErr := clientPoller.Wait(time.Until(stopAt))
+		if clientWaitErr != nil {
+			if perfcommon.IsTransient(clientWaitErr) {
+				continue
+			}
+			perfcommon.Must(clientWaitErr)
+		}
+		if clientEvent == nil || clientEvent.Events&perfcommon.ZLinkPollIn == 0 {
+			continue
+		}
+		for {
+			ok, recvErr := client.Recv(&received, zlink.RecvFlagsDontWait)
+			if recvErr != nil {
+				if perfcommon.IsTransient(recvErr) {
+					break
+				}
+				perfcommon.Must(recvErr)
+			}
+			if !ok {
+				break
+			}
+			part, partErr := received.SinglePartOrError()
+			targetID := received.RoutingID()
+			isPong := partErr == nil && string(part.Data()) == string(pong)
+			_ = received.Close()
+			if isPong && targetID.Size() > 0 {
+				return targetID
+			}
+		}
+	}
+	perfcommon.Must(fmt.Errorf("router/router perf endpoint did not complete reverse route probe"))
+	return serverID
 }

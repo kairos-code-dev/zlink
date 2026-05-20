@@ -31,6 +31,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(xpub.subscribe, undefined);
     assert.equal(xpub.onReceive, undefined);
     assert.equal(typeof sub.subscribe, 'function');
+    assert.equal(typeof sub.subscribePayloadInto, 'function');
     assert.equal(typeof sub.setSubscription, 'function');
     assert.equal(typeof sub.unsetSubscription, 'function');
     assert.equal(typeof sub.attachDiscovery, 'function');
@@ -40,6 +41,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(sub.setRoutingId, undefined);
     assert.equal(sub.onSubscribe, undefined);
     assert.equal(typeof xsub.subscribe, 'function');
+    assert.equal(typeof xsub.subscribePayloadInto, 'function');
     assert.equal(typeof xsub.options, 'object');
     assert.equal(typeof xsub.options.topicsCount, 'number');
     assert.equal(xsub.topicsCount, undefined);
@@ -109,6 +111,10 @@ test('canonical socket classes expose only directionally valid methods', () => {
     const spotNode = new zlink.SpotNode(ctx);
     assert.equal(spotNode.lastEndpoint, undefined);
     assert.equal(typeof spotNode.setRoutingId, 'function');
+    assert.equal(typeof spotNode.connectRouterChannelPeer, 'function');
+    assert.equal(typeof spotNode.disconnectRouterChannelPeer, 'function');
+    assert.equal(typeof spotNode.disconnectRouterChannelPeerRid, 'function');
+    assert.equal(typeof spotNode.attachSpotRouteChannelDiscovery, 'function');
     assert.equal(typeof spotNode.attachChannelDealer, 'function');
     assert.equal(typeof spotNode.attachChannelDealerManual, 'function');
     assert.equal(typeof spotNode.attachPubIngress, 'function');
@@ -137,10 +143,15 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(typeof actor.closeBoundSession, 'function');
     const spot = spotNode.createSpot();
     assert.equal(typeof spot.publish, 'function');
+    assert.equal(typeof spot.publishFrom, 'function');
     assert.equal(typeof spot.sendChannel, 'function');
     assert.equal(typeof spot.sendToSpot, 'function');
+    assert.equal(typeof spot.sendToSpotFrom, 'function');
     assert.equal(typeof spot.requestChannel, 'function');
+    assert.equal(typeof spot.requestToSpotFrom, 'function');
     assert.equal(typeof spot.subscribe, 'function');
+    assert.equal(typeof spot.subscribePayloadInto, 'function');
+    assert.equal(typeof spot.recvRoutedPayloadInto, 'function');
     assert.equal(typeof spot.receiveSubscriptionEvent, 'function');
     assert.equal(typeof spot.onDispatchEvent, 'function');
     assert.equal(typeof spot.onRoutedReceive, 'function');

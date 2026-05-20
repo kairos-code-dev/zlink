@@ -30,3 +30,36 @@ test('dealer/router uses routing id through Received and routed send', () => {
     router.close();
     ctx.close();
 });
+test('router recvInto fills caller buffer and returns routing metadata', () => {
+    const ctx = new zlink.Context();
+    const router = new zlink.RouterSocket(ctx);
+    const dealer = new zlink.DealerSocket(ctx);
+    router.bind('inproc://dealer-router-recv-payload-into');
+    dealer.connect('inproc://dealer-router-recv-payload-into');
+    dealer.send().message(Buffer.from('payload')).submit();
+    const buffer = Buffer.allocUnsafe(4);
+    const received = router.recvInto(buffer);
+    assert.equal(received?.size, 7);
+    assert.ok(received?.routingId);
+    assert.equal(received?.spotRid, null);
+    assert.equal(received?.requestSeq, null);
+    assert.equal(buffer.toString('utf8', 0, 4), 'payl');
+    dealer.close();
+    router.close();
+    ctx.close();
+});
+test('router recvPayloadInto fills caller buffer without materializing Received', () => {
+    const ctx = new zlink.Context();
+    const router = new zlink.RouterSocket(ctx);
+    const dealer = new zlink.DealerSocket(ctx);
+    router.bind('inproc://dealer-router-recv-payload-into');
+    dealer.connect('inproc://dealer-router-recv-payload-into');
+    dealer.send().message(Buffer.from('payload')).submit();
+    const buffer = Buffer.allocUnsafe(4);
+    const size = router.recvPayloadInto(buffer);
+    assert.equal(size, 7);
+    assert.equal(buffer.toString('utf8', 0, 4), 'payl');
+    dealer.close();
+    router.close();
+    ctx.close();
+});

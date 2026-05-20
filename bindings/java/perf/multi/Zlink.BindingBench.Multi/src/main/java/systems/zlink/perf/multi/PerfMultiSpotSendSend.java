@@ -180,10 +180,18 @@ final class PerfMultiSpotSendSend {
                     }
                     continue;
                 }
-                received.send()
-                    .message(received.firstPart())
-                    .flags(SendFlags.DONT_WAIT)
-                    .submit();
+                try (Message reply = received.firstPart().move()) {
+                    try {
+                        received.send()
+                            .message(reply)
+                            .flags(SendFlags.DONT_WAIT)
+                            .submit();
+                    } catch (SubmitException ex) {
+                        if (!isTransientSubmit(ex)) {
+                            throw ex;
+                        }
+                    }
+                }
             }
         }
     }
@@ -334,13 +342,10 @@ final class PerfMultiSpotSendSend {
     }
 
     private static int activeSpotSlotLimit(int totalSlots, int msgSize) {
-        int hwmSlots = Math.max(1, 1_048_576 / Math.max(1, msgSize));
-        if (msgSize >= 262_144)
-            return Math.min(totalSlots, hwmSlots);
         if (msgSize >= 131_072)
             return Math.min(totalSlots, 8);
         if (msgSize >= 65_536)
-            return Math.min(totalSlots, 8);
+            return Math.min(totalSlots, 32);
         return totalSlots;
     }
 

@@ -3,10 +3,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
+const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const { configureTlsServer } = require('../common/perf_tls');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createCallbackEventWaiter, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, subscribeNoWait, } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, subscribeNoWait, } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii'));
@@ -41,7 +42,6 @@ async function main() {
         node.bind(options.peerEndpoint);
         spot = node.createSpot();
         spot.setRoutingId(SERVER_SPOT_ROUTING_ID);
-        const spotSendWaiter = createCallbackEventWaiter((handler) => spot.onSendReady(handler));
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
         applyAutoHwmMsgUnit(ctx, options.msgSize);
@@ -72,22 +72,7 @@ async function main() {
                 }
             }
         })();
-        spot.onRoutedReceive(async (received) => {
-            try {
-                while (!stop) {
-                    const sent = received.send().message(received.parts[0].data())
-                        .flags(zlink.SendFlags.DontWait)
-                        .submit();
-                    if (sent) {
-                        break;
-                    }
-                    await spotSendWaiter.wait();
-                }
-            }
-            finally {
-                received.close();
-            }
-        });
+        requireNative().spotAttachRouteEcho(spot.nativeHandle());
         while (!stop && !(connected && readyCount >= options.clients && startRequested)) {
             let drained = false;
             while (true) {

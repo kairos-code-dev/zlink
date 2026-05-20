@@ -303,6 +303,19 @@ public final class Spot implements AutoCloseable {
               callback::onComplete, flags, timeout));
     }
 
+    boolean requestToSpotPart(RoutingId destNodeRid,
+                              RoutingId destSpotRid,
+                              Message part,
+                              RequestCallback callback,
+                              SendFlags flags,
+                              Duration timeout) {
+        return routedSupport.requestToSpot(destNodeRid, destSpotRid,
+          List.of(Objects.requireNonNull(part, "part")),
+          Objects.requireNonNull(callback, "callback")::onComplete,
+          Objects.requireNonNull(flags, "flags"),
+          Objects.requireNonNull(timeout, "timeout"));
+    }
+
     public RequestOp requestToRouter(RoutingId peerRid) {
         return new RequestBuilder((parts, timeout, flags) ->
             routedSupport.requestToRouter(peerRid, parts, timeout, flags),
@@ -785,7 +798,8 @@ public final class Spot implements AutoCloseable {
         SpotRecvScratch scratch = spotRecvScratch.get();
         while (true) {
             scratch.topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
-            Message part = new Message();
+            Message part =
+              InternalAccess.topicMessagePrepareReusableSinglePart(result);
             boolean success = false;
             try {
                 int rc = Native.spotSubscribePartNoWaitCritical(handle,
@@ -798,9 +812,10 @@ public final class Spot implements AutoCloseable {
                       scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
                     InternalAccess.messageFinishReceive(part, more);
                     if (more) {
+                        Message firstPart = part.move();
                         success = true;
                         Optional<TopicMessage> fresh =
-                          assembleRemainder(scratch, part);
+                          assembleRemainder(scratch, firstPart);
                         if (fresh.isEmpty())
                             return false;
                         result.adoptFrom(fresh.get());

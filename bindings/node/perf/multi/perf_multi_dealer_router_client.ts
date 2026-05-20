@@ -3,12 +3,15 @@
 'use strict';
 
 const zlink = require('@zlink-systems/zlink');
+const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const {
   createMetricCollector,
   createPayload,
   createRunId,
   decodeMetricHeader,
+  HEADER_SIZE,
   currentEpochNs,
+  metricLines,
   summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
@@ -29,6 +32,22 @@ const {
   waitForConnectionReady
 } = require('./perf_multi_runtime');
 
+function tryBorrowedSend(socket, payload, length) {
+  const result = requireNative().socketSendBorrowedNoWaitResult(
+    socket.nativeHandle(),
+    payload,
+    length | 0
+  );
+  if (result === zlink.SubmitResult.Ok) {
+    return true;
+  }
+  if (result === zlink.SubmitResult.Backpressured ||
+      result === zlink.SubmitResult.NotConnected) {
+    return false;
+  }
+  throw new zlink.SubmitError(result, 0, 'borrowed send failed');
+}
+
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
@@ -36,6 +55,7 @@ async function main() {
   const dealers = [];
   const payloads = [];
   const replyBuffers = [];
+  const replyMessages = [];
   const waiting = [];
   const sendPending = [];
   const poller = new zlink.Poller();
@@ -48,7 +68,8 @@ async function main() {
       dealer.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`CLIENT-${i}`, 'ascii')));
       dealers.push(dealer);
       payloads.push(createPayload(options.msgSize));
-      replyBuffers.push(new zlink.Received());
+      replyBuffers.push(Buffer.allocUnsafe(HEADER_SIZE));
+      replyMessages.push(new zlink.Received());
       waiting.push(false);
       sendPending.push(false);
     }
@@ -73,18 +94,51 @@ async function main() {
     });
     let seq = 1n;
 
+    if (options.transport !== 'tcp') {
+      const metrics = requireNative().socketPerfDealerRouterEchoLoop(
+        dealers.map((dealer) => dealer.nativeHandle()),
+        payloads,
+        options.duration,
+        options.msgSize
+      );
+      await sendStopTokenOnce(dealers[0], (bytes) => trySocketSend(dealers[0], bytes));
+      for (const metricLine of metricLines(
+        'MULTI_DEALER_ROUTER',
+        options.transport,
+        options.msgSize,
+        metrics,
+        'current'
+      )) {
+        console.log(metricLine);
+      }
+      return;
+    }
+
     const drainReply = (index) => {
       let progressed = false;
       while (true) {
-        const echoed = replyBuffers[index];
-        if (!recvNoWaitInto(dealers[index], echoed)) {
-          break;
+        if (options.msgSize >= 65536) {
+          const echoed = replyBuffers[index];
+          const receivedBytes = dealers[index].recvInto(echoed, zlink.RecvFlags.DontWait);
+          if (receivedBytes === null) {
+            break;
+          }
+          waiting[index] = false;
+          collector.record(
+            decodeMetricHeader(echoed.subarray(0, Math.min(receivedBytes, echoed.length))),
+            currentEpochNs()
+          );
+        } else {
+          const echoed = replyMessages[index];
+          if (!recvNoWaitInto(dealers[index], echoed)) {
+            break;
+          }
+          waiting[index] = false;
+          collector.record(
+            decodeMetricHeader(echoed.parts[0].data()),
+            currentEpochNs()
+          );
         }
-        waiting[index] = false;
-        collector.record(
-          decodeMetricHeader(echoed.parts[0].data()),
-          currentEpochNs()
-        );
         progressed = true;
       }
       return progressed;
@@ -96,7 +150,10 @@ async function main() {
           continue;
         }
         stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-        if (!trySocketSend(dealers[i], payloads[i])) {
+        const sent = options.transport === 'tcp'
+          ? tryBorrowedSend(dealers[i], payloads[i], options.msgSize)
+          : trySocketSend(dealers[i], payloads[i]);
+        if (!sent) {
           sendPending[i] = true;
           continue;
         }
@@ -151,7 +208,7 @@ async function main() {
     }
   } finally {
     poller.close();
-    for (const reply of replyBuffers) {
+    for (const reply of replyMessages) {
       reply.close();
     }
     for (const dealer of dealers) {

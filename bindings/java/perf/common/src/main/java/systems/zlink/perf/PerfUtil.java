@@ -59,7 +59,7 @@ public final class PerfUtil {
     ) {
     }
 
-    public record Header(byte phase, long latencyNanos) {
+    public record Header(byte phase, long latencyNanos, long sentTsNanos) {
     }
 
     public static final class Result {
@@ -118,6 +118,14 @@ public final class PerfUtil {
 
         public void recordNanos(long value) {
             delegate.recordNanos(value);
+        }
+
+        public void recordEvent() {
+            delegate.recordEvent();
+        }
+
+        public void recordLatencySampleNanos(long value) {
+            delegate.recordLatencySampleNanos(value);
         }
 
         public Result finishSingle(Config config) {

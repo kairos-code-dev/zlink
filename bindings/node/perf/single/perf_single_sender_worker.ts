@@ -72,16 +72,11 @@ async function handshakeRouterSender(port, sender, receiverRoutingId) {
   }
 }
 
-// C parity: bindings/c/perf/single/common/perf_single_one_way.hpp
-// send_socket_active_message (~145-166) sends with ZLINK_DONTWAIT and,
-// with retry_on_eagain_=true, returns send_step_retry on EAGAIN /
-// EWOULDBLOCK / ETIMEDOUT / EINTR so send_active_samples (~168-196) loops
-// (the blocking-sender semantic = retry through backpressure, NEVER a
-// thrown failure or silent drop). The previous blocking `.submit()` here
-// threw `Resource temporarily unavailable` on slow transports (ws/wss/tls
-// with the C-mandated 200ms SNDTIMEO), aborting the worker and dead-
-// locking the main thread's synchronous `-1` poller drain. PERF_POLICY
-// § 1.1.2 / PERF_SINGLE_TEST_POLICY § 1.4.
+// C parity: generic one-way patterns use ZLINK_DONTWAIT + retry-on-EAGAIN
+// through perf_single_one_way.hpp, while routed one-way patterns use
+// ZLINK_SEND_FLAGS_NONE in their active send loops and still treat transient
+// backpressure as retry. In both cases a transient submit must never become
+// a thrown failure or a silent drop. PERF_SINGLE_TEST_POLICY § 1.4.
 function isTransientSubmit(error) {
   const text = String(error && error.message ? error.message : error);
   return (error instanceof zlink.SubmitError
@@ -98,10 +93,13 @@ function submitOnce(kind, socket, body, receiverRoutingId, topic) {
       .flags(zlink.SendFlags.DontWait).submit();
   }
   if (kind === 'router_router') {
-    return socket.send(receiverRoutingId).message(body)
-      .flags(zlink.SendFlags.DontWait).submit();
+    socket.send(receiverRoutingId).message(body).flags(zlink.SendFlags.None).submit();
+    return true;
   }
-  return socket.send().message(body).flags(zlink.SendFlags.DontWait).submit();
+  if (kind === 'dealer_router') {
+    return socket.sendFrom(body, zlink.SendFlags.None);
+  }
+  return socket.sendFrom(body, zlink.SendFlags.DontWait);
 }
 
 // Retry through transient backpressure until accepted (C send_step_retry
@@ -125,13 +123,44 @@ function submitWithRetry(kind, socket, body, receiverRoutingId, topic, deadlineN
   }
 }
 
+const sleepBuffer = new Int32Array(new SharedArrayBuffer(4));
+
+function sleepMillis(ms) {
+  Atomics.wait(sleepBuffer, 0, 0, ms);
+}
+
+function submitStopOnce(kind, socket, receiverRoutingId, topic) {
+  if (kind === 'pubsub') {
+    socket.publish(topic).message(STOP_TOKEN_BYTES)
+      .flags(zlink.SendFlags.None).submit();
+    return;
+  }
+  if (kind === 'router_router') {
+    socket.send(receiverRoutingId).message(STOP_TOKEN_BYTES)
+      .flags(zlink.SendFlags.None).submit();
+    return;
+  }
+  socket.sendFrom(STOP_TOKEN_BYTES, zlink.SendFlags.None);
+}
+
 function sendStopToken(kind, socket, receiverRoutingId, topic) {
   // PERF_SINGLE_TEST_POLICY § 1.4 / C send_stop_token_with_retry
   // (~202-215): emit the wire-level stop token once, retrying through
   // transient backpressure so the terminator always reaches the peer.
   trace(`sendStopToken begin kind=${kind}`);
-  submitWithRetry(kind, socket, STOP_TOKEN_BYTES, receiverRoutingId, topic);
-  trace(`sendStopToken sent kind=${kind}`);
+  for (let retry = 0; retry < 100; retry += 1) {
+    try {
+      submitStopOnce(kind, socket, receiverRoutingId, topic);
+      trace(`sendStopToken sent kind=${kind}`);
+      return;
+    } catch (error) {
+      if (!isTransientSubmit(error)) {
+        throw error;
+      }
+      sleepMillis(1);
+    }
+  }
+  throw new Error('stop token send retry budget exhausted');
 }
 
 function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, receiverRoutingId, topic) {
@@ -146,8 +175,9 @@ function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, rec
       seq += 1n;
     }
   }
-  stampPayload(payload, { phase: 2, runId, msgSize, seq });
-  submitWithRetry(kind, socket, payload, receiverRoutingId, topic);
+  // C single sends active samples until the deadline and then sends only
+  // the wire stop token. There is no post-active phase-2 payload.
+  trace(`sendLoop active done kind=${kind} seq=${seq.toString()}`);
   sendStopToken(kind, socket, receiverRoutingId, topic);
 }
 
@@ -266,10 +296,13 @@ async function main() {
     } else if (kind === 'pubsub') {
       emitSingleSocketHwmDetail(socket, 'PUBSUB', transport, 'publisher', msgSize);
     }
-    // C perf_single_one_way.hpp: the sender thread joins after emitting the
-    // wire stop token. No `done`/`stop` ack — the worker exits and the
-    // receiver loop already terminates on the wire stop token.
+    // C keeps the sender socket alive until the receiver has observed the
+    // wire stop token and the sender thread is joined. The parent sends this
+    // shutdown command only after its recv loop has completed, so this is a
+    // lifetime match, not a phase-control channel.
     trace('sender done');
+    port.postMessage({ type: 'done' });
+    await waitForCommand(port, 'stop');
   } catch (error) {
     port.postMessage({
       type: 'error',

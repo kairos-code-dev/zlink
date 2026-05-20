@@ -60,7 +60,7 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
     while (Date.now() < deadline) {
       if (serverNode.statusSnapshot().connectedPeerCount > 0
           && clientNode.statusSnapshot().connectedPeerCount > 0) {
-        serverSpot.publish(topic).message('payload').submit();
+        serverSpot.publishFrom(topic, Buffer.from('payload'));
       }
       const received = new zlink.TopicMessage();
       try {
@@ -78,7 +78,25 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
         received.parts.map((part) => part.data().toString()),
         ['payload']
       );
-      return;
+      serverSpot.publishFrom(topic, Buffer.from('payload-into'));
+      const buffer = Buffer.allocUnsafe(7);
+      const payloadDeadline = Date.now() + 5000;
+      while (Date.now() < payloadDeadline) {
+        serverSpot.publishFrom(topic, Buffer.from('payload-into'));
+        const payload = clientSpot.subscribePayloadInto(buffer, zlink.RecvFlags.DontWait);
+        if (!payload) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          continue;
+        }
+        if (payload.size !== 12) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          continue;
+        }
+        assert.equal(payload.topic, topic);
+        assert.equal(buffer.toString('utf8', 0, 7), 'payload');
+        return;
+      }
+      assert.fail('spot subscribePayloadInto timeout');
       await new Promise((resolve) => setImmediate(resolve));
     }
 
@@ -253,6 +271,7 @@ test('canonical pub/sub surface hides opposite-direction methods', () => {
   assert.equal(pub.send, undefined);
   assert.equal(sub.send, undefined);
   assert.equal(typeof sub.subscribe, 'function');
+  assert.equal(typeof sub.subscribePayloadInto, 'function');
 
   sub.close();
   pub.close();
@@ -289,6 +308,14 @@ test('sub sockets receive TopicMessage domain objects and non-blocking receive r
   assert.equal(received.topic, 'topic');
   assert.ok(received.routingId === null || received.routingId instanceof zlink.RoutingId);
   assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
+
+  pub.publish('topic').message('payload-into').submit();
+  const buffer = Buffer.allocUnsafe(7);
+  const payload = sub.subscribePayloadInto(buffer);
+  assert.equal(payload.size, 12);
+  assert.equal(payload.topic, 'topic');
+  assert.equal(payload.routingId, null);
+  assert.equal(buffer.toString('utf8', 0, 7), 'payload');
 
   sub.close();
   pub.close();
@@ -329,6 +356,28 @@ test('subscribe returns topic-aware multipart payloads without callback mode', a
     ['payload']
   );
 
+  pub.publish('topic').message('payload-into').submit();
+  const buffer = Buffer.allocUnsafe(7);
+  let payload = null;
+  while (Date.now() < deadline) {
+    try {
+      payload = sub.subscribePayloadInto(buffer, zlink.RecvFlags.DontWait);
+      if (payload) {
+        break;
+      }
+    } catch (error) {
+      if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
+        throw error;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.notEqual(payload, null);
+  assert.equal(payload.size, 12);
+  assert.equal(payload.topic, 'topic');
+  assert.equal(payload.routingId, null);
+  assert.equal(buffer.toString('utf8', 0, 7), 'payload');
+
   sub.close();
   pub.close();
   ctx.close();
@@ -340,6 +389,7 @@ test('sub sockets do not expose callback subscription surfaces', () => {
 
   assert.equal(sub.onSubscribe, undefined);
   assert.equal(typeof sub.subscribe, 'function');
+  assert.equal(typeof sub.subscribePayloadInto, 'function');
 
   sub.close();
   ctx.close();

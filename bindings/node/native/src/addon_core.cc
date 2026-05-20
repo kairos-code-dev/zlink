@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <errno.h>
 #include <atomic>
+#include <chrono>
+#include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -18,8 +20,10 @@ static const size_t k_router_handler_slot_count = 8;
 static const size_t k_subscribe_handler_slot_count = 8;
 static const size_t k_send_ready_handler_slot_count = 8;
 static const size_t k_socket_monitor_handler_slot_count = 8;
+static const size_t k_route_echo_slot_count = 8;
 static const int32_t k_stream_dispatch_none = 0;
 static const int32_t k_stream_dispatch_len32be = 1;
+static const int32_t k_stream_dispatch_echo_len32be = 2;
 static const int32_t k_legacy_socket_pair = 0;
 static const int32_t k_legacy_socket_pub = 1;
 static const int32_t k_legacy_socket_sub = 2;
@@ -53,13 +57,161 @@ int classify_try_send_errno()
     }
 }
 
+static const uint32_t k_perf_metric_magic = 0x5A4C4E4BU;
+static const size_t k_perf_metric_header_size = 29;
+
+uint64_t perf_now_ns()
+{
+    return static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::system_clock::now().time_since_epoch())
+        .count());
+}
+
+void perf_write_u32_le(unsigned char *dst, uint32_t value)
+{
+    dst[0] = static_cast<unsigned char>(value & 0xffU);
+    dst[1] = static_cast<unsigned char>((value >> 8) & 0xffU);
+    dst[2] = static_cast<unsigned char>((value >> 16) & 0xffU);
+    dst[3] = static_cast<unsigned char>((value >> 24) & 0xffU);
+}
+
+void perf_write_u64_le(unsigned char *dst, uint64_t value)
+{
+    for (size_t i = 0; i < 8; ++i)
+        dst[i] = static_cast<unsigned char>((value >> (i * 8)) & 0xffU);
+}
+
+bool perf_stamp_payload(void *payload,
+                        size_t payload_size,
+                        uint32_t run_id,
+                        uint8_t phase,
+                        uint32_t msg_size,
+                        uint64_t seq)
+{
+    if (!payload || payload_size < k_perf_metric_header_size)
+        return false;
+
+    unsigned char *p = static_cast<unsigned char *>(payload);
+    perf_write_u32_le(p + 0, k_perf_metric_magic);
+    perf_write_u32_le(p + 4, run_id);
+    p[8] = phase;
+    perf_write_u32_le(p + 9, msg_size);
+    perf_write_u64_le(p + 13, seq);
+    perf_write_u64_le(p + 21, perf_now_ns());
+    return true;
+}
+
+uint32_t perf_read_u32_le(const unsigned char *src)
+{
+    return static_cast<uint32_t>(src[0])
+           | (static_cast<uint32_t>(src[1]) << 8)
+           | (static_cast<uint32_t>(src[2]) << 16)
+           | (static_cast<uint32_t>(src[3]) << 24);
+}
+
+uint64_t perf_read_u64_le(const unsigned char *src)
+{
+    uint64_t value = 0;
+    for (size_t i = 0; i < 8; ++i)
+        value |= static_cast<uint64_t>(src[i]) << (i * 8);
+    return value;
+}
+
+bool perf_decode_payload_header(zlink_msg_t *parts,
+                                size_t part_count,
+                                uint32_t run_id,
+                                uint32_t msg_size,
+                                uint64_t *sent_ts_ns)
+{
+    if (!parts || part_count == 0 || !sent_ts_ns)
+        return false;
+    if (zlink_msg_size(&parts[0]) < k_perf_metric_header_size)
+        return false;
+    const unsigned char *p =
+      static_cast<const unsigned char *>(zlink_msg_data(&parts[0]));
+    if (perf_read_u32_le(p + 0) != k_perf_metric_magic)
+        return false;
+    if (perf_read_u32_le(p + 4) != run_id)
+        return false;
+    if (p[8] != 1U)
+        return false;
+    if (perf_read_u32_le(p + 9) != msg_size)
+        return false;
+    *sent_ts_ns = perf_read_u64_le(p + 21);
+    return true;
+}
+
+void perf_set_double_prop(napi_env env,
+                          napi_value obj,
+                          const char *name,
+                          double value)
+{
+    napi_value out;
+    napi_create_double(env, value, &out);
+    napi_set_named_property(env, obj, name, out);
+}
+
 struct stream_js_payload_t
 {
     std::vector<unsigned char> routing_id;
     std::vector<std::vector<unsigned char> > packets;
 };
 
+struct stream_echo_pending_t
+{
+    zlink_routing_id_t routing_id;
+    std::vector<unsigned char> frame;
+};
+
 void close_recv_parts(zlink_msg_t *parts, size_t part_count);
+
+struct route_echo_pending_t
+{
+    route_echo_pending_t() : rid(), parts() {}
+    ~route_echo_pending_t()
+    {
+        if (!parts.empty())
+            close_recv_parts(parts.data(), parts.size());
+    }
+
+    route_echo_pending_t(route_echo_pending_t &&other) noexcept :
+        rid(other.rid),
+        parts(std::move(other.parts))
+    {
+        other.parts.clear();
+    }
+
+    route_echo_pending_t &operator=(route_echo_pending_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+        if (!parts.empty())
+            close_recv_parts(parts.data(), parts.size());
+        rid = other.rid;
+        parts = std::move(other.parts);
+        other.parts.clear();
+        return *this;
+    }
+
+    route_echo_pending_t(const route_echo_pending_t &) = delete;
+    route_echo_pending_t &operator=(const route_echo_pending_t &) = delete;
+
+    zlink_routing_id_t rid;
+    std::vector<zlink_msg_t> parts;
+};
+
+struct route_echo_state_t
+{
+    route_echo_state_t() : used(false), socket(NULL), pending() {}
+
+    bool used;
+    void *socket;
+    std::deque<route_echo_pending_t> pending;
+};
+
+static std::mutex g_route_echo_slots_mu;
+static route_echo_state_t g_route_echo_slots[k_route_echo_slot_count];
 
 struct recv_handler_js_payload_t
 {
@@ -137,6 +289,8 @@ struct stream_js_state_t
     int32_t dispatch_mode;
     std::map<std::string, std::vector<unsigned char> > len32be_pending;
     std::vector<std::vector<unsigned char> > peer_routing_ids;
+    std::mutex echo_mutex;
+    std::deque<stream_echo_pending_t> echo_pending;
 };
 
 static std::mutex g_stream_slots_mu;
@@ -341,6 +495,10 @@ void reset_stream_slot_unsafe(stream_js_state_t *state)
     state->dispatch_mode = k_stream_dispatch_none;
     state->len32be_pending.clear();
     state->peer_routing_ids.clear();
+    {
+        std::lock_guard<std::mutex> echo_lock(state->echo_mutex);
+        state->echo_pending.clear();
+    }
 }
 
 void reset_recv_handler_slot_unsafe(recv_handler_js_state_t *state)
@@ -442,6 +600,17 @@ bool init_msg_from_bytes(zlink_msg_t *msg, const void *data, size_t len)
     return true;
 }
 
+bool init_msg_borrowed_from_bytes(zlink_msg_t *msg, void *data, size_t len)
+{
+    return zlink_msg_init_data(
+             msg,
+             len > 0 ? data : NULL,
+             len,
+             NULL,
+             NULL)
+           == 0;
+}
+
 void copy_routing_id(zlink_routing_id_t *out, const zlink_routing_id_t *in)
 {
     if (!out)
@@ -450,6 +619,27 @@ void copy_routing_id(zlink_routing_id_t *out, const zlink_routing_id_t *in)
         memcpy(out, in, sizeof(*out));
     else
         memset(out, 0, sizeof(*out));
+}
+
+bool routing_id_from_buffer(napi_env env, napi_value value, zlink_routing_id_t *out)
+{
+    if (!out)
+        return false;
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, value, &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "routingId must be Buffer");
+        return false;
+    }
+    if (len > sizeof(out->data)) {
+        napi_throw_range_error(env, NULL, "routingId too long");
+        return false;
+    }
+    memset(out, 0, sizeof(*out));
+    out->size = static_cast<uint8_t>(len);
+    if (len > 0 && data)
+        memcpy(out->data, data, len);
+    return true;
 }
 
 bool append_msg_move(std::vector<zlink_msg_t> *parts, zlink_msg_t *part)
@@ -1823,6 +2013,275 @@ static stream_slot_raw_legacy_callback_t
 };
 #undef STREAM_SLOT_RAW_LEGACY_CALLBACK
 
+bool build_stream_packet_frame(std::vector<unsigned char> *frame,
+                               zlink_msg_t *header,
+                               zlink_msg_t *body)
+{
+    if (!frame || !header || !body)
+        return false;
+
+    const size_t header_size = zlink_msg_size(header);
+    const size_t body_size = zlink_msg_size(body);
+    if (header_size > 0xFFFFu || body_size > 0xFFFFFFFFu) {
+        errno = EINVAL;
+        return false;
+    }
+
+    frame->resize(6 + header_size + body_size);
+    (*frame)[0] = static_cast<unsigned char>((header_size >> 8) & 0xFF);
+    (*frame)[1] = static_cast<unsigned char>(header_size & 0xFF);
+    (*frame)[2] = static_cast<unsigned char>((body_size >> 24) & 0xFF);
+    (*frame)[3] = static_cast<unsigned char>((body_size >> 16) & 0xFF);
+    (*frame)[4] = static_cast<unsigned char>((body_size >> 8) & 0xFF);
+    (*frame)[5] = static_cast<unsigned char>(body_size & 0xFF);
+
+    const void *header_data = zlink_msg_data(header);
+    const void *body_data = zlink_msg_data(body);
+    if (header_size > 0 && header_data)
+        memcpy(frame->data() + 6, header_data, header_size);
+    if (body_size > 0 && body_data)
+        memcpy(frame->data() + 6 + header_size, body_data, body_size);
+    return true;
+}
+
+int try_stream_echo_send(void *stream,
+                         const zlink_routing_id_t *routing_id,
+                         const std::vector<unsigned char> &frame)
+{
+    zlink_msg_t msg;
+    if (!init_msg_from_bytes(&msg, frame.empty() ? NULL : frame.data(),
+                             frame.size()))
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+
+    const int rc = send_parts_rid(stream, routing_id, &msg, 1,
+                                  ZLINK_SEND_FLAGS_DONTWAIT);
+    if (rc != ZLINK_SUBMIT_OK)
+        (void) zlink_msg_close(&msg);
+    return rc;
+}
+
+bool is_stream_echo_pending_result(int rc)
+{
+    if (rc == ZLINK_SUBMIT_BACKPRESSURED
+        || rc == ZLINK_SUBMIT_NOT_CONNECTED
+        || rc == ZLINK_SUBMIT_NOT_FOUND) {
+        return true;
+    }
+    const int err = zlink_errno();
+    return err == EAGAIN
+#ifdef EWOULDBLOCK
+        || err == EWOULDBLOCK
+#endif
+#ifdef ENOTCONN
+        || err == ENOTCONN
+#endif
+#ifdef EHOSTUNREACH
+        || err == EHOSTUNREACH
+#endif
+        ;
+}
+
+bool is_route_echo_pending_result(int rc)
+{
+    if (rc == ZLINK_SUBMIT_BACKPRESSURED
+        || rc == ZLINK_SUBMIT_NOT_CONNECTED
+        || rc == ZLINK_SUBMIT_NOT_FOUND) {
+        return true;
+    }
+    const int err = zlink_errno();
+    return err == EAGAIN
+#ifdef EWOULDBLOCK
+        || err == EWOULDBLOCK
+#endif
+#ifdef ENOTCONN
+        || err == ENOTCONN
+#endif
+#ifdef EHOSTUNREACH
+        || err == EHOSTUNREACH
+#endif
+        ;
+}
+
+int try_route_echo_send(void *socket,
+                         const zlink_routing_id_t *routing_id,
+                         zlink_msg_t *parts,
+                         size_t part_count)
+{
+    return send_parts_rid(
+      socket, routing_id, parts, part_count, ZLINK_SEND_FLAGS_DONTWAIT);
+}
+
+bool move_pending_route_echo(const zlink_routing_id_t *routing_id,
+                              std::vector<zlink_msg_t> *parts,
+                              route_echo_pending_t *out)
+{
+    if (!routing_id || !parts || !out)
+        return false;
+
+    copy_routing_id(&out->rid, routing_id);
+    out->parts.clear();
+    out->parts.reserve(parts->size());
+    for (size_t i = 0; i < parts->size(); ++i) {
+        out->parts.emplace_back();
+        zlink_msg_t *slot = &out->parts.back();
+        if (zlink_msg_init(slot) != 0) {
+            out->parts.pop_back();
+            return false;
+        }
+        if (zlink_msg_move(slot, &(*parts)[i]) != 0) {
+            zlink_msg_close(slot);
+            out->parts.pop_back();
+            return false;
+        }
+    }
+    parts->clear();
+    return true;
+}
+
+bool flush_route_echo_pending(route_echo_state_t *state)
+{
+    if (!state || !state->socket)
+        return false;
+
+    while (!state->pending.empty()) {
+        route_echo_pending_t &front = state->pending.front();
+        const int rc = try_route_echo_send(
+          state->socket, &front.rid, front.parts.data(), front.parts.size());
+        if (rc == ZLINK_SUBMIT_OK) {
+            front.parts.clear();
+            state->pending.pop_front();
+            continue;
+        }
+        if (is_route_echo_pending_result(rc))
+            return true;
+        return false;
+    }
+    return true;
+}
+
+route_echo_state_t *find_route_echo_state_unsafe(void *socket)
+{
+    for (size_t i = 0; i < k_route_echo_slot_count; ++i) {
+        if (g_route_echo_slots[i].used
+            && g_route_echo_slots[i].socket == socket) {
+            return &g_route_echo_slots[i];
+        }
+    }
+    return NULL;
+}
+
+route_echo_state_t *get_route_echo_state(void *socket)
+{
+    std::lock_guard<std::mutex> lock(g_route_echo_slots_mu);
+    route_echo_state_t *existing = find_route_echo_state_unsafe(socket);
+    if (existing)
+        return existing;
+    for (size_t i = 0; i < k_route_echo_slot_count; ++i) {
+        if (!g_route_echo_slots[i].used) {
+            g_route_echo_slots[i].used = true;
+            g_route_echo_slots[i].socket = socket;
+            g_route_echo_slots[i].pending.clear();
+            return &g_route_echo_slots[i];
+        }
+    }
+    return NULL;
+}
+
+void drain_stream_echo_pending(stream_js_state_t *state)
+{
+    if (!state || !state->socket)
+        return;
+
+    while (!state->echo_pending.empty()) {
+        stream_echo_pending_t &current = state->echo_pending.front();
+        const int rc =
+          try_stream_echo_send(state->socket, &current.routing_id, current.frame);
+        if (rc == ZLINK_SUBMIT_OK) {
+            state->echo_pending.pop_front();
+            continue;
+        }
+        if (is_stream_echo_pending_result(rc))
+            return;
+        state->stop_requested.store(1, std::memory_order_release);
+        state->echo_pending.clear();
+        return;
+    }
+}
+
+void enqueue_stream_echo(stream_js_state_t *state,
+                         const zlink_routing_id_t *routing_id,
+                         std::vector<unsigned char> *frame)
+{
+    if (!state || !routing_id || !frame)
+        return;
+    stream_echo_pending_t pending;
+    memset(&pending.routing_id, 0, sizeof(pending.routing_id));
+    pending.routing_id.size = routing_id->size;
+    memcpy(pending.routing_id.data, routing_id->data, routing_id->size);
+    pending.frame.swap(*frame);
+    state->echo_pending.push_back(std::move(pending));
+}
+
+void stream_echo_send_ready_callback(void *subject, void *userdata)
+{
+    (void) subject;
+    stream_js_state_t *state = static_cast<stream_js_state_t *>(userdata);
+    if (!state || state->stop_requested.load(std::memory_order_acquire) != 0)
+        return;
+    std::lock_guard<std::mutex> lock(state->echo_mutex);
+    drain_stream_echo_pending(state);
+}
+
+void stream_echo_packet_callback(void *stream_,
+                                 const zlink_routing_id_t *rid_,
+                                 zlink_msg_t *header_,
+                                 zlink_msg_t *body_,
+                                 void *userdata_)
+{
+    stream_js_state_t *state = static_cast<stream_js_state_t *>(userdata_);
+    const auto close_messages = [header_, body_]() {
+        if (header_)
+            (void) zlink_msg_close(header_);
+        if (body_)
+            (void) zlink_msg_close(body_);
+    };
+
+    if (!stream_ || !state || !rid_ || !header_ || !body_) {
+        close_messages();
+        return;
+    }
+    if (state->stop_requested.load(std::memory_order_acquire) != 0) {
+        close_messages();
+        return;
+    }
+
+    std::vector<unsigned char> frame;
+    if (!build_stream_packet_frame(&frame, header_, body_)) {
+        state->stop_requested.store(1, std::memory_order_release);
+        close_messages();
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(state->echo_mutex);
+        drain_stream_echo_pending(state);
+        if (!state->echo_pending.empty()) {
+            enqueue_stream_echo(state, rid_, &frame);
+        } else {
+            const int rc = try_stream_echo_send(stream_, rid_, frame);
+            if (rc != ZLINK_SUBMIT_OK) {
+                if (is_stream_echo_pending_result(rc)) {
+                    enqueue_stream_echo(state, rid_, &frame);
+                } else {
+                    state->stop_requested.store(1, std::memory_order_release);
+                }
+            }
+        }
+    }
+
+    close_messages();
+}
+
 template <size_t Slot>
 void stream_on_packet_slot(void *stream_,
                            const zlink_routing_id_t *rid_,
@@ -2986,6 +3445,496 @@ napi_value socket_send_parts(napi_env env, napi_callback_info info)
     return out;
 }
 
+napi_value socket_send_borrowed_no_wait_result(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    void *data = NULL;
+    size_t cap = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &cap) != napi_ok) {
+        napi_throw_type_error(env, NULL, "payload must be Buffer");
+        return NULL;
+    }
+    int32_t len = 0;
+    napi_get_value_int32(env, argv[2], &len);
+    if (len < 0 || static_cast<size_t>(len) > cap) {
+        napi_throw_range_error(env, NULL, "payload length out of range");
+        return NULL;
+    }
+
+    zlink_msg_t msg;
+    if (!init_msg_borrowed_from_bytes(&msg, data, static_cast<size_t>(len)))
+        return throw_last_error(env, "sendBorrowedNoWaitResult failed");
+    int rc = send_parts(sock, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+    if (rc != ZLINK_SUBMIT_OK) {
+        zlink_msg_close(&msg);
+        rc = classify_try_send_errno();
+    }
+    if (rc < 0)
+        return throw_last_error(env, "sendBorrowedNoWaitResult failed");
+
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
+}
+
+napi_value socket_send_routing_borrowed_no_wait_result(napi_env env,
+                                                       napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    zlink_routing_id_t routing_id;
+    if (!routing_id_from_buffer(env, argv[1], &routing_id))
+        return NULL;
+    void *data = NULL;
+    size_t cap = 0;
+    if (napi_get_buffer_info(env, argv[2], &data, &cap) != napi_ok) {
+        napi_throw_type_error(env, NULL, "payload must be Buffer");
+        return NULL;
+    }
+    int32_t len = 0;
+    napi_get_value_int32(env, argv[3], &len);
+    if (len < 0 || static_cast<size_t>(len) > cap) {
+        napi_throw_range_error(env, NULL, "payload length out of range");
+        return NULL;
+    }
+
+    zlink_msg_t msg;
+    if (!init_msg_borrowed_from_bytes(&msg, data, static_cast<size_t>(len)))
+        return throw_last_error(env, "sendRoutingBorrowedNoWaitResult failed");
+    int rc = send_parts_rid(sock, &routing_id, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+    if (rc != ZLINK_SUBMIT_OK) {
+        zlink_msg_close(&msg);
+        rc = classify_try_send_errno();
+    }
+    if (rc < 0)
+        return throw_last_error(env, "sendRoutingBorrowedNoWaitResult failed");
+
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
+}
+
+napi_value socket_perf_dealer_dealer_send_loop(napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 5) {
+        napi_throw_type_error(
+          env, NULL, "socketPerfDealerDealerSendLoop requires sockets, payloads, duration, msgSize, stopToken");
+        return NULL;
+    }
+
+    uint32_t socket_count = 0;
+    uint32_t payload_count = 0;
+    if (napi_get_array_length(env, argv[0], &socket_count) != napi_ok
+        || napi_get_array_length(env, argv[1], &payload_count) != napi_ok
+        || socket_count == 0 || payload_count != socket_count) {
+        napi_throw_type_error(env, NULL, "sockets and payloads must be same-length arrays");
+        return NULL;
+    }
+
+    std::vector<void *> sockets(socket_count, NULL);
+    std::vector<void *> payload_data(socket_count, NULL);
+    std::vector<size_t> payload_size(socket_count, 0);
+    for (uint32_t i = 0; i < socket_count; ++i) {
+        napi_value socket_value;
+        napi_value payload_value;
+        if (napi_get_element(env, argv[0], i, &socket_value) != napi_ok
+            || napi_get_element(env, argv[1], i, &payload_value) != napi_ok) {
+            napi_throw_type_error(env, NULL, "socket or payload array read failed");
+            return NULL;
+        }
+        napi_get_value_external(env, socket_value, &sockets[i]);
+        if (!sockets[i]) {
+            napi_throw_type_error(env, NULL, "socket handle must be external");
+            return NULL;
+        }
+        if (napi_get_buffer_info(env, payload_value, &payload_data[i], &payload_size[i])
+            != napi_ok) {
+            napi_throw_type_error(env, NULL, "payload must be Buffer");
+            return NULL;
+        }
+        if (payload_size[i] < k_perf_metric_header_size) {
+            napi_throw_range_error(env, NULL, "payload too small for metric header");
+            return NULL;
+        }
+    }
+
+    double duration_seconds = 0.0;
+    if (napi_get_value_double(env, argv[2], &duration_seconds) != napi_ok
+        || duration_seconds <= 0.0) {
+        napi_throw_range_error(env, NULL, "duration must be positive");
+        return NULL;
+    }
+
+    uint32_t msg_size = 0;
+    if (napi_get_value_uint32(env, argv[3], &msg_size) != napi_ok
+        || msg_size < k_perf_metric_header_size) {
+        napi_throw_range_error(env, NULL, "msgSize is invalid");
+        return NULL;
+    }
+
+    void *stop_data = NULL;
+    size_t stop_size = 0;
+    if (napi_get_buffer_info(env, argv[4], &stop_data, &stop_size) != napi_ok
+        || !stop_data || stop_size == 0) {
+        napi_throw_type_error(env, NULL, "stopToken must be a non-empty Buffer");
+        return NULL;
+    }
+
+    std::vector<uint8_t> send_pending(socket_count, 0);
+    std::vector<zlink_pollitem_t> poll_items(socket_count);
+    uint64_t sent_count = 0;
+    uint64_t seq = 1;
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>(duration_seconds));
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        size_t pending_count = 0;
+        for (uint32_t i = 0; i < socket_count; ++i) {
+            if (send_pending[i] != 0) {
+                ++pending_count;
+                continue;
+            }
+
+            while (std::chrono::steady_clock::now() < deadline) {
+                zlink_msg_t msg;
+                if (!init_msg_from_bytes(&msg, payload_data[i], payload_size[i]))
+                    return throw_last_error(env, "perf dealer-dealer send failed");
+                if (!perf_stamp_payload(zlink_msg_data(&msg),
+                                        zlink_msg_size(&msg),
+                                        1U,
+                                        1U,
+                                        msg_size,
+                                        seq++)) {
+                    zlink_msg_close(&msg);
+                    napi_throw_error(env, NULL, "payload stamp failed");
+                    return NULL;
+                }
+
+                const int rc = send_parts(
+                  sockets[i], &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+                if (rc == ZLINK_SUBMIT_OK) {
+                    ++sent_count;
+                    continue;
+                }
+
+                zlink_msg_close(&msg);
+                const int err = zlink_errno();
+                if (err == EAGAIN || err == EWOULDBLOCK || err == ETIMEDOUT) {
+                    send_pending[i] = 1;
+                    ++pending_count;
+                    break;
+                }
+                return throw_last_error(env, "perf dealer-dealer send failed");
+            }
+        }
+
+        if (std::chrono::steady_clock::now() >= deadline || pending_count == 0)
+            continue;
+
+        size_t poll_count = 0;
+        for (uint32_t i = 0; i < socket_count; ++i) {
+            if (send_pending[i] == 0)
+                continue;
+            poll_items[poll_count].socket = sockets[i];
+            poll_items[poll_count].fd = 0;
+            poll_items[poll_count].events = ZLINK_POLLOUT;
+            poll_items[poll_count].revents = 0;
+            ++poll_count;
+        }
+
+        zlink_config_result_t poll_error = ZLINK_CONFIG_OK;
+        const int poll_rc = zlink_poll(
+          poll_count > 0 ? &poll_items[0] : NULL,
+          static_cast<int>(poll_count),
+          -1,
+          &poll_error);
+        if (poll_rc < 0) {
+            if (zlink_errno() == EINTR)
+                continue;
+            return throw_last_error(env, "perf dealer-dealer poll failed");
+        }
+        if (poll_rc == 0)
+            continue;
+
+        for (size_t pi = 0; pi < poll_count; ++pi) {
+            if ((poll_items[pi].revents & ZLINK_POLLOUT) == 0)
+                continue;
+            for (uint32_t si = 0; si < socket_count; ++si) {
+                if (sockets[si] == poll_items[pi].socket) {
+                    send_pending[si] = 0;
+                    break;
+                }
+            }
+        }
+    }
+
+    for (uint32_t i = 0; i < socket_count; ++i) {
+        for (;;) {
+            zlink_msg_t stop_msg;
+            if (!init_msg_from_bytes(&stop_msg, stop_data, stop_size))
+                return throw_last_error(env, "perf dealer-dealer stop failed");
+            const int rc =
+              send_parts(sockets[i], &stop_msg, 1, ZLINK_SEND_FLAGS_NONE);
+            if (rc == ZLINK_SUBMIT_OK)
+                break;
+            zlink_msg_close(&stop_msg);
+            const int err = zlink_errno();
+            if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
+                || err == ETIMEDOUT) {
+                continue;
+            }
+            return throw_last_error(env, "perf dealer-dealer stop failed");
+        }
+    }
+
+    napi_value out;
+    napi_create_bigint_uint64(env, sent_count, &out);
+    return out;
+}
+
+napi_value socket_perf_dealer_router_echo_loop(napi_env env,
+                                               napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 4) {
+        napi_throw_type_error(
+          env, NULL, "socketPerfDealerRouterEchoLoop requires sockets, payloads, duration, msgSize");
+        return NULL;
+    }
+
+    uint32_t socket_count = 0;
+    uint32_t payload_count = 0;
+    if (napi_get_array_length(env, argv[0], &socket_count) != napi_ok
+        || napi_get_array_length(env, argv[1], &payload_count) != napi_ok
+        || socket_count == 0 || payload_count != socket_count) {
+        napi_throw_type_error(env, NULL, "sockets and payloads must be same-length arrays");
+        return NULL;
+    }
+
+    std::vector<void *> sockets(socket_count, NULL);
+    std::vector<void *> payload_data(socket_count, NULL);
+    std::vector<size_t> payload_size(socket_count, 0);
+    for (uint32_t i = 0; i < socket_count; ++i) {
+        napi_value socket_value;
+        napi_value payload_value;
+        if (napi_get_element(env, argv[0], i, &socket_value) != napi_ok
+            || napi_get_element(env, argv[1], i, &payload_value) != napi_ok) {
+            napi_throw_type_error(env, NULL, "socket or payload array read failed");
+            return NULL;
+        }
+        napi_get_value_external(env, socket_value, &sockets[i]);
+        if (!sockets[i]) {
+            napi_throw_type_error(env, NULL, "socket handle must be external");
+            return NULL;
+        }
+        if (napi_get_buffer_info(env, payload_value, &payload_data[i], &payload_size[i])
+            != napi_ok) {
+            napi_throw_type_error(env, NULL, "payload must be Buffer");
+            return NULL;
+        }
+        if (payload_size[i] < k_perf_metric_header_size) {
+            napi_throw_range_error(env, NULL, "payload too small for metric header");
+            return NULL;
+        }
+    }
+
+    double duration_seconds = 0.0;
+    if (napi_get_value_double(env, argv[2], &duration_seconds) != napi_ok
+        || duration_seconds <= 0.0) {
+        napi_throw_range_error(env, NULL, "duration must be positive");
+        return NULL;
+    }
+
+    uint32_t msg_size = 0;
+    if (napi_get_value_uint32(env, argv[3], &msg_size) != napi_ok
+        || msg_size < k_perf_metric_header_size) {
+        napi_throw_range_error(env, NULL, "msgSize is invalid");
+        return NULL;
+    }
+
+    const uint32_t run_id = 1U;
+    uint64_t seq = 1;
+    uint64_t accepted = 0;
+    double latency_sum_ns = 0.0;
+    std::vector<uint64_t> latency_samples;
+    latency_samples.reserve(8192);
+    std::vector<uint8_t> awaiting_reply(socket_count, 0);
+    std::vector<uint8_t> send_pending(socket_count, 1);
+    std::vector<zlink_pollitem_t> poll_items(socket_count);
+    std::vector<uint32_t> poll_indexes(socket_count, 0);
+    std::vector<zlink_msg_t> recv_parts_buf;
+    size_t rr = 0;
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>(duration_seconds));
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        const size_t send_start = rr;
+        for (uint32_t attempt = 0; attempt < socket_count; ++attempt) {
+            const uint32_t idx =
+              static_cast<uint32_t>((send_start + attempt) % socket_count);
+            if (send_pending[idx] == 0 || awaiting_reply[idx] != 0)
+                continue;
+
+            zlink_msg_t msg;
+            if (!init_msg_from_bytes(&msg, payload_data[idx], payload_size[idx]))
+                return throw_last_error(env, "perf dealer-router send failed");
+            if (!perf_stamp_payload(zlink_msg_data(&msg),
+                                    zlink_msg_size(&msg),
+                                    run_id,
+                                    1U,
+                                    msg_size,
+                                    seq)) {
+                zlink_msg_close(&msg);
+                napi_throw_error(env, NULL, "payload stamp failed");
+                return NULL;
+            }
+
+            const int send_rc =
+              send_parts(sockets[idx], &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+            if (send_rc == ZLINK_SUBMIT_OK) {
+                awaiting_reply[idx] = 1;
+                send_pending[idx] = 0;
+                ++seq;
+                continue;
+            }
+
+            zlink_msg_close(&msg);
+            const int err = zlink_errno();
+            if (err == EAGAIN || err == EWOULDBLOCK || err == ETIMEDOUT)
+                continue;
+            return throw_last_error(env, "perf dealer-router send failed");
+        }
+
+        size_t poll_count = 0;
+        bool any_interest = false;
+        const size_t poll_start = rr;
+        for (uint32_t attempt = 0; attempt < socket_count; ++attempt) {
+            const uint32_t idx =
+              static_cast<uint32_t>((poll_start + attempt) % socket_count);
+            short events = 0;
+            if (awaiting_reply[idx] != 0)
+                events = static_cast<short>(events | ZLINK_POLLIN);
+            else if (send_pending[idx] != 0)
+                events = static_cast<short>(events | ZLINK_POLLOUT);
+            if (events == 0)
+                continue;
+            poll_indexes[poll_count] = idx;
+            poll_items[poll_count].socket = sockets[idx];
+            poll_items[poll_count].fd = 0;
+            poll_items[poll_count].events = events;
+            poll_items[poll_count].revents = 0;
+            ++poll_count;
+            any_interest = true;
+        }
+        rr = (poll_start + 1) % socket_count;
+
+        if (!any_interest) {
+            for (uint32_t i = 0; i < socket_count; ++i) {
+                if (awaiting_reply[i] == 0)
+                    send_pending[i] = 1;
+            }
+            continue;
+        }
+
+        zlink_config_result_t poll_error = ZLINK_CONFIG_OK;
+        const int poll_rc = zlink_poll(
+          &poll_items[0],
+          static_cast<int>(poll_count),
+          -1,
+          &poll_error);
+        if (poll_rc < 0) {
+            if (zlink_errno() == EINTR)
+                continue;
+            return throw_last_error(env, "perf dealer-router poll failed");
+        }
+        if (poll_rc == 0)
+            continue;
+
+        for (size_t pi = 0; pi < poll_count; ++pi) {
+            if ((poll_items[pi].revents & ZLINK_POLLIN) == 0)
+                continue;
+            const uint32_t idx = poll_indexes[pi];
+            for (;;) {
+                zlink_routing_id_t routing_id;
+                const int recv_rc = recv_parts(
+                  sockets[idx],
+                  &routing_id,
+                  &recv_parts_buf,
+                  static_cast<int32_t>(ZLINK_RECV_FLAGS_DONTWAIT));
+                if (recv_rc != ZLINK_RECV_OK) {
+                    if (zlink_errno() == EAGAIN)
+                        break;
+                    return throw_last_error(env, "perf dealer-router recv failed");
+                }
+
+                awaiting_reply[idx] = 0;
+                uint64_t sent_ts_ns = 0;
+                if (perf_decode_payload_header(recv_parts_buf.data(),
+                                               recv_parts_buf.size(),
+                                               run_id,
+                                               msg_size,
+                                               &sent_ts_ns)) {
+                    const uint64_t now_ns = perf_now_ns();
+                    if (sent_ts_ns > 0 && now_ns >= sent_ts_ns) {
+                        const uint64_t sample_ns = (now_ns - sent_ts_ns) / 2U;
+                        latency_sum_ns += static_cast<double>(sample_ns);
+                        latency_samples.push_back(sample_ns);
+                        ++accepted;
+                    }
+                }
+                close_msg_vector(recv_parts_buf);
+                if (std::chrono::steady_clock::now() < deadline)
+                    send_pending[idx] = 1;
+            }
+        }
+    }
+
+    if (accepted == 0 || latency_samples.empty()) {
+        napi_throw_error(env, NULL, "no measured messages for MULTI_DEALER_ROUTER");
+        return NULL;
+    }
+
+    std::sort(latency_samples.begin(), latency_samples.end());
+    const double throughput = static_cast<double>(accepted) / duration_seconds;
+    const double bandwidth = throughput * static_cast<double>(msg_size) * 2.0 / 1000000.0;
+    const double latency_ms =
+      (latency_sum_ns / static_cast<double>(accepted)) / 1000000.0;
+    const size_t p95_index =
+      std::min(latency_samples.size() - 1,
+               static_cast<size_t>((latency_samples.size() * 95U + 99U) / 100U - 1U));
+    const size_t p99_index =
+      std::min(latency_samples.size() - 1,
+               static_cast<size_t>((latency_samples.size() * 99U + 99U) / 100U - 1U));
+
+    napi_value out;
+    napi_create_object(env, &out);
+    perf_set_double_prop(env, out, "throughput", throughput);
+    perf_set_double_prop(env, out, "bandwidth", bandwidth);
+    perf_set_double_prop(env, out, "latency", latency_ms);
+    perf_set_double_prop(
+      env, out, "latency_p95", static_cast<double>(latency_samples[p95_index]) / 1000000.0);
+    perf_set_double_prop(
+      env, out, "latency_p99", static_cast<double>(latency_samples[p99_index]) / 1000000.0);
+    perf_set_double_prop(env, out, "accepted", static_cast<double>(accepted));
+    return out;
+}
+
 napi_value socket_publish(napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
@@ -3192,6 +4141,35 @@ napi_value socket_try_send_routing_parts(napi_env env, napi_callback_info info)
     }
     napi_value out;
     napi_create_int32(env, rc, &out);
+    return out;
+}
+
+napi_value socket_send_routing(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+
+    zlink_routing_id_t routing_id;
+    if (!parse_routing_id(env, argv[1], &routing_id))
+        return NULL;
+
+    zlink_msg_t msg;
+    if (!init_msg_from_value(env, argv[2], &msg))
+        return throw_last_error(env, "send failed");
+    const size_t len = zlink_msg_size(&msg);
+
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[3], &flags);
+    int rc = send_parts_rid(
+      sock, &routing_id, &msg, 1, static_cast<zlink_send_flags_t>(flags));
+    if (rc != ZLINK_SUBMIT_OK)
+        return throw_last_error(env, "send failed");
+
+    napi_value out;
+    napi_create_int32(env, static_cast<int32_t>(len), &out);
     return out;
 }
 
@@ -3421,6 +4399,94 @@ napi_value socket_try_subscribe_message(napi_env env, napi_callback_info info)
             return throw_last_error(env, "subscribeNoWait failed");
         topic.assign(topic_len > 0 ? topic_len : 1, '\0');
     }
+}
+
+napi_value socket_subscribe_payload_into(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "socketSubscribePayloadInto buffer invalid");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[2], &flags);
+    if (len == 0) {
+        napi_throw_range_error(
+          env, NULL, "socketSubscribePayloadInto buffer must not be empty");
+        return NULL;
+    }
+
+    std::vector<char> topic(256, '\0');
+    zlink_routing_id_t routing_id;
+    copy_routing_id(&routing_id, NULL);
+    size_t topic_len = topic.size();
+    const zlink_routing_id_t *source_rid = NULL;
+    zlink_msg_t part;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+
+    for (;;) {
+        if (zlink_msg_init(&part) != 0) {
+            napi_throw_error(env, NULL, "socketSubscribePayloadInto msg init failed");
+            return NULL;
+        }
+        source_rid = NULL;
+        topic_len = topic.size();
+        int rc = zlink_subscribe_part(
+          sock,
+          &source_rid,
+          topic.data(),
+          topic.size(),
+          &topic_len,
+          &part,
+          &has_more,
+          static_cast<zlink_recv_flags_t>(flags));
+        if (rc == ZLINK_RECV_OK)
+            break;
+        const int err = zlink_errno();
+        zlink_msg_close(&part);
+        if (err == EMSGSIZE) {
+            topic.assign(topic_len > 0 ? topic_len : 1, '\0');
+            continue;
+        }
+        return throw_last_error(env, "socketSubscribePayloadInto failed");
+    }
+
+    if (has_more != ZLINK_PART_FINAL) {
+        zlink_msg_close(&part);
+        napi_throw_error(env, NULL, "socketSubscribePayloadInto requires single-part message");
+        return NULL;
+    }
+
+    copy_routing_id(&routing_id, source_rid);
+    const size_t total = zlink_msg_size(&part);
+    if (total > 0 && len > 0) {
+        const size_t copy_len = std::min(total, len);
+        memcpy(data, zlink_msg_data(&part), copy_len);
+    }
+    zlink_msg_close(&part);
+
+    napi_value out;
+    napi_create_object(env, &out);
+    napi_value size_value;
+    napi_create_int32(env, static_cast<int32_t>(total), &size_value);
+    napi_set_named_property(env, out, "size", size_value);
+    napi_value topic_value;
+    napi_create_string_utf8(env, topic.data(), topic_len, &topic_value);
+    napi_set_named_property(env, out, "topic", topic_value);
+    napi_value rid_value;
+    if (routing_id.size > 0) {
+        rid_value = create_routing_id_value(env, routing_id);
+    } else {
+        napi_get_null(env, &rid_value);
+    }
+    napi_set_named_property(env, out, "routingId", rid_value);
+    return out;
 }
 
 napi_value socket_subscribe_handler(napi_env env, napi_callback_info info)
@@ -3759,6 +4825,144 @@ napi_value socket_stream_attach(napi_env env, napi_callback_info info)
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
+}
+
+napi_value socket_stream_attach_packet_echo(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 1) {
+        napi_throw_type_error(env, NULL,
+                              "streamAttachPacketEcho requires (socket)");
+        return NULL;
+    }
+
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+
+    stream_js_state_t *slot = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        if (find_stream_slot_by_socket_unsafe(sock)) {
+            napi_throw_error(env, NULL, "STREAM callback already attached");
+            return NULL;
+        }
+        slot = find_free_stream_slot_unsafe();
+        if (!slot) {
+            napi_throw_error(env, NULL,
+                             "no free STREAM callback slot (max 8 attached sockets)");
+            return NULL;
+        }
+        slot->used = true;
+        slot->socket = sock;
+        slot->env = env;
+        slot->tsfn = NULL;
+        slot->stop_requested.store(0, std::memory_order_release);
+        slot->dispatch_mode = k_stream_dispatch_echo_len32be;
+        slot->len32be_pending.clear();
+        slot->peer_routing_ids.clear();
+        {
+            std::lock_guard<std::mutex> echo_lock(slot->echo_mutex);
+            slot->echo_pending.clear();
+        }
+    }
+
+    zlink_handler_result_t rc = zlink_stream_packet_handler(
+      sock, &stream_echo_packet_callback, slot);
+    if (rc != ZLINK_HANDLER_OK) {
+        stream_release_slot(sock);
+        return throw_last_error(env, "streamAttachPacketEcho failed");
+    }
+
+    rc = zlink_send_ready_handler(sock, &stream_echo_send_ready_callback, slot);
+    if (rc != ZLINK_HANDLER_OK) {
+        (void) zlink_stream_detach(sock);
+        stream_release_slot(sock);
+        return throw_last_error(env, "streamAttachPacketEcho failed");
+    }
+
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value socket_route_echo_step(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 1) {
+        napi_throw_type_error(env, NULL, "socketRouteEchoStep requires (socket)");
+        return NULL;
+    }
+
+    void *socket = NULL;
+    napi_get_value_external(env, argv[0], &socket);
+    route_echo_state_t *state = get_route_echo_state(socket);
+    if (!state) {
+        napi_throw_error(env, NULL, "no free routed echo slot");
+        return NULL;
+    }
+
+    size_t echoed = 0;
+    if (!flush_route_echo_pending(state))
+        return throw_last_error(env, "socketRouteEchoStep failed");
+
+    for (;;) {
+        zlink_routing_id_t peer_rid;
+        zlink_routing_id_t spot_rid;
+        uint64_t request_seq = 0;
+        std::vector<zlink_msg_t> parts;
+        const int rc = router_recv_parts(
+          socket, &peer_rid, &spot_rid, &request_seq, &parts,
+          ZLINK_RECV_FLAGS_DONTWAIT);
+        if (rc != ZLINK_RECV_OK) {
+            const int err = zlink_errno();
+            if (err == EAGAIN
+#ifdef EWOULDBLOCK
+                || err == EWOULDBLOCK
+#endif
+                || err == EINTR) {
+                break;
+            }
+            return throw_last_error(env, "socketRouteEchoStep failed");
+        }
+
+        if (peer_rid.size == 0 || spot_rid.size != 0 || request_seq != 0
+            || parts.empty()) {
+            close_msg_vector(parts);
+            errno = EPROTO;
+            return throw_last_error(env, "socketRouteEchoStep failed");
+        }
+
+        if (state->pending.empty()) {
+            const int send_rc = try_route_echo_send(
+              socket, &peer_rid, parts.data(), parts.size());
+            if (send_rc == ZLINK_SUBMIT_OK) {
+                parts.clear();
+                ++echoed;
+                continue;
+            }
+            if (!is_route_echo_pending_result(send_rc)) {
+                close_msg_vector(parts);
+                return throw_last_error(env, "socketRouteEchoStep failed");
+            }
+        }
+
+        state->pending.emplace_back();
+        if (!move_pending_route_echo(&peer_rid, &parts, &state->pending.back())) {
+            state->pending.pop_back();
+            close_msg_vector(parts);
+            errno = ENOMEM;
+            return throw_last_error(env, "socketRouteEchoStep failed");
+        }
+        break;
+    }
+
+    napi_value out;
+    napi_create_int32(env, static_cast<int32_t>(echoed), &out);
+    return out;
 }
 
 napi_value socket_stream_detach(napi_env env, napi_callback_info info)
@@ -4243,6 +5447,119 @@ napi_value router_try_recv_message(napi_env env, napi_callback_info info)
       parts.data(),
       parts.size());
     close_msg_vector(parts);
+    return out;
+}
+
+napi_value router_recv_into(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "routerRecvInto buffer invalid");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[2], &flags);
+    if (len == 0) {
+        napi_throw_range_error(env, NULL, "routerRecvInto buffer must not be empty");
+        return NULL;
+    }
+
+    zlink_routing_id_t peer_rid;
+    zlink_routing_id_t spot_rid;
+    uint64_t request_seq = 0;
+    std::vector<zlink_msg_t> parts;
+    int rc = router_recv_parts(
+      router, &peer_rid, &spot_rid, &request_seq, &parts, flags);
+    if (rc != ZLINK_RECV_OK)
+        return throw_last_error(env, "routerRecvInto failed");
+    size_t total = recv_parts_size(parts.data(), parts.size());
+    if (total > 0)
+        copy_recv_parts(parts.data(), parts.size(),
+                        static_cast<unsigned char *>(data), len);
+    close_msg_vector(parts);
+
+    napi_value out;
+    napi_create_object(env, &out);
+    napi_value size_value;
+    napi_create_int32(env, static_cast<int32_t>(total), &size_value);
+    napi_set_named_property(env, out, "size", size_value);
+    napi_value rid_value = create_routing_id_value(env, peer_rid);
+    napi_set_named_property(env, out, "routingId", rid_value);
+    napi_value spot_rid_value;
+    if (spot_rid.size > 0) {
+        spot_rid_value = create_routing_id_value(env, spot_rid);
+    } else {
+        napi_get_null(env, &spot_rid_value);
+    }
+    napi_set_named_property(env, out, "spotRid", spot_rid_value);
+    napi_value request_seq_value;
+    if (request_seq == 0) {
+        napi_get_null(env, &request_seq_value);
+    } else {
+        napi_create_bigint_uint64(env, request_seq, &request_seq_value);
+    }
+    napi_set_named_property(env, out, "requestSeq", request_seq_value);
+    return out;
+}
+
+napi_value router_recv_payload_into(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *router = NULL;
+    napi_get_value_external(env, argv[0], &router);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "routerRecvPayloadInto buffer invalid");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[2], &flags);
+    if (len == 0) {
+        napi_throw_range_error(
+          env, NULL, "routerRecvPayloadInto buffer must not be empty");
+        return NULL;
+    }
+
+    const zlink_routing_id_t *peer_rid = NULL;
+    const zlink_routing_id_t *spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t part;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+    if (zlink_msg_init(&part) != 0) {
+        napi_throw_error(env, NULL, "routerRecvPayloadInto msg init failed");
+        return NULL;
+    }
+    int rc = zlink_router_recv_part(
+      router, &peer_rid, &spot_rid, &request_seq, &part, &has_more,
+      static_cast<zlink_recv_flags_t>(flags));
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close(&part);
+        return throw_last_error(env, "routerRecvPayloadInto failed");
+    }
+    if (!peer_rid || peer_rid->size == 0 || !spot_rid || spot_rid->size != 0
+        || request_seq != 0 || has_more != ZLINK_PART_FINAL) {
+        zlink_msg_close(&part);
+        napi_throw_error(env, NULL, "invalid routed recv metadata");
+        return NULL;
+    }
+    size_t total = zlink_msg_size(&part);
+    if (total > 0 && len > 0) {
+        const size_t copy_len = std::min(total, len);
+        memcpy(data, zlink_msg_data(&part), copy_len);
+    }
+    zlink_msg_close(&part);
+
+    napi_value out;
+    napi_create_int32(env, static_cast<int32_t>(total), &out);
     return out;
 }
 

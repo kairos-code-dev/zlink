@@ -15,6 +15,7 @@ import systems.zlink.contracts.RecvException;
 import systems.zlink.contracts.RecvFlags;
 import systems.zlink.contracts.RecvResult;
 import systems.zlink.contracts.Received;
+import systems.zlink.contracts.RequestCallback;
 import systems.zlink.contracts.RequestResult;
 import systems.zlink.contracts.RoutingId;
 import systems.zlink.contracts.SendFlags;
@@ -25,6 +26,7 @@ import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfUtil;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.runtime.nativebridge.InternalAccess;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -155,26 +157,32 @@ final class PerfMultiSpotReqRep {
 
     private static boolean drainServer(Spot replier, long activeEnd) {
         boolean progressed = false;
-        for (;;) {
-            if (System.nanoTime() >= activeEnd) {
-                return progressed;
-            }
-            Received received = recvRoutedNoWait(replier);
-            if (received == null) {
-                return progressed;
-            }
-            progressed = true;
-            try (received) {
-                try (Message reply = received.firstPart().move()) {
-                    try {
-                        received.reply().message(reply).submit();
-                    } catch (SubmitException ex) {
-                        if (!isTransientSubmit(ex)) {
-                            throw ex;
+        Received received = new Received();
+        try {
+            for (;;) {
+                if (System.nanoTime() >= activeEnd) {
+                    return progressed;
+                }
+                if (!recvRoutedNoWait(replier, received)) {
+                    return progressed;
+                }
+                progressed = true;
+                try {
+                    try (Message reply = received.firstPart().move()) {
+                        try {
+                            received.reply().message(reply).submit();
+                        } catch (SubmitException ex) {
+                            if (!isTransientSubmit(ex)) {
+                                throw ex;
+                            }
                         }
                     }
+                } finally {
+                    received.close();
                 }
             }
+        } finally {
+            received.close();
         }
     }
 
@@ -201,6 +209,14 @@ final class PerfMultiSpotReqRep {
             }
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
+            Duration requestTimeout = Duration.ofMillis(
+                Math.max(1, config.recvTimeoutMs()));
+            RequestMetricsCallback[] callbacks =
+                new RequestMetricsCallback[activeClients];
+            for (int i = 0; i < activeClients; i++) {
+                callbacks[i] = new RequestMetricsCallback(waitingReply[i],
+                    config.size(), activeEnd, metrics, failure);
+            }
             while (System.nanoTime() < activeEnd) {
                 Throwable error = failure.get();
                 if (error != null) {
@@ -218,8 +234,7 @@ final class PerfMultiSpotReqRep {
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     waitingReply[i].set(true);
                     if (submitRequest(requesters.get(i), payloads[i],
-                            waitingReply[i], config.size(), activeEnd,
-                            metrics, failure)) {
+                            requestTimeout, callbacks[i])) {
                         sendProgress = true;
                     } else {
                         waitingReply[i].set(false);
@@ -249,45 +264,70 @@ final class PerfMultiSpotReqRep {
 
     private static boolean submitRequest(Spot requester,
                                          Message payload,
-                                         AtomicBoolean waitingReply,
-                                         int expectedSize,
-                                         long activeEnd,
-                                         PerfUtil.Metrics metrics,
-                                         AtomicReference<Throwable> failure) {
-        long remainingNs = activeEnd - System.nanoTime();
-        if (remainingNs <= 0L) {
-            return false;
-        }
+                                         Duration requestTimeout,
+                                         RequestCallback callback) {
         try {
-            return requester.requestToSpot(SERVER_NODE_RID, SERVER_SPOT_RID)
-              .message(payload)
-              .timeout(Duration.ofNanos(remainingNs))
-              .flags(SendFlags.DONT_WAIT)
-              .submit((result, parts) -> {
-                  try {
-                      if (result == RequestResult.OK
-                          && parts != null
-                          && !parts.isEmpty()
-                          && System.nanoTime() < activeEnd) {
-                          PerfUtil.Header reply = PerfUtil.decodeHeader(
-                              parts.get(0), expectedSize);
-                          if (reply.phase() == PerfUtil.PHASE_ACTIVE) {
-                              metrics.recordNanos(reply.latencyNanos() / 2L);
-                        }
-                      }
-                  } catch (Throwable ex) {
-                      failure.compareAndSet(null, ex);
-                  } finally {
-                      Message.closeAll(parts);
-                      waitingReply.set(false);
-                  }
-              });
+            return InternalAccess.spotRequestToSpotPart(requester,
+                SERVER_NODE_RID, SERVER_SPOT_RID, payload, callback,
+                SendFlags.DONT_WAIT, requestTimeout);
         } catch (SubmitException ex) {
             if (isTransientSubmit(ex)) {
                 return false;
             }
             throw ex;
         }
+    }
+
+    private static final class RequestMetricsCallback implements RequestCallback {
+        private final AtomicBoolean waitingReply;
+        private final int expectedSize;
+        private final long activeEnd;
+        private final PerfUtil.Metrics metrics;
+        private final AtomicReference<Throwable> failure;
+
+        private RequestMetricsCallback(AtomicBoolean waitingReply,
+                                       int expectedSize,
+                                       long activeEnd,
+                                       PerfUtil.Metrics metrics,
+                                       AtomicReference<Throwable> failure) {
+            this.waitingReply = waitingReply;
+            this.expectedSize = expectedSize;
+            this.activeEnd = activeEnd;
+            this.metrics = metrics;
+            this.failure = failure;
+        }
+
+        @Override
+        public void onComplete(RequestResult result, List<Message> parts) {
+            try {
+                if (result == RequestResult.OK
+                    && parts != null
+                    && !parts.isEmpty()
+                    && System.nanoTime() < activeEnd) {
+                    PerfUtil.Header reply = PerfUtil.decodeHeader(
+                        parts.get(0), expectedSize);
+                    if (reply.phase() == PerfUtil.PHASE_ACTIVE) {
+                        metrics.recordNanos(reply.latencyNanos() / 2L);
+                    }
+                }
+            } catch (Throwable ex) {
+                failure.compareAndSet(null, ex);
+            } finally {
+                closeReplyParts(parts);
+                waitingReply.set(false);
+            }
+        }
+    }
+
+    private static void closeReplyParts(List<Message> parts) {
+        if (parts == null || parts.isEmpty()) {
+            return;
+        }
+        if (parts.size() == 1) {
+            parts.get(0).close();
+            return;
+        }
+        Message.closeAll(parts);
     }
 
     private static void waitForOutstandingCallbacks(AtomicBoolean[] waitingReply,
@@ -314,11 +354,10 @@ final class PerfMultiSpotReqRep {
     }
 
     private static int activeSpotSlotLimit(int clients, int msgSize) {
-        int hwmSlots = Math.max(1, 1_048_576 / Math.max(1, msgSize));
         if (msgSize >= 131_072)
-            return Math.min(clients, Math.min(8, hwmSlots));
+            return Math.min(clients, 8);
         if (msgSize >= 65_536)
-            return Math.min(clients, Math.min(32, hwmSlots));
+            return Math.min(clients, 32);
         return clients;
     }
 
@@ -328,14 +367,13 @@ final class PerfMultiSpotReqRep {
             || result == SubmitResult.NOT_CONNECTED;
     }
 
-    private static Received recvRoutedNoWait(Spot spot) {
+    private static boolean recvRoutedNoWait(Spot spot, Received received) {
         try {
-            Received received = new Received();
-            return spot.recvRouted(received, RecvFlags.DONT_WAIT) ? received : null;
+            return spot.recvRouted(received, RecvFlags.DONT_WAIT);
         } catch (RecvException ex) {
             if (ex.getResult() == RecvResult.NO_DATA
                 || ex.getResult() == RecvResult.BUSY) {
-                return null;
+                return false;
             }
             throw ex;
         }

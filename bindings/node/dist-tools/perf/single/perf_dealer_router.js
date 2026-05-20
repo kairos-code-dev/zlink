@@ -2,8 +2,8 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, HEADER_SIZE, summarizeMetrics, } = require('../common/perf_metrics');
-const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRecvSocket, emitSingleSocketHwmDetail, parseSingleBinaryArgs, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { createMetricCollector, createRunId, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
+const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRouterRecvInto, emitSingleSocketHwmDetail, parseSingleBinaryArgs, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 async function runDealerRouterBenchmark(msgSize, options) {
     if (options.transport === 'inproc') {
         return runLocalSocketOneWayBenchmark({
@@ -56,10 +56,9 @@ async function runDealerRouterBenchmark(msgSize, options) {
         // channel. The connection-ready gate above is the only cross-thread
         // sync; the receiver uses blocking recv + drain and exits on the wire
         // stop token (C perf_dealer_router.cpp recv-until-stop-token model).
-        const recvTask = drainRecvSocket(router, (received) => {
-            const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
+        const recvTask = drainRouterRecvInto(router, msgSize, (header) => {
             collector.record(header, currentEpochNs());
-        });
+        }, { recordUntilNs: activeStopNs });
         await Promise.race([
             recvTask,
             workerError.then((message) => Promise.reject(new Error(message.message)))

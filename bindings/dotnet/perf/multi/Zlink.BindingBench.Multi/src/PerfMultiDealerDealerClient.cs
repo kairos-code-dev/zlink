@@ -33,6 +33,8 @@ internal static class PerfMultiDealerDealerClient
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
                 client.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeoutMs);
+                client.SetRoutingId(RoutingId.FromBytes(
+                    System.Text.Encoding.ASCII.GetBytes($"client_{i}")));
                 var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
                 client.Connect(endpoint);
                 clients.Add(client);
@@ -113,10 +115,12 @@ internal static class PerfMultiDealerDealerClient
                 while (!controlState.StopRequested
                        && Stopwatch.GetTimestamp() < activeDeadlineTicks)
                 {
-                    using Message message = Message.Allocate(payloadSize);
+                    Message message = Message.Allocate(payloadSize);
                     StampMetricHeader(message.AsSpan(), runId,
                         PerfPhase.Active, msgSize, seq, EpochNs());
-                    if (!TrySendNoWait(socket, message))
+                    bool sent = socket.Send(message, SendFlags.DontWait);
+                    message.Dispose();
+                    if (!sent)
                     {
                         pending[i] = true;
                         pendingCount++;
@@ -185,20 +189,6 @@ internal static class PerfMultiDealerDealerClient
         }
 
         return true;
-    }
-
-    private static bool TrySendNoWait(DealerSocket socket, Message message)
-    {
-        try
-        {
-            return socket.Send().Message(message).Flags(SendFlags.DontWait)
-                .Submit();
-        }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                        || IsInterrupted(ex.InternalErrno))
-        {
-            return false;
-        }
     }
 
     private static bool WaitForWritable(Poller poller, PollEvent[] events,

@@ -1,13 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Systems.Zlink;
 using static PerfRunner;
 
 internal static class PerfMultiDealerDealerServer
 {
     private const int ServerSocketTag = 0;
-    private const int ActiveDeadlineTag = -1;
 
     internal static int Run(PerfOptions options)
     {
@@ -35,16 +36,16 @@ internal static class PerfMultiDealerDealerServer
         if (!WaitConnectReadyCount(monitor, clientCount, readyTimeoutMs))
             return 2;
 
+        ApplyAutoHwmMsgUnit(ctx, size);
+        RecalculateAutoHwm(ctx);
+        PrintAutoHwmSnapshot(server, "server", options.Transport, size);
+
         if (!controlState.WaitForStart(readyTimeoutMs))
         {
             if (!controlState.StopRequested)
                 Console.Error.WriteLine("multi_server_error:no_start");
             return controlState.StopRequested ? 0 : 2;
         }
-
-        ApplyAutoHwmMsgUnit(ctx, size);
-        RecalculateAutoHwm(ctx);
-        PrintAutoHwmSnapshot(server, "server", options.Transport, size);
 
         var result = RunReceivePhase(server, size, latencySampleCap,
             durationSeconds);
@@ -62,11 +63,10 @@ internal static class PerfMultiDealerDealerServer
             int durationSeconds)
     {
         const uint expectedRunId = 1;
-        var latSamples = new List<double>(latencySampleCap);
-        long sampleSeen = 0;
-        uint rng = 0xA341316Cu;
+        var latSamples = new LatencySampleBuffer(
+            EstimateLatencySampleCapacity(latencySampleCap, durationSeconds));
         long measureCount = 0;
-        using var receivedBuffer = new Received();
+        using var receivedPart = new Message();
 
         // PERF_MULTI_TEST_POLICY: the active window ends purely on the
         // configured duration (signal-driven -1 poll, duration timer), like C
@@ -78,9 +78,9 @@ internal static class PerfMultiDealerDealerServer
         // each iteration), so there is no cross-size backlog to drain. The
         // process exits after this size, discarding any tail like C discards
         // it across runs. No idle-drain phase is performed.
-        if (!ReceiveActiveWindow(server, receivedBuffer, msgSize, expectedRunId,
-                PerfPhase.Active, latSamples, ref sampleSeen, ref rng,
-                ref measureCount, durationSeconds))
+        if (!ReceiveActiveWindow(server, receivedPart, msgSize, expectedRunId,
+                PerfPhase.Active, latSamples, ref measureCount,
+                durationSeconds))
         {
             return (0.0, 0.0, 0.0, 0.0, 0);
         }
@@ -90,7 +90,7 @@ internal static class PerfMultiDealerDealerServer
         // PERF_POLICY: report measured latency only. C
         // normalize_latency_stats reports zeros when no samples and never
         // fabricates a duration-derived latency.
-        var latency = ComputeLatencyStats(latSamples);
+        var latency = latSamples.ComputeStats();
         double latencyNs = latency.mean;
         double latencyP95Ns = Math.Max(latency.p95, latencyNs);
         double latencyP99Ns = Math.Max(latency.p99, latencyP95Ns);
@@ -98,18 +98,27 @@ internal static class PerfMultiDealerDealerServer
         return (throughput, latencyNs, latencyP95Ns, latencyP99Ns, measureCount);
     }
 
+    private static int EstimateLatencySampleCapacity(int configuredCap,
+        int durationSeconds)
+    {
+        const int expectedHighRatePerSecond = 4_000_000;
+        long expected = (long)Math.Max(1, durationSeconds)
+            * expectedHighRatePerSecond;
+        if (expected > int.MaxValue)
+            expected = int.MaxValue;
+        return Math.Max(configuredCap, (int)expected);
+    }
+
     private static bool ReceiveActiveWindow(DealerSocket server,
-        Received receivedBuffer, int msgSize, uint expectedRunId,
-        PerfPhase expectedPhase, List<double> latSamples, ref long sampleSeen,
-        ref uint rng, ref long messageCount, int durationSeconds)
+        Message receivedPart, int msgSize, uint expectedRunId,
+        PerfPhase expectedPhase, LatencySampleBuffer latSamples,
+        ref long messageCount, int durationSeconds)
     {
         using var poller = new Poller();
-        using var activeTimer = new Systems.Zlink.Timer();
-        var events = new PollEvent[2];
+        var events = new PollEvent[1];
+        long activeDeadlineTicks = Stopwatch.GetTimestamp()
+            + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
         poller.Add(server, PollEventFlags.PollIn, ServerSocketTag);
-        poller.Add(activeTimer, ActiveDeadlineTag);
-        activeTimer.Start(TimeSpan.FromSeconds(Math.Max(1, durationSeconds)),
-            1);
 
         while (true)
         {
@@ -118,67 +127,188 @@ internal static class PerfMultiDealerDealerServer
 
             for (int i = 0; i < written; i++)
             {
-                if (events[i].Tag is ActiveDeadlineTag)
-                {
-                    _ = events[i].Timer?.Recv();
-                    poller.Remove(activeTimer);
-                    return true;
-                }
-
                 if (events[i].Tag is not int tag
                     || tag != ServerSocketTag
                     || (events[i].Revents & PollEventFlags.PollIn) == 0)
                     continue;
 
-                DrainAvailable(server, receivedBuffer, msgSize, expectedRunId,
-                    expectedPhase, latSamples, ref sampleSeen, ref rng,
-                    ref messageCount, collectMetrics: true);
+                if (!ReceiveOneAvailable(server, receivedPart, msgSize,
+                        expectedRunId, expectedPhase, latSamples,
+                        ref messageCount, collectMetrics: true))
+                    continue;
+
+                if (Stopwatch.GetTimestamp() >= activeDeadlineTicks)
+                    return true;
+
+                DrainAvailable(server, receivedPart, msgSize, expectedRunId,
+                    expectedPhase, latSamples, ref messageCount,
+                    collectMetrics: true);
+
+                if (Stopwatch.GetTimestamp() >= activeDeadlineTicks)
+                    return true;
             }
         }
     }
 
-    private static int DrainAvailable(DealerSocket server, Received receivedBuffer,
-        int msgSize, uint expectedRunId, PerfPhase expectedPhase,
-        List<double> latSamples, ref long sampleSeen, ref uint rng,
+    private static bool ReceiveOneAvailable(DealerSocket server,
+        Message receivedPart, int msgSize, uint expectedRunId,
+        PerfPhase expectedPhase, LatencySampleBuffer latSamples,
         ref long messageCount, bool collectMetrics)
+    {
+        if (!TryRecvNoWait(server, receivedPart, out bool hasMore))
+            return false;
+
+        ProcessReceivedPart(server, receivedPart, hasMore, msgSize,
+            expectedRunId, expectedPhase, latSamples, ref messageCount,
+            collectMetrics);
+        return true;
+    }
+
+    private static int DrainAvailable(DealerSocket server, Message receivedPart,
+        int msgSize, uint expectedRunId, PerfPhase expectedPhase,
+        LatencySampleBuffer latSamples, ref long messageCount,
+        bool collectMetrics)
     {
         int drained = 0;
         while (true)
         {
-            if (!TryRecvNoWait(server, receivedBuffer))
+            if (!TryRecvNoWait(server, receivedPart, out bool hasMore))
                 return drained;
 
             drained++;
-            ReadOnlySpan<byte> body = receivedBuffer.SinglePartOrThrow()
-                .AsReadOnlySpan();
-            if (IsStopTokenPayload(body))
-                continue;
-
-            if (!PerfShared.TryDecodeMetricHeader(body, out PerfMetricHeader header)
-                || header.RunId != expectedRunId
-                || header.MsgSize != (uint)msgSize
-                || header.Phase != (uint)expectedPhase)
-                continue;
-
-            if (!collectMetrics)
-                continue;
-
-            messageCount++;
-            if (header.SentTsNs > 0)
-            {
-                ulong nowNs = EpochNs();
-                if (nowNs >= header.SentTsNs)
-                {
-                    double sampleLatencyNs = nowNs - header.SentTsNs;
-                    ReservoirSample(latSamples, sampleLatencyNs, ref sampleSeen,
-                        latSamples.Capacity, ref rng);
-                }
-            }
+            ProcessReceivedPart(server, receivedPart, hasMore, msgSize,
+                expectedRunId, expectedPhase, latSamples, ref messageCount,
+                collectMetrics);
         }
     }
 
-    private static bool TryRecvNoWait(DealerSocket socket, Received result)
+    private static void ProcessReceivedPart(DealerSocket server,
+        Message receivedPart, bool hasMore, int msgSize, uint expectedRunId,
+        PerfPhase expectedPhase, LatencySampleBuffer latSamples,
+        ref long messageCount, bool collectMetrics)
     {
-        return socket.Recv(result, RecvFlags.DontWait);
+        ReadOnlySpan<byte> body = receivedPart.AsReadOnlySpan();
+        if (hasMore)
+        {
+            DrainRemainingParts(server, receivedPart, hasMore);
+            return;
+        }
+
+        if (IsStopTokenPayload(body))
+            return;
+
+        if (!TryDecodeActiveHeader(body, msgSize, expectedRunId,
+                expectedPhase, out ulong sentTsNs))
+            return;
+
+        if (!collectMetrics)
+            return;
+
+        messageCount++;
+        if (sentTsNs > 0)
+        {
+            ulong nowNs = EpochNs();
+            if (nowNs >= sentTsNs)
+                latSamples.Add(nowNs - sentTsNs);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryDecodeActiveHeader(ReadOnlySpan<byte> payload,
+        int expectedMsgSize, uint expectedRunId, PerfPhase expectedPhase,
+        out ulong sentTsNs)
+    {
+        sentTsNs = 0;
+        if (payload.Length < PerfMetricHeaderSize)
+            return false;
+
+        ref byte head = ref MemoryMarshal.GetReference(payload);
+        if (Unsafe.ReadUnaligned<uint>(ref head) != PerfShared.PerfMetricMagic)
+            return false;
+        if (Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref head, 4))
+            != expectedRunId)
+            return false;
+        if (Unsafe.Add(ref head, 8) != (byte)expectedPhase)
+            return false;
+        if (Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref head, 9))
+            != (uint)expectedMsgSize)
+            return false;
+
+        sentTsNs = (ulong)Unsafe.ReadUnaligned<long>(
+            ref Unsafe.Add(ref head, 21));
+        return true;
+    }
+
+    private static void DrainRemainingParts(DealerSocket socket,
+        Message result, bool hasMore)
+    {
+        while (hasMore && TryRecvNoWait(socket, result, out hasMore))
+        {
+        }
+    }
+
+    private static bool TryRecvNoWait(DealerSocket socket, Message result,
+        out bool hasMore)
+    {
+        return socket.RecvPart(result, out hasMore, RecvFlags.DontWait);
+    }
+
+    private sealed class LatencySampleBuffer
+    {
+        private double[] _samples;
+        private int _count;
+        private double _sum;
+
+        internal LatencySampleBuffer(int capacity)
+        {
+            _samples = new double[Math.Max(1, capacity)];
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void Add(double value)
+        {
+            if (_count == _samples.Length)
+                Grow();
+            double sample = value >= 0.0 ? value : 0.0;
+            _samples[_count++] = sample;
+            _sum += sample;
+        }
+
+        internal (double mean, double p95, double p99) ComputeStats()
+        {
+            if (_count == 0)
+                return (0.0, 0.0, 0.0);
+
+            Array.Sort(_samples, 0, _count);
+            double mean = _sum / _count;
+            return (mean, PercentileFromSorted(0.95),
+                PercentileFromSorted(0.99));
+        }
+
+        private void Grow()
+        {
+            int next = _samples.Length <= int.MaxValue / 2
+                ? _samples.Length * 2
+                : int.MaxValue;
+            if (next == _samples.Length)
+                throw new OutOfMemoryException("Latency sample buffer is full.");
+            Array.Resize(ref _samples, next);
+        }
+
+        private double PercentileFromSorted(double q)
+        {
+            if (_count == 0)
+                return 0.0;
+            if (q <= 0.0)
+                return _samples[0];
+            if (q >= 1.0)
+                return _samples[_count - 1];
+
+            double pos = (_count - 1) * q;
+            int lo = (int)pos;
+            int hi = lo + 1 < _count ? lo + 1 : lo;
+            double frac = pos - lo;
+            return _samples[lo] + (_samples[hi] - _samples[lo]) * frac;
+        }
     }
 }

@@ -33,6 +33,13 @@ function isStopTokenParts(parts) {
         return false;
     }
     const part = parts[0];
+    if (part && typeof part.size === 'function' && part.size() !== STOP_TOKEN_BYTES.length) {
+        return false;
+    }
+    if ((Buffer.isBuffer(part) || part instanceof Uint8Array)
+        && part.length !== STOP_TOKEN_BYTES.length) {
+        return false;
+    }
     const data = typeof part?.data === 'function' ? part.data() : part;
     return isStopToken(data);
 }

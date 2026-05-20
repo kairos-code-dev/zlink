@@ -5,6 +5,7 @@ package systems.zlink.runtime.nativebridge;
 import systems.zlink.contracts.Context;
 import systems.zlink.contracts.Message;
 import systems.zlink.contracts.Received;
+import systems.zlink.contracts.RequestCallback;
 import systems.zlink.contracts.RoutingId;
 import systems.zlink.contracts.SendFlags;
 import systems.zlink.contracts.Socket;
@@ -22,6 +23,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.time.Duration;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
@@ -40,6 +42,10 @@ public final class InternalAccess {
         virtualMethod(Spot.class, "handleInternal", MemorySegment.class);
     private static final MethodHandle SPOT_NODE_HANDLE =
         virtualMethod(SpotNode.class, "handleInternal", MemorySegment.class);
+    private static final MethodHandle SPOT_REQUEST_TO_SPOT_PART =
+        virtualMethod(Spot.class, "requestToSpotPart", boolean.class,
+          RoutingId.class, RoutingId.class, Message.class,
+          RequestCallback.class, SendFlags.class, Duration.class);
     private static final MethodHandle SPOT_DISPATCH_SUBJECT =
         virtualMethod(SpotDispatchInfo.class, "subject", MemorySegment.class);
     private static final MethodHandle SPOT_DISPATCH_INFO =
@@ -111,6 +117,9 @@ public final class InternalAccess {
     private static final MethodHandle TOPIC_MESSAGE_ADOPT_SINGLE =
         virtualMethod(TopicMessage.class, "adoptSingle", void.class,
           RoutingId.class, String.class, Message.class);
+    private static final MethodHandle TOPIC_MESSAGE_PREPARE_REUSABLE_SINGLE =
+        virtualMethod(TopicMessage.class, "prepareReusableSinglePart",
+          Message.class);
     private static final MethodHandle RECEIVED_FORCE_MATERIALIZE =
         virtualMethod(Received.class, "forceMaterialize", void.class);
     private static final MethodHandle RECEIVED_TAKE_PARTS =
@@ -174,6 +183,21 @@ public final class InternalAccess {
     public static MemorySegment spotNodeHandle(SpotNode node) {
         try {
             return (MemorySegment) SPOT_NODE_HANDLE.invoke(node);
+        } catch (Throwable t) {
+            throw unchecked(t);
+        }
+    }
+
+    public static boolean spotRequestToSpotPart(Spot spot,
+                                                RoutingId destNodeRid,
+                                                RoutingId destSpotRid,
+                                                Message part,
+                                                RequestCallback callback,
+                                                SendFlags flags,
+                                                Duration timeout) {
+        try {
+            return (boolean) SPOT_REQUEST_TO_SPOT_PART.invoke(spot,
+              destNodeRid, destSpotRid, part, callback, flags, timeout);
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -446,6 +470,16 @@ public final class InternalAccess {
         try {
             TOPIC_MESSAGE_ADOPT_SINGLE.invoke(target, routingId, topicId,
               part);
+        } catch (Throwable t) {
+            throw unchecked(t);
+        }
+    }
+
+    public static Message topicMessagePrepareReusableSinglePart(
+      TopicMessage target) {
+        try {
+            return (Message) TOPIC_MESSAGE_PREPARE_REUSABLE_SINGLE.invoke(
+              target);
         } catch (Throwable t) {
             throw unchecked(t);
         }

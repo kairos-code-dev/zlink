@@ -18,6 +18,7 @@ internal static class PerfMultiSpotReqRep
     private const int ReadyRepeatTag = -3;
     private const int ActiveWakeTag = -4;
     private const int ActiveDeadlineTag = -5;
+    private const int SendSendDrainBatchLimit = 16384;
     private static int s_debugClientSendLogs;
     private static int s_debugClientReplyLogs;
     private static int s_debugClientHeaderLogs;
@@ -202,6 +203,8 @@ internal static class PerfMultiSpotReqRep
                 Thread.Sleep(1);
             }
 
+            serverStop.Set();
+            Thread.Sleep(10);
             return 0;
         }
         catch (Exception ex)
@@ -619,6 +622,12 @@ internal static class PerfMultiSpotReqRep
     private static void DrainRoutedMessages(Spot replier, SpotEchoMode mode,
         ServerStopFlag serverStop)
     {
+        if (mode == SpotEchoMode.SendSend)
+        {
+            DrainSendSendRoutedMessages(replier, serverStop);
+            return;
+        }
+
         while (!serverStop.IsSet)
         {
             using var received = new Received();
@@ -639,20 +648,38 @@ internal static class PerfMultiSpotReqRep
                     DebugLogLimited(ref s_debugServerReplyLogs,
                         "spot_reqrep_server: reply ok");
                 }
-                else
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno)
+                                            || IsTransientSubmitErrno(ex.InternalErrno))
+            {
+                DebugLogLimited(ref s_debugServerReplyLogs,
+                    $"spot_reqrep_server: transient errno={ex.InternalErrno}");
+                return;
+            }
+        }
+    }
+
+    private static void DrainSendSendRoutedMessages(Spot replier,
+        ServerStopFlag serverStop)
+    {
+        using var reply = new Message();
+        int drained = 0;
+        while (!serverStop.IsSet && drained < SendSendDrainBatchLimit)
+        {
+            try
+            {
+                if (!replier.RecvRoutedPart(reply, out RoutingId? sourceNode,
+                        out RoutingId? sourceSpot, out ulong? requestSeq,
+                        out bool hasMore, RecvFlags.DontWait))
+                    return;
+                drained++;
+                if (requestSeq != null || hasMore)
+                    continue;
+                if (sourceNode.HasValue && sourceSpot.HasValue)
                 {
-                    RoutingId? sourceNode = received.RoutingId;
-                    RoutingId? sourceSpot = received.SpotRid;
-                    if (sourceNode.HasValue && sourceSpot.HasValue)
-                    {
-                        using Message replyCopy =
-                            Message.FromBytes(reply.AsReadOnlySpan());
-                        _ = replier.SendToSpot(sourceNode.Value,
-                                sourceSpot.Value)
-                            .Message(replyCopy)
-                            .Flags(SendFlags.DontWait)
-                            .Submit();
-                    }
+                    _ = replier.SendToSpot(sourceNode.Value, sourceSpot.Value,
+                        reply, SendFlags.DontWait);
                 }
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
@@ -803,8 +830,7 @@ internal static class PerfMultiSpotReqRep
         int requestTimeoutMs, SpotEchoConfig config)
     {
         ulong seq = slot.NextSeq++;
-        byte[] payloadBytes = slot.PreparePayload(size, seq);
-        using var payload = Message.WrapBytes(payloadBytes);
+        Message payload = slot.PreparePayload(size, seq);
         Volatile.Write(ref slot.WaitingReply, 1);
         bool submitted;
         try
@@ -851,18 +877,14 @@ internal static class PerfMultiSpotReqRep
         SpotEchoConfig config)
     {
         ulong seq = slot.NextSeq++;
-        byte[] payloadBytes = slot.PreparePayload(size, seq);
-        using var payload = Message.WrapBytes(payloadBytes);
+        Message payload = slot.PreparePayload(size, seq);
         Volatile.Write(ref slot.WaitingReply, 1);
         bool submitted;
         try
         {
             submitted = slot.Requester
                 .SendToSpot(config.ServerNodeRoutingId,
-                    config.ServerSpotRoutingId)
-                .Message(payload)
-                .Flags(SendFlags.DontWait)
-                .Submit();
+                    config.ServerSpotRoutingId, payload, SendFlags.DontWait);
         }
         catch (ZlinkSubmitException ex)
             when (ex.Result == ZlinkSubmitException.ErrorCode.NotConnected)
@@ -1016,15 +1038,17 @@ internal static class PerfMultiSpotReqRep
     {
         while (Stopwatch.GetTimestamp() < activeDeadlineTicks)
         {
-            using var received = new Received();
             try
             {
-                if (!slot.Requester.RecvRouted(received, RecvFlags.DontWait))
+                if (!slot.Requester.RecvRoutedPart(slot.ReceivedPart,
+                        out _, out _, out ulong? requestSeq, out bool hasMore,
+                        RecvFlags.DontWait))
                     return;
 
-                if (received.RequestSeq != null)
+                if (requestSeq != null || hasMore)
                     continue;
-                ReadOnlySpan<byte> body = received.FirstPart().AsReadOnlySpan();
+                ReadOnlySpan<byte> body =
+                    slot.ReceivedPart.AsReadOnlySpan();
                 if (PerfShared.TryDecodeMetricHeader(body,
                         out PerfMetricHeader header))
                 {
@@ -1223,15 +1247,19 @@ internal static class PerfMultiSpotReqRep
         internal ulong NextSeq = 1;
         internal bool PollRegistered;
         internal PollWake? Wake;
-        private byte[] _payload = Array.Empty<byte>();
+        internal Message ReceivedPart { get; } = new();
+        private Message? _payload;
+        private int _payloadSize;
 
-        internal byte[] PreparePayload(int size, ulong seq)
+        internal Message PreparePayload(int size, ulong seq)
         {
             int payloadSize = Math.Max(size, PerfMetricHeaderSize);
-            if (_payload.Length != payloadSize)
+            if (_payload == null || _payloadSize != payloadSize)
             {
-                _payload = new byte[payloadSize];
-                Array.Fill(_payload, (byte)'a');
+                _payload?.Dispose();
+                _payload = Message.Allocate(payloadSize);
+                _payloadSize = payloadSize;
+                _payload.AsSpan().Fill((byte)'a');
             }
 
             StampMetricHeader(_payload.AsSpan(), RunId, PerfPhase.Active,
@@ -1254,6 +1282,8 @@ internal static class PerfMultiSpotReqRep
 
         public void Dispose()
         {
+            ReceivedPart.Dispose();
+            _payload?.Dispose();
             Requester.Dispose();
         }
     }

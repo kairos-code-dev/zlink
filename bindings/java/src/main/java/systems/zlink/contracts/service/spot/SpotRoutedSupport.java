@@ -566,8 +566,7 @@ final class SpotRoutedSupport implements AutoCloseable {
         Objects.requireNonNull(callback, "callback");
         long timeoutMs = timeoutMillis(timeout);
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
-        PendingCallback pending = registerPendingCallback(requestId, timeoutMs,
-            callback);
+        PendingCallback pending = registerPendingCallback(requestId, callback);
         RequestProgressPump.trackSpotRequest(pending.progress, handle(),
             "zlink-spot-routed-request-progress");
         try (Arena arena = Arena.ofConfined()) {
@@ -600,6 +599,18 @@ final class SpotRoutedSupport implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
             MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
+            if (payload.size() == 1) {
+                while (true) {
+                    int rc = spotReplySpotPartMoveOnce(nodeRid, spotRid,
+                        requestSeq, payload.get(0), Native.PART_FINAL, arena);
+                    if (rc == 0)
+                        return;
+                    int errno = Native.errno();
+                    if (errno == 4)
+                        continue;
+                    throw submitFailure("zlink_spot_reply_spot_part");
+                }
+            }
             for (int i = 0; i < payload.size(); i++) {
                 int partFlag = i + 1 < payload.size()
                     ? Native.PART_MORE : Native.PART_FINAL;
@@ -654,6 +665,19 @@ final class SpotRoutedSupport implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
             MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
+            if (payload.size() == 1) {
+                while (true) {
+                    int rc = spotRequestSpotPartMoveOnce(nodeRid, spotRid,
+                      payload.get(0), handler, userData, flags,
+                      Native.PART_FINAL, timeoutMs, arena);
+                    if (rc == 0)
+                        return;
+                    int errno = Native.errno();
+                    if (errno == ERRNO_EINTR)
+                        continue;
+                    throw submitFailure("zlink_spot_request_spot_part");
+                }
+            }
             for (int i = 0; i < payload.size(); i++) {
                 boolean last = i + 1 >= payload.size();
                 int partFlag = last ? Native.PART_FINAL : Native.PART_MORE;
@@ -734,6 +758,29 @@ final class SpotRoutedSupport implements AutoCloseable {
             requestSeq, nativeMsg, partFlag);
     }
 
+    private int spotReplySpotPartMoveOnce(MemorySegment nodeRid,
+                                      MemorySegment spotRid,
+                                      long requestSeq,
+                                      Message part,
+                                      int partFlag,
+                                      Arena arena) {
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
+        try {
+            int rc = Native.spotReplySpotPart(handle(), nodeRid, spotRid,
+                requestSeq, nativeMsg, partFlag);
+            if (rc != 0) {
+                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
+                    anchor);
+            }
+            return rc;
+        } catch (RuntimeException ex) {
+            InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
+                anchor);
+            throw ex;
+        }
+    }
+
     private int spotSendSpotPartOnce(MemorySegment nodeRid,
                                      MemorySegment spotRid,
                                      Message part,
@@ -759,6 +806,32 @@ final class SpotRoutedSupport implements AutoCloseable {
         InternalAccess.messageCopyTo(part, nativeMsg);
         return Native.spotRequestSpotPart(handle(), nodeRid, spotRid,
           nativeMsg, handler, userData, flags, partFlag, timeoutMs);
+    }
+
+    private int spotRequestSpotPartMoveOnce(MemorySegment nodeRid,
+                                        MemorySegment spotRid,
+                                        Message part,
+                                        MemorySegment handler,
+                                        MemorySegment userData,
+                                        int flags,
+                                        int partFlag,
+                                        int timeoutMs,
+                                        Arena arena) {
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
+        try {
+            int rc = Native.spotRequestSpotPart(handle(), nodeRid, spotRid,
+              nativeMsg, handler, userData, flags, partFlag, timeoutMs);
+            if (rc != 0) {
+                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
+                    anchor);
+            }
+            return rc;
+        } catch (RuntimeException ex) {
+            InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
+                anchor);
+            throw ex;
+        }
     }
 
     private int spotRequestRouterPartOnce(MemorySegment nativeRid,
@@ -934,17 +1007,9 @@ final class SpotRoutedSupport implements AutoCloseable {
 
     private static PendingCallback registerPendingCallback(
       long requestId,
-      long timeoutMs,
       BiConsumer<RequestResult, List<Message>> callback) {
         PendingCallback pending = new PendingCallback(callback);
         PENDING_CALLBACKS.put(requestId, pending);
-        ScheduledFuture<?> timeout = REQUEST_TIMEOUTS.schedule(() -> {
-            PendingCallback removed = PENDING_CALLBACKS.remove(requestId);
-            if (removed != null) {
-                removed.complete(RequestResult.TIMED_OUT, List.of(), null);
-            }
-        }, timeoutMs, TimeUnit.MILLISECONDS);
-        pending.setTimeout(timeout);
         return pending;
     }
 
@@ -993,31 +1058,18 @@ final class SpotRoutedSupport implements AutoCloseable {
     private static final class PendingCallback {
         private final BiConsumer<RequestResult, List<Message>> callback;
         private final CompletableFuture<Void> progress = new CompletableFuture<>();
-        private volatile ScheduledFuture<?> timeout;
 
         private PendingCallback(
           BiConsumer<RequestResult, List<Message>> callback) {
             this.callback = callback;
         }
 
-        private void setTimeout(ScheduledFuture<?> timeout) {
-            this.timeout = timeout;
-        }
-
         private void cancel() {
-            ScheduledFuture<?> activeTimeout = timeout;
-            if (activeTimeout != null) {
-                activeTimeout.cancel(false);
-            }
             progress.complete(null);
         }
 
         private void complete(RequestResult result, List<Message> reply,
                               Message[] closeOnCallbackFailure) {
-            ScheduledFuture<?> activeTimeout = timeout;
-            if (activeTimeout != null) {
-                activeTimeout.cancel(false);
-            }
             try {
                 callback.accept(result, reply);
                 progress.complete(null);
@@ -1030,10 +1082,6 @@ final class SpotRoutedSupport implements AutoCloseable {
         }
 
         private void completeExceptionally(Throwable error) {
-            ScheduledFuture<?> activeTimeout = timeout;
-            if (activeTimeout != null) {
-                activeTimeout.cancel(false);
-            }
             progress.completeExceptionally(error);
         }
     }

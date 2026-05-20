@@ -60,9 +60,18 @@ internal static class PerfMultiRouterRouterClient
 
             var slots = CreateSlots(activeClients, serverRoutingId, size,
                 options.Transport == "tcp");
-            var result = RunMultiRouterRouterClientLoop(pollManager, slots,
-                size, latencySampleCap, pollTimeoutMs, durationSeconds,
-                readyTimeoutMs);
+            (double throughput, double latencyNs, double latencyP95Ns,
+                double latencyP99Ns, long measureCount) result;
+            try
+            {
+                result = RunMultiRouterRouterClientLoop(pollManager, slots,
+                    size, latencySampleCap, pollTimeoutMs, durationSeconds,
+                    readyTimeoutMs);
+            }
+            finally
+            {
+                DisposeSlots(slots);
+            }
 
             // PERF_MULTI: echo (relay) clients send NO wire stop token. C
             // perf_multi_router_router_client.cpp drives run_echo_duration
@@ -100,6 +109,12 @@ internal static class PerfMultiRouterRouterClient
         }
 
         return slots;
+    }
+
+    private static void DisposeSlots(RouterRouterClientSlot[] slots)
+    {
+        for (int i = 0; i < slots.Length; i++)
+            slots[i].ReusableReceivedPart.Dispose();
     }
 
     private static (double throughput, double latencyNs, double latencyP95Ns,
@@ -214,11 +229,18 @@ internal static class PerfMultiRouterRouterClient
             return;
 
         RouterSocket routerSock = (RouterSocket)slot.Socket;
-        Received receivedMessage = slot.ReusableReceived;
+        Message receivedPart = slot.ReusableReceivedPart;
         while (true)
         {
-            if (!routerSock.Recv(receivedMessage, RecvFlags.DontWait))
+            if (!routerSock.RecvPart(receivedPart, out _, out bool hasMore,
+                    RecvFlags.DontWait))
                 break;
+
+            if (hasMore)
+            {
+                DrainRemainingParts(routerSock, receivedPart, hasMore);
+                continue;
+            }
 
             if (!slot.WaitingForReply)
                 continue;
@@ -226,8 +248,7 @@ internal static class PerfMultiRouterRouterClient
             slot.WaitingForReply = false;
             if (phase == PerfPhase.Active)
             {
-                ReadOnlySpan<byte> body = receivedMessage.SinglePartOrThrow()
-                    .AsReadOnlySpan();
+                ReadOnlySpan<byte> body = receivedPart.AsReadOnlySpan();
                 // Match C reference: outer while loop bounds the active
                 // window; dropping replies that arrive after activeDeadline
                 // would lower throughput vs C for replies whose sends were
@@ -298,13 +319,23 @@ internal static class PerfMultiRouterRouterClient
         slot.WaitingForWritable = false;
     }
 
+    private static void DrainRemainingParts(RouterSocket socket,
+        Message result, bool hasMore)
+    {
+        while (hasMore
+               && socket.RecvPart(result, out _, out hasMore,
+                   RecvFlags.DontWait))
+        {
+        }
+    }
+
     private static bool TrySend(RouterRouterClientSlot slot)
     {
         using Message message = slot.BorrowPayload
             ? Message.WrapBytes(slot.Payload)
             : new Message(slot.Payload.AsSpan());
-        return ((RouterSocket)slot.Socket).Send(slot.ServerRoutingId)
-            .Message(message).Flags(SendFlags.DontWait).Submit();
+        return ((RouterSocket)slot.Socket).Send(slot.ServerRoutingId, message,
+            SendFlags.DontWait);
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)
@@ -329,7 +360,7 @@ internal static class PerfMultiRouterRouterClient
             ServerRoutingId = serverRoutingId;
             Payload = payload;
             BorrowPayload = borrowPayload;
-            ReusableReceived = new Received();
+            ReusableReceivedPart = new Message();
         }
 
         internal SocketBase Socket { get; }
@@ -337,7 +368,7 @@ internal static class PerfMultiRouterRouterClient
         internal byte[] Payload { get; }
         internal bool BorrowPayload { get; }
         // Caller-provided storage reused across every recv on this slot.
-        internal Received ReusableReceived { get; }
+        internal Message ReusableReceivedPart { get; }
         internal bool WaitingForWritable { get; set; }
         internal bool WaitingForReply { get; set; }
     }

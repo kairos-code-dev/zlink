@@ -12,6 +12,7 @@ import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -183,6 +184,59 @@ public class CallbackModeContractTest {
             assertTrue(drained.await(TestSupport.DEFAULT_TIMEOUT_MS,
                 TimeUnit.MILLISECONDS));
             assertEquals("dispatch-drain", payloadRef.get());
+        }
+    }
+
+    @Test
+    public void spotRequestCallbackCompletesOnNativeTimeout()
+      throws Exception {
+        TestSupport.assumeNative();
+
+        CountDownLatch completed = new CountDownLatch(1);
+        AtomicReference<RequestResult> resultRef = new AtomicReference<>();
+        AtomicReference<Throwable> callbackError = new AtomicReference<>();
+        RoutingId serverNodeRid = RoutingId.fromBytes(
+            "timeout-server-node".getBytes(StandardCharsets.UTF_8));
+        RoutingId serverSpotRid = RoutingId.fromBytes(
+            "timeout-server-spot".getBytes(StandardCharsets.UTF_8));
+
+        try (Context ctx = new Context();
+             SpotNode serverNode = new SpotNode(ctx);
+             SpotNode clientNode = new SpotNode(ctx);
+             Spot replier = serverNode.createSpot();
+             Spot requester = clientNode.createSpot()) {
+            serverNode.setRoutingId(serverNodeRid);
+            replier.setRoutingId(serverSpotRid);
+            replier.onDispatchEvent(info -> {
+            });
+            serverNode.bind(TestSupport.tcpEndpoint());
+            clientNode.connectPeer(serverNode.statusSnapshot()
+                .localEndpoint());
+            awaitCondition(() -> clientNode.statusSnapshot()
+                .connectedPeerCount() > 0, "spot request peer connection");
+
+            try (Message request = Message.copyOfUtf8("timeout-request")) {
+                requester.requestToSpot(serverNodeRid, serverSpotRid)
+                    .message(request)
+                    .timeout(Duration.ofMillis(50))
+                    .flags(SendFlags.DONT_WAIT)
+                    .submit((result, parts) -> {
+                        try {
+                            resultRef.set(result);
+                        } catch (Throwable error) {
+                            callbackError.set(error);
+                        } finally {
+                            Message.closeAll(parts);
+                            completed.countDown();
+                        }
+                    });
+            }
+
+            assertTrue(completed.await(TestSupport.DEFAULT_TIMEOUT_MS,
+                TimeUnit.MILLISECONDS), "spot request callback timed out");
+            assertNull(callbackError.get(),
+                "callback raised: " + callbackError.get());
+            assertEquals(RequestResult.TIMED_OUT, resultRef.get());
         }
     }
 

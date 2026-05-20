@@ -6,9 +6,7 @@ const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
   createRunId,
-  decodeMetricHeaderFromParts,
   currentEpochNs,
-  HEADER_SIZE,
   summarizeMetrics,
 } = require('../common/perf_metrics');
 const {
@@ -18,7 +16,7 @@ const {
   benchmarkEndpoint,
   closeSenderWorker,
   configureTlsServer,
-  drainRecvSocket,
+  drainRouterRecvInto,
   emitSingleSocketHwmDetail,
   parseSingleBinaryArgs,
   runLocalSocketOneWayBenchmark,
@@ -169,12 +167,13 @@ async function runRouterRouterBenchmark(msgSize, options) {
     // above is the routing-id discovery gate (C perf_router_router.cpp
     // does the same). No extra start/stop control channel — the receiver
     // uses blocking recv + drain and exits on the wire stop token.
-    const recvTask = drainRecvSocket(
+    const recvTask = drainRouterRecvInto(
       receiver,
-      (received) => {
-        const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
+      msgSize,
+      (header) => {
         collector.record(header, currentEpochNs());
-      }
+      },
+      { recordUntilNs: activeStopNs }
     );
     await Promise.race([
       recvTask,

@@ -3,10 +3,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
-const { createPayload, createRunId, stampPayload } = require('../common/perf_metrics');
+const { requireNative } = require('../../dist/zlink/runtime/native/native');
+const { createPayload, } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
+const { applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, waitForConnectionReady } = require('./perf_multi_runtime');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 // MULTI_DEALER_DEALER client == SENDER (one DEALER socket per client).
 //
@@ -54,83 +55,13 @@ async function main() {
                 return;
             }
         }
-        const runId = createRunId(1);
         const payloads = dealers.map(() => createPayload(options.msgSize));
-        const poller = new zlink.Poller();
-        try {
-            for (let i = 0; i < dealers.length; i += 1) {
-                poller.add(dealers[i], pollEvents(POLLOUT), i);
-            }
-            // C run_send_window (~187-257): per-socket DONTWAIT send loop; a
-            // socket that backpressures is marked pending; pending sockets are
-            // POLLOUT-waited with `-1` (signal-driven, no timer fallback) and
-            // cleared on POLLOUT. The duration deadline (application clock)
-            // bounds the active window — PERF_MULTI § 1.3.1.
-            const activeStopNs = process.hrtime.bigint()
-                + BigInt(Math.floor(options.duration * 1_000_000_000));
-            const pending = new Array(dealers.length).fill(false);
-            let seq = 1n;
-            while (process.hrtime.bigint() < activeStopNs) {
-                let pendingCount = 0;
-                for (let i = 0; i < dealers.length; i += 1) {
-                    if (pending[i]) {
-                        pendingCount += 1;
-                        continue;
-                    }
-                    while (process.hrtime.bigint() < activeStopNs) {
-                        stampPayload(payloads[i], {
-                            phase: 1,
-                            runId,
-                            msgSize: options.msgSize,
-                            seq
-                        });
-                        if (trySocketSend(dealers[i], payloads[i])) {
-                            seq += 1n;
-                            continue;
-                        }
-                        pending[i] = true;
-                        pendingCount += 1;
-                        break;
-                    }
-                }
-                if (process.hrtime.bigint() >= activeStopNs || pendingCount === 0) {
-                    continue;
-                }
-                const ready = poller.waitMany(poller.size, -1);
-                for (const event of ready) {
-                    if (!pollEventHas(event, POLLOUT)) {
-                        continue;
-                    }
-                    const index = event.tag ?? event.userData;
-                    if (Number.isInteger(index)) {
-                        pending[index] = false;
-                    }
-                }
-            }
-            // C send_stop_token (~114-140) / run_single_size_case (~290-293):
-            // exactly ONE wire stop token per socket. C's loop retries through
-            // transient backpressure (EAGAIN/EWOULDBLOCK/ETIMEDOUT) until the
-            // token is accepted (deadline ignored). DONTWAIT send + POLLOUT
-            // `-1` wait keeps it purely signal-driven (PERF_MULTI § 1.3.1) — a
-            // plain blocking submit only respects SNDTIMEO and would fail.
-            for (let i = 0; i < dealers.length; i += 1) {
-                while (!trySocketSend(dealers[i], STOP_TOKEN_BYTES)) {
-                    const ready = poller.waitMany(poller.size, -1);
-                    for (const event of ready) {
-                        if (!pollEventHas(event, POLLOUT)) {
-                            continue;
-                        }
-                        const index = event.tag ?? event.userData;
-                        if (Number.isInteger(index)) {
-                            pending[index] = false;
-                        }
-                    }
-                }
-            }
-        }
-        finally {
-            poller.close();
-        }
+        // C run_send_window (~187-257) and send_stop_token (~114-140):
+        // keep the active loop inside native code so each DEALER socket follows
+        // the same DONTWAIT send, pending POLLOUT wait, and blocking stop-token
+        // sequence as the C perf client. This avoids per-message JS scheduling
+        // jitter without changing the public socket API.
+        requireNative().socketPerfDealerDealerSendLoop(dealers.map((dealer) => dealer.nativeHandle()), payloads, options.duration, options.msgSize, STOP_TOKEN_BYTES);
         console.log(`CLIENT_DONE,${options.msgSize}`);
     }
     finally {

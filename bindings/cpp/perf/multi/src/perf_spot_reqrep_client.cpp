@@ -511,28 +511,42 @@ class spot_reqrep_client_bench_t
 
         while (std::chrono::steady_clock::now () < deadline) {
             bool submitted_any = false;
+            bool waiting_any = false;
             const size_t active_slots =
               active_spot_slot_limit (_slots.size (), _msg_size);
             for (size_t i = 0; i < active_slots; ++i) {
                 if (_slots[i]->waiting_reply.load (
-                      std::memory_order_acquire))
+                      std::memory_order_acquire)) {
+                    waiting_any = true;
                     continue;
+                }
                 if (!submit_request (*_slots[i]))
                     return false;
                 if (!_slots[i]->waiting_reply.load (
                       std::memory_order_acquire))
                     continue;
                 submitted_any = true;
+                waiting_any = true;
             }
             if (submitted_any)
                 continue;
+            if (!waiting_any) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                continue;
+            }
 
-            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. The
-            // poller is registered with every slot spot's recv side, so
-            // it wakes as soon as any callback has consumed a reply.
+            const auto now = std::chrono::steady_clock::now ();
+            if (now >= deadline)
+                break;
+            const auto remaining =
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - now);
+            const auto wait_timeout =
+              std::max (std::chrono::milliseconds (1),
+                        std::min (remaining, std::chrono::milliseconds (50)));
             try {
                 _events = _poller.wait (
-                  _slots.size (), std::chrono::milliseconds (-1));
+                  _slots.size (), wait_timeout);
             }
             catch (const zlink::recv_error_t &err) {
                 if (err.internal_errno () == EINTR

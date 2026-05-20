@@ -12,7 +12,6 @@ const {
   stampPayload
 } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
-const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 const {
   POLLOUT,
   applyAutoHwmMsgUnit,
@@ -47,12 +46,9 @@ function resolveSpotLatencyOnlyIntervalNs() {
   return BigInt(us) * 1000n;
 }
 
-function trySpotPublish(spot, _channelName, topic, payload) {
+function trySpotPublish(spot, _channelName, topic, payload, flags) {
   try {
-    return spot.publish(topic)
-      .message(payload)
-      .flags(zlink.SendFlags.DontWait)
-      .submit();
+    return spot.publishFrom(topic, payload, flags);
   } catch (error) {
     if (error instanceof zlink.SubmitError &&
         error.result === zlink.SubmitResult.Backpressured) {
@@ -191,24 +187,20 @@ async function main() {
     const runId = createRunId(1);
     const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
     // C parity: bindings/c/perf/multi/src/perf_multi_spot_server.cpp
-    // run_phase (~301-406) + the (already-correct) node MULTI_PUBSUB
-    // server. The one-way spot publisher is NOT a poller-driven path: it
-    // re-stamps and DONTWAIT-publishes in a tight loop bounded by the
-    // active deadline; on transient backpressure it simply continues so
-    // the deadline is re-checked every iteration (C does not poll between
-    // publishes; a `-1` POLLOUT wait would race the subscriber that only
-    // starts draining after its own START). The control START is a slow
-    // joiner, so re-publish it for the first ~250ms so the client SUB
-    // sees it once its subscription propagates.
-    let seq = 1n;
-    let nextStartAt = Date.now();
-    const startRepublishUntil = Date.now() + 250;
+    // run_phase / try_publish_locked. Each active iteration stamps one
+    // payload, tries DONTWAIT first, then falls back to a blocking send
+    // attempt. If both hit transient backpressure, wait for POLLOUT.
+    // The control START is a slow joiner, so re-publish it for the first
+    // ~250ms so the client SUB sees it once its subscription propagates.
     // C parity: perf_multi_spot_server.cpp run_phase (~334-373) — in
     // latency-only (clean) mode the publisher paces itself, waiting
     // probe_interval after each successful publish so the subscriber
     // never backs up and the measured latency is clean.
     const latencyOnly = resolveSpotLatencyOnlyMode();
     const latencyOnlyIntervalNs = resolveSpotLatencyOnlyIntervalNs();
+    let seq = 1n;
+    let nextStartAt = Date.now();
+    const startRepublishUntil = Date.now() + 250;
     let nextPublishAtNs = process.hrtime.bigint();
     try {
       while (!stopRequested && process.hrtime.bigint() < activeStopNs) {
@@ -229,39 +221,20 @@ async function main() {
           }
         }
         stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-        if (trySpotPublish(spot, '', TOPIC, payload)) {
+        if (trySpotPublish(spot, '', TOPIC, payload, zlink.SendFlags.DontWait) ||
+            trySpotPublish(spot, '', TOPIC, payload, zlink.SendFlags.None)) {
           seq += 1n;
           if (latencyOnly) {
             nextPublishAtNs = process.hrtime.bigint() + latencyOnlyIntervalNs;
           }
+        } else {
+          spotPoller.waitMany(1, -1);
         }
-      }
-      // PERF_MULTI_TEST_POLICY § 1.3.1 (stop token) / C
-      // perf_multi_spot_server.cpp + node MULTI_PUBSUB server
-      // publish_stop_token: signal active-phase end with ONE wire-level
-      // stop token on the data topic (blocking retry only through
-      // transient backpressure — no poll). In-flight payloads naturally
-      // precede the token, which wakes every client slot's `-1` poller
-      // wait so the client exits promptly with no busy-spin and no
-      // leaked process. Stay alive until the runner sends STOP (after the
-      // measuring client exits) so the token is actually delivered.
-      while (!stopRequested && !trySpotPublish(spot, '', TOPIC, STOP_TOKEN_BYTES)) {
-        // tight retry through transient backpressure (matches C for(;;))
       }
     } finally {
       spotPoller.close();
     }
-    // Re-emit the stop token for a short window, then block until the
-    // runner's STOP arrives so the token (and any in-flight payloads)
-    // reach every subscriber slot before teardown. A spot topic publish
-    // fans out to all subscribed slots in one call (like PUBSUB), but a
-    // brief re-emit covers any transient post-burst HWM drop so every
-    // slot's poller wait is woken and the client exits promptly.
-    const tokenRepublishUntil = Date.now() + 1000;
     while (!stopRequested) {
-      if (Date.now() < tokenRepublishUntil) {
-        trySpotPublish(spot, '', TOPIC, STOP_TOKEN_BYTES);
-      }
       await sleepImmediate();
     }
   } finally {

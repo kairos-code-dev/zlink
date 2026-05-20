@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -58,6 +59,7 @@ struct spot_reqrep_server_state_t
     perf_multi_spot_handshake::peer_registry_t control_peers;
     perf_multi_spot_handshake::peer_registry_t data_peers;
     std::atomic<bool> recv_stop;
+    std::mutex recv_mutex;
     std::thread recv_thread;
 };
 
@@ -313,6 +315,7 @@ void drain_spot_routed_recv(void *spot, spot_reqrep_server_state_t *state)
     if (!state || !spot)
         return;
 
+    std::lock_guard<std::mutex> lock(state->recv_mutex);
     for (;;) {
         const zlink_routing_id_t *source_rid = NULL;
         const zlink_routing_id_t *source_spot_rid = NULL;

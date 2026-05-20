@@ -10,6 +10,9 @@ import systems.zlink.contracts.Context;
 import systems.zlink.contracts.Message;
 import systems.zlink.contracts.MonitorEventType;
 import systems.zlink.contracts.PollEventFlag;
+import systems.zlink.contracts.RecvException;
+import systems.zlink.contracts.RecvFlags;
+import systems.zlink.contracts.RecvResult;
 import systems.zlink.contracts.RouterSocket;
 import systems.zlink.contracts.RoutingId;
 import systems.zlink.contracts.SendFlags;
@@ -17,6 +20,7 @@ import systems.zlink.contracts.SocketType;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
+import java.util.Arrays;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -28,6 +32,10 @@ final class PerfRouterRouter {
     private static final MonitorEventType READY_EVENT = MonitorEventType.CONNECTION_READY;
     private static final RoutingId ROUTER1 = RoutingId.fromBytes(
         "ROUTER1".getBytes(StandardCharsets.UTF_8));
+    private static final RoutingId ROUTER2 = RoutingId.fromBytes(
+        "ROUTER2".getBytes(StandardCharsets.UTF_8));
+    private static final byte[] PING = "PING".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] PONG = "PONG".getBytes(StandardCharsets.UTF_8);
 
     private PerfRouterRouter() {
     }
@@ -55,6 +63,9 @@ final class PerfRouterRouter {
             PerfUtil.configureServerTls(receiver, config.transport());
             PerfUtil.configureClientTls(sender, config.transport());
             receiver.setRoutingId(ROUTER1);
+            sender.setRoutingId(ROUTER2);
+            receiver.options().mandatory(true);
+            sender.options().mandatory(true);
             sender.options().connectRoutingId(ROUTER1);
             receiver.bind(PerfUtil.bindEndpoint(endpoint, config.transport()));
             sender.connect(PerfUtil.connectedEndpoint(receiver, endpoint,
@@ -63,6 +74,10 @@ final class PerfRouterRouter {
                 readyTimeout, "router/router sender ready");
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENT, 1,
                 readyTimeout, "router/router receiver ready");
+            RoutingId targetRoute = performRouterRouterHandshake(receiver, sender,
+                Duration.ofMillis(config.connectReadyTimeoutMs()));
+            drainRouterSocket(receiver);
+            drainRouterSocket(sender);
 
             // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits with -1 and exits
             // on wire-level stop token.
@@ -113,9 +128,23 @@ final class PerfRouterRouter {
             }, "single-router-router-receiver");
             receiverThread.start();
 
-            try (Message probe = PerfUtil.payload(config.size(),
-                     (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                sender.send(ROUTER1).message(probe).submit();
+            long probeDeadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+            while (System.nanoTime() < probeDeadline && routed.getCount() != 0) {
+                try (Message probe = PerfUtil.payload(config.size(),
+                         (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
+                    if (!trySendActive(sender, targetRoute, probe)) {
+                        Thread.onSpinWait();
+                    }
+                }
+                try {
+                    if (routed.await(10, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        break;
+                    }
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(
+                        "router/router self-check interrupted", ex);
+                }
             }
             PerfUtil.await(routed, "router/router self-check", Duration.ofSeconds(10));
 
@@ -125,20 +154,16 @@ final class PerfRouterRouter {
                         while (System.nanoTime() < activeEnd) {
                             PerfUtil.resetAndWritePayload(active, config.size(),
                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                            try (Message outbound = Message.copyOf(active)) {
-                                sender.send(ROUTER1).message(outbound).submit();
+                            while (System.nanoTime() < activeEnd
+                                && !trySendBlocking(sender, targetRoute, active)) {
+                                Thread.onSpinWait();
                             }
                         }
                     }
                     // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with a
-                    // wire-level stop token routed via ROUTER1 (ROUTER->ROUTER
-                    // requires an explicit routing id). C parity:
-                    // perf_router_router.cpp send_router_stop_token (~385-410)
-                    // does a bounded retry (<=100 attempts, 1ms sleep) through
-                    // transient backpressure / no-route. A single blocking
-                    // submit can lose the token under load (ROUTER drops on
-                    // EHOSTUNREACH/ENOTCONN), hanging the receiver on poll(-1).
-                    sendRouterStopToken(sender);
+                    // wire-level stop token routed via the handshaken target
+                    // route. ROUTER->ROUTER requires an explicit routing id.
+                    sendRouterStopToken(sender, targetRoute);
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);
                     finished.countDown();
@@ -167,25 +192,164 @@ final class PerfRouterRouter {
         }
     }
 
-    // C parity: perf_router_router.cpp send_router_stop_token (~388-410)
-    // sends the terminator with ZLINK_SEND_FLAGS_NONE (blocking, bounded by
-    // the socket SNDTIMEO) and retries on
-    // EINTR/EAGAIN/EWOULDBLOCK/ETIMEDOUT/EHOSTUNREACH/ENOTCONN. ROUTER->ROUTER
-    // requires an explicit routing id and the route to ROUTER1 can still be
-    // settling right after the active loop; a DONT_WAIT send returns
-    // immediately on a not-yet-ready route, so the 100x1ms budget can expire
-    // before the route exists and the single stop token is lost, hanging the
-    // receiver on poll(-1). Use a blocking send (SendFlags.NONE) so each
-    // attempt waits up to SNDTIMEO for the route, exactly like the C
-    // reference.
-    private static void sendRouterStopToken(RouterSocket sender) {
+    // C parity: perf_router_router.cpp performs a PING/PONG handshake before
+    // the active phase and uses the observed peer routing id for active and
+    // stop-token sends. Without this step, websocket ROUTER->ROUTER can report
+    // connection readiness before the explicit route is usable.
+    private static RoutingId performRouterRouterHandshake(RouterSocket receiver,
+                                                          RouterSocket sender,
+                                                          Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        RoutingId senderRoute = null;
+        systems.zlink.contracts.Received received =
+            new systems.zlink.contracts.Received();
+        try {
+            while (System.nanoTime() < deadline && senderRoute == null) {
+                try (Message ping = Message.copyOf(PING)) {
+                    if (!trySendActive(sender, ROUTER1, ping)) {
+                        Thread.onSpinWait();
+                    }
+                }
+                while (recvIntoNoWait(receiver, received)) {
+                    try {
+                        if (Arrays.equals(received.firstPart().data(), PING)) {
+                            senderRoute = received.routingId().orElse(ROUTER2);
+                            break;
+                        }
+                    } finally {
+                        received.close();
+                    }
+                }
+                if (senderRoute == null) {
+                    Thread.onSpinWait();
+                }
+            }
+            if (senderRoute == null) {
+                throw new IllegalStateException("router/router handshake ping timed out");
+            }
+
+            try (Message pong = Message.copyOf(PONG)) {
+                senderRouterSend(receiver, senderRoute, pong, SendFlags.NONE);
+            }
+
+            while (true) {
+                try {
+                    if (!sender.recv(received, RecvFlags.NONE)) {
+                        continue;
+                    }
+                    try {
+                        boolean ok = Arrays.equals(received.firstPart().data(), PONG);
+                        if (!ok) {
+                            throw new IllegalStateException(
+                                "router/router handshake received unexpected payload");
+                        }
+                        return received.routingId().orElse(ROUTER1);
+                    } finally {
+                        received.close();
+                    }
+                } catch (RecvException ex) {
+                    if (ex.getResult() == RecvResult.NO_DATA
+                        || ex.getResult() == RecvResult.BUSY) {
+                        continue;
+                    }
+                    throw ex;
+                }
+            }
+        } finally {
+            received.close();
+        }
+    }
+
+    private static void drainRouterSocket(RouterSocket socket) {
+        systems.zlink.contracts.Received received =
+            new systems.zlink.contracts.Received();
+        try {
+            while (recvIntoNoWait(socket, received)) {
+                received.close();
+            }
+        } finally {
+            received.close();
+        }
+    }
+
+    private static boolean recvIntoNoWait(RouterSocket socket,
+                                          systems.zlink.contracts.Received received) {
+        try {
+            return socket.recv(received, RecvFlags.DONT_WAIT);
+        } catch (RecvException ex) {
+            if (ex.getResult() == RecvResult.NO_DATA
+                || ex.getResult() == RecvResult.BUSY) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    // C parity: perf_router_router.cpp send_router_stop_token sends the
+    // terminator with ZLINK_SEND_FLAGS_NONE and retries transient failures.
+    // DONT_WAIT can lose the only stop token while the route is settling.
+    private static void sendRouterStopToken(RouterSocket sender,
+                                            RoutingId targetRoute) {
         PerfStopToken.sendWithRetry(() -> {
             try (Message stop = PerfStopToken.newMessage()) {
-                return sender.send(ROUTER1)
-                    .message(stop)
-                    .flags(SendFlags.NONE)
-                    .submit();
+                senderRouterSend(sender, targetRoute, stop, SendFlags.NONE);
+                return true;
             }
         }, "router/router");
+    }
+
+    private static void senderRouterSend(RouterSocket socket,
+                                         RoutingId route,
+                                         Message message,
+                                         SendFlags flags) {
+        socket.send(route)
+            .message(message)
+            .flags(flags)
+            .submit();
+    }
+
+    private static boolean trySendActive(RouterSocket sender, RoutingId route,
+                                         Message active) {
+        try (Message outbound = Message.copyOf(active)) {
+            return sender.send(route)
+                .message(outbound)
+                .flags(SendFlags.DONT_WAIT)
+                .submit();
+        } catch (systems.zlink.contracts.SubmitException ex) {
+            if (ex.getResult()
+                == systems.zlink.contracts.SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        } catch (systems.zlink.contracts.ZlinkException ex) {
+            int errno = ex.getInternalErrno();
+            if (errno == 11 || errno == 4 || errno == 10035) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    private static boolean trySendBlocking(RouterSocket sender, RoutingId route,
+                                           Message active) {
+        try (Message outbound = Message.copyOf(active)) {
+            return sender.send(route)
+                .message(outbound)
+                .flags(SendFlags.NONE)
+                .submit();
+        } catch (systems.zlink.contracts.SubmitException ex) {
+            if (ex.getResult()
+                == systems.zlink.contracts.SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        } catch (systems.zlink.contracts.ZlinkException ex) {
+            int errno = ex.getInternalErrno();
+            if (errno == 11 || errno == 4 || errno == 10035
+                || errno == 110 || errno == 113 || errno == 107) {
+                return false;
+            }
+            throw ex;
+        }
     }
 }

@@ -252,8 +252,7 @@ internal static class PerfMultiSpotServer
                 PerfMetricHeaderSize));
             StampMetricHeader(message.AsSpan(), RunId, PerfPhase.Active,
                 config.Size, seq, EpochNs());
-            return spotPub.Publish(Topic).Message(message).Flags(flags)
-                .Submit();
+            return spotPub.Publish(Topic, message, flags);
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                         || IsInterrupted(ex.InternalErrno))

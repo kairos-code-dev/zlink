@@ -8,12 +8,25 @@
 #include <algorithm>
 #include <chrono>
 #include <cerrno>
+#include <csignal>
 #include <cstring>
 #include <vector>
 
 namespace {
 
 static const char *k_topic = "bench";
+static volatile std::sig_atomic_t g_stop_requested = 0;
+
+void on_signal (int)
+{
+    g_stop_requested = 1;
+}
+
+void install_signal_handlers ()
+{
+    std::signal (SIGINT, on_signal);
+    std::signal (SIGTERM, on_signal);
+}
 
 bool wait_for_start_signal (size_t msg_size)
 {
@@ -27,7 +40,7 @@ bool wait_for_start_signal (size_t msg_size)
 bool publish_stop_token (::perf::socket_t &publisher)
 {
     const size_t token_size = std::strlen (perf::multi::k_stop_token);
-    for (;;) {
+    while (!g_stop_requested) {
         zlink::message_t part (token_size);
         if (!part.valid ())
             return false;
@@ -45,6 +58,8 @@ bool publish_stop_token (::perf::socket_t &publisher)
             continue;
         return false;
     }
+
+    return true;
 }
 
 bool run_phase (::perf::socket_t &publisher,
@@ -183,5 +198,6 @@ int main (int argc, char **argv)
     if (size == 0)
         return 1;
 
+    install_signal_handlers ();
     return perf_pubsub_server (lib_name, transport, size) ? 0 : 1;
 }

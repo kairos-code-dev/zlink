@@ -50,6 +50,23 @@ function trace(message) {
   }
 }
 
+function activeSpotSlotLimit(totalSlots, msgSize) {
+  if (msgSize >= 131072) {
+    return Math.min(totalSlots, 8);
+  }
+  if (msgSize >= 65536) {
+    return Math.min(totalSlots, 32);
+  }
+  return totalSlots;
+}
+
+function activeRequestTimeoutMs() {
+  const raw = Number(
+    process.env.PERF_MULTI_RCVTIMEO_MS ?? process.env.PERF_MULTI_SNDTIMEO_MS
+  );
+  return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 200;
+}
+
 function closeParts(parts) {
   for (const part of parts ?? []) {
     if (part && typeof part.close === 'function') {
@@ -67,10 +84,12 @@ function closeQuietly(resource) {
 }
 
 async function requestSpotReply(spot, payload, timeoutMs) {
-  const parts = await spot.requestToSpot(SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID)
-    .message(payload)
-    .timeout(timeoutMs)
-    .submitAsync();
+  const parts = await spot.requestToSpotFrom(
+    SERVER_NODE_ROUTING_ID,
+    SERVER_SPOT_ROUTING_ID,
+    payload,
+    timeoutMs
+  );
   try {
     return decodeMetricHeaderFromParts(parts);
   } finally {
@@ -80,11 +99,11 @@ async function requestSpotReply(spot, payload, timeoutMs) {
 
 function tryRequestSpotReply(spot, payload, timeoutMs, onReply, onDone) {
   try {
-    return spot.requestToSpot(SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID)
-      .message(payload)
-      .timeout(timeoutMs)
-      .flags(zlink.SendFlags.DontWait)
-      .submit((result, parts) => {
+    return spot.requestToSpotFrom(
+      SERVER_NODE_ROUTING_ID,
+      SERVER_SPOT_ROUTING_ID,
+      payload,
+      (result, parts) => {
         try {
           if (result === zlink.RequestResult.Ok) {
             onReply(decodeMetricHeaderFromParts(parts));
@@ -93,7 +112,10 @@ function tryRequestSpotReply(spot, payload, timeoutMs, onReply, onDone) {
           closeParts(parts);
           onDone();
         }
-      });
+      },
+      zlink.SendFlags.DontWait,
+      timeoutMs
+    );
   } catch (error) {
     if (error instanceof zlink.SubmitError &&
         error.result === zlink.SubmitResult.Backpressured) {
@@ -255,18 +277,20 @@ async function main() {
     let seq = 1n;
     const poller = new zlink.Poller();
     for (let i = 0; i < slots.length; i += 1) {
-      poller.add(slots[i].spot, [POLLIN, POLLOUT], i);
+      poller.add(slots[i].spot, [POLLIN], i);
     }
+    const activeSlots = slots.slice(0, activeSpotSlotLimit(slots.length, options.msgSize));
+    const requestTimeoutMs = activeRequestTimeoutMs();
 
     try {
       while (currentEpochNs() < activeStopNs) {
         let progressed = false;
-        for (const slot of slots) {
+        for (const slot of activeSlots) {
           if (slot.inflight) {
             continue;
           }
           stampPayload(slot.payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-          const submitted = tryRequestSpotReply(slot.spot, slot.payload, 2000, (header) => {
+          const submitted = tryRequestSpotReply(slot.spot, slot.payload, requestTimeoutMs, (header) => {
             collector.record(header, currentEpochNs());
           }, () => {
             slot.inflight = false;
@@ -279,12 +303,12 @@ async function main() {
           progressed = true;
         }
         if (!progressed) {
-          poller.waitMany(Math.max(1, poller.size), -1);
+          poller.waitMany(Math.max(1, poller.size), 50);
           await sleepImmediate();
         }
       }
-      while (slots.some((slot) => slot.inflight)) {
-        poller.waitMany(Math.max(1, poller.size), -1);
+      while (activeSlots.some((slot) => slot.inflight)) {
+        poller.waitMany(Math.max(1, poller.size), 50);
         await sleepImmediate();
       }
     } finally {

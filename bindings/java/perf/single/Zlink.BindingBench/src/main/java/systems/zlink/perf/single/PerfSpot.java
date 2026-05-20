@@ -38,6 +38,7 @@ final class PerfSpot {
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
+             Spot stopPublisher = subscriberNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
             PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
             PerfUtil.configureServerTls(publisherNode, config.transport());
@@ -47,6 +48,7 @@ final class PerfSpot {
             publisherNode.setRoutingId(routingId("z-java-perf-spot-publisher"));
             subscriberNode.setRoutingId(routingId("a-java-perf-spot-subscriber"));
             publisher.setRoutingId(routingId("z-java-perf-spot-publisher-spot"));
+            stopPublisher.setRoutingId(routingId("a-java-perf-spot-stop-spot"));
             subscriber.setRoutingId(routingId("a-java-perf-spot-subscriber-spot"));
             // C parity: perf_spot.cpp run_case (~669-690) and
             // bindings/cpp/perf/single/src/perf_spot.cpp (~387-397):
@@ -73,8 +75,8 @@ final class PerfSpot {
                 subscriber, config, metrics, activeEnd, activeReceived, stopped,
                 failure), "single-spot-receiver");
             Thread senderThread = new Thread(() -> publishActiveAndStop(
-                publisher, config, topic, activeEnd, activeReceived, stopped,
-                failure),
+                publisher, stopPublisher, config, topic, activeEnd,
+                activeReceived, stopped, failure),
                 "single-spot-sender");
             receiverThread.start();
             senderThread.start();
@@ -202,6 +204,7 @@ final class PerfSpot {
     }
 
     private static void publishActiveAndStop(Spot publisher,
+                                             Spot stopPublisher,
                                              PerfUtil.Config config,
                                              String topic,
                                              long activeEnd,
@@ -219,8 +222,7 @@ final class PerfSpot {
             while (System.nanoTime() < activeEnd) {
                 while (sent - activeReceived.get() >= maxInflight
                     && System.nanoTime() < activeEnd) {
-                    sleepQuietly(Duration.ofMillis(1),
-                        "spot publish inflight throttle");
+                    Thread.onSpinWait();
                 }
                 PerfUtil.resetAndWritePayload(active, config.size(),
                     (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
@@ -230,7 +232,7 @@ final class PerfSpot {
                 sent++;
             }
             try (Message stop = PerfStopToken.newMessage()) {
-                publisher.publish(topic)
+                stopPublisher.publish(topic)
                     .message(stop)
                     .flags(SendFlags.NONE)
                     .submit();
@@ -268,12 +270,10 @@ final class PerfSpot {
     private static boolean tryPublishWhenWritable(Spot publisher,
                                                  String topic,
                                                  Message message) {
-        try (Message outbound = Message.copyOf(message)) {
-            return publisher.publish(topic)
-                .message(outbound)
-                .flags(SendFlags.DONT_WAIT)
-                .submit();
-        }
+        return publisher.publish(topic)
+            .message(message)
+            .flags(SendFlags.DONT_WAIT)
+            .submit();
     }
 
     private static void waitFor(Poller poller, PollEventFlag expected) {

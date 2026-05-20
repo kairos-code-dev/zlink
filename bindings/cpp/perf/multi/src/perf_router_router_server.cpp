@@ -134,44 +134,29 @@ bool perf_router_router_server (const std::string &lib_name,
     events.reserve (1);
     poller.add (server, zlink::poll_event_flag_t::pollin);
 
-    auto try_send_native_rid =
-      [&] (const zlink_routing_id_t *rid, zlink::message_t &payload,
-           bool *would_block) -> bool {
-        if (would_block)
-            *would_block = false;
-        const int send_rc = zlink_send_part_rid (
-          zlink::detail::native_handle (server),
-          rid,
-          zlink::detail::native_handle (payload),
-          ZLINK_DONTWAIT,
-          ZLINK_PART_FINAL);
-        if (send_rc == 0) {
-            zlink::detail::mark_sent (payload);
-            return true;
-        }
-
-        const int err_no = errno;
-        if (err_no == EAGAIN || err_no == EWOULDBLOCK || err_no == EINTR
-            || err_no == EHOSTUNREACH || err_no == ENOTCONN) {
-            if (would_block)
-                *would_block = true;
-            errno = err_no;
-            return false;
-        }
-
-        errno = err_no;
-        return false;
-      };
-
     auto flush_pending = [&] () -> bool {
         while (!pending_replies.empty ()) {
             pending_reply_t &front = pending_replies.front ();
-            bool would_block = false;
-            if (try_send_native_rid (&front.rid, front.payload, &would_block)) {
+            const zlink_submit_result_t rc = zlink_send_part_rid (
+              zlink::detail::native_handle (server),
+              &front.rid,
+              zlink::detail::native_handle (front.payload),
+              ZLINK_DONTWAIT,
+              ZLINK_PART_FINAL);
+            const zlink::submit_result_t result =
+              static_cast<zlink::submit_result_t> (rc);
+            if (result == zlink::submit_result_t::ok) {
+                zlink::detail::mark_sent (front.payload);
                 pending_replies.pop_front ();
                 continue;
             }
-            return would_block;
+            const int err_no = zlink_errno ();
+            if (err_no == EAGAIN || err_no == EWOULDBLOCK
+                || err_no == EINTR || err_no == EHOSTUNREACH
+                || err_no == ENOTCONN) {
+                return true;
+            }
+            return false;
         }
         return true;
     };
@@ -235,21 +220,21 @@ bool perf_router_router_server (const std::string &lib_name,
         // avoids materializing received_t parts for the single-part echo
         // workload.
         while (!g_stop_requested.load (std::memory_order_acquire)) {
-            part.init ();
-            const zlink_routing_id_t *source_rid = NULL;
+            const zlink_routing_id_t *source_node_rid = NULL;
             const zlink_routing_id_t *source_spot_rid = NULL;
             uint64_t request_seq = 0;
             zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-            const int recv_rc = zlink_router_recv_part (
+            part.init ();
+            const zlink_recv_result_t recv_rc = zlink_router_recv_part (
               zlink::detail::native_handle (server),
-              &source_rid,
+              &source_node_rid,
               &source_spot_rid,
               &request_seq,
               zlink::detail::native_handle (part),
               &has_more,
               ZLINK_RECV_FLAGS_DONTWAIT);
-            if (recv_rc != 0) {
-                const int err = errno;
+            if (recv_rc != ZLINK_RECV_OK) {
+                const int err = zlink_errno ();
                 part.close ();
                 if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
                     break;
@@ -257,10 +242,11 @@ bool perf_router_router_server (const std::string &lib_name,
                 failed = true;
                 break;
             }
-            if (!source_rid || source_rid->size == 0
+            if (!source_node_rid || source_node_rid->size == 0
                 || (source_spot_rid && source_spot_rid->size != 0)
                 || request_seq != 0 || has_more != ZLINK_PART_FINAL) {
                 part.close ();
+                debug_log ("recv envelope mismatch");
                 failed = true;
                 break;
             }
@@ -274,21 +260,36 @@ bool perf_router_router_server (const std::string &lib_name,
 
             if (!pending_replies.empty ()) {
                 pending_replies.push_back (pending_reply_t {
-                  *source_rid, std::move (part) });
+                  *source_node_rid, std::move (part) });
                 continue;
             }
 
-            bool would_block = false;
-            if (!try_send_native_rid (source_rid, part, &would_block)) {
-                if (would_block) {
-                    pending_replies.push_back (pending_reply_t {
-                      *source_rid, std::move (part) });
-                    continue;
-                }
-                debug_log ("send failed errno=" + std::to_string (errno));
-                failed = true;
-                break;
+            const zlink_submit_result_t send_rc = zlink_send_part_rid (
+              zlink::detail::native_handle (server),
+              source_node_rid,
+              zlink::detail::native_handle (part),
+              ZLINK_DONTWAIT,
+              ZLINK_PART_FINAL);
+            const zlink::submit_result_t send_result =
+              static_cast<zlink::submit_result_t> (send_rc);
+            if (send_result == zlink::submit_result_t::ok) {
+                zlink::detail::mark_sent (part);
+                continue;
             }
+
+            const int err_no = zlink_errno ();
+            if (err_no == EAGAIN || err_no == EWOULDBLOCK
+                || err_no == EINTR || err_no == EHOSTUNREACH
+                || err_no == ENOTCONN) {
+                pending_replies.push_back (pending_reply_t {
+                  *source_node_rid, std::move (part) });
+                continue;
+            }
+            part.close ();
+            errno = err_no;
+            debug_log ("send failed errno=" + std::to_string (errno));
+            failed = true;
+            break;
         }
         if (failed)
             break;

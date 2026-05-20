@@ -162,7 +162,8 @@ async function runPubSubBenchmark(msgSize, options) {
       (received) => {
         const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
         collector.record(header, currentEpochNs());
-      }
+      },
+      { recordUntilNs: activeStopNs }
     );
     await Promise.race([
       recvTask,

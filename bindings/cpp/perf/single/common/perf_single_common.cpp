@@ -40,6 +40,28 @@ int parse_positive_env (const char *name_, int default_value_)
     return static_cast<int> (parsed);
 }
 
+int parse_nonnegative_env (const char *name_, int default_value_)
+{
+    if (!name_)
+        return default_value_;
+
+    const char *env = std::getenv (name_);
+    if (!env || !*env)
+        return default_value_;
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol (env, &end, 10);
+    if (errno != 0 || end == env || *end != '\0')
+        return default_value_;
+
+    if (parsed < 0)
+        return 0;
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int> (parsed);
+}
+
 int resolve_single_duration_seconds ()
 {
     return parse_positive_env ("PERF_SINGLE_DURATION_SECONDS", 5);
@@ -119,15 +141,21 @@ bool bench_debug_enabled ()
 void apply_ctx_options (zlink::context_t &ctx_)
 {
     zlink::context_options_t options = ctx_.options ();
-    (void) options.auto_hwm_enabled (true);
-    (void) options.auto_hwm_profile (resolve_single_ctx_auto_hwm_profile ());
-    const int io_threads = parse_positive_env ("PERF_IO_THREADS", 0);
+    const int io_threads = parse_positive_env ("PERF_IO_THREADS", 1);
     if (io_threads > 0)
         (void) options.io_threads (zlink::io_thread_count_t::value (io_threads));
 
     const int max_sockets = parse_positive_env ("PERF_MAX_SOCKETS", 0);
     if (max_sockets > 0)
         (void) options.max_sockets (zlink::socket_count_t::value (max_sockets));
+
+    (void) options.blocky (
+      parse_nonnegative_env ("PERF_CTX_BLOCKY", 0) != 0);
+    (void) options.auto_hwm_enabled (
+      parse_nonnegative_env ("PERF_CTX_AUTO_HWM_ENABLE",
+                             ZLINK_CTX_AUTO_HWM_ENABLE_DFLT)
+      != 0);
+    (void) options.auto_hwm_profile (resolve_single_ctx_auto_hwm_profile ());
 }
 
 bool set_sockopt_int (perf_socket_t &socket_,

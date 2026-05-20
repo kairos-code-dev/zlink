@@ -90,7 +90,10 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 		}
 	}
 
-	return stats.Snapshot(cfg.duration, cfg.msgSize)
+	result := stats.Snapshot(cfg.duration, cfg.msgSize)
+	perfcommon.PrintSingleAutoHWMDetail(pubMon, cfg.pattern, cfg.transport, "publisher", zlink.SocketTypePub, cfg.msgSize)
+	perfcommon.PrintSingleAutoHWMDetail(subMon, cfg.pattern, cfg.transport, "subscriber", zlink.SocketTypeSub, cfg.msgSize)
+	return result
 }
 
 // drainSinglePubSubUntilStop drains the subscriber until either a

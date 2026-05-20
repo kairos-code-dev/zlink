@@ -82,7 +82,6 @@ async function main() {
         runId: createRunId(1),
         msgSize: options.msgSize,
         activeStartNs,
-        activeStopNs,
       });
 
       // C run_receive_window (~240-297): poller wait with `-1` (signal-

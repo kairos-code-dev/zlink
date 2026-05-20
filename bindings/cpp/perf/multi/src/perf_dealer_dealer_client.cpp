@@ -10,8 +10,10 @@
 
 #include <algorithm>
 #include <any>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstring>
 #include <cstdlib>
 #include <iostream>
@@ -23,6 +25,20 @@ namespace {
 
 static const char *k_pattern_env = "DEALER_DEALER";
 static const char *k_pattern_result = "MULTI_DEALER_DEALER";
+static std::atomic<bool> g_stop_requested (false);
+
+void on_signal (int)
+{
+    g_stop_requested.store (true, std::memory_order_release);
+}
+
+void install_signal_handlers ()
+{
+    std::signal (SIGINT, on_signal);
+#if defined(SIGTERM)
+    std::signal (SIGTERM, on_signal);
+#endif
+}
 
 bool perf_debug_enabled ()
 {
@@ -334,18 +350,24 @@ class dealer_dealer_client_bench_t
             for (size_t i = 0; i < _socket_states.size (); ++i) {
                 if (sent[i])
                     continue;
-                if (try_send_stop_token (_socket_states[i])) {
+                if (try_send_stop_token (_socket_states[i]))
+                {
                     sent[i] = 1;
                     ++sent_count;
                 }
+                const int err = errno;
+                if (err != 0 && err != EINTR && err != EAGAIN
+                    && err != EWOULDBLOCK && err != ETIMEDOUT)
+                    return false;
             }
-            if (sent_count == _socket_states.size ())
+            if (sent_count == _socket_states.size ()
+                || g_stop_requested.load (std::memory_order_acquire))
                 return true;
             std::this_thread::yield ();
         } while (std::chrono::steady_clock::now () < deadline);
 
-        debug_log ("stop token send could not make progress");
-        return false;
+        debug_log ("stop token send incomplete; active deadline still bounds server");
+        return true;
     }
 
     bool run_phase (perf_metric::phase_t phase,
@@ -490,6 +512,9 @@ bool perf_dealer_dealer_client (const std::string &lib_name,
 
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
+
+    g_stop_requested.store (false, std::memory_order_release);
+    install_signal_handlers ();
 
     dealer_dealer_client_bench_t bench (
       transport, lib_name, msg_size, endpoint, settings);

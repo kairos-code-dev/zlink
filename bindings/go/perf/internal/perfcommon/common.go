@@ -92,6 +92,153 @@ func PrintResult(pattern, transport string, msgSize int, result Result) {
 	fmt.Printf("RESULT,current,%s,%s,%d,latency_p99,%.3f\n", pattern, transport, msgSize, result.LatencyP99Ns/1_000_000.0)
 }
 
+func PrintSingleAutoHWMDetail(
+	monitor *zlink.SocketMonitor,
+	pattern string,
+	transport string,
+	component string,
+	socketType zlink.SocketType,
+	msgSize int,
+) {
+	if monitor == nil || pattern == "" || component == "" {
+		return
+	}
+	snapshot, err := monitor.Snapshot()
+	if err != nil || !autoHWMSnapshotVisible(snapshot) {
+		return
+	}
+	printAutoHWMDetail(pattern, transport, component, msgSize, "socket", 0, component, socketType, snapshot)
+}
+
+func PrintSingleSpotNodeAutoHWMDetail(
+	node *zlink.SpotNode,
+	pattern string,
+	transport string,
+	component string,
+	msgSize int,
+) {
+	if node == nil || pattern == "" || component == "" {
+		return
+	}
+	entries, err := node.InternalSocketsSnapshot(nil)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.AutoHwmVisible || !autoHWMSnapshotVisible(&entry.Snapshot) {
+			continue
+		}
+		printAutoHWMDetail(
+			pattern,
+			transport,
+			component,
+			msgSize,
+			spotNodeSocketOwnerName(entry.Owner),
+			entry.OwnerID,
+			entry.SocketName,
+			entry.SocketType,
+			&entry.Snapshot,
+		)
+	}
+}
+
+func autoHWMSnapshotVisible(snapshot *zlink.MonitorSnapshot) bool {
+	return snapshot != nil &&
+		(snapshot.AutoHwmAppliedSndHwm > 0 ||
+			snapshot.AutoHwmAppliedRcvHwm > 0 ||
+			snapshot.AutoHwmEffectiveMessageBytes > 0 ||
+			snapshot.AutoHwmSocketMessageSlots > 0)
+}
+
+func printAutoHWMDetail(
+	pattern string,
+	transport string,
+	component string,
+	msgSize int,
+	owner string,
+	ownerID uint64,
+	socketName string,
+	socketType zlink.SocketType,
+	snapshot *zlink.MonitorSnapshot,
+) {
+	if socketName == "" {
+		socketName = component
+	}
+	fmt.Printf(
+		"AUTO_HWM_DETAIL,pattern=%s,transport=%s,component=%s,msg_size=%d,owner=%s,owner_id=%d,socket=%s,socket_type=%s,role=%s,sndhwm=%d,rcvhwm=%d,effective_message_bytes=%d,effective_sndbuf=%d,effective_rcvbuf=%d,socket_message_slots=%d\n",
+		pattern,
+		transport,
+		component,
+		msgSize,
+		owner,
+		ownerID,
+		socketName,
+		socketTypeName(socketType),
+		autoHWMRoleName(snapshot.AutoHwmRole),
+		snapshot.AutoHwmAppliedSndHwm,
+		snapshot.AutoHwmAppliedRcvHwm,
+		snapshot.AutoHwmEffectiveMessageBytes,
+		snapshot.AutoHwmEffectiveSndBuf,
+		snapshot.AutoHwmEffectiveRcvBuf,
+		snapshot.AutoHwmSocketMessageSlots,
+	)
+}
+
+func autoHWMRoleName(role uint32) string {
+	switch role {
+	case 1:
+		return "control"
+	case 2:
+		return "routed"
+	case 3:
+		return "fanout"
+	case 4:
+		return "recv_ingress"
+	case 5:
+		return "spot_data"
+	case 6:
+		return "peer_queue"
+	case 7:
+		return "stream"
+	default:
+		return "none"
+	}
+}
+
+func socketTypeName(socketType zlink.SocketType) string {
+	switch socketType {
+	case zlink.SocketTypePair:
+		return "PAIR"
+	case zlink.SocketTypePub:
+		return "PUB"
+	case zlink.SocketTypeSub:
+		return "SUB"
+	case zlink.SocketTypeDealer:
+		return "DEALER"
+	case zlink.SocketTypeRouter:
+		return "ROUTER"
+	case zlink.SocketTypeXPub:
+		return "XPUB"
+	case zlink.SocketTypeXSub:
+		return "XSUB"
+	case zlink.SocketTypeStream:
+		return "STREAM"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+func spotNodeSocketOwnerName(owner zlink.SpotNodeSocketOwner) string {
+	switch owner {
+	case zlink.SpotNodeSocketOwnerNode:
+		return "spotnode"
+	case zlink.SpotNodeSocketOwnerSpot:
+		return "spot"
+	default:
+		return "unknown"
+	}
+}
+
 func Must(err error) {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

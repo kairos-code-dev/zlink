@@ -9,7 +9,6 @@
 #include <cstring>
 #include <iostream>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -36,7 +35,6 @@ struct start_gate_t
 
 std::atomic<bool> g_stop (false);
 std::atomic<int> g_server_debug_recv_logs (0);
-std::atomic<int> g_server_debug_send_logs (0);
 start_gate_t g_start_gate;
 
 zlink::routing_id_t text_rid (const char *text)
@@ -114,76 +112,6 @@ void stdin_watcher (zlink::service::spot_node_t *control_node,
     signal_stop ();
 }
 
-bool echo_one (zlink::service::spot_t &spot)
-{
-    try {
-        zlink::received_t received;
-        const int rc =
-          spot.recv_routed (received, zlink::recv_flags_t::dontwait);
-        if (rc == static_cast<int> (zlink::recv_result_t::no_data))
-            return true;
-        if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
-            errno = zlink_errno ();
-            return false;
-        }
-        if (!received.routing_id ().has_value ()
-            || !received.spot_rid ().has_value ()
-            || received.parts ().empty ()) {
-            errno = EPROTO;
-            return false;
-        }
-        std::vector<zlink::message_t> parts = std::move (received.parts ());
-        try {
-            const bool sent =
-              spot.send_to_spot (*received.routing_id (), *received.spot_rid ())
-                .message (parts.front ())
-                .flags (ZLINK_DONTWAIT)
-                .submit ();
-            if (!sent) {
-                if (bench_debug_enabled ()
-                    && g_server_debug_send_logs.fetch_add (
-                         1, std::memory_order_acq_rel)
-                         < 8) {
-                    std::cerr << "[cpp-spot-sendsend-server] echo blocked"
-                              << std::endl;
-                }
-                return true;
-            }
-            if (bench_debug_enabled ()
-                && g_server_debug_send_logs.fetch_add (
-                     1, std::memory_order_acq_rel)
-                     < 8) {
-                std::cerr << "[cpp-spot-sendsend-server] echo ok"
-                          << std::endl;
-            }
-        }
-        catch (const zlink::submit_error_t &err) {
-            if (err.result () == zlink::submit_result_t::backpressured
-                || err.result () == zlink::submit_result_t::not_connected
-                || err.result () == zlink::submit_result_t::not_found) {
-                if (bench_debug_enabled ()
-                    && g_server_debug_send_logs.fetch_add (
-                         1, std::memory_order_acq_rel)
-                         < 8) {
-                    std::cerr << "[cpp-spot-sendsend-server] echo transient rc="
-                              << static_cast<int> (err.result ())
-                              << " err=" << err.internal_errno () << std::endl;
-                }
-                return true;
-            }
-            errno = err.internal_errno ();
-            return false;
-        }
-        return true;
-    }
-    catch (const zlink::recv_error_t &err) {
-        if (err.result () == zlink::recv_result_t::no_data)
-            return true;
-        errno = err.internal_errno ();
-        return false;
-    }
-}
-
 bool run_server (const std::string &lib_name,
                  const std::string &transport,
                  size_t msg_size)
@@ -256,8 +184,62 @@ bool run_server (const std::string &lib_name,
     std::cout << "READY," << endpoint << std::endl;
     std::cout << "CONTROL_READY," << control_endpoint << std::endl;
 
-    zlink::poller_t poller;
-    poller.add (spot, zlink::poll_event_flag_t::pollin);
+    std::atomic<bool> failed (false);
+    try {
+        spot.on_dispatch_event (
+          [&spot, &failed] (const zlink::spot_dispatch_info_t &info_) {
+              (void) info_;
+              while (!g_stop.load (std::memory_order_acquire)) {
+                  zlink::received_t probe;
+                  const int rc =
+                    spot.recv_routed (probe, zlink::recv_flags_t::dontwait);
+                  if (rc == static_cast<int> (zlink::recv_result_t::no_data))
+                      return;
+                  if (rc != static_cast<int> (zlink::recv_result_t::ok)
+                      || !probe.routing_id () || !probe.spot_rid ()
+                      || probe.parts ().empty ()) {
+                      failed.store (true, std::memory_order_release);
+                      signal_stop ();
+                      return;
+                  }
+                  if (bench_debug_enabled ()
+                      && g_server_debug_recv_logs.fetch_add (
+                           1, std::memory_order_acq_rel)
+                           < 8) {
+                      std::cerr << "[cpp-spot-sendsend-server] recv request"
+                                << std::endl;
+                  }
+                  std::vector<zlink::message_t> parts =
+                    std::move (probe.parts ());
+                  try {
+                      (void) spot.send_to_spot (*probe.routing_id (),
+                                                *probe.spot_rid ())
+                        .message (parts.front ())
+                        .flags (ZLINK_DONTWAIT)
+                        .submit ();
+                  }
+                  catch (const zlink::submit_error_t &err) {
+                      if (err.result ()
+                            == zlink::submit_result_t::backpressured
+                          || err.result ()
+                               == zlink::submit_result_t::not_connected
+                          || err.result ()
+                               == zlink::submit_result_t::not_found) {
+                          continue;
+                      }
+                      failed.store (true, std::memory_order_release);
+                      signal_stop ();
+                      return;
+                  }
+              }
+          });
+    }
+    catch (const std::exception &) {
+        signal_stop ();
+        if (stdin_thread.joinable ())
+            stdin_thread.join ();
+        return false;
+    }
 
     bool ok = true;
     for (size_t msg_size : msg_sizes) {
@@ -283,75 +265,15 @@ bool run_server (const std::string &lib_name,
         if (bench_debug_enabled ())
             std::cerr << "[cpp-spot-sendsend-server] direct START size="
                       << msg_size << std::endl;
-        // PERF_MULTI_TEST_POLICY § 1.3.1: the active echo window is bounded
-        // purely by an application clock (steady_clock deadline); no poller
-        // timer object is used. This mirrors the C reference, whose server
-        // echoes via a non-blocking drain
-        // (spot_recv_worker_main, bindings/c/perf/multi/src/
-        // perf_multi_spot_sendsend_server.cpp:390-409) while the main thread
-        // bounds the window with idle_until_server_stop (lines 457-479): a
-        // deadline-bounded null poll, NOT a poller timer and NOT a
-        // wakeup-miss fallback.
+        // C registers a SPOT dispatch handler for the echo drain path. Keep the
+        // C++ server in the same shape; this thread only holds the active
+        // application-clock window open.
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::seconds (
                                 std::max (1, settings.duration_seconds));
         while (!g_stop.load (std::memory_order_acquire)
-               && std::chrono::steady_clock::now () < deadline) {
-            bool progressed = false;
-            for (;;) {
-                zlink::received_t probe;
-                const int rc =
-                  spot.recv_routed (probe, zlink::recv_flags_t::dontwait);
-                if (rc == static_cast<int> (zlink::recv_result_t::no_data))
-                    break;
-                if (rc != static_cast<int> (zlink::recv_result_t::ok)
-                    || !probe.routing_id () || !probe.spot_rid ()
-                    || probe.parts ().empty ()) {
-                    ok = false;
-                    signal_stop ();
-                    break;
-                }
-                progressed = true;
-                if (bench_debug_enabled ()
-                    && g_server_debug_recv_logs.fetch_add (
-                         1, std::memory_order_acq_rel)
-                         < 8) {
-                    std::cerr << "[cpp-spot-sendsend-server] recv request"
-                              << std::endl;
-                }
-                std::vector<zlink::message_t> parts =
-                  std::move (probe.parts ());
-                try {
-                    (void) spot.send_to_spot (*probe.routing_id (),
-                                              *probe.spot_rid ())
-                      .message (parts.front ())
-                      .flags (ZLINK_DONTWAIT)
-                      .submit ();
-                }
-                catch (const zlink::submit_error_t &err) {
-                    if (err.result () != zlink::submit_result_t::backpressured
-                        && err.result ()
-                             != zlink::submit_result_t::not_connected
-                        && err.result () != zlink::submit_result_t::not_found) {
-                        ok = false;
-                        signal_stop ();
-                    }
-                }
-                if (!ok)
-                    break;
-            }
-            if (!ok)
-                break;
-            if (progressed)
-                continue;
-
-            // Nothing to echo right now: wait a deadline-bounded slice for
-            // the next request, capped like the C reference's
-            // idle_until_server_stop std::min<long>(wait_ms, 10). The spot
-            // socket is registered in the poller, so inbound traffic wakes
-            // this immediately; the cap only bounds the post-client tail so
-            // the steady_clock deadline (the sole window terminator) is
-            // honored without a poller timer object.
+               && std::chrono::steady_clock::now () < deadline
+               && !failed.load (std::memory_order_acquire)) {
             const auto now = std::chrono::steady_clock::now ();
             if (now >= deadline)
                 break;
@@ -363,8 +285,10 @@ bool run_server (const std::string &lib_name,
             if (remaining_ms <= 0)
                 break;
             const long wait_ms = std::min<long> (remaining_ms, 10);
-            (void) poller.wait (std::chrono::milliseconds (wait_ms));
+            std::this_thread::sleep_for (std::chrono::milliseconds (wait_ms));
         }
+        if (failed.load (std::memory_order_acquire))
+            ok = false;
         if (!ok)
             break;
     }

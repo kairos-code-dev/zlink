@@ -43,6 +43,8 @@ internal static class PerfSpot
 
             using var ctx = new Context();
             ApplySingleContextOptions(ctx);
+            ApplySingleAutoHwmMsgUnit(ctx, size);
+            RecalculateSingleAutoHwm(ctx);
             using var pubNode = new SpotNode(ctx);
             using var subNode = new SpotNode(ctx);
             using var spotPub = pubNode.CreateSpot();

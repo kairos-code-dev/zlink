@@ -35,7 +35,7 @@ final class PerfMetricHeader {
         }
         long sentTsNs = message.readLongLe(21);
         long latencyNanos = Math.max(0L, PerfUtil.nowNs() - sentTsNs);
-        return new PerfUtil.Header((byte) phase, latencyNanos);
+        return new PerfUtil.Header((byte) phase, latencyNanos, sentTsNs);
     }
 
     static boolean recordActiveLatency(PerfUtil.Metrics metrics,

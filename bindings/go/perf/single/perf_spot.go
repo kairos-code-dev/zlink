@@ -103,7 +103,10 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 		}
 	}
 
-	return stats.Snapshot(cfg.duration, cfg.msgSize)
+	result := stats.Snapshot(cfg.duration, cfg.msgSize)
+	perfcommon.PrintSingleSpotNodeAutoHWMDetail(publisherNode, cfg.pattern, cfg.transport, "publisher", cfg.msgSize)
+	perfcommon.PrintSingleSpotNodeAutoHWMDetail(subscriberNode, cfg.pattern, cfg.transport, "subscriber", cfg.msgSize)
+	return result
 }
 
 // drainSingleSpotUntilStop drains the spot subscriber until a transient
@@ -181,7 +184,7 @@ func waitForSpotReady(
 	poller *zlink.Poller,
 	msgSize int,
 ) {
-	payload := perfcommon.PreparePayload(perfcommon.MetricHeaderSize)
+	payload := perfcommon.PreparePayload(msgSize)
 	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
 	for time.Now().Before(deadline) {
 		perfcommon.StampProbePayload(payload)
@@ -192,7 +195,7 @@ func waitForSpotReady(
 		if probeErr != nil && !perfcommon.IsReadyProbeTransient(probeErr) {
 			perfcommon.Must(probeErr)
 		}
-		timeout := time.Until(deadline)
+		timeout := minDuration(time.Until(deadline), 50*time.Millisecond)
 		if timeout <= 0 {
 			break
 		}
@@ -211,4 +214,11 @@ func waitForSpotReady(
 		}
 	}
 	perfcommon.Must(fmt.Errorf("spot perf endpoint ready probe timed out"))
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
 }

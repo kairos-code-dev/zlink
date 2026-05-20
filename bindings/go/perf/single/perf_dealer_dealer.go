@@ -1,6 +1,9 @@
 package main
 
-import "zlink.systems/zlink/perf/internal/perfcommon"
+import (
+	zlink "zlink.systems/zlink/contracts"
+	"zlink.systems/zlink/perf/internal/perfcommon"
+)
 
 func runDealerDealer(cfg benchmarkConfig) perfcommon.Result {
 	ctx, err := perfcommon.NewSingleContext()
@@ -29,8 +32,11 @@ func runDealerDealer(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.ApplySingleBenchmarkSocketOptions(client, cfg.transport)
 	perfcommon.WaitConnectedWithTimeout(perfcommon.SingleReadyTimeout(), serverMon, clientMon)
 
-	return runSingleOneWay(cfg, server, func(payload []byte) error {
+	result := runSingleOneWay(cfg, server, func(payload []byte) error {
 		_, err := client.Send().Message(perfcommon.NewMessage(payload)).Submit(nil)
 		return err
 	})
+	perfcommon.PrintSingleAutoHWMDetail(serverMon, cfg.pattern, cfg.transport, "receiver", zlink.SocketTypeDealer, cfg.msgSize)
+	perfcommon.PrintSingleAutoHWMDetail(clientMon, cfg.pattern, cfg.transport, "sender", zlink.SocketTypeDealer, cfg.msgSize)
+	return result
 }

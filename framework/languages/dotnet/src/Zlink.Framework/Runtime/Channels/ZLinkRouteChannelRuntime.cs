@@ -169,7 +169,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                 targetNodeRid,
                 targetSpotRid,
                 pending,
-                SendFlags.DontWait),
+                SendFlags.None),
             cancellationToken);
     }
 
@@ -193,7 +193,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                         complete,
                         fail,
                         $"SPOT routed request failed with result '{result}'."),
-                    SendFlags.DontWait,
+                    SendFlags.None,
                     timeout),
                 cancellationToken)
             .ConfigureAwait(false);

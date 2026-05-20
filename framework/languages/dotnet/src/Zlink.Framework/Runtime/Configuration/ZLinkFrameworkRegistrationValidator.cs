@@ -82,7 +82,10 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         foreach (var routed in registration.RouteChannels.Values)
         {
-            ValidateRouteChannel(routed, registration.Discovery is not null);
+            ValidateRouteChannel(
+                routed,
+                registration.Discovery is not null,
+                IsAcceptedSpotRouteChannel(registration, routed.RouterChannelId));
         }
 
         foreach (var spotNode in registration.SpotNodes.Values)
@@ -93,6 +96,14 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 globalSpotFactories,
                 globalSpotPublisherChannels);
         }
+    }
+
+    private static bool IsAcceptedSpotRouteChannel(
+        ZLinkFrameworkRegistration registration,
+        string channelName)
+    {
+        return registration.SpotNodes.Values.Any(
+            spotNode => spotNode.AcceptedSpotRouteChannels.ContainsKey(channelName));
     }
 
     private static void ValidateRegistryRouteChannel(

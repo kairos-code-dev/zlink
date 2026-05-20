@@ -66,6 +66,11 @@ internal sealed class ZLinkChannelBundleFactory(
     {
         var router = adapter.CreateRouterSocket(state.Context);
         router.SetChannelName(channelName);
+        if (channel.Server!.RoutingConfig.RoutingId.Size > 0)
+        {
+            router.SetRoutingId(channel.Server.RoutingConfig.RoutingId);
+        }
+
         router.Bind(channel.Server!.BindEndpoint!);
         var bundle = new ZLinkChannelRuntimeBundle(router);
 

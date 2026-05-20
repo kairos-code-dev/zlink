@@ -83,6 +83,7 @@ internal static class ZLinkDotNetBackendMappings
             entry.LocalEndpoint,
             entry.PeerEndpoint,
             (ZLinkSpotPeerSource)entry.Source,
+            (ZLinkSpotPeerKind)entry.Kind,
             (ZLinkSpotPeerState)entry.State,
             entry.Weight,
             entry.ConnectedSinceMs,

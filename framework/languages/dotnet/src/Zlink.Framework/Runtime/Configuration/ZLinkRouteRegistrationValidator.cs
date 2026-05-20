@@ -4,7 +4,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 {
     private static void ValidateRouteChannel(
         ZLinkRouteChannelRegistration routed,
-        bool discoveryConfigured)
+        bool discoveryConfigured,
+        bool acceptedBySpotRouteChannel)
     {
         if (string.IsNullOrWhiteSpace(routed.BindEndpoint))
         {
@@ -12,10 +13,15 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"Route channel '{routed.RouterChannelId}' must define a bind endpoint.");
         }
 
-        ZLinkPeerAcquisitionPolicy.RequireSinglePeerSource(
-            $"Route channel '{routed.RouterChannelId}'",
-            discoveryConfigured,
-            routed.ManualConnections);
+        if (!acceptedBySpotRouteChannel
+            || discoveryConfigured
+            || routed.ManualConnections.Count > 0)
+        {
+            ZLinkPeerAcquisitionPolicy.RequireSinglePeerSource(
+                $"Route channel '{routed.RouterChannelId}'",
+                discoveryConfigured,
+                routed.ManualConnections);
+        }
 
         var keys = new HashSet<(ZLinkMessageKind Kind, string PacketName)>();
         foreach (var handler in routed.SendHandlers)

@@ -16,6 +16,12 @@ public enum ZLinkSpotPeerSource
     Mixed = 3,
 }
 
+public enum ZLinkSpotPeerKind
+{
+    SpotMesh = 1,
+    RouterChannel = 2,
+}
+
 public enum ZLinkSpotPeerState
 {
     Configured = 1,
@@ -54,6 +60,7 @@ public sealed record ZLinkSpotNodePeerEntry(
     string LocalEndpoint,
     string PeerEndpoint,
     ZLinkSpotPeerSource Source,
+    ZLinkSpotPeerKind Kind,
     ZLinkSpotPeerState State,
     uint Weight,
     ulong ConnectedSinceMs,

@@ -7,6 +7,7 @@ using System.Text;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.Tests;
 
@@ -359,6 +360,94 @@ public sealed partial class SpotIntegrationTests
 
         await frameworkHost.StopAsync();
         await registryHost.StopAsync();
+    }
+
+    [Fact]
+    public async Task AcceptSpotRoutesFromChannel_ClientServer_ManualConnections_AreApplied()
+    {
+        var channelEndpoint = GetFreeTcpEndpoint();
+        var spotNodeEndpoint = GetFreeTcpEndpoint();
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddClientServerChannel("api", channel =>
+            {
+                channel.EnableServer(server =>
+                {
+                    server.Bind(channelEndpoint);
+                    server.ConfigureRouting(routing =>
+                    {
+                        routing.RoutingId = RoutingId.FromString("aabbcc01");
+                    });
+                });
+            });
+            options.UseSpotDiscovery("spot.route.client-server", _ => { });
+            options.AddSpotNode("route-target-node", spot =>
+            {
+                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter();
+                spot.AcceptSpotRoutesFromChannel(
+                    "api",
+                    routes => routes.UseManualConnections(
+                        peers => peers.Connect(channelEndpoint)));
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
+        await WaitForAcceptedRoutePeerAsync(nodeRuntime, "api");
+        var peer = Assert.Single(nodeRuntime.Node.PeersSnapshot(), peer => peer.ChannelName == "api");
+        Assert.Equal(ZLinkSpotPeerKind.RouterChannel, peer.Kind);
+        Assert.Equal(ZLinkSpotPeerSource.Manual, peer.Source);
+
+        await host.StopAsync();
+    }
+
+    [Fact]
+    public async Task AcceptSpotRoutesFromChannel_RouteMesh_ManualConnections_AreApplied()
+    {
+        var routeEndpoint = GetFreeTcpEndpoint();
+        var spotNodeEndpoint = GetFreeTcpEndpoint();
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(_ => { });
+            options.AddRouteMeshChannel("play", routed =>
+            {
+                routed.Bind(routeEndpoint);
+                routed.ConfigureRouting(routing =>
+                {
+                    routing.RoutingId = RoutingId.FromString("aabbcc02");
+                });
+            });
+            options.UseSpotDiscovery("spot.route.mesh", _ => { });
+            options.AddSpotNode("route-target-node", spot =>
+            {
+                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter();
+                spot.AcceptSpotRoutesFromChannel(
+                    "play",
+                    routes => routes.UseManualConnections(
+                        peers => peers.Connect(routeEndpoint)));
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
+        await WaitForAcceptedRoutePeerAsync(nodeRuntime, "play");
+        var peer = Assert.Single(nodeRuntime.Node.PeersSnapshot(), peer => peer.ChannelName == "play");
+        Assert.Equal(ZLinkSpotPeerKind.RouterChannel, peer.Kind);
+        Assert.Equal(ZLinkSpotPeerSource.Manual, peer.Source);
+
+        await host.StopAsync();
     }
 
     [Fact]
@@ -1517,6 +1606,33 @@ public sealed partial class SpotIntegrationTests
     private static string GetFreeTcpEndpoint()
     {
         return ChannelMessagingTestSupport.GetTcpEndpoint();
+    }
+
+    private static async Task WaitForAcceptedRoutePeerAsync(
+        ZLinkSpotNodeRuntime nodeRuntime,
+        string channelName,
+        bool requireConnected = false)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        IReadOnlyList<ZLinkSpotNodePeerEntry> peers = [];
+        while (DateTime.UtcNow < deadline)
+        {
+            peers = nodeRuntime.Node.PeersSnapshot();
+            if (peers.Any(peer => peer.ChannelName == channelName
+                    && (!requireConnected || peer.State == ZLinkSpotPeerState.Connected)))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(300));
+                return;
+            }
+
+            await Task.Delay(PollingInterval);
+        }
+
+        var peerSummary = string.Join(
+            ", ",
+            peers.Select(peer => $"{peer.ChannelName}:{peer.PeerEndpoint}:{peer.State}"));
+        throw new TimeoutException(
+            $"SPOT route peer '{channelName}' did not connect. Peers: {peerSummary}");
     }
 
     private static async Task StopAndDisposeHostAsync(IHost host)

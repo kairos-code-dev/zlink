@@ -47,7 +47,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                         targetNodeRid,
                         targetSpotRid,
                         parts,
-                        SendFlags.DontWait))
+                        SendFlags.None))
                 {
                     throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
@@ -125,7 +125,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                         result,
                         reply,
                         completion),
-                    SendFlags.DontWait,
+                    SendFlags.None,
                     timeout))
             {
                 throw new ZLinkFrameworkException(

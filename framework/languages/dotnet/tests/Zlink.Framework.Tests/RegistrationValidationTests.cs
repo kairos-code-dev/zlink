@@ -29,6 +29,150 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void AddChannel_And_AddRouteChannel_Are_Removed_From_Public_Surface()
+    {
+        Assert.Null(typeof(IZLinkFrameworkOptions).GetMethod("AddChannel"));
+        Assert.Null(typeof(IZLinkFrameworkOptions).GetMethod("AddRouteChannel"));
+    }
+
+    [Fact]
+    public void AcceptSpotRoutesFromChannel_RejectsFanoutChannel()
+    {
+        var services = new ServiceCollection();
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.AddFanoutChannel("events", channel =>
+                {
+                    channel.EnablePublisher(publisher => publisher.Bind("tcp://127.0.0.1:7102"));
+                });
+                options.AddSpotMesh("spot.mesh", mesh =>
+                {
+                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.AddNode("stage-node", node =>
+                    {
+                        node.Bind("tcp://127.0.0.1:9000");
+                        node.EnableRouter();
+                        node.AcceptSpotRoutesFromChannel(
+                            "events",
+                            routes => routes.UseManualConnections(
+                                peers => peers.Connect("tcp://127.0.0.1:7102")));
+                    });
+                });
+            }));
+
+        Assert.Contains("must be a client/server channel or a route mesh channel", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AcceptSpotRoutesFromChannel_RejectsDealerMeshChannel()
+    {
+        var services = new ServiceCollection();
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.AddDealerMeshChannel("mesh", channel => channel.EnableClient());
+                options.AddSpotMesh("spot.mesh", mesh =>
+                {
+                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.AddNode("stage-node", node =>
+                    {
+                        node.Bind("tcp://127.0.0.1:9000");
+                        node.EnableRouter();
+                        node.AcceptSpotRoutesFromChannel(
+                            "mesh",
+                            routes => routes.UseManualConnections(
+                                peers => peers.Connect("tcp://127.0.0.1:7103")));
+                    });
+                });
+            }));
+
+        Assert.Contains("must be a client/server channel or a route mesh channel", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AcceptSpotRoutesFromChannel_RejectsAmbiguousChannelName()
+    {
+        var services = new ServiceCollection();
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.AddClientServerChannel("route", channel => channel.EnableClient());
+                options.AddRouteMeshChannel("route", routed => routed.Bind("tcp://127.0.0.1:7104"));
+                options.AddSpotMesh("spot.mesh", mesh =>
+                {
+                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.AddNode("stage-node", node =>
+                    {
+                        node.Bind("tcp://127.0.0.1:9000");
+                        node.EnableRouter();
+                        node.AcceptSpotRoutesFromChannel(
+                            "route",
+                            routes => routes.UseManualConnections(
+                                peers => peers.Connect("tcp://127.0.0.1:7104")));
+                    });
+                });
+            }));
+
+        Assert.Contains("ambiguous", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AcceptSpotRoutesFromChannel_RequiresEnableRouter()
+    {
+        var services = new ServiceCollection();
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddClientServerChannel(
+                    "api",
+                    channel => channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7105")));
+                options.AddSpotMesh("spot.mesh", mesh =>
+                {
+                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.AddNode("stage-node", node =>
+                    {
+                        node.Bind("tcp://127.0.0.1:9000");
+                        node.AcceptSpotRoutesFromChannel(
+                            "api",
+                            routes => routes.UseManualConnections(
+                                peers => peers.Connect("tcp://127.0.0.1:7105")));
+                    });
+                });
+            }));
+
+        Assert.Contains("does not enable router capability", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AcceptSpotRoutesFromChannel_RequiresDiscoveryOrManualConnections()
+    {
+        var services = new ServiceCollection();
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddClientServerChannel(
+                    "api",
+                    channel => channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7106")));
+                options.AddSpotMesh("spot.mesh", mesh =>
+                {
+                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.AddNode("stage-node", node =>
+                    {
+                        node.Bind("tcp://127.0.0.1:9000");
+                        node.EnableRouter();
+                        node.AcceptSpotRoutesFromChannel("api");
+                    });
+                });
+            }));
+
+        Assert.Contains("requires discovery or manual connections", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AddZLinkFramework_AllowsChannelClientManualConnections_WhenDiscoveryIsConfigured()
     {
         var services = new ServiceCollection();

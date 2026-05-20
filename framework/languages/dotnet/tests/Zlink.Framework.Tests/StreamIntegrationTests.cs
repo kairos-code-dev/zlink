@@ -300,7 +300,7 @@ public sealed class StreamIntegrationTests
     }
 
     [Fact]
-    public async Task SessionActorBind_Uses_Explicit_Route_Without_Resolver()
+    public async Task SessionActorBind_Does_Not_Resolve_PlayRoute()
     {
         var endpoint = GetFreeTcpEndpoint();
         var localRid = RoutingId.FromString("1201");
@@ -334,10 +334,344 @@ public sealed class StreamIntegrationTests
             var actor = await context.BindActorHandleAsync(
                 "remote-player",
                 "player",
-                new ZLinkActorRoute("gateway", remoteRid));
+                new ZLinkActorRoute("gateway", remoteRid, 1));
 
             Assert.Equal("remote-player", actor.ActorId);
             Assert.True(store.HasBinding);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task SessionActorBind_Rejects_Unchecked_ActorGeneration()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var localRid = RoutingId.FromString("1211");
+        var remoteRid = RoutingId.FromString("1212");
+        var store = new ActorSessionLocationStore();
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton(store);
+            services.AddSingleton<IZLinkActorSessionBindingStore>(store);
+            services.AddZLinkFramework(options =>
+            {
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(endpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
+                    routed.UseManualConnections(connections => connections.Connect(endpoint));
+                });
+            });
+        });
+
+        try
+        {
+            var context = new ZLinkSessionContext(
+                host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
+                host.Services.GetRequiredService<IZLinkClient>(),
+                new SpotIntegrationTests.TestStream("unchecked-route-session"),
+                static _ => ValueTask.CompletedTask,
+                static _ => ValueTask.CompletedTask);
+
+            var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+                () => context.BindActorHandleAsync(
+                        "remote-player",
+                        "player",
+                        new ZLinkActorRoute("gateway", remoteRid, 0))
+                    .AsTask());
+
+            Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, ex.Kind);
+            Assert.False(store.HasBinding);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task SessionActorBind_WithoutRoute_Is_LocalOnly()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var spotEndpoint = GetFreeTcpEndpoint();
+        var localRid = RoutingId.FromString("1213");
+        var recorder = new ActorDispatchRecorder();
+        var routeResolver = new CountingActorPlayRouteResolver(new ZLinkActorRoute(
+            "gateway",
+            RoutingId.FromString("1214"),
+            1));
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton(recorder);
+            services.AddSingleton<IZLinkActorPlayRouteResolver>(routeResolver);
+            services.AddScoped<GatewayActorFactory>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddSpotNode("actor-node", spot =>
+                {
+                    spot.Bind(spotEndpoint);
+                });
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(endpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
+                    routed.UseManualConnections(connections => connections.Connect(endpoint));
+                });
+            });
+        });
+
+        try
+        {
+            var context = new ZLinkSessionContext(
+                host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
+                host.Services.GetRequiredService<IZLinkClient>(),
+                new SpotIntegrationTests.TestStream("local-only-session"),
+                static _ => ValueTask.CompletedTask,
+                static _ => ValueTask.CompletedTask);
+
+            var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+                () => context.BindActorHandleAsync("missing-player", "player").AsTask());
+
+            Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, ex.Kind);
+            Assert.Equal(0, recorder.CreatedCount);
+            Assert.Equal(0, routeResolver.CallCount);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task SessionActorRouteUpdate_Changes_Attached_TargetNodeRid()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var localRid = RoutingId.FromString("1221");
+        var firstRid = RoutingId.FromString("1222");
+        var secondRid = RoutingId.FromString("1223");
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton<IZLinkActorSessionBindingStore, ActorSessionLocationStore>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(endpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
+                    routed.UseManualConnections(connections => connections.Connect(endpoint));
+                });
+            });
+        });
+
+        try
+        {
+            var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+            var context = new ZLinkSessionContext(
+                runtime,
+                host.Services.GetRequiredService<IZLinkClient>(),
+                new SpotIntegrationTests.TestStream("route-update-session"),
+                static _ => ValueTask.CompletedTask,
+                static _ => ValueTask.CompletedTask);
+
+            var actor = (ZLinkActorRef)await context.BindActorHandleAsync(
+                "remote-player",
+                "player",
+                new ZLinkActorRoute("gateway", firstRid, 1));
+
+            var updated = await runtime.UpdateAttachedActorRouteAsync(
+                "remote-player",
+                "gateway",
+                secondRid,
+                expectedActorGeneration: 1,
+                newActorGeneration: 2,
+                CancellationToken.None);
+
+            Assert.Equal(1, updated);
+            Assert.Equal(secondRid, actor.TargetNodeRid);
+            Assert.Equal(2UL, actor.ActorGeneration);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task SessionActorRouteUpdate_Ignores_Stale_ExpectedActorGeneration()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var localRid = RoutingId.FromString("1231");
+        var firstRid = RoutingId.FromString("1232");
+        var staleRid = RoutingId.FromString("1233");
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton<IZLinkActorSessionBindingStore, ActorSessionLocationStore>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(endpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
+                    routed.UseManualConnections(connections => connections.Connect(endpoint));
+                });
+            });
+        });
+
+        try
+        {
+            var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+            var context = new ZLinkSessionContext(
+                runtime,
+                host.Services.GetRequiredService<IZLinkClient>(),
+                new SpotIntegrationTests.TestStream("stale-route-update-session"),
+                static _ => ValueTask.CompletedTask,
+                static _ => ValueTask.CompletedTask);
+
+            var actor = (ZLinkActorRef)await context.BindActorHandleAsync(
+                "remote-player",
+                "player",
+                new ZLinkActorRoute("gateway", firstRid, 5));
+
+            var updated = await runtime.UpdateAttachedActorRouteAsync(
+                "remote-player",
+                "gateway",
+                staleRid,
+                expectedActorGeneration: 4,
+                newActorGeneration: 6,
+                CancellationToken.None);
+
+            Assert.Equal(0, updated);
+            Assert.Equal(firstRid, actor.TargetNodeRid);
+            Assert.Equal(5UL, actor.ActorGeneration);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task SessionActorRouteUpdate_Allows_Idempotent_Same_Target()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var localRid = RoutingId.FromString("1241");
+        var firstRid = RoutingId.FromString("1242");
+        var secondRid = RoutingId.FromString("1243");
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton<IZLinkActorSessionBindingStore, ActorSessionLocationStore>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(endpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
+                    routed.UseManualConnections(connections => connections.Connect(endpoint));
+                });
+            });
+        });
+
+        try
+        {
+            var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+            var context = new ZLinkSessionContext(
+                runtime,
+                host.Services.GetRequiredService<IZLinkClient>(),
+                new SpotIntegrationTests.TestStream("idempotent-route-update-session"),
+                static _ => ValueTask.CompletedTask,
+                static _ => ValueTask.CompletedTask);
+
+            var actor = (ZLinkActorRef)await context.BindActorHandleAsync(
+                "remote-player",
+                "player",
+                new ZLinkActorRoute("gateway", firstRid, 1));
+
+            var firstUpdate = await runtime.UpdateAttachedActorRouteAsync(
+                "remote-player",
+                "gateway",
+                secondRid,
+                expectedActorGeneration: 1,
+                newActorGeneration: 2,
+                CancellationToken.None);
+            var secondUpdate = await runtime.UpdateAttachedActorRouteAsync(
+                "remote-player",
+                "gateway",
+                secondRid,
+                expectedActorGeneration: 1,
+                newActorGeneration: 2,
+                CancellationToken.None);
+
+            Assert.Equal(1, firstUpdate);
+            Assert.Equal(1, secondUpdate);
+            Assert.Equal(secondRid, actor.TargetNodeRid);
+            Assert.Equal(2UL, actor.ActorGeneration);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task SessionActorRouteUpdate_Rejects_Conflicting_Target_For_Same_ExpectedGeneration()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var localRid = RoutingId.FromString("1251");
+        var firstRid = RoutingId.FromString("1252");
+        var secondRid = RoutingId.FromString("1253");
+        var conflictingRid = RoutingId.FromString("1254");
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton<IZLinkActorSessionBindingStore, ActorSessionLocationStore>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(endpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
+                    routed.UseManualConnections(connections => connections.Connect(endpoint));
+                });
+            });
+        });
+
+        try
+        {
+            var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+            var context = new ZLinkSessionContext(
+                runtime,
+                host.Services.GetRequiredService<IZLinkClient>(),
+                new SpotIntegrationTests.TestStream("conflict-route-update-session"),
+                static _ => ValueTask.CompletedTask,
+                static _ => ValueTask.CompletedTask);
+
+            var actor = (ZLinkActorRef)await context.BindActorHandleAsync(
+                "remote-player",
+                "player",
+                new ZLinkActorRoute("gateway", firstRid, 1));
+
+            var applied = await runtime.UpdateAttachedActorRouteAsync(
+                "remote-player",
+                "gateway",
+                secondRid,
+                expectedActorGeneration: 1,
+                newActorGeneration: 2,
+                CancellationToken.None);
+            var rejected = await runtime.UpdateAttachedActorRouteAsync(
+                "remote-player",
+                "gateway",
+                conflictingRid,
+                expectedActorGeneration: 1,
+                newActorGeneration: 3,
+                CancellationToken.None);
+
+            Assert.Equal(1, applied);
+            Assert.Equal(0, rejected);
+            Assert.Equal(secondRid, actor.TargetNodeRid);
+            Assert.Equal(2UL, actor.ActorGeneration);
         }
         finally
         {
@@ -638,7 +972,7 @@ public sealed class StreamIntegrationTests
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new TestActorRouteSnapshot(new ZLinkActorRoute("gateway", playRid)));
+            services.AddSingleton(new TestActorRouteSnapshot(new ZLinkActorRoute("gateway", playRid, 1)));
             services.AddSingleton(new GatewaySessionRecorder());
             services.AddSingleton(sessionLocations);
             services.AddScoped<GatewayRelaySession>();
@@ -874,7 +1208,7 @@ public sealed class StreamIntegrationTests
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new TestActorRouteSnapshot(new ZLinkActorRoute("gateway", playRid)));
+            services.AddSingleton(new TestActorRouteSnapshot(new ZLinkActorRoute("gateway", playRid, 1)));
             services.AddSingleton(new GatewaySessionRecorder());
             services.AddSingleton(sessionLocations);
             services.AddScoped<MissingRemoteActorRelaySession>();
@@ -1128,7 +1462,7 @@ public sealed class StreamIntegrationTests
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new TestActorRouteSnapshot(new ZLinkActorRoute("gateway", playRid)));
+            services.AddSingleton(new TestActorRouteSnapshot(new ZLinkActorRoute("gateway", playRid, 1)));
             services.AddSingleton(sessionRecorder);
             services.AddSingleton(sessionLocations);
             services.AddScoped<GatewayRelaySession>();
@@ -1541,6 +1875,23 @@ public sealed class StreamIntegrationTests
             _ = actorId;
             _ = cancellationToken;
             throw new InvalidOperationException("Session actor bind must use the explicit route.");
+        }
+    }
+
+    public sealed class CountingActorPlayRouteResolver(ZLinkActorRoute route) : IZLinkActorPlayRouteResolver
+    {
+        private int _callCount;
+
+        public int CallCount => Volatile.Read(ref _callCount);
+
+        public ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+            string actorId,
+            CancellationToken cancellationToken)
+        {
+            _ = actorId;
+            cancellationToken.ThrowIfCancellationRequested();
+            Interlocked.Increment(ref _callCount);
+            return ValueTask.FromResult(route);
         }
     }
 

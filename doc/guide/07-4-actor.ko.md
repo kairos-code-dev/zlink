@@ -279,6 +279,11 @@ route도 함께 제거된다. session attach 상태는 Actor 위치와 독립이
 `zlink_spot_node_actor_send_bound_session_msg()`를 사용한다. Actor에 활성 바인딩 세션이
 있어야 하며, 없으면 호출이 실패한다.
 
+framework adapter 를 사용할 때 session handler 는 actor route resolver 를 직접 호출하지
+않는다. 인증이나 입장 흐름에서 actor 를 준비한 쪽이 actor node rid 와 generation 이 포함된
+route snapshot 을 돌려주고, session 은 그 snapshot 으로 actor handle 을 attach 한다. 이후
+client message relay 는 attach 된 actor handle 을 사용한다.
+
 ```c
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);

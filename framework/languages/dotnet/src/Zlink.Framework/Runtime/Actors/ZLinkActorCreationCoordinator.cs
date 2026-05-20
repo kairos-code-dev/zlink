@@ -79,6 +79,8 @@ internal sealed class ZLinkActorCreationCoordinator(
             state.NativeActorRef = existingRef ?? node.CreateActor(actor.ActorId);
         }
 
+        state.EnsureActorGeneration(state.NativeActorRef?.Generation ?? 0);
+
         await ZLinkRegistryActorRouteResolver.PublishActorRouteAsync(
                 runtime,
                 runtime.Registration,

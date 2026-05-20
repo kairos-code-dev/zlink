@@ -121,7 +121,21 @@ nonblocking send, pending queue, ready notification 조합으로 내부에서 �
 - transport error 가 발생한 뒤 연결이 실제로 끊어진 것이 확인되면, 이어서
   `OnDisconnectedAsync(...)` 가 한 번 더 호출될 수 있다.
 
-## 8. Spot Lifecycle 의미
+## 8. Session Actor Route 변경 의미
+
+session 이 actor 에 attach 되면 framework 는 actor id, actor type, router
+channel id, target node rid, actor generation, session binding token 을 내부
+상태로 저장한다. 이후 session -> actor relay 는 이 attached route snapshot 을
+사용하고, packet 마다 `IZLinkActorPlayRouteResolver` 를 호출하지 않는다.
+
+actor 위치가 바뀌면 framework 내부 route update 경로가 attached actor ref 의
+route snapshot 을 갱신한다. update 의 expected actor generation 이 현재 ref 와
+일치하면 target node rid 와 actor generation 을 교체한다. expected 값이 다르면
+늦게 도착한 stale update 로 보고 무시한다. session binding token 은 disconnect
+cleanup 과 stale session 방어에 계속 쓰지만, actor route update 의 public 입력이
+되지는 않는다.
+
+## 9. Spot Lifecycle 의미
 
 - `OnInitializeAsync(...)` 는 spot 의 실행 문맥에서 단 한 번만 호출된다.
 - `Configure()` 는 `OnInitializeAsync(...)` 보다 먼저 한 번 호출된다.
@@ -138,7 +152,7 @@ nonblocking send, pending queue, ready notification 조합으로 내부에서 �
   scope 에서 사용해 달라" 는 등록 의미로 본다.
 - spot 이 제거되면, 그에 묶여 있던 scope 도 함께 정리된다.
 
-## 9. Host 중지 중 호출 의미
+## 10. Host 중지 중 호출 의미
 
 - host stopping 이 시작되면, 새로 들어오는 inbound dispatch 는 받지 않는 편을
   기본으로 본다.
@@ -148,7 +162,7 @@ nonblocking send, pending queue, ready notification 조합으로 내부에서 �
   따라 중간에 끊어질 수 있다.
 - shutdown 도중에 새로 던지는 outbound request 의 성공은 보장하지 않는다.
 
-## 10. 회귀 테스트
+## 11. 회귀 테스트
 
 lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박아 둔다.
 
@@ -156,6 +170,7 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 - shutdown 정리 순서
 - request / send 실패 의미
 - stream transport error 의 범위
+- attached actor route update 의 stale generation 방어
 
 만약 구현이 오류를 더 늦게 드러내는 방향으로 바뀐다면, 이 문서와 테스트를 함께
 갱신한다.

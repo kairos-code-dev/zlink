@@ -214,6 +214,9 @@ zlink_submit_result_t zlink_stream_send_bound_actor_part(
   실패다.
 - 바인딩 성공 시 Actor owner node에서 actor route sync가 켜져 있으면 active route가
   publish된다. Actor 생성만으로는 active route가 publish되지 않는다.
+- framework adapter 는 session attach 성공 시 concrete Actor ref의 node rid와
+  generation을 session 쪽 route snapshot 으로 저장해야 한다. 이후 session relay 는
+  actor id route 조회가 아니라 이 snapshot 을 사용한다.
 - 바인딩 해제는 없는 Actor id에 대해서도 성공으로 끝나는 idempotent 작업이다.
 - 여러 Actor가 바인딩된 session에서 한 Actor id의 바인딩을 해제해도 다른 Actor 항목은
   유지된다.

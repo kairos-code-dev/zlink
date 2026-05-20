@@ -253,10 +253,12 @@ public sealed record BingoGameEndedNotify(BingoRoomState State);
 2. client 는 `AuthenticateReq` 를 보낸다.
 3. `SessionServer` 는 `ApiServer` 로 `AuthenticatePlayerReq` 를 보내 회원 정보를
    확인한다.
-4. `SessionServer` 는 `IZLinkActorManager.GetOrCreateAsync(...)` 로 player actor
-   를 준비한다.
-5. `SessionServer` 는 `BindActorHandleAsync(...)` 로 현재 stream session 과
-   actor 를 bind 한다.
+4. `SessionServer` 는 `PlayServer` 로 player actor 준비를 요청하고, 응답으로
+   actor route snapshot 을 받는다. 이 snapshot 에는 router channel id, target
+   node rid, actor generation 이 들어 있다.
+5. `SessionServer` 는 route 를 받는 `BindActorHandleAsync(...)` overload 로 현재
+   stream session 과 actor 를 bind 한다. session handler 는 actor route resolver
+   를 직접 호출하지 않는다.
 6. client 는 `AuthenticateRes` 로 `ActorId` 와 `DisplayName` 을 받는다.
 
 matching 흐름은 다음과 같다.

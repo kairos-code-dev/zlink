@@ -789,6 +789,9 @@ Actor active route row 생명주기는 아래 원칙을 따른다.
   `zlink_discovery_resolve_actor()`는 `ENOENT`를 반환할 수 있다.
 - `zlink_stream_bind_actor()`가 성공하고 Actor owner node의 actor route sync가
   켜져 있으면 `actor_id -> Actor route` active route row를 publish하거나 갱신한다.
+- framework adapter 는 이 active route row 의 node rid 와 generation 을 session attach
+  route snapshot 의 source 로 사용할 수 있다. attach 뒤 session relay 는 actor id 로
+  active route 를 다시 resolve 하지 않고 저장된 snapshot 을 사용한다.
 - bind 시점의 route row에는 현재 Actor ref, `joined = 1`, current Spot rid가 함께
   기록된다. 생성 직후 Actor라면 current Spot rid는 Entry Spot rid이다. session owner
   node가 이 값을 전달하는 것이 아니라 Actor owner node가 자기 상태에서 채운다.

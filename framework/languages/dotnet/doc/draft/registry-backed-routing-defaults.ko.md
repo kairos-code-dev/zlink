@@ -46,6 +46,11 @@ public interface IZLinkActorPlayRouteResolver
         CancellationToken cancellationToken);
 }
 
+public readonly record struct ZLinkActorRoute(
+    string RouterChannelId,
+    RoutingId TargetNodeRid,
+    ulong ActorGeneration);
+
 public interface IZLinkSpotRouteResolver
 {
     ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
@@ -436,8 +441,9 @@ remote channel client 는 이미 `EnableClient()` 와 discovery 기반 연결로
 특별한 이유가 없는 한 `UseManualConnections(...)` 를 섞지 않는다.
 
 session gateway 샘플은 session handler 안에서 `IZLinkActorPlayRouteResolver` 를 직접
-주입하지 않는다. Play 서버의 `EnsurePlayerActor` 응답이 actor id 와 route snapshot 을
-함께 돌려주고, session handler 는 그 snapshot 을
+주입하지 않는다. Play 서버의 `EnsurePlayerActor` handler 는 actor 를 준비한 뒤
+`IZLinkActorManager.GetRouteAsync(...)` 로 concrete route snapshot 을 얻어 응답에
+싣는다. session handler 는 그 snapshot 을
 `BindActorHandleAsync(actorId, actorType, route, ...)` 에 넘긴다. 인증 뒤 game packet
 relay 는 session state 에 붙은 actor ref 를 재사용하며 actor id 로 route 를 다시 조회하지
 않는다. 이 흐름은 `session-attached-actor-route.ko.md` 초안의 session relay 규칙과 맞춘다.
@@ -467,8 +473,8 @@ relay 는 session state 에 붙은 actor ref 를 재사용하며 actor id 로 ro
 | `SpotIntegrationTests.RegistrySpotRoutes_Resolves_Created_Spot_By_Name` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다. |
 | `SpotIntegrationTests.RegistrySpotRoutes_Resolves_Created_Spot_By_Rid` | 생성된 Spot 의 RID 를 기본 resolver 로 찾는다. |
 | `SpotIntegrationTests.RegistryActorSessionBindings_Preserve_Reconnected_Binding_On_Stale_Unbind` | Registry actor-session binding 기본 store 가 새 binding 이후 도착한 이전 binding unbind 를 무시한다. |
-| `SampleRegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo 샘플에 sample-only registry metadata store, play/Spot route store, route publisher 가 없고 Registry 기본 API 를 사용한다. session packet handler 가 `IZLinkActorPlayRouteResolver` 를 주입하거나 `ResolvePlayRouteAsync(...)` 를 호출하지 않는지도 확인한다. |
-| `SampleRegressionTests.TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | TicTacToe session gateway 샘플도 sample-only registry metadata store 없이 Registry 기본 API 를 사용한다. session packet handler 가 `IZLinkActorPlayRouteResolver` 를 주입하거나 `ResolvePlayRouteAsync(...)` 를 호출하지 않는지도 확인한다. |
+| `SampleRegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo 샘플에 sample-only registry metadata store, play/Spot route store, route publisher 가 없고 Registry 기본 API 를 사용한다. session packet handler 와 ensure actor handler 가 `IZLinkActorPlayRouteResolver` 를 주입하거나 `ResolvePlayRouteAsync(...)` 를 호출하지 않는지도 확인한다. |
+| `SampleRegressionTests.TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | TicTacToe session gateway 샘플도 sample-only registry metadata store 없이 Registry 기본 API 를 사용한다. session packet handler 와 ensure actor handler 가 `IZLinkActorPlayRouteResolver` 를 주입하거나 `ResolvePlayRouteAsync(...)` 를 호출하지 않는지도 확인한다. |
 
 ## 7. 추가 회귀 테스트 계획
 
@@ -480,7 +486,7 @@ relay 는 session state 에 붙은 actor ref 를 재사용하며 actor id 로 ro
 | `DiscoveryIntegrationTests.RegistryActorRoutes_Publishes_FrameworkActorRoute` | actor 생성 흐름에서 framework-managed actor route row 가 publish 되고 기본 resolver 가 이를 읽는다. |
 | `DiscoveryIntegrationTests.RegistrySpotRoutes_Enables_SpotOwnerSync` | owner 쪽 discovery 의 `SpotOwnerSyncEnabled` 가 켜지고 `ResolveSpot(spotRid)` 로 owner node RID 를 찾는다. |
 | `SpotIntegrationTests.RegistrySpotRoutes_RequestSend_By_Name` | string overload 로 찾은 Spot route 로 request/send 가 성공한다. |
-| `StreamIntegrationTests.SessionActorBind_Uses_Explicit_Route_Without_Resolver` | session attach 는 이미 받은 route snapshot 을 사용하고 `IZLinkActorPlayRouteResolver` 를 숨은 lookup 으로 호출하지 않는다. |
+| `StreamIntegrationTests.SessionActorBind_Does_Not_Resolve_PlayRoute` | session attach 는 이미 받은 route snapshot 을 사용하고 `IZLinkActorPlayRouteResolver` 를 숨은 lookup 으로 호출하지 않는다. |
 | `StreamIntegrationTests.RegistryActorSessionBindings_Routes_Actor_Push_To_Current_Stream` | session-attached actor route 구현 이후 actor-session binding route kind 로 actor 가 현재 stream 에 push 한다. |
 
 추가 테스트들은 단순히 빌드 성공을 보는 것이 아니다. 샘플이 다시

@@ -46,7 +46,8 @@ internal sealed class AuthenticateSessionPacketHandler(
 
             var route = new ZLinkActorRoute(
                 ensured.Route.RouterChannelId,
-                RoutingId.FromBytes(ensured.Route.TargetNodeRid));
+                RoutingId.FromBytes(ensured.Route.TargetNodeRid),
+                ensured.Route.ActorGeneration);
             context.State.ActorId = ensured.ActorId;
             await actorRoutes.EnsureRouteAsync(context.Stream, context.State, route, cancellationToken)
                 .ConfigureAwait(false);

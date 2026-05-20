@@ -462,6 +462,35 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void SessionActorDispatch_Does_Not_Require_ActorPlayRouteResolver()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddActorSessionBindingStore<TestActorSessionBindingStore>();
+            options.AddRouteMeshChannel("gateway", routed =>
+            {
+                routed.Bind("tcp://127.0.0.1:7301");
+                routed.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:7301"));
+            });
+            options.AddStreamNode("stream.node", stream =>
+            {
+                stream.Bind("tcp://127.0.0.1:9100");
+                stream.AddHeaderSession<TestHeaderSession>();
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+
+        Assert.Null(provider.GetService<IZLinkActorPlayRouteResolver>());
+        Assert.Single(registration.StreamNodes);
+        Assert.Single(registration.RouteChannels);
+        Assert.NotNull(provider.GetService<IZLinkActorSessionBindingStore>());
+    }
+
+    [Fact]
     public void AddZLinkFramework_DoesNot_Register_SpotPublisher_Without_PublisherCapability()
     {
         var services = new ServiceCollection();
@@ -1008,7 +1037,8 @@ public sealed class RegistrationValidationTests
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(new ZLinkActorRoute(
                 "play",
-                global::Systems.Zlink.RoutingId.FromString("01")));
+                global::Systems.Zlink.RoutingId.FromString("01"),
+                1));
         }
     }
 

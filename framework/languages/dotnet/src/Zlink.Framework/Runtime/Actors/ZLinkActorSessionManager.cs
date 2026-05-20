@@ -82,6 +82,30 @@ internal sealed partial class ZLinkActorSessionManager(
         return true;
     }
 
+    public bool TryGetCreatedActorState(
+        string actorId,
+        string actorType,
+        out ZLinkActorRuntimeState state)
+    {
+        state = null!;
+        if (!_actorSessions.TryGet(actorId, out var existingState)
+            || existingState.Actor is null)
+        {
+            return false;
+        }
+
+        if (existingState.ActorType is not null
+            && !string.Equals(existingState.ActorType, actorType, StringComparison.Ordinal))
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorTypeMismatch,
+                $"Actor '{actorId}' already uses actor type '{existingState.ActorType}', not '{actorType}'.");
+        }
+
+        state = existingState;
+        return true;
+    }
+
     private async ValueTask<CreateActorResult> CreateAndBindActorAsync(
         string actorId,
         string actorType,

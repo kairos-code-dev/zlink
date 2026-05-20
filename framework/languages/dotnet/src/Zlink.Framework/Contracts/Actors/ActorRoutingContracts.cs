@@ -9,4 +9,5 @@ public interface IZLinkActorPlayRouteResolver
 
 public readonly record struct ZLinkActorRoute(
     string RouterChannelId,
-    RoutingId TargetNodeRid);
+    RoutingId TargetNodeRid,
+    ulong ActorGeneration);

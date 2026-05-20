@@ -75,7 +75,7 @@
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
 | client | `IZLinkSessionProxy` | 현재 actor -> 현재 client session 호출 | 5.6 |
 | client | `IZLinkActorSessionClient` | actor id 기반 actor -> client session 호출 | 5.6 |
-| resolver | `IZLinkActorPlayRouteResolver` | actor id에서 play/runtime route 조회 | 5.7 |
+| resolver | `IZLinkActorPlayRouteResolver` | backend actor messaging 용 actor id -> play/runtime route 조회 | 5.7 |
 | resolver | `IZLinkSpotRouteResolver` | spot name/id에서 user Spot route 조회 | 5.7 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
 | lifecycle | `IZLinkSpot` | spot lifecycle registration base | 4.3.1 |
@@ -1099,6 +1099,12 @@ public interface IZLinkSessionActorDispatchContext
         string actorType,
         CancellationToken cancellationToken = default);
 
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        string actorId,
+        string actorType,
+        ZLinkActorRoute route,
+        CancellationToken cancellationToken = default);
+
     ValueTask RelayToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
@@ -1115,6 +1121,11 @@ public interface IZLinkActorManager
 
     ValueTask<IZLinkActor?> FindAsync(
         string actorId,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkActorRoute> GetRouteAsync(
+        string actorId,
+        string actorType,
         CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkActor> GetOrCreateAsync(
@@ -2126,9 +2137,11 @@ session 에서 actor 로 packet 을 relay 할 때는 `IZLinkSessionContext` 의
 `RelayToActorAsync(...)` 를 사용한다. actor runtime 을 직접 호출하는 별도
 public client 는 두지 않는다.
 
-remote actor 위치가 필요하면 framework 는 `IZLinkActorPlayRouteResolver` 로
-actor id 를 routed channel 과 대상 노드의 `RoutingId` 로 풀어 낸다. 호출자는
-이 위치값을 직접 다루지 않는다.
+remote actor 위치가 필요하면 session 은 인증이나 입장 흐름에서 받은
+`ZLinkActorRoute` snapshot 을 `BindActorHandleAsync(...)` overload 에 넘긴다.
+framework 는 이 값을 actor ref 안에 저장하고, relay 때마다
+`IZLinkActorPlayRouteResolver` 를 호출하지 않는다. route 없는 overload 는 local
+actor compatibility 경로로만 남는다.
 
 ### 5.5.1 route transport helper
 
@@ -2293,8 +2306,13 @@ public interface IZLinkActorPlayRouteResolver
 
 public readonly record struct ZLinkActorRoute(
     string RouterChannelId,
-    RoutingId TargetNodeRid);
+    RoutingId TargetNodeRid,
+    ulong ActorGeneration);
 ```
+
+`ActorGeneration == 0` 은 concrete actor route 가 아니므로 session attach 에서
+`ActorRouteNotFound` 로 거부한다. 내부 actor route update 는 이 generation 으로
+stale update 를 구분하지만, public application API 로 노출하지 않는다.
 
 ```csharp
 namespace Zlink.Framework.Contracts.Spots;

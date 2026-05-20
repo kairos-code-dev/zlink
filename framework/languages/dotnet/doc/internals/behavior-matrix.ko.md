@@ -98,6 +98,11 @@
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 같은 actor type factory 중복 등록 | 비허용 | builder 등록 시점에 오류 |
 | actor play route resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
+| session actor attach 에 `ActorGeneration == 0` route 전달 | 비허용 | concrete actor route 가 아니므로 `ActorRouteNotFound` 로 실패한다 |
+| session actor attach 중 `IZLinkActorPlayRouteResolver` fallback 사용 | 비허용 | session relay 는 attach 시점 route snapshot 을 저장해야 하며, hot path 에 actor id route 조회를 넣지 않는다 |
+| route 없는 `BindActorHandleAsync(actorId, actorType, ...)` 로 remote actor bind | 비허용 | 이 overload 는 local actor compatibility 경로로만 동작하고, local actor 가 없으면 `ActorRouteNotFound` 로 실패한다 |
+| actor route update 의 expected actor generation 이 현재 attached ref 와 일치 | 허용 | target node rid 와 actor generation 을 atomic snapshot 으로 교체한다 |
+| actor route update 의 expected actor generation 이 현재 attached ref 와 다름 | 허용된 무시 | 늦게 도착한 stale update 로 보고 route 를 바꾸지 않는다 |
 | 같은 actor id가 새 stream session에서 다시 bind | 허용 | 기존 actor 인스턴스를 재사용하고 session binding token[^binding-token]만 갱신한다 |
 | actor factory가 요청 actor id와 다른 id를 반환 | 비허용 | actor route와 binding id가 갈라지므로 actor 생성 오류 |
 | `context.SessionProxy.Send(...)` 또는 `IZLinkActorSessionClient.Send(actorId, ...)` 가 오래된 binding이나 이미 닫힌 stream에 도착 | 허용된 실패 | 해당 push만 실패하고, route loop와 host shutdown은 계속 진행한다 |

@@ -11,6 +11,11 @@ public interface IZLinkActorManager
         string actorId,
         CancellationToken cancellationToken = default);
 
+    ValueTask<ZLinkActorRoute> GetRouteAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
     ValueTask<IZLinkActor> GetOrCreateAsync(
         string actorId,
         string actorType,

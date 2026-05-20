@@ -183,6 +183,11 @@ public interface IZLinkActorManager
         string actorId,
         CancellationToken cancellationToken = default);
 
+    ValueTask<ZLinkActorRoute> GetRouteAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
     ValueTask<IZLinkActor> GetOrCreateAsync(
         string actorId,
         string actorType,
@@ -587,8 +592,11 @@ application 이 actor runtime 을 직접 호출하는 별도 public client 는 �
 ### 6.1 `IZLinkActorPlayRouteResolver`
 
 "이 actor id 는 지금 어느 routed channel 의 어느 노드에 있다" 는 정보를
-application 이 돌려주기 위한 resolver 다. framework 는 이 정보를 가지고 routed
-채널 send / request 를 구성한다.
+application 이 돌려주기 위한 resolver 다. session 에 이미 attach 된 actor 로
+relay 할 때는 이 resolver 를 쓰지 않는다. session relay 는 attach 시점에 받은
+route snapshot 을 저장해 두고, packet 마다 actor id 로 route 를 다시 조회하지
+않는다. 이 resolver 는 session actor ref 가 없는 backend service -> actor
+messaging 경로에서 actor id 를 runtime route 로 바꾸는 용도다.
 
 ```csharp
 namespace Zlink.Framework.Contracts.Actors;
@@ -602,8 +610,12 @@ public interface IZLinkActorPlayRouteResolver
 
 public readonly record struct ZLinkActorRoute(
     string RouterChannelId,
-    RoutingId TargetNodeRid);
+    RoutingId TargetNodeRid,
+    ulong ActorGeneration);
 ```
+
+`ActorGeneration` 은 concrete actor ref 의 generation 이다. `0` 은 unchecked
+route 이므로 session attach 와 backend actor messaging 입력으로 사용할 수 없다.
 
 resolver 의 실제 저장소는 application 이 원하는 곳 어디든 채울 수 있다. 예를
 들어 in-memory 캐시, Redis, Registry 기반 lookup 등이 모두 가능하다. Registry 를
@@ -729,6 +741,12 @@ public interface IZLinkSessionActorDispatchContext
         string actorType,
         CancellationToken cancellationToken = default);
 
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        string actorId,
+        string actorType,
+        ZLinkActorRoute route,
+        CancellationToken cancellationToken = default);
+
     ValueTask RelayToActorAsync(...);
 }
 
@@ -745,12 +763,13 @@ public interface IZLinkActorRef
 - `AttachActorAsync(...)` -- 이미 만든 actor 인스턴스를 현재 session 에
   attach 한다. session 이 끊어지면 framework 가 자동으로
   `OnDisconnectedAsync` 를 호출한다.
-- `BindActorHandleAsync(actorId, actorType, ...)` -- actor handle 을 얻고,
-  현재 actor-session binding 을 기록한다. 이 API 는 actor 를 새로 만들지
-  않는다. local actor handle 이 필요하면 application 이 먼저
-  `IZLinkActorManager.CreateAsync(...)` 또는 `GetOrCreateAsync(...)` 로 actor
-  를 준비해야 한다. remote actor handle 인 경우에는 route resolver 결과로
-  binding handle 만 만든다.
+- `BindActorHandleAsync(actorId, actorType, route, ...)` -- actor handle 을
+  얻고, 현재 actor-session binding 을 기록한다. 이 API 는 actor 를 새로
+  만들지 않는다. remote actor handle 은 인증이나 입장 흐름에서 받은
+  `ZLinkActorRoute` 를 명시적으로 넘겨 만든다.
+- `BindActorHandleAsync(actorId, actorType, ...)` -- local actor compatibility
+  경로다. local actor 가 이미 있을 때만 성공하고, remote actor route resolver
+  를 fallback 으로 호출하지 않는다.
 - `RelayToActorAsync(...)` -- 들어온 packet 을 actor 에게 dispatch 한다.
   보통 framework 가 자동으로 처리한다.
 - `IZLinkActorRef.NotifyDisconnectedAsync(...)` -- session 이 연결 종료를
@@ -776,8 +795,8 @@ sequenceDiagram
 
     C->>S: STREAM connect + authenticate
     S->>S: 인증 (AuthenticateReq → actorId)
-    S->>FW: IZLinkActorManager.GetOrCreateAsync(actorId, "player")
-    S->>Act: BindActorHandleAsync(actorId, "player")
+    S->>FW: Ensure actor request -> actor route snapshot
+    S->>Act: BindActorHandleAsync(actorId, "player", route)
     Note over Act: bind는 actor를 새로 만들지 않음
     S->>Loc: BindSessionAsync(actorId, sessionRouterId, token)
 
@@ -805,8 +824,9 @@ message 를 보낼 때도, 그 stream 을 그대로 타고 push 되어야 한다
 
 이 구조의 핵심 표면은 다음과 같다.
 
-- **`IZLinkActorPlayRouteResolver`** (§6.2) -- "actor id → play node routing
-  id" 를 푼다.
+- **actor route snapshot** -- 인증이나 입장 흐름에서 Play 서버가 actor 를
+  준비한 뒤 Session 서버에 돌려주는 router channel id, target node rid, actor
+  generation 묶음이다. Session 서버는 이 값을 actor handle attach 에 사용한다.
 - **`IZLinkSpotRouteResolver`** -- "spot name / id → user Spot routing id" 를
   푼다. actor 가 `JoinSpot(spotName, ...)` 로 node 경계를 넘을 수 있다면 이
   resolver 를 등록한다.
@@ -926,11 +946,14 @@ framework / core runtime 내부 metadata 로 관리한다. 즉 public resolver r
 ```csharp
 public readonly record struct ZLinkActorRoute(
     string RouterChannelId,
-    RoutingId TargetNodeRid);
+    RoutingId TargetNodeRid,
+    ulong ActorGeneration);
 ```
 
 - **`ZLinkActorRoute`** -- "이 actor 가 사는 Play 서버의 위치" 를 나타낸다.
-  `IZLinkActorPlayRouteResolver` 의 결과로 돌려준다.
+  session attach 에서는 ensure actor 응답처럼 이미 확인된 route snapshot 으로
+  전달하고, backend actor messaging 에서는 `IZLinkActorPlayRouteResolver` 의
+  결과로 돌려준다.
 - actor-session binding 은 public route resolver 결과가 아니다. 이전 stream
   의 뒤늦은 close 가 새 binding 을 지우지 못하도록, 내부에서 binding token
   으로 조건부 갱신을 수행한다.
@@ -980,20 +1003,19 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-Registry actor route resolver 는 **양쪽 모두** 에 등록해야 한다. 이유는 다음과
-같다.
-
-- session 서버는 client packet 을 어느 play 노드로 보낼지 알아야 한다.
-- play 서버도 actor migration[^actor-migration] 처럼 다른 play 노드로
-  forwarding 해야 하는 경우가 있다.
+Registry actor route resolver 는 session relay 의 필수 등록 요소가 아니다.
+session 서버는 client packet 마다 actor id route lookup 을 수행하지 않고, actor
+attach 시점에 받은 route snapshot 을 저장한다. `IZLinkActorPlayRouteResolver` 는
+session actor ref 없이 actor id 만 가진 backend actor messaging 경로에서 사용한다.
 
 actor-session binding 은 framework / core runtime 내부에서 관리한다. 각 서버의
 역할을 나누어 보면 다음과 같다.
 
-- Session 서버는 인증 후 local actor 가 필요한 경우
-  `IZLinkActorManager.GetOrCreateAsync(...)` 로 actor 를 준비한 뒤
-  `BindActorHandleAsync(...)` 로 actor handle 과 session binding 을 얻는다.
-  remote actor handle 은 session 서버에서 만들지 않는다.
+- Session 서버는 인증 후 Play 서버의 ensure actor 응답에서 route snapshot 을
+  받고, `BindActorHandleAsync(actorId, actorType, route, ...)` 로 actor handle 과
+  session binding 을 얻는다.
+- Play 서버는 `IZLinkActorManager.GetOrCreateAsync(...)` 로 actor 를 준비한 뒤
+  `GetRouteAsync(...)` 로 concrete actor route snapshot 을 응답에 싣는다.
 - Play actor 는 actor context 의 `IZLinkSessionProxy` 로 자기 client binding 을
   사용한다. application service 가 actor id 를 기준으로 client binding 을
   찾아야 하면 `IZLinkActorSessionClient` 를 사용한다.
@@ -1183,7 +1205,8 @@ context 만 다룬다는 원칙을 함께 검증한다.
 
 [^playroute]: **play route resolver**는 actor id를 받아 그 actor가 지금 어느
     routed channel의 어느 노드에 사는지를 돌려주는 resolver다.
-    session actor dispatch 가 remote actor 위치를 찾을 때 내부적으로 사용한다.
+    session actor dispatch 의 relay hot path 에서는 사용하지 않고, session actor
+    ref 가 없는 backend actor messaging 경로에서 사용한다.
 
 [^startup-validation]: startup validation은 framework가 호스트 시작 시점에
     등록 상태를 점검해서, 누락된 의존성이나 잘못된 조합을 즉시 예외로 보고하는

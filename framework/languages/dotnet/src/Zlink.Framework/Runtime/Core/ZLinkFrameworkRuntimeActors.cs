@@ -69,6 +69,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         out IZLinkActor actor)
         => _actors.TryGetCreatedActor(actorId, actorType, out actor);
 
+    internal bool TryGetCreatedActorState(
+        string actorId,
+        string actorType,
+        out ZLinkActorRuntimeState state)
+        => _actors.TryGetCreatedActorState(actorId, actorType, out state);
+
     internal async ValueTask<byte[]> SubmitActorForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,
@@ -101,10 +107,22 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _registration.RouteChannels.Keys.Single();
     }
 
-    internal ZLinkActorRoute ResolveLocalActorRoute()
+    internal ZLinkActorRoute ResolveLocalActorRoute(
+        string actorId,
+        string actorType)
     {
+        if (!TryGetCreatedActorState(actorId, actorType, out var state))
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorId}' is not created on the local actor runtime.");
+        }
+
         var routerChannelId = ResolveDefaultRouterChannelId();
-        return new ZLinkActorRoute(routerChannelId, ResolveSessionRouterId(routerChannelId));
+        return new ZLinkActorRoute(
+            routerChannelId,
+            ResolveSessionRouterId(routerChannelId),
+            ResolveActorGeneration(state));
     }
 
     internal RoutingId ResolveSessionRouterId(string routerChannelId)
@@ -121,9 +139,10 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal void BindSessionActor(
         string actorId,
         ZLinkSessionContext context,
-        string bindingToken)
+        string bindingToken,
+        ZLinkActorRef actorRef)
     {
-        _sessionBindings.Bind(actorId, context, bindingToken);
+        _sessionBindings.Bind(actorId, context, bindingToken, actorRef);
     }
 
     internal void UnbindSessionActor(
@@ -140,5 +159,33 @@ internal sealed partial class ZLinkFrameworkRuntime
         out ZLinkSessionContext context)
     {
         return _sessionBindings.TryGet(actorId, bindingToken, out context);
+    }
+
+    internal ValueTask<int> UpdateAttachedActorRouteAsync(
+        string actorId,
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        ulong expectedActorGeneration,
+        ulong newActorGeneration,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var updated = _sessionBindings.UpdateAttachedActorRoute(
+            actorId,
+            routerChannelId,
+            targetNodeRid,
+            expectedActorGeneration,
+            newActorGeneration);
+        return ValueTask.FromResult(updated);
+    }
+
+    private static ulong ResolveActorGeneration(ZLinkActorRuntimeState state)
+    {
+        if (state.NativeActorRef is { Generation: not 0 } actorRef)
+        {
+            return actorRef.Generation;
+        }
+
+        return state.ActorGeneration;
     }
 }

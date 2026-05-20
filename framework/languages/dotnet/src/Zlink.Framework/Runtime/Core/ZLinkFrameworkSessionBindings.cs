@@ -7,9 +7,10 @@ internal sealed class ZLinkFrameworkSessionBindings
     public void Bind(
         string actorId,
         ZLinkSessionContext context,
-        string bindingToken)
+        string bindingToken,
+        ZLinkActorRef actorRef)
     {
-        _sessionActorBindings.Bind(actorId, context, bindingToken);
+        _sessionActorBindings.Bind(actorId, context, bindingToken, actorRef);
     }
 
     public void Unbind(
@@ -26,5 +27,20 @@ internal sealed class ZLinkFrameworkSessionBindings
         out ZLinkSessionContext context)
     {
         return _sessionActorBindings.TryGet(actorId, bindingToken, out context);
+    }
+
+    public int UpdateAttachedActorRoute(
+        string actorId,
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        ulong expectedActorGeneration,
+        ulong newActorGeneration)
+    {
+        return _sessionActorBindings.UpdateAttachedActorRoute(
+            actorId,
+            routerChannelId,
+            targetNodeRid,
+            expectedActorGeneration,
+            newActorGeneration);
     }
 }

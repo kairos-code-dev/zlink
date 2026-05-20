@@ -99,6 +99,14 @@ internal sealed class ZLinkFrameworkActorFacade(
         return await actorSessionManager.CreateActorAsync(actorId, actorType, cancellationToken);
     }
 
+    internal bool TryGetCreatedActorState(
+        string actorId,
+        string actorType,
+        out ZLinkActorRuntimeState state)
+    {
+        return actorSessionManager.TryGetCreatedActorState(actorId, actorType, out state);
+    }
+
     public async ValueTask<IZLinkActor?> FindActorAsync(
         string actorId,
         CancellationToken cancellationToken = default)

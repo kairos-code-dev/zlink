@@ -14,8 +14,8 @@ internal sealed class ZLinkSessionActorCoordinator(
         string actorType,
         CancellationToken cancellationToken)
     {
-        var route = runtime.ResolveLocalActorRoute();
         EnsureLocalActorExists(actorId, actorType);
+        var route = runtime.ResolveLocalActorRoute(actorId, actorType);
 
         return await BindHandleAsync(
                 context,
@@ -33,6 +33,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         ZLinkActorRoute route,
         CancellationToken cancellationToken)
     {
+        EnsureConcreteRoute(route);
         var isLocalRoute = IsLocalRoute(route.RouterChannelId, route.TargetNodeRid);
         if (isLocalRoute)
         {
@@ -50,6 +51,7 @@ internal sealed class ZLinkSessionActorCoordinator(
             actorType,
             route.RouterChannelId,
             route.TargetNodeRid,
+            route.ActorGeneration,
             notifyDisconnectedAsync,
             cancellationToken).ConfigureAwait(false);
     }
@@ -75,7 +77,8 @@ internal sealed class ZLinkSessionActorCoordinator(
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
         }
 
-        if (IsLocalRoute(actorRef.RouterChannelId, actorRef.TargetNodeRid))
+        var route = actorRef.RouteSnapshot;
+        if (IsLocalRoute(route.RouterChannelId, route.TargetNodeRid))
         {
             await DispatchLocalAsync(actorRef, header, payload, replyRawAsync, cancellationToken)
                 .ConfigureAwait(false);
@@ -84,6 +87,7 @@ internal sealed class ZLinkSessionActorCoordinator(
 
         await _relay.DispatchRemoteAsync(
                 actorRef,
+                route,
                 header,
                 payload,
                 replyRawAsync,
@@ -140,6 +144,19 @@ internal sealed class ZLinkSessionActorCoordinator(
     private bool IsLocalRoute(string routerChannelId, RoutingId targetNodeRid)
     {
         return targetNodeRid.Equals(runtime.ResolveSessionRouterId(routerChannelId));
+    }
+
+    private static void EnsureConcreteRoute(ZLinkActorRoute route)
+    {
+        if (route.ActorGeneration != 0)
+        {
+            return;
+        }
+
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorRouteNotFound,
+            "Actor route requires a concrete actor generation.",
+            isRetriable: false);
     }
 
     private void EnsureLocalActorExists(string actorId, string actorType)

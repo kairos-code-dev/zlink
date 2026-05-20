@@ -146,6 +146,9 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | spot route resolver 경로 | `integration-single-process` | spot name/id 기반 호출이 `IZLinkSpotRouteResolver` 결과를 사용해 target node와 spot id를 찾고, routed message를 보낸다 |
 | actor manager 생성 중복/타입 충돌 | `integration-single-process` | `IZLinkActorManager.CreateAsync(...)` 중복 생성은 `ActorAlreadyExists`, `GetOrCreateAsync(...)` actor type 충돌은 `ActorTypeMismatch` 로 실패한다 |
 | local actor bind 생성 금지 | `integration-single-process` | `BindActorHandleAsync(...)` 는 local actor 가 없을 때 factory 를 호출하지 않고 `ActorRouteNotFound` 로 실패한다 |
+| session actor bind resolver 제거 | `integration-single-process` | route 를 받는 `BindActorHandleAsync(...)` 는 `IZLinkActorPlayRouteResolver` 를 호출하지 않고, route 없는 overload 도 local actor 에만 붙는다 |
+| unchecked actor route 거부 | `integration-single-process` | `ZLinkActorRoute.ActorGeneration == 0` 인 session attach 는 `ActorRouteNotFound` 로 실패한다 |
+| attached actor route update | `integration-single-process` | 내부 route update 는 expected actor generation 이 일치하는 actor ref 의 target node rid 와 actor generation 만 갱신한다 |
 | remote actor dispatch 생성 금지 | `integration-single-process` | routed actor dispatch 수신 경로는 local actor 가 없을 때 factory 를 호출하지 않고 dispatch 를 실패시킨다 |
 | session actor relay bridge | `integration-single-process` | `BindActorHandleAsync(...)`, `RelayToActorAsync(IZLinkActorRef, ...)`, `IZLinkActorRef.NotifyDisconnectedAsync(...)`가 public session 표면에서 동작한다 |
 | session actor dispatch ordering | `integration-single-process` | stream session에서 actor로 relay된 packet이 actor별 순서를 보장하고, 현재 actor 위치에 맞는 handler 실행 경로로 넘어간다 |

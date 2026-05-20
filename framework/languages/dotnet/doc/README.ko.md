@@ -107,7 +107,7 @@
 - session actor dispatch[^session-actor-dispatch] 는 단일 gateway feature switch
   하나를 켜고 끄는 형태가 아니다. 대신
   `AddStreamNode(...).AddHeaderSession<TSession>()`, actor factory, actor
-  route resolver, actor-session binding, actor context 의 `IZLinkSessionProxy`,
+  attach route snapshot, actor-session binding, actor context 의 `IZLinkSessionProxy`,
   service 용 `IZLinkActorSessionClient` 의 조합으로 설명한다. 공개 resolver
   축은 actor 와 spot 으로 제한하며, session 위치 조회를 위한 별도의 public API
   는 두지 않는다.

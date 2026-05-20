@@ -3,8 +3,7 @@ namespace Zlink.Framework.Runtime.Streams;
 internal sealed class ZLinkActorRef(
     string actorId,
     string actorType,
-    string routerChannelId,
-    RoutingId targetNodeRid,
+    ZLinkActorRouteState routeState,
     Func<ZLinkActorRef, CancellationToken, ValueTask> notifyDisconnectedAsync)
     : IZLinkActorRef
 {
@@ -12,9 +11,26 @@ internal sealed class ZLinkActorRef(
 
     public string ActorType { get; } = actorType;
 
-    public string RouterChannelId { get; } = routerChannelId;
+    public string RouterChannelId => RouteSnapshot.RouterChannelId;
 
-    public RoutingId TargetNodeRid { get; } = targetNodeRid;
+    public RoutingId TargetNodeRid => RouteSnapshot.TargetNodeRid;
+
+    public ulong ActorGeneration => RouteSnapshot.ActorGeneration;
+
+    internal ZLinkActorRoute RouteSnapshot => routeState.Snapshot;
+
+    internal bool TryUpdateRoute(
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        ulong expectedActorGeneration,
+        ulong newActorGeneration)
+    {
+        return routeState.TryUpdate(
+            routerChannelId,
+            targetNodeRid,
+            expectedActorGeneration,
+            newActorGeneration);
+    }
 
     public ValueTask NotifyDisconnectedAsync(
         CancellationToken cancellationToken = default)

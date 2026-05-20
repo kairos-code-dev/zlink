@@ -128,10 +128,12 @@ actor-session binding 을 켠다. 샘플은 별도 파일 metadata store 나 rou
 핵심 계약은 다음과 같다.
 
 - `AuthenticateReq.ActorId` 가 인증 요청의 actor identity 역할을 한다.
-- 인증이 성공하면, Session 서버는 두 가지 일을 한다. 먼저 local actor 가
-  필요한 경우 `IZLinkActorManager.GetOrCreateAsync(...)` 로 actor 를 준비한다.
-  그 뒤 `BindActorHandleAsync(...)` 로 actor handle 을 얻고 현재 stream session
-  binding 을 framework / core 내부 상태에 기록한다.
+- 인증이 성공하면, Session 서버는 Play 서버에 actor 준비를 요청하고 actor route
+  snapshot 을 받는다. 이 snapshot 에는 router channel id, target node rid, actor
+  generation 이 들어 있다. 그 뒤 route 를 받는 `BindActorHandleAsync(...)`
+  overload 로 actor handle 을 얻고 현재 stream session binding 을 framework /
+  core 내부 상태에 기록한다. session handler 는 actor route resolver 를 직접
+  호출하지 않는다.
 - `CreateMatchReq` 는 Session 서버에서 API 서버로 channel request 로 relay
   된다. 클라이언트는 match id 나 room 이름을 따로 지정하지 않는다.
 - API 서버는 Play 서버에 room 생성을 요청한다. Play 서버는

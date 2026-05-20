@@ -6,6 +6,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ZLinkActorDispatchMailbox _dispatchMailbox = new();
     private Task<IZLinkActor>? _actorCreationTask;
+    private ulong _actorGeneration;
 
     public string ActorId { get; } = actorId;
 
@@ -26,6 +27,8 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     public IZLinkActor? Actor { get; set; }
 
     public bool IsConfigured { get; set; }
+
+    public ulong ActorGeneration => _actorGeneration;
 
     public ZLinkSpotActivation? LiveActivation
         => Activation is { IsDisposed: false } activation ? activation : null;
@@ -195,6 +198,20 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     public void ClearPacketRegistrations()
     {
         _packets.Clear();
+    }
+
+    public void EnsureActorGeneration(ulong nativeGeneration)
+    {
+        if (nativeGeneration != 0)
+        {
+            _actorGeneration = nativeGeneration;
+            return;
+        }
+
+        if (_actorGeneration == 0)
+        {
+            _actorGeneration = 1;
+        }
     }
 
     public bool TryResolvePacket(

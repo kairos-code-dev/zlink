@@ -100,8 +100,9 @@ disconnect하고 new endpoint를 connect한다. endpoint가 같으면 `registrat
 바뀌었더라도 주소 연결만 보고 reconnect를 강제하지 않는다.
 
 SPOT, Actor, route binding 같은 owner-bound 객체 주소는 "논리 객체가 어느 owner
-generation에 속하는지"를 나타낸다. 이 record의 owner는 endpoint가 아니라 provider
-generation이다.
+generation에 속하는지"를 나타낸다. Actor route record 는 actor node rid 와 actor
+generation 을 함께 담아야 stale update 를 구분할 수 있다. 이 record의 owner는
+endpoint가 아니라 provider generation이다.
 
 ```text
 owner_generation:

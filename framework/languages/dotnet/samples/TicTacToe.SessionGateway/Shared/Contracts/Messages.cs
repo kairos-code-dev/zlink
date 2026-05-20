@@ -15,7 +15,8 @@ public sealed record EnsurePlayerActorReq(string ActorId);
 
 public sealed record ActorRouteSnapshot(
     string RouterChannelId,
-    byte[] TargetNodeRid);
+    byte[] TargetNodeRid,
+    ulong ActorGeneration);
 
 public sealed record EnsurePlayerActorRes(
     string ActorId,

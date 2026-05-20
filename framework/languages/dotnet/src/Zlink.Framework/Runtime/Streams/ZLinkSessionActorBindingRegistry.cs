@@ -13,6 +13,7 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         string actorType,
         string routerChannelId,
         RoutingId actorNodeRid,
+        ulong actorGeneration,
         Func<ZLinkActorRef, CancellationToken, ValueTask> notifyDisconnectedAsync,
         CancellationToken cancellationToken)
     {
@@ -26,9 +27,17 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             actorId,
             sessionRouterId,
             Guid.NewGuid().ToString("N"));
+        var actorRef = new ZLinkActorRef(
+            actorId,
+            actorType,
+            new ZLinkActorRouteState(new ZLinkActorRoute(
+                routerChannelId,
+                actorNodeRid,
+                actorGeneration)),
+            notifyDisconnectedAsync);
 
         var store = runtime.Services.GetRequiredService<IZLinkActorSessionBindingStore>();
-        runtime.BindSessionActor(actorId, context, binding.BindingToken);
+        runtime.BindSessionActor(actorId, context, binding.BindingToken, actorRef);
         try
         {
             await store.BindSessionAsync(binding, cancellationToken).ConfigureAwait(false);
@@ -45,15 +54,10 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
 
         lock (_bindings)
         {
-            _bindings[actorId] = binding;
+            _bindings[BuildBindingKey(actorId, binding.BindingToken)] = binding;
         }
 
-        return new ZLinkActorRef(
-            actorId,
-            actorType,
-            routerChannelId,
-            actorNodeRid,
-            notifyDisconnectedAsync);
+        return actorRef;
     }
 
     public async ValueTask CleanupAsync(
@@ -80,5 +84,10 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
                     cancellationToken).ConfigureAwait(false);
             }
         }
+    }
+
+    private static string BuildBindingKey(string actorId, string bindingToken)
+    {
+        return $"{actorId}\0{bindingToken}";
     }
 }

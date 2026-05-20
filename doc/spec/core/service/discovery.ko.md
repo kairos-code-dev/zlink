@@ -293,7 +293,7 @@ typedef uint32_t zlink_route_kind_t;
 
 | 상수 | 설명 |
 |------|------|
-| `ZLINK_ROUTE_KIND_ACTOR` | actor active route sync 가 사용하는 actor route |
+| `ZLINK_ROUTE_KIND_ACTOR` | actor active route sync 가 사용하는 actor route. framework adapter 는 actor node rid 와 actor generation 을 함께 읽어 concrete route snapshot 으로 사용한다 |
 | `ZLINK_ROUTE_KIND_SPOT_NAME` | framework adapter 가 Spot name 을 Spot RID 로 찾기 위한 route |
 | `ZLINK_ROUTE_KIND_ACTOR_SESSION` | framework adapter 가 actor-session binding 을 찾기 위한 route |
 

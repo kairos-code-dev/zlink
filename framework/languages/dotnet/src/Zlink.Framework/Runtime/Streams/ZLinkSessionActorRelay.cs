@@ -6,6 +6,7 @@ internal sealed class ZLinkSessionActorRelay(
 {
     public async ValueTask DispatchRemoteAsync(
         ZLinkActorRef actorRef,
+        ZLinkActorRoute route,
         ZlinkStreamHeader header,
         Message payload,
         Func<ZlinkStreamHeader, ZlinkStreamCodec, ReadOnlyMemory<byte>, CancellationToken, ValueTask> replyRawAsync,
@@ -27,6 +28,7 @@ internal sealed class ZLinkSessionActorRelay(
                 var reply = await RequestActorReplyAsync(
                         routeClient,
                         actorRef,
+                        route,
                         parts,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -36,8 +38,8 @@ internal sealed class ZLinkSessionActorRelay(
             }
 
             await routeClient.SendPartsTo(
-                    actorRef.RouterChannelId,
-                    actorRef.TargetNodeRid,
+                    route.RouterChannelId,
+                    route.TargetNodeRid,
                     ZLinkInternalPacketNames.ActorDispatch,
                     parts,
                     cancellationToken)
@@ -55,10 +57,11 @@ internal sealed class ZLinkSessionActorRelay(
         var parts = ZLinkInternalMultipartPackets.CreateActorDisconnectedParts(
             actorRef.ActorId,
             actorRef.ActorType);
+        var route = actorRef.RouteSnapshot;
 
         await routeClient.SendPartsTo(
-                actorRef.RouterChannelId,
-                actorRef.TargetNodeRid,
+                route.RouterChannelId,
+                route.TargetNodeRid,
                 ZLinkInternalPacketNames.ActorDisconnected,
                 parts,
                 cancellationToken)
@@ -68,14 +71,15 @@ internal sealed class ZLinkSessionActorRelay(
     private async ValueTask<ReadOnlyMemory<byte>> RequestActorReplyAsync(
         IZLinkMultipartRouteClient routeClient,
         ZLinkActorRef actorRef,
+        ZLinkActorRoute route,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
         try
         {
             return await routeClient.RequestPartsTo<ReadOnlyMemory<byte>>(
-                    actorRef.RouterChannelId,
-                    actorRef.TargetNodeRid,
+                    route.RouterChannelId,
+                    route.TargetNodeRid,
                     ZLinkInternalPacketNames.ActorDispatch,
                     parts,
                     runtime.Registration.DefaultTimeout,

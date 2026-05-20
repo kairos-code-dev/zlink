@@ -16,6 +16,22 @@ internal readonly record struct ZLinkBackendActorRef(
     string ActorId,
     ulong Generation);
 
+internal sealed record ZLinkBackendDiscoveryRoute(
+    RoutingId OwnerRoutingId,
+    Message Value) : IDisposable, IAsyncDisposable
+{
+    public void Dispose()
+    {
+        Value.Dispose();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Value.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}
+
 internal readonly record struct ZLinkBackendSpotActorLifecycleInfo(
     ZLinkBackendActorRef? PreviousActor,
     ZLinkBackendActorRef? CurrentActor,

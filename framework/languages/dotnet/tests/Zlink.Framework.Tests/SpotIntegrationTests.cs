@@ -233,6 +233,72 @@ public sealed partial class SpotIntegrationTests
     }
 
     [Fact]
+    public async Task RegistrySpotRoutes_Resolves_Created_Spot_By_Name()
+    {
+        var registryPubEndpoint = GetFreeTcpEndpoint();
+        var registryRouterEndpoint = GetFreeTcpEndpoint();
+        var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var routeChannelEndpoint = GetFreeTcpEndpoint();
+        var spotChannel = $"game.registry-route.{Guid.NewGuid():N}";
+
+        var registryBuilder = Host.CreateApplicationBuilder();
+        registryBuilder.Services.AddZLinkRegistry(options =>
+        {
+            options.PubEndpoint = registryPubEndpoint;
+            options.RouterEndpoint = registryRouterEndpoint;
+        });
+
+        var frameworkBuilder = Host.CreateApplicationBuilder();
+        frameworkBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+            options.UseSpotDiscovery(spotChannel, discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+            options.AddRouteMeshChannel("play", routed =>
+            {
+                routed.Bind(routeChannelEndpoint);
+            });
+            options.UseRegistrySpotRoutes("registry-route");
+            options.AddSpotNode("registry-route-node", spot =>
+            {
+                spot.Bind(spotNodeEndpoint);
+                spot.AddSpotFactory<LocalSubscriberStageSpot>("registry-stage");
+            });
+        });
+
+        using var registryHost = registryBuilder.Build();
+        using var frameworkHost = frameworkBuilder.Build();
+
+        await registryHost.StartAsync();
+        await frameworkHost.StartAsync();
+
+        var manager = frameworkHost.Services.GetRequiredService<IZLinkSpotManager>();
+        var resolver = frameworkHost.Services.GetRequiredService<IZLinkSpotRouteResolver>();
+
+        var created = await manager.CreateAsync("registry-stage");
+        var route = await resolver.ResolveSpotRouteAsync(
+            "registry-stage",
+            CancellationToken.None);
+
+        Assert.Equal("play", route.RouterChannelId);
+        Assert.Equal(created.SpotRid, route.SpotRid);
+
+        Assert.True(await manager.RemoveAsync(created.SpotRid));
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(() =>
+            resolver.ResolveSpotRouteAsync("registry-stage", CancellationToken.None)
+                .AsTask());
+        Assert.Equal(ZLinkFrameworkErrorKind.SpotRouteNotFound, error.Kind);
+
+        await frameworkHost.StopAsync();
+        await registryHost.StopAsync();
+    }
+
+    [Fact]
     public async Task OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();

@@ -63,6 +63,12 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal IZLinkRouteClient RouteClient => _services.GetRequiredService<IZLinkRouteClient>();
 
+    internal ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateForRoutingAsync(
+        CancellationToken cancellationToken)
+    {
+        return GetStartedStateAsync(cancellationToken);
+    }
+
     internal ValueTask PublishRuntimeEventAsync<TEvent>(
         TEvent @event,
         CancellationToken cancellationToken)

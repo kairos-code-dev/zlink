@@ -9,6 +9,7 @@ internal sealed class ZLinkSpotNodeCatalog(
     ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node,
     string spotChannelName,
+    Func<IZLinkBackendDiscovery?> discoveryProvider,
     Func<string, ZLinkSpotAttachedChannelBundle> getOrCreateAttachedChannelBundle,
     Action connectDiscoveredPubSubPeers) : IAsyncDisposable
 {
@@ -56,10 +57,23 @@ internal sealed class ZLinkSpotNodeCatalog(
                 _spots.Add(activation.SpotRid, activation);
             }
 
+            await BindSpotNameRouteAsync(
+                activation.SpotName,
+                activation.SpotRid,
+                cancellationToken).ConfigureAwait(false);
+
             return new ZLinkSpotCreateResult(activation.SpotRid, spotName, true);
         }
         catch (Exception error)
         {
+            if (activation is not null)
+            {
+                lock (_gate)
+                {
+                    _spots.Remove(activation.SpotRid);
+                }
+            }
+
             if (activation is null)
             {
                 await nativeSpot.DisposeAsync();
@@ -137,6 +151,15 @@ internal sealed class ZLinkSpotNodeCatalog(
             {
                 _pending.Remove(requestedSpotRid);
                 _spots.Add(activation.SpotRid, activation);
+            }
+
+            await BindSpotNameRouteAsync(
+                activation.SpotName,
+                activation.SpotRid,
+                cancellationToken).ConfigureAwait(false);
+
+            lock (_gate)
+            {
                 pending.Complete(activation);
             }
 
@@ -148,6 +171,11 @@ internal sealed class ZLinkSpotNodeCatalog(
             lock (_gate)
             {
                 _pending.Remove(requestedSpotRid);
+                if (activation is not null)
+                {
+                    _spots.Remove(activation.SpotRid);
+                }
+
                 pending.Fail(wrapped);
             }
 
@@ -203,6 +231,9 @@ internal sealed class ZLinkSpotNodeCatalog(
             }
         }
 
+        await UnbindSpotNameRouteAsync(
+            activation.SpotName,
+            cancellationToken).ConfigureAwait(false);
         await activation.CloseAsync(cancellationToken);
         await activation.DisposeAsync();
         return true;
@@ -283,6 +314,99 @@ internal sealed class ZLinkSpotNodeCatalog(
             ZLinkFrameworkErrorKind.SpotCreateFailed,
             $"SPOT '{spotName}' creation failed.",
             innerException: error);
+    }
+
+    private async ValueTask BindSpotNameRouteAsync(
+        string spotName,
+        RoutingId spotRid,
+        CancellationToken cancellationToken)
+    {
+        var options = frameworkRegistration.RegistrySpotRoutes;
+        if (options is null)
+        {
+            return;
+        }
+
+        var discovery = discoveryProvider()
+            ?? throw new ZLinkConfigurationException(
+                "Registry SPOT route publishing requires configured SPOT discovery.");
+        var key = ZLinkRegistrySpotRouteResolver.BuildSpotNameRouteKey(
+            options.Namespace,
+            spotName);
+        var value = ZLinkRegistrySpotRouteResolver.EncodeSpotNameRouteValue(
+            options.Namespace,
+            spotName,
+            spotRid);
+        await RetryRouteOperationAsync(
+                () => discovery.BindRoute(DiscoveryRouteKind.SpotName, key, value),
+                $"SPOT name route publish failed for '{spotName}'.",
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask UnbindSpotNameRouteAsync(
+        string spotName,
+        CancellationToken cancellationToken)
+    {
+        var options = frameworkRegistration.RegistrySpotRoutes;
+        if (options is null)
+        {
+            return;
+        }
+
+        var discovery = discoveryProvider();
+        if (discovery is null)
+        {
+            return;
+        }
+
+        var key = ZLinkRegistrySpotRouteResolver.BuildSpotNameRouteKey(
+            options.Namespace,
+            spotName);
+        await RetryRouteOperationAsync(
+                () => discovery.UnbindRoute(DiscoveryRouteKind.SpotName, key),
+                $"SPOT name route unbind failed for '{spotName}'.",
+                cancellationToken,
+                ignoreNotFound: true)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask RetryRouteOperationAsync(
+        Action operation,
+        string errorMessage,
+        CancellationToken cancellationToken,
+        bool ignoreNotFound = false)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(frameworkRegistration.DefaultTimeout);
+        while (true)
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            try
+            {
+                operation();
+                return;
+            }
+            catch (ZlinkConfigException error)
+                when (ignoreNotFound && error.InternalErrno == 2)
+            {
+                return;
+            }
+            catch (ZlinkConfigException error)
+                when (error.InternalErrno is 2 or 11)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(25), timeout.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (ZlinkConfigException error)
+            {
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                    errorMessage,
+                    isRetriable: true,
+                    innerException: error);
+            }
+        }
     }
 
     private sealed class PendingSpotCreation(string spotName)

@@ -14,6 +14,7 @@ public sealed class DocumentationRegressionTests
         "aspnet-core-stream.ko.md",
         "aspnet-core-actor.ko.md",
         "session-actor-dispatch.ko.md",
+        "session-attached-actor-route.ko.md",
         "streaming-client.ko.md",
         "stream-open-items.ko.md",
         "aspnet-core-monitoring.ko.md",

@@ -45,6 +45,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
 
     public string RouterChannelId => _registration.RouterChannelId;
 
+    public IZLinkBackendDiscovery? Discovery => _discovery;
+
     public void Start()
     {
         _receiveTask = _taskRunner.Run(

@@ -25,6 +25,34 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 "Actor session proxy requires AddRouteMeshChannel(...).");
         }
 
+        if ((registration.RegistryActorRoutes is not null
+                || registration.RegistrySpotRoutes is not null)
+            && registration.RouteChannels.Count == 0)
+        {
+            throw new ZLinkConfigurationException(
+                "Registry route resolver requires AddRouteMeshChannel(...).");
+        }
+
+        if ((registration.RegistryActorRoutes is not null
+                || registration.RegistrySpotRoutes is not null)
+            && (registration.SpotDiscovery is null
+                || registration.SpotDiscovery.Endpoints.Count == 0))
+        {
+            throw new ZLinkConfigurationException(
+                "Registry route resolver requires AddSpotMesh(...).UseDiscovery(...).");
+        }
+
+        ValidateRegistryRouteChannel(
+            registration.RegistryActorRoutes is not null,
+            registration.RegistryActorRoutes?.RouterChannelId,
+            registration,
+            "Registry actor route resolver");
+        ValidateRegistryRouteChannel(
+            registration.RegistrySpotRoutes is not null,
+            registration.RegistrySpotRoutes?.RouterChannelId,
+            registration,
+            "Registry SPOT route resolver");
+
         foreach (var channel in registration.Channels.Values)
         {
             ValidateChannel(channel, registration.Discovery is not null);
@@ -47,6 +75,35 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 registration,
                 globalSpotFactories,
                 globalSpotPublisherChannels);
+        }
+    }
+
+    private static void ValidateRegistryRouteChannel(
+        bool enabled,
+        string? routerChannelId,
+        ZLinkFrameworkRegistration registration,
+        string capabilityName)
+    {
+        if (!enabled)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(routerChannelId))
+        {
+            if (!registration.RouteChannels.ContainsKey(routerChannelId))
+            {
+                throw new ZLinkConfigurationException(
+                    $"{capabilityName} references unknown route mesh channel '{routerChannelId}'.");
+            }
+
+            return;
+        }
+
+        if (registration.RouteChannels.Count != 1)
+        {
+            throw new ZLinkConfigurationException(
+                $"{capabilityName} requires RouterChannelId when there is not exactly one route mesh channel.");
         }
     }
 

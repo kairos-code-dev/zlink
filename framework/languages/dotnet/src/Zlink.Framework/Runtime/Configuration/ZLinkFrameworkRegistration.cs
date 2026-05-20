@@ -24,6 +24,10 @@ internal sealed class ZLinkFrameworkRegistration
 
     public Type? ActorSessionBindingStoreType { get; set; }
 
+    public ZLinkRegistryActorRoutesRegistration? RegistryActorRoutes { get; set; }
+
+    public ZLinkRegistrySpotRoutesRegistration? RegistrySpotRoutes { get; set; }
+
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkRouteChannelRegistration> RouteChannels { get; } = new(StringComparer.Ordinal);
@@ -35,6 +39,20 @@ internal sealed class ZLinkFrameworkRegistration
     public ZLinkDiscoveryRegistration? Discovery { get; set; }
 
     public ZLinkSpotDiscoveryRegistration? SpotDiscovery { get; set; }
+}
+
+internal sealed class ZLinkRegistryActorRoutesRegistration
+{
+    public required string Namespace { get; init; }
+
+    public string? RouterChannelId { get; set; }
+}
+
+internal sealed class ZLinkRegistrySpotRoutesRegistration
+{
+    public required string Namespace { get; init; }
+
+    public string? RouterChannelId { get; set; }
 }
 
 internal class ZLinkDiscoveryRegistration

@@ -338,6 +338,76 @@ bool wait_for_topology_desired_total_local (
     });
 }
 
+bool routing_id_equal_local (const zlink_routing_id_t &left_,
+                             const zlink_routing_id_t &right_)
+{
+    return left_.size == right_.size
+           && memcmp (left_.data, right_.data, left_.size) == 0;
+}
+
+bool wait_for_route_bind_ok_local (void *discovery_,
+                                   zlink_route_kind_t kind_,
+                                   const void *key_,
+                                   size_t key_size_,
+                                   const void *value_,
+                                   size_t value_size_,
+                                   int timeout_ms_)
+{
+    return zlink_test_wait_until (timeout_ms_, [=] {
+        return zlink_discovery_bind_route (
+                 discovery_, kind_, key_, key_size_, value_, value_size_)
+               == ZLINK_CONFIG_OK;
+    });
+}
+
+bool wait_for_route_resolve_local (void *discovery_,
+                                   zlink_route_kind_t kind_,
+                                   const void *key_,
+                                   size_t key_size_,
+                                   const zlink_routing_id_t &expected_owner_,
+                                   const void *expected_value_,
+                                   size_t expected_value_size_,
+                                   int timeout_ms_)
+{
+    return zlink_test_wait_until (timeout_ms_, [=] {
+        zlink_routing_id_t owner;
+        zlink_msg_t value;
+        memset (&owner, 0, sizeof (owner));
+        memset (&value, 0, sizeof (value));
+        if (zlink_discovery_resolve_route (
+              discovery_, kind_, key_, key_size_, &owner, &value)
+            != ZLINK_CONFIG_OK)
+            return false;
+
+        const bool matched =
+          routing_id_equal_local (owner, expected_owner_)
+          && zlink_msg_size (&value) == expected_value_size_
+          && (expected_value_size_ == 0
+              || memcmp (zlink_msg_data (&value), expected_value_,
+                         expected_value_size_)
+                   == 0);
+        (void) zlink_msg_close (&value);
+        return matched;
+    });
+}
+
+bool wait_for_route_not_found_local (void *discovery_,
+                                     zlink_route_kind_t kind_,
+                                     const void *key_,
+                                     size_t key_size_,
+                                     int timeout_ms_)
+{
+    return zlink_test_wait_until (timeout_ms_, [=] {
+        zlink_routing_id_t owner;
+        zlink_msg_t value;
+        memset (&owner, 0, sizeof (owner));
+        memset (&value, 0, sizeof (value));
+        return zlink_discovery_resolve_route (
+                 discovery_, kind_, key_, key_size_, &owner, &value)
+               == ZLINK_CONFIG_NOT_FOUND;
+    });
+}
+
 void init_socket_topology_filter_local (
   zlink_registry_topology_filter_t *filter_,
   const char *channel_name_,
@@ -1229,12 +1299,156 @@ void test_wss_discovery_destroy_releases_canonicalized_bootstrap_dealer ()
 
 void test_discovery_route_binding_follows_owner_provider_lifecycle ()
 {
-    TEST_IGNORE_MESSAGE ("generic discovery route API was removed");
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    char owner_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, 6010, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router)));
+
+    const char channel[] = "route-lifecycle";
+    void *owner_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, channel);
+    void *resolver_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, channel);
+    TEST_ASSERT_NOT_NULL (owner_discovery);
+    TEST_ASSERT_NOT_NULL (resolver_discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      owner_discovery, registry_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      resolver_discovery, registry_router, 3000));
+
+    void *owner = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (owner);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (owner, "route-own", 9));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (owner, owner_discovery));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      owner, 6012, owner_endpoint, sizeof (owner_endpoint)));
+
+    zlink_routing_id_t owner_rid;
+    memset (&owner_rid, 0, sizeof (owner_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (owner, &owner_rid));
+    TEST_ASSERT_TRUE (
+      wait_for_registry_member_count_local (registry, channel, 1, 10000));
+
+    const char route_key[] = "actor-a";
+    const char route_value[] = "session-route-v1";
+    TEST_ASSERT_TRUE (wait_for_route_bind_ok_local (
+      owner_discovery, ZLINK_ROUTE_KIND_ACTOR_SESSION, route_key,
+      strlen (route_key), route_value, strlen (route_value), 10000));
+    TEST_ASSERT_TRUE (wait_for_route_resolve_local (
+      resolver_discovery, ZLINK_ROUTE_KIND_ACTOR_SESSION, route_key,
+      strlen (route_key), owner_rid, route_value, strlen (route_value),
+      10000));
+
+    TEST_ASSERT_TRUE (
+      destroy_discovery_with_retry_local (&owner_discovery, 3000));
+    TEST_ASSERT_TRUE (wait_for_route_not_found_local (
+      resolver_discovery, ZLINK_ROUTE_KIND_ACTOR_SESSION, route_key,
+      strlen (route_key), 10000));
+
+    TEST_ASSERT_TRUE (
+      destroy_discovery_with_retry_local (&resolver_discovery, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
 void test_registry_peer_sync_propagates_route_binding_snapshot ()
 {
-    TEST_IGNORE_MESSAGE ("generic discovery route API was removed");
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *source_registry = zlink_registry_new (ctx);
+    void *peer_registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (source_registry);
+    TEST_ASSERT_NOT_NULL (peer_registry);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_id (source_registry, 31));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_id (peer_registry, 32));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (source_registry, 50));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (peer_registry, 50));
+
+    char source_pub[MAX_SOCKET_STRING];
+    char source_router[MAX_SOCKET_STRING];
+    char peer_pub[MAX_SOCKET_STRING];
+    char peer_router[MAX_SOCKET_STRING];
+    char owner_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      source_registry, 6020, source_pub, sizeof (source_pub), source_router,
+      sizeof (source_router)));
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      peer_registry, 6022, peer_pub, sizeof (peer_pub), peer_router,
+      sizeof (peer_router)));
+
+    const char channel[] = "route-peer-sync";
+    void *owner_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, channel);
+    void *resolver_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, channel);
+    TEST_ASSERT_NOT_NULL (owner_discovery);
+    TEST_ASSERT_NOT_NULL (resolver_discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      owner_discovery, source_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      resolver_discovery, peer_router, 3000));
+
+    void *owner = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (owner);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (owner, "route-src", 9));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (owner, owner_discovery));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      owner, 6024, owner_endpoint, sizeof (owner_endpoint)));
+
+    zlink_routing_id_t owner_rid;
+    memset (&owner_rid, 0, sizeof (owner_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (owner, &owner_rid));
+    TEST_ASSERT_TRUE (
+      wait_for_registry_member_count_local (source_registry, channel, 1, 10000));
+
+    const char route_key[] = "spot-name:room-a";
+    const char route_value[] = "spot-rid-room-a";
+    TEST_ASSERT_TRUE (wait_for_route_bind_ok_local (
+      owner_discovery, ZLINK_ROUTE_KIND_SPOT_NAME, route_key,
+      strlen (route_key), route_value, strlen (route_value), 10000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_add_peer (source_registry, peer_pub));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_add_peer (peer_registry, source_pub));
+
+    TEST_ASSERT_TRUE (wait_for_route_resolve_local (
+      resolver_discovery, ZLINK_ROUTE_KIND_SPOT_NAME, route_key,
+      strlen (route_key), owner_rid, route_value, strlen (route_value),
+      10000));
+
+    TEST_ASSERT_TRUE (
+      destroy_discovery_with_retry_local (&resolver_discovery, 3000));
+    TEST_ASSERT_TRUE (
+      destroy_discovery_with_retry_local (&owner_discovery, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&peer_registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&source_registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 } // namespace
 

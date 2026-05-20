@@ -58,7 +58,8 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     public void AddActorPlayRouteResolver<TResolver>()
         where TResolver : class, IZLinkActorPlayRouteResolver
     {
-        if (_registration.ActorPlayRouteResolverType is not null)
+        if (_registration.ActorPlayRouteResolverType is not null
+            || _registration.RegistryActorRoutes is not null)
         {
             throw new ZLinkConfigurationException("Actor play route resolver is already configured.");
         }
@@ -69,7 +70,8 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     public void AddSpotRouteResolver<TResolver>()
         where TResolver : class, IZLinkSpotRouteResolver
     {
-        if (_registration.SpotRouteResolverType is not null)
+        if (_registration.SpotRouteResolverType is not null
+            || _registration.RegistrySpotRoutes is not null)
         {
             throw new ZLinkConfigurationException("SPOT route resolver is already registered.");
         }
@@ -86,6 +88,56 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         }
 
         _registration.ActorSessionBindingStoreType = typeof(TStore);
+    }
+
+    public void UseRegistryActorRoutes(string namespaceName)
+    {
+        UseRegistryActorRoutes(namespaceName, static _ => { });
+    }
+
+    public void UseRegistryActorRoutes(
+        string namespaceName,
+        Action<IZLinkRegistryActorRoutesOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        if (_registration.ActorPlayRouteResolverType is not null
+            || _registration.RegistryActorRoutes is not null)
+        {
+            throw new ZLinkConfigurationException("Actor play route resolver is already configured.");
+        }
+
+        var options = new ZLinkRegistryActorRoutesOptions();
+        configure(options);
+        _registration.RegistryActorRoutes = new ZLinkRegistryActorRoutesRegistration
+        {
+            Namespace = ValidateRegistryNamespace(namespaceName),
+            RouterChannelId = NormalizeOptionalName(options.RouterChannelId, nameof(options.RouterChannelId)),
+        };
+    }
+
+    public void UseRegistrySpotRoutes(string namespaceName)
+    {
+        UseRegistrySpotRoutes(namespaceName, static _ => { });
+    }
+
+    public void UseRegistrySpotRoutes(
+        string namespaceName,
+        Action<IZLinkRegistrySpotRoutesOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        if (_registration.SpotRouteResolverType is not null
+            || _registration.RegistrySpotRoutes is not null)
+        {
+            throw new ZLinkConfigurationException("SPOT route resolver is already registered.");
+        }
+
+        var options = new ZLinkRegistrySpotRoutesOptions();
+        configure(options);
+        _registration.RegistrySpotRoutes = new ZLinkRegistrySpotRoutesRegistration
+        {
+            Namespace = ValidateRegistryNamespace(namespaceName),
+            RouterChannelId = NormalizeOptionalName(options.RouterChannelId, nameof(options.RouterChannelId)),
+        };
     }
 
     public void AddChannel(
@@ -276,6 +328,33 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             $"Channel '{channel.ChannelName}' must enable at least one capability.");
     }
 
+    private static string ValidateRegistryNamespace(string namespaceName)
+    {
+        if (string.IsNullOrWhiteSpace(namespaceName)
+            || !string.Equals(namespaceName, namespaceName.Trim(), StringComparison.Ordinal))
+        {
+            throw new ZLinkConfigurationException("Registry route namespace must not be empty or padded.");
+        }
+
+        return namespaceName;
+    }
+
+    private static string? NormalizeOptionalName(string? value, string name)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(value)
+            || !string.Equals(value, value.Trim(), StringComparison.Ordinal))
+        {
+            throw new ZLinkConfigurationException($"{name} must not be empty or padded.");
+        }
+
+        return value;
+    }
+
     private void AddSpotNodeRegistration(
         string spotNodeName,
         Action<ZLinkSpotNodeBuilder> configure)
@@ -289,6 +368,16 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
 
         configure(new ZLinkSpotNodeBuilder(spotNode));
     }
+}
+
+internal sealed class ZLinkRegistryActorRoutesOptions : IZLinkRegistryActorRoutesOptions
+{
+    public string? RouterChannelId { get; set; }
+}
+
+internal sealed class ZLinkRegistrySpotRoutesOptions : IZLinkRegistrySpotRoutesOptions
+{
+    public string? RouterChannelId { get; set; }
 }
 
 internal sealed class ZLinkSpotMeshBuilder(

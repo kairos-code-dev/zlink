@@ -95,6 +95,12 @@ internal static class ZLinkFrameworkServiceRegistrar
                 typeof(IZLinkActorPlayRouteResolver),
                 provider => provider.GetRequiredService(registration.ActorPlayRouteResolverType));
         }
+        else if (registration.RegistryActorRoutes is not null)
+        {
+            services.AddSingleton<ZLinkRegistryActorRouteResolver>();
+            services.AddSingleton<IZLinkActorPlayRouteResolver>(
+                static provider => provider.GetRequiredService<ZLinkRegistryActorRouteResolver>());
+        }
 
         if (registration.SpotRouteResolverType is not null)
         {
@@ -102,6 +108,12 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton(
                 typeof(IZLinkSpotRouteResolver),
                 provider => provider.GetRequiredService(registration.SpotRouteResolverType));
+        }
+        else if (registration.RegistrySpotRoutes is not null)
+        {
+            services.AddSingleton<ZLinkRegistrySpotRouteResolver>();
+            services.AddSingleton<IZLinkSpotRouteResolver>(
+                static provider => provider.GetRequiredService<ZLinkRegistrySpotRouteResolver>());
         }
 
         if (registration.ActorSessionBindingStoreType is not null)

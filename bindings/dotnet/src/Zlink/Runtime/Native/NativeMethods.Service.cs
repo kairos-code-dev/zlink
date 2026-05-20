@@ -115,6 +115,20 @@ internal static partial class NativeMethods
         out ZlinkActorRoute route);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static unsafe extern int zlink_discovery_bind_route(
+        IntPtr discovery, uint kind, byte* key, nuint keySize, byte* value,
+        nuint valueSize);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static unsafe extern int zlink_discovery_unbind_route(
+        IntPtr discovery, uint kind, byte* key, nuint keySize);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static unsafe extern int zlink_discovery_resolve_route(
+        IntPtr discovery, uint kind, byte* key, nuint keySize,
+        out ZlinkRoutingId ownerRoutingId, ref ZlinkMsg value);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_set_value(IntPtr discovery,
         long value);
 

@@ -194,6 +194,16 @@ public interface IZLinkSpotMeshBuilder
         Action<IZLinkSpotMeshNodeBuilder> configure);
 }
 
+public interface IZLinkRegistryActorRoutesOptions
+{
+    string? RouterChannelId { get; set; }
+}
+
+public interface IZLinkRegistrySpotRoutesOptions
+{
+    string? RouterChannelId { get; set; }
+}
+
 public interface IZLinkFrameworkOptions
 {
     TimeSpan DefaultTimeout { get; set; }
@@ -219,6 +229,18 @@ public interface IZLinkFrameworkOptions
 
     void AddActorSessionBindingStore<TStore>()
         where TStore : class, IZLinkActorSessionBindingStore;
+
+    void UseRegistryActorRoutes(string namespaceName);
+
+    void UseRegistryActorRoutes(
+        string namespaceName,
+        Action<IZLinkRegistryActorRoutesOptions> configure);
+
+    void UseRegistrySpotRoutes(string namespaceName);
+
+    void UseRegistrySpotRoutes(
+        string namespaceName,
+        Action<IZLinkRegistrySpotRoutesOptions> configure);
 
     void AddChannel(
         string channelName,

@@ -2,9 +2,23 @@ namespace Zlink.Framework.Runtime.Backend.Contracts;
 
 internal interface IZLinkBackendDiscovery : IZLinkBackendObject, IAsyncDisposable
 {
+    bool SpotOwnerSyncEnabled { get; set; }
+
+    bool ActorRouteSyncEnabled { get; set; }
+
     void ConnectRegistry(string endpoint);
 
     IReadOnlyList<ZLinkMemberPeerEntry> MemberPeers();
+
+    RoutingId ResolveSpot(RoutingId spotRid);
+
+    ActorRoute ResolveActor(string actorId);
+
+    void BindRoute(uint kind, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
+
+    void UnbindRoute(uint kind, ReadOnlySpan<byte> key);
+
+    ZLinkBackendDiscoveryRoute ResolveRoute(uint kind, ReadOnlySpan<byte> key);
 }
 
 internal interface IZLinkBackendSocket : IZLinkBackendObject, IAsyncDisposable

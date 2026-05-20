@@ -68,6 +68,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             registration,
             node,
             spotChannelName,
+            () => SpotDiscovery,
             GetOrCreateAttachedChannelBundle,
             ConnectDiscoveredPubSubPeers);
     }

@@ -463,8 +463,14 @@ remote channel client 는 이미 `EnableClient()` 와 discovery 기반 연결로
 | `RouteChannelIntegrationTests.RouteRequest_WorksAcrossDiscoveryAttachedRouters` | route mesh channel 이 Registry discovery 로 peer 를 찾고 routed request 를 처리한다. |
 | `RegistrationValidationTests.AddZLinkFramework_DoesNot_Register_SessionProxy_Without_BindingStore` | actor-session binding store 가 없으면 `IZLinkSessionProxyFactory` 와 `IZLinkActorSessionClient` 가 DI 에 노출되지 않는다. |
 | `RegistrationValidationTests.AddZLinkFramework_Allows_SpotRouteResolver_Without_SpotNode` | Spot route resolver 는 SpotNode 가 없는 route 제공 서버에서도 등록할 수 있다. |
+| `RegistrationValidationTests.RegistryActorRoutes_Registers_Default_Service` | `UseRegistryActorRoutes(...)` 가 custom resolver 없이 기본 `IZLinkActorPlayRouteResolver` 를 등록한다. |
+| `RegistrationValidationTests.RegistrySpotRoutes_Registers_Default_Service` | `UseRegistrySpotRoutes(...)` 가 custom resolver 없이 기본 `IZLinkSpotRouteResolver` 와 Spot name directory 를 등록한다. |
+| `RegistrationValidationTests.RegistryRouteResolvers_Require_Discovery` | `UseSpotDiscovery(...)` 없이 Registry route resolver 를 켜면 startup validation 오류가 난다. |
+| `RegistrationValidationTests.RegistryRouteResolvers_Reject_Custom_Duplicate` | 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다. |
+| `RegistrationValidationTests.RegistryRouteResolvers_Require_Explicit_RouterChannel_When_Ambiguous` | route channel 이 둘 이상이면 `RouterChannelId` 를 명시하지 않은 Registry resolver 설정이 startup validation 오류가 된다. |
 | `StreamIntegrationTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | actor -> client session push 가 routed multipart packet 을 사용한다. |
 | `SpotIntegrationTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | 이전 stream 의 늦은 disconnect 가 현재 actor-session 연결을 끊지 않는다. |
+| `SpotIntegrationTests.RegistrySpotRoutes_Resolves_Created_Spot_By_Name` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다. |
 
 ## 7. 추가 회귀 테스트 계획
 
@@ -472,14 +478,9 @@ remote channel client 는 이미 `EnableClient()` 와 discovery 기반 연결로
 
 | 예정 테스트 | 확인 기준 |
 |-------------|-----------|
-| `RegistrationValidationTests.RegistryActorRoutes_Registers_Default_Service` | `UseRegistryActorRoutes(...)` 가 custom resolver 없이 기본 `IZLinkActorPlayRouteResolver` 를 등록한다. |
-| `RegistrationValidationTests.RegistrySpotRoutes_Registers_Default_Service` | `UseRegistrySpotRoutes(...)` 가 custom resolver 없이 기본 `IZLinkSpotRouteResolver` 와 Spot name directory 를 등록한다. |
-| `RegistrationValidationTests.RegistryRouteResolvers_Require_Discovery` | `UseDiscovery(...)` 없이 Registry route resolver 를 켜면 startup validation 오류가 난다. |
-| `RegistrationValidationTests.RegistryRouteResolvers_Reject_Custom_Duplicate` | 기본 구현과 custom resolver/store 를 함께 등록하면 startup validation 오류가 난다. |
-| `RegistrationValidationTests.RegistryRouteResolvers_Require_Explicit_RouterChannel_When_Ambiguous` | route channel 이 둘 이상이면 `RouterChannelId` 를 명시하지 않은 Registry resolver 설정이 startup validation 오류가 된다. |
 | `DiscoveryIntegrationTests.RegistryActorRoutes_Enables_ActorRouteSync` | publish 쪽 discovery 의 `ActorRouteSyncEnabled` 가 켜지고 actor route 가 Registry owner-bound route 로 보인다. |
 | `DiscoveryIntegrationTests.RegistrySpotRoutes_Enables_SpotOwnerSync` | owner 쪽 discovery 의 `SpotOwnerSyncEnabled` 가 켜지고 `ResolveSpot(spotRid)` 로 owner node RID 를 찾는다. |
-| `DiscoveryIntegrationTests.RegistrySpotRoutes_Resolves_Created_Spot_By_Name` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 request/send 가 성공한다. |
+| `DiscoveryIntegrationTests.RegistrySpotRoutes_RequestSend_By_Name` | string overload 로 찾은 Spot route 로 request/send 가 성공한다. |
 | `StreamIntegrationTests.RegistryActorRoutes_Relays_Stream_Request_To_Remote_Actor` | session 서버가 native actor route resolve 결과를 통해 play 서버 actor 로 request 를 보낸다. |
 | `StreamIntegrationTests.RegistryActorSessionBindings_Routes_Actor_Push_To_Current_Stream` | actor-session binding route kind 가 추가된 뒤 actor 가 현재 stream 에 push 한다. |
 | `StreamIntegrationTests.RegistryActorSessionBindings_Stale_Unbind_Does_Not_Remove_Reconnected_Stream` | owner-bound unbind 가 이전 stream 의 늦은 unbind 로 새 binding 을 지우지 않는다. |

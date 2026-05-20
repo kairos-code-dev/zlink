@@ -186,6 +186,50 @@ public sealed class Discovery : IDiscovery
         return ActorInterop.FromNative(ref route);
     }
 
+    public unsafe void BindRoute(uint kind, ReadOnlySpan<byte> key,
+        ReadOnlySpan<byte> value)
+    {
+        ValidateRouteKey(kind, key);
+        EnsureNotDisposed();
+        fixed (byte* keyPtr = key)
+        fixed (byte* valuePtr = value)
+        {
+            int rc = NativeMethods.zlink_discovery_bind_route(
+                _handle, kind, keyPtr, (nuint)key.Length, valuePtr,
+                (nuint)value.Length);
+            ZlinkException.ThrowConfigIfError(rc);
+        }
+    }
+
+    public unsafe void UnbindRoute(uint kind, ReadOnlySpan<byte> key)
+    {
+        ValidateRouteKey(kind, key);
+        EnsureNotDisposed();
+        fixed (byte* keyPtr = key)
+        {
+            int rc = NativeMethods.zlink_discovery_unbind_route(
+                _handle, kind, keyPtr, (nuint)key.Length);
+            ZlinkException.ThrowConfigIfError(rc);
+        }
+    }
+
+    public unsafe DiscoveryRoute ResolveRoute(uint kind, ReadOnlySpan<byte> key)
+    {
+        ValidateRouteKey(kind, key);
+        EnsureNotDisposed();
+        fixed (byte* keyPtr = key)
+        {
+            ZlinkRoutingId owner = default;
+            ZlinkMsg value = default;
+            int rc = NativeMethods.zlink_discovery_resolve_route(
+                _handle, kind, keyPtr, (nuint)key.Length, out owner, ref value);
+            ZlinkException.ThrowConfigIfError(rc);
+            return new DiscoveryRoute(
+                RoutingId.FromBytes(NativeHelpers.ReadRoutingId(ref owner)),
+                Message.AdoptNative(ref value));
+        }
+    }
+
     public void Close()
     {
         Dispose();
@@ -231,5 +275,14 @@ public sealed class Discovery : IDiscovery
     {
         if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Discovery));
+    }
+
+    private static void ValidateRouteKey(uint kind, ReadOnlySpan<byte> key)
+    {
+        if (kind == DiscoveryRouteKind.Invalid)
+            throw new ArgumentOutOfRangeException(nameof(kind));
+        if (key.IsEmpty)
+            throw new ArgumentException("Route key must not be empty.",
+                nameof(key));
     }
 }

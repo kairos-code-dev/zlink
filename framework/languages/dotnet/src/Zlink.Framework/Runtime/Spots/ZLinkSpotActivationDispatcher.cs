@@ -61,27 +61,22 @@ internal sealed class ZLinkSpotActivationDispatcher(
             var headerPart = parts[i++];
             if (!actors.TryGetActor(headerPart.Actor.ActorId, out var actor) || actor is null)
             {
-                headerPart.Message.Dispose();
-                DisposeContinuationParts(parts, ref i, headerPart.More);
+                ZLinkSpotActorFrameReader.DisposeFrame(parts, ref i, headerPart);
                 continue;
             }
 
-            var streamHeader = ZLinkStreamProtocolDefaults.DecodeHeader(headerPart.Message.AsReadOnlyMemory());
-            headerPart.Message.Dispose();
-
-            var body = TakeBodyPart(parts, ref i, headerPart.More);
-            if (body is null)
+            if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame))
             {
                 continue;
             }
 
-            using (body)
+            using (frame.Body)
             {
                 await DispatchActorStreamPartAsync(
                         actor,
-                        headerPart.Actor.ActorId,
-                        streamHeader,
-                        body,
+                        frame.Actor.ActorId,
+                        frame.Header,
+                        frame.Body,
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -172,37 +167,6 @@ internal sealed class ZLinkSpotActivationDispatcher(
         CancellationToken cancellationToken)
     {
         await handlerInvoker().InvokeSubscriptionAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static Message? TakeBodyPart(
-        IReadOnlyList<ZLinkBackendActorPart> parts,
-        ref int index,
-        bool hasBody)
-    {
-        if (!hasBody)
-        {
-            return Message.FromBytes(ReadOnlySpan<byte>.Empty);
-        }
-
-        if (index >= parts.Count)
-        {
-            return null;
-        }
-
-        return parts[index++].Message;
-    }
-
-    private static void DisposeContinuationParts(
-        IReadOnlyList<ZLinkBackendActorPart> parts,
-        ref int index,
-        bool hasMore)
-    {
-        while (hasMore && index < parts.Count)
-        {
-            var part = parts[index++];
-            hasMore = part.More;
-            part.Message.Dispose();
-        }
     }
 
 }

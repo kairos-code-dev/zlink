@@ -1,37 +1,26 @@
-using Systems.Zlink.Stream.Connector.Contracts;
-
 namespace Zlink.Framework.Runtime.Streams;
 
 internal abstract class ZLinkSessionStreamCallBase<TMessage>(
     ZLinkSessionContext context,
     TMessage message)
 {
-    private static readonly IZlinkStreamPacketNameResolver MessageNameResolver = ZLinkStreamProtocolDefaults.PacketNameResolver;
-    private string _messageName = MessageNameResolver.Resolve(typeof(TMessage));
-    private ZlinkStreamMetadata _metadata = ZlinkStreamMetadata.Empty;
-    private bool _compress;
-    private int _executed;
+    private readonly ZLinkStreamSendBuilder<TMessage> _builder = new(message);
 
     public ZLinkSessionStreamCallBase<TMessage> Metadata(string key, string value)
     {
-        _metadata = _metadata.With(key, value);
+        _builder.AddMetadata(key, value);
         return this;
     }
 
     public ZLinkSessionStreamCallBase<TMessage> PacketName(string messageName)
     {
-        if (string.IsNullOrWhiteSpace(messageName))
-        {
-            throw new InvalidOperationException("Stream packet name must not be empty.");
-        }
-
-        _messageName = messageName;
+        _builder.SetPacketName(messageName);
         return this;
     }
 
     public ZLinkSessionStreamCallBase<TMessage> Compress()
     {
-        _compress = true;
+        _builder.EnableCompression();
         return this;
     }
 
@@ -39,22 +28,15 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
     {
         _ = cancellationToken;
 
-        if (Interlocked.Exchange(ref _executed, 1) != 0)
-        {
-            throw new InvalidOperationException("Stream send builders can be executed only once.");
-        }
-
-        ReadOnlyMemory<byte> payload = ZLinkEnvelopeCodec.EncodeJsonBytes(message);
-        var flags = ZlinkStreamHeaderFlags.None;
-
-        if (_compress)
-        {
-            payload = ZLinkStreamProtocolDefaults.Lz4Compress(payload);
-            flags |= ZlinkStreamHeaderFlags.PayloadCompressed;
-        }
-
-        var header = CreateHeader(ZlinkStreamCodec.Json, flags, _messageName, _metadata, context.CurrentDispatchHeader);
-        ZLinkStreamFrameWriter.Write(context.Write, header, payload.Span, "Client stream send failed.");
+        _builder.Write(
+            (codec, flags, messageName, metadata) => CreateHeader(
+                codec,
+                flags,
+                messageName,
+                metadata,
+                context.CurrentDispatchHeader),
+            context.Write,
+            "Client stream send failed.");
 
         return ValueTask.CompletedTask;
     }

@@ -17,8 +17,13 @@ internal sealed class ZLinkRegistryActorRouteResolver(
             ?? throw new ZLinkConfigurationException("Registry actor routes are not configured.");
         var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
             .ConfigureAwait(false);
-        var routerChannelId = ResolveRouterChannelId(state, options.RouterChannelId);
-        var discovery = ResolveRouteChannelDiscovery(state, routerChannelId);
+        var routerChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
+            state,
+            options.RouterChannelId);
+        var discovery = ZLinkRegistryRouteRuntime.ResolveDiscoveryAttachedRouteChannel(
+            state,
+            routerChannelId,
+            "Registry actor route resolver");
         var routeKey = BuildActorRouteKey(options.Namespace, actorId);
 
         try
@@ -59,7 +64,9 @@ internal sealed class ZLinkRegistryActorRouteResolver(
 
         var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
             .ConfigureAwait(false);
-        var routerChannelId = ResolveRouterChannelId(state, options.RouterChannelId);
+        var routerChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
+            state,
+            options.RouterChannelId);
         var targetNodeRid = runtime.ResolveSessionRouterId(routerChannelId);
         var actorState = runtime.GetOrCreateActorState(actorId);
         var actorGeneration = actorState.CurrentActorGeneration;
@@ -71,7 +78,10 @@ internal sealed class ZLinkRegistryActorRouteResolver(
                 isRetriable: false);
         }
 
-        var discovery = ResolveRouteChannelDiscovery(state, routerChannelId);
+        var discovery = ZLinkRegistryRouteRuntime.ResolveDiscoveryAttachedRouteChannel(
+            state,
+            routerChannelId,
+            "Registry actor route resolver");
         var key = BuildActorRouteKey(options.Namespace, actorId);
         var value = EncodeActorRouteValue(
             options.Namespace,
@@ -79,10 +89,12 @@ internal sealed class ZLinkRegistryActorRouteResolver(
             targetNodeRid,
             actorGeneration);
 
-        await RetryRouteOperationAsync(
+        await ZLinkRegistryRouteRuntime.RetryRouteOperationAsync(
                 () => discovery.BindRoute(DiscoveryRouteKind.Actor, key, value),
                 $"Actor route publish failed for '{actorId}'.",
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 registration.DefaultTimeout,
+                TimeSpan.FromMilliseconds(150),
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -176,63 +188,6 @@ internal sealed class ZLinkRegistryActorRouteResolver(
             isRetriable: true,
             innerException: inner);
 
-    private static IZLinkBackendDiscovery ResolveRouteChannelDiscovery(
-        ZLinkFrameworkRuntimeState state,
-        string routerChannelId)
-    {
-        if (!state.RouteChannels.TryGetValue(routerChannelId, out var routeChannel))
-        {
-            throw new ZLinkConfigurationException(
-                $"Route mesh channel '{routerChannelId}' is not registered.");
-        }
-
-        return routeChannel.Discovery
-            ?? throw new ZLinkConfigurationException(
-                $"Registry actor route resolver requires discovery-attached route mesh channel '{routerChannelId}'.");
-    }
-
-    private static async ValueTask RetryRouteOperationAsync(
-        Action operation,
-        string errorMessage,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-        while (true)
-        {
-            timeoutSource.Token.ThrowIfCancellationRequested();
-            try
-            {
-                operation();
-                return;
-            }
-            catch (ZlinkConfigException error)
-                when (error.InternalErrno is 2 or 11)
-            {
-                if (timeoutSource.IsCancellationRequested)
-                {
-                    throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                        errorMessage,
-                        isRetriable: true,
-                        innerException: error);
-                }
-
-                await Task.Delay(TimeSpan.FromMilliseconds(150), timeoutSource.Token)
-                    .ConfigureAwait(false);
-            }
-            catch (ZlinkConfigException error)
-            {
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    errorMessage,
-                    isRetriable: true,
-                    innerException: error);
-            }
-        }
-    }
-
     private static byte[] EncodeActorRouteIdentity(
         string namespaceName,
         string actorId)
@@ -244,46 +199,6 @@ internal sealed class ZLinkRegistryActorRouteResolver(
             ActorRouteTooLarge);
     }
 
-    internal static string ResolveRouterChannelId(
-        ZLinkFrameworkRuntimeState state,
-        string? configured)
-    {
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            if (!state.RouteChannels.ContainsKey(configured))
-            {
-                throw new ZLinkConfigurationException(
-                    $"Route mesh channel '{configured}' is not registered.");
-            }
-
-            return configured;
-        }
-
-        if (state.RouteChannels.Count == 1)
-        {
-            return state.RouteChannels.Keys.Single();
-        }
-
-        throw new ZLinkConfigurationException(
-            "Registry route resolver requires RouterChannelId when there is not exactly one route mesh channel.");
-    }
-
-    internal static IZLinkBackendDiscovery ResolveSpotDiscovery(
-        ZLinkFrameworkRuntimeState state)
-    {
-        var spotNodeDiscoveries = state.SpotNodes.Values
-            .Select(static node => node.SpotDiscovery)
-            .OfType<IZLinkBackendDiscovery>()
-            .Distinct()
-            .ToArray();
-        if (spotNodeDiscoveries.Length == 1)
-        {
-            return spotNodeDiscoveries[0];
-        }
-
-        throw new ZLinkConfigurationException(
-            "Registry route resolver requires exactly one configured SPOT discovery.");
-    }
 }
 
 internal sealed class ZLinkRegistrySpotRouteResolver(
@@ -302,7 +217,7 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
             ?? throw new ZLinkConfigurationException("Registry SPOT routes are not configured.");
         var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
             .ConfigureAwait(false);
-        var discovery = ZLinkRegistryActorRouteResolver.ResolveSpotDiscovery(state);
+        var discovery = ZLinkRegistryRouteRuntime.ResolveSingleSpotDiscovery(state);
         var routeKey = BuildSpotNameRouteKey(options.Namespace, spotName);
 
         try
@@ -312,7 +227,7 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
                 route.Value,
                 options.Namespace,
                 spotName);
-            var routerChannelId = ZLinkRegistryActorRouteResolver.ResolveRouterChannelId(
+            var routerChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
                 state,
                 options.RouterChannelId);
             return new ZLinkSpotRoute(routerChannelId, route.OwnerRoutingId, spotRid);
@@ -335,10 +250,10 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
             ?? throw new ZLinkConfigurationException("Registry SPOT routes are not configured.");
         var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
             .ConfigureAwait(false);
-        var routerChannelId = ZLinkRegistryActorRouteResolver.ResolveRouterChannelId(
+        var routerChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
             state,
             options.RouterChannelId);
-        var discovery = ZLinkRegistryActorRouteResolver.ResolveSpotDiscovery(state);
+        var discovery = ZLinkRegistryRouteRuntime.ResolveSingleSpotDiscovery(state);
 
         try
         {

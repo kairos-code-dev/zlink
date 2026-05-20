@@ -31,18 +31,10 @@ internal sealed class ZLinkSubmitOperationFactory(
         var deadline = ResolveDeadline();
         if (deadline is DateTimeOffset value && value <= DateTimeOffset.UtcNow)
         {
-            DisposeParts(parts);
+            ZLinkMessageParts.DisposeAll(parts);
             throw new TimeoutException("ZLink async submit timed out before the socket became writable.");
         }
 
         return deadline;
-    }
-
-    private static void DisposeParts(IReadOnlyList<Message> parts)
-    {
-        foreach (var part in parts)
-        {
-            part.Dispose();
-        }
     }
 }

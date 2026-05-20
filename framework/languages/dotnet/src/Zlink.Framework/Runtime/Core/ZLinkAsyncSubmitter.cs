@@ -105,7 +105,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
         if (TrySubmitNow(parts, trySubmit))
         {
-            DisposeParts(parts);
+            ZLinkMessageParts.DisposeAll(parts);
             return ValueTask.CompletedTask;
         }
 
@@ -133,7 +133,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
         if (TrySubmitNow(parts, Submit))
         {
-            DisposeParts(parts);
+            ZLinkMessageParts.DisposeAll(parts);
             return AwaitResultAsync<T>(completion.Task);
         }
 
@@ -278,14 +278,6 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         if (parts.Count == 0)
         {
             throw new ArgumentException("At least one message part is required.", nameof(parts));
-        }
-    }
-
-    private static void DisposeParts(IReadOnlyList<Message> parts)
-    {
-        foreach (var part in parts)
-        {
-            part.Dispose();
         }
     }
 

@@ -16,9 +16,7 @@ internal sealed class ZLinkSessionProxyService(
         TMessage message)
     {
         return new ZLinkSessionProxySendCall<TMessage>(
-            routedClient,
-            bindingStore,
-            runtime,
+            this,
             actorId,
             message);
     }
@@ -28,10 +26,7 @@ internal sealed class ZLinkSessionProxyService(
         TRequest request)
     {
         return new ZLinkSessionProxyRequestCall<TRequest>(
-            routedClient,
-            bindingStore,
-            runtime,
-            registration,
+            this,
             actorId,
             request);
     }
@@ -40,7 +35,7 @@ internal sealed class ZLinkSessionProxyService(
         string actorId,
         CancellationToken cancellationToken = default)
     {
-        var route = await ResolveSessionRouteAsync(bindingStore, actorId, cancellationToken)
+        var route = await ResolveSessionRouteAsync(actorId, cancellationToken)
             .ConfigureAwait(false);
         if (runtime.TryGetSessionActorContext(actorId, route.BindingToken, out var localContext))
         {
@@ -60,8 +55,75 @@ internal sealed class ZLinkSessionProxyService(
             .ConfigureAwait(false);
     }
 
-    internal static async ValueTask<ZLinkActorSessionRoute> ResolveSessionRouteAsync(
-        IZLinkActorSessionBindingStore bindingStore,
+    internal async ValueTask SendProxyAsync<TMessage>(
+        string actorId,
+        string? packetName,
+        IReadOnlyDictionary<string, string> metadata,
+        TMessage message,
+        CancellationToken cancellationToken)
+    {
+        var packet = await CreateProxyPacketAsync(
+                actorId,
+                packetName,
+                metadata,
+                expectsReply: false,
+                message,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        await routedClient.SendPartsTo(
+                runtime.ResolveDefaultRouterChannelId(),
+                packet.SessionRouterId,
+                ZLinkInternalPacketNames.SessionProxy,
+                packet.Parts,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<TReply> RequestProxyAsync<TRequest, TReply>(
+        string actorId,
+        string? packetName,
+        IReadOnlyDictionary<string, string> metadata,
+        TimeSpan? timeoutOverride,
+        TRequest request,
+        CancellationToken cancellationToken)
+    {
+        var packet = await CreateProxyPacketAsync(
+                actorId,
+                packetName,
+                metadata,
+                expectsReply: true,
+                request,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var timeout = timeoutOverride ?? registration.DefaultTimeout;
+
+        ReadOnlyMemory<byte> reply;
+        try
+        {
+            reply = await routedClient.RequestPartsTo<ReadOnlyMemory<byte>>(
+                    runtime.ResolveDefaultRouterChannelId(),
+                    packet.SessionRouterId,
+                    ZLinkInternalPacketNames.SessionProxy,
+                    packet.Parts,
+                    timeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException ex)
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SessionProxyTimeout,
+                $"Session proxy request for actor '{actorId}' timed out.",
+                innerException: ex);
+        }
+
+        return ZLinkClientCallCodec.DecodeJsonReply<TReply>(
+            reply.Span,
+            "Session proxy reply payload is null.");
+    }
+
+    private async ValueTask<ZLinkActorSessionRoute> ResolveSessionRouteAsync(
         string actorId,
         CancellationToken cancellationToken)
     {
@@ -82,7 +144,37 @@ internal sealed class ZLinkSessionProxyService(
                 innerException: ex);
         }
     }
+
+    private async ValueTask<ZLinkSessionProxyPacket> CreateProxyPacketAsync<TPayload>(
+        string actorId,
+        string? packetName,
+        IReadOnlyDictionary<string, string> metadata,
+        bool expectsReply,
+        TPayload payload,
+        CancellationToken cancellationToken)
+    {
+        var route = await ResolveSessionRouteAsync(
+                actorId,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var envelope = new ZLinkSessionProxyEnvelope(
+            actorId,
+            route.BindingToken,
+            packetName ?? throw new InvalidOperationException("Packet name is required."),
+            expectsReply,
+            ZLinkClientCallCodec.CopyMetadata(metadata));
+        var parts = ZLinkInternalMultipartPackets.CreateSessionProxyParts(
+            envelope,
+            payload,
+            payload?.GetType() ?? typeof(TPayload));
+
+        return new ZLinkSessionProxyPacket(route.SessionRouterId, parts);
+    }
 }
+
+internal readonly record struct ZLinkSessionProxyPacket(
+    RoutingId SessionRouterId,
+    IReadOnlyList<Message> Parts);
 
 internal sealed class ZLinkBoundSessionProxy(
     ZLinkSessionProxyService service,
@@ -108,9 +200,7 @@ internal sealed class ZLinkBoundSessionProxy(
 }
 
 internal sealed class ZLinkSessionProxySendCall<TMessage>(
-    IZLinkMultipartRouteClient routedClient,
-    IZLinkActorSessionBindingStore bindingStore,
-    ZLinkFrameworkRuntime runtime,
+    ZLinkSessionProxyService service,
     string actorId,
     TMessage message) : IZLinkSessionProxySendCall
 {
@@ -133,36 +223,18 @@ internal sealed class ZLinkSessionProxySendCall<TMessage>(
 
     public async ValueTask Submit(CancellationToken cancellationToken = default)
     {
-        var route = await ZLinkSessionProxyService.ResolveSessionRouteAsync(
-                bindingStore,
+        await service.SendProxyAsync(
                 actorId,
-                cancellationToken)
-            .ConfigureAwait(false);
-        var parts = ZLinkInternalMultipartPackets.CreateSessionProxyParts(
-            new ZLinkSessionProxyEnvelope(
-                actorId,
-                route.BindingToken,
-                _packetName ?? throw new InvalidOperationException("Packet name is required."),
-                false,
-                ZLinkClientCallCodec.CopyMetadata(_metadata)),
-            message,
-            message?.GetType() ?? typeof(TMessage));
-
-        await routedClient.SendPartsTo(
-                runtime.ResolveDefaultRouterChannelId(),
-                route.SessionRouterId,
-                ZLinkInternalPacketNames.SessionProxy,
-                parts,
+                _packetName,
+                _metadata,
+                message,
                 cancellationToken)
             .ConfigureAwait(false);
     }
 }
 
 internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
-    IZLinkMultipartRouteClient routedClient,
-    IZLinkActorSessionBindingStore bindingStore,
-    ZLinkFrameworkRuntime runtime,
-    ZLinkFrameworkRegistration registration,
+    ZLinkSessionProxyService service,
     string actorId,
     TRequest request) : IZLinkSessionProxyRequestCall
 {
@@ -192,44 +264,13 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
 
     public async ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
     {
-        var route = await ZLinkSessionProxyService.ResolveSessionRouteAsync(
-                bindingStore,
+        return await service.RequestProxyAsync<TRequest, TReply>(
                 actorId,
+                _packetName,
+                _metadata,
+                _timeout,
+                request,
                 cancellationToken)
             .ConfigureAwait(false);
-        var timeout = _timeout ?? registration.DefaultTimeout;
-        var parts = ZLinkInternalMultipartPackets.CreateSessionProxyParts(
-            new ZLinkSessionProxyEnvelope(
-                actorId,
-                route.BindingToken,
-                _packetName ?? throw new InvalidOperationException("Packet name is required."),
-                true,
-                ZLinkClientCallCodec.CopyMetadata(_metadata)),
-            request,
-            request?.GetType() ?? typeof(TRequest));
-
-        ReadOnlyMemory<byte> reply;
-        try
-        {
-            reply = await routedClient.RequestPartsTo<ReadOnlyMemory<byte>>(
-                    runtime.ResolveDefaultRouterChannelId(),
-                    route.SessionRouterId,
-                    ZLinkInternalPacketNames.SessionProxy,
-                    parts,
-                    timeout,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (TimeoutException ex)
-        {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SessionProxyTimeout,
-                $"Session proxy request for actor '{actorId}' timed out.",
-                innerException: ex);
-        }
-
-        return ZLinkClientCallCodec.DecodeJsonReply<TReply>(
-            reply.Span,
-            "Session proxy reply payload is null.");
     }
 }

@@ -42,8 +42,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
         }
 
         var descriptor = handlers.Get(routerChannelId, ZLinkMessageKind.Command, header.MessageName);
-        var sourceRid = received.RoutingId
-            ?? throw new InvalidOperationException("Route send requires a source routing id.");
+        var sourceRid = RequireSourceRoutingId(received, "Route send");
 
         await handlerInvoker.InvokeSendAsync(
                 descriptor,
@@ -72,8 +71,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
         }
 
         var descriptor = handlers.Get(routerChannelId, ZLinkMessageKind.Request, header.MessageName);
-        var sourceRid = received.RoutingId
-            ?? throw new InvalidOperationException("Route request requires a source routing id.");
+        var sourceRid = RequireSourceRoutingId(received, "Route request");
 
         try
         {
@@ -99,8 +97,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
         CancellationToken cancellationToken,
         Func<RoutingId, ZLinkEnvelopeHeader, CancellationToken, ValueTask<Message>> dispatch)
     {
-        var sourceRid = received.RoutingId
-            ?? throw new InvalidOperationException("Internal routed request requires a source routing id.");
+        var sourceRid = RequireSourceRoutingId(received, "Internal routed request");
 
         try
         {
@@ -130,6 +127,14 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 requestHeader),
             reply,
             replyType);
+    }
+
+    private static RoutingId RequireSourceRoutingId(
+        Received received,
+        string operationName)
+    {
+        return received.RoutingId
+            ?? throw new InvalidOperationException($"{operationName} requires a source routing id.");
     }
 
     private void ReplyRaw(

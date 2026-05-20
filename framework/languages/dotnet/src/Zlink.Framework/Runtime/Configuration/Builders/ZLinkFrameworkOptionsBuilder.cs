@@ -332,12 +332,9 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         string spotNodeName,
         Action<ZLinkSpotNodeBuilder> configure)
     {
-        var spotNode = ZLinkRegistrationBuilderGuard.AddUnique(
+        var spotNode = ZLinkRegistrationBuilderGuard.AddSpotNode(
             _registration.SpotNodes,
-            spotNodeName,
-            () => new ZLinkSpotNodeRegistration { SpotNodeName = spotNodeName },
-            "SPOT node name must not be empty.",
-            $"Duplicate spot node name '{spotNodeName}'.");
+            spotNodeName);
 
         configure(new ZLinkSpotNodeBuilder(spotNode));
     }
@@ -368,12 +365,9 @@ internal sealed class ZLinkSpotMeshBuilder(
         string spotNodeName,
         Action<IZLinkSpotMeshNodeBuilder> configure)
     {
-        var spotNode = ZLinkRegistrationBuilderGuard.AddUnique(
+        var spotNode = ZLinkRegistrationBuilderGuard.AddSpotNode(
             registration.SpotNodes,
-            spotNodeName,
-            () => new ZLinkSpotNodeRegistration { SpotNodeName = spotNodeName },
-            "SPOT node name must not be empty.",
-            $"Duplicate spot node name '{spotNodeName}'.");
+            spotNodeName);
 
         configure(new ZLinkSpotNodeBuilder(spotNode));
     }
@@ -381,6 +375,18 @@ internal sealed class ZLinkSpotMeshBuilder(
 
 internal static class ZLinkRegistrationBuilderGuard
 {
+    public static ZLinkSpotNodeRegistration AddSpotNode(
+        Dictionary<string, ZLinkSpotNodeRegistration> registrations,
+        string spotNodeName)
+    {
+        return AddUnique(
+            registrations,
+            spotNodeName,
+            () => new ZLinkSpotNodeRegistration { SpotNodeName = spotNodeName },
+            "SPOT node name must not be empty.",
+            $"Duplicate spot node name '{spotNodeName}'.");
+    }
+
     public static void AddUnique<TValue>(
         Dictionary<string, TValue> registrations,
         string name,

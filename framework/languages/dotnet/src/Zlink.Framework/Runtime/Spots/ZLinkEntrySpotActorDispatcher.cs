@@ -20,49 +20,23 @@ internal static class ZLinkEntrySpotActorDispatcher
             var actor = actorState.Actor;
             if (actor is null)
             {
-                headerPart.Message.Dispose();
-                while (i < parts.Count && parts[i - 1].More)
-                {
-                    parts[i++].Message.Dispose();
-                }
+                ZLinkSpotActorFrameReader.DisposeFrame(parts, ref i, headerPart);
                 continue;
             }
 
-            if (!headerPart.More)
+            if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame))
             {
-                var header = ZLinkStreamProtocolDefaults.DecodeHeader(headerPart.Message.AsReadOnlyMemory());
-                headerPart.Message.Dispose();
-                var emptyBody = Message.FromBytes(ReadOnlySpan<byte>.Empty);
-                await dispatchTasks.AddAsync(
-                        DispatchPacketAndDisposeBodyAsync(
-                            runtime,
-                            activation,
-                            actorState,
-                            actor,
-                            header,
-                            emptyBody,
-                            cancellationToken))
-                    .ConfigureAwait(false);
                 continue;
             }
 
-            if (i >= parts.Count)
-            {
-                headerPart.Message.Dispose();
-                continue;
-            }
-
-            var bodyPart = parts[i++];
-            var streamHeader = ZLinkStreamProtocolDefaults.DecodeHeader(headerPart.Message.AsReadOnlyMemory());
-            headerPart.Message.Dispose();
             await dispatchTasks.AddAsync(
                     DispatchPacketAndDisposeBodyAsync(
                         runtime,
                         activation,
                         actorState,
                         actor,
-                        streamHeader,
-                        bodyPart.Message,
+                        frame.Header,
+                        frame.Body,
                         cancellationToken))
                 .ConfigureAwait(false);
         }

@@ -357,9 +357,12 @@ internal sealed class ZLinkSpotNodeCatalog(
             options.Namespace,
             spotName,
             spotRid);
-        await RetryRouteOperationAsync(
+        await ZLinkRegistryRouteRuntime.RetryRouteOperationAsync(
                 () => discovery.BindRoute(DiscoveryRouteKind.SpotName, key, value),
                 $"SPOT name route publish failed for '{spotName}'.",
+                ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                frameworkRegistration.DefaultTimeout,
+                TimeSpan.FromMilliseconds(25),
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -383,50 +386,15 @@ internal sealed class ZLinkSpotNodeCatalog(
         var key = ZLinkRegistrySpotRouteResolver.BuildSpotNameRouteKey(
             options.Namespace,
             spotName);
-        await RetryRouteOperationAsync(
+        await ZLinkRegistryRouteRuntime.RetryRouteOperationAsync(
                 () => discovery.UnbindRoute(DiscoveryRouteKind.SpotName, key),
                 $"SPOT name route unbind failed for '{spotName}'.",
+                ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                frameworkRegistration.DefaultTimeout,
+                TimeSpan.FromMilliseconds(25),
                 cancellationToken,
                 ignoreNotFound: true)
             .ConfigureAwait(false);
-    }
-
-    private async ValueTask RetryRouteOperationAsync(
-        Action operation,
-        string errorMessage,
-        CancellationToken cancellationToken,
-        bool ignoreNotFound = false)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(frameworkRegistration.DefaultTimeout);
-        while (true)
-        {
-            timeout.Token.ThrowIfCancellationRequested();
-            try
-            {
-                operation();
-                return;
-            }
-            catch (ZlinkConfigException error)
-                when (ignoreNotFound && error.InternalErrno == 2)
-            {
-                return;
-            }
-            catch (ZlinkConfigException error)
-                when (error.InternalErrno is 2 or 11)
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(25), timeout.Token)
-                    .ConfigureAwait(false);
-            }
-            catch (ZlinkConfigException error)
-            {
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotRouteNotFound,
-                    errorMessage,
-                    isRetriable: true,
-                    innerException: error);
-            }
-        }
     }
 
     private sealed class PendingSpotCreation(string spotName)

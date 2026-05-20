@@ -4,6 +4,7 @@
 
 #include "services/spot/node/spot_node.hpp"
 #include "services/spot/common/spot_auto_hwm_internal.hpp"
+#include "services/spot/common/spot_control_protocol.hpp"
 #include "services/spot/common/spot_debug.hpp"
 #include "services/spot/runtime/spot_runtime.hpp"
 
@@ -44,6 +45,12 @@ static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
     debug_vfprintf (always_ ? NULL : "ZLINK_DEBUG_SPOT_SHUTDOWN",
                     "[spot-shutdown] ", fmt_, args);
     va_end (args);
+}
+
+static std::string router_channel_peer_arg_local (
+  const std::string &channel_name_, const std::string &endpoint_)
+{
+    return channel_name_ + "\n" + endpoint_;
 }
 }
 
@@ -168,6 +175,112 @@ void spot_node_t::collect_pending_service_discoveries_locked (
             out_->push_back (*dit);
     }
     _service_attachment_state.pending_refresh_services.clear ();
+}
+
+void spot_node_t::collect_pending_router_channel_discoveries_locked (
+  std::vector<std::pair<std::string, discovery_t *> > *out_)
+{
+    if (!out_)
+        return;
+    out_->clear ();
+    for (std::set<std::string>::const_iterator it =
+           _service_attachment_state.pending_router_channel_refreshes.begin ();
+         it
+         != _service_attachment_state.pending_router_channel_refreshes.end ();
+         ++it) {
+        std::map<std::string, spot_node_router_channel_peer_state_t>::const_iterator
+          pit = _service_attachment_state.router_channel_peers.find (*it);
+        if (pit != _service_attachment_state.router_channel_peers.end ()
+            && pit->second.discovery) {
+            out_->push_back (std::make_pair (*it, pit->second.discovery));
+        }
+    }
+    _service_attachment_state.pending_router_channel_refreshes.clear ();
+}
+
+void spot_node_t::refresh_router_channel_discovery_peers ()
+{
+    std::vector<std::pair<std::string, discovery_t *> > discoveries;
+    {
+        scoped_lock_t lock (_sync);
+        collect_pending_router_channel_discoveries_locked (&discoveries);
+    }
+    if (discoveries.empty ())
+        return;
+
+    std::vector<provider_info_t> providers;
+    for (size_t i = 0; i < discoveries.size (); ++i) {
+        const std::string &channel_name = discoveries[i].first;
+        discovery_t *discovery = discoveries[i].second;
+        providers.clear ();
+        discovery->snapshot_providers (channel_name, &providers);
+
+        std::set<std::string> desired;
+        for (size_t j = 0; j < providers.size (); ++j) {
+            const provider_info_t &provider = providers[j];
+            if (!provider.endpoint.empty ()
+                && provider.service_role == discovery_protocol::service_role_router) {
+                desired.insert (provider.endpoint);
+            }
+        }
+
+        std::set<std::string> active;
+        {
+            scoped_lock_t lock (_sync);
+            std::map<std::string, spot_node_router_channel_peer_state_t>::const_iterator
+              it = _service_attachment_state.router_channel_peers.find (
+                channel_name);
+            if (it == _service_attachment_state.router_channel_peers.end ()
+                || it->second.discovery != discovery)
+                continue;
+            active = it->second.active_endpoints;
+        }
+
+        for (std::set<std::string>::const_iterator it = desired.begin ();
+             it != desired.end (); ++it) {
+            if (active.count (*it) != 0)
+                continue;
+            const std::string arg =
+              router_channel_peer_arg_local (channel_name, *it);
+            if (send_data_plane_command (
+                  spot_control_protocol::cmd_connect_router_channel_peer,
+                  arg.c_str ())
+                != 0) {
+                debug_mark_fault (errno);
+                return;
+            }
+            scoped_lock_t lock (_sync);
+            spot_node_router_channel_peer_state_t &state =
+              _service_attachment_state.router_channel_peers[channel_name];
+            if (state.discovery == discovery)
+                state.active_endpoints.insert (*it);
+        }
+
+        for (std::set<std::string>::const_iterator it = active.begin ();
+             it != active.end (); ++it) {
+            if (desired.count (*it) != 0)
+                continue;
+            const std::string arg =
+              router_channel_peer_arg_local (channel_name, *it);
+            if (send_data_plane_command (
+                  spot_control_protocol::cmd_disconnect_router_channel_peer,
+                  arg.c_str ())
+                != 0) {
+                debug_mark_fault (errno);
+                return;
+            }
+            scoped_lock_t lock (_sync);
+            std::map<std::string, spot_node_router_channel_peer_state_t>::iterator
+              state_it = _service_attachment_state.router_channel_peers.find (
+                channel_name);
+            if (state_it != _service_attachment_state.router_channel_peers.end ()
+                && state_it->second.discovery == discovery)
+                state_it->second.active_endpoints.erase (*it);
+        }
+
+        scoped_lock_t lock (_sync);
+        _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    }
 }
 
 void spot_node_t::snapshot_service_discovery_topology (

@@ -68,6 +68,14 @@ class spot_node_t : public discovery_observer_t
     int connect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub_rid (const zlink_routing_id_t *target_node_rid_);
+    int connect_router_channel_peer (const char *channel_name_,
+                                     const char *endpoint_);
+    int disconnect_router_channel_peer (const char *channel_name_,
+                                        const char *endpoint_);
+    int disconnect_router_channel_peer_rid (
+      const char *channel_name_, const zlink_routing_id_t *peer_rid_);
+    int attach_router_channel_discovery (const char *channel_name_,
+                                         discovery_t *discovery_);
     int attach_discovery (discovery_t *discovery_);
     int attach_channel_dealer (discovery_t *discovery_, socket_base_t *dealer_);
     int attach_channel_dealer_manual (const char *channel_name_,
@@ -322,6 +330,9 @@ class spot_node_t : public discovery_observer_t
     void collect_pending_service_discoveries_locked (
       std::vector<std::pair<std::string, discovery_t *> > *out_);
     void refresh_service_discovery_attachments ();
+    void collect_pending_router_channel_discoveries_locked (
+      std::vector<std::pair<std::string, discovery_t *> > *out_);
+    void refresh_router_channel_discovery_peers ();
     void snapshot_service_discovery_topology (
       discovery_t *discovery_,
       const std::string &channel_name_,

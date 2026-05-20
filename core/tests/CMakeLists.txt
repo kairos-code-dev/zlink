@@ -107,6 +107,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_spot_dispatch_event
   ${INTEGRATION_TEST_ROOT}/test_spot_actor_dispatch
   ${INTEGRATION_TEST_ROOT}/test_spot_poller
+  ${INTEGRATION_TEST_ROOT}/test_spot_router_channel_peer
   ${INTEGRATION_TEST_ROOT}/test_spot_runtime_activation
   ${INTEGRATION_TEST_ROOT}/test_discovery_resolve_spot
   ${INTEGRATION_TEST_ROOT}/test_peer_admission

@@ -435,6 +435,47 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer_rid (
     return zlink::connect_result_internal::from_rc (rc);
 }
 
+zlink_connect_result_t zlink_spot_node_connect_router_channel_peer (
+  void *node_, const char *channel_name_, const char *endpoint_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONNECT_INVALID_HANDLE;
+    }
+    return zlink::connect_result_internal::from_rc (
+      zlink::spot_node_access_t::connect_router_channel_peer (
+        node, channel_name_, endpoint_));
+}
+
+zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer (
+  void *node_, const char *channel_name_, const char *endpoint_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONNECT_INVALID_HANDLE;
+    }
+    return zlink::connect_result_internal::from_rc (
+      zlink::spot_node_access_t::disconnect_router_channel_peer (
+        node, channel_name_, endpoint_));
+}
+
+zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer_rid (
+  void *node_,
+  const char *channel_name_,
+  const zlink_routing_id_t *peer_rid_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONNECT_INVALID_HANDLE;
+    }
+    return zlink::connect_result_internal::from_rc (
+      zlink::spot_node_access_t::disconnect_router_channel_peer_rid (
+        node, channel_name_, peer_rid_));
+}
+
 zlink_config_result_t zlink_spot_node_status_snapshot (void *node_,
                                                        zlink_spot_node_status_t *out_)
 {
@@ -528,6 +569,19 @@ zlink_config_result_t zlink_spot_node_attach_discovery (void *node_, void *disco
     }
     return zlink::config_result_internal::from_rc (
       zlink::spot_node_access_t::attach_discovery (node, discovery_));
+}
+
+zlink_config_result_t zlink_spot_node_attach_router_channel_discovery (
+  void *node_, const char *channel_name_, void *discovery_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    return zlink::config_result_internal::from_rc (
+      zlink::spot_node_access_t::attach_router_channel_discovery (
+        node, channel_name_, discovery_));
 }
 
 zlink_config_result_t zlink_spot_node_attach_channel_dealer (void *node_,

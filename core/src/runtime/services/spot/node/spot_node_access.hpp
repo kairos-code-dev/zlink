@@ -44,6 +44,16 @@ struct spot_node_access_t
                                 const char *peer_endpoint_);
     static int disconnect_peer_rid (spot_node_t *node_,
                                     const zlink_routing_id_t *target_node_rid_);
+    static int connect_router_channel_peer (spot_node_t *node_,
+                                            const char *channel_name_,
+                                            const char *endpoint_);
+    static int disconnect_router_channel_peer (spot_node_t *node_,
+                                               const char *channel_name_,
+                                               const char *endpoint_);
+    static int disconnect_router_channel_peer_rid (
+      spot_node_t *node_,
+      const char *channel_name_,
+      const zlink_routing_id_t *peer_rid_);
     static int set_node_option (spot_node_t *node_,
                                 zlink_spot_node_option_t option_,
                                 const void *optval_,
@@ -91,6 +101,9 @@ struct spot_node_access_t
       const zlink_spot_node_socket_snapshot_filter_t *filter_,
       std::vector<zlink_spot_node_socket_snapshot_entry_t> *out_);
     static int attach_discovery (spot_node_t *node_, void *discovery_);
+    static int attach_router_channel_discovery (spot_node_t *node_,
+                                                const char *channel_name_,
+                                                void *discovery_);
     static int attach_channel_dealer (spot_node_t *node_,
                                       void *discovery_,
                                       void *dealer_);

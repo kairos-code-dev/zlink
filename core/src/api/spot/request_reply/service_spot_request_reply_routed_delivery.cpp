@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "api/socket/request_reply_protocol_internal.hpp"
+#include "api/socket/socket_api_internal.hpp"
 #include "api/spot/request_reply/service_spot_routed_protocol_internal.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "core/multipart_send_txn.hpp"
@@ -284,6 +285,39 @@ int dispatch_local_router_spot_delivery (
     return process_route_combined_for_local_delivery (combined_);
 }
 
+int dispatch_router_socket_spot_delivery (void *router_,
+                                          const std::string &destination_node_rid_,
+                                          zlink_send_flags_t flags_,
+                                          std::vector<zlink_msg_t> *combined_)
+{
+    if (!router_ || destination_node_rid_.empty () || !combined_
+        || combined_->empty ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    socket_handle_t handle = as_socket_handle (router_);
+    if (!handle.socket || handle.socket->socket_type () != ZLINK_CORE_SOCKET_ROUTER) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_routing_id_t target_rid;
+    if (!routing_id_from_string (destination_node_rid_, &target_rid)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::spot_data_plane_forwarder_t::pump_socket_commands (handle.socket);
+    handle.socket->set_all_pipes_nodelay ();
+    return zlink::logical_multipart_send_routed (
+      handle.socket,
+      &target_rid,
+      &(*combined_)[0],
+      combined_->size (),
+      static_cast<zlink_send_flags_t> (flags_ | ZLINK_DONTWAIT));
+}
+
 int process_routed_send_entry_on_data_plane (
   zlink::spot_runtime_t *runtime_,
   zlink_send_flags_t flags_,
@@ -406,6 +440,7 @@ int zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
 }
 
 int zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
+  void *router_,
   const std::string &destination_node_rid_,
   const std::string &destination_spot_rid_,
   router_spot_delivery_kind_t kind_,
@@ -418,14 +453,18 @@ int zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
         return -1;
     }
 
-    zlink::spot_runtime_t *runtime =
-      resolve_runtime_for_spot_destination (destination_node_rid_,
-                                            destination_spot_rid_);
-    int rc =
-      runtime
-        ? enqueue_runtime_routed_send (runtime, combined_, flags_,
-                                       sndtimeo_ms_)
-        : -1;
+    int rc = dispatch_router_socket_spot_delivery (
+      router_, destination_node_rid_, flags_, combined_);
+    if (rc != 0
+        && (errno == ENOTCONN || errno == EHOSTUNREACH || errno == EAGAIN
+            || errno == EINVAL || errno == EFAULT)) {
+        zlink::spot_runtime_t *runtime =
+          resolve_runtime_for_spot_destination (destination_node_rid_,
+                                                destination_spot_rid_);
+        rc = runtime ? enqueue_runtime_routed_send (runtime, combined_, flags_,
+                                                    sndtimeo_ms_)
+                     : dispatch_local_router_spot_delivery (kind_, combined_);
+    }
     if (rc != 0
         && errno != ENOTCONN && errno != EHOSTUNREACH && errno != EAGAIN) {
         rc = dispatch_local_router_spot_delivery (kind_, combined_);

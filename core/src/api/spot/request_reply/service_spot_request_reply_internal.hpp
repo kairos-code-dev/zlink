@@ -377,6 +377,7 @@ int dispatch_spot_routed_delivery (spot_node_t *origin_node_,
                                    int sndtimeo_ms_,
                                    std::vector<zlink_msg_t> *combined_);
 int dispatch_router_spot_delivery (
+  void *router_,
   const std::string &destination_node_rid_,
   const std::string &destination_spot_rid_,
   router_spot_delivery_kind_t kind_,

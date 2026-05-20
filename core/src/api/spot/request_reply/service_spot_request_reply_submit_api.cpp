@@ -302,7 +302,7 @@ int start_router_request_to_spot (void *router_,
     }
 
     const int rc = zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
-      destination_node_rid, destination_spot_rid,
+      router_, destination_node_rid, destination_spot_rid,
       router_spot_delivery_request, flags_,
       resolve_router_send_timeout_ms (router_), &combined);
     if (rc != 0) {
@@ -675,8 +675,8 @@ zlink_submit_result_t router_reply_spot_impl (
         return zlink::submit_result_internal::from_errno (errno);
     }
     const int rc = zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
-      destination_node_rid, destination_spot_rid, router_spot_delivery_reply,
-      ZLINK_DONTWAIT, 0, &combined);
+      router_, destination_node_rid, destination_spot_rid,
+      router_spot_delivery_reply, ZLINK_DONTWAIT, 0, &combined);
     const int saved_errno = errno;
     zlink::request_reply::close_built_parts (&combined);
     errno = saved_errno;
@@ -730,8 +730,9 @@ zlink_submit_result_t router_send_spot_impl (
         return zlink::submit_result_internal::from_errno (errno);
     }
     const int rc = zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
-      destination_node_rid, destination_spot_rid, router_spot_delivery_direct,
-      flags_, resolve_router_send_timeout_ms (router_), &combined);
+      router_, destination_node_rid, destination_spot_rid,
+      router_spot_delivery_direct, flags_,
+      resolve_router_send_timeout_ms (router_), &combined);
     const int saved_errno = errno;
     zlink::request_reply::close_built_parts (&combined);
     errno = saved_errno;

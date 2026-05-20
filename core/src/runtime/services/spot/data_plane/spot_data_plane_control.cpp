@@ -96,6 +96,58 @@ static int connect_external_router_peer (spot_node_t *node_,
     runtime_->set_external_route_id (peer_pub_endpoint_, route_id);
     return 0;
 }
+
+static bool parse_router_channel_peer_arg (const std::string &arg_,
+                                           std::string *channel_name_out_,
+                                           std::string *endpoint_out_)
+{
+    const size_t sep = arg_.find ('\n');
+    if (sep == std::string::npos || sep == 0 || sep + 1 >= arg_.size ())
+        return false;
+    if (channel_name_out_)
+        channel_name_out_->assign (arg_.data (), sep);
+    if (endpoint_out_)
+        endpoint_out_->assign (arg_.data () + sep + 1, arg_.size () - sep - 1);
+    return true;
+}
+
+static int connect_router_channel_peer (spot_node_t *node_,
+                                        spot_runtime_t *runtime_,
+                                        const std::string &endpoint_)
+{
+    if (!node_ || !runtime_ || endpoint_.empty ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!runtime_->external_router) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    zlink_routing_id_t node_rid;
+    memset (&node_rid, 0, sizeof (node_rid));
+    if (node_->node_routing_id (&node_rid) != 0 || node_rid.size == 0)
+        return -1;
+
+    if (runtime_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_ROUTING_ID, node_rid.data, node_rid.size)
+        != 0)
+        return -1;
+
+    if (runtime_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID, endpoint_.data (),
+          endpoint_.size ())
+          != 0
+        || runtime_->external_router->connect (endpoint_.c_str ()) != 0) {
+        const int saved_errno = errno != 0 ? errno : EIO;
+        (void) runtime_->external_router->term_endpoint (endpoint_.c_str ());
+        errno = saved_errno;
+        return -1;
+    }
+
+    runtime_->set_external_route_id (endpoint_, endpoint_);
+    return 0;
+}
 }
 
 int spot_data_plane_protocol_t::recv_and_process_ctrl_messages (
@@ -471,6 +523,40 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
     }
 
     if (spot_control_protocol::command_is (
+          verb, spot_control_protocol::cmd_connect_router_channel_peer)) {
+        std::string channel_name;
+        std::string endpoint;
+        if (!parse_router_channel_peer_arg (arg, &channel_name, &endpoint)) {
+            if (send_errno_reply (ctrl_, EINVAL) != 0)
+                return -1;
+            return 0;
+        }
+
+        std::string ca;
+        std::string host;
+        int trust = 0;
+        spot_node_access_t::snapshot_tls_client_config (node_, &ca, &host,
+                                                        &trust);
+        if (runtime_->external_router
+            && spot_node_access_t::apply_tls_client (
+                 node_, runtime_->external_router, ca, host, trust)
+                 != 0) {
+            if (send_errno_reply (ctrl_, errno) != 0)
+                return -1;
+            return 0;
+        }
+
+        if (connect_router_channel_peer (node_, runtime_, endpoint) != 0) {
+            if (send_errno_reply (ctrl_, errno != 0 ? errno : EIO) != 0)
+                return -1;
+            return 0;
+        }
+        spot_node_access_t::mark_mesh_client_tls_locked (node_);
+        LIBZLINK_UNUSED (channel_name);
+        return send_ok_reply (ctrl_);
+    }
+
+    if (spot_control_protocol::command_is (
           verb, spot_control_protocol::cmd_replay_handle_state_subscriptions)
         || spot_control_protocol::command_is (
              verb,
@@ -635,6 +721,27 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             && runtime_->owner) {
             spot_node_access_t::wake_control_task (runtime_->owner);
         }
+        return send_ok_reply (ctrl_);
+    }
+
+    if (spot_control_protocol::command_is (
+          verb, spot_control_protocol::cmd_disconnect_router_channel_peer)) {
+        std::string channel_name;
+        std::string endpoint;
+        if (!parse_router_channel_peer_arg (arg, &channel_name, &endpoint)) {
+            if (send_errno_reply (ctrl_, EINVAL) != 0)
+                return -1;
+            return 0;
+        }
+        if (runtime_->external_router
+            && runtime_->external_router->term_endpoint (endpoint.c_str ())
+                 != 0) {
+            if (send_errno_reply (ctrl_, errno) != 0)
+                return -1;
+            return 0;
+        }
+        runtime_->erase_external_route_id (endpoint);
+        LIBZLINK_UNUSED (channel_name);
         return send_ok_reply (ctrl_);
     }
 

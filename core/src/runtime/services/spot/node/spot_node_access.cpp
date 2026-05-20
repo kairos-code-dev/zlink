@@ -192,6 +192,32 @@ int spot_node_access_t::disconnect_peer_rid (
     return node_ ? node_->disconnect_peer_pub_rid (target_node_rid_) : -1;
 }
 
+int spot_node_access_t::connect_router_channel_peer (
+  spot_node_t *node_, const char *channel_name_, const char *endpoint_)
+{
+    return node_ ? node_->connect_router_channel_peer (channel_name_, endpoint_)
+                 : -1;
+}
+
+int spot_node_access_t::disconnect_router_channel_peer (
+  spot_node_t *node_, const char *channel_name_, const char *endpoint_)
+{
+    return node_
+             ? node_->disconnect_router_channel_peer (channel_name_, endpoint_)
+             : -1;
+}
+
+int spot_node_access_t::disconnect_router_channel_peer_rid (
+  spot_node_t *node_,
+  const char *channel_name_,
+  const zlink_routing_id_t *peer_rid_)
+{
+    return node_
+             ? node_->disconnect_router_channel_peer_rid (channel_name_,
+                                                          peer_rid_)
+             : -1;
+}
+
 int spot_node_access_t::set_node_option (spot_node_t *node_,
                                          zlink_spot_node_option_t option_,
                                          const void *optval_,
@@ -354,6 +380,19 @@ int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
     }
     discovery_t *discovery = discovery_access_t::from_handle (discovery_);
     return discovery ? node_->attach_discovery (discovery) : -1;
+}
+
+int spot_node_access_t::attach_router_channel_discovery (
+  spot_node_t *node_, const char *channel_name_, void *discovery_)
+{
+    if (!node_ || !discovery_) {
+        errno = EFAULT;
+        return -1;
+    }
+    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
+    return discovery
+             ? node_->attach_router_channel_discovery (channel_name_, discovery)
+             : -1;
 }
 
 int spot_node_access_t::attach_channel_dealer (spot_node_t *node_,

@@ -144,6 +144,17 @@ struct spot_node_actor_state_t
     uint64_t next_generation;
 };
 
+struct spot_node_router_channel_peer_state_t
+{
+    std::set<std::string> manual_endpoints;
+    std::set<std::string> active_endpoints;
+    discovery_t *discovery;
+
+    spot_node_router_channel_peer_state_t () : discovery (NULL)
+    {
+    }
+};
+
 struct spot_node_attachment_monitor_handle_t
 {
     spot_node_attachment_monitor_handle_t () : handle (NULL), owner_socket (NULL)
@@ -324,6 +335,9 @@ struct spot_node_service_attachment_state_t
     std::deque<spot_node_attachment_monitor_handle_t> monitors;
     std::map<std::string, discovery_t *> discoveries;
     std::map<std::string, discovery_t *> channel_dealer_discoveries;
+    std::map<std::string, spot_node_router_channel_peer_state_t>
+      router_channel_peers;
+    std::set<std::string> pending_router_channel_refreshes;
     socket_base_t *pub_ingress;
     std::set<std::string> pending_refresh_services;
     std::shared_ptr<service_sub_recv_cache_t> sub_recv_cache;

@@ -42,16 +42,14 @@ internal sealed class ZLinkHandlerRegistry
         IReadOnlySet<string> mappedGroups,
         string messageName)
     {
-        var key = new ZLinkHandlerSelectionKey(ZLinkMessageKind.Request, channelName, messageName);
-        if (_singleSelections.TryGetValue(key, out var cached))
-        {
-            return cached;
-        }
-
-        var selected = _requests.TryGetValue(messageName, out var endpoints)
-            ? SelectEndpoint(channelName, mappedGroups, messageName, endpoints, "request")
-            : throw new InvalidOperationException($"No request handler is registered for '{messageName}'.");
-        return _singleSelections.GetOrAdd(key, selected);
+        return GetSingle(
+            ZLinkMessageKind.Request,
+            _requests,
+            channelName,
+            mappedGroups,
+            messageName,
+            "request",
+            "No request handler is registered");
     }
 
     public ZLinkHandlerEndpointDescriptor GetCommand(
@@ -59,16 +57,14 @@ internal sealed class ZLinkHandlerRegistry
         IReadOnlySet<string> mappedGroups,
         string messageName)
     {
-        var key = new ZLinkHandlerSelectionKey(ZLinkMessageKind.Command, channelName, messageName);
-        if (_singleSelections.TryGetValue(key, out var cached))
-        {
-            return cached;
-        }
-
-        var selected = _commands.TryGetValue(messageName, out var endpoints)
-            ? SelectEndpoint(channelName, mappedGroups, messageName, endpoints, "send")
-            : throw new InvalidOperationException($"No send handler is registered for '{messageName}'.");
-        return _singleSelections.GetOrAdd(key, selected);
+        return GetSingle(
+            ZLinkMessageKind.Command,
+            _commands,
+            channelName,
+            mappedGroups,
+            messageName,
+            "send",
+            "No send handler is registered");
     }
 
     public IReadOnlyList<ZLinkHandlerEndpointDescriptor> GetPublishes(
@@ -108,6 +104,27 @@ internal sealed class ZLinkHandlerRegistry
             static entry => entry.Key,
             static entry => (IReadOnlyList<ZLinkHandlerEndpointDescriptor>)entry.Value.ToArray(),
             StringComparer.Ordinal);
+    }
+
+    private ZLinkHandlerEndpointDescriptor GetSingle(
+        ZLinkMessageKind kind,
+        IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> registry,
+        string channelName,
+        IReadOnlySet<string> mappedGroups,
+        string messageName,
+        string kindName,
+        string missingMessage)
+    {
+        var key = new ZLinkHandlerSelectionKey(kind, channelName, messageName);
+        if (_singleSelections.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var selected = registry.TryGetValue(messageName, out var endpoints)
+            ? SelectEndpoint(channelName, mappedGroups, messageName, endpoints, kindName)
+            : throw new InvalidOperationException($"{missingMessage} for '{messageName}'.");
+        return _singleSelections.GetOrAdd(key, selected);
     }
 
     private static ZLinkHandlerEndpointDescriptor SelectEndpoint(

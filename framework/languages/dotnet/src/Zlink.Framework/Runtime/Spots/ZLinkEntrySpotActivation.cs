@@ -212,24 +212,20 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
     }
 
     public ValueTask InvokeActorJoinedCallbackAsync(
-        IZLinkActor actor,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken)
     {
         return InvokeActorLifecycleCallbackAsync(
-            actor,
             info,
             static (activation, state, ct) => activation.EntrySpot.OnActorJoinedAsync(state.Info, ct),
             cancellationToken);
     }
 
     public ValueTask InvokeActorLeftCallbackAsync(
-        IZLinkActor actor,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken)
     {
         return InvokeActorLifecycleCallbackAsync(
-            actor,
             info,
             static (activation, state, ct) => activation.EntrySpot.OnActorLeftAsync(state.Info, ct),
             cancellationToken);
@@ -262,12 +258,10 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
         ZLinkSpotActorLifecycleInfo Info);
 
     private ValueTask InvokeActorLifecycleCallbackAsync(
-        IZLinkActor actor,
         ZLinkSpotActorLifecycleInfo info,
         Func<ZLinkEntrySpotActivation, ActorLifecycleCallbackState, CancellationToken, ValueTask> callback,
         CancellationToken cancellationToken)
     {
-        _ = actor;
         return ExecuteAsync(
             callback,
             new ActorLifecycleCallbackState(info),

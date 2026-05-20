@@ -87,7 +87,7 @@ internal sealed class ZLinkEntrySpotActorRouter
             info,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.TryResolveEntrySpotActorJoined(actorType, out descriptor),
-            static (node, actor, info, ct) => node.InvokeEntrySpotActorJoinedCallbackAsync(actor, info, ct),
+            static (node, info, ct) => node.InvokeEntrySpotActorJoinedCallbackAsync(info, ct),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -103,7 +103,7 @@ internal sealed class ZLinkEntrySpotActorRouter
             info,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.TryResolveEntrySpotActorLeft(actorType, out descriptor),
-            static (node, actor, info, ct) => node.InvokeEntrySpotActorLeftCallbackAsync(actor, info, ct),
+            static (node, info, ct) => node.InvokeEntrySpotActorLeftCallbackAsync(info, ct),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -112,14 +112,14 @@ internal sealed class ZLinkEntrySpotActorRouter
         IZLinkActor actor,
         ZLinkSpotActorLifecycleInfo info,
         TryResolveLifecycle resolve,
-        Func<ZLinkSpotNodeRuntime, IZLinkActor, ZLinkSpotActorLifecycleInfo, CancellationToken, ValueTask> callback,
+        Func<ZLinkSpotNodeRuntime, ZLinkSpotActorLifecycleInfo, CancellationToken, ValueTask> callback,
         CancellationToken cancellationToken)
     {
         foreach (var node in state.SpotNodes.Values)
         {
             try
             {
-                await callback(node, actor, info, cancellationToken)
+                await callback(node, info, cancellationToken)
                     .ConfigureAwait(false);
                 if (resolve(node, actor.GetType(), out var descriptor)
                     && descriptor is not null)

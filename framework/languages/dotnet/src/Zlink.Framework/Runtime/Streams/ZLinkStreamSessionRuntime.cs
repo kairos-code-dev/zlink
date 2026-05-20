@@ -5,9 +5,6 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 {
-    private const string HeartbeatPingName = "$zlink.heartbeat.ping";
-    private const string HeartbeatPongName = "$zlink.heartbeat.pong";
-
     private readonly AsyncServiceScope _scope;
     private readonly IZLinkBackendStreamSocket _socket;
     private readonly Action<string> _removeSession;
@@ -121,7 +118,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             var decoded = ZLinkStreamProtocolDefaults.DecodeHeader(header.AsReadOnlyMemory());
             if (decoded.Kind == ZlinkStreamMessageKind.Control)
             {
-                DispatchControlFrame(decoded, payload.AsReadOnlyMemory());
+                ZLinkStreamControlFrames.Dispatch(Stream, decoded, payload.AsReadOnlyMemory());
                 return;
             }
 
@@ -155,40 +152,6 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 _context.ExitDispatch();
             }
         }
-    }
-
-    private void DispatchControlFrame(
-        ZlinkStreamHeader header,
-        ReadOnlyMemory<byte> payload)
-    {
-        if (payload.Length != 0)
-        {
-            throw new InvalidOperationException("Stream control packet payload must be empty.");
-        }
-
-        if (header.Name == HeartbeatPingName)
-        {
-            var pong = new ZlinkStreamHeader(
-                ZlinkStreamMessageKind.Control,
-                ZlinkStreamCodec.Raw,
-                ZlinkStreamHeaderFlags.None,
-                null,
-                HeartbeatPongName,
-                ZlinkStreamMetadata.Empty);
-            ZLinkStreamFrameWriter.Write(
-                Stream,
-                pong,
-                ReadOnlySpan<byte>.Empty,
-                "Stream heartbeat pong send failed.");
-            return;
-        }
-
-        if (header.Name == HeartbeatPongName)
-        {
-            return;
-        }
-
-        throw new InvalidOperationException("Unknown stream control packet.");
     }
 
     private async ValueTask MarkDisconnectedAsync(ZLinkStreamError error)

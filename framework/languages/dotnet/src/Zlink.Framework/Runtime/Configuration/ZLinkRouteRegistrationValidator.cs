@@ -23,24 +23,33 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 routed.ManualConnections);
         }
 
-        var keys = new HashSet<(ZLinkMessageKind Kind, string PacketName)>();
-        foreach (var handler in routed.SendHandlers)
-        {
-            var packetName = handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType);
-            if (!keys.Add((ZLinkMessageKind.Command, packetName)))
-            {
-                throw new ZLinkConfigurationException(
-                    $"Duplicate routed send handler '{routed.RouterChannelId}:{packetName}'.");
-            }
-        }
+        ValidateUniqueRouteHandlers(
+            routed.RouterChannelId,
+            ZLinkMessageKind.Command,
+            "send",
+            routed.SendHandlers);
+        ValidateUniqueRouteHandlers(
+            routed.RouterChannelId,
+            ZLinkMessageKind.Request,
+            "request",
+            routed.RequestHandlers);
+    }
 
-        foreach (var handler in routed.RequestHandlers)
+    private static void ValidateUniqueRouteHandlers(
+        string routerChannelId,
+        ZLinkMessageKind kind,
+        string label,
+        IReadOnlyList<ZLinkRouteHandlerRegistration> handlers)
+    {
+        var keys = new HashSet<(ZLinkMessageKind Kind, string PacketName)>();
+        foreach (var handler in handlers)
         {
-            var packetName = handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType);
-            if (!keys.Add((ZLinkMessageKind.Request, packetName)))
+            var packetName = handler.PacketName
+                ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType);
+            if (!keys.Add((kind, packetName)))
             {
                 throw new ZLinkConfigurationException(
-                    $"Duplicate routed request handler '{routed.RouterChannelId}:{packetName}'.");
+                    $"Duplicate routed {label} handler '{routerChannelId}:{packetName}'.");
             }
         }
     }

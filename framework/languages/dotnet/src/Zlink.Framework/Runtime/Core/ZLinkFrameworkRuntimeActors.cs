@@ -122,7 +122,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         return new ZLinkActorRoute(
             routerChannelId,
             ResolveSessionRouterId(routerChannelId),
-            ResolveActorGeneration(state));
+            state.CurrentActorGeneration);
     }
 
     internal RoutingId ResolveSessionRouterId(string routerChannelId)
@@ -177,15 +177,5 @@ internal sealed partial class ZLinkFrameworkRuntime
             expectedActorGeneration,
             newActorGeneration);
         return ValueTask.FromResult(updated);
-    }
-
-    private static ulong ResolveActorGeneration(ZLinkActorRuntimeState state)
-    {
-        if (state.NativeActorRef is { Generation: not 0 } actorRef)
-        {
-            return actorRef.Generation;
-        }
-
-        return state.ActorGeneration;
     }
 }

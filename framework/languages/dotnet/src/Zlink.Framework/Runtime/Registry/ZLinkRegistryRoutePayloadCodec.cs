@@ -28,6 +28,13 @@ internal static class ZLinkRegistryRoutePayloadCodec
         return value;
     }
 
+    public static byte[] EncodeNamespacedKey(
+        string namespaceName,
+        string identity)
+    {
+        return Encoding.UTF8.GetBytes($"{namespaceName}\0{identity}");
+    }
+
     public static RegistryRouteIdentity DecodeIdentity(
         ReadOnlySpan<byte> bytes,
         byte expectedVersion,
@@ -57,6 +64,19 @@ internal static class ZLinkRegistryRoutePayloadCodec
         return value;
     }
 
+    public static int EncodedRoutingIdLength(
+        RoutingId routingId,
+        string tooLargeMessage)
+    {
+        var bytes = routingId.ToBytes();
+        if (bytes.Length > byte.MaxValue)
+        {
+            throw new ZLinkConfigurationException(tooLargeMessage);
+        }
+
+        return 1 + bytes.Length;
+    }
+
     public static RoutingId ReadRoutingId(
         ReadOnlySpan<byte> bytes,
         ref int offset,
@@ -68,6 +88,42 @@ internal static class ZLinkRegistryRoutePayloadCodec
         var routingId = RoutingId.FromBytes(bytes.Slice(offset, length));
         offset += length;
         return routingId;
+    }
+
+    public static int EncodedStringLength(
+        string value,
+        string tooLargeMessage)
+    {
+        return sizeof(ushort) + EncodeShortString(value, tooLargeMessage).Length;
+    }
+
+    public static void WriteString(
+        Span<byte> bytes,
+        ref int offset,
+        string value,
+        string tooLargeMessage)
+    {
+        var encoded = EncodeShortString(value, tooLargeMessage);
+        WriteUInt16(bytes, ref offset, encoded.Length);
+        encoded.CopyTo(bytes[offset..]);
+        offset += encoded.Length;
+    }
+
+    public static void WriteRoutingId(
+        Span<byte> bytes,
+        ref int offset,
+        RoutingId routingId,
+        string tooLargeMessage)
+    {
+        var encoded = routingId.ToBytes();
+        if (encoded.Length > byte.MaxValue)
+        {
+            throw new ZLinkConfigurationException(tooLargeMessage);
+        }
+
+        bytes[offset++] = (byte)encoded.Length;
+        encoded.CopyTo(bytes[offset..]);
+        offset += encoded.Length;
     }
 
     public static ulong ReadUInt64(
@@ -82,7 +138,7 @@ internal static class ZLinkRegistryRoutePayloadCodec
         return value;
     }
 
-    public static void WriteUInt16(
+    private static void WriteUInt16(
         Span<byte> bytes,
         ref int offset,
         int value)
@@ -115,7 +171,7 @@ internal static class ZLinkRegistryRoutePayloadCodec
         }
     }
 
-    public static void EnsureRemaining(
+    private static void EnsureRemaining(
         ReadOnlySpan<byte> bytes,
         int offset,
         int length,

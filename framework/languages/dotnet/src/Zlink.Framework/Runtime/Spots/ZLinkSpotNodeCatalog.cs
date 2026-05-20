@@ -37,8 +37,10 @@ internal sealed class ZLinkSpotNodeCatalog(
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            spotType = PrepareCreationLocked(spotName);
+            spotType = ResolveSpotTypeLocked(spotName);
         }
+
+        EnsureAttachedChannelBundles();
 
         var nativeSpot = node.CreateSpot();
         ZLinkSpotActivation? activation = null;
@@ -86,7 +88,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            spotType = PrepareCreationLocked(spotName);
+            spotType = ResolveSpotTypeLocked(spotName);
 
             if (_spots.TryGetValue(requestedSpotRid, out var existing))
             {
@@ -110,6 +112,8 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             return await AwaitPendingAsync(pending, created: false);
         }
+
+        EnsureAttachedChannelBundles();
 
         IZLinkBackendSpot? nativeSpot = null;
         ZLinkSpotActivation? activation = null;
@@ -275,7 +279,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         }
     }
 
-    private Type PrepareCreationLocked(string spotName)
+    private Type ResolveSpotTypeLocked(string spotName)
     {
         if (!registration.SpotFactories.TryGetValue(spotName, out var spotType))
         {
@@ -283,12 +287,15 @@ internal sealed class ZLinkSpotNodeCatalog(
                 $"SPOT factory '{spotName}' is not registered on node '{registration.SpotNodeName}'.");
         }
 
+        return spotType;
+    }
+
+    private void EnsureAttachedChannelBundles()
+    {
         foreach (var channelName in registration.AttachedChannelClients.Keys)
         {
             getOrCreateAttachedChannelBundle(channelName);
         }
-
-        return spotType;
     }
 
     private static async ValueTask<ZLinkSpotCreateResult> AwaitPendingAsync(

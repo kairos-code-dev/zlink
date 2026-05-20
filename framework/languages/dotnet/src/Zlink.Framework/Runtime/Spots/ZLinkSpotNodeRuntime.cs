@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Core;
 
@@ -78,10 +79,6 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     public IReadOnlyDictionary<string, Type> SpotFactories => _registration.SpotFactories;
 
     public IZLinkBackendSpotNode Node { get; }
-
-    public IReadOnlyDictionary<string, ZLinkSpotAttachedChannelBundle> AttachedChannelBundles => _bundles.AttachedChannelBundles;
-
-    public IReadOnlyDictionary<string, ZLinkSpotPublisherBundle> PublisherBundles => _bundles.PublisherBundles;
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Spots;
 
@@ -173,7 +170,6 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     }
 
     public ValueTask InvokeEntrySpotActorJoinedCallbackAsync(
-        IZLinkActor actor,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken)
     {
@@ -182,11 +178,10 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             return ValueTask.CompletedTask;
         }
 
-        return _entrySpotActivation.InvokeActorJoinedCallbackAsync(actor, info, cancellationToken);
+        return _entrySpotActivation.InvokeActorJoinedCallbackAsync(info, cancellationToken);
     }
 
     public ValueTask InvokeEntrySpotActorLeftCallbackAsync(
-        IZLinkActor actor,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken)
     {
@@ -195,7 +190,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             return ValueTask.CompletedTask;
         }
 
-        return _entrySpotActivation.InvokeActorLeftCallbackAsync(actor, info, cancellationToken);
+        return _entrySpotActivation.InvokeActorLeftCallbackAsync(info, cancellationToken);
     }
 
     public void StartDiscoveryPeerReconciliation()
@@ -231,6 +226,13 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     public ZLinkSpotPublisherBundle GetOrCreatePublisherBundle(string channelName)
     {
         return _bundles.GetOrCreatePublisherBundle(channelName);
+    }
+
+    public bool TryGetPublisherBundle(
+        string channelName,
+        [NotNullWhen(true)] out ZLinkSpotPublisherBundle? bundle)
+    {
+        return _bundles.TryGetPublisherBundle(channelName, out bundle);
     }
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(

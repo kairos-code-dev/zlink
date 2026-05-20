@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Core;
 
@@ -14,53 +15,72 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
     CancellationToken stopToken,
     Action connectDiscoveredPubSubPeers) : IAsyncDisposable
 {
+    private readonly object _gate = new();
     private readonly Dictionary<string, ZLinkSpotAttachedChannelBundle> _channelBundles = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ZLinkSpotPublisherBundle> _publisherBundles = new(StringComparer.Ordinal);
 
-    public IReadOnlyDictionary<string, ZLinkSpotAttachedChannelBundle> AttachedChannelBundles => _channelBundles;
-
-    public IReadOnlyDictionary<string, ZLinkSpotPublisherBundle> PublisherBundles => _publisherBundles;
-
     public void AddChannelBundle(string channelName, ZLinkSpotAttachedChannelBundle bundle)
     {
-        _channelBundles.Add(channelName, bundle);
+        lock (_gate)
+        {
+            _channelBundles.Add(channelName, bundle);
+        }
     }
 
     public void AddPublisherBundle(string channelName, ZLinkSpotPublisherBundle bundle)
     {
-        _publisherBundles.Add(channelName, bundle);
+        lock (_gate)
+        {
+            _publisherBundles.Add(channelName, bundle);
+        }
+    }
+
+    public bool TryGetPublisherBundle(
+        string channelName,
+        [NotNullWhen(true)] out ZLinkSpotPublisherBundle? bundle)
+    {
+        lock (_gate)
+        {
+            return _publisherBundles.TryGetValue(channelName, out bundle);
+        }
     }
 
     public ZLinkSpotAttachedChannelBundle GetOrCreateAttachedChannelBundle(string channelName)
     {
-        if (_channelBundles.TryGetValue(channelName, out var existing))
+        lock (_gate)
         {
-            return existing;
+            if (_channelBundles.TryGetValue(channelName, out var existing))
+            {
+                return existing;
+            }
+
+            var attached = RequireAttachedChannelClient(channelName);
+            var bundle = CreateAttachedChannelBundle(attached);
+
+            _channelBundles.Add(channelName, bundle);
+            return bundle;
         }
-
-        var attached = RequireAttachedChannelClient(channelName);
-        var bundle = CreateAttachedChannelBundle(attached);
-
-        _channelBundles.Add(channelName, bundle);
-        return bundle;
     }
 
     public ZLinkSpotPublisherBundle GetOrCreatePublisherBundle(string channelName)
     {
-        if (_publisherBundles.TryGetValue(channelName, out var existing))
+        lock (_gate)
         {
-            return existing;
+            if (_publisherBundles.TryGetValue(channelName, out var existing))
+            {
+                return existing;
+            }
+
+            var attached = RequireAttachedSpotPublisherClient(channelName);
+
+            connectDiscoveredPubSubPeers();
+
+            var bundle = CreatePublisherBundle(attached);
+            ConnectPublisherManualPeers(attached);
+
+            _publisherBundles.Add(channelName, bundle);
+            return bundle;
         }
-
-        var attached = RequireAttachedSpotPublisherClient(channelName);
-
-        connectDiscoveredPubSubPeers();
-
-        var bundle = CreatePublisherBundle(attached);
-        ConnectPublisherManualPeers(attached);
-
-        _publisherBundles.Add(channelName, bundle);
-        return bundle;
     }
 
     private ZLinkSpotChannelClientRegistration RequireAttachedChannelClient(string channelName)
@@ -151,12 +171,22 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var publisher in _publisherBundles.Values)
+        ZLinkSpotPublisherBundle[] publishers;
+        ZLinkSpotAttachedChannelBundle[] channels;
+        lock (_gate)
+        {
+            publishers = _publisherBundles.Values.ToArray();
+            channels = _channelBundles.Values.ToArray();
+            _publisherBundles.Clear();
+            _channelBundles.Clear();
+        }
+
+        foreach (var publisher in publishers)
         {
             await publisher.DisposeAsync();
         }
 
-        foreach (var channel in _channelBundles.Values)
+        foreach (var channel in channels)
         {
             await channel.DisposeAsync();
         }

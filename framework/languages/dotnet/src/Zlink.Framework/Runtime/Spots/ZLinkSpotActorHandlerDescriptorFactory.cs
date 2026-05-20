@@ -11,55 +11,98 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
     {
         foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            if (surface == ZLinkSpotActorHandlerSurface.EntrySpot
-                && definition == typeof(IZLinkEntrySpotActorSendHandler<,>))
+            var descriptor = TryCreatePacketDescriptor(
+                surface,
+                expectedSpotType,
+                handlerType,
+                expectedActorType,
+                definition,
+                arguments,
+                packetName);
+            if (descriptor is not null)
             {
-                ValidateActorType(handlerType, expectedActorType, arguments[0]);
-                return CreatePacketDescriptor(surface, handlerType, null, arguments[0], arguments[1], null, packetName);
-            }
-
-            if (surface == ZLinkSpotActorHandlerSurface.EntrySpot
-                && definition == typeof(IZLinkEntrySpotActorRequestHandler<,,>))
-            {
-                ValidateActorType(handlerType, expectedActorType, arguments[0]);
-                return CreatePacketDescriptor(surface, handlerType, null, arguments[0], arguments[1], arguments[2], packetName);
-            }
-
-            if (surface == ZLinkSpotActorHandlerSurface.EntrySpot
-                && definition == typeof(IZLinkSpotActorSendHandler<,,>))
-            {
-                ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-                ValidateActorType(handlerType, expectedActorType, arguments[1]);
-                return CreatePacketDescriptor(surface, handlerType, arguments[0], arguments[1], arguments[2], null, packetName);
-            }
-
-            if (surface == ZLinkSpotActorHandlerSurface.EntrySpot
-                && definition == typeof(IZLinkSpotActorRequestHandler<,,,>))
-            {
-                ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-                ValidateActorType(handlerType, expectedActorType, arguments[1]);
-                return CreatePacketDescriptor(surface, handlerType, arguments[0], arguments[1], arguments[2], arguments[3], packetName);
-            }
-
-            if (surface == ZLinkSpotActorHandlerSurface.UserSpot
-                && definition == typeof(IZLinkSpotActorSendHandler<,,>))
-            {
-                ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-                ValidateActorType(handlerType, expectedActorType, arguments[1]);
-                return CreatePacketDescriptor(surface, handlerType, arguments[0], arguments[1], arguments[2], null, packetName);
-            }
-
-            if (surface == ZLinkSpotActorHandlerSurface.UserSpot
-                && definition == typeof(IZLinkSpotActorRequestHandler<,,,>))
-            {
-                ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-                ValidateActorType(handlerType, expectedActorType, arguments[1]);
-                return CreatePacketDescriptor(surface, handlerType, arguments[0], arguments[1], arguments[2], arguments[3], packetName);
+                return descriptor;
             }
         }
 
         throw new InvalidOperationException(
             $"Actor packet handler '{handlerType}' must implement a supported Entry Spot or user Spot actor handler interface.");
+    }
+
+    private static ZLinkSpotActorPacketDescriptor? TryCreatePacketDescriptor(
+        ZLinkSpotActorHandlerSurface surface,
+        Type? expectedSpotType,
+        Type handlerType,
+        Type expectedActorType,
+        Type definition,
+        Type[] arguments,
+        string? packetName)
+    {
+        if (definition == typeof(IZLinkEntrySpotActorSendHandler<,>))
+        {
+            if (surface != ZLinkSpotActorHandlerSurface.EntrySpot)
+            {
+                return null;
+            }
+
+            ValidateActorType(handlerType, expectedActorType, arguments[0]);
+            return CreatePacketDescriptor(
+                surface,
+                handlerType,
+                null,
+                arguments[0],
+                arguments[1],
+                null,
+                packetName);
+        }
+
+        if (definition == typeof(IZLinkEntrySpotActorRequestHandler<,,>))
+        {
+            if (surface != ZLinkSpotActorHandlerSurface.EntrySpot)
+            {
+                return null;
+            }
+
+            ValidateActorType(handlerType, expectedActorType, arguments[0]);
+            return CreatePacketDescriptor(
+                surface,
+                handlerType,
+                null,
+                arguments[0],
+                arguments[1],
+                arguments[2],
+                packetName);
+        }
+
+        if (definition == typeof(IZLinkSpotActorSendHandler<,,>))
+        {
+            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
+            ValidateActorType(handlerType, expectedActorType, arguments[1]);
+            return CreatePacketDescriptor(
+                surface,
+                handlerType,
+                arguments[0],
+                arguments[1],
+                arguments[2],
+                null,
+                packetName);
+        }
+
+        if (definition == typeof(IZLinkSpotActorRequestHandler<,,,>))
+        {
+            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
+            ValidateActorType(handlerType, expectedActorType, arguments[1]);
+            return CreatePacketDescriptor(
+                surface,
+                handlerType,
+                arguments[0],
+                arguments[1],
+                arguments[2],
+                arguments[3],
+                packetName);
+        }
+
+        return null;
     }
 
     public static ZLinkSpotActorLifecycleDescriptor CreateLifecycle(

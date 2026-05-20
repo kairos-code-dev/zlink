@@ -26,6 +26,9 @@ internal sealed class ZLinkSpotActorPacketDescriptor
     public required string MessageName { get; init; }
 
     public required ZLinkSpotActorHandlerSurface Surface { get; init; }
+
+    public bool UsesEntryActorOnlyInvocation
+        => Surface == ZLinkSpotActorHandlerSurface.EntrySpot && SpotType is null;
 }
 
 internal sealed class ZLinkSpotActorLifecycleDescriptor
@@ -39,6 +42,9 @@ internal sealed class ZLinkSpotActorLifecycleDescriptor
     public required ZLinkHandlerMethodInvoker Invoker { get; init; }
 
     public required ZLinkSpotActorHandlerSurface Surface { get; init; }
+
+    public bool UsesEntryActorOnlyInvocation
+        => Surface == ZLinkSpotActorHandlerSurface.EntrySpot && SpotType is null;
 }
 
 internal sealed class ZLinkSpotActorHandlerRegistry

@@ -44,11 +44,11 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         object request,
         CancellationToken cancellationToken)
     {
-        if (!descriptor.ActorType.IsInstanceOfType(actor))
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor join handler '{descriptor.HandlerType}' expects actor '{descriptor.ActorType}', but received '{actor.GetType()}'.");
-        }
+        EnsureActorType(
+            descriptor.HandlerType,
+            descriptor.ActorType,
+            actor,
+            "SPOT actor join handler");
 
         return await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, request, cancellationToken)
             .ConfigureAwait(false);
@@ -61,15 +61,14 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         Message body,
         CancellationToken cancellationToken)
     {
-        if (!descriptor.ActorType.IsInstanceOfType(actor))
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor packet handler '{descriptor.HandlerType}' expects actor '{descriptor.ActorType}', but received '{actor.GetType()}'.");
-        }
+        EnsureActorType(
+            descriptor.HandlerType,
+            descriptor.ActorType,
+            actor,
+            "SPOT actor packet handler");
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
-        if (descriptor.Surface == ZLinkSpotActorHandlerSurface.EntrySpot
-            && descriptor.SpotType is null)
+        if (descriptor.UsesEntryActorOnlyInvocation)
         {
             await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, message, cancellationToken)
                 .ConfigureAwait(false);
@@ -93,15 +92,14 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
                 $"Actor packet handler '{descriptor.HandlerType}' does not declare a reply type.");
         }
 
-        if (!descriptor.ActorType.IsInstanceOfType(actor))
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor packet handler '{descriptor.HandlerType}' expects actor '{descriptor.ActorType}', but received '{actor.GetType()}'.");
-        }
+        EnsureActorType(
+            descriptor.HandlerType,
+            descriptor.ActorType,
+            actor,
+            "SPOT actor packet handler");
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
-        var reply = descriptor.Surface == ZLinkSpotActorHandlerSurface.EntrySpot
-            && descriptor.SpotType is null
+        var reply = descriptor.UsesEntryActorOnlyInvocation
             ? await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, message, cancellationToken)
                 .ConfigureAwait(false)
             : await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, message, cancellationToken)
@@ -115,14 +113,13 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken)
     {
-        if (!descriptor.ActorType.IsInstanceOfType(actor))
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor lifecycle handler '{descriptor.HandlerType}' expects actor '{descriptor.ActorType}', but received '{actor.GetType()}'.");
-        }
+        EnsureActorType(
+            descriptor.HandlerType,
+            descriptor.ActorType,
+            actor,
+            "SPOT actor lifecycle handler");
 
-        if (descriptor.Surface == ZLinkSpotActorHandlerSurface.EntrySpot
-            && descriptor.SpotType is null)
+        if (descriptor.UsesEntryActorOnlyInvocation)
         {
             await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, info, cancellationToken)
                 .ConfigureAwait(false);
@@ -131,6 +128,21 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
 
         await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, info, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static void EnsureActorType(
+        Type handlerType,
+        Type expectedActorType,
+        IZLinkActor actor,
+        string handlerKind)
+    {
+        if (expectedActorType.IsInstanceOfType(actor))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"{handlerKind} '{handlerType}' expects actor '{expectedActorType}', but received '{actor.GetType()}'.");
     }
 
     private ValueTask<object?> InvokeAsync(

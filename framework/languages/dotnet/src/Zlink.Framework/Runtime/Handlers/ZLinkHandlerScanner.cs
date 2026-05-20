@@ -1,8 +1,4 @@
-using System.Collections.Concurrent;
 using System.Reflection;
-using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Handlers;
 
@@ -22,22 +18,14 @@ internal static class ZLinkHandlerScanner
             var groups = ResolveGroups(type);
             foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public))
             {
-                var request = method.GetCustomAttribute<ZLinkRequestAttribute>();
-                if (request is not null)
+                foreach (var attribute in EnumerateEndpointAttributes(method))
                 {
-                    endpoints.Add(CreateDescriptor(type, method, request.PacketName, ZLinkMessageKind.Request, groups));
-                }
-
-                var send = method.GetCustomAttribute<ZLinkSendAttribute>();
-                if (send is not null)
-                {
-                    endpoints.Add(CreateDescriptor(type, method, send.PacketName, ZLinkMessageKind.Command, groups));
-                }
-
-                var publish = method.GetCustomAttribute<ZLinkPublishAttribute>();
-                if (publish is not null)
-                {
-                    endpoints.Add(CreateDescriptor(type, method, publish.PacketName, ZLinkMessageKind.Publish, groups));
+                    endpoints.Add(CreateDescriptor(
+                        type,
+                        method,
+                        attribute.PacketName,
+                        attribute.Kind,
+                        groups));
                 }
             }
 
@@ -65,6 +53,30 @@ internal static class ZLinkHandlerScanner
         }
 
         return endpoints;
+    }
+
+    private static IEnumerable<ZLinkEndpointAttributeDescriptor> EnumerateEndpointAttributes(MethodInfo method)
+    {
+        if (method.GetCustomAttribute<ZLinkRequestAttribute>() is { } request)
+        {
+            yield return new ZLinkEndpointAttributeDescriptor(
+                ZLinkMessageKind.Request,
+                request.PacketName);
+        }
+
+        if (method.GetCustomAttribute<ZLinkSendAttribute>() is { } send)
+        {
+            yield return new ZLinkEndpointAttributeDescriptor(
+                ZLinkMessageKind.Command,
+                send.PacketName);
+        }
+
+        if (method.GetCustomAttribute<ZLinkPublishAttribute>() is { } publish)
+        {
+            yield return new ZLinkEndpointAttributeDescriptor(
+                ZLinkMessageKind.Publish,
+                publish.PacketName);
+        }
     }
 
     private static ZLinkHandlerEndpointDescriptor CreateInterfaceDescriptor(
@@ -224,4 +236,8 @@ internal static class ZLinkHandlerScanner
 
         return returnType;
     }
+
+    private readonly record struct ZLinkEndpointAttributeDescriptor(
+        ZLinkMessageKind Kind,
+        string? PacketName);
 }

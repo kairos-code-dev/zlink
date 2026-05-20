@@ -26,7 +26,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     {
         foreach (var node in state.SpotNodes.Values)
         {
-            if (node.PublisherBundles.TryGetValue(channelName, out var bundle))
+            if (node.TryGetPublisherBundle(channelName, out var bundle))
             {
                 return bundle;
             }
@@ -235,10 +235,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         string channelName)
     {
         var node = GetNode(state, spotNodeName);
-        if (!node.AttachedChannelBundles.TryGetValue(channelName, out var bundle))
-        {
-            bundle = node.GetOrCreateAttachedChannelBundle(channelName);
-        }
+        var bundle = node.GetOrCreateAttachedChannelBundle(channelName);
 
         return ZLinkRuntimeConnections.CreateManual(
             () => bundle,
@@ -254,12 +251,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         string channelName)
     {
         var node = GetNode(state, spotNodeName);
-        if (!node.PublisherBundles.TryGetValue(channelName, out var bundle))
-        {
-            bundle = node.GetOrCreatePublisherBundle(channelName);
-        }
-
-        _ = bundle;
+        node.GetOrCreatePublisherBundle(channelName);
 
         return new ZLinkRuntimeConnections(
             (endpoint, token) => node.ConnectPubSubAsync(endpoint, token),

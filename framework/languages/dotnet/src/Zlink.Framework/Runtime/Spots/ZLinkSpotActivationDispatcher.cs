@@ -62,37 +62,29 @@ internal sealed class ZLinkSpotActivationDispatcher(
             if (!actors.TryGetActor(headerPart.Actor.ActorId, out var actor) || actor is null)
             {
                 headerPart.Message.Dispose();
-                while (i < parts.Count && parts[i - 1].More)
-                {
-                    parts[i++].Message.Dispose();
-                }
+                DisposeContinuationParts(parts, ref i, headerPart.More);
                 continue;
             }
 
-            if (!headerPart.More)
-            {
-                await DispatchActorStreamPartAsync(
-                    actor,
-                    headerPart.Actor.ActorId,
-                    ZLinkStreamProtocolDefaults.DecodeHeader(headerPart.Message.AsReadOnlyMemory()),
-                    Message.FromBytes(ReadOnlySpan<byte>.Empty),
-                    cancellationToken).ConfigureAwait(false);
-                headerPart.Message.Dispose();
-                continue;
-            }
-
-            if (i >= parts.Count)
-            {
-                headerPart.Message.Dispose();
-                continue;
-            }
-
-            var bodyPart = parts[i++];
             var streamHeader = ZLinkStreamProtocolDefaults.DecodeHeader(headerPart.Message.AsReadOnlyMemory());
             headerPart.Message.Dispose();
-            using var body = bodyPart.Message;
-            await DispatchActorStreamPartAsync(actor, headerPart.Actor.ActorId, streamHeader, body, cancellationToken)
-                .ConfigureAwait(false);
+
+            var body = TakeBodyPart(parts, ref i, headerPart.More);
+            if (body is null)
+            {
+                continue;
+            }
+
+            using (body)
+            {
+                await DispatchActorStreamPartAsync(
+                        actor,
+                        headerPart.Actor.ActorId,
+                        streamHeader,
+                        body,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
     }
 
@@ -180,6 +172,37 @@ internal sealed class ZLinkSpotActivationDispatcher(
         CancellationToken cancellationToken)
     {
         await handlerInvoker().InvokeSubscriptionAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static Message? TakeBodyPart(
+        IReadOnlyList<ZLinkBackendActorPart> parts,
+        ref int index,
+        bool hasBody)
+    {
+        if (!hasBody)
+        {
+            return Message.FromBytes(ReadOnlySpan<byte>.Empty);
+        }
+
+        if (index >= parts.Count)
+        {
+            return null;
+        }
+
+        return parts[index++].Message;
+    }
+
+    private static void DisposeContinuationParts(
+        IReadOnlyList<ZLinkBackendActorPart> parts,
+        ref int index,
+        bool hasMore)
+    {
+        while (hasMore && index < parts.Count)
+        {
+            var part = parts[index++];
+            hasMore = part.More;
+            part.Message.Dispose();
+        }
     }
 
 }

@@ -1216,6 +1216,23 @@ func (s *Spot) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error) {
 	return true, nil
 }
 
+func (s *Spot) SubscribePart(out *Message, topicBuffer []byte, flags RecvFlags) (SubscribePartResult, bool, error) {
+	if s == nil || s.core == nil {
+		return SubscribePartResult{}, false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	result, err := recvSubscribePartInto(out, topicBuffer, flags, func(rid **C.zlink_routing_id_t, topic *C.char, topicCap C.size_t, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+		return recvErrorFromResult(C.zlink_spot_subscribe_part(s.raw(), rid, topic, topicCap, topicLen, part, hasMore, recvFlags))
+	})
+	if err != nil {
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return SubscribePartResult{}, false, nil
+		}
+		return SubscribePartResult{}, false, err
+	}
+	return result, true, nil
+}
+
 func (s *Spot) ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags) (bool, error) {
 	if out == nil {
 		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}

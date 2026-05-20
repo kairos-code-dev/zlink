@@ -62,7 +62,9 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 	debugf("router/router wait route ready")
 	targetID := waitRouterRouterRouteReady(server, client, serverID)
 
-	result := runSingleOneWayWithTransient(cfg, server, func(payload []byte) error {
+	result := runSingleOneWayWithTransient(cfg, server, func(payload []byte) (bool, error) {
+		return client.SendTo(targetID).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+	}, func(payload []byte) error {
 		_, err := client.SendTo(targetID).Message(perfcommon.NewMessage(payload)).Submit(nil)
 		return err
 	}, isRouterRouterSendTransient)

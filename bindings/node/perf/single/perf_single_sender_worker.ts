@@ -89,6 +89,9 @@ function isTransientSubmit(error) {
 
 function submitOnce(kind, socket, body, receiverRoutingId, topic) {
   if (kind === 'pubsub') {
+    if (typeof socket.publishDirect === 'function') {
+      return socket.publishDirect(topic, body, zlink.SendFlags.DontWait);
+    }
     return socket.publish(topic).message(body)
       .flags(zlink.SendFlags.DontWait).submit();
   }
@@ -131,6 +134,10 @@ function sleepMillis(ms) {
 
 function submitStopOnce(kind, socket, receiverRoutingId, topic) {
   if (kind === 'pubsub') {
+    if (typeof socket.publishDirect === 'function') {
+      socket.publishDirect(topic, STOP_TOKEN_BYTES, zlink.SendFlags.None);
+      return;
+    }
     socket.publish(topic).message(STOP_TOKEN_BYTES)
       .flags(zlink.SendFlags.None).submit();
     return;

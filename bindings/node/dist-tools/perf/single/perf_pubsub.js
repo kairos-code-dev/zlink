@@ -2,12 +2,70 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, HEADER_SIZE, summarizeMetrics, } = require('../common/perf_metrics');
+const { createMetricCollector, createRunId, decodeMetricHeader, decodeMetricHeaderFromParts, currentEpochNs, HEADER_SIZE, summarizeMetrics, } = require('../common/perf_metrics');
 const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsClient, drainRecvSocket, emitSingleSocketHwmDetail, parseSingleBinaryArgs, runLocalSocketOneWayBenchmark, spawnSenderWorker, waitForWorkerError, waitForPostReadySettle, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 function trace(message) {
     if (process.env.PERF_NODE_TRACE === '1') {
         console.error(`[pubsub] ${message}`);
+    }
+}
+function yieldImmediate() {
+    return new Promise((resolve) => setImmediate(resolve));
+}
+function trySubscribePayloadInto(socket, buffer, flags) {
+    try {
+        return socket.subscribePayloadInto(buffer, flags);
+    }
+    catch (error) {
+        if (error instanceof zlink.RecvError &&
+            (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {
+            return null;
+        }
+        throw error;
+    }
+}
+async function drainPubSubPayloadInto(socket, buffer, onHeader, options = {}) {
+    const recordUntilNs = options.recordUntilNs === undefined
+        ? null
+        : BigInt(options.recordUntilNs);
+    let stopReceived = false;
+    let recordingActive = true;
+    let iterCount = 0;
+    while (!stopReceived) {
+        iterCount += 1;
+        if ((iterCount & 0x3f) === 0) {
+            await yieldImmediate();
+        }
+        let processed = false;
+        let first = true;
+        while (true) {
+            const received = trySubscribePayloadInto(socket, buffer, first ? zlink.RecvFlags.None : zlink.RecvFlags.DontWait);
+            if (!received) {
+                break;
+            }
+            first = false;
+            processed = true;
+            if (received.size === STOP_TOKEN_BYTES.length &&
+                buffer.subarray(0, received.size).equals(STOP_TOKEN_BYTES)) {
+                stopReceived = true;
+                break;
+            }
+            if (recordUntilNs !== null && recordingActive) {
+                recordingActive = currentEpochNs() <= recordUntilNs;
+            }
+            if (recordUntilNs !== null && !recordingActive) {
+                continue;
+            }
+            if (received.size < HEADER_SIZE) {
+                onHeader(null);
+                continue;
+            }
+            onHeader(decodeMetricHeader(buffer));
+        }
+        if (!processed) {
+            await yieldImmediate();
+        }
     }
 }
 async function runPubSubBenchmark(msgSize, options) {
@@ -126,10 +184,15 @@ async function runPubSubBenchmark(msgSize, options) {
         // ->`ready` exchange above IS the connection-ready gate (PUB binds in
         // the worker, SUB connects here). No extra start/stop ack — the
         // subscriber drains until the wire stop token on the topic.
-        const recvTask = drainRecvSocket(sub, (received) => {
-            const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
-            collector.record(header, currentEpochNs());
-        }, { recordUntilNs: activeStopNs });
+        const payloadBuffer = Buffer.allocUnsafe(Math.max(msgSize, HEADER_SIZE, STOP_TOKEN_BYTES.length));
+        const recvTask = typeof sub.subscribePayloadInto === 'function'
+            ? drainPubSubPayloadInto(sub, payloadBuffer, (header) => {
+                collector.record(header, currentEpochNs());
+            }, { recordUntilNs: activeStopNs })
+            : drainRecvSocket(sub, (received) => {
+                const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
+                collector.record(header, currentEpochNs());
+            }, { recordUntilNs: activeStopNs });
         await Promise.race([
             recvTask,
             workerError.then((message) => Promise.reject(new Error(message.message)))

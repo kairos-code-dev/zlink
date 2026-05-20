@@ -352,6 +352,12 @@ type TopicMessage struct {
 	parts     []*Message
 }
 
+type SubscribePartResult struct {
+	RoutingID RoutingID
+	TopicLen  int
+	More      bool
+}
+
 func (t *TopicMessage) RoutingID() RoutingID {
 	if t == nil {
 		return RoutingID{}

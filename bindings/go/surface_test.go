@@ -91,6 +91,9 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SubSocket)(nil), "Subscribe") {
 		t.Fatalf("SubSocket should expose Subscribe")
 	}
+	if !hasMethod((*zlink.SubSocket)(nil), "SubscribePart") {
+		t.Fatalf("SubSocket should expose SubscribePart")
+	}
 	if hasMethod((*zlink.SubSocket)(nil), "TrySubscribe") {
 		t.Fatalf("SubSocket should not expose TrySubscribe")
 	}
@@ -207,6 +210,9 @@ func TestSurfaceCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.Spot)(nil), "Subscribe") {
 		t.Fatalf("Spot should expose Subscribe")
+	}
+	if !hasMethod((*zlink.Spot)(nil), "SubscribePart") {
+		t.Fatalf("Spot should expose SubscribePart")
 	}
 	if !hasMethod((*zlink.Spot)(nil), "ReceiveSubscriptionEvent") {
 		t.Fatalf("Spot should expose ReceiveSubscriptionEvent")

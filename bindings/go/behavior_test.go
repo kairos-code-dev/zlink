@@ -184,6 +184,145 @@ func TestPubSubRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSubSubscribePartRoundTrip(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	endpoint := inprocEndpoint("pubsub-part")
+	pubSocket, _ := ctx.PubSocket()
+	subSocket, _ := ctx.SubSocket()
+	defer pubSocket.Close()
+	defer subSocket.Close()
+
+	_ = pubSocket.Bind(endpoint)
+	_ = subSocket.Connect(endpoint)
+	_ = subSocket.SetSubscription("market.")
+	_ = subSocket.SetRecvTimeout(5 * time.Second)
+
+	if _, err := pubSocket.Publish("market.price").Message(newMessage(t, "42.5")).Submit(nil); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+
+	msg, err := zlink.NewMessageWithSize(0)
+	if err != nil {
+		t.Fatalf("NewMessageWithSize() error = %v", err)
+	}
+	defer msg.Close()
+	topic := make([]byte, 64)
+	result, ok, err := subSocket.SubscribePart(msg, topic, zlink.RecvFlagsNone)
+	if err != nil {
+		t.Fatalf("SubscribePart() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("SubscribePart() returned ok=false")
+	}
+	if result.More {
+		t.Fatalf("SubscribePart() More = true, want false")
+	}
+	if got := string(topic[:result.TopicLen]); got != "market.price" {
+		t.Fatalf("topic = %q, want %q", got, "market.price")
+	}
+	if got := string(msg.Data()); got != "42.5" {
+		t.Fatalf("payload = %q, want %q", got, "42.5")
+	}
+}
+
+func TestSpotSubscribePartRoundTrip(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	publisherNode, err := ctx.SpotNode()
+	if err != nil {
+		t.Fatalf("publisher SpotNode() error = %v", err)
+	}
+	defer publisherNode.Close()
+	subscriberNode, err := ctx.SpotNode()
+	if err != nil {
+		t.Fatalf("subscriber SpotNode() error = %v", err)
+	}
+	defer subscriberNode.Close()
+
+	publisherEndpoint := tcpEndpoint(t)
+	subscriberEndpoint := tcpEndpoint(t)
+	if err := publisherNode.SetRoutingID(zlink.NewRoutingID([]byte("z-go-test-spot-publisher"))); err != nil {
+		t.Fatalf("publisher SetRoutingID() error = %v", err)
+	}
+	if err := subscriberNode.SetRoutingID(zlink.NewRoutingID([]byte("a-go-test-spot-subscriber"))); err != nil {
+		t.Fatalf("subscriber SetRoutingID() error = %v", err)
+	}
+	if err := publisherNode.Bind(publisherEndpoint); err != nil {
+		t.Fatalf("publisher Bind() error = %v", err)
+	}
+	if err := subscriberNode.Bind(subscriberEndpoint); err != nil {
+		t.Fatalf("subscriber Bind() error = %v", err)
+	}
+	if err := publisherNode.ConnectPeer(subscriberEndpoint); err != nil {
+		t.Fatalf("publisher ConnectPeer() error = %v", err)
+	}
+	if err := subscriberNode.ConnectPeer(publisherEndpoint); err != nil {
+		t.Fatalf("subscriber ConnectPeer() error = %v", err)
+	}
+
+	publisher, err := publisherNode.Spot()
+	if err != nil {
+		t.Fatalf("publisher Spot() error = %v", err)
+	}
+	defer publisher.Close()
+	subscriber, err := subscriberNode.Spot()
+	if err != nil {
+		t.Fatalf("subscriber Spot() error = %v", err)
+	}
+	defer subscriber.Close()
+	if err := publisher.SetRoutingID(zlink.NewRoutingID([]byte("z-go-test-spot-publisher-spot"))); err != nil {
+		t.Fatalf("publisher spot SetRoutingID() error = %v", err)
+	}
+	if err := subscriber.SetRoutingID(zlink.NewRoutingID([]byte("a-go-test-spot-subscriber-spot"))); err != nil {
+		t.Fatalf("subscriber spot SetRoutingID() error = %v", err)
+	}
+	if err := subscriber.SetSubscription("market.price"); err != nil {
+		t.Fatalf("SetSubscription() error = %v", err)
+	}
+	if err := subscriber.SetRecvTimeout(5 * time.Second); err != nil {
+		t.Fatalf("SetRecvTimeout() error = %v", err)
+	}
+
+	msg, err := zlink.NewMessageWithSize(0)
+	if err != nil {
+		t.Fatalf("NewMessageWithSize() error = %v", err)
+	}
+	defer msg.Close()
+	topic := make([]byte, 64)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		_, _ = publisherNode.StatusSnapshot()
+		_, _ = subscriberNode.StatusSnapshot()
+		if _, err := publisher.Publish("market.price").Message(newMessage(t, "42.5")).Submit(nil); err != nil {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		result, ok, err := subscriber.SubscribePart(msg, topic, zlink.RecvFlagsDontWait)
+		if err != nil {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		if !ok {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		if result.More {
+			t.Fatalf("SubscribePart() More = true, want false")
+		}
+		if got := string(topic[:result.TopicLen]); got != "market.price" {
+			t.Fatalf("topic = %q, want %q", got, "market.price")
+		}
+		if got := string(msg.Data()); got != "42.5" {
+			t.Fatalf("payload = %q, want %q", got, "42.5")
+		}
+		return
+	}
+	t.Fatalf("spot SubscribePart() did not receive message before timeout")
+}
+
 func TestXPubReceiveSubscriptionEventEmpty(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

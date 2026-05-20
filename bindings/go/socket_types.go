@@ -799,6 +799,50 @@ func recvTopicMessageInto(
 	return nil
 }
 
+func recvSubscribePartInto(
+	out *Message,
+	topicBuffer []byte,
+	flags RecvFlags,
+	call func(**C.zlink_routing_id_t, *C.char, C.size_t, *C.size_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
+) (SubscribePartResult, error) {
+	if out == nil {
+		return SubscribePartResult{}, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+	}
+	if len(topicBuffer) == 0 {
+		return SubscribePartResult{}, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+	}
+	var sourceRID *C.zlink_routing_id_t
+	topicLen := C.size_t(len(topicBuffer))
+	var part C.zlink_msg_t
+	if err := configErrorFromResult(C.zlink_msg_init(&part)); err != nil {
+		return SubscribePartResult{}, err
+	}
+	var hasMore C.zlink_part_flag_t
+	if err := call(
+		&sourceRID,
+		(*C.char)(unsafe.Pointer(&topicBuffer[0])),
+		C.size_t(len(topicBuffer)),
+		&topicLen,
+		&part,
+		&hasMore,
+		C.zlink_recv_flags_t(flags),
+	); err != nil {
+		_ = configErrorFromResult(C.zlink_msg_close(&part))
+		return SubscribePartResult{}, err
+	}
+	_ = out.Close()
+	if err := configErrorFromResult(C.zlink_msg_adopt(&out.msg, &part)); err != nil {
+		_ = configErrorFromResult(C.zlink_msg_close(&part))
+		return SubscribePartResult{}, err
+	}
+	out.closed = false
+	return SubscribePartResult{
+		RoutingID: routingIDFromCPtr(sourceRID),
+		TopicLen:  int(topicLen),
+		More:      hasMore != C.ZLINK_PART_FINAL,
+	}, nil
+}
+
 func recvSpotTopicMessageInto(
 	out *TopicMessage,
 	call func(**C.zlink_routing_id_t, *C.char, *C.size_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
@@ -1402,6 +1446,20 @@ func (s *subscribeSocket) Subscribe(out *TopicMessage, flags RecvFlags) (bool, e
 		return false, err
 	}
 	return true, nil
+}
+
+func (s *subscribeSocket) SubscribePart(out *Message, topicBuffer []byte, flags RecvFlags) (SubscribePartResult, bool, error) {
+	result, err := recvSubscribePartInto(out, topicBuffer, flags, func(rid **C.zlink_routing_id_t, topic *C.char, topicCap C.size_t, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+		return recvErrorFromResult(C.zlink_subscribe_part(s.raw(), rid, topic, topicCap, topicLen, part, hasMore, recvFlags))
+	})
+	if err != nil {
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return SubscribePartResult{}, false, nil
+		}
+		return SubscribePartResult{}, false, err
+	}
+	return result, true, nil
 }
 
 type xpubSubscribeSocket struct {

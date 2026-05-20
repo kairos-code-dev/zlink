@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	"time"
 
 	zlink "zlink.systems/zlink/contracts"
@@ -44,7 +45,6 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	publisherEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot-pub")
 	perfcommon.Must(publisherNode.Bind(publisherEndpoint))
 	perfcommon.Must(subscriberNode.ConnectPeer(publisherEndpoint))
-	perfcommon.Must(publisher.SetNoDrop(true))
 	perfcommon.Must(subscriber.SetSubscription(singleSpotTopic))
 	perfcommon.ApplySingleBenchmarkSocketOptions(publisher, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(stopPublisher, cfg.transport)
@@ -54,53 +54,62 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	defer poller.Close()
 
 	stats := perfcommon.NewStats()
+	recvPart, err := zlink.NewMessageWithSize(0)
+	perfcommon.Must(err)
+	defer recvPart.Close()
+	topicBuffer := make([]byte, 256)
 	// perf_spot.cpp run_case: SPOT readiness is the local probe-publish +
 	// first-valid-recv barrier (wait_for_spot_ready_barrier). There is no
 	// connected-peer-count snapshot precondition.
 	waitForSpotReady(publisher, subscriber, poller, cfg.msgSize)
 	perfcommon.PostReadySettle(cfg.pattern)
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
+
+	// perf_spot.cpp run_active_window: SPOT active receive uses DONTWAIT
+	// drain + yield because the SPOT handle does not use the raw socket
+	// poller path during active measurement. It also starts the receiver
+	// before the sender so tiny messages do not build an initial queue
+	// before measurement begins.
+	receiverDone := make(chan error, 1)
 	go func() {
-		payload := perfcommon.PreparePayload(cfg.msgSize)
-		for time.Now().Before(window.StopAt) {
-			perfcommon.StampWindowPayload(payload, window.ActiveAt)
-			_, err := publisher.Publish(singleSpotTopic).Message(perfcommon.NewMessage(payload)).Submit(nil)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					continue
-				}
-				perfcommon.Must(err)
+		for {
+			stop, drainErr := drainSingleSpotUntilStop(subscriber, recvPart, topicBuffer, stats, window.ActiveAt, window.StopAt, cfg.msgSize)
+			if drainErr != nil {
+				receiverDone <- drainErr
+				return
 			}
+			if stop {
+				receiverDone <- nil
+				return
+			}
+			runtime.Gosched()
 		}
-		// PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
-		// stop token. Bounded attempts through transient backpressure so
-		// the subscriber always observes the terminator.
-		sendSpotStopToken(stopPublisher)
 	}()
 
-	// PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait (-1 ms). Loop
-	// exits when the wire-level stop token arrives.
-	for {
-		event, err := poller.Wait(-1 * time.Millisecond)
+	payload := perfcommon.PreparePayload(cfg.msgSize)
+	for time.Now().Before(window.StopAt) {
+		perfcommon.StampWindowPayload(payload, window.ActiveAt)
+		message := perfcommon.NewMessage(payload)
+		sent, err := publisher.Publish(singleSpotTopic).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
+				time.Sleep(time.Millisecond)
 				continue
 			}
 			perfcommon.Must(err)
 		}
-		if event == nil {
+		if !sent {
+			time.Sleep(time.Millisecond)
 			continue
 		}
-		if event.Events&perfcommon.ZLinkPollIn == 0 {
-			continue
-		}
-		stop, drainErr := drainSingleSpotUntilStop(subscriber, stats, window.ActiveAt, window.StopAt, cfg.msgSize)
-		if drainErr != nil {
-			perfcommon.Must(drainErr)
-		}
-		if stop {
-			break
-		}
+		runtime.Gosched()
+	}
+	// PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
+	// stop token. Bounded attempts through transient backpressure so
+	// the subscriber always observes the terminator.
+	sendSpotStopToken(stopPublisher)
+	if err := <-receiverDone; err != nil {
+		perfcommon.Must(err)
 	}
 
 	result := stats.Snapshot(cfg.duration, cfg.msgSize)
@@ -113,14 +122,15 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 // EAGAIN or until the wire-level stop token arrives.
 func drainSingleSpotUntilStop(
 	subscriber *zlink.Spot,
+	part *zlink.Message,
+	topicBuffer []byte,
 	stats *perfcommon.Stats,
 	activeAt time.Time,
 	stopAt time.Time,
 	msgSize int,
 ) (bool, error) {
 	for {
-		var message zlink.TopicMessage
-		ok, err := subscriber.Subscribe(&message, zlink.RecvFlagsDontWait)
+		result, ok, err := subscriber.SubscribePart(part, topicBuffer, zlink.RecvFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				return false, nil
@@ -130,15 +140,15 @@ func drainSingleSpotUntilStop(
 		if !ok {
 			return false, nil
 		}
-		part, err := message.SinglePartOrError()
-		if err == nil && perfcommon.IsStopTokenMessage(part) {
-			_ = message.Close()
+		if result.More || !topicMatches(topicBuffer, result.TopicLen, singleSpotTopic) {
+			return false, fmt.Errorf("unexpected SPOT part metadata topic_len=%d more=%v", result.TopicLen, result.More)
+		}
+		if perfcommon.IsStopTokenMessage(part) {
 			return true, nil
 		}
-		if err == nil && stats != nil {
+		if stats != nil {
 			perfcommon.RecordMessageLatency(stats, activeAt, stopAt, msgSize, part)
 		}
-		_ = message.Close()
 	}
 }
 

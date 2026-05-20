@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	zlink "zlink.systems/zlink/contracts"
@@ -17,19 +18,27 @@ type recvSocket interface {
 func runSingleOneWay(
 	cfg benchmarkConfig,
 	receiver recvSocket,
-	send func([]byte) error,
+	sendActive func([]byte) (bool, error),
+	sendStop func([]byte) error,
 ) perfcommon.Result {
-	return runSingleOneWayWithTransient(cfg, receiver, send, perfcommon.IsTransient)
+	return runSingleOneWayWithTransient(cfg, receiver, sendActive, sendStop, perfcommon.IsTransient)
 }
 
 func runSingleOneWayWithTransient(
 	cfg benchmarkConfig,
 	receiver recvSocket,
-	send func([]byte) error,
+	sendActive func([]byte) (bool, error),
+	sendStop func([]byte) error,
 	isTransient func(error) bool,
 ) perfcommon.Result {
 	if isTransient == nil {
 		isTransient = perfcommon.IsTransient
+	}
+	if sendStop == nil {
+		sendStop = func(payload []byte) error {
+			_, err := sendActive(payload)
+			return err
+		}
 	}
 	stats := perfcommon.NewStats()
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
@@ -37,52 +46,67 @@ func runSingleOneWayWithTransient(
 	poller := perfcommon.NewSocketPoller(receiver, perfcommon.ZLinkPollIn)
 	defer poller.Close()
 
+	// perf_single_one_way.hpp run_active_phase starts the receiver thread
+	// before the sender thread. Keep that ordering so small messages do
+	// not build an initial queue before the receiver is scheduled.
+	receiverDone := make(chan error, 1)
 	go func() {
-		for time.Now().Before(window.StopAt) {
-			perfcommon.StampWindowPayload(payload, window.ActiveAt)
-			err := send(payload)
+		// PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait (-1 ms). The
+		// loop exits when the wire-level stop token arrives.
+		for {
+			event, err := poller.Wait(-1 * time.Millisecond)
 			if err != nil {
-				if isTransient(err) {
+				if perfcommon.IsTransient(err) {
 					continue
 				}
 				if os.Getenv("PERF_DEBUG") != "" {
-					fmt.Fprintf(os.Stderr, "single active send error: %v\n", err)
+					fmt.Fprintf(os.Stderr, "single active poller wait error: %v\n", err)
 				}
-				perfcommon.Must(err)
+				receiverDone <- err
+				return
+			}
+			if event == nil {
+				continue
+			}
+			if event.Events&perfcommon.ZLinkPollIn == 0 {
+				continue
+			}
+			stop, drainErr := drainSingleOneWayUntilStop(receiver, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
+			if drainErr != nil {
+				receiverDone <- drainErr
+				return
+			}
+			if stop {
+				receiverDone <- nil
+				return
 			}
 		}
-		// PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
-		// stop token. Blocking send uses bounded transient-backpressure attempts
-		// so the receiver always observes the terminator.
-		sendStopTokenSingle(send, isTransient)
 	}()
 
-	// PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait (-1 ms). The loop
-	// exits when the wire-level stop token arrives.
-	for {
-		event, err := poller.Wait(-1 * time.Millisecond)
+	for time.Now().Before(window.StopAt) {
+		perfcommon.StampWindowPayload(payload, window.ActiveAt)
+		sent, err := sendActive(payload)
 		if err != nil {
-			if perfcommon.IsTransient(err) {
+			if isTransient(err) {
 				continue
 			}
 			if os.Getenv("PERF_DEBUG") != "" {
-				fmt.Fprintf(os.Stderr, "single active poller wait error: %v\n", err)
+				fmt.Fprintf(os.Stderr, "single active send error: %v\n", err)
 			}
 			perfcommon.Must(err)
 		}
-		if event == nil {
+		if !sent {
+			runtime.Gosched()
 			continue
 		}
-		if event.Events&perfcommon.ZLinkPollIn == 0 {
-			continue
-		}
-		stop, drainErr := drainSingleOneWayUntilStop(receiver, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
-		if drainErr != nil {
-			perfcommon.Must(drainErr)
-		}
-		if stop {
-			break
-		}
+		runtime.Gosched()
+	}
+	// PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
+	// stop token. Blocking send uses bounded transient-backpressure attempts
+	// so the receiver always observes the terminator.
+	sendStopTokenSingle(sendStop, isTransient)
+	if err := <-receiverDone; err != nil {
+		perfcommon.Must(err)
 	}
 
 	return stats.Snapshot(cfg.duration, cfg.msgSize)

@@ -43,8 +43,8 @@ transport 연결이 닫히지 않는다.
 
 `AddChannel(...)`은 channel capability를 보고 client/server 또는 fanout을 추론하는
 호환 표면이다. `AddRouteChannel(...)`은 현재 `AddRouteMeshChannel(...)`로 바로
-위임하는 alias다. 이 초안은 두 API를 breaking change로 삭제하는 것을 정식 방향으로
-둔다. 새 문서와 샘플은 concrete 네 가지 구성만 사용해야 한다.
+위임하는 alias다. 이 초안은 두 API를 호환성을 깨는 변경으로 삭제하는 것을 정식
+방향으로 둔다. 새 문서와 샘플은 concrete 네 가지 구성만 사용해야 한다.
 
 SPOT으로 보내는 routed 메시지는 최종적으로 `ROUTER` socket capability가 필요하다.
 따라서 target이 될 수 있는 channel은 "channel 종류"가 아니라 "router capability를
@@ -98,7 +98,7 @@ SPOT으로 보내는 routed 메시지는 최종적으로 `ROUTER` socket capabil
 - framework는 channel id와 peer source를 관리하고, core는 실제 router 연결을
   처리한다.
 
-### 3.2 router channel attach는 폐기된 channel ROUTER attach와 다르다
+### 3.2 router channel acceptance는 폐기된 channel ROUTER attach와 다르다
 
 이 초안은 `doc/spec/draft/spot-channel-router-attach.ko.md`의 폐기된 설계를 되살리는
 문서가 아니다.
@@ -128,6 +128,8 @@ public readonly record struct ZLinkSpotRoute(
 ```
 
 - `RouterChannelId`: 어떤 router-capable channel을 타야 하는지 나타낸다.
+  이 값은 등록된 `AddClientServerChannel` 또는 `AddRouteMeshChannel` 중 router
+  capability가 있는 channel name을 가리킨다.
 - `TargetNodeRid`: target `SpotNode`의 routing id다.
 - `SpotRid`: target user `Spot`의 routing id다.
 
@@ -244,6 +246,8 @@ framework startup validation은 아래 조건을 검사한다.
 
 - `AcceptSpotRoutesFromChannel(channelName)`의 `channelName`은 등록된 channel이어야
   한다.
+- `channelName`은 정확히 하나의 router-capable channel로 해석되어야 한다. 같은
+  이름이 일반 channel registry와 route mesh registry 양쪽에 있으면 startup 실패다.
 - 대상 channel은 `AddClientServerChannel` 또는 `AddRouteMeshChannel`이어야 한다.
 - `AddClientServerChannel`은 server 쪽이 `ROUTER`인 channel 패턴이므로 허용한다.
   이 process가 반드시 server capability를 켜야 하는 것은 아니다.
@@ -294,7 +298,7 @@ zlink_spot_node_disconnect_router_channel_peer(
 - `channel_name == NULL` 또는 빈 문자열: invalid argument
 - `endpoint == NULL` 또는 빈 문자열: invalid argument
 - routed mode가 없는 `SpotNode`: invalid state
-- 같은 `(channel_name, endpoint)` 중복 connect: 성공 no-op 또는 busy no-op
+- 같은 `(channel_name, endpoint)` 중복 connect: 성공 no-op
 - discovery-owned channel에 manual connect 시도: busy
 - disconnect 대상이 없으면 not found
 
@@ -363,7 +367,7 @@ core API를 public surface로 노출해야 한다.
 binding/core 계층에서 `Attach...Discovery`라는 이름을 쓰는 것은 discovery object를
 `SpotNode`에 붙인다는 낮은 수준의 의미다. binding public API 이름은 SPOT route
 수신 의미를 드러내기 위해 `AttachSpotRouteChannelDiscovery(...)`로 둔다. framework
-사용자 표면은 `AcceptSpotRoutesFromChannel(...)`로 유지해서 channel client attach와
+사용자 표면은 `AcceptSpotRoutesFromChannel(...)`로 유지해서 channel client 연결과
 혼동하지 않게 한다.
 
 공통 규칙:
@@ -500,7 +504,7 @@ Core integration test:
   - target `Spot` handler가 payload를 받는다.
 
 - `test_spot_node_router_channel_manual_request_spot`
-  - manual attach 후 `zlink_router_request_spot()`을 호출한다.
+  - manual connect 후 `zlink_router_request_spot()`을 호출한다.
   - target `Spot`이 reply한다.
   - router channel requester가 reply payload를 받는다.
 
@@ -513,6 +517,10 @@ Core integration test:
 - `test_spot_node_router_channel_manual_and_discovery_conflict`
   - 같은 channel에 manual과 discovery를 섞으면 실패한다.
 
+- `test_spot_node_router_channel_duplicate_manual_connect_is_idempotent`
+  - 같은 `(channel_name, endpoint)`를 두 번 connect해도 두 번째 호출은 성공 no-op이다.
+  - 중복 호출 때문에 peer 상태가 두 개 생기면 안 된다.
+
 - `test_spot_node_router_channel_rejects_invalid_channel_name`
   - 빈 channel name과 NULL channel name을 거부한다.
 
@@ -521,7 +529,7 @@ Core integration test:
 각 binding 테스트:
 
 - public `SpotNode.ConnectRouterChannelPeer(...)`가 core API를 호출한다.
-- duplicate connect는 계약대로 처리된다.
+- duplicate connect는 성공 no-op으로 처리된다.
 - disconnect unknown endpoint는 not found 또는 false result로 매핑된다.
 - discovery attach는 public discovery object만 받는다.
 - framework adapter가 public binding API만 사용한다.
@@ -537,6 +545,7 @@ Framework 테스트:
 - `AddSpotNode_AcceptSpotRoutesFromChannel_RouteMesh_AllowsRouterSendToSpot`
 - `AcceptSpotRoutesFromChannel_RejectsFanoutChannel`
 - `AcceptSpotRoutesFromChannel_RejectsDealerMeshChannel`
+- `AcceptSpotRoutesFromChannel_RejectsAmbiguousChannelName`
 - `AcceptSpotRoutesFromChannel_RequiresEnableRouter`
 - `AcceptSpotRoutesFromChannel_ManualConnections_AreApplied`
 - `AcceptSpotRoutesFromChannel_DiscoveryConnections_AreApplied`

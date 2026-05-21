@@ -4,7 +4,7 @@ internal static class CreateGameHttpHandler
 {
     public static async Task<IResult> HandleAsync(
         CreateGameHttpReq request,
-        IZLinkClientServerClient client,
+        IZLinkClient client,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {

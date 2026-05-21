@@ -1059,6 +1059,124 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void ChannelBuilder_PublicSurface_Matches_HandlerAndEgressCapabilities()
+    {
+        var clientServerMethods = PublicInterfaceMethods(typeof(IZLinkClientServerChannelBuilder));
+        var routeMeshMethods = PublicInterfaceMethods(typeof(IZLinkRouteMeshChannelBuilder));
+        var fanoutMethods = PublicInterfaceMethods(typeof(IZLinkFanoutChannelBuilder));
+        var dealerMeshMethods = PublicInterfaceMethods(typeof(IZLinkDealerMeshChannelBuilder));
+
+        Assert.Contains(
+            clientServerMethods,
+            static method => method.Name == nameof(IZLinkClientServerChannelBuilder.MapHandlerGroup)
+                && method.GetParameters() is [{ ParameterType: var parameterType }]
+                && parameterType == typeof(string));
+        Assert.Contains(
+            clientServerMethods,
+            static method => method.Name == nameof(IZLinkClientServerChannelBuilder.AddSendHandler));
+        Assert.Contains(
+            clientServerMethods,
+            static method => method.Name == nameof(IZLinkClientServerChannelBuilder.AddRequestHandler));
+        Assert.Contains(
+            clientServerMethods,
+            static method => method.Name == nameof(IZLinkClientServerChannelBuilder.EnableSpotRouteEgress)
+                && method.GetParameters() is [{ ParameterType: var parameterType }]
+                && parameterType == typeof(string));
+
+        Assert.Contains(
+            routeMeshMethods,
+            static method => method.Name == nameof(IZLinkRouteMeshChannelBuilder.MapHandlerGroup)
+                && method.GetParameters() is [{ ParameterType: var parameterType }]
+                && parameterType == typeof(string));
+        Assert.Contains(
+            routeMeshMethods,
+            static method => method.Name == nameof(IZLinkRouteMeshChannelBuilder.AddSendHandler));
+        Assert.Contains(
+            routeMeshMethods,
+            static method => method.Name == nameof(IZLinkRouteMeshChannelBuilder.AddRequestHandler));
+        Assert.Contains(
+            routeMeshMethods,
+            static method => method.Name == nameof(IZLinkRouteMeshChannelBuilder.EnableSpotRouteEgress)
+                && method.GetParameters() is [{ ParameterType: var parameterType }]
+                && parameterType == typeof(string));
+
+        Assert.Contains(
+            fanoutMethods,
+            static method => method.Name == nameof(IZLinkFanoutChannelBuilder.MapHandlerGroup)
+                && method.GetParameters() is [{ ParameterType: var parameterType }]
+                && parameterType == typeof(string));
+        Assert.Contains(
+            fanoutMethods,
+            static method => method.Name == nameof(IZLinkFanoutChannelBuilder.AddPublishHandler));
+        Assert.DoesNotContain(
+            fanoutMethods,
+            static method => method.Name is "AddSendHandler" or "AddRequestHandler" or "EnableSpotRouteEgress");
+
+        Assert.DoesNotContain(
+            dealerMeshMethods,
+            static method => method.Name is "MapHandlerGroup" or "AddSendHandler" or "AddRequestHandler" or "AddPublishHandler" or "EnableSpotRouteEgress");
+
+        static IReadOnlyList<System.Reflection.MethodInfo> PublicInterfaceMethods(Type type)
+        {
+            return type.GetInterfaces()
+                .Append(type)
+                .SelectMany(static interfaceType => interfaceType.GetMethods())
+                .ToArray();
+        }
+    }
+
+    [Fact]
+    public void RoutedSpotClient_DI_RequiresRoutedSpotEgressCapability()
+    {
+        var withoutEgress = new ServiceCollection();
+        withoutEgress.AddZLinkFramework(options =>
+        {
+            options.AddClientServerChannel("gateway.client", channel =>
+            {
+                channel.EnableClient(client =>
+                    client.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7101")));
+            });
+        });
+
+        using (var provider = withoutEgress.BuildServiceProvider())
+        {
+            Assert.Null(provider.GetService<IZLinkRoutedSpotClient>());
+        }
+
+        var clientServerEgress = new ServiceCollection();
+        clientServerEgress.AddZLinkFramework(options =>
+        {
+            options.AddClientServerChannel("gateway.client", channel =>
+            {
+                channel.EnableClient(client =>
+                    client.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7201")));
+                channel.EnableSpotRouteEgress("play.route");
+            });
+        });
+
+        using (var provider = clientServerEgress.BuildServiceProvider())
+        {
+            Assert.NotNull(provider.GetService<IZLinkRoutedSpotClient>());
+        }
+
+        var routeMeshEgress = new ServiceCollection();
+        routeMeshEgress.AddZLinkFramework(options =>
+        {
+            options.AddRouteMeshChannel("gateway.route", channel =>
+            {
+                channel.Bind("tcp://127.0.0.1:7301");
+                channel.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7201"));
+                channel.EnableSpotRouteEgress("play.route");
+            });
+        });
+
+        using (var provider = routeMeshEgress.BuildServiceProvider())
+        {
+            Assert.NotNull(provider.GetService<IZLinkRoutedSpotClient>());
+        }
+    }
+
+    [Fact]
     public void AddZLinkFramework_Throws_WhenPublisherHasNoBindEndpoint()
     {
         var services = new ServiceCollection();

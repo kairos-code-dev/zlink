@@ -50,6 +50,11 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         return FromBytes(Encoding.UTF8.GetBytes(value));
     }
 
+    public static RoutingId Of(string value)
+    {
+        return FromUtf8(value);
+    }
+
     public static RoutingId FromString(string value)
     {
         if (value == null)

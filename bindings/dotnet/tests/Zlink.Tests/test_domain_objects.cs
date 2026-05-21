@@ -11,12 +11,14 @@ public sealed class test_domain_objects
     {
         RoutingId plain = RoutingId.FromBytes(Encoding.UTF8.GetBytes("dealer-1"));
         RoutingId utf8 = RoutingId.FromUtf8("dealer-1");
+        RoutingId alias = RoutingId.Of("dealer-1");
         RoutingId binary = RoutingId.FromBytes(new byte[] { 0x01, 0x02, 0xA0, 0xFF });
         RoutingId parsed = RoutingId.FromString("0102A0ff");
 
         Assert.Equal(plain.ToHex(), plain.ToString());
         Assert.Equal("6465616c65722d31", plain.ToString());
         Assert.Equal(plain, utf8);
+        Assert.Equal(plain, alias);
         Assert.Equal("0102a0ff", binary.ToHex());
         Assert.Equal(binary.ToHex(), binary.ToString());
         Assert.Equal(binary, parsed);

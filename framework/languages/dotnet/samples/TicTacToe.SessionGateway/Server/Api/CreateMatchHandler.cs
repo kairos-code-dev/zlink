@@ -6,7 +6,7 @@ using Zlink.Framework.Contracts.Handlers;
 namespace TicTacToe.SessionGateway.Api;
 
 [ZLinkHandlerGroup("api")]
-internal sealed class CreateMatchHandler(IZLinkClientServerClient client)
+internal sealed class CreateMatchHandler(IZLinkClient client)
 {
     [ZLinkRequest]
     public async ValueTask<CreateMatchRes> CreateMatch(

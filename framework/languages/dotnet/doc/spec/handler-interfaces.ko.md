@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../guide/04-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](./aspnet-core-channel-messaging.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../guide/10-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](./aspnet-core-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
@@ -90,8 +90,8 @@
 | options | `IZLinkDispatchOptions` | dispatch mode configuration | 4.4.3 |
 | options | `IZLinkCodecRegistryBuilder` | codec registry builder | 6.1 |
 | serializer | `IZLinkMessageSerializer` | `Message` payload 직렬화/역직렬화 | 4.5 |
-| client | `IZLinkClientServerClient` | client-server channel outbound client base | 5.1 |
-| client | `IZLinkClient` | 서버 간 outbound client | 5.1 |
+| client | `IZLinkClientServerClient` | client-server request/send 와 같은 좁은 method set | 5.1 |
+| client | `IZLinkClient` | 일반 channel request/send outbound client(client-server, dealer mesh) | 5.1 |
 | client | `IZLinkSpotClient` | SPOT outbound client | 5.2 |
 | client | `IZLinkRoutedSpotClient` | current Spot 없이 명시한 egress channel 로 target Spot 호출 | 5.2.1 |
 | client | `IZLinkSpotMeshPublisherClient` | spot mesh publisher client base | 5.3 |
@@ -1837,12 +1837,16 @@ public interface IZLinkClient : IZLinkClientServerClient
 }
 ```
 
-`IZLinkClient` 는 `IZLinkClientServerClient` 를 그대로 상속한다. 그래서
-양쪽이 다 동작한다.
+`IZLinkClient` 는 일반 channel request/send outbound 표면이다. 호출자는
+`channelName`만 넘기고, runtime 은 등록된 channel bundle 을 보고 client-server
+channel 이면 local client DEALER socket 을, dealer mesh channel 이면 mesh DEALER
+socket 을 선택한다.
 
-- legacy `IZLinkClient` 를 주입받는 코드는 그대로 동작한다.
-- 새로 작성하는 client-server outbound 코드는 `IZLinkClientServerClient`
-  를 직접 받아도 무방하다.
+`IZLinkClientServerClient` 는 같은 method set 을 가진 좁은 base interface 로
+남긴다. 특정 코드가 client-server channel 만 다룬다는 의도를 드러내고 싶을 때
+주입받을 수 있다. 다만 일반 channel-to-channel 예제와 새 샘플 코드는
+client-server 와 dealer mesh 를 같은 호출 표면으로 설명하기 위해 `IZLinkClient`를
+기본으로 사용한다.
 
 runtime 의 채널 구성 방식은 다음과 같다.
 
@@ -3931,7 +3935,7 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 | `IZLinkEventPublisher`, `IZLinkFanoutPublisher` | 항상 등록한다. publisher capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkChannelConnectionManager` | 항상 등록한다. 대상 channel capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotConnectionManager` | `SpotNode` 가 하나 이상 있을 때 등록한다 |
-| `IZLinkRoutedSpotClient` | `EnableSpotRouteEgress(...)`가 켜진 channel 또는 route mesh channel 이 하나 이상 있을 때 등록한다 |
+| `IZLinkRoutedSpotClient` | client-server channel 또는 route mesh channel 중 `EnableSpotRouteEgress(...)`가 켜진 local egress channel 이 하나 이상 있을 때 등록한다 |
 | `IZLinkSpotPublisherClient`, `IZLinkSpotMeshPublisherClient` | Spot publisher client capability 가 하나 이상 있을 때 등록한다 |
 | `IZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록한다 |
 | `IZLinkSessionProxyFactory`, `IZLinkActorSessionClient` | actor-session binding store 와 route mesh channel 이 모두 있을 때 등록한다 |

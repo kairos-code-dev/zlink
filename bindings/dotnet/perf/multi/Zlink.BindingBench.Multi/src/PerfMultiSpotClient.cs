@@ -15,8 +15,8 @@ internal static class PerfMultiSpotClient
     private const int TopicBufferSize = 256;
     private const string ControlTopic = Topic;
     private const int SpotSocketTag = 0;
-    private const int ControlDeadlineTag = -1;
-    private const int ReadyRepeatTag = -2;
+    private const int ControlDeadlineTag = int.MaxValue;
+    private const int ReadyRepeatTag = int.MaxValue - 1;
     private static readonly byte[] TopicBytes = Encoding.ASCII.GetBytes(Topic);
     internal static int Run(PerfOptions options)
     {
@@ -203,7 +203,8 @@ internal static class PerfMultiSpotClient
             {
             }
 
-            if (!WaitForControlEvent(poller, events, PollEventFlags.PollOut))
+            if (!WaitForControlEvent(poller, events, deadlineTimer,
+                    PollEventFlags.PollOut))
                 return false;
         }
     }
@@ -236,7 +237,7 @@ internal static class PerfMultiSpotClient
             }
 
             if (!WaitForControlStartEvent(poller, events, controlPub, size,
-                    readyCount, timeoutMs, repeatTimer))
+                    readyCount, timeoutMs, deadlineTimer, repeatTimer))
                 return false;
         }
     }
@@ -258,23 +259,24 @@ internal static class PerfMultiSpotClient
 
     private static bool WaitForControlStartEvent(Poller poller,
         PollEvent[] events, Spot controlPub, int size, int readyCount,
-        int timeoutMs, Systems.Zlink.Timer repeatTimer)
+        int timeoutMs, Systems.Zlink.Timer deadlineTimer,
+        Systems.Zlink.Timer repeatTimer)
     {
         while (true)
         {
             int written = poller.Wait(events,
-                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs), out _);
+                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs));
             for (int i = 0; i < written; i++)
             {
-                if (events[i].Tag is ControlDeadlineTag)
+                if (events[i].Slot == (nuint)ControlDeadlineTag)
                 {
-                    _ = events[i].Timer?.Recv();
+                    _ = deadlineTimer.Recv();
                     return false;
                 }
 
-                if (events[i].Tag is ReadyRepeatTag)
+                if (events[i].Slot == (nuint)ReadyRepeatTag)
                 {
-                    _ = events[i].Timer?.Recv();
+                    _ = repeatTimer.Recv();
                     if (!PublishReadyCount(controlPub, size, readyCount,
                             timeoutMs))
                         return false;
@@ -282,7 +284,7 @@ internal static class PerfMultiSpotClient
                     continue;
                 }
 
-                if (events[i].Tag is SpotSocketTag
+                if (events[i].Slot == (nuint)SpotSocketTag
                     && (events[i].Revents & PollEventFlags.PollIn) != 0)
                     return true;
             }
@@ -290,21 +292,21 @@ internal static class PerfMultiSpotClient
     }
 
     private static bool WaitForControlEvent(Poller poller, PollEvent[] events,
-        PollEventFlags required)
+        Systems.Zlink.Timer deadlineTimer, PollEventFlags required)
     {
         while (true)
         {
             int written = poller.Wait(events,
-                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs), out _);
+                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs));
             for (int i = 0; i < written; i++)
             {
-                if (events[i].Tag is ControlDeadlineTag)
+                if (events[i].Slot == (nuint)ControlDeadlineTag)
                 {
-                    _ = events[i].Timer?.Recv();
+                    _ = deadlineTimer.Recv();
                     return false;
                 }
 
-                if (events[i].Tag is SpotSocketTag
+                if (events[i].Slot == (nuint)SpotSocketTag
                     && (events[i].Revents & required) != 0)
                     return true;
             }

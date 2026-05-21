@@ -4,9 +4,9 @@ namespace Bingo.Server.Play;
 
 [ZLinkHandlerGroup("play")]
 internal sealed class AllocateBingoRoomHandler(BingoRoomDirectory rooms)
+    : IZLinkRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes>
 {
-    [ZLinkRequest]
-    public async ValueTask<AllocateBingoRoomRes> AllocateBingoRoom(
+    public async ValueTask<AllocateBingoRoomRes> HandleAsync(
         AllocateBingoRoomReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)

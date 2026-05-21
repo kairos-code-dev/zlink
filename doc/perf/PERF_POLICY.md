@@ -138,6 +138,20 @@ suite별 정책 문서에 반영한 다음 다른 바인딩으로 옮긴다.
 - direct message callback 경로는 perf에서 측정하지 않는다. callback의 동기화
   메커니즘(TSFN, GIL, mutex 등)은 언어별 런타임에 의존하므로 일관된 비교
   기준이 불가능하다.
+- request/reply completion 도 recv 모델의 일부로 본다. `bindings/c/perf`가
+  `ZLINK_POLLCOMPLETION`을 등록한 poller wait 안에서 request completion을
+  drain하므로, 모든 binding perf는 같은 의미의 public poller loop에서
+  `POLLCOMPLETION`을 등록해야 한다. `ZLINK_POLLCOMPLETION`은 completion
+  drain 요청이므로 `POLLIN`/`POLLOUT`과 섞지 않고 completion 대상에 단독으로
+  등록한다. request completion 처리를 위해
+  별도 progress thread, timer, pipe/eventfd wake, `setInterval`, 짧은 sleep,
+  busy polling을 hot path에 두면 C perf와 같은 측정 의미가 아니므로 금지한다.
+- binding public async/request API가 일반 사용자 편의를 위해 내부 progress
+  pump를 제공하더라도, perf에서 `POLLCOMPLETION`을 등록한 외부 poller가
+  completion을 소유하는 동안에는 그 내부 pump가 같은 completion queue를
+  경쟁해서 drain하면 안 된다. 이 경우 binding 내부 구현은 외부 poller 등록을
+  감지해 자동 pump를 비활성화하고, completion drain은 perf의 단일 active
+  poll loop에 맡겨야 한다.
 - 다만 아래 두 예외는 perf 정책 surface에 포함한다.
   - `multi SPOT`의 dispatch event와 `single SPOT`의 `zlink_spot_subscribe()`
     recv drain: direct message callback이 아니라 public recv activation/drain

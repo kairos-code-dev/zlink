@@ -1,5 +1,3 @@
-using Bingo.Server.Infrastructure;
-using Bingo.Server.Infrastructure.Configuration;
 using Bingo.Shared.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -32,7 +30,7 @@ public static class PlayServerHostFactory
             options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
             {
                 channel.EnableServer(server => server.Bind(topology.PlayChannelEndpoint));
-                channel.MapHandlerGroup("play");
+                channel.AddHandlerGroup("play");
             });
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {

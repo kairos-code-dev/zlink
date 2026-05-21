@@ -209,7 +209,7 @@ internal static class PerfDealerRouter
 
         using var poller = new Poller();
         var events = new PollEvent[1];
-        poller.Add(receiver, PollEventFlags.PollIn);
+        poller.Add(receiver, PollEventFlags.PollIn, 0);
         using var maybe = new Received();
         try
         {

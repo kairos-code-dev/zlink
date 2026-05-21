@@ -15,7 +15,7 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
         configure?.Invoke(new ZLinkChannelClientCapabilityBuilder(registration.Client));
     }
 
-    public void MapHandlerGroup(string groupName)
+    public void AddHandlerGroup(string groupName)
     {
         ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
     }
@@ -30,6 +30,21 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
             packetName));
     }
 
+    public void AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+            typeof(THandler),
+            typeof(IZLinkSendHandler<>),
+            "send");
+        var args = handlerInterface.GetGenericArguments();
+        registration.SendHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            args[0],
+            null,
+            packetName));
+    }
+
     public void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>
     {
@@ -37,6 +52,21 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
             typeof(THandler),
             typeof(TRequest),
             typeof(TReply),
+            packetName));
+    }
+
+    public void AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+            typeof(THandler),
+            typeof(IZLinkRequestHandler<,>),
+            "request");
+        var args = handlerInterface.GetGenericArguments();
+        registration.RequestHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            args[0],
+            args[1],
             packetName));
     }
 
@@ -62,7 +92,7 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
         configure?.Invoke(new ZLinkChannelSubscriberCapabilityBuilder(registration.Subscriber));
     }
 
-    public void MapHandlerGroup(string groupName)
+    public void AddHandlerGroup(string groupName)
     {
         ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
     }
@@ -73,6 +103,21 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
         registration.PublishHandlers.Add(new ZLinkChannelHandlerRegistration(
             typeof(THandler),
             typeof(TMessage),
+            null,
+            packetName));
+    }
+
+    public void AddPublishHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+            typeof(THandler),
+            typeof(IZLinkPublishHandler<>),
+            "publish");
+        var args = handlerInterface.GetGenericArguments();
+        registration.PublishHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            args[0],
             null,
             packetName));
     }
@@ -100,6 +145,30 @@ internal static class ZLinkHandlerGroupBuilderSupport
         }
 
         registration.HandlerGroups.Add(groupName);
+    }
+}
+
+internal static class ZLinkTypedHandlerBuilderSupport
+{
+    public static Type ResolveSingleHandlerInterface(
+        Type handlerType,
+        Type handlerInterfaceDefinition,
+        string handlerKind)
+    {
+        var matches = handlerType
+            .GetInterfaces()
+            .Where(handlerInterface => handlerInterface.IsGenericType
+                && handlerInterface.GetGenericTypeDefinition() == handlerInterfaceDefinition)
+            .ToArray();
+
+        return matches.Length switch
+        {
+            1 => matches[0],
+            0 => throw new ZLinkConfigurationException(
+                $"Handler '{handlerType.FullName}' must implement {handlerKind} handler interface '{handlerInterfaceDefinition.Name}'."),
+            _ => throw new ZLinkConfigurationException(
+                $"Handler '{handlerType.FullName}' implements multiple {handlerKind} handler interfaces. Use the overload with explicit message types."),
+        };
     }
 }
 

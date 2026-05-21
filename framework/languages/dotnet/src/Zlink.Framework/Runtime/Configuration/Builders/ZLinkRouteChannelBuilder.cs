@@ -28,7 +28,7 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
         configure(new ZLinkMutableConnections(registration.ManualConnections));
     }
 
-    public void MapHandlerGroup(string groupName)
+    public void AddHandlerGroup(string groupName)
     {
         if (string.IsNullOrWhiteSpace(groupName))
         {
@@ -48,6 +48,21 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
             packetName));
     }
 
+    public void AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+            typeof(THandler),
+            typeof(IZLinkRouteSendHandler<>),
+            "route send");
+        var args = handlerInterface.GetGenericArguments();
+        registration.SendHandlers.Add(new ZLinkRouteHandlerRegistration(
+            typeof(THandler),
+            args[0],
+            null,
+            packetName));
+    }
+
     public void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>
     {
@@ -55,6 +70,21 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
             typeof(THandler),
             typeof(TRequest),
             typeof(TReply),
+            packetName));
+    }
+
+    public void AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+            typeof(THandler),
+            typeof(IZLinkRouteRequestHandler<,>),
+            "route request");
+        var args = handlerInterface.GetGenericArguments();
+        registration.RequestHandlers.Add(new ZLinkRouteHandlerRegistration(
+            typeof(THandler),
+            args[0],
+            args[1],
             packetName));
     }
 

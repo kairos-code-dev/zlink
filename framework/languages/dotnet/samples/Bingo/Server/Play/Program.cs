@@ -1,6 +1,5 @@
-using Bingo.Server.Infrastructure;
-using Bingo.Server.Infrastructure.Configuration;
 using Bingo.Server.Play;
+using Bingo.Shared.Configuration;
 using Microsoft.Extensions.Hosting;
 
 var topology = SampleTopology.Create();

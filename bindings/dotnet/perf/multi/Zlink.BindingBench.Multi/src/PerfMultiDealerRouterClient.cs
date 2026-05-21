@@ -139,7 +139,8 @@ internal static class PerfMultiDealerRouterClient
 
             for (int i = 0; i < readyCount; i++)
                 HandleClientEvent(pollManager, slots,
-                    ReadySocketIndexAt(pollManager, i), eventMasks, msgSize,
+                    ReadySocketIndexAt(pollManager, i),
+                    ReadySocketMaskAt(pollManager, i), eventMasks, msgSize,
                     runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
                     activeDeadlineTicks: benchDeadlineTicks);
         }
@@ -193,15 +194,16 @@ internal static class PerfMultiDealerRouterClient
 
     private static void HandleClientEvent(PollManager pollManager,
         DealerRouterClientSlot[] slots,
-        int slotIndex, PollEventFlags[] eventMasks,
+        int slotIndex, PollEventFlags readyMask, PollEventFlags[] eventMasks,
         int msgSize, uint runId, PerfPhase phase, ref ulong seq,
         DealerRouterMetrics metrics, bool allowSend, long activeDeadlineTicks)
     {
         _ = activeDeadlineTicks;
+        _ = pollManager;
         DealerRouterClientSlot slot = slots[slotIndex];
 
         if (allowSend
-            && IsSocketWriteReady(pollManager, slotIndex)
+            && (readyMask & PollEventFlags.PollOut) != 0
             && slot.WaitingForWritable
             && !slot.WaitingForReply)
         {
@@ -213,8 +215,7 @@ internal static class PerfMultiDealerRouterClient
             }
         }
 
-        bool readReady = IsSocketReadReady(pollManager, slotIndex);
-        if (!readReady)
+        if ((readyMask & PollEventFlags.PollIn) == 0)
             return;
 
         DealerSocket dealerSock = (DealerSocket)slot.Socket;

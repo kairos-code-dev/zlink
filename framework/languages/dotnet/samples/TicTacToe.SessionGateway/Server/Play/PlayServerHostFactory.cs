@@ -33,7 +33,7 @@ public static class PlayServerHostFactory
                 {
                     server.Bind(topology.PlayChannelEndpoint);
                 });
-                channel.MapHandlerGroup("play");
+                channel.AddHandlerGroup("play");
             });
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
             options.UseRegistryActorRoutes("tictactoe");

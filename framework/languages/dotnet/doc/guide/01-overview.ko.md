@@ -65,7 +65,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddClientServerChannel("price", channel =>
     {
         channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7301"));
-        channel.AddRequestHandler<GetPriceHandler, PriceRequest, PriceReply>();
+        channel.AddRequestHandler<GetPriceHandler>();
     });
 });
 
@@ -131,7 +131,7 @@ flowchart LR
   framework 친화적으로 감싼다.
 
 framework 는 handler 를 자동으로 모든 channel 에 열지 않는다. assembly scan 은
-handler 를 **찾는** 단계이고, 실제 노출은 `MapHandlerGroup(...)` 또는 개별 typed
+handler 를 **찾는** 단계이고, 실제 노출은 `AddHandlerGroup(...)` 또는 개별 typed
 handler registration 이 정한다. 자세한 규칙은
 [04-channel-messaging](./04-channel-messaging.ko.md) §3 에서 다룬다.
 
@@ -158,7 +158,7 @@ handler registration 이 정한다. 자세한 규칙은
 
 이 가이드가 설명하는 표면은 [spec/](../spec/handler-interfaces.ko.md) 의 draft
 계약을 따른다. 구현이 진행되는 동안에도 인터페이스의 모양과 동사(`Request`,
-`Submit`, `Bind`, `MapHandlerGroup` 등)는 고정 방향으로 유지된다. 세부 필드까지
+`Submit`, `Bind`, `AddHandlerGroup` 등)는 고정 방향으로 유지된다. 세부 필드까지
 정확한 정식 정의가 필요하면 항상 spec 문서를 교차 참조한다.
 
 ## 9. 이 가이드 읽는 순서

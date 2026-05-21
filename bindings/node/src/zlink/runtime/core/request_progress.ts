@@ -11,9 +11,13 @@ interface RequestProgressState {
 }
 
 const requestProgressByHandle = new Map<unknown, RequestProgressState>();
+const externalProgressByHandle = new Map<unknown, number>();
 
 export function startRequestProgress(handle: unknown, pump: RequestProgressFn): () => void {
   void pump;
+  if ((externalProgressByHandle.get(handle) ?? 0) > 0) {
+    return () => {};
+  }
   const existing = requestProgressByHandle.get(handle);
   if (existing) {
     existing.refCount += 1;
@@ -39,6 +43,22 @@ export function startRequestProgress(handle: unknown, pump: RequestProgressFn): 
   state.interval.unref();
   requestProgressByHandle.set(handle, state);
   return () => releaseRequestProgress(handle);
+}
+
+export function acquireExternalRequestProgress(handle: unknown): void {
+  externalProgressByHandle.set(
+    handle,
+    (externalProgressByHandle.get(handle) ?? 0) + 1
+  );
+}
+
+export function releaseExternalRequestProgress(handle: unknown): void {
+  const count = externalProgressByHandle.get(handle) ?? 0;
+  if (count <= 1) {
+    externalProgressByHandle.delete(handle);
+    return;
+  }
+  externalProgressByHandle.set(handle, count - 1);
 }
 
 function releaseRequestProgress(handle: unknown): void {

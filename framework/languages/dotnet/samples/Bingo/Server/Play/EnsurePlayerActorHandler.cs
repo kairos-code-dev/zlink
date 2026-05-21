@@ -6,9 +6,9 @@ namespace Bingo.Server.Play;
 
 [ZLinkHandlerGroup("play")]
 internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
+    : IZLinkRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>
 {
-    [ZLinkRequest]
-    public async ValueTask<EnsurePlayerActorRes> EnsurePlayerActor(
+    public async ValueTask<EnsurePlayerActorRes> HandleAsync(
         EnsurePlayerActorReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)

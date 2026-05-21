@@ -170,7 +170,7 @@ public sealed class RouteChannelIntegrationTests
                 routed.Bind(rightEndpoint);
                 routed.ConfigureRouting(routing => routing.RoutingId = rightRid);
                 routed.UseManualConnections(peers => peers.Connect(leftEndpoint));
-                routed.MapHandlerGroup("route-shared");
+                routed.AddHandlerGroup("route-shared");
             });
         });
 

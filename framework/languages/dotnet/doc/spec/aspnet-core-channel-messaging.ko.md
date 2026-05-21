@@ -88,7 +88,7 @@ builder.Services.AddZLinkFramework(options =>
         {
             server.Bind("tcp://0.0.0.0:7101");
         });
-        channel.MapHandlerGroup("api");
+        channel.AddHandlerGroup("api");
     });
 
     options.AddClientServerChannel("profile", channel =>
@@ -358,18 +358,18 @@ builder.Services.AddZLinkFramework(options =>
     options.AddClientServerChannel("tictactoe.api", channel =>
     {
         channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
-        channel.MapHandlerGroup("api");
+        channel.AddHandlerGroup("api");
     });
 
     options.AddClientServerChannel("tictactoe.admin", channel =>
     {
         channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7102"));
-        channel.MapHandlerGroup("admin");
+        channel.AddHandlerGroup("admin");
     });
 });
 ```
 
-`channel.MapHandlerGroup("api")` 를 풀어 읽으면 다음과 같다.
+`channel.AddHandlerGroup("api")` 를 풀어 읽으면 다음과 같다.
 
 > "이 channel 로 들어온 메시지는, `[ZLinkHandlerGroup("api")]` 가 붙은 모든 handler
 > 클래스의 메서드 중에서, packet kind / packet name 이 맞는 것을 호출한다."
@@ -380,7 +380,7 @@ builder.Services.AddZLinkFramework(options =>
   있다. 그래서 같은 `api` 그룹을, `tictactoe.api` 와 `chess.api` 두 channel 에 동시에
   매핑할 수 있다.
 - 한 channel 에 여러 그룹을 함께 매핑할 수도 있다.
-  예: `channel.MapHandlerGroup("api"); channel.MapHandlerGroup("debug");`.
+  예: `channel.AddHandlerGroup("api"); channel.AddHandlerGroup("debug");`.
 - handler 코드는 어느 물리 channel 로 매핑될지 신경 쓸 필요가 없다. 그룹 이름만 알면
   된다. 배포 시점에 channel topology 가 바뀌어도, handler 코드는 그대로 유지된다.
 
@@ -393,7 +393,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddFanoutChannel("api.events", channel =>
     {
         channel.EnableSubscriber();
-        channel.MapHandlerGroup("api.events");
+        channel.AddHandlerGroup("api.events");
     });
 });
 ```
@@ -470,7 +470,7 @@ request / command dispatch key 는 다음 조합이다.
 
 내부 매핑 단계는 다음 순서로 진행된다.
 
-1. channel 등록 시점에 `channel.MapHandlerGroup("api")` 또는
+1. channel 등록 시점에 `channel.AddHandlerGroup("api")` 또는
    `channel.AddRequestHandler<...>()` 같은 개별 registration 으로 노출 대상을 고정한다.
 2. group 에 속한 handler 와 개별 typed handler 를 packet kind / packet name 기준으로
    collect 한다. 둘 다 없으면 그 channel 의 application handler 후보는 0개다.
@@ -1081,7 +1081,7 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 
 [^handlergroup]: **handler group** 은 handler 클래스에 `[ZLinkHandlerGroup("...")]` 로
     붙이는 논리적 묶음 이름이다. 실제 channel 이름과는 분리된 별도 namespace 이며, channel
-    등록 쪽에서 `channel.MapHandlerGroup("...")` 로 끌어다 붙여 어느 channel 에 노출할지
+    등록 쪽에서 `channel.AddHandlerGroup("...")` 로 끌어다 붙여 어느 channel 에 노출할지
     결정한다.
 
 [^dispatch]: **dispatch** 는 들어온 메시지를 packet kind 와 packet name 같은 키로 보고,

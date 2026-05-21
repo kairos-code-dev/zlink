@@ -82,6 +82,8 @@ public sealed class CacheRefreshedEventHandler
   연결 취소 토큰을 제공한다. publish context 는 추가로 topic/source 를 제공한다.
 - handler class 는 dispatch 키가 아니라 **코드 조직 단위**다. 메서드를 한 class 에
   주제별로 묶어도, packet 마다 class 를 따로 둬도 동작은 같다.
+- interface 기반 handler 는 컴파일 타임 타입 체크가 가장 강하다. `HandleAsync(...)`
+  의 payload, context, return 타입이 interface 계약과 맞지 않으면 컴파일이 실패한다.
 
 ### attribute 기반 메서드 handler
 
@@ -118,15 +120,26 @@ public sealed class UserHandlers
 
 - 메서드 시그니처는 `(payload, context?, CancellationToken?)` 순서이며 context 와
   토큰은 생략할 수 있다.
+- attribute 기반 handler 는 한 class 에 여러 request/send/publish 메서드를 묶기
+  쉽지만, interface 기반처럼 handler 계약을 컴파일 타임에 강하게 고정하지는 않는다.
+  잘못된 context 타입이나 반환 타입은 framework 의 scan/validation 또는 실행 단계에서
+  드러날 수 있다.
 - `[ZLinkRequest]`/`[ZLinkSend]`/`[ZLinkPublish]` 는 **channel 이름을 받지
   않는다.** channel 매핑은 등록이 소유한다(§3).
+
+handler 작성 방식은 다음 기준으로 고른다.
+
+- handler 하나를 class 하나로 분리하고 타입 안전성을 우선하면 interface 기반을 쓴다.
+- 같은 주제의 handler 메서드를 한 class 에 여러 개 담고 싶으면 attribute 기반을 쓴다.
+- 샘플 프로젝트는 channel 노출 방식은 `AddHandlerGroup(...)`으로 통일하되, handler
+  작성 방식은 위 차이에 따라 선택한다.
 
 ## 3. handler 를 channel 에 노출하기
 
 framework 는 발견한 handler 를 모든 channel 에 자동으로 열지 않는다. **발견과
 노출은 별개 단계**다.
 
-### 방법 A — group + MapHandlerGroup (여러 handler 묶음)
+### 방법 A — group + AddHandlerGroup (여러 handler 묶음)
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -134,7 +147,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddClientServerChannel("api", channel =>
     {
         channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
-        channel.MapHandlerGroup("api");          // [ZLinkHandlerGroup("api")] 묶음 노출
+        channel.AddHandlerGroup("api");          // [ZLinkHandlerGroup("api")] 묶음 노출
     });
 
     options.AddHandlersFromAssemblyOf<Program>(); // handler 후보 발견(노출 아님)
@@ -151,8 +164,8 @@ builder.Services.AddZLinkFramework(options =>
 options.AddClientServerChannel("price", channel =>
 {
     channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7301"));
-    channel.AddRequestHandler<GetPriceHandler, PriceRequest, PriceReply>();
-    channel.AddSendHandler<RefreshCacheHandler, RefreshCacheCommand>();
+    channel.AddRequestHandler<GetPriceHandler>();
+    channel.AddSendHandler<RefreshCacheHandler>();
 });
 ```
 
@@ -311,7 +324,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddClientServerChannel("api", channel =>
     {
         channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
-        channel.MapHandlerGroup("api");
+        channel.AddHandlerGroup("api");
     });
 
     // 이벤트 발행/구독 channel
@@ -319,7 +332,7 @@ builder.Services.AddZLinkFramework(options =>
     {
         channel.EnablePublisher(publisher => publisher.Bind("tcp://0.0.0.0:7201"));
         channel.EnableSubscriber();
-        channel.MapHandlerGroup("api.events");
+        channel.AddHandlerGroup("api.events");
     });
 
     // 다른 서비스로 나가는 outbound channel
@@ -376,7 +389,7 @@ public sealed class UserCacheRefreshedEventHandler
 ## 9. 자주 막히는 곳
 
 - **handler 가 안 불린다** → `AddHandlersFromAssemblyOf(...)` 만으로는 노출되지
-  않는다. `MapHandlerGroup(...)` 또는 typed registration 이 필요하다(§3).
+  않는다. `AddHandlerGroup(...)` 또는 typed registration 이 필요하다(§3).
 - **`ZLinkConfigurationException`** → channel 이 없거나 해당 capability 가 없는
   경우. 등록을 확인한다.
 - **시작 시 예외** → channel 이름 중복, 같은 channel `kind + packet 이름` 중복,

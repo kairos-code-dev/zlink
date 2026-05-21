@@ -47,9 +47,9 @@ public sealed class MonitorReadyPoller : IDisposable
 
 public sealed class SocketReadyPoller : IDisposable
 {
-    private PollEventFlags[] _revents = Array.Empty<PollEventFlags>();
     private PollEvent[] _readyEvents = Array.Empty<PollEvent>();
     private int[] _readyIndexes = Array.Empty<int>();
+    private PollEventFlags[] _readyMasks = Array.Empty<PollEventFlags>();
     private Poller? _poller;
     private SocketBase[] _registeredSockets = Array.Empty<SocketBase>();
     private PollEventFlags[] _registeredMasks = Array.Empty<PollEventFlags>();
@@ -65,7 +65,6 @@ public sealed class SocketReadyPoller : IDisposable
             return 0;
 
         EnsureCapacity(count);
-        Array.Clear(_revents, 0, count);
         _readyCount = 0;
         EnsurePollerState(sockets, eventMasks, count);
 
@@ -75,7 +74,7 @@ public sealed class SocketReadyPoller : IDisposable
                 return 0;
 
             int written = _poller.Wait(_readyEvents.AsSpan(0, count),
-                TimeSpan.FromMilliseconds(timeoutMs), out _);
+                TimeSpan.FromMilliseconds(timeoutMs));
             if (written == 0)
                 return 0;
 
@@ -83,8 +82,10 @@ public sealed class SocketReadyPoller : IDisposable
             for (int i = 0; i < written; i++)
             {
                 PollEvent readyEvent = _readyEvents[i];
-                if (readyEvent.Tag is not int index)
+                nuint slot = readyEvent.Slot;
+                if (slot > (nuint)int.MaxValue)
                     continue;
+                int index = (int)slot;
                 PollEventFlags revents = readyEvent.Revents;
                 if ((uint)index >= (uint)count
                     || _registeredMasks[index] == PollEventFlags.None)
@@ -92,8 +93,8 @@ public sealed class SocketReadyPoller : IDisposable
                 if (revents == PollEventFlags.None)
                     continue;
 
-                _revents[index] = revents;
                 _readyIndexes[ready] = index;
+                _readyMasks[ready] = revents;
                 ready++;
             }
 
@@ -121,16 +122,6 @@ public sealed class SocketReadyPoller : IDisposable
         return Poll(sockets, _requestedMasks, timeoutMs);
     }
 
-    public bool IsReadReady(int index)
-    {
-        return IsReady(index, PollEventFlags.PollIn);
-    }
-
-    public bool IsWriteReady(int index)
-    {
-        return IsReady(index, PollEventFlags.PollOut);
-    }
-
     public int ReadyCount => _readyCount;
 
     public int ReadyIndexAt(int offset)
@@ -140,27 +131,27 @@ public sealed class SocketReadyPoller : IDisposable
         return _readyIndexes[offset];
     }
 
+    public PollEventFlags ReadyMaskAt(int offset)
+    {
+        if ((uint)offset >= (uint)_readyCount)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+        return _readyMasks[offset];
+    }
+
     public void Dispose()
     {
         _poller?.Dispose();
         _poller = null;
     }
 
-    private bool IsReady(int index, PollEventFlags events)
-    {
-        return index >= 0
-            && index < _revents.Length
-            && (_revents[index] & events) != 0;
-    }
-
     private void EnsureCapacity(int count)
     {
-        if (_revents.Length < count)
-            _revents = new PollEventFlags[count];
         if (_readyEvents.Length < count)
             _readyEvents = new PollEvent[count];
         if (_readyIndexes.Length < count)
             _readyIndexes = new int[count];
+        if (_readyMasks.Length < count)
+            _readyMasks = new PollEventFlags[count];
         if (_registeredSockets.Length < count)
             _registeredSockets = new SocketBase[count];
         if (_registeredMasks.Length < count)
@@ -189,7 +180,7 @@ public sealed class SocketReadyPoller : IDisposable
             {
                 if (current != PollEventFlags.None)
                 {
-                    _poller.Add(sockets[i], current, i);
+                    _poller.Add(sockets[i], current, (nuint)i);
                     _activePollerSize++;
                 }
             }
@@ -233,7 +224,7 @@ public sealed class SocketReadyPoller : IDisposable
             _registeredMasks[i] = mask;
             if (mask != PollEventFlags.None)
             {
-                _poller.Add(sockets[i], mask, i);
+                _poller.Add(sockets[i], mask, (nuint)i);
                 _activePollerSize++;
             }
         }
@@ -264,21 +255,16 @@ public sealed class PollManager : IDisposable
         return _socketPoller.Poll(sockets, events, timeoutMs);
     }
 
-    public bool IsSocketReadReady(int index)
-    {
-        return _socketPoller.IsReadReady(index);
-    }
-
-    public bool IsSocketWriteReady(int index)
-    {
-        return _socketPoller.IsWriteReady(index);
-    }
-
     public int ReadySocketCount => _socketPoller.ReadyCount;
 
     public int ReadySocketIndexAt(int offset)
     {
         return _socketPoller.ReadyIndexAt(offset);
+    }
+
+    public PollEventFlags ReadySocketMaskAt(int offset)
+    {
+        return _socketPoller.ReadyMaskAt(offset);
     }
 
     public void Dispose()

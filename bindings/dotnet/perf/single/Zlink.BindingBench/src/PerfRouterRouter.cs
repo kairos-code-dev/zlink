@@ -143,7 +143,7 @@ internal static class PerfRouterRouter
 
         using var poller = new Poller();
         var events = new PollEvent[1];
-        poller.Add(receiver, PollEventFlags.PollIn);
+        poller.Add(receiver, PollEventFlags.PollIn, 0);
         long deadlineTicks = DeadlineTicksFromMilliseconds(Math.Max(1000, timeoutMs));
         while (senderActualRoutingId == null
                && Stopwatch.GetTimestamp() < deadlineTicks)
@@ -195,7 +195,7 @@ internal static class PerfRouterRouter
 
         using var senderPoller = new Poller();
         var senderEvents = new PollEvent[1];
-        senderPoller.Add(sender, PollEventFlags.PollIn);
+        senderPoller.Add(sender, PollEventFlags.PollIn, 0);
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
             int waitMs = Math.Max(1,
@@ -317,7 +317,7 @@ internal static class PerfRouterRouter
 
         using var poller = new Poller();
         var events = new PollEvent[1];
-        poller.Add(receiver, PollEventFlags.PollIn);
+        poller.Add(receiver, PollEventFlags.PollIn, 0);
         var receivedBuffer = new Received();
         // PERF_SINGLE_TEST_POLICY § 1.4: signal-driven (-1) poller wait, no
         // sender_done atomic flag, no short-poll/deadline fallback. The phase

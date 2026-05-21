@@ -3,6 +3,7 @@ using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Api;
 
+[ZLinkHandlerGroup("api")]
 internal sealed class MatchBingoHandler(IZLinkClient client)
     : IZLinkRequestHandler<MatchBingoApiReq, MatchBingoApiRes>
 {

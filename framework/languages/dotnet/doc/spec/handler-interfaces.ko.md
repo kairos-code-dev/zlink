@@ -271,8 +271,9 @@ public sealed class ZLinkRouteRequestContext : ZLinkHandlerContext
 ```
 
 routed channel handler 등록은 transport builder 가 책임진다. 구체적으로는
-`AddSendHandler<THandler, TMessage>()` 와
-`AddRequestHandler<THandler, TRequest, TReply>()` 메서드를 통해 이루어진다.
+`AddSendHandler<THandler>()`, `AddRequestHandler<THandler>()` 처럼 handler 타입만
+지정하는 메서드나, message/reply 타입을 함께 지정하는 명시적 overload 를 통해
+이루어진다.
 자세한 내용은 §6.1 의 `IZLinkRouteChannelBuilder` 를 참고한다.
 
 ### 4.3 publish handler
@@ -2567,13 +2568,19 @@ public interface IZLinkRouteChannelBuilder
 
     void UseManualConnections(Action<IRouteChannelConnections> configure);
 
-    void MapHandlerGroup(string groupName);
+    void AddHandlerGroup(string groupName);
 
     void AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkRouteSendHandler<TMessage>;
 
+    void AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class;
+
     void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>;
+
+    void AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class;
 
     void EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
@@ -2594,13 +2601,19 @@ public interface IZLinkClientServerChannelBuilder
     void EnableClient(
         Action<IChannelClientCapabilityBuilder>? configure = null);
 
-    void MapHandlerGroup(string groupName);
+    void AddHandlerGroup(string groupName);
 
     void AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>;
 
+    void AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class;
+
     void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
+
+    void AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class;
 
     void EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
@@ -2613,10 +2626,13 @@ public interface IZLinkFanoutChannelBuilder
     void EnableSubscriber(
         Action<IChannelSubscriberCapabilityBuilder>? configure = null);
 
-    void MapHandlerGroup(string groupName);
+    void AddHandlerGroup(string groupName);
 
     void AddPublishHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkPublishHandler<TMessage>;
+
+    void AddPublishHandler<THandler>(string? packetName = null)
+        where THandler : class;
 }
 
 public interface IZLinkDealerMeshChannelBuilder
@@ -3690,7 +3706,7 @@ public readonly record struct ZLinkSpotEvent(
 
 ```csharp
 // 클래스 attribute. handler 클래스가 어느 논리 그룹에 속하는지 표시한다.
-// 이 그룹을 어느 채널에 노출할지는 channel builder의 MapHandlerGroup(...)이 정한다.
+// 이 그룹을 어느 채널에 노출할지는 channel builder의 AddHandlerGroup(...)이 정한다.
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
 public sealed class ZLinkHandlerGroupAttribute : Attribute
 {
@@ -3729,7 +3745,7 @@ public sealed class ZLinkSendAttribute : Attribute
 packet kind 를 처리하는지, 그리고 packet name override 정도다.
 
 실제로 handler 를 어떤 inbound channel 에 노출할지는 channel
-registration 의 `MapHandlerGroup(...)` mapping 이 결정한다.
+registration 의 `AddHandlerGroup(...)` mapping 이 결정한다.
 
 ```csharp
 [ZLinkHandlerGroup("api")]
@@ -3748,7 +3764,7 @@ public sealed class ProfileHandlers
 options.AddClientServerChannel("api", channel =>
 {
     channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
-    channel.MapHandlerGroup("api");
+    channel.AddHandlerGroup("api");
 });
 ```
 
@@ -3789,7 +3805,7 @@ public sealed class ZLinkPublishAttribute : Attribute
 
 publish handler 도 모든 subscriber channel 에 전역으로 자동 노출되지
 않는다. subscriber capability 를 가진 channel 이라 해도, 노출할 그룹은
-`MapHandlerGroup(...)` 으로 명시해야 한다.
+`AddHandlerGroup(...)` 으로 명시해야 한다.
 
 ```csharp
 [ZLinkHandlerGroup("api.events")]
@@ -3802,7 +3818,7 @@ public sealed class CacheInvalidatedHandler
 options.AddFanoutChannel("api.events", channel =>
 {
     channel.EnableSubscriber();
-    channel.MapHandlerGroup("api.events");
+    channel.AddHandlerGroup("api.events");
 });
 ```
 

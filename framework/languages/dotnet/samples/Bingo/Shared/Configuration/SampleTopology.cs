@@ -1,6 +1,6 @@
 using Systems.Zlink;
 
-namespace Bingo.Server.Infrastructure.Configuration;
+namespace Bingo.Shared.Configuration;
 
 public sealed record SampleTopology(
     string RegistryPubEndpoint,

@@ -25,9 +25,10 @@ struct ProgressWorker {
 
 static WORKERS: OnceLock<Mutex<HashMap<(ProgressKind, usize), Weak<ProgressWorker>>>> =
     OnceLock::new();
+static EXTERNAL_PROGRESS: OnceLock<Mutex<HashMap<usize, usize>>> = OnceLock::new();
 
 pub(crate) struct RequestProgressGuard {
-    worker: Arc<ProgressWorker>,
+    worker: Option<Arc<ProgressWorker>>,
 }
 
 impl RequestProgressGuard {
@@ -40,18 +41,63 @@ impl RequestProgressGuard {
     }
 
     fn attach(kind: ProgressKind, handle: *mut c_void) -> Self {
+        if external_progress_active(handle) {
+            return Self { worker: None };
+        }
         let worker = acquire_worker(kind, handle as usize);
         worker.pending.fetch_add(1, Ordering::AcqRel);
         worker.wake.notify_one();
-        Self { worker }
+        Self {
+            worker: Some(worker),
+        }
     }
 }
 
 impl Drop for RequestProgressGuard {
     fn drop(&mut self) {
-        self.worker.pending.fetch_sub(1, Ordering::AcqRel);
-        self.worker.wake.notify_one();
+        if let Some(worker) = &self.worker {
+            worker.pending.fetch_sub(1, Ordering::AcqRel);
+            worker.wake.notify_one();
+        }
     }
+}
+
+pub(crate) fn acquire_external_progress(handle: *mut c_void) {
+    if handle.is_null() {
+        return;
+    }
+    let refs = EXTERNAL_PROGRESS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut refs = refs.lock().expect("external progress map");
+    *refs.entry(handle as usize).or_insert(0) += 1;
+}
+
+pub(crate) fn release_external_progress(handle: *mut c_void) {
+    if handle.is_null() {
+        return;
+    }
+    let Some(refs) = EXTERNAL_PROGRESS.get() else {
+        return;
+    };
+    let mut refs = refs.lock().expect("external progress map");
+    let key = handle as usize;
+    if let Some(count) = refs.get_mut(&key) {
+        *count = count.saturating_sub(1);
+        if *count == 0 {
+            refs.remove(&key);
+        }
+    }
+}
+
+fn external_progress_active(handle: *mut c_void) -> bool {
+    let Some(refs) = EXTERNAL_PROGRESS.get() else {
+        return false;
+    };
+    refs.lock()
+        .expect("external progress map")
+        .get(&(handle as usize))
+        .copied()
+        .unwrap_or(0)
+        > 0
 }
 
 fn acquire_worker(kind: ProgressKind, handle: usize) -> Arc<ProgressWorker> {

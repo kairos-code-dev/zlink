@@ -2,11 +2,13 @@
 mod common;
 
 use std::io::{self, BufRead, Write};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use zlink::*;
+use zlink::poller::POLLCOMPLETION;
 
 const PATTERN: &str = "MULTI_SPOT_REQREP";
 const TOPIC: &str = "bench";
@@ -67,6 +69,51 @@ fn request_spot_reply(
         Ok(parts) => Some(parts),
         Err(_) => None,
     }
+}
+
+fn request_spot_reply_with_poller(
+    spot: &Spot,
+    node_rid: RoutingId,
+    spot_rid: RoutingId,
+    msg: Message,
+    timeout: Duration,
+    poller: &Poller,
+    events: &mut [PollEvent],
+) -> Option<Vec<Message>> {
+    let (tx, rx) = mpsc::channel();
+    let submit = spot
+        .request_to_spot(node_rid, spot_rid)
+        .message(msg)
+        .timeout(timeout)
+        .submit(move |result| {
+            let _ = tx.send(result);
+        });
+    if submit.is_err() {
+        return None;
+    }
+    let deadline = Instant::now() + timeout + Duration::from_millis(100);
+    while Instant::now() < deadline {
+        match rx.try_recv() {
+            Ok(Ok(parts)) => return Some(parts),
+            Ok(Err(_)) => return None,
+            Err(mpsc::TryRecvError::Disconnected) => return None,
+            Err(mpsc::TryRecvError::Empty) => {}
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let wait_ms = remaining.min(Duration::from_millis(50)).as_millis() as i64;
+        let _ = poller.wait(events, wait_ms.max(1));
+    }
+    None
+}
+
+fn active_spot_reqrep_slot_limit(total_slots: usize, msg_size: usize) -> usize {
+    if msg_size >= 131072 {
+        return total_slots.min(8);
+    }
+    if msg_size >= 65536 {
+        return total_slots.min(32);
+    }
+    total_slots
 }
 
 fn control_payload(control_sub: &Spot) -> Option<String> {
@@ -182,6 +229,7 @@ fn main() {
     let mut spots: Vec<Box<Spot>> = Vec::with_capacity(settings.clients);
     let mut payloads = Vec::with_capacity(settings.clients);
     let mut seqs = vec![1u64; settings.clients];
+    let mut waiting = Vec::with_capacity(settings.clients);
     for index in 0..settings.clients {
         let spot = Box::new(data_node.create_spot().expect("spot"));
         spot.set_routing_id(&RoutingId::from_bytes(
@@ -189,7 +237,15 @@ fn main() {
         ))
         .expect("spot rid");
         payloads.push(vec![0u8; args.msg_size.max(common::HEADER_SIZE)]);
+        waiting.push(Arc::new(AtomicBool::new(false)));
         spots.push(spot);
+    }
+    let poller = Poller::new().expect("spot reqrep completion poller");
+    let mut poll_events = vec![PollEvent::default(); settings.clients.max(1)];
+    for (index, spot) in spots.iter().enumerate() {
+        poller
+            .add_socket(spot.as_ref(), POLLCOMPLETION, index)
+            .expect("spot reqrep completion poller add");
     }
 
     if !matches!(
@@ -214,12 +270,14 @@ fn main() {
     common::encode_header(&mut probe, common::PHASE_WARMUP, args.msg_size as u32, 0);
     let probe_deadline = Instant::now() + ready_timeout;
     while Instant::now() < probe_deadline {
-        if request_spot_reply(
+        if request_spot_reply_with_poller(
             &spots[0],
             server_node_rid.clone(),
             server_spot_rid.clone(),
             Message::copy_from(&probe).expect("probe"),
             Duration::from_millis(settings.recv_timeout_ms.max(settings.send_timeout_ms)),
+            &poller,
+            &mut poll_events,
         )
         .is_some()
         {
@@ -263,38 +321,71 @@ fn main() {
     }
 
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
+    let (latency_tx, latency_rx) = mpsc::channel::<f64>();
+    let active_slots = active_spot_reqrep_slot_limit(spots.len(), args.msg_size);
+    let msg_size = args.msg_size;
     while Instant::now() < deadline {
-        let mut progressed = false;
-        for index in 0..spots.len() {
+        let mut submitted = false;
+        for index in 0..active_slots {
+            if waiting[index].load(Ordering::Acquire) {
+                continue;
+            }
             common::encode_header(
                 &mut payloads[index],
                 common::PHASE_ACTIVE,
                 args.msg_size as u32,
                 seqs[index],
             );
-            let Some(reply) = request_spot_reply(
-                &spots[index],
-                server_node_rid.clone(),
-                server_spot_rid.clone(),
-                Message::copy_from(&payloads[index]).expect("request"),
-                Duration::from_millis(settings.recv_timeout_ms.max(settings.send_timeout_ms)),
-            ) else {
-                continue;
-            };
-            let data = common::message_payload(&reply);
-            if Instant::now() <= deadline && common::is_valid_active_message(data, args.msg_size) {
-                let sent_ts_ns = common::decode_sent_ts_ns(data);
-                let now_ns = common::now_ns();
-                if sent_ts_ns > 0 && now_ns >= sent_ts_ns as u64 {
-                    latency.record_ns((now_ns - sent_ts_ns as u64) as f64 / 2.0);
+            let request = Message::copy_from(&payloads[index]).expect("request");
+            let waiting_flag = Arc::clone(&waiting[index]);
+            let tx = latency_tx.clone();
+            waiting_flag.store(true, Ordering::Release);
+            let submit = spots[index]
+                .request_to_spot(server_node_rid.clone(), server_spot_rid.clone())
+                .message(request)
+                .timeout(Duration::from_millis(
+                    settings.recv_timeout_ms.max(settings.send_timeout_ms),
+                ))
+                .submit(move |result| {
+                    waiting_flag.store(false, Ordering::Release);
+                    let Ok(reply) = result else {
+                        return;
+                    };
+                    let data = common::message_payload(&reply);
+                    if Instant::now() <= deadline
+                        && common::is_valid_active_message(data, msg_size)
+                    {
+                        let sent_ts_ns = common::decode_sent_ts_ns(data);
+                        let now_ns = common::now_ns();
+                        if sent_ts_ns > 0 && now_ns >= sent_ts_ns as u64 {
+                            let _ = tx.send((now_ns - sent_ts_ns as u64) as f64 / 2.0);
+                        }
+                    }
+                });
+            match submit {
+                Ok(()) => {
+                    seqs[index] += 1;
+                    submitted = true;
                 }
-                seqs[index] += 1;
-                progressed = true;
+                Err(_) => {
+                    waiting[index].store(false, Ordering::Release);
+                }
             }
         }
-        if !progressed {
-            thread::sleep(Duration::from_millis(1));
+        while let Ok(value) = latency_rx.try_recv() {
+            latency.record_ns(value);
         }
+        if !submitted {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let wait_ms = remaining.min(Duration::from_millis(50)).as_millis() as i64;
+            if wait_ms <= 0 {
+                break;
+            }
+            let _ = poller.wait(&mut poll_events, wait_ms);
+        }
+    }
+    while let Ok(value) = latency_rx.try_recv() {
+        latency.record_ns(value);
     }
 
     common::print_result(

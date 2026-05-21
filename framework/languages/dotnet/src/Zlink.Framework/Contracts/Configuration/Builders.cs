@@ -95,13 +95,19 @@ public interface IZLinkRouteChannelBuilder
 
     void UseManualConnections(Action<IRouteChannelConnections> configure);
 
-    void MapHandlerGroup(string groupName);
+    void AddHandlerGroup(string groupName);
 
     void AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkRouteSendHandler<TMessage>;
 
+    void AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class;
+
     void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>;
+
+    void AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class;
 
     void EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
@@ -124,13 +130,19 @@ public interface IZLinkClientServerChannelBuilder
 
     void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null);
 
-    void MapHandlerGroup(string groupName);
+    void AddHandlerGroup(string groupName);
 
     void AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>;
 
+    void AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class;
+
     void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
+
+    void AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class;
 
     void EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
@@ -141,10 +153,13 @@ public interface IZLinkFanoutChannelBuilder
 
     void EnableSubscriber(Action<IChannelSubscriberCapabilityBuilder>? configure = null);
 
-    void MapHandlerGroup(string groupName);
+    void AddHandlerGroup(string groupName);
 
     void AddPublishHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkPublishHandler<TMessage>;
+
+    void AddPublishHandler<THandler>(string? packetName = null)
+        where THandler : class;
 }
 
 public interface IZLinkDealerMeshChannelBuilder

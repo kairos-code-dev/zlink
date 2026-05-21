@@ -1,6 +1,7 @@
 import sys
 import threading
 import time
+from queue import SimpleQueue
 
 import zlink
 
@@ -31,7 +32,7 @@ SERVER_NODE_RID = b"SPOT-REQREP-SERVER-NODE"
 SERVER_SPOT_RID = b"SPOT-REQREP-SERVER-SPOT"
 
 
-def _request_spot_reply(spot, payload, timeout_s):
+def _request_spot_reply(spot, payload, timeout_s, poller=None, events=None):
     done = threading.Event()
     box = {}
 
@@ -49,7 +50,14 @@ def _request_spot_reply(spot, payload, timeout_s):
     )
     if not submitted:
         return None
-    if not done.wait(timeout_s + 0.1):
+    deadline = time.perf_counter() + timeout_s + 0.1
+    while not done.is_set() and time.perf_counter() < deadline:
+        if poller is None or events is None:
+            done.wait(max(0.0, deadline - time.perf_counter()))
+            break
+        wait_ms = min(50, max(1, int((deadline - time.perf_counter()) * 1000)))
+        poller.wait(events, wait_ms)
+    if not done.is_set():
         return None
     if box.get("result") != zlink.RequestResult.OK:
         return None
@@ -57,6 +65,14 @@ def _request_spot_reply(spot, payload, timeout_s):
     if not messages:
         return None
     return messages[0].to_bytes()
+
+
+def _active_slot_limit(total_slots, msg_size):
+    if msg_size >= 131072:
+        return min(total_slots, 8)
+    if msg_size >= 65536:
+        return min(total_slots, 32)
+    return total_slots
 
 
 def main(argv=None):
@@ -120,6 +136,10 @@ def main(argv=None):
             spot = data_node.create_spot()
             spot.set_routing_id(f"spot-req-client-spot-{index}".encode("ascii"))
             spots.append(spot)
+        poller = zlink.Poller()
+        poll_events = zlink.PollEvents(max(1, len(spots)))
+        for index, spot in enumerate(spots):
+            poller.add_socket(spot, zlink.PollEventFlag.POLLCOMPLETION, index)
 
         if not control_connected.wait(timeout=handshake_timeout_s):
             raise RuntimeError("runner control-connected handshake timeout")
@@ -138,9 +158,13 @@ def main(argv=None):
         probe_deadline = time.perf_counter() + handshake_timeout_s
         probe = stamp_payload(bytearray(args.msg_size), phase=0, run_id=run_id, seq=0)
         while time.perf_counter() < probe_deadline:
-            if _request_spot_reply(spots[0], probe, handshake_timeout_s) is not None:
+            if (
+                _request_spot_reply(
+                    spots[0], probe, handshake_timeout_s, poller, poll_events
+                )
+                is not None
+            ):
                 break
-            time.sleep(0.01)
         else:
             raise RuntimeError("spot reqrep probe-ready timeout")
 
@@ -169,8 +193,18 @@ def main(argv=None):
             raise RuntimeError("spot reqrep direct start handshake timeout")
 
         active_deadline = time.perf_counter() + args.duration
+        waiting = [False] * len(spots)
+        lock = threading.Lock()
+        latency_queue = SimpleQueue()
+        active_slots = _active_slot_limit(len(spots), args.msg_size)
         while time.perf_counter() < active_deadline:
-            for index, spot in enumerate(spots):
+            submitted_any = False
+            for index in range(active_slots):
+                spot = spots[index]
+                with lock:
+                    if waiting[index]:
+                        continue
+                    waiting[index] = True
                 seq += 1
                 payload = stamp_payload(
                     payloads[index],
@@ -178,17 +212,50 @@ def main(argv=None):
                     run_id=run_id,
                     seq=seq,
                 )
-                data = _request_spot_reply(spot, payload, 0.2)
-                if data is None:
-                    continue
-                if is_active_message(
-                    data,
-                    expected_msg_size=args.msg_size,
-                    run_id=run_id,
-                ):
-                    latency = latency_ns_from_message(data)
-                    if latency is not None:
-                        latencies.append(latency / 2.0)
+
+                def on_reply(result, messages, slot_index=index):
+                    try:
+                        if result != zlink.RequestResult.OK or not messages:
+                            return
+                        data = messages[0].to_bytes()
+                        if (
+                            time.perf_counter() < active_deadline
+                            and is_active_message(
+                                data,
+                                expected_msg_size=args.msg_size,
+                                run_id=run_id,
+                            )
+                        ):
+                            latency = latency_ns_from_message(data)
+                            if latency is not None:
+                                latency_queue.put(latency / 2.0)
+                    finally:
+                        with lock:
+                            waiting[slot_index] = False
+
+                submitted = (
+                    spot.request_to_spot(SERVER_NODE_RID, SERVER_SPOT_RID)
+                    .message(bytes(payload))
+                    .timeout(0.2)
+                    .flags(zlink.SendFlags.DONT_WAIT)
+                    .submit(on_reply)
+                )
+                if submitted:
+                    submitted_any = True
+                else:
+                    with lock:
+                        waiting[index] = False
+            while not latency_queue.empty():
+                latencies.append(latency_queue.get())
+            if submitted_any:
+                continue
+            remaining_ms = int((active_deadline - time.perf_counter()) * 1000)
+            if remaining_ms <= 0:
+                break
+            poller.wait(poll_events, min(50, remaining_ms))
+
+        while not latency_queue.empty():
+            latencies.append(latency_queue.get())
 
         if not latencies:
             raise RuntimeError(

@@ -25,6 +25,8 @@ internal static class RequestProgressPump
 
     private static readonly ConcurrentDictionary<nint, ProgressState> SocketStates = new();
     private static readonly ConcurrentDictionary<nint, ProgressState> SpotStates = new();
+    private static readonly ConcurrentDictionary<nint, int> ExternalSocketProgress = new();
+    private static readonly ConcurrentDictionary<nint, int> ExternalSpotProgress = new();
 
     internal static Task<T> AttachSocket<T>(IntPtr handle, Task<T> task)
     {
@@ -48,6 +50,8 @@ internal static class RequestProgressPump
             return default;
 
         nint key = handle;
+        if (ExternalProgressCount(states, key) > 0)
+            return default;
         ProgressState state = states.GetOrAdd(key, _ => new ProgressState());
         Interlocked.Increment(ref state.ActiveCount);
         EnsureWorker(states, key, state, handle);
@@ -61,6 +65,8 @@ internal static class RequestProgressPump
             return task;
 
         nint key = handle;
+        if (ExternalProgressCount(states, key) > 0)
+            return task;
         ProgressState state = states.GetOrAdd(key, _ => new ProgressState());
         Interlocked.Increment(ref state.ActiveCount);
         EnsureWorker(states, key, state, handle);
@@ -76,6 +82,56 @@ internal static class RequestProgressPump
             TaskScheduler.Default);
 
         return task;
+    }
+
+    internal static void AcquireExternalProgress(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero)
+            return;
+        AddExternalProgress(ExternalSocketProgress, handle);
+        AddExternalProgress(ExternalSpotProgress, handle);
+    }
+
+    internal static void ReleaseExternalProgress(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero)
+            return;
+        RemoveExternalProgress(ExternalSocketProgress, handle);
+        RemoveExternalProgress(ExternalSpotProgress, handle);
+    }
+
+    private static int ExternalProgressCount(
+        ConcurrentDictionary<nint, ProgressState> states, nint key)
+    {
+        ConcurrentDictionary<nint, int> external =
+            ReferenceEquals(states, SpotStates)
+                ? ExternalSpotProgress
+                : ExternalSocketProgress;
+        return external.TryGetValue(key, out int count) ? count : 0;
+    }
+
+    private static void AddExternalProgress(
+        ConcurrentDictionary<nint, int> external, IntPtr handle)
+    {
+        nint key = handle;
+        external.AddOrUpdate(key, 1, (_, count) => count + 1);
+    }
+
+    private static void RemoveExternalProgress(
+        ConcurrentDictionary<nint, int> external, IntPtr handle)
+    {
+        nint key = handle;
+        while (external.TryGetValue(key, out int count))
+        {
+            if (count <= 1)
+            {
+                if (external.TryRemove(key, out _))
+                    return;
+                continue;
+            }
+            if (external.TryUpdate(key, count - 1, count))
+                return;
+        }
     }
 
     internal readonly struct ProgressLease

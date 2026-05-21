@@ -29,7 +29,7 @@ public sealed class ChannelMessagingRuntimeTests
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
-                channel.MapHandlerGroup("profile");
+                channel.AddHandlerGroup("profile");
             });
         });
         var clientBuilder = Host.CreateApplicationBuilder();

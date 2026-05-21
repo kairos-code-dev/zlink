@@ -1,4 +1,4 @@
-using Bingo.Server.Infrastructure.Configuration;
+using Bingo.Shared.Configuration;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 

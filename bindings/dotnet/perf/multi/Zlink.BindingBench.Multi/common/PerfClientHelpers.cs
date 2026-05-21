@@ -108,16 +108,6 @@ internal static partial class PerfRunner
         return pollManager.PollSockets(sockets, eventMasks, timeoutMs);
     }
 
-    internal static bool IsSocketReadReady(PollManager pollManager, int index)
-    {
-        return pollManager.IsSocketReadReady(index);
-    }
-
-    internal static bool IsSocketWriteReady(PollManager pollManager, int index)
-    {
-        return pollManager.IsSocketWriteReady(index);
-    }
-
     internal static int ReadySocketCount(PollManager pollManager)
     {
         return pollManager.ReadySocketCount;
@@ -126,6 +116,12 @@ internal static partial class PerfRunner
     internal static int ReadySocketIndexAt(PollManager pollManager, int offset)
     {
         return pollManager.ReadySocketIndexAt(offset);
+    }
+
+    internal static PollEventFlags ReadySocketMaskAt(PollManager pollManager,
+        int offset)
+    {
+        return pollManager.ReadySocketMaskAt(offset);
     }
 
     private static bool TryConsumeReadyEvent(MonitorSocket monitor)

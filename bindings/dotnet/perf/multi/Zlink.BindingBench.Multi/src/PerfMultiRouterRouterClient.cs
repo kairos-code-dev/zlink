@@ -152,7 +152,8 @@ internal static class PerfMultiRouterRouterClient
 
             for (int i = 0; i < readyCount; i++)
                 HandleClientEvent(pollManager, slots,
-                    ReadySocketIndexAt(pollManager, i), eventMasks, msgSize,
+                    ReadySocketIndexAt(pollManager, i),
+                    ReadySocketMaskAt(pollManager, i), eventMasks, msgSize,
                     runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
                     activeDeadlineTicks: benchDeadlineTicks);
         }
@@ -205,14 +206,15 @@ internal static class PerfMultiRouterRouterClient
 
     private static void HandleClientEvent(PollManager pollManager,
         RouterRouterClientSlot[] slots,
-        int slotIndex, PollEventFlags[] eventMasks,
+        int slotIndex, PollEventFlags readyMask, PollEventFlags[] eventMasks,
         int msgSize, uint runId, PerfPhase phase, ref ulong seq,
         RouterRouterMetrics metrics, bool allowSend, long activeDeadlineTicks)
     {
         _ = activeDeadlineTicks;
+        _ = pollManager;
         RouterRouterClientSlot slot = slots[slotIndex];
 
-        if (IsSocketWriteReady(pollManager, slotIndex)
+        if ((readyMask & PollEventFlags.PollOut) != 0
             && slot.WaitingForWritable
             && !slot.WaitingForReply)
         {
@@ -224,8 +226,7 @@ internal static class PerfMultiRouterRouterClient
             }
         }
 
-        bool readReady = IsSocketReadReady(pollManager, slotIndex);
-        if (!readReady)
+        if ((readyMask & PollEventFlags.PollIn) == 0)
             return;
 
         RouterSocket routerSock = (RouterSocket)slot.Socket;

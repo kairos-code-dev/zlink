@@ -202,8 +202,7 @@ internal static partial class PerfRunner
     {
         try
         {
-            int written = poller.Wait(events, TimeSpan.FromMilliseconds(timeoutMs),
-                out _);
+            int written = poller.Wait(events, TimeSpan.FromMilliseconds(timeoutMs));
             return written > 0;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
@@ -223,7 +222,7 @@ internal static partial class PerfRunner
     {
         try
         {
-            int written = poller.Wait(events, Timeout.InfiniteTimeSpan, out _);
+            int written = poller.Wait(events, Timeout.InfiniteTimeSpan);
             return written > 0;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)

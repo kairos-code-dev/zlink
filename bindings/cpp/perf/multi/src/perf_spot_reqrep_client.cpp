@@ -6,7 +6,7 @@
 //                       request_to_spot(server_node_rid, server_spot_rid)
 //                       and the reply is delivered through the spot's recv
 //                       side; the user thread waits on a single poller that
-//                       has every slot spot registered for POLLIN.
+//                       has every slot spot registered for POLLCOMPLETION.
 //   server(replier):    1 spot_node + 1 spot with routing_id
 //                       "SPOT-REQREP-SERVER-SPOT" on node
 //                       "SPOT-REQREP-SERVER-NODE", dispatch event handler
@@ -362,11 +362,12 @@ class spot_reqrep_client_bench_t
           *_data_node, _transport, _msg_size);
 
         // Register every slot spot in a single poller so the user thread
-        // can wait once for any reply readiness signal.
+        // drives request completion in the same active loop as C perf.
         try {
             for (size_t i = 0; i < _slots.size (); ++i) {
                 _poller.add (
-                  *_slots[i]->spot, zlink::poll_event_flag_t::pollin,
+                  *_slots[i]->spot,
+                  zlink::poll_event_flag_t::pollcompletion,
                   i);
             }
         }
@@ -511,13 +512,11 @@ class spot_reqrep_client_bench_t
 
         while (std::chrono::steady_clock::now () < deadline) {
             bool submitted_any = false;
-            bool waiting_any = false;
             const size_t active_slots =
               active_spot_slot_limit (_slots.size (), _msg_size);
             for (size_t i = 0; i < active_slots; ++i) {
                 if (_slots[i]->waiting_reply.load (
                       std::memory_order_acquire)) {
-                    waiting_any = true;
                     continue;
                 }
                 if (!submit_request (*_slots[i]))
@@ -526,15 +525,9 @@ class spot_reqrep_client_bench_t
                       std::memory_order_acquire))
                     continue;
                 submitted_any = true;
-                waiting_any = true;
             }
             if (submitted_any)
                 continue;
-            if (!waiting_any) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
-                continue;
-            }
-
             const auto now = std::chrono::steady_clock::now ();
             if (now >= deadline)
                 break;

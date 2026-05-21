@@ -19,6 +19,12 @@ public final class PerfSocketPollSet implements AutoCloseable {
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final int MASK_POLLIN = 1;
+    private static final int MASK_POLLOUT = 2;
+    private static final int MASK_POLLERR = 4;
+    private static final int MASK_POLLPRI = 8;
+    private static final int MASK_POLLCOMPLETION = 32;
+    private static final Duration WAIT_FOREVER = Duration.ofMillis(-1);
     private final Socket[] sockets;
     private final int[] readyIndexes;
     private final int[] readyMasks;
@@ -79,13 +85,14 @@ public final class PerfSocketPollSet implements AutoCloseable {
     }
 
     public boolean readyHasEventAt(int offset, PollEventFlag event) {
-        return (readyMaskAt(offset) & mask(event)) != 0;
+        return (readyMaskAt(offset) & maskOne(event)) != 0;
     }
 
     public int poll(int timeoutMs) {
         readyCount = 0;
         try {
-            poller.wait(readyEventsBuffer, Duration.ofMillis(timeoutMs));
+            poller.wait(readyEventsBuffer,
+                timeoutMs == -1 ? WAIT_FOREVER : Duration.ofMillis(timeoutMs));
         } catch (ZlinkException ex) {
             int errno = ex.getInternalErrno();
             if (errno == ERRNO_EINTR
@@ -129,13 +136,23 @@ public final class PerfSocketPollSet implements AutoCloseable {
         for (PollEventFlag event : events) {
             mask |= switch (event) {
                 case POLLIN -> 1;
-                case POLLOUT -> 2;
-                case POLLERR -> 4;
-                case POLLPRI -> 8;
-                case POLLCOMPLETION -> 32;
+                case POLLOUT -> MASK_POLLOUT;
+                case POLLERR -> MASK_POLLERR;
+                case POLLPRI -> MASK_POLLPRI;
+                case POLLCOMPLETION -> MASK_POLLCOMPLETION;
             };
         }
         return mask;
+    }
+
+    private static int maskOne(PollEventFlag event) {
+        return switch (event) {
+            case POLLIN -> MASK_POLLIN;
+            case POLLOUT -> MASK_POLLOUT;
+            case POLLERR -> MASK_POLLERR;
+            case POLLPRI -> MASK_POLLPRI;
+            case POLLCOMPLETION -> MASK_POLLCOMPLETION;
+        };
     }
 
 }

@@ -12,8 +12,8 @@ internal static class PerfSpot
     private const uint ReadyPhase = 0;
     private const uint ActivePhase = 1;
     private const int SpotSocketTag = 0;
-    private const int ReadyDeadlineTag = -1;
-    private const int ReadyRetryTag = -2;
+    private const int ReadyDeadlineTag = int.MaxValue;
+    private const int ReadyRetryTag = int.MaxValue - 1;
     private static readonly RoutingId PubNodeRoutingId =
         RoutingId.FromBytes("z-perf-spot-pub"u8);
     private static readonly RoutingId SubNodeRoutingId =
@@ -155,7 +155,7 @@ internal static class PerfSpot
             }
 
             if (!WaitForReadyProbeEvent(poller, events, publisher,
-                    probePayload, msgSize, ref seq, retryTimer))
+                    probePayload, msgSize, ref seq, deadlineTimer, retryTimer))
                 return false;
         }
     }
@@ -304,23 +304,23 @@ internal static class PerfSpot
 
     private static bool WaitForReadyProbeEvent(Poller poller,
         PollEvent[] events, Spot publisher, byte[] probePayload, int msgSize,
-        ref ulong seq, Systems.Zlink.Timer retryTimer)
+        ref ulong seq, Systems.Zlink.Timer deadlineTimer,
+        Systems.Zlink.Timer retryTimer)
     {
         while (true)
         {
-            int written = poller.Wait(events, TimeSpan.FromMilliseconds(-1),
-                out _);
+            int written = poller.Wait(events, TimeSpan.FromMilliseconds(-1));
             for (int i = 0; i < written; i++)
             {
-                if (events[i].Tag is ReadyDeadlineTag)
+                if (events[i].Slot == (nuint)ReadyDeadlineTag)
                 {
-                    _ = events[i].Timer?.Recv();
+                    _ = deadlineTimer.Recv();
                     return false;
                 }
 
-                if (events[i].Tag is ReadyRetryTag)
+                if (events[i].Slot == (nuint)ReadyRetryTag)
                 {
-                    _ = events[i].Timer?.Recv();
+                    _ = retryTimer.Recv();
                     if (!PublishMetricPayload(publisher, probePayload, msgSize,
                             seq++, ReadyPhase, out _))
                         return false;
@@ -328,7 +328,7 @@ internal static class PerfSpot
                     continue;
                 }
 
-                if (events[i].Tag is SpotSocketTag
+                if (events[i].Slot == (nuint)SpotSocketTag
                     && (events[i].Revents & PollEventFlags.PollIn) != 0)
                     return true;
             }

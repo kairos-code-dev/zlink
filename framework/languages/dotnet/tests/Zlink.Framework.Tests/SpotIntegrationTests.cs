@@ -1985,7 +1985,7 @@ public sealed partial class SpotIntegrationTests
             options.AddClientServerChannel("actor-pre-api", channel =>
             {
                 channel.EnableServer(server => server.Bind(preJoinApi));
-                channel.MapHandlerGroup("actor-context-channel");
+                channel.AddHandlerGroup("actor-context-channel");
                 channel.EnableClient(client =>
                 {
                     client.UseManualConnections(connections => connections.Connect(preJoinApi));
@@ -1994,7 +1994,7 @@ public sealed partial class SpotIntegrationTests
             options.AddClientServerChannel("actor-post-api", channel =>
             {
                 channel.EnableServer(server => server.Bind(postJoinApi));
-                channel.MapHandlerGroup("actor-context-channel");
+                channel.AddHandlerGroup("actor-context-channel");
             });
             options.AddSpotNode("actor-node", spot =>
             {
@@ -2123,7 +2123,7 @@ public sealed partial class SpotIntegrationTests
             options.AddClientServerChannel("orders", channel =>
             {
                 channel.EnableServer(server => server.Bind(ordersServer));
-                channel.MapHandlerGroup("stage-orders");
+                channel.AddHandlerGroup("stage-orders");
             });
 
             options.AddSpotNode("stage-node", spot =>

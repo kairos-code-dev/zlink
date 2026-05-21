@@ -50,7 +50,7 @@ builder.Services.AddZLinkFramework(options =>
         {
             server.Bind("tcp://0.0.0.0:7101");
         });
-        channel.MapHandlerGroup("api");
+        channel.AddHandlerGroup("api");
     });
 
     options.AddClientServerChannel("profile", channel =>
@@ -94,7 +94,7 @@ builder.Services.AddZLinkFramework(options =>
         {
             server.Bind("tcp://0.0.0.0:7101");
         });
-        channel.MapHandlerGroup("api");
+        channel.AddHandlerGroup("api");
     });
 
     options.AddClientServerChannel("profile", channel =>
@@ -130,7 +130,7 @@ builder.Services.AddZLinkFramework(options =>
         {
             server.Bind("tcp://0.0.0.0:7101");
         });
-        channel.MapHandlerGroup("api");
+        channel.AddHandlerGroup("api");
     });
 
     options.AddClientServerChannel("profile", channel =>
@@ -406,7 +406,7 @@ builder.Services.AddZLinkFramework(options =>
         {
             server.Bind("tcp://0.0.0.0:7101");
         });
-        channel.MapHandlerGroup("api");
+        channel.AddHandlerGroup("api");
     });
 
     options.AddFanoutChannel("api.events", channel =>
@@ -416,7 +416,7 @@ builder.Services.AddZLinkFramework(options =>
             publisher.Bind("tcp://0.0.0.0:7201");
         });
         channel.EnableSubscriber();
-        channel.MapHandlerGroup("api.events");
+        channel.AddHandlerGroup("api.events");
     });
 
     options.AddClientServerChannel("profile", channel =>
@@ -435,7 +435,7 @@ builder.Services.AddZLinkFramework(options =>
         registry.Add("tcp://registry2:5551");
     });
     // Handler type을 DI에 등록하고 attribute scan 후보를 발견한다.
-    // 실제 노출 channel은 위의 MapHandlerGroup(...) 호출이 정한다.
+    // 실제 노출 channel은 위의 AddHandlerGroup(...) 호출이 정한다.
     options.AddHandlersFromAssemblyOf<Program>();
 });
 
@@ -637,7 +637,7 @@ public sealed class UserCacheRefreshedEvent
 - `[ZLinkHandlerGroup(...)]` attribute scan[^attribute-scan] 후보를 발견한다.
 
 다만 handler 가 실제로 노출되는 channel 은, channel 등록 쪽의
-`channel.MapHandlerGroup("...")` 호출이 정한다. 따라서 자동 등록의 편의는 유지된다.
+`channel.AddHandlerGroup("...")` 호출이 정한다. 따라서 자동 등록의 편의는 유지된다.
 그렇다고 해서, 한 프로세스 안의 여러 channel 이 전역 handler registry 를 무조건
 공유하는 것은 아니다.
 

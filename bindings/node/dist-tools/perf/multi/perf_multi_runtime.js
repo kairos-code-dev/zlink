@@ -7,6 +7,7 @@ const { MonitorEventType, RecvFlags, RecvResult } = zlink;
 const { applyAutoHwmMsgUnit, applyAutoHwmProfile, integerEnv, manualSocketOverridesEnabled, sleepImmediate } = require('../common/perf_metrics');
 const POLLIN = 1;
 const POLLOUT = 2;
+const POLLCOMPLETION = 32;
 const emittedMultiAutoHwmDetails = new Set();
 function pollEvents(mask) {
     const events = [];
@@ -15,6 +16,9 @@ function pollEvents(mask) {
     }
     if ((mask & POLLOUT) !== 0) {
         events.push(zlink.PollEventFlag.PollOut);
+    }
+    if ((mask & POLLCOMPLETION) !== 0) {
+        events.push(zlink.PollEventFlag.PollCompletion);
     }
     return events;
 }
@@ -745,6 +749,7 @@ function createSocketEventWaiter(socket, events) {
 module.exports = {
     POLLIN,
     POLLOUT,
+    POLLCOMPLETION,
     applyContextPolicy,
     applyAutoHwmMsgUnit,
     applySpotNodeAdmission,

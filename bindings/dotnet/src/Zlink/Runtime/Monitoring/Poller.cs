@@ -119,7 +119,9 @@ public sealed class Poller : IPoller
         int rc = NativeMethods.zlink_poller_modify(_handle, socketHandle,
             (short)events);
         ZlinkException.ThrowConfigIfError(rc);
+        UnregisterExternalProgress(_items[index]);
         _items[index].Events = events;
+        RegisterExternalProgress(_items[index]);
     }
 
     public void ModifyFd(int fd, PollEventFlags events)
@@ -194,6 +196,7 @@ public sealed class Poller : IPoller
         _handle = NativeMethods.zlink_poller_new();
         if (_handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        UnregisterAllExternalProgress();
         _items.Clear();
         _nativeEvents = Array.Empty<ZlinkPollerEvent>();
     }
@@ -245,6 +248,7 @@ public sealed class Poller : IPoller
             break;
         }
         _handle = IntPtr.Zero;
+        UnregisterAllExternalProgress();
         _items.Clear();
         _nativeEvents = Array.Empty<ZlinkPollerEvent>();
         if (rc != 0)
@@ -352,12 +356,35 @@ public sealed class Poller : IPoller
 
     private void RegisterItem(PollItem item)
     {
+        RegisterExternalProgress(item);
         _items.Add(item);
     }
 
     private void UnregisterItem(int index)
     {
+        PollItem item = _items[index];
+        UnregisterExternalProgress(item);
         _items.RemoveAt(index);
+    }
+
+    private static void RegisterExternalProgress(PollItem item)
+    {
+        if (item.IsSocket
+            && (item.Events & PollEventFlags.PollCompletion) != 0)
+            RequestProgressPump.AcquireExternalProgress(item.SocketHandle);
+    }
+
+    private static void UnregisterExternalProgress(PollItem item)
+    {
+        if (item.IsSocket
+            && (item.Events & PollEventFlags.PollCompletion) != 0)
+            RequestProgressPump.ReleaseExternalProgress(item.SocketHandle);
+    }
+
+    private void UnregisterAllExternalProgress()
+    {
+        foreach (PollItem item in _items)
+            UnregisterExternalProgress(item);
     }
 
     private void EnsureNotDisposed()

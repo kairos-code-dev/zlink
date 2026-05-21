@@ -22,6 +22,7 @@ const {
 } = require('./perf_multi_common');
 const {
   POLLIN,
+  POLLCOMPLETION,
   POLLOUT,
   applyAutoHwmMsgUnit,
   applySocketPolicy,
@@ -29,6 +30,7 @@ const {
   applySpotNodeAdmission,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
+  pollEvents,
   publishControlUntilSent,
   waitForControlStart,
   waitForRunnerControlConnected,
@@ -278,7 +280,7 @@ async function main() {
     const poller = new zlink.Poller();
     const pollBuffer = new zlink.PollEvents(Math.max(1, slots.length));
     for (let i = 0; i < slots.length; i += 1) {
-      poller.add(slots[i].spot, [POLLIN], i);
+      poller.add(slots[i].spot, pollEvents(POLLCOMPLETION), i);
     }
     const activeSlots = slots.slice(0, activeSpotSlotLimit(slots.length, options.msgSize));
     const requestTimeoutMs = activeRequestTimeoutMs();
@@ -304,12 +306,12 @@ async function main() {
           progressed = true;
         }
         if (!progressed) {
-          poller.wait(pollBuffer, 50);
+          poller.wait(pollBuffer, 1);
           await sleepImmediate();
         }
       }
       while (activeSlots.some((slot) => slot.inflight)) {
-        poller.wait(pollBuffer, 50);
+        poller.wait(pollBuffer, 1);
         await sleepImmediate();
       }
     } finally {

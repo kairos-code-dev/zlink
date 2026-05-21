@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	zlink "zlink.systems/zlink/contracts"
@@ -18,6 +19,24 @@ var (
 	multiSpotReqRepNodeRID = zlink.NewRoutingID([]byte("SPOT-REQREP-SERVER-NODE"))
 	multiSpotReqRepSpotRID = zlink.NewRoutingID([]byte("SPOT-REQREP-SERVER-SPOT"))
 )
+
+type multiSpotReqRepSlot struct {
+	spot    *zlink.Spot
+	payload []byte
+	seq     uint64
+	mu      sync.Mutex
+	waiting bool
+}
+
+func activeSpotReqRepSlotLimit(totalSlots, msgSize int) int {
+	if msgSize >= 131072 && totalSlots > 8 {
+		return 8
+	}
+	if msgSize >= 65536 && totalSlots > 32 {
+		return 32
+	}
+	return totalSlots
+}
 
 func runMultiSpotReqRepServer(cfg multiConfig) {
 	replierCtx, err := perfcommon.NewMultiServerContext()
@@ -192,6 +211,19 @@ func runMultiSpotReqRepClientRole(cfg multiConfig, endpoint string) perfcommon.R
 			_ = spot.Close()
 		}
 	}()
+	poller, err := zlink.NewPoller()
+	perfcommon.Must(err)
+	defer poller.Close()
+	pollEvents := make([]zlink.PollEvent, len(spots))
+	slots := make([]multiSpotReqRepSlot, len(spots))
+	for i, spot := range spots {
+		perfcommon.Must(poller.AddSocket(spot, zlink.PollCompletion, uintptr(i)))
+		slots[i] = multiSpotReqRepSlot{
+			spot:    spot,
+			payload: perfcommon.PreparePayload(cfg.msgSize),
+			seq:     1,
+		}
+	}
 
 	events := make(chan string, 16)
 	go scanSpotRoleStdin(cfg, events)
@@ -202,7 +234,7 @@ func runMultiSpotReqRepClientRole(cfg multiConfig, endpoint string) perfcommon.R
 		perfcommon.Must(fmt.Errorf("spot reqrep client data endpoint publish timeout"))
 	}
 	time.Sleep(perfcommon.MultiSpotControlSettleDuration())
-	waitMultiSpotReqRepSpotReady(spots[0], cfg.msgSize)
+	waitMultiSpotReqRepSpotReadyWithPoller(spots[0], cfg.msgSize, poller, pollEvents)
 	if !publishSpotControlPayload(controlPub, "CONNECTED", perfcommon.MultiReadyTimeout()) {
 		perfcommon.Must(fmt.Errorf("spot reqrep client connected publish timeout"))
 	}
@@ -216,23 +248,45 @@ func runMultiSpotReqRepClientRole(cfg multiConfig, endpoint string) perfcommon.R
 
 	stats := perfcommon.NewStats()
 	window := activeDeadline(cfg.duration)
-	payloads := make([][]byte, len(spots))
-	for i := range payloads {
-		payloads[i] = perfcommon.PreparePayload(cfg.msgSize)
-	}
+	latencies := make(chan float64, len(spots)*4)
+	activeSlots := activeSpotReqRepSlotLimit(len(slots), cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
-		for i, spot := range spots {
-			perfcommon.StampPayload(payloads[i])
-			data := requestSpotReply(spot, payloads[i], 200*time.Millisecond)
-			if data == nil {
-				continue
-			}
-			if sentAt, ok := perfcommon.SentAtFromBytes(data, cfg.msgSize); ok && time.Now().Before(window.StopAt) {
-				stats.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()) / 2.0)
+		submittedAny := false
+		for i := 0; i < activeSlots; i++ {
+			if submitMultiSpotReqRepRequest(&slots[i], cfg.msgSize, window.StopAt, latencies) {
+				submittedAny = true
 			}
 		}
+		for {
+			select {
+			case latency := <-latencies:
+				stats.AddLatencyNs(latency)
+			default:
+				goto drained
+			}
+		}
+	drained:
+		if submittedAny {
+			continue
+		}
+		remaining := time.Until(window.StopAt)
+		if remaining <= 0 {
+			break
+		}
+		if remaining > 50*time.Millisecond {
+			remaining = 50 * time.Millisecond
+		}
+		_, err := poller.Wait(pollEvents, remaining)
+		perfcommon.Must(err)
 	}
-	return stats.Snapshot(cfg.duration, cfg.msgSize)
+	for {
+		select {
+		case latency := <-latencies:
+			stats.AddLatencyNs(latency)
+		default:
+			return stats.Snapshot(cfg.duration, cfg.msgSize)
+		}
+	}
 }
 
 func waitMultiSpotReqRepSpotReady(spot *zlink.Spot, msgSize int) {
@@ -241,6 +295,110 @@ func waitMultiSpotReqRepSpotReady(spot *zlink.Spot, msgSize int) {
 	if requestSpotReply(spot, payload, perfcommon.MultiReadyTimeout()) == nil {
 		perfcommon.Must(fmt.Errorf("multi spot reqrep ready probe failed"))
 	}
+}
+
+func waitMultiSpotReqRepSpotReadyWithPoller(spot *zlink.Spot, msgSize int, poller *zlink.Poller, events []zlink.PollEvent) {
+	payload := perfcommon.PreparePayload(msgSize)
+	perfcommon.StampProbePayload(payload)
+	if requestSpotReplyWithPoller(spot, payload, perfcommon.MultiReadyTimeout(), poller, events) == nil {
+		perfcommon.Must(fmt.Errorf("multi spot reqrep ready probe failed"))
+	}
+}
+
+func requestSpotReplyWithPoller(spot *zlink.Spot, payload []byte, timeout time.Duration, poller *zlink.Poller, events []zlink.PollEvent) []byte {
+	done := make(chan []*zlink.Message, 1)
+	ok, err := spot.RequestToSpot(multiSpotReqRepNodeRID, multiSpotReqRepSpotRID).
+		Message(perfcommon.NewMessage(payload)).
+		Flags(zlink.SendFlagsDontWait).
+		Timeout(timeout).
+		Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
+			if result != zlink.RequestOK || len(parts) == 0 {
+				done <- nil
+				return
+			}
+			done <- parts
+		})
+	if err != nil {
+		if perfcommon.IsTransient(err) {
+			return nil
+		}
+		perfcommon.Must(err)
+	}
+	if !ok {
+		return nil
+	}
+	deadline := time.Now().Add(timeout + 100*time.Millisecond)
+	for time.Now().Before(deadline) {
+		select {
+		case parts := <-done:
+			defer func() {
+				for _, part := range parts {
+					_ = part.Close()
+				}
+			}()
+			if len(parts) == 0 || parts[0] == nil {
+				return nil
+			}
+			return append([]byte(nil), parts[0].Data()...)
+		default:
+		}
+		wait := time.Until(deadline)
+		if wait > 50*time.Millisecond {
+			wait = 50 * time.Millisecond
+		}
+		_, err := poller.Wait(events, wait)
+		perfcommon.Must(err)
+	}
+	return nil
+}
+
+func submitMultiSpotReqRepRequest(slot *multiSpotReqRepSlot, msgSize int, deadline time.Time, latencies chan<- float64) bool {
+	slot.mu.Lock()
+	if slot.waiting {
+		slot.mu.Unlock()
+		return false
+	}
+	perfcommon.StampPayload(slot.payload)
+	payload := append([]byte(nil), slot.payload...)
+	slot.waiting = true
+	slot.mu.Unlock()
+
+	ok, err := slot.spot.RequestToSpot(multiSpotReqRepNodeRID, multiSpotReqRepSpotRID).
+		Message(perfcommon.NewMessage(payload)).
+		Flags(zlink.SendFlagsDontWait).
+		Timeout(200*time.Millisecond).
+		Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
+			defer func() {
+				for _, part := range parts {
+					_ = part.Close()
+				}
+				slot.mu.Lock()
+				slot.waiting = false
+				slot.mu.Unlock()
+			}()
+			if result != zlink.RequestOK || len(parts) == 0 || parts[0] == nil {
+				return
+			}
+			if sentAt, ok := perfcommon.SentAtFromBytes(parts[0].Data(), msgSize); ok && time.Now().Before(deadline) {
+				latencies <- float64(time.Since(sentAt).Nanoseconds()) / 2.0
+			}
+		})
+	if err != nil {
+		slot.mu.Lock()
+		slot.waiting = false
+		slot.mu.Unlock()
+		if perfcommon.IsTransient(err) {
+			return false
+		}
+		perfcommon.Must(err)
+	}
+	if !ok {
+		slot.mu.Lock()
+		slot.waiting = false
+		slot.mu.Unlock()
+		return false
+	}
+	return true
 }
 
 func requestSpotReply(spot *zlink.Spot, payload []byte, timeout time.Duration) []byte {

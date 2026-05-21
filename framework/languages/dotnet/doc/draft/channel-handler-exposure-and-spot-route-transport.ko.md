@@ -18,7 +18,7 @@
 2. 어떤 router-capable channel 을 SpotNode router 와 연결할지 정하는 축
 
 두 축은 사용자가 보는 코드에서 가까운 위치에 나타난다. 하지만 의미는 다르다.
-`channel.MapHandlerGroup("api")`와 `channel.Add...Handler(...)`는 handler 노출 범위를
+`channel.AddHandlerGroup("api")`와 `channel.Add...Handler(...)`는 handler 노출 범위를
 정한다.
 `node.AcceptSpotRoutesFromChannel("play.route")`는 해당 channel 로 들어온 routed Spot
 message 를 SpotNode router 로 전달할 수 있게 ingress transport 연결을 만든다.
@@ -83,24 +83,24 @@ group 을 붙일 수도 있다.
 handler exposure 는 channel registration 에서 handler 를 실제 수신 대상에 붙이는 단계다.
 두 경로가 있다.
 
-1. `MapHandlerGroup(...)`으로 discovery 된 handler group 을 붙인다.
+1. `AddHandlerGroup(...)`으로 discovery 된 handler group 을 붙인다.
 2. `Add...Handler(...)`로 개별 typed handler 를 직접 붙인다.
 
 ```csharp
 options.AddClientServerChannel("tictactoe.api", channel =>
 {
     channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
-    channel.MapHandlerGroup("api");
-    channel.AddRequestHandler<PingHandler, PingReq, PingRes>();
+    channel.AddHandlerGroup("api");
+    channel.AddRequestHandler<PingHandler>();
 });
 ```
 
-`MapHandlerGroup("api")`는 다음 뜻이다.
+`AddHandlerGroup("api")`는 다음 뜻이다.
 
 > 이 channel 로 들어온 application packet 은, `api` group 에 속한 handler 후보 중
 > packet kind 와 packet name 이 맞는 handler 로만 dispatch 한다.
 
-`AddRequestHandler<PingHandler, PingReq, PingRes>()`는 다음 뜻이다.
+`AddRequestHandler<PingHandler>()`는 다음 뜻이다.
 
 > 이 channel 로 들어온 matching request packet 은 `PingHandler`로 dispatch 할 수 있다.
 
@@ -135,7 +135,7 @@ socket 과 SpotNode router 사이에 peer 연결을 만든다. 그 결과 이 ro
 ### 3.1 group 이 없으면 전부 열리는 fallback
 
 현재 dispatch lookup 은 mapped group 이 비어 있을 때 모든 endpoint 후보를 통과시킬 수
-있다. 사용자는 `MapHandlerGroup(...)`을 쓰지 않았으므로 아무 handler 도 노출하지
+있다. 사용자는 `AddHandlerGroup(...)`을 쓰지 않았으므로 아무 handler 도 노출하지
 않았다고 이해하기 쉽다. 하지만 실제 dispatch 는 다른 결과를 낼 수 있다.
 
 이 문제는 보안과 운영 양쪽에서 좋지 않다.
@@ -154,7 +154,7 @@ socket 과 SpotNode router 사이에 peer 연결을 만든다. 그 결과 이 ro
 
 이 호출을 handler group 검증 조건과 섞으면 두 문제가 생긴다.
 
-- Spot route transport 전용 channel 에도 의미 없는 `MapHandlerGroup(...)`을 요구하게 된다.
+- Spot route transport 전용 channel 에도 의미 없는 `AddHandlerGroup(...)`을 요구하게 된다.
 - application handler 가 열려야 하는 channel 인데 `AcceptSpotRoutesFromChannel(...)`이
   있다는 이유로 group 누락을 놓칠 수 있다.
 
@@ -162,7 +162,7 @@ socket 과 SpotNode router 사이에 peer 연결을 만든다. 그 결과 이 ro
 
 ### 3.3 channel 별 handler 등록 표면의 레벨 불일치
 
-`AddRouteMeshChannel(...)`에는 현재 일반 channel 처럼 `MapHandlerGroup(...)`가 보이고,
+`AddRouteMeshChannel(...)`에는 현재 일반 channel 처럼 `AddHandlerGroup(...)`가 보이고,
 동시에 routed handler 전용 `AddSendHandler(...)`, `AddRequestHandler(...)`도 보인다.
 
 처음에는 route mesh channel 이 `routerChannelId + targetNodeRid`로 특정 node 를 직접
@@ -170,7 +170,7 @@ socket 과 SpotNode router 사이에 peer 연결을 만든다. 그 결과 이 ro
 하면 channel 별 handler exposure 표면의 레벨이 맞지 않는다. inbound application handler 를
 받을 수 있는 channel 이라면 다음 두 방식이 같은 레벨에서 제공되어야 한다.
 
-- discovery 된 handler group 을 channel 에 노출하는 `MapHandlerGroup(...)`
+- discovery 된 handler group 을 channel 에 노출하는 `AddHandlerGroup(...)`
 - 개별 typed handler 를 channel 에 직접 노출하는 `Add...Handler(...)`
 
 다만 모든 channel 이 모든 handler kind 를 받을 수 있는 것은 아니다. channel builder 는
@@ -220,12 +220,12 @@ egress channel 을 먼저 고르고 그 channel 로 target Spot rid 를 보내�
 어떤 channel 에도 handler 를 열지 않는다.
 
 `[ZLinkHandlerGroup("...")]`도 노출이 아니다. group attribute 는 handler class 의
-논리 묶음만 표시한다. 실제 노출은 channel registration 의 `MapHandlerGroup(...)` 또는
+논리 묶음만 표시한다. 실제 노출은 channel registration 의 `AddHandlerGroup(...)` 또는
 `Add...Handler(...)`가 소유한다.
 
 ### 4.2 application handler dispatch 는 명시적 exposure 만 따른다
 
-channel 에 `MapHandlerGroup(...)`과 `Add...Handler(...)`가 모두 없으면 application handler
+channel 에 `AddHandlerGroup(...)`과 `Add...Handler(...)`가 모두 없으면 application handler
 후보는 0개로 본다.
 
 ```mermaid
@@ -238,7 +238,7 @@ flowchart TD
 ```
 
 위 흐름에서 오른쪽의 channel mapping 이 비어 있으면 exposed handlers 도 비어 있다.
-channel mapping 은 group mapping 만 뜻하지 않는다. `MapHandlerGroup(...)`으로 들어온
+channel mapping 은 group mapping 만 뜻하지 않는다. `AddHandlerGroup(...)`으로 들어온
 group 기반 노출과 `Add...Handler(...)`로 들어온 개별 typed handler 등록을 합친 결과다.
 두 경로로 같은 handler/packet 이 들어오면 하나의 노출로 합치고, 서로 다른 handler 가 같은
 channel/kind/packet 에 매핑되면 startup validation 에서 충돌로 처리한다.
@@ -281,7 +281,7 @@ Spot route transport 전용 channel 처럼 handler 를 열지 않는 inbound cha
 options.AddClientServerChannel("play.route", channel =>
 {
     channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7201"));
-    channel.MapHandlerGroup("play-admin");
+    channel.AddHandlerGroup("play-admin");
 });
 
 options.AddSpotNode("play-node", node =>
@@ -296,7 +296,7 @@ options.AddSpotNode("play-node", node =>
 - `play-admin` group application handler 를 수신한다.
 - SpotNode router transport peer 도 가진다.
 
-하지만 두 기능은 독립이다. `MapHandlerGroup("play-admin")`을 지워도 Spot route
+하지만 두 기능은 독립이다. `AddHandlerGroup("play-admin")`을 지워도 Spot route
 transport 가 자동으로 사라지는 것은 아니고, `AcceptSpotRoutesFromChannel(...)`을
 지워도 `play-admin` handler mapping 이 자동으로 사라지는 것은 아니다.
 
@@ -304,7 +304,7 @@ transport 가 자동으로 사라지는 것은 아니고, `AcceptSpotRoutesFromC
 
 handler exposure 는 모든 inbound-capable channel 에서 같은 두 축으로 표현한다.
 
-1. `MapHandlerGroup(...)`으로 discovery 된 group 을 노출한다.
+1. `AddHandlerGroup(...)`으로 discovery 된 group 을 노출한다.
 2. `Add...Handler(...)`로 개별 typed handler 를 직접 노출한다.
 
 두 방식은 같은 레벨의 exposure edge 다. group mapping 은 편의를 위한 묶음이고, typed
@@ -328,7 +328,7 @@ builder API 는 channel type 이 받을 수 없는 handler kind 를 노출하지
 builder 에는 request/send handler 등록 method 를 두지 않고, dealer mesh builder 에는
 handler group mapping 과 개별 handler 등록 method 를 두지 않는다.
 
-`MapHandlerGroup(...)`도 같은 제약을 우회할 수 없다. group 안에 channel type 과 맞지 않는
+`AddHandlerGroup(...)`도 같은 제약을 우회할 수 없다. group 안에 channel type 과 맞지 않는
 handler interface 가 포함되어 있으면 조용히 무시하지 않고 startup validation 오류로
 처리한다. 예를 들어 fanout subscriber 에 매핑한 group 안에
 `IZLinkRequestHandler<,>`가 있으면 오류다. route mesh 에 매핑한 group 안에는
@@ -547,7 +547,7 @@ Spot call 을 묶어 제공하는 convenience surface 로 유지할 수 있다. 
 
 ### 5.2 대안 B: 모든 inbound channel 에 group 을 반드시 요구한다
 
-이 대안은 단순하다. server/subscriber 가 있으면 항상 `MapHandlerGroup(...)`이 필요하다.
+이 대안은 단순하다. server/subscriber 가 있으면 항상 `AddHandlerGroup(...)`이 필요하다.
 하지만 Spot route transport 전용 channel 에도 의미 없는 group 을 요구한다. 사용자는
 transport 연결을 위해 빈 handler group 을 만들게 되고, 그 group 이 실제로 무엇을
 보호하는지 알기 어렵다.
@@ -599,7 +599,7 @@ local egress channel 을 명시해야 한다.
 handler 등록만 허용하면, 사용자는 channel type 마다 handler exposure 모델을 따로 배워야
 한다.
 
-이 대안은 폐기한다. route mesh 도 `MapHandlerGroup(...)`과 개별 typed handler 등록을 둘 다
+이 대안은 폐기한다. route mesh 도 `AddHandlerGroup(...)`과 개별 typed handler 등록을 둘 다
 지원한다. 대신 route mesh 에 맞는 `IZLinkRouteSendHandler<>` /
 `IZLinkRouteRequestHandler<,>`만 허용하고, 일반 channel handler interface 가 섞이면
 validation 오류로 처리한다.
@@ -643,7 +643,7 @@ validation 은 다음 정보를 함께 본다.
    참조를 암묵적 허용 조건으로 보지 않는다.
 2. fanout subscriber channel 은 publish handler exposure 가 있어야 한다. 빈 subscriber 는
    startup validation 오류다.
-3. `MapHandlerGroup(...)`이 가리키는 group 은 scan 된 handler 중 하나 이상에 있어야 한다.
+3. `AddHandlerGroup(...)`이 가리키는 group 은 scan 된 handler 중 하나 이상에 있어야 한다.
 4. group 이 없는 handler endpoint 는 자동 노출되지 않는다.
 5. group mapping 과 개별 typed handler registration 을 합친 뒤 중복은 제거하고,
    channel/kind/packet 충돌은 startup validation 오류로 처리한다.
@@ -673,27 +673,34 @@ channel builder 는 channel type 별 허용 handler kind 를 method surface 에 
 
 | builder | 유지/추가할 handler registration |
 |---------|-----------------------------------|
-| `IZLinkClientServerChannelBuilder` | `MapHandlerGroup(...)`, `AddSendHandler(...)`, `AddRequestHandler(...)` |
-| `IZLinkFanoutChannelBuilder` | `MapHandlerGroup(...)`, `AddPublishHandler(...)` |
+| `IZLinkClientServerChannelBuilder` | `AddHandlerGroup(...)`, `AddSendHandler(...)`, `AddRequestHandler(...)` |
+| `IZLinkFanoutChannelBuilder` | `AddHandlerGroup(...)`, `AddPublishHandler(...)` |
 | `IZLinkDealerMeshChannelBuilder` | handler registration 없음 |
-| `IZLinkRouteMeshChannelBuilder` | `MapHandlerGroup(...)`, route 전용 `AddSendHandler(...)`, `AddRequestHandler(...)` |
+| `IZLinkRouteMeshChannelBuilder` | `AddHandlerGroup(...)`, route 전용 `AddSendHandler(...)`, `AddRequestHandler(...)` |
 
-route mesh builder 의 `MapHandlerGroup(...)`은 제거하지 않는다. 대신 group mapping 으로
+route mesh builder 의 `AddHandlerGroup(...)`은 제거하지 않는다. 대신 group mapping 으로
 노출되는 handler 가 route 전용 interface 인지 검증한다. client-server builder 의
 `AddRequestHandler(...)`와 route mesh builder 의 `AddRequestHandler(...)`는 이름은 같지만
 제약 type 이 다르다. 전자는 `IZLinkRequestHandler<,>`를 요구하고, 후자는
 `IZLinkRouteRequestHandler<,>`를 요구한다.
 
-client-server 와 fanout 의 개별 typed handler registration 은 route mesh builder 와 같은
-generic parameter 형태를 사용한다. handler type 과 message/reply type 을 모두 명시해서,
-handler 가 여러 interface 를 구현하더라도 어떤 handler contract 를 channel 에 노출하는지
-호출 코드에서 드러나게 한다.
+client-server 와 fanout 의 개별 typed handler registration 은 handler type 만 받는 짧은
+형태를 기본으로 사용한다. builder 는 handler type 이 구현한 handler interface 를 읽어서
+message/reply type 을 채운다. handler 가 같은 kind 의 handler interface 를 여러 개
+구현해서 모호하면 등록 시점에 오류를 내고, 그 경우에는 message/reply type 을
+함께 지정하는 명시적 overload 를 사용한다.
 
 ```csharp
 public interface IZLinkClientServerChannelBuilder
 {
+    void AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class;
+
     void AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>;
+
+    void AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class;
 
     void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
@@ -701,6 +708,9 @@ public interface IZLinkClientServerChannelBuilder
 
 public interface IZLinkFanoutChannelBuilder
 {
+    void AddPublishHandler<THandler>(string? packetName = null)
+        where THandler : class;
+
     void AddPublishHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkPublishHandler<TMessage>;
 }
@@ -801,7 +811,7 @@ SpotNode, routed Spot transport 처럼 language binding 전체에 적용되는 �
 
 공통 문서에 넣지 않을 내용:
 
-- `MapHandlerGroup(...)`
+- `AddHandlerGroup(...)`
 - `[ZLinkHandlerGroup(...)]`
 - `IZLinkClient`, `IZLinkFanoutPublisher`, `IZLinkRoutedSpotClient`
 - ASP.NET Core DI 등록 조건
@@ -818,21 +828,21 @@ guide 에도 별도 설명을 넣는다. 샘플 문서는 그 뒤에 실제 코�
 
 | 문서 | 적용 내용 |
 |------|-----------|
-| `framework/languages/dotnet/doc/spec/handler-interfaces.ko.md` | `IZLinkClient`, `IZLinkClientServerClient`, `IZLinkFanoutPublisher`, `IZLinkEventPublisher`, `IZLinkRouteClient`, 새 `IZLinkRoutedSpotClient`의 역할을 한 표로 정리한다. channel type 별 허용 handler interface 와 `MapHandlerGroup(...)` / 개별 typed handler registration 규칙도 여기에 반영한다. |
-| `framework/languages/dotnet/doc/spec/aspnet-core-channel-messaging.ko.md` | handler discovery 와 handler exposure 를 분리한다. `MapHandlerGroup(...)`과 개별 typed handler registration 이 모두 없는 inbound channel 은 application handler 를 열지 않는다고 명시한다. `IZLinkClient`가 `channelName -> runtime bundle -> owned socket`으로 client-server/dealer mesh outbound socket 을 선택하는 모델을 설명한다. |
+| `framework/languages/dotnet/doc/spec/handler-interfaces.ko.md` | `IZLinkClient`, `IZLinkClientServerClient`, `IZLinkFanoutPublisher`, `IZLinkEventPublisher`, `IZLinkRouteClient`, 새 `IZLinkRoutedSpotClient`의 역할을 한 표로 정리한다. channel type 별 허용 handler interface 와 `AddHandlerGroup(...)` / 개별 typed handler registration 규칙도 여기에 반영한다. |
+| `framework/languages/dotnet/doc/spec/aspnet-core-channel-messaging.ko.md` | handler discovery 와 handler exposure 를 분리한다. `AddHandlerGroup(...)`과 개별 typed handler registration 이 모두 없는 inbound channel 은 application handler 를 열지 않는다고 명시한다. `IZLinkClient`가 `channelName -> runtime bundle -> owned socket`으로 client-server/dealer mesh outbound socket 을 선택하는 모델을 설명한다. |
 | `framework/languages/dotnet/doc/spec/aspnet-core-spot.ko.md` | `AcceptSpotRoutesFromChannel(...)`은 handler mapping 과 무관한 Spot route ingress 연결이라고 명시한다. `IZLinkRoutedSpotClient`가 `ViaEgressChannel(...)`로 caller 가 고른 local egress channel 을 사용하고, `EnableSpotRouteEgress(targetSpotNodeChannelName)`에 저장된 target SpotNode ingress channel 과 `RoutingId spotRid`로 보내는 모델을 추가한다. client-server egress 는 local DEALER, route mesh egress 는 local ROUTER 를 사용할 수 있다는 차이도 같이 정리한다. |
 | `framework/languages/dotnet/doc/internals/behavior-matrix.ko.md` | group 없는 server/subscriber channel, Spot route transport 전용 channel, dealer mesh channel 의 허용/비허용 조합을 표로 고정한다. |
 | `framework/languages/dotnet/doc/internals/di-capability-exposure-policy.ko.md` | `IZLinkClient`는 항상 주입 가능하지만 없는 channel 을 만들지 않는다는 규칙, `IZLinkRoutedSpotClient`가 명시된 local egress channel 만 사용하는 규칙, `IZLinkSpotClient`의 active Spot callback 전제를 정리한다. |
 | `framework/languages/dotnet/doc/internals/regression-test-matrix.ko.md` | handler exposure 없는 fallback 제거, dealer mesh `IZLinkClient` 전송, channel handler 에서 다른 channel request, channel handler 에서 Spot route request 테스트를 추가한다. |
 | `framework/languages/dotnet/doc/guide/01-overview.ko.md` | channel handler exposure 와 Spot route transport 가 서로 다른 축이라는 큰 그림을 넣는다. framework 가 자동으로 모든 handler 를 열어 주는 모델이 아니라 channel registration 에서 노출을 선택하는 모델임을 소개한다. |
-| `framework/languages/dotnet/doc/guide/02-getting-started.ko.md` | 최소 channel 예제에서 `AddHandlersFromAssemblyOf(...)`만으로는 handler 가 열리지 않고 `MapHandlerGroup(...)` 또는 개별 typed handler registration 이 필요하다는 흐름을 보여 준다. routed Spot 은 별도 고급 단계로 링크한다. |
+| `framework/languages/dotnet/doc/guide/02-getting-started.ko.md` | 최소 channel 예제에서 `AddHandlersFromAssemblyOf(...)`만으로는 handler 가 열리지 않고 `AddHandlerGroup(...)` 또는 개별 typed handler registration 이 필요하다는 흐름을 보여 준다. routed Spot 은 별도 고급 단계로 링크한다. |
 | `framework/languages/dotnet/doc/guide/03-concepts.ko.md` | `channelName`의 세 가지 의미를 분리한다. `IZLinkClient`의 target channel, `IZLinkRoutedSpotClient.ViaEgressChannel(...)`의 local egress channel, `EnableSpotRouteEgress(targetSpotNodeChannelName)`의 target SpotNode ingress channel 을 한 장에서 비교한다. |
 | `framework/languages/dotnet/doc/guide/10-feature-map.ko.md` | 사용 사례별로 어떤 표면을 고르는지 정리한다. channel-to-channel request/send 는 `IZLinkClient`, fanout publish 는 `IZLinkFanoutPublisher`, current Spot 내부 outbound 는 `IZLinkSpotClient`, 일반 handler 에서 target Spot 으로 가는 호출은 `IZLinkRoutedSpotClient`로 안내한다. |
 | `framework/languages/dotnet/doc/guide/samples/channel-messaging-samples.ko.md` | channel handler 가 `IZLinkClient`로 client-server/dealer mesh channel 에 send/request 하는 예와 `IZLinkFanoutPublisher`로 publish 하는 예를 추가한다. |
 | `framework/languages/dotnet/doc/guide/samples/spot-samples.ko.md` | current Spot callback 에서는 `IZLinkSpotClient`, 일반 handler/HTTP/session gateway 에서는 `IZLinkRoutedSpotClient`를 쓰는 예를 분리한다. |
 | `framework/languages/dotnet/doc/guide/samples/bingo-game-sample.ko.md` | API/Session handler 가 Play Spot 으로 가는 경로를 `IZLinkClient`와 `IZLinkRoutedSpotClient` 중 어떤 표면으로 쓰는지 샘플 구조에 맞게 고정한다. |
 | `framework/languages/dotnet/doc/guide/samples/tictactoe-game-sample.ko.md` | session gateway 예시에서 channel-to-channel request 와 routed Spot request 의 차이를 샘플 흐름에 맞게 정리한다. |
-| `framework/languages/dotnet/samples/**` | 실제 sample 프로젝트에도 같은 변경을 적용한다. channel 등록에는 `MapHandlerGroup(...)` 또는 개별 typed handler registration 을 명시하고, 일반 channel-to-channel 호출은 `IZLinkClient`, target Spot 호출은 `IZLinkRoutedSpotClient.ViaEgressChannel(...)`로 나누어 사용한다. routed Spot egress channel 은 `EnableSpotRouteEgress(targetSpotNodeChannelName)`로 target SpotNode ingress channel 을 명시한다. |
+| `framework/languages/dotnet/samples/**` | 실제 sample 프로젝트에도 같은 변경을 적용한다. channel 등록에는 `AddHandlerGroup(...)` 또는 개별 typed handler registration 을 명시하고, 일반 channel-to-channel 호출은 `IZLinkClient`, target Spot 호출은 `IZLinkRoutedSpotClient.ViaEgressChannel(...)`로 나누어 사용한다. routed Spot egress channel 은 `EnableSpotRouteEgress(targetSpotNodeChannelName)`로 target SpotNode ingress channel 을 명시한다. |
 | `framework/languages/dotnet/doc/README.ko.md` | 새 정식 문서 반영 뒤 draft 링크와 주제 문서 설명을 최신 상태로 맞춘다. |
 
 #### 6.5.3 반영 순서
@@ -865,13 +875,13 @@ builder.Services.AddZLinkFramework(options =>
     options.AddClientServerChannel("api.public", channel =>
     {
         channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
-        channel.MapHandlerGroup("public-api");
+        channel.AddHandlerGroup("public-api");
     });
 
     options.AddClientServerChannel("api.admin", channel =>
     {
         channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7102"));
-        channel.MapHandlerGroup("admin-api");
+        channel.AddHandlerGroup("admin-api");
     });
 });
 ```
@@ -888,8 +898,8 @@ builder.Services.AddZLinkFramework(options =>
     options.AddClientServerChannel("api.public", channel =>
     {
         channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
-        channel.AddRequestHandler<GetProfileHandler, GetProfileReq, GetProfileRes>();
-        channel.AddSendHandler<RefreshProfileHandler, RefreshProfileCommand>();
+        channel.AddRequestHandler<GetProfileHandler>();
+        channel.AddSendHandler<RefreshProfileHandler>();
     });
 
     options.AddFanoutChannel("profile.events", channel =>
@@ -902,13 +912,13 @@ builder.Services.AddZLinkFramework(options =>
             });
         });
 
-        channel.AddPublishHandler<ProfileUpdatedHandler, ProfileUpdated>();
+        channel.AddPublishHandler<ProfileUpdatedHandler>();
     });
 
     options.AddRouteMeshChannel("play.route", channel =>
     {
         channel.Bind("tcp://0.0.0.0:7201");
-        channel.AddRequestHandler<RouteRoomHandler, RouteRoomReq, RouteRoomRes>();
+        channel.AddRequestHandler<RouteRoomHandler>();
     });
 });
 ```
@@ -1121,9 +1131,9 @@ public sealed class DispatchJobHandler(IZLinkClient channels)
 |------|-----------|
 | handler exposure 없는 server channel | scan 된 handler 가 있어도 해당 channel 에 자동 노출되지 않는다. |
 | handler exposure 없는 subscriber channel | publish handler 가 자동 노출되지 않고 startup validation 오류다. |
-| unknown handler group mapping | `MapHandlerGroup(...)`이 scan 결과에 없는 group 을 가리키면 startup validation 오류다. |
+| unknown handler group mapping | `AddHandlerGroup(...)`이 scan 결과에 없는 group 을 가리키면 startup validation 오류다. |
 | transport 전용 accepted route channel | `AcceptSpotRoutesFromChannel(...)`만 있는 channel 은 handler group 없이 시작하지만 application handler dispatch 는 열리지 않는다. |
-| route mesh group mapping 허용 | route mesh builder 의 `MapHandlerGroup(...)`은 route handler group 을 노출하고, 일반 channel handler 가 섞이면 startup validation 오류다. |
+| route mesh group mapping 허용 | route mesh builder 의 `AddHandlerGroup(...)`은 route handler group 을 노출하고, 일반 channel handler 가 섞이면 startup validation 오류다. |
 | channel type handler interface matrix | client-server, fanout, dealer mesh, route mesh 가 허용하지 않는 handler registration method 를 노출하지 않거나 validation 오류로 막는다. |
 | channel handler channel client | 일반 channel request handler 가 `IZLinkClient.Request(...)`로 다른 channel 에 request 하고 reply 를 받는다. |
 | dealer mesh channel client | `IZLinkClient.Send(...)`와 `Request(...)`가 `AddDealerMeshChannel(...)`의 client capability 를 통해 동작한다. |

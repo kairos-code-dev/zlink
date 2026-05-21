@@ -10,8 +10,8 @@ internal static class PerfMultiSpotServer
     private const string Topic = "bench";
     private const string ControlTopic = Topic;
     private const int SpotSocketTag = 0;
-    private const int ActiveDeadlineTag = -1;
-    private const int ControlDeadlineTag = -2;
+    private const int ActiveDeadlineTag = int.MaxValue;
+    private const int ControlDeadlineTag = int.MaxValue - 1;
 
     internal static int Run(PerfOptions options)
     {
@@ -225,7 +225,7 @@ internal static class PerfMultiSpotServer
             }
 
             if (!WaitForSpotPublishReady(sendPoller, sendEvents,
-                    ActiveDeadlineTag))
+                    activeTimer, ActiveDeadlineTag))
                 break;
         }
 
@@ -283,7 +283,8 @@ internal static class PerfMultiSpotServer
                     return true;
             }
 
-            if (!WaitForControlEvent(poller, events, PollEventFlags.PollIn))
+            if (!WaitForControlEvent(poller, events, deadlineTimer,
+                    PollEventFlags.PollIn))
                 return false;
         }
     }
@@ -351,7 +352,8 @@ internal static class PerfMultiSpotServer
             {
             }
 
-            if (!WaitForControlEvent(poller, events, PollEventFlags.PollOut))
+            if (!WaitForControlEvent(poller, events, deadlineTimer,
+                    PollEventFlags.PollOut))
                 return false;
         }
     }
@@ -410,24 +412,23 @@ internal static class PerfMultiSpotServer
     }
 
     private static bool WaitForSpotPublishReady(Poller poller,
-        PollEvent[] events, int deadlineTag)
+        PollEvent[] events, Systems.Zlink.Timer activeTimer, int deadlineTag)
     {
         while (true)
         {
             try
             {
                 int written = poller.Wait(events,
-                    TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs),
-                    out _);
+                    TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs));
                 for (int i = 0; i < written; i++)
                 {
-                    if (events[i].Tag is int tag && tag == deadlineTag)
+                    if (events[i].Slot == (nuint)deadlineTag)
                     {
-                        _ = events[i].Timer?.Recv();
+                        _ = activeTimer.Recv();
                         return false;
                     }
 
-                    if (events[i].Tag is SpotSocketTag
+                    if (events[i].Slot == (nuint)SpotSocketTag
                         && (events[i].Revents & PollEventFlags.PollOut) != 0)
                     {
                         return true;
@@ -442,21 +443,21 @@ internal static class PerfMultiSpotServer
     }
 
     private static bool WaitForControlEvent(Poller poller, PollEvent[] events,
-        PollEventFlags required)
+        Systems.Zlink.Timer deadlineTimer, PollEventFlags required)
     {
         while (true)
         {
             int written = poller.Wait(events,
-                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs), out _);
+                TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs));
             for (int i = 0; i < written; i++)
             {
-                if (events[i].Tag is ControlDeadlineTag)
+                if (events[i].Slot == (nuint)ControlDeadlineTag)
                 {
-                    _ = events[i].Timer?.Recv();
+                    _ = deadlineTimer.Recv();
                     return false;
                 }
 
-                if (events[i].Tag is SpotSocketTag
+                if (events[i].Slot == (nuint)SpotSocketTag
                     && (events[i].Revents & required) != 0)
                 {
                     return true;

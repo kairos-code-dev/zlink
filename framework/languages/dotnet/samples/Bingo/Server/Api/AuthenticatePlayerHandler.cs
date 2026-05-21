@@ -2,6 +2,7 @@ using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Api;
 
+[ZLinkHandlerGroup("api")]
 internal sealed class AuthenticatePlayerHandler
     : IZLinkRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>
 {

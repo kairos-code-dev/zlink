@@ -5,7 +5,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
+const { POLLIN, POLLCOMPLETION, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
@@ -202,7 +202,7 @@ async function main() {
         const poller = new zlink.Poller();
         const pollBuffer = new zlink.PollEvents(Math.max(1, slots.length));
         for (let i = 0; i < slots.length; i += 1) {
-            poller.add(slots[i].spot, [POLLIN], i);
+            poller.add(slots[i].spot, pollEvents(POLLCOMPLETION), i);
         }
         const activeSlots = slots.slice(0, activeSpotSlotLimit(slots.length, options.msgSize));
         const requestTimeoutMs = activeRequestTimeoutMs();
@@ -227,12 +227,12 @@ async function main() {
                     progressed = true;
                 }
                 if (!progressed) {
-                    poller.wait(pollBuffer, 50);
+                    poller.wait(pollBuffer, 1);
                     await sleepImmediate();
                 }
             }
             while (activeSlots.some((slot) => slot.inflight)) {
-                poller.wait(pollBuffer, 50);
+                poller.wait(pollBuffer, 1);
                 await sleepImmediate();
             }
         }

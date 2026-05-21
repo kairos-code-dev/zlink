@@ -1,11 +1,14 @@
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::os::fd::RawFd;
+use std::sync::Mutex;
 
 use crate::error::{
     ConfigError, HandlerError, RecvError, check_config_rc, check_handler_rc, check_recv_rc,
 };
 use crate::ffi;
+use crate::request_progress::{acquire_external_progress, release_external_progress};
 
 /// Poll event flags.
 pub const POLLIN: i16 = ffi::ZLINK_POLLIN;
@@ -71,6 +74,7 @@ impl PollTarget<'_> {
 /// Poller for monitoring socket readiness (POLLIN / POLLOUT).
 pub struct Poller {
     handle: *mut c_void,
+    sockets: Mutex<HashMap<usize, i16>>,
 }
 
 unsafe impl Send for Poller {}
@@ -84,7 +88,10 @@ impl Poller {
                 crate::error::last_errno(),
             ));
         }
-        Ok(Self { handle })
+        Ok(Self {
+            handle,
+            sockets: Mutex::new(HashMap::new()),
+        })
     }
 
     pub fn add_socket<'a>(
@@ -96,7 +103,15 @@ impl Poller {
         let target = socket.into();
         check_config_rc(unsafe {
             ffi::zlink_poller_add(self.handle, target.raw(), slot as *mut c_void, events)
-        })
+        })?;
+        if events & POLLCOMPLETION != 0 {
+            acquire_external_progress(target.raw());
+        }
+        self.sockets
+            .lock()
+            .expect("poller sockets")
+            .insert(target.raw() as usize, events);
+        Ok(())
     }
 
     /// Modify the event mask for a previously added socket.
@@ -106,13 +121,33 @@ impl Poller {
         events: i16,
     ) -> Result<(), ConfigError> {
         let target = socket.into();
+        let mut sockets = self.sockets.lock().expect("poller sockets");
+        let previous = sockets.get(&(target.raw() as usize)).copied().unwrap_or(0);
+        if previous & POLLCOMPLETION == 0 && events & POLLCOMPLETION != 0 {
+            acquire_external_progress(target.raw());
+        } else if previous & POLLCOMPLETION != 0 && events & POLLCOMPLETION == 0 {
+            release_external_progress(target.raw());
+        }
+        sockets.insert(target.raw() as usize, events);
+        drop(sockets);
         check_config_rc(unsafe { ffi::zlink_poller_modify(self.handle, target.raw(), events) })
     }
 
     /// Remove a socket from the poller.
     pub fn remove_socket<'a>(&self, socket: impl Into<PollTarget<'a>>) -> Result<(), ConfigError> {
         let target = socket.into();
-        check_config_rc(unsafe { ffi::zlink_poller_remove(self.handle, target.raw()) })
+        check_config_rc(unsafe { ffi::zlink_poller_remove(self.handle, target.raw()) })?;
+        if let Some(events) = self
+            .sockets
+            .lock()
+            .expect("poller sockets")
+            .remove(&(target.raw() as usize))
+        {
+            if events & POLLCOMPLETION != 0 {
+                release_external_progress(target.raw());
+            }
+        }
+        Ok(())
     }
 
     pub fn add_fd(&self, fd: RawFd, events: i16, slot: usize) -> Result<(), ConfigError> {
@@ -192,6 +227,13 @@ impl Poller {
 
 impl Drop for Poller {
     fn drop(&mut self) {
+        if let Ok(mut sockets) = self.sockets.lock() {
+            for (handle, events) in sockets.drain() {
+                if events & POLLCOMPLETION != 0 {
+                    release_external_progress(handle as *mut c_void);
+                }
+            }
+        }
         unsafe {
             let mut h = self.handle;
             ffi::zlink_poller_destroy(&mut h);

@@ -76,9 +76,11 @@ const (
 type pollerEntry struct {
 	kind   pollerEntryKind
 	socket SocketTarget
+	raw    unsafe.Pointer
 	fd     int
 	timer  *Timer
 	slot   uintptr
+	events PollEventFlag
 }
 
 type Poller struct {
@@ -254,13 +256,19 @@ func (p *Poller) AddSocket(socket SocketTarget, events PollEventFlag, slot uintp
 	if err != nil {
 		return err
 	}
-	entry := p.makeEntry(pollerEntrySocket, socket, 0, nil, slot)
+	entry := p.makeEntry(pollerEntrySocket, socket, raw, 0, nil, slot, events)
 	if err := configErrorFromResult(C.zlink_poller_add(p.handle, raw, entry.userDataPtr(), C.short(events))); err != nil {
 		return err
+	}
+	if events&PollCompletion != 0 {
+		acquireExternalRequestProgress(raw)
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.closed {
+		if events&PollCompletion != 0 {
+			releaseExternalRequestProgress(raw)
+		}
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	p.sockets[uintptr(raw)] = entry
@@ -275,6 +283,17 @@ func (p *Poller) ModifySocket(socket SocketTarget, events PollEventFlag) error {
 	if err != nil {
 		return err
 	}
+	p.mu.Lock()
+	entry := p.sockets[uintptr(raw)]
+	if entry != nil {
+		if entry.events&PollCompletion == 0 && events&PollCompletion != 0 {
+			acquireExternalRequestProgress(raw)
+		} else if entry.events&PollCompletion != 0 && events&PollCompletion == 0 {
+			releaseExternalRequestProgress(raw)
+		}
+		entry.events = events
+	}
+	p.mu.Unlock()
 	return configErrorFromResult(C.zlink_poller_modify(p.handle, raw, C.short(events)))
 }
 
@@ -291,6 +310,9 @@ func (p *Poller) RemoveSocket(socket SocketTarget) error {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if entry := p.sockets[uintptr(raw)]; entry != nil && entry.events&PollCompletion != 0 {
+		releaseExternalRequestProgress(raw)
+	}
 	delete(p.sockets, uintptr(raw))
 	return nil
 }
@@ -299,7 +321,7 @@ func (p *Poller) AddFd(fd int, events PollEventFlag, slot uintptr) error {
 	if p == nil || p.closed || p.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	entry := p.makeEntry(pollerEntryFD, nil, fd, nil, slot)
+	entry := p.makeEntry(pollerEntryFD, nil, nil, fd, nil, slot, events)
 	if err := configErrorFromResult(C.zlink_poller_add_fd(p.handle, C.zlink_fd_t(fd), entry.userDataPtr(), C.short(events))); err != nil {
 		return err
 	}
@@ -339,7 +361,7 @@ func (p *Poller) AddTimer(timer *Timer, slot uintptr) error {
 	if timer == nil || timer.closed || timer.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	entry := p.makeEntry(pollerEntryTimer, nil, 0, timer, slot)
+	entry := p.makeEntry(pollerEntryTimer, nil, nil, 0, timer, slot, PollIn)
 	if err := configErrorFromResult(C.zlink_poller_add_timer(p.handle, timer.handle, entry.userDataPtr())); err != nil {
 		return err
 	}
@@ -406,7 +428,10 @@ func (p *Poller) Close() error {
 		return nil
 	}
 	p.mu.Lock()
-	for k := range p.sockets {
+	for k, entry := range p.sockets {
+		if entry != nil && entry.events&PollCompletion != 0 {
+			releaseExternalRequestProgress(entry.raw)
+		}
 		delete(p.sockets, k)
 	}
 	for k := range p.fds {
@@ -425,8 +450,8 @@ func (p *Poller) Close() error {
 	return nil
 }
 
-func (p *Poller) makeEntry(kind pollerEntryKind, socket SocketTarget, fd int, timer *Timer, slot uintptr) *pollerEntry {
-	return &pollerEntry{kind: kind, socket: socket, fd: fd, timer: timer, slot: slot}
+func (p *Poller) makeEntry(kind pollerEntryKind, socket SocketTarget, raw unsafe.Pointer, fd int, timer *Timer, slot uintptr, events PollEventFlag) *pollerEntry {
+	return &pollerEntry{kind: kind, socket: socket, raw: raw, fd: fd, timer: timer, slot: slot, events: events}
 }
 
 func (e *pollerEntry) userDataPtr() unsafe.Pointer {

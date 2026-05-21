@@ -113,7 +113,7 @@ internal static class PerfMultiPubSubClient
         var subscribedMessages = new TopicMessage[activeClients.Count];
         for (int i = 0; i < activeClients.Count; i++)
         {
-            poller.Add(activeClients[i], PollEventFlags.PollIn, i);
+            poller.Add(activeClients[i], PollEventFlags.PollIn, (nuint)i);
             subscribedMessages[i] = new TopicMessage();
         }
 
@@ -128,14 +128,15 @@ internal static class PerfMultiPubSubClient
 
                 for (int readyOffset = 0; readyOffset < readyCount; readyOffset++)
                 {
-                    if (events[readyOffset].Tag is not int i
-                        || i < 0
-                        || i >= activeClients.Count
+                    nuint slot = events[readyOffset].Slot;
+                    if (slot > (nuint)int.MaxValue
+                        || (int)slot >= activeClients.Count
                         || (events[readyOffset].Revents & PollEventFlags.PollIn) == 0)
                     {
                         continue;
                     }
 
+                    int i = (int)slot;
                     TopicMessage subscribed = subscribedMessages[i];
                     while (true)
                     {
@@ -210,7 +211,7 @@ internal static class PerfMultiPubSubClient
     {
         try
         {
-            return poller.Wait(events, Timeout.InfiniteTimeSpan, out _);
+            return poller.Wait(events, Timeout.InfiniteTimeSpan);
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                         || IsInterrupted(ex.InternalErrno))

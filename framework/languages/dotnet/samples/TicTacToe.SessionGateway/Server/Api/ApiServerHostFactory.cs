@@ -21,7 +21,7 @@ public static class ApiServerHostFactory
                 {
                     server.Bind(topology.ApiChannelEndpoint);
                 });
-                channel.MapHandlerGroup("api");
+                channel.AddHandlerGroup("api");
             });
             options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
             {

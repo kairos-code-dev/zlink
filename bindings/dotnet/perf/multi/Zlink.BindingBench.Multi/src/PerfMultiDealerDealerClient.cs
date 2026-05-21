@@ -6,7 +6,7 @@ using static PerfRunner;
 
 internal static class PerfMultiDealerDealerClient
 {
-    private const int ActiveDeadlineTag = -1;
+    private const int ActiveDeadlineTag = int.MaxValue;
 
     internal static int Run(PerfOptions options)
     {
@@ -97,7 +97,7 @@ internal static class PerfMultiDealerDealerClient
         int pendingCount = 0;
 
         for (int i = 0; i < activeClients.Count; i++)
-            sendPoller.Add(activeClients[i], PollEventFlags.PollOut, i);
+            sendPoller.Add(activeClients[i], PollEventFlags.PollOut, (nuint)i);
         sendPoller.Add(activeTimer, ActiveDeadlineTag);
         activeTimer.Start(TimeSpan.FromSeconds(Math.Max(1, durationSeconds)),
             1);
@@ -135,7 +135,7 @@ internal static class PerfMultiDealerDealerClient
             if (!progressed && pendingCount > 0
                 && Stopwatch.GetTimestamp() < activeDeadlineTicks)
             {
-                if (!WaitForWritable(sendPoller, sendEvents, pending,
+                if (!WaitForWritable(sendPoller, sendEvents, activeTimer, pending,
                         ref pendingCount))
                     break;
             }
@@ -192,26 +192,26 @@ internal static class PerfMultiDealerDealerClient
     }
 
     private static bool WaitForWritable(Poller poller, PollEvent[] events,
-        bool[] pending, ref int pendingCount)
+        Systems.Zlink.Timer activeTimer, bool[] pending, ref int pendingCount)
     {
         int written = poller.Wait(events,
-            TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs),
-            out _);
+            TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs));
         for (int i = 0; i < written; i++)
         {
-            if (events[i].Tag is ActiveDeadlineTag)
+            if (events[i].Slot == (nuint)ActiveDeadlineTag)
             {
-                _ = events[i].Timer?.Recv();
+                _ = activeTimer.Recv();
                 return false;
             }
 
+            nuint slot = events[i].Slot;
             if ((events[i].Revents & PollEventFlags.PollOut) == 0
-                || events[i].Tag is not int index
-                || index < 0
-                || index >= pending.Length
-                || !pending[index])
+                || slot > (nuint)int.MaxValue
+                || (int)slot >= pending.Length
+                || !pending[(int)slot])
                 continue;
 
+            int index = (int)slot;
             pending[index] = false;
             pendingCount--;
         }

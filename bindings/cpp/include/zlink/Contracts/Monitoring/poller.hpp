@@ -377,6 +377,13 @@ class poller_t
                           poll_event_flag_t events_,
                           std::uintptr_t slot_)
     {
+        if ((static_cast<short> (events_)
+             & static_cast<short> (poll_event_flag_t::pollcompletion)) != 0) {
+            add_native_poller_socket_impl (
+              detail::native_handle (socket_), events_, slot_);
+            return;
+        }
+
         ensure_addable ();
         void *socket_handle = detail::native_handle (socket_);
         if (find_socket (socket_handle) >= 0)

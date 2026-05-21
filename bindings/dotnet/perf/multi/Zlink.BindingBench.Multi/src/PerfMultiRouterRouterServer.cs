@@ -50,19 +50,27 @@ internal static class PerfMultiRouterRouterServer
             eventMasks[0] = pendingReplies.Count > 0
                 ? SocketPollIn | SocketPollOut
                 : SocketPollIn;
-            if (PollSocketEvents(pollManager, sockets, eventMasks,
-                    pollTimeoutMs) <= 0)
+            int readyCount = PollSocketEvents(pollManager, sockets, eventMasks,
+                pollTimeoutMs);
+            if (readyCount <= 0)
             {
                 continue;
             }
 
-            if (IsSocketWriteReady(pollManager, 0)
+            PollEventFlags readyMask = PollEventFlags.None;
+            for (int i = 0; i < readyCount; i++)
+            {
+                if (ReadySocketIndexAt(pollManager, i) == 0)
+                    readyMask |= ReadySocketMaskAt(pollManager, i);
+            }
+
+            if ((readyMask & PollEventFlags.PollOut) != 0
                 && !FlushPendingReplies(server, pendingReplies))
             {
                 return 2;
             }
 
-            if (!IsSocketReadReady(pollManager, 0))
+            if ((readyMask & PollEventFlags.PollIn) == 0)
                 continue;
 
             while (true)

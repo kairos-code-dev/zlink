@@ -123,12 +123,11 @@ internal static class PerfMultiDealerDealerServer
         while (true)
         {
             int written = poller.Wait(events,
-                TimeSpan.FromMilliseconds(-1), out _);
+                TimeSpan.FromMilliseconds(-1));
 
             for (int i = 0; i < written; i++)
             {
-                if (events[i].Tag is not int tag
-                    || tag != ServerSocketTag
+                if (events[i].Slot != (nuint)ServerSocketTag
                     || (events[i].Revents & PollEventFlags.PollIn) == 0)
                     continue;
 

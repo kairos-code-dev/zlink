@@ -253,7 +253,7 @@ func newReplyCallbackState() *replyCallbackState {
 // backoff (matches doc/spec/bindings/go/README.md §Performance Policy: do not
 // start one polling thread per request when progress can be shared per handle).
 const (
-    pollCompletionEvent = C.short(32)
+	pollCompletionEvent = C.short(32)
 )
 
 type progressPump struct {
@@ -263,15 +263,22 @@ type progressPump struct {
 }
 
 var (
-	socketProgressPumps sync.Map // unsafe.Pointer -> *progressPump
-	spotProgressPumps   sync.Map
+	socketProgressPumps  sync.Map // unsafe.Pointer -> *progressPump
+	spotProgressPumps    sync.Map
+	externalProgressRefs sync.Map // unsafe.Pointer -> *int64
 )
 
 func startSocketRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
+	if externalRequestProgressActive(handle) {
+		return
+	}
 	getOrCreateProgressPump(&socketProgressPumps, handle).attachDone(state.done)
 }
 
 func startSpotRequestProgress(handle unsafe.Pointer, state *replyCallbackState) {
+	if externalRequestProgressActive(handle) {
+		return
+	}
 	getOrCreateProgressPump(&spotProgressPumps, handle).attachDone(state.done)
 }
 
@@ -279,7 +286,36 @@ func startSpotRequestProgress(handle unsafe.Pointer, state *replyCallbackState) 
 // actor lookup) onto the shared per-handle progress pump for a spot. The
 // caller owns `done` and must close it when the operation completes.
 func attachSpotProgressDone(handle unsafe.Pointer, done <-chan struct{}) {
+	if externalRequestProgressActive(handle) {
+		return
+	}
 	getOrCreateProgressPump(&spotProgressPumps, handle).attachDone(done)
+}
+
+func acquireExternalRequestProgress(handle unsafe.Pointer) {
+	if handle == nil {
+		return
+	}
+	counter, _ := externalProgressRefs.LoadOrStore(handle, new(int64))
+	atomic.AddInt64(counter.(*int64), 1)
+}
+
+func releaseExternalRequestProgress(handle unsafe.Pointer) {
+	if handle == nil {
+		return
+	}
+	counter, ok := externalProgressRefs.Load(handle)
+	if !ok {
+		return
+	}
+	if atomic.AddInt64(counter.(*int64), -1) <= 0 {
+		externalProgressRefs.Delete(handle)
+	}
+}
+
+func externalRequestProgressActive(handle unsafe.Pointer) bool {
+	counter, ok := externalProgressRefs.Load(handle)
+	return ok && atomic.LoadInt64(counter.(*int64)) > 0
 }
 
 func getOrCreateProgressPump(m *sync.Map, handle unsafe.Pointer) *progressPump {

@@ -14,8 +14,6 @@ Directory layout:
   draws, automatic marks, winner detection, and session-bound push.
 - `Server/Session/` contains the stream Session server and actor relay handlers.
 - `Server/Registry/` contains the embedded discovery registry host.
-- `Server/Infrastructure/` contains registry-backed route and session binding
-  stores shared by the server roles.
 
 Each top-level client/shared directory and each server role directory has its
 own project file. The root `Bingo.csproj` is the aggregate build entry point for

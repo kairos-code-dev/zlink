@@ -201,12 +201,10 @@ final class PerfMultiSpotReqRep {
         try {
             PollEvents completionEvents = new PollEvents(
                 Math.max(1, activeClients));
-            if (config.size() >= 65_536) {
-                completionPoller = new Poller();
-                for (int i = 0; i < activeClients; i++) {
-                    completionPoller.add(requesters.get(i), i,
-                        PollEventFlag.POLLCOMPLETION);
-                }
+            completionPoller = new Poller();
+            for (int i = 0; i < activeClients; i++) {
+                completionPoller.add(requesters.get(i), i,
+                    PollEventFlag.POLLCOMPLETION);
             }
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
@@ -242,19 +240,13 @@ final class PerfMultiSpotReqRep {
                     }
                 }
                 if (!sendProgress && hasWaitingReply) {
-                    if (completionPoller != null) {
-                        completionPoller.wait(completionEvents,
-                            Duration.ofMillis(1));
-                    } else {
-                        java.util.concurrent.locks.LockSupport.parkNanos(
-                            100_000L);
-                    }
-                } else if (completionPoller != null) {
-                    completionPoller.wait(completionEvents,
-                        Duration.ZERO);
+                    completionPoller.wait(completionEvents, Duration.ofMillis(1));
+                } else {
+                    completionPoller.wait(completionEvents, Duration.ZERO);
                 }
             }
-            waitForOutstandingCallbacks(waitingReply, failure);
+            waitForOutstandingCallbacks(waitingReply, failure,
+                completionPoller, completionEvents);
         } finally {
             if (completionPoller != null) {
                 completionPoller.close();
@@ -332,7 +324,9 @@ final class PerfMultiSpotReqRep {
     }
 
     private static void waitForOutstandingCallbacks(AtomicBoolean[] waitingReply,
-                                                    AtomicReference<Throwable> failure) {
+                                                    AtomicReference<Throwable> failure,
+                                                    Poller completionPoller,
+                                                    PollEvents completionEvents) {
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(500);
         while (System.nanoTime() < deadline) {
             Throwable error = failure.get();
@@ -350,7 +344,7 @@ final class PerfMultiSpotReqRep {
             if (!hasWaitingReply) {
                 return;
             }
-            java.util.concurrent.locks.LockSupport.parkNanos(100_000L);
+            completionPoller.wait(completionEvents, Duration.ofMillis(1));
         }
     }
 

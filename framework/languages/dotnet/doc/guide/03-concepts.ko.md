@@ -69,7 +69,7 @@ framework 는 발견한 handler 를 모든 channel 에 자동으로 열지 않�
    handler 후보를 DI 에 등록한다. 이것만으로는 **아무 channel 에도 안 붙는다.**
 2. **노출(map):** 실제 노출은 둘 중 하나가 정한다.
    - handler class 에 `[ZLinkHandlerGroup("api")]`를 붙이고, channel 등록에서
-     `channel.MapHandlerGroup("api")` 로 그 group 을 그 channel 에 매핑.
+     `channel.AddHandlerGroup("api")` 로 그 group 을 그 channel 에 매핑.
    - channel builder 에서 `AddRequestHandler<...>()` / `AddSendHandler<...>()` /
      `AddPublishHandler<...>()` 로 개별 typed handler 를 등록.
 

@@ -14,7 +14,11 @@ import {
   recvNativeError,
   submitNativeError
 } from './native_errors';
-import { startRequestProgress } from './request_progress';
+import {
+  acquireExternalRequestProgress,
+  releaseExternalRequestProgress,
+  startRequestProgress
+} from './request_progress';
 import {
   executeNativeRequest,
   messagesFromNativeBuffers,
@@ -1160,7 +1164,8 @@ const POLL_EVENT_FLAGS = Object.freeze([
   PollEventFlag.PollIn,
   PollEventFlag.PollOut,
   PollEventFlag.PollErr,
-  PollEventFlag.PollPri
+  PollEventFlag.PollPri,
+  PollEventFlag.PollCompletion
 ]);
 
 function maskToFlags(mask: number): PollEventFlagValue[] {
@@ -3990,6 +3995,7 @@ export class PollEvents {
 
 export class Poller {
   private _native: unknown | null;
+  private readonly _externalProgressHandles = new Set<unknown>();
   constructor() { this._native = requireNative().pollerNew(); }
   add(socket: BasePollable, events: readonly PollEventFlagValue[], slot: number): void;
   add(timer: Timer, slot: number): void;
@@ -4015,19 +4021,38 @@ export class Poller {
     const normalizedSlot = validateSlot(slot);
     try {
       requireNative().pollerAdd(this._native, socket.nativeHandle(), BigInt(normalizedSlot), events | 0);
+      if ((events & PollEventFlag.PollCompletion) !== 0) {
+        const handle = socket.nativeHandle();
+        acquireExternalRequestProgress(handle);
+        this._externalProgressHandles.add(handle);
+      }
     } catch (error) {
       throw createError('config', readErrno(), nativeErrorMessage(error, 'poller socket add failed'));
     }
   }
   private modifySocketInternal(socket: BasePollable, events: number): void {
+    const handle = socket.nativeHandle();
     configCall('poller socket modify failed', () => {
-      requireNative().pollerModify(this._native, socket.nativeHandle(), events | 0);
+      requireNative().pollerModify(this._native, handle, events | 0);
     });
+    const hasExternal = this._externalProgressHandles.has(handle);
+    const wantsExternal = (events & PollEventFlag.PollCompletion) !== 0;
+    if (wantsExternal && !hasExternal) {
+      acquireExternalRequestProgress(handle);
+      this._externalProgressHandles.add(handle);
+    } else if (!wantsExternal && hasExternal) {
+      releaseExternalRequestProgress(handle);
+      this._externalProgressHandles.delete(handle);
+    }
   }
   private removeSocketInternal(socket: BasePollable): boolean {
     configCall('poller socket remove failed', () => {
       requireNative().pollerRemove(this._native, socket.nativeHandle());
     });
+    const handle = socket.nativeHandle();
+    if (this._externalProgressHandles.delete(handle)) {
+      releaseExternalRequestProgress(handle);
+    }
     return true;
   }
   addFd(fd: number, events: readonly PollEventFlagValue[], slot: number): void {
@@ -4099,6 +4124,10 @@ export class Poller {
       });
       this._native = null;
     }
+    for (const handle of this._externalProgressHandles) {
+      releaseExternalRequestProgress(handle);
+    }
+    this._externalProgressHandles.clear();
   }
   close(): void { this.destroy(); }
 }

@@ -682,6 +682,35 @@ class _PendingActorLookup:
 
 
 _POLL_COMPLETION = 32  # ZLINK_POLLCOMPLETION
+_EXTERNAL_REQUEST_PROGRESS = {}
+_EXTERNAL_REQUEST_PROGRESS_LOCK = threading.Lock()
+
+
+def _acquire_external_request_progress(handle):
+    if not handle:
+        return
+    with _EXTERNAL_REQUEST_PROGRESS_LOCK:
+        _EXTERNAL_REQUEST_PROGRESS[handle] = (
+            _EXTERNAL_REQUEST_PROGRESS.get(handle, 0) + 1
+        )
+
+
+def _release_external_request_progress(handle):
+    if not handle:
+        return
+    with _EXTERNAL_REQUEST_PROGRESS_LOCK:
+        count = _EXTERNAL_REQUEST_PROGRESS.get(handle, 0) - 1
+        if count > 0:
+            _EXTERNAL_REQUEST_PROGRESS[handle] = count
+        else:
+            _EXTERNAL_REQUEST_PROGRESS.pop(handle, None)
+
+
+def _external_request_progress_active(handle):
+    if not handle:
+        return False
+    with _EXTERNAL_REQUEST_PROGRESS_LOCK:
+        return _EXTERNAL_REQUEST_PROGRESS.get(handle, 0) > 0
 
 
 class _RequestProgressPump:
@@ -703,6 +732,12 @@ class _RequestProgressPump:
     def ensure_running(self):
         with self._lock:
             if self._stop.is_set():
+                return
+            if not any(
+                not _external_request_progress_active(handle)
+                for handle in self._target_provider()
+                if handle
+            ):
                 return
             if self._thread is not None and self._thread.is_alive():
                 return
@@ -726,7 +761,7 @@ class _RequestProgressPump:
                 while not self._stop.is_set():
                     current = set()
                     for handle in self._target_provider():
-                        if handle:
+                        if handle and not _external_request_progress_active(handle):
                             current.add(handle)
                     for handle in current - registered:
                         rc = lib().zlink_poller_add(

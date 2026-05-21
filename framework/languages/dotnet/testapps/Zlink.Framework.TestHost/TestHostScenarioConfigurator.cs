@@ -94,7 +94,7 @@ internal static class TestHostScenarioConfigurator
                 channel =>
                 {
                     channel.EnableSubscriber();
-                    channel.MapHandlerGroup("testhost-channel-events");
+                    channel.AddHandlerGroup("testhost-channel-events");
                 });
         });
     }

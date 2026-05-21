@@ -19,7 +19,7 @@ internal sealed class ApiServer(SampleSettings settings)
                 {
                     server.Bind(settings.ApiChannelEndpoint);
                 });
-                channel.MapHandlerGroup("api");
+                channel.AddHandlerGroup("api");
             });
 
             options.AddClientServerChannel(SampleChannels.Play, channel =>

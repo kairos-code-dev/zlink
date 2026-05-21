@@ -69,20 +69,20 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | publisher capability에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | publisher 전용 channel | `integration-single-process` | publish submit 성공 |
 | subscriber discovery attach | `integration-multi-process` | 원격 publish 수신 |
-| handler group mapping | `unit` | `AddZLinkHandlers...()`만으로는 전역 dispatch 대상이 되지 않고, `channel.MapHandlerGroup("...")`로 매핑한 그룹의 handler만 해당 채널에서 dispatch된다 |
-| handler exposure 없는 server channel | `unit` | scan 된 handler 가 있어도 `MapHandlerGroup(...)` 또는 `Add...Handler(...)`가 없으면 application handler 가 자동 노출되지 않는다 |
+| handler group mapping | `unit` | `AddZLinkHandlers...()`만으로는 전역 dispatch 대상이 되지 않고, `channel.AddHandlerGroup("...")`로 매핑한 그룹의 handler만 해당 채널에서 dispatch된다 |
+| handler exposure 없는 server channel | `unit` | scan 된 handler 가 있어도 `AddHandlerGroup(...)` 또는 `Add...Handler(...)`가 없으면 application handler 가 자동 노출되지 않는다 |
 | handler exposure 없는 server channel validation | `unit` | handler exposure 없는 server channel 은 `AcceptSpotRoutesFromChannel(...)` 명시 참조가 없으면 startup validation 오류다 |
 | empty fanout subscriber validation | `unit` | publish handler exposure 없는 fanout subscriber 는 빈 수신자로 허용하지 않고 startup validation 오류다 |
 | typed handler registration | `unit` | channel 의 `Add...Handler(...)`로 직접 등록한 handler 는 group mapping 없이도 해당 channel 에 노출된다 |
 | channel type handler compatibility | `unit` | client-server 는 send/request, fanout subscriber 는 publish, route mesh 는 route send/request handler 만 허용하고 dealer mesh 는 handler registration 을 노출하지 않는다 |
 | incompatible handler group mapping | `unit` | channel type 과 맞지 않는 handler 가 group 안에 섞이면 일부만 제외하지 않고 startup validation 오류로 실패한다 |
-| route mesh handler group mapping | `integration-single-process` | route mesh channel 의 `MapHandlerGroup(...)`은 route send/request handler group 을 실제 routed dispatch 대상으로 노출한다 |
+| route mesh handler group mapping | `integration-single-process` | route mesh channel 의 `AddHandlerGroup(...)`은 route send/request handler group 을 실제 routed dispatch 대상으로 노출한다 |
 | Spot route transport 전용 channel | `integration-single-process` | `AcceptSpotRoutesFromChannel(...)`으로만 참조된 router-capable channel 은 handler group 없이도 Spot route transport 로 동작하지만 application handler 를 열지 않는다 |
 | 같은 channel server에 handler 중복 | `unit` | 같은 `kind + packetName` handler가 둘 이상이면 startup validation 예외 |
 | 다른 channel server에 같은 packet handler | `integration-single-process` | 같은 `kind + packetName`을 서로 다른 channel에 매핑해도 각 채널이 독립적으로 dispatch된다 |
-| 같은 그룹을 여러 채널에 매핑 | `integration-single-process` | 같은 `[ZLinkHandlerGroup("api")]`를 두 채널에 `MapHandlerGroup`으로 노출해도 채널마다 dispatch namespace가 독립이다 |
-| `MapHandlerGroup`이 가리키는 그룹 없음 | `unit` | 매핑한 그룹에 handler가 하나도 없으면 startup validation 오류 |
-| event handler group mapping | `unit` | `channel.MapHandlerGroup("...")`로 매핑한 그룹의 publish handler만 해당 subscriber channel에서 dispatch된다 |
+| 같은 그룹을 여러 채널에 매핑 | `integration-single-process` | 같은 `[ZLinkHandlerGroup("api")]`를 두 채널에 `AddHandlerGroup`으로 노출해도 채널마다 dispatch namespace가 독립이다 |
+| `AddHandlerGroup`이 가리키는 그룹 없음 | `unit` | 매핑한 그룹에 handler가 하나도 없으면 startup validation 오류 |
+| event handler group mapping | `unit` | `channel.AddHandlerGroup("...")`로 매핑한 그룹의 publish handler만 해당 subscriber channel에서 dispatch된다 |
 | HTTP handler에서 `IZLinkClient` 사용 | `integration-single-process` | route handler와 동일한 DI[^di] 컨테이너에서 정상 동작 |
 | channel handler에서 `IZLinkClient` 사용 | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `IZLinkClient`로 다른 channel 에 request 하고 reply 를 받는다 |
 | dealer mesh channel client | `integration-single-process` | `IZLinkClient.Send(...)`와 `Request(...)`가 `AddDealerMeshChannel(...)` 등록의 DEALER socket 을 통해 동작한다 |

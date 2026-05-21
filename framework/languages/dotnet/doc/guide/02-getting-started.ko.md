@@ -63,7 +63,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddClientServerChannel("price", channel =>
     {
         channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7301"));
-        channel.AddRequestHandler<GetPriceHandler, PriceRequest, PriceReply>();
+        channel.AddRequestHandler<GetPriceHandler>();
     });
 
     // 위치 해결: 같은 Registry 를 가리키게 한다.
@@ -93,9 +93,12 @@ public sealed class GetPriceHandler
 - **server capability 는 `Bind(...)` 가 필수**다. 다른 프로세스가 접근할 local
   endpoint 가 있어야 한다.
 - handler 를 channel 에 노출하는 방법은 두 가지다. 위 예제처럼
-  `AddRequestHandler<THandler, TRequest, TReply>()`로 **직접 등록**하거나, handler
-  class 에 group 을 붙이고 `MapHandlerGroup(...)`으로 노출한다. 자세한 차이는
+  `AddRequestHandler<THandler>()`로 **직접 등록**하거나, handler class 에 group 을
+  붙이고 `AddHandlerGroup(...)`으로 노출한다. 자세한 차이는
   [04-channel-messaging](./04-channel-messaging.ko.md) §3 에서 다룬다.
+- handler class 자체는 interface 기반과 attribute 기반 중 하나로 작성할 수 있다.
+  interface 기반은 컴파일 타임 타입 체크가 강하고, attribute 기반은 한 class 에 여러
+  handler 메서드를 묶기 쉽다.
 
 ## 5. caller: outbound client
 

@@ -1,5 +1,3 @@
-using Bingo.Server.Infrastructure;
-using Bingo.Server.Infrastructure.Configuration;
 using Bingo.Shared.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

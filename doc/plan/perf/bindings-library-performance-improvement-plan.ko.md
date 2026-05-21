@@ -367,7 +367,7 @@ p10은 하위 10% 경계값이고, 최저 10% 평균은 가장 느린 구간의 
 | 언어 | 측정 셀 수 | 평균 | 중앙값 | p10 | 최저 10% 평균 | Single 평균 | Multi 평균 |
 |------|------------|------|--------|-----|---------------|-------------|------------|
 | C++ | 328 | 104.8% | 98.0% | 83.0% | 79.3% | 112.9% | 98.4% |
-| .NET | 328 | 93.3% | 91.0% | 63.9% | 59.8% | 103.0% | 85.7% |
+| .NET | 328 | 93.3% | 91.0% | 63.9% | 59.9% | 103.1% | 85.7% |
 | Java | 328 | 101.4% | 95.5% | 67.2% | 60.6% | 119.2% | 87.5% |
 | Node | 328 | 76.1% | 71.5% | 37.5% | 29.3% | 78.7% | 74.1% |
 
@@ -387,7 +387,7 @@ C 대비 성능이 크게 높은 항목은 그대로 좋은 결과로 확정하�
 | 언어 | 주요 outlier 그룹 | 최대값 | 1차 해석 | 후속 확인 |
 |------|------------------|--------|----------|-----------|
 | C++ | Single `PUBSUB`, Multi `MULTI_SPOT` | 재측정 후 88.1% (`wss MULTI_SPOT 1024B`) | 기존 573.0%는 오래된 C 기준 파일 영향이 컸다. 같은 `core/build` 제한 재측정에서 C가 1608.5 Kmsg/s, C++가 1416.5 Kmsg/s였다. | C++ `PUBSUB` large outlier도 같은 방식으로 C 기준을 먼저 갱신한다. |
-| .NET | Single `SPOT`, Multi `MULTI_SPOT` | 의미 정렬 후 58.8% (`wss SPOT 65536B`) | 기존 515.0%는 .NET single SPOT에 C에 없는 기본 in-flight cap이 들어간 영향이 있었다. 기본 cap을 제거하니 C 8.31 Kmsg/s 대비 .NET 4.89 Kmsg/s가 됐다. | single SPOT은 통과가 아니라 개선 대상으로 본다. C에 없는 perf-only credit 제한은 기본 경로에 넣지 않는다. |
+| .NET | Single `SPOT`, Multi `MULTI_SPOT` | 의미 정렬 후 63.5% (`wss SPOT 65536B`) | 기존 515.0%는 .NET single SPOT에 C에 없는 기본 in-flight cap이 들어간 영향이 있었다. 기본 cap을 제거하고 public `SubscribePart` 수신 경로로 C의 single-part subscribe 의미에 맞추니 C 8.31 Kmsg/s 대비 .NET 5.27 Kmsg/s가 됐다. | C에 없는 perf-only credit 제한은 기본 경로에 넣지 않는다. single SPOT은 public API 내부 수신 경로 개선으로 통과했다. |
 | Java | Single routed/spot 계열, Multi `MULTI_SPOT` | 재측정 후 113.1% (`wss MULTI_SPOT 256B`) | 기존 390.2%는 C 기준 파일 시점 차이가 컸다. 같은 조건 제한 재측정에서 C가 5424.3 Kmsg/s, Java가 6134.2 Kmsg/s였다. | 남은 120% 이상 single routed/spot outlier는 같은 조건 C 재측정 뒤 JIT/fast path 영향만 분리한다. |
 | Node | Single `SPOT`, Multi `MULTI_SPOT_SENDSEND` | 재측정 후 296.4% (`wss SPOT 1024B`) | C 기준을 갱신해도 Node single SPOT은 높게 남았다. 현재 Node single SPOT은 한 이벤트 루프에서 publish 후 inline drain을 수행하므로 C의 별도 publisher/receiver thread 의미와 다를 수 있다. | 이 셀은 통과로 확정하지 않고 보류한다. Node single SPOT은 C와 같은 의미의 송신/수신 분리 구조를 설계한 뒤 다시 측정한다. |
 
@@ -399,8 +399,8 @@ C 대비 성능이 크게 높은 항목은 그대로 좋은 결과로 확정하�
   기준으로 88.1%다.
 - .NET `wss SPOT 65536B`: C
   `perf_c_single_linux_20260521_210757_codex_c_wss_single_spot65536_outlier_apply_20260521.txt`,
-  .NET `perf_dotnet_single_linux_20260521_211014_codex_dotnet_wss_single_spot65536_no_inflight_cap_20260521.txt`
-  기준으로 58.8%다. C에 없는 기본 in-flight cap은 제거했다.
+  .NET `perf_dotnet_single_linux_20260522_005548_codex_dotnet_wss_single_spot65536_subscribe_part_20260522.txt`
+  기준으로 63.5%다. C에 없는 기본 in-flight cap은 제거했고, 수신 hot path는 public `SubscribePart`로 C의 single-part subscribe 의미에 맞췄다.
 - Java `wss MULTI_SPOT 256B`: C
   `perf_c_multi_linux_20260521_210845_codex_c_wss_multi_spot256_outlier_apply_20260521.txt`,
   Java `perf_java_multi_linux_20260521_210909_codex_java_wss_multi_spot256_outlier_apply_20260521.txt`
@@ -533,7 +533,7 @@ C 대비 성능이 크게 높은 항목은 그대로 좋은 결과로 확정하�
 | `wss` | `DEALER_DEALER` | `통과(97%)` | `통과(70%)` | `통과(104%)` | `통과(106%)` | `통과(93%)` | `통과(98%)` | C/.NET: 위 파일 |
 | `wss` | `DEALER_ROUTER` | `통과(76%)` | `통과(80%)` | `통과(98%)` | `통과(93%)` | `통과(99%)` | `통과(118%)` | C/.NET: 위 파일 |
 | `wss` | `ROUTER_ROUTER` | `통과(81%)` | `통과(84%)` | `통과(97%)` | `통과(95%)` | `통과(98%)` | `통과(118%)` | C/.NET: 위 파일 |
-| `wss` | `SPOT` | `통과(161%)` | `통과(106%)` | `통과(467%)` | `미달(58.8%)` | `통과(197%)` | `통과(369%)` | 65536B는 C `perf_c_single_linux_20260521_210757_codex_c_wss_single_spot65536_outlier_apply_20260521.txt` 대비 .NET `perf_dotnet_single_linux_20260521_211014_codex_dotnet_wss_single_spot65536_no_inflight_cap_20260521.txt`로 갱신했다. C에 없는 기본 in-flight cap을 제거해 C/perf 의미를 맞췄고, auto-HWM 적용과 size별 `MsgUnit(B)` 일치를 확인했다. 나머지는 C/.NET 위 파일. |
+| `wss` | `SPOT` | `통과(161%)` | `통과(106%)` | `통과(467%)` | `통과(63.5%)` | `통과(197%)` | `통과(369%)` | 65536B는 C `perf_c_single_linux_20260521_210757_codex_c_wss_single_spot65536_outlier_apply_20260521.txt` 대비 .NET `perf_dotnet_single_linux_20260522_005548_codex_dotnet_wss_single_spot65536_subscribe_part_20260522.txt`로 갱신했다. C에 없는 기본 in-flight cap을 제거하고 수신 hot path를 public `SubscribePart`로 바꿔 C의 single-part subscribe 의미에 맞췄다. auto-HWM 적용과 size별 `MsgUnit(B)` 일치를 확인했다. 나머지는 C/.NET 위 파일. |
 | `tls` | `PAIR` | `통과(97%)` | `통과(74%)` | `통과(125%)` | `통과(99%)` | `통과(101%)` | `통과(100%)` | C: `perf_c_single_linux_20260520_003724_codex_c_tls_single_for_dotnet_20260520.txt`; .NET: `perf_dotnet_single_linux_20260520_004037_codex_dotnet_tls_single_smoke_all_20260520.txt` |
 | `tls` | `PUBSUB` | `통과(91%)` | `통과(83%)` | `통과(117%)` | `통과(99%)` | `통과(99%)` | `통과(100%)` | C/.NET: 위 파일 |
 | `tls` | `DEALER_DEALER` | `통과(97%)` | `통과(74%)` | `통과(130%)` | `통과(96%)` | `통과(100%)` | `통과(101%)` | C/.NET: 위 파일 |

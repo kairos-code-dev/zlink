@@ -14,6 +14,7 @@ internal static class PerfSpot
     private const int SpotSocketTag = 0;
     private const int ReadyDeadlineTag = int.MaxValue;
     private const int ReadyRetryTag = int.MaxValue - 1;
+    private static ReadOnlySpan<byte> TopicBytes => "bench"u8;
     private static readonly RoutingId PubNodeRoutingId =
         RoutingId.FromBytes("z-perf-spot-pub"u8);
     private static readonly RoutingId SubNodeRoutingId =
@@ -132,14 +133,15 @@ internal static class PerfSpot
         poller.Add(retryTimer, ReadyRetryTag);
         deadlineTimer.Start(TimeSpan.FromMilliseconds(readyTimeoutMs), 1);
         retryTimer.Start(TimeSpan.FromMilliseconds(50), 1);
-        using var subscribed = new TopicMessage();
+        using var subscribed = new Message();
+        byte[] topicBuffer = new byte[64];
 
         while (true)
         {
             while (true)
             {
                 int recvRc = ReceiveSpotHeader(subscriber, msgSize,
-                    subscribed, out var header, out bool headerOk);
+                    subscribed, topicBuffer, out var header, out bool headerOk);
                 if (recvRc > 0)
                 {
                     if (headerOk && IsExpectedSingleHeader(header, msgSize,
@@ -185,12 +187,13 @@ internal static class PerfSpot
             // the resulting GC activity stalled the drain loop and let the
             // multi-hop send/wire pipeline back up, inflating one-way
             // latency 100x-1000x vs C while throughput stayed comparable.
-            using var subscribed = new TopicMessage();
+            using var subscribed = new Message();
+            byte[] topicBuffer = new byte[64];
             while (true)
             {
                 int recvRc = ReceiveSpotPayload(subscriber, msgSize,
-                    subscribed, out PerfMetricHeader header, out bool headerOk,
-                    out bool isStopToken);
+                    subscribed, topicBuffer, out PerfMetricHeader header,
+                    out bool headerOk, out bool isStopToken);
                 if (recvRc > 0)
                 {
                     if (isStopToken)
@@ -334,14 +337,15 @@ internal static class PerfSpot
     }
 
     private static int ReceiveSpotHeader(Spot subscriber, int msgSize,
-        TopicMessage subscribed, out PerfMetricHeader header, out bool headerOk)
+        Message subscribed, byte[] topicBuffer, out PerfMetricHeader header,
+        out bool headerOk)
     {
-        return ReceiveSpotPayload(subscriber, msgSize, subscribed, out header,
-            out headerOk, out _);
+        return ReceiveSpotPayload(subscriber, msgSize, subscribed, topicBuffer,
+            out header, out headerOk, out _);
     }
 
     private static int ReceiveSpotPayload(Spot subscriber, int msgSize,
-        TopicMessage subscribed, out PerfMetricHeader header,
+        Message subscribed, byte[] topicBuffer, out PerfMetricHeader header,
         out bool headerOk, out bool isStopToken)
     {
         header = default;
@@ -349,8 +353,12 @@ internal static class PerfSpot
         isStopToken = false;
         try
         {
-            if (!subscriber.Subscribe(subscribed, RecvFlags.DontWait))
+            if (!subscriber.SubscribePart(subscribed, topicBuffer,
+                    out int topicLength, out bool hasMore, RecvFlags.DontWait))
                 return 0;
+            if (hasMore || topicLength != TopicBytes.Length
+                || !topicBuffer.AsSpan(0, topicLength).SequenceEqual(TopicBytes))
+                return 1;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                         || IsWouldBlock(ex.InternalErrno))
@@ -363,12 +371,7 @@ internal static class PerfSpot
             return -1;
         }
 
-        if (!string.Equals(subscribed.Topic, Topic, StringComparison.Ordinal)
-            || !subscribed.IsSinglePart)
-            return 1;
-
-        Message body = subscribed.FirstPart();
-        ReadOnlySpan<byte> payload = body.AsReadOnlySpan();
+        ReadOnlySpan<byte> payload = subscribed.AsReadOnlySpan();
         if (StopToken.IsStopToken(payload))
         {
             isStopToken = true;

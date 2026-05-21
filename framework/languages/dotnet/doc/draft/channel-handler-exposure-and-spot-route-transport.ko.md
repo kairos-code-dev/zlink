@@ -442,7 +442,7 @@ target Spot 정보를 보고 connection 을 역조회하는 구조가 된다. �
 transport 를 써야 하는지도 모호해진다.
 
 따라서 Spot target 메시징은 `IZLinkClient`가 아니라 `IZLinkRoutedSpotClient`가 맡고,
-API 는 `ViaRouterChannel(...)`로 사용할 local egress channel 을 먼저 고르게 한다.
+API 는 `ViaEgressChannel(...)`로 사용할 local egress channel 을 먼저 고르게 한다.
 target Spot 은 `RoutingId`만 받는다. string name 이 필요하면 caller 가
 `RoutingId.Of(...)`처럼 명시적으로 routing id 로 바꾼 뒤 넘긴다.
 
@@ -484,7 +484,7 @@ Spot client 를 분리한다.
 ```csharp
 public interface IZLinkRoutedSpotClient
 {
-    IZLinkRoutedSpotChannelClient ViaRouterChannel(
+    IZLinkRoutedSpotChannelClient ViaEgressChannel(
         string localEgressChannelName);
 }
 
@@ -502,14 +502,14 @@ public interface IZLinkRoutedSpotChannelClient
 
 이 표면에서 `localEgressChannelName`은 target Spot 의 이름이나 일반 channel messaging 의
 target channel 이 아니다. source process 가 사용할 routed Spot egress channel 이다.
-메서드 이름에 `ViaRouterChannel(...)`을 둔 이유는 이 차이를 호출 코드에서 드러내기
+메서드 이름에 `ViaEgressChannel(...)`을 둔 이유는 이 차이를 호출 코드에서 드러내기
 위해서다.
 
 이 client 는 다음 조건이 있을 때 DI 에 등록한다.
 
 - source process 에 하나 이상의 routed Spot egress channel 이 등록되어 있다.
 - target SpotNode ingress channel 이름을 지정해서 routed Spot egress 를 허용한 channel 만
-  `ViaRouterChannel(...)`의 대상으로 쓸 수 있다.
+  `ViaEgressChannel(...)`의 대상으로 쓸 수 있다.
 
 호출 시에는 caller 가 넘긴 `localEgressChannelName`으로 runtime state 의 channel bundle 을
 찾는다. runtime 은 target Spot 정보를 보고 channel 을 고르지 않는다. 선택된 channel 이
@@ -589,7 +589,7 @@ route mesh channel 과 client-server channel 이 함께 있을 때는 선택 기
 runtime 이 target 정보를 보고 connection 을 역조회하게 되면, 연결 설정과 전송 API 의
 책임이 뒤섞인다.
 
-이 대안은 폐기한다. routed Spot client 는 `ViaRouterChannel(...)`로 caller 가 사용할
+이 대안은 폐기한다. routed Spot client 는 `ViaEgressChannel(...)`로 caller 가 사용할
 local egress channel 을 명시해야 한다.
 
 ### 5.7 대안 G: route mesh 에서 group mapping 을 제거한다
@@ -652,7 +652,7 @@ validation 은 다음 정보를 함께 본다.
    channel 이 없거나 client capability 가 없으면 즉시 configuration error 로 실패해야 한다.
 8. dealer mesh channel 은 `IZLinkClient`가 선택하는 request/send channel 이지만, server
    handler exposure 를 갖지 않는다.
-9. `IZLinkRoutedSpotClient.ViaRouterChannel(...)`은
+9. `IZLinkRoutedSpotClient.ViaEgressChannel(...)`은
    `EnableSpotRouteEgress(targetSpotNodeChannelName)`로 target SpotNode ingress channel 을
    지정한 routed Spot egress channel 만 대상으로 삼는다.
 10. routed Spot egress channel 이 `targetSpotNodeChannelName`으로
@@ -713,8 +713,8 @@ Spot transport 를 재사용한다.
 
 필요한 내부 연결:
 
-- `ZLinkFrameworkRuntime.SendSpotViaRouterChannelAsync(...)`
-- `ZLinkFrameworkRuntime.RequestSpotViaRouterChannelAsync(...)`
+- `ZLinkFrameworkRuntime.SendSpotViaEgressChannelAsync(...)`
+- `ZLinkFrameworkRuntime.RequestSpotViaEgressChannelAsync(...)`
 - `ZLinkClientCallCodec` envelope 생성과 reply decode
 - channel registration 에서 routed Spot egress 허용 여부와 target SpotNode ingress channel
   이름을 확인하는 metadata
@@ -743,7 +743,7 @@ void EnableSpotRouteEgress(
 
 `targetSpotNodeChannelName`은 local channel name 이 아니다. target SpotNode process 에서
 `AcceptSpotRoutesFromChannel(...)`로 연 ingress channel 이름이다. local channel 이름은
-호출 시 `ViaRouterChannel(...)`에서 선택하고, target SpotNode ingress channel 이름은
+호출 시 `ViaEgressChannel(...)`에서 선택하고, target SpotNode ingress channel 이름은
 registration 시 `EnableSpotRouteEgress(...)`에 저장한다.
 
 client-server channel 에 이 capability 를 켜려면 `EnableClient(...)`가 필요하다. 이 경우
@@ -752,7 +752,7 @@ route mesh channel 에 이 capability 를 켜면 local ROUTER transport 가 같�
 
 전송 흐름은 다음과 같다.
 
-1. caller 가 `ViaRouterChannel("gateway.route")`로 사용할 local egress channel 을 명시한다.
+1. caller 가 `ViaEgressChannel("gateway.route")`로 사용할 local egress channel 을 명시한다.
 2. runtime 은 `"gateway.route"` channel bundle 이 등록되어 있고 routed Spot egress 가능한
    channel type 인지 확인한다.
 3. runtime 은 그 channel 이
@@ -806,7 +806,7 @@ SpotNode, routed Spot transport 처럼 language binding 전체에 적용되는 �
 |------|-----------|
 | `framework/languages/dotnet/doc/spec/handler-interfaces.ko.md` | `IZLinkClient`, `IZLinkClientServerClient`, `IZLinkFanoutPublisher`, `IZLinkEventPublisher`, `IZLinkRouteClient`, 새 `IZLinkRoutedSpotClient`의 역할을 한 표로 정리한다. channel type 별 허용 handler interface 와 `MapHandlerGroup(...)` / 개별 typed handler registration 규칙도 여기에 반영한다. |
 | `framework/languages/dotnet/doc/spec/aspnet-core-channel-messaging.ko.md` | handler discovery 와 handler exposure 를 분리한다. `MapHandlerGroup(...)`과 개별 typed handler registration 이 모두 없는 inbound channel 은 application handler 를 열지 않는다고 명시한다. `IZLinkClient`가 `channelName -> runtime bundle -> owned socket`으로 client-server/dealer mesh outbound socket 을 선택하는 모델을 설명한다. |
-| `framework/languages/dotnet/doc/spec/aspnet-core-spot.ko.md` | `AcceptSpotRoutesFromChannel(...)`은 handler mapping 과 무관한 Spot route ingress 연결이라고 명시한다. `IZLinkRoutedSpotClient`가 `ViaRouterChannel(...)`로 caller 가 고른 local egress channel 을 사용하고, `EnableSpotRouteEgress(targetSpotNodeChannelName)`에 저장된 target SpotNode ingress channel 과 `RoutingId spotRid`로 보내는 모델을 추가한다. client-server egress 는 local DEALER, route mesh egress 는 local ROUTER 를 사용할 수 있다는 차이도 같이 정리한다. |
+| `framework/languages/dotnet/doc/spec/aspnet-core-spot.ko.md` | `AcceptSpotRoutesFromChannel(...)`은 handler mapping 과 무관한 Spot route ingress 연결이라고 명시한다. `IZLinkRoutedSpotClient`가 `ViaEgressChannel(...)`로 caller 가 고른 local egress channel 을 사용하고, `EnableSpotRouteEgress(targetSpotNodeChannelName)`에 저장된 target SpotNode ingress channel 과 `RoutingId spotRid`로 보내는 모델을 추가한다. client-server egress 는 local DEALER, route mesh egress 는 local ROUTER 를 사용할 수 있다는 차이도 같이 정리한다. |
 | `framework/languages/dotnet/doc/internals/behavior-matrix.ko.md` | group 없는 server/subscriber channel, Spot route transport 전용 channel, dealer mesh channel 의 허용/비허용 조합을 표로 고정한다. |
 | `framework/languages/dotnet/doc/internals/di-capability-exposure-policy.ko.md` | `IZLinkClient`는 항상 주입 가능하지만 없는 channel 을 만들지 않는다는 규칙, `IZLinkRoutedSpotClient`가 명시된 local egress channel 만 사용하는 규칙, `IZLinkSpotClient`의 active Spot callback 전제를 정리한다. |
 | `framework/languages/dotnet/doc/internals/regression-test-matrix.ko.md` | handler exposure 없는 fallback 제거, dealer mesh `IZLinkClient` 전송, channel handler 에서 다른 channel request, channel handler 에서 Spot route request 테스트를 추가한다. |
@@ -972,7 +972,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-이 경우 application code 는 `ViaRouterChannel("gateway.client")`로 local egress channel 을
+이 경우 application code 는 `ViaEgressChannel("gateway.client")`로 local egress channel 을
 선택한다. target SpotNode ingress channel 은 여전히 `play.route`다.
 
 ### 7.4 channel handler 에서 Spot 으로 request
@@ -990,7 +990,7 @@ public sealed class MatchHandler(IZLinkRoutedSpotClient spots)
         var roomSpotRid = RoutingId.Of("matching-room");
 
         var reply = await spots
-            .ViaRouterChannel("gateway.route")
+            .ViaEgressChannel("gateway.route")
             .RequestSpot(roomSpotRid, new AllocateRoomReq(request.PlayerId))
             .Timeout(TimeSpan.FromMilliseconds(500))
             .SubmitAsync<AllocateRoomRes>(cancellationToken);
@@ -1002,7 +1002,7 @@ public sealed class MatchHandler(IZLinkRoutedSpotClient spots)
 
 이 handler 는 current Spot callback 안에 있지 않다. 따라서 `IZLinkSpotClient`의 ambient
 Spot 전제를 쓰지 않고 `IZLinkRoutedSpotClient`를 쓴다. 사용할 local egress channel 은
-`ViaRouterChannel("gateway.route")`에서 명시한다. `"matching-room"` 같은 string name 은
+`ViaEgressChannel("gateway.route")`에서 명시한다. `"matching-room"` 같은 string name 은
 `RequestSpot(...)`에 직접 넘기지 않고 `RoutingId.Of(...)`로 target rid 를 만든 뒤 넘긴다.
 
 ### 7.5 channel handler 에서 다른 channel 로 request
@@ -1063,7 +1063,7 @@ public sealed class DispatchJobHandler(IZLinkClient channels)
    추가한다.
 3. channel type 별 개별 typed handler registration surface 를 정리하고, group mapping
    compatibility validation 을 추가한다.
-4. `IZLinkRoutedSpotClient.ViaRouterChannel(...)`을 추가하고, 명시된 local egress channel 과
+4. `IZLinkRoutedSpotClient.ViaEgressChannel(...)`을 추가하고, 명시된 local egress channel 과
    `EnableSpotRouteEgress(targetSpotNodeChannelName)`의 target ingress channel 로만 existing
    routed Spot transport 를 연결한다.
 5. 정식 spec, internals matrix, sample guide 를 구현 결과에 맞춘다.
@@ -1102,10 +1102,10 @@ public sealed class DispatchJobHandler(IZLinkClient channels)
 | channel handler channel client | 일반 channel request handler 가 `IZLinkClient.Request(...)`로 다른 channel 에 request 하고 reply 를 받는다. |
 | dealer mesh channel client | `IZLinkClient.Send(...)`와 `Request(...)`가 `AddDealerMeshChannel(...)`의 client capability 를 통해 동작한다. |
 | channel handler fanout publisher | 일반 channel send/request handler 가 `IZLinkFanoutPublisher.Publish(...)`로 fanout event 를 publish 한다. |
-| channel handler routed Spot client | 일반 channel request handler 가 `IZLinkRoutedSpotClient.ViaRouterChannel(...).RequestSpot(...)`으로 target Spot 에 request 하고 reply 를 받는다. |
+| channel handler routed Spot client | 일반 channel request handler 가 `IZLinkRoutedSpotClient.ViaEgressChannel(...).RequestSpot(...)`으로 target Spot 에 request 하고 reply 를 받는다. |
 | routed Spot client without ambient Spot | current Spot activation 이 없어도 `IZLinkRoutedSpotClient`는 동작하고, `IZLinkSpotClient`의 ambient-only 규칙은 유지된다. |
 | routed Spot client rejects string target | `IZLinkRoutedSpotClient`는 string Spot name overload 를 제공하지 않고 `RoutingId` target 만 받는다. |
-| routed Spot client rejects implicit egress selection | `ViaRouterChannel(...)` 없이 target 정보만으로 local egress channel 을 고르는 API 를 제공하지 않는다. |
+| routed Spot client rejects implicit egress selection | `ViaEgressChannel(...)` 없이 target 정보만으로 local egress channel 을 고르는 API 를 제공하지 않는다. |
 | routed Spot client explicit egress channel | routed Spot send/request 가 caller 가 명시한 local egress channel 을 transport 로 사용한다. |
 | routed Spot egress target channel | routed Spot egress 설정은 target SpotNode ingress channel 이름을 필수로 받고, local egress channel 이름과 같다고 가정하지 않는다. |
 

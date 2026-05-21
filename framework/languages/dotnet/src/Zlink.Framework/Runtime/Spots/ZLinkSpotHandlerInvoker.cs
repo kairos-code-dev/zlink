@@ -68,13 +68,6 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             "SPOT actor packet handler");
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
-        if (descriptor.UsesEntryActorOnlyInvocation)
-        {
-            await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, message, cancellationToken)
-                .ConfigureAwait(false);
-            return;
-        }
-
         await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, message, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -99,11 +92,8 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             "SPOT actor packet handler");
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
-        var reply = descriptor.UsesEntryActorOnlyInvocation
-            ? await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, message, cancellationToken)
-                .ConfigureAwait(false)
-            : await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, message, cancellationToken)
-                .ConfigureAwait(false);
+        var reply = await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, message, cancellationToken)
+            .ConfigureAwait(false);
         return ZLinkStreamPacketPayloadCodec.EncodeJson(reply, descriptor.ReplyType);
     }
 
@@ -118,13 +108,6 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             descriptor.ActorType,
             actor,
             "SPOT actor lifecycle handler");
-
-        if (descriptor.UsesEntryActorOnlyInvocation)
-        {
-            await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, info, cancellationToken)
-                .ConfigureAwait(false);
-            return;
-        }
 
         await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, info, cancellationToken)
             .ConfigureAwait(false);

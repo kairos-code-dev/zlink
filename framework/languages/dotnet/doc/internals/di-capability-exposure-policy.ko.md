@@ -39,7 +39,7 @@ constructor injection 으로 해당 interface 를 받을 수 있다.
 | Spot service | `SpotNode` 가 있을 때만 DI 에 등록한다 |
 | Actor manager | `SpotNode` 와 actor factory 가 모두 있을 때만 DI 에 등록한다 |
 | Actor factory | `SpotNode` 없이 등록하면 startup validation 오류로 처리한다 |
-| Session proxy | actor-session binding store 와 route mesh channel 이 모두 있을 때만 DI 에 등록한다 |
+| Session proxy | actor session proxy runtime만 DI 에 등록한다 |
 | Route resolver | resolver 자체는 정책 객체이므로 단독 등록을 허용한다 |
 | Channel client | target 이름을 호출 시점에 받으므로 항상 등록하되, target 누락은 configuration error 로 처리한다 |
 | Missing proxy | public DI 표면에서는 제거하고, 조건을 만족하지 않으면 service 를 등록하지 않는다 |
@@ -128,16 +128,13 @@ proxy 를 등록하는 방식은 줄인다.
 
 | Interface | 등록 조건 | 권장 동작 |
 |-----------|-----------|-----------|
-| `IZLinkSessionProxyFactory` | `AddActorSessionBindingStore<TStore>()` 와 route mesh channel | 조건을 만족할 때만 등록 |
-| `IZLinkActorSessionClient` | `AddActorSessionBindingStore<TStore>()` 와 route mesh channel | 조건을 만족할 때만 등록 |
+| `IZLinkSessionProxyFactory` | framework runtime | 항상 등록 |
 | `IZLinkActorPlayRouteResolver` | `AddActorPlayRouteResolver<TResolver>()` | 조건을 만족할 때만 등록 |
 | `IZLinkSpotRouteResolver` | `AddSpotRouteResolver<TResolver>()` | 조건을 만족할 때만 등록 |
-| `IZLinkActorSessionBindingStore` | `AddActorSessionBindingStore<TStore>()` | 조건을 만족할 때만 등록 |
 
-기존 missing proxy 는 사용 시점까지 오류를 늦춘다. 새 정책에서는 service 를
-등록하지 않는 방식이 더 명확하다. 따라서 store 가 없으면 session proxy service 는
-DI 에 없고, store 가 있는데 route mesh channel 이 없으면 validation 단계에서
-실패한다.
+기존 missing proxy 는 사용 시점까지 오류를 늦춘다. session proxy factory 는
+항상 등록하고, 현재 actor 에 묶인 session binding 이 없을 때 호출 지점에서
+`ActorSessionNotBound` 로 실패한다.
 
 - session actor dispatch 구성을 쓰는데 route mesh channel 이 없으면 validation
   오류로 낸다.
@@ -201,17 +198,13 @@ publisher client 를 전제로 하고 후자는 일반 channel publisher 를 전
 
 ### 4.4 Session proxy
 
-`IZLinkSessionProxyFactory` 와 `IZLinkActorSessionClient` 는 actor-session binding
-store 가 있어야 등록한다. store 가 없으면 actor 에서 client session 을 찾을 방법이
-없다.
-
-추가로, session proxy 는 routed server 간 전달을 위해 route mesh channel 도
-필요하다. 따라서 binding store 가 있는데 route mesh channel 이 없으면 validation
-단계에서 실패한다.
+`IZLinkSessionProxyFactory` 는 framework runtime 과 함께 등록한다. session proxy 는
+actor runtime state 에 저장된 현재 session router id 와 binding token 을 사용한다.
+binding 이 없는 actor 에서 호출하면 `ActorSessionNotBound` 로 실패한다.
 
 ```text
-ZLinkConfigurationException:
-Actor session proxy requires AddRouteMeshChannel(...).
+ZLinkFrameworkException:
+ActorSessionNotBound
 ```
 
 ## 5. 호출 시점 오류 규칙
@@ -250,20 +243,19 @@ capability 누락은 `InvalidOperationException` 이 아니라 위 예외로 처
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegistrationValidationTests.AddZLinkFramework_Throws_When_ActorFactory_Without_SpotNode` | actor factory 만 등록하면 startup validation 이 실패한다 |
-| `RegistrationValidationTests.AddZLinkFramework_DoesNot_Register_ActorManager_Without_SpotNode` | SpotNode 없는 구성에서는 `IZLinkActorManager` 가 DI 에 없다 |
-| `RegistrationValidationTests.AddZLinkFramework_DoesNot_Register_ActorManager_With_SpotNode_Only` | SpotNode 만 있고 actor factory 가 없으면 `IZLinkActorManager` 가 DI 에 없다 |
-| `RegistrationValidationTests.AddZLinkFramework_DoesNot_Register_SpotServices_Without_SpotNode` | SpotNode 없는 구성에서는 Spot service 가 DI 에 없다 |
-| `RegistrationValidationTests.AddZLinkFramework_Registers_SpotServices_When_SpotNode_Exists` | SpotNode 가 있으면 Spot service 가 DI 에 등록된다 |
-| `RegistrationValidationTests.AddZLinkFramework_Registers_ActorManager_When_SpotNode_And_ActorFactory_Exist` | SpotNode 와 actor factory 가 있으면 `IZLinkActorManager` 가 등록된다 |
-| `RegistrationValidationTests.AddZLinkFramework_DoesNot_Register_SpotPublisher_Without_PublisherCapability` | SpotNode 가 있어도 publisher capability 가 없으면 Spot publisher service 는 DI 에 없다 |
-| `RegistrationValidationTests.AddZLinkFramework_Registers_SpotPublisher_When_PublisherCapability_Exists` | Spot publisher capability 가 있으면 Spot publisher service 가 DI 에 등록된다 |
-| `RegistrationValidationTests.AddZLinkFramework_DoesNot_Register_SessionProxy_Without_BindingStore` | binding store 없이는 session proxy service 가 DI 에 없다 |
-| `RegistrationValidationTests.AddZLinkFramework_Throws_When_BindingStore_Without_RouteMesh` | binding store 가 있지만 route mesh channel 이 없으면 startup validation 이 실패한다 |
-| `RegistrationValidationTests.AddZLinkFramework_Allows_SpotRouteResolver_Without_SpotNode` | route 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRouteResolver` 를 등록할 수 있다 |
-| `RegistrationValidationTests.AddZLinkFramework_DoesNot_Register_SpotClient_With_Resolver_Only` | Spot route resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotClient` 는 DI 에 없다 |
-| `RegistrationValidationTests.RouteClient_Throws_ConfigurationException_When_RouteChannel_Missing` | route channel 누락 오류가 configuration error 로 나온다 |
-| `RegistrationValidationTests.ChannelClient_Throws_ConfigurationException_When_ClientCapability_Missing` | channel client capability 누락 오류가 configuration error 로 나온다 |
+| `NodesAndServicesTests.AddZLinkFramework_Throws_When_ActorFactory_Without_SpotNode` | actor factory 만 등록하면 startup validation 이 실패한다 |
+| `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_ActorManager_Without_SpotNode` | SpotNode 없는 구성에서는 `IZLinkActorManager` 가 DI 에 없다 |
+| `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_ActorManager_With_SpotNode_Only` | SpotNode 만 있고 actor factory 가 없으면 `IZLinkActorManager` 가 DI 에 없다 |
+| `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_SpotServices_Without_SpotNode` | SpotNode 없는 구성에서는 Spot service 가 DI 에 없다 |
+| `NodesAndServicesTests.AddZLinkFramework_Registers_SpotServices_When_SpotNode_Exists` | SpotNode 가 있으면 Spot service 가 DI 에 등록된다 |
+| `NodesAndServicesTests.AddZLinkFramework_Registers_ActorManager_When_SpotNode_And_ActorFactory_Exist` | SpotNode 와 actor factory 가 있으면 `IZLinkActorManager` 가 등록된다 |
+| `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_SpotPublisher_Without_PublisherCapability` | SpotNode 가 있어도 publisher capability 가 없으면 Spot publisher service 는 DI 에 없다 |
+| `NodesAndServicesTests.AddZLinkFramework_Registers_SpotPublisher_When_PublisherCapability_Exists` | Spot publisher capability 가 있으면 Spot publisher service 가 DI 에 등록된다 |
+| `NodesAndServicesTests.AddZLinkFramework_Registers_SessionProxy_Factory` | session proxy factory 는 framework runtime 과 함께 등록된다 |
+| `NodesAndServicesTests.AddZLinkFramework_Allows_SpotRouteResolver_Without_SpotNode` | route 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRouteResolver` 를 등록할 수 있다 |
+| `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_SpotClient_With_Resolver_Only` | Spot route resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotClient` 는 DI 에 없다 |
+| `HandlerExposureTests.RouteClient_Throws_ConfigurationException_When_RouteChannel_Missing` | route channel 누락 오류가 configuration error 로 나온다 |
+| `HandlerExposureTests.ChannelClient_Throws_ConfigurationException_When_ClientCapability_Missing` | channel client capability 누락 오류가 configuration error 로 나온다 |
 
 ## 8. 적용 후 기대 상태
 
@@ -273,8 +265,7 @@ capability 누락은 `InvalidOperationException` 이 아니라 위 예외로 처
 - SpotNode 없는 애플리케이션은 Spot service 를 주입받지 못한다.
 - actor manager 는 SpotNode 와 actor factory 가 모두 있을 때만 주입받을 수 있다.
 - actor factory 를 등록했다면 반드시 SpotNode 도 등록해야 한다.
-- session proxy 는 actor-session binding store 와 route mesh 가 있을 때만
-  유효하다.
+- session proxy 는 현재 actor 에 session binding 이 있을 때만 유효하다.
 - multi-target channel client 는 항상 등록할 수 있지만, 없는 대상은 명확한
   configuration error 로 실패한다.
 

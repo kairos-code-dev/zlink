@@ -4,6 +4,8 @@ internal sealed class ZLinkActorRef(
     string actorId,
     string actorType,
     ZLinkActorRouteState routeState,
+    RoutingId sessionRouterId,
+    string bindingToken,
     Func<ZLinkActorRef, CancellationToken, ValueTask> notifyDisconnectedAsync)
     : IZLinkActorRef
 {
@@ -16,6 +18,10 @@ internal sealed class ZLinkActorRef(
     public RoutingId TargetNodeRid => RouteSnapshot.TargetNodeRid;
 
     public ulong ActorGeneration => RouteSnapshot.ActorGeneration;
+
+    internal RoutingId SessionRouterId { get; } = sessionRouterId;
+
+    internal string BindingToken { get; } = bindingToken;
 
     internal ZLinkActorRoute RouteSnapshot => routeState.Snapshot;
 

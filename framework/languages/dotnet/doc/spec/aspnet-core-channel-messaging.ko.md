@@ -1022,11 +1022,11 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenChannelNameIsDuplicated` | 같은 channel 이름을 중복 등록하면 startup validation 예외가 난다. |
-| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client capability에 Discovery나 수동 연결이 없으면 시작 전에 실패한다. |
-| `ChannelMessagingIntegrationTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 client가 request와 send를 모두 처리한다. |
-| `ChannelMessagingIntegrationTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | Discovery 기반 client가 request와 send를 모두 처리한다. |
-| `ChannelMessagingIntegrationTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkClient` | HTTP handler가 같은 DI container에서 `IZLinkClient`를 받아 호출한다. |
+| `ChannelsTests.AddZLinkFramework_Throws_WhenChannelNameIsDuplicated` | 같은 channel 이름을 중복 등록하면 startup validation 예외가 난다. |
+| `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client capability에 Discovery나 수동 연결이 없으면 시작 전에 실패한다. |
+| `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 client가 request와 send를 모두 처리한다. |
+| `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | Discovery 기반 client가 request와 send를 모두 처리한다. |
+| `FiltersAndHttpTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkClient` | HTTP handler가 같은 DI container에서 `IZLinkClient`를 받아 호출한다. |
 | `ZLinkAsyncSubmitterTests.SubmitAsync_DrainsPendingItemFromReadyCallback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
 
 ---

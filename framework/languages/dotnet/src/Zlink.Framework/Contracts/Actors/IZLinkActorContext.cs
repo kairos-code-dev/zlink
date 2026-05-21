@@ -12,6 +12,8 @@ public interface IZLinkActorContext
 
     bool IsJoined { get; }
 
+    IZLinkSessionProxy SessionProxy { get; }
+
     void AddPacket<THandler>()
         where THandler : class;
 
@@ -30,16 +32,6 @@ public interface IZLinkActorContext
     IZLinkActorJoinSpotCall JoinSpot<TRequest>(
         RoutingId spotRid,
         TRequest request);
-
-    IZLinkRequestCall RequestChannel<TRequest>(
-        string channelName,
-        TRequest request);
-
-    IZLinkSendCall SendChannel<TMessage>(
-        string channelName,
-        TMessage message);
-
-    IZLinkActorSendCall Send<TMessage>(TMessage message);
 
     ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
         string spotName,

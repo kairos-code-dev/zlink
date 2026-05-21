@@ -3,6 +3,8 @@ using Microsoft.Extensions.Hosting;
 using TicTacToe.SessionActorDispatch.Play;
 using TicTacToe.SessionGateway.Infrastructure;
 using TicTacToe.SessionGateway.Infrastructure.Configuration;
+using TicTacToe.SessionGateway.Play.EntrySpot;
+using TicTacToe.SessionGateway.Play.GameSpots;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using Zlink.Framework.AspNetCore;
 
@@ -15,13 +17,6 @@ public static class PlayServerHostFactory
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<GameNotificationPublisher>();
-        builder.Services.AddScoped<PlayerActorFactory>();
-        builder.Services.AddScoped<TicTacToeEntrySpot>();
-        builder.Services.AddScoped<EnsurePlayerActorHandler>();
-        builder.Services.AddScoped<CreateMatchRoomHandler>();
-        builder.Services.AddScoped<JoinMatchHandler>();
-        builder.Services.AddScoped<TicTacToeGameJoinHandler>();
-        builder.Services.AddScoped<PlaceMarkHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
@@ -36,9 +31,7 @@ public static class PlayServerHostFactory
                 channel.AddHandlerGroup("play");
             });
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
-            options.UseRegistryActorRoutes("tictactoe");
             options.UseRegistrySpotRoutes("tictactoe");
-            options.UseRegistryActorSessionBindings("tictactoe");
             options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
             {
                 routed.Bind(topology.PlayRouterEndpoint);

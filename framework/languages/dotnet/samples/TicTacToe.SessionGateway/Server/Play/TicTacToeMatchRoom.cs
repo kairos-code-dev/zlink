@@ -1,3 +1,5 @@
+using TicTacToe.SessionActorDispatch.Play;
+
 namespace TicTacToe.SessionGateway.Play;
 
 internal sealed class TicTacToeMatchRoom(string matchId)
@@ -12,10 +14,14 @@ internal sealed class TicTacToeMatchRoom(string matchId)
 
     public IReadOnlyCollection<string> ActorIds => _actors.Keys.ToArray();
 
+    public IReadOnlyCollection<PlayerActor> Actors
+        => _actors.Values.Select(static slot => slot.Actor).ToArray();
+
     public string MatchId => matchId;
 
-    public (ActorSlot Slot, bool IsNewActor) GetOrAddActor(string actorId)
+    public (ActorSlot Slot, bool IsNewActor) GetOrAddActor(PlayerActor actor)
     {
+        var actorId = actor.ActorId;
         if (_actors.TryGetValue(actorId, out var existing))
         {
             return (existing, false);
@@ -28,7 +34,7 @@ internal sealed class TicTacToeMatchRoom(string matchId)
             _ => throw new InvalidOperationException("Tic-tac-toe match already has two actors.")
         };
 
-        var slot = new ActorSlot(actorId, mark);
+        var slot = new ActorSlot(actor, mark);
         _actors.Add(actorId, slot);
         return (slot, true);
     }

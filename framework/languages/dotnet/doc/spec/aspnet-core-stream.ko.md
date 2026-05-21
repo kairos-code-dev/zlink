@@ -350,10 +350,10 @@ STREAM 문서의 항목이 확인해야 하는 것은 다음이다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleHeaderSessions` | 같은 node에 header session을 중복 등록하면 startup validation 예외가 발생한다. |
-| `StreamIntegrationTests.StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints` | transport 진입점은 public enqueue API만 노출한다. |
-| `StreamIntegrationTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | connected, dispatch, reply, metadata, disconnected/error callback이 기대한 순서대로 실행된다. |
-| `StreamIntegrationTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 서버 쪽에서 닫을 수 있다. |
+| `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleHeaderSessions` | 같은 node에 header session을 중복 등록하면 startup validation 예외가 발생한다. |
+| `ProtocolTests.StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints` | transport 진입점은 public enqueue API만 노출한다. |
+| `SessionProxyAndHeaderTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | connected, dispatch, reply, metadata, disconnected/error callback이 기대한 순서대로 실행된다. |
+| `SessionProxyAndHeaderTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 서버 쪽에서 닫을 수 있다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^framing]: framing은 연속된 바이트 스트림에서 메시지의 시작과 끝을 구분하는 방식을 가리킨다. STREAM에서는 header와 body를 묶어 하나의 packet 단위로 자른다.

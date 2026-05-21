@@ -62,11 +62,11 @@
 | value | `IZLinkActorRef` | session이 actor dispatch target으로 들고 있는 handle | 4.4.1 |
 | handler | `IZLinkActor` | actor runtime 안에서 생성되는 application actor | 4.4.1 |
 | manager | `IZLinkActorManager` | actor id와 actor type으로 actor 생성, 조회, 재사용 | 4.4.1 |
-| context | `IZLinkActorContext` | spot join, channel/client stream 호출 | 4.4.1 |
+| context | `IZLinkActorContext` | actor 상태 조회와 spot join 호출 | 4.4.1 |
 | handler | `IZLinkActorSendHandler<TMessage>` / `IZLinkActorRequestHandler<TRequest, TReply>` | actor 안에서 처리하는 session relay message handler | 4.4.1 |
 | handler | `IZLinkActorPacketHandler<TActor, TMessage>` / `IZLinkActorRequestHandler<TActor, TRequest, TReply>` | actor instance 를 직접 받는 actor message handler | 4.4.1 |
 | context | `ZLinkActorSendContext` / `ZLinkActorRequestContext` | actor handler 실행 context. session proxy 와 metadata 를 제공한다 | 4.4.1 |
-| handler | `IZLinkEntrySpotActorSendHandler<TActor, TMessage>` / `IZLinkEntrySpotActorRequestHandler<TActor, TRequest, TReply>` | Entry Spot actor message handler | 4.4.2 |
+| handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` / `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor message handler | 4.4.2 |
 | handler | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` / `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user Spot actor message handler | 4.4.2 |
 | value | `ZLinkMessageMetadata` | actor/session proxy call에 전달되는 application/codec metadata snapshot | 4.4.2 |
 | policy | `IZLinkMessageMetadataPolicy` | application metadata forwarding 허용 여부 | 4.4.2 |
@@ -74,7 +74,6 @@
 | handler | `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | spot에 actor가 join할 때 호출되는 handler | 4.4.1 |
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
 | client | `IZLinkSessionProxy` | 현재 actor -> 현재 client session 호출 | 5.6 |
-| client | `IZLinkActorSessionClient` | actor id 기반 actor -> client session 호출 | 5.6 |
 | resolver | `IZLinkActorPlayRouteResolver` | backend actor messaging 용 actor id -> play/runtime route 조회 | 5.7 |
 | resolver | `IZLinkSpotRouteResolver` | spot name/id에서 user Spot route 조회 | 5.7 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
@@ -347,6 +346,12 @@ public interface IZLinkSpot
 
 public interface IZLinkActorHandlerRegistry
 {
+    void AddHandler<THandler>()
+        where THandler : class;
+
+    void AddHandler<THandler>(string packetName)
+        where THandler : class;
+
     void AddActorPacket<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor;
@@ -385,6 +390,9 @@ public interface IZLinkSpotContext : IZLinkActorHandlerRegistry
     void AddActorJoin<THandler, TActor, TRequest, TReply>()
         where THandler : class
         where TActor : IZLinkActor;
+
+    void AddActorJoin<THandler>()
+        where THandler : class;
 
     IZLinkPublishCall Publish<TEvent>(
         string topic,
@@ -516,37 +524,45 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorSendHandler<TActor, in TMessage>
+public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         TMessage message,
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorRequestHandler<TActor, in TRequest, TReply>
+public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequest, TReply>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask<TReply> HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         TRequest request,
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorJoinedHandler<TActor>
+public interface IZLinkEntrySpotActorJoinedHandler<TEntrySpot, TActor>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorLeftHandler<TActor>
+public interface IZLinkEntrySpotActorLeftHandler<TEntrySpot, TActor>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken);
@@ -590,6 +606,7 @@ payload로 `OnCreateAsync(...)`를 한 번 호출한다.
 다음 호출들은 이 `Configure()` 단계 안에서만 허용된다.
 
 - `Context.AddPacket(...)`
+- `Context.AddHandler(...)`
 - `Context.AddActorPacket(...)`
 - `Context.AddActorJoined(...)`
 - `Context.AddActorLeft(...)`
@@ -600,21 +617,35 @@ payload로 `OnCreateAsync(...)`를 한 번 호출한다.
 dispatch table 의 의미가 어긋나게 된다. 그래서 framework 는 이 경우 예외를
 던진다.
 
-`AddActorPacket<THandler, TActor>(...)` 는 `THandler` 가 구현한 handler
-interface 를 보고 send 와 request 를 구분한다.
+`AddHandler<THandler>(...)` 는 `THandler` 가 구현한 actor handler interface 를 보고
+actor 타입, send/request/lifecycle 종류, packet 이름 기본값을 추론한다.
+handler 가 여러 actor handler interface 를 구현해서 모호하면 명시적인
+`AddActorPacket<THandler, TActor>(...)`, `AddActorJoined<THandler, TActor>()`,
+`AddActorLeft<THandler, TActor>()` 를 사용한다.
 
-각 spot 종류별로 구현해야 하는 interface 는 다음과 같다.
+`AddActorPacket<THandler, TActor>(...)` 는 actor 타입을 호출 쪽에서 명시하고,
+`THandler` 가 구현한 handler interface 를 보고 send 와 request 를 구분한다.
+
+각 spot 종류별로 handler 를 선언하는 방법은 두 가지다.
+
+- interface 방식: handler 클래스가 아래 interface 중 하나를 구현한다. 컴파일
+  타임에 method 시그니처를 강하게 확인할 수 있다.
+- attribute 방식: handler 클래스의 public instance method 에
+  `[ZLinkSpotActorRequest]` 같은 attribute 를 붙인다. 한 클래스에 여러 역할을
+  모을 수 있지만, method 시그니처 검증은 startup validation 단계에서 수행된다.
+
+interface 방식에서 spot 종류별로 구현해야 하는 interface 는 다음과 같다.
 
 - user Spot 의 경우: `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`
   또는 `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` 중
   하나를 구현해야 한다.
-- Entry Spot 의 경우: `IZLinkEntrySpotActorSendHandler<TActor, TMessage>`
-  또는 `IZLinkEntrySpotActorRequestHandler<TActor, TRequest, TReply>` 중
+- Entry Spot 의 경우: `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>`
+  또는 `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` 중
   하나를 구현해야 한다.
 
-하나의 handler 타입이 두 개의 actor packet interface 를 동시에 구현하면
-어떻게 될까. 이는 의도가 모호한 구성이므로, framework 는 startup validation
-단계에서 오류로 처리한다.
+하나의 handler 타입이 두 개 이상의 actor packet interface 를 구현하거나, 두 개
+이상의 actor handler attribute method 를 선언하면 의도가 모호하다. framework 는
+이를 startup validation 단계에서 오류로 처리한다.
 
 #### 4.3.1.1 Entry Spot actor handler 등록
 
@@ -623,10 +654,11 @@ Entry Spot 은 기본 실행 문맥이다. 즉 session 에서 막 생성된 acto
 
 이 단계에서 처리할 actor message 는 `IZLinkEntrySpot.Configure()` 안에서
 등록한다. 구체적으로는
-`IZLinkEntrySpotContext.AddActorPacket<THandler, TActor>()` 를 호출한다.
+`IZLinkEntrySpotContext.AddHandler<THandler>()` 를 호출한다.
 
-Entry Spot 에는 user Spot 객체가 존재하지 않는다. 그래서 handler 는 actor
-와 payload 만 받는다.
+Entry Spot handler 는 Entry Spot 인스턴스, actor, payload 를 함께 받는다.
+그래야 handler 가 Entry Spot 이 가진 입장 처리 상태나 helper 메서드를 직접
+사용할 수 있고, user Spot handler 와 같은 호출 모양을 유지할 수 있다.
 
 ```csharp
 public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
@@ -635,10 +667,10 @@ public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntr
 
     public void Configure()
     {
-        Context.AddActorPacket<AuthenticateHandler, PlayerActor>();
-        Context.AddActorPacket<JoinMatchHandler, PlayerActor>();
-        Context.AddActorJoined<PlayerEntryJoinedHandler, PlayerActor>();
-        Context.AddActorLeft<PlayerEntryLeftHandler, PlayerActor>();
+        Context.AddHandler<AuthenticateHandler>();
+        Context.AddHandler<JoinMatchHandler>();
+        Context.AddHandler<PlayerEntryJoinedHandler>();
+        Context.AddHandler<PlayerEntryLeftHandler>();
     }
 }
 ```
@@ -646,26 +678,47 @@ public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntr
 Entry Spot 의 actor packet handler 는 아래 두 interface 중 하나를 구현한다.
 
 ```csharp
-public interface IZLinkEntrySpotActorSendHandler<TActor, in TMessage>
+public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         TMessage message,
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorRequestHandler<TActor, in TRequest, TReply>
+public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequest, TReply>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask<TReply> HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         TRequest request,
         CancellationToken cancellationToken);
 }
 ```
 
-Entry Spot 에서 `AddActorPacket(...)` 로 등록한 handler 는 처리 범위가
+같은 의미를 attribute 방식으로 쓰면 다음과 같다.
+
+```csharp
+public sealed class JoinMatchHandler
+{
+    [ZLinkSpotActorRequest]
+    public ValueTask<JoinMatchRes> HandleAsync(
+        PlayerEntrySpot entrySpot,
+        PlayerActor actor,
+        JoinMatchReq request,
+        CancellationToken cancellationToken)
+    {
+        // ...
+    }
+}
+```
+
+Entry Spot 에서 `AddHandler(...)` 로 등록한 actor packet handler 는 처리 범위가
 한정된다. 해당 actor 가 user Spot 에 join 하기 전에 도착한 message 만
 처리한다.
 
@@ -676,7 +729,9 @@ registry 가 담당한다.
 
 user Spot 에 join 된 actor 의 message 는 `IZLinkSpot.Configure()` 안에서
 등록한다. 구체적으로는
-`IZLinkSpotContext.AddActorPacket<THandler, TActor>()` 를 호출한다.
+`IZLinkSpotContext.AddHandler<THandler>()` 를 호출한다. actor 타입을 호출 쪽에서
+명시해야 하거나 handler 가 여러 actor handler interface 를 구현하면
+`AddActorPacket<THandler, TActor>()` 같은 명시적 등록 메서드를 사용한다.
 
 user Spot handler 는 두 가지 객체를 함께 받는다. spot 객체와 actor 객체다.
 역할 분담은 다음과 같다.
@@ -691,9 +746,9 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddActorPacket<PlaceMarkHandler, PlayerActor>();
-        Context.AddActorJoined<PlayerMatchJoinedHandler, PlayerActor>();
-        Context.AddActorLeft<PlayerMatchLeftHandler, PlayerActor>();
+        Context.AddHandler<PlaceMarkHandler>();
+        Context.AddHandler<PlayerMatchJoinedHandler>();
+        Context.AddHandler<PlayerMatchLeftHandler>();
     }
 }
 ```
@@ -724,6 +779,23 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
 }
 ```
 
+attribute 방식은 같은 parameter 순서를 사용한다.
+
+```csharp
+public sealed class PlaceMarkHandler
+{
+    [ZLinkSpotActorRequest]
+    public ValueTask<PlaceMarkRes> HandleAsync(
+        MatchSpot spot,
+        PlayerActor actor,
+        PlaceMarkReq request,
+        CancellationToken cancellationToken)
+    {
+        // ...
+    }
+}
+```
+
 #### 4.3.1.3 actor join/leave lifecycle handler 등록
 
 actor 가 Entry Spot 또는 user Spot 에 들어오거나 빠져나간 직후의 후속
@@ -738,19 +810,23 @@ actor 가 Entry Spot 또는 user Spot 에 들어오거나 빠져나간 직후의
 Entry Spot lifecycle handler 는 아래 interface 를 구현한다.
 
 ```csharp
-public interface IZLinkEntrySpotActorJoinedHandler<TActor>
+public interface IZLinkEntrySpotActorJoinedHandler<TEntrySpot, TActor>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorLeftHandler<TActor>
+public interface IZLinkEntrySpotActorLeftHandler<TEntrySpot, TActor>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken);
@@ -780,6 +856,23 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
         TActor actor,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken);
+}
+```
+
+lifecycle 도 attribute 방식으로 선언할 수 있다.
+
+```csharp
+public sealed class PlayerMatchJoinedHandler
+{
+    [ZLinkSpotActorJoined]
+    public ValueTask HandleAsync(
+        MatchSpot spot,
+        PlayerActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        // ...
+    }
 }
 ```
 
@@ -1198,7 +1291,7 @@ runtime 이 검증하는 계약이다.
 
 backpressure 는 framework 내부에서 처리한다. actor 가 stream 을 직접 다루는
 패턴이 아니라면, 현재 actor 의 client 는 `IZLinkSessionProxy`, actor id 를
-지정하는 service 는 `IZLinkActorSessionClient` 를 경유한다(actor-model §10 참고).
+지정하는 service 는 `IZLinkSessionProxy` 를 경유한다(actor-model §10 참고).
 
 `OnErrorAsync(...)` 는 application handler 내부에서 발생한 예외를 받는
 callback 이 아니다.
@@ -1281,11 +1374,14 @@ actor join, actor factory, stream-attached actor 모델은 현재 draft
 
 - `IZLinkActor`
 - `IZLinkActorContext.JoinSpot(...)`
+- `IZLinkEntrySpotContext.AddHandler<THandler>()`
 - `IZLinkEntrySpotContext.AddActorPacket<THandler, TActor>()`
 - `IZLinkEntrySpotContext.AddActorJoined<THandler, TActor>()`
 - `IZLinkEntrySpotContext.AddActorLeft<THandler, TActor>()`
+- `IZLinkSpotContext.AddHandler<THandler>()`
 - `IZLinkSpotContext.AddActorPacket<THandler, TActor>()`
 - `IZLinkSpotContext.AddActorJoin<THandler, TActor, TRequest, TReply>()`
+- `IZLinkSpotContext.AddActorJoin<THandler>()`
 - stream session 의 actor dispatch 표면인 `IZLinkSessionContext`
 - actor stream 연결/해제를 담당하는 `IZLinkSessionActorAttachmentContext`
 
@@ -1333,7 +1429,8 @@ framework 의 `SpotActivation` 은 두 가지 이벤트를 수신한다.
 framework 는 native `ActorRef` 를 public surface 에 그대로 노출하지
 않는다.
 
-`AddActorJoined(...)` 와 `AddActorLeft(...)` 로 등록한 handler 에는
+`AddHandler(...)`, `AddActorJoined(...)`, `AddActorLeft(...)` 로 등록한
+lifecycle handler 에는
 `ZLinkSpotActorLifecycleInfo` 가 전달된다. 이 값은 다음 정보를 담는다.
 
 - join/leave 종류
@@ -1430,39 +1527,21 @@ public interface IZLinkActorContext
     TSpot GetSpot<TSpot>()
         where TSpot : class;
 
-    // spot은 application domain spot 이름(string)으로 식별한다. RoutingId 변환은
-    // framework 내부 spot route resolver가 푼다.
-    IZLinkActorJoinSpotCall<TReply> JoinSpot<TReply, TRequest>(
+    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
         string spotName,
         TRequest request);
 
-    IZLinkRequestCall RequestChannel<TRequest>(
-        string channelName,
+    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+        RoutingId spotRid,
         TRequest request);
-
-    IZLinkSendCall SendChannel<TMessage>(
-        string channelName,
-        TMessage message);
-
-    IZLinkActorSendCall Send<TMessage>(TMessage message);
 }
 
-public interface IZLinkActorJoinSpotCall<TReply>
+public interface IZLinkActorJoinSpotCall
 {
-    IZLinkActorJoinSpotCall<TReply> Timeout(TimeSpan timeout);
+    IZLinkActorJoinSpotCall Timeout(TimeSpan timeout);
 
-    ValueTask<TReply> Submit(CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkActorSendCall
-{
-    IZLinkActorSendCall Metadata(string key, string value);
-
-    IZLinkActorSendCall PacketName(string messageName);
-
-    IZLinkActorSendCall Compress();
-
-    ValueTask Submit(CancellationToken cancellationToken = default);
+    ValueTask<TReply> SubmitAsync<TReply>(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorFactory
@@ -1557,6 +1636,25 @@ public interface IZLinkSpotActorMembership
 }
 ```
 
+actor join handler 는 attribute 방식도 지원한다. 이 경우 `Configure()` 에서는
+`Context.AddActorJoin<THandler>()` 를 호출하고, framework 는 method parameter와
+반환 타입에서 spot, actor, request, reply 타입을 추론한다.
+
+```csharp
+public sealed class JoinMatchSpotHandler
+{
+    [ZLinkSpotActorJoin]
+    public ValueTask<JoinMatchSpotResult> HandleAsync(
+        MatchSpot spot,
+        PlayerActor actor,
+        JoinMatchReq request,
+        CancellationToken cancellationToken)
+    {
+        // ...
+    }
+}
+```
+
 `IZLinkSpotContext` (§4.3.1) 와 `IZLinkSpotActorMembership` 은 서로 분리된
 표면이다. 다만 같은 spot 실행 문맥에서 함께 사용된다. 각각의 역할은 다음과
 같다.
@@ -1575,8 +1673,10 @@ session router id 와 binding token 은 actor 가 client 로 send/request 할
 때 사용하는 runtime 내부 metadata 다. 그래서 actor context 에는 드러내지
 않는다.
 
-이유는 단순하다. actor 가 session 위치를 직접 들고 있으면, 재접속 시 stale
-상태로 빠지기 쉽기 때문이다.
+이유는 단순하다. application actor 코드가 session 위치값을 직접 들고 있으면,
+재접속 시 stale 상태로 빠지기 쉽기 때문이다. framework runtime 은 필요한
+session route 를 actor state 안에서 관리하고, actor code 에는 `SessionProxy`
+만 노출한다.
 
 framework runtime 은 actor context 를 먼저 주입한 뒤 actor 객체를 만든다.
 actor packet handler 등록은 actor 객체 쪽이 아니라, Entry Spot 또는 user
@@ -1585,14 +1685,12 @@ Spot 의 `Configure()` 단계에서 이루어진다.
 이렇게 두면 한 가지 이점이 있다. Entry 단계와 user Spot 단계를 하나의
 actor class 안에서 상태 분기로 섞을 필요가 없다.
 
-`RequestChannel(...)` 과 `SendChannel(...)` 은 actor 의 join 상태에 따라
-내부 경로를 달리 선택한다.
-
-- join 전: framework 의 일반 channel client 경로를 사용한다.
-- join 후: 현재 actor 가 join 한 `Spot` 의 channel client 경로를 사용한다.
-
-그래서 actor 코드는 `IZLinkClient` 와 `IZLinkSpotClient` 를 따로 구분할
-필요가 없다.
+channel outbound 는 actor context 의 기능이 아니다. Entry Spot 또는 user Spot
+안에서 channel 로 메시지를 보내야 하면 handler 가 받은 `entrySpot.Context` 또는
+`spot.Context` 의 `SendChannel(...)` / `RequestChannel(...)` 을 사용한다.
+client stream 으로 push 해야 하면 `ZLinkActorSendContext.SessionProxy`,
+`ZLinkActorRequestContext.SessionProxy`, 또는 `IZLinkSessionProxy` 를
+사용한다.
 
 `GetSpot(...)` 은 actor 가 `Spot` 에 join 한 뒤에만 유효하다. join 전
 호출은 명확한 실패로 처리된다.
@@ -2279,16 +2377,6 @@ public interface IZLinkSessionProxy
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkActorSessionClient
-{
-    IZLinkSessionProxySendCall Send<TMessage>(
-        string actorId,
-        TMessage message);
-
-    IZLinkSessionProxyRequestCall Request<TRequest>(
-        string actorId,
-        TRequest request);
-
     ValueTask DisconnectAsync(
         string actorId,
         CancellationToken cancellationToken = default);
@@ -2328,15 +2416,14 @@ public resolver 는 두 축으로 제한한다. actor 와 spot 이다.
 
 `IZLinkSessionProxy` 는 actor context 가 현재 actor id 를 알고 있을 때만
 제공한다. 사용자는 actor id 를 다시 넘기지 않고 현재 actor 에 묶인 client
-session 으로 보낸다. actor id 를 지정해서 다른 actor 의 client session 으로
-보내야 하는 application service 는 `IZLinkActorSessionClient` 를 사용한다.
+session 으로 보낸다. 다른 actor 의 client session 으로 보내야 하면 먼저 해당
+actor 에게 메시지를 보내고, 그 actor 의 handler 가 자기 `SessionProxy` 로 push 한다.
 `DisconnectAsync(...)` 도 현재 actor 의 binding 상태를 사용한다. actor 가
 client 연결을 끊기로 결정한 경우 이 메서드를 호출하며, session callback 으로
 `OnDisconnectedAsync(...)` 를 다시 올리지 않는다.
 
-분산 배포 환경에서는 binding 상태를 Redis 나 registry 에 저장해야 할 수
-있다. 이 경우 `.NET` adapter 는 resolver 를 새로 만드는 방식이 아니라,
-binding store plug-in 을 등록하는 방식으로 처리한다.
+분산 배포 환경에서도 session binding 은 actor runtime state 에 저장한다. 별도 public
+session 위치 resolver 나 session 위치 저장소는 제공하지 않는다.
 
 ```csharp
 namespace Zlink.Framework.Contracts.Actors;
@@ -2395,37 +2482,9 @@ public readonly record struct ZLinkSpotRoute(
 route mesh `ROUTER`여야 한다. target `SpotNode`는 같은 이름을
 `AcceptSpotRoutesFromChannel(...)`로 수락해야 하며, resolver는 연결을 만들지 않는다.
 
-```csharp
-namespace Zlink.Framework.Contracts.Streams;
-
-public readonly record struct ZLinkActorSessionRoute(
-    RoutingId SessionRouterId,
-    string BindingToken);
-
-public readonly record struct ZLinkActorSessionBinding(
-    string ActorId,
-    RoutingId SessionRouterId,
-    string BindingToken);
-
-public readonly record struct ZLinkActorSessionUnbind(
-    string ActorId,
-    string BindingToken);
-
-public interface IZLinkActorSessionBindingStore
-{
-    ValueTask BindSessionAsync(
-        ZLinkActorSessionBinding binding,
-        CancellationToken cancellationToken);
-
-    ValueTask UnbindSessionAsync(
-        ZLinkActorSessionUnbind binding,
-        CancellationToken cancellationToken);
-
-    ValueTask<ZLinkActorSessionRoute> FindSessionAsync(
-        string actorId,
-        CancellationToken cancellationToken);
-}
-```
+actor-session route 는 public contract 가 아니다. session bind 시 framework runtime 이
+현재 actor state 에 session router id 와 binding token 을 저장하고, `IZLinkSessionProxy`
+가 그 내부 상태를 사용한다.
 
 resolver 의 입력에는 다음 값들을 넘기지 않는다. metadata, packet name,
 raw message, decoded payload 다.
@@ -2436,7 +2495,7 @@ raw message, decoded payload 다.
 resolver 의 책임은 좁다. 위치 저장소 접근만 담당한다. 작은 dispatcher 역할
 까지 떠안아서는 안 된다.
 
-`IZLinkActorSessionBindingStore` 는 resolver 가 아니다. session
+`내부 actor session state` 는 resolver 가 아니다. session
 bind/unbind lifecycle 과 `SessionProxy` 조회를 하나의 저장소 계약으로 묶는
 역할이다. 이렇게 묶어 두는 의도는 stale binding 처리를 한곳에 가두기
 위해서다.
@@ -2675,49 +2734,6 @@ public interface IZLinkFrameworkOptions
     void AddSpotRouteResolver<TResolver>()
         where TResolver : class, IZLinkSpotRouteResolver;
 
-    void AddActorSessionBindingStore<TStore>()
-        where TStore : class, IZLinkActorSessionBindingStore;
-
-    void AddClientServerChannel(
-        string channelName,
-        Action<IZLinkClientServerChannelBuilder> configure);
-
-    void AddFanoutChannel(
-        string channelName,
-        Action<IZLinkFanoutChannelBuilder> configure);
-
-    void AddDealerMeshChannel(
-        string channelName,
-        Action<IZLinkDealerMeshChannelBuilder> configure);
-
-    void AddRouteMeshChannel(
-        string channelName,
-        Action<IZLinkRouteMeshChannelBuilder> configure);
-
-    void UseDiscovery(
-        Action<IZLinkDiscoveryBuilder> configure);
-
-    void UseSpotDiscovery(
-        string channelName,
-        Action<IZLinkDiscoveryBuilder> configure);
-
-    void UseFilter<TFilter>()
-        where TFilter : class, IZLinkHandlerFilter;
-
-    void ConfigureDispatch(
-        Action<IZLinkDispatchOptions> configure);
-
-    void AddStreamNode(
-        string streamNodeName,
-        Action<IZLinkStreamNodeBuilder> configure);
-
-    void AddSpotNode(
-        string spotNodeName,
-        Action<IZLinkSpotNodeBuilder> configure);
-
-    void AddSpotMesh(
-        string channelName,
-        Action<IZLinkSpotMeshBuilder> configure);
 }
 ```
 
@@ -2744,7 +2760,7 @@ public interface IZLinkFrameworkOptions
 - actor-session binding
   - 별도 public registration 함수로 등록하지 않는다. stream session이 actor handle을
     만들거나 actor에 attach되면 framework/core가 binding 상태를 갱신하고,
-    `IZLinkSessionProxy`와 `IZLinkActorSessionClient`는 그 상태를 사용해 client
+    `IZLinkSessionProxy`와 `IZLinkSessionProxy`는 그 상태를 사용해 client
     stream으로 보낸다.
 - `AddClientServerChannel(...)`
   - request/send 용 client-server 채널을 등록한다. builder는 `EnableServer(...)`와
@@ -3784,7 +3800,53 @@ group attribute 없이 일괄 매핑해야 하는 경우에 쓸 수 있다.
 정식 sample, scope, regression matrix 는 group mapping 모델을 기본으로
 간주한다.
 
-### 11.2 publish
+### 11.2 Spot actor handler
+
+Spot actor handler attribute 는 Entry Spot 과 user Spot 에서 같은 이름을 쓴다.
+어느 registry 에 등록되는지는 `EntrySpot.Configure()` 또는 `Spot.Configure()` 의
+등록 위치가 결정한다.
+
+```csharp
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ZLinkSpotActorSendAttribute : Attribute
+{
+    public string? PacketName { get; init; }
+}
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ZLinkSpotActorRequestAttribute : Attribute
+{
+    public string? PacketName { get; init; }
+}
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ZLinkSpotActorJoinAttribute : Attribute
+{
+}
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ZLinkSpotActorJoinedAttribute : Attribute
+{
+}
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ZLinkSpotActorLeftAttribute : Attribute
+{
+}
+```
+
+method 시그니처는 아래 순서를 따른다.
+
+- send: `(spotOrEntrySpot, actor, message, CancellationToken)` 반환값 없음
+- request: `(spotOrEntrySpot, actor, request, CancellationToken)` reply 반환
+- actor join: `(spot, actor, request, CancellationToken)` reply 반환
+- joined/left: `(spotOrEntrySpot, actor, ZLinkSpotActorLifecycleInfo, CancellationToken)` 반환값 없음
+
+`PacketName` 을 지정하지 않으면 message/request 타입의 packet 이름을 사용한다.
+같은 handler 클래스에 여러 Spot actor handler attribute method 가 있으면
+`AddHandler<THandler>()` 에서는 모호하므로 startup validation 오류가 된다.
+
+### 11.3 publish
 
 ```csharp
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
@@ -3822,7 +3884,7 @@ options.AddFanoutChannel("api.events", channel =>
 });
 ```
 
-### 11.3 SPOT
+### 11.4 SPOT
 
 ```csharp
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
@@ -3842,7 +3904,7 @@ public sealed class ZLinkSpotSubscriptionAttribute : Attribute
 }
 ```
 
-### 11.4 stream
+### 11.5 stream
 
 ```csharp
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
@@ -3954,8 +4016,8 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 | `IZLinkRoutedSpotClient` | client-server channel 또는 route mesh channel 중 `EnableSpotRouteEgress(...)`가 켜진 local egress channel 이 하나 이상 있을 때 등록한다 |
 | `IZLinkSpotPublisherClient`, `IZLinkSpotMeshPublisherClient` | Spot publisher client capability 가 하나 이상 있을 때 등록한다 |
 | `IZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록한다 |
-| `IZLinkSessionProxyFactory`, `IZLinkActorSessionClient` | actor-session binding store 와 route mesh channel 이 모두 있을 때 등록한다 |
-| `IZLinkActorPlayRouteResolver`, `IZLinkSpotRouteResolver`, `IZLinkActorSessionBindingStore` | 해당 resolver/store registration 이 있을 때 등록한다 |
+| `IZLinkSessionProxyFactory`, `IZLinkSessionProxy` | actor session proxy runtime 등록한다 |
+| `IZLinkActorPlayRouteResolver`, `IZLinkSpotRouteResolver` | 해당 resolver registration 이 있을 때 등록한다 |
 
 local handler 가 붙는 channel 의 의미는 다음과 같다. route prefix 가
 아니라, 애플리케이션이 해당 channel 에서 server 역할을 수행한다는 의미다.
@@ -4006,12 +4068,12 @@ interface 설명을 변경하면, 아래 테스트도 함께 조정한다.
 |---------------|-----------|
 | `ScaffoldSmokeTests.PublicSurface_DoesNotExpose_BackendConcreteTypes` | framework public API가 허용된 값 타입 외의 backend concrete type을 직접 노출하지 않는다. |
 | `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | direct route 계약은 빠지고 actor/session 계약은 public surface에 남아 있다. |
-| `RegistrationValidationTests.AddZLinkFramework_RegistersValidatedConfigurationAndFilterTypes` | options, codec, filter, channel, stream, spot 등록 표면이 DI 등록 결과에 반영된다. |
-| `ChannelMessagingIntegrationTests.Filters_Run_In_Registration_Order_Around_Handler_Dispatch` | handler filter 인터페이스가 등록 순서대로 dispatch 앞뒤를 감싼다. |
+| `RegistryAndMonitoringTests.AddZLinkFramework_RegistersValidatedConfigurationAndFilterTypes` | options, codec, filter, channel, stream, spot 등록 표면이 DI 등록 결과에 반영된다. |
+| `FiltersAndHttpTests.Filters_Run_In_Registration_Order_Around_Handler_Dispatch` | handler filter 인터페이스가 등록 순서대로 dispatch 앞뒤를 감싼다. |
 | `HandlerResultAwaiterTests.AwaitAsync_Returns_ValueTaskOfT_Result` | `ValueTask<T>` handler 결과를 값 타입 boxing 여부와 무관하게 기다리고 실제 reply 값을 반환한다. |
-| `StreamIntegrationTests.ActorPacketRegistry_DoesNot_Resolve_Request_To_Send_Handler` | actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
-| `StreamIntegrationTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot/user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
-| `StreamIntegrationTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |
+| `ProtocolTests.ActorPacketRegistry_DoesNot_Resolve_Request_To_Send_Handler` | actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
+| `ProtocolTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot/user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
+| `LocalSessionRelayTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |
 | `ScaffoldSmokeTests.PublicSurface_Removes_ActorReply_And_StreamClientContracts` | actor context Reply 와 actor stream client 계약이 public surface 에 다시 노출되지 않는다. |
 
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.

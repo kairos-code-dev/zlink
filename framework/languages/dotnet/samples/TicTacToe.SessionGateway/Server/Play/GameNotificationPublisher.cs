@@ -1,11 +1,10 @@
 using TicTacToe.SessionGateway.Play;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
-using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 
-internal sealed class GameNotificationPublisher(IZLinkActorSessionClient sessionClient)
+internal sealed class GameNotificationPublisher
 {
     public async ValueTask PublishAsync(
         IReadOnlyList<TicTacToeGameEvent> events,
@@ -13,20 +12,18 @@ internal sealed class GameNotificationPublisher(IZLinkActorSessionClient session
     {
         foreach (var gameEvent in events)
         {
-            await PublishAsync(sessionClient, gameEvent, cancellationToken).ConfigureAwait(false);
+            await PublishAsync(gameEvent, cancellationToken).ConfigureAwait(false);
         }
     }
 
     private static ValueTask PublishAsync(
-        IZLinkActorSessionClient client,
         TicTacToeGameEvent gameEvent,
         CancellationToken cancellationToken)
     {
         return gameEvent switch
         {
-            { Kind: TicTacToeGameEventKind.OpponentJoined } joined => client
+            { Kind: TicTacToeGameEventKind.OpponentJoined } joined => joined.Recipient.Context.SessionProxy
                 .Send(
-                    joined.RecipientActorId,
                     new OpponentJoinedNotify(
                         joined.Snapshot.MatchId,
                         joined.JoinedActorId
@@ -36,18 +33,16 @@ internal sealed class GameNotificationPublisher(IZLinkActorSessionClient session
                         joined.Snapshot.ToContract()))
                 .PacketName(SampleNames.OpponentJoinedPacket)
                 .Submit(cancellationToken),
-            { Kind: TicTacToeGameEventKind.TurnChanged } turn => client
+            { Kind: TicTacToeGameEventKind.TurnChanged } turn => turn.Recipient.Context.SessionProxy
                 .Send(
-                    turn.RecipientActorId,
                     new TurnChangedNotify(
                         turn.Snapshot.MatchId,
                         turn.Snapshot.TurnActorId,
                         turn.Snapshot.ToContract()))
                 .PacketName(SampleNames.TurnChangedPacket)
                 .Submit(cancellationToken),
-            { Kind: TicTacToeGameEventKind.GameEnded } ended => client
+            { Kind: TicTacToeGameEventKind.GameEnded } ended => ended.Recipient.Context.SessionProxy
                 .Send(
-                    ended.RecipientActorId,
                     new GameEndedNotify(
                         ended.Snapshot.MatchId,
                         ended.Snapshot.WinnerActorId,

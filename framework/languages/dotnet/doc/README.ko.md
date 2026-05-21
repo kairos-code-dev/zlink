@@ -107,8 +107,8 @@
 - session actor dispatch[^session-actor-dispatch] 는 단일 gateway feature switch
   하나를 켜고 끄는 형태가 아니다. 대신
   `AddStreamNode(...).AddHeaderSession<TSession>()`, actor factory, actor
-  attach route snapshot, actor-session binding, actor context 의 `IZLinkSessionProxy`,
-  service 용 `IZLinkActorSessionClient` 의 조합으로 설명한다. 공개 resolver
+  attach route snapshot, actor-session binding, `IZLinkSessionProxy`,
+  service 용 `IZLinkSessionProxy` 의 조합으로 설명한다. 공개 resolver
   축은 actor 와 spot 으로 제한하며, session 위치 조회를 위한 별도의 public API
   는 두지 않는다.
 
@@ -155,8 +155,8 @@
 | [aspnet-core-channel-messaging.ko.md](./spec/aspnet-core-channel-messaging.ko.md) | channel 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, router-capable channel의 SPOT route 수신, lifecycle, middleware / filter |
 | [aspnet-core-spot.ko.md](./spec/aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish / subscribe, discovery, `AcceptSpotRoutesFromChannel(...)` |
 | [spot-node.ko.md](./spec/spot-node.ko.md) | Entry Spot routing id 설정, `ConfigureEntrySpot(...)` 적용 순서, Spot route kind 보존 규칙 |
-| [aspnet-core-actor.ko.md](./spec/aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkSessionProxy, IZLinkActorSessionClient, session actor dispatch (gateway) 패턴 |
-| [session-actor-dispatch.ko.md](./spec/session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkSessionProxy`, `IZLinkActorSessionClient`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../../doc/spec/session-actor-dispatch.ko.md) 에서 다룬다. |
+| [aspnet-core-actor.ko.md](./spec/aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkSessionProxy, session actor dispatch (gateway) 패턴 |
+| [session-actor-dispatch.ko.md](./spec/session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkSessionProxy`, `IZLinkSessionProxy`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../../doc/spec/session-actor-dispatch.ko.md) 에서 다룬다. |
 | [aspnet-core-stream.ko.md](./spec/aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
 | [streaming-client.ko.md](./guide/samples/streaming-client.ko.md) | `.NET` Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신, manual dispatch |
 | [Unity Stream Connector 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | Unity `MonoBehaviour`에서 공통 connector의 `DispatchAsync()`를 호출하는 사용법 |
@@ -179,7 +179,7 @@
 | [regression-test-matrix.ko.md](./internals/regression-test-matrix.ko.md) | 구현 중에도 항상 유지해야 할 회귀 테스트 항목, CI 계층, release gate |
 | [implementation-scope-and-nongoals.ko.md](./internals/implementation-scope-and-nongoals.ko.md) | 현재 계획의 전체 구현 범위, 비목표, 완료 판정 기준 |
 | [backend-dependency-policy.ko.md](./internals/backend-dependency-policy.ko.md) | 현재 backend 의존 관계와 향후 저수준 라이브러리 교체 기준 |
-| [registry-backed-routing-defaults.ko.md](./draft/registry-backed-routing-defaults.ko.md) | Registry 기반 actor route, Spot route, actor-session binding 기본 구현 초안 |
+| [registry-backed-routing-defaults.ko.md](./draft/registry-backed-routing-defaults.ko.md) | Registry 기반 actor route 와 Spot route 기본 구현 초안 |
 | [session-attached-actor-route.ko.md](./draft/session-attached-actor-route.ko.md) | session attach 시점의 actor route 저장, route update, resolver 사용 범위 초안 |
 | [channel-handler-exposure-and-spot-route-transport.ko.md](./draft/channel-handler-exposure-and-spot-route-transport.ko.md) | channel handler group/typed handler 노출 정책과 Spot route transport 분리 초안 |
 
@@ -248,8 +248,8 @@
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `DocumentationRegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | `.NET` draft 문서마다 `회귀 테스트` 단락이 존재한다. |
-| `DocumentationRegressionTests.DotNetRegressionMatrix_References_AllDraftDocuments` | `regression-test-matrix.ko.md` 가 각 draft 문서 파일명을 모두 참조한다. |
+| `RegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | `.NET` draft 문서마다 `회귀 테스트` 단락이 존재한다. |
+| `RegressionTests.DotNetRegressionMatrix_References_AllDraftDocuments` | `regression-test-matrix.ko.md` 가 각 draft 문서 파일명을 모두 참조한다. |
 | `ScaffoldSmokeTests.FrameworkRoot_IsDiscoverable_FromTestRuntime` | 테스트 runtime 에서 framework 루트를 찾을 수 있어, 문서 회귀 테스트가 저장소 기준으로 실행된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

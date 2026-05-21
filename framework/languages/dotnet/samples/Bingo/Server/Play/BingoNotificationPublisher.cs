@@ -3,7 +3,7 @@ using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Play;
 
-internal sealed class BingoNotificationPublisher(IZLinkActorSessionClient sessionClient)
+internal sealed class BingoNotificationPublisher
 {
     public async ValueTask PublishAsync(
         IReadOnlyList<BingoRoomEvent> events,
@@ -21,9 +21,8 @@ internal sealed class BingoNotificationPublisher(IZLinkActorSessionClient sessio
     {
         return roomEvent.Kind switch
         {
-            BingoRoomEventKind.PlayerJoined => sessionClient
+            BingoRoomEventKind.PlayerJoined => roomEvent.Recipient.Context.SessionProxy
                 .Send(
-                    roomEvent.RecipientActorId,
                     new PlayerJoinedNotify(
                         roomEvent.State.RoomId,
                         roomEvent.JoinedActorId ?? throw new InvalidOperationException("Joined actor is required."),
@@ -33,13 +32,12 @@ internal sealed class BingoNotificationPublisher(IZLinkActorSessionClient sessio
                         roomEvent.State))
                 .PacketName(SampleNames.PlayerJoinedPacket)
                 .Submit(cancellationToken),
-            BingoRoomEventKind.GameStarted => sessionClient
-                .Send(roomEvent.RecipientActorId, new BingoGameStartedNotify(roomEvent.State))
+            BingoRoomEventKind.GameStarted => roomEvent.Recipient.Context.SessionProxy
+                .Send(new BingoGameStartedNotify(roomEvent.State))
                 .PacketName(SampleNames.GameStartedPacket)
                 .Submit(cancellationToken),
-            BingoRoomEventKind.NumberDrawn => sessionClient
+            BingoRoomEventKind.NumberDrawn => roomEvent.Recipient.Context.SessionProxy
                 .Send(
-                    roomEvent.RecipientActorId,
                     new BingoNumberDrawnNotify(
                         roomEvent.State.RoomId,
                         roomEvent.State.DrawSeq,
@@ -47,12 +45,12 @@ internal sealed class BingoNotificationPublisher(IZLinkActorSessionClient sessio
                         roomEvent.State))
                 .PacketName(SampleNames.NumberDrawnPacket)
                 .Submit(cancellationToken),
-            BingoRoomEventKind.State => sessionClient
-                .Send(roomEvent.RecipientActorId, new BingoStateNotify(roomEvent.State))
+            BingoRoomEventKind.State => roomEvent.Recipient.Context.SessionProxy
+                .Send(new BingoStateNotify(roomEvent.State))
                 .PacketName(SampleNames.StatePacket)
                 .Submit(cancellationToken),
-            BingoRoomEventKind.GameEnded => sessionClient
-                .Send(roomEvent.RecipientActorId, new BingoGameEndedNotify(roomEvent.State))
+            BingoRoomEventKind.GameEnded => roomEvent.Recipient.Context.SessionProxy
+                .Send(new BingoGameEndedNotify(roomEvent.State))
                 .PacketName(SampleNames.GameEndedPacket)
                 .Submit(cancellationToken),
             _ => throw new InvalidOperationException($"Unsupported event kind {roomEvent.Kind}.")

@@ -2,6 +2,8 @@ using Microsoft.Extensions.Hosting;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using TicTacToe.Server.Play.Actors;
+using TicTacToe.Server.Play.EntrySpot;
+using TicTacToe.Server.Play.GameSpots;
 using TicTacToe.Server.Play.Sessions;
 
 namespace TicTacToe.Server.Play;
@@ -40,7 +42,6 @@ internal sealed class PlayServer(SampleSettings settings)
                 channel.AddHandlerGroup("play");
             });
 
-            options.AddActorSessionBindingStore<InMemoryActorSessionBindingStore>();
             options.AddRouteMeshChannel(SampleChannels.Router, routed =>
             {
                 routed.Bind(settings.PlayRouterEndpoint);

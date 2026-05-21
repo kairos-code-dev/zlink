@@ -3,6 +3,7 @@
     <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,5 +20,19 @@
     <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
     <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector.Codecs/Systems.Zlink.Stream.Connector.Codecs.csproj" />
     <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector.Json/Systems.Zlink.Stream.Connector.Json.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Contracts/PublicApiTests.cs" />
+    <Compile Include="GlobalUsings.cs" />
+    <Compile Include="Protocol/ErrorAndModeTests.cs" />
+    <Compile Include="Protocol/HeaderCodecTests.cs" />
+    <Compile Include="Support/StreamConnectorTestSupport.cs" />
+    <Compile Include="Transport/DispatchTests.cs" />
+    <Compile Include="Transport/LifecycleTests.cs" />
+    <Compile Include="Transport/TransportTests.cs" />
+    <Compile Include="Typed/CodecAndCallbackTests.cs" />
+    <Compile Include="Typed/TypedHandlerRegistryTests.cs" />
+    <Compile Include="Typed/TypedRequestTests.cs" />
   </ItemGroup>
 </Project>

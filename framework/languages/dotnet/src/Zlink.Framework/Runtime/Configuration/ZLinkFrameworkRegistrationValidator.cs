@@ -22,29 +22,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 "Actor factory registration requires at least one SpotNode.");
         }
 
-        if ((registration.ActorSessionBindingStoreType is not null
-                || registration.RegistryActorSessionBindings is not null)
-            && registration.RouteChannels.Count == 0)
-        {
-            throw new ZLinkConfigurationException(
-                "Actor session proxy requires AddRouteMeshChannel(...).");
-        }
-
-        if (registration.RegistryActorSessionBindings is not null
-            && (registration.Discovery is null
-                || registration.Discovery.Endpoints.Count == 0))
-        {
-            throw new ZLinkConfigurationException(
-                "Registry actor-session binding store requires UseDiscovery(...).");
-        }
-
-        if (registration.RegistryActorSessionBindings is not null
-            && registration.RouteChannels.Count != 1)
-        {
-            throw new ZLinkConfigurationException(
-                "Registry actor-session binding store requires exactly one route mesh channel.");
-        }
-
         if ((registration.RegistryActorRoutes is not null
                 || registration.RegistrySpotRoutes is not null)
             && registration.RouteChannels.Count == 0)

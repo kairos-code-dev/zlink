@@ -181,7 +181,7 @@ loop 를 직접 다루지 않고, 등록 표면만 본다.
    envelope로 정규화한다.
 5. 정규화된 dispatch를 해당 actor가 attach된 `Spot` runtime의 inbox에 넣는다.
 6. 그 `Spot` inbox를 소비하는 실행기는 하나뿐이라고 가정한다.
-7. 그 실행기 안에서만 `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 handler가
+7. 그 실행기 안에서만 `IZLinkSpotContext.AddHandler(...)`로 등록한 actor handler가
    호출된다.
 8. actor가 room 상태를 바꾸거나 `Spot` 메서드를 호출해도, 이미 같은 `Spot`의 실행
    문맥 안이므로 추가적인 lock이 필요 없다.
@@ -447,10 +447,9 @@ wrapper 전용 API 가 생기면, 이 표에는 실제로 실행되는 테스트
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 뒤 stage 역할의 spot 실행 문맥 안에서 packet이 처리된다. |
-| `SpotIntegrationTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | stage tick으로 쓰는 timer가 spot 제거 후 정확히 멈춘다. |
-| `SpotIntegrationTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | stage 생성·조회·제거에 필요한 spot manager와 scope 정리가 정상 동작한다. |
-| `SpotIntegrationTests.ActorContext_RequestChannel_Uses_Global_Client_Before_Join_And_Spot_Client_After_Join` | actor가 stage에 join한 뒤에는 현재 spot의 channel client 경로를 사용한다. |
+| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 뒤 stage 역할의 spot 실행 문맥 안에서 packet이 처리된다. |
+| `ManagerTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | stage tick으로 쓰는 timer가 spot 제거 후 정확히 멈춘다. |
+| `ManagerTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | stage 생성·조회·제거에 필요한 spot manager와 scope 정리가 정상 동작한다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^stage]: `Stage`는 `playhouse`에서 게임 룸 같은 상위 실행 단위를 표현하는 모델이다. 단일 실행 문맥과 membership, lifecycle 같은 상위 개념을 함께 가진다.

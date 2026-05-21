@@ -2,16 +2,15 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionProxyService(
     IZLinkMultipartRouteClient routedClient,
-    IZLinkActorSessionBindingStore bindingStore,
     ZLinkFrameworkRuntime runtime,
-    ZLinkFrameworkRegistration registration) : IZLinkSessionProxyFactory, IZLinkActorSessionClient
+    ZLinkFrameworkRegistration registration) : IZLinkSessionProxyFactory
 {
     public IZLinkSessionProxy Create(string actorId)
     {
         return new ZLinkBoundSessionProxy(this, actorId);
     }
 
-    public IZLinkSessionProxySendCall Send<TMessage>(
+    internal IZLinkSessionProxySendCall Send<TMessage>(
         string actorId,
         TMessage message)
     {
@@ -21,7 +20,7 @@ internal sealed class ZLinkSessionProxyService(
             message);
     }
 
-    public IZLinkSessionProxyRequestCall Request<TRequest>(
+    internal IZLinkSessionProxyRequestCall Request<TRequest>(
         string actorId,
         TRequest request)
     {
@@ -40,6 +39,7 @@ internal sealed class ZLinkSessionProxyService(
         if (runtime.TryGetSessionActorContext(actorId, route.BindingToken, out var localContext))
         {
             await localContext.CloseByProxyAsync(cancellationToken).ConfigureAwait(false);
+            runtime.UnbindActorSession(actorId, route.BindingToken);
             return;
         }
 
@@ -53,6 +53,7 @@ internal sealed class ZLinkSessionProxyService(
                 parts,
                 cancellationToken)
             .ConfigureAwait(false);
+        runtime.UnbindActorSession(actorId, route.BindingToken);
     }
 
     internal async ValueTask SendProxyAsync<TMessage>(
@@ -62,14 +63,26 @@ internal sealed class ZLinkSessionProxyService(
         TMessage message,
         CancellationToken cancellationToken)
     {
-        var packet = await CreateProxyPacketAsync(
+        var route = await ResolveSessionRouteAsync(actorId, cancellationToken)
+            .ConfigureAwait(false);
+        if (runtime.TryGetSessionActorContext(actorId, route.BindingToken, out var localContext))
+        {
+            await localContext.SendRawAsync(
+                    packetName ?? throw new InvalidOperationException("Packet name is required."),
+                    ZlinkStreamCodec.Json,
+                    ZLinkEnvelopeCodec.EncodeJsonBytes(message, message?.GetType() ?? typeof(TMessage)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var packet = CreateProxyPacket(
                 actorId,
                 packetName,
                 metadata,
                 expectsReply: false,
                 message,
-                cancellationToken)
-            .ConfigureAwait(false);
+                route);
 
         await routedClient.SendPartsTo(
                 runtime.ResolveDefaultRouterChannelId(),
@@ -88,15 +101,30 @@ internal sealed class ZLinkSessionProxyService(
         TRequest request,
         CancellationToken cancellationToken)
     {
-        var packet = await CreateProxyPacketAsync(
+        var route = await ResolveSessionRouteAsync(actorId, cancellationToken)
+            .ConfigureAwait(false);
+        var timeout = timeoutOverride ?? registration.DefaultTimeout;
+        if (runtime.TryGetSessionActorContext(actorId, route.BindingToken, out var localContext))
+        {
+            var localReply = await localContext.RequestRawAsync(
+                    packetName ?? throw new InvalidOperationException("Packet name is required."),
+                    ZlinkStreamCodec.Json,
+                    ZLinkEnvelopeCodec.EncodeJsonBytes(request, request?.GetType() ?? typeof(TRequest)),
+                    timeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return ZLinkClientCallCodec.DecodeJsonReply<TReply>(
+                localReply.AsReadOnlySpan(),
+                "Session proxy reply payload is null.");
+        }
+
+        var packet = CreateProxyPacket(
                 actorId,
                 packetName,
                 metadata,
                 expectsReply: true,
                 request,
-                cancellationToken)
-            .ConfigureAwait(false);
-        var timeout = timeoutOverride ?? registration.DefaultTimeout;
+                route);
 
         ReadOnlyMemory<byte> reply;
         try
@@ -123,40 +151,30 @@ internal sealed class ZLinkSessionProxyService(
             "Session proxy reply payload is null.");
     }
 
-    private async ValueTask<ZLinkActorSessionRoute> ResolveSessionRouteAsync(
+    private ValueTask<ZLinkActorBoundSession> ResolveSessionRouteAsync(
         string actorId,
         CancellationToken cancellationToken)
     {
-        try
+        cancellationToken.ThrowIfCancellationRequested();
+        if (runtime.TryGetActorBoundSession(actorId, out var route))
         {
-            return await bindingStore.FindSessionAsync(actorId, cancellationToken)
-                .ConfigureAwait(false);
+            return ValueTask.FromResult(route);
         }
-        catch (ZLinkFrameworkException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SessionRouteNotFound,
-                $"Session route for actor '{actorId}' was not found.",
-                innerException: ex);
-        }
+
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorSessionNotBound,
+            $"No current session binding exists for actor '{actorId}'.",
+            isRetriable: true);
     }
 
-    private async ValueTask<ZLinkSessionProxyPacket> CreateProxyPacketAsync<TPayload>(
+    private static ZLinkSessionProxyPacket CreateProxyPacket<TPayload>(
         string actorId,
         string? packetName,
         IReadOnlyDictionary<string, string> metadata,
         bool expectsReply,
         TPayload payload,
-        CancellationToken cancellationToken)
+        ZLinkActorBoundSession route)
     {
-        var route = await ResolveSessionRouteAsync(
-                actorId,
-                cancellationToken)
-            .ConfigureAwait(false);
         var envelope = new ZLinkSessionProxyEnvelope(
             actorId,
             route.BindingToken,

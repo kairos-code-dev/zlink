@@ -398,12 +398,12 @@ Monitoring 문서의 항목은 다음을 확인한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegistrationValidationTests.AddZLinkMonitoring_Throws_WhenSocketSourceDoesNotMatchRegisteredCapability` | 존재하지 않는 monitoring source 이름은 startup validation 예외로 이어진다. |
-| `MonitoringIntegrationTests.RegistryMonitoring_Emits_StatusChanged_For_EmbeddedRegistry` | embedded Registry의 상태 변경 event가 발생한다. |
-| `MonitoringIntegrationTests.RegistryMonitoring_Emits_Topology_And_ServiceSummary_When_FrameworkHostRegisters` | framework host 등록 후 topology와 service summary event가 발생한다. |
-| `MonitoringIntegrationTests.SpotMonitoring_Emits_SubjectsChanged_When_SpotIsCreated` | spot 생성 후 subject 변화 event가 발생한다. |
-| `MonitoringIntegrationTests.SpotMonitoring_Emits_PeersChanged_When_RemoteNodeAppears` | remote spot node가 나타나면 peer 변화 event가 발생한다. |
-| `SpotIntegrationTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | timer handler 예외가 `TimerHandlerFailed` event와 `ZLinkSpotTimerDiagnostic` payload로 발생한다. |
+| `RegistryAndMonitoringTests.AddZLinkMonitoring_Throws_WhenSocketSourceDoesNotMatchRegisteredCapability` | 존재하지 않는 monitoring source 이름은 startup validation 예외로 이어진다. |
+| `EventsTests.RegistryMonitoring_Emits_StatusChanged_For_EmbeddedRegistry` | embedded Registry의 상태 변경 event가 발생한다. |
+| `EventsTests.RegistryMonitoring_Emits_Topology_And_ServiceSummary_When_FrameworkHostRegisters` | framework host 등록 후 topology와 service summary event가 발생한다. |
+| `EventsTests.SpotMonitoring_Emits_SubjectsChanged_When_SpotIsCreated` | spot 생성 후 subject 변화 event가 발생한다. |
+| `EventsTests.SpotMonitoring_Emits_PeersChanged_When_RemoteNodeAppears` | remote spot node가 나타나면 peer 변화 event가 발생한다. |
+| `TimerTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | timer handler 예외가 `TimerHandlerFailed` event와 `ZLinkSpotTimerDiagnostic` payload로 발생한다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^handshake]: handshake는 연결 초기에 양쪽이 프로토콜 버전이나 인증 정보를 주고받아 통신 조건을 맞추는 절차다.

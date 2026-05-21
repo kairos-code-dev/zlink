@@ -28,7 +28,12 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
             ZLinkSpotActorLifecycleKind.Joined);
         if (previousActivation is null)
         {
-            await runtime.NotifyEntrySpotActorLeftAsync(actor, info, cancellationToken)
+            var entryLeftInfo = ToPublicLifecycleInfo(
+                actor,
+                previousActivation: null,
+                activation,
+                ZLinkSpotActorLifecycleKind.Left);
+            await runtime.NotifyEntrySpotActorLeftAsync(actor, entryLeftInfo, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -79,7 +84,12 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
                 cancellationToken)
             .ConfigureAwait(false);
 
-        await runtime.NotifyEntrySpotActorJoinedAsync(actor, info, cancellationToken)
+        var entryJoinedInfo = ToPublicLifecycleInfo(
+            actor,
+            activation,
+            currentActivation: null,
+            ZLinkSpotActorLifecycleKind.Joined);
+        await runtime.NotifyEntrySpotActorJoinedAsync(actor, entryJoinedInfo, cancellationToken)
             .ConfigureAwait(false);
     }
 

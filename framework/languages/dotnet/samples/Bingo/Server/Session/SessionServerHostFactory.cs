@@ -27,8 +27,6 @@ public static class SessionServerHostFactory
             {
                 discovery.Add(topology.RegistryRouterEndpoint);
             });
-            options.UseRegistryActorSessionBindings("bingo");
-            options.UseRegistryActorRoutes("bingo");
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableClient();

@@ -16,6 +16,25 @@ internal sealed partial class ZLinkEntrySpotActivation
         _subscriptions.Add(topic, typeof(THandler));
     }
 
+    public void AddHandler<THandler>()
+        where THandler : class
+    {
+        EnsureConfigurationOpen();
+        _actorHandlers.AddHandler(typeof(THandler), null);
+    }
+
+    public void AddHandler<THandler>(string packetName)
+        where THandler : class
+    {
+        if (string.IsNullOrWhiteSpace(packetName))
+        {
+            throw new InvalidOperationException("Actor packet name must not be empty.");
+        }
+
+        EnsureConfigurationOpen();
+        _actorHandlers.AddHandler(typeof(THandler), packetName);
+    }
+
     public void AddActorJoin<THandler, TActor, TRequest, TReply>()
         where THandler : class
         where TActor : IZLinkActor
@@ -26,6 +45,13 @@ internal sealed partial class ZLinkEntrySpotActivation
             typeof(TActor),
             typeof(TRequest),
             typeof(TReply));
+    }
+
+    public void AddActorJoin<THandler>()
+        where THandler : class
+    {
+        EnsureConfigurationOpen();
+        _actorJoins.Add(typeof(THandler));
     }
 
     public void AddActorPacket<THandler, TActor>()

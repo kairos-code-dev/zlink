@@ -268,10 +268,10 @@ public sealed class StageEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntry
     {
         Context.AddPacket<StageAdmissionHandler>();
         Context.AddSubscribe<StageAdmissionEventHandler>("stage.admission");
-        Context.AddActorPacket<AuthenticateStageActorHandler, StageActor>();
-        Context.AddActorPacket<JoinStageHandler, StageActor>();
-        Context.AddActorJoined<StageEntryJoinedHandler, StageActor>();
-        Context.AddActorLeft<StageEntryLeftHandler, StageActor>();
+        Context.AddHandler<AuthenticateStageActorHandler>();
+        Context.AddHandler<JoinStageHandler>();
+        Context.AddHandler<StageEntryJoinedHandler>();
+        Context.AddHandler<StageEntryLeftHandler>();
     }
 }
 ```
@@ -291,10 +291,10 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddActorPacket<MoveOnStageHandler, StageActor>();
-        Context.AddActorPacket<ReportStageStateHandler, StageActor>();
-        Context.AddActorJoined<StageJoinedHandler, StageActor>();
-        Context.AddActorLeft<StageLeftHandler, StageActor>();
+        Context.AddHandler<MoveOnStageHandler>();
+        Context.AddHandler<ReportStageStateHandler>();
+        Context.AddHandler<StageJoinedHandler>();
+        Context.AddHandler<StageLeftHandler>();
     }
 }
 ```
@@ -304,13 +304,14 @@ Entry Spot registry 와 user Spot registry 는 서로 다른 namespace 다. 따�
 handler 로 매핑할 수 있다.
 
 반대로 같은 registry 안에서 같은 `actor type + packet kind + packet name`
-조합을 둘 이상 등록하면 startup validation 오류가 된다. `AddActorJoined(...)`
-와 `AddActorLeft(...)` 역시 같은 registry 안에서 같은 actor 타입에 대해
+조합을 둘 이상 등록하면 startup validation 오류가 된다. `AddHandler(...)` 로
+등록한 lifecycle handler 역시 같은 registry 안에서 같은 actor 타입에 대해
 하나씩만 허용한다.
 
 join / leave lifecycle 은 `OnJoinActor` 나 `OnLeaveActor` 같은 Spot 메서드
 override 로 정의하지 않는다. Entry Spot 과 user Spot 모두
-`AddActorJoined(...)` / `AddActorLeft(...)` 에 해당하는 registry 등록으로 후속
+`AddHandler(...)` 또는 명시적 `AddActorJoined(...)` / `AddActorLeft(...)`
+registry 등록으로 후속
 처리를 붙인다. 이 callback 은 join / leave commit 이 끝난 뒤 같은 실행 문맥에서
 호출된다. 그래서 admission[^admission] 을 결정하는 hook 이 아니라는 점에
 주의한다.
@@ -349,10 +350,11 @@ mailbox[^mailbox] 로 들어간다. 같은 actor 의 packet 은 순서대로 실
 | user Spot actor packet | user Spot 실행 queue |
 | user Spot packet / timer / subscription | user Spot 실행 queue |
 
-Entry Spot actor handler 는 actor 와 payload 를 받는다. user Spot actor
-handler 는 spot, actor, payload 를 함께 받는다. 두 표면을 따로 둔 이유는 간단
-하다. Entry Spot 에는 아직 user Spot 객체가 없고, user Spot 에서는 spot 상태와
-actor 상태를 함께 다뤄야 하기 때문이다.
+Entry Spot actor handler 는 entrySpot, actor, payload 를 함께 받는다. user
+Spot actor handler 는 spot, actor, payload 를 함께 받는다. 두 표면을 따로 둔
+이유는 간단하다. Entry Spot 에는 user Spot 객체가 없지만, 입장 처리를 맡는
+Entry Spot 인스턴스의 상태나 helper 메서드는 handler 에서 사용할 수 있어야
+한다. user Spot 에서는 room 같은 spot 상태와 actor 상태를 함께 다룬다.
 
 자세한 시그니처는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 SPOT lifecycle
@@ -626,7 +628,7 @@ builder.Services.AddZLinkFramework(options =>
   continuation도 spot state에 별도 lock 없이 접근할 수 있다.
 - binding이 attached dealer마다 별도 progress pump를 돌리지 않아도 된다.
   `Spot` progress loop 하나로 channel reply completion까지 처리된다.
-- actor가 `Spot`에 join된 뒤에는 `IZLinkSpotContext.AddActorPacket(...)`으로
+- actor가 `Spot`에 join된 뒤에는 `IZLinkSpotContext.AddHandler(...)`로
   등록한 actor packet handler 역시 같은 spot execution context에서 실행된다.
   stream session은 packet ingress를 맡고, actor가 room 또는 stage 상태를 다루는
   코드는 `Spot` 실행 문맥으로 들어간다.
@@ -1184,27 +1186,27 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenSpotFactoryNameIsDuplicatedAcrossNodes` | 같은 `spotName` factory를 중복 등록하면 startup validation 예외가 난다. |
-| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenSpotMeshHasNoUseDiscovery` | Discovery 없는 mesh 구성은 시작 전에 실패한다. |
-| `SpotIntegrationTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | `CreateAsync`, `GetAsync`, `ListAsync`, `RemoveAsync`와 scope 정리가 일관된다. |
-| `SpotIntegrationTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | timer와 publish callback이 spot lifecycle 안에서 돌고, 제거 뒤에는 멈춘다. |
-| `SpotIntegrationTests.SpotTimer_Provides_Tick_Metadata` | timer handler가 callback 번호, 예정/시작 시각, 지연, skip metadata를 받는다. |
-| `SpotIntegrationTests.SpotTimer_Skips_Late_Ticks_When_Configured` | `SkipLateTicks` 정책은 늦은 tick을 무제한 전달하지 않고 `SkippedTicks`로 드러낸다. |
-| `SpotIntegrationTests.SpotTimer_Catches_Up_Within_Configured_Limit` | `CatchUpBounded` 정책은 `MaxCatchUpTicks` 상한 안에서만 연속 실행한다. |
-| `SpotIntegrationTests.SpotTimer_DelayNextTick_Waits_After_Handler_Completion` | `DelayNextTick` 정책은 handler 완료 뒤 period를 다시 기다린다. |
-| `SpotIntegrationTests.SpotTimer_NonCatchUpPolicy_Ignores_MaxCatchUpTicks` | `CatchUpBounded`가 아닌 정책에서는 `MaxCatchUpTicks`가 scheduling 의미를 바꾸지 않는다. |
-| `SpotIntegrationTests.SpotTimer_CatchUpPolicy_Rejects_Invalid_MaxCatchUpTicks` | `CatchUpBounded` 정책에서 `MaxCatchUpTicks <= 0`은 설정 오류다. |
-| `SpotIntegrationTests.SpotTimer_Rejects_Unknown_OverrunPolicy` | 알 수 없는 overrun 정책 값은 설정 오류다. |
-| `SpotIntegrationTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | handler 예외가 runtime monitoring의 timer failure event로 기록된다. |
-| `SpotIntegrationTests.SpotTimer_StopOnUnhandledException_Stops_Timer` | `StopOnUnhandledException`이 켜진 timer는 첫 handler 예외 뒤 중단된다. |
-| `SpotIntegrationTests.SpotTimer_CancelAsync_Stops_Managed_Timer_Loop` | `CancelAsync()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다. |
-| `SpotIntegrationTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 publisher client가 target SPOT channel로 publish한다. |
-| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join, 이동, packet dispatch가 현재 spot 실행 문맥에서 실행된다. |
-| `SpotIntegrationTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot actor packet이 Entry Spot 전체 실행 줄에 막히지 않고 actor별 순서를 지킨다. |
-| `SpotIntegrationTests.EntrySpot_PacketHandlers_Are_Dispatched_Without_EntrySpot_Serialization` | Entry Spot 일반 packet handler가 user Spot과 같은 방식으로 등록되며 Entry Spot 전체 직렬 실행 줄에 묶이지 않는다. |
-| `SpotIntegrationTests.EntrySpotTimer_Does_Not_Block_EntrySpot_Callbacks_Globally` | 긴 Entry Spot timer callback이 다른 Entry Spot callback을 전역으로 막지 않는다. |
-| `SpotIntegrationTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer는 전역 queue에 묶이지 않아도 같은 timer callback을 겹쳐 실행하지 않는다. |
-| `SpotIntegrationTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel` | native `ActorReadable` batch 안에서도 서로 다른 Entry Spot actor packet이 병렬로 진행된다. |
+| `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryNameIsDuplicatedAcrossNodes` | 같은 `spotName` factory를 중복 등록하면 startup validation 예외가 난다. |
+| `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotMeshHasNoUseDiscovery` | Discovery 없는 mesh 구성은 시작 전에 실패한다. |
+| `ManagerTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | `CreateAsync`, `GetAsync`, `ListAsync`, `RemoveAsync`와 scope 정리가 일관된다. |
+| `ManagerTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | timer와 publish callback이 spot lifecycle 안에서 돌고, 제거 뒤에는 멈춘다. |
+| `TimerTests.SpotTimer_Provides_Tick_Metadata` | timer handler가 callback 번호, 예정/시작 시각, 지연, skip metadata를 받는다. |
+| `TimerTests.SpotTimer_Skips_Late_Ticks_When_Configured` | `SkipLateTicks` 정책은 늦은 tick을 무제한 전달하지 않고 `SkippedTicks`로 드러낸다. |
+| `TimerTests.SpotTimer_Catches_Up_Within_Configured_Limit` | `CatchUpBounded` 정책은 `MaxCatchUpTicks` 상한 안에서만 연속 실행한다. |
+| `TimerTests.SpotTimer_DelayNextTick_Waits_After_Handler_Completion` | `DelayNextTick` 정책은 handler 완료 뒤 period를 다시 기다린다. |
+| `TimerTests.SpotTimer_NonCatchUpPolicy_Ignores_MaxCatchUpTicks` | `CatchUpBounded`가 아닌 정책에서는 `MaxCatchUpTicks`가 scheduling 의미를 바꾸지 않는다. |
+| `TimerTests.SpotTimer_CatchUpPolicy_Rejects_Invalid_MaxCatchUpTicks` | `CatchUpBounded` 정책에서 `MaxCatchUpTicks <= 0`은 설정 오류다. |
+| `TimerTests.SpotTimer_Rejects_Unknown_OverrunPolicy` | 알 수 없는 overrun 정책 값은 설정 오류다. |
+| `TimerTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | handler 예외가 runtime monitoring의 timer failure event로 기록된다. |
+| `TimerTests.SpotTimer_StopOnUnhandledException_Stops_Timer` | `StopOnUnhandledException`이 켜진 timer는 첫 handler 예외 뒤 중단된다. |
+| `TimerTests.SpotTimer_CancelAsync_Stops_Managed_Timer_Loop` | `CancelAsync()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다. |
+| `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 publisher client가 target SPOT channel로 publish한다. |
+| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join, 이동, packet dispatch가 현재 spot 실행 문맥에서 실행된다. |
+| `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot actor packet이 Entry Spot 전체 실행 줄에 막히지 않고 actor별 순서를 지킨다. |
+| `EntryMailboxExecutionTests.EntrySpot_PacketHandlers_Are_Dispatched_Without_EntrySpot_Serialization` | Entry Spot 일반 packet handler가 user Spot과 같은 방식으로 등록되며 Entry Spot 전체 직렬 실행 줄에 묶이지 않는다. |
+| `TimerTests.EntrySpotTimer_Does_Not_Block_EntrySpot_Callbacks_Globally` | 긴 Entry Spot timer callback이 다른 Entry Spot callback을 전역으로 막지 않는다. |
+| `TimerTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer는 전역 queue에 묶이지 않아도 같은 timer callback을 겹쳐 실행하지 않는다. |
+| `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel` | native `ActorReadable` batch 안에서도 서로 다른 Entry Spot actor packet이 병렬로 진행된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.

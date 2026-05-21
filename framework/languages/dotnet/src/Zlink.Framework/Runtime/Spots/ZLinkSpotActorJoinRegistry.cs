@@ -20,6 +20,15 @@ internal sealed class ZLinkSpotActorJoinRegistry
             replyType));
     }
 
+    public void Add(Type handlerType)
+    {
+        _registrations.Add(new ZLinkSpotActorJoinRegistration(
+            handlerType,
+            null,
+            null,
+            null));
+    }
+
     public void Bind(object spot)
     {
         foreach (var actorJoin in _registrations)

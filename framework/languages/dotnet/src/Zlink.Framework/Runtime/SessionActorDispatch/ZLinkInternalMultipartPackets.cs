@@ -5,12 +5,18 @@ internal static class ZLinkInternalMultipartPackets
     public static IReadOnlyList<Message> CreateActorDispatchParts(
         string actorId,
         string actorType,
+        RoutingId sessionRouterId,
+        string bindingToken,
         ZlinkStreamHeader streamHeader,
         ReadOnlySpan<byte> body)
     {
         return
         [
-            ZLinkEnvelopeCodec.EncodePart(new ZLinkActorDispatchMetadata(actorId, actorType)),
+            ZLinkEnvelopeCodec.EncodePart(new ZLinkActorDispatchMetadata(
+                actorId,
+                actorType,
+                sessionRouterId.ToHex(),
+                bindingToken)),
             Message.FromBytes(ZLinkStreamProtocolDefaults.EncodeHeader(streamHeader).Span),
             Message.FromBytes(body)
         ];
@@ -19,6 +25,8 @@ internal static class ZLinkInternalMultipartPackets
     public static IReadOnlyList<Message> CreateActorDispatchParts(
         string actorId,
         string actorType,
+        RoutingId sessionRouterId,
+        string bindingToken,
         ZlinkStreamHeader streamHeader,
         object? body,
         Type bodyType)
@@ -26,6 +34,8 @@ internal static class ZLinkInternalMultipartPackets
         return CreateActorDispatchParts(
             actorId,
             actorType,
+            sessionRouterId,
+            bindingToken,
             streamHeader,
             ZLinkEnvelopeCodec.EncodeJsonBytes(body, bodyType));
     }
@@ -53,11 +63,17 @@ internal static class ZLinkInternalMultipartPackets
 
     public static IReadOnlyList<Message> CreateActorDisconnectedParts(
         string actorId,
-        string actorType)
+        string actorType,
+        RoutingId sessionRouterId,
+        string bindingToken)
     {
         return
         [
-            ZLinkEnvelopeCodec.EncodePart(new ZLinkActorDispatchMetadata(actorId, actorType))
+            ZLinkEnvelopeCodec.EncodePart(new ZLinkActorDispatchMetadata(
+                actorId,
+                actorType,
+                sessionRouterId.ToHex(),
+                bindingToken))
         ];
     }
 

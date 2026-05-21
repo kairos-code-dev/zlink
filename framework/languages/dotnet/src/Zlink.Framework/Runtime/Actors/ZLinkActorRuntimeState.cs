@@ -4,9 +4,11 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 {
     private readonly ZLinkActorPacketRegistry _packets = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _sessionGate = new();
     private readonly ZLinkActorDispatchMailbox _dispatchMailbox = new();
     private Task<IZLinkActor>? _actorCreationTask;
     private ulong _actorGeneration;
+    private ZLinkActorBoundSession? _boundSession;
 
     public string ActorId { get; } = actorId;
 
@@ -41,6 +43,53 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     public RoutingId? SpotRid => LiveActivation?.SpotRid;
 
     public bool IsJoined => LiveActivation is not null;
+
+    public void BindSession(
+        RoutingId sessionRouterId,
+        string bindingToken)
+    {
+        if (bindingToken.Length == 0)
+        {
+            throw new InvalidOperationException("Actor session binding token must not be empty.");
+        }
+
+        lock (_sessionGate)
+        {
+            _boundSession = new ZLinkActorBoundSession(sessionRouterId, bindingToken);
+        }
+    }
+
+    public void UnbindSession(string bindingToken)
+    {
+        if (bindingToken.Length == 0)
+        {
+            return;
+        }
+
+        lock (_sessionGate)
+        {
+            if (_boundSession is { BindingToken: var current }
+                && string.Equals(current, bindingToken, StringComparison.Ordinal))
+            {
+                _boundSession = null;
+            }
+        }
+    }
+
+    public bool TryGetBoundSession(out ZLinkActorBoundSession session)
+    {
+        lock (_sessionGate)
+        {
+            if (_boundSession is { } current)
+            {
+                session = current;
+                return true;
+            }
+        }
+
+        session = default;
+        return false;
+    }
 
     public IZLinkSpot GetJoinedSpot()
     {
@@ -299,6 +348,10 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     }
 
 }
+
+internal readonly record struct ZLinkActorBoundSession(
+    RoutingId SessionRouterId,
+    string BindingToken);
 
 internal readonly record struct ZLinkActorCreationOperation(
     Task<IZLinkActor> Task,

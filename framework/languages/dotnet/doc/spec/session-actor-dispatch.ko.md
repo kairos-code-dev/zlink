@@ -28,9 +28,9 @@
 |----|-------------|
 | session → actor relay | `IZLinkSessionContext.BindActorHandleAsync(...)`, `RelayToActorAsync(...)` |
 | actor handler | `IZLinkActorSendHandler<TMessage>`, `IZLinkActorRequestHandler<TRequest, TReply>`, `IZLinkActorPacketHandler<TActor, TMessage>`, `IZLinkActorRequestHandler<TActor, TRequest, TReply>` |
-| spot actor handler | `IZLinkEntrySpotActorSendHandler<TActor, TMessage>`, `IZLinkEntrySpotActorRequestHandler<TActor, TRequest, TReply>`, `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
+| spot actor handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>`, `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>`, `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
 | actor → own client push | `context.SessionProxy.Send(msg).Submit(...)` / `context.SessionProxy.Request(req).SubmitAsync<TReply>(...)` |
-| actor id → client push | `IZLinkActorSessionClient.Send(actorId, msg).Submit(...)` / `IZLinkActorSessionClient.Request(actorId, req).SubmitAsync<TReply>(...)` |
+| 다른 actor → client push | 먼저 대상 actor 에 메시지를 보내고, 대상 actor handler 가 `context.SessionProxy` 로 push |
 | route 해석 | session relay 는 attach 시점의 `ZLinkActorRoute` snapshot 을 사용한다. `IZLinkActorPlayRouteResolver` 는 session actor ref 가 없는 backend actor messaging 용도다. actor → client push 방향은 framework/core가 가진 actor-session binding[^actor-session-binding]을 사용한다 |
 
 인터페이스 전체 정의는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)
@@ -669,7 +669,7 @@ internal sealed class ZLinkActorDispatchRuntime
 
     public async ValueTask PostFromSessionAsync(
         IZLinkActorRef actorRef,
-        ZLinkActorSessionBinding binding,
+        ZLinkActorBoundSession binding,
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken)
@@ -689,7 +689,7 @@ internal sealed class ZLinkActorDispatchRuntime
 
     public async ValueTask<TReply> InvokeFromSessionAsync<TReply>(
         IZLinkActorRef actorRef,
-        ZLinkActorSessionBinding binding,
+        ZLinkActorBoundSession binding,
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken)
@@ -952,10 +952,12 @@ session queue 는 stream callback 을 직렬화하기 위한 장치다. actor �
 ### 3.1 typed handler 시그니처
 
 ```csharp
-public interface IZLinkEntrySpotActorRequestHandler<TActor, in TRequest, TReply>
+public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequest, TReply>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask<TReply> HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         TRequest request,
         CancellationToken cancellationToken);
@@ -972,10 +974,12 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorSendHandler<TActor, in TMessage>
+public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         TMessage message,
         CancellationToken cancellationToken);
@@ -1048,21 +1052,6 @@ public interface IZLinkSessionProxy
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkActorSessionClient
-{
-    IZLinkSessionProxySendCall Send<TMessage>(
-        string actorId,
-        TMessage message);
-
-    IZLinkSessionProxyRequestCall Request<TRequest>(
-        string actorId,
-        TRequest request);
-
-    ValueTask DisconnectAsync(
-        string actorId,
-        CancellationToken cancellationToken = default);
-}
-
 public interface IZLinkSessionProxySendCall
 {
     IZLinkSessionProxySendCall PacketName(string packetName);
@@ -1107,9 +1096,9 @@ GamePromptRep prompt = await sessionProxy
 
 - session → actor 방향: `BindActorHandleAsync(...)`, `RelayToActorAsync(...)`,
   `IZLinkActorRef.NotifyDisconnectedAsync(...)` 를 사용한다.
-- actor → 자기 client 방향: actor context 의 `IZLinkSessionProxy` 를 사용한다.
-- actor id 를 지정해서 다른 actor 의 client session 에 보내야 하는 application
-  service 는 `IZLinkActorSessionClient` 를 사용한다.
+- actor → 자기 client 방향: `IZLinkSessionProxy` 를 사용한다.
+- 다른 actor 의 client session 에 보내야 하는 application service 는 먼저 대상
+  actor 로 메시지를 보내고, 대상 actor handler 가 자기 `IZLinkSessionProxy` 를 사용한다.
 
 `IZLinkSessionProxy.Send(...).Submit(...)` 은 one-way push 다. 이 호출은
 framework route send 제출이 끝났다는 의미일 뿐이다. 즉 client application
@@ -1280,16 +1269,10 @@ session binding 은 다음 흐름에서 framework / core 가 갱신해 두는 �
 - stream attach
 - stream disconnect
 
-분산 배포에서 Registry 를 기본 저장소로 쓸 때는
-`UseRegistryActorSessionBindings(...)` 를 등록한다. 이 기본 구현은 actor id 를
-owner-bound route key 로 쓰고, route value 에 session router id 와 binding token 을
-담는다. unbind 는 binding token 을 확인한 뒤 수행하므로, 같은 Session 서버 안에서
-이전 stream 의 늦은 unbind 가 새 binding 을 지우지 못한다. 다른 Session 서버가 새
-binding 을 claim 한 경우에는 Registry owner generation 이 stale unbind 를 막는다.
-
-custom 저장소가 필요하면 `IZLinkActorSessionBindingStore` 를 직접 등록한다. 이 store 는
-resolver 가 아니다. bind / unbind 동작과 `SessionProxy` 조회를 함께 가진 저장소
-계약이다. 별도의 public session route resolver 를 도입하지 않는다.
+actor-session route 는 session bind 시 actor runtime state 에 저장된다. value 에는
+session router id 와 binding token 이 들어간다. unbind 는 binding token 을 확인한 뒤
+수행하므로 이전 stream 의 늦은 unbind 가 새 binding 을 지우지 못한다. 별도의 public
+session route resolver 나 저장소 계약은 두지 않는다.
 
 ## 7. 등록 표면 (host 측)
 
@@ -1334,9 +1317,9 @@ public sealed class TicTacToeEntrySpot : IZLinkEntrySpot
 
     public void Configure()
     {
-        Context.AddActorPacket<JoinMatchEntryHandler, TicTacToeActor>();
-        Context.AddActorJoined<TicTacToeEntryJoinedHandler, TicTacToeActor>();
-        Context.AddActorLeft<TicTacToeEntryLeftHandler, TicTacToeActor>();
+        Context.AddHandler<JoinMatchEntryHandler>();
+        Context.AddHandler<TicTacToeEntryJoinedHandler>();
+        Context.AddHandler<TicTacToeEntryLeftHandler>();
     }
 }
 
@@ -1346,11 +1329,11 @@ public sealed class TicTacToeGame : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddActorJoin<JoinMatchHandler, TicTacToeActor, JoinMatchReq, JoinMatchRes>();
-        Context.AddActorPacket<PlaceMarkHandler, TicTacToeActor>();
-        Context.AddActorPacket<MoveHandler, TicTacToeActor>();
-        Context.AddActorJoined<TicTacToeGameJoinedHandler, TicTacToeActor>();
-        Context.AddActorLeft<TicTacToeGameLeftHandler, TicTacToeActor>();
+        Context.AddActorJoin<JoinMatchHandler>();
+        Context.AddHandler<PlaceMarkHandler>();
+        Context.AddHandler<MoveHandler>();
+        Context.AddHandler<TicTacToeGameJoinedHandler>();
+        Context.AddHandler<TicTacToeGameLeftHandler>();
     }
 }
 ```
@@ -1437,13 +1420,15 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
 }
 
 public sealed class JoinMatchHandler
-    : IZLinkEntrySpotActorRequestHandler<PlayerActor, JoinMatchReq, JoinMatchRes>
 {
+    [ZLinkSpotActorRequest]
     public async ValueTask<JoinMatchRes> HandleAsync(
+        PlayerEntrySpot entrySpot,
         PlayerActor actor,
         JoinMatchReq request,
         CancellationToken cancellationToken)
     {
+        _ = entrySpot;
         // request.MatchId는 application 도메인이 정한 spot 이름이다.
         // RoutingId 변환은 framework 내부의 spot route resolver가 풀어 준다.
         var joined = await actor.Context
@@ -1454,8 +1439,8 @@ public sealed class JoinMatchHandler
 }
 
 public sealed class PlaceMarkHandler
-    : IZLinkSpotActorRequestHandler<TicTacToeGameSpot, PlayerActor, PlaceMarkReq, PlaceMarkRes>
 {
+    [ZLinkSpotActorRequest]
     public ValueTask<PlaceMarkRes> HandleAsync(
         TicTacToeGameSpot spot,
         PlayerActor actor,
@@ -1576,34 +1561,34 @@ session actor dispatch 항목은 다음 요소가 하나의 흐름으로 맞물�
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고, request sequence를 통해 reply를 되돌린다. |
-| `StreamIntegrationTests.ActorRefNotifyDisconnected_Notifies_Local_Bound_Actor` | `BindActorHandleAsync(...)` 로 만든 local actor ref의 disconnect 알림이 actor `OnDisconnectedAsync(...)` 로 전달된다. |
-| `StreamIntegrationTests.SessionActorBind_Does_Not_Resolve_PlayRoute` | session attach 와 relay 중 `IZLinkActorPlayRouteResolver` 를 호출하지 않는다. |
-| `StreamIntegrationTests.SessionActorBind_Rejects_Unchecked_ActorGeneration` | `ActorGeneration == 0` route 는 session attach 에 사용할 수 없다. |
-| `StreamIntegrationTests.SessionActorBind_WithoutRoute_Is_LocalOnly` | route 없는 bind overload 는 local actor 에만 붙고 remote resolver 를 호출하지 않는다. |
-| `StreamIntegrationTests.SessionActorRouteUpdate_Changes_Attached_TargetNodeRid` | 내부 route update 뒤 같은 actor ref relay 가 새 target node rid 를 사용한다. |
-| `StreamIntegrationTests.SessionActorRouteUpdate_Ignores_Stale_ExpectedActorGeneration` | expected actor generation 이 현재 attached ref 와 다르면 stale update 로 무시한다. |
-| `StreamIntegrationTests.SessionActorRouteUpdate_Allows_Idempotent_Same_Target` | 같은 target node rid 와 actor generation 으로 반복 도착한 update 는 idempotent 하게 처리한다. |
-| `StreamIntegrationTests.SessionActorRouteUpdate_Rejects_Conflicting_Target_For_Same_ExpectedGeneration` | 같은 expected actor generation 에서 서로 다른 target 으로 가는 update 는 하나만 적용된다. |
-| `StreamIntegrationTests.SessionProxyDisconnect_FromLocalActor_Closes_Client_Without_Session_Disconnect_Callback` | local actor 가 `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출하면 session binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다. |
-| `StreamIntegrationTests.SessionProxyDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback` | remote actor 가 routed `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다. |
-| `StreamIntegrationTests.SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch` | Session 서버와 Play 서버 사이의 actor dispatch가 route header, actor metadata, stream header, body를 각각 별도 part로 유지한다. |
-| `StreamIntegrationTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 proxy metadata와 body를 별도 part로 유지하고, client에게는 단일 STREAM packet으로 보낸다. |
-| `SpotIntegrationTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot actor packet이 actor별 순서를 지키되, 서로 다른 actor를 전역으로 막지 않는다. |
-| `SpotIntegrationTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel` | native Entry Spot actor batch도 actor별 순서 규칙을 거쳐 dispatch된다. |
-| `SpotIntegrationTests.LocalActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | user Spot에 들어가지 않은 actor packet도 actor별 순서를 지키되 서로 다른 actor 사이에서는 병렬로 실행될 수 있다. |
-| `SpotIntegrationTests.ActorDispatch_Rechecks_CurrentLocation_After_Waiting_For_ActorMailbox` | 같은 actor의 앞 packet이 join을 마치고 나면, 대기 중이던 다음 packet이 새 user Spot 위치로 dispatch된다. |
-| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 이후의 dispatch가 현재 spot 실행 문맥에서 실행된다. |
-| `SpotIntegrationTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | 이전 stream의 늦은 disconnect가 현재 actor-session 연결을 끊지 않는다. |
-| `StreamIntegrationTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 닫고 disconnect callback으로 자연스럽게 이어진다. |
+| `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고, request sequence를 통해 reply를 되돌린다. |
+| `ActorDisconnectNotifyTests.ActorRefNotifyDisconnected_Notifies_Local_Bound_Actor` | `BindActorHandleAsync(...)` 로 만든 local actor ref의 disconnect 알림이 actor `OnDisconnectedAsync(...)` 로 전달된다. |
+| `ActorBindingTests.SessionActorBind_Does_Not_Resolve_PlayRoute` | session attach 와 relay 중 `IZLinkActorPlayRouteResolver` 를 호출하지 않는다. |
+| `ActorBindingTests.SessionActorBind_Rejects_Unchecked_ActorGeneration` | `ActorGeneration == 0` route 는 session attach 에 사용할 수 없다. |
+| `ActorBindingTests.SessionActorBind_WithoutRoute_Is_LocalOnly` | route 없는 bind overload 는 local actor 에만 붙고 remote resolver 를 호출하지 않는다. |
+| `RouteUpdatesTests.SessionActorRouteUpdate_Changes_Attached_TargetNodeRid` | 내부 route update 뒤 같은 actor ref relay 가 새 target node rid 를 사용한다. |
+| `RouteUpdatesTests.SessionActorRouteUpdate_Ignores_Stale_ExpectedActorGeneration` | expected actor generation 이 현재 attached ref 와 다르면 stale update 로 무시한다. |
+| `RouteUpdatesTests.SessionActorRouteUpdate_Allows_Idempotent_Same_Target` | 같은 target node rid 와 actor generation 으로 반복 도착한 update 는 idempotent 하게 처리한다. |
+| `RouteUpdatesTests.SessionActorRouteUpdate_Rejects_Conflicting_Target_For_Same_ExpectedGeneration` | 같은 expected actor generation 에서 서로 다른 target 으로 가는 update 는 하나만 적용된다. |
+| `LocalProxyDisconnectTests.SessionProxyDisconnect_FromLocalActor_Closes_Client_Without_Session_Disconnect_Callback` | local actor 가 `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출하면 session binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다. |
+| `RemoteProxyDisconnectTests.SessionProxyDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback` | remote actor 가 routed `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다. |
+| `ProtocolTests.SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch` | Session 서버와 Play 서버 사이의 actor dispatch가 route header, actor metadata, stream header, body를 각각 별도 part로 유지한다. |
+| `SessionProxyAndHeaderTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 proxy metadata와 body를 별도 part로 유지하고, client에게는 단일 STREAM packet으로 보낸다. |
+| `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot actor packet이 actor별 순서를 지키되, 서로 다른 actor를 전역으로 막지 않는다. |
+| `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel` | native Entry Spot actor batch도 actor별 순서 규칙을 거쳐 dispatch된다. |
+| `LocalActorMailboxExecutionTests.LocalActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | user Spot에 들어가지 않은 actor packet도 actor별 순서를 지키되 서로 다른 actor 사이에서는 병렬로 실행될 수 있다. |
+| `ActorRegistryExecutionTests.ActorDispatch_Rechecks_CurrentLocation_After_Waiting_For_ActorMailbox` | 같은 actor의 앞 packet이 join을 마치고 나면, 대기 중이던 다음 packet이 새 user Spot 위치로 dispatch된다. |
+| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 이후의 dispatch가 현재 spot 실행 문맥에서 실행된다. |
+| `ActorSessionStateTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | 이전 stream의 늦은 disconnect가 현재 actor-session 연결을 끊지 않는다. |
+| `SessionProxyAndHeaderTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 닫고 disconnect callback으로 자연스럽게 이어진다. |
 | `SerialExecutorTests.StreamSessionSerialExecutor_Continues_After_Work_Exception` | session queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
 | `SerialExecutorTests.SpotSerialExecutor_Continues_After_Queued_Work_Exception` | Spot queue의 fire-and-forget work 예외가 error sink에 기록되고, 다음 work 실행을 막지 않는다. |
 | `SerialExecutorTests.SpotSerialExecutor_ExecuteAsync_Propagates_Work_Exception` | Spot queue에서 완료를 기다리는 실행 경로는 handler 예외를 호출자에게 그대로 돌려준다. |
 | `SerialExecutorTests.SerialExecutionQueue_RunAsync_Propagates_Work_Exception` | 공통 serial queue의 `RunAsync(...)`가 work 예외를 error sink에 기록하면서 호출자에게도 전파한다. |
 | `SerialExecutorTests.SerialExecutionQueue_Wait_Cancellation_Does_Not_Remove_Queued_Work` | 공통 serial queue에서 completion wait가 취소되더라도 이미 queue에 들어간 work item은 제거되지 않는다. |
 | `SerialExecutorTests.ActorDispatchCancellation_Does_Not_Stop_Current_Or_Later_Dispatch` | actor dispatch 대기를 취소해도 현재 실행 중인 dispatch나 이후 dispatch가 중단되지 않는다. |
-| `DocumentationRegressionTests.DotNetSessionActorDispatch_Documents_ExecutionSerialization_Core_Code` | 실행 직렬화 핵심 코드 섹션이 queue, runtime task, error sink, cancellation 의미를 계속 설명한다. |
-| `DocumentationRegressionTests.DotNetRegressionMatrix_Includes_ExecutionSerialization_Guards` | 중앙 regression matrix가 실행 직렬화 관련 회귀 항목을 유지한다. |
+| `RegressionTests.DotNetSessionActorDispatch_Documents_ExecutionSerialization_Core_Code` | 실행 직렬화 핵심 코드 섹션이 queue, runtime task, error sink, cancellation 의미를 계속 설명한다. |
+| `RegressionTests.DotNetRegressionMatrix_Includes_ExecutionSerialization_Guards` | 중앙 regression matrix가 실행 직렬화 관련 회귀 항목을 유지한다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어, 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^session-actor-dispatch]: session actor dispatch는 클라이언트 세션으로 들어온 요청을 그 세션과 묶여 있는 actor로 자동 전달해 주는 패턴이다.

@@ -107,8 +107,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | Spot service with SpotNode | `unit` | SpotNode 가 있으면 Spot service 가 DI 에 등록된다 |
 | Spot publisher without publisher capability | `unit` | SpotNode 가 있어도 publisher capability 가 없으면 Spot publisher service 는 DI 에 없다 |
 | Spot publisher with publisher capability | `unit` | Spot publisher capability 가 있으면 `IZLinkSpotPublisherClient` 와 `IZLinkSpotMeshPublisherClient` 가 DI 에 등록된다 |
-| session proxy without binding store | `unit` | binding store 없이는 `IZLinkSessionProxyFactory`, `IZLinkActorSessionClient` 가 DI 에 없다 |
-| binding store without route mesh | `unit` | binding store 가 있지만 route mesh channel 이 없으면 startup validation 예외 |
+| session proxy factory registration | `unit` | `IZLinkSessionProxyFactory` 는 framework runtime 과 함께 등록된다 |
 | Spot route resolver without SpotNode | `unit` | route 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRouteResolver` 를 등록할 수 있다 |
 | Spot client with resolver only | `unit` | Spot route resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotClient` 는 DI 에 없다 |
 | route channel missing at call time | `unit` | `IZLinkRouteClient` 호출 시 route channel 이 없으면 `ZLinkConfigurationException` |
@@ -132,8 +131,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | `GetOrCreateAsync(...)` spotName mismatch | `integration-single-process` | 같은 `spotId`에 서로 다른 `spotName`을 사용하면 `SpotTypeMismatch`로 실패하고 새 `OnCreateAsync(...)`를 호출하지 않는다 |
 | spot create lifecycle failure | `integration-single-process` | `OnCreateAsync(...)` 또는 `OnInitializeAsync(...)` 실패는 `SpotCreateFailed`로 전파되고 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
 | `GetAsync(...)`, `ListAsync(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |
-| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddActorPacket(...)`, `Context.AddActorJoined(...)`, `Context.AddActorLeft(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등의 등록이 descriptor에 반영된다 |
-| Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.AddPacket(...)`, `AddSubscribe(...)`, `AddActorPacket(...)`, `AddActorJoined(...)`, `AddActorLeft(...)`가 Entry Spot registry에 반영된다 |
+| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddHandler(...)`, `Context.AddActorPacket(...)`, `Context.AddActorJoined(...)`, `Context.AddActorLeft(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등의 등록이 descriptor에 반영된다 |
+| Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.AddPacket(...)`, `AddSubscribe(...)`, `AddHandler(...)`, `AddActorPacket(...)`, `AddActorJoined(...)`, `AddActorLeft(...)`가 Entry Spot registry에 반영된다 |
 | Entry Spot packet callback concurrency | `integration-single-process` | Entry Spot 일반 packet handler는 user Spot과 같은 등록 표면을 쓰지만 Entry Spot 전체 실행 줄에 직렬화되지 않는다 |
 | `OnInitializeAsync(...)` handler resolve | `integration-single-process` | spot마다 분리된 DI scope가 정상 동작한다 |
 | `OnClosingAsync(...)` 정상 remove callback | `integration-single-process` | `RemoveAsync(...)` 호출 시 spot 실행 문맥에서 한 번 호출된다 |
@@ -150,7 +149,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | route mesh Spot egress target peer 선택 | `integration-single-process` | source process가 target route channel 을 local registration 으로 갖지 않아도, 수동 연결과 registry metadata 의 target SpotNode ingress channel / ROUTER `RoutingId`로 route mesh egress target peer 를 선택한다 |
 | Spot route egress capability validation | `unit` | routed Spot egress 는 client-server client capability 또는 route mesh transport 에서만 켤 수 있고 fanout/dealer mesh 에서는 startup validation 오류다 |
 | spot 제거 후 scope 정리 | `integration-single-process` | 이후 callback이 발생하지 않고 dispose도 정상 완료된다 |
-| actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 handler가 join된 `Spot` 실행 문맥에서 실행된다 |
+| actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddHandler(...)`로 등록한 actor handler가 join된 `Spot` 실행 문맥에서 실행된다 |
 | Entry Spot actor mailbox dispatch | `integration-single-process` | Entry Spot actor packet이 Entry Spot 전체 실행 큐에 막히지 않고, actor별 mailbox 순서를 따른다 |
 | local actor mailbox dispatch | `integration-single-process` | user Spot에 들어가지 않은 actor packet도 actor별 mailbox 순서를 따른다 |
 | user Spot actor dispatch serialization | `integration-single-process` | 같은 user Spot 안의 여러 actor packet이 Spot 실행 queue에서 순서대로 처리되어 Spot 상태가 보호된다 |
@@ -172,12 +171,12 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | stale session binding token guard | `integration-single-process` | 이전 stream에서 늦게 도착한 unbind나 stale `SessionProxy` 메시지가 새 binding을 지우거나 사용하지 못한다 |
 | Registry actor route 기본 resolver 등록 | `unit` | `UseRegistryActorRoutes(...)` 가 custom resolver 없이 기본 `IZLinkActorPlayRouteResolver` 를 등록한다 |
 | Registry Spot route 기본 resolver 등록 | `unit` | `UseRegistrySpotRoutes(...)` 가 custom resolver 없이 기본 `IZLinkSpotRouteResolver` 와 Spot name directory 를 등록한다 |
-| Registry actor-session binding 기본 store 등록 | `unit` | `UseRegistryActorSessionBindings(...)` 가 기본 `IZLinkActorSessionBindingStore`, session proxy, actor session client 를 등록한다 |
-| Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver/store 를 함께 등록하면 startup validation 오류가 난다 |
-| Registry route 기본 구현 discovery validation | `unit` | `UseDiscovery(...)` 없이 Registry 기본 route/store 를 켜면 startup validation 오류가 난다 |
+| actor-bound session route 등록 | `integration-single-process` | actor-session route 는 session bind 시 actor runtime state 에 저장된다 |
+| Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다 |
+| Registry route 기본 구현 discovery validation | `unit` | `UseDiscovery(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
 | Registry Spot name route | `integration-single-process` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다 |
-| Registry actor-session stale unbind guard | `integration-single-process` | Registry actor-session binding 기본 store 가 새 binding 이후 도착한 이전 binding unbind 를 무시한다 |
-| sample-only registry metadata store 제거 | `unit` | Bingo 와 TicTacToe session gateway 샘플이 자체 metadata store 없이 Registry 기본 API 를 사용한다 |
+| stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
+| sample-only session metadata store 제거 | `unit` | Bingo 와 TicTacToe session gateway 샘플이 actor-session store 없이 actor-bound session proxy 를 사용한다 |
 | stale session proxy send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
 | session proxy wire multipart | `integration-single-process` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 route header, proxy metadata, payload를 별도 part로 유지하면서, client STREAM에는 단일 stream packet으로 쓴다 |
 | session proxy disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
@@ -243,8 +242,8 @@ backend gate 와 별도로 유지한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `DocumentationRegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | 아래 문서가 모두 `회귀 테스트` 단락을 가진다. |
-| `DocumentationRegressionTests.DotNetRegressionMatrix_References_AllDraftDocuments` | 이 matrix가 아래 문서 파일명을 모두 참조한다. |
+| `RegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | 아래 문서가 모두 `회귀 테스트` 단락을 가진다. |
+| `RegressionTests.DotNetRegressionMatrix_References_AllDraftDocuments` | 이 matrix가 아래 문서 파일명을 모두 참조한다. |
 
 대상 문서는 다음과 같다.
 

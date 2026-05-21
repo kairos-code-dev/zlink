@@ -442,10 +442,10 @@ STREAM 샘플은 다음을 하나의 흐름으로 보여 준다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `StreamIntegrationTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session 샘플의 dispatch와 reply 흐름이 정상 동작한다. |
-| `StreamIntegrationTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context의 close 샘플 의미가 그대로 유지된다. |
-| `TopologyMultiProcessTests.StreamRawSession_OnConnected_Emits_Metadata_Once_From_TestHostProcess` | 실제 프로세스 경계에서도 connected metadata가 한 번만 전달된다. |
-| `TopologyMultiProcessTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect 상황이 transport error로 보고된다. |
+| `SessionProxyAndHeaderTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session 샘플의 dispatch와 reply 흐름이 정상 동작한다. |
+| `SessionProxyAndHeaderTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context의 close 샘플 의미가 그대로 유지된다. |
+| `TopologyTests.StreamRawSession_OnConnected_Emits_Metadata_Once_From_TestHostProcess` | 실제 프로세스 경계에서도 connected metadata가 한 번만 전달된다. |
+| `TopologyTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect 상황이 transport error로 보고된다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^stream]: `STREAM`은 외부 클라이언트와 서버 사이를 잇는, 연결 지향적인 양방향 메시지 통로를 가리키는 ZLink 추상이다. 한 connection 위에서 여러 packet이 순서대로 오가는 구조다.

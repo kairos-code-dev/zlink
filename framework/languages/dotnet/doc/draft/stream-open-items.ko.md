@@ -170,11 +170,11 @@ STREAM open item 은 이미 결정이 끝난 항목과 아직 남아 있는 항�
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `StreamIntegrationTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session의 write/reply와 lifecycle 매핑이 현재 결정과 일치한다. |
-| `StreamIntegrationTests.StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints` | callback dispatch 정책이 transport 직접 호출로 다시 되돌아가지 않는다. |
+| `SessionProxyAndHeaderTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session의 write/reply와 lifecycle 매핑이 현재 결정과 일치한다. |
+| `ProtocolTests.StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints` | callback dispatch 정책이 transport 직접 호출로 다시 되돌아가지 않는다. |
 | `StreamConnectorTests.HeaderProtocolRoundTripsMetadataAndRequestSeq` | 내부 header protocol 이 metadata와 request sequence를 round-trip한다. |
-| `TopologyMultiProcessTests.StreamRawSession_OnConnected_Emits_Metadata_Once_From_TestHostProcess` | 실제 프로세스 경계에서 connection ready가 session connected metadata로 한 번 매핑된다. |
-| `TopologyMultiProcessTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | 실제 프로세스 경계에서 disconnect가 transport error callback으로 매핑된다. |
+| `TopologyTests.StreamRawSession_OnConnected_Emits_Metadata_Once_From_TestHostProcess` | 실제 프로세스 경계에서 connection ready가 session connected metadata로 한 번 매핑된다. |
+| `TopologyTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | 실제 프로세스 경계에서 disconnect가 transport error callback으로 매핑된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^stream]: `STREAM` 은 클라이언트와 서버 사이에 지속 연결을 유지하면서 framework Header 기반 packet 을 주고받는 세션형 통신 추상이다.

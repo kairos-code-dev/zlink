@@ -161,6 +161,28 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _sessionBindings.TryGet(actorId, bindingToken, out context);
     }
 
+    internal void BindActorSession(
+        string actorId,
+        RoutingId sessionRouterId,
+        string bindingToken)
+    {
+        GetOrCreateActorState(actorId).BindSession(sessionRouterId, bindingToken);
+    }
+
+    internal void UnbindActorSession(
+        string actorId,
+        string bindingToken)
+    {
+        GetOrCreateActorState(actorId).UnbindSession(bindingToken);
+    }
+
+    internal bool TryGetActorBoundSession(
+        string actorId,
+        out ZLinkActorBoundSession session)
+    {
+        return GetOrCreateActorState(actorId).TryGetBoundSession(out session);
+    }
+
     internal ValueTask<int> UpdateAttachedActorRouteAsync(
         string actorId,
         string routerChannelId,

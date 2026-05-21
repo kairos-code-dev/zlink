@@ -47,6 +47,33 @@ public sealed class ZLinkSpotSubscriptionAttribute(
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ZLinkSpotActorSendAttribute : Attribute
+{
+    public string? PacketName { get; init; }
+}
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ZLinkSpotActorRequestAttribute : Attribute
+{
+    public string? PacketName { get; init; }
+}
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ZLinkSpotActorJoinAttribute : Attribute
+{
+}
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ZLinkSpotActorJoinedAttribute : Attribute
+{
+}
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ZLinkSpotActorLeftAttribute : Attribute
+{
+}
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class ZLinkStreamPacketAttribute : Attribute
 {
 }

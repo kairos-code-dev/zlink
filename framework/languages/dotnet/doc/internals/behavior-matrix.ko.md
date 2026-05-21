@@ -107,16 +107,15 @@
 | actor route update 의 expected actor generation 이 현재 attached ref 와 다름 | 허용된 무시 | 늦게 도착한 stale update 로 보고 route 를 바꾸지 않는다 |
 | 같은 actor id가 새 stream session에서 다시 bind | 허용 | 기존 actor 인스턴스를 재사용하고 session binding token[^binding-token]만 갱신한다 |
 | actor factory가 요청 actor id와 다른 id를 반환 | 비허용 | actor route와 binding id가 갈라지므로 actor 생성 오류 |
-| `context.SessionProxy.Send(...)` 또는 `IZLinkActorSessionClient.Send(actorId, ...)` 가 오래된 binding이나 이미 닫힌 stream에 도착 | 허용된 실패 | 해당 push만 실패하고, route loop와 host shutdown은 계속 진행한다 |
+| `context.SessionProxy.Send(...)` 가 오래된 binding이나 이미 닫힌 stream에 도착 | 허용된 실패 | 해당 push만 실패하고, route loop와 host shutdown은 계속 진행한다 |
 | converter 없는 abstract/interface payload를 reply DTO에 포함 | 비허용 | startup validation 또는 첫 submit 직전에 configuration 오류 |
 | spot route resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
 | Registry actor route 기본 구현 + custom actor route resolver 함께 등록 | 비허용 | startup validation 오류 |
 | Registry Spot route 기본 구현 + custom Spot route resolver 함께 등록 | 비허용 | startup validation 오류 |
-| Registry actor-session binding 기본 구현 + custom actor-session binding store 함께 등록 | 비허용 | startup validation 오류 |
 | Registry route 기본 구현 + `UseDiscovery(...)` 없음 | 비허용 | startup validation 오류 |
 | Registry route 기본 구현 + route mesh channel이 둘 이상이고 channel id 생략 | 비허용 | startup validation 오류 |
 | spot name/id 기반 client 또는 `JoinSpot(...)` 사용 + spot route resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
-| `IZLinkSessionProxy` 또는 `IZLinkActorSessionClient` 사용 + actor-session binding 없음 | 비허용 | 대상 actor에 묶인 session이 없으면 명확한 오류 |
+| `IZLinkSessionProxy` 또는 `IZLinkSessionProxy` 사용 + actor-session binding 없음 | 비허용 | 대상 actor에 묶인 session이 없으면 명확한 오류 |
 
 ## 6. Monitoring Registration Matrix
 
@@ -173,10 +172,10 @@ runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenRouteChannelMixesDiscoveryAndManualConnections` | 같은 routed capability에서 Discovery와 manual 연결을 섞으면 실패한다. |
-| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenServerHasNoBindEndpoint` | server capability에 bind endpoint가 없으면 실패한다. |
-| `RegistrationValidationTests.AddZLinkFramework_Throws_WhenPublisherHasNoBindEndpoint` | publisher capability에 bind endpoint가 없으면 실패한다. |
-| `RegistrationValidationTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | Discovery mesh 없이 local-only SpotNode를 단독으로 시작할 수 있다. |
+| `ChannelsTests.AddZLinkFramework_Throws_WhenRouteChannelMixesDiscoveryAndManualConnections` | 같은 routed capability에서 Discovery와 manual 연결을 섞으면 실패한다. |
+| `HandlerExposureTests.AddZLinkFramework_Throws_WhenServerHasNoBindEndpoint` | server capability에 bind endpoint가 없으면 실패한다. |
+| `RegistryAndMonitoringTests.AddZLinkFramework_Throws_WhenPublisherHasNoBindEndpoint` | publisher capability에 bind endpoint가 없으면 실패한다. |
+| `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | Discovery mesh 없이 local-only SpotNode를 단독으로 시작할 수 있다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^capability]: capability 는 어떤 노드(channel, spot 등)가 외부에 노출하는 역할이나 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.

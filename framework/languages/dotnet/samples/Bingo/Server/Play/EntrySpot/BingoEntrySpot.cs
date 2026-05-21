@@ -1,3 +1,5 @@
+using Bingo.Server.Play.EntrySpot.Handlers;
+
 namespace Bingo.Server.Play;
 
 internal sealed class BingoEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
@@ -7,5 +9,7 @@ internal sealed class BingoEntrySpot(IZLinkEntrySpotContext context) : IZLinkEnt
     public void Configure()
     {
         Context.AddHandler<MatchBingoActorHandler>();
+        Context.AddHandler<BingoEntrySpotActorJoinedHandler>();
+        Context.AddHandler<BingoEntrySpotActorLeftHandler>();
     }
 }

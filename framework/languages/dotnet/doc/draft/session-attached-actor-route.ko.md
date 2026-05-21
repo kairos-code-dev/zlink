@@ -108,7 +108,7 @@ backend actor messaging 은 이 actor generation 으로 오래된 route 결과�
 | 경로 | route 기준 | `IZLinkActorPlayRouteResolver` 사용 |
 |------|------------|--------------------------------------|
 | session -> attached actor relay | attach 시점에 저장한 route snapshot | 사용하지 않음 |
-| actor -> current client session push | actor-session binding store | 사용하지 않음 |
+| actor -> current client session push | actor runtime state 의 session route | 사용하지 않음 |
 | backend service -> actor messaging | actor id 기반 play/runtime route 조회 | 사용 |
 | actor -> spot name/rid 호출 | `IZLinkSpotRouteResolver` | 사용하지 않음 |
 
@@ -260,10 +260,10 @@ actor 가 다른 node 로 이동하거나 runtime route 가 바뀌면 route owne
 
 | 테스트 케이스 | 확인 기준 |
 |-------------|-----------|
-| `StreamIntegrationTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | request sequence 기반 reply routing 은 route snapshot 구조에서도 유지된다. |
-| `StreamIntegrationTests.SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch` | session -> actor routed multipart framing 은 바뀌지 않는다. |
-| `StreamIntegrationTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | actor -> client push 는 actor-session binding 을 계속 사용한다. |
-| `SpotIntegrationTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | stale disconnect 가 최신 actor-session binding 을 지우지 않는다. |
+| `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | request sequence 기반 reply routing 은 route snapshot 구조에서도 유지된다. |
+| `ProtocolTests.SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch` | session -> actor routed multipart framing 은 바뀌지 않는다. |
+| `SessionProxyAndHeaderTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | actor -> client push 는 actor-session binding 을 계속 사용한다. |
+| `ActorSessionStateTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | stale disconnect 가 최신 actor-session binding 을 지우지 않는다. |
 
 ## 9. 구현 후 추가 테스트 계획
 
@@ -271,18 +271,18 @@ actor 가 다른 node 로 이동하거나 runtime route 가 바뀌면 route owne
 
 | 예정 항목 | 확인 기준 |
 |-----------|-----------|
-| `StreamIntegrationTests.SessionActorBind_Does_Not_Resolve_PlayRoute` | session attach 와 relay 중 `IZLinkActorPlayRouteResolver` 가 호출되지 않는다. resolver 를 등록해도 call count 는 0 이다. |
-| `StreamIntegrationTests.SessionActorBind_Rejects_Unchecked_ActorGeneration` | route 를 받는 bind overload 에 `ActorGeneration == 0` 을 넘기면 `ActorRouteNotFound` 로 실패한다. |
-| `StreamIntegrationTests.SessionActorBind_WithoutRoute_Is_LocalOnly` | 기존 `BindActorHandleAsync(actorId, actorType, ...)` 는 local actor 가 있을 때만 성공하고 remote resolver 를 호출하지 않는다. |
-| `StreamIntegrationTests.SessionActorRelay_Reuses_Bound_Route_For_Multiple_Messages` | 같은 session 에서 여러 packet 을 relay 해도 attached actor ref 의 route snapshot 을 재사용한다. |
-| `StreamIntegrationTests.SessionActorRouteUpdate_Changes_Attached_TargetNodeRid` | route update 후 같은 `IZLinkActorRef` relay 가 새 target node rid 로 전송된다. |
-| `StreamIntegrationTests.SessionActorRouteUpdate_Ignores_Stale_ExpectedActorGeneration` | expected actor generation 이 현재 attached ref 와 다르면 route 를 바꾸지 않는다. |
-| `StreamIntegrationTests.SessionActorRouteUpdate_Allows_Idempotent_Same_Target` | 같은 target node rid 와 actor generation 을 가리키는 update 는 중복 도착해도 성공한다. |
-| `StreamIntegrationTests.SessionActorRouteUpdate_Rejects_Conflicting_Target_For_Same_ExpectedGeneration` | 같은 expected actor generation 에서 서로 다른 target node rid 나 new actor generation 으로 가는 update 가 동시에 들어오면 하나만 적용한다. |
-| `StreamIntegrationTests.SessionActorRelay_Fails_When_Bound_Route_Is_Missing` | attach route 없이 relay 를 시도하면 resolver fallback 없이 명확한 오류가 난다. |
-| `RegistrationValidationTests.SessionActorDispatch_Does_Not_Require_ActorPlayRouteResolver` | session actor dispatch 구성은 `IZLinkActorPlayRouteResolver` 등록을 요구하지 않는다. |
-| `SampleRegressionTests.Bingo_SessionHandlers_Do_Not_Inject_ActorPlayRouteResolver` | Bingo session handler 에 `IZLinkActorPlayRouteResolver` 주입과 직접 route resolve 호출이 없다. |
-| `SampleRegressionTests.TicTacToe_SessionHandlers_Do_Not_Inject_ActorPlayRouteResolver` | TicTacToe session gateway session handler 에도 같은 회귀가 없다. |
+| `ActorBindingTests.SessionActorBind_Does_Not_Resolve_PlayRoute` | session attach 와 relay 중 `IZLinkActorPlayRouteResolver` 가 호출되지 않는다. resolver 를 등록해도 call count 는 0 이다. |
+| `ActorBindingTests.SessionActorBind_Rejects_Unchecked_ActorGeneration` | route 를 받는 bind overload 에 `ActorGeneration == 0` 을 넘기면 `ActorRouteNotFound` 로 실패한다. |
+| `ActorBindingTests.SessionActorBind_WithoutRoute_Is_LocalOnly` | 기존 `BindActorHandleAsync(actorId, actorType, ...)` 는 local actor 가 있을 때만 성공하고 remote resolver 를 호출하지 않는다. |
+| `RemoteSessionRelayTests.SessionActorRelay_Reuses_Bound_Route_For_Multiple_Messages` | 같은 session 에서 여러 packet 을 relay 해도 attached actor ref 의 route snapshot 을 재사용한다. |
+| `RouteUpdatesTests.SessionActorRouteUpdate_Changes_Attached_TargetNodeRid` | route update 후 같은 `IZLinkActorRef` relay 가 새 target node rid 로 전송된다. |
+| `RouteUpdatesTests.SessionActorRouteUpdate_Ignores_Stale_ExpectedActorGeneration` | expected actor generation 이 현재 attached ref 와 다르면 route 를 바꾸지 않는다. |
+| `RouteUpdatesTests.SessionActorRouteUpdate_Allows_Idempotent_Same_Target` | 같은 target node rid 와 actor generation 을 가리키는 update 는 중복 도착해도 성공한다. |
+| `RouteUpdatesTests.SessionActorRouteUpdate_Rejects_Conflicting_Target_For_Same_ExpectedGeneration` | 같은 expected actor generation 에서 서로 다른 target node rid 나 new actor generation 으로 가는 update 가 동시에 들어오면 하나만 적용한다. |
+| `RemoteSessionRelayTests.SessionActorRelay_Fails_When_Bound_Route_Is_Missing` | attach route 없이 relay 를 시도하면 resolver fallback 없이 명확한 오류가 난다. |
+| `NodesAndServicesTests.SessionActorDispatch_Does_Not_Require_ActorPlayRouteResolver` | session actor dispatch 구성은 `IZLinkActorPlayRouteResolver` 등록을 요구하지 않는다. |
+| `RegressionTests.Bingo_SessionHandlers_Do_Not_Inject_ActorPlayRouteResolver` | Bingo session handler 에 `IZLinkActorPlayRouteResolver` 주입과 직접 route resolve 호출이 없다. |
+| `RegressionTests.TicTacToe_SessionHandlers_Do_Not_Inject_ActorPlayRouteResolver` | TicTacToe session gateway session handler 에도 같은 회귀가 없다. |
 | `BackendMessagingTests.BackendActorMessaging_Uses_ActorPlayRouteResolver` | backend -> actor messaging 기능이 추가된 뒤 resolver 사용 위치가 backend messaging 경로로 제한된다. |
 | `BackendMessagingTests.BackendActorMessaging_Rejects_Unchecked_Resolved_Route` | resolver 가 `ActorGeneration == 0` route 를 반환하면 backend -> actor messaging 은 전송하지 않고 실패한다. |
 

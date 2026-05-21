@@ -260,9 +260,6 @@ public interface IZLinkFrameworkOptions
     void AddSpotRouteResolver<TResolver>()
         where TResolver : class, IZLinkSpotRouteResolver;
 
-    void AddActorSessionBindingStore<TStore>()
-        where TStore : class, IZLinkActorSessionBindingStore;
-
     void UseRegistryActorRoutes(string namespaceName);
 
     void UseRegistryActorRoutes(
@@ -274,8 +271,6 @@ public interface IZLinkFrameworkOptions
     void UseRegistrySpotRoutes(
         string namespaceName,
         Action<IZLinkRegistrySpotRoutesOptions> configure);
-
-    void UseRegistryActorSessionBindings(string namespaceName);
 
     void AddClientServerChannel(
         string channelName,

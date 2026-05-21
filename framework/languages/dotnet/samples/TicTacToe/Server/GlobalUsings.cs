@@ -12,6 +12,7 @@ global using TicTacToe.Server.Api;
 global using TicTacToe.Server.Api.Handlers;
 global using TicTacToe.Server.Configuration;
 global using TicTacToe.Server.Play;
-global using TicTacToe.Server.Play.Games;
+global using TicTacToe.Server.Play.EntrySpot;
+global using TicTacToe.Server.Play.GameSpots;
 global using TicTacToe.Server.Play.Sessions;
 global using Microsoft.Extensions.Logging;

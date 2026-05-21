@@ -177,11 +177,11 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 
 | 테스트 케이스 | 확인 기준 |
 | ------------- | --------- |
-| `LifecycleHostedServiceTests.Host_Starts_And_Stops_FrameworkRuntimeContext` | host 의 시작·종료에 맞춰 framework runtime context 가 생성되고 정리된다. |
-| `LifecycleHostedServiceTests.Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry 와 framework runtime 사이의 시작 순서가 유지된다. |
+| `HostTests.Host_Starts_And_Stops_FrameworkRuntimeContext` | host 의 시작·종료에 맞춰 framework runtime context 가 생성되고 정리된다. |
+| `HostTests.Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry 와 framework runtime 사이의 시작 순서가 유지된다. |
 | `ZLinkAsyncSubmitterTests.SubmitAsync_FailsPendingItemWhenSendTimeoutExpires` | pending submit 은 send timeout 정책에 따라 실패하고, caller thread 를 묶지 않는다. |
 | `StreamConnectorTests.RequestTimeoutRemovesPendingRequest` | stream connector 의 request timeout 이 끝나면 pending request 가 정리된다. |
-| `TopologyMultiProcessTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect 는 stream session 의 transport error 콜백으로 보고된다. |
+| `TopologyTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect 는 stream session 의 transport error 콜백으로 보고된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^reconnect]: reconnect 는 끊어진 연결을 다시 맺으려고 시도하는 동작을 가리킨다. 자동 재시도 정책과 명시적 호출 두 가지 모양이 있다.

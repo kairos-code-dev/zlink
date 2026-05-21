@@ -70,14 +70,14 @@ public sealed class PlayerActor(string actorId, IZLinkActorContext context)
 }
 ```
 
-actor 안에서의 outbound·spot join 은 모두 주입된 `IZLinkActorContext` 로 한다.
+actor 안에서의 spot join 과 현재 상태 조회는 주입된 `IZLinkActorContext` 로
+한다. channel outbound 는 actor context 의 기능이 아니며, Entry Spot 또는
+user Spot handler 에서 받은 spot context 로 호출한다.
 
 | `IZLinkActorContext` 멤버 | 용도 |
 |---------------------------|------|
 | `ActorId`, `SessionId?`, `SpotName?`, `IsJoined` | 현재 상태 조회 |
 | `JoinSpot<TReply,TRequest>(spotName, request)` | user Spot 으로 join (도메인 spot 이름으로) |
-| `RequestChannel/SendChannel(channelName, ...)` | 일반 channel 로 호출 |
-| `Send<TMessage>(message)` | 같은 actor 로의 push 빌더 |
 
 `RoutingId` 같은 transport 주소는 handler 표면에 노출되지 않는다. spot 이름 →
 `RoutingId` 변환은 framework 내부 spot route resolver 가 푼다.
@@ -95,10 +95,10 @@ public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntr
 
     public void Configure()
     {
-        Context.AddActorPacket<AuthenticateHandler, PlayerActor>();
-        Context.AddActorPacket<JoinMatchHandler, PlayerActor>();
-        Context.AddActorJoined<EntryJoinedHandler, PlayerActor>();
-        Context.AddActorLeft<EntryLeftHandler, PlayerActor>();
+        Context.AddHandler<AuthenticateHandler>();
+        Context.AddHandler<JoinMatchHandler>();
+        Context.AddHandler<EntryJoinedHandler>();
+        Context.AddHandler<EntryLeftHandler>();
     }
 }
 
@@ -108,10 +108,10 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddActorJoin<JoinMatchSpotHandler, PlayerActor, JoinMatchReq, JoinMatchRes>();
-        Context.AddActorPacket<PlaceMarkHandler, PlayerActor>();
-        Context.AddActorJoined<MatchJoinedHandler, PlayerActor>();
-        Context.AddActorLeft<MatchLeftHandler, PlayerActor>();
+        Context.AddActorJoin<JoinMatchSpotHandler>();
+        Context.AddHandler<PlaceMarkHandler>();
+        Context.AddHandler<MatchJoinedHandler>();
+        Context.AddHandler<MatchLeftHandler>();
     }
 }
 ```
@@ -119,13 +119,14 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot
 handler 시그니처는 위치에 따라 다르다.
 
 ```csharp
-// Entry Spot: (actor, payload) — 아직 user Spot 객체가 없으므로
+// Entry Spot: (entrySpot, actor, payload)
 public sealed class JoinMatchHandler
-    : IZLinkEntrySpotActorRequestHandler<PlayerActor, JoinMatchReq, JoinMatchRes>
 {
+    [ZLinkSpotActorRequest]
     public async ValueTask<JoinMatchRes> HandleAsync(
-        PlayerActor actor, JoinMatchReq request, CancellationToken ct)
+        PlayerEntrySpot entrySpot, PlayerActor actor, JoinMatchReq request, CancellationToken ct)
     {
+        _ = entrySpot;
         // request.MatchId 는 도메인이 정한 spot 이름. RoutingId 변환은 framework 가.
         var joined = await actor.Context
             .JoinSpot<JoinMatchSpotResult, JoinMatchReq>(request.MatchId, request)
@@ -137,13 +138,17 @@ public sealed class JoinMatchHandler
 
 // user Spot: (spot, actor, payload) — room 상태를 함께 만진다
 public sealed class PlaceMarkHandler
-    : IZLinkSpotActorRequestHandler<MatchSpot, PlayerActor, PlaceMarkReq, PlaceMarkRes>
 {
+    [ZLinkSpotActorRequest]
     public ValueTask<PlaceMarkRes> HandleAsync(
         MatchSpot spot, PlayerActor actor, PlaceMarkReq request, CancellationToken ct)
         => ValueTask.FromResult(spot.PlaceMark(actor.ActorId, request.Cell));
 }
 ```
+
+이 예시는 attribute 방식을 사용한다. 같은 내용을 interface 상속으로 작성할 수도
+있다. attribute 방식은 한 handler 클래스 안에 여러 method를 둘 수 있지만, method
+parameter 순서나 반환 타입 오류는 컴파일이 아니라 startup validation에서 드러난다.
 
 > **응답은 반환값으로.** actor request handler 는 절대 `context.Reply(...)` 를
 > 쓰지 않는다. 반환한 `TReply` 가 원 요청 sequence 에 응답으로 실린다. request
@@ -262,14 +267,18 @@ public sealed class JoinMatchActorHandler
 }
 ```
 
-다른 actor id 의 client 로 보내려면 서비스에서 `IZLinkActorSessionClient` 를
-쓴다.
+다른 actor 의 client 로 보내야 하면 먼저 그 actor 에게 메시지를 보낸 뒤,
+해당 actor 가 자기 `Context.SessionProxy` 로 client 에 push 한다. session 위치를
+actor id 로 직접 조회하는 public client 는 제공하지 않는다.
 
 ```csharp
-public sealed class MatchBroadcaster(IZLinkActorSessionClient clients)
+public sealed class PlayerNotifyHandler : IZLinkActorPacketHandler<GameStateNotify>
 {
-    public ValueTask NotifyAsync(string actorId, GameState state, CancellationToken ct)
-        => clients.Send(actorId, new GameStateNotify(state)).Submit(ct);
+    public ValueTask HandleAsync(
+        GameStateNotify message,
+        ZLinkActorSendContext context,
+        CancellationToken ct)
+        => context.SessionProxy.Send(message).Submit(ct);
 }
 ```
 
@@ -288,11 +297,11 @@ session 위치 조회용 public resolver 는 없다(actor↔session binding 은 
 |------|------|
 | `options.UseRegistryActorRoutes("game")` | actor id → play node route 기본 resolver |
 | `options.UseRegistrySpotRoutes("game")` | spot owner 조회 + spot 이름 directory |
-| `options.UseRegistryActorSessionBindings("game")` | actor id ↔ 현재 session route binding 저장 |
 
-Redis/DB 같은 별도 저장소가 필요하면 custom 으로 등록한다:
-`AddActorPlayRouteResolver<T>()`, `AddSpotRouteResolver<T>()`,
-`AddActorSessionBindingStore<T>()`.
+Redis/DB 같은 별도 저장소가 필요하면 actor route 나 spot route resolver 만
+custom 으로 등록한다: `AddActorPlayRouteResolver<T>()`,
+`AddSpotRouteResolver<T>()`. actor-session binding 은 session bind 시 actor runtime
+state 에 저장되는 framework 내부 상태다.
 
 `IZLinkSpotRouteResolver` 는 `JoinSpot(spotName, ...)` 가 노드 경계를 넘을 때만
 필요하다.
@@ -340,7 +349,6 @@ builder.Services.AddZLinkFramework(options =>
 
     options.UseRegistryActorRoutes("game");
     options.UseRegistrySpotRoutes("game");
-    options.UseRegistryActorSessionBindings("game");
 });
 ```
 

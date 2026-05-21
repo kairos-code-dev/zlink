@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 
-namespace Zlink.Framework.Tests.Common;
+namespace Zlink.Framework.E2ETests;
 
 internal sealed class TestHostProcess : IAsyncDisposable
 {
@@ -47,8 +47,8 @@ internal sealed class TestHostProcess : IAsyncDisposable
         var stopFilePath = Path.Combine(
             Path.GetTempPath(),
             $"zlink-framework-testhost-stop-{Guid.NewGuid():N}.signal");
-        var logDirectoryPath = FrameworkTestEnvironment.CreateTestLogDirectory("testhost");
-        var startInfo = FrameworkTestEnvironment.CreateTestHostStartInfo(
+        var logDirectoryPath = Common.FrameworkTestEnvironment.CreateTestLogDirectory("testhost");
+        var startInfo = Common.FrameworkTestEnvironment.CreateTestHostStartInfo(
             null,
             ["--stop-file", stopFilePath, .. additionalArguments],
             redirectStandardInput: false);

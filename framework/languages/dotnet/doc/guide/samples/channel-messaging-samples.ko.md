@@ -883,10 +883,10 @@ app.MapPost("/profiles/get", async (
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ChannelMessagingIntegrationTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 샘플의 request / send 흐름이 동작한다. |
-| `ChannelMessagingIntegrationTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | 자동 연결 샘플의 request / send 흐름이 동작한다. |
-| `ChannelMessagingIntegrationTests.Publisher_And_Subscriber_Work_Across_Hosts` | publish / subscribe 샘플 흐름이 동작한다. |
-| `ChannelMessagingIntegrationTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkClient` | HTTP handler에서 outbound client를 사용하는 샘플 흐름이 동작한다. |
+| `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 샘플의 request / send 흐름이 동작한다. |
+| `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | 자동 연결 샘플의 request / send 흐름이 동작한다. |
+| `FanoutTests.Publisher_And_Subscriber_Work_Across_Hosts` | publish / subscribe 샘플 흐름이 동작한다. |
+| `FiltersAndHttpTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkClient` | HTTP handler에서 outbound client를 사용하는 샘플 흐름이 동작한다. |
 
 ---
 

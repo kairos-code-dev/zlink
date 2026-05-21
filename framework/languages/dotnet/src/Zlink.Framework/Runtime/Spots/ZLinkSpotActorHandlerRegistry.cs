@@ -26,9 +26,6 @@ internal sealed class ZLinkSpotActorPacketDescriptor
     public required string MessageName { get; init; }
 
     public required ZLinkSpotActorHandlerSurface Surface { get; init; }
-
-    public bool UsesEntryActorOnlyInvocation
-        => Surface == ZLinkSpotActorHandlerSurface.EntrySpot && SpotType is null;
 }
 
 internal sealed class ZLinkSpotActorLifecycleDescriptor
@@ -42,9 +39,15 @@ internal sealed class ZLinkSpotActorLifecycleDescriptor
     public required ZLinkHandlerMethodInvoker Invoker { get; init; }
 
     public required ZLinkSpotActorHandlerSurface Surface { get; init; }
+}
 
-    public bool UsesEntryActorOnlyInvocation
-        => Surface == ZLinkSpotActorHandlerSurface.EntrySpot && SpotType is null;
+internal sealed class ZLinkSpotActorInferredHandlerDescriptor
+{
+    public ZLinkSpotActorPacketDescriptor? Packet { get; init; }
+
+    public ZLinkSpotActorLifecycleDescriptor? Joined { get; init; }
+
+    public ZLinkSpotActorLifecycleDescriptor? Left { get; init; }
 }
 
 internal sealed class ZLinkSpotActorHandlerRegistry
@@ -73,6 +76,44 @@ internal sealed class ZLinkSpotActorHandlerRegistry
             handlerType,
             actorType,
             packetName);
+        AddPacketDescriptor(descriptor);
+    }
+
+    public void AddHandler(Type handlerType, string? packetName)
+    {
+        EnsureNotBound();
+        var descriptor = ZLinkSpotActorHandlerDescriptorFactory.CreateInferred(
+            _surface,
+            _expectedSpotType,
+            handlerType,
+            packetName);
+
+        if (descriptor.Packet is { } packet)
+        {
+            AddPacketDescriptor(packet);
+            return;
+        }
+
+        if (packetName is not null)
+        {
+            throw new InvalidOperationException(
+                $"Actor lifecycle handler '{handlerType}' cannot use a packet name override.");
+        }
+
+        if (descriptor.Joined is { } joined)
+        {
+            AddLifecycleDescriptor(_joined, joined);
+            return;
+        }
+
+        if (descriptor.Left is { } left)
+        {
+            AddLifecycleDescriptor(_left, left);
+        }
+    }
+
+    private void AddPacketDescriptor(ZLinkSpotActorPacketDescriptor descriptor)
+    {
         var key = (descriptor.Kind, descriptor.ActorType, descriptor.MessageName);
         if (_packets.TryGetValue(key, out var existing)
             && existing.HandlerType == descriptor.HandlerType
@@ -159,6 +200,13 @@ internal sealed class ZLinkSpotActorHandlerRegistry
             handlerType,
             actorType,
             joined);
+        AddLifecycleDescriptor(target, descriptor);
+    }
+
+    private static void AddLifecycleDescriptor(
+        Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> target,
+        ZLinkSpotActorLifecycleDescriptor descriptor)
+    {
         if (target.TryGetValue(descriptor.ActorType, out var existing)
             && existing.HandlerType == descriptor.HandlerType)
         {

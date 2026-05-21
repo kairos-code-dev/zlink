@@ -99,6 +99,11 @@ public interface IZLinkSpotContext
     {
     }
 
+    void AddHandler<THandler>()
+        where THandler : class
+    {
+    }
+
     void AddActorPacket<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor
@@ -830,8 +835,8 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         Context.AddPacket<SampleGetStateHandler>();
         Context.AddPacket<SampleReportStateHandler>();
-        Context.AddActorJoin<SampleJoinRoomHandler, SampleActor, SampleJoinRoomRequest, SampleJoinRoomReply>();
-        Context.AddActorPacket<SampleMoveActorHandler, SampleActor>();
+        Context.AddActorJoin<SampleJoinRoomHandler>();
+        Context.AddHandler<SampleMoveActorHandler>();
 
         Context.AddSubscribe<SampleStateUpdatedHandler>(
             "sample.state.updated");
@@ -922,7 +927,8 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
 
 - session 의 `BindActorHandleAsync(...)`
 - `IZLinkActorContext.JoinSpot(...)`
-- `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>`
+- `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` 또는
+  `[ZLinkSpotActorJoin]` method
 
 join 승인과 membership 기록은 반드시 target `Spot` 의 실행 문맥에서 처리되어야
 하기 때문이다.
@@ -963,7 +969,7 @@ public interface IZLinkActor
 - `IZLinkActor.Configure()`
   - actor 가 생성된 직후 한 번 호출된다. actor 자체의 초기화에만 사용한다.
     actor packet handler 등록은
-    `IZLinkSpotContext.AddActorPacket<THandler, TActor>()` 로 분리한다.
+    `IZLinkSpotContext.AddHandler<THandler>()` 로 분리한다.
 - `IZLinkActorContext.GetSpot<TSpot>()`
   - 현재 들어가 있는 room 인스턴스를 가져온다. 아직 room 에 join 하지 않았다면
     실패한다.
@@ -1055,8 +1061,8 @@ public sealed class SampleSpot(
     {
         Context.AddPacket<SampleGetStateHandler>();
         Context.AddPacket<SampleReportStateHandler>();
-        Context.AddActorJoin<SampleJoinRoomHandler, SampleActor, SampleJoinRoomRequest, SampleJoinRoomReply>();
-        Context.AddActorPacket<SampleMoveActorHandler, SampleActor>();
+        Context.AddActorJoin<SampleJoinRoomHandler>();
+        Context.AddHandler<SampleMoveActorHandler>();
 
         Context.AddSubscribe<SampleStateUpdatedHandler>(
             "sample.state.updated");
@@ -1124,11 +1130,11 @@ public sealed class SampleSpot(
     public async ValueTask BroadcastChatAsync(
         SampleActor sender,
         SampleSendRoomChatCommand command,
-        IZLinkActorSessionClient sessionClient,
+        `IZLinkSessionProxy` sessionClient,
         CancellationToken cancellationToken)
     {
         // actor가 stream을 직접 들고 broadcast하지 않는다. 같은 room의 모든 actor에게
-        // 보낼 때는 actor id마다 IZLinkActorSessionClient로 보낸다.
+        // 보낼 때는 actor id마다 `IZLinkSessionProxy`로 보낸다.
         SampleRoomChatPushed pushed = new()
         {
             FromActorId = sender.ActorId,
@@ -1440,8 +1446,8 @@ public sealed class SampleSession
 }
 
 public sealed class SampleJoinRoomHandler
-    : IZLinkSpotActorJoinHandler<SampleSpot, SampleActor, SampleJoinRoomRequest, SampleJoinRoomReply>
 {
+    [ZLinkSpotActorJoin]
     public ValueTask<SampleJoinRoomReply> HandleAsync(
         SampleSpot spot,
         SampleActor actor,
@@ -1532,7 +1538,7 @@ packet 의 hot path[^hot-path] 까지 다시 끌고 들어오지 않는 편이 �
    `SampleSendRoomChatCommand` 같은 패킷은 framework 내부의 `SubmitAsync(...)`를
    거쳐 actor가 속한 `Spot` 문맥으로 제출된다.
 9. 같은 `Spot` 실행 문맥 안에서 실제 처리는
-   `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 actor packet handler가
+   `IZLinkSpotContext.AddHandler(...)`로 등록한 actor packet handler가
    담당한다.
 10. room 전체 로직이 필요한 경우, handler는 인자로 받은 `SampleSpot`과 actor의
     method를 함께 사용해 처리를 이어 간다.
@@ -1963,13 +1969,12 @@ SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표�
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `SpotIntegrationTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | spot 생성과 조회, 제거, callback scope 정리가 동작한다. |
-| `SpotIntegrationTests.SpotManager_CreateAsync_Passes_Empty_CreatePayload_To_OnCreate` | payload 없는 생성이 빈 multipart payload로 `OnCreateAsync(...)`를 호출한다. |
-| `SpotIntegrationTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 `spotRid` 동시 확보에서 첫 create payload만 `OnCreateAsync(...)`로 전달된다. |
-| `SpotIntegrationTests.SpotManager_GetOrCreateAsync_Rejects_SpotName_Mismatch` | 같은 `spotRid`를 다른 `spotName`으로 확보하려 하면 `SpotTypeMismatch`로 실패한다. |
-| `SpotIntegrationTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 노드 publish 샘플이 target SPOT channel에 도달한다. |
-| `SpotIntegrationTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 room 역할의 spot에 join한 뒤, 해당 문맥에서 dispatch된다. |
-| `SpotIntegrationTests.ActorContext_RequestChannel_Uses_Global_Client_Before_Join_And_Spot_Client_After_Join` | actor context에서 channel request를 보내는 샘플 경로가 유지된다. |
+| `ManagerTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | spot 생성과 조회, 제거, callback scope 정리가 동작한다. |
+| `ManagerTests.SpotManager_CreateAsync_Passes_Empty_CreatePayload_To_OnCreate` | payload 없는 생성이 빈 multipart payload로 `OnCreateAsync(...)`를 호출한다. |
+| `ManagerTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 `spotRid` 동시 확보에서 첫 create payload만 `OnCreateAsync(...)`로 전달된다. |
+| `ManagerTests.SpotManager_GetOrCreateAsync_Rejects_SpotName_Mismatch` | 같은 `spotRid`를 다른 `spotName`으로 확보하려 하면 `SpotTypeMismatch`로 실패한다. |
+| `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 노드 publish 샘플이 target SPOT channel에 도달한다. |
+| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 room 역할의 spot에 join한 뒤, 해당 문맥에서 dispatch된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다.

@@ -13,7 +13,9 @@ internal static class ZLinkInternalPacketNames
 
 internal sealed record ZLinkActorDispatchMetadata(
     string ActorId,
-    string ActorType);
+    string ActorType,
+    string SessionRouterId,
+    string BindingToken);
 
 internal sealed record ZLinkSessionProxyEnvelope(
     string ActorId,

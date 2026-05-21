@@ -1,3 +1,4 @@
+using Bingo.Server.Play.BingoRoomSpots;
 using Bingo.Shared.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -13,14 +14,6 @@ public static class PlayServerHostFactory
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<BingoRoomDirectory>();
         builder.Services.AddSingleton<BingoNotificationPublisher>();
-        builder.Services.AddScoped<PlayerActorFactory>();
-        builder.Services.AddScoped<BingoEntrySpot>();
-        builder.Services.AddScoped<EnsurePlayerActorHandler>();
-        builder.Services.AddScoped<AllocateBingoRoomHandler>();
-        builder.Services.AddScoped<MatchBingoActorHandler>();
-        builder.Services.AddScoped<BingoRoomJoinHandler>();
-        builder.Services.AddScoped<StartBingoGameHandler>();
-        builder.Services.AddScoped<BingoRoomTimerHandler>();
 
         builder.Services.AddZLinkFramework(options =>
         {
@@ -37,9 +30,7 @@ public static class PlayServerHostFactory
                 channel.EnableClient();
             });
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
-            options.UseRegistryActorRoutes("bingo");
             options.UseRegistrySpotRoutes("bingo");
-            options.UseRegistryActorSessionBindings("bingo");
             options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
             {
                 routed.Bind(topology.PlayRouterEndpoint);

@@ -1112,18 +1112,18 @@ public sealed class DispatchJobHandler(IZLinkClient channels)
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `DocumentationRegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | 이 draft 가 회귀 테스트 단락을 가진다. |
-| `DocumentationRegressionTests.DotNetRegressionMatrix_References_AllDraftDocuments` | central regression matrix 가 이 draft 파일명을 참조한다. |
-| `DocumentationRegressionTests.DotNetDraftRegressionTestReferences_Resolve_ToActiveTestMethods` | 이 표의 테스트 이름이 실제 활성 테스트에 존재한다. |
-| `DocumentationRegressionTests.DotNetDocs_SpotRouteChannelAcceptance_RulesStayDocumented` | `AcceptSpotRoutesFromChannel(...)`이 channel/Spot 문서에 계속 드러난다. |
-| `RegistrationValidationTests.AcceptSpotRoutesFromChannel_RejectsFanoutChannel` | Spot route transport 는 fanout channel 을 router-capable 대상으로 보지 않는다. |
-| `RegistrationValidationTests.AcceptSpotRoutesFromChannel_RequiresEnableRouter` | SpotNode router 없이 route channel acceptance 를 켤 수 없다. |
-| `RegistrationValidationTests.AcceptSpotRoutesFromChannel_RequiresDiscoveryOrManualConnections` | Spot route transport peer 를 얻을 discovery 또는 manual 경로가 필요하다. |
-| `SpotIntegrationTests.AddSpotNode_AcceptSpotRoutesFromChannel_ClientServer_AllowsRouterSendToSpot` | client-server router channel 이 target Spot 으로 routed send 를 전달한다. |
-| `SpotIntegrationTests.AddSpotNode_AcceptSpotRoutesFromChannel_RouteMesh_AllowsRouterSendToSpot` | route mesh router channel 이 target Spot 으로 routed send 를 전달한다. |
-| `SpotIntegrationTests.SendSpot_UsesRouterChannelIdTransport` | 현재 routed Spot send 가 기존 router channel id transport 를 타는지 확인한다. 새 API 구현 뒤에는 explicit egress channel 테스트를 추가한다. |
-| `SpotIntegrationTests.RequestSpot_UsesRouterChannelIdTransport` | 현재 routed Spot request 가 기존 router channel id transport 를 타는지 확인한다. 새 API 구현 뒤에는 explicit egress channel 테스트를 추가한다. |
-| `RegistrationValidationTests.ChannelClient_Throws_ConfigurationException_When_ClientCapability_Missing` | `IZLinkClient`가 없는 channel 을 자동으로 만들지 않고 설정 오류로 실패한다. |
+| `RegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | 이 draft 가 회귀 테스트 단락을 가진다. |
+| `RegressionTests.DotNetRegressionMatrix_References_AllDraftDocuments` | central regression matrix 가 이 draft 파일명을 참조한다. |
+| `RegressionTests.DotNetDraftRegressionTestReferences_Resolve_ToActiveTestMethods` | 이 표의 테스트 이름이 실제 활성 테스트에 존재한다. |
+| `RegressionTests.DotNetDocs_SpotRouteChannelAcceptance_RulesStayDocumented` | `AcceptSpotRoutesFromChannel(...)`이 channel/Spot 문서에 계속 드러난다. |
+| `ChannelsTests.AcceptSpotRoutesFromChannel_RejectsFanoutChannel` | Spot route transport 는 fanout channel 을 router-capable 대상으로 보지 않는다. |
+| `ChannelsTests.AcceptSpotRoutesFromChannel_RequiresEnableRouter` | SpotNode router 없이 route channel acceptance 를 켤 수 없다. |
+| `ChannelsTests.AcceptSpotRoutesFromChannel_RequiresDiscoveryOrManualConnections` | Spot route transport peer 를 얻을 discovery 또는 manual 경로가 필요하다. |
+| `RouteAcceptanceTests.AddSpotNode_AcceptSpotRoutesFromChannel_ClientServer_AllowsRouterSendToSpot` | client-server router channel 이 target Spot 으로 routed send 를 전달한다. |
+| `RouteAcceptanceTests.AddSpotNode_AcceptSpotRoutesFromChannel_RouteMesh_AllowsRouterSendToSpot` | route mesh router channel 이 target Spot 으로 routed send 를 전달한다. |
+| `ClientTransportTests.SendSpot_UsesRouterChannelIdTransport` | 현재 routed Spot send 가 기존 router channel id transport 를 타는지 확인한다. 새 API 구현 뒤에는 explicit egress channel 테스트를 추가한다. |
+| `ClientTransportTests.RequestSpot_UsesRouterChannelIdTransport` | 현재 routed Spot request 가 기존 router channel id transport 를 타는지 확인한다. 새 API 구현 뒤에는 explicit egress channel 테스트를 추가한다. |
+| `HandlerExposureTests.ChannelClient_Throws_ConfigurationException_When_ClientCapability_Missing` | `IZLinkClient`가 없는 channel 을 자동으로 만들지 않고 설정 오류로 실패한다. |
 
 추가해야 할 테스트:
 

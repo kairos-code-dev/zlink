@@ -1,12 +1,10 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime runtime)
 {
-    private readonly Dictionary<string, ZLinkActorSessionBinding> _bindings = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ZLinkSessionActorBinding> _bindings = new(StringComparer.Ordinal);
 
-    public async ValueTask<IZLinkActorRef> BindAsync(
+    public ValueTask<IZLinkActorRef> BindAsync(
         ZLinkSessionContext context,
         string sessionId,
         string actorId,
@@ -23,7 +21,7 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         }
 
         var sessionRouterId = runtime.ResolveSessionRouterId(routerChannelId);
-        var binding = new ZLinkActorSessionBinding(
+        var binding = new ZLinkSessionActorBinding(
             actorId,
             sessionRouterId,
             Guid.NewGuid().ToString("N"));
@@ -34,37 +32,26 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
                 routerChannelId,
                 actorNodeRid,
                 actorGeneration)),
+            binding.SessionRouterId,
+            binding.BindingToken,
             notifyDisconnectedAsync);
 
-        var store = runtime.Services.GetRequiredService<IZLinkActorSessionBindingStore>();
         runtime.BindSessionActor(actorId, context, binding.BindingToken, actorRef);
-        try
-        {
-            await store.BindSessionAsync(binding, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            runtime.UnbindSessionActor(actorId, context, binding.BindingToken);
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SessionLocationUpdateFailed,
-                $"Failed to bind session location for actor '{actorId}'.",
-                false,
-                ex);
-        }
+        runtime.BindActorSession(actorId, binding.SessionRouterId, binding.BindingToken);
 
         lock (_bindings)
         {
             _bindings[BuildBindingKey(actorId, binding.BindingToken)] = binding;
         }
 
-        return actorRef;
+        return ValueTask.FromResult<IZLinkActorRef>(actorRef);
     }
 
-    public async ValueTask CleanupAsync(
+    public ValueTask CleanupAsync(
         ZLinkSessionContext context,
         CancellationToken cancellationToken)
     {
-        ZLinkActorSessionBinding[] bindings;
+        ZLinkSessionActorBinding[] bindings;
         lock (_bindings)
         {
             bindings = _bindings.Values.ToArray();
@@ -74,16 +61,10 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         foreach (var binding in bindings)
         {
             runtime.UnbindSessionActor(binding.ActorId, context, binding.BindingToken);
-            var store = runtime.Services.GetService<IZLinkActorSessionBindingStore>();
-            if (store is not null)
-            {
-                await store.UnbindSessionAsync(
-                    new ZLinkActorSessionUnbind(
-                        binding.ActorId,
-                        binding.BindingToken),
-                    cancellationToken).ConfigureAwait(false);
-            }
+            runtime.UnbindActorSession(binding.ActorId, binding.BindingToken);
         }
+
+        return ValueTask.CompletedTask;
     }
 
     private static string BuildBindingKey(string actorId, string bindingToken)
@@ -91,3 +72,8 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         return $"{actorId}\0{bindingToken}";
     }
 }
+
+internal readonly record struct ZLinkSessionActorBinding(
+    string ActorId,
+    RoutingId SessionRouterId,
+    string BindingToken);

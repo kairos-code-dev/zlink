@@ -476,8 +476,9 @@ app.Run();
 
 ### 8.4 Registry 기반 route 기본 구현 사용
 
-Registry 를 사용하는 actor/Spot/session 샘플은 별도 파일 metadata store 를 만들지 않고
-framework 의 Registry 기반 기본 구현을 사용한다.
+Registry 를 사용하는 actor/Spot route 샘플은 별도 파일 metadata store 를 만들지 않고
+framework 의 Registry 기반 기본 구현을 사용한다. session 위치는 Registry 로 검색하지
+않고 session bind 시 actor runtime state 에 저장한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -494,20 +495,19 @@ builder.Services.AddZLinkFramework(options =>
 
     options.UseRegistryActorRoutes("game");
     options.UseRegistrySpotRoutes("game");
-    options.UseRegistryActorSessionBindings("game");
 });
 ```
 
 `UseRegistryActorRoutes(...)` 는 actor id 를 play node route 로 바꾸는 기본 resolver 를
 등록한다. `UseRegistrySpotRoutes(...)` 는 Spot owner 조회와 Spot name directory 를 함께
-등록한다. `UseRegistryActorSessionBindings(...)` 는 actor id 와 현재 client session route 의
+등록한다. actor-session route 는 session bind 시 actor runtime state 에 저장된다.
 binding 을 Registry owner-bound route 로 저장한다.
 
 이 API 들은 Registry 를 일반 key-value 저장소처럼 노출하지 않는다. framework 는
 Discovery 가 제공하는 owner-bound route/topology 를 사용하고, application 은 route key 나
 payload 형식을 알 필요가 없다. Redis 나 database 같은 별도 저장소가 필요한 경우에만
 `AddActorPlayRouteResolver<T>()`, `AddSpotRouteResolver<T>()`,
-`AddActorSessionBindingStore<T>()` 로 custom 구현을 등록한다.
+
 
 ## 9. 결정된 기준
 
@@ -524,7 +524,7 @@ payload 형식을 알 필요가 없다. Redis 나 database 같은 별도 저장�
   드러나도록 명시적으로 적는다.
 - Registry 기반 route 기본 구현은 `UseDiscovery(...)` 와 별개로 명시적으로 켠다.
   `UseDiscovery(...)` 만으로 actor route resolver, Spot route resolver,
-  actor-session binding store 가 자동 등록되지는 않는다.
+  actor-session route 저장소는 public API 로 제공하지 않는다.
 - `IZLinkRegistryQuery` 와 `IZLinkRegistryQueryClient` 는 하나로 묶지 않는다.
 - topology 변경 알림은 `IObservable` 보다 framework 의 일반 handler / callback
   표면 위로 올리는 쪽을 기본 방향으로 본다.
@@ -548,12 +548,12 @@ Registry 가 framework 보다 먼저 시작되어야 한다는 순서 또한 회
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RegistrationValidationTests.AddZLinkRegistry_Throws_WhenPubEndpointIsMissing` | Registry pub endpoint 누락은 startup validation 예외로 드러난다. |
-| `RegistrationValidationTests.AddZLinkRegistry_Throws_WhenRouterEndpointIsMissing` | Registry router endpoint 누락은 startup validation 예외로 드러난다. |
-| `LifecycleHostedServiceTests.Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry가 framework runtime보다 먼저 시작된다. |
-| `RegistryIntegrationTests.EmbeddedRegistry_Query_Service_Resolves_And_Reads_Status` | `IZLinkRegistryQuery`가 DI에서 resolve되고 status snapshot을 읽어 온다. |
-| `RegistryIntegrationTests.RemoteRegistryQueryClient_Can_Read_Topology_Snapshot` | 별도 host의 query client가 remote topology snapshot을 정상 조회한다. |
-| `TopologyMultiProcessTests.RemoteRegistryQueryClient_Reads_FrameworkTopology_From_TestHostProcesses` | 여러 프로세스 구성에서도 framework topology 조회가 성공한다. |
+| `RegistryAndMonitoringTests.AddZLinkRegistry_Throws_WhenPubEndpointIsMissing` | Registry pub endpoint 누락은 startup validation 예외로 드러난다. |
+| `RegistryAndMonitoringTests.AddZLinkRegistry_Throws_WhenRouterEndpointIsMissing` | Registry router endpoint 누락은 startup validation 예외로 드러난다. |
+| `HostTests.Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry가 framework runtime보다 먼저 시작된다. |
+| `EmbeddedRegistryTests.EmbeddedRegistry_Query_Service_Resolves_And_Reads_Status` | `IZLinkRegistryQuery`가 DI에서 resolve되고 status snapshot을 읽어 온다. |
+| `EmbeddedRegistryTests.RemoteRegistryQueryClient_Can_Read_Topology_Snapshot` | 별도 host의 query client가 remote topology snapshot을 정상 조회한다. |
+| `TopologyTests.RemoteRegistryQueryClient_Reads_FrameworkTopology_From_TestHostProcesses` | 여러 프로세스 구성에서도 framework topology 조회가 성공한다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^heartbeat]: heartbeat는 서비스가 자신이 살아 있음을 일정 주기로 Registry에 알리는 신호다. 일정 시간 안에 도착하지 않으면 그 서비스는 lost 상태로 간주된다.

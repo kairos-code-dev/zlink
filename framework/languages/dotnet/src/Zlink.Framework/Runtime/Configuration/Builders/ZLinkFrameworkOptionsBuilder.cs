@@ -69,13 +69,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration.SpotRouteResolverType = typeof(TResolver);
     }
 
-    public void AddActorSessionBindingStore<TStore>()
-        where TStore : class, IZLinkActorSessionBindingStore
-    {
-        EnsureActorSessionBindingStoreAvailable();
-        _registration.ActorSessionBindingStoreType = typeof(TStore);
-    }
-
     public void UseRegistryActorRoutes(string namespaceName)
     {
         UseRegistryActorRoutes(namespaceName, static _ => { });
@@ -94,16 +87,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         {
             Namespace = ValidateRegistryNamespace(namespaceName),
             RouterChannelId = NormalizeOptionalName(options.RouterChannelId, nameof(options.RouterChannelId)),
-        };
-    }
-
-    public void UseRegistryActorSessionBindings(string namespaceName)
-    {
-        EnsureActorSessionBindingStoreAvailable();
-
-        _registration.RegistryActorSessionBindings = new ZLinkRegistryActorSessionBindingsRegistration
-        {
-            Namespace = ValidateRegistryNamespace(namespaceName),
         };
     }
 
@@ -289,15 +272,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             || _registration.RegistrySpotRoutes is not null)
         {
             throw new ZLinkConfigurationException("SPOT route resolver is already registered.");
-        }
-    }
-
-    private void EnsureActorSessionBindingStoreAvailable()
-    {
-        if (_registration.ActorSessionBindingStoreType is not null
-            || _registration.RegistryActorSessionBindings is not null)
-        {
-            throw new ZLinkConfigurationException("Actor session binding store is already configured.");
         }
     }
 

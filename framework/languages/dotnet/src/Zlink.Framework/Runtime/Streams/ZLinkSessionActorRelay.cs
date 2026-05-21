@@ -20,6 +20,8 @@ internal sealed class ZLinkSessionActorRelay(
             var parts = ZLinkInternalMultipartPackets.CreateActorDispatchParts(
                 actorRef.ActorId,
                 actorRef.ActorType,
+                actorRef.SessionRouterId,
+                actorRef.BindingToken,
                 header,
                 payload.AsReadOnlySpan());
 
@@ -56,16 +58,29 @@ internal sealed class ZLinkSessionActorRelay(
 
         var parts = ZLinkInternalMultipartPackets.CreateActorDisconnectedParts(
             actorRef.ActorId,
-            actorRef.ActorType);
+            actorRef.ActorType,
+            actorRef.SessionRouterId,
+            actorRef.BindingToken);
         var route = actorRef.RouteSnapshot;
 
-        await routeClient.SendPartsTo(
-                route.RouterChannelId,
-                route.TargetNodeRid,
-                ZLinkInternalPacketNames.ActorDisconnected,
-                parts,
-                cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await routeClient.SendPartsTo(
+                    route.RouterChannelId,
+                    route.TargetNodeRid,
+                    ZLinkInternalPacketNames.ActorDisconnected,
+                    parts,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (!cancellationToken.IsCancellationRequested
+                && !ex.Message.Contains("runtime is not started", StringComparison.Ordinal))
+            {
+                throw;
+            }
+        }
     }
 
     private async ValueTask<ReadOnlyMemory<byte>> RequestActorReplyAsync(

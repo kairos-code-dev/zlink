@@ -121,6 +121,9 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<IZLinkMultipartRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
+        services.AddSingleton<ZLinkSessionProxyService>();
+        services.AddSingleton<IZLinkSessionProxyFactory>(
+            provider => provider.GetRequiredService<ZLinkSessionProxyService>());
         services.AddSingleton<ZLinkEventPublisher>();
         services.AddSingleton<IZLinkFanoutPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
         services.AddSingleton<IZLinkEventPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
@@ -175,30 +178,6 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<ZLinkRegistrySpotRouteResolver>();
             services.AddSingleton<IZLinkSpotRouteResolver>(
                 static provider => provider.GetRequiredService<ZLinkRegistrySpotRouteResolver>());
-        }
-
-        if (registration.ActorSessionBindingStoreType is not null)
-        {
-            services.TryAddSingleton(registration.ActorSessionBindingStoreType);
-            services.AddSingleton(
-                typeof(IZLinkActorSessionBindingStore),
-                provider => provider.GetRequiredService(registration.ActorSessionBindingStoreType));
-            services.AddSingleton<ZLinkSessionProxyService>();
-            services.AddSingleton<IZLinkSessionProxyFactory>(
-                provider => provider.GetRequiredService<ZLinkSessionProxyService>());
-            services.AddSingleton<IZLinkActorSessionClient>(
-                provider => provider.GetRequiredService<ZLinkSessionProxyService>());
-        }
-        else if (registration.RegistryActorSessionBindings is not null)
-        {
-            services.AddSingleton<ZLinkRegistryActorSessionBindingStore>();
-            services.AddSingleton<IZLinkActorSessionBindingStore>(
-                static provider => provider.GetRequiredService<ZLinkRegistryActorSessionBindingStore>());
-            services.AddSingleton<ZLinkSessionProxyService>();
-            services.AddSingleton<IZLinkSessionProxyFactory>(
-                provider => provider.GetRequiredService<ZLinkSessionProxyService>());
-            services.AddSingleton<IZLinkActorSessionClient>(
-                provider => provider.GetRequiredService<ZLinkSessionProxyService>());
         }
 
         return services;

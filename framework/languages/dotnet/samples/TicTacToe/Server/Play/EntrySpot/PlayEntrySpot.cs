@@ -1,0 +1,15 @@
+using TicTacToe.Server.Play.EntrySpot.Handlers;
+
+namespace TicTacToe.Server.Play.EntrySpot;
+
+internal sealed class PlayEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
+{
+    public IZLinkEntrySpotContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.AddHandler<PlayActorJoinGameHandler>();
+        Context.AddHandler<PlayEntrySpotActorJoinedHandler>();
+        Context.AddHandler<PlayEntrySpotActorLeftHandler>();
+    }
+}

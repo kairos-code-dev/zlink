@@ -188,7 +188,6 @@ builder.Services.AddZLinkFramework(options =>
 
     options.UseRegistryActorRoutes("game");          // actor id → play node route
     options.UseRegistrySpotRoutes("game");           // spot owner 조회 + spot 이름 directory
-    options.UseRegistryActorSessionBindings("game"); // actor id ↔ session route binding
 });
 ```
 

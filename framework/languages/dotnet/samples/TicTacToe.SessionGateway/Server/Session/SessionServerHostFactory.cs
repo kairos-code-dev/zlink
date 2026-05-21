@@ -29,9 +29,7 @@ public static class SessionServerHostFactory
             {
                 discovery.Add(topology.RegistryRouterEndpoint);
             });
-            options.UseRegistryActorRoutes("tictactoe");
             options.UseRegistrySpotRoutes("tictactoe");
-            options.UseRegistryActorSessionBindings("tictactoe");
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableClient();

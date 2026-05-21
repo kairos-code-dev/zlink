@@ -1,3 +1,5 @@
+using TicTacToe.SessionActorDispatch.Play;
+
 namespace TicTacToe.SessionGateway.Play;
 
 internal enum TicTacToeMark
@@ -14,7 +16,10 @@ internal enum TicTacToeGameStatus
     Draw,
 }
 
-internal sealed record ActorSlot(string ActorId, TicTacToeMark Mark);
+internal sealed record ActorSlot(PlayerActor Actor, TicTacToeMark Mark)
+{
+    public string ActorId => Actor.ActorId;
+}
 
 internal sealed record TicTacToeGameSnapshot(
     string MatchId,
@@ -36,7 +41,7 @@ internal enum TicTacToeGameEventKind
 
 internal sealed record TicTacToeGameEvent(
     TicTacToeGameEventKind Kind,
-    string RecipientActorId,
+    PlayerActor Recipient,
     TicTacToeGameSnapshot Snapshot,
     string? JoinedActorId = null,
     TicTacToeMark? JoinedMark = null);

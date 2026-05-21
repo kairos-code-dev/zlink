@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Hosting;
 
-namespace Zlink.Framework.Tests;
+namespace Zlink.Framework.E2ETests;
 
 internal static class ChannelMessagingTestSupport
 {

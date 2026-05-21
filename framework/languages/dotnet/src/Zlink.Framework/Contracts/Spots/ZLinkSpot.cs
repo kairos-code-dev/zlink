@@ -70,6 +70,12 @@ public interface IZLinkSpot
 
 public interface IZLinkActorHandlerRegistry
 {
+    void AddHandler<THandler>()
+        where THandler : class;
+
+    void AddHandler<THandler>(string packetName)
+        where THandler : class;
+
     void AddActorPacket<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor;
@@ -98,6 +104,9 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
     void AddActorJoin<THandler, TActor, TRequest, TReply>()
         where THandler : class
         where TActor : IZLinkActor;
+
+    void AddActorJoin<THandler>()
+        where THandler : class;
 }
 
 public interface IZLinkSpotOutboundContext
@@ -230,37 +239,45 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorSendHandler<TActor, in TMessage>
+public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         TMessage message,
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorRequestHandler<TActor, in TRequest, TReply>
+public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequest, TReply>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask<TReply> HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         TRequest request,
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorJoinedHandler<TActor>
+public interface IZLinkEntrySpotActorJoinedHandler<TEntrySpot, TActor>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorLeftHandler<TActor>
+public interface IZLinkEntrySpotActorLeftHandler<TEntrySpot, TActor>
+    where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
+        TEntrySpot entrySpot,
         TActor actor,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken);

@@ -14,6 +14,11 @@ internal sealed class ZLinkActorContext(
 
     public bool IsJoined => state.IsJoined;
 
+    public IZLinkSessionProxy SessionProxy
+        => ((IZLinkSessionProxyFactory?)runtime.Services.GetService(typeof(IZLinkSessionProxyFactory))
+            ?? throw new InvalidOperationException("Session proxy factory is not registered."))
+            .Create(state.ActorId);
+
     public void AddPacket<THandler>()
         where THandler : class
     {
@@ -75,26 +80,6 @@ internal sealed class ZLinkActorContext(
             request);
     }
 
-    public IZLinkRequestCall RequestChannel<TRequest>(
-        string channelName,
-        TRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return new ZLinkActorChannelRequestCall<TRequest>(runtime, state, channelName, request);
-    }
-
-    public IZLinkSendCall SendChannel<TMessage>(
-        string channelName,
-        TMessage message)
-    {
-        return new ZLinkActorChannelSendCall<TMessage>(runtime, state, channelName, message);
-    }
-
-    public IZLinkActorSendCall Send<TMessage>(TMessage message)
-    {
-        return new ZLinkActorSendCall<TMessage>(state, message);
-    }
-
     public ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
         string spotName,
         TRequest request,
@@ -114,80 +99,6 @@ internal sealed class ZLinkActorContext(
     private IZLinkActor CurrentActor
         => state.Actor ?? throw new InvalidOperationException(
             $"Actor '{state.ActorId}' has not been created.");
-}
-
-internal sealed class ZLinkActorChannelSendCall<TMessage>(
-    ZLinkFrameworkRuntime runtime,
-    ZLinkActorRuntimeState state,
-    string channelName,
-    TMessage message) : IZLinkSendCall
-{
-    private string? _messageName;
-    private bool _hasMessageName;
-
-    public IZLinkSendCall PacketName(string messageName)
-    {
-        _messageName = messageName;
-        _hasMessageName = true;
-        return this;
-    }
-
-    public ValueTask Submit(CancellationToken cancellationToken = default)
-    {
-        IZLinkSendCall inner = state.LiveActivation is { } activation
-            ? new ZLinkCurrentSpotSendCall<TMessage>(activation, channelName, message)
-            : new ZLinkSendCall(runtime, runtime.Registration, channelName, message);
-
-        if (_hasMessageName)
-        {
-            inner.PacketName(_messageName ?? string.Empty);
-        }
-
-        return inner.Submit(cancellationToken);
-    }
-}
-
-internal sealed class ZLinkActorChannelRequestCall<TRequest>(
-    ZLinkFrameworkRuntime runtime,
-    ZLinkActorRuntimeState state,
-    string channelName,
-    TRequest request) : IZLinkRequestCall
-{
-    private string? _messageName;
-    private bool _hasMessageName;
-    private TimeSpan? _timeout;
-
-    public IZLinkRequestCall PacketName(string messageName)
-    {
-        _messageName = messageName;
-        _hasMessageName = true;
-        return this;
-    }
-
-    public IZLinkRequestCall Timeout(TimeSpan timeout)
-    {
-        _timeout = timeout;
-        return this;
-    }
-
-    public ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
-    {
-        IZLinkRequestCall inner = state.LiveActivation is { } activation
-            ? new ZLinkCurrentSpotRequestCall<TRequest>(activation, channelName, request)
-            : new ZLinkRequestCall<TRequest>(runtime, runtime.Registration, channelName, request);
-
-        if (_hasMessageName)
-        {
-            inner.PacketName(_messageName ?? string.Empty);
-        }
-
-        if (_timeout is { } timeout)
-        {
-            inner.Timeout(timeout);
-        }
-
-        return inner.SubmitAsync<TReply>(cancellationToken);
-    }
 }
 
 internal sealed class ZLinkActorJoinSpotCall<TRequest>(

@@ -564,7 +564,7 @@ Bingo sample은 API server 또는 session gateway router가 play `Spot`으로 ro
 
 ### 8.4 문서 회귀 테스트
 
-`DocumentationRegressionTests`에는 아래 검색 규칙을 추가한다.
+`RegressionTests`에는 아래 검색 규칙을 추가한다.
 
 - 새 guide와 sample 문서에서 `AddChannel(` 사용 금지
 - 새 guide와 sample 문서에서 `AddRouteChannel(` 사용 금지

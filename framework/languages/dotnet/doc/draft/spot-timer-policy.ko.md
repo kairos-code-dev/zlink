@@ -376,18 +376,18 @@ application이 실제 경과 시간을 직접 계산하고 싶으면 `Delay`나 
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `SpotIntegrationTests.SpotTimer_Provides_Tick_Metadata` | timer handler가 `Name`, `DeliveryIndex`, `ScheduledIndex`, `Period`, `ScheduledAt`, `StartedAt`, `ScheduledElapsed`, `StartedElapsed`, `Delay`를 받는다. |
-| `SpotIntegrationTests.SpotTimer_Skips_Late_Ticks_When_Configured` | `SkipLateTicks` 정책에서 늦은 tick이 handler에 무제한으로 전달되지 않고 `SkippedTicks`로 드러난다. |
-| `SpotIntegrationTests.SpotTimer_Catches_Up_Within_Configured_Limit` | `CatchUpBounded` 정책이 `MaxCatchUpTicks`를 넘지 않는다. |
-| `SpotIntegrationTests.SpotTimer_DelayNextTick_Waits_After_Handler_Completion` | `DelayNextTick` 정책은 handler 완료 뒤 period를 다시 기다린다. |
-| `SpotIntegrationTests.SpotTimer_NonCatchUpPolicy_Ignores_MaxCatchUpTicks` | `CatchUpBounded`가 아닌 정책에서는 `MaxCatchUpTicks`가 scheduling 의미를 바꾸지 않는다. |
-| `SpotIntegrationTests.SpotTimer_CatchUpPolicy_Rejects_Invalid_MaxCatchUpTicks` | `CatchUpBounded` 정책에서 `MaxCatchUpTicks <= 0`은 설정 오류다. |
-| `SpotIntegrationTests.SpotTimer_Rejects_Unknown_OverrunPolicy` | 알 수 없는 overrun 정책 값은 설정 오류다. |
-| `SpotIntegrationTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | handler 예외가 `TimerHandlerFailed` event와 timer diagnostic payload로 기록된다. |
-| `SpotIntegrationTests.SpotTimer_StopOnUnhandledException_Stops_Timer` | option이 켜져 있으면 handler 예외 뒤 같은 timer가 다시 실행되지 않고 `TimerStoppedAfterUnhandledException` event가 기록된다. |
-| `SpotIntegrationTests.EntrySpotTimer_Does_Not_Block_EntrySpot_Callbacks_Globally` | 긴 Entry Spot timer callback이 다른 Entry Spot packet 또는 actor packet callback을 전역으로 막지 않는다. |
-| `SpotIntegrationTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer가 전역 queue에는 묶이지 않더라도 같은 timer callback을 겹쳐 실행하지 않는다. |
-| `SpotIntegrationTests.SpotTimer_CancelAsync_Stops_Managed_Timer_Loop` | `CancelAsync()` 이후 handler가 더 이상 호출되지 않고 timer loop가 정리된다. |
+| `TimerTests.SpotTimer_Provides_Tick_Metadata` | timer handler가 `Name`, `DeliveryIndex`, `ScheduledIndex`, `Period`, `ScheduledAt`, `StartedAt`, `ScheduledElapsed`, `StartedElapsed`, `Delay`를 받는다. |
+| `TimerTests.SpotTimer_Skips_Late_Ticks_When_Configured` | `SkipLateTicks` 정책에서 늦은 tick이 handler에 무제한으로 전달되지 않고 `SkippedTicks`로 드러난다. |
+| `TimerTests.SpotTimer_Catches_Up_Within_Configured_Limit` | `CatchUpBounded` 정책이 `MaxCatchUpTicks`를 넘지 않는다. |
+| `TimerTests.SpotTimer_DelayNextTick_Waits_After_Handler_Completion` | `DelayNextTick` 정책은 handler 완료 뒤 period를 다시 기다린다. |
+| `TimerTests.SpotTimer_NonCatchUpPolicy_Ignores_MaxCatchUpTicks` | `CatchUpBounded`가 아닌 정책에서는 `MaxCatchUpTicks`가 scheduling 의미를 바꾸지 않는다. |
+| `TimerTests.SpotTimer_CatchUpPolicy_Rejects_Invalid_MaxCatchUpTicks` | `CatchUpBounded` 정책에서 `MaxCatchUpTicks <= 0`은 설정 오류다. |
+| `TimerTests.SpotTimer_Rejects_Unknown_OverrunPolicy` | 알 수 없는 overrun 정책 값은 설정 오류다. |
+| `TimerTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | handler 예외가 `TimerHandlerFailed` event와 timer diagnostic payload로 기록된다. |
+| `TimerTests.SpotTimer_StopOnUnhandledException_Stops_Timer` | option이 켜져 있으면 handler 예외 뒤 같은 timer가 다시 실행되지 않고 `TimerStoppedAfterUnhandledException` event가 기록된다. |
+| `TimerTests.EntrySpotTimer_Does_Not_Block_EntrySpot_Callbacks_Globally` | 긴 Entry Spot timer callback이 다른 Entry Spot packet 또는 actor packet callback을 전역으로 막지 않는다. |
+| `TimerTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer가 전역 queue에는 묶이지 않더라도 같은 timer callback을 겹쳐 실행하지 않는다. |
+| `TimerTests.SpotTimer_CancelAsync_Stops_Managed_Timer_Loop` | `CancelAsync()` 이후 handler가 더 이상 호출되지 않고 timer loop가 정리된다. |
 
 ## 7. 문서 반영 결과
 

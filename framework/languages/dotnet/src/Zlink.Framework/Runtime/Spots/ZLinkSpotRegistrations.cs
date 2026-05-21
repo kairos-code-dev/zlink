@@ -6,6 +6,6 @@ internal sealed record ZLinkSpotSubscriptionRegistration(string Topic, Type Hand
 
 internal sealed record ZLinkSpotActorJoinRegistration(
     Type HandlerType,
-    Type ActorType,
-    Type RequestType,
-    Type ReplyType);
+    Type? ActorType,
+    Type? RequestType,
+    Type? ReplyType);

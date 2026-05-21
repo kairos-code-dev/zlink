@@ -12,21 +12,6 @@ public interface IZLinkSessionProxy
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkActorSessionClient
-{
-    IZLinkSessionProxySendCall Send<TMessage>(
-        string actorId,
-        TMessage message);
-
-    IZLinkSessionProxyRequestCall Request<TRequest>(
-        string actorId,
-        TRequest request);
-
-    ValueTask DisconnectAsync(
-        string actorId,
-        CancellationToken cancellationToken = default);
-}
-
 public interface IZLinkSessionProxySendCall
 {
     IZLinkSessionProxySendCall PacketName(string packetName);

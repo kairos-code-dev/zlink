@@ -67,6 +67,10 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
         CancellationToken cancellationToken)
     {
         var metadata = ZLinkInternalMultipartPackets.DecodeActorDispatchMetadata(received);
+        runtime.BindActorSession(
+            metadata.ActorId,
+            RoutingId.FromString(metadata.SessionRouterId),
+            metadata.BindingToken);
         var streamHeader = ZLinkInternalMultipartPackets.DecodeActorDispatchStreamHeader(received);
         using var body = ZLinkInternalMultipartPackets.DecodeActorDispatchBody(received);
         await runtime.SubmitActorByIdAsync(
@@ -81,6 +85,7 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
         CancellationToken cancellationToken)
     {
         var metadata = ZLinkInternalMultipartPackets.DecodeActorDisconnectedMetadata(received);
+        runtime.UnbindActorSession(metadata.ActorId, metadata.BindingToken);
         await runtime.NotifyActorDisconnectedByIdAsync(metadata.ActorId, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -90,6 +95,10 @@ internal sealed class ZLinkSessionActorDispatchRoutePacketDispatcher(
         CancellationToken cancellationToken)
     {
         var metadata = ZLinkInternalMultipartPackets.DecodeActorDispatchMetadata(received);
+        runtime.BindActorSession(
+            metadata.ActorId,
+            RoutingId.FromString(metadata.SessionRouterId),
+            metadata.BindingToken);
         var streamHeader = ZLinkInternalMultipartPackets.DecodeActorDispatchStreamHeader(received);
         using var body = ZLinkInternalMultipartPackets.DecodeActorDispatchBody(received);
         var reply = await runtime.SubmitActorForReplyAsync(

@@ -24,8 +24,7 @@ inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
     }
 
     zlink::poller_t poller;
-    std::vector<zlink::poll_event_t> events;
-    events.reserve (1);
+    zlink::poll_event_t event;
     try {
         poller.add (monitor, zlink::poll_event_flag_t::pollin, 0);
     }
@@ -44,13 +43,8 @@ inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        events = poller.wait (0, std::chrono::milliseconds (wait_ms));
-        const int rc = static_cast<int> (events.size ());
-        if (rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            return false;
-        }
+        const size_t rc =
+          poller.wait (&event, 1, std::chrono::milliseconds (wait_ms));
         if (rc == 0)
             continue;
 

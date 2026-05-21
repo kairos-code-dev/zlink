@@ -363,6 +363,132 @@ void test_socket_only_poller_modify_rebuilds_cached_items ()
     assert (inbound.to_string () == "third");
 }
 
+void test_poller_capacity_leaves_remaining_ready_source ()
+{
+    zlink::context_t ctx;
+    zlink::pair_socket_t sender1 (ctx);
+    zlink::pair_socket_t receiver1 (ctx);
+    zlink::pair_socket_t sender2 (ctx);
+    zlink::pair_socket_t receiver2 (ctx);
+
+    const std::string endpoint1 =
+      zlink_cpp_contract::unique_inproc ("poller-capacity-a");
+    const std::string endpoint2 =
+      zlink_cpp_contract::unique_inproc ("poller-capacity-b");
+    sender1.bind (endpoint1);
+    receiver1.connect (endpoint1);
+    sender2.bind (endpoint2);
+    receiver2.connect (endpoint2);
+
+    zlink::poller_t poller;
+    poller.add (receiver1, zlink::poll_event_flag_t::pollin, 101);
+    poller.add (receiver2, zlink::poll_event_flag_t::pollin, 102);
+
+    zlink::message_t first = zlink_cpp_contract::make_message ("a");
+    zlink::message_t second = zlink_cpp_contract::make_message ("b");
+    assert (sender1.send ().message (first).submit ());
+    assert (sender2.send ().message (second).submit ());
+
+    std::vector<zlink::poll_event_t> events (1);
+    assert (poller.wait (events.data (), events.size (),
+                         std::chrono::milliseconds (2000)) == 1);
+    const std::uintptr_t first_slot = events[0].slot;
+    assert (first_slot == 101 || first_slot == 102);
+
+    zlink::message_t inbound;
+    if (first_slot == 101) {
+        assert (receiver1.recv (inbound) == 0);
+        assert (inbound.to_string () == "a");
+    }
+    else {
+        assert (receiver2.recv (inbound) == 0);
+        assert (inbound.to_string () == "b");
+    }
+
+    assert (poller.wait (events.data (), events.size (),
+                         std::chrono::milliseconds (2000)) == 1);
+    assert (events[0].slot != first_slot);
+    if (events[0].slot == 101) {
+        assert (receiver1.recv (inbound) == 0);
+        assert (inbound.to_string () == "a");
+    }
+    else {
+        assert (receiver2.recv (inbound) == 0);
+        assert (inbound.to_string () == "b");
+    }
+}
+
+void test_poller_remove_suppresses_ready_events ()
+{
+    zlink::context_t ctx;
+    zlink::pair_socket_t sender (ctx);
+    zlink::pair_socket_t receiver (ctx);
+    const std::string endpoint =
+      zlink_cpp_contract::unique_inproc ("poller-remove");
+    sender.bind (endpoint);
+    receiver.connect (endpoint);
+
+    zlink::poller_t poller;
+    poller.add (receiver, zlink::poll_event_flag_t::pollin, 31);
+    assert (poller.remove (receiver));
+
+    zlink::message_t message = zlink_cpp_contract::make_message ("removed");
+    assert (sender.send ().message (message).submit ());
+
+    zlink::poll_event_t event;
+    assert (poller.wait (&event, 1, std::chrono::milliseconds (0)) == 0);
+}
+
+void test_poller_distinguishes_timer_and_socket_in_same_buffer ()
+{
+    zlink::context_t ctx;
+    zlink::pair_socket_t sender (ctx);
+    zlink::pair_socket_t receiver (ctx);
+    zlink::timer_t timer;
+    const std::string endpoint =
+      zlink_cpp_contract::unique_inproc ("poller-timer-socket");
+    sender.bind (endpoint);
+    receiver.connect (endpoint);
+
+    zlink::poller_t poller;
+    poller.add (receiver, zlink::poll_event_flag_t::pollin, 41);
+    poller.add (timer, 42);
+
+    zlink::message_t message = zlink_cpp_contract::make_message ("socket");
+    assert (sender.send ().message (message).submit ());
+    timer.start (std::chrono::milliseconds (5), 1);
+
+    std::vector<zlink::poll_event_t> events (2);
+    bool saw_socket = false;
+    bool saw_timer = false;
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (2);
+    while ((!saw_socket || !saw_timer)
+           && std::chrono::steady_clock::now () < deadline) {
+        const std::size_t count =
+          poller.wait (events.data (), events.size (),
+                       std::chrono::milliseconds (200));
+        for (std::size_t i = 0; i < count; ++i) {
+            if (events[i].source_kind == zlink::poll_source_kind_t::socket) {
+                assert (events[i].slot == 41);
+                zlink::message_t inbound;
+                assert (receiver.recv (inbound) == 0);
+                assert (inbound.to_string () == "socket");
+                saw_socket = true;
+            }
+            else if (events[i].source_kind
+                     == zlink::poll_source_kind_t::timer) {
+                assert (events[i].slot == 42);
+                const std::optional<uint64_t> fire_count = timer.recv ();
+                assert (fire_count && *fire_count == 1);
+                saw_timer = true;
+            }
+        }
+    }
+    assert (saw_socket);
+    assert (saw_timer);
+}
+
 void test_socket_monitor_on_event_callback ()
 {
     zlink::context_t ctx;
@@ -418,6 +544,9 @@ int main ()
     test_socket_monitor_ignore_event_and_poller_size ();
     test_poller_wait_buffer_returns_slot ();
     test_socket_only_poller_modify_rebuilds_cached_items ();
+    test_poller_capacity_leaves_remaining_ready_source ();
+    test_poller_remove_suppresses_ready_events ();
+    test_poller_distinguishes_timer_and_socket_in_same_buffer ();
     test_socket_monitor_on_event_callback ();
     return 0;
 }

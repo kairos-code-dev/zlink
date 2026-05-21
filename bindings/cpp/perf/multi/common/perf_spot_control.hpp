@@ -180,10 +180,10 @@ inline bool wait_for_spot_control_event (
 
     try {
         zlink::poller_t poller;
-        poller.add (spot_, event_);
-        const std::optional<zlink::poll_event_t> event =
-          poller.wait (remaining);
-        if (!event.has_value ()) {
+        poller.add (spot_, event_, 0);
+        zlink::poll_event_t event;
+        const size_t count = poller.wait (&event, 1, remaining);
+        if (count == 0) {
             errno = ETIMEDOUT;
             return false;
         }

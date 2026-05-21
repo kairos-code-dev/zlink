@@ -15,6 +15,13 @@ def _tcp_endpoint():
     return f"tcp://127.0.0.1:{port}"
 
 
+def _recv_text(sock):
+    received = zlink.Received()
+    sock.recv_into(received)
+    with received:
+        return received.single_part_or_throw().to_bytes()
+
+
 CHANNEL_NAME = "spot-svc"
 TOPIC = b"room:lobby"
 
@@ -216,6 +223,109 @@ class CoreApiAlignmentTests(unittest.TestCase):
         with zlink.Poller() as poller:
             with self.assertRaises(ValueError):
                 poller.add_fd(0, zlink.PollEventFlag.POLLIN, -1)
+
+    def test_poller_capacity_preserves_remaining_ready_sources(self):
+        ctx = zlink.Context()
+
+        with ctx:
+            with zlink.PairSocket(ctx) as sender1:
+                with zlink.PairSocket(ctx) as receiver1:
+                    with zlink.PairSocket(ctx) as sender2:
+                        with zlink.PairSocket(ctx) as receiver2:
+                            endpoint1 = f"inproc://py-poller-capacity-a-{id(self)}"
+                            endpoint2 = f"inproc://py-poller-capacity-b-{id(self)}"
+                            sender1.bind(endpoint1)
+                            receiver1.connect(endpoint1)
+                            sender2.bind(endpoint2)
+                            receiver2.connect(endpoint2)
+
+                            with zlink.Poller() as poller:
+                                poller.add_socket(
+                                    receiver1, zlink.PollEventFlag.POLLIN, 101
+                                )
+                                poller.add_socket(
+                                    receiver2, zlink.PollEventFlag.POLLIN, 102
+                                )
+                                sender1.send().message(b"a").submit()
+                                sender2.send().message(b"b").submit()
+
+                                events = zlink.PollEvents(1)
+                                count = poller.wait(events, 1000)
+                                self.assertEqual(count, 1)
+                                first_slot = events.slot(0)
+                                self.assertIn(first_slot, (101, 102))
+                                if first_slot == 101:
+                                    self.assertEqual(_recv_text(receiver1), b"a")
+                                else:
+                                    self.assertEqual(_recv_text(receiver2), b"b")
+
+                                count = poller.wait(events, 1000)
+                                self.assertEqual(count, 1)
+                                self.assertNotEqual(events.slot(0), first_slot)
+                                if events.slot(0) == 101:
+                                    self.assertEqual(_recv_text(receiver1), b"a")
+                                else:
+                                    self.assertEqual(_recv_text(receiver2), b"b")
+
+    def test_poller_modify_remove_and_timeout_follow_core_semantics(self):
+        ctx = zlink.Context()
+
+        with ctx:
+            with zlink.PairSocket(ctx) as sender:
+                with zlink.PairSocket(ctx) as receiver:
+                    endpoint = f"inproc://py-poller-modify-remove-{id(self)}"
+                    sender.bind(endpoint)
+                    receiver.connect(endpoint)
+                    with zlink.Poller() as poller:
+                        events = zlink.PollEvents(1)
+                        poller.add_socket(receiver, zlink.PollEventFlag.POLLIN, 31)
+                        poller.modify_socket(receiver, zlink.PollEventFlag(0))
+                        sender.send().message(b"hidden").submit()
+                        self.assertEqual(poller.wait(events, 20), 0)
+
+                        poller.modify_socket(receiver, zlink.PollEventFlag.POLLIN)
+                        self.assertEqual(poller.wait(events, 1000), 1)
+                        self.assertEqual(events.slot(0), 31)
+                        self.assertEqual(_recv_text(receiver), b"hidden")
+
+                        poller.remove_socket(receiver)
+                        sender.send().message(b"removed").submit()
+                        self.assertEqual(poller.wait(events, 0), 0)
+
+    def test_poller_distinguishes_timer_and_socket_in_same_buffer(self):
+        ctx = zlink.Context()
+
+        with ctx:
+            with zlink.PairSocket(ctx) as sender:
+                with zlink.PairSocket(ctx) as receiver:
+                    with zlink.Timer() as timer:
+                        endpoint = f"inproc://py-poller-timer-socket-{id(self)}"
+                        sender.bind(endpoint)
+                        receiver.connect(endpoint)
+                        with zlink.Poller() as poller:
+                            events = zlink.PollEvents(2)
+                            poller.add_socket(receiver, zlink.PollEventFlag.POLLIN, 41)
+                            poller.add_timer(timer, 42)
+                            sender.send().message(b"socket").submit()
+                            timer.start(5_000_000, 1)
+
+                            saw_socket = False
+                            saw_timer = False
+                            deadline = time.monotonic() + 2.0
+                            while (not saw_socket or not saw_timer) and time.monotonic() < deadline:
+                                count = poller.wait(events, 200)
+                                for index in range(count):
+                                    if events.source_kind(index) == zlink.PollSourceKind.SOCKET:
+                                        self.assertEqual(events.slot(index), 41)
+                                        self.assertEqual(_recv_text(receiver), b"socket")
+                                        saw_socket = True
+                                    elif events.source_kind(index) == zlink.PollSourceKind.TIMER:
+                                        self.assertEqual(events.slot(index), 42)
+                                        self.assertEqual(timer.recv(), 1)
+                                        saw_timer = True
+
+                            self.assertTrue(saw_socket)
+                            self.assertTrue(saw_timer)
 
     def test_nonblocking_send_raises_submit_error(self):
         ctx = zlink.Context()

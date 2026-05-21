@@ -146,7 +146,8 @@ class pubsub_client_bench_t
             }
 
             _sockets.push_back (&sock);
-            sock.poller_add (_poller, zlink::poll_event_flag_t::pollin, &sock);
+            sock.poller_add (_poller, zlink::poll_event_flag_t::pollin,
+                             _sockets.size () - 1);
         }
         if (!perf::multi::recalculate_auto_hwm (_ctx))
             return false;
@@ -204,25 +205,22 @@ class pubsub_client_bench_t
             if (poll_wait.count () <= 0)
                 poll_wait = std::chrono::milliseconds (1);
 
-            _poll_events =
-              _poller.wait (0, poll_wait);
-            const int poll_rc = static_cast<int> (_poll_events.size ());
-            if (poll_rc < 0) {
-                if (errno == EINTR || errno == EAGAIN)
-                    continue;
-                return false;
-            }
+            if (_poll_events.size () < _sockets.size ())
+                _poll_events.resize (_sockets.size ());
+            const size_t poll_rc =
+              _poller.wait (_poll_events.data (), _poll_events.size (),
+                            poll_wait);
             if (poll_rc == 0) {
                 if (std::chrono::steady_clock::now () >= deadline)
                     break;
                 continue;
             }
 
-            for (size_t i = 0; i < _poll_events.size (); ++i) {
-                ::perf::socket_t *sock = NULL;
-                if (::perf::socket_t *const *tag =
-                      std::any_cast<::perf::socket_t *> (&_poll_events[i].tag))
-                    sock = *tag;
+            for (size_t i = 0; i < poll_rc; ++i) {
+                const size_t slot_index = _poll_events[i].slot;
+                if (slot_index >= _sockets.size ())
+                    continue;
+                ::perf::socket_t *sock = _sockets[slot_index];
                 if (!sock)
                     continue;
 

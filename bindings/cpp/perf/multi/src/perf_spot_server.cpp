@@ -41,7 +41,8 @@ bool wait_for_spot_send_progress (zlink::poller_t *poller_, bool send_enabled_)
 {
     if (send_enabled_ && poller_) {
         try {
-            (void) poller_->wait (std::chrono::milliseconds (-1));
+            zlink::poll_event_t event;
+            (void) poller_->wait (&event, 1, std::chrono::milliseconds (-1));
             return true;
         }
         catch (const zlink::zlink_error_t &) {
@@ -323,7 +324,7 @@ bool perf_spot_server (const std::string &lib_name,
         return false;
     zlink::poller_t send_poller;
     try {
-        send_poller.add (spot, zlink::poll_event_flag_t::pollout);
+        send_poller.add (spot, zlink::poll_event_flag_t::pollout, 0);
     }
     catch (const zlink::zlink_error_t &) {
         return false;

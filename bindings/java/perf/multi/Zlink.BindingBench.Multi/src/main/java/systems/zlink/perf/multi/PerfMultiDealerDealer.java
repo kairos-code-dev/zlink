@@ -80,9 +80,10 @@ final class PerfMultiDealerDealer {
                 long remainingMs = Math.max(1L,
                     remainingNanos / 1_000_000L);
                 pollSet.setEvents(0, PollEventFlag.POLLIN);
-                pollSet.poll((int) Math.min(remainingMs,
+                int readyCount = pollSet.poll((int) Math.min(remainingMs,
                     (long) Integer.MAX_VALUE));
-                if (!pollSet.isReady(0, PollEventFlag.POLLIN)) {
+                if (readyCount <= 0
+                    || !pollSet.readyHasEventAt(0, PollEventFlag.POLLIN)) {
                     continue;
                 }
                 drainCounted(server, config, metrics);
@@ -368,7 +369,7 @@ final class PerfMultiDealerDealer {
             if (!pending[i]) {
                 continue;
             }
-            if (!pollSet.isReady(i, PollEventFlag.POLLOUT)) {
+            if (!pollSet.readyHasEventAt(readyOffset, PollEventFlag.POLLOUT)) {
                 continue;
             }
             pending[i] = false;

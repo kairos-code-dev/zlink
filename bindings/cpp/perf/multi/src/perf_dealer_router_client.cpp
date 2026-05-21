@@ -162,7 +162,8 @@ class dealer_router_client_bench_t
             // Match the C reference: TCP sends can borrow the per-socket
             // stable payload buffer; framed transports keep the owning copy.
             slot.borrow_payload = (_transport == "tcp");
-            _poller.add (sock, zlink::poll_event_flag_t::pollin, &slot);
+            _poller.add (sock, zlink::poll_event_flag_t::pollin,
+                         _socket_states.size () - 1);
         }
 
         const bool ready = perf::multi::wait_connect_ready_all (
@@ -331,15 +332,21 @@ class dealer_router_client_bench_t
                     return false;
             }
 
-            _poller.wait (_poll_events, _socket_states.size () + 1,
-                                   std::chrono::milliseconds (-1));
-            if (_poll_events.empty ())
+            const size_t capacity = _socket_states.size () + 1;
+            if (_poll_events.size () < capacity)
+                _poll_events.resize (capacity);
+            const size_t ready_count =
+              _poller.wait (_poll_events.data (), capacity,
+                            std::chrono::milliseconds (-1));
+            if (ready_count == 0)
                 continue;
 
-            for (size_t i = 0; i < _poll_events.size (); ++i) {
-                socket_state_t *state = static_cast<socket_state_t *> (
-                  _poll_events[i].raw_tag);
-                if (!state || !state->sock)
+            for (size_t i = 0; i < ready_count; ++i) {
+                const size_t slot_index = _poll_events[i].slot;
+                if (slot_index >= _socket_states.size ())
+                    continue;
+                socket_state_t *state = &_socket_states[slot_index];
+                if (!state->sock)
                     continue;
 
                 if (!(static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))) {

@@ -801,8 +801,7 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
         return false;
 
     zlink::poller_t poller;
-    std::vector<zlink::poll_event_t> events;
-    events.reserve (1);
+    zlink::poll_event_t event;
     try {
         poller.add (*mon.monitor, zlink::poll_event_flag_t::pollin, 0);
     }
@@ -823,13 +822,8 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        events = poller.wait (0, std::chrono::milliseconds (wait_ms));
-        const int rc = static_cast<int> (events.size ());
-        if (rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            return false;
-        }
+        const size_t rc =
+          poller.wait (&event, 1, std::chrono::milliseconds (wait_ms));
         if (rc == 0)
             continue;
 
@@ -870,12 +864,11 @@ inline bool wait_connect_ready_all (std::vector<connect_monitor_t> &monitors,
         return false;
 
     zlink::poller_t poller;
-    std::vector<zlink::poll_event_t> events;
-    events.reserve (active_indices.size ());
+    std::vector<zlink::poll_event_t> events (active_indices.size ());
     try {
         for (size_t i = 0; i < active_indices.size (); ++i) {
             poller.add (*monitors[active_indices[i]].monitor,
-                        zlink::poll_event_flag_t::pollin, 0);
+                        zlink::poll_event_flag_t::pollin, i);
         }
     }
     catch (const zlink::zlink_error_t &) {
@@ -895,18 +888,17 @@ inline bool wait_connect_ready_all (std::vector<connect_monitor_t> &monitors,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        events = poller.wait (0, std::chrono::milliseconds (wait_ms));
-        const int rc = static_cast<int> (events.size ());
-        if (rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            return false;
-        }
+        const size_t rc =
+          poller.wait (events.data (), events.size (),
+                       std::chrono::milliseconds (wait_ms));
         if (rc == 0)
             continue;
 
-        for (size_t i = 0; i < active_indices.size (); ++i) {
-            const size_t monitor_index = active_indices[i];
+        for (size_t i = 0; i < rc; ++i) {
+            const size_t active_index = events[i].slot;
+            if (active_index >= active_indices.size ())
+                continue;
+            const size_t monitor_index = active_indices[active_index];
             if (ready[monitor_index])
                 continue;
             const int count = poll_connect_ready_count (monitors[monitor_index]);

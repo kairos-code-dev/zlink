@@ -143,6 +143,234 @@ func TestPollerTimerEventUsesSlot(t *testing.T) {
 	}
 }
 
+func TestPollerCapacityLeavesRemainingReadySource(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	sender1, _ := ctx.PairSocket()
+	receiver1, _ := ctx.PairSocket()
+	sender2, _ := ctx.PairSocket()
+	receiver2, _ := ctx.PairSocket()
+	defer sender1.Close()
+	defer receiver1.Close()
+	defer sender2.Close()
+	defer receiver2.Close()
+
+	endpoint1 := inprocEndpoint("poller-capacity-a")
+	endpoint2 := inprocEndpoint("poller-capacity-b")
+	_ = sender1.Bind(endpoint1)
+	_ = receiver1.Connect(endpoint1)
+	_ = sender2.Bind(endpoint2)
+	_ = receiver2.Connect(endpoint2)
+
+	poller, err := zlink.NewPoller()
+	if err != nil {
+		t.Fatalf("NewPoller() error = %v", err)
+	}
+	defer poller.Close()
+	if err := poller.AddSocket(receiver1, zlink.PollIn, 101); err != nil {
+		t.Fatalf("AddSocket(receiver1) error = %v", err)
+	}
+	if err := poller.AddSocket(receiver2, zlink.PollIn, 102); err != nil {
+		t.Fatalf("AddSocket(receiver2) error = %v", err)
+	}
+	if _, err := sender1.Send().Message(newMessage(t, "a")).Submit(nil); err != nil {
+		t.Fatalf("Send(a) error = %v", err)
+	}
+	if _, err := sender2.Send().Message(newMessage(t, "b")).Submit(nil); err != nil {
+		t.Fatalf("Send(b) error = %v", err)
+	}
+
+	events := make([]zlink.PollEvent, 1)
+	n, err := poller.Wait(events, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Wait(first) error = %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("Wait(first) count = %d, want 1", n)
+	}
+	firstSlot := events[0].Slot
+	if firstSlot != 101 && firstSlot != 102 {
+		t.Fatalf("first slot = %d, want 101 or 102", firstSlot)
+	}
+	if firstSlot == 101 {
+		assertRecvText(t, receiver1, "a")
+	} else {
+		assertRecvText(t, receiver2, "b")
+	}
+
+	n, err = poller.Wait(events, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Wait(second) error = %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("Wait(second) count = %d, want 1", n)
+	}
+	if events[0].Slot == firstSlot {
+		t.Fatalf("second slot = %d, want remaining source", events[0].Slot)
+	}
+	if events[0].Slot == 101 {
+		assertRecvText(t, receiver1, "a")
+	} else {
+		assertRecvText(t, receiver2, "b")
+	}
+}
+
+func TestPollerModifyRemoveAndTimeout(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	sender, _ := ctx.PairSocket()
+	receiver, _ := ctx.PairSocket()
+	defer sender.Close()
+	defer receiver.Close()
+
+	endpoint := inprocEndpoint("poller-modify-remove")
+	_ = sender.Bind(endpoint)
+	_ = receiver.Connect(endpoint)
+
+	poller, err := zlink.NewPoller()
+	if err != nil {
+		t.Fatalf("NewPoller() error = %v", err)
+	}
+	defer poller.Close()
+	if err := poller.AddSocket(receiver, zlink.PollIn, 31); err != nil {
+		t.Fatalf("AddSocket() error = %v", err)
+	}
+	if err := poller.ModifySocket(receiver, 0); err != nil {
+		t.Fatalf("ModifySocket(none) error = %v", err)
+	}
+	if _, err := sender.Send().Message(newMessage(t, "hidden")).Submit(nil); err != nil {
+		t.Fatalf("Send(hidden) error = %v", err)
+	}
+	events := make([]zlink.PollEvent, 1)
+	n, err := poller.Wait(events, 20*time.Millisecond)
+	if err != nil {
+		t.Fatalf("Wait(timeout) error = %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("Wait(timeout) count = %d, want 0", n)
+	}
+
+	if err := poller.ModifySocket(receiver, zlink.PollIn); err != nil {
+		t.Fatalf("ModifySocket(PollIn) error = %v", err)
+	}
+	n, err = poller.Wait(events, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Wait(ready) error = %v", err)
+	}
+	if n != 1 || events[0].Slot != 31 {
+		t.Fatalf("Wait(ready) = (%d, slot %d), want (1, 31)", n, events[0].Slot)
+	}
+	assertRecvText(t, receiver, "hidden")
+
+	if err := poller.RemoveSocket(receiver); err != nil {
+		t.Fatalf("RemoveSocket() error = %v", err)
+	}
+	if _, err := sender.Send().Message(newMessage(t, "removed")).Submit(nil); err != nil {
+		t.Fatalf("Send(removed) error = %v", err)
+	}
+	n, err = poller.Wait(events, 0)
+	if err != nil {
+		t.Fatalf("Wait(after remove) error = %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("Wait(after remove) count = %d, want 0", n)
+	}
+}
+
+func TestPollerDistinguishesTimerAndSocketInSameBuffer(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	sender, _ := ctx.PairSocket()
+	receiver, _ := ctx.PairSocket()
+	defer sender.Close()
+	defer receiver.Close()
+
+	timer, err := zlink.NewTimer()
+	if err != nil {
+		t.Fatalf("NewTimer() error = %v", err)
+	}
+	defer timer.Close()
+
+	endpoint := inprocEndpoint("poller-timer-socket")
+	_ = sender.Bind(endpoint)
+	_ = receiver.Connect(endpoint)
+
+	poller, err := zlink.NewPoller()
+	if err != nil {
+		t.Fatalf("NewPoller() error = %v", err)
+	}
+	defer poller.Close()
+	if err := poller.AddSocket(receiver, zlink.PollIn, 41); err != nil {
+		t.Fatalf("AddSocket() error = %v", err)
+	}
+	if err := poller.AddTimer(timer, 42); err != nil {
+		t.Fatalf("AddTimer() error = %v", err)
+	}
+	if _, err := sender.Send().Message(newMessage(t, "socket")).Submit(nil); err != nil {
+		t.Fatalf("Send(socket) error = %v", err)
+	}
+	if err := timer.Start(uint64(5*time.Millisecond), 1); err != nil {
+		t.Fatalf("Timer.Start() error = %v", err)
+	}
+
+	events := make([]zlink.PollEvent, 2)
+	sawSocket := false
+	sawTimer := false
+	deadline := time.Now().Add(2 * time.Second)
+	for (!sawSocket || !sawTimer) && time.Now().Before(deadline) {
+		n, err := poller.Wait(events, 200*time.Millisecond)
+		if err != nil {
+			t.Fatalf("Wait() error = %v", err)
+		}
+		for i := 0; i < n; i++ {
+			switch events[i].SourceKind {
+			case zlink.PollSourceSocket:
+				if events[i].Slot != 41 {
+					t.Fatalf("socket slot = %d, want 41", events[i].Slot)
+				}
+				assertRecvText(t, receiver, "socket")
+				sawSocket = true
+			case zlink.PollSourceTimer:
+				if events[i].Slot != 42 {
+					t.Fatalf("timer slot = %d, want 42", events[i].Slot)
+				}
+				if fireCount, ok, err := timer.Recv(); err != nil || !ok || fireCount != 1 {
+					t.Fatalf("Timer.Recv() = (%d, %v, %v), want (1, true, nil)", fireCount, ok, err)
+				}
+				sawTimer = true
+			}
+		}
+	}
+	if !sawSocket || !sawTimer {
+		t.Fatalf("sawSocket=%v sawTimer=%v, want both", sawSocket, sawTimer)
+	}
+}
+
+func assertRecvText(t testing.TB, socket interface {
+	Recv(*zlink.Received, zlink.RecvFlags) (bool, error)
+}, want string) {
+	t.Helper()
+	var received zlink.Received
+	ok, err := socket.Recv(&received, zlink.RecvFlagsNone)
+	if err != nil {
+		t.Fatalf("Recv() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("Recv() ok = false, want true")
+	}
+	defer received.Close()
+	part, err := received.SinglePartOrError()
+	if err != nil {
+		t.Fatalf("SinglePartOrError() error = %v", err)
+	}
+	if string(part.Data()) != want {
+		t.Fatalf("recv payload = %q, want %q", string(part.Data()), want)
+	}
+}
+
 func TestPairMultipartRoundTrip(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

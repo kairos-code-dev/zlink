@@ -96,7 +96,8 @@ bool complete_handshake (::perf::socket_t &receiver,
         }
 
         if (!connected) {
-            (void) poller.wait (std::chrono::milliseconds (-1));
+            zlink::poll_event_t event;
+            (void) poller.wait (&event, 1, std::chrono::milliseconds (-1));
         }
     }
 

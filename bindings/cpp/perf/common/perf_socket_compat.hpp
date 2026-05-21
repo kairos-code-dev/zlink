@@ -147,14 +147,14 @@ class socket_t
 
     void poller_add (poller_t &poller_,
                      poll_event_flag_t events_,
-                     std::any tag_ = {})
+                     std::uintptr_t slot_ = 0)
     {
         visit ([&] (auto &socket_) -> int {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
             if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
                 throw config_error_t (config_result_t::invalid_handle, ENOTSOCK);
             } else {
-                poller_.add (socket_, events_, std::move (tag_));
+                poller_.add (socket_, events_, slot_);
                 return 0;
             }
         });

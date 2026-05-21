@@ -158,7 +158,8 @@ final class PerfMultiPubSub {
                     }
                     for (int readyOffset = 0; readyOffset < readyCount; readyOffset++) {
                         int index = pollSet.readyIndexAt(readyOffset);
-                        if (!pollSet.isReady(index, PollEventFlag.POLLIN)) {
+                        if (!pollSet.readyHasEventAt(readyOffset,
+                            PollEventFlag.POLLIN)) {
                             continue;
                         }
                         if (drainSubscriber(subscribers.get(index), config,

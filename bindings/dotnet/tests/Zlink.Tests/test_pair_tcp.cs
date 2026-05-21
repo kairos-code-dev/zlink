@@ -202,6 +202,175 @@ public sealed class test_pair_tcp
     }
 
     [Fact]
+    public void poller_wait_reports_multiple_ready_sources_and_respects_capacity()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var sender1 = new PairSocket(ctx);
+        using var receiver1 = new PairSocket(ctx);
+        using var sender2 = new PairSocket(ctx);
+        using var receiver2 = new PairSocket(ctx);
+        using var poller = new Poller();
+
+        string endpoint1 = CoreTestSupport.NewEndpoint("inproc",
+            "pair-poller-multi-a");
+        string endpoint2 = CoreTestSupport.NewEndpoint("inproc",
+            "pair-poller-multi-b");
+        sender1.Bind(endpoint1);
+        receiver1.Connect(endpoint1);
+        sender2.Bind(endpoint2);
+        receiver2.Connect(endpoint2);
+        Thread.Sleep(50);
+
+        poller.Add(receiver1, PollEventFlags.PollIn, 101);
+        poller.Add(receiver2, PollEventFlags.PollIn, 102);
+        CoreTestSupport.SendWithRetry(sender1, "a"u8, 2000);
+        CoreTestSupport.SendWithRetry(sender2, "b"u8, 2000);
+
+        Span<PollEvent> one = stackalloc PollEvent[1];
+        int written = poller.Wait(one, TimeSpan.FromMilliseconds(2000));
+        Assert.Equal(1, written);
+        Assert.True(one[0].Slot is 101 or 102);
+        Assert.NotEqual(PollEventFlags.None,
+            one[0].Revents & PollEventFlags.PollIn);
+
+        if (one[0].Slot == 101)
+            Assert.Equal("a", CoreTestSupport.ReceiveUtf8WithTimeout(receiver1,
+                2000));
+        else
+            Assert.Equal("b", CoreTestSupport.ReceiveUtf8WithTimeout(receiver2,
+                2000));
+
+        Span<PollEvent> remaining = stackalloc PollEvent[2];
+        written = poller.Wait(remaining, TimeSpan.FromMilliseconds(2000));
+        Assert.Equal(1, written);
+        Assert.NotEqual(one[0].Slot, remaining[0].Slot);
+
+        if (remaining[0].Slot == 101)
+            Assert.Equal("a", CoreTestSupport.ReceiveUtf8WithTimeout(receiver1,
+                2000));
+        else
+            Assert.Equal("b", CoreTestSupport.ReceiveUtf8WithTimeout(receiver2,
+                2000));
+
+        CoreTestSupport.SendWithRetry(sender1, "c"u8, 2000);
+        CoreTestSupport.SendWithRetry(sender2, "d"u8, 2000);
+
+        Span<PollEvent> both = stackalloc PollEvent[2];
+        written = poller.Wait(both, TimeSpan.FromMilliseconds(2000));
+        Assert.Equal(2, written);
+        Assert.Contains((nuint)101, new[] { both[0].Slot, both[1].Slot });
+        Assert.Contains((nuint)102, new[] { both[0].Slot, both[1].Slot });
+    }
+
+    [Fact]
+    public void poller_remove_suppresses_ready_events()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
+        using var poller = new Poller();
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "pair-poller-remove");
+        sender.Bind(endpoint);
+        receiver.Connect(endpoint);
+        Thread.Sleep(50);
+
+        poller.Add(receiver, PollEventFlags.PollIn, 31);
+        Assert.True(poller.Remove(receiver));
+        CoreTestSupport.SendWithRetry(sender, "removed"u8, 2000);
+
+        Span<PollEvent> events = stackalloc PollEvent[1];
+        Assert.Equal(0, poller.Wait(events, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public void poller_wait_distinguishes_timer_and_socket_in_same_buffer()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
+        using var timer = new Timer();
+        using var poller = new Poller();
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "pair-poller-timer-socket");
+        sender.Bind(endpoint);
+        receiver.Connect(endpoint);
+        Thread.Sleep(50);
+
+        poller.Add(receiver, PollEventFlags.PollIn, 41);
+        poller.Add(timer, 42);
+        CoreTestSupport.SendWithRetry(sender, "socket"u8, 2000);
+        timer.Start(TimeSpan.FromMilliseconds(5), 1);
+
+        Span<PollEvent> events = stackalloc PollEvent[2];
+        bool sawSocket = false;
+        bool sawTimer = false;
+        DateTime deadline = DateTime.UtcNow.AddSeconds(2);
+        while ((!sawSocket || !sawTimer) && DateTime.UtcNow < deadline)
+        {
+            int written = poller.Wait(events, TimeSpan.FromMilliseconds(200));
+            for (int i = 0; i < written; i++)
+            {
+                if (events[i].SourceKind == PollSourceKind.Socket)
+                {
+                    Assert.Equal((nuint)41, events[i].Slot);
+                    Assert.Equal("socket",
+                        CoreTestSupport.ReceiveUtf8WithTimeout(receiver, 2000));
+                    sawSocket = true;
+                }
+                else if (events[i].SourceKind == PollSourceKind.Timer)
+                {
+                    Assert.Equal((nuint)42, events[i].Slot);
+                    Assert.Equal(1UL, timer.Recv().GetValueOrDefault());
+                    sawTimer = true;
+                }
+            }
+        }
+
+        Assert.True(sawSocket);
+        Assert.True(sawTimer);
+    }
+
+    [Fact]
+    public void poller_wait_span_does_not_allocate_after_buffer_warmup()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
+        using var poller = new Poller();
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "pair-poller-no-alloc");
+        sender.Bind(endpoint);
+        receiver.Connect(endpoint);
+        Thread.Sleep(50);
+
+        poller.Add(receiver, PollEventFlags.PollIn, 51);
+        Span<PollEvent> events = stackalloc PollEvent[1];
+        Assert.Equal(0, poller.Wait(events, TimeSpan.Zero));
+
+        CoreTestSupport.SendWithRetry(sender, "ready"u8, 2000);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        int written = poller.Wait(events, TimeSpan.FromMilliseconds(2000));
+        long after = GC.GetAllocatedBytesForCurrentThread();
+
+        Assert.Equal(1, written);
+        Assert.Equal(before, after);
+        Assert.Equal((nuint)51, events[0].Slot);
+    }
+
+    [Fact]
     public void receive_dontwait_returns_null_on_empty_queue()
     {
         if (!CoreTestSupport.IsNativeAvailable())

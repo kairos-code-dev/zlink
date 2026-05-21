@@ -312,3 +312,135 @@ fn typed_poller_rejects_empty_event_buffer() {
     let mut events = Vec::<PollEvent>::new();
     assert!(poller.wait(&mut events, 0).is_err());
 }
+
+#[test]
+fn typed_poller_capacity_leaves_remaining_ready_source() {
+    let ctx = Context::new().unwrap();
+    let sender1 = ctx.pair_socket().unwrap();
+    let receiver1 = ctx.pair_socket().unwrap();
+    let sender2 = ctx.pair_socket().unwrap();
+    let receiver2 = ctx.pair_socket().unwrap();
+    sender1.bind("inproc://typed-poller-capacity-a").unwrap();
+    receiver1.connect("inproc://typed-poller-capacity-a").unwrap();
+    sender2.bind("inproc://typed-poller-capacity-b").unwrap();
+    receiver2.connect("inproc://typed-poller-capacity-b").unwrap();
+
+    let poller = Poller::new().unwrap();
+    poller.add_socket(&receiver1, POLLIN, 101).unwrap();
+    poller.add_socket(&receiver2, POLLIN, 102).unwrap();
+    sender1
+        .send()
+        .message(Message::copy_from(b"a").unwrap())
+        .submit()
+        .unwrap();
+    sender2
+        .send()
+        .message(Message::copy_from(b"b").unwrap())
+        .submit()
+        .unwrap();
+
+    let mut events = vec![PollEvent::default(); 1];
+    let count = poller.wait(&mut events, 1000).unwrap();
+    assert_eq!(count, 1);
+    let first_slot = events[0].slot;
+    assert!(first_slot == 101 || first_slot == 102);
+    if first_slot == 101 {
+        assert_eq!(recv_text(&receiver1), b"a");
+    } else {
+        assert_eq!(recv_text(&receiver2), b"b");
+    }
+
+    let count = poller.wait(&mut events, 1000).unwrap();
+    assert_eq!(count, 1);
+    assert_ne!(events[0].slot, first_slot);
+    if events[0].slot == 101 {
+        assert_eq!(recv_text(&receiver1), b"a");
+    } else {
+        assert_eq!(recv_text(&receiver2), b"b");
+    }
+}
+
+#[test]
+fn typed_poller_modify_remove_and_timeout_follow_core_semantics() {
+    let ctx = Context::new().unwrap();
+    let sender = ctx.pair_socket().unwrap();
+    let receiver = ctx.pair_socket().unwrap();
+    sender.bind("inproc://typed-poller-modify-remove").unwrap();
+    receiver.connect("inproc://typed-poller-modify-remove").unwrap();
+
+    let poller = Poller::new().unwrap();
+    poller.add_socket(&receiver, POLLIN, 31).unwrap();
+    poller.modify_socket(&receiver, 0).unwrap();
+    sender
+        .send()
+        .message(Message::copy_from(b"hidden").unwrap())
+        .submit()
+        .unwrap();
+
+    let mut events = vec![PollEvent::default(); 1];
+    assert_eq!(poller.wait(&mut events, 20).unwrap(), 0);
+
+    poller.modify_socket(&receiver, POLLIN).unwrap();
+    assert_eq!(poller.wait(&mut events, 1000).unwrap(), 1);
+    assert_eq!(events[0].slot, 31);
+    assert_eq!(recv_text(&receiver), b"hidden");
+
+    poller.remove_socket(&receiver).unwrap();
+    sender
+        .send()
+        .message(Message::copy_from(b"removed").unwrap())
+        .submit()
+        .unwrap();
+    assert_eq!(poller.wait(&mut events, 0).unwrap(), 0);
+}
+
+#[test]
+fn typed_poller_distinguishes_timer_and_socket_in_same_buffer() {
+    let ctx = Context::new().unwrap();
+    let sender = ctx.pair_socket().unwrap();
+    let receiver = ctx.pair_socket().unwrap();
+    sender.bind("inproc://typed-poller-timer-socket").unwrap();
+    receiver.connect("inproc://typed-poller-timer-socket").unwrap();
+
+    let timer = Timer::new().unwrap();
+    let poller = Poller::new().unwrap();
+    poller.add_socket(&receiver, POLLIN, 41).unwrap();
+    poller.add_timer(&timer, 42).unwrap();
+    sender
+        .send()
+        .message(Message::copy_from(b"socket").unwrap())
+        .submit()
+        .unwrap();
+    timer.start(5_000_000, 1).unwrap();
+
+    let mut events = vec![PollEvent::default(); 2];
+    let mut saw_socket = false;
+    let mut saw_timer = false;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while (!saw_socket || !saw_timer) && std::time::Instant::now() < deadline {
+        let count = poller.wait(&mut events, 200).unwrap();
+        for event in &events[..count] {
+            match event.source_kind {
+                PollSourceKind::Socket => {
+                    assert_eq!(event.slot, 41);
+                    assert_eq!(recv_text(&receiver), b"socket");
+                    saw_socket = true;
+                }
+                PollSourceKind::Timer => {
+                    assert_eq!(event.slot, 42);
+                    assert_eq!(timer.recv().unwrap(), Some(1));
+                    saw_timer = true;
+                }
+                PollSourceKind::Fd => {}
+            }
+        }
+    }
+    assert!(saw_socket);
+    assert!(saw_timer);
+}
+
+fn recv_text(socket: &PairSocket) -> Vec<u8> {
+    let mut received = Received::empty();
+    assert!(socket.recv(&mut received, RecvFlags::NONE).unwrap());
+    received.parts()[0].as_bytes().to_vec()
+}

@@ -129,10 +129,9 @@ bool perf_router_router_server (const std::string &lib_name,
     bool failed = false;
     std::deque<pending_reply_t> pending_replies;
     zlink::poller_t poller;
-    std::vector<zlink::poll_event_t> events;
+    std::vector<zlink::poll_event_t> events (1);
     zlink::message_t part;
-    events.reserve (1);
-    poller.add (server, zlink::poll_event_flag_t::pollin);
+    poller.add (server, zlink::poll_event_flag_t::pollin, 0);
 
     auto flush_pending = [&] () -> bool {
         while (!pending_replies.empty ()) {
@@ -182,7 +181,10 @@ bool perf_router_router_server (const std::string &lib_name,
         }
 
         try {
-            poller.wait (events, 1, poll_timeout);
+            const size_t ready_count =
+              poller.wait (events.data (), events.size (), poll_timeout);
+            if (ready_count == 0)
+                continue;
         }
         catch (const zlink::zlink_error_t &err) {
             const int err_no = err.internal_errno ();
@@ -192,9 +194,6 @@ bool perf_router_router_server (const std::string &lib_name,
             failed = true;
             break;
         }
-        if (events.empty ())
-            continue;
-
         const auto revents_value = static_cast<int> (events[0].revents);
         const bool readable = (revents_value
                                & static_cast<int> (

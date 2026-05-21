@@ -20,11 +20,8 @@ public final class PerfSocketPollSet implements AutoCloseable {
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
     private final Socket[] sockets;
-    private final boolean[] readyIn;
-    private final boolean[] readyOut;
-    private final boolean[] readyErr;
-    private final boolean[] readyPri;
     private final int[] readyIndexes;
+    private final int[] readyMasks;
     private final int[] currentMasks;
     private final Poller poller = new Poller();
     private final PollEvents readyEventsBuffer;
@@ -33,15 +30,12 @@ public final class PerfSocketPollSet implements AutoCloseable {
     private PerfSocketPollSet(List<Socket> sockets,
                               PollEventFlag... initialEvents) {
         this.sockets = sockets.toArray(Socket[]::new);
-        this.readyIn = new boolean[this.sockets.length];
-        this.readyOut = new boolean[this.sockets.length];
-        this.readyErr = new boolean[this.sockets.length];
-        this.readyPri = new boolean[this.sockets.length];
         this.readyIndexes = new int[this.sockets.length];
+        this.readyMasks = new int[this.sockets.length];
         this.currentMasks = new int[this.sockets.length];
         this.readyEventsBuffer = new PollEvents(
             Math.max(1, this.sockets.length));
-        clearReadyEvents();
+        readyCount = 0;
         int initialMask = mask(initialEvents);
         for (int i = 0; i < this.sockets.length; i++) {
             Socket socket = Objects.requireNonNull(this.sockets[i], "socket");
@@ -66,17 +60,6 @@ public final class PerfSocketPollSet implements AutoCloseable {
         currentMasks[index] = newMask;
     }
 
-    public boolean isReady(int index, PollEventFlag event) {
-        checkIndex(index);
-        return switch (event) {
-            case POLLIN -> readyIn[index];
-            case POLLOUT -> readyOut[index];
-            case POLLERR -> readyErr[index];
-            case POLLPRI -> readyPri[index];
-            case POLLCOMPLETION -> false;
-        };
-    }
-
     public int readyCount() {
         return readyCount;
     }
@@ -88,8 +71,19 @@ public final class PerfSocketPollSet implements AutoCloseable {
         return readyIndexes[offset];
     }
 
+    public int readyMaskAt(int offset) {
+        if (offset < 0 || offset >= readyCount) {
+            throw new IndexOutOfBoundsException("ready offset " + offset);
+        }
+        return readyMasks[offset];
+    }
+
+    public boolean readyHasEventAt(int offset, PollEventFlag event) {
+        return (readyMaskAt(offset) & mask(event)) != 0;
+    }
+
     public int poll(int timeoutMs) {
-        clearReadyEvents();
+        readyCount = 0;
         try {
             poller.wait(readyEventsBuffer, Duration.ofMillis(timeoutMs));
         } catch (ZlinkException ex) {
@@ -106,20 +100,10 @@ public final class PerfSocketPollSet implements AutoCloseable {
             long slot = readyEventsBuffer.slot(i);
             if (slot >= 0 && slot < sockets.length) {
                 int index = (int) slot;
-                boolean hasIn = readyEventsBuffer.hasEvent(i,
-                    PollEventFlag.POLLIN);
-                boolean hasOut = readyEventsBuffer.hasEvent(i,
-                    PollEventFlag.POLLOUT);
-                boolean hasErr = readyEventsBuffer.hasEvent(i,
-                    PollEventFlag.POLLERR);
-                boolean hasPri = readyEventsBuffer.hasEvent(i,
-                    PollEventFlag.POLLPRI);
-                readyIn[index] = hasIn;
-                readyOut[index] = hasOut;
-                readyErr[index] = hasErr;
-                readyPri[index] = hasPri;
-                if (hasIn || hasOut || hasErr || hasPri) {
+                int readyMask = readyEventsBuffer.revents(i);
+                if (readyMask != 0) {
                     readyIndexes[readyCount++] = index;
+                    readyMasks[readyCount - 1] = readyMask;
                 }
             }
         }
@@ -129,22 +113,6 @@ public final class PerfSocketPollSet implements AutoCloseable {
     @Override
     public void close() {
         poller.close();
-    }
-
-    // PERF_MULTI § 1.1 "Ready source dispatch": clear only the entries that
-    // were actually dispatched ready on the previous wake, not every socket.
-    // The previous-wake ready set is exactly readyIndexes[0..readyCount); C/C++
-    // reset just the dispatched ready entries. This avoids the O(N) per-wake
-    // Arrays.fill over all four boolean arrays regardless of socket count.
-    private void clearReadyEvents() {
-        for (int i = 0; i < readyCount; i++) {
-            int index = readyIndexes[i];
-            readyIn[index] = false;
-            readyOut[index] = false;
-            readyErr[index] = false;
-            readyPri[index] = false;
-        }
-        readyCount = 0;
     }
 
     private void checkIndex(int index) {

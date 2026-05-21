@@ -579,36 +579,37 @@ sources.
 
 ```c
 void *poller = zlink_poller_new();
+zlink_poller_event_t events[16];
 
 /* add a socket (POLLIN) */
-zlink_poller_add(poller, router, my_router_ctx, ZMQ_POLLIN);
+zlink_poller_add(poller, router, my_router_ctx, ZLINK_POLLIN);
 
 /* add a raw fd */
-zlink_poller_add_fd(poller, event_fd, my_fd_ctx, ZMQ_POLLIN);
+zlink_poller_add_fd(poller, event_fd, my_fd_ctx, ZLINK_POLLIN);
 
 /* add a timer */
-void *timer = zlink_timer_new(ctx, 1000);  /* 1 s interval */
+void *timer = zlink_timer_new();
+zlink_timer_start(timer, 1000000000, 0);  /* 1 s interval */
 zlink_poller_add_timer(poller, timer, my_timer_ctx);
 
 for (;;) {
-    zlink_poller_event_t event;
-    int rc = zlink_poller_wait(poller, &event, 1, -1, NULL);
-    if (rc < 0)
+    int n = zlink_poller_wait(poller, events, 16, -1, NULL);
+    if (n < 0)
         break;
 
-    switch (event.source_kind) {
-    case ZLINK_POLLER_SOURCE_SOCKET:
-        /* event.socket, event.events, event.user_data */
-        handle_socket(event.socket, event.user_data);
-        break;
-    case ZLINK_POLLER_SOURCE_FD:
-        /* event.fd, event.events, event.user_data */
-        handle_fd(event.fd, event.user_data);
-        break;
-    case ZLINK_POLLER_SOURCE_TIMER:
-        /* event.timer, event.user_data */
-        handle_timer(event.timer, event.user_data);
-        break;
+    for (int i = 0; i < n; i++) {
+        zlink_poller_event_t *event = &events[i];
+        switch (event->source_kind) {
+        case ZLINK_POLLER_SOURCE_SOCKET:
+            handle_socket(event->socket, event->user_data, event->events);
+            break;
+        case ZLINK_POLLER_SOURCE_FD:
+            handle_fd(event->fd, event->user_data, event->events);
+            break;
+        case ZLINK_POLLER_SOURCE_TIMER:
+            handle_timer(event->timer, event->user_data);
+            break;
+        }
     }
 }
 
@@ -617,8 +618,9 @@ zlink_poller_destroy(&poller);
 
 `zlink_poller_wait()` returns the number of events written, 0 on timeout,
 and -1 on error (with `error_out` set). Pass `timeout` in milliseconds;
-`-1` means block indefinitely, `0` means non-blocking. Use `n_events=1`
-when a loop only needs one event.
+`-1` means block indefinitely, `0` means non-blocking. Allocate the event
+buffer once and reuse it in the loop. Only `events[0:n]` is valid after each
+wait.
 
 ### 12.2 Batch Wait
 
@@ -636,7 +638,7 @@ for (int i = 0; i < n; i++) {
 
 ```c
 /* change watched events on an existing socket */
-zlink_poller_modify(poller, router, ZMQ_POLLIN | ZMQ_POLLOUT);
+zlink_poller_modify(poller, router, ZLINK_POLLIN | ZLINK_POLLOUT);
 
 /* remove a socket */
 zlink_poller_remove(poller, router);
@@ -657,7 +659,7 @@ zlink_poller_remove_timer(poller, timer);
 | `fd` | File descriptor (valid when `source_kind == FD`) |
 | `timer` | Timer handle (valid when `source_kind == TIMER`) |
 | `user_data` | Pointer registered with `add` / `add_fd` / `add_timer` |
-| `events` | Ready event flags (`ZMQ_POLLIN` / `ZMQ_POLLOUT`) |
+| `events` | Ready event flags (`ZLINK_POLLIN` / `ZLINK_POLLOUT`) |
 
 ### 12.5 Low-level `zlink_poll`
 
@@ -667,13 +669,13 @@ For simple one-shot polls without the Poller object, use `zlink_poll()`:
 zlink_pollitem_t items[2];
 items[0].socket = router;
 items[0].fd     = 0;
-items[0].events = ZMQ_POLLIN;
+items[0].events = ZLINK_POLLIN;
 items[1].socket = NULL;
 items[1].fd     = pipe_fd;
-items[1].events = ZMQ_POLLIN;
+items[1].events = ZLINK_POLLIN;
 
 int n = zlink_poll(items, 2, 1000, NULL);
-if (items[0].revents & ZMQ_POLLIN)
+if (items[0].revents & ZLINK_POLLIN)
     /* router has data */;
 ```
 

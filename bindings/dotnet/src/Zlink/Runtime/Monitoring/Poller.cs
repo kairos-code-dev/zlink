@@ -72,8 +72,8 @@ public sealed class Poller : IPoller
             userData, (short)events);
         if (rc != 0)
             ZlinkException.ThrowConfigIfError(rc);
-        RegisterItem(new PollItem(PollItemKind.Socket, socket, userData,
-            socketHandle, 0, null, events, slot));
+        RegisterItem(new PollItem(PollItemKind.Socket, socket, socketHandle, 0,
+            null, events, slot));
     }
 
     public void AddFd(int fd, PollEventFlags events, nuint slot)
@@ -86,8 +86,8 @@ public sealed class Poller : IPoller
             (short)events);
         if (rc != 0)
             ZlinkException.ThrowConfigIfError(rc);
-        RegisterItem(new PollItem(PollItemKind.Fd, null, userData, IntPtr.Zero,
-            fd, null, events, slot));
+        RegisterItem(new PollItem(PollItemKind.Fd, null, IntPtr.Zero, fd, null,
+            events, slot));
     }
 
     public void Add(IZlinkTimer timer, nuint slot)
@@ -100,8 +100,8 @@ public sealed class Poller : IPoller
             concreteTimer.Handle, userData);
         if (rc != 0)
             ZlinkException.ThrowConfigIfError(rc);
-        RegisterItem(new PollItem(PollItemKind.Timer, null, userData,
-            IntPtr.Zero, 0, concreteTimer, PollEventFlags.PollIn, slot));
+        RegisterItem(new PollItem(PollItemKind.Timer, null, IntPtr.Zero, 0,
+            concreteTimer, PollEventFlags.PollIn, slot));
     }
 
     public void Modify(IZlinkSocket socket, PollEventFlags events)
@@ -334,34 +334,20 @@ public sealed class Poller : IPoller
 
     private PollEvent MapEvent(ZlinkPollerEvent nativeEvent)
     {
-        PollItem? item = FindUserDataItem(nativeEvent.UserData);
-        PollSourceKind sourceKind = item?.Kind switch
-        {
-            PollItemKind.Socket => PollSourceKind.Socket,
-            PollItemKind.Fd => PollSourceKind.Fd,
-            PollItemKind.Timer => PollSourceKind.Timer,
-            _ => (PollSourceKind)nativeEvent.MonitorSourceKind
-        };
-        int fd = sourceKind == PollSourceKind.Fd
-            ? (item?.Fd ?? nativeEvent.Fd)
-            : 0;
-        return new PollEvent(sourceKind, item?.Slot ?? 0,
+        PollSourceKind sourceKind = (PollSourceKind)nativeEvent.MonitorSourceKind;
+        int fd = sourceKind == PollSourceKind.Fd ? nativeEvent.Fd : 0;
+        return new PollEvent(sourceKind, UserDataToSlot(nativeEvent.UserData),
             (PollEventFlags)nativeEvent.Events, fd);
-    }
-
-    private PollItem? FindUserDataItem(IntPtr userData)
-    {
-        foreach (PollItem item in _items)
-        {
-            if (item.UserData == userData)
-                return item;
-        }
-        return null;
     }
 
     private static IntPtr SlotToUserData(nuint slot)
     {
         return unchecked((IntPtr)slot);
+    }
+
+    private static nuint UserDataToSlot(IntPtr userData)
+    {
+        return unchecked((nuint)userData);
     }
 
     private void RegisterItem(PollItem item)
@@ -389,13 +375,12 @@ public sealed class Poller : IPoller
 
     private sealed class PollItem
     {
-        public PollItem(PollItemKind kind, IZlinkSocket? socket, IntPtr userData,
+        public PollItem(PollItemKind kind, IZlinkSocket? socket,
             IntPtr socketHandle, int fd, Timer? timer, PollEventFlags events,
             nuint slot)
         {
             Kind = kind;
             Socket = socket;
-            UserData = userData;
             SocketHandle = socketHandle;
             Fd = fd;
             Timer = timer;
@@ -405,7 +390,6 @@ public sealed class Poller : IPoller
 
         public PollItemKind Kind { get; }
         public IZlinkSocket? Socket { get; }
-        public IntPtr UserData { get; }
         public IntPtr SocketHandle { get; }
         public int Fd { get; }
         public Timer? Timer { get; }

@@ -212,6 +212,8 @@ class router_router_client_bench_t
             // Match the C reference: TCP sends can borrow the per-socket
             // stable payload buffer; framed transports keep the owning copy.
             slot.borrow_payload = (_transport == "tcp");
+            _poller.add (sock, zlink::poll_event_flag_t::none,
+                         _socket_states.size () - 1);
         }
 
         const bool ready = perf::multi::wait_connect_ready_all (
@@ -265,19 +267,22 @@ class router_router_client_bench_t
         while (remaining > 0 && std::chrono::steady_clock::now () < deadline) {
             // wait(events, ...) reuses _poll_events' backing storage so the
             // hot poll loop avoids allocating a fresh vector per wake.
-            _poller.wait (
-              _poll_events, 0, std::chrono::milliseconds (-1));
-            if (_poll_events.empty ())
+            if (_poll_events.size () < _socket_states.size ())
+                _poll_events.resize (_socket_states.size ());
+            const size_t ready_count =
+              _poller.wait (_poll_events.data (), _poll_events.size (),
+                            std::chrono::milliseconds (-1));
+            if (ready_count == 0)
                 continue;
 
-            for (size_t i = 0; i < _poll_events.size (); ++i) {
-                socket_state_t *state = static_cast<socket_state_t *> (
-                  _poll_events[i].raw_tag);
-                if (!state || !state->sock)
+            for (size_t i = 0; i < ready_count; ++i) {
+                const size_t slot_index = _poll_events[i].slot;
+                if (slot_index >= _socket_states.size ())
+                    continue;
+                socket_state_t *state = &_socket_states[slot_index];
+                if (!state->sock)
                     continue;
 
-                const size_t slot_index =
-                  static_cast<size_t> (state - &_socket_states[0]);
                 if (slot_index >= validated.size ())
                     return false;
 

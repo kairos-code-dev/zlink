@@ -136,7 +136,7 @@ bool run_pattern_pair (const std::string &transport,
     std::thread receiver_thread ([&]() {
         zlink::poller_t poller;
         try {
-            poller.add (bind_socket, zlink::poll_event_flag_t::pollin);
+            poller.add (bind_socket, zlink::poll_event_flag_t::pollin, 0);
         }
         catch (const zlink::config_error_t &) {
             sender_ok.store (false, std::memory_order_release);
@@ -145,9 +145,9 @@ bool run_pattern_pair (const std::string &transport,
 
         while (true) {
             try {
-                const std::optional<zlink::poll_event_t> event =
-                  poller.wait (std::chrono::milliseconds (-1));
-                if (!event.has_value ())
+                zlink::poll_event_t event;
+                if (poller.wait (&event, 1, std::chrono::milliseconds (-1))
+                    == 0)
                     continue;
             }
             catch (const zlink::recv_error_t &) {

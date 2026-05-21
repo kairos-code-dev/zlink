@@ -80,7 +80,7 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
         return false;
 
     zlink::poller_t poller;
-    poller.add (server, zlink::poll_event_flag_t::pollin);
+    poller.add (server, zlink::poll_event_flag_t::pollin, 0);
 
     const std::string endpoint =
       bind_dealer_endpoint (server, transport, settings.server_bind_port);
@@ -107,8 +107,7 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
     perf::multi::bench_latency_sampler_t latency (
       static_cast<size_t> (active_seconds) * 5000000U);
     zlink::message_t part;
-    std::vector<zlink::poll_event_t> events;
-    events.reserve (1);
+    std::vector<zlink::poll_event_t> events (1);
     size_t stop_count = 0;
     // PERF_MULTI_TEST_POLICY § 1.3.1: the receive window is bounded purely by
     // an application clock (steady_clock deadline) plus a -1 (signal-driven)
@@ -118,12 +117,11 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
     // (bindings/c/perf/multi/src/perf_multi_dealer_dealer_server.cpp:208-301)
     // and its is_stop_token_message handling (lines 113-116).
     while (std::chrono::steady_clock::now () < deadline) {
-        poller.wait (events, 1, std::chrono::milliseconds (-1));
-        if (events.empty ()) {
-            if (errno == EINTR)
-                continue;
-            break;
-        }
+        const size_t ready_count =
+          poller.wait (events.data (), events.size (),
+                       std::chrono::milliseconds (-1));
+        if (ready_count == 0)
+            continue;
         if (!(static_cast<short> (events[0].revents)
               & static_cast<short> (zlink::poll_event_flag_t::pollin))) {
             continue;

@@ -220,7 +220,8 @@ bool wait_for_spot_input_until (
     if (remaining.count () <= 0)
         return false;
     try {
-        return poller_.wait (remaining).has_value ();
+        zlink::poll_event_t event;
+        return poller_.wait (&event, 1, remaining) == 1;
     }
     catch (const zlink::recv_error_t &) {
         return false;
@@ -248,7 +249,7 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
       + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
     zlink::poller_t poller;
     try {
-        poller.add (subscriber_, zlink::poll_event_flag_t::pollin);
+        poller.add (subscriber_, zlink::poll_event_flag_t::pollin, 0);
     }
     catch (const zlink::config_error_t &) {
         return false;

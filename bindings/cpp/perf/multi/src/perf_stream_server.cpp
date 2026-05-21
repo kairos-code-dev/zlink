@@ -234,11 +234,11 @@ void run_server_event_loop (stream_handler_context_t &handler_context_)
         try {
             poller.add (
               *handler_context_.server, zlink::poll_event_flag_t::pollout, 0);
-            const std::vector<zlink::poll_event_t> events =
-              poller.wait (
-                1, std::chrono::milliseconds (-1));
-            for (size_t i = 0; i < events.size (); ++i) {
-                const short revents = static_cast<short> (events[i].revents);
+            zlink::poll_event_t event;
+            const size_t event_count =
+              poller.wait (&event, 1, std::chrono::milliseconds (-1));
+            for (size_t i = 0; i < event_count; ++i) {
+                const short revents = static_cast<short> (event.revents);
                 if (revents
                     & static_cast<short> (zlink::poll_event_flag_t::pollout)) {
                     drain_pending_packets (handler_context_);

@@ -63,8 +63,9 @@ final class PerfMultiDealerRouter {
                         pollSet.setEvents(0, PollEventFlag.POLLIN,
                             PollEventFlag.POLLOUT);
                     }
-                    pollSet.poll(-1);
-                    if (pollSet.isReady(0, PollEventFlag.POLLOUT)) {
+                    int readyCount = pollSet.poll(-1);
+                    if (readyCount > 0
+                        && pollSet.readyHasEventAt(0, PollEventFlag.POLLOUT)) {
                         flushPending(server, pendingReplies);
                     }
                     while (true) {
@@ -205,7 +206,8 @@ final class PerfMultiDealerRouter {
                 for (int readyOffset = 0; readyOffset < readyCount; readyOffset++) {
                     int idx = pollSet.readyIndexAt(readyOffset);
                     boolean writable =
-                        pollSet.isReady(idx, PollEventFlag.POLLOUT);
+                        pollSet.readyHasEventAt(readyOffset,
+                            PollEventFlag.POLLOUT);
                     if (writable && waitingWritable[idx] && !waitingReply[idx]) {
                         if (trySendPayload(clients.get(idx), payloads[idx])) {
                             waitingWritable[idx] = false;
@@ -214,7 +216,8 @@ final class PerfMultiDealerRouter {
                         }
                     }
                     boolean readable =
-                        pollSet.isReady(idx, PollEventFlag.POLLIN);
+                        pollSet.readyHasEventAt(readyOffset,
+                            PollEventFlag.POLLIN);
                     if (!readable) continue;
                     drainReplies(clients.get(idx), idx, waitingReply,
                         waitingWritable, msgSize, metrics, pollSet,

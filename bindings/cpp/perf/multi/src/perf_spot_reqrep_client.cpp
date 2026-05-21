@@ -367,7 +367,7 @@ class spot_reqrep_client_bench_t
             for (size_t i = 0; i < _slots.size (); ++i) {
                 _poller.add (
                   *_slots[i]->spot, zlink::poll_event_flag_t::pollin,
-                  _slots[i].get ());
+                  i);
             }
         }
         catch (const zlink::zlink_error_t &err) {
@@ -375,7 +375,7 @@ class spot_reqrep_client_bench_t
                        + std::to_string (err.internal_errno ()));
             return false;
         }
-        _events.reserve (_slots.size ());
+        _events.resize (_slots.size ());
 
         _prepared = !_slots.empty ();
         return _prepared;
@@ -545,8 +545,8 @@ class spot_reqrep_client_bench_t
               std::max (std::chrono::milliseconds (1),
                         std::min (remaining, std::chrono::milliseconds (50)));
             try {
-                _events = _poller.wait (
-                  _slots.size (), wait_timeout);
+                (void) _poller.wait (
+                  _events.data (), _events.size (), wait_timeout);
             }
             catch (const zlink::recv_error_t &err) {
                 if (err.internal_errno () == EINTR

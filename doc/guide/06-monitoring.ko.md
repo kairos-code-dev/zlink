@@ -602,33 +602,37 @@ Poller API(`zlink_poller_*`)는 zlink 소켓, 파일 디스크립터(fd), 타이
 
 ```c
 void *poller = zlink_poller_new();
+zlink_poller_event_t events[16];
 
 /* 소켓 추가 (POLLIN) */
-zlink_poller_add(poller, router, my_router_ctx, ZMQ_POLLIN);
+zlink_poller_add(poller, router, my_router_ctx, ZLINK_POLLIN);
 
 /* 원시 fd 추가 */
-zlink_poller_add_fd(poller, event_fd, my_fd_ctx, ZMQ_POLLIN);
+zlink_poller_add_fd(poller, event_fd, my_fd_ctx, ZLINK_POLLIN);
 
 /* 타이머 추가 */
-void *timer = zlink_timer_new(ctx, 1000);  /* 1초 간격 */
+void *timer = zlink_timer_new();
+zlink_timer_start(timer, 1000000000, 0);  /* 1초 간격 */
 zlink_poller_add_timer(poller, timer, my_timer_ctx);
 
 for (;;) {
-    zlink_poller_event_t event;
-    int rc = zlink_poller_wait(poller, &event, 1, -1, NULL);
-    if (rc < 0)
+    int n = zlink_poller_wait(poller, events, 16, -1, NULL);
+    if (n < 0)
         break;
 
-    switch (event.source_kind) {
-    case ZLINK_POLLER_SOURCE_SOCKET:
-        handle_socket(event.socket, event.user_data);
-        break;
-    case ZLINK_POLLER_SOURCE_FD:
-        handle_fd(event.fd, event.user_data);
-        break;
-    case ZLINK_POLLER_SOURCE_TIMER:
-        handle_timer(event.timer, event.user_data);
-        break;
+    for (int i = 0; i < n; i++) {
+        zlink_poller_event_t *event = &events[i];
+        switch (event->source_kind) {
+        case ZLINK_POLLER_SOURCE_SOCKET:
+            handle_socket(event->socket, event->user_data, event->events);
+            break;
+        case ZLINK_POLLER_SOURCE_FD:
+            handle_fd(event->fd, event->user_data, event->events);
+            break;
+        case ZLINK_POLLER_SOURCE_TIMER:
+            handle_timer(event->timer, event->user_data);
+            break;
+        }
     }
 }
 
@@ -637,7 +641,8 @@ zlink_poller_destroy(&poller);
 
 `zlink_poller_wait()`는 기록한 이벤트 수를 반환하고, timeout이면 `0`,
 오류 시 `-1`을 반환한다. `timeout`은 밀리초 단위이며, `-1`은 무기한 대기,
-`0`은 non-blocking이다. 이벤트 하나만 필요하면 `n_events=1`을 넘긴다.
+`0`은 non-blocking이다. 이벤트 버퍼는 한 번 만들고 루프에서 재사용한다.
+각 wait 뒤에는 `events[0:n]` 범위만 유효하다.
 
 ### 12.2 일괄 대기
 
@@ -655,7 +660,7 @@ for (int i = 0; i < n; i++) {
 
 ```c
 /* 기존 소켓의 감시 이벤트 변경 */
-zlink_poller_modify(poller, router, ZMQ_POLLIN | ZMQ_POLLOUT);
+zlink_poller_modify(poller, router, ZLINK_POLLIN | ZLINK_POLLOUT);
 
 /* 소켓 제거 */
 zlink_poller_remove(poller, router);
@@ -676,7 +681,7 @@ zlink_poller_remove_timer(poller, timer);
 | `fd` | 파일 디스크립터 (`source_kind == FD`일 때 유효) |
 | `timer` | 타이머 핸들 (`source_kind == TIMER`일 때 유효) |
 | `user_data` | `add`/`add_fd`/`add_timer`로 등록한 포인터 |
-| `events` | 준비된 이벤트 플래그 (`ZMQ_POLLIN` / `ZMQ_POLLOUT`) |
+| `events` | 준비된 이벤트 플래그 (`ZLINK_POLLIN` / `ZLINK_POLLOUT`) |
 
 ### 12.5 저수준 `zlink_poll`
 
@@ -686,13 +691,13 @@ Poller 객체 없이 일회성 폴링이 필요하면 `zlink_poll()`을 사용�
 zlink_pollitem_t items[2];
 items[0].socket = router;
 items[0].fd     = 0;
-items[0].events = ZMQ_POLLIN;
+items[0].events = ZLINK_POLLIN;
 items[1].socket = NULL;
 items[1].fd     = pipe_fd;
-items[1].events = ZMQ_POLLIN;
+items[1].events = ZLINK_POLLIN;
 
 int n = zlink_poll(items, 2, 1000, NULL);
-if (items[0].revents & ZMQ_POLLIN)
+if (items[0].revents & ZLINK_POLLIN)
     /* router에 데이터 있음 */;
 ```
 

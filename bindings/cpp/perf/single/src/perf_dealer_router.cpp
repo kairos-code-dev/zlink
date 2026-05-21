@@ -24,13 +24,13 @@ bool wait_dealer_router_monitor_event (
       + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
 
     zlink::poller_t poller;
-    void *const monitor_tag = reinterpret_cast<void *> (1);
-    void *const activity_tag = reinterpret_cast<void *> (2);
+    static const std::uintptr_t monitor_slot = 1;
+    static const std::uintptr_t activity_slot = 2;
     try {
-        poller.add (monitor_, zlink::poll_event_flag_t::pollin, monitor_tag);
+        poller.add (monitor_, zlink::poll_event_flag_t::pollin, monitor_slot);
         if (activity_socket_)
             activity_socket_->poller_add (
-              poller, zlink::poll_event_flag_t::pollin, activity_tag);
+              poller, zlink::poll_event_flag_t::pollin, activity_slot);
     }
     catch (const zlink::zlink_error_t &) {
         return false;
@@ -44,11 +44,11 @@ bool wait_dealer_router_monitor_event (
         if (wait_ms < 1)
             wait_ms = 1;
 
-        const std::optional<zlink::poll_event_t> poll_event =
-          poller.wait (std::chrono::milliseconds (wait_ms));
-        if (!poll_event)
+        zlink::poll_event_t poll_event;
+        if (poller.wait (&poll_event, 1, std::chrono::milliseconds (wait_ms))
+            == 0)
             continue;
-        if (poll_event->raw_tag != monitor_tag)
+        if (poll_event.slot != monitor_slot)
             continue;
 
         for (;;) {

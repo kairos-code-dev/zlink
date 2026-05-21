@@ -179,7 +179,7 @@ class dealer_dealer_client_bench_t
             _socket_states.push_back (state);
             (void) _poller.add (
               sock, zlink::poll_event_flag_t::pollout,
-              &_socket_states.back ());
+              _socket_states.size () - 1);
             (void) _poller.modify (sock, zlink::poll_event_flag_t::none);
         }
 
@@ -427,15 +427,20 @@ class dealer_dealer_client_bench_t
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no
             // timer cap. Outer loop bounds total wall-time via the
             // steady_clock deadline check above.
-            _poll_events.clear ();
-            _poller.wait (_poll_events, 1, std::chrono::milliseconds (-1));
             if (_poll_events.empty ())
+                _poll_events.resize (1);
+            const size_t ready_count =
+              _poller.wait (_poll_events.data (), 1,
+                            std::chrono::milliseconds (-1));
+            if (ready_count == 0)
                 continue;
 
-            for (size_t i = 0; i < _poll_events.size (); ++i) {
-                socket_state_t *state =
-                  static_cast<socket_state_t *> (_poll_events[i].raw_tag);
-                if (!state || !state->pending
+            for (size_t i = 0; i < ready_count; ++i) {
+                const size_t slot_index = _poll_events[i].slot;
+                if (slot_index >= _socket_states.size ())
+                    continue;
+                socket_state_t *state = &_socket_states[slot_index];
+                if (!state->pending
                     || !(static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollout))) {
                     continue;
                 }

@@ -77,11 +77,11 @@ final class PerfMultiRouterRouter {
                         ? (int) Math.min(Integer.MAX_VALUE,
                             Math.max(1L, remainingNs / 1_000_000L))
                         : 1;
-                    pollSet.poll(waitMs);
-                    boolean writable =
-                        pollSet.isReady(0, PollEventFlag.POLLOUT);
-                    boolean readable =
-                        pollSet.isReady(0, PollEventFlag.POLLIN);
+                    int readyCount = pollSet.poll(waitMs);
+                    boolean writable = readyCount > 0
+                        && pollSet.readyHasEventAt(0, PollEventFlag.POLLOUT);
+                    boolean readable = readyCount > 0
+                        && pollSet.readyHasEventAt(0, PollEventFlag.POLLIN);
                     if (writable) {
                         flushPending(server, pendingReplies);
                     }
@@ -259,7 +259,8 @@ final class PerfMultiRouterRouter {
                      readyOffset++) {
                     int idx = pollSet.readyIndexAt(readyOffset);
                     boolean writable =
-                        pollSet.isReady(idx, PollEventFlag.POLLOUT);
+                        pollSet.readyHasEventAt(readyOffset,
+                            PollEventFlag.POLLOUT);
                     if (writable && waitingWritable[idx] && !waitingReply[idx]) {
                         if (trySendPayload(clients.get(idx), payloads[idx])) {
                             waitingWritable[idx] = false;
@@ -268,7 +269,8 @@ final class PerfMultiRouterRouter {
                         }
                     }
                     boolean readable =
-                        pollSet.isReady(idx, PollEventFlag.POLLIN);
+                        pollSet.readyHasEventAt(readyOffset,
+                            PollEventFlag.POLLIN);
                     if (!readable) continue;
                     drainReplies(clients.get(idx), idx, waitingReply,
                         waitingWritable, msgSize, metrics, pollSet, replyBuffer);

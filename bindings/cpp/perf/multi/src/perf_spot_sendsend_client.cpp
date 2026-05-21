@@ -352,18 +352,11 @@ bool drain_event_reply (std::vector<client_slot_t> &slots,
                         unsigned long long &reply_count,
                         perf::multi::bench_latency_sampler_t &latency)
 {
-    if (!event.tag.has_value ())
+    const size_t slot_index = event.slot;
+    if (slot_index >= slots.size ())
         return true;
-    try {
-        const size_t slot_index = std::any_cast<size_t> (event.tag);
-        if (slot_index >= slots.size ())
-            return true;
-        return drain_reply (
-          slots[slot_index], run_id, msg_size, deadline_ns, reply_count, latency);
-    }
-    catch (const std::bad_any_cast &) {
-        return true;
-    }
+    return drain_reply (
+      slots[slot_index], run_id, msg_size, deadline_ns, reply_count, latency);
 }
 
 bool run_active_window (std::vector<client_slot_t> &slots,
@@ -431,17 +424,19 @@ bool run_active_window (std::vector<client_slot_t> &slots,
             if (remaining_ms <= 0)
                 break;
             const long wait_ms = std::min<long> (remaining_ms, 10);
-            const std::optional<zlink::poll_event_t> event =
-              poller.wait (std::chrono::milliseconds (wait_ms));
-            if (event.has_value ()
-                && !drain_event_reply (slots,
-                                       *event,
-                                       run_id,
-                                       msg_size,
-                                       deadline_ns,
-                                       reply_count,
-                                       latency))
-                return false;
+            zlink::poll_event_t event;
+            const size_t ready_count =
+              poller.wait (&event, 1, std::chrono::milliseconds (wait_ms));
+            if (ready_count == 0)
+                continue;
+            if (!drain_event_reply (slots,
+                                    event,
+                                    run_id,
+                                    msg_size,
+                                    deadline_ns,
+                                    reply_count,
+                                    latency))
+              return false;
         }
     }
 

@@ -84,7 +84,7 @@ flowchart LR
 |----|----------------------|-----------|
 | channel messaging | `[ZLinkRequest]`/`[ZLinkSend]` handler, `IZLinkClient` | [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md) |
 | PUB/SUB | `[ZLinkPublish]`, `EnableSubscriber()` | [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md) |
-| SPOT | named spot factory, publish/subscribe, actor | [spec/aspnet-core-spot](../spec/aspnet-core-spot.ko.md), [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md) |
+| SPOT | named spot factory, routed Spot client, publish/subscribe, actor | [spec/aspnet-core-spot](../spec/aspnet-core-spot.ko.md), [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md) |
 | STREAM | framework session packet, Stream Connector | [spec/aspnet-core-stream](../spec/aspnet-core-stream.ko.md) |
 
 ## 5. 누구를 위한 것인가 / 비목표
@@ -95,6 +95,12 @@ flowchart LR
   `.NET` 바인딩(`DealerSocket`, `SpotNode`, `Registry` 등)을 그대로 쓰되
   framework 친화적으로 감싼다. backend 의존 기준은
   [internals/backend-dependency-policy](../internals/backend-dependency-policy.ko.md).
+
+framework 는 handler 를 자동으로 모든 channel 에 열지 않는다. assembly scan 은 handler 를
+찾는 단계이고, 실제 노출은 `MapHandlerGroup(...)` 또는 개별 typed handler registration 이
+정한다. Spot route transport 도 별도 축이다. `AcceptSpotRoutesFromChannel(...)`은 SpotNode
+ingress 연결이고, 일반 handler 에서 target Spot 으로 나갈 때는
+`IZLinkRoutedSpotClient.ViaEgressChannel(...)`로 사용할 local egress channel 을 고른다.
 
 ## 6. 이 가이드 읽는 순서
 

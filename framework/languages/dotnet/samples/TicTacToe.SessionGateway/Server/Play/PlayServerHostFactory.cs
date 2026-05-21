@@ -33,6 +33,7 @@ public static class PlayServerHostFactory
                 {
                     server.Bind(topology.PlayChannelEndpoint);
                 });
+                channel.MapHandlerGroup("play");
             });
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
             options.UseRegistryActorRoutes("tictactoe");
@@ -52,6 +53,8 @@ public static class PlayServerHostFactory
                 spotMesh.AddNode(SampleNames.GameSpotNode, spot =>
                 {
                     spot.Bind(topology.PlaySpotEndpoint);
+                    spot.EnableRouter();
+                    spot.AcceptSpotRoutesFromChannel(SampleNames.RouterChannel);
                     spot.AddEntrySpot<TicTacToeEntrySpot>();
                     spot.AddSpotFactory<TicTacToeGameSpot>(SampleNames.GameSpotType);
                 });

@@ -5,6 +5,7 @@ using Zlink.Framework.Contracts.Handlers;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 
+[ZLinkHandlerGroup("play")]
 internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
 {
     [ZLinkRequest]

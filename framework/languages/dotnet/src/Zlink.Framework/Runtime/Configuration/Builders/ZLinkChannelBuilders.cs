@@ -19,6 +19,32 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
     {
         ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
     }
+
+    public void AddSendHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkSendHandler<TMessage>
+    {
+        registration.SendHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            typeof(TMessage),
+            null,
+            packetName));
+    }
+
+    public void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRequestHandler<TRequest, TReply>
+    {
+        registration.RequestHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            typeof(TRequest),
+            typeof(TReply),
+            packetName));
+    }
+
+    public void EnableSpotRouteEgress(string targetSpotNodeChannelName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetSpotNodeChannelName);
+        registration.SpotRouteEgress = new ZLinkSpotRouteEgressRegistration(targetSpotNodeChannelName);
+    }
 }
 
 internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registration)
@@ -39,6 +65,16 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
     public void MapHandlerGroup(string groupName)
     {
         ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
+    }
+
+    public void AddPublishHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkPublishHandler<TMessage>
+    {
+        registration.PublishHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            typeof(TMessage),
+            null,
+            packetName));
     }
 }
 

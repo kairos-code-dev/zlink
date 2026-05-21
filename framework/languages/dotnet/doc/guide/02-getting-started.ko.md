@@ -45,8 +45,11 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 `[ZLinkRequest]` handler는 attribute scan으로 발견되지만, **어느 channel로
-노출할지는** `EnableServer(...)`를 선언한 channel 등록이 소유한다. handler
-attribute는 channel 이름을 인자로 받지 않는다.
+노출할지는** channel 등록이 소유한다. `AddHandlersFromAssemblyOf(...)`만으로는
+handler가 열리지 않는다. 시작 예제처럼 handler class에 group을 붙이고
+`MapHandlerGroup(...)`으로 노출하거나, channel builder에서
+`AddRequestHandler<THandler, TRequest, TReply>()`처럼 개별 typed handler를 등록한다.
+handler attribute는 channel 이름을 인자로 받지 않는다.
 
 ### 2.3 호출자: outbound client
 

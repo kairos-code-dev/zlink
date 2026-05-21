@@ -46,9 +46,13 @@ internal sealed class ZLinkRouteChannelInitializer(
             router,
             discovery,
             handlers,
-            new ZLinkSessionActorDispatchRoutePacketDispatcher(
-                services.GetRequiredService<ZLinkFrameworkRuntime>(),
-                registration),
+            new ZLinkCompositeRouteInternalPacketDispatcher(
+                new ZLinkSessionActorDispatchRoutePacketDispatcher(
+                    services.GetRequiredService<ZLinkFrameworkRuntime>(),
+                    registration),
+                new ZLinkRoutedSpotRouteInternalPacketDispatcher(
+                    services.GetRequiredService<ZLinkFrameworkRuntime>(),
+                    registration)),
             state.StopTokenSource.Token);
     }
 

@@ -6,6 +6,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     {
         var globalSpotFactories = new HashSet<string>(StringComparer.Ordinal);
         var globalSpotPublisherChannels = new HashSet<string>(StringComparer.Ordinal);
+        var handlerGroups = BuildHandlerGroupCatalog(registration);
 
         if (registration.SpotDiscovery is { RequiresUseDiscovery: true, UseDiscoveryCalled: false })
         {
@@ -79,7 +80,11 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         foreach (var channel in registration.Channels.Values)
         {
-            ValidateChannel(channel, registration.Discovery is not null);
+            ValidateChannel(
+                channel,
+                registration.Discovery is not null,
+                IsAcceptedSpotRouteChannel(registration, channel.ChannelName),
+                handlerGroups);
         }
 
         foreach (var streamNode in registration.StreamNodes.Values)
@@ -103,6 +108,30 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 globalSpotFactories,
                 globalSpotPublisherChannels);
         }
+    }
+
+    private static IReadOnlyDictionary<string, HashSet<ZLinkMessageKind>> BuildHandlerGroupCatalog(
+        ZLinkFrameworkRegistration registration)
+    {
+        var groups = new Dictionary<string, HashSet<ZLinkMessageKind>>(StringComparer.Ordinal);
+        foreach (var assembly in registration.HandlerAssemblies)
+        {
+            foreach (var endpoint in ZLinkHandlerScanner.Scan(assembly))
+            {
+                foreach (var group in endpoint.Groups)
+                {
+                    if (!groups.TryGetValue(group, out var kinds))
+                    {
+                        kinds = [];
+                        groups.Add(group, kinds);
+                    }
+
+                    kinds.Add(endpoint.Kind);
+                }
+            }
+        }
+
+        return groups;
     }
 
     private static bool IsAcceptedSpotRouteChannel(

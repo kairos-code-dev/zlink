@@ -37,6 +37,7 @@ internal sealed class PlayServer(SampleSettings settings)
                 {
                     server.Bind(settings.PlayChannelEndpoint);
                 });
+                channel.MapHandlerGroup("play");
             });
 
             options.AddActorSessionBindingStore<InMemoryActorSessionBindingStore>();

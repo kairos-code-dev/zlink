@@ -93,6 +93,11 @@ capability 누락을 표현하지 않는다.
 | `IZLinkChannelConnectionManager` | channel 이름과 capability 를 호출 시점에 받는 관리 표면 | 대상 capability 가 없으면 호출 시 `ZLinkConfigurationException` |
 | `IZLinkMessageMetadataPolicy` | 메시지 metadata 복사 정책 | 항상 유효 |
 
+`IZLinkRoutedSpotClient`는 예외적으로 routed Spot egress capability 가 하나 이상 있을 때만
+등록한다. 이 client 의 호출 키는 target Spot channel 이 아니라
+`ViaEgressChannel(localEgressChannelName)`이고, 해당 local channel 에
+`EnableSpotRouteEgress(targetSpotNodeChannelName)` 설정이 있어야 한다.
+
 위 service 는 항상 주입 가능하더라도, 내부에서 없는 channel 을 자동으로 만들면
 안 된다. 없는 channel 또는 capability 는 즉시 설정 오류로 처리한다.
 
@@ -221,6 +226,7 @@ configuration error 로 표현한다.
 | `IZLinkClient.Send(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
 | `IZLinkEventPublisher.Publish(channelName, ...)` | channel 이 없거나 publisher capability 가 없음 | `ZLinkConfigurationException` |
 | `IZLinkRouteClient.SendTo(routerChannelId, ...)` | route mesh channel 이 없음 | `ZLinkConfigurationException` |
+| `IZLinkRoutedSpotClient.ViaEgressChannel(channelName).RequestSpot(...)` | local egress channel 이 없거나 routed Spot egress 설정이 없음 | `ZLinkConfigurationException` |
 | `IZLinkChannelConnectionManager.GetClientAsync(channelName)` | channel client capability 가 없음 | `ZLinkConfigurationException` |
 
 capability 누락은 `InvalidOperationException` 이 아니라 위 예외로 처리한다.

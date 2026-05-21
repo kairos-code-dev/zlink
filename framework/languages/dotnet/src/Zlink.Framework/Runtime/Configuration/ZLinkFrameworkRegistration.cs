@@ -96,6 +96,14 @@ internal sealed class ZLinkChannelRegistration
     public ZLinkChannelSubscriberCapabilityRegistration? Subscriber { get; set; }
 
     public HashSet<string> HandlerGroups { get; } = new(StringComparer.Ordinal);
+
+    public List<ZLinkChannelHandlerRegistration> SendHandlers { get; } = [];
+
+    public List<ZLinkChannelHandlerRegistration> RequestHandlers { get; } = [];
+
+    public List<ZLinkChannelHandlerRegistration> PublishHandlers { get; } = [];
+
+    public ZLinkSpotRouteEgressRegistration? SpotRouteEgress { get; set; }
 }
 
 internal sealed class ZLinkChannelServerCapabilityRegistration
@@ -159,6 +167,8 @@ internal sealed class ZLinkRouteChannelRegistration
 
     public HashSet<string> HandlerGroups { get; } = new(StringComparer.Ordinal);
 
+    public ZLinkSpotRouteEgressRegistration? SpotRouteEgress { get; set; }
+
 }
 
 internal sealed record ZLinkRouteHandlerRegistration(
@@ -166,6 +176,15 @@ internal sealed record ZLinkRouteHandlerRegistration(
     Type MessageType,
     Type? ReplyType,
     string? PacketName);
+
+internal sealed record ZLinkChannelHandlerRegistration(
+    Type HandlerType,
+    Type MessageType,
+    Type? ReplyType,
+    string? PacketName);
+
+internal sealed record ZLinkSpotRouteEgressRegistration(
+    string TargetSpotNodeChannelName);
 
 internal sealed class ZLinkSpotNodeRegistration
 {

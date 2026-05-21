@@ -381,6 +381,11 @@ void *zlink_discovery_new(
 | `FANOUT` | PUB/SUB fanout | `PUB`, `SUB` | `SUB`가 `PUB`에 connect |
 | `SPOT_MESH` | SpotNode 간 mesh | `SPOT` | SpotNode가 다른 SpotNode에 connect |
 
+`DEALER_MESH`는 request/send channel 로 사용할 수 있지만 Spot route ingress anchor 는
+아니다. Spot route ingress 는 target SpotNode 쪽에서 router-capable channel 을 accept 하는
+설정이 필요하다. source 쪽 routed Spot egress 는 별도 상위 framework 설정에서 local
+egress channel 과 target SpotNode ingress channel 이름을 함께 저장해야 한다.
+
 ## Role 파생
 
 raw socket을 Discovery에 attach하면 socket 타입에서 참여자 role을 파생한다.

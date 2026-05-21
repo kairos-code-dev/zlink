@@ -102,6 +102,8 @@ public interface IZLinkRouteChannelBuilder
 
     void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>;
+
+    void EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
 
 public interface IZLinkRouteMeshChannelBuilder : IZLinkRouteChannelBuilder
@@ -123,6 +125,14 @@ public interface IZLinkClientServerChannelBuilder
     void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null);
 
     void MapHandlerGroup(string groupName);
+
+    void AddSendHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkSendHandler<TMessage>;
+
+    void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
+
+    void EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
 
 public interface IZLinkFanoutChannelBuilder
@@ -132,6 +142,9 @@ public interface IZLinkFanoutChannelBuilder
     void EnableSubscriber(Action<IChannelSubscriberCapabilityBuilder>? configure = null);
 
     void MapHandlerGroup(string groupName);
+
+    void AddPublishHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkPublishHandler<TMessage>;
 }
 
 public interface IZLinkDealerMeshChannelBuilder

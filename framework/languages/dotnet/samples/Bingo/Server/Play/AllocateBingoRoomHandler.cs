@@ -2,6 +2,7 @@ using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Play;
 
+[ZLinkHandlerGroup("play")]
 internal sealed class AllocateBingoRoomHandler(BingoRoomDirectory rooms)
 {
     [ZLinkRequest]

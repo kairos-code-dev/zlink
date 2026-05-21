@@ -612,6 +612,12 @@ client/server channel의 server `ROUTER`와 route mesh channel의 `ROUTER`를 �
 지정할 수 있다. fanout channel과 dealer mesh channel은 router capability가 없으므로
 이 용도에 맞지 않는다.
 
+보내는 쪽에서는 이미 연결된 local egress channel 을 골라야 한다. target Spot 이름이나
+Spot rid 만으로 어떤 connection 을 사용할지 항상 알 수 없기 때문이다. framework 문서의
+`EnableSpotRouteEgress(targetSpotNodeChannelName)`과
+`ViaEgressChannel(localEgressChannelName)`은 이 구분을 사용자 코드에 드러내기 위한
+표면이다.
+
 core API를 직접 사용할 때는 `zlink_spot_node_connect_router_channel_peer()`로
 수동 endpoint에 연결하거나, router channel discovery view를
 `zlink_spot_node_attach_router_channel_discovery()`로 붙인다. 내부 routed endpoint나

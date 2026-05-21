@@ -118,6 +118,7 @@ public sealed class MonitoringIntegrationTests
             options.AddClientServerChannel("profile", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
+                channel.AddRequestHandler<MonitoringProfileHandler, MonitoringProfileRequest, MonitoringProfileReply>();
             });
         });
 
@@ -335,6 +336,24 @@ public sealed class MonitoringIntegrationTests
         {
             using var timeoutSource = new CancellationTokenSource(timeout);
             return await _completion.Task.WaitAsync(timeoutSource.Token);
+        }
+    }
+
+    public sealed record MonitoringProfileRequest(string Value);
+
+    public sealed record MonitoringProfileReply(string Value);
+
+    public sealed class MonitoringProfileHandler
+        : IZLinkRequestHandler<MonitoringProfileRequest, MonitoringProfileReply>
+    {
+        public ValueTask<MonitoringProfileReply> HandleAsync(
+            MonitoringProfileRequest request,
+            ZLinkRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new MonitoringProfileReply(request.Value));
         }
     }
 

@@ -5,6 +5,7 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 
+[ZLinkHandlerGroup("play")]
 internal sealed class CreateMatchRoomHandler(IZLinkSpotManager spots)
 {
     [ZLinkRequest]

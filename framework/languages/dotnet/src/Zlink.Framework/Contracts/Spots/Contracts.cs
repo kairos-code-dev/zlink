@@ -77,6 +77,23 @@ public interface IZLinkSpotClient
         TEvent message);
 }
 
+public interface IZLinkRoutedSpotClient
+{
+    IZLinkRoutedSpotChannelClient ViaEgressChannel(
+        string localEgressChannelName);
+}
+
+public interface IZLinkRoutedSpotChannelClient
+{
+    IZLinkSendCall SendSpot<TMessage>(
+        RoutingId spotRid,
+        TMessage message);
+
+    IZLinkRequestCall RequestSpot<TRequest>(
+        RoutingId spotRid,
+        TRequest request);
+}
+
 public interface IZLinkSpotMeshPublisherClient
 {
     IZLinkPublishCall Publish<TEvent>(

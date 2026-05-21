@@ -60,6 +60,11 @@ SPOT으로 보내는 routed 메시지는 최종적으로 `ROUTER` socket capabil
 - `AddFanoutChannel(...)`: PUB/SUB 경로이므로 SPOT routed send 대상이 아니다.
 - `AddDealerMeshChannel(...)`: DEALER 경로이므로 router anchor가 아니다.
 
+source 쪽 egress 설정은 target SpotNode ingress 설정과 별도다. framework 같은 상위
+계층은 source process 가 보유한 local egress channel 을 명시하고, 그 channel 설정에
+target SpotNode 가 accept 한 ingress channel 이름을 저장할 수 있다. 이때 target Spot 은
+Spot rid 로 지정하며, target 정보만으로 local connection 을 역조회하지 않는다.
+
 현재 빠진 부분은 아래 연결 관계다.
 
 ```text

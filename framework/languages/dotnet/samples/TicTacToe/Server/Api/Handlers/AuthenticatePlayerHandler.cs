@@ -1,5 +1,6 @@
 namespace TicTacToe.Server.Api.Handlers;
 
+[ZLinkHandlerGroup("api")]
 sealed class AuthenticatePlayerHandler(ILogger<AuthenticatePlayerHandler> logger)
 {
     [ZLinkRequest]

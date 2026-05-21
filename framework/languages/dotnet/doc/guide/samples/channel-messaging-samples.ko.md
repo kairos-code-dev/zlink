@@ -623,6 +623,9 @@ public sealed class UserCacheRefreshedEvent
 - runtime 은 channel 마다 선언한 capability 에 맞는 runtime 만 만든다.
 - `account`, `profile` 처럼 client capability 를 둔 channel 은, 그 channel 전용의
   `Discovery` 와 outbound `DEALER(client)` socket 을 가진다.
+- dealer mesh channel 도 request/send 호출 표면은 `IZLinkClient`를 그대로 쓴다. 차이는
+  channel 등록이 `AddDealerMeshChannel(...)`이고, runtime 이 그 channel 의 mesh DEALER 를
+  선택한다는 점이다.
 - 기본 packet key 는 payload 타입 이름이다. timeout 과 packet override 는 builder 에
   이어 붙인다.
 - 같은 `IZLinkClient` 를, ZLink handler 와 HTTP handler 가 함께 쓴다.

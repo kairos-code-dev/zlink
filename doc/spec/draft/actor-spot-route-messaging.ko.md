@@ -424,6 +424,12 @@ Actor route를 사용하는 흐름은 세 단계다.
 
 1. `actor_id`로 현재 Actor 위치를 조회한다.
 2. 조회된 `node_rid + current_spot_rid`로 기존 Spot routed message를 보낸다.
+
+framework 같은 상위 계층에서 caller 가 직접 node rid 를 다루지 않는 표면을 제공할 때도,
+source 쪽 transport 선택은 별도 설정으로 남겨야 한다. caller 는 사용할 local egress
+channel 을 명시하고, 그 egress 설정은 target SpotNode 가 accept 한 ingress channel 이름을
+가진다. target Actor/Spot route 조회 결과는 delivery 대상 정보이고, source process 의
+connection 선택 정보를 대신하지 않는다.
 3. 필요하면 `current_spot_kind`로 Entry Spot과 user Spot을 구분한다.
 
 ```mermaid

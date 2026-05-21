@@ -75,6 +75,13 @@ public sealed record TicTacToeGameJoinReq(
 public sealed record TicTacToeGameJoinRes(GameState State);
 ```
 
+Session/API handler 가 Play 서버의 room Spot 으로 직접 request 해야 하는 흐름은
+channel-to-channel 호출과 구분한다. 다른 server channel 로 보내는 일반 request 는
+`IZLinkClient.Request(channelName, ...)`를 쓰고, target Spot 으로 가는 request 는
+`IZLinkRoutedSpotClient.ViaEgressChannel(localEgressChannelName).RequestSpot(...)`을
+쓴다. egress channel 등록에는 `EnableSpotRouteEgress(targetSpotNodeChannelName)`으로
+Play 서버 SpotNode가 accept 한 ingress channel 이름을 명시한다.
+
 server push 와 state DTO 는 다음과 같다.
 
 ```csharp

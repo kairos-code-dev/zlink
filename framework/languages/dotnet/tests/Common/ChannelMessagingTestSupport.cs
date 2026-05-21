@@ -313,6 +313,7 @@ public sealed class FilterOrderRecorder
     public ConcurrentQueue<string> Entries { get; } = [];
 }
 
+[ZLinkHandlerGroup("profile")]
 public sealed class ProfileHandlers(ProfileCommandRecorder recorder)
 {
     [ZLinkRequest]
@@ -342,6 +343,7 @@ public sealed class ProfileHandlers(ProfileCommandRecorder recorder)
     }
 }
 
+[ZLinkHandlerGroup("profile-events")]
 public sealed class ProfileEventHandlers(ProfileEventRecorder recorder)
 {
     [ZLinkPublish]
@@ -357,6 +359,7 @@ public sealed class ProfileEventHandlers(ProfileEventRecorder recorder)
     }
 }
 
+[ZLinkHandlerGroup("filter-order")]
 public sealed class FilterOrderHandlers(FilterOrderRecorder recorder)
 {
     [ZLinkRequest]

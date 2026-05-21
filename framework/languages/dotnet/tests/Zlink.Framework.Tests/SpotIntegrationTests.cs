@@ -773,6 +773,183 @@ public sealed partial class SpotIntegrationTests
     }
 
     [Fact]
+    public async Task RoutedSpotClient_RequestSpot_UsesExplicitClientServerEgressChannel()
+    {
+        var apiEndpoint = GetFreeTcpEndpoint();
+        var playRouteEndpoint = GetFreeTcpEndpoint();
+        var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var targetSpotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("egress-spot-01"));
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<SpotRouteTransportRecorder>();
+        builder.Services.AddScoped<RoutedSpotApiHandler>();
+        builder.Services.AddScoped<SpotRouteTargetRequestHandler>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddClientServerChannel("api", channel =>
+            {
+                channel.EnableServer(server => server.Bind(apiEndpoint));
+                channel.EnableClient(client =>
+                {
+                    client.UseManualConnections(peers => peers.Connect(apiEndpoint));
+                });
+                channel.AddRequestHandler<RoutedSpotApiHandler, RoutedSpotApiRequest, RoutedSpotApiReply>();
+            });
+            options.AddClientServerChannel("gateway.client", channel =>
+            {
+                channel.EnableClient(client =>
+                {
+                    client.UseManualConnections(peers => peers.Connect(playRouteEndpoint));
+                });
+                channel.EnableSpotRouteEgress("play.route");
+            });
+            options.AddClientServerChannel("play.route", channel =>
+            {
+                channel.EnableServer(server =>
+                {
+                    server.Bind(playRouteEndpoint);
+                    server.ConfigureRouting(routing =>
+                    {
+                        routing.RoutingId = RoutingId.FromBytes(
+                            Encoding.UTF8.GetBytes("egress-target"));
+                    });
+                });
+            });
+            options.UseSpotDiscovery("spot.route.egress", _ => { });
+            options.AddSpotNode("route-target-node", spot =>
+            {
+                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter(router =>
+                {
+                    router.ConfigureRouting(routing =>
+                    {
+                        routing.RoutingId = RoutingId.FromBytes(
+                            Encoding.UTF8.GetBytes("egress-node"));
+                    });
+                });
+                spot.AcceptSpotRoutesFromChannel(
+                    "play.route",
+                    routes => routes.UseManualConnections(
+                        peers => peers.Connect(playRouteEndpoint)));
+                spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+        try
+        {
+            var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+            var client = host.Services.GetRequiredService<IZLinkClient>();
+            var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+            var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
+            var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
+            _ = await manager.GetOrCreateAsync("route-target", targetSpotRid);
+            await WaitForAcceptedRoutePeerAsync(nodeRuntime, "play.route");
+
+            var reply = await RetryAsync(
+                async () => await client
+                    .Request("api", new RoutedSpotApiRequest(targetSpotRid.ToBytes().ToArray(), "egress-request"))
+                    .Timeout(TimeSpan.FromMilliseconds(500))
+                    .SubmitAsync<RoutedSpotApiReply>(CancellationToken.None)
+                    .ConfigureAwait(false),
+                result => result.Value == "reply:egress-request",
+                TimeSpan.FromSeconds(5));
+
+            Assert.Equal("reply:egress-request", reply.Value);
+            Assert.Contains("egress-request", recorder.Requests);
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task RoutedSpotClient_SendSpot_UsesExplicitRouteMeshEgressChannel()
+    {
+        var gatewayRouteEndpoint = GetFreeTcpEndpoint();
+        var playRouteEndpoint = GetFreeTcpEndpoint();
+        var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var targetSpotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("egress-spot-02"));
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<SpotRouteTransportRecorder>();
+        builder.Services.AddScoped<SpotRouteTargetCommandHandler>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddRouteMeshChannel("gateway.route", channel =>
+            {
+                channel.Bind(gatewayRouteEndpoint);
+                channel.ConfigureRouting(routing =>
+                {
+                    routing.RoutingId = RoutingId.FromBytes(
+                        Encoding.UTF8.GetBytes("egress-gateway"));
+                });
+                channel.UseManualConnections(peers => peers.Connect(playRouteEndpoint));
+                channel.EnableSpotRouteEgress("play.route");
+            });
+            options.AddRouteMeshChannel("play.route", channel =>
+            {
+                channel.Bind(playRouteEndpoint);
+                channel.ConfigureRouting(routing =>
+                {
+                    routing.RoutingId = RoutingId.FromBytes(
+                        Encoding.UTF8.GetBytes("egress-target"));
+                });
+            });
+            options.UseSpotDiscovery("spot.route.egress", _ => { });
+            options.AddSpotNode("route-target-node", spot =>
+            {
+                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter(router =>
+                {
+                    router.ConfigureRouting(routing =>
+                    {
+                        routing.RoutingId = RoutingId.FromBytes(
+                            Encoding.UTF8.GetBytes("egress-node"));
+                    });
+                });
+                spot.AcceptSpotRoutesFromChannel(
+                    "play.route",
+                    routes => routes.UseManualConnections(
+                        peers => peers.Connect(playRouteEndpoint)));
+                spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+        try
+        {
+            var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+            var spots = host.Services.GetRequiredService<IZLinkRoutedSpotClient>();
+            var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+            var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
+            var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
+            _ = await manager.GetOrCreateAsync("route-target", targetSpotRid);
+            await WaitForAcceptedRoutePeerAsync(nodeRuntime, "play.route");
+
+            await RetryAsync(
+                async () =>
+                {
+                    await spots
+                        .ViaEgressChannel("gateway.route")
+                        .SendSpot(targetSpotRid, new SpotRouteTargetCommand("route-egress-send"))
+                        .Submit(CancellationToken.None)
+                        .ConfigureAwait(false);
+                    return recorder.Commands.Contains("route-egress-send");
+                },
+                static result => result,
+                TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
     public async Task RegistryActorSessionBindings_Preserve_Reconnected_Binding_On_Stale_Unbind()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();
@@ -1702,6 +1879,7 @@ public sealed partial class SpotIntegrationTests
             options.AddClientServerChannel("actor-pre-api", channel =>
             {
                 channel.EnableServer(server => server.Bind(preJoinApi));
+                channel.MapHandlerGroup("actor-context-channel");
                 channel.EnableClient(client =>
                 {
                     client.UseManualConnections(connections => connections.Connect(preJoinApi));
@@ -1710,6 +1888,7 @@ public sealed partial class SpotIntegrationTests
             options.AddClientServerChannel("actor-post-api", channel =>
             {
                 channel.EnableServer(server => server.Bind(postJoinApi));
+                channel.MapHandlerGroup("actor-context-channel");
             });
             options.AddSpotNode("actor-node", spot =>
             {
@@ -1838,6 +2017,7 @@ public sealed partial class SpotIntegrationTests
             options.AddClientServerChannel("orders", channel =>
             {
                 channel.EnableServer(server => server.Bind(ordersServer));
+                channel.MapHandlerGroup("stage-orders");
             });
 
             options.AddSpotNode("stage-node", spot =>
@@ -2939,6 +3119,10 @@ public sealed partial class SpotIntegrationTests
 
     public sealed record SpotRouteRequestCallerCommand(string Value);
 
+    public sealed record RoutedSpotApiRequest(byte[] SpotRid, string Value);
+
+    public sealed record RoutedSpotApiReply(string Value);
+
     public sealed class SpotRouteTargetSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         public IZLinkSpotContext Context { get; } = context;
@@ -3026,6 +3210,27 @@ public sealed partial class SpotIntegrationTests
         }
     }
 
+    public sealed class RoutedSpotApiHandler(IZLinkRoutedSpotClient spots)
+        : IZLinkRequestHandler<RoutedSpotApiRequest, RoutedSpotApiReply>
+    {
+        public async ValueTask<RoutedSpotApiReply> HandleAsync(
+            RoutedSpotApiRequest request,
+            ZLinkRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            var reply = await spots
+                .ViaEgressChannel("gateway.client")
+                .RequestSpot(
+                    RoutingId.FromBytes(request.SpotRid),
+                    new SpotRouteTargetRequest(request.Value))
+                .Timeout(TimeSpan.FromMilliseconds(500))
+                .SubmitAsync<SpotRouteTargetReply>(cancellationToken)
+                .ConfigureAwait(false);
+            return new RoutedSpotApiReply(reply.Value);
+        }
+    }
+
     public sealed class FixedSpotRouteResolver : IZLinkSpotRouteResolver
     {
         private ZLinkSpotRoute? _route;
@@ -3079,6 +3284,7 @@ public sealed partial class SpotIntegrationTests
 
     public sealed record ActorContextChannelRes(string Value);
 
+    [ZLinkHandlerGroup("actor-context-channel")]
     public sealed class ActorContextChannelHandler
     {
         [ZLinkRequest]
@@ -3093,6 +3299,7 @@ public sealed partial class SpotIntegrationTests
         }
     }
 
+    [ZLinkHandlerGroup("stage-orders")]
     public sealed class StageOrdersHandler(OrdersRecorder recorder)
     {
         [ZLinkSend]

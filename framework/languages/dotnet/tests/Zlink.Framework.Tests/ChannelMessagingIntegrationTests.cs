@@ -38,6 +38,7 @@ public sealed class ChannelMessagingIntegrationTests
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
+                channel.MapHandlerGroup("profile");
             });
         });
         var clientBuilder = Host.CreateApplicationBuilder();
@@ -93,6 +94,7 @@ public sealed class ChannelMessagingIntegrationTests
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
+                channel.MapHandlerGroup("profile");
             });
         });
         var clientBuilder = Host.CreateApplicationBuilder();
@@ -151,6 +153,7 @@ public sealed class ChannelMessagingIntegrationTests
                 {
                     subscriber.UseManualConnections(connections => connections.Connect(pubEndpoint));
                 });
+                channel.MapHandlerGroup("profile-events");
             });
         });
         var publisherBuilder = Host.CreateApplicationBuilder();
@@ -202,6 +205,7 @@ public sealed class ChannelMessagingIntegrationTests
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
+                channel.MapHandlerGroup("filter-order");
             });
         });
         var clientBuilder = Host.CreateApplicationBuilder();
@@ -250,6 +254,7 @@ public sealed class ChannelMessagingIntegrationTests
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
+                channel.MapHandlerGroup("profile");
             });
         });
         var httpBuilder = Host.CreateApplicationBuilder();

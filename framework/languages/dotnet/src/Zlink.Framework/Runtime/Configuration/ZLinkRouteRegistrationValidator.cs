@@ -23,6 +23,13 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 routed.ManualConnections);
         }
 
+        if (routed.SpotRouteEgress is not null
+            && string.IsNullOrWhiteSpace(routed.SpotRouteEgress.TargetSpotNodeChannelName))
+        {
+            throw new ZLinkConfigurationException(
+                $"Route channel '{routed.RouterChannelId}' routed SPOT egress target channel must not be empty.");
+        }
+
         ValidateUniqueRouteHandlers(
             routed.RouterChannelId,
             ZLinkMessageKind.Command,

@@ -1,5 +1,6 @@
 using Bingo.Server.Infrastructure.Configuration;
 using Bingo.Shared.Configuration;
+using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 
@@ -18,6 +19,8 @@ public static class ApiServerHostFactory
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableServer(server => server.Bind(topology.ApiChannelEndpoint));
+                channel.AddRequestHandler<AuthenticatePlayerHandler, AuthenticatePlayerReq, AuthenticatePlayerRes>();
+                channel.AddRequestHandler<MatchBingoHandler, MatchBingoApiReq, MatchBingoApiRes>();
             });
             options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
             {

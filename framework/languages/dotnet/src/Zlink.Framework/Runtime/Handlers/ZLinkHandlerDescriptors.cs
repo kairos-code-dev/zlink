@@ -18,7 +18,8 @@ internal sealed record ZLinkHandlerEndpointDescriptor(
     Type? ReplyType,
     Type? ContextType,
     bool HasCancellationToken,
-    IReadOnlySet<string> Groups);
+    IReadOnlySet<string> Groups,
+    string? ExplicitChannelName);
 
 internal readonly record struct ZLinkHandlerSelectionKey(
     ZLinkMessageKind Kind,

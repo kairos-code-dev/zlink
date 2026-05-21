@@ -32,6 +32,7 @@ public static class PlayServerHostFactory
             options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
             {
                 channel.EnableServer(server => server.Bind(topology.PlayChannelEndpoint));
+                channel.MapHandlerGroup("play");
             });
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
@@ -52,6 +53,8 @@ public static class PlayServerHostFactory
                 spotMesh.AddNode(SampleNames.RoomSpotNode, spot =>
                 {
                     spot.Bind(topology.PlaySpotEndpoint);
+                    spot.EnableRouter();
+                    spot.AcceptSpotRoutesFromChannel(SampleNames.RouterChannel);
                     spot.AddEntrySpot<BingoEntrySpot>();
                     spot.AddSpotFactory<BingoRoomSpot>(SampleNames.RoomSpotType);
                 });

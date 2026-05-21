@@ -38,6 +38,15 @@ internal static class ZLinkChannelReplyWriter
         ReplyParts(router, routingId, requestSeq, replyParts);
     }
 
+    public static void ReplyRawParts(
+        IZLinkBackendRouterSocket router,
+        RoutingId routingId,
+        ulong? requestSeq,
+        IReadOnlyList<Message> replyParts)
+    {
+        ReplyParts(router, routingId, requestSeq, replyParts);
+    }
+
     private static void ReplyParts(
         IZLinkBackendRouterSocket router,
         RoutingId routingId,

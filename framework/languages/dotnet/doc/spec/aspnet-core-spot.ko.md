@@ -1133,6 +1133,43 @@ node.AcceptSpotRoutesFromChannel("api", routes =>
 수신 관계에서 수동 연결과 discovery 연결을 섞으면 startup validation 오류다.
 fanout channel과 dealer mesh channel은 router capability가 없으므로 지정할 수 없다.
 
+`AcceptSpotRoutesFromChannel(...)`은 application handler mapping 이 아니다. 이 설정은
+target SpotNode 쪽 ingress channel 의 router-capable socket 과 SpotNode router 사이에
+transport peer 를 만든다. handler group 이 없어도 transport 전용 channel 로 사용할 수
+있고, 반대로 handler group 을 매핑해도 Spot route ingress 가 자동으로 켜지지는 않는다.
+
+Spot callback 밖의 channel handler, HTTP handler, background service 에서 target Spot 으로
+보내려면 `IZLinkRoutedSpotClient`를 사용한다. caller 는 target Spot 정보만 넘겨서 runtime
+이 transport 를 역조회하게 하지 않고, 사용할 local egress channel 을 먼저 고른다.
+
+```csharp
+var reply = await spots
+    .ViaEgressChannel("gateway.client")
+    .RequestSpot(RoutingId.Of("room-123"), new AllocateRoomReq(playerId))
+    .SubmitAsync<AllocateRoomRes>(cancellationToken);
+```
+
+local egress channel 은 client-server channel 의 client DEALER 이거나 route mesh channel 일
+수 있다. 두 경우 모두 channel builder 에 target SpotNode ingress channel 이름을 명시한다.
+
+```csharp
+options.AddClientServerChannel("gateway.client", channel =>
+{
+    channel.EnableClient(client =>
+    {
+        client.UseManualConnections(peers =>
+        {
+            peers.Connect("tcp://play-node-1:7201");
+        });
+    });
+    channel.EnableSpotRouteEgress("play.route");
+});
+```
+
+`EnableSpotRouteEgress("play.route")`의 값은 local channel 이름이 아니다. target
+SpotNode process 에서 `AcceptSpotRoutesFromChannel("play.route")`로 연 ingress channel
+이름이다. target Spot 은 string overload 없이 `RoutingId` 로 지정한다.
+
 ## 12. 회귀 테스트
 
 이 절은 SPOT 문서가 다룬 항목들을 어떤 테스트로 검증하는지 한꺼번에 본다.

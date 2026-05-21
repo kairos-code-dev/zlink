@@ -457,7 +457,9 @@ outbound-only 앱이라면, server capability 가 있는 channel 자체를 두�
 수 있다는 점, 그리고 dispatch key 가 어떻게 구성되는지를 정리한다.
 
 일반 channel messaging 의 handler 레지스트리는 **전역 packet table 이 아니다**. 각
-channel 은 자기에게 매핑된 handler group 안에서만 packet 을 찾는다.
+channel 은 자기에게 매핑된 handler group 또는 개별 typed handler registration 안에서만
+packet 을 찾는다. `AddHandlersFromAssemblyOf(...)`는 handler 후보를 찾는 단계이지,
+그 handler 를 모든 channel 에 여는 단계가 아니다.
 
 request / command dispatch key 는 다음 조합이다.
 
@@ -468,10 +470,10 @@ request / command dispatch key 는 다음 조합이다.
 
 내부 매핑 단계는 다음 순서로 진행된다.
 
-1. channel 등록 시점에 `channel.MapHandlerGroup("api")`로 그 channel의 후보 그룹
-   집합을 고정한다.
-2. 그 그룹에 속한 handler 클래스의 메서드들을 packet kind / packet name 기준으로
-   collect 한다.
+1. channel 등록 시점에 `channel.MapHandlerGroup("api")` 또는
+   `channel.AddRequestHandler<...>()` 같은 개별 registration 으로 노출 대상을 고정한다.
+2. group 에 속한 handler 와 개별 typed handler 를 packet kind / packet name 기준으로
+   collect 한다. 둘 다 없으면 그 channel 의 application handler 후보는 0개다.
 3. 메시지가 들어오면 그 channel의 후보 메서드 중 packet kind + packet name이 맞는
    하나를 골라 dispatch 한다.
 
@@ -709,7 +711,7 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 
 | 인터페이스 | 대응 channel 타입 | 호출 키 | 용도 |
 | --- | --- | --- | --- |
-| `IZLinkClient` | `AddClientServerChannel` | `channelName` | 1:1 request / send (DEALER 측) |
+| `IZLinkClient` | `AddClientServerChannel`, `AddDealerMeshChannel` | `channelName` | 1:1 request / send (DEALER 측) |
 | `IZLinkEventPublisher` | `AddFanoutChannel` | `channelName + topic` | event publish (PUB 측) |
 
 두 client 모두 `IZLinkClient` 와 같은 fluent builder 결을 따른다. 사용 패턴은 다음과
@@ -724,7 +726,9 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 ### 5.2 IZLinkClient
 
 `AddClientServerChannel(...)` 로 선언한 client-server channel 에 1:1 호출을 보낼 때
-쓴다. Discovery 가 대상 노드를 골라 주므로, 호출자는 **channel 이름** 만 넘기면 된다.
+쓴다. dealer mesh channel 도 같은 request/send 표면을 쓴다. 호출자는 **channel 이름**
+만 넘기고, runtime 은 그 이름에 해당하는 등록과 runtime bundle 을 찾아 client-server
+DEALER 또는 dealer mesh DEALER 를 선택한다.
 
 - 기본 packet key 는 request / message 타입 이름이다.
 - 특정 channel 의 ROUTER (server) 를 `rid` 로 직접 지정해서 호출하는 표면은 두지
@@ -735,6 +739,8 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
   충분히 동작한다.
 - 다만 그 경우에도 한 가지는 필요하다. **어떤** remote channel 에 접근할지를, startup
   단계에서 미리 한 번 선언해 두어야 한다.
+- channel 이 없거나 client capability 가 없으면 runtime 은 socket 을 새로 만들지 않고
+  `ZLinkConfigurationException` 으로 실패한다.
 
 ### 5.3 IZLinkEventPublisher
 

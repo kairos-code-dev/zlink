@@ -7,10 +7,11 @@ internal sealed class ZLinkChannelMessagePump
     public ZLinkChannelMessagePump(
         ZLinkHandlerRegistry handlerRegistry,
         ZLinkHandlerDispatcher dispatcher,
-        ZLinkFrameworkRegistration registration)
+        ZLinkFrameworkRegistration registration,
+        ZLinkFrameworkRuntime runtime)
     {
         _receiveLoop = new ZLinkChannelReceiveLoop(
-            new ZLinkChannelPacketDispatcher(handlerRegistry, dispatcher, registration));
+            new ZLinkChannelPacketDispatcher(handlerRegistry, dispatcher, registration, runtime));
     }
 
     public Task RunServerLoopAsync(

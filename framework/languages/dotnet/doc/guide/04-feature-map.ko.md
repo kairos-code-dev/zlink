@@ -23,6 +23,7 @@
 | 서버 간 단방향 send | 낮음 | 응답이 필요 없는 작업 위임/통지 | [channel-messaging](../spec/aspnet-core-channel-messaging.ko.md) | [channel 샘플](./samples/channel-messaging-samples.ko.md) |
 | pub/sub 이벤트 fan-out | 낮음 | domain event를 여러 구독자에게 전파 | [channel-messaging](../spec/aspnet-core-channel-messaging.ko.md) | [channel 샘플](./samples/channel-messaging-samples.ko.md) |
 | SPOT(room/stage/zone) | 중간 | 동적 생성·소멸되는 논리 노드 단위 라우팅 | [spot](../spec/aspnet-core-spot.ko.md) | [SPOT 샘플](./samples/spot-samples.ko.md) |
+| channel handler에서 target Spot 호출 | 중간 | HTTP/API/session gateway handler가 current Spot 없이 특정 Spot에 request/send | [spot](../spec/aspnet-core-spot.ko.md) | [SPOT 샘플](./samples/spot-samples.ko.md) |
 | Stage wrapper | 중간 | `playhouse` Stage류를 SPOT 위에 얹을 때 | [stage-wrapper-on-spot](../spec/stage-wrapper-on-spot.ko.md) | [SPOT 샘플](./samples/spot-samples.ko.md) |
 | actor / Entry Spot | 높음 | session과 묶인 actor로 packet 자동 dispatch | [actor](../spec/aspnet-core-actor.ko.md) | [tictactoe](./samples/tictactoe-game-sample.ko.md) |
 | session actor dispatch | 높음 | client 연결 서버와 actor 서버를 분리 | [session-actor-dispatch](../spec/session-actor-dispatch.ko.md) | [tictactoe](./samples/tictactoe-game-sample.ko.md) |
@@ -38,6 +39,8 @@
 - **이벤트를 흩뿌린다** → pub/sub.
 - **방/판/존 같은 동적 단위가 있다** → SPOT. 그 안에 참가자별 상태/세션이
   있으면 actor까지.
+- **일반 handler에서 Spot으로 보내야 한다** → `IZLinkRoutedSpotClient`를 쓰고,
+  `ViaEgressChannel(...)`에 사용할 local egress channel 을 명시한다.
 - **외부 게임/모바일 client를 직접 받는다** → STREAM(서버) + Stream
   Connector(client).
 - **연결 서버와 로직 서버를 나눠야 한다(재접속 이전성)** → session actor

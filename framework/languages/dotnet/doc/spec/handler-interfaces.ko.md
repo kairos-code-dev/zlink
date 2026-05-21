@@ -93,6 +93,7 @@
 | client | `IZLinkClientServerClient` | client-server channel outbound client base | 5.1 |
 | client | `IZLinkClient` | 서버 간 outbound client | 5.1 |
 | client | `IZLinkSpotClient` | SPOT outbound client | 5.2 |
+| client | `IZLinkRoutedSpotClient` | current Spot 없이 명시한 egress channel 로 target Spot 호출 | 5.2.1 |
 | client | `IZLinkSpotMeshPublisherClient` | spot mesh publisher client base | 5.3 |
 | client | `IZLinkSpotPublisherClient` | spot channel publish client | 5.3 |
 | client | `IZLinkFanoutPublisher` | fanout publisher base | 5.4 |
@@ -2021,6 +2022,44 @@ framework 초안에서 말하는 "spot 용 함수" 와 "channelName 으로 호�
 `IZLinkClient` 와 `IZLinkSpotClient` 는 상하 관계가 아니다. 두 interface
 는 서로 다른 하부 C API 를 감싸며, 각자 독립적인 구현을 가진다.
 
+#### 5.2.1 IZLinkRoutedSpotClient
+
+`IZLinkRoutedSpotClient` 는 active Spot callback 밖에서 target Spot 으로
+send/request 할 때 사용한다. 이 interface 는 spot name 으로 transport 를
+찾지 않는다. 호출자는 먼저 `ViaEgressChannel(...)`로 source process 가 이미
+보유한 local egress channel 을 고른다. target 은 `RoutingId` 로만 받는다.
+string 이름이 필요하면 호출자가 `RoutingId.Of(...)` 같은 변환을 먼저 수행한다.
+
+```csharp
+public interface IZLinkRoutedSpotClient
+{
+    IZLinkRoutedSpotChannelClient ViaEgressChannel(
+        string localEgressChannelName);
+}
+
+public interface IZLinkRoutedSpotChannelClient
+{
+    IZLinkSendCall SendSpot<TMessage>(
+        RoutingId spotRid,
+        TMessage message);
+
+    IZLinkRequestCall RequestSpot<TRequest>(
+        RoutingId spotRid,
+        TRequest request);
+}
+```
+
+`localEgressChannelName`은 target Spot 의 channel 이름이 아니다. 이 값은
+source process 안에 등록된 client-server client channel 또는 route mesh channel
+이름이다. 해당 channel 은 builder 에서
+`EnableSpotRouteEgress(targetSpotNodeChannelName)`으로 target SpotNode 가
+`AcceptSpotRoutesFromChannel(...)`로 연 ingress channel 이름을 저장해야 한다.
+
+이 분리를 두는 이유는 target Spot rid 만으로는 어떤 connection 을 타야 하는지
+항상 알 수 없기 때문이다. 같은 process 가 client-server egress 와 route mesh
+egress 를 둘 다 갖고 있을 수 있으므로, caller 가 사용할 local egress channel 을
+명시해야 한다.
+
 ### 5.3 IZLinkSpotPublisherClient
 
 `IZLinkSpotClient.Publish(...)` 와 `IZLinkSpotPublisherClient` 는 사용
@@ -2531,6 +2570,8 @@ public interface IZLinkRouteChannelBuilder
 
     void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>;
+
+    void EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
 
 public interface IZLinkStreamNodeBuilder
@@ -2550,6 +2591,14 @@ public interface IZLinkClientServerChannelBuilder
         Action<IChannelClientCapabilityBuilder>? configure = null);
 
     void MapHandlerGroup(string groupName);
+
+    void AddSendHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkSendHandler<TMessage>;
+
+    void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
+
+    void EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
 
 public interface IZLinkFanoutChannelBuilder
@@ -2561,6 +2610,9 @@ public interface IZLinkFanoutChannelBuilder
         Action<IChannelSubscriberCapabilityBuilder>? configure = null);
 
     void MapHandlerGroup(string groupName);
+
+    void AddPublishHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkPublishHandler<TMessage>;
 }
 
 public interface IZLinkDealerMeshChannelBuilder
@@ -3879,6 +3931,7 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 | `IZLinkEventPublisher`, `IZLinkFanoutPublisher` | 항상 등록한다. publisher capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkChannelConnectionManager` | 항상 등록한다. 대상 channel capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotConnectionManager` | `SpotNode` 가 하나 이상 있을 때 등록한다 |
+| `IZLinkRoutedSpotClient` | `EnableSpotRouteEgress(...)`가 켜진 channel 또는 route mesh channel 이 하나 이상 있을 때 등록한다 |
 | `IZLinkSpotPublisherClient`, `IZLinkSpotMeshPublisherClient` | Spot publisher client capability 가 하나 이상 있을 때 등록한다 |
 | `IZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록한다 |
 | `IZLinkSessionProxyFactory`, `IZLinkActorSessionClient` | actor-session binding store 와 route mesh channel 이 모두 있을 때 등록한다 |

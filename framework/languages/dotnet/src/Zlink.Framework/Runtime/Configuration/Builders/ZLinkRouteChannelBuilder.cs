@@ -58,4 +58,9 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
             packetName));
     }
 
+    public void EnableSpotRouteEgress(string targetSpotNodeChannelName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetSpotNodeChannelName);
+        registration.SpotRouteEgress = new ZLinkSpotRouteEgressRegistration(targetSpotNodeChannelName);
+    }
 }

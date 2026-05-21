@@ -348,6 +348,11 @@ target node routing id와 target spot routing id를 지정해 local `Spot`으로
   routing id로 연결을 끊는다. SPOT mesh peer와 router channel peer는 별도 peer
   종류로 조회된다.
 
+이 계약은 target SpotNode 쪽 ingress 연결만 정의한다. framework 의 handler group,
+DI client, local egress channel 선택은 core 서비스 계약이 아니다. 상위 계층이
+egress client 를 제공하더라도, core에는 router channel peer와 routed Spot
+send/request 오류 의미만 반영한다.
+
 ### Channel 호출용 socket 등록
 
 ```c

@@ -4,6 +4,7 @@ using Zlink.Framework.Contracts.Actors;
 
 namespace Bingo.Server.Play;
 
+[ZLinkHandlerGroup("play")]
 internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
 {
     [ZLinkRequest]

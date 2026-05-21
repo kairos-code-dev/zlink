@@ -820,6 +820,141 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void AddZLinkFramework_Throws_WhenServerHasNoHandlerExposure()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddClientServerChannel("profile", channel =>
+                {
+                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                });
+            }));
+
+        Assert.Contains("must map a handler group", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenFanoutSubscriberHasNoHandlerExposure()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.AddFanoutChannel("profile.events", channel =>
+                {
+                    channel.EnableSubscriber();
+                });
+            }));
+
+        Assert.Contains("must map a publish handler group", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenMappedHandlerGroupIsUnknown()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddHandlersFromAssemblyOf<RegistrationValidationTests>();
+                options.AddClientServerChannel("profile", channel =>
+                {
+                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                    channel.MapHandlerGroup("missing-group");
+                });
+            }));
+
+        Assert.Contains("maps unknown handler group 'missing-group'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenMappedHandlerGroupHasIncompatibleKind()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddHandlersFromAssemblyOf<RegistrationValidationTests>();
+                options.AddClientServerChannel("profile", channel =>
+                {
+                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                    channel.MapHandlerGroup("validation-publish");
+                });
+            }));
+
+        Assert.Contains("incompatible handler kind", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_AllowsTypedHandlerRegistrationWithoutHandlerGroup()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddClientServerChannel("profile", channel =>
+            {
+                channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                channel.AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        var channel = Assert.Single(registration.Channels.Values);
+
+        Assert.Empty(channel.HandlerGroups);
+        Assert.Single(channel.RequestHandlers);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenClientServerSpotRouteEgressHasNoClient()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddClientServerChannel("gateway", channel =>
+                {
+                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                    channel.EnableSpotRouteEgress("play.route");
+                });
+            }));
+
+        Assert.Contains("routed SPOT egress requires client capability", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RoutedSpotClient_PublicSurface_RequiresExplicitEgressAndRoutingIdTarget()
+    {
+        Assert.NotNull(typeof(IZLinkRoutedSpotClient).GetMethod(
+            nameof(IZLinkRoutedSpotClient.ViaEgressChannel),
+            [typeof(string)]));
+        Assert.Null(typeof(IZLinkRoutedSpotClient).GetMethod("SendSpot"));
+        Assert.Null(typeof(IZLinkRoutedSpotClient).GetMethod("RequestSpot"));
+
+        Assert.Contains(
+            typeof(IZLinkRoutedSpotChannelClient).GetMethods(),
+            method => method.Name == nameof(IZLinkRoutedSpotChannelClient.SendSpot)
+                && method.GetParameters().FirstOrDefault()?.ParameterType == typeof(RoutingId));
+        Assert.Contains(
+            typeof(IZLinkRoutedSpotChannelClient).GetMethods(),
+            method => method.Name == nameof(IZLinkRoutedSpotChannelClient.RequestSpot)
+                && method.GetParameters().FirstOrDefault()?.ParameterType == typeof(RoutingId));
+        Assert.DoesNotContain(
+            typeof(IZLinkRoutedSpotChannelClient).GetMethods(),
+            method => method.GetParameters().FirstOrDefault()?.ParameterType == typeof(string));
+    }
+
+    [Fact]
     public void AddZLinkFramework_Throws_WhenPublisherHasNoBindEndpoint()
     {
         var services = new ServiceCollection();
@@ -857,11 +992,13 @@ public sealed class RegistrationValidationTests
             {
                 channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
                 channel.EnableClient();
+                channel.AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
             });
 
             options.AddFanoutChannel("profile.events", events =>
             {
                 events.EnableSubscriber();
+                events.AddPublishHandler<TestPublishHandler, TestPublishedEvent>();
             });
 
             options.AddStreamNode("stream.node", stream =>
@@ -959,6 +1096,7 @@ public sealed class RegistrationValidationTests
             options.AddClientServerChannel("profile", channel =>
             {
                 channel.EnableServer(server => server.Bind(endpoint));
+                channel.AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
             });
         });
 
@@ -981,6 +1119,41 @@ public sealed class RegistrationValidationTests
             CancellationToken cancellationToken)
         {
             return next(cancellationToken);
+        }
+    }
+
+    private sealed record TestChannelRequest(string Value);
+
+    private sealed record TestChannelReply(string Value);
+
+    private sealed class TestChannelRequestHandler
+        : IZLinkRequestHandler<TestChannelRequest, TestChannelReply>
+    {
+        public ValueTask<TestChannelReply> HandleAsync(
+            TestChannelRequest request,
+            ZLinkRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new TestChannelReply(request.Value));
+        }
+    }
+
+    private sealed record TestPublishedEvent(string Value);
+
+    [ZLinkHandlerGroup("validation-publish")]
+    private sealed class TestPublishHandler : IZLinkPublishHandler<TestPublishedEvent>
+    {
+        public ValueTask HandleAsync(
+            TestPublishedEvent message,
+            ZLinkPublishContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = message;
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
         }
     }
 

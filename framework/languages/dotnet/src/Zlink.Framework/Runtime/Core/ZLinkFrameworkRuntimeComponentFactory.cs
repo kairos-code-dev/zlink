@@ -29,7 +29,7 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
             services,
             backendAdapterFactory,
             registration,
-            new ZLinkChannelMessagePump(handlerRegistry, dispatcher, registration));
+            new ZLinkChannelMessagePump(handlerRegistry, dispatcher, registration, runtime));
         var streams = new ZLinkStreamRuntimeManager(services, backendAdapterFactory, registration);
         var spots = new ZLinkSpotRuntimeManager(services, runtime, backendAdapterFactory, registration);
         var stateFactory = new ZLinkFrameworkRuntimeStateFactory(

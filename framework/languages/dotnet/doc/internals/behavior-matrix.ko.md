@@ -54,7 +54,9 @@
 | 다른 channel server에 같은 `kind + packetName` handler 등록 | 허용 | channel별로 handler namespace가 분리되어 있다 |
 | `channel.MapHandlerGroup("...")`로 명시한 그룹의 handler만 그 channel에서 dispatch | 허용 | `[ZLinkHandlerGroup("...")]` attribute와 매핑을 조합해서 노출 범위를 제한한다 |
 | 같은 channel에 여러 그룹 매핑 | 허용 | `MapHandlerGroup`을 여러 번 호출해 그룹들의 합집합을 한 채널에 노출한다 |
-| `MapHandlerGroup`이 가리키는 그룹에 handler 0개 | 비허용 | startup validation 오류 또는 경고 |
+| `MapHandlerGroup`이 가리키는 그룹에 handler 0개 | 비허용 | startup validation 오류 |
+| client-server channel에서 `EnableSpotRouteEgress(...)`만 등록하고 client capability 없음 | 비허용 | routed Spot egress 는 local client DEALER 가 필요하다 |
+| route mesh channel에서 `EnableSpotRouteEgress(...)` 등록 | 허용 | target SpotNode ingress channel 로 routed Spot relay 를 보낼 수 있다 |
 
 ## 4. Spot Capability Matrix
 

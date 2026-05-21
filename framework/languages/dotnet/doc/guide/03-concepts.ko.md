@@ -43,8 +43,17 @@ channel은 `AddZLinkFramework(options => ...)` 안에서 등록하고, 그 chann
 
 - handler·client·filter 생성은 `ASP.NET Core`의 동일한 DI 컨테이너를 따른다.
 - framework runtime은 hosted service로 호스트 시작/종료에 함께 묶인다.
-- outbound는 `IZLinkClient` / `IZLinkSpotClient`를 주입받아 호출한다. 두
-  인터페이스는 서로 다른 C API를 감싸는 별개 표면이다.
+- outbound는 목적별 client를 주입받아 호출한다. 일반 channel request/send는
+  `IZLinkClient`, current Spot callback 안의 outbound는 `IZLinkSpotClient`, current Spot
+  없이 target Spot 으로 가는 호출은 `IZLinkRoutedSpotClient`를 쓴다.
+
+channel 이름은 위치마다 뜻이 다르다.
+
+| 위치 | channel 이름의 뜻 |
+|------|------------------|
+| `IZLinkClient.Request("profile", ...)` | request/send 를 보낼 target channel |
+| `IZLinkRoutedSpotClient.ViaEgressChannel("gateway.client")` | source process 가 사용할 local egress channel |
+| `EnableSpotRouteEgress("play.route")` | target SpotNode 가 `AcceptSpotRoutesFromChannel(...)`로 연 ingress channel |
 
 ## 5. 연결: Discovery vs 수동
 

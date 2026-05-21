@@ -79,7 +79,7 @@ internal sealed class ZLinkHandlerRegistry
         }
 
         var selected = _publishes.TryGetValue(messageName, out var endpoints)
-            ? FilterEndpoints(mappedGroups, endpoints)
+            ? FilterEndpoints(channelName, mappedGroups, endpoints)
             : Array.Empty<ZLinkHandlerEndpointDescriptor>();
         return _publishSelections.GetOrAdd(key, selected);
     }
@@ -134,7 +134,7 @@ internal sealed class ZLinkHandlerRegistry
         IReadOnlyList<ZLinkHandlerEndpointDescriptor> endpoints,
         string kind)
     {
-        var matches = FilterEndpoints(mappedGroups, endpoints);
+        var matches = FilterEndpoints(channelName, mappedGroups, endpoints);
         return matches.Count switch
         {
             1 => matches[0],
@@ -146,18 +146,14 @@ internal sealed class ZLinkHandlerRegistry
     }
 
     private static IReadOnlyList<ZLinkHandlerEndpointDescriptor> FilterEndpoints(
+        string channelName,
         IReadOnlySet<string> mappedGroups,
         IReadOnlyList<ZLinkHandlerEndpointDescriptor> endpoints)
     {
-        if (mappedGroups.Count == 0)
-        {
-            return endpoints;
-        }
-
         List<ZLinkHandlerEndpointDescriptor>? matches = null;
         foreach (var endpoint in endpoints)
         {
-            if (endpoint.Groups.Count == 0 || !endpoint.Groups.Any(mappedGroups.Contains))
+            if (!IsMappedToChannel(endpoint, channelName, mappedGroups))
             {
                 continue;
             }
@@ -169,5 +165,20 @@ internal sealed class ZLinkHandlerRegistry
         return matches is null
             ? Array.Empty<ZLinkHandlerEndpointDescriptor>()
             : matches.ToArray();
+    }
+
+    private static bool IsMappedToChannel(
+        ZLinkHandlerEndpointDescriptor endpoint,
+        string channelName,
+        IReadOnlySet<string> mappedGroups)
+    {
+        if (endpoint.ExplicitChannelName is not null)
+        {
+            return string.Equals(endpoint.ExplicitChannelName, channelName, StringComparison.Ordinal);
+        }
+
+        return mappedGroups.Count > 0
+            && endpoint.Groups.Count > 0
+            && endpoint.Groups.Any(mappedGroups.Contains);
     }
 }

@@ -26,7 +26,63 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddZLinkHandlersFromAssembly(assembly);
         }
 
+        foreach (var channel in registration.Channels.Values)
+        {
+            AddExplicitChannelHandlers(services, channel);
+        }
+
         return services;
+    }
+
+    private static void AddExplicitChannelHandlers(
+        IServiceCollection services,
+        ZLinkChannelRegistration channel)
+    {
+        foreach (var handler in channel.SendHandlers)
+        {
+            AddExplicitChannelHandler(
+                services,
+                channel.ChannelName,
+                handler,
+                typeof(IZLinkSendHandler<>).MakeGenericType(handler.MessageType),
+                ZLinkMessageKind.Command);
+        }
+
+        foreach (var handler in channel.RequestHandlers)
+        {
+            AddExplicitChannelHandler(
+                services,
+                channel.ChannelName,
+                handler,
+                typeof(IZLinkRequestHandler<,>).MakeGenericType(handler.MessageType, handler.ReplyType!),
+                ZLinkMessageKind.Request);
+        }
+
+        foreach (var handler in channel.PublishHandlers)
+        {
+            AddExplicitChannelHandler(
+                services,
+                channel.ChannelName,
+                handler,
+                typeof(IZLinkPublishHandler<>).MakeGenericType(handler.MessageType),
+                ZLinkMessageKind.Publish);
+        }
+    }
+
+    private static void AddExplicitChannelHandler(
+        IServiceCollection services,
+        string channelName,
+        ZLinkChannelHandlerRegistration handler,
+        Type handlerInterface,
+        ZLinkMessageKind kind)
+    {
+        services.TryAddTransient(handler.HandlerType);
+        services.AddSingleton(ZLinkHandlerScanner.CreateExplicitInterfaceDescriptor(
+            handler.HandlerType,
+            handlerInterface,
+            kind,
+            channelName,
+            handler.PacketName));
     }
 
     private static IServiceCollection AddCoreRuntime(
@@ -74,6 +130,11 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<IZLinkSpotManager, ZLinkSpotManagerService>();
             services.AddSingleton<IZLinkSpotClient, ZLinkSpotClientService>();
             services.AddSingleton<IZLinkSpotConnectionManager, ZLinkSpotConnectionManagerService>();
+        }
+
+        if (HasRoutedSpotEgress(registration))
+        {
+            services.AddSingleton<IZLinkRoutedSpotClient, ZLinkRoutedSpotClientService>();
         }
 
         if (HasSpotPublisherClient(registration))
@@ -182,5 +243,11 @@ internal static class ZLinkFrameworkServiceRegistrar
     {
         return registration.SpotNodes.Values.Any(static spotNode =>
             spotNode.AttachedSpotPublisherClients.Count > 0);
+    }
+
+    private static bool HasRoutedSpotEgress(ZLinkFrameworkRegistration registration)
+    {
+        return registration.Channels.Values.Any(static channel => channel.SpotRouteEgress is not null)
+            || registration.RouteChannels.Values.Any(static channel => channel.SpotRouteEgress is not null);
     }
 }

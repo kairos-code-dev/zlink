@@ -409,6 +409,9 @@ app.Run();
   - `play` client/server channel의 server `ROUTER`에서 이 node의 user Spot으로
     routed send/request를 보낼 수 있게 한다.
   - 같은 표면은 `AddRouteMeshChannel(...)`의 route mesh `ROUTER`에도 사용할 수 있다.
+  - 이 설정은 target SpotNode 쪽 ingress 연결이다. 보내는 쪽은 별도 channel 에
+    `EnableSpotRouteEgress("play")`를 두고, 호출 시
+    `IZLinkRoutedSpotClient.ViaEgressChannel(...)`로 그 local egress channel 을 고른다.
 - `EnablePubSub()`
   - local spot 문맥에서 `IZLinkSpotClient.Publish(...)`를 호출할 수 있게 한다.
 - `AttachSpotMeshPublisherClient("game.stage")`
@@ -683,8 +686,9 @@ local `SpotNode` 가 없으면 attach 된 channel client 경로도 존재할 수
 따라서 `IZLinkSpotClient.RequestChannel(...)` 같은 표면을 바로 사용하는
 모델로 설명하면 안 된다.
 
-spot name / id 기반의 routed 호출이 필요하다면, local `SpotNode` 가 있는 서버
-쪽에서 `IZLinkSpotClient.SendSpot(...)` / `RequestSpot(...)` 을 사용한다.
+current Spot callback 안에서는 `IZLinkSpotClient.SendSpot(...)` /
+`RequestSpot(...)` 을 사용한다. 일반 HTTP handler나 channel handler처럼 current Spot 이
+없는 코드에서 target Spot 으로 가야 하면 `IZLinkRoutedSpotClient`를 사용한다.
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
@@ -702,19 +706,30 @@ builder.Services.AddZLinkFramework(options =>
     {
         registry.Add("tcp://registry1:5551");
     });
+
+    options.AddClientServerChannel("gateway.client", channel =>
+    {
+        channel.EnableClient(client =>
+        {
+            client.UseManualConnections(peers =>
+            {
+                peers.Connect("tcp://play-node-1:7201");
+            });
+        });
+        channel.EnableSpotRouteEgress("play");
+    });
 });
 
 var app = builder.Build();
 
 app.MapPost("/stage/query", async (
     GetStageStateHttpRequest request,
-    IZLinkClient client,
+    IZLinkRoutedSpotClient spots,
     CancellationToken cancellationToken) =>
 {
-    var reply = await client
-        .Request(
-            "orders",
-            new SampleGetStateRequest { SpotRid = request.StageRid })
+    var reply = await spots
+        .ViaEgressChannel("gateway.client")
+        .RequestSpot(request.StageRid, new SampleGetStateRequest())
         .SubmitAsync<SampleGetStateReply>(cancellationToken);
 
     return Results.Ok(reply);

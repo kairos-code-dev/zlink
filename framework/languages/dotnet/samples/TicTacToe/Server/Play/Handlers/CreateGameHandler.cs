@@ -1,5 +1,6 @@
 namespace TicTacToe.Server.Play.Handlers;
 
+[ZLinkHandlerGroup("play")]
 sealed class CreateGameHandler(
     IZLinkSpotManager spots,
     SampleSettings settings,

@@ -210,7 +210,7 @@ func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
 			if stopSeen[idx] {
 				continue
 			}
-			for {
+			for time.Now().Before(stopAt) {
 				var message zlink.TopicMessage
 				ok, err := spot.Subscribe(&message, zlink.RecvFlagsDontWait)
 				if err != nil {

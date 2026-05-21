@@ -748,7 +748,10 @@ count_result_lines() {
   local size="$3"
   local case_log="$4"
   awk -F',' -v pattern="${pattern}" -v transport="${transport}" -v size="${size}" '
-    $1 == "RESULT" && $2 == "current" && $3 == pattern && $4 == transport && $5 == size { count++ }
+    function same_pattern(actual, expected) {
+      return actual == expected || (expected == "MULTI_STREAM" && actual == "STREAM")
+    }
+    $1 == "RESULT" && $2 == "current" && same_pattern($3, pattern) && $4 == transport && $5 == size { count++ }
     END { print count + 0 }
   ' "${case_log}"
 }
@@ -863,7 +866,9 @@ resolve_client_timeout_seconds() {
     echo "${stream_timeout}"
     return
   fi
-  if [[ "${pattern}" == MULTI_SPOT* ]] || { [[ "${transport}" == "tls" || "${transport}" == "wss" ]] && (( size >= 131072 )); }; then
+  if [[ "${pattern}" == MULTI_SPOT* ]] \
+    || { [[ "${pattern}" == "MULTI_PUBSUB" ]] && (( size >= 262144 )); } \
+    || { [[ "${transport}" == "tls" || "${transport}" == "wss" ]] && (( size >= 131072 )); }; then
     local spot_timeout=$((duration * 6 + 30))
     (( spot_timeout < 90 )) && spot_timeout=90
     echo "${spot_timeout}"

@@ -85,38 +85,55 @@ func runMultiPubSubClient(cfg multiConfig, endpoint string) perfcommon.Result {
 		return stats.Snapshot(cfg.duration, cfg.msgSize)
 	}
 	window := activeDeadline(cfg.duration)
-	pollers := make([]*zlink.Poller, 0, len(subs))
-	for _, sub := range subs {
-		pollers = append(pollers, perfcommon.NewSocketPoller(sub, perfcommon.ZLinkPollIn))
+	poller, err := zlink.NewPoller()
+	perfcommon.Must(err)
+	defer poller.Close()
+	for i, sub := range subs {
+		perfcommon.Must(poller.AddSocket(sub, perfcommon.ZLinkPollIn, uintptr(i)))
 	}
-	defer func() {
-		for _, p := range pollers {
-			_ = p.Close()
-		}
-	}()
 
 	// perf_multi_pubsub_client.cpp run_recv_duration: poller wait -1
 	// (signal-driven), phase ends on the wire-level stop token /
 	// cooldown-phase header; counting is bounded by the active
 	// deadline (enforced inside drainMultiPubSubAvailable).
-	stopSeen := make([]bool, len(subs))
-	stopsRemaining := len(subs)
-	events := make([]zlink.PollEvent, 1)
-	for stopsRemaining > 0 {
-		event, err := perfcommon.WaitPollerOne(pollers[0], events, -1*time.Millisecond)
+	phaseDone := false
+	events := make([]zlink.PollEvent, len(subs))
+	for !phaseDone {
+		n, err := poller.Wait(events, -1*time.Millisecond)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
 			}
 			perfcommon.Must(fmt.Errorf("multi pubsub client poll: %w", err))
 		}
-		if event == nil {
-			continue
-		}
-		drainMultiPubSubAvailable(subs, stats, cfg.msgSize, window.ActiveAt, window.StopAt, stopSeen, &stopsRemaining)
+		drainMultiPubSubReady(subs, events[:n], stats, cfg.msgSize, window.ActiveAt, window.StopAt, &phaseDone)
 	}
 	flushControlLine("CLIENT_DONE,%d", cfg.msgSize)
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
+}
+
+func drainMultiPubSubReady(
+	subs []*zlink.SubSocket,
+	events []zlink.PollEvent,
+	stats *perfcommon.Stats,
+	msgSize int,
+	activeAt time.Time,
+	recvStopAt time.Time,
+	phaseDone *bool,
+) {
+	for _, event := range events {
+		if event.Revents&perfcommon.ZLinkPollIn == 0 {
+			continue
+		}
+		index := int(event.Slot)
+		if index < 0 || index >= len(subs) {
+			continue
+		}
+		drainMultiPubSubSocket(index, subs[index], stats, msgSize, activeAt, recvStopAt, phaseDone)
+		if *phaseDone {
+			return
+		}
+	}
 }
 
 func drainMultiPubSubAvailable(
@@ -125,48 +142,56 @@ func drainMultiPubSubAvailable(
 	msgSize int,
 	activeAt time.Time,
 	recvStopAt time.Time,
-	stopSeen []bool,
-	stopsRemaining *int,
+	phaseDone *bool,
 ) {
 	for index, socket := range subs {
-		if stopSeen[index] {
-			continue
+		drainMultiPubSubSocket(index, socket, stats, msgSize, activeAt, recvStopAt, phaseDone)
+		if *phaseDone {
+			return
 		}
-		for {
-			var message zlink.TopicMessage
-			ok, err := socket.Subscribe(&message, zlink.RecvFlagsDontWait)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					break
-				}
-				perfcommon.Must(fmt.Errorf("multi pubsub subscribe[%d]: %w", index, err))
-			}
-			if !ok {
+	}
+}
+
+func drainMultiPubSubSocket(
+	index int,
+	socket *zlink.SubSocket,
+	stats *perfcommon.Stats,
+	msgSize int,
+	activeAt time.Time,
+	recvStopAt time.Time,
+	phaseDone *bool,
+) {
+	for {
+		var message zlink.TopicMessage
+		ok, err := socket.Subscribe(&message, zlink.RecvFlagsDontWait)
+		if err != nil {
+			if perfcommon.IsTransient(err) {
 				break
 			}
-			part, err := message.SinglePartOrError()
-			if err == nil {
-				if perfcommon.IsStopTokenMessage(part) {
-					if !stopSeen[index] {
-						stopSeen[index] = true
-						*stopsRemaining--
-					}
-					_ = message.Close()
-					break
-				}
-				now := time.Now()
-				if sentAt, ok := perfcommon.SentAtFromMessage(part, msgSize); ok && now.After(activeAt) && now.Before(recvStopAt) {
-					stats.Add(sentAt)
-				}
-			}
-			_ = message.Close()
+			perfcommon.Must(fmt.Errorf("multi pubsub subscribe[%d]: %w", index, err))
 		}
+		if !ok {
+			break
+		}
+		part, err := message.SinglePartOrError()
+		if err == nil {
+			if perfcommon.IsStopTokenMessage(part) {
+				*phaseDone = true
+				_ = message.Close()
+				break
+			}
+			now := time.Now()
+			if sentAt, ok := perfcommon.SentAtFromMessage(part, msgSize); ok && now.After(activeAt) && now.Before(recvStopAt) {
+				stats.Add(sentAt)
+			}
+		}
+		_ = message.Close()
 	}
 }
 
 func sendMultiPubSubStopToken(publisher *zlink.PubSocket) {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
-		sent, err := publisher.Publish("bench").Message(perfcommon.NewMessage(perfcommon.StopToken)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		sent, err := publisher.Publish("bench").Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
 		if err == nil && sent {
 			return
 		}

@@ -180,7 +180,7 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 	pending := make([]bool, len(clients))
 	payloads := make([][]byte, len(clients))
 	for i, client := range clients {
-		perfcommon.Must(poller.AddSocket(client.socket, perfcommon.ZLinkPollOut, uintptr(i)))
+		perfcommon.Must(poller.AddSocket(client.socket, 0, uintptr(i)))
 		payloads[i] = perfcommon.PreparePayload(cfg.msgSize)
 	}
 	for time.Now().Before(window.StopAt) {
@@ -200,6 +200,7 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 					perfcommon.Must(fmt.Errorf("multi dealer/dealer client send: %w", sendErr))
 				}
 				pending[i] = true
+				perfcommon.Must(poller.ModifySocket(client.socket, perfcommon.ZLinkPollOut))
 				pendingCount++
 				break
 			}
@@ -221,6 +222,7 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 			idx := int(events[i].Slot)
 			if idx >= 0 && idx < len(pending) {
 				pending[idx] = false
+				perfcommon.Must(poller.ModifySocket(clients[idx].socket, 0))
 			}
 		}
 	}

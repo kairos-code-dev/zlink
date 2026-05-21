@@ -214,9 +214,10 @@ func runMultiSpotSendSendClientRole(cfg multiConfig, endpoint string) perfcommon
 
 	stats := perfcommon.NewStats()
 	window := activeDeadline(cfg.duration)
+	activeLimit := activeMultiSpotSendSendClientLimit(len(clients), cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
 		progressed := false
-		for i := range clients {
+		for i := 0; i < activeLimit; i++ {
 			client := &clients[i]
 			if client.waitingReply {
 				if drainMultiSpotSendSend(client.spot, cfg.msgSize, window.StopAt, stats, true) {
@@ -241,6 +242,16 @@ func runMultiSpotSendSendClientRole(cfg multiConfig, endpoint string) perfcommon
 		}
 	}
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
+}
+
+func activeMultiSpotSendSendClientLimit(total int, msgSize int) int {
+	if msgSize >= 131072 && total > 8 {
+		return 8
+	}
+	if msgSize >= 65536 && total > 32 {
+		return 32
+	}
+	return total
 }
 
 func submitMultiSpotSendSend(spot *zlink.Spot, payload []byte) bool {

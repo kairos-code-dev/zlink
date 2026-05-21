@@ -18,7 +18,6 @@ const (
 )
 
 var metricSequence uint64
-var metricClockStart = time.Now()
 
 func StampPayload(payload []byte) {
 	StampPayloadPhase(payload, PhaseActive)
@@ -41,7 +40,7 @@ func StampPayloadPhase(payload []byte, phase uint8) {
 	payload[8] = phase
 	binary.LittleEndian.PutUint32(payload[9:13], uint32(len(payload)))
 	binary.LittleEndian.PutUint64(payload[13:21], atomic.AddUint64(&metricSequence, 1))
-	binary.LittleEndian.PutUint64(payload[21:29], uint64(time.Since(metricClockStart).Nanoseconds()))
+	binary.LittleEndian.PutUint64(payload[21:29], uint64(time.Now().UnixNano()))
 }
 
 type MetricHeader struct {
@@ -83,7 +82,7 @@ func SentAtFromBytesPhase(data []byte, expectedMsgSize int, phase uint8) (time.T
 	if !ok || !validHeaderPhase(header, expectedMsgSize, phase) {
 		return time.Time{}, false
 	}
-	return metricClockStart.Add(time.Duration(header.SentTsNs)), true
+	return time.Unix(0, header.SentTsNs), true
 }
 
 func SentAtFromMessage(part *zlink.Message, expectedMsgSize int) (time.Time, bool) {

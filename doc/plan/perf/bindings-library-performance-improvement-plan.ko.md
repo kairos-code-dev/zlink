@@ -350,7 +350,7 @@ public API 추가 대상으로 분리한다.
 | 2 | .NET | `bindings/dotnet/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 재측정 완료` | 2026-05-21 poller slot API 반영 뒤 재측정 결과를 6.3.2 대표 표에 반영 |
 | 3 | Java | `bindings/java/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 재측정 완료, full-run partial 행은 제한 재측정으로 보강` | 2026-05-21 `ROUTER_ROUTER` stop token 처리와 poll mask 수정 뒤 결과를 6.4.2 대표 표에 반영 |
 | 4 | Node | `bindings/node/perf` | `tcp/ws single routed large 보류, wss PAIR 64B 보류, tls PAIR 64B 및 DEALER_DEALER 64B 보류 외 통과` | `tcp/ws/wss/tls 재측정 완료, tcp full-run partial 행은 제한 재측정으로 보강` | 2026-05-21 tcp 재측정 결과를 6.5.2 대표 표에 반영 |
-| 5 | Go | `bindings/go/perf` | `tcp/tls single 통과, ws/wss single latency 보류, wss SPOT 262144B 보류` | `미측정` | Go multi `tcp` 측정 시작 |
+| 5 | Go | `bindings/go/perf` | `tcp/tls single 통과, ws/wss single latency 보류, wss SPOT 262144B 보류` | `tcp 측정 완료, 다수 미달 개선 진행 중` | Go multi `tcp` 미달 항목 개선 후 `ws` 측정 |
 | 6 | Rust | `bindings/rust/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
 | 7 | Python | `bindings/python/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
 
@@ -370,7 +370,7 @@ p10은 하위 10% 경계값이고, 최저 10% 평균은 가장 느린 구간의 
 | .NET | 328 | 93.3% | 91.0% | 63.9% | 59.9% | 103.1% | 85.7% |
 | Java | 328 | 101.4% | 95.5% | 67.2% | 60.6% | 119.2% | 87.5% |
 | Node | 328 | 76.1% | 71.5% | 37.5% | 29.3% | 78.7% | 74.1% |
-| Go | 144 | 90.8% | 83.2% | 55.7% | 47.9% | 90.8% | 미측정 |
+| Go | 192 | 75.7% | 75.5% | 20.1% | 6.3% | 90.8% | 30.2% |
 
 #### 6.1.2 C 대비 고성능 outlier 재검토
 
@@ -775,14 +775,14 @@ C 대비 성능이 크게 높은 항목은 그대로 좋은 결과로 확정하�
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `tcp` | `MULTI_DEALER_DEALER` | `미달(19.0%)` | `미달(2.5%)` | `미달(3.4%)` | `미달(1.1%)` | `미달(1.0%)` | `미달(0.3%)` | C `perf_c_multi_linux_20260522_020803_codex_c_tcp_multi_for_go_20260522.txt` 대비 Go `perf_go_multi_linux_20260522_033829_codex_go_tcp_multi_dd_pending_pollset_20260522.txt`. C처럼 단일 poll loop와 pending socket만 `POLLOUT`으로 두는 poll set 의미로 맞췄다. 실패 없이 유효 수치를 얻었지만 Go 단순 one-way 최소 기준보다 낮아 미달이다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미달(29.4%)` | `미달(29.1%)` | `미달(29.0%)` | `미달(21.7%)` | `미달(27.4%)` | `통과(42.5%)` | C 파일은 위 행과 같다. Go `perf_go_multi_linux_20260522_030125_codex_go_tcp_multi_dr_all_single_poll_loop_20260522.txt`. per-socket goroutine/poller 구조에서 발생하던 `Bad address`/`I/O error`를 C와 같은 단일 poll loop로 정렬해 전체 size complete를 확보했다. 262144B 외에는 multi routed echo 최소 기준보다 낮아 미달이다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미달(20.1%)` | `미달(23.0%)` | `미달(21.9%)` | `미달(20.4%)` | `미달(28.3%)` | `미달(35.1%)` | C 파일은 위 행과 같다. Go `perf_go_multi_linux_20260522_030343_codex_go_tcp_multi_rr_all_single_poll_loop_20260522.txt`. routed echo server는 수신 `RoutingID` 값을 명시적으로 복사해 `SendTo`하고, client는 C와 같은 단일 poll loop로 정렬했다. 실패 없이 유효 수치를 얻었지만 최소 기준보다 낮아 미달이다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `tcp` | `MULTI_PUBSUB` | `미달(4.9%)` | `미달(4.9%)` | `미달(9.8%)` | `미달(32.4%)` | `미달(52.5%)` | `통과(71.8%)` | C 파일은 위 행과 같다. Go 64B~131072B `perf_go_multi_linux_20260522_031542_codex_go_tcp_multi_pubsub_epoch_ts_20260522.txt`, 262144B `perf_go_multi_linux_20260522_032109_codex_go_tcp_multi_pubsub262_timeout_fix_20260522.txt`. 모든 subscriber를 단일 poller에 등록하고, C처럼 하나의 stop/cooldown 신호로 phase를 종료한다. Go metric timestamp를 C와 같은 epoch ns로 바꿔 multi process latency 음수를 제거했다. 262144B 외에는 단순 one-way 최소 기준보다 낮아 미달이다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `tcp` | `MULTI_SPOT` | `미달(1.9%)` | `미달(1.7%)` | `미달(1.8%)` | `미달(5.7%)` | `미달(7.9%)` | `미달(7.3%)` | C 파일은 위 행과 같다. Go `perf_go_multi_linux_20260522_033309_codex_go_tcp_multi_spot_all_deadline_drain_20260522.txt`. server-stamped SPOT latency도 epoch ns로 정렬했고, client drain 내부에서 active deadline을 확인해 backlog가 한 slot에 몰려도 phase가 끝나도록 했다. 실패 없이 유효 수치를 얻었지만 SPOT 최소 기준보다 낮아 미달이다. auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. |
+| `tcp` | `MULTI_SPOT_REQREP` | `통과(55.8%)` | `통과(55.4%)` | `통과(57.4%)` | `미달(28.2%)` | `미달(28.3%)` | `미달(45.7%)` | C 파일은 위 행과 같다. Go `perf_go_multi_linux_20260522_023554_codex_go_tcp_multi_current_after_runner_cleanup_20260522.txt`. request completion은 public `POLLCOMPLETION` poller를 사용한다. 65536B 이상은 SPOT 최소 기준보다 낮아 미달이다. auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미달(22.2%)` | `미달(20.0%)` | `미달(23.8%)` | `미달(0.0%)` | `미달(19.5%)` | `미달(7.0%)` | C 파일은 위 행과 같다. Go `perf_go_multi_linux_20260522_033536_codex_go_tcp_multi_spot_sendsend_active_limit_20260522.txt`. C와 같은 size별 active slot 제한(65536B 이상 32, 131072B 이상 8)을 적용해 large timeout을 제거했다. 실패 없이 유효 수치를 얻었지만 SPOT 최소 기준보다 낮아 미달이다. auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. |
+| `tcp` | `MULTI_STREAM` | `통과(98.1%)` | `통과(89.4%)` | `통과(78.4%)` | `통과(90.0%)` | `통과(94.2%)` | `통과(80.1%)` | C 파일은 위 행과 같다. Go `perf_go_multi_linux_20260522_033642_codex_go_tcp_multi_stream_alias_fix_20260522.txt`. Go runner는 shared C stream client가 출력하는 `STREAM` result를 `MULTI_STREAM` 행으로 집계하도록 수정했다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
 | `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
 | `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |

@@ -178,10 +178,8 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 	defer poller.Close()
 	events := make([]zlink.PollEvent, len(clients))
 	pending := make([]bool, len(clients))
-	payloads := make([][]byte, len(clients))
 	for i, client := range clients {
 		perfcommon.Must(poller.AddSocket(client.socket, 0, uintptr(i)))
-		payloads[i] = perfcommon.PreparePayload(cfg.msgSize)
 	}
 	for time.Now().Before(window.StopAt) {
 		pendingCount := 0
@@ -191,12 +189,13 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 				continue
 			}
 			for time.Now().Before(window.StopAt) {
-				perfcommon.StampWindowPayload(payloads[i], window.ActiveAt)
-				_, sendErr := client.socket.Send().Message(perfcommon.NewMessage(payloads[i])).Flags(zlink.SendFlagsDontWait).Submit(nil)
-				if sendErr == nil {
+				sent, sendErr := perfcommon.SubmitWindowPayload(cfg.msgSize, window.ActiveAt, func(message *zlink.Message) (bool, error) {
+					return client.socket.Send().Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+				})
+				if sendErr == nil && sent {
 					continue
 				}
-				if !perfcommon.IsTransient(sendErr) {
+				if sendErr != nil && !perfcommon.IsTransient(sendErr) {
 					perfcommon.Must(fmt.Errorf("multi dealer/dealer client send: %w", sendErr))
 				}
 				pending[i] = true
@@ -233,7 +232,9 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 // the cpp / java / dotnet implementations.
 func sendMultiDealerStopToken(socket *zlink.DealerSocket) {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
-		sent, err := socket.Send().Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
+		sent, err := perfcommon.SubmitPayload(perfcommon.StopToken, func(message *zlink.Message) (bool, error) {
+			return socket.Send().Message(message).Submit(nil)
+		})
 		if err == nil && sent {
 			return
 		}

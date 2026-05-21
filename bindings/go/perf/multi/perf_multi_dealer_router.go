@@ -152,15 +152,16 @@ func sendMultiDealerRouterRequest(
 	window perfcommon.BenchmarkWindow,
 ) bool {
 	perfcommon.StampWindowPayload(payload, window.ActiveAt)
-	_, err := socket.Send().Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
-	if err == nil {
-		return true
+	sent, err := perfcommon.SubmitPayload(payload, func(message *zlink.Message) (bool, error) {
+		return socket.Send().Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+	})
+	if err != nil {
+		if perfcommon.IsTransient(err) {
+			return false
+		}
+		perfcommon.Must(fmt.Errorf("multi dealer/router client send: %w", err))
 	}
-	if perfcommon.IsTransient(err) {
-		return false
-	}
-	perfcommon.Must(fmt.Errorf("multi dealer/router client send: %w", err))
-	return false
+	return sent
 }
 
 func recvMultiDealerRouterReply(

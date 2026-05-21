@@ -188,7 +188,9 @@ func validateMultiRouterRoutes(serverID zlink.RoutingID, clients []multiRouterCl
 	for index, client := range clients {
 		payload := perfcommon.PreparePayload(msgSize)
 		perfcommon.StampProbePayload(payload)
-		_, sendErr := client.socket.SendTo(serverID).Message(perfcommon.NewMessage(payload)).Submit(nil)
+		_, sendErr := perfcommon.SubmitPayload(payload, func(message *zlink.Message) (bool, error) {
+			return client.socket.SendTo(serverID).Message(message).Submit(nil)
+		})
 		perfcommon.Must(sendErr)
 
 		poller := perfcommon.NewSocketPoller(client.socket, perfcommon.ZLinkPollIn)
@@ -340,7 +342,9 @@ func startMultiRouterEchoServer(server *zlink.RouterSocket) (chan struct{}, chan
 // transient backpressure.
 func sendMultiRouterStopToken(socket *zlink.RouterSocket, serverID zlink.RoutingID) {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
-		sent, err := socket.SendTo(serverID).Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
+		sent, err := perfcommon.SubmitPayload(perfcommon.StopToken, func(message *zlink.Message) (bool, error) {
+			return socket.SendTo(serverID).Message(message).Submit(nil)
+		})
 		if err == nil && sent {
 			return
 		}
@@ -381,5 +385,7 @@ func drainRouterReplies(
 }
 
 func tryRouterSend(socket *zlink.RouterSocket, target zlink.RoutingID, payload []byte) (bool, error) {
-	return socket.SendTo(target).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+	return perfcommon.SubmitPayload(payload, func(message *zlink.Message) (bool, error) {
+		return socket.SendTo(target).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+	})
 }

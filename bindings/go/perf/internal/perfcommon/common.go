@@ -584,6 +584,21 @@ func SubmitMessage(
 	return sent, err
 }
 
+func SubmitPayload(
+	payload []byte,
+	submit func(*zlink.Message) (bool, error),
+) (bool, error) {
+	return SubmitMessage(NewMessage(payload), submit)
+}
+
+func SubmitWindowPayload(
+	size int,
+	activeAt time.Time,
+	submit func(*zlink.Message) (bool, error),
+) (bool, error) {
+	return SubmitMessage(NewWindowMessage(size, activeAt), submit)
+}
+
 func NewSingleContext() (*zlink.Context, error) {
 	return newContextWithIOThreads(1, "PERF_IO_THREADS")
 }

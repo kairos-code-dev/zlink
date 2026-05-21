@@ -98,11 +98,11 @@ func runMultiSpotServer(cfg multiConfig) {
 	if !publishSpotControlPayload(controlPub, fmt.Sprintf("START,%d", cfg.msgSize), perfcommon.MultiReadyTimeout()) {
 		perfcommon.Must(fmt.Errorf("spot server direct start publish timeout"))
 	}
-	payload := perfcommon.PreparePayload(cfg.msgSize)
 	stopAt := time.Now().Add(cfg.duration)
 	for time.Now().Before(stopAt) {
-		perfcommon.StampPayload(payload)
-		_, err := dataSpot.Publish(multiSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		_, err := perfcommon.SubmitWindowPayload(cfg.msgSize, time.Time{}, func(message *zlink.Message) (bool, error) {
+			return dataSpot.Publish(multiSpotTopic).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		})
 		if err != nil && !perfcommon.IsTransient(err) {
 			perfcommon.Must(err)
 		}
@@ -118,7 +118,9 @@ func runMultiSpotServer(cfg multiConfig) {
 // data topic with bounded retry through transient backpressure.
 func sendMultiSpotStopToken(spot *zlink.Spot) {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
-		sent, err := spot.Publish(multiSpotTopic).Message(perfcommon.NewMessage(perfcommon.StopToken)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		sent, err := perfcommon.SubmitPayload(perfcommon.StopToken, func(message *zlink.Message) (bool, error) {
+			return spot.Publish(multiSpotTopic).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		})
 		if err == nil && sent {
 			return
 		}
@@ -196,6 +198,19 @@ func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
 	}
 	stats := perfcommon.NewStats()
 	stopAt := time.Now().Add(cfg.duration)
+	recvParts := make([]*zlink.Message, len(spots))
+	topicBuffers := make([][]byte, len(spots))
+	for i := range spots {
+		part, err := zlink.NewMessageWithSize(0)
+		perfcommon.Must(err)
+		recvParts[i] = part
+		topicBuffers[i] = make([]byte, 256)
+	}
+	defer func() {
+		for _, part := range recvParts {
+			_ = part.Close()
+		}
+	}()
 	// perf_multi_spot_client.cpp spot_client_recv_worker_loop /
 	// drain_spot_client_slot: the SPOT handle has no poll fd (same as
 	// single SPOT), so the C reference uses a per-slot DONTWAIT drain to
@@ -211,8 +226,8 @@ func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
 				continue
 			}
 			for time.Now().Before(stopAt) {
-				var message zlink.TopicMessage
-				ok, err := spot.Subscribe(&message, zlink.RecvFlagsDontWait)
+				part := recvParts[idx]
+				result, ok, err := spot.SubscribePart(part, topicBuffers[idx], zlink.RecvFlagsDontWait)
 				if err != nil {
 					if perfcommon.IsTransient(err) {
 						break
@@ -223,19 +238,17 @@ func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
 					break
 				}
 				progressed = true
-				part, partErr := message.SinglePartOrError()
-				if partErr == nil && part != nil {
-					if perfcommon.IsStopTokenMessage(part) {
-						stopSeen[idx] = true
-						stopsRemaining--
-						_ = message.Close()
-						break
-					}
-					if sentAt, ok := perfcommon.SentAtFromBytes(part.Data(), cfg.msgSize); ok && time.Now().Before(stopAt) {
-						stats.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()))
-					}
+				if result.More || !multiTopicMatches(topicBuffers[idx], result.TopicLen, multiSpotTopic) {
+					perfcommon.Must(fmt.Errorf("multi spot unexpected part metadata[%d]: topic_len=%d more=%v", idx, result.TopicLen, result.More))
 				}
-				_ = message.Close()
+				if perfcommon.IsStopTokenMessage(part) {
+					stopSeen[idx] = true
+					stopsRemaining--
+					break
+				}
+				if sentAt, ok := perfcommon.SentAtFromBytes(part.Data(), cfg.msgSize); ok && time.Now().Before(stopAt) {
+					stats.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()))
+				}
 			}
 		}
 		if !progressed {
@@ -293,7 +306,9 @@ func waitForSpotControlStart(controlSub *zlink.Spot, msgSize int) {
 func publishSpotControlPayload(spot *zlink.Spot, payload string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		sent, err := spot.Publish(multiSpotTopic).Message(perfcommon.NewMessage([]byte(payload))).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		sent, err := perfcommon.SubmitPayload([]byte(payload), func(message *zlink.Message) (bool, error) {
+			return spot.Publish(multiSpotTopic).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		})
 		if err == nil && sent {
 			return true
 		}

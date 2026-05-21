@@ -545,8 +545,8 @@ poller API 변경 후 수치가 좋아져도 C perf와 테스트 의미가 달�
 
 ## 7. 진행 상태
 
-- [ ] Phase 1. Draft spec 작성
-- [ ] Phase 2. Core/C 계약 점검
+- [x] Phase 1. Draft spec 작성
+- [x] Phase 2. Core/C 계약 점검
 - [ ] Phase 3. 바인딩 public API 반영
 - [ ] Phase 4. 회귀 테스트 추가
 - [ ] Phase 5. samples 반영

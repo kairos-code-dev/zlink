@@ -111,14 +111,15 @@ public sealed class test_pair_tcp
         Thread.Sleep(50);
 
         var poller = new Poller();
-        poller.Add(receiver, PollEventFlags.PollIn);
+        poller.Add(receiver, PollEventFlags.PollIn, 7);
 
         CoreTestSupport.SendWithRetry(sender, "x"u8, 2000);
 
         var events = new PollEvent[4];
-        int written = poller.Wait(events, TimeSpan.FromMilliseconds(2000), out _);
+        int written = poller.Wait(events, TimeSpan.FromMilliseconds(2000));
         Assert.True(written > 0);
-        Assert.NotNull(events[0].Socket);
+        Assert.Equal(PollSourceKind.Socket, events[0].SourceKind);
+        Assert.Equal((nuint)7, events[0].Slot);
         Assert.NotEqual(PollEventFlags.None, events[0].Revents & PollEventFlags.PollIn);
     }
 
@@ -137,14 +138,14 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        poller.Add(receiver, PollEventFlags.PollIn);
+        poller.Add(receiver, PollEventFlags.PollIn, 1);
         Assert.Equal(1, poller.Size);
 
         poller.Clear();
 
         Assert.Equal(0, poller.Size);
         var clearEvents = new PollEvent[1];
-        Assert.Equal(0, poller.Wait(clearEvents, TimeSpan.Zero, out _));
+        Assert.Equal(0, poller.Wait(clearEvents, TimeSpan.Zero));
     }
 
     [Fact]
@@ -163,15 +164,15 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        poller.Add(receiver, PollEventFlags.PollIn);
+        poller.Add(receiver, PollEventFlags.PollIn, 11);
         Assert.Equal(1, poller.Size);
 
         CoreTestSupport.SendWithRetry(sender, "ping"u8, 2000);
 
         var events = new PollEvent[1];
-        int written = poller.Wait(events, TimeSpan.FromMilliseconds(2000),
-            out _);
+        int written = poller.Wait(events, TimeSpan.FromMilliseconds(2000));
         Assert.Equal(1, written);
+        Assert.Equal((nuint)11, events[0].Slot);
         Assert.NotEqual(PollEventFlags.None,
             events[0].Revents & PollEventFlags.PollIn);
 
@@ -185,12 +186,13 @@ public sealed class test_pair_tcp
         // POLLOUT is send-recovery readiness, not generic transport writability.
         // After switching away from POLLIN, queued receive data must not surface.
         Array.Clear(events);
-        written = poller.Wait(events, TimeSpan.FromMilliseconds(100), out _);
+        written = poller.Wait(events, TimeSpan.FromMilliseconds(100));
         Assert.Equal(0, written);
 
         poller.Modify(receiver, PollEventFlags.PollIn);
-        written = poller.Wait(events, TimeSpan.FromMilliseconds(2000), out _);
+        written = poller.Wait(events, TimeSpan.FromMilliseconds(2000));
         Assert.Equal(1, written);
+        Assert.Equal((nuint)11, events[0].Slot);
         Assert.NotEqual(PollEventFlags.None,
             events[0].Revents & PollEventFlags.PollIn);
         Assert.Equal(PollEventFlags.None,

@@ -9,8 +9,6 @@ namespace Systems.Zlink;
 
 public sealed class Poller : IPoller
 {
-    private const int MaxUserDataSlotCount = 65536;
-
     private static readonly string[] RequiredExports = new[]
     {
         "zlink_poller_new",
@@ -28,11 +26,8 @@ public sealed class Poller : IPoller
     };
 
     private readonly List<PollItem> _items = new();
-    private readonly Dictionary<nint, PollItem> _itemsByUserData = new();
-    private readonly List<PollItem?> _itemsByUserDataSlot = new();
     private ZlinkPollerEvent[] _nativeEvents = Array.Empty<ZlinkPollerEvent>();
     private IntPtr _handle;
-    private nint _nextUserData = 1;
 
     public Poller()
     {
@@ -47,7 +42,6 @@ public sealed class Poller : IPoller
         if (_handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         _items.Clear();
-        _itemsByUserData.Clear();
         _nativeEvents = Array.Empty<ZlinkPollerEvent>();
     }
 
@@ -66,57 +60,48 @@ public sealed class Poller : IPoller
 
     public int Size => Count;
 
-    public void Add(IZlinkSocket socket, PollEventFlags events, object? tag = null)
+    public void Add(IZlinkSocket socket, PollEventFlags events, nuint slot)
     {
         EnsureNotDisposed();
         IntPtr socketHandle = SocketInterop.RequirePollableHandle(socket,
             nameof(socket));
         EnumValidation.EnsurePollEvents(events, nameof(events));
 
-        IntPtr userData = AllocateUserData();
+        IntPtr userData = SlotToUserData(slot);
         int rc = NativeMethods.zlink_poller_add(_handle, socketHandle,
             userData, (short)events);
         if (rc != 0)
-        {
-            ReleaseUserData(userData);
             ZlinkException.ThrowConfigIfError(rc);
-        }
         RegisterItem(new PollItem(PollItemKind.Socket, socket, userData,
-            socketHandle, 0, null, events, tag));
+            socketHandle, 0, null, events, slot));
     }
 
-    public void AddFd(int fd, PollEventFlags events, object? tag = null)
+    public void AddFd(int fd, PollEventFlags events, nuint slot)
     {
         EnsureNotDisposed();
         EnumValidation.EnsurePollEvents(events, nameof(events));
 
-        IntPtr userData = AllocateUserData();
+        IntPtr userData = SlotToUserData(slot);
         int rc = NativeMethods.zlink_poller_add_fd(_handle, fd, userData,
             (short)events);
         if (rc != 0)
-        {
-            ReleaseUserData(userData);
             ZlinkException.ThrowConfigIfError(rc);
-        }
         RegisterItem(new PollItem(PollItemKind.Fd, null, userData, IntPtr.Zero,
-            fd, null, events, tag));
+            fd, null, events, slot));
     }
 
-    public void Add(IZlinkTimer timer, object? tag = null)
+    public void Add(IZlinkTimer timer, nuint slot)
     {
         EnsureNotDisposed();
         Timer concreteTimer = SocketInterop.RequireTimer(timer, nameof(timer));
 
-        IntPtr userData = AllocateUserData();
+        IntPtr userData = SlotToUserData(slot);
         int rc = NativeMethods.zlink_poller_add_timer(_handle,
             concreteTimer.Handle, userData);
         if (rc != 0)
-        {
-            ReleaseUserData(userData);
             ZlinkException.ThrowConfigIfError(rc);
-        }
         RegisterItem(new PollItem(PollItemKind.Timer, null, userData,
-            IntPtr.Zero, 0, concreteTimer, PollEventFlags.PollIn, tag));
+            IntPtr.Zero, 0, concreteTimer, PollEventFlags.PollIn, slot));
     }
 
     public void Modify(IZlinkSocket socket, PollEventFlags events)
@@ -210,10 +195,7 @@ public sealed class Poller : IPoller
         if (_handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         _items.Clear();
-        _itemsByUserData.Clear();
-        _itemsByUserDataSlot.Clear();
         _nativeEvents = Array.Empty<ZlinkPollerEvent>();
-        _nextUserData = 1;
     }
 
     public void Close()
@@ -221,64 +203,26 @@ public sealed class Poller : IPoller
         Dispose();
     }
 
-    internal int Wait(List<PollEvent> events, int timeoutMs)
+    public int Wait(Span<PollEvent> destination, TimeSpan timeout)
     {
         EnsureNotDisposed();
-        if (events == null)
-            throw new ArgumentNullException(nameof(events));
-
-        events.Clear();
+        if (destination.Length == 0)
+            throw new ArgumentException("destination must not be empty.",
+                nameof(destination));
         if (_items.Count == 0)
             return 0;
 
-        EnsureEventCapacity(_items.Count);
-        int ready = WaitNative(timeoutMs);
+        int capacity = Math.Min(destination.Length, _items.Count);
+        EnsureEventCapacity(capacity);
+        int ready = WaitNative(ToTimeoutMilliseconds(timeout), capacity);
         if (ready < 0)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         if (ready == 0)
             return 0;
 
         for (int i = 0; i < ready; i++)
-            events.Add(MapEvent(_nativeEvents[i]));
-        return ready;
-    }
-
-    public PollEvent? Wait(TimeSpan timeout)
-    {
-        PollEvent[] destination = new PollEvent[1];
-        int written = WaitCore(destination, ToTimeoutMilliseconds(timeout),
-            out _);
-        return written == 0 ? null : destination[0];
-    }
-
-    public int Wait(Span<PollEvent> destination, TimeSpan timeout,
-        out int totalReady)
-    {
-        return WaitCore(destination, ToTimeoutMilliseconds(timeout), out totalReady);
-    }
-
-    private int WaitCore(Span<PollEvent> destination, int timeoutMs,
-        out int totalReady)
-    {
-        EnsureNotDisposed();
-        if (_items.Count == 0)
-        {
-            totalReady = 0;
-            return 0;
-        }
-
-        EnsureEventCapacity(_items.Count);
-        int ready = WaitNative(timeoutMs);
-        if (ready < 0)
-            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
-        totalReady = ready;
-        if (ready == 0)
-            return 0;
-
-        int written = Math.Min(destination.Length, ready);
-        for (int i = 0; i < written; i++)
             destination[i] = MapEvent(_nativeEvents[i]);
-        return written;
+        return ready;
     }
 
     public void Dispose()
@@ -302,8 +246,6 @@ public sealed class Poller : IPoller
         }
         _handle = IntPtr.Zero;
         _items.Clear();
-        _itemsByUserData.Clear();
-        _itemsByUserDataSlot.Clear();
         _nativeEvents = Array.Empty<ZlinkPollerEvent>();
         if (rc != 0)
             throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
@@ -348,12 +290,12 @@ public sealed class Poller : IPoller
             _nativeEvents = new ZlinkPollerEvent[count];
     }
 
-    private unsafe int WaitNative(int timeoutMs)
+    private unsafe int WaitNative(int timeoutMs, int capacity)
     {
         fixed (ZlinkPollerEvent* events = _nativeEvents)
         {
             return NativeMethods.zlink_poller_wait_pinned(_handle, events,
-                _items.Count, timeoutMs, out _);
+                capacity, timeoutMs, out _);
         }
     }
 
@@ -392,102 +334,44 @@ public sealed class Poller : IPoller
 
     private PollEvent MapEvent(ZlinkPollerEvent nativeEvent)
     {
-        PollItem? item = FindEventItem(nativeEvent);
-        int? fd = item?.Kind == PollItemKind.Fd ? item.Fd : null;
-        Timer? timer = item?.Kind == PollItemKind.Timer ? item.Timer : null;
-        if (!fd.HasValue && timer == null && nativeEvent.Socket == IntPtr.Zero
-            && nativeEvent.Timer == IntPtr.Zero)
-            fd = nativeEvent.Fd;
-        return new PollEvent(item?.Socket, fd, timer, item?.Tag,
-            item?.Events ?? (PollEventFlags)nativeEvent.Events,
-            (PollEventFlags)nativeEvent.Events);
-    }
-
-    private PollItem? FindEventItem(ZlinkPollerEvent nativeEvent)
-    {
         PollItem? item = FindUserDataItem(nativeEvent.UserData);
-        item ??= nativeEvent.Socket != IntPtr.Zero
-            ? FindSocketItem(nativeEvent.Socket)
-            : nativeEvent.Timer != IntPtr.Zero
-                ? FindTimerItem(nativeEvent.Timer)
-                : FindFdItem(nativeEvent.Fd);
-        return item;
-    }
-
-    private PollItem? FindSocketItem(IntPtr handle)
-    {
-        int index = FindSocket(handle);
-        return index >= 0 ? _items[index] : null;
-    }
-
-    private PollItem? FindFdItem(int fd)
-    {
-        int index = FindFd(fd);
-        return index >= 0 ? _items[index] : null;
-    }
-
-    private PollItem? FindTimerItem(IntPtr handle)
-    {
-        int index = FindTimer(handle);
-        return index >= 0 ? _items[index] : null;
+        PollSourceKind sourceKind = item?.Kind switch
+        {
+            PollItemKind.Socket => PollSourceKind.Socket,
+            PollItemKind.Fd => PollSourceKind.Fd,
+            PollItemKind.Timer => PollSourceKind.Timer,
+            _ => (PollSourceKind)nativeEvent.MonitorSourceKind
+        };
+        int fd = sourceKind == PollSourceKind.Fd
+            ? (item?.Fd ?? nativeEvent.Fd)
+            : 0;
+        return new PollEvent(sourceKind, item?.Slot ?? 0,
+            (PollEventFlags)nativeEvent.Events, fd);
     }
 
     private PollItem? FindUserDataItem(IntPtr userData)
     {
-        nint value = userData;
-        if (value > 0 && value <= _itemsByUserDataSlot.Count)
+        foreach (PollItem item in _items)
         {
-            PollItem? slotItem = _itemsByUserDataSlot[(int)value - 1];
-            if (slotItem?.UserData == userData)
-                return slotItem;
+            if (item.UserData == userData)
+                return item;
         }
-
-        return _itemsByUserData.TryGetValue(userData, out PollItem? item)
-            ? item
-            : null;
+        return null;
     }
 
-    private IntPtr AllocateUserData()
+    private static IntPtr SlotToUserData(nuint slot)
     {
-        IntPtr userData = (IntPtr)_nextUserData++;
-        if (userData == IntPtr.Zero)
-            userData = (IntPtr)_nextUserData++;
-        return userData;
-    }
-
-    private void ReleaseUserData(IntPtr userData)
-    {
-        if (userData == IntPtr.Zero)
-            return;
-
-        nint value = userData;
-        if (value > 0 && value <= _itemsByUserDataSlot.Count)
-            _itemsByUserDataSlot[(int)value - 1] = null;
-        _itemsByUserData.Remove(userData);
+        return unchecked((IntPtr)slot);
     }
 
     private void RegisterItem(PollItem item)
     {
         _items.Add(item);
-        if (item.UserData != IntPtr.Zero)
-        {
-            _itemsByUserData[item.UserData] = item;
-            nint value = item.UserData;
-            if (value > 0 && value <= MaxUserDataSlotCount)
-            {
-                int index = (int)value - 1;
-                while (_itemsByUserDataSlot.Count <= index)
-                    _itemsByUserDataSlot.Add(null);
-                _itemsByUserDataSlot[index] = item;
-            }
-        }
     }
 
     private void UnregisterItem(int index)
     {
-        PollItem item = _items[index];
         _items.RemoveAt(index);
-        ReleaseUserData(item.UserData);
     }
 
     private void EnsureNotDisposed()
@@ -507,7 +391,7 @@ public sealed class Poller : IPoller
     {
         public PollItem(PollItemKind kind, IZlinkSocket? socket, IntPtr userData,
             IntPtr socketHandle, int fd, Timer? timer, PollEventFlags events,
-            object? tag)
+            nuint slot)
         {
             Kind = kind;
             Socket = socket;
@@ -516,7 +400,7 @@ public sealed class Poller : IPoller
             Fd = fd;
             Timer = timer;
             Events = events;
-            Tag = tag;
+            Slot = slot;
         }
 
         public PollItemKind Kind { get; }
@@ -526,7 +410,7 @@ public sealed class Poller : IPoller
         public int Fd { get; }
         public Timer? Timer { get; }
         public PollEventFlags Events { get; set; }
-        public object? Tag { get; }
+        public nuint Slot { get; }
         public bool IsSocket => Kind == PollItemKind.Socket;
     }
 }

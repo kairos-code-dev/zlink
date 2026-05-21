@@ -51,9 +51,9 @@ public sealed class test_validation_contract
         using var socket = new PairSocket(ctx);
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            poller.Add(socket, (PollEventFlags)16));
+            poller.Add(socket, (PollEventFlags)16, 1));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            poller.AddFd(0, (PollEventFlags)16));
+            poller.AddFd(0, (PollEventFlags)16, 1));
     }
 
     [Fact]

@@ -4,21 +4,17 @@ namespace Systems.Zlink;
 
 public readonly struct PollEvent
 {
-    internal PollEvent(IZlinkSocket? socket, int? fd, IZlinkTimer? timer,
-        object? tag, PollEventFlags events, PollEventFlags revents)
+    internal PollEvent(PollSourceKind sourceKind, nuint slot,
+        PollEventFlags revents, int fd)
     {
-        Socket = socket;
-        Fd = fd;
-        Timer = timer;
-        Tag = tag;
-        Events = events;
+        SourceKind = sourceKind;
+        Slot = slot;
         Revents = revents;
+        Fd = fd;
     }
 
-    public IZlinkSocket? Socket { get; }
-    public int? Fd { get; }
-    public IZlinkTimer? Timer { get; }
-    public object? Tag { get; }
-    public PollEventFlags Events { get; }
+    public PollSourceKind SourceKind { get; }
+    public nuint Slot { get; }
     public PollEventFlags Revents { get; }
+    public int Fd { get; }
 }

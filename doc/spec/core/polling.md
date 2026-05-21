@@ -432,6 +432,10 @@ Blocks until at least one registered source has an event ready, then fills
 with one element and `n_events_ == 1`. Writes the configuration result into
 `*error_out_` on failure; returns the count as the primary return on success.
 
+`n_events_` must be at least 1, and `events_` must point to a valid array.
+An empty array is not treated as a successful timeout; it is an invalid
+argument error.
+
 **Parameters:**
 
 | Name | Description |
@@ -445,6 +449,11 @@ with one element and `n_events_ == 1`. Writes the configuration result into
 **Returns:** The number of events stored in `events_`, `0` on timeout, or `-1`
 on failure with the `zlink_config_result_t` written through `*error_out_`.
 `zlink_errno()` retains the detailed internal errno for diagnostics.
+
+**Errors:**
+- `ZLINK_CONFIG_INVALID_HANDLE` -- `poller_` is not valid.
+- `ZLINK_CONFIG_INVALID_ARGUMENT` -- `events_` is not valid or `n_events_`
+  is less than 1.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.

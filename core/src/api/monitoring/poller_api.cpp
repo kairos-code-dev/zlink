@@ -674,7 +674,7 @@ int zlink_poller_wait (void *poller_,
             *error_out_ = ZLINK_CONFIG_INVALID_HANDLE;
         return -1;
     }
-    if (n_events_ < 0 || (n_events_ > 0 && !events_)) {
+    if (n_events_ <= 0 || !events_) {
         errno = EINVAL;
         if (error_out_)
             *error_out_ = ZLINK_CONFIG_INVALID_ARGUMENT;

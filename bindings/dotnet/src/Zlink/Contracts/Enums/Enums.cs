@@ -115,6 +115,13 @@ public enum MonitorSourceKind
     SpotSub = 4
 }
 
+public enum PollSourceKind
+{
+    Socket = 1,
+    Fd = 2,
+    Timer = 3
+}
+
 public enum PollEventFlags
 {
     None = 0,

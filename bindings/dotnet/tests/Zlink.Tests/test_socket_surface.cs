@@ -375,7 +375,7 @@ public sealed class test_socket_surface
                 .GetParameters()[0].ParameterType);
         Assert.Equal(typeof(IZlinkTimer),
             typeof(IPoller).GetMethod(nameof(IPoller.Add),
-                new[] { typeof(IZlinkTimer), typeof(object) })!
+                new[] { typeof(IZlinkTimer), typeof(nuint) })!
                 .GetParameters()[0].ParameterType);
         Assert.Equal(typeof(IZlinkTimer),
             typeof(IPoller).GetMethod(nameof(IPoller.Remove),
@@ -540,6 +540,7 @@ public sealed class test_socket_surface
             typeof(PairSocket).FullName!,
             typeof(PollEvent).FullName!,
             typeof(PollEventFlags).FullName!,
+            typeof(PollSourceKind).FullName!,
             typeof(Poller).FullName!,
             typeof(PubSocket).FullName!,
             typeof(PubSocketOptions).FullName!,
@@ -854,7 +855,7 @@ public sealed class test_socket_surface
                 .GetParameters()[0].ParameterType);
         Assert.Equal(typeof(IZlinkSocket),
             typeof(Poller).GetMethod(nameof(Poller.Add),
-                new[] { typeof(IZlinkSocket), typeof(PollEventFlags), typeof(object) })!
+                new[] { typeof(IZlinkSocket), typeof(PollEventFlags), typeof(nuint) })!
                 .GetParameters()[0].ParameterType);
         Assert.Equal(typeof(IZlinkSocket),
             typeof(Poller).GetMethod(nameof(Poller.Modify))!
@@ -866,20 +867,24 @@ public sealed class test_socket_surface
         Assert.Equal(typeof(int),
             typeof(Poller).GetProperty(nameof(Poller.Size))!.PropertyType);
         Assert.True(HasPublicInstanceMethod(typeof(Poller),
-            nameof(Poller.Add), typeof(IZlinkTimer), typeof(object)));
+            nameof(Poller.Add), typeof(IZlinkTimer), typeof(nuint)));
         Assert.True(HasPublicInstanceMethod(typeof(Poller),
             nameof(Poller.Remove), typeof(IZlinkTimer)));
         Assert.True(HasPublicInstanceMethod(typeof(Poller),
-            nameof(Poller.Wait), typeof(TimeSpan)));
-        Assert.True(HasPublicInstanceMethod(typeof(Poller),
             nameof(Poller.Wait), typeof(Span<PollEvent>),
-            typeof(TimeSpan), typeof(int).MakeByRefType()));
+            typeof(TimeSpan)));
+        Assert.Null(typeof(Poller).GetMethod(nameof(Poller.Wait),
+            new[] { typeof(TimeSpan) }));
         Assert.Null(typeof(Poller).GetMethod(nameof(Poller.Wait),
             new[] { typeof(Span<PollEvent>), typeof(int), typeof(int).MakeByRefType() }));
-        Assert.Equal(typeof(IZlinkSocket),
-            typeof(PollEvent).GetProperty(nameof(PollEvent.Socket))!.PropertyType);
-        Assert.Equal(typeof(IZlinkTimer),
-            typeof(PollEvent).GetProperty(nameof(PollEvent.Timer))!.PropertyType);
+        Assert.Null(typeof(PollEvent).GetProperty("Socket"));
+        Assert.Null(typeof(PollEvent).GetProperty("Timer"));
+        Assert.Null(typeof(PollEvent).GetProperty("Tag"));
+        Assert.Null(typeof(PollEvent).GetProperty("Events"));
+        Assert.Equal(typeof(PollSourceKind),
+            typeof(PollEvent).GetProperty(nameof(PollEvent.SourceKind))!.PropertyType);
+        Assert.Equal(typeof(nuint),
+            typeof(PollEvent).GetProperty(nameof(PollEvent.Slot))!.PropertyType);
         Assert.Equal(typeof(PollEventFlags),
             typeof(PollEvent).GetProperty(nameof(PollEvent.Revents))!.PropertyType);
         Assert.Equal(typeof(Action<MonitorEvent>),

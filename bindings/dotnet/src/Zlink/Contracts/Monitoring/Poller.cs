@@ -8,11 +8,11 @@ public interface IPoller : IDisposable, IAsyncDisposable
 {
     int Size { get; }
 
-    void Add(IZlinkSocket socket, PollEventFlags events, object? tag = null);
+    void Add(IZlinkSocket socket, PollEventFlags events, nuint slot);
 
-    void AddFd(int fd, PollEventFlags events, object? tag = null);
+    void AddFd(int fd, PollEventFlags events, nuint slot);
 
-    void Add(IZlinkTimer timer, object? tag = null);
+    void Add(IZlinkTimer timer, nuint slot);
 
     void Modify(IZlinkSocket socket, PollEventFlags events);
 
@@ -28,8 +28,5 @@ public interface IPoller : IDisposable, IAsyncDisposable
 
     void Close();
 
-    PollEvent? Wait(TimeSpan timeout);
-
-    int Wait(Span<PollEvent> destination, TimeSpan timeout,
-        out int totalReady);
+    int Wait(Span<PollEvent> destination, TimeSpan timeout);
 }

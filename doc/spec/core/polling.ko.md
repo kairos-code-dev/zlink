@@ -418,6 +418,9 @@ int zlink_poller_wait (void *poller_,
 결과(`zlink_config_result_t`)가 기록되고, 성공 시 이벤트 수가 기본 반환값으로
 반환됩니다.
 
+`n_events_`는 1 이상이어야 하며, `events_`는 유효한 배열이어야 합니다.
+빈 배열은 성공한 타임아웃으로 처리하지 않고 invalid argument 오류로 처리합니다.
+
 **매개변수:**
 
 | 이름 | 설명 |
@@ -431,6 +434,11 @@ int zlink_poller_wait (void *poller_,
 **반환값:** `events_`에 저장된 이벤트 수, 타임아웃 시 `0`, 실패 시 `-1`이며
 `*error_out_`에 `zlink_config_result_t`가 기록됩니다. `zlink_errno()`는 진단용
 내부 errno를 그대로 유지합니다.
+
+**에러:**
+- `ZLINK_CONFIG_INVALID_HANDLE` -- `poller_`가 유효하지 않습니다.
+- `ZLINK_CONFIG_INVALID_ARGUMENT` -- `events_`가 유효하지 않거나 `n_events_`가
+  1보다 작습니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 

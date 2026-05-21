@@ -801,6 +801,10 @@ SpotNode, routed Spot transport 처럼 language binding 전체에 적용되는 �
 #### 6.5.2 `.NET` 문서
 
 `.NET` 문서는 사용자가 실제로 등록하고 주입하는 표면을 기준으로 반영한다.
+guide 문서는 샘플 목록만 보강하지 않는다. 처음 읽는 사용자가 "어떤 client 를 언제
+써야 하는지"와 "channel 이름이 어떤 의미로 쓰이는지"를 먼저 이해할 수 있도록 본문
+guide 에도 별도 설명을 넣는다. 샘플 문서는 그 뒤에 실제 코드 흐름을 보여 주는 역할로
+둔다.
 
 | 문서 | 적용 내용 |
 |------|-----------|
@@ -810,10 +814,15 @@ SpotNode, routed Spot transport 처럼 language binding 전체에 적용되는 �
 | `framework/languages/dotnet/doc/internals/behavior-matrix.ko.md` | group 없는 server/subscriber channel, Spot route transport 전용 channel, dealer mesh channel 의 허용/비허용 조합을 표로 고정한다. |
 | `framework/languages/dotnet/doc/internals/di-capability-exposure-policy.ko.md` | `IZLinkClient`는 항상 주입 가능하지만 없는 channel 을 만들지 않는다는 규칙, `IZLinkRoutedSpotClient`가 명시된 local egress channel 만 사용하는 규칙, `IZLinkSpotClient`의 active Spot callback 전제를 정리한다. |
 | `framework/languages/dotnet/doc/internals/regression-test-matrix.ko.md` | handler exposure 없는 fallback 제거, dealer mesh `IZLinkClient` 전송, channel handler 에서 다른 channel request, channel handler 에서 Spot route request 테스트를 추가한다. |
+| `framework/languages/dotnet/doc/guide/01-overview.ko.md` | channel handler exposure 와 Spot route transport 가 서로 다른 축이라는 큰 그림을 넣는다. framework 가 자동으로 모든 handler 를 열어 주는 모델이 아니라 channel registration 에서 노출을 선택하는 모델임을 소개한다. |
+| `framework/languages/dotnet/doc/guide/02-getting-started.ko.md` | 최소 channel 예제에서 `AddHandlersFromAssemblyOf(...)`만으로는 handler 가 열리지 않고 `MapHandlerGroup(...)` 또는 개별 typed handler registration 이 필요하다는 흐름을 보여 준다. routed Spot 은 별도 고급 단계로 링크한다. |
+| `framework/languages/dotnet/doc/guide/03-concepts.ko.md` | `channelName`의 세 가지 의미를 분리한다. `IZLinkClient`의 target channel, `IZLinkRoutedSpotClient.ViaEgressChannel(...)`의 local egress channel, `EnableSpotRouteEgress(targetSpotNodeChannelName)`의 target SpotNode ingress channel 을 한 장에서 비교한다. |
+| `framework/languages/dotnet/doc/guide/04-feature-map.ko.md` | 사용 사례별로 어떤 표면을 고르는지 정리한다. channel-to-channel request/send 는 `IZLinkClient`, fanout publish 는 `IZLinkFanoutPublisher`, current Spot 내부 outbound 는 `IZLinkSpotClient`, 일반 handler 에서 target Spot 으로 가는 호출은 `IZLinkRoutedSpotClient`로 안내한다. |
 | `framework/languages/dotnet/doc/guide/samples/channel-messaging-samples.ko.md` | channel handler 가 `IZLinkClient`로 client-server/dealer mesh channel 에 send/request 하는 예와 `IZLinkFanoutPublisher`로 publish 하는 예를 추가한다. |
 | `framework/languages/dotnet/doc/guide/samples/spot-samples.ko.md` | current Spot callback 에서는 `IZLinkSpotClient`, 일반 handler/HTTP/session gateway 에서는 `IZLinkRoutedSpotClient`를 쓰는 예를 분리한다. |
 | `framework/languages/dotnet/doc/guide/samples/bingo-game-sample.ko.md` | API/Session handler 가 Play Spot 으로 가는 경로를 `IZLinkClient`와 `IZLinkRoutedSpotClient` 중 어떤 표면으로 쓰는지 샘플 구조에 맞게 고정한다. |
 | `framework/languages/dotnet/doc/guide/samples/tictactoe-game-sample.ko.md` | session gateway 예시에서 channel-to-channel request 와 routed Spot request 의 차이를 샘플 흐름에 맞게 정리한다. |
+| `framework/languages/dotnet/samples/**` | 실제 sample 프로젝트에도 같은 변경을 적용한다. channel 등록에는 `MapHandlerGroup(...)` 또는 개별 typed handler registration 을 명시하고, 일반 channel-to-channel 호출은 `IZLinkClient`, target Spot 호출은 `IZLinkRoutedSpotClient.ViaEgressChannel(...)`로 나누어 사용한다. routed Spot egress channel 은 `EnableSpotRouteEgress(targetSpotNodeChannelName)`로 target SpotNode ingress channel 을 명시한다. |
 | `framework/languages/dotnet/doc/README.ko.md` | 새 정식 문서 반영 뒤 draft 링크와 주제 문서 설명을 최신 상태로 맞춘다. |
 
 #### 6.5.3 반영 순서
@@ -825,8 +834,11 @@ SpotNode, routed Spot transport 처럼 language binding 전체에 적용되는 �
 3. `.NET` `aspnet-core-channel-messaging.ko.md`와 `aspnet-core-spot.ko.md`에 사용 모델을
    나누어 반영한다.
 4. `.NET` internals matrix 문서에 validation, DI 노출, 회귀 테스트 항목을 반영한다.
-5. guide/sample 문서를 마지막에 갱신한다. 샘플은 정식 spec 에서 확정한 이름과 호출
-   흐름만 사용한다.
+5. `.NET` guide 본문 문서에 사용자 관점의 선택 기준과 용어 구분을 반영한다.
+6. guide sample 문서를 마지막에 갱신한다. 샘플은 정식 spec 과 guide 본문에서 확정한
+   이름과 호출 흐름만 사용한다.
+7. 실제 sample 프로젝트 코드를 갱신한다. 문서의 예시와 실행 sample 이 서로 다른 API
+   이름이나 channel 의미를 쓰지 않도록, sample build/run 검증까지 같은 단계에 묶는다.
 
 이 순서를 지키는 이유는 guide 가 계약을 새로 만들지 않게 하기 위해서다. 먼저 spec 에서
 계약을 닫고, internals 에서 runtime/validation 의미를 닫은 뒤, guide 는 사용법만 보여 준다.

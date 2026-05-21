@@ -115,7 +115,7 @@ flowchart LR
 | 축 | 사용자에게 보이는 것 | 가이드 챕터 |
 |----|----------------------|-------------|
 | channel messaging | `[ZLinkRequest]`/`[ZLinkSend]` handler, `IZLinkClient` | [04-channel-messaging](./04-channel-messaging.ko.md) |
-| PUB/SUB | `[ZLinkPublish]`, `EnableSubscriber()`, `IZLinkEventPublisher` | [04-channel-messaging](./04-channel-messaging.ko.md) |
+| PUB/SUB | `[ZLinkPublish]`, `EnableSubscriber()`, `IZLinkFanoutPublisher` | [04-channel-messaging](./04-channel-messaging.ko.md) |
 | SPOT | named spot factory, `IZLinkSpotClient`, `IZLinkRoutedSpotClient`, timer | [05-spot](./05-spot.ko.md) |
 | actor / session | actor factory, Entry Spot, `IZLinkSessionProxy`, session actor dispatch | [06-actor-session](./06-actor-session.ko.md) |
 | STREAM | framework session packet, Stream Connector | [07-stream](./07-stream.ko.md) |
@@ -172,4 +172,5 @@ handler registration 이 정한다. 자세한 규칙은
 7. [08-registry](./08-registry.ko.md) — Registry 구동과 topology 조회
 8. [09-monitoring](./09-monitoring.ko.md) — runtime 이벤트 관찰
 9. [10-feature-map](./10-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
-10. [spec/](../spec/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)
+10. [guide/samples](./samples/channel-messaging-samples.ko.md) — 기능별 실행 예제
+11. [spec/](../spec/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)

@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../doc/README.ko.md) | [다음: ZLink Framework for .NET — 개요와 시작](./guide/01-overview.ko.md)
+[문서 목록](../../../doc/README.ko.md) | [다음: ZLink Framework for .NET — 개요](./guide/01-overview.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Framework 문서](../../../doc/README.ko.md) | [공통 스펙](../../../doc/spec/README.ko.md)
@@ -129,7 +129,13 @@
 | [guide/01-overview.ko.md](./guide/01-overview.ko.md) | 무엇/왜/누구를 위한 것, 기존 방식 대비 체감 난이도, 4축 |
 | [guide/02-getting-started.ko.md](./guide/02-getting-started.ko.md) | 패키지부터 최소 예제 동작 확인까지 |
 | [guide/03-concepts.ko.md](./guide/03-concepts.ko.md) | `.NET` 표면 멘탈 모델과 공통 스펙 매핑 |
-| [guide/04-feature-map.ko.md](./guide/04-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
+| [guide/04-channel-messaging.ko.md](./guide/04-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 사용법 |
+| [guide/05-spot.ko.md](./guide/05-spot.ko.md) | room / stage / zone 같은 동적 SPOT 등록과 호출 사용법 |
+| [guide/06-actor-session.ko.md](./guide/06-actor-session.ko.md) | actor lifecycle 과 session actor dispatch 사용법 |
+| [guide/07-stream.ko.md](./guide/07-stream.ko.md) | 외부 client STREAM 서버와 Stream Connector 사용법 |
+| [guide/08-registry.ko.md](./guide/08-registry.ko.md) | Registry 구동, clustering, topology 조회 사용법 |
+| [guide/09-monitoring.ko.md](./guide/09-monitoring.ko.md) | socket / registry / spot runtime 이벤트 관찰 사용법 |
+| [guide/10-feature-map.ko.md](./guide/10-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
 
 ### 2.1 기준 문서 (interface catalog)
 

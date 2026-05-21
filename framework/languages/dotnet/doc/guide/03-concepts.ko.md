@@ -119,7 +119,7 @@ startup 에서 즉시 예외로 막힌다.
 | client | 언제 |
 |--------|------|
 | `IZLinkClient` | 일반 channel request/send |
-| `IZLinkEventPublisher` | pub/sub publish |
+| `IZLinkFanoutPublisher` | pub/sub publish |
 | `IZLinkSpotClient` | current Spot callback 안에서의 outbound |
 | `IZLinkRoutedSpotClient` | current Spot 없이 target Spot 으로 호출(HTTP/세션 gateway 등) |
 

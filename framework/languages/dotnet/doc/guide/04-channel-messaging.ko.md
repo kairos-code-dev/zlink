@@ -1,0 +1,391 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: 핵심 개념](./03-concepts.ko.md) | [다음: SPOT — room · stage · zone](./05-spot.ko.md)
+<!-- framework-adapter-nav:end -->
+
+# Channel Messaging — request · send · pub/sub
+
+> 정식 계약은 [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md)와
+> [spec/handler-interfaces](../spec/handler-interfaces.ko.md)가 소유한다. 이
+> 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로 다룬다.
+
+channel messaging 은 framework 의 가장 기본 축이다. 세 가지 상호작용을 다룬다.
+
+- **request/response** — 응답이 필요한 1:1 호출 (DEALER → ROUTER)
+- **one-way send** — 응답이 없는 단방향 명령 (DEALER → ROUTER)
+- **publish/subscribe** — 여러 구독자에게 이벤트 fan-out (PUB / SUB)
+
+## 1. 두 가지 channel 종류
+
+| 등록 메서드 | transport | capability | 용도 |
+|-------------|-----------|------------|------|
+| `AddClientServerChannel` | DEALER → ROUTER | `EnableServer` / `EnableClient` | request, send |
+| `AddFanoutChannel` | PUB / SUB | `EnablePublisher` / `EnableSubscriber` | event fan-out |
+
+request 와 send 는 같은 client-server channel 을 공유한다. pub/sub 는 별도의
+fanout channel 이다.
+
+## 2. handler 작성
+
+handler 는 인터페이스를 구현하고, 결과를 반환값으로 돌려준다.
+
+```csharp
+// request-response
+public sealed class GetProfileHandler
+    : IZLinkRequestHandler<GetProfileRequest, GetProfileReply>
+{
+    private readonly IProfileStore _store;
+    public GetProfileHandler(IProfileStore store) => _store = store;
+
+    public async ValueTask<GetProfileReply> HandleAsync(
+        GetProfileRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        var profile = await _store.LoadAsync(request.AccountId, cancellationToken);
+        return new GetProfileReply(profile.AccountId, profile.Nickname);
+    }
+}
+
+// one-way send (응답 없음)
+public sealed class RefreshCacheHandler
+    : IZLinkSendHandler<RefreshCacheCommand>
+{
+    public ValueTask HandleAsync(
+        RefreshCacheCommand message,
+        ZLinkSendContext context,
+        CancellationToken cancellationToken)
+    {
+        // 캐시 무효화 등. 호출자는 결과를 기다리지 않는다.
+        return ValueTask.CompletedTask;
+    }
+}
+
+// publish 수신 (구독자 측)
+public sealed class CacheRefreshedEventHandler
+    : IZLinkPublishHandler<CacheRefreshedEvent>
+{
+    public ValueTask HandleAsync(
+        CacheRefreshedEvent message,
+        ZLinkPublishContext context,
+        CancellationToken cancellationToken)
+    {
+        // context.Topic, context.SourceName 등을 읽을 수 있다.
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+- handler 의존성은 **생성자 주입**으로 받는다(`IProfileStore` 처럼). context 에서
+  service 를 꺼내는 service locator 패턴은 쓰지 않는다.
+- handler context(`ZLinkRequestContext`, `ZLinkSendContext`, `ZLinkPublishContext`)
+  는 공통적으로 channel 이름·packet 이름·content type·correlation id·deadline·
+  연결 취소 토큰을 제공한다. publish context 는 추가로 topic/source 를 제공한다.
+- handler class 는 dispatch 키가 아니라 **코드 조직 단위**다. 메서드를 한 class 에
+  주제별로 묶어도, packet 마다 class 를 따로 둬도 동작은 같다.
+
+### attribute 기반 메서드 handler
+
+인터페이스 대신 attribute 를 단 메서드로도 같은 handler 를 작성할 수 있다. 한
+class 에 여러 handler 메서드를 둘 때 편하다.
+
+```csharp
+[ZLinkHandlerGroup("api")]
+public sealed class UserHandlers
+{
+    private readonly IZLinkFanoutPublisher _publisher;
+    public UserHandlers(IZLinkFanoutPublisher publisher) => _publisher = publisher;
+
+    [ZLinkRequest]
+    public ValueTask<GetUserReply> GetUserAsync(
+        GetUserRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+        => ValueTask.FromResult(new GetUserReply(request.AccountId, "alice"));
+
+    [ZLinkSend]
+    public async ValueTask RefreshCacheAsync(
+        RefreshUserCacheCommand command,
+        ZLinkSendContext context,
+        CancellationToken cancellationToken)
+    {
+        await _publisher
+            .Publish("api.events", "user.cache-refreshed",
+                new UserCacheRefreshedEvent(command.AccountId))
+            .Submit(cancellationToken);
+    }
+}
+```
+
+- 메서드 시그니처는 `(payload, context?, CancellationToken?)` 순서이며 context 와
+  토큰은 생략할 수 있다.
+- `[ZLinkRequest]`/`[ZLinkSend]`/`[ZLinkPublish]` 는 **channel 이름을 받지
+  않는다.** channel 매핑은 등록이 소유한다(§3).
+
+## 3. handler 를 channel 에 노출하기
+
+framework 는 발견한 handler 를 모든 channel 에 자동으로 열지 않는다. **발견과
+노출은 별개 단계**다.
+
+### 방법 A — group + MapHandlerGroup (여러 handler 묶음)
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.AddClientServerChannel("api", channel =>
+    {
+        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
+        channel.MapHandlerGroup("api");          // [ZLinkHandlerGroup("api")] 묶음 노출
+    });
+
+    options.AddHandlersFromAssemblyOf<Program>(); // handler 후보 발견(노출 아님)
+});
+```
+
+- `[ZLinkHandlerGroup("api")]` 가 안 붙은 class 는 어느 channel 에도 매핑되지
+  않는다(opt-in 표식).
+- 같은 group 을 여러 channel 에, 한 channel 에 여러 group 을 매핑할 수 있다.
+
+### 방법 B — typed registration (개별 등록)
+
+```csharp
+options.AddClientServerChannel("price", channel =>
+{
+    channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7301"));
+    channel.AddRequestHandler<GetPriceHandler, PriceRequest, PriceReply>();
+    channel.AddSendHandler<RefreshCacheHandler, RefreshCacheCommand>();
+});
+```
+
+fanout channel 의 publish handler 는 builder 의 `AddPublishHandler<...>()` 또는
+group 매핑으로 등록한다.
+
+> **packet 이름 해석 순서:** ① builder 의 `PacketName(...)`/`packetName` 인자 → ②
+> payload 타입의 `[ZLinkPacket("...")]` → ③ 둘 다 없으면 타입 이름(`Type.Name`).
+> 같은 channel 안에서 `kind + packet 이름` 이 겹치면 **시작 단계에서 예외**다. 다른
+> channel 끼리는 같은 packet 이름을 재사용해도 된다.
+
+## 4. outbound 호출
+
+### request / send — `IZLinkClient`
+
+```csharp
+public sealed class PriceService(IZLinkClient client)
+{
+    public async Task<decimal> GetAsync(string symbol, CancellationToken ct)
+    {
+        var reply = await client
+            .Request("price", new PriceRequest(symbol))
+            .Timeout(TimeSpan.FromMilliseconds(200))   // reply 대기 시간
+            .SubmitAsync<PriceReply>(ct);
+        return reply.Price;
+    }
+
+    public ValueTask RefreshAsync(string accountId, CancellationToken ct)
+        => client
+            .Send("profile", new RefreshCacheCommand(accountId))
+            .PacketName("profile.refresh-cache")        // 선택: packet 이름 override
+            .Submit(ct);
+}
+```
+
+- reply 타입은 메시지가 아니라 **`.SubmitAsync<TReply>(...)`** 에서 지정한다.
+- `Request` 에만 `Timeout(...)` 이 있다. `Send` 는 응답을 기다리지 않으므로 없다.
+- channel 이나 client capability 가 없으면 socket 을 만들지 않고
+  `ZLinkConfigurationException` 으로 실패한다(`IZLinkClient` 자체는 항상 DI 에
+  등록되어 있다).
+
+### publish — `IZLinkFanoutPublisher`
+
+```csharp
+public sealed class ProfileService(IZLinkFanoutPublisher publisher)
+{
+    public ValueTask AnnounceAsync(string accountId, CancellationToken ct)
+        => publisher
+            .Publish("api.events", "profile.cache-refreshed",
+                new ProfileCacheRefreshedEvent(accountId))
+            .Submit(ct);
+}
+```
+
+- `Publish` 는 인자가 **3개**다: `channelName`, `topic`, `message`. topic 은 그
+  channel 안에서 어느 구독자 집합이 받을지를 정하는 fan-out 라우팅 값이다.
+- publish 는 한 번만 직렬화하고 구독자 수만큼 task 를 만들지 않는다(framework 내부
+  최적화).
+- `IZLinkEventPublisher` 는 기존 이름을 위한 별칭이다. 새 코드에서는 capability
+  이름과 맞는 `IZLinkFanoutPublisher` 를 우선 사용한다.
+
+> `Submit(...)`/`SubmitAsync<T>(...)` 의 완료는 transport 위임까지만 보장한다.
+> remote handler 완료나 구독자 수신을 보장하지 않는다([03-concepts](./03-concepts.ko.md) §7).
+
+## 5. filter — 공통 처리
+
+ASP.NET Core HTTP middleware(`app.Use(...)`)는 HTTP 파이프라인 전용이라 ZLink
+handler 에는 적용되지 않는다. logging/validation/authorization/metrics 같은 공통
+처리는 `IZLinkHandlerFilter` 로 한다.
+
+```csharp
+public sealed class LoggingFilter(ILogger<LoggingFilter> logger)
+    : IZLinkHandlerFilter
+{
+    public async ValueTask<object?> InvokeAsync(
+        ZLinkHandlerInvocation invocation,
+        ZLinkHandlerDelegate next,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation("dispatch {Packet}", invocation.PacketName);
+        return await next(cancellationToken);   // 호출하지 않으면 handler 미실행
+    }
+}
+
+// 등록 (등록 순서대로 pipeline 구성)
+builder.Services.AddZLinkFramework(options =>
+{
+    options.UseFilter<LoggingFilter>();
+    options.UseFilter<ValidationFilter>();
+});
+```
+
+filter 도 `new` 가 아니라 .NET DI 에서 resolve 된다.
+
+## 6. 연결 제어
+
+기본은 `UseDiscovery(...)` 자동 연결이다([03-concepts](./03-concepts.ko.md) §5).
+수동 연결과 런타임 제어는 다음과 같다.
+
+```csharp
+// 등록 시점 수동 연결 (capability 단위)
+options.AddClientServerChannel("profile", channel =>
+{
+    channel.EnableClient(client =>
+    {
+        client.UseManualConnections(peers =>
+        {
+            peers.Connect("tcp://10.0.10.15:7101");
+            peers.Connect("tcp://10.0.10.16:7101");
+        });
+    });
+});
+```
+
+```csharp
+// 런타임 연결 추가/제거
+public sealed class WarmupService(IZLinkChannelConnectionManager connections)
+    : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var profile = await connections
+            .GetClientServerClientAsync("profile", stoppingToken);
+        await profile.ConnectAsync("tcp://10.0.10.17:7101", stoppingToken);
+    }
+}
+```
+
+런타임 `Connect/Disconnect` 는 **수동(manual) 모드 capability 에서만** 유효하다.
+Discovery 모드는 peer 소유권이 Discovery 에 있어 수동 제어를 막는다.
+
+## 7. 직렬화 codec
+
+payload 직렬화 codec 은 framework 등록에서 켠다.
+
+```csharp
+options.Codecs.AddProtobuf();
+options.Codecs.AddJson();
+options.Codecs.AddMessagePack();
+```
+
+payload 는 codec 이 직렬화할 수 있는 DTO 여야 한다. root/요소 타입이
+abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
+
+## 8. 통합 예제 — 서버 + outbound + pub/sub
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddZLinkFramework(options =>
+{
+    options.DefaultTimeout = TimeSpan.FromSeconds(1);
+    options.Codecs.AddProtobuf();
+
+    // 들어오는 요청을 받는 서버 channel
+    options.AddClientServerChannel("api", channel =>
+    {
+        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
+        channel.MapHandlerGroup("api");
+    });
+
+    // 이벤트 발행/구독 channel
+    options.AddFanoutChannel("api.events", channel =>
+    {
+        channel.EnablePublisher(publisher => publisher.Bind("tcp://0.0.0.0:7201"));
+        channel.EnableSubscriber();
+        channel.MapHandlerGroup("api.events");
+    });
+
+    // 다른 서비스로 나가는 outbound channel
+    options.AddClientServerChannel("account", channel => channel.EnableClient());
+
+    options.UseDiscovery(registry =>
+    {
+        registry.Add("tcp://registry1:5551");
+        registry.Add("tcp://registry2:5551");
+    });
+    options.AddHandlersFromAssemblyOf<Program>();
+});
+
+var app = builder.Build();
+
+app.MapPost("/users/{id}", async (
+    string id, IZLinkClient client, CancellationToken ct) =>
+{
+    var account = await client
+        .Request("account", new GetAccountRequest(id))
+        .SubmitAsync<GetAccountReply>(ct);
+    return Results.Ok(account);
+});
+
+app.Run();
+
+[ZLinkHandlerGroup("api")]
+public sealed class UserHandlers(IZLinkFanoutPublisher publisher)
+{
+    [ZLinkRequest]
+    public ValueTask<GetUserReply> GetUserAsync(
+        GetUserRequest request, ZLinkRequestContext context, CancellationToken ct)
+        => ValueTask.FromResult(new GetUserReply(request.AccountId, "alice"));
+
+    [ZLinkSend]
+    public ValueTask RefreshAsync(
+        RefreshUserCacheCommand command, ZLinkSendContext context, CancellationToken ct)
+        => publisher
+            .Publish("api.events", "user.cache-refreshed",
+                new UserCacheRefreshedEvent(command.AccountId))
+            .Submit(ct);
+}
+
+[ZLinkHandlerGroup("api.events")]
+public sealed class UserCacheRefreshedEventHandler
+    : IZLinkPublishHandler<UserCacheRefreshedEvent>
+{
+    public ValueTask HandleAsync(
+        UserCacheRefreshedEvent message, ZLinkPublishContext context, CancellationToken ct)
+        => ValueTask.CompletedTask;
+}
+```
+
+## 9. 자주 막히는 곳
+
+- **handler 가 안 불린다** → `AddHandlersFromAssemblyOf(...)` 만으로는 노출되지
+  않는다. `MapHandlerGroup(...)` 또는 typed registration 이 필요하다(§3).
+- **`ZLinkConfigurationException`** → channel 이 없거나 해당 capability 가 없는
+  경우. 등록을 확인한다.
+- **시작 시 예외** → channel 이름 중복, 같은 channel `kind + packet 이름` 중복,
+  client 에 연결 경로 없음. fail-fast 다([03-concepts](./03-concepts.ko.md) §4).
+- **`ZLink` vs `Zlink`** → 서버 framework 타입은 전부 `ZLink`(대문자 L)다.
+
+## 10. 더 보기
+
+- 전체 인터페이스/attribute/context: [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
+- dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md)
+- 실행 가능한 전체 예제: [guide/samples/channel-messaging-samples](./samples/channel-messaging-samples.ko.md)
+- 다음 축: [05-spot](./05-spot.ko.md)

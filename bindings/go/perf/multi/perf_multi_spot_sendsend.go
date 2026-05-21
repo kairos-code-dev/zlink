@@ -362,7 +362,7 @@ func submitMultiSpotSendSend(spot *zlink.Spot, payload []byte) bool {
 			Submit(nil)
 	})
 	if err != nil {
-		if perfcommon.IsTransient(err) {
+		if perfcommon.IsTransient(err) || perfcommon.IsSubmitNotConnected(err) {
 			return false
 		}
 		perfcommon.Must(err)

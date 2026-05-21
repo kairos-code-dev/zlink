@@ -22,6 +22,10 @@ fn main() {
     // Match C perf: numeric socket HWM remains behind the manual-override gate.
     common::apply_single_hwm(&receiver);
     common::apply_single_hwm(&sender);
+    sender
+        .common_options()
+        .set_send_timeout(common::resolve_single_send_timeout())
+        .expect("sender send timeout");
     // PERF_SINGLE_TEST_POLICY § 1.4: receiver blocks on `recv()` until the
     // wire-level stop token arrives, so no recv timeout is needed.
 
@@ -104,14 +108,10 @@ fn main() {
             active_deadline,
             config.size,
             common::PHASE_ACTIVE,
-            |msg| match sender
-                .send(&send_target)
-                .message(msg)
-                .flags(zlink::SendFlags::DONT_WAIT)
-                .submit()
-            {
+            |msg| match sender.send(&send_target).message(msg).submit() {
                 Ok(sent) => sent,
                 Err(err) if err.code() == SubmitResult::NotConnected => false,
+                Err(err) if common::is_single_send_retry_error(&err) => false,
                 Err(err) => panic!("active send: {err}"),
             },
         );

@@ -10,7 +10,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use zlink::{
     Context, DealerSocket, Message, PairSocket, PubSocket, RouterSocket, SocketMonitor, SubSocket,
-    ZlinkError,
+    SubmitError, ZlinkError,
 };
 
 // -- Metric header (29 bytes) ------------------------------------------------
@@ -710,6 +710,17 @@ pub fn resolve_single_idle_drain_ms() -> u64 {
 
 pub fn resolve_single_recv_timeout() -> Duration {
     Duration::from_millis(env_or_u64("PERF_SINGLE_RCVTIMEO_MS", 200))
+}
+
+pub fn resolve_single_send_timeout() -> Duration {
+    Duration::from_millis(env_or_u64("PERF_SINGLE_SNDTIMEO_MS", 200))
+}
+
+pub fn is_single_send_retry_error(err: &SubmitError) -> bool {
+    matches!(
+        err.internal_errno(),
+        libc::EAGAIN | libc::EINTR | libc::ETIMEDOUT
+    )
 }
 
 pub fn resolve_single_pubsub_idle_drain_ms() -> u64 {

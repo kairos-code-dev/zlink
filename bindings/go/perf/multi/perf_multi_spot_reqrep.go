@@ -319,7 +319,7 @@ func requestSpotReplyWithPoller(spot *zlink.Spot, payload []byte, timeout time.D
 			done <- parts
 		})
 	if err != nil {
-		if perfcommon.IsTransient(err) {
+		if perfcommon.IsTransient(err) || perfcommon.IsSubmitNotConnected(err) {
 			return nil
 		}
 		perfcommon.Must(err)
@@ -387,7 +387,7 @@ func submitMultiSpotReqRepRequest(slot *multiSpotReqRepSlot, msgSize int, deadli
 		slot.mu.Lock()
 		slot.waiting = false
 		slot.mu.Unlock()
-		if perfcommon.IsTransient(err) {
+		if perfcommon.IsTransient(err) || perfcommon.IsSubmitNotConnected(err) {
 			return false
 		}
 		perfcommon.Must(err)
@@ -415,7 +415,7 @@ func requestSpotReply(spot *zlink.Spot, payload []byte, timeout time.Duration) [
 			done <- parts
 		})
 	if err != nil {
-		if perfcommon.IsTransient(err) {
+		if perfcommon.IsReadyProbeTransient(err) || perfcommon.IsSubmitNotConnected(err) {
 			return nil
 		}
 		perfcommon.Must(err)

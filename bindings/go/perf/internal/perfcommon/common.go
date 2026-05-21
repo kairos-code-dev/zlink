@@ -678,3 +678,8 @@ func IsReadyProbeTransient(err error) bool {
 		return false
 	}
 }
+
+func IsSubmitNotConnected(err error) bool {
+	var submitErr *zlink.SubmitError
+	return errors.As(err, &submitErr) && submitErr.Result == zlink.SubmitNotConnected
+}
